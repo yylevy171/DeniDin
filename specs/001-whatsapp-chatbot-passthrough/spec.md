@@ -12,6 +12,7 @@
 - Q: How should DeniDin store and load sensitive credentials (API keys, tokens)? → A: JSON/YAML config file with gitignored secrets
 - Q: How should DeniDin receive incoming WhatsApp messages from Green API? → A: Polling (receiveNotification API) with configurable interval
 - Q: How should DeniDin handle multiple incoming messages while processing a previous message? → A: Sequential processing (single-threaded queue)
+- Q: What logging level detail should DeniDin use by default? → A: INFO for application events, DEBUG for detailed flow
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -114,7 +115,7 @@ DeniDin can be configured with different WhatsApp credentials and AI service end
   - AI service endpoint URL
   - Polling interval (seconds)
 - **FR-007**: System MUST handle text messages; image, voice, and video handling can be deferred to future phases
-- **FR-008**: System MUST log all incoming messages, outgoing messages, and errors for debugging
+- **FR-008**: System MUST log at INFO level: incoming messages (sender, timestamp), outgoing messages (recipient, response), errors; at DEBUG level: message parsing, state changes, API request/response details
 - **FR-009**: System MUST gracefully handle AI service timeouts (e.g., > 30 seconds) and notify the user
 - **FR-010**: System MUST detect and handle Green API rate limits or quota errors
 - **FR-011**: System MUST only respond to messages in chats where DeniDin is a participant
@@ -141,7 +142,7 @@ DeniDin can be configured with different WhatsApp credentials and AI service end
 - **AIResponse**: Represents a response received from the AI service
   - Attributes: response text, timestamp, token count (optional)
 - **BotConfiguration**: Represents the bot's runtime configuration
-  - Attributes: Green API credentials, AI service credentials, polling interval, logging settings
+  - Attributes: Green API credentials, AI service credentials, polling interval, log level (INFO/DEBUG)
   - Loaded from: JSON/YAML config file (e.g., `config.json` or `config.yaml`, gitignored)
 
 ## Success Criteria *(mandatory)*
