@@ -13,6 +13,7 @@
 - Q: How should DeniDin receive incoming WhatsApp messages from Green API? → A: Polling (receiveNotification API) with configurable interval
 - Q: How should DeniDin handle multiple incoming messages while processing a previous message? → A: Sequential processing (single-threaded queue)
 - Q: What logging level detail should DeniDin use by default? → A: INFO for application events, DEBUG for detailed flow
+- Q: How should DeniDin handle AI responses longer than WhatsApp's ~4096 character message limit? → A: Truncate at 4000 characters and add "..." indicator
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -88,7 +89,7 @@ DeniDin can be configured with different WhatsApp credentials and AI service end
 - What happens when a user sends an extremely long message (> 4096 characters)?
   - AI service may truncate or reject it; DeniDin should handle gracefully
 - What happens when ChatGPT returns a response longer than WhatsApp's message limit?
-  - DeniDin should split the response into multiple messages or summarize
+  - DeniDin should truncate at 4000 characters and append "..." (multi-message splitting deferred to Phase 2)
 - What happens if the same user sends multiple messages before the first response arrives?
   - DeniDin should queue messages and process them in order, or inform the user to wait
 - What happens if DeniDin is added to a group chat?
@@ -122,6 +123,7 @@ DeniDin can be configured with different WhatsApp credentials and AI service end
 - **FR-012**: System MUST identify itself as "DeniDin" when responding (e.g., in bot profile or message signature)
 - **FR-013**: System MUST persist minimal state (e.g., last processed message ID) to avoid duplicate processing on restart
 - **FR-014**: System MUST process incoming messages sequentially (single-threaded queue) to maintain strict ordering and simplify Phase 1 implementation
+- **FR-015**: System MUST truncate AI responses longer than 4000 characters and append "..." indicator to fit WhatsApp message limit
 
 ### Non-Functional Requirements
 
@@ -140,7 +142,8 @@ DeniDin can be configured with different WhatsApp credentials and AI service end
 - **AIRequest**: Represents a request sent to the AI service
   - Attributes: prompt text, timestamp, user context (optional for Phase 1)
 - **AIResponse**: Represents a response received from the AI service
-  - Attributes: response text, timestamp, token count (optional)
+  - Attributes: response text, timestamp, token count (optional), is_truncated flag
+  - Methods: truncate_for_whatsapp() - truncates to 4000 chars and appends "..."
 - **BotConfiguration**: Represents the bot's runtime configuration
   - Attributes: Green API credentials, AI service credentials, polling interval, log level (INFO/DEBUG)
   - Loaded from: JSON/YAML config file (e.g., `config.json` or `config.yaml`, gitignored)
