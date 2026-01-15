@@ -50,6 +50,12 @@ Single Python project structure:
 
 **Checkpoint**: Project structure ready, dependencies installed
 
+### Version Control: Phase 1
+- [ ] T008-VC1 Commit all Phase 1 changes: `git add .` && `git commit -m "Phase 1: Setup - Project structure and dependencies"`
+- [ ] T008-VC2 Push to branch: `git push origin 001-phase1-infrastructure-setup`
+- [ ] T008-VC3 Create Pull Request: "Phase 1: Project Setup Complete"
+- [ ] T008-VC4 Review, approve, and merge PR to main branch
+
 ---
 
 ## Phase 2: Foundational (Blocking Prerequisites)
@@ -80,6 +86,13 @@ Single Python project structure:
 - [ ] T015b [P] Create state persistence utility in `src/utils/state.py` (BLOCKED until T015a approved)
 
 **Checkpoint**: Foundation complete - all models, configuration, logging ready
+
+### Version Control: Phase 2
+- [ ] T015-VC1 Run all tests: `pytest tests/unit/ -v`
+- [ ] T015-VC2 Commit Phase 2 changes: `git add .` && `git commit -m "Phase 2: Foundational - Core models and utilities with tests"`
+- [ ] T015-VC3 Push to branch: `git push origin 001-phase2-foundational`
+- [ ] T015-VC4 Create Pull Request: "Phase 2: Foundational Models & Utilities Complete"
+- [ ] T015-VC5 Review, approve, and merge PR to main branch
 
 ---
 
@@ -114,6 +127,13 @@ Single Python project structure:
 
 **Checkpoint**: P1 Complete - Demo bot working locally, basic passthrough functional
 
+### Version Control: Phase 3
+- [ ] T023-VC1 Run all tests: `pytest tests/ -v`
+- [ ] T023-VC2 Commit Phase 3 changes: `git add .` && `git commit -m "Phase 3: US1 - Green API demo bot working with ChatGPT integration"`
+- [ ] T023-VC3 Push to branch: `git push origin 001-phase3-us1-demo`
+- [ ] T023-VC4 Create Pull Request: "Phase 3: User Story 1 - MVP Demo Bot Complete"
+- [ ] T023-VC5 Review, approve, and merge PR to main branch
+
 ---
 
 ## Phase 4: User Story 2 - Basic Message Passthrough (Priority: P2)
@@ -145,6 +165,13 @@ Single Python project structure:
 - [ ] T030 [US2] 👤 **MANUAL APPROVAL GATE**: Send 3 messages quickly ("Test 1", "Test 2", "Test 3"), verify bot responds to all 3 in order; add bot to group, send message without mention (bot ignores), send message with "DeniDin" (bot responds); test 1-on-1 chat still works - THIS IS YOUR ACCEPTANCE TEST FOR US2
 
 **Checkpoint**: P2 Complete - Modular architecture, handles groups and sequences correctly
+
+### Version Control: Phase 4
+- [ ] T030-VC1 Run all tests: `pytest tests/ -v`
+- [ ] T030-VC2 Commit Phase 4 changes: `git add .` && `git commit -m "Phase 4: US2 - Modular architecture with handlers and group chat support"`
+- [ ] T030-VC3 Push to branch: `git push origin 001-phase4-us2-modular`
+- [ ] T030-VC4 Create Pull Request: "Phase 4: User Story 2 - Modular Architecture Complete"
+- [ ] T030-VC5 Review, approve, and merge PR to main branch
 
 ---
 
@@ -184,6 +211,13 @@ Single Python project structure:
 
 **Checkpoint**: P3 Complete - Robust error handling, bot doesn't crash on failures
 
+### Version Control: Phase 5
+- [ ] T039-VC1 Run all tests: `pytest tests/ -v`
+- [ ] T039-VC2 Commit Phase 5 changes: `git add .` && `git commit -m "Phase 5: US3 - Comprehensive error handling and resilience"`
+- [ ] T039-VC3 Push to branch: `git push origin 001-phase5-us3-error-handling`
+- [ ] T039-VC4 Create Pull Request: "Phase 5: User Story 3 - Error Handling & Resilience Complete"
+- [ ] T039-VC5 Review, approve, and merge PR to main branch
+
 ---
 
 ## Phase 6: User Story 4 - Configuration & Deployment (Priority: P4)
@@ -221,6 +255,13 @@ Single Python project structure:
 
 **Checkpoint**: P4 Complete - Production-ready config, deployment guide, state persistence working
 
+### Version Control: Phase 6
+- [ ] T048-VC1 Run all tests: `pytest tests/ -v`
+- [ ] T048-VC2 Commit Phase 6 changes: `git add .` && `git commit -m "Phase 6: US4 - Production-ready configuration and deployment"`
+- [ ] T048-VC3 Push to branch: `git push origin 001-phase6-us4-deployment`
+- [ ] T048-VC4 Create Pull Request: "Phase 6: User Story 4 - Configuration & Deployment Complete"
+- [ ] T048-VC5 Review, approve, and merge PR to main branch
+
 ---
 
 ## Phase 7: Polish & Cross-Cutting Concerns
@@ -254,6 +295,15 @@ Single Python project structure:
 - [ ] T058 [P] Create `CONTRIBUTING.md` (no tests needed - documentation): code style guide (PEP 8, 120 char lines), how to add new features, how to run tests, PR process, TDD workflow (write tests first, get approval, implement)
 
 **Checkpoint**: All polish tasks complete, code production-ready
+
+### Version Control: Phase 7
+- [ ] T058-VC1 Run full test suite: `pytest tests/ -v --cov=src --cov-report=html`
+- [ ] T058-VC2 Run linter: `pylint src/ bot.py`
+- [ ] T058-VC3 Commit Phase 7 changes: `git add .` && `git commit -m "Phase 7: Polish - Documentation, tests, and code quality"`
+- [ ] T058-VC4 Push to branch: `git push origin 001-phase7-polish`
+- [ ] T058-VC5 Create Pull Request: "Phase 7: Polish & Documentation Complete - Project Ready"
+- [ ] T058-VC6 Review, approve, and merge PR to main branch
+- [ ] T058-VC7 Tag release: `git tag v1.0.0` && `git push origin v1.0.0`
 
 ---
 
