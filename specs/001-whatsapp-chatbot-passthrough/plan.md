@@ -5,9 +5,21 @@
 
 ## Summary
 
-Build a WhatsApp chatbot (DeniDin) that acts as a passthrough relay between WhatsApp Business account and AI chat services (initially ChatGPT). The bot receives messages via Green API, forwards them to the AI service, and returns responses back to WhatsApp. Phase 1 focuses on getting the Green API demo running locally, then customizing it into a stateless message relay system with proper error handling and configuration management.
+Build a WhatsApp chatbot (DeniDin) that acts as a passthrough relay between WhatsApp Business account and AI chat services (initially ChatGPT). The bot receives messages via Green API polling mechanism, forwards them to the AI service sequentially, and returns responses back to WhatsApp. Phase 1 focuses on getting the Green API demo running locally, then customizing it into a stateless message relay system with proper error handling, JSON/YAML configuration management, and truncation of long AI responses.
 
 **Technical Approach**: Clone and build upon the official Green API Python demo chatbot, which already integrates whatsapp-chatbot-python library with ChatGPT. Customize the demo to strip out menu navigation and focus solely on message passthrough functionality while maintaining robust error handling and credential management.
+
+## Clarifications Applied
+
+The following technical decisions were made during specification clarification (Session 2026-01-15) and are reflected throughout this plan:
+
+1. **Configuration Storage**: JSON/YAML config file (gitignored) instead of environment variables - enables structured configuration with polling interval and log level settings
+2. **Message Reception**: Polling via Green API `receiveNotification` API with configurable interval (default: 5 seconds) - simpler than webhooks for Phase 1
+3. **Concurrency Model**: Sequential processing via single-threaded queue - maintains strict message ordering, simpler implementation, sufficient for ~100 msg/hr capacity
+4. **Logging Strategy**: INFO level for application events (messages, errors), DEBUG level for detailed flow (parsing, state, API details)
+5. **Long Message Handling**: Truncate AI responses at 4000 characters and append "..." indicator - defers multi-message splitting to Phase 2
+
+These clarifications have been incorporated into: Technical Context, Project Structure (config file format), BotConfiguration entity (polling_interval, log_level attributes), and AIResponse entity (is_truncated flag, truncate_for_whatsapp() method).
 
 ## Technical Context
 
@@ -16,23 +28,30 @@ Build a WhatsApp chatbot (DeniDin) that acts as a passthrough relay between What
 - `whatsapp-chatbot-python` (Green API chatbot framework)
 - `whatsapp-api-client-python` (Green API client library)
 - `openai` (ChatGPT API client)
-- `python-dotenv` (environment variable management)
-- `pyyaml` (configuration file parsing)
+- `pyyaml` (JSON/YAML configuration file parsing)
+- `pytest` (testing framework)
 
-**Storage**: File-based state persistence for last processed message ID (prevents duplicate processing on restart); no database required for Phase 1  
+**Storage**: 
+- JSON/YAML config file (gitignored) for credentials, polling interval, log level
+- File-based state persistence for last processed message ID (prevents duplicate processing on restart)
+- No database required for Phase 1
+
 **Testing**: pytest for unit/integration tests; manual end-to-end testing via WhatsApp messages  
 **Target Platform**: Local development machine (macOS/Linux/Windows) with potential deployment to cloud VM (Linux server)  
 **Project Type**: Single Python application (CLI/daemon)  
 **Performance Goals**: 
 - Respond to WhatsApp messages within 30 seconds (excluding AI service latency)
-- Process messages sequentially to maintain conversation order
-- Handle up to 100 messages/hour (single-user MVP scale)
+- Process messages sequentially via single-threaded queue to maintain strict ordering
+- Handle up to 100 messages/hour (sequential processing capacity)
+- Poll Green API at configurable interval (default: every 5 seconds)
 
 **Constraints**: 
 - Green API rate limits (varies by subscription tier)
 - OpenAI API rate limits and token quotas
-- WhatsApp Business API message size limits (4096 characters for text)
-- 5-minute inactivity timeout from demo (will be adjusted or removed)
+- WhatsApp Business API message size limits (4096 characters for text - truncate at 4000 chars + "...")
+- Polling-based message reception (not webhook-based for Phase 1)
+- Sequential message processing (single-threaded queue)
+- Logging levels: INFO (application events, messages, errors), DEBUG (parsing, state, API details)
 
 **Scale/Scope**: 
 - Phase 1: Single WhatsApp business account
@@ -88,9 +107,18 @@ Build a WhatsApp chatbot (DeniDin) that acts as a passthrough relay between What
 - ✅ plan.md will be technical authority
 - ✅ spec.md is functional authority
 - ✅ tasks.md will be execution authority (not yet created)
-- ✅ No "NEEDS CLARIFICATION" markers in spec (all requirements clear)
+- ✅ No "NEEDS CLARIFICATION" markers in spec (all clarifications resolved)
 
 **Status**: COMPLIANT
+
+### Principle VI: Test-Driven Development (TDD) ✅
+
+- ✅ tasks.md will split implementation into test tasks (T###a) and implementation tasks (T###b)
+- ✅ Human approval gate will be enforced between test writing and implementation
+- ✅ Tests will be immutable once approved (no changes without re-approval)
+- ✅ All acceptance criteria from spec.md will be covered by tests before implementation
+
+**Status**: COMPLIANT (will be enforced in Phase 2 task generation)
 
 **Overall Gate Status**: ✅ PASS - Ready for Phase 1 Design
 
@@ -115,14 +143,14 @@ specs/001-whatsapp-chatbot-passthrough/
 
 ```text
 denidin-bot/                 # Root project directory
-├── .env.example             # Example environment configuration
-├── .gitignore              # Git ignore rules (exclude .env, __pycache__, etc.)
+├── config.example.json      # Example configuration file (template)
+├── .gitignore              # Git ignore rules (exclude config.json, config.yaml, __pycache__, etc.)
 ├── README.md               # Setup instructions and usage guide
 ├── requirements.txt        # Python dependencies
 ├── bot.py                  # Main entry point (customized from demo)
 ├── config/                 # Configuration management
-│   ├── .env               # Actual credentials (gitignored)
-│   └── settings.py        # Configuration loader
+│   ├── config.json         # Actual credentials & settings (gitignored, JSON or YAML format)
+│   └── settings.py        # Configuration loader (supports JSON/YAML)
 ├── src/                   # Source code
 │   ├── __init__.py
 │   ├── handlers/          # Message handlers
@@ -221,9 +249,16 @@ No changes from initial check. Spec remains complete and unchanged.
 ### Principle V: Documentation as Single Source of Truth ✅
 
 - ✅ All artifacts in `specs/001-whatsapp-chatbot-passthrough/`
-- ✅ plan.md is technical authority (complete)
-- ✅ spec.md is functional authority (unchanged)
-- ✅ No undocumented assumptions (all decisions in research.md)
+- ✅ plan.md is technical authority (complete with clarifications)
+- ✅ spec.md is functional authority (5 clarifications incorporated)
+- ✅ No undocumented assumptions (all decisions in research.md and clarifications)
+
+### Principle VI: Test-Driven Development (TDD) ✅
+
+- ✅ Phase 2 tasks.md will enforce TDD task pairs (T###a tests, T###b implementation)
+- ✅ Human approval gates will be documented in tasks.md
+- ✅ Test immutability will be enforced through version control and review process
+- ✅ Acceptance criteria from spec.md provide clear test requirements
 
 **Overall Gate Status**: ✅ PASS - Ready for Human Approval & Phase 2
 
