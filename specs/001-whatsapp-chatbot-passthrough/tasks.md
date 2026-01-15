@@ -29,7 +29,7 @@ Single Python project structure:
 - `bot.py` - Main entry point
 - `src/` - Source code (handlers/, models/, utils/)
 - `tests/` - Test suite (unit/, integration/)
-- `config/` - Configuration files (.env, settings.py)
+- `config/` - Configuration files (config.json or config.yaml, settings.py)
 - `logs/` - Application logs
 - `state/` - Runtime state persistence
 
@@ -41,10 +41,10 @@ Single Python project structure:
 
 - [ ] T001 Create project directory `denidin-bot/` with subdirectories: src/{handlers,models,utils}, tests/{unit,integration,fixtures}, config/, logs/, state/
 - [ ] T002 [P] Create `__init__.py` files in src/, src/handlers/, src/models/, src/utils/, tests/
-- [ ] T003 [P] Create `requirements.txt` with dependencies: whatsapp-chatbot-python>=0.5.1, whatsapp-api-client-python>=0.76.0, whatsapp-chatgpt-python>=0.0.1, openai>=1.12.0, python-dotenv>=1.0.0, PyYAML>=6.0, tenacity>=8.0.0, pytest>=7.0.0
-- [ ] T004 [P] Create `.gitignore` to exclude venv/, .env, config/.env, __pycache__/, *.pyc, logs/, state/
-- [ ] T005 [P] Create `config/.env.example` template with placeholder credentials (GREEN_API_INSTANCE_ID, GREEN_API_TOKEN, OPENAI_API_KEY, AI_MODEL, SYSTEM_MESSAGE, MAX_TOKENS, TEMPERATURE, LOG_LEVEL, POLL_INTERVAL, MAX_RETRIES)
-- [ ] T006 Create `README.md` with setup instructions: Python 3.8+ requirement, virtual environment setup, pip install -r requirements.txt, .env configuration, running the bot
+- [ ] T003 [P] Create `requirements.txt` with dependencies: whatsapp-chatbot-python>=0.5.1, whatsapp-api-client-python>=0.76.0, whatsapp-chatgpt-python>=0.0.1, openai>=1.12.0, PyYAML>=6.0, tenacity>=8.0.0, pytest>=7.0.0
+- [ ] T004 [P] Create `.gitignore` to exclude venv/, config/config.json, config/config.yaml, __pycache__/, *.pyc, logs/, state/
+- [ ] T005 [P] Create `config/config.example.json` template with placeholder credentials (green_api_instance_id, green_api_token, openai_api_key, ai_model, system_message, max_tokens, temperature, log_level [INFO/DEBUG], poll_interval_seconds [default: 5], max_retries)
+- [ ] T006 Create `README.md` with setup instructions: Python 3.8+ requirement, virtual environment setup, pip install -r requirements.txt, config.json setup (copy from config.example.json), running the bot
 - [ ] T007 Create Python virtual environment: `python -m venv venv`
 - [ ] T008 Install dependencies: `pip install -r requirements.txt`
 
@@ -58,7 +58,7 @@ Single Python project structure:
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T009a [P] Write tests for BotConfiguration in `tests/unit/test_config.py`: Test from_env() loads all env vars correctly, test from_env() with missing required vars raises ValueError, test validate() passes with valid ranges (temperature 0.0-1.0, max_tokens >= 1, poll_interval >= 1), test validate() fails with invalid values, test config dataclass attributes exist
+- [ ] T009a [P] Write tests for BotConfiguration in `tests/unit/test_config.py`: Test from_file() loads JSON config correctly, test from_file() loads YAML config correctly, test from_file() with missing required fields raises ValueError, test validate() passes with valid ranges (temperature 0.0-1.0, max_tokens >= 1, poll_interval >= 1), test validate() fails with invalid values, test log_level validates INFO/DEBUG only, test config dataclass attributes exist (including poll_interval_seconds, log_level)
 - [ ] T009b [P] Create BotConfiguration model in `src/models/config.py` (BLOCKED until T009a approved)
 
 - [ ] T010a [P] Write tests for WhatsAppMessage in `tests/unit/test_message.py`: Test from_notification() parses textMessage correctly, test from_notification() extracts sender info (id, name), test from_notification() detects group vs 1-on-1 (is_group flag), test dataclass attributes (message_id, chat_id, text_content, timestamp, message_type)
@@ -67,13 +67,13 @@ Single Python project structure:
 - [ ] T011a [P] Write tests for AIRequest in `tests/unit/test_message.py`: Test AIRequest creation with all required fields, test to_openai_payload() returns correct API format, test UUID generation for request_id, test timestamp auto-population, test system_message/max_tokens/temperature passthrough
 - [ ] T011b [P] Create AIRequest model in `src/models/message.py` (BLOCKED until T011a approved)
 
-- [ ] T012a [P] Write tests for AIResponse in `tests/unit/test_message.py`: Test from_openai_response() parses OpenAI response correctly, test split_for_whatsapp() chunks messages >4000 chars, test split_for_whatsapp() preserves short messages, test tokens_used extraction, test finish_reason handling
+- [ ] T012a [P] Write tests for AIResponse in `tests/unit/test_message.py`: Test from_openai_response() parses OpenAI response correctly, test truncate_for_whatsapp() truncates messages >4000 chars and appends "...", test truncate_for_whatsapp() preserves messages <=4000 chars, test is_truncated flag set correctly, test tokens_used extraction, test finish_reason handling
 - [ ] T012b [P] Create AIResponse model in `src/models/message.py` (BLOCKED until T012a approved)
 
 - [ ] T013a [P] Write tests for MessageState in `tests/unit/test_state.py`: Test load() from non-existent file returns default state, test load() from valid JSON file returns state, test save() persists to state/last_message.json, test update() updates message_id and timestamp, test JSON serialization/deserialization
 - [ ] T013b [P] Create MessageState model in `src/models/state.py` (BLOCKED until T013a approved)
 
-- [ ] T014a [P] Write tests for logger in `tests/unit/test_logger.py`: Test logger creates logs/ directory if missing, test file handler writes to logs/denidin.log, test console handler outputs to stderr, test RotatingFileHandler limits file size (mock large logs), test log format includes timestamp/name/level/message, test LOG_LEVEL environment variable controls verbosity
+- [ ] T014a [P] Write tests for logger in `tests/unit/test_logger.py`: Test logger creates logs/ directory if missing, test file handler writes to logs/denidin.log, test console handler outputs to stderr, test RotatingFileHandler limits file size (mock large logs), test log format includes timestamp/name/level/message, test log_level parameter controls INFO vs DEBUG verbosity, test INFO logs: messages/errors only, test DEBUG logs: parsing/state/API details
 - [ ] T014b [P] Create logging utility in `src/utils/logger.py` (BLOCKED until T014a approved)
 
 - [ ] T015a [P] Write tests for state utility in `tests/unit/test_state_utils.py`: Test ensure_state_dir() creates state/ directory, test load_message_state() returns MessageState instance, test save_message_state() writes JSON file, test error handling for corrupted JSON
@@ -91,7 +91,7 @@ Single Python project structure:
 
 ### Implementation for User Story 1
 
-- [ ] T016a [US1] Write tests for bot.py initialization in `tests/integration/test_bot_startup.py`: Test load_dotenv() loads config/.env, test logging setup creates file and console handlers, test GreenAPIBot instantiates with valid credentials, test OpenAI client instantiates with API key and 30s timeout, test startup logs contain instance ID and model, test missing .env raises clear error
+- [ ] T016a [US1] Write tests for bot.py initialization in `tests/integration/test_bot_startup.py`: Test BotConfiguration.from_file() loads config/config.json, test logging setup creates file and console handlers with configured log level, test GreenAPIBot instantiates with valid credentials, test OpenAI client instantiates with API key and 30s timeout, test startup logs contain instance ID, model, and poll interval, test missing config file raises clear error
 - [ ] T016b [US1] Create minimal `bot.py` entry point (BLOCKED until T016a approved)
 
 - [ ] T017a [US1] Write tests for message handler registration in `tests/integration/test_bot_startup.py`: Test @bot.router.message decorator exists, test decorator filters textMessage type only, test handle_text_message function signature accepts Notification parameter
@@ -108,7 +108,7 @@ Single Python project structure:
 
 - [ ] T021 [US1] Make bot.py executable: `chmod +x bot.py`, add shebang `#!/usr/bin/env python3` (no tests needed - file system operation)
 
-- [ ] T022 [US1] Create actual `config/.env` file with real credentials for manual testing (no tests needed - configuration file)
+- [ ] T022 [US1] Create actual `config/config.json` file with real credentials for manual testing (no tests needed - configuration file, must be gitignored)
 
 - [ ] T023 [US1] 👤 **MANUAL APPROVAL GATE**: Start bot with `python bot.py`, verify startup logs, send WhatsApp message "Hello", verify bot receives and logs it, verify ChatGPT response appears in WhatsApp within 30 seconds, stop bot with Ctrl+C - THIS IS YOUR ACCEPTANCE TEST FOR US1
 
@@ -180,7 +180,7 @@ Single Python project structure:
 - [ ] T038a [US3] Write tests for message length validation in `tests/unit/test_ai_handler.py`: Test prompt >10000 chars triggers warning log, test long prompt truncated to 10000 chars OR fallback message sent, test fallback message "Your message is too long. Please send a shorter message (max 10,000 characters).", test short messages (<10000) pass through unchanged
 - [ ] T038b [US3] Add message length validation in AIHandler (BLOCKED until T038a approved)
 
-- [ ] T039 [US3] 👤 **MANUAL APPROVAL GATE**: 1) Set invalid OPENAI_API_KEY in .env, restart bot, send message, verify fallback; 2) Send image/voice note via WhatsApp, verify "I only support text" auto-reply; 3) Send 10,001 character message, verify length validation handling; 4) Check logs/denidin.log for proper error logging with timestamps and error codes - THIS IS YOUR ACCEPTANCE TEST FOR US3
+- [ ] T039 [US3] 👤 **MANUAL APPROVAL GATE**: 1) Set invalid openai_api_key in config.json, restart bot, send message, verify fallback; 2) Send image/voice note via WhatsApp, verify "I only support text" auto-reply; 3) Send 10,001 character message, verify length validation handling; 4) Check logs/denidin.log for proper error logging with timestamps and error codes - THIS IS YOUR ACCEPTANCE TEST FOR US3
 
 **Checkpoint**: P3 Complete - Robust error handling, bot doesn't crash on failures
 
@@ -217,7 +217,7 @@ Single Python project structure:
 - [ ] T047a [US4] Write tests for graceful shutdown in `tests/integration/test_bot_shutdown.py`: Test SIGINT signal handler registered, test SIGTERM signal handler registered, test "Shutting down gracefully..." logged on signal, test current message processing completes before exit, test bot.run_forever() exits cleanly, mock signal handlers
 - [ ] T047b [US4] Add graceful shutdown handling in bot.py (BLOCKED until T047a approved)
 
-- [ ] T048 [US4] 👤 **MANUAL APPROVAL GATE**: 1) Remove OPENAI_API_KEY from .env, start bot, verify clear error and exit; 2) Set TEMPERATURE=2.0, start bot, verify validation error; 3) Set AI_MODEL="gpt-4o-mini", restart, send message, verify model change in logs; 4) Start bot, send message, Ctrl+C, restart bot, send new message, verify no duplicate processing via state persistence - THIS IS YOUR ACCEPTANCE TEST FOR US4
+- [ ] T048 [US4] 👤 **MANUAL APPROVAL GATE**: 1) Remove openai_api_key from config.json, start bot, verify clear error and exit; 2) Set temperature to 2.0, start bot, verify validation error; 3) Set ai_model to "gpt-4o-mini", restart, send message, verify model change in logs; 4) Start bot, send message, Ctrl+C, restart bot, send new message, verify no duplicate processing via state persistence - THIS IS YOUR ACCEPTANCE TEST FOR US4
 
 **Checkpoint**: P4 Complete - Production-ready config, deployment guide, state persistence working
 
@@ -491,7 +491,7 @@ Map each acceptance scenario from spec.md to TDD task pairs:
 **US3, Scenario 2** (Rate limit retry): T031a/b, T034a/b → T039 manual test  
 **US3, Scenario 3** (Unsupported media): T036a/b → T039 manual test  
 **US3, Scenario 4** (Exception doesn't crash): T037a/b → T039 manual test  
-**US4, Scenario 1** (Loads config from .env): T040a/b → T048 manual test  
+**US4, Scenario 1** (Loads config from file): T040a/b → T048 manual test  
 **US4, Scenario 2** (Configurable AI endpoint): T040a/b, T041a/b → T048 manual test  
 **US4, Scenario 3** (Config validation error): T042a/b → T048 manual test  
 **US4, Scenario 4** (Background service, auto-restart): T046, T047a/b → T048 manual test  
