@@ -42,9 +42,9 @@ Single Python project structure:
 - [ ] T001 Create project directory `denidin-bot/` with subdirectories: src/{handlers,models,utils}, tests/{unit,integration,fixtures}, config/, logs/, state/
 - [ ] T002 [P] Create `__init__.py` files in src/, src/handlers/, src/models/, src/utils/, tests/
 - [ ] T003 [P] Create `requirements.txt` with dependencies: whatsapp-chatbot-python>=0.5.1, whatsapp-api-client-python>=0.76.0, whatsapp-chatgpt-python>=0.0.1, openai>=1.12.0, PyYAML>=6.0, tenacity>=8.0.0, pytest>=7.0.0
-- [ ] T004 [P] Create `.gitignore` to exclude venv/, config/config.json, config/config.yaml, __pycache__/, *.pyc, logs/, state/
-- [ ] T005 [P] Create `config/config.example.json` template with placeholder credentials (green_api_instance_id, green_api_token, openai_api_key, ai_model, system_message, max_tokens, temperature, log_level [INFO/DEBUG], poll_interval_seconds [default: 5], max_retries)
-- [ ] T006 Create `README.md` with setup instructions: Python 3.8+ requirement, virtual environment setup, pip install -r requirements.txt, config.json setup (copy from config.example.json), running the bot
+- [ ] T004 [P] Create `.gitignore` to exclude venv/, config/config.json, config/config.yaml, config/*.json, config/*.yaml, __pycache__/, *.pyc, logs/, state/
+- [ ] T005 [P] Create `config/config.example.json` template in config/ subfolder with placeholder credentials (green_api_instance_id, green_api_token, openai_api_key, ai_model, system_message, max_tokens, temperature, log_level [INFO/DEBUG], poll_interval_seconds [default: 5], max_retries)
+- [ ] T006 Create `README.md` with setup instructions: Python 3.8+ requirement, virtual environment setup, pip install -r requirements.txt, config/config.json setup (copy from config/config.example.json), running the bot
 - [ ] T007 Create Python virtual environment: `python -m venv venv`
 - [ ] T008 Install dependencies: `pip install -r requirements.txt`
 
@@ -121,7 +121,9 @@ Single Python project structure:
 
 - [ ] T021 [US1] Make bot.py executable: `chmod +x bot.py`, add shebang `#!/usr/bin/env python3` (no tests needed - file system operation)
 
-- [ ] T022 [US1] Create actual `config/config.json` file with real credentials for manual testing (no tests needed - configuration file, must be gitignored)
+- [ ] T022 [US1] Create actual `config/config.json` file in config/ subfolder with real credentials for manual testing (no tests needed - configuration file, must be gitignored)
+
+- [ ] T022a [US1] Configure Green API bot profile/display name as "DeniDin" via Green API settings or message signature (FR-012 coverage - bot identity)
 
 - [ ] T023 [US1] 👤 **MANUAL APPROVAL GATE**: Start bot with `python bot.py`, verify startup logs, send WhatsApp message "Hello", verify bot receives and logs it, verify ChatGPT response appears in WhatsApp within 30 seconds, stop bot with Ctrl+C - THIS IS YOUR ACCEPTANCE TEST FOR US1
 
@@ -280,6 +282,8 @@ Single Python project structure:
 - [ ] T052b [P] Create test fixtures file `tests/fixtures/sample_messages.json` (BLOCKED until T052a approved)
 
 - [ ] T053 [P] Run full test suite: `pytest tests/ -v --cov=src --cov-report=html` - verify 100% of tests pass, generate coverage report
+
+- [ ] T053a [P] Performance validation test (NFR-007): Simulate 100 messages/hour load to validate sequential processing capacity meets throughput requirement (optional: can be manual testing or automated load test script)
 
 - [ ] T054a [P] Add type hints validation: Create `tests/type_check.py` to verify type hints using mypy (test all function signatures have type hints, test return types specified, test Optional/List/Dict used correctly)
 - [ ] T054b [P] Add type hints to all function signatures in src/ and bot.py using Python typing module (str, int, bool, Optional, List, Dict) (BLOCKED until T054a approved)
