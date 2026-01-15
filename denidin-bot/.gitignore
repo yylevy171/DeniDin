@@ -1,0 +1,38 @@
+# Python virtual environment
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Configuration secrets (CRITICAL: never commit credentials)
+config/config.json
+config/config.yaml
+
+# Application logs
+logs/
+*.log
+
+# Runtime state
+state/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db

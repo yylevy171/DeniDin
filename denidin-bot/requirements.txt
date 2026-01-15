@@ -1,0 +1,19 @@
+# DeniDin WhatsApp AI Chatbot - Python Dependencies
+# Phase 1: Infrastructure Setup
+
+# Green API (WhatsApp Business API integration)
+whatsapp-chatbot-python>=0.5.1
+whatsapp-api-client-python>=0.0.53
+whatsapp-chatgpt-python>=0.0.1
+
+# OpenAI API
+openai>=1.12.0
+
+# Configuration & Data
+PyYAML>=6.0
+
+# Retry logic for API calls
+tenacity>=8.0.0
+
+# Testing
+pytest>=7.0.0
