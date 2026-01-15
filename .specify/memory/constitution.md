@@ -1,35 +1,37 @@
 <!--
 Sync Impact Report - Constitution Update
 ═════════════════════════════════════════
-Version: Initial → 1.0.0
-Status: Initial ratification
-Type: MAJOR (new constitution establishment)
+Version: 1.0.0 → 1.1.0
+Status: Amendment ratified
+Type: MINOR (additive change - new principle)
 
 Modified Principles:
-  - [NEW] Specification-First Development
-  - [NEW] Template-Driven Consistency
-  - [NEW] AI-Agent Collaboration
-  - [NEW] Phased Planning & Execution
-  - [NEW] Documentation as Single Source of Truth
+  - [UPDATED] Principle IV: Implementation → Test-Driven Development (TDD)
+  - [NEW] Principle VI: Test-Driven Development (TDD)
 
 Added Sections:
-  - Core Principles (5 principles established)
-  - Development Workflow Standards
-  - Template & Artifact Requirements
-  - Governance
+  - Principle VI: Full TDD methodology with approval gates
+  - Updated Principle IV: Phase 3 now references TDD
 
 Templates Status:
-  ✅ plan-template.md - Constitution Check section aligns with principles
-  ✅ spec-template.md - User story prioritization aligns with Principle I
-  ✅ tasks-template.md - Phased execution aligns with Principle IV
-  ⚠️  Future: Monitor agent files for alignment as constitution evolves
+  ⚠️  tasks-template.md - REQUIRES UPDATE: Add TDD task format (Xa/Xb pattern)
+  ⚠️  plan-template.md - REQUIRES UPDATE: Constitution Check now validates 6 principles
+  ✅ spec-template.md - No changes needed (acceptance criteria already support TDD)
 
 Follow-up TODOs:
-  - None (all placeholders filled)
+  - Update tasks-template.md with TDD task format examples
+  - Update plan-template.md Constitution Check to reference 6 principles
+  - Restructure existing tasks.md for feature 001 to follow TDD pattern
 
 Rationale:
-  MAJOR bump justified as this is the initial constitution establishment,
-  defining the foundational governance model for the DeniDin SpecKit project.
+  MINOR bump justified as this is an additive change (new principle added).
+  Existing principles remain valid; this adds mandatory TDD workflow without
+  invalidating prior specifications (though they should be updated to comply).
+  
+  TDD principle ensures:
+  - Human approval gate before implementation (prevents misalignment)
+  - Tests immutable once approved (prevents requirement drift)
+  - Test coverage mandatory before code exists (quality by design)
 ═════════════════════════════════════════
 -->
 
@@ -91,7 +93,7 @@ Feature implementation MUST follow a structured phase progression with validatio
 - **Phase 0: Research** - Technical feasibility, dependency analysis, constraints
 - **Phase 1: Design** - Data models, API contracts, quickstart scenarios
 - **Phase 2: Task Generation** - Dependency-ordered, user-story-grouped task list
-- **Phase 3: Implementation** - Incremental delivery per user story priority
+- **Phase 3: Implementation** - Test-Driven Development (TDD) per user story priority
 - **Constitution Check** MUST pass before Phase 0; re-check after Phase 1
 - No phase may begin until predecessor phase artifacts are complete and approved
 
@@ -113,6 +115,25 @@ supplementary only.
 
 **Rationale:** Centralized documentation prevents knowledge silos, enables onboarding
 without code archaeology, and provides durable context beyond transient conversations.
+
+### VI. Test-Driven Development (TDD)
+
+All implementation MUST follow strict test-first methodology with human approval gates.
+
+**Non-negotiable requirements:**
+- Every implementation task MUST be split into two sub-tasks:
+  - **Task A (Tests)**: Write comprehensive tests covering all acceptance criteria
+  - **Task B (Implementation)**: Implement code to pass tests (BLOCKED until Task A approved)
+- Tests MUST be reviewed and approved by human before implementation begins
+- Once approved, tests are IMMUTABLE without explicit human re-approval
+- Test coverage MUST include: happy path, edge cases, error scenarios, boundary conditions
+- Manual test checkpoints (acceptance testing) serve as user story approval gates
+- No implementation code may be written until its corresponding tests exist and are approved
+
+**Rationale:** TDD ensures code correctness by design, prevents rework from misunderstood
+requirements, enables confident refactoring, and provides living documentation of expected
+behavior. Human approval of tests before implementation guarantees alignment on acceptance
+criteria before costly coding begins.
 
 ## Development Workflow Standards
 
@@ -213,4 +234,8 @@ documentation, the constitution prevails.
 
 ### Version History
 
-**Version**: 1.0.0 | **Ratified**: 2026-01-15 | **Last Amended**: 2026-01-15
+**Version**: 1.1.0 | **Ratified**: 2026-01-15 | **Last Amended**: 2026-01-15
+
+**Changelog**:
+- v1.1.0 (2026-01-15): Added Principle VI (Test-Driven Development), updated Principle IV Phase 3
+- v1.0.0 (2026-01-15): Initial constitution ratified with 5 core principles

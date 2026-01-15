@@ -8,7 +8,7 @@ description: "Task list template for feature implementation"
 **Input**: Design documents from `/specs/[###-feature-name]/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
+**Tests**: Test-Driven Development (TDD) - ALL tests written and approved BEFORE implementation (per Constitution Principle VI)
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -16,7 +16,17 @@ description: "Task list template for feature implementation"
 
 - **[P]**: Can run in parallel (different files, no dependencies)
 - **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
+- **[T###a]**: Write tests (REQUIRES HUMAN APPROVAL before T###b)
+- **[T###b]**: Implement code (BLOCKED until T###a approved, tests are IMMUTABLE)
 - Include exact file paths in descriptions
+
+## TDD Workflow (Per Constitution Principle VI)
+
+1. **Task A (Tests)**: Write comprehensive tests covering acceptance criteria
+2. **👤 HUMAN APPROVAL GATE**: Review and approve tests
+3. **Task B (Implementation)**: Write code to pass approved tests (tests frozen)
+4. **Validation**: Run tests to verify implementation
+5. **Next task**: Repeat TDD cycle
 
 ## Path Conventions
 
@@ -60,14 +70,19 @@ description: "Task list template for feature implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-Examples of foundational tasks (adjust based on your project):
+Examples of foundational TDD pairs (adjust based on your project):
 
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
+- [ ] T004a [P] Write tests for database schema in tests/unit/test_db_schema.py: Test migrations run successfully, test table creation, test relationships, test constraints
+- [ ] T004b [P] Setup database schema and migrations framework (BLOCKED until T004a approved)
+
+- [ ] T005a [P] Write tests for auth framework in tests/unit/test_auth.py: Test user authentication, test token generation/validation, test permission checks
+- [ ] T005b [P] Implement authentication/authorization framework (BLOCKED until T005a approved)
+
+- [ ] T006a [P] Write tests for API routing in tests/integration/test_routing.py: Test route registration, test middleware execution order, test error handlers
+- [ ] T006b [P] Setup API routing and middleware structure (BLOCKED until T006a approved)
+
+- [ ] T007a [P] Write tests for base models in tests/unit/test_base_models.py: Test entity creation, test validation, test serialization
+- [ ] T007b [P] Create base models/entities that all stories depend on (BLOCKED until T007a approved)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -79,23 +94,23 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
+### Implementation for User Story 1 (TDD Pattern)
 
-> **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
+- [ ] T008a [P] [US1] Write tests for [Entity1] in tests/unit/test_[entity1].py: Test creation, test validation, test business logic methods
+- [ ] T008b [P] [US1] Create [Entity1] model in src/models/[entity1].py (BLOCKED until T008a approved)
 
-- [ ] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T009a [P] [US1] Write tests for [Entity2] in tests/unit/test_[entity2].py: Test creation, test relationships to Entity1, test edge cases
+- [ ] T009b [P] [US1] Create [Entity2] model in src/models/[entity2].py (BLOCKED until T009a approved)
 
-### Implementation for User Story 1
+- [ ] T010a [US1] Write tests for [Service] in tests/unit/test_[service].py: Test service methods, test error handling, mock dependencies
+- [ ] T010b [US1] Implement [Service] in src/services/[service].py (BLOCKED until T010a approved, depends on T008b, T009b)
 
-- [ ] T012 [P] [US1] Create [Entity1] model in src/models/[entity1].py
-- [ ] T013 [P] [US1] Create [Entity2] model in src/models/[entity2].py
-- [ ] T014 [US1] Implement [Service] in src/services/[service].py (depends on T012, T013)
-- [ ] T015 [US1] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T016 [US1] Add validation and error handling
-- [ ] T017 [US1] Add logging for user story 1 operations
+- [ ] T011a [US1] Write integration tests for [endpoint] in tests/integration/test_[endpoint].py: Test API endpoint, test request/response format, test error cases
+- [ ] T011b [US1] Implement [endpoint/feature] in src/[location]/[file].py (BLOCKED until T011a approved)
 
-**Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
+- [ ] T012 [US1] 👤 **MANUAL APPROVAL GATE**: [Describe end-to-end test that you will perform to accept this user story]
+
+**Checkpoint**: User Story 1 fully functional and independently testable
 
 ---
 
@@ -105,19 +120,20 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
+### Implementation for User Story 2 (TDD Pattern)
 
-- [ ] T018 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T019 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T013a [P] [US2] Write tests for [Entity] in tests/unit/test_[entity].py: Test creation, test validation, test business logic
+- [ ] T013b [P] [US2] Create [Entity] model in src/models/[entity].py (BLOCKED until T013a approved)
 
-### Implementation for User Story 2
+- [ ] T014a [US2] Write tests for [Service] in tests/unit/test_[service].py: Test service methods, mock external dependencies
+- [ ] T014b [US2] Implement [Service] in src/services/[service].py (BLOCKED until T014a approved)
 
-- [ ] T020 [P] [US2] Create [Entity] model in src/models/[entity].py
-- [ ] T021 [US2] Implement [Service] in src/services/[service].py
-- [ ] T022 [US2] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T023 [US2] Integrate with User Story 1 components (if needed)
+- [ ] T015a [US2] Write integration tests for [feature] in tests/integration/test_[feature].py: Test integration with US1 components
+- [ ] T015b [US2] Implement [endpoint/feature] in src/[location]/[file].py (BLOCKED until T015a approved)
 
-**Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
+- [ ] T016 [US2] 👤 **MANUAL APPROVAL GATE**: [Describe end-to-end test for US2]
+
+**Checkpoint**: User Stories 1 AND 2 both work independently
 
 ---
 
@@ -127,7 +143,7 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 3 (OPTIONAL - only if tests requested) ⚠️
+### Implementation for User Story 3 (TDD Pattern)
 
 - [ ] T024 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
 - [ ] T025 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
@@ -159,28 +175,38 @@ Examples of foundational tasks (adjust based on your project):
 
 ---
 
-## Dependencies & Execution Order
+## Dependencies & Execution Order (TDD-Aware)
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: No dependencies - can start immediately
+- **Setup (Phase 1)**: No dependencies - can start immediately (no TDD pairs, infrastructure only)
 - **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
+  - All "a" test tasks can run in parallel
+  - **👤 APPROVAL GATE**: Human reviews all foundation tests
+  - All "b" implementation tasks can run in parallel (after approval)
 - **User Stories (Phase 3+)**: All depend on Foundational phase completion
-  - User stories can then proceed in parallel (if staffed)
-  - Or sequentially in priority order (P1 → P2 → P3)
+  - User stories proceed sequentially in priority order (P1 → P2 → P3)
+  - Within each user story, TDD pairs follow dependencies
 - **Polish (Final Phase)**: Depends on all desired user stories being complete
 
-### User Story Dependencies
+### TDD Workflow Per User Story
 
-- **User Story 1 (P1)**: Can start after Foundational (Phase 2) - No dependencies on other stories
-- **User Story 2 (P2)**: Can start after Foundational (Phase 2) - May integrate with US1 but should be independently testable
-- **User Story 3 (P3)**: Can start after Foundational (Phase 2) - May integrate with US1/US2 but should be independently testable
+**For each user story (US1, US2, US3...)**:
+1. Write all "a" test tasks (can parallelize if testing different components)
+2. **👤 APPROVAL GATE**: Human reviews tests for that story
+3. Implement all "b" tasks (parallelizable if no dependencies)
+4. Run tests to validate
+5. **👤 MANUAL APPROVAL GATE**: Human performs end-to-end acceptance test
+6. Proceed to next user story
 
-### Within Each User Story
+### Within Each User Story (TDD Pairs)
 
-- Tests (if included) MUST be written and FAIL before implementation
-- Models before services
-- Services before endpoints
+**Critical TDD Rules**:
+- Every T###a (test) MUST be approved before T###b (implementation)
+- Tests MUST be written to FAIL initially (no implementation exists yet)
+- Once approved, tests are IMMUTABLE without re-approval
+- Models before services (T008a/b → T010a/b)
+- Services before endpoints (T010a/b → T011a/b)
 - Core implementation before integration
 - Story complete before moving to next priority
 
