@@ -5,6 +5,14 @@
 **Status**: Draft  
 **Input**: User description: "I want to create an whatsapp bot which is essentially a passthrough to an AI chat of my choice. The whatsapp is a business account which I have the credentials to, using a phone number I possess. Example: the chatbot (named DeniDin) is joined to a chat with another whatsapp user A. User A sends a message in the chat and DeniDin sends it to an AI chat, for example ChatGPT. DeniDin then sends back on whatsapp the response that was received from ChatGPT. This is phase 1. Next phases will be adding contexts for DeniDin which can be used via the whatsapp integration. For the integration with whatsapp use https://green-api.com/en/docs/chatbots/python/chatbot-demo/chatbot-demo-gpt-py/ as your source reference to build on. Copy or clone the code as a starting point. Preliminary task should be to be able to run this demo locally as a starting point, and then building on top of it the next phases"
 
+## Clarifications
+
+### Session 2026-01-15
+
+- Q: How should DeniDin store and load sensitive credentials (API keys, tokens)? → A: JSON/YAML config file with gitignored secrets
+- Q: How should DeniDin receive incoming WhatsApp messages from Green API? → A: Polling (receiveNotification API) with configurable interval
+- Q: How should DeniDin handle multiple incoming messages while processing a previous message? → A: Sequential processing (single-threaded queue)
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Run Green API Demo Locally (Priority: P1)
@@ -97,13 +105,14 @@ DeniDin can be configured with different WhatsApp credentials and AI service end
 
 - **FR-001**: System MUST clone or copy the Green API ChatGPT demo code as a starting point
 - **FR-002**: System MUST allow running the demo locally with valid Green API and ChatGPT credentials
-- **FR-003**: DeniDin bot MUST receive WhatsApp messages via Green API webhook or polling mechanism
+- **FR-003**: DeniDin bot MUST receive WhatsApp messages via Green API polling mechanism (receiveNotification API) with configurable poll interval
 - **FR-004**: DeniDin bot MUST forward received messages to a configurable AI chat service (default: ChatGPT)
 - **FR-005**: DeniDin bot MUST send the AI service's response back to the originating WhatsApp chat
-- **FR-006**: System MUST support configuration via environment variables or config file for:
+- **FR-006**: System MUST support configuration via JSON/YAML config file (gitignored) containing:
   - Green API instance ID and token
   - ChatGPT API key
   - AI service endpoint URL
+  - Polling interval (seconds)
 - **FR-007**: System MUST handle text messages; image, voice, and video handling can be deferred to future phases
 - **FR-008**: System MUST log all incoming messages, outgoing messages, and errors for debugging
 - **FR-009**: System MUST gracefully handle AI service timeouts (e.g., > 30 seconds) and notify the user
@@ -111,15 +120,17 @@ DeniDin can be configured with different WhatsApp credentials and AI service end
 - **FR-011**: System MUST only respond to messages in chats where DeniDin is a participant
 - **FR-012**: System MUST identify itself as "DeniDin" when responding (e.g., in bot profile or message signature)
 - **FR-013**: System MUST persist minimal state (e.g., last processed message ID) to avoid duplicate processing on restart
+- **FR-014**: System MUST process incoming messages sequentially (single-threaded queue) to maintain strict ordering and simplify Phase 1 implementation
 
 ### Non-Functional Requirements
 
 - **NFR-001**: System MUST respond to WhatsApp messages within 30 seconds under normal conditions
 - **NFR-002**: System MUST be resilient to transient network failures (auto-retry with backoff)
-- **NFR-003**: System MUST NOT expose API credentials in logs or error messages
+- **NFR-003**: System MUST NOT expose API credentials in logs or error messages; config file MUST be gitignored
 - **NFR-004**: System MUST be deployable on a single server or local machine (no complex infrastructure required for Phase 1)
 - **NFR-005**: Code MUST be written in Python (to align with Green API demo reference)
 - **NFR-006**: System MUST provide clear setup instructions (README) for running locally
+- **NFR-007**: System MUST handle maximum throughput of ~100 messages/hour with sequential processing (sufficient for Phase 1 testing and small user base)
 
 ### Key Entities
 
@@ -130,7 +141,8 @@ DeniDin can be configured with different WhatsApp credentials and AI service end
 - **AIResponse**: Represents a response received from the AI service
   - Attributes: response text, timestamp, token count (optional)
 - **BotConfiguration**: Represents the bot's runtime configuration
-  - Attributes: Green API credentials, AI service credentials, webhook URL, logging settings
+  - Attributes: Green API credentials, AI service credentials, polling interval, logging settings
+  - Loaded from: JSON/YAML config file (e.g., `config.json` or `config.yaml`, gitignored)
 
 ## Success Criteria *(mandatory)*
 
