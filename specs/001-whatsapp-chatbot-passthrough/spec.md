@@ -87,7 +87,9 @@ DeniDin can be configured with different WhatsApp credentials and AI service end
 ### Edge Cases
 
 - What happens when a user sends an extremely long message (> 4096 characters)?
-  - AI service may truncate or reject it; DeniDin should handle gracefully
+  - Input validation: Messages >10,000 chars rejected with error message (covered by T038a-b)
+  - Messages 4096-10,000 chars: Passed to AI service (may be truncated by AI)
+  - DeniDin should handle gracefully with appropriate user feedback
 - What happens when ChatGPT returns a response longer than WhatsApp's message limit?
   - DeniDin should truncate at 4000 characters and append "..." (multi-message splitting deferred to Phase 2)
 - What happens if the same user sends multiple messages before the first response arrives?
