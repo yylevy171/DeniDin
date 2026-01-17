@@ -153,6 +153,7 @@ class TestAIRequest:
     @pytest.fixture
     def sample_whatsapp_message(self):
         """Create a sample WhatsAppMessage for testing."""
+        from datetime import timezone
         return WhatsAppMessage(
             message_id='msg_12345',
             chat_id='1234567890@c.us',
@@ -161,7 +162,8 @@ class TestAIRequest:
             text_content='What is the weather today?',
             timestamp=1234567890,
             message_type='textMessage',
-            is_group=False
+            is_group=False,
+            received_timestamp=datetime.now(timezone.utc)
         )
 
     def test_airequest_creation_with_required_fields(self, sample_whatsapp_message):

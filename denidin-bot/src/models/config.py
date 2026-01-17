@@ -51,23 +51,32 @@ class BotConfiguration:
             with open(file_path, 'r') as f:
                 config_data = json.load(f)
         
-        # Validate required fields
+        # Validate required fields (critical API credentials)
         required_fields = [
             'green_api_instance_id',
             'green_api_token',
-            'openai_api_key',
-            'ai_model',
-            'system_message',
-            'max_tokens',
-            'temperature',
-            'log_level',
-            'poll_interval_seconds',
-            'max_retries'
+            'openai_api_key'
         ]
         
-        missing_fields = [field for field in required_fields if field not in config_data]
+        missing_fields = [field for field in required_fields if field not in config_data or not config_data.get(field)]
         if missing_fields:
             raise ValueError(f"Missing required configuration fields: {', '.join(missing_fields)}")
+        
+        # Set defaults for optional fields
+        defaults = {
+            'ai_model': 'gpt-4o-mini',
+            'system_message': 'You are a helpful assistant.',
+            'max_tokens': 1000,
+            'temperature': 0.7,
+            'log_level': 'INFO',
+            'poll_interval_seconds': 5,
+            'max_retries': 3
+        }
+        
+        # Merge with defaults
+        for key, default_value in defaults.items():
+            if key not in config_data:
+                config_data[key] = default_value
         
         return cls(**config_data)
 
