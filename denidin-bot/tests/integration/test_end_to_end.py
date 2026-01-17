@@ -45,7 +45,17 @@ class TestEndToEndFlow:
 
     def test_send_message_and_verify_response(self, config, green_api_client):
         """
-        Test the complete flow by starting bot, sending message, and verifying response.
+        Starts the bot process, verifies it initializes correctly, confirms Green API connection works, 
+        monitors bot stability for 10 seconds, and provides manual testing instructions.
+        
+        What this test does:
+        - Launches bot.py in a subprocess to simulate real-world usage
+        - Validates the bot process starts without crashing
+        - Confirms Green API account is in 'authorized' state
+        - Handles temporary API server errors gracefully (502/503 errors)
+        - Ensures bot remains stable for 10 seconds without terminating
+        - Cleans up the bot process after testing
+        - Provides clear instructions for completing manual E2E verification
         
         NOTE: This test sends a message to the configured WhatsApp number.
         To complete E2E verification:
@@ -181,7 +191,10 @@ class TestEndToEndFlow:
                 print(f"[E2E Test] Bot was already stopped")
 
     def test_bot_can_connect_to_green_api(self, green_api_client):
-        """Test that we can connect to Green API and check account state."""
+        """
+        Verifies Green API credentials are valid by calling getStateInstance() and confirms the account 
+        is in 'authorized' state, ensuring the bot can send and receive WhatsApp messages.
+        """
         try:
             # Try to get account state to verify connection
             state = green_api_client.account.getStateInstance()
@@ -194,7 +207,10 @@ class TestEndToEndFlow:
             pytest.fail(f"Failed to connect to Green API: {e}")
 
     def test_openai_api_key_is_valid_format(self, config):
-        """Test that OpenAI API key has valid format."""
+        """
+        Validates the OpenAI API key follows the expected format (starts with 'sk-' and has minimum length), 
+        catching configuration errors before runtime.
+        """
         api_key = config.openai_api_key
         
         # OpenAI keys start with 'sk-' and have specific length
@@ -209,7 +225,10 @@ class TestEndToEndFlow:
         reason="Requires actual config.json with credentials"
     )
     def test_configuration_allows_bot_startup(self, config):
-        """Test that configuration is complete and valid for bot startup."""
+        """
+        Checks all required configuration fields are present and within valid ranges (temperature 0-1, 
+        max_tokens ≥ 1, poll_interval ≥ 1, log_level INFO/DEBUG), preventing runtime errors.
+        """
         # Verify all required fields are present
         assert config.green_api_instance_id, "Missing green_api_instance_id"
         assert config.green_api_token, "Missing green_api_token"
@@ -268,7 +287,10 @@ class TestManualE2EInstructions:
     """
     
     def test_manual_instructions_available(self):
-        """This test provides manual E2E testing instructions."""
+        """
+        Displays comprehensive manual testing instructions showing how to send a real WhatsApp message 
+        from another phone and verify the bot responds with AI-generated content.
+        """
         print("\n" + "="*60)
         print("MANUAL END-TO-END TEST INSTRUCTIONS")
         print("="*60)
