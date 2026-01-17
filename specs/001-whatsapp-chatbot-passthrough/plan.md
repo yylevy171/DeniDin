@@ -113,6 +113,28 @@ These clarifications have been incorporated into: Technical Context, Project Str
 
 ### Principle VI: Test-Driven Development (TDD) ✅
 
+- ✅ Two-tier testing strategy will be applied per CONSTITUTION:
+  - **Tier 1 (Mocked Tests)**: Fast unit/integration tests with mocked APIs for development
+  - **Tier 2 (Real API Tests)**: Actual API connectivity tests for deployment validation
+- ✅ All tests written and approved BEFORE implementation (a-tasks before b-tasks)
+- ✅ Real API tests will validate: Green API connection, OpenAI API calls, complete E2E flow
+- ✅ Tests must pass before PR creation
+
+**Status**: COMPLIANT
+
+### Principle VII: Version Control Workflow ✅
+
+- ✅ Feature branch workflow enforced per CONSTITUTION
+- ✅ ALL work done on feature branches (NEVER push directly to master)
+- ✅ Each phase has dedicated feature branch (001-phase#-description)
+- ✅ Branch created BEFORE starting work on each phase
+- ✅ All changes merged via Pull Request with review
+- ✅ Master branch is protected (requires PR)
+
+**Status**: COMPLIANT
+
+### Principle VI: Test-Driven Development (TDD) ✅
+
 - ✅ tasks.md will split implementation into test tasks (T###a) and implementation tasks (T###b)
 - ✅ Human approval gate will be enforced between test writing and implementation
 - ✅ Tests will be immutable once approved (no changes without re-approval)
