@@ -97,6 +97,108 @@ class TestBotConfiguration:
         finally:
             os.unlink(temp_path)
 
+    def test_from_file_missing_green_api_instance_id(self):
+        """Test that from_file() raises ValueError listing missing green_api_instance_id."""
+        incomplete_config = {
+            # missing green_api_instance_id
+            "green_api_token": "abcdef123456",
+            "openai_api_key": "sk-test123"
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(incomplete_config, f)
+            temp_path = f.name
+        
+        try:
+            with pytest.raises(ValueError) as exc_info:
+                BotConfiguration.from_file(temp_path)
+            error_message = str(exc_info.value).lower()
+            assert "green_api_instance_id" in error_message
+        finally:
+            os.unlink(temp_path)
+
+    def test_from_file_missing_green_api_token(self):
+        """Test that from_file() raises ValueError for missing green_api_token."""
+        incomplete_config = {
+            "green_api_instance_id": "1234567890",
+            # missing green_api_token
+            "openai_api_key": "sk-test123"
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(incomplete_config, f)
+            temp_path = f.name
+        
+        try:
+            with pytest.raises(ValueError) as exc_info:
+                BotConfiguration.from_file(temp_path)
+            error_message = str(exc_info.value).lower()
+            assert "green_api_token" in error_message
+        finally:
+            os.unlink(temp_path)
+
+    def test_from_file_missing_openai_api_key(self):
+        """Test that from_file() raises ValueError for missing openai_api_key."""
+        incomplete_config = {
+            "green_api_instance_id": "1234567890",
+            "green_api_token": "abcdef123456"
+            # missing openai_api_key
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(incomplete_config, f)
+            temp_path = f.name
+        
+        try:
+            with pytest.raises(ValueError) as exc_info:
+                BotConfiguration.from_file(temp_path)
+            error_message = str(exc_info.value).lower()
+            assert "openai_api_key" in error_message
+        finally:
+            os.unlink(temp_path)
+
+    def test_from_file_lists_all_missing_fields(self):
+        """Test error message clearly lists ALL missing required fields."""
+        incomplete_config = {
+            # missing all three required fields
+            "ai_model": "gpt-4"
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(incomplete_config, f)
+            temp_path = f.name
+        
+        try:
+            with pytest.raises(ValueError) as exc_info:
+                BotConfiguration.from_file(temp_path)
+            error_message = str(exc_info.value).lower()
+            # All three required fields should be mentioned
+            assert "green_api_instance_id" in error_message
+            assert "green_api_token" in error_message
+            assert "openai_api_key" in error_message
+        finally:
+            os.unlink(temp_path)
+
+    def test_from_file_succeeds_with_all_required_fields(self):
+        """Test from_file() succeeds with all required fields present in config.json."""
+        config_with_required = {
+            "green_api_instance_id": "1234567890",
+            "green_api_token": "abcdef123456",
+            "openai_api_key": "sk-test123"
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(config_with_required, f)
+            temp_path = f.name
+        
+        try:
+            config = BotConfiguration.from_file(temp_path)
+            assert config.green_api_instance_id == "1234567890"
+            assert config.green_api_token == "abcdef123456"
+            assert config.openai_api_key == "sk-test123"
+        finally:
+            os.unlink(temp_path)
+
     def test_validate_passes_with_valid_ranges(self, valid_config_data):
         """Test that validate() passes with valid value ranges."""
         config = BotConfiguration(**valid_config_data)
