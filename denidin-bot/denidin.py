@@ -7,7 +7,6 @@ Phase 6: US4 - Configuration & Deployment
 import os
 import sys
 import signal
-from pathlib import Path
 from whatsapp_chatbot_python import GreenAPIBot, Notification
 from openai import OpenAI
 from src.models.config import BotConfiguration
@@ -44,10 +43,10 @@ def mask_api_key(key: str) -> str:
     """
     Mask API key for secure logging.
     Shows first 10 characters followed by '...'
-    
+
     Args:
         key: API key to mask
-        
+
     Returns:
         Masked API key string
     """
@@ -95,7 +94,7 @@ def handle_text_message(notification: Notification) -> None:
     """
     Handle incoming text messages from WhatsApp with comprehensive error handling.
     Phase 6: US4 - Configuration & Deployment
-    
+
     Args:
         notification: Green API notification object containing message data
     """
@@ -104,39 +103,39 @@ def handle_text_message(notification: Notification) -> None:
         if not whatsapp_handler.validate_message_type(notification):
             whatsapp_handler.handle_unsupported_message(notification)
             return
-        
+
         # Process notification into WhatsAppMessage (includes message_id and received_timestamp)
         message = whatsapp_handler.process_notification(notification)
-        
+
         # Create tracking prefix for all logs related to this message
         tracking = f"[msg_id={message.message_id}] [recv_ts={message.received_timestamp.isoformat()}]"
-        
+
         # Log incoming message with tracking
         logger.info(
             f"{tracking} Received message from {message.sender_name} ({message.sender_id}): "
             f"{message.text_content[:100]}..."
         )
-        
+
         # Check if bot is mentioned in group (or if 1-on-1)
         if not whatsapp_handler.is_bot_mentioned_in_group(message):
             logger.debug(f"{tracking} Skipping group message without mention")
             return
-        
+
         # Create AI request
         ai_request = ai_handler.create_request(message)
         logger.debug(f"{tracking} Created AI request {ai_request.request_id}")
-        
+
         # Get AI response (with retry logic and fallbacks built-in)
         ai_response = ai_handler.get_response(ai_request)
         logger.info(
             f"{tracking} AI response generated: {ai_response.tokens_used} tokens, "
             f"{len(ai_response.response_text)} chars"
         )
-        
+
         # Send response (with retry logic built-in)
         whatsapp_handler.send_response(notification, ai_response)
         logger.info(f"{tracking} Response sent to {message.sender_name}")
-        
+
     except Exception as e:
         # Global exception handler - catches anything not handled by specific handlers
         # Try to include tracking if message was processed
@@ -152,7 +151,7 @@ def handle_text_message(notification: Notification) -> None:
                 f"Unexpected error processing message (no tracking available): {e}",
                 exc_info=True
             )
-        
+
         # Send generic fallback message to user
         try:
             fallback_message = (
@@ -182,7 +181,7 @@ def handle_text_message(notification: Notification) -> None:
 if __name__ == "__main__":
     # Track if shutdown has been requested (to avoid duplicate logging)
     shutdown_requested = [False]  # Use list to allow modification in nested function
-    
+
     def signal_handler(signum, frame):
         """Handle SIGINT (Ctrl+C) and SIGTERM (systemd stop) gracefully."""
         if not shutdown_requested[0]:
@@ -192,17 +191,17 @@ if __name__ == "__main__":
             logger.info("DeniDin bot shutting down gracefully...")
             # Raise KeyboardInterrupt to break out of bot.run_forever()
             raise KeyboardInterrupt()
-    
+
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     logger.info("=" * 50)
     logger.info("DeniDin bot is now running!")
     logger.info("Waiting for WhatsApp messages...")
     logger.info("Press Ctrl+C to stop")
     logger.info("=" * 50)
-    
+
     try:
         # Start the bot (blocking call)
         # Signal handlers will raise KeyboardInterrupt for graceful shutdown
