@@ -20,8 +20,10 @@ DeniDin is a WhatsApp chatbot that acts as a passthrough relay between a WhatsAp
 
 ## Setup Instructions
 
-> **Note for AI Assistants:** All commands must be run from `/Users/yaronl/personal/DeniDin/denidin-bot/` directory. 
-> Always prefix commands with: `cd /Users/yaronl/personal/DeniDin/denidin-bot &&`
+> **Note for AI Assistants:** 
+> - All commands must be run from `/Users/yaronl/personal/DeniDin/denidin-bot/` directory
+> - Always prefix commands with: `cd /Users/yaronl/personal/DeniDin/denidin-bot &&`
+> - Main git branch is `master`, not `main`
 
 ### 1. Clone and Navigate
 
