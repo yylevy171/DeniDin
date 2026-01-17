@@ -71,7 +71,6 @@ Single Python project structure:
 - `tests/` - Test suite (unit/, integration/)
 - `config/` - Configuration files (config.json or config.yaml, settings.py)
 - `logs/` - Application logs
-- `state/` - Runtime state persistence
 
 ---
 
@@ -79,10 +78,10 @@ Single Python project structure:
 
 **Purpose**: Initialize project structure and install dependencies
 
-- [ ] T001 Create project directory `denidin-bot/` with subdirectories: src/{handlers,models,utils}, tests/{unit,integration,fixtures}, config/, logs/, state/
+- [ ] T001 Create project directory `denidin-bot/` with subdirectories: src/{handlers,models,utils}, tests/{unit,integration,fixtures}, config/, logs/
 - [ ] T002 [P] Create `__init__.py` files in src/, src/handlers/, src/models/, src/utils/, tests/
 - [ ] T003 [P] Create `requirements.txt` with dependencies: whatsapp-chatbot-python>=0.5.1, whatsapp-api-client-python>=0.76.0, whatsapp-chatgpt-python>=0.0.1, openai>=1.12.0, PyYAML>=6.0, tenacity>=8.0.0, pytest>=7.0.0
-- [ ] T004 [P] Create `.gitignore` to exclude venv/, config/config.json, config/config.yaml, config/*.json, config/*.yaml, __pycache__/, *.pyc, logs/, state/
+- [ ] T004 [P] Create `.gitignore` to exclude venv/, config/config.json, config/config.yaml, config/*.json, config/*.yaml, __pycache__/, *.pyc, logs/
 - [ ] T005 [P] Create `config/config.example.json` template in config/ subfolder with placeholder credentials (green_api_instance_id, green_api_token, openai_api_key, ai_model, system_message, max_tokens, temperature, log_level [INFO/DEBUG], poll_interval_seconds [default: 5], max_retries)
 - [ ] T006 Create `README.md` with setup instructions: Python 3.8+ requirement, virtual environment setup, pip install -r requirements.txt, config/config.json setup (copy from config/config.example.json), running the bot
 - [ ] T007 Create Python virtual environment: `python -m venv venv`
@@ -117,24 +116,18 @@ Single Python project structure:
 - [ ] T012a [P] Write tests for AIResponse in `tests/unit/test_message.py`: Test from_openai_response() parses OpenAI response correctly, test truncate_for_whatsapp() truncates messages >4000 chars and appends "...", test truncate_for_whatsapp() preserves messages <=4000 chars, test is_truncated flag set correctly, test tokens_used extraction, test finish_reason handling
 - [ ] T012b [P] Create AIResponse model in `src/models/message.py` (BLOCKED until T012a approved)
 
-- [ ] T013a [P] Write tests for MessageState in `tests/unit/test_state.py`: Test load() from non-existent file returns default state, test load() from valid JSON file returns state, test save() persists to state/last_message.json, test update() updates message_id and timestamp, test JSON serialization/deserialization
-- [ ] T013b [P] Create MessageState model in `src/models/state.py` (BLOCKED until T013a approved)
-
 - [ ] T014a [P] Write tests for logger in `tests/unit/test_logger.py`: Test logger creates logs/ directory if missing, test file handler writes to logs/denidin.log, test console handler outputs to stderr, test RotatingFileHandler limits file size (mock large logs), test log format includes timestamp/name/level/message, test log_level parameter controls INFO vs DEBUG verbosity, test INFO logs: messages/errors only, test DEBUG logs: parsing/state/API details
 - [ ] T014b [P] Create logging utility in `src/utils/logger.py` (BLOCKED until T014a approved)
-
-- [ ] T015a [P] Write tests for state utility in `tests/unit/test_state_utils.py`: Test ensure_state_dir() creates state/ directory, test load_message_state() returns MessageState instance, test save_message_state() writes JSON file, test error handling for corrupted JSON
-- [ ] T015b [P] Create state persistence utility in `src/utils/state.py` (BLOCKED until T015a approved)
 
 **Checkpoint**: Foundation complete - all models, configuration, logging ready
 
 ### Version Control: Phase 2
-- [ ] T015-VC0 **CREATE BRANCH FIRST**: `git checkout -b 001-phase2-foundational` (⚠️ MUST be done BEFORE any work)
-- [ ] T015-VC1 Run all tests: `pytest tests/unit/ -v`
-- [ ] T015-VC2 Commit Phase 2 changes: `git add .` && `git commit -m "Phase 2: Foundational - Core models and utilities with tests"`
-- [ ] T015-VC3 Push to branch: `git push origin 001-phase2-foundational`
-- [ ] T015-VC4 Create Pull Request: "Phase 2: Foundational Models & Utilities Complete"
-- [ ] T015-VC5 Review, approve, and merge PR to master branch
+- [ ] T014-VC0 **CREATE BRANCH FIRST**: `git checkout -b 001-phase2-foundational` (⚠️ MUST be done BEFORE any work)
+- [ ] T014-VC1 Run all tests: `pytest tests/unit/ -v`
+- [ ] T014-VC2 Commit Phase 2 changes: `git add .` && `git commit -m "Phase 2: Foundational - Core models and utilities with tests"`
+- [ ] T014-VC3 Push to branch: `git push origin 001-phase2-foundational`
+- [ ] T014-VC4 Create Pull Request: "Phase 2: Foundational Models & Utilities Complete"
+- [ ] T014-VC5 Review, approve, and merge PR to master branch
 
 ---
 
@@ -271,38 +264,41 @@ Single Python project structure:
 
 ## Phase 6: User Story 4 - Configuration & Deployment (Priority: P4)
 
-**Goal**: Externalize all config, add deployment readiness (logging, state persistence)
+**Goal**: Enhanced config validation, message tracking, and deployment readiness (logging, graceful shutdown)
 
-**Independent Test**: Change config values, restart bot, verify new config applied; simulate restart to test state persistence
+**Independent Test**: Change config values, restart bot, verify new config applied; verify message ID and timestamp in all logs
 
 ### Implementation for User Story 4
 
-- [ ] T040a [P] [US4] Write tests for enhanced config validation in `tests/unit/test_config.py`: Test from_env() raises ValueError listing missing GREEN_API_INSTANCE_ID, test from_env() raises ValueError for missing GREEN_API_TOKEN, test from_env() raises ValueError for missing OPENAI_API_KEY, test error message clearly lists ALL missing variables, test from_env() succeeds with all required vars present
-- [ ] T040b [P] [US4] Enhance BotConfiguration.from_env() to validate required env vars (BLOCKED until T040a approved)
+- [ ] T040a [P] [US4] Write tests for enhanced config validation in `tests/unit/test_config.py`: Test from_file() raises ValueError listing missing green_api_instance_id, test from_file() raises ValueError for missing green_api_token, test from_file() raises ValueError for missing openai_api_key, test error message clearly lists ALL missing required fields, test from_file() succeeds with all required fields present in config.json
+- [ ] T040b [P] [US4] Enhance BotConfiguration.from_file() to validate required config fields (BLOCKED until T040a approved)
+
+- [ ] T040c [P] [US4] Write tests for message tracking in `tests/unit/test_message.py`: Test WhatsAppMessage.from_notification() generates unique message_id (UUID), test received_timestamp is set to current UTC time, test message_id and received_timestamp are logged in all message processing logs, test message_id persists throughout lifecycle (from receipt to AI response to WhatsApp send)
+- [ ] T040d [P] [US4] Add message_id (UUID) and received_timestamp to WhatsAppMessage model (BLOCKED until T040c approved)
 
 - [ ] T041a [P] [US4] Write tests for config.validate() in `tests/unit/test_config.py`: Test validate() passes with temperature=0.7 (valid range 0.0-1.0), test validate() raises ValueError if temperature=-0.1, test validate() raises ValueError if temperature=1.5, test validate() raises ValueError if max_tokens=0, test validate() raises ValueError if poll_interval=0, test error message includes specific field name
 - [ ] T041b [P] [US4] Add BotConfiguration.validate() logic (BLOCKED until T041a approved)
 
-- [ ] T042a [US4] Write tests for config validation integration in `tests/integration/test_bot_startup.py`: Test bot.py calls config.validate() after from_env(), test ValueError caught and logged, test sys.exit(1) called on invalid config, test bot doesn't start with invalid config, mock sys.exit
+- [ ] T042a [US4] Write tests for config validation integration in `tests/integration/test_bot_startup.py`: Test bot.py calls config.validate() after from_file(), test ValueError caught and logged, test sys.exit(1) called on invalid config, test bot doesn't start with invalid config, mock sys.exit
 - [ ] T042b [US4] Call config.validate() in bot.py after loading config (BLOCKED until T042a approved)
 
 - [ ] T043a [US4] Write tests for config logging in `tests/integration/test_bot_startup.py`: Test startup logs all config values, test API keys masked (show first 10 chars + "..."), test model logged, test temperature logged, test max_tokens logged, test poll_interval logged, test logs are DEBUG level or INFO
 - [ ] T043b [US4] Add config logging in bot.py startup (BLOCKED until T043a approved)
 
-- [ ] T044a [P] [US4] Write tests for MessageState integration in `tests/integration/test_bot_state.py`: Test bot loads state on startup, test incoming message_id compared to last_processed_message_id, test duplicate message skipped (not processed twice), test state.update(message_id) called after successful processing, test state persisted to state/last_message.json, test bot restart preserves state
-- [ ] T044b [P] [US4] Integrate MessageState into bot.py (BLOCKED until T044a approved)
+- [ ] T043c [US4] Write tests for message tracking in logs in `tests/integration/test_message_handler.py`: Test all incoming message logs include message_id and received_timestamp, test all AI processing logs include message_id and received_timestamp, test all error logs include message_id and received_timestamp, test all outgoing message logs include message_id and received_timestamp, test log format: "[msg_id={uuid}] [recv_ts={timestamp}] {log_message}"
+- [ ] T043d [US4] Update all logging calls to include message_id and received_timestamp (BLOCKED until T043c approved)
 
 - [ ] T045a [US4] Write tests for log rotation in `tests/unit/test_logger.py`: Test RotatingFileHandler maxBytes=10MB, test backupCount=5 (creates .1, .2, .3, .4, .5 files), test logs/ directory created if missing, test old logs rotated when size limit reached, mock large log writes
 - [ ] T045b [US4] Add log rotation configuration in logger.py (BLOCKED until T045a approved)
 
-- [ ] T046 [US4] Create deployment guide in `DEPLOYMENT.md` (no tests needed - documentation): systemd service file example, environment variable setup for production, log monitoring with `tail -f logs/denidin.log`, recommended cloud VM specs (1 CPU, 1GB RAM), Green API webhook setup for production
+- [ ] T046 [US4] Create deployment guide in `DEPLOYMENT.md` (no tests needed - documentation): systemd service file example, config.json setup for production, log monitoring with `tail -f logs/denidin.log`, recommended cloud VM specs (1 CPU, 1GB RAM), Green API webhook setup for production, how to secure config.json file (permissions, encryption)
 
 - [ ] T047a [US4] Write tests for graceful shutdown in `tests/integration/test_bot_shutdown.py`: Test SIGINT signal handler registered, test SIGTERM signal handler registered, test "Shutting down gracefully..." logged on signal, test current message processing completes before exit, test bot.run_forever() exits cleanly, mock signal handlers
 - [ ] T047b [US4] Add graceful shutdown handling in bot.py (BLOCKED until T047a approved)
 
-- [ ] T048 [US4] 👤 **MANUAL APPROVAL GATE**: 1) Remove openai_api_key from config.json, start bot, verify clear error and exit; 2) Set temperature to 2.0, start bot, verify validation error; 3) Set ai_model to "gpt-4o-mini", restart, send message, verify model change in logs; 4) Start bot, send message, Ctrl+C, restart bot, send new message, verify no duplicate processing via state persistence - THIS IS YOUR ACCEPTANCE TEST FOR US4
+- [ ] T048 [US4] 👤 **MANUAL APPROVAL GATE**: 1) Remove openai_api_key from config.json, start bot, verify clear error and exit; 2) Set temperature to 2.0, start bot, verify validation error; 3) Set ai_model to "gpt-4o-mini", restart, send message, verify model change in logs; 4) Send message, verify all logs include unique message_id and received_timestamp; 5) Send multiple messages, verify each has unique message_id - THIS IS YOUR ACCEPTANCE TEST FOR US4
 
-**Checkpoint**: P4 Complete - Production-ready config, deployment guide, state persistence working
+**Checkpoint**: P4 Complete - Production-ready config, deployment guide, message tracking working
 
 ### Version Control: Phase 6
 - [ ] T048-VC0 **CREATE BRANCH FIRST**: `git checkout -b 001-phase6-us4-deployment` (⚠️ MUST be done BEFORE any work)
