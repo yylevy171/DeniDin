@@ -38,6 +38,23 @@ except Exception as e:
 # Setup logging
 logger = get_logger(__name__, log_level=config.log_level)
 
+
+def mask_api_key(key: str) -> str:
+    """
+    Mask API key for secure logging.
+    Shows first 10 characters followed by '...'
+    
+    Args:
+        key: API key to mask
+        
+    Returns:
+        Masked API key string
+    """
+    if len(key) > 10:
+        return key[:10] + "..."
+    return key
+
+
 # Initialize Green API bot
 bot = GreenAPIBot(
     config.green_api_instance_id,
@@ -54,13 +71,22 @@ openai_client = OpenAI(
 ai_handler = AIHandler(openai_client, config)
 whatsapp_handler = WhatsAppHandler()
 
-# Log startup information
-logger.info(f"DeniDin bot starting...")
-logger.info(f"Green API Instance: {config.green_api_instance_id}")
-logger.info(f"AI Model: {config.ai_model}")
-logger.info(f"Poll Interval: {config.poll_interval_seconds}s")
-logger.info(f"Log Level: {config.log_level}")
-logger.info(f"Handlers initialized: AIHandler, WhatsAppHandler")
+# Log startup information with masked API keys
+logger.info("=" * 60)
+logger.info("DeniDin bot starting...")
+logger.info("Configuration:")
+logger.info(f"  Green API Instance: {config.green_api_instance_id}")
+logger.info(f"  Green API Token: {mask_api_key(config.green_api_token)}")
+logger.info(f"  OpenAI API Key: {mask_api_key(config.openai_api_key)}")
+logger.info(f"  AI Model: {config.ai_model}")
+logger.info(f"  Temperature: {config.temperature}")
+logger.info(f"  Max Tokens: {config.max_tokens}")
+logger.info(f"  System Message: {config.system_message[:50]}...")
+logger.info(f"  Poll Interval: {config.poll_interval_seconds}s")
+logger.info(f"  Log Level: {config.log_level}")
+logger.info(f"  Max Retries: {config.max_retries}")
+logger.info("Handlers initialized: AIHandler, WhatsAppHandler")
+logger.info("=" * 60)
 
 
 @bot.router.message(type_message="textMessage")
