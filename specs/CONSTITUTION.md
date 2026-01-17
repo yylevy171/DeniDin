@@ -26,8 +26,38 @@
 - If a test change is absolutely necessary, it requires:
   1. Clear justification explaining why
   2. Explicit human approval before making any changes
-  3. Documentation of what changed and why
+  3. Documentation of what changed and why in commit message
 - This ensures regression protection and maintains confidence in previously validated functionality
+
+### Enforcement Mechanisms:
+
+To ensure the Test Immutability Principle is followed:
+
+1. **Pre-Commit Check**: Before any commit that modifies test files from completed phases:
+   - AI agent MUST explicitly ask: "This modifies tests from Phase X. Do you approve this change?"
+   - Must provide clear justification for why the change is needed
+   - Must wait for explicit "approve" or "approved" response
+
+2. **Commit Message Requirements**: When test modifications are approved:
+   - Include "HUMAN APPROVED:" in commit message
+   - State which test file/fixture was modified
+   - Provide justification for the change
+
+3. **Git Diff Review**: AI agent should:
+   - Use `git diff` to identify if test files are being modified
+   - Cross-reference with completed phases (check tasks.md for phase completion)
+   - Flag any test file modifications for human review
+
+4. **When In Doubt - ASK**: If unsure whether a change requires modifying existing tests:
+   - **ALWAYS ask for human guidance first**
+   - Present the options (e.g., optional fields vs test modification)
+   - Wait for explicit direction before proceeding
+   - Never assume it's okay to modify existing tests
+
+5. **Documentation**: Track all approved test modifications in:
+   - Commit messages (with "HUMAN APPROVED" tag)
+   - Phase completion notes
+   - PR descriptions
 
 ### Test Requirements:
 - Unit tests for all models, handlers, and utilities
