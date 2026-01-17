@@ -64,42 +64,57 @@ For any service that communicates with external APIs:
 
 **Principle**: Every implementation phase must be version controlled with proper review.
 
+### ⚠️ CRITICAL RULE: NEVER PUSH DIRECTLY TO MASTER/MAIN
+
+**ALL work must be done on feature branches. NO EXCEPTIONS.**
+
 ### Required Steps After Each Phase:
 
-1. **Test Validation**
+1. **Create Feature Branch**
+   - ALWAYS create a new branch before starting work
+   - Branch naming convention: `###-phase#-description` (e.g., `001-phase2-foundational`)
+   - Command: `git checkout -b <feature-branch-name>`
+
+2. **Test Validation**
    - Run all relevant tests: `pytest tests/ -v`
    - Ensure 100% of tests pass
    - For final phases, include coverage: `pytest tests/ -v --cov=src --cov-report=html`
 
-2. **Commit Changes**
+3. **Commit Changes**
    - Stage all changes: `git add .`
    - Descriptive commit message: `git commit -m "Phase X: [Description] - [What was accomplished]"`
    - Follow conventional commits format when applicable
 
-3. **Push to Feature Branch**
+4. **Push to Feature Branch**
    - Push to dedicated feature branch: `git push origin <feature-branch-name>`
-   - Branch naming convention: `###-phase#-description` (e.g., `001-phase2-foundational`)
+   - **NEVER**: `git push origin master` or `git push origin main`
 
-4. **Create Pull Request**
+5. **Create Pull Request**
    - Title format: "Phase X: [Short Description] Complete"
    - Include: summary of changes, test results, manual testing notes (if applicable)
    - Link to relevant specifications or issues
 
-5. **Review and Merge**
+6. **Review and Merge**
    - Require at least one approval (human or automated checks)
    - Verify all CI/CD checks pass
    - Merge to main branch using squash or merge commit
    - Delete feature branch after merge
 
-6. **Release Tagging** (for major milestones)
+7. **Release Tagging** (for major milestones)
    - Tag releases with semantic versioning: `git tag v1.0.0`
    - Push tags: `git push origin v1.0.0`
 
 ### Branch Strategy:
-- `main` - Production-ready code, always stable
+- `master/main` - Production-ready code, always stable, **PROTECTED - NO DIRECT COMMITS**
 - `<feature-branch>` - Individual feature/phase development
 - One feature branch per phase or user story
 - Keep feature branches short-lived (merge within days, not weeks)
+
+### Branch Protection:
+- Master/main branch should be protected on GitHub
+- Require pull request reviews before merging
+- Require status checks to pass before merging
+- No force pushes allowed on master/main
 
 ---
 
