@@ -1,37 +1,47 @@
 <!--
 Sync Impact Report - Constitution Update
 ═════════════════════════════════════════
-Version: 1.0.0 → 1.1.0
+Version: 1.1.0 → 1.2.0
 Status: Amendment ratified
-Type: MINOR (additive change - new principle)
+Type: MINOR (additive change - 10 new principles)
 
 Modified Principles:
-  - [UPDATED] Principle IV: Implementation → Test-Driven Development (TDD)
-  - [NEW] Principle VI: Test-Driven Development (TDD)
+  - [NEW] Principle VII: Feature Flags for Safe Deployment
+  - [NEW] Principle VIII: UTC Timestamp Requirement
+  - [NEW] Principle IX: Version Control Workflow
+  - [NEW] Principle X: Code Quality Standards
+  - [NEW] Principle XI: Documentation Requirements
+  - [NEW] Principle XII: Dependency Management
+  - [NEW] Principle XIII: Configuration & Secrets Management
+  - [NEW] Principle XIV: Error Handling & Resilience
+  - [NEW] Principle XV: Manual Testing Requirements
+  - [NEW] Principle XVI: Command-Line Development Workflow
 
 Added Sections:
-  - Principle VI: Full TDD methodology with approval gates
-  - Updated Principle IV: Phase 3 now references TDD
+  - Unified SpecKit constitution with DeniDin project constitution
+  - All implementation-level requirements now part of specification process
 
 Templates Status:
-  ⚠️  tasks-template.md - REQUIRES UPDATE: Add TDD task format (Xa/Xb pattern)
-  ⚠️  plan-template.md - REQUIRES UPDATE: Constitution Check now validates 6 principles
-  ✅ spec-template.md - No changes needed (acceptance criteria already support TDD)
+  ⚠️  spec-template.md - REQUIRES UPDATE: Add deployment strategy, error handling strategy
+  ⚠️  plan-template.md - REQUIRES UPDATE: Constitution Check now validates 16 principles
+  ⚠️  tasks-template.md - REQUIRES UPDATE: Add feature flag, testing, documentation tasks
 
 Follow-up TODOs:
-  - Update tasks-template.md with TDD task format examples
-  - Update plan-template.md Constitution Check to reference 6 principles
-  - Restructure existing tasks.md for feature 001 to follow TDD pattern
+  - Update all templates to reflect 16 principles
+  - Add UTC timezone checks to code review checklist
+  - Add feature flag checklist to deployment template
+  - Add dependency review process to plan template
 
 Rationale:
-  MINOR bump justified as this is an additive change (new principle added).
-  Existing principles remain valid; this adds mandatory TDD workflow without
-  invalidating prior specifications (though they should be updated to comply).
+  MINOR bump justified as this is an additive change (new principles added).
+  Unified SpecKit and DeniDin constitutions to provide single source of truth.
+  All implementation requirements now embedded in specification process.
   
-  TDD principle ensures:
-  - Human approval gate before implementation (prevents misalignment)
-  - Tests immutable once approved (prevents requirement drift)
-  - Test coverage mandatory before code exists (quality by design)
+  Benefits:
+  - Single constitution governs entire development lifecycle
+  - Specification and implementation standards aligned
+  - No confusion about which rules apply when
+  - Complete governance from planning through deployment
 ═════════════════════════════════════════
 -->
 
@@ -135,6 +145,158 @@ requirements, enables confident refactoring, and provides living documentation o
 behavior. Human approval of tests before implementation guarantees alignment on acceptance
 criteria before costly coding begins.
 
+### VII. Feature Flags for Safe Deployment
+
+All significant new features MUST be deployed behind feature flags to enable safe,
+incremental rollouts and quick rollbacks without code redeployment.
+
+**Non-negotiable requirements:**
+- Every feature specification MUST include a deployment strategy section
+- New features MUST be configurable via feature flags (default: disabled)
+- Feature flags MUST be documented in configuration files with clear purpose
+- Specifications MUST describe gradual rollout plan (e.g., test env → godfather → all users)
+- Code MUST check feature flag state before executing new functionality
+- Feature flags SHOULD be removed after feature is stable and fully adopted
+- Quick rollback procedure MUST be documented (disable flag without redeployment)
+
+**Rationale:** Feature flags reduce deployment risk by allowing code to reach production
+in a disabled state, enable controlled A/B testing and gradual rollouts, provide instant
+rollback capability, and separate deployment from feature activation.
+
+### VIII. UTC Timestamp Requirement
+
+All timestamps in code MUST use UTC timezone to prevent time-related bugs and ensure consistency.
+
+**Non-negotiable requirements:**
+- ALWAYS use `datetime.now(timezone.utc)` - NEVER `datetime.now()` without timezone
+- ALWAYS use `datetime.now(timezone.utc).timestamp()` for Unix timestamps
+- Store datetime objects with UTC timezone information
+- ISO format logs must include timezone
+- Code review must verify all datetime operations use UTC explicitly
+- Test fixtures must use `datetime.now(timezone.utc)`
+
+**Rationale:** Consistent timezone usage prevents time-related bugs, simplifies debugging
+across distributed systems, and ensures accurate message tracking and log correlation.
+
+### IX. Version Control Workflow
+
+All work MUST be done on feature branches with proper review process.
+
+**Non-negotiable requirements:**
+- NEVER push directly to master/main - ALL work on feature branches
+- Branch naming: `###-feature-name` or `###-phase#-description`
+- Feature branch must match feature directory name
+- All tests must pass before creating PR
+- PR title format: "Phase X: [Description] Complete"
+- Require approval before merge
+- Tag releases with semantic versioning: `git tag v1.0.0`
+- Use CLI tools (git, gh) for all version control operations
+
+**Rationale:** Feature branches enable proper code review, maintain stable main branch,
+enable parallel development, and provide clear audit trail of all changes.
+
+### X. Code Quality Standards
+
+All code MUST maintain high quality and consistency standards.
+
+**Non-negotiable requirements:**
+- Linting: Code must pass linting checks (pylint minimum 9.0/10)
+- Type Hints: All functions must have type annotations
+- Docstrings: All modules, classes, and functions must have Google-style docstrings
+- PEP 8 Compliance: Follow Python style guide (120 char line limit)
+- Error Handling: All external API calls must have proper error handling
+- Logging: Appropriate logging at INFO and DEBUG levels
+
+**Rationale:** Consistent code quality reduces technical debt, improves maintainability,
+enables team collaboration, and prevents subtle bugs through type safety and proper documentation.
+
+### XI. Documentation Requirements
+
+Code without documentation is incomplete - all features MUST be properly documented.
+
+**Non-negotiable requirements:**
+- README.md - Setup, installation, and basic usage
+- DEPLOYMENT.md - Production deployment guide
+- CONTRIBUTING.md - How to contribute, coding standards
+- API Documentation - For all public interfaces
+- Inline Comments - For complex logic or non-obvious code
+- Changelog - Track all notable changes between versions
+
+**Rationale:** Complete documentation enables onboarding, reduces knowledge silos,
+provides deployment guidance, and ensures long-term maintainability.
+
+### XII. Dependency Management
+
+Dependencies MUST be minimal, secure, and properly managed.
+
+**Non-negotiable requirements:**
+- Lock dependency versions in requirements.txt
+- Review dependencies for security vulnerabilities
+- Minimize external dependencies
+- Document why each dependency is needed
+- Regular dependency updates (monthly security patches)
+
+**Rationale:** Controlled dependencies reduce security risks, prevent version conflicts,
+improve build reproducibility, and minimize supply chain vulnerabilities.
+
+### XIII. Configuration & Secrets Management
+
+Secrets MUST NEVER be committed - all configuration must be externalized.
+
+**Non-negotiable requirements:**
+- All secrets in environment variables or external config files
+- config.json and similar files must be in .gitignore
+- Provide config.example.json with placeholder values
+- Validate all configuration at startup
+- Log configuration (mask sensitive values)
+
+**Rationale:** Proper secrets management prevents credential leaks, enables environment-specific
+configuration, and maintains security compliance.
+
+### XIV. Error Handling & Resilience
+
+Systems MUST fail gracefully and recover automatically when possible.
+
+**Non-negotiable requirements:**
+- All API calls must have timeout and retry logic
+- Network errors: Retry ONCE on 5xx errors only (1 second wait)
+- 4xx client errors are NOT retried
+- User-friendly error messages (not stack traces)
+- Full error logging with context (DEBUG level)
+- Application must never crash from unhandled exceptions
+- Only exit on explicit signals (SIGINT, SIGTERM) or startup failures
+
+**Rationale:** Graceful error handling improves user experience, enables automatic recovery
+from transient failures, and prevents catastrophic crashes in production.
+
+### XV. Manual Testing Requirements
+
+Automated tests are necessary but not sufficient - manual validation is required.
+
+**Non-negotiable requirements:**
+- Manual approval gates at end of each user story phase
+- Test with real APIs and services
+- Verify user-facing behavior
+- Document test scenarios and results
+- Real API testing checklist must be completed for external service integrations
+
+**Rationale:** Manual testing catches usability issues, validates real-world behavior,
+verifies API integrations, and ensures features meet user expectations.
+
+### XVI. Command-Line Development Workflow
+
+All code management MUST be done via command-line tools for reproducibility.
+
+**Non-negotiable requirements:**
+- Git operations via CLI: git add, git commit, git push, git checkout -b
+- Pull request management via gh CLI: gh pr create, gh pr merge
+- Testing via CLI: pytest commands
+- Environment management via CLI: pip, venv
+- All code-modifying operations must use CLI tools
+
+**Rationale:** CLI operations are scriptable, automatable, reproducible, and work
+consistently across all platforms and CI/CD environments.
+
 ## Development Workflow Standards
 
 ### Feature Initialization
@@ -234,8 +396,9 @@ documentation, the constitution prevails.
 
 ### Version History
 
-**Version**: 1.1.0 | **Ratified**: 2026-01-15 | **Last Amended**: 2026-01-15
+**Version**: 1.2.0 | **Ratified**: 2026-01-15 | **Last Amended**: 2026-01-17
 
 **Changelog**:
+- v1.2.0 (2026-01-17): Added Principles VII-XVI (Feature Flags, UTC Timestamps, Version Control, Code Quality, Documentation, Dependencies, Secrets, Error Handling, Manual Testing, CLI Workflow) - unified with DeniDin project constitution
 - v1.1.0 (2026-01-15): Added Principle VI (Test-Driven Development), updated Principle IV Phase 3
 - v1.0.0 (2026-01-15): Initial constitution ratified with 5 core principles

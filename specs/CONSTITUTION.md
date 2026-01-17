@@ -221,7 +221,53 @@ For any service that communicates with external APIs:
 
 ---
 
-## V. Dependency Management
+## V. Feature Flags for Safe Deployment
+
+**Principle**: New features should reach production without breaking existing functionality.
+
+### Guidelines:
+- **Use feature flags** for all significant new features
+- Feature flags allow incremental releases and safer deployments
+- Features can be deployed to production in disabled state, then enabled when ready
+- Enables A/B testing and gradual rollouts
+- Allows quick rollback without code deployment
+
+### Implementation:
+- Add feature flags to configuration (e.g., `config.json`)
+- All new feature code should check flag state before executing
+- Default new features to `false` (disabled) in production
+- Document all feature flags and their purpose
+- Remove feature flags after feature is stable and fully adopted
+
+### Example:
+```python
+# config.json
+{
+  "feature_flags": {
+    "enable_memory_system": false,
+    "enable_media_processing": false
+  }
+}
+
+# In code
+if config.feature_flags.get("enable_memory_system", False):
+    # New memory system code
+    session_manager.add_message(message)
+else:
+    # Legacy behavior
+    pass
+```
+
+### Benefits:
+- Deploy features to production safely
+- Test in production with controlled exposure
+- Quick rollback without redeployment
+- Incremental feature adoption
+- Reduced deployment risk
+
+---
+
+## VI. Dependency Management
 
 **Principle**: Keep dependencies minimal, secure, and up-to-date.
 
@@ -234,7 +280,7 @@ For any service that communicates with external APIs:
 
 ---
 
-## VI. Configuration & Secrets
+## VII. Configuration & Secrets
 
 **Principle**: Never commit secrets, always externalize configuration.
 
@@ -247,7 +293,7 @@ For any service that communicates with external APIs:
 
 ---
 
-## VII. Error Handling & Resilience
+## VIII. Error Handling & Resilience
 
 **Principle**: Fail gracefully, log thoroughly, recover automatically when possible.
 
@@ -264,7 +310,7 @@ For any service that communicates with external APIs:
 
 ---
 
-## VIII. Development Workflow
+## IX. Development Workflow
 
 **Principle**: Incremental progress with continuous validation.
 
@@ -288,7 +334,7 @@ For any service that communicates with external APIs:
 
 ---
 
-## IX. Manual Testing Requirements
+## X. Manual Testing Requirements
 
 **Principle**: Automated tests are necessary but not sufficient.
 
@@ -310,7 +356,7 @@ Before approving any phase that involves external services, verify:
 
 ---
 
-## X. Command-Line Development Workflow
+## XI. Command-Line Development Workflow
 
 **Principle**: All code management should be done locally via command-line tools.
 
@@ -352,7 +398,7 @@ GUI tools may be used for:
 
 ---
 
-## XI. Amendment Process
+## XII. Amendment Process
 
 **Principle**: This constitution can evolve with the project.
 
