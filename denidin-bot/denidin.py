@@ -6,6 +6,7 @@ Phase 6: US4 - Configuration & Deployment
 """
 import os
 import sys
+import signal
 from pathlib import Path
 from whatsapp_chatbot_python import GreenAPIBot, Notification
 from openai import OpenAI
@@ -179,6 +180,23 @@ def handle_text_message(notification: Notification) -> None:
 
 
 if __name__ == "__main__":
+    # Track if shutdown has been requested (to avoid duplicate logging)
+    shutdown_requested = [False]  # Use list to allow modification in nested function
+    
+    def signal_handler(signum, frame):
+        """Handle SIGINT (Ctrl+C) and SIGTERM (systemd stop) gracefully."""
+        if not shutdown_requested[0]:
+            shutdown_requested[0] = True
+            signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
+            logger.info(f"Received shutdown signal ({signal_name})")
+            logger.info("DeniDin bot shutting down gracefully...")
+            # Raise KeyboardInterrupt to break out of bot.run_forever()
+            raise KeyboardInterrupt()
+    
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     logger.info("=" * 50)
     logger.info("DeniDin bot is now running!")
     logger.info("Waiting for WhatsApp messages...")
@@ -187,12 +205,14 @@ if __name__ == "__main__":
     
     try:
         # Start the bot (blocking call)
-        # This is wrapped in try-catch to ensure the app never crashes
-        # except on explicit signals (SIGINT/SIGTERM)
+        # Signal handlers will raise KeyboardInterrupt for graceful shutdown
         bot.run_forever()
     except KeyboardInterrupt:
-        logger.info("Received shutdown signal (Ctrl+C)")
-        logger.info("DeniDin bot shutting down gracefully...")
+        # This is raised by signal handlers or user Ctrl+C
+        # Message already logged by signal handler or is implicit from Ctrl+C
+        if not shutdown_requested[0]:
+            logger.info("Received shutdown signal (Ctrl+C)")
+            logger.info("DeniDin bot shutting down gracefully...")
     except Exception as e:
         # Catch any unexpected error to prevent crash
         logger.critical(
@@ -200,5 +220,4 @@ if __name__ == "__main__":
             exc_info=True
         )
         logger.error("Bot stopped due to fatal error - manual restart required")
-        import sys
         sys.exit(1)
