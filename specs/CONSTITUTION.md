@@ -178,10 +178,14 @@ For any service that communicates with external APIs:
 
 ### Requirements:
 - All API calls must have timeout and retry logic
-- Exponential backoff for retries (3 attempts standard)
+- **Network (REST) Errors**: Retry ONCE (maximum 1 retry), only on 5xx server errors, 1 second wait interval
+  - 4xx client errors are NOT retried (indicates bad request, auth failure, etc.)
+  - 5xx server errors get 1 retry after 1 second (transient server issues)
+- **OpenAI API Errors**: Same policy - retry once on transient failures (RateLimitError, APITimeoutError, 5xx errors)
 - User-friendly error messages (not stack traces)
 - Full error logging with context (DEBUG level)
-- Bot must never crash from external failures
+- **Bot must never crash**: Overarching try-catch blocks prevent application crashes from any exception
+- Application only exits on explicit signals (SIGINT, SIGTERM) or startup validation failures
 
 ---
 

@@ -71,12 +71,22 @@ class WhatsAppMessage:
 class AIRequest:
     """Model representing a request to the AI service."""
     
-    request_id: str
-    user_message: str
+    user_prompt: str  # Changed from user_message for consistency
     system_message: str
     max_tokens: int
     temperature: float
-    timestamp: datetime
+    model: str
+    chat_id: str
+    message_id: str
+    request_id: str = None
+    timestamp: Optional[int] = None
+    
+    def __post_init__(self):
+        """Auto-generate fields if not provided"""
+        if not self.request_id:
+            self.request_id = f"req_{uuid.uuid4().hex[:12]}"
+        if self.timestamp is None:
+            self.timestamp = int(datetime.now().timestamp())
 
     def to_openai_payload(self) -> Dict[str, Any]:
         """
@@ -86,6 +96,7 @@ class AIRequest:
             Dictionary in OpenAI API format
         """
         return {
+            'model': self.model,
             'messages': [
                 {
                     'role': 'system',
@@ -93,7 +104,7 @@ class AIRequest:
                 },
                 {
                     'role': 'user',
-                    'content': self.user_message
+                    'content': self.user_prompt  # Changed from user_message
                 }
             ],
             'max_tokens': self.max_tokens,
@@ -105,19 +116,24 @@ class AIRequest:
 class AIResponse:
     """Model representing a response from the AI service."""
     
+    request_id: str
     response_text: str
-    finish_reason: str
     tokens_used: int
-    timestamp: datetime
+    prompt_tokens: int
+    completion_tokens: int
+    model: str
+    finish_reason: str
+    timestamp: int
     is_truncated: bool = False
 
     @classmethod
-    def from_openai_response(cls, response) -> 'AIResponse':
+    def from_openai_response(cls, response, request_id: str = None) -> 'AIResponse':
         """
         Parse an OpenAI API response into an AIResponse.
         
         Args:
             response: Response object from OpenAI API
+            request_id: Optional request ID to associate with response
             
         Returns:
             AIResponse instance
@@ -128,26 +144,43 @@ class AIResponse:
         # Extract metadata
         finish_reason = response.choices[0].finish_reason
         tokens_used = response.usage.total_tokens
+        prompt_tokens = response.usage.prompt_tokens
+        completion_tokens = response.usage.completion_tokens
+        model = response.model
         
         # Check if truncation will be needed
         is_truncated = len(response_text) > 4000
         
         return cls(
+            request_id=request_id or f"req_{uuid.uuid4().hex[:12]}",
             response_text=response_text,
-            finish_reason=finish_reason,
             tokens_used=tokens_used,
-            timestamp=datetime.now(),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            model=model,
+            finish_reason=finish_reason,
+            timestamp=int(datetime.now().timestamp()),
             is_truncated=is_truncated
         )
 
-    def truncate_for_whatsapp(self) -> str:
+    def truncate_for_whatsapp(self) -> 'AIResponse':
         """
         Truncate response text to fit WhatsApp's 4000 character limit.
         
         Returns:
-            Truncated text with "..." appended if needed
+            New AIResponse with truncated text if needed
         """
         if len(self.response_text) > 4000:
-            self.is_truncated = True
-            return self.response_text[:4000] + '...'
-        return self.response_text
+            truncated_text = self.response_text[:4000] + '...'
+            return AIResponse(
+                request_id=self.request_id,
+                response_text=truncated_text,
+                tokens_used=self.tokens_used,
+                prompt_tokens=self.prompt_tokens,
+                completion_tokens=self.completion_tokens,
+                model=self.model,
+                finish_reason=self.finish_reason,
+                timestamp=self.timestamp,
+                is_truncated=True
+            )
+        return self
