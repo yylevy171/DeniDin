@@ -2,9 +2,10 @@
 """
 DeniDin WhatsApp AI Chatbot - Main Entry Point
 Integrates Green API for WhatsApp messaging with OpenAI ChatGPT.
-Phase 5: US3 - Error Handling & Resilience
+Phase 6: US4 - Configuration & Deployment
 """
 import os
+import sys
 from pathlib import Path
 from whatsapp_chatbot_python import GreenAPIBot, Notification
 from openai import OpenAI
@@ -16,9 +17,23 @@ from src.handlers.whatsapp_handler import WhatsAppHandler
 # Configuration
 CONFIG_PATH = os.getenv('CONFIG_PATH', 'config/config.json')
 
-# Load configuration
-config = BotConfiguration.from_file(CONFIG_PATH)
-config.validate()
+# Load and validate configuration
+try:
+    config = BotConfiguration.from_file(CONFIG_PATH)
+    config.validate()
+except ValueError as e:
+    # Configuration validation failed - exit with clear error message
+    print(f"ERROR: Invalid configuration in {CONFIG_PATH}", file=sys.stderr)
+    print(f"Validation error: {e}", file=sys.stderr)
+    print("Please fix the configuration file and restart the bot.", file=sys.stderr)
+    sys.exit(1)
+except FileNotFoundError:
+    print(f"ERROR: Configuration file not found: {CONFIG_PATH}", file=sys.stderr)
+    print("Please create config/config.json from config/config.example.json", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f"ERROR: Failed to load configuration: {e}", file=sys.stderr)
+    sys.exit(1)
 
 # Setup logging
 logger = get_logger(__name__, log_level=config.log_level)

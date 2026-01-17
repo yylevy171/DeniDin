@@ -45,6 +45,7 @@ class TestBotExceptionHandlingWithRealAPI:
     def test_openai_error_handling_real_api(self, real_ai_handler):
         """Test AIHandler catches REAL OpenAI API error - 1 REAL API CALL"""
         # Create a real message
+        from datetime import datetime, timezone
         message = WhatsAppMessage(
             message_id='msg_real_test',
             chat_id='test@c.us',
@@ -53,7 +54,8 @@ class TestBotExceptionHandlingWithRealAPI:
             text_content='Trigger an error',
             timestamp=1234567890,
             message_type='textMessage',
-            is_group=False
+            is_group=False,
+            received_timestamp=datetime.now(timezone.utc)
         )
         
         # Force an error by using invalid model
@@ -124,6 +126,7 @@ class TestMessageLengthValidation:
     
     def test_long_prompt_truncated_to_10000(self, real_ai_handler):
         """Test long prompt truncated to 10000 chars"""
+        from datetime import datetime, timezone
         long_message = WhatsAppMessage(
             message_id="msg_123",
             chat_id="123@c.us",
@@ -132,7 +135,8 @@ class TestMessageLengthValidation:
             text_content="a" * 10001,
             timestamp=1234567890,
             message_type="textMessage",
-            is_group=False
+            is_group=False,
+            received_timestamp=datetime.now(timezone.utc)
         )
         
         request = real_ai_handler.create_request(long_message)
@@ -140,6 +144,7 @@ class TestMessageLengthValidation:
     
     def test_short_messages_pass_through(self, real_ai_handler):
         """Test short messages (<10000) pass through unchanged"""
+        from datetime import datetime, timezone
         short_text = "Hello, this is a normal message."
         short_message = WhatsAppMessage(
             message_id="msg_123",
@@ -149,7 +154,8 @@ class TestMessageLengthValidation:
             text_content=short_text,
             timestamp=1234567890,
             message_type="textMessage",
-            is_group=False
+            is_group=False,
+            received_timestamp=datetime.now(timezone.utc)
         )
         
         request = real_ai_handler.create_request(short_message)

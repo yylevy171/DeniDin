@@ -3,6 +3,7 @@ Unit tests for AIHandler timeout and rate limit handling (Phase 5: US3)
 Tests fallback responses for API failures
 """
 import pytest
+from datetime import datetime, timezone
 from unittest.mock import Mock, MagicMock, patch
 from openai import APITimeoutError, RateLimitError
 from src.handlers.ai_handler import AIHandler
@@ -44,7 +45,8 @@ def sample_whatsapp_message():
         text_content="Hello, how are you?",
         timestamp=1234567890,
         message_type="textMessage",
-        is_group=False
+        is_group=False,
+        received_timestamp=datetime.now(timezone.utc)
     )
 
 
