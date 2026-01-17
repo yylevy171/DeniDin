@@ -19,9 +19,44 @@
 ### Test Requirements:
 - Unit tests for all models, handlers, and utilities
 - Integration tests for cross-component interactions
-- Mock external dependencies (APIs, databases)
+- Mock external dependencies for fast unit/integration tests
+- **Real API connectivity tests** for E2E validation (see below)
 - Achieve meaningful code coverage (aim for 80%+)
 - Tests must pass before any PR is created
+
+### Testing Strategy - Two-Tier Approach:
+
+#### Tier 1: Mocked Tests (Fast, Frequent)
+- **Purpose**: Test logic, structure, error handling
+- **Speed**: Fast execution, no network delays
+- **Usage**: Development, CI/CD pipelines, pre-commit hooks
+- **Scope**: Unit tests, integration tests with mocked APIs
+- **When**: Run on every code change
+
+#### Tier 2: Real API Tests (Slow, Critical)
+- **Purpose**: Verify actual connectivity, credentials, network behavior
+- **Speed**: Slower, depends on network and external services
+- **Usage**: Pre-deployment validation, periodic checks
+- **Scope**: End-to-end tests with REAL API calls (NO MOCKING)
+- **When**: Run before deployment, after configuration changes, periodically
+
+#### Real API Test Requirements:
+For any service that communicates with external APIs:
+1. **Connectivity Tests** - Verify API endpoints are reachable
+2. **Authentication Tests** - Confirm API keys/credentials are valid
+3. **Send Tests** - Verify the app can send data to external APIs
+4. **Receive Tests** - Verify the app can receive and parse responses
+5. **Complete Flow Tests** - Full E2E with real API calls
+
+**Example**: For a WhatsApp + OpenAI bot:
+- ✅ Mock tests: Fast tests for message parsing, response formatting
+- ✅ Real API tests: 
+  - Test real Green API connection and authorization
+  - Send actual WhatsApp message
+  - Make real OpenAI API call (consume quota)
+  - Verify complete flow: WhatsApp → OpenAI → WhatsApp
+
+**Note**: Real API tests may consume quotas/credits - this is acceptable and necessary for deployment confidence.
 
 ---
 
@@ -169,6 +204,15 @@
 - Verify user-facing behavior
 - Document test scenarios and results
 - Sign-off required before next phase
+
+### Real API Testing Checklist:
+Before approving any phase that involves external services, verify:
+- [ ] Real API connectivity tests pass
+- [ ] API credentials are valid in production environment
+- [ ] All send/receive operations work with real services
+- [ ] Error handling works with real API errors (rate limits, timeouts, etc.)
+- [ ] Complete E2E flow tested with actual network calls
+- [ ] API quota usage is acceptable and documented
 
 ---
 

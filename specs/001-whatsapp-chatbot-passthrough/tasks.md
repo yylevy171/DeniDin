@@ -125,13 +125,15 @@ Single Python project structure:
 
 - [ ] T022a [US1] Configure Green API bot profile/display name as "DeniDin" via Green API settings or message signature (FR-012 coverage - bot identity)
 
+- [ ] T022b [US1] Write automated E2E test in `tests/integration/test_end_to_end.py`: Test sends real WhatsApp message via Green API to configured phone number, test validates Green API connection (account state "authorized"), test validates OpenAI API key format and connectivity, test provides manual testing instructions in output, test waits for bot processing and checks logs for AI response generation
+
 - [ ] T023 [US1] 👤 **MANUAL APPROVAL GATE**: Start bot with `python bot.py`, verify startup logs, send WhatsApp message "Hello", verify bot receives and logs it, verify ChatGPT response appears in WhatsApp within 30 seconds, stop bot with Ctrl+C - THIS IS YOUR ACCEPTANCE TEST FOR US1
 
 **Checkpoint**: P1 Complete - Demo bot working locally, basic passthrough functional
 
 ### Version Control: Phase 3
-- [ ] T023-VC1 Run all tests: `pytest tests/ -v`
-- [ ] T023-VC2 Commit Phase 3 changes: `git add .` && `git commit -m "Phase 3: US1 - Green API demo bot working with ChatGPT integration"`
+- [ ] T023-VC1 Run all tests including E2E: `pytest tests/ -v`
+- [ ] T023-VC2 Commit Phase 3 changes: `git add .` && `git commit -m "Phase 3: US1 - Green API demo bot working with ChatGPT integration and E2E tests"`
 - [ ] T023-VC3 Push to branch: `git push origin 001-phase3-us1-demo`
 - [ ] T023-VC4 Create Pull Request: "Phase 3: User Story 1 - MVP Demo Bot Complete"
 - [ ] T023-VC5 Review, approve, and merge PR to main branch
