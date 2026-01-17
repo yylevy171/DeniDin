@@ -93,7 +93,7 @@ logger.info("=" * 60)
 def handle_text_message(notification: Notification) -> None:
     """
     Handle incoming text messages from WhatsApp with comprehensive error handling.
-    Phase 5: US3 - Error Handling & Resilience
+    Phase 6: US4 - Configuration & Deployment
     
     Args:
         notification: Green API notification object containing message data
@@ -104,41 +104,53 @@ def handle_text_message(notification: Notification) -> None:
             whatsapp_handler.handle_unsupported_message(notification)
             return
         
-        # Process notification into WhatsAppMessage
+        # Process notification into WhatsAppMessage (includes message_id and received_timestamp)
         message = whatsapp_handler.process_notification(notification)
         
-        # Log incoming message
+        # Create tracking prefix for all logs related to this message
+        tracking = f"[msg_id={message.message_id}] [recv_ts={message.received_timestamp.isoformat()}]"
+        
+        # Log incoming message with tracking
         logger.info(
-            f"Received message from {message.sender_name} ({message.sender_id}): "
+            f"{tracking} Received message from {message.sender_name} ({message.sender_id}): "
             f"{message.text_content[:100]}..."
         )
         
         # Check if bot is mentioned in group (or if 1-on-1)
         if not whatsapp_handler.is_bot_mentioned_in_group(message):
-            logger.debug(f"Skipping group message without mention: {message.message_id}")
+            logger.debug(f"{tracking} Skipping group message without mention")
             return
         
         # Create AI request
         ai_request = ai_handler.create_request(message)
-        logger.debug(f"Created AI request {ai_request.request_id}")
+        logger.debug(f"{tracking} Created AI request {ai_request.request_id}")
         
         # Get AI response (with retry logic and fallbacks built-in)
         ai_response = ai_handler.get_response(ai_request)
         logger.info(
-            f"AI response generated: {ai_response.tokens_used} tokens, "
+            f"{tracking} AI response generated: {ai_response.tokens_used} tokens, "
             f"{len(ai_response.response_text)} chars"
         )
         
         # Send response (with retry logic built-in)
         whatsapp_handler.send_response(notification, ai_response)
-        logger.info(f"Response sent to {message.sender_name}")
+        logger.info(f"{tracking} Response sent to {message.sender_name}")
         
     except Exception as e:
         # Global exception handler - catches anything not handled by specific handlers
-        logger.error(
-            f"Unexpected error processing message: {e}",
-            exc_info=True  # Full traceback
-        )
+        # Try to include tracking if message was processed
+        try:
+            tracking = f"[msg_id={message.message_id}] [recv_ts={message.received_timestamp.isoformat()}]"
+            logger.error(
+                f"{tracking} Unexpected error processing message: {e}",
+                exc_info=True  # Full traceback
+            )
+        except (NameError, AttributeError):
+            # message not yet defined or missing tracking fields
+            logger.error(
+                f"Unexpected error processing message (no tracking available): {e}",
+                exc_info=True
+            )
         
         # Send generic fallback message to user
         try:
@@ -147,13 +159,22 @@ def handle_text_message(notification: Notification) -> None:
                 "Please try again."
             )
             notification.answer(fallback_message)
-            logger.info("Generic fallback message sent to user")
+            try:
+                logger.info(f"{tracking} Generic fallback message sent to user")
+            except (NameError, AttributeError):
+                logger.info("Generic fallback message sent to user (no tracking available)")
         except Exception as fallback_error:
             # Even fallback failed - log and continue
-            logger.error(
-                f"Failed to send fallback message: {fallback_error}",
-                exc_info=True
-            )
+            try:
+                logger.error(
+                    f"{tracking} Failed to send fallback message: {fallback_error}",
+                    exc_info=True
+                )
+            except (NameError, AttributeError):
+                logger.error(
+                    f"Failed to send fallback message (no tracking available): {fallback_error}",
+                    exc_info=True
+                )
 
 
 

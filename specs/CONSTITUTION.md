@@ -5,7 +5,39 @@
 
 ---
 
-## I. Test-Driven Development (TDD)
+## I. UTC Timestamp Requirement
+
+**All timestamps in the codebase MUST use UTC timezone.**
+
+**Rationale**: Consistent timezone usage prevents time-related bugs, simplifies debugging across distributed systems, and ensures accurate message tracking and log correlation.
+
+**Requirements**:
+1. **ALWAYS** use `datetime.now(timezone.utc)` - NEVER use `datetime.now()` without timezone
+2. **ALWAYS** use `datetime.now(timezone.utc).timestamp()` for Unix timestamps
+3. **ALWAYS** store `datetime` objects with UTC timezone information
+4. **ISO format logs** must include timezone: `message.received_timestamp.isoformat()` outputs UTC ISO format
+5. **Code review** must verify all datetime operations use UTC explicitly
+
+**Enforcement**:
+- Search codebase for `datetime.now()` without `timezone.utc` before commits
+- All new timestamp fields must include UTC in comments/docstrings
+- Test fixtures must use `datetime.now(timezone.utc)` for consistency
+
+**Examples**:
+```python
+# ✅ CORRECT - Always use UTC
+from datetime import datetime, timezone
+received_timestamp = datetime.now(timezone.utc)
+unix_timestamp = int(datetime.now(timezone.utc).timestamp())
+
+# ❌ WRONG - Missing timezone
+received_timestamp = datetime.now()  # System timezone - FORBIDDEN
+unix_timestamp = int(datetime.now().timestamp())  # Ambiguous - FORBIDDEN
+```
+
+---
+
+## II. Test-Driven Development (TDD)
 
 **Principle**: All code must be tested before implementation.
 

@@ -53,7 +53,7 @@ class WhatsAppMessage:
         
         # Extract message metadata
         message_type = message_data.get('typeMessage', 'textMessage')
-        timestamp = event.get('timestamp', int(datetime.now().timestamp()))
+        timestamp = event.get('timestamp', int(datetime.now(timezone.utc).timestamp()))
         
         # Generate unique message ID (UUID) for tracking throughout lifecycle
         message_id = str(uuid.uuid4())
@@ -90,10 +90,11 @@ class AIRequest:
     
     def __post_init__(self):
         """Auto-generate fields if not provided"""
+        from datetime import timezone
         if not self.request_id:
             self.request_id = f"req_{uuid.uuid4().hex[:12]}"
         if self.timestamp is None:
-            self.timestamp = int(datetime.now().timestamp())
+            self.timestamp = int(datetime.now(timezone.utc).timestamp())
 
     def to_openai_payload(self) -> Dict[str, Any]:
         """
@@ -158,6 +159,7 @@ class AIResponse:
         # Check if truncation will be needed
         is_truncated = len(response_text) > 4000
         
+        from datetime import timezone
         return cls(
             request_id=request_id or f"req_{uuid.uuid4().hex[:12]}",
             response_text=response_text,
@@ -166,7 +168,7 @@ class AIResponse:
             completion_tokens=completion_tokens,
             model=model,
             finish_reason=finish_reason,
-            timestamp=int(datetime.now().timestamp()),
+            timestamp=int(datetime.now(timezone.utc).timestamp()),
             is_truncated=is_truncated
         )
 
