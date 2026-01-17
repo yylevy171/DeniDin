@@ -17,6 +17,20 @@
 
 ## User Scenarios & Testing *(mandatory)*
 
+### 🔒 Test Immutability Principle
+
+**Per CONSTITUTION Section I: Once tests for a phase are working and approved, they are IMMUTABLE.**
+
+- Tests from completed phases (e.g., Phase 1-5) **MUST NOT be changed** when working on subsequent phases (e.g., Phase 6-7) without **EXPLICIT HUMAN APPROVAL**
+- New phases should **ADD new tests**, not modify existing ones
+- Any test modification requires:
+  1. Clear justification explaining why the change is necessary
+  2. Explicit human approval before making any changes
+  3. Documentation of what changed and why
+- This ensures regression protection and maintains confidence in previously validated functionality
+
+---
+
 ### User Story 1 - Run Green API Demo Locally (Priority: P1)
 
 Set up and run the existing Green API ChatGPT demo locally as a foundation for the DeniDin chatbot.

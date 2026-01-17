@@ -16,6 +16,19 @@
 4. **Validate** - Run tests to verify implementation
 5. **Iterate** - Repeat for next feature
 
+### 🔒 Test Immutability Principle:
+
+**Once tests for a phase are working and approved, they are IMMUTABLE.**
+
+- **NO modifications** to existing passing tests without **EXPLICIT HUMAN APPROVAL**
+- When working on subsequent phases (e.g., Phase 6, 7), existing tests from completed phases (e.g., Phase 1-5) must NOT be changed
+- New phases should ADD new tests, not modify existing ones
+- If a test change is absolutely necessary, it requires:
+  1. Clear justification explaining why
+  2. Explicit human approval before making any changes
+  3. Documentation of what changed and why
+- This ensures regression protection and maintains confidence in previously validated functionality
+
 ### Test Requirements:
 - Unit tests for all models, handlers, and utilities
 - Integration tests for cross-component interactions
