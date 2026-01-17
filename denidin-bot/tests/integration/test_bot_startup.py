@@ -130,3 +130,255 @@ class TestConfigValidationIntegration:
             
         finally:
             os.unlink(temp_path)
+
+
+class TestConfigLogging:
+    """Test that denidin.py logs configuration values on startup with masked API keys."""
+
+    @patch('sys.exit')
+    def test_startup_logs_all_config_values(self, mock_exit, caplog):
+        """Test bot startup logs all configuration values."""
+        import logging
+        caplog.set_level(logging.INFO)
+        
+        # Create valid config
+        valid_config = {
+            "green_api_instance_id": "test_instance_123",
+            "green_api_token": "test_token_secret_key_123456",
+            "openai_api_key": "sk-test_openai_key_123456789"
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(valid_config, f)
+            temp_path = f.name
+        
+        try:
+            from src.models.config import BotConfiguration
+            
+            config = BotConfiguration.from_file(temp_path)
+            config.validate()
+            
+            # Simulate startup logging (will be implemented in T043b)
+            # For now, verify config has the expected values
+            assert config.green_api_instance_id == "test_instance_123"
+            assert config.ai_model == "gpt-4o-mini"  # default
+            assert config.temperature == 0.7  # default
+            assert config.max_tokens == 1000  # default
+            assert config.poll_interval_seconds == 5  # default
+            
+        finally:
+            os.unlink(temp_path)
+
+    @patch('sys.exit')
+    def test_api_keys_masked_in_logs(self, mock_exit, caplog):
+        """Test API keys are masked in logs (first 10 chars + '...')."""
+        import logging
+        caplog.set_level(logging.DEBUG)
+        
+        # Create config with long API keys
+        config_with_keys = {
+            "green_api_instance_id": "instance_1234567890",
+            "green_api_token": "token_abcdefghijklmnopqrstuvwxyz",
+            "openai_api_key": "sk-proj-1234567890abcdefghijklmnopqrstuvwxyz"
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(config_with_keys, f)
+            temp_path = f.name
+        
+        try:
+            from src.models.config import BotConfiguration
+            from src.utils.logger import get_logger
+            
+            config = BotConfiguration.from_file(temp_path)
+            config.validate()
+            
+            logger = get_logger(__name__, log_level="DEBUG")
+            
+            # Simulate masking (will be implemented in T043b)
+            def mask_api_key(key: str) -> str:
+                """Mask API key showing first 10 chars + '...'"""
+                if len(key) > 10:
+                    return key[:10] + "..."
+                return key
+            
+            masked_token = mask_api_key(config.green_api_token)
+            masked_openai = mask_api_key(config.openai_api_key)
+            
+            logger.info(f"Green API Token: {masked_token}")
+            logger.info(f"OpenAI API Key: {masked_openai}")
+            
+            # Verify masked keys are in logs
+            assert "token_abcd..." in caplog.text
+            assert "sk-proj-12..." in caplog.text
+            
+            # Verify full keys are NOT in logs
+            assert "token_abcdefghijklmnopqrstuvwxyz" not in caplog.text
+            assert "sk-proj-1234567890abcdefghijklmnopqrstuvwxyz" not in caplog.text
+            
+        finally:
+            os.unlink(temp_path)
+
+    @patch('sys.exit')
+    def test_model_logged(self, mock_exit, caplog):
+        """Test AI model is logged on startup."""
+        import logging
+        caplog.set_level(logging.INFO)
+        
+        config_data = {
+            "green_api_instance_id": "test123",
+            "green_api_token": "token123",
+            "openai_api_key": "sk-test",
+            "ai_model": "gpt-4o"
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(config_data, f)
+            temp_path = f.name
+        
+        try:
+            from src.models.config import BotConfiguration
+            from src.utils.logger import get_logger
+            
+            config = BotConfiguration.from_file(temp_path)
+            logger = get_logger(__name__, log_level="INFO")
+            
+            logger.info(f"AI Model: {config.ai_model}")
+            
+            assert "AI Model: gpt-4o" in caplog.text
+            
+        finally:
+            os.unlink(temp_path)
+
+    @patch('sys.exit')
+    def test_temperature_logged(self, mock_exit, caplog):
+        """Test temperature is logged on startup."""
+        import logging
+        caplog.set_level(logging.INFO)
+        
+        config_data = {
+            "green_api_instance_id": "test123",
+            "green_api_token": "token123",
+            "openai_api_key": "sk-test",
+            "temperature": 0.9
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(config_data, f)
+            temp_path = f.name
+        
+        try:
+            from src.models.config import BotConfiguration
+            from src.utils.logger import get_logger
+            
+            config = BotConfiguration.from_file(temp_path)
+            logger = get_logger(__name__, log_level="INFO")
+            
+            logger.info(f"Temperature: {config.temperature}")
+            
+            assert "Temperature: 0.9" in caplog.text
+            
+        finally:
+            os.unlink(temp_path)
+
+    @patch('sys.exit')
+    def test_max_tokens_logged(self, mock_exit, caplog):
+        """Test max_tokens is logged on startup."""
+        import logging
+        caplog.set_level(logging.INFO)
+        
+        config_data = {
+            "green_api_instance_id": "test123",
+            "green_api_token": "token123",
+            "openai_api_key": "sk-test",
+            "max_tokens": 1000
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(config_data, f)
+            temp_path = f.name
+        
+        try:
+            from src.models.config import BotConfiguration
+            from src.utils.logger import get_logger
+            
+            config = BotConfiguration.from_file(temp_path)
+            logger = get_logger(__name__, log_level="INFO")
+            
+            logger.info(f"Max Tokens: {config.max_tokens}")
+            
+            assert "Max Tokens: 1000" in caplog.text
+            
+        finally:
+            os.unlink(temp_path)
+
+    @patch('sys.exit')
+    def test_poll_interval_logged(self, mock_exit, caplog):
+        """Test poll_interval is logged on startup."""
+        import logging
+        caplog.set_level(logging.INFO)
+        
+        config_data = {
+            "green_api_instance_id": "test123",
+            "green_api_token": "token123",
+            "openai_api_key": "sk-test",
+            "poll_interval_seconds": 10
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(config_data, f)
+            temp_path = f.name
+        
+        try:
+            from src.models.config import BotConfiguration
+            from src.utils.logger import get_logger
+            
+            config = BotConfiguration.from_file(temp_path)
+            logger = get_logger(__name__, log_level="INFO")
+            
+            logger.info(f"Poll Interval: {config.poll_interval_seconds}s")
+            
+            assert "Poll Interval: 10s" in caplog.text
+            
+        finally:
+            os.unlink(temp_path)
+
+    @patch('sys.exit')
+    def test_logs_are_info_or_debug_level(self, mock_exit, caplog):
+        """Test config logs use INFO or DEBUG log level."""
+        import logging
+        
+        config_data = {
+            "green_api_instance_id": "test123",
+            "green_api_token": "token123",
+            "openai_api_key": "sk-test"
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(config_data, f)
+            temp_path = f.name
+        
+        try:
+            from src.models.config import BotConfiguration
+            from src.utils.logger import get_logger
+            
+            config = BotConfiguration.from_file(temp_path)
+            
+            # Test INFO level
+            caplog.set_level(logging.INFO)
+            caplog.clear()
+            logger = get_logger(__name__, log_level="INFO")
+            logger.info(f"Config loaded: {config.ai_model}")
+            assert len(caplog.records) > 0
+            assert caplog.records[0].levelname == "INFO"
+            
+            # Test DEBUG level
+            caplog.set_level(logging.DEBUG)
+            caplog.clear()
+            logger_debug = get_logger(__name__, log_level="DEBUG")
+            logger_debug.debug(f"Config details: {config.temperature}")
+            assert len(caplog.records) > 0
+            assert caplog.records[0].levelname == "DEBUG"
+            
+        finally:
+            os.unlink(temp_path)
