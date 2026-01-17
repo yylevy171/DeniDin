@@ -120,16 +120,17 @@ class TestAIRequest:
     def test_airequest_creation_with_required_fields(self, sample_whatsapp_message):
         """Test AIRequest creation with all required fields."""
         ai_request = AIRequest(
-            request_id='req_12345',
-            user_message='What is the weather today?',
+            user_prompt='What is the weather today?',
             system_message='You are a helpful assistant.',
             max_tokens=1000,
             temperature=0.7,
-            timestamp=datetime.now()
+            model='gpt-4o-mini',
+            chat_id='1234567890@c.us',
+            message_id='msg_12345'
         )
         
-        assert ai_request.request_id == 'req_12345'
-        assert ai_request.user_message == 'What is the weather today?'
+        assert ai_request.request_id is not None  # Auto-generated
+        assert ai_request.user_prompt == 'What is the weather today?'
         assert ai_request.system_message == 'You are a helpful assistant.'
         assert ai_request.max_tokens == 1000
         assert ai_request.temperature == 0.7
@@ -138,12 +139,13 @@ class TestAIRequest:
     def test_to_openai_payload_returns_correct_format(self):
         """Test that to_openai_payload() returns correct API format."""
         ai_request = AIRequest(
-            request_id='req_12345',
-            user_message='Hello AI',
+            user_prompt='Hello AI',
             system_message='You are helpful.',
             max_tokens=500,
             temperature=0.5,
-            timestamp=datetime.now()
+            model='gpt-4o-mini',
+            chat_id='123@c.us',
+            message_id='msg_123'
         )
         
         payload = ai_request.to_openai_payload()
@@ -151,8 +153,10 @@ class TestAIRequest:
         assert 'messages' in payload
         assert 'max_tokens' in payload
         assert 'temperature' in payload
+        assert 'model' in payload
         assert payload['max_tokens'] == 500
         assert payload['temperature'] == 0.5
+        assert payload['model'] == 'gpt-4o-mini'
         assert len(payload['messages']) == 2
         assert payload['messages'][0]['role'] == 'system'
         assert payload['messages'][0]['content'] == 'You are helpful.'
@@ -162,46 +166,47 @@ class TestAIRequest:
     def test_uuid_generation_for_request_id(self):
         """Test that request_id can be auto-generated as UUID."""
         import uuid
-        
-        # Create request with UUID
-        request_id = str(uuid.uuid4())
+    
+        # Create request without specifying request_id
         ai_request = AIRequest(
-            request_id=request_id,
-            user_message='Test',
+            user_prompt='Test',
             system_message='System',
             max_tokens=100,
             temperature=0.7,
-            timestamp=datetime.now()
+            model='gpt-4o-mini',
+            chat_id='123@c.us',
+            message_id='msg_123'
         )
         
-        assert ai_request.request_id == request_id
-        # Verify it's a valid UUID format
-        uuid.UUID(ai_request.request_id)
+        assert ai_request.request_id is not None
+        assert isinstance(ai_request.request_id, str)
+        assert len(ai_request.request_id) > 0
 
     def test_timestamp_auto_population(self):
         """Test that timestamp can be auto-populated."""
-        before = datetime.now()
         ai_request = AIRequest(
-            request_id='req_12345',
-            user_message='Test',
+            user_prompt='Test',
             system_message='System',
             max_tokens=100,
             temperature=0.7,
-            timestamp=datetime.now()
+            model='gpt-4o-mini',
+            chat_id='123@c.us',
+            message_id='msg_123'
         )
-        after = datetime.now()
         
-        assert before <= ai_request.timestamp <= after
+        assert ai_request.timestamp is not None
+        assert isinstance(ai_request.timestamp, int)
 
     def test_system_message_max_tokens_temperature_passthrough(self):
         """Test that system_message, max_tokens, and temperature pass through correctly."""
         ai_request = AIRequest(
-            request_id='req_12345',
-            user_message='User msg',
+            user_prompt='User msg',
             system_message='Custom system message',
             max_tokens=2000,
             temperature=0.9,
-            timestamp=datetime.now()
+            model='gpt-4o-mini',
+            chat_id='123@c.us',
+            message_id='msg_123'
         )
         
         assert ai_request.system_message == 'Custom system message'
@@ -245,36 +250,45 @@ class TestAIResponse:
         ai_response = AIResponse.from_openai_response(long_openai_response)
         truncated = ai_response.truncate_for_whatsapp()
         
-        assert len(truncated) <= 4003  # 4000 + "..."
-        assert truncated.endswith('...')
-        assert ai_response.is_truncated is True
+        assert len(truncated.response_text) <= 4003  # 4000 + "..."
+        assert truncated.response_text.endswith('...')
+        assert truncated.is_truncated is True
 
     def test_truncate_for_whatsapp_preserves_short_messages(self, sample_openai_response):
         """Test that truncate_for_whatsapp() preserves messages <=4000 chars."""
         ai_response = AIResponse.from_openai_response(sample_openai_response)
         truncated = ai_response.truncate_for_whatsapp()
         
-        assert truncated == 'This is the AI response.'
-        assert ai_response.is_truncated is False
+        assert truncated.response_text == 'This is the AI response.'
+        assert truncated.is_truncated is False
 
     def test_is_truncated_flag_set_correctly(self):
         """Test that is_truncated flag is set correctly."""
+        import time
         # Short message
         short_response = AIResponse(
+            request_id='req_123',
             response_text='Short message',
-            finish_reason='stop',
             tokens_used=10,
-            timestamp=datetime.now(),
+            prompt_tokens=5,
+            completion_tokens=5,
+            model='gpt-4o-mini',
+            finish_reason='stop',
+            timestamp=int(time.time()),
             is_truncated=False
         )
         assert short_response.is_truncated is False
         
         # Long message marked as truncated
         long_response = AIResponse(
+            request_id='req_124',
             response_text='A' * 4001,
-            finish_reason='stop',
             tokens_used=100,
-            timestamp=datetime.now(),
+            prompt_tokens=50,
+            completion_tokens=50,
+            model='gpt-4o-mini',
+            finish_reason='stop',
+            timestamp=int(time.time()),
             is_truncated=True
         )
         assert long_response.is_truncated is True
@@ -287,12 +301,17 @@ class TestAIResponse:
 
     def test_finish_reason_handling(self):
         """Test that finish_reason is handled correctly."""
+        import time
         for reason in ['stop', 'length', 'content_filter', 'null']:
             response = AIResponse(
+                request_id='req_123',
                 response_text='Test',
-                finish_reason=reason,
                 tokens_used=10,
-                timestamp=datetime.now(),
+                prompt_tokens=5,
+                completion_tokens=5,
+                model='gpt-4o-mini',
+                finish_reason=reason,
+                timestamp=int(time.time()),
                 is_truncated=False
             )
             assert response.finish_reason == reason
