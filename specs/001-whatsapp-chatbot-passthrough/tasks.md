@@ -23,6 +23,19 @@
 4. **Validation**: Run tests to verify implementation
 5. **Next task**: Repeat TDD cycle
 
+### 🔒 Test Immutability Rule
+
+**CRITICAL**: Once tests for a phase are working and approved, they are **IMMUTABLE**.
+
+- When working on Phase 6, 7, etc., **DO NOT modify** tests from completed Phases 1-5
+- Tests from previous phases **MUST NOT be changed** without **EXPLICIT HUMAN APPROVAL**
+- New phases should **ADD new tests**, not modify existing ones
+- If a test change is absolutely necessary:
+  1. Provide clear justification explaining why
+  2. Get explicit human approval before making any changes
+  3. Document what changed and why
+- This protects against regressions and maintains confidence in previously validated functionality
+
 ### Two-Tier Testing Strategy (Per CONSTITUTION):
 
 **Tier 1: Mocked Tests (Fast, Frequent)**

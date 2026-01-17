@@ -119,6 +119,10 @@ These clarifications have been incorporated into: Technical Context, Project Str
 - ✅ All tests written and approved BEFORE implementation (a-tasks before b-tasks)
 - ✅ Real API tests will validate: Green API connection, OpenAI API calls, complete E2E flow
 - ✅ Tests must pass before PR creation
+- ✅ **Test Immutability**: Once tests for a phase are working and approved, they are IMMUTABLE
+  - Tests from completed phases cannot be changed without EXPLICIT HUMAN APPROVAL
+  - New phases ADD new tests, not modify existing ones
+  - Ensures regression protection throughout project lifecycle
 
 **Status**: COMPLIANT
 

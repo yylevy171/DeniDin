@@ -16,6 +16,19 @@
 4. **Validate** - Run tests to verify implementation
 5. **Iterate** - Repeat for next feature
 
+### 🔒 Test Immutability Principle:
+
+**Once tests for a phase are working and approved, they are IMMUTABLE.**
+
+- **NO modifications** to existing passing tests without **EXPLICIT HUMAN APPROVAL**
+- When working on subsequent phases (e.g., Phase 6, 7), existing tests from completed phases (e.g., Phase 1-5) must NOT be changed
+- New phases should ADD new tests, not modify existing ones
+- If a test change is absolutely necessary, it requires:
+  1. Clear justification explaining why
+  2. Explicit human approval before making any changes
+  3. Documentation of what changed and why
+- This ensures regression protection and maintains confidence in previously validated functionality
+
 ### Test Requirements:
 - Unit tests for all models, handlers, and utilities
 - Integration tests for cross-component interactions
@@ -235,7 +248,49 @@ Before approving any phase that involves external services, verify:
 
 ---
 
-## X. Amendment Process
+## X. Command-Line Development Workflow
+
+**Principle**: All code management should be done locally via command-line tools.
+
+### Required Practices:
+- **Git Operations**: Use command-line `git` for all version control operations
+  - Commits: `git add`, `git commit`
+  - Branching: `git checkout -b`, `git branch`
+  - Pushing: `git push origin <branch-name>`
+  - Status checks: `git status`, `git log`, `git diff`
+- **Pull Request Management**: Use `gh` CLI for all PR operations
+  - Create PRs: `gh pr create --title "..." --body "..."`
+  - Review PRs: `gh pr review`, `gh pr checks`
+  - Merge PRs: `gh pr merge`
+  - List PRs: `gh pr list`, `gh pr view`
+- **Testing**: Run tests via command-line
+  - `pytest tests/ -v`
+  - `pytest tests/unit/ -v`
+  - `pytest --cov=src --cov-report=html`
+- **Environment Management**: Use command-line tools for dependencies
+  - `python -m venv venv`
+  - `pip install -r requirements.txt`
+  - `pip list`, `pip freeze`
+
+### Rationale:
+- **Reproducibility**: Command-line operations can be scripted and automated
+- **Transparency**: All actions are explicit and trackable
+- **Portability**: Works across all platforms and CI/CD environments
+- **Version Control**: Commands can be documented in scripts and shared with team
+- **Efficiency**: Faster than GUI interactions for experienced developers
+
+### GUI Exceptions:
+GUI tools may be used for:
+- Code editing (VS Code, IDEs)
+- Viewing diffs and merge conflicts (optional, CLI alternatives exist)
+- Monitoring CI/CD pipelines (optional)
+- Reading documentation in browsers
+
+**All code-modifying operations must use CLI tools.**
+
+---
+
+## XI. Amendment Process
 
 **Principle**: This constitution can evolve with the project.
 
