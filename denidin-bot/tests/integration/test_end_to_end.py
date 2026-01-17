@@ -49,7 +49,7 @@ class TestEndToEndFlow:
         monitors bot stability for 10 seconds, and provides manual testing instructions.
         
         What this test does:
-        - Launches bot.py in a subprocess to simulate real-world usage
+        - Launches denidin.py in a subprocess to simulate real-world usage
         - Validates the bot process starts without crashing
         - Confirms Green API account is in 'authorized' state
         - Handles temporary API server errors gracefully (502/503 errors)
@@ -86,11 +86,11 @@ class TestEndToEndFlow:
         # Start the bot in a subprocess
         bot_process = None
         try:
-            # Get the bot.py path
+            # Get the denidin.py path
             bot_path = os.path.join(
                 os.path.dirname(__file__),
                 '..', '..',
-                'bot.py'
+                'denidin.py'
             )
             
             print(f"[E2E Test] Step 1/3: Starting bot process...")
@@ -258,7 +258,7 @@ class TestManualE2EInstructions:
     
     1. Ensure bot is running:
        $ cd denidin-bot
-       $ python3 bot.py
+       $ python3 denidin.py
     
     2. Send a WhatsApp message to your bot number (0559723730)
        Message: "Hello, please respond to confirm you're working"

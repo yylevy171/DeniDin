@@ -14,9 +14,9 @@ class TestMessageHandlerFunctionality:
     """Test suite for message handler functionality."""
 
     def test_bot_file_contains_message_handler(self):
-        """Test that bot.py contains the message handler function."""
+        """Test that denidin.py contains the message handler function."""
         from pathlib import Path
-        bot_path = Path(__file__).parent.parent.parent / 'bot.py'
+        bot_path = Path(__file__).parent.parent.parent / 'denidin.py'
         with open(bot_path, 'r') as f:
             content = f.read()
         
@@ -25,9 +25,9 @@ class TestMessageHandlerFunctionality:
         assert 'openai_client.chat.completions.create' in content
 
     def test_bot_has_error_handling(self):
-        """Test that bot.py has proper error handling."""
+        """Test that denidin.py has proper error handling."""
         from pathlib import Path
-        bot_path = Path(__file__).parent.parent.parent / 'bot.py'
+        bot_path = Path(__file__).parent.parent.parent / 'denidin.py'
         with open(bot_path, 'r') as f:
             content = f.read()
         
@@ -39,7 +39,7 @@ class TestMessageHandlerFunctionality:
     def test_bot_extracts_message_data(self):
         """Test that bot extracts required message data fields."""
         from pathlib import Path
-        bot_path = Path(__file__).parent.parent.parent / 'bot.py'
+        bot_path = Path(__file__).parent.parent.parent / 'denidin.py'
         with open(bot_path, 'r') as f:
             content = f.read()
         
@@ -50,7 +50,7 @@ class TestMessageHandlerFunctionality:
     def test_bot_calls_openai_with_correct_structure(self):
         """Test that bot calls OpenAI with correct message structure."""
         from pathlib import Path
-        bot_path = Path(__file__).parent.parent.parent / 'bot.py'
+        bot_path = Path(__file__).parent.parent.parent / 'denidin.py'
         with open(bot_path, 'r') as f:
             content = f.read()
         

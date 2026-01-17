@@ -89,7 +89,7 @@ class TestMessageFlow:
         import importlib.util
         spec = importlib.util.spec_from_file_location(
             "bot",
-            os.path.join(os.path.dirname(__file__), '..', '..', 'bot.py')
+            os.path.join(os.path.dirname(__file__), '..', '..', 'denidin.py')
         )
         
         # Verify notification structure
@@ -127,7 +127,7 @@ class TestMessageFlow:
         from openai import OpenAI
         client = OpenAI(api_key=config.openai_api_key)
         
-        # Prepare the request (as bot.py does)
+        # Prepare the request (as denidin.py does)
         messages = [
             {"role": "system", "content": config.system_message},
             {"role": "user", "content": message_text}

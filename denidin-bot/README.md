@@ -87,7 +87,7 @@ Edit `config/config.json` and replace the placeholder values:
 ### 5. Run the Bot
 
 ```bash
-python bot.py
+python denidin.py
 ```
 
 The bot will:
@@ -105,7 +105,7 @@ Press `Ctrl+C` to gracefully shut down the bot.
 
 ```
 denidin-bot/
-├── bot.py                      # Main entry point
+├── denidin.py                  # Main entry point
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # This file
 ├── .gitignore                  # Git ignore rules
