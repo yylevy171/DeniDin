@@ -9,6 +9,9 @@ whatsapp-chatgpt-python>=0.0.1
 # OpenAI API
 openai>=1.12.0
 
+# Memory & Vector Storage (Feature 002+007)
+chromadb>=0.4.22
+
 # Configuration & Data
 PyYAML>=6.0
 
