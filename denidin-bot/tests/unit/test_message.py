@@ -99,6 +99,53 @@ class TestWhatsAppMessage:
         assert message.timestamp is not None
         assert message.message_type == 'textMessage'
 
+    def test_message_id_is_unique_uuid(self, sample_text_notification):
+        """Test that from_notification() generates unique message_id (UUID)."""
+        import uuid
+        
+        message1 = WhatsAppMessage.from_notification(sample_text_notification)
+        message2 = WhatsAppMessage.from_notification(sample_text_notification)
+        
+        # Verify both are valid UUIDs
+        assert isinstance(message1.message_id, str)
+        assert isinstance(message2.message_id, str)
+        
+        # Verify they can be parsed as UUIDs
+        uuid.UUID(message1.message_id)
+        uuid.UUID(message2.message_id)
+        
+        # Verify they are unique
+        assert message1.message_id != message2.message_id
+
+    def test_received_timestamp_is_utc(self, sample_text_notification):
+        """Test that received_timestamp is set to current UTC time."""
+        from datetime import timezone
+        
+        before = datetime.now(timezone.utc)
+        message = WhatsAppMessage.from_notification(sample_text_notification)
+        after = datetime.now(timezone.utc)
+        
+        assert hasattr(message, 'received_timestamp')
+        assert isinstance(message.received_timestamp, datetime)
+        
+        # Timestamp should be between before and after
+        assert before <= message.received_timestamp <= after
+        
+        # Verify it has timezone info (UTC)
+        assert message.received_timestamp.tzinfo is not None
+
+    def test_message_tracking_fields_in_logging(self, sample_text_notification):
+        """Test that message_id and received_timestamp can be used in log messages."""
+        message = WhatsAppMessage.from_notification(sample_text_notification)
+        
+        # Verify fields exist and can be formatted in log strings
+        log_message = f"[msg_id={message.message_id}] [recv_ts={message.received_timestamp}] Processing message"
+        
+        assert message.message_id in log_message
+        assert str(message.received_timestamp) in log_message
+        assert "[msg_id=" in log_message
+        assert "[recv_ts=" in log_message
+
 
 class TestAIRequest:
     """Test suite for AIRequest model."""
@@ -106,6 +153,7 @@ class TestAIRequest:
     @pytest.fixture
     def sample_whatsapp_message(self):
         """Create a sample WhatsAppMessage for testing."""
+        from datetime import timezone
         return WhatsAppMessage(
             message_id='msg_12345',
             chat_id='1234567890@c.us',
@@ -114,7 +162,8 @@ class TestAIRequest:
             text_content='What is the weather today?',
             timestamp=1234567890,
             message_type='textMessage',
-            is_group=False
+            is_group=False,
+            received_timestamp=datetime.now(timezone.utc)
         )
 
     def test_airequest_creation_with_required_fields(self, sample_whatsapp_message):

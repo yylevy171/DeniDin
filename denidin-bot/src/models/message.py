@@ -20,6 +20,7 @@ class WhatsAppMessage:
     timestamp: int
     message_type: str
     is_group: bool
+    received_timestamp: datetime  # UTC timestamp when message was received by bot
 
     @classmethod
     def from_notification(cls, notification) -> 'WhatsAppMessage':
@@ -32,6 +33,8 @@ class WhatsAppMessage:
         Returns:
             WhatsAppMessage instance
         """
+        from datetime import timezone
+        
         event = notification.event
         message_data = event.get('messageData', {})
         sender_data = event.get('senderData', {})
@@ -50,10 +53,13 @@ class WhatsAppMessage:
         
         # Extract message metadata
         message_type = message_data.get('typeMessage', 'textMessage')
-        timestamp = event.get('timestamp', int(datetime.now().timestamp()))
+        timestamp = event.get('timestamp', int(datetime.now(timezone.utc).timestamp()))
         
-        # Generate message ID (could use idMessage from event if available)
-        message_id = event.get('idMessage', f"msg_{uuid.uuid4().hex[:12]}")
+        # Generate unique message ID (UUID) for tracking throughout lifecycle
+        message_id = str(uuid.uuid4())
+        
+        # Track when message was received by bot (UTC)
+        received_timestamp = datetime.now(timezone.utc)
         
         return cls(
             message_id=message_id,
@@ -63,7 +69,8 @@ class WhatsAppMessage:
             text_content=text_content,
             timestamp=timestamp,
             message_type=message_type,
-            is_group=is_group
+            is_group=is_group,
+            received_timestamp=received_timestamp
         )
 
 
@@ -83,10 +90,11 @@ class AIRequest:
     
     def __post_init__(self):
         """Auto-generate fields if not provided"""
+        from datetime import timezone
         if not self.request_id:
             self.request_id = f"req_{uuid.uuid4().hex[:12]}"
         if self.timestamp is None:
-            self.timestamp = int(datetime.now().timestamp())
+            self.timestamp = int(datetime.now(timezone.utc).timestamp())
 
     def to_openai_payload(self) -> Dict[str, Any]:
         """
@@ -151,6 +159,7 @@ class AIResponse:
         # Check if truncation will be needed
         is_truncated = len(response_text) > 4000
         
+        from datetime import timezone
         return cls(
             request_id=request_id or f"req_{uuid.uuid4().hex[:12]}",
             response_text=response_text,
@@ -159,7 +168,7 @@ class AIResponse:
             completion_tokens=completion_tokens,
             model=model,
             finish_reason=finish_reason,
-            timestamp=int(datetime.now().timestamp()),
+            timestamp=int(datetime.now(timezone.utc).timestamp()),
             is_truncated=is_truncated
         )
 

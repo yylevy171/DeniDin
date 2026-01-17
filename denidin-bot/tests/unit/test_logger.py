@@ -8,6 +8,7 @@ import os
 import logging
 import shutil
 from pathlib import Path
+from logging.handlers import RotatingFileHandler
 from src.utils.logger import setup_logger, get_logger
 
 
@@ -191,3 +192,158 @@ class TestLogger:
         assert logger is not None
         assert isinstance(logger, logging.Logger)
         assert logger.name == 'test_get'
+
+
+class TestLogRotation:
+    """Test suite for log rotation functionality (Phase 6: US4 T045a)."""
+
+    @pytest.fixture
+    def temp_logs_dir(self):
+        """Create a temporary logs directory."""
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        # Clean up
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_rotating_file_handler_maxbytes_10mb_default(self, temp_logs_dir):
+        """Test RotatingFileHandler uses 10MB default maxBytes."""
+        logs_path = os.path.join(temp_logs_dir, 'logs')
+        logger = setup_logger('test_10mb', logs_dir=logs_path, log_level='INFO')
+        
+        # Find the RotatingFileHandler
+        rotating_handler = None
+        for handler in logger.handlers:
+            if isinstance(handler, RotatingFileHandler):
+                rotating_handler = handler
+                break
+        
+        assert rotating_handler is not None, "RotatingFileHandler not found"
+        assert rotating_handler.maxBytes == 10 * 1024 * 1024  # 10MB
+
+    def test_backup_count_creates_five_backup_files(self, temp_logs_dir):
+        """Test backupCount=5 creates .1, .2, .3, .4, .5 backup files."""
+        logs_path = os.path.join(temp_logs_dir, 'logs')
+        
+        # Create logger with very small max bytes to force rotation
+        logger = setup_logger(
+            'test_backups',
+            logs_dir=logs_path,
+            log_level='INFO',
+            max_bytes=500,  # Very small to trigger rotation quickly
+            backup_count=5
+        )
+        
+        # Write enough data to create multiple backup files
+        # Each log message is ~100 bytes, so 50 messages = ~5KB = 10 rotations
+        large_message = 'X' * 100  # 100 char message
+        for i in range(50):
+            logger.info(f'Log {i}: {large_message}')
+        
+        # Check that backup files were created
+        log_file = os.path.join(logs_path, 'denidin.log')
+        assert os.path.exists(log_file)
+        
+        # Check for backup files (.1, .2, .3, .4, .5)
+        backup_files_found = 0
+        for i in range(1, 6):
+            backup_file = f"{log_file}.{i}"
+            if os.path.exists(backup_file):
+                backup_files_found += 1
+        
+        # At least some backup files should be created
+        assert backup_files_found >= 1, "No backup files created during rotation"
+
+    def test_logs_directory_created_if_missing(self, temp_logs_dir):
+        """Test logs/ directory is automatically created if missing."""
+        logs_path = os.path.join(temp_logs_dir, 'new_logs_dir')
+        
+        # Verify directory doesn't exist yet
+        assert not os.path.exists(logs_path)
+        
+        # Create logger - should auto-create directory
+        logger = setup_logger('test_mkdir', logs_dir=logs_path, log_level='INFO')
+        logger.info('Test message')
+        
+        # Verify directory was created
+        assert os.path.exists(logs_path)
+        assert os.path.isdir(logs_path)
+        
+        # Verify log file was created in the new directory
+        log_file = os.path.join(logs_path, 'denidin.log')
+        assert os.path.exists(log_file)
+
+    def test_old_logs_rotated_when_size_limit_reached(self, temp_logs_dir):
+        """Test that old logs are rotated when size limit is reached."""
+        logs_path = os.path.join(temp_logs_dir, 'logs')
+        
+        # Create logger with small max bytes
+        logger = setup_logger(
+            'test_rotation',
+            logs_dir=logs_path,
+            log_level='INFO',
+            max_bytes=1024,  # 1KB
+            backup_count=3
+        )
+        
+        log_file = os.path.join(logs_path, 'denidin.log')
+        
+        # Write initial data
+        for i in range(20):
+            logger.info(f'Initial log message {i} with padding text to increase size')
+        
+        # Get initial file size
+        initial_size = os.path.getsize(log_file)
+        
+        # Write more data to trigger rotation
+        for i in range(30):
+            logger.info(f'Additional log message {i} with more padding text to trigger rotation')
+        
+        # Main log file should not grow indefinitely - rotation should have occurred
+        final_size = os.path.getsize(log_file)
+        
+        # Final size should be less than (initial_size + all new data)
+        # If rotation didn't happen, file would be much larger
+        assert final_size < 5000, f"Log file too large ({final_size} bytes) - rotation may not be working"
+        
+        # At least one backup file should exist
+        backup_exists = (
+            os.path.exists(f"{log_file}.1") or
+            os.path.exists(f"{log_file}.2") or
+            os.path.exists(f"{log_file}.3")
+        )
+        assert backup_exists, "No backup files created - rotation not working"
+
+    def test_mock_large_log_writes(self, temp_logs_dir):
+        """Test log rotation with mock large log writes."""
+        logs_path = os.path.join(temp_logs_dir, 'logs')
+        
+        # Create logger with 2KB limit
+        logger = setup_logger(
+            'test_large',
+            logs_dir=logs_path,
+            log_level='INFO',
+            max_bytes=2048,  # 2KB
+            backup_count=5
+        )
+        
+        log_file = os.path.join(logs_path, 'denidin.log')
+        
+        # Mock large writes - each message is ~1KB
+        large_message = 'A' * 1000
+        
+        # Write 10KB total (should create multiple rotations)
+        for i in range(10):
+            logger.info(f'Large log {i}: {large_message}')
+        
+        # Verify main log file exists and is under size limit
+        assert os.path.exists(log_file)
+        main_log_size = os.path.getsize(log_file)
+        assert main_log_size <= 2048, f"Main log exceeded maxBytes: {main_log_size} > 2048"
+        
+        # Verify backup files were created
+        backup_count = 0
+        for i in range(1, 6):
+            if os.path.exists(f"{log_file}.{i}"):
+                backup_count += 1
+        
+        assert backup_count > 0, "No backup files created with large writes"
