@@ -3,7 +3,6 @@ AIHandler - Handles OpenAI API interactions with retry logic and error handling
 Phase 5: US3 - Error Handling & Resilience
 """
 import time
-from typing import Optional
 from openai import OpenAI, APITimeoutError, RateLimitError, APIError
 from tenacity import (
     retry,

@@ -1,0 +1,69 @@
+[MASTER]
+# Files or directories to be skipped
+ignore=venv,tests,htmlcov,.pytest_cache
+
+# Use multiple processes to speed up Pylint
+jobs=4
+
+# Pickle collected data for later comparisons
+persistent=yes
+
+[MESSAGES CONTROL]
+# Disable specific warnings
+disable=C0111,  # missing-docstring (we have docstrings via T049)
+        C0103,  # invalid-name
+        R0903,  # too-few-public-methods
+        R0913,  # too-many-arguments
+        W0212,  # protected-access
+        C0415,  # import-outside-toplevel
+        R0801,  # duplicate-code
+        W1203,  # logging-fstring-interpolation (f-strings in logs are fine)
+        W0718,  # broad-exception-caught (intentional for robustness)
+        W0613   # unused-argument (signal handlers require specific signatures)
+
+[FORMAT]
+# Maximum number of characters on a single line
+max-line-length=120
+
+# String used for indentation
+indent-string='    '
+
+[DESIGN]
+# Maximum number of arguments for function / method
+max-args=8
+
+# Maximum number of attributes for a class
+max-attributes=10
+
+# Minimum number of public methods for a class
+min-public-methods=0
+
+# Maximum number of public methods for a class
+max-public-methods=20
+
+[BASIC]
+# Good variable names
+good-names=i,j,k,ex,_,id,logger,e,f
+
+# Regular expression for module names
+module-rgx=(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$
+
+# Regular expression for constant names
+const-rgx=(([A-Z_][A-Z0-9_]*)|(__.*__))$
+
+[SIMILARITIES]
+# Minimum lines number of a similarity
+min-similarity-lines=6
+
+# Ignore comments when computing similarities
+ignore-comments=yes
+
+# Ignore docstrings when computing similarities
+ignore-docstrings=yes
+
+# Ignore imports when computing similarities
+ignore-imports=yes
+
+[TYPECHECK]
+# List of members which are set dynamically
+generated-members=

@@ -1,0 +1,227 @@
+{
+  "description": "Test fixtures for Green API WhatsApp notifications - Realistic examples",
+  "fixtures": {
+    "text_message_1on1": {
+      "description": "Simple text message in 1-on-1 chat",
+      "event": {
+        "typeWebhook": "incomingMessageReceived",
+        "timestamp": 1705526400,
+        "messageData": {
+          "typeMessage": "textMessage",
+          "textMessageData": {
+            "textMessage": "Hello DeniDin! How are you today?"
+          },
+          "idMessage": "3EB0C767D097B7C7E730",
+          "timestamp": 1705526400
+        },
+        "senderData": {
+          "chatId": "1234567890@c.us",
+          "sender": "1234567890@c.us",
+          "senderName": "John Doe"
+        }
+      }
+    },
+    "text_message_with_emoji": {
+      "description": "Text message with emojis and special characters",
+      "event": {
+        "typeWebhook": "incomingMessageReceived",
+        "timestamp": 1705526460,
+        "messageData": {
+          "typeMessage": "textMessage",
+          "textMessageData": {
+            "textMessage": "Hi! 👋 Can you help me with this? 🤔 I need advice on Python 🐍 programming!"
+          },
+          "idMessage": "3EB0C767D097B7C7E731",
+          "timestamp": 1705526460
+        },
+        "senderData": {
+          "chatId": "9876543210@c.us",
+          "sender": "9876543210@c.us",
+          "senderName": "Jane Smith"
+        }
+      }
+    },
+    "long_text_message": {
+      "description": "Very long text message exceeding 4000 characters",
+      "event": {
+        "typeWebhook": "incomingMessageReceived",
+        "timestamp": 1705526520,
+        "messageData": {
+          "typeMessage": "textMessage",
+          "textMessageData": {
+            "textMessage": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. " 
+          },
+          "idMessage": "3EB0C767D097B7C7E732",
+          "timestamp": 1705526520
+        },
+        "senderData": {
+          "chatId": "5551234567@c.us",
+          "sender": "5551234567@c.us",
+          "senderName": "Alice Johnson"
+        }
+      }
+    },
+    "group_message_with_mention": {
+      "description": "Message from group chat that mentions DeniDin",
+      "event": {
+        "typeWebhook": "incomingMessageReceived",
+        "timestamp": 1705526580,
+        "messageData": {
+          "typeMessage": "textMessage",
+          "textMessageData": {
+            "textMessage": "Hey @DeniDin, can you explain what machine learning is?"
+          },
+          "idMessage": "3EB0C767D097B7C7E733",
+          "timestamp": 1705526580
+        },
+        "senderData": {
+          "chatId": "120363012345678901@g.us",
+          "chatName": "Tech Discussion Group",
+          "sender": "9998887777@c.us",
+          "senderName": "Bob Wilson"
+        }
+      }
+    },
+    "group_message_without_mention": {
+      "description": "Message from group chat without mentioning DeniDin (should be ignored)",
+      "event": {
+        "typeWebhook": "incomingMessageReceived",
+        "timestamp": 1705526640,
+        "messageData": {
+          "typeMessage": "textMessage",
+          "textMessageData": {
+            "textMessage": "This is just a regular group message, not for the bot"
+          },
+          "idMessage": "3EB0C767D097B7C7E734",
+          "timestamp": 1705526640
+        },
+        "senderData": {
+          "chatId": "120363012345678901@g.us",
+          "chatName": "Tech Discussion Group",
+          "sender": "7776665555@c.us",
+          "senderName": "Charlie Brown"
+        }
+      }
+    },
+    "image_message": {
+      "description": "Image message (unsupported type - should trigger auto-reply)",
+      "event": {
+        "typeWebhook": "incomingMessageReceived",
+        "timestamp": 1705526700,
+        "messageData": {
+          "typeMessage": "imageMessage",
+          "fileMessageData": {
+            "downloadUrl": "https://example.com/image.jpg",
+            "caption": "Check out this image!",
+            "fileName": "photo.jpg",
+            "jpegThumbnail": "base64_thumbnail_data_here"
+          },
+          "idMessage": "3EB0C767D097B7C7E735",
+          "timestamp": 1705526700
+        },
+        "senderData": {
+          "chatId": "3332221111@c.us",
+          "sender": "3332221111@c.us",
+          "senderName": "Diana Prince"
+        }
+      }
+    },
+    "audio_message": {
+      "description": "Audio/voice message (unsupported type)",
+      "event": {
+        "typeWebhook": "incomingMessageReceived",
+        "timestamp": 1705526760,
+        "messageData": {
+          "typeMessage": "audioMessage",
+          "fileMessageData": {
+            "downloadUrl": "https://example.com/audio.ogg",
+            "mimeType": "audio/ogg; codecs=opus",
+            "seconds": 15
+          },
+          "idMessage": "3EB0C767D097B7C7E736",
+          "timestamp": 1705526760
+        },
+        "senderData": {
+          "chatId": "4445556666@c.us",
+          "sender": "4445556666@c.us",
+          "senderName": "Edward Norton"
+        }
+      }
+    },
+    "video_message": {
+      "description": "Video message (unsupported type)",
+      "event": {
+        "typeWebhook": "incomingMessageReceived",
+        "timestamp": 1705526820,
+        "messageData": {
+          "typeMessage": "videoMessage",
+          "fileMessageData": {
+            "downloadUrl": "https://example.com/video.mp4",
+            "caption": "Watch this!",
+            "fileName": "video.mp4",
+            "jpegThumbnail": "base64_thumbnail_data_here"
+          },
+          "idMessage": "3EB0C767D097B7C7E737",
+          "timestamp": 1705526820
+        },
+        "senderData": {
+          "chatId": "6667778888@c.us",
+          "sender": "6667778888@c.us",
+          "senderName": "Fiona Apple"
+        }
+      }
+    },
+    "text_with_special_chars": {
+      "description": "Text message with special characters and multilingual text",
+      "event": {
+        "typeWebhook": "incomingMessageReceived",
+        "timestamp": 1705526880,
+        "messageData": {
+          "typeMessage": "textMessage",
+          "textMessageData": {
+            "textMessage": "Hello! こんにちは! Привет! مرحبا! How do you handle UTF-8? Testing symbols: @#$%^&*()_+-=[]{}|;':\",./<>?"
+          },
+          "idMessage": "3EB0C767D097B7C7E738",
+          "timestamp": 1705526880
+        },
+        "senderData": {
+          "chatId": "1112223333@c.us",
+          "sender": "1112223333@c.us",
+          "senderName": "George Multilang"
+        }
+      }
+    },
+    "text_question": {
+      "description": "Simple question expecting AI response",
+      "event": {
+        "typeWebhook": "incomingMessageReceived",
+        "timestamp": 1705526940,
+        "messageData": {
+          "typeMessage": "textMessage",
+          "textMessageData": {
+            "textMessage": "What is the capital of France?"
+          },
+          "idMessage": "3EB0C767D097B7C7E739",
+          "timestamp": 1705526940
+        },
+        "senderData": {
+          "chatId": "8889990000@c.us",
+          "sender": "8889990000@c.us",
+          "senderName": "Hannah Geography"
+        }
+      }
+    }
+  },
+  "usage_notes": {
+    "text_message_1on1": "Use for basic message passthrough tests",
+    "text_message_with_emoji": "Test Unicode/emoji handling",
+    "long_text_message": "Test truncation logic (note: this is shortened for JSON readability - in real tests, generate 10000+ chars)",
+    "group_message_with_mention": "Test group chat mention detection - bot should respond",
+    "group_message_without_mention": "Test group chat filtering - bot should ignore",
+    "image_message": "Test unsupported media type handling - should send auto-reply",
+    "audio_message": "Test unsupported media type handling",
+    "video_message": "Test unsupported media type handling",
+    "text_with_special_chars": "Test international character support",
+    "text_question": "Use for E2E flow tests"
+  }
+}
