@@ -38,31 +38,12 @@ class WhatsAppHandler:
         Returns:
             WhatsAppMessage object
         """
-        event = notification.event
-        
-        # Extract message data
-        message_data = event.get('messageData', {})
-        text_data = message_data.get('textMessageData', {})
-        sender_data = event.get('senderData', {})
-        
-        # Determine if group message
-        chat_id = sender_data.get('chatId', sender_data.get('sender', ''))
-        is_group = '@g.us' in chat_id
-        
-        message = WhatsAppMessage(
-            message_id=event.get('idMessage', ''),
-            chat_id=chat_id,
-            sender_id=sender_data.get('sender', ''),
-            sender_name=sender_data.get('senderName', 'Unknown'),
-            text_content=text_data.get('textMessage', ''),
-            timestamp=event.get('timestamp', 0),
-            message_type=message_data.get('typeMessage', 'textMessage'),
-            is_group=is_group
-        )
+        # Use the from_notification factory method which handles timestamp, message_id, etc.
+        message = WhatsAppMessage.from_notification(notification)
         
         logger.debug(
             f"Processed notification: {message.message_id} from {message.sender_name} "
-            f"(group: {is_group})"
+            f"(group: {message.is_group})"
         )
         
         return message
