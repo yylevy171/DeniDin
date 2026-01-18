@@ -40,8 +40,9 @@ class Session:
     session_id: str
     whatsapp_chat: str
     message_ids: List[str]
-    created_at: str
-    last_active: str
+    message_counter: int = 0
+    created_at: str = ""
+    last_active: str = ""
     total_tokens: int = 0
 
 
@@ -124,6 +125,7 @@ class SessionManager:
             session_id=session_id,
             whatsapp_chat=chat_id,
             message_ids=[],
+            message_counter=0,
             created_at=now,
             last_active=now,
             total_tokens=0
@@ -163,6 +165,9 @@ class SessionManager:
         """
         session = self.get_session(chat_id)
         
+        # Increment message counter
+        session.message_counter += 1
+        
         # Create message
         message_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
@@ -177,7 +182,7 @@ class SessionManager:
             timestamp=now,
             received_at=now,
             was_received=True,
-            order_num=len(session.message_ids),
+            order_num=session.message_counter,
             image_path=image_path
         )
         
