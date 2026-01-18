@@ -58,6 +58,27 @@ class TestSessionCreation:
         # UUID format: 8-4-4-4-12 characters
         assert len(session.session_id) == 36
         assert session.session_id.count('-') == 4
+    
+    def test_message_counter_increments(self, session_manager):
+        """Test that message_counter increments with each message."""
+        chat_id = "1234567890@c.us"
+        
+        # Initial session should have counter at 0
+        session = session_manager.get_session(chat_id)
+        assert session.message_counter == 0
+        
+        # Add messages and verify counter increments
+        session_manager.add_message(chat_id, "user", "Message 1", "client")
+        session = session_manager.get_session(chat_id)
+        assert session.message_counter == 1
+        
+        session_manager.add_message(chat_id, "assistant", "Response 1", "client")
+        session = session_manager.get_session(chat_id)
+        assert session.message_counter == 2
+        
+        session_manager.add_message(chat_id, "user", "Message 2", "client")
+        session = session_manager.get_session(chat_id)
+        assert session.message_counter == 3
 
 
 class TestMessageHandling:

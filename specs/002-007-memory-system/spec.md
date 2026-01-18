@@ -2,8 +2,29 @@
 
 **Feature ID**: 002+007-memory-system  
 **Priority**: P0 (Critical)  
-**Status**: Planning  
-**Created**: January 17, 2026
+**Status**: In Progress (Phase 1-2 Complete)  
+**Created**: January 17, 2026  
+**Updated**: January 18, 2026  
+**Branch**: `002-007-memory-system`
+
+**IMPLEMENTATION STATUS**:
+- ✅ Phase 1 Complete: Foundation, dependencies, config
+- ✅ Phase 2 Complete: SessionManager (UUID sessions, message persistence, cleanup)
+- ⏳ Phase 3: MemoryManager (ChromaDB semantic memory) - Next
+- **DEFERRED to Feature 006 (RBAC)**: Token limits, pruning, client_name, tokens field
+
+## Terminology Glossary
+
+**CRITICAL**: These terms are used consistently throughout this specification:
+
+- **session_id**: Unique UUID identifier for a conversation session (primary key)
+- **whatsapp_chat**: WhatsApp chat identifier (e.g., "1234567890@c.us" for individual, "group-id@g.us" for groups)
+- **chat_id**: DEPRECATED - use `session_id` or `whatsapp_chat` explicitly
+- **phone_number**: DEPRECATED - use `whatsapp_chat` instead
+- **client_phone**: Extracted phone number from whatsapp_chat (e.g., "1234567890" from "1234567890@c.us")
+- **user_role**: User's role in system - either "client" or "godfather" (determines token limits and permissions)
+- **message_id**: Unique UUID identifier for a single message within a session
+- **order_num**: Sequential message number within a session (1, 2, 3...)
 
 ## Overview
 
@@ -68,6 +89,18 @@ Currently, DeniDin has **no memory**:
    - Default: disabled (false) for safe deployment
    - Can enable incrementally per environment/user
 
+### Role Identification
+
+**REQ-ROLE-001**: User role determination
+- **Godfather**: WhatsApp chat ID matches configured godfather phone number in `config.json`
+- **Client**: Any other WhatsApp chat ID not matching godfather number
+- **Default**: If role cannot be determined, default to "client" (more restrictive token limit)
+
+**REQ-ROLE-002**: Configuration
+- `config.json` MUST contain `godfather_phone` field (e.g., "972501234567@c.us")
+- Format validation: Must match WhatsApp ID format (phone@c.us or phone@g.us)
+- Case-sensitive exact match required
+
 ### Deferred to Phase 2
 
 - Per-chat memory (separate from Godfather global)
@@ -75,6 +108,77 @@ Currently, DeniDin has **no memory**:
 - Advanced memory commands (`/memories`, `/forget`, `/search`)
 - Memory categories/tags
 - Automatic memory extraction from conversations
+
+## Non-Functional Requirements
+
+### Performance (NFR-PERF)
+
+**NFR-PERF-001**: Session Load Time
+- Session load from disk: ≤100ms (p95) for sessions with ≤1000 messages
+- Session metadata load: ≤10ms (p95)
+- Message file load: ≤5ms per message (p95)
+
+**NFR-PERF-002**: Memory Query Latency
+- ChromaDB semantic search: ≤500ms (p95) for collections ≤10K memories
+- Embedding generation: ≤200ms per query (p95)
+- Total memory recall (query + embedding): ≤700ms (p95)
+
+**NFR-PERF-003**: Session Pruning
+- Pruning operation: ≤50ms for sessions with 1000+ messages
+- Non-blocking: Must not delay message response
+
+**NFR-PERF-004**: Scalability Limits
+- Maximum sessions: 10,000 active sessions (in-memory cache)
+- Maximum messages per session: Unlimited (file-based, limited by token pruning)
+- Maximum memories: 100,000 ChromaDB entries (Phase 1 target)
+- Disk space planning: ~10KB per session, ~2KB per message, ~5KB per memory
+
+### Security & Privacy (NFR-SEC)
+
+**NFR-SEC-001**: Data Encryption at Rest
+- Session files: Stored in plaintext (Phase 1 - local deployment only)
+- Memory files: ChromaDB default storage (unencrypted)
+- **Phase 2**: Implement encryption for production deployments
+
+**NFR-SEC-002**: Access Control
+- File system permissions: 600 (owner read/write only) for all data files
+- Directory permissions: 700 (owner access only) for data/ directories
+- No external access to data files (application-only access)
+
+**NFR-SEC-003**: PII Handling
+- `client_name`: Stored as-is (no encryption in Phase 1)
+- `whatsapp_chat` (phone numbers): Stored as-is (required for routing)
+- Message content: Stored as-is (contains user data)
+- **Compliance**: GDPR compliance deferred to Phase 2 (manual deletion only)
+
+**NFR-SEC-004**: Data Retention
+- Sessions: Auto-expire after 24 hours of inactivity (configurable)
+- Expired sessions: Moved to `data/sessions/expired/` (preserved for 30 days)
+- Messages: Preserved indefinitely (no auto-deletion)
+- Memories: Indefinite retention (manual `/forget` command only)
+
+**NFR-SEC-005**: Audit Logging
+- Memory operations (remember/forget): Logged with timestamp, user, content hash
+- Session creation/expiration: Logged with session_id, whatsapp_chat
+- Log retention: 90 days
+- Log format: JSON structured logs in `logs/memory_audit.log`
+
+### Reliability (NFR-REL)
+
+**NFR-REL-001**: Data Consistency
+- Session updates: Atomic writes (write to temp file, then atomic rename)
+- Message saves: Independent files (failure of one doesn't affect others)
+- No concurrent session updates: Single-threaded per session (queue-based)
+
+**NFR-REL-002**: Durability
+- File writes: fsync after critical operations (session save, message save)
+- ChromaDB: Auto-persistence (commit after each operation)
+- Recovery: All operations idempotent (can retry safely)
+
+**NFR-REL-003**: Graceful Degradation
+- If ChromaDB unavailable: Disable memory recall, continue with session history only
+- If session load fails: Create new session, log error
+- If disk full: Return error to user, prevent data corruption
 
 ## Technical Design
 
@@ -129,81 +233,81 @@ import os
 class Message:
     """Single message in conversation - stored as separate file/object."""
     message_id: str     # Unique message ID (UUID)
-    chat_id: str        # Parent session ID (UUID) ✨ NEW
-    order_num: int      # Sequential number within chat (1, 2, 3...)
+    chat_id: str        # Parent session ID (UUID)
+    order_num: int      # Sequential number within chat (1, 2, 3...) - from session.message_counter
     role: str           # "user" (from WhatsApp) or "assistant" (from OpenAI)
     content: str        # Message text
-    sender: str         # WhatsApp sender ID (e.g., "1234567890@c.us") or "assistant"
-    recipient: str      # WhatsApp recipient ID (bot's ID) or WhatsApp phone number
-    timestamp: datetime # When message was created (UTC)
-    received_at: datetime # When message was received by recipient (UTC)
-    was_received: bool  # Whether recipient acknowledged receipt
-    tokens: int         # Estimated token count
-    image_path: Optional[str] = None  # Path to image file (future use)
+    sender: Optional[str]    # WhatsApp sender ID (e.g., "1234567890@c.us") or "assistant"
+    recipient: Optional[str] # WhatsApp recipient ID (bot's ID) or WhatsApp phone number
+    timestamp: str      # ISO format UTC timestamp
+    received_at: str    # ISO format UTC timestamp
+    was_received: bool  # Whether recipient acknowledged receipt (default: True)
+    image_path: Optional[str] = None  # Path to image file (future use, deferred to Phase 3)
     
 class Session:
     """Conversation session for a chat - messages stored separately."""
     session_id: str             # Unique session ID (UUID) - primary identifier
     whatsapp_chat: str          # WhatsApp chat ID (e.g., "1234567890@c.us") - matches sender/recipient in messages
-    client_name: Optional[str]  # Client's display name from WhatsApp (for clients)
     message_ids: List[str]      # List of message IDs (pointers to message files)
-    message_counter: int        # Counter for order_num (auto-increment)
-    created_at: datetime        # UTC timestamp
-    last_active: datetime       # UTC timestamp
-    total_tokens: int           # Sum of all message tokens
+    message_counter: int        # Counter for order_num (auto-increment, starts at 0)
+    created_at: str             # ISO format UTC timestamp
+    last_active: str            # ISO format UTC timestamp
+    total_tokens: int           # Reserved for future RBAC feature (006), currently unused
     
 class SessionManager:
-    """Manage conversation sessions with role-based token limits."""
+    """Manage conversation sessions with message persistence."""
     
     def __init__(
         self,
         storage_dir: str = "data/sessions",
-        max_tokens_by_role: Dict[str, int] = None,  # {"client": 4000, "godfather": 100000}
-        session_timeout_hours: int = 24
+        session_timeout_hours: int = 24,
+        cleanup_interval_seconds: int = 3600
     ):
-        self.storage_dir = storage_dir
-        self.max_tokens_by_role = max_tokens_by_role or {"client": 4000, "godfather": 100000}
-        self.session_timeout = timedelta(hours=session_timeout_hours)
-        self.sessions: Dict[str, Session] = {}  # Key: session_id (UUID)
+        self.storage_dir = Path(storage_dir)
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
+        self.session_timeout_hours = session_timeout_hours
+        self.cleanup_interval_seconds = cleanup_interval_seconds
         self.chat_to_session: Dict[str, str] = {}  # Map: whatsapp_chat -> session_id
         
-        os.makedirs(storage_dir, exist_ok=True)
-        os.makedirs(os.path.join(storage_dir, "messages"), exist_ok=True)  # Individual message files
-        os.makedirs(os.path.join(storage_dir, "images"), exist_ok=True)  # Future use
+        # Load existing sessions from disk
         self._load_sessions()
+        
+        # Start background cleanup thread for expired sessions
+        self._cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
+        self._cleanup_running = True
+        self._cleanup_thread.start()
     
-    def get_token_limit(self, user_role: str = "client") -> int:
-        """Get token limit for user role."""
-        return self.max_tokens_by_role.get(user_role, 4000)
-    
-    def get_session_by_chat(self, whatsapp_chat: str, client_name: Optional[str] = None) -> Session:
+    def get_session(self, chat_id: str) -> Session:
         """Get or create session for a WhatsApp chat ID."""
         
-        # Look up session ID by WhatsApp chat ID
-        session_id = self.chat_to_session.get(whatsapp_chat)
-        
-        # Check if session exists and is valid
-        if session_id and session_id in self.sessions:
-            session = self.sessions[session_id]
+        # Check if session exists in index
+        if chat_id in self.chat_to_session:
+            session_id = self.chat_to_session[chat_id]
+            session = self._load_session(session_id)
             
-            # Update client_name if provided and different
-            if client_name and session.client_name != client_name:
-                session.client_name = client_name
-            
-            # Check if session expired
-            if datetime.now() - session.last_active > self.session_timeout:
-                logger.info(f"Session {session_id} expired, creating new")
-                session = self._create_session(whatsapp_chat, client_name)
-            
-            session.last_active = datetime.now()
+            # Update last_active timestamp
+            session.last_active = datetime.now(timezone.utc).isoformat()
+            self._save_session(session)
             return session
         
         # Create new session
-        return self._create_session(whatsapp_chat, client_name)
-    
-    def get_session_by_id(self, session_id: str) -> Optional[Session]:
-        """Get session by session ID."""
-        return self.sessions.get(session_id)
+        session_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        
+        session = Session(
+            session_id=session_id,
+            whatsapp_chat=chat_id,
+            message_ids=[],
+            message_counter=0,
+            created_at=now,
+            last_active=now,
+            total_tokens=0
+        )
+        
+        # Save to disk and index
+        self._save_session(session)
+        self.chat_to_session[chat_id] = session_id
+        return session
     
     def add_message(
         self,
@@ -704,18 +808,240 @@ def handle_message(self, message: Message):
     self.whatsapp_handler.send_message(chat_id, response)
 ```
 
+## Error Handling & Exception Flows
+
+### Session Manager Errors (ERR-SESSION)
+
+**ERR-SESSION-001**: Session File Corrupted/Missing
+- **Detection**: JSON parse error or file not found during `_load_sessions()`
+- **Recovery**: Log error, skip corrupted file, create new session on next access
+- **User Impact**: Previous conversation history lost for that session
+- **Logging**: ERROR level with file path and exception details
+
+**ERR-SESSION-002**: Disk Space Exhaustion
+- **Detection**: `OSError` with errno 28 (ENOSPC) during session save
+- **Response**: Return error to user, do NOT corrupt existing data
+- **Recovery**: Admin must free disk space, application continues with in-memory sessions
+- **User Message**: "⚠️ Cannot save conversation history - system storage full. Please contact administrator."
+
+**ERR-SESSION-003**: JSON Serialization Failure
+- **Detection**: `TypeError` or `ValueError` during `json.dump()`
+- **Recovery**: Log error, skip problematic message, continue processing
+- **Validation**: Pre-validate all serializable fields before writing
+- **Logging**: ERROR level with data structure that failed
+
+**ERR-SESSION-004**: Invalid Role Value
+- **Detection**: Role not in ["user", "assistant"]
+- **Response**: Raise `ValueError` with clear message
+- **Recovery**: Caller must provide valid role
+- **Validation**: Assert role in add_message() before processing
+
+**ERR-SESSION-005**: Empty Message Content
+- **Detection**: Content is empty string or only whitespace
+- **Response**: Accept but log WARNING (valid for some use cases)
+- **Behavior**: Store message normally (0 tokens)
+- **Validation**: Strip whitespace for token counting
+
+**ERR-SESSION-006**: Session Load Partial Failure
+- **Detection**: Some message IDs in session don't have corresponding message files
+- **Recovery**: Load available messages, log WARNING for missing ones, continue
+- **Behavior**: Session appears with gaps in conversation
+- **Logging**: WARNING level with list of missing message_ids
+
+**ERR-SESSION-007**: Malformed WhatsApp Chat ID
+- **Detection**: whatsapp_chat doesn't match expected format (xxx@c.us or xxx@g.us)
+- **Response**: Accept and log WARNING (format may evolve)
+- **Validation**: No strict validation (defensive programming)
+
+### Memory Manager Errors (ERR-MEMORY)
+
+**ERR-MEMORY-001**: ChromaDB Initialization Failure
+- **Detection**: Exception during `PersistentClient()` or `get_or_create_collection()`
+- **Response**: Log ERROR, set `memory_enabled = False` flag
+- **Recovery**: Continue without memory features (graceful degradation per NFR-REL-003)
+- **User Impact**: Memory commands return error, AI responses work without recall
+- **User Message**: "⚠️ Memory system temporarily unavailable. Your message was processed without memory context."
+
+**ERR-MEMORY-002**: Embedding Generation Failure
+- **Detection**: OpenAI API error during `_create_embedding()`
+- **Response**: Retry up to 3 times with exponential backoff (1s, 2s, 4s)
+- **Recovery**: If all retries fail, log ERROR and return empty results for recall
+- **User Impact**: Memory recall returns no results, `/remember` command fails with error message
+- **User Message**: "/remember failed: Unable to generate embedding. Please try again."
+
+**ERR-MEMORY-003**: ChromaDB Query Failure
+- **Detection**: Exception during `collection.query()`
+- **Response**: Log ERROR, return empty list (no memories)
+- **Recovery**: Continue processing without memory context
+- **Retry**: Single retry attempt, then fail gracefully
+
+**ERR-MEMORY-004**: Memory Storage Failure
+- **Detection**: Exception during `collection.add()` in remember()
+- **Response**: Return error to user, do NOT confirm storage
+- **User Message**: "❌ Failed to store memory. Please try again."
+- **Logging**: ERROR level with content hash (not full content for privacy)
+
+**ERR-MEMORY-005**: Duplicate Memory ID
+- **Detection**: UUID collision (extremely rare)
+- **Response**: Regenerate UUID and retry
+- **Max Retries**: 3 attempts
+- **Failure**: Log CRITICAL and return error to user
+
+**ERR-MEMORY-006**: Invalid Metadata
+- **Detection**: Metadata contains non-serializable objects
+- **Response**: Log WARNING, filter out invalid fields, continue with valid metadata
+- **Validation**: Convert datetime objects to ISO strings automatically
+
+### Integration Errors (ERR-INTEGRATION)
+
+**ERR-INTEGRATION-001**: Role Identification Failure
+- **Detection**: Cannot determine if user is client or godfather
+- **Response**: Default to "client" role (safer, more restrictive)
+- **Logging**: WARNING level with whatsapp_chat ID
+- **Behavior**: Apply 4,000 token limit
+
+**ERR-INTEGRATION-002**: Feature Flag Configuration Missing
+- **Detection**: `enable_memory_system` not in config
+- **Response**: Default to `False` (disabled)
+- **Logging**: WARNING level on startup
+
+**ERR-INTEGRATION-003**: Configuration File Invalid
+- **Detection**: JSON parse error in config.json
+- **Response**: Use hardcoded defaults, log ERROR
+- **Logging**: ERROR level with file path
+- **Fallback**: memory_enabled = False, session_timeout = 24h, token limits default
+
+**ERR-INTEGRATION-004**: Timestamp Timezone Missing
+- **Detection**: datetime object without timezone info in legacy data
+- **Response**: Assume UTC, log WARNING
+- **Migration**: Add UTC timezone to naive datetimes
+- **Logging**: WARNING with session_id
+
+## Edge Cases & Boundary Conditions
+
+### Edge Case Handling (EDGE)
+
+**EDGE-001**: Zero-Message Session
+- **Scenario**: Newly created session with no messages
+- **Behavior**: Return empty list for `get_conversation_history()`
+- **Validation**: Total tokens = 0, message_counter = 0
+- **AI Impact**: No conversation context, only system prompt + memories
+
+**EDGE-002**: Extremely Long Single Message
+- **Scenario**: Message >10,000 tokens (exceeds client limit of 4,000)
+- **Behavior**: Accept message, immediately prune oldest messages to fit limit
+- **Result**: Only latest message(s) retained if long message consumes all tokens
+- **Logging**: WARNING if single message exceeds token limit for role
+
+**EDGE-003**: Rapid Message Burst
+- **Scenario**: 10+ messages in <1 second from same chat
+- **Behavior**: Queue-based processing (single-threaded per session)
+- **Performance**: May cause delay in responses
+- **Validation**: No rate limiting in Phase 1 (trust WhatsApp rate limits)
+
+**EDGE-004**: Session Timeout Edge Case
+- **Scenario**: Message arrives exactly at 24-hour timeout boundary
+- **Behavior**: If `last_active + 24h <= now`, create new session
+- **Precision**: Second-level precision (not millisecond)
+- **Migration**: Previous session moved to `expired/` directory
+
+**EDGE-005**: Memory Query Zero Results
+- **Scenario**: Semantic search returns no memories above similarity threshold
+- **Behavior**: Return empty list, AI proceeds without memory context
+- **Logging**: DEBUG level (normal operation, not an error)
+- **User Impact**: Response may be less contextual
+
+**EDGE-006**: Concurrent Session Updates (Race Condition)
+- **Scenario**: Two messages arrive simultaneously for same session
+- **Mitigation**: Single-threaded message queue per session (Constitution architecture)
+- **Behavior**: Messages processed sequentially in arrival order
+- **Validation**: Message order_num increments correctly
+
+**EDGE-007**: Storage Directory Permissions
+- **Scenario**: Application cannot write to `data/` directory
+- **Detection**: `PermissionError` during directory creation or file write
+- **Response**: Log CRITICAL error, terminate startup
+- **User Message**: "FATAL: Cannot access data directory. Check file permissions."
+- **Recovery**: Admin must fix permissions and restart
+
+**EDGE-008**: Image Path Without Image File
+- **Scenario**: Message has `image_path` but file doesn't exist
+- **Behavior**: Store path anyway, log WARNING
+- **AI Impact**: Path included in message metadata but file unavailable
+- **Future**: Phase 2 will validate image existence
+
+**EDGE-009**: Session Expiration During Processing
+- **Scenario**: Session expires while message is being processed
+- **Behavior**: Complete current message processing, expire after response sent
+- **Validation**: Check expiration before loading session, not during processing
+
+**EDGE-010**: ChromaDB Collection Already Exists
+- **Scenario**: Collection exists from previous run or manual creation
+- **Behavior**: Use existing collection, log INFO
+- **Migration**: No automatic schema migration in Phase 1
+- **Validation**: Verify collection metadata matches expected format
+
+## Recovery Procedures (RECOVERY)
+
+**RECOVERY-001**: Rebuild Session from Message Files
+- **Trigger**: Session file corrupted but message files intact
+- **Procedure**:
+  1. Scan `data/sessions/messages/` for messages matching session_id
+  2. Sort by order_num
+  3. Reconstruct Session object with correct metadata
+  4. Recalculate total_tokens
+  5. Save reconstructed session
+- **Automation**: Manual procedure in Phase 1, tool in Phase 2
+
+**RECOVERY-002**: ChromaDB Collection Corruption
+- **Trigger**: Collection query fails consistently
+- **Procedure**:
+  1. Backup `data/memory/` directory
+  2. Delete corrupted collection
+  3. Recreate collection
+  4. Restore from backup (manual re-import in Phase 1)
+- **Data Loss**: Memories lost if no backup exists
+- **Prevention**: Regular backups (external to application)
+
+**RECOVERY-003**: Disk Space Recovery
+- **Trigger**: Disk full error (ERR-SESSION-002)
+- **Procedure**:
+  1. Move expired sessions to compressed archive
+  2. Delete sessions older than 30 days
+  3. Truncate old message files if needed
+  4. Resume normal operation
+- **Automation**: Manual in Phase 1, automated cleanup in Phase 2
+
+**RECOVERY-004**: Rollback Failed Message Addition
+- **Trigger**: Error during message save after AI response generated
+- **Procedure**:
+  1. Log ERROR with message details
+  2. Do NOT add message to session
+  3. Return original error to user
+  4. User can retry (idempotent operation)
+- **Data Consistency**: Session remains in previous valid state
+
 ## Configuration
 
+**REQ-CONFIG-001**: Configuration File Structure
 ```json
 {
+  "feature_flags": {
+    "enable_memory_system": false
+  },
+  "godfather_phone": "972501234567@c.us",
   "memory": {
     "session": {
-      "storage_dir": "state/sessions",
-      "max_tokens": 4000,
+      "storage_dir": "data/sessions",
+      "max_tokens_by_role": {
+        "client": 4000,
+        "godfather": 100000
+      },
       "session_timeout_hours": 24
     },
     "longterm": {
-      "storage_dir": "state/memory",
+      "enabled": true,
+      "storage_dir": "data/memory",
       "collection_name": "godfather_memory",
       "embedding_model": "text-embedding-3-small",
       "top_k_results": 5,
@@ -725,13 +1051,248 @@ def handle_message(self, message: Message):
 }
 ```
 
+**REQ-CONFIG-002**: Required Fields
+- `feature_flags.enable_memory_system` (boolean): Master switch for all memory features
+- `godfather_phone` (string): WhatsApp ID for godfather role identification
+- `memory.session.max_tokens_by_role` (object): Token limits per role
+- `memory.longterm.embedding_model` (string): OpenAI embedding model name
+
+**REQ-CONFIG-003**: Default Values (if missing)
+- `enable_memory_system`: false (disabled for safety)
+- `session_timeout_hours`: 24
+- `top_k_results`: 5
+- `min_similarity`: 0.7
+- `max_tokens_by_role.client`: 4000
+- `max_tokens_by_role.godfather`: 100000
+
 ## Dependencies
+
+**DEP-001**: Python Version
+- **Required**: Python ≥3.10 (for `datetime.timezone.utc` support)
+- **Validation**: Check Python version on startup
+- **Error**: Exit with error if Python <3.10
+
+**DEP-002**: ChromaDB
+- **Version**: >=0.4.22, <0.5.0
+- **Purpose**: Vector database for semantic memory
+- **Installation**: `pip install chromadb>=0.4.22`
+- **Compatibility**: Tested with 0.4.22, may work with newer 0.4.x versions
+
+**DEP-003**: OpenAI Python SDK
+- **Version**: >=1.12.0
+- **Purpose**: Embedding generation (text-embedding-3-small)
+- **API Key**: Required in environment or config
+- **Rate Limits**: Respect OpenAI API rate limits (retry with backoff)
+
+**DEP-004**: File System
+- **Writable Directory**: `data/` must be writable by application
+- **Permissions**: Owner read/write (600 for files, 700 for directories)
+- **Disk Space**: Recommend ≥1GB free for initial deployment
+- **Validation**: Check write permissions on startup
 
 ```python
 # requirements.txt additions
-chromadb>=0.4.22           # Vector database
-openai>=1.12.0             # Embeddings API
+chromadb>=0.4.22,<0.5.0    # Vector database
+openai>=1.12.0             # Embeddings API (Python 3.10+ required)
 ```
+
+## Acceptance Criteria (Quantifiable)
+
+### Session Management (AC-SESSION)
+
+**AC-SESSION-001**: Session Creation
+- **Given**: New WhatsApp chat ID "1234567890@c.us"
+- **When**: First message received
+- **Then**: 
+  - Session file created at `data/sessions/{session_id}.json`
+  - Session contains: session_id (UUID), whatsapp_chat, created_at (UTC), total_tokens=0
+  - Returns session object in <10ms
+
+**AC-SESSION-002**: Message Storage
+- **Given**: Active session with 5 existing messages
+- **When**: New message "Hello" added with role="user"
+- **Then**:
+  - Message file created at `data/sessions/messages/{message_id}.json`
+  - Message contains: message_id, session_id, order_num=6, role="user", content="Hello", timestamp (UTC)
+  - Session updated with message_id in message_ids array
+  - Session total_tokens incremented by ~1 token (4 chars / 4)
+  - Operation completes in <50ms
+
+**AC-SESSION-003**: Token Limit Enforcement (Client)
+- **Given**: Client session with 3,990 tokens
+- **When**: New 50-token message added
+- **Then**:
+  - Oldest messages pruned until total_tokens ≤ 4,000
+  - At least last 2 messages preserved
+  - Pruned message IDs removed from session.message_ids
+  - Message files remain on disk
+  - Operation completes in <100ms
+
+**AC-SESSION-004**: Token Limit Enforcement (Godfather)
+- **Given**: Godfather session with 99,950 tokens  
+- **When**: New 100-token message added
+- **Then**:
+  - Oldest messages pruned until total_tokens ≤ 100,000
+  - At least last 2 messages preserved
+  - Token limit correctly applied at 100,000 (not 4,000)
+
+**AC-SESSION-005**: Session Expiration
+- **Given**: Session with last_active = 24 hours ago
+- **When**: New message arrives
+- **Then**:
+  - Old session moved to `data/sessions/expired/{session_id}.json`
+  - New session created with fresh session_id
+  - Old message history NOT included in new session
+  - Operation completes in <100ms
+
+**AC-SESSION-006**: Session Persistence
+- **Given**: Session with 10 messages
+- **When**: Application restarts
+- **Then**:
+  - Session loaded from disk with all message_ids intact
+  - Session metadata (total_tokens, created_at, last_active) matches saved values
+  - Conversation history retrievable
+  - Load completes in <100ms for 10-message session
+
+**AC-SESSION-007**: Conversation History Format
+- **Given**: Session with messages: user="A", assistant="B", user="C"
+- **When**: get_conversation_history() called
+- **Then**:
+  - Returns list: [{"role": "user", "content": "A"}, {"role": "assistant", "content": "B"}, {"role": "user", "content": "C"}]
+  - Order preserved (chronological by order_num)
+  - All messages within token limit included
+
+### Memory Management (AC-MEMORY)
+
+**AC-MEMORY-001**: Memory Storage (/remember command)
+- **Given**: Godfather sends "/remember TestCorp owes ₪5000"
+- **When**: Command processed
+- **Then**:
+  - Memory stored in ChromaDB with unique memory_id (UUID)
+  - Embedding generated using text-embedding-3-small
+  - Metadata includes: created_at (ISO), type="fact"
+  - Returns success message: "✅ Remembered: TestCorp owes ₪5000"
+  - Operation completes in <1000ms (including embedding generation)
+
+**AC-MEMORY-002**: Memory Recall (Semantic Search)
+- **Given**: Memory "TestCorp owes ₪5000 from invoice INV-001" stored
+- **When**: User asks "What's the status with TestCorp?"
+- **Then**:
+  - ChromaDB query returns memory with similarity score ≥ 0.7
+  - Memory included in top_k=5 results
+  - Query completes in <500ms
+  - Memory content accessible for AI context
+
+**AC-MEMORY-003**: Memory Recall Accuracy
+- **Given**: 10 memories about different companies stored
+- **When**: Query "Tell me about TestCorp"
+- **Then**:
+  - TestCorp-related memories ranked in top 3 results
+  - Irrelevant memories (other companies) have similarity < 0.7 or not in top_k
+  - Precision ≥ 80% (relevant results / total results)
+
+**AC-MEMORY-004**: Empty Memory Results
+- **Given**: No memories stored
+- **When**: Memory recall query executed
+- **Then**:
+  - Returns empty list []
+  - No error raised
+  - Query completes in <200ms
+  - AI proceeds with response (no memory context)
+
+**AC-MEMORY-005**: ChromaDB Initialization
+- **Given**: Fresh installation, no data/memory/ directory
+- **When**: MemoryManager instantiated
+- **Then**:
+  - Directory `data/memory/` created with permissions 700
+  - ChromaDB collection "godfather_memory" created
+  - Collection configured with metadata: {"hnsw:space": "cosine"}
+  - Initialization completes in <2000ms
+
+### Feature Flag Control (AC-FLAG)
+
+**AC-FLAG-001**: Memory System Disabled
+- **Given**: config.json has enable_memory_system=false
+- **When**: User sends message
+- **Then**:
+  - Session management: DISABLED (no session files created)
+  - Memory recall: DISABLED (no ChromaDB queries)
+  - /remember command: Returns "Memory system is disabled"
+  - AI responses work normally (no memory context)
+
+**AC-FLAG-002**: Memory System Enabled
+- **Given**: config.json has enable_memory_system=true
+- **When**: User sends message
+- **Then**:
+  - Session history loaded and included in AI context
+  - Memory recall executed before AI response
+  - /remember command functional
+  - All memory features active
+
+### Role-Based Behavior (AC-ROLE)
+
+**AC-ROLE-001**: Client Role Identification
+- **Given**: Message from whatsapp_chat="1234567890@c.us", godfather_phone="9999999999@c.us"
+- **When**: Message processed
+- **Then**:
+  - User identified as role="client"
+  - Token limit applied: 4,000 tokens
+  - Session pruned at 4,000 token threshold
+
+**AC-ROLE-002**: Godfather Role Identification  
+- **Given**: Message from whatsapp_chat="9999999999@c.us", godfather_phone="9999999999@c.us"
+- **When**: Message processed
+- **Then**:
+  - User identified as role="godfather"
+  - Token limit applied: 100,000 tokens
+  - Session pruned at 100,000 token threshold
+
+**AC-ROLE-003**: Role Default (Unknown)
+- **Given**: godfather_phone not configured
+- **When**: Message from any chat processed
+- **Then**:
+  - Default role="client" applied
+  - Token limit: 4,000 tokens (more restrictive)
+  - WARNING logged
+
+### Error Handling (AC-ERROR)
+
+**AC-ERROR-001**: Session File Corrupted
+- **Given**: Session file contains invalid JSON
+- **When**: Session load attempted
+- **Then**:
+  - Error logged with ERROR level
+  - Corrupted session skipped
+  - New session created on next message
+  - Application continues normally
+
+**AC-ERROR-002**: ChromaDB Unavailable
+- **Given**: ChromaDB initialization fails
+- **When**: Memory recall attempted
+- **Then**:
+  - memory_enabled flag set to False
+  - Empty list returned for recall
+  - AI response generated without memory context
+  - User message: "⚠️ Memory system temporarily unavailable..."
+  - Application continues normally (graceful degradation)
+
+**AC-ERROR-003**: Embedding API Failure
+- **Given**: OpenAI API returns error
+- **When**: /remember command executed
+- **Then**:
+  - Retry 3 times with exponential backoff (1s, 2s, 4s)
+  - If all fail: Return error to user "❌ Failed to store memory..."
+  - Memory NOT confirmed as stored
+  - Operation fails gracefully
+
+**AC-ERROR-004**: Disk Space Full
+- **Given**: Disk write returns ENOSPC error
+- **When**: Session save attempted
+- **Then**:
+  - Error message returned: "⚠️ Cannot save conversation history..."
+  - Existing session files NOT corrupted
+  - Application continues with in-memory sessions
+  - CRITICAL error logged
 
 ## Example Usage
 

@@ -12,17 +12,24 @@
   "feature_flags": {
     "enable_memory_system": false
   },
-  "session_config": {
-    "max_messages_per_session": 100,
-    "session_timeout_hours": 24,
-    "storage_path": "data/sessions",
-    "cleanup_interval_seconds": 3600
-  },
-  "memory_config": {
-    "storage_path": "data/memory",
-    "collection_name": "denidin_memories",
-    "max_context_memories": 5,
-    "similarity_threshold": 0.7
+  "godfather_phone": "YOUR_GODFATHER_WHATSAPP_ID",
+  "memory": {
+    "session": {
+      "storage_dir": "data/sessions",
+      "max_tokens_by_role": {
+        "client": 4000,
+        "godfather": 100000
+      },
+      "session_timeout_hours": 24
+    },
+    "longterm": {
+      "enabled": true,
+      "storage_dir": "data/memory",
+      "collection_name": "godfather_memory",
+      "embedding_model": "text-embedding-3-small",
+      "top_k_results": 5,
+      "min_similarity": 0.7
+    }
   },
   "constitution_config": {
     "enabled": true,

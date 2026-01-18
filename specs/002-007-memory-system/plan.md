@@ -4,17 +4,86 @@
 **Branch**: `002-007-memory-system`  
 **Status**: Ready for Implementation  
 **Estimated Duration**: 10-12 days
+**Updated**: January 18, 2026
+
+**IMPORTANT**: Read spec.md "Terminology Glossary" section for consistent naming conventions.
 
 ## Overview
 
 Implement unified memory system combining:
 - **Short-term**: Session-based conversation history (JSON storage in `data/sessions/`)
+  - Use `session_id` (UUID) as primary identifier
+  - Use `whatsapp_chat` for WhatsApp routing (e.g., "1234567890@c.us")
+  - DEPRECATED: `chat_id`, `phone_number` (use new terms)
 - **Long-term**: Semantic memory with ChromaDB and embeddings (in `data/memory/`)
 - **Commands**: `/remember`, `/reset`
 - **AI Integration**: Automatic memory recall in responses
 - **Feature Flags**: Deployed behind `enable_memory_system` flag for safe incremental rollout
 - **Role-based Token Limits**: 4,000 tokens for clients, 100,000 for godfather
+- **Error Handling**: Comprehensive error recovery per spec.md "Error Handling & Exception Flows"
 - **Image Support**: JSON stores image file references, actual images in `data/sessions/images/`
+
+## Integration Contracts
+
+### SessionManager ↔ AI Handler Contract
+
+**AI Handler MUST**:
+- Call `session_manager.get_conversation_history(whatsapp_chat, user_role)` before generating response
+- Pass correct `user_role` ("client" or "godfather") for token limit enforcement
+- Call `session_manager.add_message()` for BOTH user message and assistant response
+- Handle empty history (new session) gracefully
+- Pass `whatsapp_chat` consistently (not session_id)
+
+**SessionManager PROVIDES**:
+- `get_conversation_history()` returns `List[Dict[str, str]]` formatted for OpenAI API:
+  - Format: `[{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]`
+  - Order: Chronological by `order_num`
+  - Filtering: Only messages within token limit for given user_role
+- `add_message()` returns `str` (message_id) or raises exception on error
+
+### MemoryManager ↔ AI Handler Contract
+
+**AI Handler MUST**:
+- Call `memory_manager.recall(query)` before generating response (if memory enabled)
+- Include returned memories in system prompt
+- Handle empty results (no memories found) gracefully
+- Pass user's message text as query string
+
+**MemoryManager PROVIDES**:
+- `recall()` returns `List[Dict]` with keys: `id`, `content`, `metadata`, `similarity`
+- Results sorted by similarity score (descending)
+- Results filtered by `min_similarity` threshold
+- Empty list if no relevant memories or ChromaDB unavailable
+- Never raises exceptions (returns empty list on error)
+
+### WhatsApp Handler ↔ SessionManager Contract
+
+**WhatsApp Handler MUST**:
+- Extract `whatsapp_chat` from WhatsApp notification (sender field)
+- Determine `user_role` by comparing with `config.godfather_phone`
+- Call `add_message()` immediately after receiving message
+- Pass all required fields: whatsapp_chat, role="user", content, sender, recipient
+
+**SessionManager EXPECTS**:
+- `whatsapp_chat`: Valid WhatsApp ID (e.g., "1234567890@c.us")
+- `role`: Either "user" or "assistant" (strict validation)
+- `content`: Non-null string (empty string allowed)
+- `sender`: WhatsApp sender ID or "assistant"
+- `recipient`: WhatsApp recipient ID (bot's number)
+
+### Configuration ↔ All Components Contract
+
+**All Components MUST**:
+- Check `config.feature_flags.enable_memory_system` before using memory features
+- Use default values if config fields missing (per spec.md REQ-CONFIG-003)
+- Validate `config.godfather_phone` format on startup
+- Log WARNING if required config fields missing
+
+**Configuration PROVIDES**:
+- `feature_flags.enable_memory_system`: boolean (default: False)
+- `godfather_phone`: string (WhatsApp ID)
+- `memory.session.max_tokens_by_role`: Dict[str, int]
+- `memory.longterm.*`: All memory settings with defaults
 
 ## Phase 1: Foundation & Dependencies (Day 1)
 
@@ -146,7 +215,10 @@ feature_flags: Dict[str, bool] = field(default_factory=lambda: {
     "enable_memory_system": False
 })
 
-# Memory settings
+# Role identification
+godfather_phone: str = ""  # WhatsApp ID for godfather (e.g., "972501234567@c.us")
+
+# Memory settings - Session
 session_storage_dir: str = "data/sessions"
 session_token_limits: Dict[str, int] = field(default_factory=lambda: {
     "client": 4000,
@@ -154,6 +226,7 @@ session_token_limits: Dict[str, int] = field(default_factory=lambda: {
 })
 session_timeout_hours: int = 24
 
+# Memory settings - Long-term
 memory_storage_dir: str = "data/memory"
 memory_collection_name: str = "godfather_memory"
 memory_embedding_model: str = "text-embedding-3-small"
@@ -165,22 +238,24 @@ memory_min_similarity: float = 0.7
 
 **File**: `config/config.json`
 
-Add sections:
+Add sections (per spec.md REQ-CONFIG-001):
 ```json
 {
   "feature_flags": {
     "enable_memory_system": false
   },
+  "godfather_phone": "972501234567@c.us",
   "memory": {
     "session": {
       "storage_dir": "data/sessions",
-      "token_limits": {
+      "max_tokens_by_role": {
         "client": 4000,
         "godfather": 100000
       },
-      "timeout_hours": 24
+      "session_timeout_hours": 24
     },
     "longterm": {
+      "enabled": true,
       "storage_dir": "data/memory",
       "collection_name": "godfather_memory",
       "embedding_model": "text-embedding-3-small",
@@ -189,6 +264,31 @@ Add sections:
     }
   }
 }
+```
+
+### 4.3 Add Validation
+
+**File**: `src/models/config.py`
+
+Add validation method:
+```python
+def validate_memory_config(self) -> List[str]:
+    """Validate memory configuration, return list of warnings."""
+    warnings = []
+    
+    # Validate godfather_phone format
+    if self.godfather_phone and not self.godfather_phone.endswith(("@c.us", "@g.us")):
+        warnings.append("godfather_phone format invalid (expected: phone@c.us)")
+    
+    # Validate token limits
+    if self.session_token_limits.get("client", 0) > self.session_token_limits.get("godfather", 0):
+        warnings.append("client token limit exceeds godfather limit")
+    
+    # Validate similarity threshold
+    if not 0.0 <= self.memory_min_similarity <= 1.0:
+        warnings.append("memory_min_similarity must be between 0.0 and 1.0")
+    
+    return warnings
 ```
 
 ### Files Modified
