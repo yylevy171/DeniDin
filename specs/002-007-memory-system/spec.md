@@ -41,6 +41,18 @@ Currently, DeniDin has **no memory**:
    - AI automatically queries relevant memories when responding
    - Storage: `data/memory/` (ChromaDB)
    - Indefinite retention (manual deletion only via `/forget`)
+   
+   **Technology Choice: ChromaDB**
+   - **Decision Date**: January 18, 2026
+   - **Rationale**: 
+     - Zero infrastructure setup (`pip install` and done)
+     - Free forever (file-based, no cloud costs)
+     - Semantic search essential for intelligent context retrieval
+     - Scales to 1K-10K memories (our Phase 1-2 needs)
+     - Python-native with simple API
+     - Easy migration path: abstraction layer allows swapping to Pinecone/Qdrant later if needed
+   - **Alternatives Considered**: Pinecone ($$), Qdrant (complex setup), pgvector (no semantic search optimization), JSON files (no semantic search)
+   - **Migration Path**: If exceeding 10K memories or need distributed deployment, evaluate Qdrant Cloud or Pinecone
 
 3. **`/remember` Command**
    - Explicit way to store important facts
@@ -115,20 +127,30 @@ import json
 import os
 
 class Message:
-    """Single message in conversation."""
-    role: str           # "user" or "assistant"
-    content: str
-    timestamp: datetime
+    """Single message in conversation - stored as separate file/object."""
+    message_id: str     # Unique message ID (UUID)
+    chat_id: str        # Parent session ID (UUID) ✨ NEW
+    order_num: int      # Sequential number within chat (1, 2, 3...)
+    role: str           # "user" (from WhatsApp) or "assistant" (from OpenAI)
+    content: str        # Message text
+    sender: str         # WhatsApp sender ID (e.g., "1234567890@c.us") or "assistant"
+    recipient: str      # WhatsApp recipient ID (bot's ID) or WhatsApp phone number
+    timestamp: datetime # When message was created (UTC)
+    received_at: datetime # When message was received by recipient (UTC)
+    was_received: bool  # Whether recipient acknowledged receipt
     tokens: int         # Estimated token count
     image_path: Optional[str] = None  # Path to image file (future use)
     
 class Session:
-    """Conversation session for a chat."""
-    chat_id: str
-    messages: List[Message]
-    created_at: datetime
-    last_active: datetime
-    total_tokens: int
+    """Conversation session for a chat - messages stored separately."""
+    session_id: str             # Unique session ID (UUID) - primary identifier
+    whatsapp_chat: str          # WhatsApp chat ID (e.g., "1234567890@c.us") - matches sender/recipient in messages
+    client_name: Optional[str]  # Client's display name from WhatsApp (for clients)
+    message_ids: List[str]      # List of message IDs (pointers to message files)
+    message_counter: int        # Counter for order_num (auto-increment)
+    created_at: datetime        # UTC timestamp
+    last_active: datetime       # UTC timestamp
+    total_tokens: int           # Sum of all message tokens
     
 class SessionManager:
     """Manage conversation sessions with role-based token limits."""
@@ -142,9 +164,11 @@ class SessionManager:
         self.storage_dir = storage_dir
         self.max_tokens_by_role = max_tokens_by_role or {"client": 4000, "godfather": 100000}
         self.session_timeout = timedelta(hours=session_timeout_hours)
-        self.sessions: Dict[str, Session] = {}
+        self.sessions: Dict[str, Session] = {}  # Key: session_id (UUID)
+        self.chat_to_session: Dict[str, str] = {}  # Map: whatsapp_chat -> session_id
         
         os.makedirs(storage_dir, exist_ok=True)
+        os.makedirs(os.path.join(storage_dir, "messages"), exist_ok=True)  # Individual message files
         os.makedirs(os.path.join(storage_dir, "images"), exist_ok=True)  # Future use
         self._load_sessions()
     
@@ -152,133 +176,202 @@ class SessionManager:
         """Get token limit for user role."""
         return self.max_tokens_by_role.get(user_role, 4000)
     
-    def get_session(self, chat_id: str) -> Session:
-        """Get or create session for chat."""
+    def get_session_by_chat(self, whatsapp_chat: str, client_name: Optional[str] = None) -> Session:
+        """Get or create session for a WhatsApp chat ID."""
+        
+        # Look up session ID by WhatsApp chat ID
+        session_id = self.chat_to_session.get(whatsapp_chat)
         
         # Check if session exists and is valid
-        if chat_id in self.sessions:
-            session = self.sessions[chat_id]
+        if session_id and session_id in self.sessions:
+            session = self.sessions[session_id]
+            
+            # Update client_name if provided and different
+            if client_name and session.client_name != client_name:
+                session.client_name = client_name
             
             # Check if session expired
             if datetime.now() - session.last_active > self.session_timeout:
-                logger.info(f"Session {chat_id} expired, creating new")
-                session = self._create_session(chat_id)
+                logger.info(f"Session {session_id} expired, creating new")
+                session = self._create_session(whatsapp_chat, client_name)
             
             session.last_active = datetime.now()
             return session
         
         # Create new session
-        return self._create_session(chat_id)
+        return self._create_session(whatsapp_chat, client_name)
+    
+    def get_session_by_id(self, session_id: str) -> Optional[Session]:
+        """Get session by session ID."""
+        return self.sessions.get(session_id)
     
     def add_message(
         self,
-        chat_id: str,
-        role: str,
+        whatsapp_chat: str,     # WhatsApp chat ID (e.g., "1234567890@c.us") - matches sender or recipient
+        role: str,              # "user" or "assistant"
         content: str,
+        sender: str,            # WhatsApp sender ID or "assistant"
+        recipient: str,         # WhatsApp recipient ID (should match whatsapp_chat for one of them)
         user_role: str = "client",
+        client_name: Optional[str] = None,  # Update session with client name if provided
+        timestamp: Optional[datetime] = None,
+        received_at: Optional[datetime] = None,
+        was_received: bool = True,
         image_path: Optional[str] = None
-    ):
-        """Add message to session, managing role-based token limits."""
+    ) -> str:
+        """Add message to session, managing role-based token limits. Returns message_id."""
+        
+        from datetime import timezone
+        
+        session = self.get_session_by_chat(whatsapp_chat, client_name)
+        
+        from datetime import timezone
         
         session = self.get_session(chat_id)
         token_limit = self.get_token_limit(user_role)
         
+        # Increment message counter
+        session.message_counter += 1
+        
         # Estimate tokens (rough: 1 token ≈ 4 chars)
         tokens = len(content) // 4
         
+        # Default timestamps to now (UTC)
+        if timestamp is None:
+            timestamp = datetime.now(timezone.utc)
+        if received_at is None:
+            received_at = datetime.now(timezone.utc)
+        
         message = Message(
+            message_id=str(uuid.uuid4()),
+            order_num=session.message_counter,
             role=role,
             content=content,
-            timestamp=datetime.now(),
+            sender=sender,
+            recipient=recipient,
+            timestamp=timestamp,
+            received_at=received_at,
+            was_received=was_received,
             tokens=tokens,
             image_path=image_path
         )
         
         session.messages.append(message)
         session.total_tokens += tokens
+        session.last_active = datetime.now(timezone.utc)
         session.last_active = datetime.now()
         
         # Prune if exceeding limit
         self._prune_session(session, token_limit)
         
-        # Save to disk
+        # Save session to disk
         self._save_session(session)
-    
+        
     def get_conversation_history(
         self,
-        chat_id: str,
+        whatsapp_chat: str,
         user_role: str = "client",
         max_messages: Optional[int] = None
     ) -> List[Dict[str, str]]:
         """Get conversation history formatted for AI (respects role-based token limit)."""
         
-        session = self.get_session(chat_id)
-        messages = session.messages
+        session = self.get_session_by_chat(whatsapp_chat)
         
+        # Load messages from IDs (pointers)
+        messages = []
+        message_ids = session.message_ids
         if max_messages:
-            messages = messages[-max_messages:]
+            message_ids = message_ids[-max_messages:]
         
-        return [
-            {"role": msg.role, "content": msg.content}
-            for msg in messages
-        ]
-    
+        for msg_id in message_ids:
+            msg = self._load_message(msg_id)
+            if msg:
+    def clear_session(self, whatsapp_chat: str):
+        """Clear session (for /reset command) - messages remain on disk."""
+        
+        session_id = self.chat_to_session.get(whatsapp_chat)
+        if session_id and session_id in self.sessions:
+            # Preserve client info when clearing
+            old_session = self.sessions[session_id]
+            session = self._create_session(whatsapp_chat, old_session.client_name)
+            self._save_session(session)
+            logger.info(f"Session {session_id} cleared (messages preserved on disk)")
     def clear_session(self, chat_id: str):
         """Clear session (for /reset command)."""
-        
-        if chat_id in self.sessions:
-            session = self._create_session(chat_id)
-            self._save_session(session)
-            logger.info(f"Session {chat_id} cleared")
-    
     def _prune_session(self, session: Session, token_limit: int):
-        """Remove old messages to stay under role-based token limit."""
+        """Remove old message IDs to stay under role-based token limit (messages remain on disk)."""
         
-        while session.total_tokens > token_limit and len(session.messages) > 2:
-            # Remove oldest message (keep at least last 2)
-            removed = session.messages.pop(0)
-            session.total_tokens -= removed.tokens
+        while session.total_tokens > token_limit and len(session.message_ids) > 2:
+            # Remove oldest message ID (keep at least last 2)
+            # Messages remain on disk for future retrieval
+            removed_id = session.message_ids.pop(0)
+            removed_msg = self._load_message(removed_id)
+            if removed_msg:
+                session.total_tokens -= removed_msg.tokens
             
             logger.debug(
-                f"Pruned message from {session.chat_id}, "
-                f"tokens: {session.total_tokens}/{token_limit}"
-            )
-    
-    def _create_session(self, chat_id: str) -> Session:
-        """Create new session."""
+                f"Pruned message {removed_id} from session {session.session_id}, "
+    def _create_session(self, phone_number: str, client_name: Optional[str] = None) -> Session:
+        """Create new session with UUID identifier."""
+        from datetime import timezone
+        
+        # Generate unique session ID
+        session_id = str(uuid.uuid4())
+        
+        # Extract phone number (e.g., "1234567890@c.us" -> "1234567890")
+        client_phone = None
+        if '@c.us' in phone_number:  # Individual chat (not group)
+            client_phone = phone_number.split('@')[0]
+        
         session = Session(
-            chat_id=chat_id,
-            messages=[],
-            created_at=datetime.now(),
-            last_active=datetime.now(),
+            session_id=session_id,
+            phone_number=phone_number,
+            client_name=client_name,
+            client_phone=client_phone,
+            message_ids=[],
+            message_counter=0,
+            created_at=datetime.now(timezone.utc),
+            last_active=datetime.now(timezone.utc),
             total_tokens=0
-        )
-        self.sessions[chat_id] = session
-        return session
-    
     def _save_session(self, session: Session):
-        """Save session to disk."""
-        filepath = os.path.join(self.storage_dir, f"{session.chat_id}.json")
+        """Save session metadata to disk (messages stored separately)."""
+        filepath = os.path.join(self.storage_dir, f"{session.session_id}.json")
         
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump({
-                'chat_id': session.chat_id,
-                'messages': [
-                    {
-                        'role': msg.role,
-                        'content': msg.content,
-                        'timestamp': msg.timestamp.isoformat(),
-                        'tokens': msg.tokens
-                    }
-                    for msg in session.messages
-                ],
+                'session_id': session.session_id,
+                'whatsapp_chat': session.whatsapp_chat,
+                'client_name': session.client_name,
+                'message_counter': session.message_counter,
+                'message_ids': session.message_ids,  # Only store IDs (pointers)
                 'created_at': session.created_at.isoformat(),
                 'last_active': session.last_active.isoformat(),
                 'total_tokens': session.total_tokens
             }, f, ensure_ascii=False, indent=2)
     
+    def _save_message(self, message: Message):
+        """Save individual message to separate file."""
+        filepath = os.path.join(self.storage_dir, "messages", f"{message.message_id}.json")
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump({
+                'message_id': message.message_id,
+                'chat_id': message.chat_id,  # Parent session ID
+                'order_num': message.order_num,
+                'role': message.role,
+                'content': message.content,
+                'sender': message.sender,
+                'recipient': message.recipient,
+                'timestamp': message.timestamp.isoformat(),
+                'received_at': message.received_at.isoformat(),
+                'was_received': message.was_received,
+                'tokens': message.tokens,
+                'image_path': message.image_path
+            }, f, ensure_ascii=False, indent=2)
+    
+    def _load_message(self, message_id: str) -> Optional[Message]:
     def _load_sessions(self):
-        """Load all sessions from disk."""
+        """Load all sessions from disk (messages loaded on-demand)."""
         
         if not os.path.exists(self.storage_dir):
             return
@@ -287,29 +380,34 @@ class SessionManager:
             if not filename.endswith('.json'):
                 continue
             
+            # Skip message files
+            if filename.startswith('messages/'):
+                continue
+            
             filepath = os.path.join(self.storage_dir, filename)
             
             try:
                 with open(filepath, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 
+                # Handle both old format (chat_id/phone_number) and new format (session_id/whatsapp_chat)
+                session_id = data.get('session_id', data.get('chat_id'))
+                whatsapp_chat = data.get('whatsapp_chat', data.get('phone_number', data.get('chat_id')))
+                
                 session = Session(
-                    chat_id=data['chat_id'],
-                    messages=[
-                        Message(
-                            role=msg['role'],
-                            content=msg['content'],
-                            timestamp=datetime.fromisoformat(msg['timestamp']),
-                            tokens=msg['tokens']
-                        )
-                        for msg in data['messages']
-                    ],
+                    session_id=session_id,
+                    whatsapp_chat=whatsapp_chat,
+                    client_name=data.get('client_name'),
+                    message_counter=data.get('message_counter', 0),
+                    message_ids=data.get('message_ids', []),  # Load message IDs only
                     created_at=datetime.fromisoformat(data['created_at']),
                     last_active=datetime.fromisoformat(data['last_active']),
                     total_tokens=data['total_tokens']
                 )
                 
-                self.sessions[session.chat_id] = session
+                # Store in both indexes
+                self.sessions[session_id] = session
+                self.chat_to_session[whatsapp_chat] = session_id
                 
             except Exception as e:
                 logger.error(f"Failed to load session {filename}: {e}")

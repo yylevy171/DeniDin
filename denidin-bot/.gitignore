@@ -21,6 +21,10 @@ logs/
 # Runtime state
 state/
 
+# Session and memory data
+data/sessions/
+data/memory/
+
 # IDE
 .vscode/
 .idea/
