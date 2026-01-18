@@ -247,11 +247,13 @@ description: "Task list for Memory System (002+007) implementation"
   - Test `test_initialize_with_memory_managers()`: Verify SessionManager and MemoryManager initialized
   - Test `test_create_request_with_session_history()`: Verify conversation history included in messages
   - Test `test_create_request_with_recalled_memories()`: Verify recalled memories in system prompt
-  - Test `test_create_request_respects_token_limits()`: Verify role-based limits (client: 4K, godfather: 100K)
   - Test `test_get_response_stores_in_session()`: Verify user + AI messages stored in session
-  - Test `test_feature_flag_disabled()`: Verify memory not used when flag is false
-  - Test `test_feature_flag_enabled()`: Verify memory used when flag is true
-  - Test `test_handle_remember_command()`: Verify /remember command stores in MemoryManager
+  - Test `test_hybrid_memory_recall()`: Verify BOTH conversation history AND long-term memories used together
+  - Test `test_transfer_session_to_long_term_memory()`: Verify session summarization and ChromaDB storage
+  - Test `test_handle_summarization_failure_gracefully()`: Verify raw conversation stored if AI summarization fails (CRITICAL: zero data loss)
+  - Test `test_startup_recovery_expired_sessions()`: Verify orphaned sessions recovered on startup (expired → long-term, active → short-term)
+  - Test `test_startup_recovery_no_orphaned_sessions()`: Verify clean startup when no orphaned sessions
+  - Test `test_startup_recovery_handles_errors_gracefully()`: Verify recovery continues despite individual session failures
 
 **👤 HUMAN APPROVAL GATE**: Review and approve AIHandler integration tests before implementation
 
@@ -259,17 +261,22 @@ description: "Task list for Memory System (002+007) implementation"
 
 - [ ] T015b Update `denidin-bot/src/handlers/ai_handler.py` (BLOCKED until T015a approved):
   - Add to `__init__()`: Initialize SessionManager and MemoryManager from config
-  - Add to `__init__()`: Store `self.feature_flags = config.feature_flags`
   - Update `create_request()`: Accept `chat_id` and `user_role` parameters (default: 'client')
-  - Update `create_request()`: Check feature flag before using memory
   - Update `create_request()`: Retrieve conversation history from SessionManager
   - Update `create_request()`: Query relevant memories from MemoryManager
   - Update `create_request()`: Build enhanced system prompt with memory context
   - Update `create_request()`: Include conversation history in messages array
-  - Update `get_response()`: Accept `chat_id` and `user_role` parameters
-  - Update `get_response()`: Store user message in session (if flag enabled)
-  - Update `get_response()`: Store AI response in session (if flag enabled)
-  - Add `handle_remember_command(content, chat_id, user_role)`: Store fact in MemoryManager, return confirmation
+  - Update `get_response()`: Accept `chat_id`, `user_role`, `sender`, `recipient` parameters
+  - Update `get_response()`: Store user message in session
+  - Update `get_response()`: Store AI response in session
+  - Add `transfer_session_to_long_term_memory()`: Summarize expired session with AI, store in ChromaDB
+  - Add `transfer_session_to_long_term_memory()`: NO FILTERING - store ALL sessions regardless of length
+  - Add `transfer_session_to_long_term_memory()`: If summarization fails, ALWAYS store raw conversation (zero data loss)
+  - Add `recover_orphaned_sessions()`: On startup, find sessions not transferred (crashes/shutdowns)
+  - Add `recover_orphaned_sessions()`: Transfer expired sessions (>24h) to long-term memory
+  - Add `recover_orphaned_sessions()`: Load active sessions (<24h) to short-term memory
+  - Add `recover_orphaned_sessions()`: Continue processing despite individual session failures
+  - **REMOVED**: `handle_remember_command()` - deferred to future release
 
 **Validation**:
 - [ ] V017 Run AIHandler memory tests: `pytest tests/unit/test_ai_handler_memory.py -v`
@@ -277,43 +284,44 @@ description: "Task list for Memory System (002+007) implementation"
 - [ ] V019 Verify test coverage maintained: `pytest tests/unit/ --cov=src/handlers/ai_handler --cov-report=term-missing`
 - [ ] V020 Verify pylint score: `pylint src/handlers/ai_handler.py`
 
-**Checkpoint**: AIHandler integrated with memory - can begin command handling
+**Checkpoint**: AIHandler integrated with memory - can begin integration testing
 
 ---
 
-## Phase 6: Command Handling (Day 9)
+## Phase 6: Main Bot Integration (Day 9)
 
-**Purpose**: Add /remember and /reset commands to main bot
+**Purpose**: Update main bot to use memory-enabled AIHandler
 
-### 6.1 Command Handler Tests (TDD - Write First)
+**REMOVED**: `/remember` command - deferred to future release
 
-- [ ] T016a Write command handling tests in `denidin-bot/tests/integration/test_memory_commands.py`:
-  - Test `test_remember_command_stores_fact()`: Verify /remember stores in MemoryManager
-  - Test `test_remember_command_returns_confirmation()`: Verify confirmation message sent
-  - Test `test_reset_command_clears_session()`: Verify /reset clears conversation history
-  - Test `test_reset_command_keeps_long_term_memory()`: Verify /reset doesn't delete MemoryManager facts
-  - Test `test_normal_message_uses_memory()`: Verify regular messages include context
-  - Test `test_commands_respect_feature_flag()`: Verify commands only work when flag enabled
-  - Test `test_user_role_detection()`: Verify godfather vs client role detection
+### 6.1 Main Bot Integration Tests (TDD - Write First)
 
-**👤 HUMAN APPROVAL GATE**: Review and approve command tests before implementation
+- [ ] T016a Write integration tests in `denidin-bot/tests/integration/test_memory_integration.py`:
+  - Test `test_conversation_uses_session_history()`: Verify multi-turn conversation maintains context
+  - Test `test_conversation_uses_long_term_memory()`: Verify long-term facts are recalled
+  - Test `test_reset_command_clears_session()`: Verify /reset clears conversation history only
+  - Test `test_normal_message_flow_with_memory()`: Verify regular messages include both memories
+  - Test `test_user_role_detection()`: Verify godfather vs client role determination
 
-### 6.2 Command Handler Implementation
+**👤 HUMAN APPROVAL GATE**: Review and approve integration tests before implementation
+
+### 6.2 Main Bot Implementation
 
 - [ ] T016b Update `denidin-bot/denidin.py` in `handle_text_message()` (BLOCKED until T016a approved):
-  - Determine user role: `user_role = 'godfather' if message.sender_id == config.godfather_id else 'client'`
+  - **ON STARTUP**: Call `ai_handler.recover_orphaned_sessions()` to handle crash recovery
+  - Determine user role: `user_role = 'godfather' if message.sender_id == config.godfather_phone else 'client'`
   - Check feature flag: `memory_enabled = config.feature_flags.get('enable_memory_system', False)`
-  - Add `/remember` command handler: Extract content, call `ai_handler.handle_remember_command()`, send response
   - Add `/reset` command handler: Call `ai_handler.session_manager.clear_session()`, send confirmation
-  - Update normal message flow: Pass `chat_id` and `user_role` to `ai_handler.get_response()`
-  - Add logging for command usage with tracking prefix
+  - Update normal message flow: Pass `chat_id`, `user_role`, `sender`, `recipient` to `ai_handler.get_response()`
+  - Add logging for memory usage with tracking prefix
+  - **SESSION EXPIRATION**: When session expires, call `ai_handler.transfer_session_to_long_term_memory()`
 
 **Validation**:
-- [ ] V021 Run command tests: `pytest tests/integration/test_memory_commands.py -v`
+- [ ] V021 Run integration tests: `pytest tests/integration/test_memory_integration.py -v`
 - [ ] V022 Verify existing integration tests pass: `pytest tests/integration/ -v`
 - [ ] V023 Verify pylint score: `pylint denidin.py`
 
-**Checkpoint**: Commands working - can begin integration testing
+**Checkpoint**: Main bot integrated with memory - can begin end-to-end testing
 
 ---
 

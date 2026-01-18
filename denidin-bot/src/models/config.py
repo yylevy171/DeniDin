@@ -4,8 +4,8 @@ Supports loading from JSON/YAML files and validation.
 """
 import json
 import os
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, Dict
 
 
 @dataclass
@@ -22,6 +22,13 @@ class BotConfiguration:
     log_level: str
     poll_interval_seconds: int
     max_retries: int
+    
+    # Memory system configuration (Feature 002+007)
+    godfather_phone: Optional[str] = None
+    feature_flags: Dict[str, bool] = field(default_factory=dict)
+    memory: Dict = field(default_factory=dict)
+    constitution_config: Dict = field(default_factory=dict)
+    user_roles: Dict = field(default_factory=dict)
 
     @classmethod
     def from_file(cls, file_path: str) -> 'BotConfiguration':
@@ -70,13 +77,45 @@ class BotConfiguration:
             'temperature': 0.7,
             'log_level': 'INFO',
             'poll_interval_seconds': 5,
-            'max_retries': 3
+            'max_retries': 3,
+            'godfather_phone': None,
+            'feature_flags': {},
+            'memory': {},
+            'constitution_config': {},
+            'user_roles': {}
         }
         
         # Merge with defaults
         for key, default_value in defaults.items():
             if key not in config_data:
                 config_data[key] = default_value
+        
+        # Set memory sub-field defaults if memory key exists
+        if 'memory' in config_data and config_data['memory']:
+            memory_defaults = {
+                'session': {
+                    'storage_dir': 'data/sessions',
+                    'max_tokens_by_role': {'client': 4000, 'godfather': 100000},
+                    'session_timeout_hours': 24
+                },
+                'longterm': {
+                    'enabled': True,
+                    'storage_dir': 'data/memory',
+                    'collection_name': 'godfather_memory',
+                    'embedding_model': 'text-embedding-3-small',
+                    'top_k_results': 5,
+                    'min_similarity': 0.7
+                }
+            }
+            
+            for section, section_defaults in memory_defaults.items():
+                if section not in config_data['memory']:
+                    config_data['memory'][section] = section_defaults
+                else:
+                    # Merge section-level defaults
+                    for key, value in section_defaults.items():
+                        if key not in config_data['memory'][section]:
+                            config_data['memory'][section][key] = value
         
         return cls(**config_data)
 

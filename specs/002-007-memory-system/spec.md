@@ -2,10 +2,10 @@
 
 **Feature ID**: 002+007-memory-system  
 **Priority**: P0 (Critical)  
-**Status**: Phase 3 Complete  
+**Status**: Phase 3 Complete (merged to master)  
 **Created**: January 17, 2026  
 **Updated**: January 18, 2026  
-**Branch**: `002-007-phase3-memory-manager`
+**Branch**: `master`
 
 **IMPLEMENTATION STATUS**:
 - ✅ Phase 1 Complete: Foundation, dependencies, config
@@ -62,7 +62,7 @@ Currently, DeniDin has **no memory**:
    - Semantic search using embeddings
    - AI automatically queries relevant memories when responding
    - Storage: `data/memory/` (ChromaDB)
-   - Indefinite retention (manual deletion only via `/forget`)
+   - **Note**: Manual memory creation deferred to future release
    
    **Technology Choice: ChromaDB**
    - **Decision Date**: January 18, 2026
@@ -76,16 +76,12 @@ Currently, DeniDin has **no memory**:
    - **Alternatives Considered**: Pinecone ($$), Qdrant (complex setup), pgvector (no semantic search optimization), JSON files (no semantic search)
    - **Migration Path**: If exceeding 10K memories or need distributed deployment, evaluate Qdrant Cloud or Pinecone
 
-3. **`/remember` Command**
-   - Explicit way to store important facts
-   - Example: `/remember TestCorp owes me ₪5000 from invoice INV-001`
-
-4. **AI Automatic Recall**
+3. **AI Automatic Recall**
    - Before responding, AI queries ChromaDB for relevant context
    - Seamlessly integrates memory into responses
-   - No manual memory management needed
+   - No manual memory management needed (Phase 1)
 
-5. **Feature Flag Control**
+4. **Feature Flag Control**
    - All memory features behind `enable_memory_system` flag
    - Default: disabled (false) for safe deployment
    - Can enable incrementally per environment/user
@@ -102,11 +98,11 @@ Currently, DeniDin has **no memory**:
 - Format validation: Must match WhatsApp ID format (phone@c.us or phone@g.us)
 - Case-sensitive exact match required
 
-### Deferred to Phase 2
+### Deferred to Phase 2+
 
+- **Manual memory commands**: `/remember`, `/forget`, `/memories`, `/search`
 - Per-chat memory (separate from Godfather global)
 - Document ingestion (PDF/DOCX text extraction)
-- Advanced memory commands (`/memories`, `/forget`, `/search`)
 - Memory categories/tags
 - Automatic memory extraction from conversations
 
@@ -220,6 +216,44 @@ Currently, DeniDin has **no memory**:
 │     - Prune if exceeding token limit                         │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### Memory Lifecycle
+
+**Session to Long-term Memory Transfer**
+
+When a session expires (after 24 hours of inactivity), the conversation is automatically transferred to long-term memory:
+
+1. **Summarization**: The AI generates a concise summary of the conversation using OpenAI API
+   - Full conversation context provided to AI
+   - Summary captures key topics, decisions, and action items
+   - Maintains narrative coherence for future recall
+
+2. **Storage**: Summary stored in ChromaDB with rich metadata
+   - `session_id`: Original session UUID
+   - `whatsapp_chat`: Chat identifier
+   - `start_time`: Session start timestamp
+   - `end_time`: Session end timestamp  
+   - `message_count`: Number of messages in conversation
+   - Embedding: Generated from summary for semantic search
+
+3. **No Filtering - ALL Sessions Stored**: Every session is transferred regardless of length
+   - Even single-message exchanges are preserved
+   - Maintains complete historical record
+   - Original session still archived in `data/sessions/expired/`
+
+4. **Graceful Degradation**: If AI summarization fails
+   - ALWAYS falls back to storing raw conversation text
+   - Ensures zero data loss under all conditions
+   - Error logged separately for monitoring (not stored in conversation)
+   - Metadata flag: `summarization_failed: true`
+
+5. **Startup Recovery**: On bot startup, orphaned sessions are recovered
+   - Scans for active sessions that weren't transferred (e.g., from crashes)
+   - Expired sessions (>24h) → automatically transferred to long-term memory
+   - Active sessions (<24h) → loaded back into short-term memory
+   - Ensures no data loss from unexpected shutdowns
+
+This automatic transfer ensures ALL conversations are preserved for future context without manual intervention.
 
 ### 1. Session Manager (Short-term Memory)
 

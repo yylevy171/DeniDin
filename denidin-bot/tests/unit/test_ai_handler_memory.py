@@ -51,7 +51,7 @@ class TestAIHandlerMemoryInitialization:
     
     def test_initialize_with_memory_managers(self, memory_enabled_config):
         """Verify memory managers are initialized correctly."""
-        client = Mock(spec=OpenAI)
+        client = MagicMock()
         handler = AIHandler(client, memory_enabled_config)
         
         # Memory managers should be initialized
@@ -64,7 +64,7 @@ class TestAIHandlerCreateRequestWithMemory:
     
     def test_create_request_includes_recalled_memories(self, memory_enabled_config):
         """Verify recalled memories are added to system prompt."""
-        client = Mock(spec=OpenAI)
+        client = MagicMock()
         handler = AIHandler(client, memory_enabled_config)
         
         # Mock memory manager recall
@@ -107,7 +107,7 @@ class TestAIHandlerGetResponseWithMemory:
     def test_get_response_stores_messages_in_session(self, memory_enabled_config):
         """Verify user and AI messages are stored in session."""
         # Mock OpenAI client
-        client = Mock(spec=OpenAI)
+        client = MagicMock()
         mock_completion = MagicMock()
         mock_completion.choices = [MagicMock()]
         mock_completion.choices[0].message.content = "Hello! How can I help you?"
@@ -154,12 +154,14 @@ class TestAIHandlerGetResponseWithMemory:
         assert first_call[1]["role"] == "user"
         assert first_call[1]["content"] == "Hello"
         assert first_call[1]["sender"] == "user@c.us"
+        assert first_call[1]["recipient"] == "bot@c.us"
         
         # Second call: assistant message
+        # Assistant messages have sender="assistant" and recipient=original user
         second_call = handler.session_manager.add_message.call_args_list[1]
         assert second_call[1]["role"] == "assistant"
         assert second_call[1]["content"] == "Hello! How can I help you?"
-        assert second_call[1]["sender"] == "bot@c.us"
+        assert second_call[1]["sender"] == "assistant"
         assert second_call[1]["recipient"] == "user@c.us"
 
 
@@ -168,7 +170,7 @@ class TestAIHandlerConversationHistory:
     
     def test_api_call_includes_conversation_history(self, memory_enabled_config):
         """Verify conversation history is included in OpenAI API calls."""
-        client = Mock(spec=OpenAI)
+        client = MagicMock()
         mock_completion = MagicMock()
         mock_completion.choices = [MagicMock()]
         mock_completion.choices[0].message.content = "Response"
@@ -200,7 +202,20 @@ class TestAIHandlerConversationHistory:
             message_id="msg_456"
         )
         
-        handler._call_openai_api(request, user_role="client")
+        # Call get_response with user_role to trigger history fetching
+        response = handler.get_response(
+            request,
+            user_role="client",
+            chat_id="chat_123",
+            sender="user_123",
+            recipient="bot_456"
+        )
+        
+        # Verify conversation history was retrieved
+        handler.session_manager.get_conversation_history.assert_called_once_with(
+            whatsapp_chat="chat_123",
+            max_tokens=4000  # client role default
+        )
         
         # Verify API was called with conversation history
         client.chat.completions.create.assert_called_once()
@@ -213,6 +228,10 @@ class TestAIHandlerConversationHistory:
         assert messages[1] == {"role": "user", "content": "Previous question"}
         assert messages[2] == {"role": "assistant", "content": "Previous answer"}
         assert messages[3] == {"role": "user", "content": "Current question"}
+        
+        # Verify response was returned
+        assert response.response_text == "Response"
+        assert response.tokens_used == 50
 
 
 class TestAIHandlerHybridMemory:
@@ -228,7 +247,7 @@ class TestAIHandlerHybridMemory:
         a long-term fact about a client, and now asks a follow-up question.
         The AI should have access to BOTH the conversation and the stored fact.
         """
-        client = Mock(spec=OpenAI)
+        client = MagicMock()
         mock_completion = MagicMock()
         mock_completion.choices = [MagicMock()]
         mock_completion.choices[0].message.content = "Based on our earlier discussion and your stored info, I can help."
@@ -323,7 +342,7 @@ class TestAIHandlerSessionToLongTermMemory:
         
         This enables future conversations to benefit from past discussions.
         """
-        client = Mock(spec=OpenAI)
+        client = MagicMock()
         
         # Mock OpenAI for summarization
         mock_summary_completion = MagicMock()
@@ -412,7 +431,7 @@ class TestAIHandlerSessionToLongTermMemory:
         
         No data loss, ever.
         """
-        client = Mock(spec=OpenAI)
+        client = MagicMock()
         
         # Mock OpenAI failure
         client.chat.completions.create.side_effect = Exception("API timeout")
@@ -492,7 +511,7 @@ class TestAIHandlerStartupRecovery:
         
         Ensures NO data loss from crashes/restarts.
         """
-        client = Mock(spec=OpenAI)
+        client = MagicMock()
         client.chat.completions.create.return_value = Mock(
             choices=[Mock(message=Mock(content="Summary of recovered session"))]
         )
@@ -540,6 +559,18 @@ class TestAIHandlerStartupRecovery:
             True    # expired_002
         ])
         
+        # Mock get_session to return the appropriate session for each chat_id
+        def get_session_side_effect(chat_id):
+            if chat_id == "user1@c.us":
+                return expired_session
+            elif chat_id == "user2@c.us":
+                return active_session
+            elif chat_id == "user3@c.us":
+                return barely_expired
+            return None
+        
+        handler.session_manager.get_session = Mock(side_effect=get_session_side_effect)
+        
         handler.session_manager.get_conversation_history = Mock(return_value=[
             {"role": "user", "content": "Test message"}
         ])
@@ -569,7 +600,7 @@ class TestAIHandlerStartupRecovery:
         """
         Verify clean startup when no orphaned sessions exist.
         """
-        client = Mock(spec=OpenAI)
+        client = MagicMock()
         handler = AIHandler(client, memory_enabled_config)
         
         handler.session_manager.find_orphaned_sessions = Mock(return_value=[])
@@ -586,7 +617,7 @@ class TestAIHandlerStartupRecovery:
         
         If one session fails to transfer, others should still be processed.
         """
-        client = Mock(spec=OpenAI)
+        client = MagicMock()
         handler = AIHandler(client, memory_enabled_config)
         
         from datetime import datetime, timedelta
@@ -608,6 +639,17 @@ class TestAIHandlerStartupRecovery:
         
         handler.session_manager.find_orphaned_sessions = Mock(return_value=[session1, session2])
         handler.session_manager.is_session_expired = Mock(return_value=True)
+        
+        # Mock get_session to return appropriate session
+        def get_session_side_effect(chat_id):
+            if chat_id == "user1@c.us":
+                return session1
+            elif chat_id == "user2@c.us":
+                return session2
+            return None
+        
+        handler.session_manager.get_session = Mock(side_effect=get_session_side_effect)
+        
         handler.session_manager.get_conversation_history = Mock(return_value=[
             {"role": "user", "content": "Test"}
         ])

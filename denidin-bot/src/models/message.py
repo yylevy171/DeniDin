@@ -19,8 +19,8 @@ class WhatsAppMessage:
     text_content: str
     timestamp: int
     message_type: str
-    is_group: bool
-    received_timestamp: datetime  # UTC timestamp when message was received by bot
+    is_group: bool = False
+    received_timestamp: Optional[datetime] = None  # UTC timestamp when message was received by bot
 
     @classmethod
     def from_notification(cls, notification) -> 'WhatsAppMessage':
