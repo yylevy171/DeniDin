@@ -8,5 +8,37 @@
   "temperature": 0.7,
   "log_level": "INFO",
   "poll_interval_seconds": 5,
-  "max_retries": 3
+  "max_retries": 3,
+  "feature_flags": {
+    "enable_memory_system": false
+  },
+  "session_config": {
+    "max_messages_per_session": 100,
+    "session_timeout_hours": 24,
+    "storage_path": "data/sessions",
+    "cleanup_interval_seconds": 3600
+  },
+  "memory_config": {
+    "storage_path": "data/memory",
+    "collection_name": "denidin_memories",
+    "max_context_memories": 5,
+    "similarity_threshold": 0.7
+  },
+  "constitution_config": {
+    "enabled": true,
+    "files": ["constitution.md"],
+    "max_tokens": 2000
+  },
+  "user_roles": {
+    "godfather": {
+      "max_tokens": 100000,
+      "can_access_memory": true,
+      "max_context_memories": 10
+    },
+    "client": {
+      "max_tokens": 4000,
+      "can_access_memory": true,
+      "max_context_memories": 3
+    }
+  }
 }
