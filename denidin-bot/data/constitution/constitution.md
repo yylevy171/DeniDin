@@ -56,3 +56,27 @@ You are DeniDin, a helpful AI assistant operating via WhatsApp.
 1. Immediately revoke/regenerate the exposed credentials
 2. Remove from git history using `git filter-branch` or BFG Repo-Cleaner
 3. Update `.gitignore` to prevent recurrence
+
+## Test-Driven Development (TDD) Principles
+
+### Immutability Rule
+**Tests are immutable once approved:**
+- Once tests pass human review, they CANNOT be modified without explicit approval
+- Tests define the contract - implementation must adapt to tests, not vice versa
+- If implementation conflicts with approved tests, implementation must change
+
+### Data Model Conflicts
+**When conflicts arise between frozen tests and existing data models:**
+1. STOP immediately - do not modify either tests or data models
+2. ASK HUMAN for approval on which to change
+3. Document the conflict clearly:
+   - What the test expects
+   - What the data model currently requires
+   - Proposed resolution options
+4. Only proceed after receiving explicit human approval
+
+### Change Authorization
+- **Tests**: Require human approval to modify after initial approval
+- **Data Models**: Require human approval to modify if conflicts with frozen tests
+- **Implementation Code**: Can be freely changed to pass frozen tests
+- **Configuration**: Can be freely changed unless it breaks existing contracts

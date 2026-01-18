@@ -338,7 +338,23 @@ def validate_memory_config(self) -> List[str]:
    - Store user message in session after getting AI response
    - Store AI response in session
 
-4. Add new method `handle_remember_command(content, chat_id, user_role='client') -> str`
+4. Add new method `transfer_session_to_long_term_memory(chat_id, session_id) -> Dict`
+   - Summarize conversation using AI (full context)
+   - **NO FILTERING**: Store ALL sessions regardless of length
+   - Store summary in ChromaDB with metadata (session_id, timestamps, message_count)
+   - **Graceful degradation**: If AI fails, ALWAYS store raw conversation (zero data loss)
+   - Mark metadata with `summarization_failed: true` for monitoring
+
+5. Add new method `recover_orphaned_sessions() -> Dict`
+   - **STARTUP PROCEDURE**: Call on bot initialization
+   - Find sessions not transferred due to crashes/shutdowns
+   - Check each session's expiration status
+   - Expired (>24h inactive) → transfer to long-term memory
+   - Active (<24h inactive) → load to short-term memory
+   - Continue processing despite individual session failures
+   - Return summary: total_found, transferred, loaded, failed
+
+6. **REMOVED**: `handle_remember_command()` - deferred to future release
 
 ### Files Modified
 - `src/handlers/ai_handler.py`
@@ -355,10 +371,17 @@ def validate_memory_config(self) -> List[str]:
 
 **File**: `denidin.py`
 
-**Changes** in `handle_text_message()`:
+**Changes** in bot initialization and `handle_text_message()`:
 
 ```python
-# Before creating AI request, check for commands
+# ON STARTUP (in main() or __init__):
+if config.feature_flags.get('enable_memory_system', False):
+    recovery_result = ai_handler.recover_orphaned_sessions()
+    logger.info(f"Session recovery: {recovery_result['total_found']} found, "
+                f"{recovery_result['transferred_to_long_term']} transferred, "
+                f"{recovery_result['loaded_to_short_term']} loaded")
+
+# In handle_text_message():
 text = message.text_content.strip()
 
 # Determine user role (TODO: implement proper RBAC in feature 006)
@@ -367,12 +390,7 @@ user_role = 'godfather' if message.sender_id == config.godfather_id else 'client
 # Check feature flag
 memory_enabled = config.feature_flags.get('enable_memory_system', False)
 
-if memory_enabled and text.startswith('/remember '):
-    content = text[10:].strip()
-    response = ai_handler.handle_remember_command(content, message.chat_id, user_role)
-    notification.answer(response)
-    logger.info(f"{tracking} Stored memory via /remember command")
-    return
+# **REMOVED**: /remember command - deferred to future release
 
 if memory_enabled and text == '/reset':
     ai_handler.session_manager.clear_session(message.chat_id)
@@ -382,6 +400,15 @@ if memory_enabled and text == '/reset':
 
 # Normal message flow continues...
 # Pass chat_id and user_role to get_response()
+
+# ON SESSION EXPIRATION (in session timeout handler):
+if memory_enabled:
+    transfer_result = ai_handler.transfer_session_to_long_term_memory(
+        chat_id=expired_session.whatsapp_chat,
+        session_id=expired_session.session_id
+    )
+    logger.info(f"Session transfer: {transfer_result}")
+```
 response = ai_handler.get_response(message, chat_id=message.chat_id, user_role=user_role)
 ```
 
