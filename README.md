@@ -1,10 +1,25 @@
-# DeniDin SpecKit
+# DeniDin
 
-A specification-driven development framework with AI-agent collaboration.
+A WhatsApp AI assistant with semantic memory and conversation management.
 
 ## Overview
 
-DeniDin SpecKit is a structured workflow system that ensures every feature begins with a complete specification before implementation. The framework integrates AI agents as first-class collaborators, enforcing consistency through templates and phased execution.
+DeniDin is a production WhatsApp bot powered by OpenAI GPT-4o-mini with an advanced two-tier memory system: short-term conversation history (SessionManager) and long-term semantic memory (ChromaDB). The bot maintains context across conversations and recalls relevant information automatically.
+
+## Current Status
+
+**Version**: 1.0 (Production) + Memory System (Phase 5 Complete)
+- ✅ WhatsApp integration via Green API
+- ✅ AI responses via OpenAI GPT-4o-mini
+- ✅ Session management with UUID-based conversations
+- ✅ ChromaDB semantic memory with automatic recall
+- ✅ Startup recovery for orphaned sessions
+- ✅ 196 tests passing, 4 skipped
+- 🚀 Bot deployed and running in production
+
+**Memory System**: Phases 1-5 complete (PR #18 merged to master)
+- Feature flag: `enable_memory_system` (default: disabled for safe deployment)
+- Next: Phase 6 (main bot integration with /reset command)
 
 ## Governance
 
