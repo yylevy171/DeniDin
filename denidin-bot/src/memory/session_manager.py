@@ -110,11 +110,6 @@ class SessionManager:
         if chat_id in self.chat_to_session:
             session_id = self.chat_to_session[chat_id]
             session = self._load_session(session_id)
-            
-            # Update last_active timestamp
-            session.last_active = datetime.now(timezone.utc).isoformat()
-            self._save_session(session)
-            
             return session
         
         # Create new session
@@ -253,7 +248,6 @@ class SessionManager:
         # Reset session
         session.message_ids = []
         session.total_tokens = 0
-        session.last_active = datetime.now(timezone.utc).isoformat()
         self._save_session(session)
         
         logger.info(f"Cleared session {session.session_id}")
@@ -356,3 +350,46 @@ class SessionManager:
         if self._cleanup_thread.is_alive():
             self._cleanup_thread.join(timeout=5)
         logger.info("SessionManager cleanup thread stopped")
+    
+    def is_session_expired(self, session: Session) -> bool:
+        """
+        Check if a session has expired based on last_active timestamp.
+        
+        Args:
+            session: Session object to check
+            
+        Returns:
+            True if session is expired, False otherwise
+        """
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=self.session_timeout_hours)
+        last_active = datetime.fromisoformat(session.last_active)
+        
+        return last_active < cutoff
+    
+    def find_orphaned_sessions(self) -> List[Session]:
+        """
+        Find all sessions that exist on disk but are not in memory index.
+        Used for startup recovery.
+        
+        Returns:
+            List of Session objects found on disk
+        """
+        orphaned_sessions = []
+        
+        for session_dir in self.storage_dir.iterdir():
+            if not session_dir.is_dir() or session_dir.name == "expired":
+                continue
+            
+            session_file = session_dir / "session.json"
+            if not session_file.exists():
+                continue
+            
+            try:
+                session = self._load_session(session_dir.name)
+                orphaned_sessions.append(session)
+                logger.debug(f"Found orphaned session: {session.session_id}")
+            except Exception as e:
+                logger.error(f"Failed to load orphaned session {session_dir.name}: {e}")
+        
+        return orphaned_sessions

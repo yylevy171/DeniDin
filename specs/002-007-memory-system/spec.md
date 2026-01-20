@@ -226,7 +226,28 @@ Currently, DeniDin has **no memory**:
 
 **Session to Long-term Memory Transfer**
 
-When a session expires (after 24 hours of inactivity), the conversation is automatically transferred to long-term memory:
+When a session expires (after 24 hours of inactivity), the conversation is automatically transferred to long-term memory.
+
+**CRITICAL: Transfer happens in TWO ways:**
+
+1. **Startup Recovery** (`ai_handler.recover_orphaned_sessions()`):
+   - Triggered: On bot startup
+   - Purpose: Recover sessions orphaned by crashes/restarts
+   - Scans `data/sessions/` for expired sessions (last_active > 24h)
+   - Transfers expired → long-term memory → archives to `expired/YYYY-MM-DD/`
+   - Ensures no data loss from unexpected shutdowns
+
+2. **Periodic Cleanup** (Background thread in SessionManager):
+   - Triggered: Every 60 seconds (configurable: `cleanup_interval_seconds`)
+   - Purpose: Transfer expired sessions during normal bot operation
+   - Background daemon thread runs `_cleanup_loop()` continuously
+   - When session expires → accesses global context → calls `context.ai_handler.transfer_session_to_long_term_memory()`
+   - THEN move to `expired/` folder
+   - **Design Pattern**: Global context object accessible to all threads
+   - **No callbacks or reference passing**: Cleanup thread directly accesses global context containing all components (ai_handler, session_manager, memory_manager, config, etc.)
+   - **Phase 6 Implementation**: Create global context, pass to SessionManager during initialization
+
+**Transfer Process** (both paths use same logic):
 
 1. **Summarization**: The AI generates a concise summary of the conversation using OpenAI API
    - Full conversation context provided to AI
@@ -251,12 +272,6 @@ When a session expires (after 24 hours of inactivity), the conversation is autom
    - Ensures zero data loss under all conditions
    - Error logged separately for monitoring (not stored in conversation)
    - Metadata flag: `summarization_failed: true`
-
-5. **Startup Recovery**: On bot startup, orphaned sessions are recovered
-   - Scans for active sessions that weren't transferred (e.g., from crashes)
-   - Expired sessions (>24h) → automatically transferred to long-term memory
-   - Active sessions (<24h) → loaded back into short-term memory
-   - Ensures no data loss from unexpected shutdowns
 
 This automatic transfer ensures ALL conversations are preserved for future context without manual intervention.
 

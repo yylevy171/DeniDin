@@ -4,7 +4,8 @@ Tests global exception handler with REAL API calls - NO MOCKING
 Limited to 1 real API call to minimize cost
 """
 import pytest
-import os
+import json
+from pathlib import Path
 from openai import OpenAI
 from src.handlers.ai_handler import AIHandler
 from src.handlers.whatsapp_handler import WhatsAppHandler
@@ -15,8 +16,8 @@ from src.models.message import WhatsAppMessage
 @pytest.fixture
 def real_config():
     """Load real configuration for testing"""
-    config_path = os.getenv('CONFIG_PATH', 'config/config.json')
-    config = BotConfiguration.from_file(config_path)
+    config_path = Path(__file__).parent.parent.parent / "config" / "config.json"
+    config = BotConfiguration.from_file(str(config_path))
     config.validate()
     return config
 

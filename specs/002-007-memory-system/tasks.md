@@ -302,7 +302,14 @@ description: "Task list for Memory System (002+007) implementation"
   - Add `/reset` command handler: Call `ai_handler.session_manager.clear_session()`, send confirmation
   - Update normal message flow: Pass `chat_id`, `user_role`, `sender`, `recipient` to `ai_handler.get_response()`
   - Add logging for memory usage with tracking prefix
-  - **SESSION EXPIRATION**: When session expires, call `ai_handler.transfer_session_to_long_term_memory()`
+  - **PERIODIC SESSION EXPIRATION** (NEW REQUIREMENT):
+    - Create global context object accessible to all threads
+    - Context contains: session_manager, memory_manager, ai_handler, config, etc.
+    - Cleanup thread in SessionManager accesses global context
+    - When session expires, cleanup thread directly calls context.ai_handler.transfer_session_to_long_term_memory()
+    - No callbacks, no reference passing - just access global context
+  - **DESIGN PRINCIPLE**: All background threads have access to global context object
+  - **SESSION EXPIRATION TRANSFER**: When session expires (startup OR periodic), call `ai_handler.transfer_session_to_long_term_memory()`
 
 **Validation**:
 - [ ] V021 Run integration tests: `pytest tests/integration/test_memory_integration.py -v`
