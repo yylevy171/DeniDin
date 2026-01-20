@@ -92,19 +92,32 @@ Edit `config/config.json` and replace the placeholder values:
 ### 5. Run the Bot
 
 ```bash
-python denidin.py
+./run_denidin.sh
 ```
 
 The bot will:
 1. Load configuration from `config/config.json`
-2. Start polling Green API for incoming WhatsApp messages
-3. Forward messages to ChatGPT
-4. Send AI responses back to WhatsApp
-5. Log all activity to `logs/denidin.log`
+2. Check for existing bot instances (prevents duplicates)
+3. Start polling Green API for incoming WhatsApp messages
+4. Forward messages to ChatGPT
+5. Send AI responses back to WhatsApp
+6. Log all activity to `logs/bot.log`
+
+**Alternative (manual start):**
+```bash
+python3 denidin.py
+```
 
 ### 6. Stop the Bot
 
-Press `Ctrl+C` to gracefully shut down the bot.
+```bash
+./stop_denidin.sh
+```
+
+This will gracefully shut down the bot (sends SIGTERM, waits for cleanup).
+
+**Alternative:**
+Press `Ctrl+C` if running manually, or use `kill -TERM <PID>`.
 
 ## Architecture
 

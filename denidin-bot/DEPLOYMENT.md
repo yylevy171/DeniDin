@@ -151,6 +151,10 @@ WorkingDirectory=/opt/DeniDin/denidin-bot
 Environment="PATH=/opt/DeniDin/denidin-bot/venv/bin"
 ExecStart=/opt/DeniDin/denidin-bot/venv/bin/python3 /opt/DeniDin/denidin-bot/denidin.py
 
+# Alternative: Use management scripts for single-instance enforcement
+# ExecStart=/opt/DeniDin/denidin-bot/run_denidin.sh
+# ExecStop=/opt/DeniDin/denidin-bot/stop_denidin.sh
+
 # Restart policy
 Restart=always
 RestartSec=10
@@ -317,6 +321,8 @@ Set `CONFIG_PATH` environment variable to specify config location:
 
 ```bash
 export CONFIG_PATH=/etc/denidin/config.json
+./run_denidin.sh
+# Or manually:
 python3 denidin.py
 ```
 
