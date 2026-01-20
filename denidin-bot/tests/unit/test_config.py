@@ -272,3 +272,58 @@ class TestBotConfiguration:
         assert hasattr(config, 'log_level')
         assert hasattr(config, 'poll_interval_seconds')
         assert hasattr(config, 'max_retries')
+        assert hasattr(config, 'data_root')
+
+    def test_data_root_defaults_to_data(self, valid_config_data):
+        """Test that data_root defaults to 'data' when not specified."""
+        config = BotConfiguration(**valid_config_data)
+        assert config.data_root == 'data'
+
+    def test_data_root_can_be_customized(self, valid_config_data):
+        """Test that data_root can be set to custom value (e.g., for test isolation)."""
+        valid_config_data['data_root'] = '/tmp/test_data'
+        config = BotConfiguration(**valid_config_data)
+        assert config.data_root == '/tmp/test_data'
+
+    def test_validate_fails_with_empty_data_root(self, valid_config_data):
+        """Test that validate() fails when data_root is empty."""
+        valid_config_data['data_root'] = ''
+        config = BotConfiguration(**valid_config_data)
+        
+        with pytest.raises(ValueError) as exc_info:
+            config.validate()
+        assert "data_root" in str(exc_info.value).lower()
+
+    def test_validate_fails_with_whitespace_data_root(self, valid_config_data):
+        """Test that validate() fails when data_root is only whitespace."""
+        valid_config_data['data_root'] = '   '
+        config = BotConfiguration(**valid_config_data)
+        
+        with pytest.raises(ValueError) as exc_info:
+            config.validate()
+        assert "data_root" in str(exc_info.value).lower()
+
+    def test_memory_storage_paths_use_data_root(self, tmp_path):
+        """Test that memory storage paths are constructed relative to data_root."""
+        temp_config = tmp_path / "config_with_data_root.json"
+        config_data = {
+            "green_api_instance_id": "test123",
+            "green_api_token": "test_token_xyz",
+            "openai_api_key": "sk-test123",
+            "data_root": "test_data",
+            "memory": {
+                "session": {},
+                "longterm": {}
+            }
+        }
+        
+        with open(temp_config, 'w') as f:
+            json.dump(config_data, f)
+        
+        config = BotConfiguration.from_file(str(temp_config))
+        
+        # Verify storage paths are relative to data_root
+        assert config.memory['session']['storage_dir'] == 'test_data/sessions'
+        assert config.memory['longterm']['storage_dir'] == 'test_data/memory'
+        
+        os.unlink(temp_config)

@@ -141,8 +141,8 @@ class TestAIHandlerGetResponseWithMemory:
             request,
             chat_id="chat_123",
             user_role="client",
-            sender="user@c.us",
-            recipient="bot@c.us"
+            sender="whatsapp_tester1",
+            recipient="AI_test"
         )
         
         # Verify both messages were stored
@@ -153,16 +153,16 @@ class TestAIHandlerGetResponseWithMemory:
         assert first_call[1]["chat_id"] == "chat_123"
         assert first_call[1]["role"] == "user"
         assert first_call[1]["content"] == "Hello"
-        assert first_call[1]["sender"] == "user@c.us"
-        assert first_call[1]["recipient"] == "bot@c.us"
+        assert first_call[1]["sender"] == "whatsapp_tester1"
+        assert first_call[1]["recipient"] == "AI_test"
         
         # Second call: assistant message
-        # Assistant messages have sender="assistant" and recipient=original user
+        # AI messages have sender=recipient (AI_test) and recipient=original sender (whatsapp_tester1)
         second_call = handler.session_manager.add_message.call_args_list[1]
         assert second_call[1]["role"] == "assistant"
         assert second_call[1]["content"] == "Hello! How can I help you?"
-        assert second_call[1]["sender"] == "assistant"
-        assert second_call[1]["recipient"] == "user@c.us"
+        assert second_call[1]["sender"] == "AI_test"  # recipient becomes sender for AI
+        assert second_call[1]["recipient"] == "whatsapp_tester1"  # sender becomes recipient for AI
 
 
 class TestAIHandlerConversationHistory:

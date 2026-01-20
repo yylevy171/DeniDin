@@ -9,6 +9,7 @@
   "log_level": "INFO",
   "poll_interval_seconds": 5,
   "max_retries": 3,
+  "data_root": "data",
   "feature_flags": {
     "enable_memory_system": false
   },
