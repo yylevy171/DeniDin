@@ -180,7 +180,12 @@ def handle_text_message(notification: Notification) -> None:
         logger.debug(f"{tracking} Created AI request {ai_request.request_id}")
 
         # Get AI response (with retry logic and fallbacks built-in)
-        ai_response = ai_handler.get_response(ai_request)
+        # Pass sender (WhatsApp ID) and recipient ('AI') for proper message tracking
+        ai_response = ai_handler.get_response(
+            ai_request,
+            sender=message.sender_id,
+            recipient="AI"
+        )
         logger.info(
             f"{tracking} AI response generated: {ai_response.tokens_used} tokens, "
             f"{len(ai_response.response_text)} chars"

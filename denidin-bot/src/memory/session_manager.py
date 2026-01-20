@@ -198,18 +198,18 @@ class SessionManager:
         logger.debug(f"Added message {message_id} to session {session.session_id}")
         return message_id
     
-    def get_conversation_history(self, chat_id: str, user_role: str) -> List[Dict]:
+    def get_conversation_history(self, whatsapp_chat: str, max_tokens: int = None) -> List[Dict]:
         """
         Get conversation history in AI format.
         
         Args:
-            chat_id: WhatsApp chat ID
-            user_role: User role for token limits (not used yet)
+            whatsapp_chat: WhatsApp chat ID
+            max_tokens: Maximum tokens to retrieve (not implemented yet)
             
         Returns:
             List of messages in format [{"role": "user", "content": "..."}]
         """
-        session = self.get_session(chat_id)
+        session = self.get_session(whatsapp_chat)
         session_dir = self.storage_dir / session.session_id
         messages_dir = session_dir / "messages"
         

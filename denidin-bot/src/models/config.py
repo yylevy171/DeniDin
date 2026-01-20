@@ -23,6 +23,9 @@ class BotConfiguration:
     poll_interval_seconds: int = 5
     max_retries: int = 3
     
+    # Data storage configuration
+    data_root: str = 'data'  # Root directory for all data storage (sessions, memory, etc.)
+    
     # Memory system configuration (Feature 002+007)
     godfather_phone: Optional[str] = None
     feature_flags: Dict[str, bool] = field(default_factory=dict)
@@ -78,6 +81,7 @@ class BotConfiguration:
             'log_level': 'INFO',
             'poll_interval_seconds': 5,
             'max_retries': 3,
+            'data_root': 'data',
             'godfather_phone': None,
             'feature_flags': {},
             'memory': {},
@@ -92,15 +96,16 @@ class BotConfiguration:
         
         # Set memory sub-field defaults if memory key exists
         if 'memory' in config_data and config_data['memory']:
+            data_root = config_data.get('data_root', 'data')
             memory_defaults = {
                 'session': {
-                    'storage_dir': 'data/sessions',
+                    'storage_dir': f'{data_root}/sessions',
                     'max_tokens_by_role': {'client': 4000, 'godfather': 100000},
                     'session_timeout_hours': 24
                 },
                 'longterm': {
                     'enabled': True,
-                    'storage_dir': 'data/memory',
+                    'storage_dir': f'{data_root}/memory',
                     'collection_name': 'godfather_memory',
                     'embedding_model': 'text-embedding-3-small',
                     'top_k_results': 5,
@@ -141,3 +146,7 @@ class BotConfiguration:
         # Validate log_level is INFO or DEBUG
         if self.log_level not in ['INFO', 'DEBUG']:
             raise ValueError(f"log_level must be 'INFO' or 'DEBUG', got '{self.log_level}'")
+        
+        # Validate data_root is not empty
+        if not self.data_root or not self.data_root.strip():
+            raise ValueError("data_root must not be empty")

@@ -256,23 +256,25 @@ class AIHandler:
             if self.memory_enabled and self.session_manager and effective_chat_id:
                 try:
                     # Store user message
+                    # sender should be WhatsApp ID (or test identifier), recipient is always 'AI' (or 'AI_test')
                     self.session_manager.add_message(
                         chat_id=effective_chat_id,
                         role="user",
                         content=request.user_prompt,
                         user_role=user_role or "client",
-                        sender=sender or "unknown",
-                        recipient=recipient or "bot"
+                        sender=sender or effective_chat_id,
+                        recipient=recipient or "AI"
                     )
                     
                     # Store AI response
+                    # sender is always 'AI' (or 'AI_test'), recipient is WhatsApp ID (or test identifier)
                     self.session_manager.add_message(
                         chat_id=effective_chat_id,
                         role="assistant",
                         content=response_text,
                         user_role=user_role or "client",
-                        sender="assistant",  # Assistant is the sender
-                        recipient=sender or "unknown"  # Reply goes to original sender
+                        sender=recipient or "AI",  # AI is the sender
+                        recipient=sender or effective_chat_id  # Reply goes to original sender
                     )
                     
                     logger.debug(f"Stored user + assistant messages in session {effective_chat_id}")
