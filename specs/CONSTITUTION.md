@@ -282,14 +282,54 @@ else:
 
 ## VII. Configuration & Secrets
 
-**Principle**: Never commit secrets, always externalize configuration.
+**Principle**: All configuration MUST be in config files. NO environment variables allowed.
 
 ### Rules:
-- All secrets in environment variables or external config files
-- `config.json` and similar files must be in `.gitignore`
-- Provide `config.example.json` with placeholder values
-- Validate all configuration at startup
-- Log configuration (mask sensitive values)
+- **NO environment variables**: Configuration exclusively in `config/config.json`
+- **NO os.getenv()**: Do not use `os.getenv()` anywhere in the codebase
+- **Secrets storage**: API keys and tokens stored in `config/config.json` (excluded from git via `.gitignore`)
+- **Feature flags**: Use `config.feature_flags` dictionary for enabling/disabling features
+- **Example config**: Always maintain `config/config.example.json` with safe placeholder values
+- **Validation**: Validate all configuration at startup with clear error messages
+- **Logging**: Log configuration (mask sensitive values like API keys)
+- **Testing**: Tests create config objects programmatically or use fixtures, NOT environment variables
+
+### Rationale:
+- Single source of truth for all configuration
+- Easier to understand and debug (no hidden environment dependencies)
+- Simpler deployment (just copy config file)
+- Better IDE support and type checking
+- Clear separation between code and configuration
+
+### API Key Usage in Tests:
+- **Valid API keys available**: We have valid OpenAI and GreenAPI keys in `config/config.json`
+- **Integration tests**: Load real config and use real API keys for true integration testing
+- **ASK before real API calls**: When creating tests that call OpenAI or GreenAPI:
+  1. **ALWAYS ask human first**: "This test will make real API calls. Should I proceed?"
+  2. Wait for explicit approval before implementing
+  3. Document expected API costs in test docstring
+  4. Use real API keys from config file (never environment variables)
+- **Cost awareness**: Real API calls cost money - always get approval first
+- **Test config fixture**: Use pytest fixture to load `config/config.json` for integration tests
+
+```python
+# ✅ CORRECT - Load config from file
+@pytest.fixture(scope="module")
+def test_config():
+    config_path = Path(__file__).parent.parent.parent / "config" / "config.json"
+    with open(config_path) as f:
+        return json.load(f)
+
+def test_real_api(test_config):
+    client = OpenAI(api_key=test_config['openai_api_key'])
+    # ... test with real API
+```
+
+```python
+# ❌ WRONG - Using environment variable
+def test_real_api():
+    client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+```
 
 ---
 

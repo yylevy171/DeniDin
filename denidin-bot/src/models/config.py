@@ -15,13 +15,13 @@ class BotConfiguration:
     green_api_instance_id: str
     green_api_token: str
     openai_api_key: str
-    ai_model: str
-    system_message: str
-    max_tokens: int
-    temperature: float
-    log_level: str
-    poll_interval_seconds: int
-    max_retries: int
+    ai_model: str = 'gpt-4o-mini'
+    system_message: str = 'You are a helpful assistant.'
+    max_tokens: int = 1000
+    temperature: float = 0.7
+    log_level: str = 'INFO'
+    poll_interval_seconds: int = 5
+    max_retries: int = 3
     
     # Memory system configuration (Feature 002+007)
     godfather_phone: Optional[str] = None
@@ -141,43 +141,3 @@ class BotConfiguration:
         # Validate log_level is INFO or DEBUG
         if self.log_level not in ['INFO', 'DEBUG']:
             raise ValueError(f"log_level must be 'INFO' or 'DEBUG', got '{self.log_level}'")
-
-    @classmethod
-    def from_env(cls) -> 'BotConfiguration':
-        """
-        Load configuration from environment variables.
-        
-        Returns:
-            BotConfiguration instance
-            
-        Raises:
-            ValueError: If required environment variables are missing
-        """
-        missing_vars = []
-        
-        # Check for required environment variables
-        required_env_vars = {
-            'GREEN_API_INSTANCE_ID': 'green_api_instance_id',
-            'GREEN_API_TOKEN': 'green_api_token',
-            'OPENAI_API_KEY': 'openai_api_key'
-        }
-        
-        for env_var in required_env_vars.keys():
-            if not os.getenv(env_var):
-                missing_vars.append(env_var)
-        
-        if missing_vars:
-            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
-        
-        return cls(
-            green_api_instance_id=os.getenv('GREEN_API_INSTANCE_ID'),
-            green_api_token=os.getenv('GREEN_API_TOKEN'),
-            openai_api_key=os.getenv('OPENAI_API_KEY'),
-            ai_model=os.getenv('AI_MODEL', 'gpt-4'),
-            system_message=os.getenv('SYSTEM_MESSAGE', 'You are a helpful assistant.'),
-            max_tokens=int(os.getenv('MAX_TOKENS', '1000')),
-            temperature=float(os.getenv('TEMPERATURE', '0.7')),
-            log_level=os.getenv('LOG_LEVEL', 'INFO'),
-            poll_interval_seconds=int(os.getenv('POLL_INTERVAL_SECONDS', '5')),
-            max_retries=int(os.getenv('MAX_RETRIES', '3'))
-        )

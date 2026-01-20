@@ -31,13 +31,14 @@ class AIHandler:
     Implements retry logic with exponential backoff for transient failures.
     """
     
-    def __init__(self, openai_client: OpenAI, config: BotConfiguration):
+    def __init__(self, openai_client: OpenAI, config: BotConfiguration, cleanup_interval_seconds: Optional[int] = None):
         """
         Initialize AIHandler with OpenAI client and configuration.
         
         Args:
             openai_client: Configured OpenAI client instance
             config: Bot configuration with AI settings
+            cleanup_interval_seconds: Optional override for session cleanup interval (for testing)
         """
         self.client = openai_client
         self.config = config
@@ -53,9 +54,15 @@ class AIHandler:
             
             # Initialize SessionManager
             session_config = config.memory.get('session', {})
+            
+            # Use provided cleanup_interval or default from config
+            if cleanup_interval_seconds is None:
+                cleanup_interval_seconds = session_config.get('cleanup_interval_seconds', 3600)
+            
             self.session_manager = SessionManager(
                 storage_dir=session_config.get('storage_dir', 'data/sessions'),
-                session_timeout_hours=session_config.get('session_timeout_hours', 24)
+                session_timeout_hours=session_config.get('session_timeout_hours', 24),
+                cleanup_interval_seconds=cleanup_interval_seconds
             )
             
             # Store token limits for later use in conversation retrieval

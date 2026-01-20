@@ -180,6 +180,14 @@ DeniDin follows **PEP 8** with the following conventions:
 - **Constants**: `UPPER_SNAKE_CASE` (e.g., `MAX_MESSAGE_LENGTH`)
 - **Private Methods**: `_leading_underscore` (e.g., `_send_with_retry()`)
 
+#### Configuration Guidelines
+
+- **NO environment variables**: All configuration MUST be in `config/config.json`
+- **NO os.getenv()**: Do not use environment variables for any configuration
+- **Feature flags**: Use `config.feature_flags` dictionary for feature toggles
+- **Secrets**: Store API keys and tokens in `config/config.json` (excluded from git via `.gitignore`)
+- **Example config**: Always maintain `config/config.example.json` with safe placeholder values
+
 #### Imports
 
 **Order** (enforced by linter):
