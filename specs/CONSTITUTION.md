@@ -64,7 +64,7 @@ received_timestamp = datetime.now()  # FORBIDDEN
 **Principle**: All work on feature branches with PRs - NEVER push directly to master.
 
 **Requirements**:
-- NEVER push directly to master/main - ALL work on feature branches
+- NEVER push directly to master - ALL work on feature branches
 - Branch naming: `###-feature-name` or `chore/description`, `docs/description`
 - All tests must pass before creating PR
 - Use CLI tools (`git`, `gh`) for all version control operations
@@ -82,7 +82,7 @@ gh pr create --base master --head feature/my-feature
 gh pr merge --squash --delete-branch
 ```
 
-**Rationale**: Feature branches enable proper code review, maintain stable main branch, and provide clear audit trail.
+**Rationale**: Feature branches enable proper code review, maintain stable master branch, and provide clear audit trail.
 
 ---
 

@@ -61,7 +61,7 @@ Each phase includes version control tasks:
 - **VC3**: Push to feature branch
 - **VC4**: Create Pull Request
 - **VC5**: Review and merge PR
-- **NEVER** push directly to master/main
+- **NEVER** push directly to master
 
 ## Path Conventions
 
