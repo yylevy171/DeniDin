@@ -1,5 +1,5 @@
 """
-Logging utility for the DeniDin chatbot.
+Logging utility for the DeniDin application.
 Provides file and console logging with rotation.
 
 Logging Strategy:

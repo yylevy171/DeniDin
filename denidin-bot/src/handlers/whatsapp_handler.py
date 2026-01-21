@@ -66,14 +66,14 @@ class WhatsAppHandler:
 
     def is_bot_mentioned_in_group(self, message: WhatsAppMessage, bot_name: str = "DeniDin") -> bool:
         """
-        Check if bot is mentioned in a group message.
+        Check if application is mentioned in a group message.
 
         Args:
             message: WhatsApp message to check
-            bot_name: Name of the bot to look for
+            bot_name: Name of the application to look for
 
         Returns:
-            True if bot is mentioned or message is 1-on-1, False otherwise
+            True if application is mentioned or message is 1-on-1, False otherwise
         """
         # Always process 1-on-1 messages
         if not message.is_group:
@@ -87,7 +87,7 @@ class WhatsAppHandler:
 
         if not is_mentioned:
             logger.debug(
-                f"Bot not mentioned in group message {message.message_id}, skipping"
+                f"Application not mentioned in group message {message.message_id}, skipping"
             )
 
         return is_mentioned

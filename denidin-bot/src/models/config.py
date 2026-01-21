@@ -10,7 +10,7 @@ from typing import Optional, Dict
 
 @dataclass
 class AppConfiguration:
-    """Configuration model for the DeniDin chatbot."""
+    """Configuration model for the DeniDin application."""
     
     green_api_instance_id: str
     green_api_token: str
