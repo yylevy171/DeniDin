@@ -14,7 +14,7 @@ DeniDin is a production WhatsApp application powered by OpenAI GPT-4o-mini with 
 - ✅ Session management with UUID-based conversations
 - ✅ ChromaDB semantic memory with automatic recall
 - ✅ Startup recovery for orphaned sessions
-- ✅ /reset command with session transfer to long-term memory
+- ✅ Automatic session transfer to long-term memory on 24h expiration
 - ✅ Data root configuration for test/prod separation
 - ✅ Sender/recipient tracking for proper message attribution
 - ✅ Application management scripts (run_denidin.sh, stop_denidin.sh)

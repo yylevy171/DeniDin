@@ -55,7 +55,7 @@ The `run_denidin.sh` and `stop_denidin.sh` scripts currently don't work properly
 
 ### Remove /reset Command
 **Priority:** Medium  
-**Status:** Pending
+**Status:** ✅ Completed (PR #34)
 
 **Problem:**
 The `/reset` command allows users to manually transfer their conversation to long-term memory, but this creates issues:

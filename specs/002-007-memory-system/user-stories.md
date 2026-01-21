@@ -104,52 +104,6 @@ This document defines the user-facing behaviors that Phase 6 integration tests m
 
 ---
 
-## US-MEM-03: Reset Command Clears Session Only
-
-**As a** user  
-**I want** to clear the current conversation  
-**So that** I can start fresh on a new topic without the bot being confused by old context
-
-### Acceptance Criteria
-
-**Given** I am chatting with DeniDin  
-**And** I have sent several messages building context  
-**And** the memory system is enabled  
-**When** I send the `/reset` command
-
-**Then** the bot should:
-- Send confirmation message: "🔄 Conversation history cleared. Starting fresh!"
-- Clear the session's conversation history
-- Preserve long-term memories (if any)
-- Treat next message as start of new conversation
-
-### Test Scenarios
-
-1. **Session cleared but long-term memory intact**
-   - Build conversation context (5 messages)
-   - Store long-term memory: "My favorite color is blue"
-   - Send `/reset`
-   - Ask about conversation context → Bot has no memory
-   - Ask about favorite color → Bot recalls "blue"
-
-2. **Confirmation message sent**
-   - Send `/reset`
-   - Expected: Bot responds with confirmation containing "cleared" or "fresh"
-
-3. **No memory of pre-reset conversation**
-   - Message 1: "I'm working on Project Alpha"
-   - Message 2: "It's due next week"
-   - Send `/reset`
-   - Message 3: "What project am I working on?"
-   - Expected: Bot says it doesn't know (no session history)
-
-### Related Requirements
-- REQ-COMMAND-001: /reset command
-- AC-RESET-001: Session cleared
-- AC-RESET-002: Confirmation message
-
----
-
 ## US-MEM-04: Hybrid Memory (Session + Long-term)
 
 **As a** Godfather user  
@@ -489,7 +443,7 @@ This document defines the user-facing behaviors that Phase 6 integration tests m
 |------------|------------|-------------------|--------------|
 | US-MEM-01  | SessionManager (15) | Phase 6 Integration | E2E testing |
 | US-MEM-02  | MemoryManager (29) | Phase 6 Integration | E2E testing |
-| US-MEM-03  | SessionManager clear | Phase 6 Integration | Manual /reset |
+| ~~US-MEM-03~~ | ~~REMOVED (duplicate prevention)~~ | ~~N/A~~ | ~~N/A~~ |
 | US-MEM-04  | AIHandler (10) | Phase 6 Integration | E2E testing |
 | ~~US-MEM-05~~ | ~~DEFERRED to RBAC~~ | ~~Feature 006~~ | ~~N/A~~ |
 | ~~US-MEM-06~~ | ~~Phase 4-5 (done)~~ | ~~N/A~~ | ~~N/A~~ |
