@@ -1,0 +1,52 @@
+{
+  "green_api_instance_id": "test_instance_id",
+  "green_api_token": "test_token_1234567890",
+  "openai_api_key": "sk-test1234567890abcdefghijklmnopqrstuvwxyz",
+  "ai_model": "gpt-3.5-turbo",
+  "system_message": "You are a test assistant.",
+  "max_tokens": 1000,
+  "temperature": 0.7,
+  "log_level": "DEBUG",
+  "poll_interval_seconds": 5,
+  "max_retries": 3,
+  "data_root": "test_data",
+  "feature_flags": {
+    "enable_memory_system": true
+  },
+  "godfather_phone": "1234567890@c.us",
+  "memory": {
+    "session": {
+      "storage_dir": "test_data/sessions",
+      "max_tokens_by_role": {
+        "client": 4000,
+        "godfather": 100000
+      },
+      "session_timeout_hours": 24
+    },
+    "longterm": {
+      "enabled": true,
+      "storage_dir": "test_data/memory",
+      "collection_name": "test_memory",
+      "embedding_model": "text-embedding-3-small",
+      "top_k_results": 5,
+      "min_similarity": 0.7
+    }
+  },
+  "constitution_config": {
+    "enabled": false,
+    "files": [],
+    "max_tokens": 0
+  },
+  "user_roles": {
+    "godfather": {
+      "max_tokens": 100000,
+      "can_access_memory": true,
+      "max_context_memories": 10
+    },
+    "client": {
+      "max_tokens": 4000,
+      "can_access_memory": true,
+      "max_context_memories": 3
+    }
+  }
+}

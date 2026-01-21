@@ -28,14 +28,14 @@ except ValueError as e:
     print(f"ERROR: Invalid configuration in {CONFIG_PATH}", file=sys.stderr)
     print(f"Validation error: {e}", file=sys.stderr)
     print("Please fix the configuration file and restart the bot.", file=sys.stderr)
-    sys.exit(1)
+    sys.exit(2)  # Exit code 2 = configuration error (CONSTITUTION XVI)
 except FileNotFoundError:
     print(f"ERROR: Configuration file not found: {CONFIG_PATH}", file=sys.stderr)
     print("Please create config/config.json from config/config.example.json", file=sys.stderr)
-    sys.exit(1)
+    sys.exit(2)  # Exit code 2 = configuration error (CONSTITUTION XVI)
 except Exception as e:
     print(f"ERROR: Failed to load configuration: {e}", file=sys.stderr)
-    sys.exit(1)
+    sys.exit(2)  # Exit code 2 = configuration error (CONSTITUTION XVI)
 
 # Setup logging
 logger = get_logger(__name__, log_level=config.log_level)
@@ -44,17 +44,17 @@ logger = get_logger(__name__, log_level=config.log_level)
 def mask_api_key(key: str) -> str:
     """
     Mask API key for secure logging.
-    Shows first 10 characters followed by '...'
+    Shows first 4 and last 4 characters (CONSTITUTION IX).
 
     Args:
         key: API key to mask
 
     Returns:
-        Masked API key string
+        Masked API key string (e.g., "sk-p...z123")
     """
-    if len(key) > 10:
-        return key[:10] + "..."
-    return key
+    if len(key) <= 8:
+        return "***"  # Too short to safely show any part
+    return f"{key[:4]}...{key[-4:]}"
 
 
 # Initialize Green API bot

@@ -74,35 +74,23 @@ class MemoryManager:
             raise Exception(f"ChromaDB initialization failed: {e}")
         
         # Initialize OpenAI client
-        if openai_client is not None:
-            # Explicitly provided client (for testing)
-            self._openai_client = openai_client
-        else:
-            # Try to initialize OpenAI immediately
-            try:
-                api_key = os.environ.get("OPENAI_API_KEY")
-                self._openai_client = OpenAI(api_key=api_key)
-            except Exception as e:
-                # Check if this is a deliberate test failure (mocked OpenAI class)
-                # vs a missing API key (real environment without key)
-                error_msg = str(e)
-                if "api_key" in error_msg.lower() and "must be set" in error_msg.lower():
-                    # Missing API key - defer to lazy init (will fail on first use)
-                    self._openai_client = None
-                else:
-                    # Other error (e.g., mocked to fail) - raise immediately
-                    raise Exception(f"OpenAI initialization failed: {e}")
+        # MUST be provided explicitly (no environment variables per CONSTITUTION I)
+        if openai_client is None:
+            raise ValueError(
+                "openai_client is required. "
+                "MemoryManager does not use environment variables. "
+                "Pass OpenAI client initialized from config.json."
+            )
+        self._openai_client = openai_client
     
     @property
     def openai_client(self):
-        """Lazy-initialize OpenAI client on first access if not already initialized."""
+        """Access OpenAI client (must be initialized in __init__)."""
         if self._openai_client is None:
-            try:
-                self._openai_client = OpenAI(
-                    api_key=os.environ.get("OPENAI_API_KEY")
-                )
-            except Exception as e:
-                raise Exception(f"OpenAI initialization failed: {e}")
+            raise RuntimeError(
+                "OpenAI client not initialized. "
+                "This should not happen - client is required in __init__."
+            )
         return self._openai_client
     
     def get_or_create_collection(self, collection_name: str):
