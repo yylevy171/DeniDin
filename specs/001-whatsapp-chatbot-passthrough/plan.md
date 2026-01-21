@@ -59,11 +59,13 @@ These clarifications have been incorporated into: Technical Context, Project Str
 - Stateless per-message processing (no conversation memory in Phase 1)
 - ~500 lines of Python code (based on demo size)
 
-## Constitution Check
+## Governance Compliance Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-### Principle I: Specification-First Development ✅
+### METHODOLOGY.md Compliance
+
+#### I. Specification-First Development ✅
 
 - ✅ Complete spec.md with prioritized user stories (P1-P4)
 - ✅ Each user story independently testable (P1: demo works, P2: passthrough, P3: error handling, P4: config)
@@ -73,7 +75,7 @@ These clarifications have been incorporated into: Technical Context, Project Str
 
 **Status**: COMPLIANT
 
-### Principle II: Template-Driven Consistency ✅
+#### II. Template-Driven Consistency ✅
 
 - ✅ spec.md follows `.specify/templates/spec-template.md` structure
 - ✅ plan.md follows `.specify/templates/plan-template.md` structure
@@ -82,7 +84,7 @@ These clarifications have been incorporated into: Technical Context, Project Str
 
 **Status**: COMPLIANT
 
-### Principle III: AI-Agent Collaboration ✅
+#### III. AI-Agent Collaboration ✅
 
 - ✅ Following speckit.plan agent workflow
 - ✅ Human approval gate at specification completion (spec.md reviewed)
@@ -91,13 +93,107 @@ These clarifications have been incorporated into: Technical Context, Project Str
 
 **Status**: COMPLIANT
 
-### Principle IV: Phased Planning & Execution ✅
+#### IV. Phased Planning & Execution ✅
 
 - ✅ Phase 0 (Research): Completed - Green API demo analyzed, dependencies identified, constraints documented
 - ⏳ Phase 1 (Design): In progress - will generate data-model.md, contracts/, quickstart.md
 - ⏳ Phase 2 (Task Generation): Pending - tasks.md via speckit.tasks
 - ⏳ Phase 3 (Implementation): Pending - incremental delivery by user story priority
-- ✅ Constitution Check passing before Phase 0
+- ✅ Governance Compliance Check passing before Phase 0
+
+**Status**: COMPLIANT
+
+#### V. Documentation as Single Source of Truth ✅
+
+- ✅ All feature context in `specs/001-whatsapp-chatbot-passthrough/`
+- ✅ plan.md is technical authority
+- ✅ spec.md is functional authority
+- ✅ No undocumented assumptions
+
+**Status**: COMPLIANT
+
+#### VI. Test-Driven Development ✅
+
+- ✅ Tasks will be split into T###a (write tests) and T###b (implementation)
+- ✅ Human approval gate before implementation
+- ✅ Tests immutable after approval
+- ✅ Two-tier testing strategy (mocked + real API)
+
+**Status**: COMPLIANT
+
+#### VII-X. (Integration Contracts, Glossary, Tech Choices, Requirement IDs) ⏳
+
+- Will be added in Phase 1 (Design) - data-model.md, contracts/, quickstart.md
+
+**Status**: PENDING (Phase 1)
+
+### CONSTITUTION.md Compliance
+
+#### I. Configuration & Secrets Management ✅
+
+- ✅ Uses config.json exclusively (NO .env files)
+- ✅ No environment variables (updated spec.md to remove .env reference)
+- ✅ config.example.json will be provided
+
+**Status**: COMPLIANT
+
+#### II. UTC Timestamp Requirement ✅
+
+- ✅ Not applicable for Phase 1 (will be enforced in implementation)
+
+**Status**: NOT APPLICABLE
+
+#### III. Version Control Workflow ✅
+
+- ✅ Feature branch: `001-whatsapp-chatbot-passthrough`
+- ✅ PR workflow documented in tasks.md
+- ✅ Never push to master
+
+**Status**: COMPLIANT
+
+#### IV. Code Quality Standards ✅
+
+- ✅ Type hints planned
+- ✅ Docstrings planned
+- ✅ Error handling in User Story 3
+
+**Status**: COMPLIANT
+
+#### V. Feature Flags ✅
+
+- ✅ Not applicable for Phase 1 (foundational feature)
+
+**Status**: NOT APPLICABLE
+
+#### VI. Error Handling & Resilience ✅
+
+- ✅ User Story 3 dedicated to error handling
+- ✅ Retry logic with exponential backoff planned
+- ✅ Graceful degradation documented
+
+**Status**: COMPLIANT
+
+#### VII. CLI Development Workflow ✅
+
+- ✅ Git CLI: `git add`, `git commit`, `git push`
+- ✅ gh CLI: `gh pr create`, `gh pr merge`
+- ✅ pytest CLI for testing
+
+**Status**: COMPLIANT
+
+#### VIII. Test Immutability ✅
+
+- ✅ Documented in tasks.md with 🔒 icon
+- ✅ Clear workflow: T###a → APPROVAL → T###b
+
+**Status**: COMPLIANT
+
+#### IX-XVI. (Logging, Error Response, Retry, etc.) ✅
+
+- ✅ Will be enforced during implementation
+- ✅ Standards documented in CONSTITUTION for reference
+
+**Status**: READY FOR IMPLEMENTATION
 
 **Status**: COMPLIANT (phases progressing correctly)
 

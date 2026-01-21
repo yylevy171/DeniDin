@@ -103,6 +103,136 @@ All implementation MUST follow strict test-first methodology with human approval
 
 ---
 
+## VII. Integration Contracts
+
+All component interactions MUST be documented with explicit contracts defining responsibilities and guarantees.
+
+**Requirements:**
+- `plan.md` MUST include "Integration Contracts" section for multi-component features
+- Each contract MUST document:
+  - **Component A MUST**: Caller obligations (what calling component must do)
+  - **Component B PROVIDES**: API guarantees (what service returns/guarantees)
+  - **Component B EXPECTS**: Input validation requirements (what service requires)
+- Contract format: `Component A ↔ Component B Contract`
+- Contracts MUST cover: data formats, error handling, null/empty cases, ordering requirements
+- Update contracts when component interfaces change
+
+**Example:**
+```markdown
+### SessionManager ↔ AI Handler Contract
+
+**AI Handler MUST**:
+- Call `session_manager.get_conversation_history(whatsapp_chat, user_role)` before generating response
+- Pass correct `user_role` for token limit enforcement
+
+**SessionManager PROVIDES**:
+- `get_conversation_history()` returns `List[Dict[str, str]]` formatted for OpenAI API
+- Order: Chronological by `order_num`
+
+**SessionManager EXPECTS**:
+- `whatsapp_chat`: Valid WhatsApp ID (e.g., "1234567890@c.us")
+- `role`: Either "user" or "assistant" (strict validation)
+```
+
+**Rationale**: Explicit contracts prevent integration bugs, document assumptions, enable independent component development, and serve as acceptance criteria for integration tests.
+
+---
+
+## VIII. Terminology Glossary
+
+All specs MUST define domain-specific terminology in a centralized glossary.
+
+**Requirements:**
+- `spec.md` MUST include "Terminology Glossary" section near the top (before detailed requirements)
+- Define ALL domain-specific terms used throughout the spec
+- Mark deprecated terms explicitly: `DEPRECATED: old_term (use new_term instead)`
+- Include format examples for IDs, identifiers, and structured data
+- Cross-reference glossary terms in requirements using backticks: `session_id`
+
+**Mandatory for glossary:**
+- Primary entity identifiers (IDs, keys)
+- Status/state values
+- Role names
+- Technical terminology with multiple interpretations
+
+**Example:**
+```markdown
+## Terminology Glossary
+
+- **session_id**: Unique UUID identifier for a conversation session (primary key)
+- **whatsapp_chat**: WhatsApp chat identifier (e.g., "1234567890@c.us" for individual)
+- **user_role**: User's role - either "client" or "godfather" (determines permissions)
+- **DEPRECATED: chat_id** - use `session_id` or `whatsapp_chat` explicitly
+```
+
+**Rationale**: Centralized glossary prevents naming confusion, documents evolution of terminology, enables consistent usage across 500+ line specs, and provides onboarding reference.
+
+---
+
+## IX. Technology Choice Documentation
+
+All significant technology decisions MUST be documented with rationale and alternatives.
+
+**Requirements:**
+- `spec.md` or `plan.md` MUST include "Technology Choice: [Technology]" sections
+- Each technology decision MUST document:
+  - **Decision Date**: When choice was made
+  - **Rationale**: Why this technology was selected (pros/cons)
+  - **Alternatives Considered**: What else was evaluated and why rejected
+  - **Migration Path**: Strategy if technology needs replacement later
+- Document choices for: databases, frameworks, libraries, protocols, file formats
+- Update documentation if technology choice changes
+
+**Example:**
+```markdown
+**Technology Choice: ChromaDB**
+- **Decision Date**: January 18, 2026
+- **Rationale**: 
+  - Zero infrastructure setup (pip install and done)
+  - Free forever (file-based, no cloud costs)
+  - Semantic search essential for context retrieval
+  - Scales to 1K-10K memories (our Phase 1-2 needs)
+- **Alternatives Considered**: 
+  - Pinecone ($$, cloud dependency)
+  - Qdrant (complex setup)
+  - pgvector (no semantic search optimization)
+- **Migration Path**: 
+  - If exceeding 10K memories, evaluate Qdrant Cloud or Pinecone
+  - Abstraction layer allows swapping implementations
+```
+
+**Rationale**: Technology decisions are expensive to reverse. Documentation enables informed choices, justifies trade-offs, provides audit trail, and plans for future evolution.
+
+---
+
+## X. Requirement Identifiers
+
+All requirements MUST have unique, traceable identifiers.
+
+**Requirements:**
+- Format: `REQ-[CATEGORY]-[###]` (e.g., REQ-CONFIG-001, REQ-ROLE-002)
+- Categories: CONFIG, ROLE, API, DATA, SECURITY, PERFORMANCE, etc.
+- Sequential numbering within category (001, 002, 003...)
+- Requirements with IDs can be referenced from code, tests, tasks
+- Update cross-references if requirement ID changes
+
+**Example:**
+```markdown
+**REQ-ROLE-001**: User role determination
+- Godfather: WhatsApp chat ID matches configured godfather phone
+- Client: Any other WhatsApp chat ID
+- Default: If role cannot be determined, default to "client"
+
+**REQ-CONFIG-001**: Configuration File Structure
+- All configuration in `config/config.json`
+- Feature flags under `feature_flags` dictionary
+- Memory settings under `memory` dictionary
+```
+
+**Rationale**: Unique IDs enable traceability from spec to code to tests, facilitate requirement impact analysis, support compliance tracking, and enable automated validation.
+
+---
+
 ## Development Workflow
 
 ### Feature Initialization
@@ -147,21 +277,43 @@ speckit.implement → Incremental code delivery by user story
 ### Mandatory Template Sections
 
 **spec.md:**
-- User Scenarios & Testing (with priorities)
-- Requirements (functional, non-functional)
+- Feature metadata (Feature ID, Priority, Status, Branch, Dates)
+- Terminology Glossary (domain-specific terms, deprecated terms)
+- Clarifications (Q&A log with session dates)
+- User Scenarios & Testing (with priorities P1, P2, P3...)
+- Requirements (functional, non-functional) with REQ-XXX-### identifiers
+- Technology Choices (with decision date, rationale, alternatives, migration path)
 - Edge Cases
 
 **plan.md:**
-- Summary
-- Technical Context (language, dependencies, platform, performance goals)
-- Methodology & Constitution Check
+- Feature metadata (Feature, Branch, Status, Estimated Duration, Updated date)
+- Summary/Overview
+- Technical Context:
+  - Language/Version
+  - Primary Dependencies
+  - Storage approach
+  - Testing strategy
+  - Target Platform
+  - Performance Goals
+  - Constraints
+  - Scale/Scope
+- Integration Contracts (Component A ↔ Component B format)
+- Methodology & Constitution Compliance Check
+- Phase breakdown with Validation/Checkpoint sections
 - Project Structure (documentation + source code layout)
 - Complexity Tracking (only if violations exist)
 
 **tasks.md:**
-- Format specification (`[ID] [P?] [Story] Description`)
-- Path conventions (adjusted per project type)
+- Task ID format: `[T###a/b] [P?] [Story/Phase] Description`
+  - `a` = Write tests, `b` = Implementation
+  - `[P]` = Can run in parallel
+  - `Story` = US1, US2, US3... or Phase = Phase 1, Phase 2...
+- Path Conventions section (project structure, relative vs absolute paths)
+- TDD Workflow explanation (Task A → APPROVAL → Task B)
+- Test Immutability reminder
 - Phases: Setup → Foundational → User Story N (by priority)
+- Checkpoint markers after each phase
+- Version Control steps (VC0-VC5) per phase
 
 ### Artifact Consistency Rules
 
@@ -169,6 +321,86 @@ speckit.implement → Incremental code delivery by user story
 - Entities in `tasks.md` MUST derive from `data-model.md`
 - Endpoints in `tasks.md` MUST derive from `contracts/`
 - User stories in `tasks.md` MUST map 1:1 to stories in `spec.md`
+
+### Phase Validation Checkpoints
+
+Each phase MUST include validation checkpoints to gate progression.
+
+**Requirements:**
+- **plan.md**: Each phase MUST have "Validation" or "Checkpoint" section
+- **tasks.md**: Checkpoint markers after phase completion
+- Checkpoint format: `**Checkpoint**: [Summary] - ready for [Next Phase]`
+- Validation criteria:
+  - Tests passing (with counts)
+  - Artifacts created/updated
+  - Integration verified
+  - Performance validated (if applicable)
+- No progression to next phase until checkpoint criteria met
+
+**Example:**
+```markdown
+### Validation
+- All tests pass: `pytest tests/unit/test_session_manager.py -v`
+- Code coverage >90%
+- Session persistence verified
+
+**Checkpoint**: SessionManager complete and tested - ready for Phase 3 (MemoryManager)
+```
+
+**Rationale**: Validation checkpoints prevent cascading failures, ensure quality at each stage, provide clear progress indicators, and enable early detection of issues.
+
+### Clarifications Tracking
+
+All requirement clarifications MUST be logged in spec.md.
+
+**Requirements:**
+- `spec.md` MUST include "Clarifications" section after feature metadata
+- Format:
+  ```markdown
+  ### Session [YYYY-MM-DD]
+  - Q: [Question about requirement] → A: [Decision made]
+  - Q: [Another question] → A: [Another decision]
+  ```
+- Each clarification session has date stamp
+- Questions and answers capture decision rationale
+- Update related requirements after clarifications
+- Cross-reference clarifications in requirements if needed
+
+**Example:**
+```markdown
+## Clarifications
+
+### Session 2026-01-15
+- Q: How should DeniDin store credentials? → A: JSON config file (gitignored)
+- Q: How should DeniDin receive WhatsApp messages? → A: Polling with configurable interval
+- Q: How to handle multiple incoming messages? → A: Sequential processing
+```
+
+**Rationale**: Clarifications tracking provides audit trail of requirement evolution, prevents re-asking same questions, documents decision context, and enables understanding of why requirements changed.
+
+### Estimated Duration
+
+All plans MUST include time estimates for implementation.
+
+**Requirements:**
+- `plan.md` header MUST include: `**Estimated Duration**: [X-Y days]` or `[X weeks]`
+- Provide range (pessimistic to optimistic)
+- Break down by phase if phases exceed 3 days each
+- Update estimate if scope changes significantly
+- Track actual vs estimated in retrospectives
+
+**Example:**
+```markdown
+**Estimated Duration**: 10-12 days
+
+Phase breakdown:
+- Phase 1-2 (Foundation + SessionManager): 3 days
+- Phase 3 (MemoryManager): 2 days
+- Phase 4-6 (Integration): 3 days
+- Phase 7-10 (Testing + Docs + Deployment): 4 days
+```
+
+**Rationale**: Time estimates enable resource planning, manage stakeholder expectations, improve estimation accuracy over time through retrospectives, and highlight scope creep early.
 
 ---
 
@@ -202,8 +434,9 @@ Development constraints and coding standards are defined in `CONSTITUTION.md`.
 
 ---
 
-**Version**: 2.0.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-01-21
+**Version**: 2.1.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-01-21
 
 **Changelog**:
+- v2.1.0 (2026-01-21): Added 10 methodology requirements from existing practice: Integration Contracts (VII), Terminology Glossary (VIII), Technology Choice Documentation (IX), Requirement Identifiers (X), Phase Validation Checkpoints, Clarifications Tracking, Estimated Duration, expanded Template Requirements
 - v2.0.0 (2026-01-21): Split from constitution - extracted SpecKit workflow principles into dedicated methodology file
 - v1.2.0 (2026-01-17): Previous unified constitution with 16 principles

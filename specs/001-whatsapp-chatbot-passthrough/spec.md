@@ -83,7 +83,7 @@ DeniDin gracefully handles errors from WhatsApp API, AI service, or network issu
 
 ### User Story 4 - Configuration & Deployment (Priority: P4)
 
-DeniDin can be configured with different WhatsApp credentials and AI service endpoints via environment variables or config files.
+DeniDin can be configured with different WhatsApp credentials and AI service endpoints via config files.
 
 **Why this priority**: Essential for portability and security (credentials not hardcoded), but can be implemented after proving the core logic works.
 
@@ -91,7 +91,7 @@ DeniDin can be configured with different WhatsApp credentials and AI service end
 
 **Acceptance Scenarios**:
 
-1. **Given** a `.env` file or config with Green API credentials, **When** the bot starts, **Then** it loads credentials from the config (not hardcoded)
+1. **Given** configuration file `config/config.json` with Green API credentials, **When** the bot starts, **Then** it loads credentials from the config (not hardcoded)
 2. **Given** the config specifies a different AI service endpoint (e.g., switching from ChatGPT to another AI), **When** a message is received, **Then** DeniDin routes to the configured AI service
 3. **Given** credentials are missing or invalid, **When** the bot starts, **Then** it displays a clear error message and exits gracefully
 4. **Given** the bot is deployed to a server (e.g., cloud VM), **When** it runs as a background service, **Then** it automatically restarts on failure and logs to a persistent location
