@@ -83,6 +83,9 @@ def get_logger(
     """
     Get or create a configured logger.
     
+    In test environment (when root logger has handlers), uses root logger configuration.
+    In production, creates separate logger with file handlers.
+    
     Args:
         name: Name of the logger
         logs_dir: Directory to store log files (default: 'logs')
@@ -92,4 +95,14 @@ def get_logger(
     Returns:
         Configured logger instance
     """
+    # Check if we're in a test environment (root logger configured by pytest hook)
+    root_logger = logging.getLogger()
+    if root_logger.handlers:
+        # Use root logger configuration (test environment)
+        logger = logging.getLogger(name)
+        logger.setLevel(getattr(logging, log_level))
+        return logger
+    
+    # Production environment - set up logger with file handlers
     return setup_logger(name, logs_dir, log_filename, log_level)
+
