@@ -25,6 +25,9 @@ state/
 data/sessions/
 data/memory/
 
+# Test data (generated during tests)
+test_data/
+
 # IDE
 .vscode/
 .idea/
