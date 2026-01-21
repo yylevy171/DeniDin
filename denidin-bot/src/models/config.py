@@ -1,5 +1,5 @@
 """
-AppConfiguration model for managing chatbot configuration.
+AppConfiguration model for managing application configuration.
 Supports loading from JSON/YAML files and validation.
 """
 import json

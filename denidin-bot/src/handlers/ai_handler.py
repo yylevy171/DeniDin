@@ -37,7 +37,7 @@ class AIHandler:
         
         Args:
             ai_client: Configured AI client instance (OpenAI)
-            config: Bot configuration with AI settings
+            config: Application configuration with AI settings
             cleanup_interval_seconds: Optional override for session cleanup interval (for testing)
         """
         self.client = ai_client
