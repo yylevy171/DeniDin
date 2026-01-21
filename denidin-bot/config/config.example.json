@@ -34,7 +34,7 @@
   },
   "constitution_config": {
     "enabled": true,
-    "files": ["constitution.md"],
+    "files": ["runtime_constitution.md"],
     "max_tokens": 2000
   },
   "user_roles": {
