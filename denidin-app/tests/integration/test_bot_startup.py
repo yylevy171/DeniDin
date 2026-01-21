@@ -80,7 +80,7 @@ class TestConfigValidationIntegration:
         invalid_config = {
             "green_api_instance_id": "test123",
             "green_api_token": "token123",
-            "openai_api_key": "sk-test",
+            "ai_api_key": "sk-test",
             "temperature": 2.0  # Invalid: > 1.0
         }
         
@@ -110,7 +110,7 @@ class TestConfigValidationIntegration:
         invalid_config = {
             "green_api_instance_id": "test123",
             "green_api_token": "token123",
-            "openai_api_key": "sk-test",
+            "ai_api_key": "sk-test",
             "poll_interval_seconds": 0  # Invalid: must be >= 1
         }
         
@@ -145,7 +145,7 @@ class TestConfigLogging:
         valid_config = {
             "green_api_instance_id": "test_instance_123",
             "green_api_token": "test_token_secret_key_123456",
-            "openai_api_key": "sk-test_openai_key_123456789"
+            "ai_api_key": "sk-test_openai_key_123456789"
         }
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -179,7 +179,7 @@ class TestConfigLogging:
         config_with_keys = {
             "green_api_instance_id": "instance_1234567890",
             "green_api_token": "token_abcdefghijklmnopqrstuvwxyz",
-            "openai_api_key": "sk-proj-1234567890abcdefghijklmnopqrstuvwxyz"
+            "ai_api_key": "sk-proj-1234567890abcdefghijklmnopqrstuvwxyz"
         }
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -203,7 +203,7 @@ class TestConfigLogging:
                 return key
             
             masked_token = mask_api_key(config.green_api_token)
-            masked_openai = mask_api_key(config.openai_api_key)
+            masked_openai = mask_api_key(config.ai_api_key)
             
             logger.info(f"Green API Token: {masked_token}")
             logger.info(f"OpenAI API Key: {masked_openai}")
@@ -228,7 +228,7 @@ class TestConfigLogging:
         config_data = {
             "green_api_instance_id": "test123",
             "green_api_token": "token123",
-            "openai_api_key": "sk-test",
+            "ai_api_key": "sk-test",
             "ai_model": "gpt-4o"
         }
         
@@ -259,7 +259,7 @@ class TestConfigLogging:
         config_data = {
             "green_api_instance_id": "test123",
             "green_api_token": "token123",
-            "openai_api_key": "sk-test",
+            "ai_api_key": "sk-test",
             "temperature": 0.9
         }
         
@@ -290,7 +290,7 @@ class TestConfigLogging:
         config_data = {
             "green_api_instance_id": "test123",
             "green_api_token": "token123",
-            "openai_api_key": "sk-test",
+            "ai_api_key": "sk-test",
             "max_tokens": 1000
         }
         
@@ -321,7 +321,7 @@ class TestConfigLogging:
         config_data = {
             "green_api_instance_id": "test123",
             "green_api_token": "token123",
-            "openai_api_key": "sk-test",
+            "ai_api_key": "sk-test",
             "poll_interval_seconds": 10
         }
         
@@ -351,7 +351,7 @@ class TestConfigLogging:
         config_data = {
             "green_api_instance_id": "test123",
             "green_api_token": "token123",
-            "openai_api_key": "sk-test"
+            "ai_api_key": "sk-test"
         }
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:

@@ -206,12 +206,12 @@ class TestEndToEndFlow:
         except Exception as e:
             pytest.fail(f"Failed to connect to Green API: {e}")
 
-    def test_openai_api_key_is_valid_format(self, config):
+    def test_ai_api_key_is_valid_format(self, config):
         """
         Validates the OpenAI API key follows the expected format (starts with 'sk-' and has minimum length), 
         catching configuration errors before runtime.
         """
-        api_key = config.openai_api_key
+        api_key = config.ai_api_key
         
         # OpenAI keys start with 'sk-' and have specific length
         assert api_key.startswith('sk-'), "OpenAI API key should start with 'sk-'"
@@ -232,7 +232,7 @@ class TestEndToEndFlow:
         # Verify all required fields are present
         assert config.green_api_instance_id, "Missing green_api_instance_id"
         assert config.green_api_token, "Missing green_api_token"
-        assert config.openai_api_key, "Missing openai_api_key"
+        assert config.ai_api_key, "Missing ai_api_key"
         assert config.ai_model, "Missing ai_model"
         assert config.system_message, "Missing system_message"
         
