@@ -34,7 +34,7 @@ Be respectful, inclusive, and collaborative. This project follows standard open-
 1. **Fork and clone the repository**:
    ```bash
    git clone https://github.com/yourusername/DeniDin.git
-   cd DeniDin/denidin-bot
+   cd DeniDin/denidin-app
    ```
 
 2. **Create a virtual environment**:
