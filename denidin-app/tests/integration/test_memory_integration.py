@@ -390,44 +390,6 @@ class TestMemorySystemIntegration:
         ai_handler.session_manager.stop_cleanup_thread()
 
 
-class TestResetCommandIntegration:
-    """Test /reset command integration."""
-    
-    def test_reset_clears_session(self, temp_storage):
-        """Test that clearing a session removes all messages."""
-        session_manager = SessionManager(
-            storage_dir=temp_storage['session_dir'],
-            session_timeout_hours=24
-        )
-        
-        chat_id = "1234567890@c.us"
-        
-        # Add messages
-        session_manager.add_message(
-            chat_id=chat_id,
-            role="user",
-            content="Message 1",
-            user_role="client",
-            sender="whatsapp_tester1", recipient="AI_test"
-        )
-        session_manager.add_message(
-            chat_id=chat_id,
-            role="assistant",
-            content="Response 1",
-            user_role="client",
-            sender="AI_test", recipient="whatsapp_tester1"
-        )
-        
-        # Simulate /reset by clearing session
-        session_manager.clear_session(chat_id)
-        
-        # Verify empty
-        history = session_manager.get_conversation_history(whatsapp_chat=chat_id)
-        assert len(history) == 0
-        
-        session_manager.stop_cleanup_thread()
-
-
 class TestConversationMemory:
     """Test conversation memory across multiple messages."""
     

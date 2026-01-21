@@ -16,7 +16,7 @@ Implement unified memory system combining:
   - Use `whatsapp_chat` for WhatsApp routing (e.g., "1234567890@c.us")
   - DEPRECATED: `chat_id`, `phone_number` (use new terms)
 - **Long-term**: Semantic memory with ChromaDB and embeddings (in `data/memory/`)
-- **Commands**: `/remember`, `/reset`
+- **Commands**: `/remember` (manual memory storage)
 - **AI Integration**: Automatic memory recall in responses
 - **Feature Flags**: Deployed behind `enable_memory_system` flag for safe incremental rollout
 - **Role-based Token Limits**: 4,000 tokens for clients, 100,000 for godfather
@@ -391,12 +391,7 @@ user_role = 'godfather' if message.sender_id == config.godfather_id else 'client
 memory_enabled = config.feature_flags.get('enable_memory_system', False)
 
 # **REMOVED**: /remember command - deferred to future release
-
-if memory_enabled and text == '/reset':
-    ai_handler.session_manager.clear_session(message.chat_id)
-    notification.answer("🔄 Conversation history cleared. Starting fresh!")
-    logger.info(f"{tracking} Session cleared via /reset command")
-    return
+# **REMOVED**: /reset command - REMOVED (prevented duplicate memory storage)
 
 # Normal message flow continues...
 # Pass chat_id and user_role to get_response()
@@ -568,7 +563,7 @@ git commit -m "feat: Memory System (002+007) - Session history + ChromaDB long-t
 
 - Implemented SessionManager for conversation history with role-based token limits
 - Implemented MemoryManager with ChromaDB and semantic search
-- Added /remember and /reset commands
+- Added /remember and /reset command - REMOVED (prevented duplicate memory storage)
 - Integrated memory recall into AI responses
 - Added feature flag 'enable_memory_system' (default: false)
 - Added comprehensive tests (unit + integration)
@@ -581,7 +576,7 @@ Features:
 - Long-term semantic memory with embeddings
 - Automatic memory recall in AI responses (when flag enabled)
 - Explicit memory storage via /remember
-- Session reset via /reset
+- Session reset - REMOVED (automatic expiration only)
 - Incremental deployment via feature flags
 
 Tests: 142+ passing, 89%+ coverage"
@@ -604,7 +599,7 @@ Implements unified memory system combining session-based conversation history wi
 
 ✅ **SessionManager** - Conversation history with role-based token limits
 ✅ **MemoryManager** - ChromaDB semantic memory with embeddings  
-✅ **Commands** - /remember and /reset (when feature enabled)
+✅ **Commands** - /remember (deferred), /reset REMOVED
 ✅ **AI Integration** - Automatic memory recall
 ✅ **Feature Flags** - Safe incremental deployment
 ✅ **Storage** - data/sessions/ and data/memory/ (gitignored)
@@ -659,7 +654,7 @@ git tag -a v1.1.0 -m "Release v1.1.0 - Memory System
 Features:
 - Conversation history (session management)
 - Long-term semantic memory (ChromaDB)
-- /remember and /reset commands
+- /remember and /reset command - REMOVED (prevented duplicate memory storage)
 - Automatic memory recall in AI responses
 - Feature flag controlled deployment
 - Role-based token limits (4K/100K)
@@ -840,7 +835,7 @@ tar -czf backup_$(date +%Y%m%d).tar.gz data/
 
 **Phase 1-6** (Days 1-8): Core Implementation
 - SessionManager, MemoryManager, AI integration
-- Configuration, feature flags, /reset command
+- Configuration, feature flags, /reset command - REMOVED (prevented duplicate memory storage)
 - Merged to master via PR #18, #20, #22
 
 **Phase 7** (Day 9): Integration Testing ✅

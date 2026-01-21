@@ -112,7 +112,7 @@ logger.info("=" * 60)
 def handle_text_message(notification: Notification) -> None:
     """
     Handle incoming text messages from WhatsApp with comprehensive error handling.
-    Phase 6: Memory System Integration (US-MEM-03: Reset Command)
+    Phase 6: Memory System Integration
 
     Args:
         notification: Green API notification object containing message data
@@ -138,41 +138,6 @@ def handle_text_message(notification: Notification) -> None:
         # Check if application is mentioned in group (or if 1-on-1)
         if not whatsapp_handler.is_bot_mentioned_in_group(message):
             logger.debug(f"{tracking} Skipping group message without mention")
-            return
-
-        # Handle /reset command (US-MEM-03)
-        if message.text_content.strip().lower() == '/reset':
-            logger.info(f"{tracking} /reset command received from {message.sender_name}")
-            
-            # Transfer current session to long-term memory if memory system enabled
-            if global_context and global_context.ai_handler.memory_enabled:
-                try:
-                    result = global_context.ai_handler.transfer_session_to_long_term_memory(
-                        chat_id=message.chat_id
-                    )
-                    
-                    if result.get('success'):
-                        logger.info(
-                            f"{tracking} Session transferred to long-term memory: "
-                            f"memory_id={result.get('memory_id')}"
-                        )
-                        notification.answer(
-                            "✅ Session reset! Previous conversation has been saved to long-term memory. "
-                            "Let's start fresh!"
-                        )
-                    else:
-                        logger.error(
-                            f"{tracking} Failed to transfer session: {result.get('reason')}"
-                        )
-                        notification.answer(
-                            "✅ Session reset! (Note: Failed to save previous conversation to memory)"
-                        )
-                except Exception as e:
-                    logger.error(f"{tracking} Error during /reset: {e}", exc_info=True)
-                    notification.answer("✅ Session reset! (Note: Error saving previous conversation)")
-            else:
-                notification.answer("✅ Session reset! Let's start fresh!")
-            
             return
 
         # Create AI request

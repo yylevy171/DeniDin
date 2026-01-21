@@ -55,7 +55,7 @@ The `run_denidin.sh` and `stop_denidin.sh` scripts currently don't work properly
 
 ### Remove /reset Command
 **Priority:** Medium  
-**Status:** Pending
+**Status:** ✅ Completed (PR #34)
 
 **Problem:**
 The `/reset` command allows users to manually transfer their conversation to long-term memory, but this creates issues:
@@ -86,7 +86,7 @@ Users cannot manually control when a conversation becomes searchable in ChromaDB
 
 ### Rename "openai" References to "ai"
 **Priority:** Medium  
-**Status:** Pending
+**Status:** ✅ Completed (PR #30-32)
 
 **Problem:**
 Current codebase uses "openai" in variable names, parameters, and code references, creating vendor lock-in at the naming level. This:
