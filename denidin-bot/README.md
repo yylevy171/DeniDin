@@ -1,16 +1,27 @@
-# DeniDin - WhatsApp AI Chatbot Passthrough
+# DeniDin - WhatsApp AI Chatbot with Memory
 
-DeniDin is a WhatsApp chatbot that acts as a passthrough relay between a WhatsApp Business account and AI chat services (initially ChatGPT via OpenAI). The bot receives messages through Green API, forwards them to the AI service, and returns responses back to WhatsApp.
+DeniDin is a WhatsApp chatbot with a sophisticated two-tier memory system. It receives messages through Green API, forwards them to OpenAI with conversation context and semantic memory recall, and returns intelligent, context-aware responses.
 
-## Features (Phase 1)
+## Features
 
+### Core Features (v1.0)
 - ✅ Receive WhatsApp messages via Green API polling mechanism
-- ✅ Forward messages to ChatGPT (OpenAI)
+- ✅ Forward messages to ChatGPT (OpenAI GPT-4o-mini)
 - ✅ Send AI responses back to WhatsApp
 - ✅ Sequential message processing (maintains order)
 - ✅ Configurable polling interval and AI parameters
 - ✅ Comprehensive error handling and logging
 - ✅ Message truncation for long AI responses (4000 char limit)
+
+### Memory System (Phases 1-6 Complete)
+- ✅ **Session Management**: Conversation history with UUID-based sessions
+- ✅ **Long-term Memory**: Semantic memory using ChromaDB with OpenAI embeddings
+- ✅ **Automatic Recall**: AI automatically recalls relevant memories during conversations
+- ✅ **Session Expiration**: 24-hour session timeout with automatic transfer to long-term memory
+- ✅ **Startup Recovery**: Recovers orphaned sessions on bot restart
+- ✅ **Role-based Token Limits**: 4,000 tokens for clients, 100,000 for godfather
+- ✅ **Commands**: `/reset` to manually clear session and transfer to long-term memory
+- ✅ **Feature Flag**: Controlled by `enable_memory_system` flag for safe deployment
 
 ## Requirements
 
@@ -86,6 +97,43 @@ Edit `config/config.json` and replace the placeholder values:
 - `log_level`: Logging verbosity ("INFO" or "DEBUG")
 - `poll_interval_seconds`: How often to check for new messages (default: 5)
 - `max_retries`: Number of retry attempts for failed API calls
+- `data_root`: Root directory for data storage (default: "data")
+- `godfather_phone`: WhatsApp ID of godfather user (format: "PHONE@c.us")
+
+**Memory System Configuration (Optional):**
+
+```json
+{
+  "feature_flags": {
+    "enable_memory_system": false
+  },
+  "memory": {
+    "session": {
+      "storage_dir": "data/sessions",
+      "max_tokens_by_role": {
+        "client": 4000,
+        "godfather": 100000
+      },
+      "session_timeout_hours": 24
+    },
+    "longterm": {
+      "enabled": true,
+      "storage_dir": "data/memory",
+      "collection_name": "godfather_memory",
+      "embedding_model": "text-embedding-3-small",
+      "top_k_results": 5,
+      "min_similarity": 0.7
+    }
+  }
+}
+```
+
+Memory system is **disabled by default** (`enable_memory_system: false`). To enable:
+1. Set `enable_memory_system: true` in config
+2. Configure `godfather_phone` with the admin WhatsApp ID
+3. Restart the bot
+
+See [Memory System Usage](#memory-system-usage) section below for details.
 
 **⚠️ IMPORTANT:** Never commit `config/config.json` to version control! It's already in `.gitignore`.
 
@@ -124,27 +172,24 @@ Press `Ctrl+C` if running manually, or use `kill -TERM <PID>`.
 ### System Overview
 
 ```
-┌─────────────┐        ┌──────────────────┐        ┌──────────────┐
-│  WhatsApp   │        │   DeniDin Bot    │        │   OpenAI     │
-│   Business  │◄──────►│   (denidin.py)   │◄──────►│   ChatGPT    │
-│   Account   │  Green │                  │  API   │              │
-│             │  API   │                  │        │              │
-└─────────────┘        └──────────────────┘        └──────────────┘
-                              │
-                              │ Manages
-                              ▼
-                    ┌────────────────────┐
-                    │   Core Components  │
-                    ├────────────────────┤
-                    │ • WhatsAppHandler  │
-                    │ • AIHandler        │
-                    │ • Configuration    │
-                    │ • Logger           │
-                    │ • State Manager    │
-                    └────────────────────┘
+┌─────────────┐        ┌──────────────────────┐        ┌──────────────┐
+│  WhatsApp   │        │    DeniDin Bot       │        │   OpenAI     │
+│   Business  │◄──────►│    (denidin.py)      │◄──────►│   ChatGPT    │
+│   Account   │  Green │                      │  API   │              │
+│             │  API   │  ┌────────────────┐  │        │              │
+└─────────────┘        │  │ SessionManager │  │        └──────────────┘
+                       │  │ (Conversation) │  │
+                       │  └────────────────┘  │
+                       │          │           │
+                       │          ▼           │
+                       │  ┌────────────────┐  │
+                       │  │ MemoryManager  │  │
+                       │  │  (ChromaDB)    │  │
+                       │  └────────────────┘  │
+                       └──────────────────────┘
 ```
 
-### Component Flow
+### Component Flow (with Memory)
 
 ```
 1. WhatsApp Message Received (Green API Polling)
@@ -153,26 +198,34 @@ Press `Ctrl+C` if running manually, or use `kill -TERM <PID>`.
         ↓
 3. Validate message type (text only)
         ↓
-4. Check group chat mention detection
+4. SessionManager.add_message(role="user")
         ↓
-5. AIHandler.create_request()
+5. SessionManager.get_conversation_history()
         ↓
-6. OpenAI API call (with retry logic)
+6. MemoryManager.recall() - Semantic search
         ↓
-7. AIHandler.get_response()
+7. AIHandler.create_request() (with history + memories)
         ↓
-8. Truncate if >4000 chars
+8. OpenAI API call (with retry logic)
         ↓
-9. WhatsAppHandler.send_response()
+9. SessionManager.add_message(role="assistant")
         ↓
-10. Log message tracking (message_id, timestamp)
+10. AIHandler.get_response()
+        ↓
+11. Truncate if >4000 chars
+        ↓
+12. WhatsAppHandler.send_response()
+        ↓
+13. Log message tracking (message_id, timestamp)
 ```
 
 ### Key Components
 
-- **denidin.py**: Main entry point, bot initialization, signal handling
+- **denidin.py**: Main entry point, bot initialization, signal handling, /reset command
 - **WhatsAppHandler**: Green API integration, message validation, response sending
-- **AIHandler**: OpenAI integration, request formatting, error handling
+- **AIHandler**: OpenAI integration, request formatting, error handling, memory integration
+- **SessionManager**: Conversation history, token management, session expiration
+- **MemoryManager**: ChromaDB semantic search, embedding generation, long-term storage
 - **BotConfiguration**: JSON/YAML config loading, validation
 - **Logger**: Rotating file + console logging with INFO/DEBUG levels
 - **MessageState**: Track last processed message to prevent duplicates
@@ -191,25 +244,154 @@ denidin-bot/
 ├── config/
 │   ├── config.example.json    # Example configuration (template)
 │   └── config.json            # Actual credentials (gitignored)
-├── src/                       # Source code (323 statements, 89% test coverage)
+├── src/                       # Source code (500+ statements, 89% coverage)
 │   ├── handlers/
-│   │   ├── ai_handler.py      # OpenAI API integration (91% coverage)
-│   │   └── whatsapp_handler.py # Green API integration (71% coverage)
+│   │   ├── ai_handler.py      # OpenAI API + memory integration
+│   │   └── whatsapp_handler.py # Green API integration
+│   ├── memory/
+│   │   ├── session_manager.py  # Conversation history
+│   │   └── memory_manager.py   # ChromaDB semantic memory
 │   ├── models/
-│   │   ├── config.py          # Configuration model (83% coverage)
-│   │   ├── message.py         # Message models (100% coverage)
-│   │   └── state.py           # State persistence (100% coverage)
+│   │   ├── config.py          # Configuration model
+│   │   ├── message.py         # Message models
+│   │   └── state.py           # State persistence
 │   └── utils/
-│       ├── logger.py          # Logging setup (100% coverage)
-│       └── state.py           # State utilities (100% coverage)
-├── tests/                     # 142 tests (100% passing)
-│   ├── unit/                  # 90 unit tests
-│   ├── integration/           # 52 integration tests
-│   └── fixtures/              # Test data (sample_messages.json)
-├── logs/                      # Application logs (gitignored, 10MB rotation)
-├── state/                     # Runtime state (gitignored)
-└── htmlcov/                   # Coverage reports (generated by pytest-cov)
+│       ├── logger.py          # Logging setup
+│       └── state.py           # State utilities
+├── data/                      # Runtime data (gitignored)
+│   ├── sessions/              # Session JSON files
+│   ├── memory/                # ChromaDB database
+│   └── constitution/          # Constitution files
+├── tests/                     # 212 tests (100% passing)
+│   ├── unit/                  # 145 unit tests
+│   ├── integration/           # 67 integration tests
+│   └── fixtures/              # Test data
+├── logs/                      # Application logs (gitignored)
+└── htmlcov/                   # Coverage reports
 ```
+
+## Memory System Usage
+
+### Overview
+
+The memory system consists of two layers:
+
+1. **Short-term Memory (SessionManager)**: Stores recent conversation history per session
+   - Automatically manages conversation context
+   - Role-based token limits (4K for clients, 100K for godfather)
+   - 24-hour session timeout
+   - JSON storage in `data/sessions/`
+
+2. **Long-term Memory (MemoryManager)**: Semantic memory across all conversations
+   - ChromaDB vector database
+   - OpenAI embeddings (text-embedding-3-small)
+   - Automatic recall based on message relevance
+   - Persistent storage in `data/memory/`
+
+### How It Works
+
+**For Users:**
+1. Send messages normally via WhatsApp
+2. Bot automatically maintains conversation context
+3. Relevant past information is recalled automatically
+4. No special commands needed for basic usage
+
+**Session Lifecycle:**
+```
+New Message → Create/Resume Session → Add to History
+                      ↓
+              Get Recent History (within token limit)
+                      ↓
+              Search Long-term Memory
+                      ↓
+              Send to AI (history + memories + new message)
+                      ↓
+              Store AI Response in Session
+                      ↓
+              After 24h inactive → Transfer to Long-term Memory
+```
+
+### Commands
+
+#### `/reset` - Clear Session and Transfer to Memory
+
+Manually ends the current session and transfers it to long-term memory.
+
+**Usage:**
+```
+/reset
+```
+
+**What happens:**
+1. Current session is cleared
+2. All conversation messages are summarized
+3. Summary is stored in long-term memory
+4. Fresh session starts
+5. Confirmation message sent
+
+**When to use:**
+- Want to start a completely fresh conversation
+- Finished a major topic and moving to something new
+- Session feels cluttered or confusing
+
+**Note:** Sessions automatically expire after 24 hours of inactivity, so manual `/reset` is rarely needed.
+
+### Configuration
+
+**Enable Memory System:**
+```json
+{
+  "feature_flags": {
+    "enable_memory_system": true
+  },
+  "godfather_phone": "972501234567@c.us"
+}
+```
+
+**Memory Settings:**
+```json
+{
+  "memory": {
+    "session": {
+      "max_tokens_by_role": {
+        "client": 4000,
+        "godfather": 100000
+      },
+      "session_timeout_hours": 24
+    },
+    "longterm": {
+      "enabled": true,
+      "top_k_results": 5,
+      "min_similarity": 0.7
+    }
+  }
+}
+```
+
+**Key Settings:**
+- `max_tokens_by_role`: Controls how much conversation history to include
+  - Client: 4,000 tokens (~15-20 message exchanges)
+  - Godfather: 100,000 tokens (~300-400 exchanges)
+- `session_timeout_hours`: When to auto-expire sessions (default: 24)
+- `top_k_results`: Max memories to recall (default: 5)
+- `min_similarity`: Minimum relevance score for recall (default: 0.7)
+
+### Data Storage
+
+**Session Files:**
+- Location: `data/sessions/{session_id}/session.json`
+- Format: JSON with messages, timestamps, metadata
+- Cleanup: Expired sessions moved to `data/sessions/expired/`
+
+**Long-term Memory:**
+- Location: `data/memory/chroma.sqlite3`
+- Format: ChromaDB vector database
+- Embeddings: OpenAI text-embedding-3-small
+
+**Backup Recommendations:**
+- Backup `data/sessions/` for conversation history
+- Backup `data/memory/` for long-term memories
+- Both directories are gitignored by default
 
 ## Testing
 
