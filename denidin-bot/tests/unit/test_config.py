@@ -19,7 +19,7 @@ class TestBotConfiguration:
         return {
             "green_api_instance_id": "1234567890",
             "green_api_token": "abcdef123456",
-            "openai_api_key": "sk-test123",
+            "ai_api_key": "sk-test123",
             "ai_model": "gpt-4",
             "system_message": "You are a helpful assistant.",
             "max_tokens": 1000,
@@ -54,7 +54,7 @@ class TestBotConfiguration:
         
         assert config.green_api_instance_id == "1234567890"
         assert config.green_api_token == "abcdef123456"
-        assert config.openai_api_key == "sk-test123"
+        assert config.ai_api_key == "sk-test123"
         assert config.ai_model == "gpt-4"
         assert config.system_message == "You are a helpful assistant."
         assert config.max_tokens == 1000
@@ -69,7 +69,7 @@ class TestBotConfiguration:
         
         assert config.green_api_instance_id == "1234567890"
         assert config.green_api_token == "abcdef123456"
-        assert config.openai_api_key == "sk-test123"
+        assert config.ai_api_key == "sk-test123"
         assert config.ai_model == "gpt-4"
         assert config.system_message == "You are a helpful assistant."
         assert config.max_tokens == 1000
@@ -83,7 +83,7 @@ class TestBotConfiguration:
         incomplete_config = {
             "green_api_instance_id": "1234567890",
             # missing green_api_token
-            "openai_api_key": "sk-test123"
+            "ai_api_key": "sk-test123"
         }
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -102,7 +102,7 @@ class TestBotConfiguration:
         incomplete_config = {
             # missing green_api_instance_id
             "green_api_token": "abcdef123456",
-            "openai_api_key": "sk-test123"
+            "ai_api_key": "sk-test123"
         }
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -122,7 +122,7 @@ class TestBotConfiguration:
         incomplete_config = {
             "green_api_instance_id": "1234567890",
             # missing green_api_token
-            "openai_api_key": "sk-test123"
+            "ai_api_key": "sk-test123"
         }
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -137,12 +137,12 @@ class TestBotConfiguration:
         finally:
             os.unlink(temp_path)
 
-    def test_from_file_missing_openai_api_key(self):
-        """Test that from_file() raises ValueError for missing openai_api_key."""
+    def test_from_file_missing_ai_api_key(self):
+        """Test that from_file() raises ValueError for missing ai_api_key."""
         incomplete_config = {
             "green_api_instance_id": "1234567890",
             "green_api_token": "abcdef123456"
-            # missing openai_api_key
+            # missing ai_api_key
         }
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -153,7 +153,7 @@ class TestBotConfiguration:
             with pytest.raises(ValueError) as exc_info:
                 BotConfiguration.from_file(temp_path)
             error_message = str(exc_info.value).lower()
-            assert "openai_api_key" in error_message
+            assert "ai_api_key" in error_message
         finally:
             os.unlink(temp_path)
 
@@ -175,7 +175,7 @@ class TestBotConfiguration:
             # All three required fields should be mentioned
             assert "green_api_instance_id" in error_message
             assert "green_api_token" in error_message
-            assert "openai_api_key" in error_message
+            assert "ai_api_key" in error_message
         finally:
             os.unlink(temp_path)
 
@@ -184,7 +184,7 @@ class TestBotConfiguration:
         config_with_required = {
             "green_api_instance_id": "1234567890",
             "green_api_token": "abcdef123456",
-            "openai_api_key": "sk-test123"
+            "ai_api_key": "sk-test123"
         }
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -195,7 +195,7 @@ class TestBotConfiguration:
             config = BotConfiguration.from_file(temp_path)
             assert config.green_api_instance_id == "1234567890"
             assert config.green_api_token == "abcdef123456"
-            assert config.openai_api_key == "sk-test123"
+            assert config.ai_api_key == "sk-test123"
         finally:
             os.unlink(temp_path)
 
@@ -264,7 +264,7 @@ class TestBotConfiguration:
         # Verify all attributes are accessible
         assert hasattr(config, 'green_api_instance_id')
         assert hasattr(config, 'green_api_token')
-        assert hasattr(config, 'openai_api_key')
+        assert hasattr(config, 'ai_api_key')
         assert hasattr(config, 'ai_model')
         assert hasattr(config, 'system_message')
         assert hasattr(config, 'max_tokens')
@@ -309,7 +309,7 @@ class TestBotConfiguration:
         config_data = {
             "green_api_instance_id": "test123",
             "green_api_token": "test_token_xyz",
-            "openai_api_key": "sk-test123",
+            "ai_api_key": "sk-test123",
             "data_root": "test_data",
             "memory": {
                 "session": {},

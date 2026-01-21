@@ -14,7 +14,7 @@ class BotConfiguration:
     
     green_api_instance_id: str
     green_api_token: str
-    openai_api_key: str
+    ai_api_key: str
     ai_model: str = 'gpt-4o-mini'
     system_message: str = 'You are a helpful assistant.'
     max_tokens: int = 1000
@@ -65,7 +65,7 @@ class BotConfiguration:
         required_fields = [
             'green_api_instance_id',
             'green_api_token',
-            'openai_api_key'
+            'ai_api_key'
         ]
         
         missing_fields = [field for field in required_fields if field not in config_data or not config_data.get(field)]

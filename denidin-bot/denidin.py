@@ -64,13 +64,13 @@ bot = GreenAPIBot(
 )
 
 # Initialize OpenAI client
-openai_client = OpenAI(
-    api_key=config.openai_api_key,
+ai_client = OpenAI(
+    api_key=config.ai_api_key,
     timeout=30.0
 )
 
 # Initialize handlers
-ai_handler = AIHandler(openai_client, config)
+ai_handler = AIHandler(ai_client, config)
 whatsapp_handler = WhatsAppHandler()
 
 
@@ -96,7 +96,7 @@ logger.info("DeniDin bot starting...")
 logger.info("Configuration:")
 logger.info(f"  Green API Instance: {config.green_api_instance_id}")
 logger.info(f"  Green API Token: {mask_api_key(config.green_api_token)}")
-logger.info(f"  OpenAI API Key: {mask_api_key(config.openai_api_key)}")
+logger.info(f"  AI API Key: {mask_api_key(config.ai_api_key)}")
 logger.info(f"  AI Model: {config.ai_model}")
 logger.info(f"  Temperature: {config.temperature}")
 logger.info(f"  Max Tokens: {config.max_tokens}")
