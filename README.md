@@ -4,7 +4,7 @@ A WhatsApp AI assistant with semantic memory and conversation management.
 
 ## Overview
 
-DeniDin is a production WhatsApp bot powered by OpenAI GPT-4o-mini with an advanced two-tier memory system: short-term conversation history (SessionManager) and long-term semantic memory (ChromaDB). The bot maintains context across conversations and recalls relevant information automatically.
+DeniDin is a production WhatsApp application powered by OpenAI GPT-4o-mini with an advanced two-tier memory system: short-term conversation history (SessionManager) and long-term semantic memory (ChromaDB). The application maintains context across conversations and recalls relevant information automatically.
 
 ## Current Status
 
@@ -17,9 +17,9 @@ DeniDin is a production WhatsApp bot powered by OpenAI GPT-4o-mini with an advan
 - ✅ /reset command with session transfer to long-term memory
 - ✅ Data root configuration for test/prod separation
 - ✅ Sender/recipient tracking for proper message attribution
-- ✅ Bot management scripts (run_denidin.sh, stop_denidin.sh)
+- ✅ Application management scripts (run_denidin.sh, stop_denidin.sh)
 - ✅ 212 tests passing, 4 skipped
-- 🚀 Bot deployed and running in production
+- 🚀 Application deployed and running in production
 
 **Memory System**: Phases 1-6 complete (PR #20 merged to master)
 - Feature flag: `enable_memory_system` (default: disabled for safe deployment)

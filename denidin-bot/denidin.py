@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DeniDin WhatsApp AI Chatbot - Main Entry Point
+DeniDin WhatsApp AI Application - Main Entry Point
 Integrates Green API for WhatsApp messaging with OpenAI ChatGPT.
 Phase 6: US4 - Configuration & Deployment
 """
@@ -27,7 +27,7 @@ except ValueError as e:
     # Configuration validation failed - exit with clear error message
     print(f"ERROR: Invalid configuration in {CONFIG_PATH}", file=sys.stderr)
     print(f"Validation error: {e}", file=sys.stderr)
-    print("Please fix the configuration file and restart the bot.", file=sys.stderr)
+    print("Please fix the configuration file and restart the application.", file=sys.stderr)
     sys.exit(2)  # Exit code 2 = configuration error (CONSTITUTION XVI)
 except FileNotFoundError:
     print(f"ERROR: Configuration file not found: {CONFIG_PATH}", file=sys.stderr)
@@ -57,7 +57,7 @@ def mask_api_key(key: str) -> str:
     return f"{key[:4]}...{key[-4:]}"
 
 
-# Initialize Green API bot
+# Initialize Green API client
 bot = GreenAPIBot(
     config.green_api_instance_id,
     config.green_api_token
@@ -77,7 +77,7 @@ whatsapp_handler = WhatsAppHandler()
 class GlobalContext:
     """
     Global context object accessible to all threads.
-    Provides centralized access to all bot components.
+    Provides centralized access to all application components.
     Used by background threads (SessionManager cleanup) to transfer sessions.
     """
     def __init__(self, session_manager, memory_manager, ai_handler, config):
@@ -92,7 +92,7 @@ global_context = None
 
 # Log startup information with masked API keys
 logger.info("=" * 60)
-logger.info("DeniDin bot starting...")
+logger.info("DeniDin application starting...")
 logger.info("Configuration:")
 logger.info(f"  Green API Instance: {config.green_api_instance_id}")
 logger.info(f"  Green API Token: {mask_api_key(config.green_api_token)}")
@@ -135,7 +135,7 @@ def handle_text_message(notification: Notification) -> None:
             f"{message.text_content[:100]}..."
         )
 
-        # Check if bot is mentioned in group (or if 1-on-1)
+        # Check if application is mentioned in group (or if 1-on-1)
         if not whatsapp_handler.is_bot_mentioned_in_group(message):
             logger.debug(f"{tracking} Skipping group message without mention")
             return
@@ -358,7 +358,7 @@ if __name__ == "__main__":
             shutdown_requested[0] = True
             signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
             logger.info(f"Received shutdown signal ({signal_name})")
-            logger.info("DeniDin bot shutting down gracefully...")
+            logger.info("DeniDin application shutting down gracefully...")
             
             # Stop cleanup thread if memory enabled
             if ai_handler.memory_enabled and ai_handler.session_manager:
@@ -373,13 +373,13 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, signal_handler)
 
     logger.info("=" * 50)
-    logger.info("DeniDin bot is now running!")
+    logger.info("DeniDin application is now running!")
     logger.info("Waiting for WhatsApp messages...")
     logger.info("Press Ctrl+C to stop")
     logger.info("=" * 50)
 
     try:
-        # Start the bot (blocking call)
+        # Start the WhatsApp message listener (blocking call)
         # Signal handlers will raise KeyboardInterrupt for graceful shutdown
         bot.run_forever()
     except KeyboardInterrupt:
@@ -387,7 +387,7 @@ if __name__ == "__main__":
         # Message already logged by signal handler or is implicit from Ctrl+C
         if not shutdown_requested[0]:
             logger.info("Received shutdown signal (Ctrl+C)")
-            logger.info("DeniDin bot shutting down gracefully...")
+            logger.info("DeniDin application shutting down gracefully...")
             
             # Stop cleanup thread if not already stopped
             if ai_handler.memory_enabled and ai_handler.session_manager:
@@ -399,5 +399,5 @@ if __name__ == "__main__":
             f"Fatal error in bot.run_forever(): {e}",
             exc_info=True
         )
-        logger.error("Bot stopped due to fatal error - manual restart required")
+        logger.error("Application stopped due to fatal error - manual restart required")
         sys.exit(1)
