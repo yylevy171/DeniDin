@@ -86,7 +86,7 @@ Users cannot manually control when a conversation becomes searchable in ChromaDB
 
 ### Rename "openai" References to "ai"
 **Priority:** Medium  
-**Status:** Pending
+**Status:** ✅ Completed (PR #30-32)
 
 **Problem:**
 Current codebase uses "openai" in variable names, parameters, and code references, creating vendor lock-in at the naming level. This:
