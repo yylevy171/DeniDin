@@ -53,43 +53,31 @@ The `run_denidin.sh` and `stop_denidin.sh` scripts currently don't work properly
 
 ## Memory System
 
-### Prevent Duplicate Message Storage in Long-Term Memory
+### Remove /reset Command
 **Priority:** Medium  
 **Status:** Pending
 
 **Problem:**
-Currently, `/reset` command stores the entire conversation history to ChromaDB each time it's called. If a user calls `/reset` multiple times during the same session, the same messages get stored repeatedly with different UUIDs, leading to:
-- Redundant storage (messages 1-26 stored, then messages 1-30 including duplicates)
-- Duplicate results in semantic search
-- Increased storage costs
+The `/reset` command allows users to manually transfer their conversation to long-term memory, but this creates issues:
+- Users can call `/reset` multiple times, storing duplicate messages with different UUIDs
+- Duplicate results appear in semantic search
+- Increased storage costs and database bloat
+- Sessions transfer to long-term memory automatically on 24h expiration anyway
 
-**Proposed Solutions:**
+**Proposed Solution:**
+Remove the `/reset` command entirely and rely solely on automatic session expiration for long-term memory transfer.
 
-1. **Message-level hashing approach:**
-   - Store each message individually with a deterministic ID (hash of sender + timestamp + content)
-   - Before storing, check if message hash already exists in ChromaDB
-   - Only store net-new messages on each `/reset`
-   - Pros: Granular deduplication, incremental storage
-   - Cons: More complex implementation, more ChromaDB operations
+**Trade-off:**
+Users cannot manually control when a conversation becomes searchable in ChromaDB - must wait 24h for automatic expiration.
 
-2. **Remove `/reset` command, rely on automatic expiration:**
-   - Remove manual `/reset` command entirely
-   - Only transfer sessions to long-term on 24h expiration
-   - Sessions naturally expire once, preventing duplicates
-   - Pros: Simple, no duplicate risk
-   - Cons: Users can't manually trigger storage
-
-3. **Track last transferred message index:**
-   - Add `last_transferred_message_id` to session metadata
-   - On `/reset`, only transfer messages after last transferred
-   - First `/reset`: stores messages 1-26, marks message 26
-   - Second `/reset`: stores only messages 27-30
-   - Pros: Incremental, preserves `/reset` functionality
-   - Cons: Requires session metadata updates
-
-**Recommendation:** Option 3 (incremental transfer with tracking) provides best balance of functionality and deduplication.
+**Implementation:**
+1. Remove `/reset` command handler from `denidin.py` (lines ~143-177)
+2. Remove corresponding tests for `/reset` behavior
+3. Update spec documentation to remove US-MEM-03 references
+4. Sessions will naturally transfer once on expiration, preventing duplicates
 
 **Files to modify:**
-- `src/handlers/ai_handler.py` - `transfer_session_to_long_term_memory()`
-- `src/models/state.py` - Add `last_transferred_message_num` to `ChatSession`
-- `tests/unit/test_ai_handler_memory.py` - Test incremental transfer
+- `denidin.py` - Remove `/reset` command handler
+- `tests/unit/test_memory_unit.py` - Remove `/reset` test cases
+- `tests/integration/test_memory_integration.py` - Remove `/reset` test cases
+- `specs/002-007-memory-system/spec.md` - Remove US-MEM-03 references
