@@ -1,5 +1,5 @@
 """
-MessageState model for tracking bot state.
+MessageState model for tracking application state.
 Handles persistence of the last processed message.
 """
 import json

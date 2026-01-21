@@ -20,7 +20,7 @@ class WhatsAppMessage:
     timestamp: int
     message_type: str
     is_group: bool = False
-    received_timestamp: Optional[datetime] = None  # UTC timestamp when message was received by bot
+    received_timestamp: Optional[datetime] = None  # UTC timestamp when message was received by application
 
     @classmethod
     def from_notification(cls, notification) -> 'WhatsAppMessage':
@@ -58,7 +58,7 @@ class WhatsAppMessage:
         # Generate unique message ID (UUID) for tracking throughout lifecycle
         message_id = str(uuid.uuid4())
         
-        # Track when message was received by bot (UTC)
+        # Track when message was received by application (UTC)
         received_timestamp = datetime.now(timezone.utc)
         
         return cls(

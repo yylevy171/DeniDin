@@ -32,14 +32,14 @@ DeniDin is a WhatsApp chatbot with a sophisticated two-tier memory system. It re
 ## Setup Instructions
 
 > **Note for AI Assistants:** 
-> - All commands must be run from `/Users/yaronl/personal/DeniDin/denidin-bot/` directory
-> - Always prefix commands with: `cd /Users/yaronl/personal/DeniDin/denidin-bot &&`
+> - All commands must be run from `/Users/yaronl/personal/DeniDin/denidin-app/` directory
+> - Always prefix commands with: `cd /Users/yaronl/personal/DeniDin/denidin-app &&`
 > - Main git branch is `master`, not `main`
 
 ### 1. Clone and Navigate
 
 ```bash
-cd denidin-bot/
+cd denidin-app/
 ```
 
 ### 2. Create Virtual Environment
@@ -131,7 +131,7 @@ Edit `config/config.json` and replace the placeholder values:
 Memory system is **disabled by default** (`enable_memory_system: false`). To enable:
 1. Set `enable_memory_system: true` in config
 2. Configure `godfather_phone` with the admin WhatsApp ID
-3. Restart the bot
+3. Restart the application
 
 See [Memory System Usage](#memory-system-usage) section below for details.
 
@@ -149,7 +149,7 @@ The bot will:
 3. Start polling Green API for incoming WhatsApp messages
 4. Forward messages to ChatGPT
 5. Send AI responses back to WhatsApp
-6. Log all activity to `logs/bot.log`
+6. Log all activity to `logs/application.log`
 
 **Alternative (manual start):**
 ```bash
@@ -162,7 +162,7 @@ python3 denidin.py
 ./stop_denidin.sh
 ```
 
-This will gracefully shut down the bot (sends SIGTERM, waits for cleanup).
+This will gracefully shut down the application (sends SIGTERM, waits for cleanup).
 
 **Alternative:**
 Press `Ctrl+C` if running manually, or use `kill -TERM <PID>`.
@@ -233,7 +233,7 @@ Press `Ctrl+C` if running manually, or use `kill -TERM <PID>`.
 ## Project Structure
 
 ```
-denidin-bot/
+denidin-app/
 ├── denidin.py                  # Main entry point (223 lines)
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # This file

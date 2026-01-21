@@ -1,4 +1,4 @@
-# DeniDin Bot - Production Deployment Guide
+# DeniDin Application - Production Deployment Guide
 
 **Last Updated**: January 17, 2026  
 **Version**: Phase 6 (US4 - Configuration & Deployment)
@@ -56,7 +56,7 @@ For production deployment, use a cloud VM with the following minimum specificati
 ```bash
 cd /opt
 sudo git clone https://github.com/yylevy171/DeniDin.git
-cd DeniDin/denidin-bot
+cd DeniDin/denidin-app
 ```
 
 ### 2. Install Python Dependencies
@@ -147,13 +147,13 @@ Wants=network-online.target
 Type=simple
 User=denidin
 Group=denidin
-WorkingDirectory=/opt/DeniDin/denidin-bot
-Environment="PATH=/opt/DeniDin/denidin-bot/venv/bin"
-ExecStart=/opt/DeniDin/denidin-bot/venv/bin/python3 /opt/DeniDin/denidin-bot/denidin.py
+WorkingDirectory=/opt/DeniDin/denidin-app
+Environment="PATH=/opt/DeniDin/denidin-app/venv/bin"
+ExecStart=/opt/DeniDin/denidin-app/venv/bin/python3 /opt/DeniDin/denidin-app/denidin.py
 
 # Alternative: Use management scripts for single-instance enforcement
-# ExecStart=/opt/DeniDin/denidin-bot/run_denidin.sh
-# ExecStop=/opt/DeniDin/denidin-bot/stop_denidin.sh
+# ExecStart=/opt/DeniDin/denidin-app/run_denidin.sh
+# ExecStop=/opt/DeniDin/denidin-app/stop_denidin.sh
 
 # Restart policy
 Restart=always
@@ -164,7 +164,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/DeniDin/denidin-bot/logs /opt/DeniDin/denidin-bot/state
+ReadWritePaths=/opt/DeniDin/denidin-app/logs /opt/DeniDin/denidin-app/state
 
 # Logging
 StandardOutput=journal
@@ -179,7 +179,7 @@ WantedBy=multi-user.target
 
 ```bash
 sudo useradd -r -s /bin/false denidin
-sudo chown -R denidin:denidin /opt/DeniDin/denidin-bot
+sudo chown -R denidin:denidin /opt/DeniDin/denidin-app
 ```
 
 ### 3. Enable and Start Service
@@ -222,13 +222,13 @@ DeniDin writes logs to `logs/denidin.log` with automatic rotation:
 
 ```bash
 # Follow application logs
-tail -f /opt/DeniDin/denidin-bot/logs/denidin.log
+tail -f /opt/DeniDin/denidin-app/logs/denidin.log
 
 # Follow with grep filtering
-tail -f /opt/DeniDin/denidin-bot/logs/denidin.log | grep ERROR
+tail -f /opt/DeniDin/denidin-app/logs/denidin.log | grep ERROR
 
 # View last 100 lines
-tail -n 100 /opt/DeniDin/denidin-bot/logs/denidin.log
+tail -n 100 /opt/DeniDin/denidin-app/logs/denidin.log
 ```
 
 ### Log Levels
@@ -311,7 +311,7 @@ For enhanced security, consider encrypting config.json:
 gpg -c config/config.json
 # Creates config/config.json.gpg
 
-# Decrypt before running bot
+# Decrypt before running application
 gpg -d config/config.json.gpg > config/config.json
 ```
 
