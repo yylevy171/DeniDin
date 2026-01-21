@@ -23,15 +23,15 @@ def mock_config():
 
 
 @pytest.fixture
-def mock_openai_client():
+def mock_ai_client():
     """Create a mock OpenAI client"""
     return MagicMock()
 
 
 @pytest.fixture
-def ai_handler(mock_config, mock_openai_client):
+def ai_handler(mock_config, mock_ai_client):
     """Create AIHandler instance with mocked dependencies"""
-    return AIHandler(mock_openai_client, mock_config)
+    return AIHandler(mock_ai_client, mock_config)
 
 
 @pytest.fixture
@@ -54,11 +54,11 @@ class TestAIHandlerRetryLogic:
     """Test retry logic for OpenAI API calls"""
     
     def test_get_response_retries_on_rate_limit_error(
-        self, ai_handler, mock_openai_client, sample_whatsapp_message
+        self, ai_handler, mock_ai_client, sample_whatsapp_message
     ):
         """Test that get_response retries once on RateLimitError"""
         # Simulate RateLimitError on first call, success on 2nd
-        mock_openai_client.chat.completions.create.side_effect = [
+        mock_ai_client.chat.completions.create.side_effect = [
             RateLimitError("Rate limit exceeded", response=Mock(), body={}),
             Mock(
                 choices=[Mock(message=Mock(content="Success response"))],
@@ -76,16 +76,16 @@ class TestAIHandlerRetryLogic:
         response = ai_handler.get_response(request)
         
         # Verify 2 attempts were made (1 initial + 1 retry)
-        assert mock_openai_client.chat.completions.create.call_count == 2
+        assert mock_ai_client.chat.completions.create.call_count == 2
         assert response.response_text == "Success response"
         assert response.tokens_used == 50
     
     def test_get_response_retries_on_api_timeout_error(
-        self, ai_handler, mock_openai_client, sample_whatsapp_message
+        self, ai_handler, mock_ai_client, sample_whatsapp_message
     ):
         """Test that get_response retries on APITimeoutError"""
         # Simulate timeout on first call, success on 2nd
-        mock_openai_client.chat.completions.create.side_effect = [
+        mock_ai_client.chat.completions.create.side_effect = [
             APITimeoutError(request=Mock()),
             Mock(
                 choices=[Mock(message=Mock(content="Success after timeout"))],
@@ -99,15 +99,15 @@ class TestAIHandlerRetryLogic:
         request = ai_handler.create_request(sample_whatsapp_message)
         response = ai_handler.get_response(request)
         
-        assert mock_openai_client.chat.completions.create.call_count == 2
+        assert mock_ai_client.chat.completions.create.call_count == 2
         assert response.response_text == "Success after timeout"
     
     def test_get_response_retries_on_api_error(
-        self, ai_handler, mock_openai_client, sample_whatsapp_message
+        self, ai_handler, mock_ai_client, sample_whatsapp_message
     ):
         """Test that get_response retries on generic APIError"""
         # Simulate APIError on first call, success on 2nd
-        mock_openai_client.chat.completions.create.side_effect = [
+        mock_ai_client.chat.completions.create.side_effect = [
             APIError("API Error", request=Mock(), body={}),
             Mock(
                 choices=[Mock(message=Mock(content="Success after error"))],
@@ -121,15 +121,15 @@ class TestAIHandlerRetryLogic:
         request = ai_handler.create_request(sample_whatsapp_message)
         response = ai_handler.get_response(request)
         
-        assert mock_openai_client.chat.completions.create.call_count == 2
+        assert mock_ai_client.chat.completions.create.call_count == 2
         assert response.response_text == "Success after error"
     
     def test_get_response_fails_after_max_retries(
-        self, ai_handler, mock_openai_client, sample_whatsapp_message
+        self, ai_handler, mock_ai_client, sample_whatsapp_message
     ):
         """Test that get_response fails after 3 retry attempts"""
         # Simulate persistent RateLimitError
-        mock_openai_client.chat.completions.create.side_effect = RateLimitError(
+        mock_ai_client.chat.completions.create.side_effect = RateLimitError(
             "Rate limit exceeded", response=Mock(), body={}
         )
         
@@ -139,18 +139,18 @@ class TestAIHandlerRetryLogic:
         response = ai_handler.get_response(request)
         
         # Verify it tried 2 times (initial + 1 retry)
-        assert mock_openai_client.chat.completions.create.call_count == 2
+        assert mock_ai_client.chat.completions.create.call_count == 2
         
         # Should return fallback instead of raising
         assert "trouble connecting" in response.response_text.lower() or "capacity" in response.response_text.lower()
     
     @patch('time.sleep')  # Mock sleep to speed up test
     def test_exponential_backoff_timing(
-        self, mock_sleep, ai_handler, mock_openai_client, sample_whatsapp_message
+        self, mock_sleep, ai_handler, mock_ai_client, sample_whatsapp_message
     ):
         """Test exponential backoff timing (1s, 2s, 4s)"""
         # Simulate failures requiring retries
-        mock_openai_client.chat.completions.create.side_effect = [
+        mock_ai_client.chat.completions.create.side_effect = [
             RateLimitError("Rate limit", response=Mock(), body={}),
             RateLimitError("Rate limit", response=Mock(), body={}),
             Mock(

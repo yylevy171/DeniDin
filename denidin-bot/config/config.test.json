@@ -1,7 +1,7 @@
 {
   "green_api_instance_id": "test_instance_id",
   "green_api_token": "test_token_1234567890",
-  "openai_api_key": "sk-test1234567890abcdefghijklmnopqrstuvwxyz",
+  "ai_api_key": "sk-test1234567890abcdefghijklmnopqrstuvwxyz",
   "ai_model": "gpt-3.5-turbo",
   "system_message": "You are a test assistant.",
   "max_tokens": 1000,

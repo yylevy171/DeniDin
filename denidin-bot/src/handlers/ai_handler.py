@@ -31,16 +31,16 @@ class AIHandler:
     Implements retry logic with exponential backoff for transient failures.
     """
     
-    def __init__(self, openai_client: OpenAI, config: BotConfiguration, cleanup_interval_seconds: Optional[int] = None):
+    def __init__(self, ai_client: OpenAI, config: BotConfiguration, cleanup_interval_seconds: Optional[int] = None):
         """
-        Initialize AIHandler with OpenAI client and configuration.
+        Initialize AIHandler with AI client and configuration.
         
         Args:
-            openai_client: Configured OpenAI client instance
+            ai_client: Configured AI client instance (OpenAI)
             config: Bot configuration with AI settings
             cleanup_interval_seconds: Optional override for session cleanup interval (for testing)
         """
-        self.client = openai_client
+        self.client = ai_client
         self.config = config
         
         # Initialize memory managers if feature enabled
@@ -77,7 +77,7 @@ class AIHandler:
                 self.memory_manager = MemoryManager(
                     storage_dir=longterm_config.get('storage_dir', 'data/memory'),
                     embedding_model=longterm_config.get('embedding_model', 'text-embedding-3-small'),
-                    openai_client=self.client
+                    ai_client=self.client
                 )
                 
                 # Store collection name and query params for later use

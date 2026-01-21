@@ -45,18 +45,18 @@ class MemoryManager:
         self,
         storage_dir: str = "data/memory",
         embedding_model: str = "text-embedding-3-small",
-        openai_client: Optional[OpenAI] = None
+        ai_client: Optional[OpenAI] = None
     ):
         """
-        Initialize MemoryManager with ChromaDB and OpenAI clients.
+        Initialize MemoryManager with ChromaDB and AI clients.
         
         Args:
             storage_dir: Directory for ChromaDB persistent storage
             embedding_model: OpenAI embedding model to use
-            openai_client: Optional OpenAI client instance (for testing)
+            ai_client: OpenAI client instance (required, no environment variables per CONSTITUTION I)
             
         Raises:
-            Exception: If ChromaDB or OpenAI initialization fails (ERR-MEMORY-001)
+            Exception: If ChromaDB or AI initialization fails (ERR-MEMORY-001)
         """
         self.storage_dir = Path(storage_dir)
         self.embedding_model = embedding_model
@@ -73,25 +73,25 @@ class MemoryManager:
         except Exception as e:
             raise Exception(f"ChromaDB initialization failed: {e}")
         
-        # Initialize OpenAI client
+        # Initialize AI client
         # MUST be provided explicitly (no environment variables per CONSTITUTION I)
-        if openai_client is None:
+        if ai_client is None:
             raise ValueError(
-                "openai_client is required. "
+                "ai_client is required. "
                 "MemoryManager does not use environment variables. "
-                "Pass OpenAI client initialized from config.json."
+                "Pass AI client initialized from config.json."
             )
-        self._openai_client = openai_client
+        self._ai_client = ai_client
     
     @property
-    def openai_client(self):
-        """Access OpenAI client (must be initialized in __init__)."""
-        if self._openai_client is None:
+    def ai_client(self):
+        """Access AI client (must be initialized in __init__)."""
+        if self._ai_client is None:
             raise RuntimeError(
-                "OpenAI client not initialized. "
+                "AI client not initialized. "
                 "This should not happen - client is required in __init__."
             )
-        return self._openai_client
+        return self._ai_client
     
     def get_or_create_collection(self, collection_name: str):
         """
@@ -304,7 +304,7 @@ class MemoryManager:
             Exception: If OpenAI API call fails (ERR-MEMORY-002)
         """
         try:
-            response = self.openai_client.embeddings.create(
+            response = self.ai_client.embeddings.create(
                 model=self.embedding_model,
                 input=text
             )

@@ -21,7 +21,7 @@ def memory_enabled_config():
     return BotConfiguration(
         green_api_instance_id="test",
         green_api_token="test",
-        openai_api_key="test-key",
+        ai_api_key="test-key",
         ai_model="gpt-4o-mini",
         system_message="You are a helpful assistant.",
         max_tokens=100,
