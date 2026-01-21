@@ -81,3 +81,102 @@ Users cannot manually control when a conversation becomes searchable in ChromaDB
 - `tests/unit/test_memory_unit.py` - Remove `/reset` test cases
 - `tests/integration/test_memory_integration.py` - Remove `/reset` test cases
 - `specs/002-007-memory-system/spec.md` - Remove US-MEM-03 references
+
+## Code Quality & Naming Conventions
+
+### Rename "openai" References to "ai"
+**Priority:** Medium  
+**Status:** Pending
+
+**Problem:**
+Current codebase uses "openai" in variable names, parameters, and code references, creating vendor lock-in at the naming level. This:
+- Makes it harder to switch AI providers in the future
+- Violates abstraction principles
+- Reduces code flexibility and maintainability
+
+**Proposed Solution:**
+Rename all "openai" references to "ai" throughout the codebase:
+- `openai_client` → `ai_client`
+- `openai_api_key` → `ai_api_key`
+- `mock_openai` → `mock_ai`
+- `test_openai_client` → `test_ai_client`
+
+**Implementation:**
+1. Update all Python files with "openai" variable names
+2. Update configuration files (config.json, config.example.json, config.test.json)
+3. Update all test files
+4. Keep OpenAI class imports unchanged (from openai import OpenAI)
+5. Update documentation to reference "AI client" instead of "OpenAI client"
+
+**Files to modify:**
+- `denidin.py` - Main entry point
+- `src/handlers/ai_handler.py` - AI request handler
+- `src/memory/memory_manager.py` - Memory system
+- `src/models/config.py` - Configuration model
+- `config/*.json` - All config files
+- `tests/**/*.py` - All test files
+- Documentation files
+
+---
+
+### Rename BotConfiguration to AppConfiguration
+**Priority:** Medium  
+**Status:** Pending
+
+**Problem:**
+The class `BotConfiguration` incorrectly describes the application as a "bot", but DeniDin is an application that happens to have conversational capabilities.
+
+**Proposed Solution:**
+Rename `BotConfiguration` to `AppConfiguration` throughout:
+- Class name in `src/models/config.py`
+- All imports and references
+- Documentation and comments
+
+**Implementation:**
+1. Rename class in `src/models/config.py`
+2. Update all imports: `from src.models.config import AppConfiguration`
+3. Update variable names: `bot_config` → `app_config` where appropriate
+4. Update docstrings and comments
+
+**Files to modify:**
+- `src/models/config.py` - Class definition
+- `denidin.py` - Main entry point
+- All files importing BotConfiguration
+- Test files
+- Documentation
+
+---
+
+### Update "Bot" Terminology to "App/Application"
+**Priority:** Medium  
+**Status:** Pending
+
+**Problem:**
+Documentation, specs, and code comments refer to DeniDin as a "bot" or "chatbot", which is inaccurate. DeniDin is an application with AI-powered conversational features, not just a bot.
+
+**Proposed Solution:**
+Update all references from "bot" to "app" or "application":
+- "DeniDin WhatsApp AI Chatbot" → "DeniDin WhatsApp AI Application"
+- "the bot" → "the application" or "DeniDin"
+- "bot instance" → "application instance"
+- "bot starts" → "application starts"
+
+**Scope:**
+- All markdown files (specs, plans, README)
+- Code comments and docstrings
+- Log messages
+- Error messages
+- Configuration file comments
+
+**Exceptions (keep "bot"):**
+- GreenAPIBot class (external library)
+- WhatsApp bot account references (industry term)
+- Historical git commit messages (don't rewrite history)
+
+**Files to modify:**
+- `README.md`
+- `specs/**/*.md` - All specification files
+- `denidin.py` - Comments and docstrings
+- All source files - Comments and log messages
+- `config/config.example.json` - Comments
+
