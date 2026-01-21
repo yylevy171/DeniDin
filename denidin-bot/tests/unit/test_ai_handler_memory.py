@@ -11,14 +11,14 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 from openai import OpenAI
 from src.handlers.ai_handler import AIHandler
-from src.models.config import BotConfiguration
+from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage
 
 
 @pytest.fixture
 def memory_enabled_config():
     """Config fixture with memory system enabled for testing."""
-    return BotConfiguration(
+    return AppConfiguration(
         green_api_instance_id="test",
         green_api_token="test",
         ai_api_key="test-key",

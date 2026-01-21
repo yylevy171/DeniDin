@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from openai import OpenAI
-from src.models.config import BotConfiguration
+from src.models.config import AppConfiguration
 from src.handlers.ai_handler import AIHandler
 from src.memory.session_manager import SessionManager
 from src.memory.memory_manager import MemoryManager
@@ -43,7 +43,7 @@ def temp_storage():
 @pytest.fixture
 def config_with_memory(temp_storage, test_config):
     """Create test configuration with memory system enabled."""
-    return BotConfiguration(
+    return AppConfiguration(
         green_api_instance_id="test_instance",
         green_api_token="test_token",
         openai_api_key=test_config['openai_api_key'],
@@ -361,7 +361,7 @@ class TestMemorySystemIntegration:
             json.dump(session_data, f)
         
         # Initialize AIHandler (which calls recover_orphaned_sessions)
-        config = BotConfiguration(
+        config = AppConfiguration(
             green_api_instance_id="test",
             green_api_token="test",
             openai_api_key="test",

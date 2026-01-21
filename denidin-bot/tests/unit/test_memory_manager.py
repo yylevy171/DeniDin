@@ -22,13 +22,13 @@ import uuid
 from openai import OpenAI
 
 from src.memory.memory_manager import MemoryManager
-from src.models.config import BotConfiguration
+from src.models.config import AppConfiguration
 
 
 # Load test configuration once for all tests (CONSTITUTION I)
 TEST_CONFIG_PATH = 'config/config.test.json'
 try:
-    test_config = BotConfiguration.from_file(TEST_CONFIG_PATH)
+    test_config = AppConfiguration.from_file(TEST_CONFIG_PATH)
     # Create OpenAI client from config (CONSTITUTION I - config file, not env vars)
     # API calls will be mocked in tests to avoid actual OpenAI charges
     test_ai_client = OpenAI(api_key=test_config.ai_api_key)

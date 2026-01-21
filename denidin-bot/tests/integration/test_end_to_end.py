@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock
 sys.modules['whatsapp_chatbot_python'] = MagicMock()
 
 from whatsapp_api_client_python.API import GreenAPI
-from src.models.config import BotConfiguration
+from src.models.config import AppConfiguration
 
 
 class TestEndToEndFlow:
@@ -31,7 +31,7 @@ class TestEndToEndFlow:
         if not os.path.exists(config_path):
             pytest.skip("config.json not found - skipping E2E test")
         
-        config = BotConfiguration.from_file(config_path)
+        config = AppConfiguration.from_file(config_path)
         config.validate()
         return config
 
