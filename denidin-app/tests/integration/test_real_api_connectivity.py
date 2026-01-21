@@ -142,7 +142,7 @@ class TestRealOpenAPIConnectivity:
     def openai_client(self, config):
         """Create REAL OpenAI client - NO MOCKS."""
         return OpenAI(
-            api_key=config.openai_api_key,
+            api_key=config.ai_api_key,
             timeout=30.0
         )
     
@@ -266,7 +266,7 @@ class TestRealEndToEndFlow:
     def openai_client(self, config):
         """Create REAL OpenAI client."""
         return OpenAI(
-            api_key=config.openai_api_key,
+            api_key=config.ai_api_key,
             timeout=30.0
         )
     

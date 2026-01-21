@@ -25,7 +25,7 @@ def real_config():
 @pytest.fixture
 def real_openai_client(real_config):
     """Create real OpenAI client"""
-    return OpenAI(api_key=real_config.openai_api_key, timeout=30.0)
+    return OpenAI(api_key=real_config.ai_api_key, timeout=30.0)
 
 
 @pytest.fixture

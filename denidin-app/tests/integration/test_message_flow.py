@@ -125,7 +125,7 @@ class TestMessageFlow:
         
         # Simulate what bot does: create OpenAI request
         from openai import OpenAI
-        client = OpenAI(api_key=config.openai_api_key)
+        client = OpenAI(api_key=config.ai_api_key)
         
         # Prepare the request (as denidin.py does)
         messages = [
@@ -222,7 +222,7 @@ class TestMessageFlow:
         # Step 2: Send to OpenAI
         print(f"\n[Flow Test] Step 2: Send message to OpenAI")
         from openai import OpenAI
-        client = OpenAI(api_key=config.openai_api_key)
+        client = OpenAI(api_key=config.ai_api_key)
         
         response = client.chat.completions.create(
             model=config.ai_model,

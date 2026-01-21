@@ -46,7 +46,7 @@ def config_with_memory(temp_storage, test_config):
     return AppConfiguration(
         green_api_instance_id="test_instance",
         green_api_token="test_token",
-        openai_api_key=test_config['openai_api_key'],
+        ai_api_key=test_config['ai_api_key'],
         data_root=temp_storage['temp_dir'],  # Use temp directory as data root for tests
         feature_flags={'enable_memory_system': True},
         memory={
@@ -168,12 +168,12 @@ class TestMemorySystemIntegration:
     
     def test_memory_manager_stores_and_recalls(self, temp_storage, test_config):
         """Test MemoryManager can store and recall memories (requires real OpenAI API)."""
-        openai_client = OpenAI(api_key=test_config['openai_api_key'])
+        openai_client = OpenAI(api_key=test_config['ai_api_key'])
         
         memory_manager = MemoryManager(
             storage_dir=temp_storage['memory_dir'],
             embedding_model='text-embedding-3-small',
-            openai_client=openai_client
+            ai_client=openai_client
         )
         
         # Store a memory
@@ -254,7 +254,7 @@ class TestMemorySystemIntegration:
         # Override config for 1-second timeout and cleanup interval
         config_with_memory.memory['session']['session_timeout_hours'] = 1/3600  # 1 second
         
-        openai_client = OpenAI(api_key=test_config['openai_api_key'])
+        openai_client = OpenAI(api_key=test_config['ai_api_key'])
         
         # Create AIHandler with 1-second cleanup interval
         ai_handler = AIHandler(
@@ -295,7 +295,7 @@ class TestMemorySystemIntegration:
     
     def test_ai_handler_stores_messages_in_session(self, config_with_memory, test_config):
         """Test AIHandler stores messages in session (requires real OpenAI API)."""
-        openai_client = OpenAI(api_key=test_config['openai_api_key'])
+        openai_client = OpenAI(api_key=test_config['ai_api_key'])
         ai_handler = AIHandler(openai_client, config_with_memory)
         
         chat_id = "1234567890@c.us"
@@ -364,7 +364,7 @@ class TestMemorySystemIntegration:
         config = AppConfiguration(
             green_api_instance_id="test",
             green_api_token="test",
-            openai_api_key="test",
+            ai_api_key="test",
             feature_flags={'enable_memory_system': True},
             memory={
                 'session': {
@@ -395,7 +395,7 @@ class TestConversationMemory:
     
     def test_multi_turn_conversation_maintains_context(self, config_with_memory, test_config):
         """Test that AI maintains context across multiple messages in a conversation."""
-        openai_client = OpenAI(api_key=test_config['openai_api_key'])
+        openai_client = OpenAI(api_key=test_config['ai_api_key'])
         ai_handler = AIHandler(openai_client, config_with_memory)
         
         chat_id = "test_conversation@c.us"
