@@ -20,7 +20,7 @@ import chromadb
 from chromadb.config import Settings
 from openai import OpenAI
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import os
 from typing import List, Dict, Any, Optional
@@ -151,7 +151,7 @@ class MemoryManager:
         
         # Add default metadata
         metadata.setdefault('type', 'fact')
-        metadata['created_at'] = datetime.utcnow().isoformat()
+        metadata['created_at'] = datetime.now(timezone.utc).isoformat()
         
         # Generate unique ID
         memory_id = str(uuid.uuid4())

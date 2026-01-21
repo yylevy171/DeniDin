@@ -83,7 +83,7 @@ DeniDin gracefully handles errors from WhatsApp API, AI service, or network issu
 
 ### User Story 4 - Configuration & Deployment (Priority: P4)
 
-DeniDin can be configured with different WhatsApp credentials and AI service endpoints via environment variables or config files.
+DeniDin can be configured with different WhatsApp credentials and AI service endpoints via config files.
 
 **Why this priority**: Essential for portability and security (credentials not hardcoded), but can be implemented after proving the core logic works.
 
