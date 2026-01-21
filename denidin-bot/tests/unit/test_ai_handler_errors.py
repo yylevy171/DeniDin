@@ -7,14 +7,14 @@ from datetime import datetime, timezone
 from unittest.mock import Mock, MagicMock, patch
 from openai import APITimeoutError, RateLimitError
 from src.handlers.ai_handler import AIHandler
-from src.models.config import BotConfiguration
+from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage, AIRequest
 
 
 @pytest.fixture
 def mock_config():
-    """Create a mock BotConfiguration for testing"""
-    config = Mock(spec=BotConfiguration)
+    """Create a mock AppConfiguration for testing"""
+    config = Mock(spec=AppConfiguration)
     config.ai_model = "gpt-4o-mini"
     config.system_message = "You are a helpful assistant."
     config.max_tokens = 500

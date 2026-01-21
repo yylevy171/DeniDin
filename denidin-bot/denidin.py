@@ -9,7 +9,7 @@ import sys
 import signal
 from whatsapp_chatbot_python import GreenAPIBot, Notification
 from openai import OpenAI
-from src.models.config import BotConfiguration
+from src.models.config import AppConfiguration
 from src.utils.logger import get_logger
 from src.handlers.ai_handler import AIHandler
 from src.handlers.whatsapp_handler import WhatsAppHandler
@@ -21,7 +21,7 @@ CONFIG_PATH = 'config/config.json'
 
 # Load and validate configuration
 try:
-    config = BotConfiguration.from_file(CONFIG_PATH)
+    config = AppConfiguration.from_file(CONFIG_PATH)
     config.validate()
 except ValueError as e:
     # Configuration validation failed - exit with clear error message

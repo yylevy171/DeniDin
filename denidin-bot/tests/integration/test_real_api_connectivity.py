@@ -17,7 +17,7 @@ import time
 from whatsapp_api_client_python.API import GreenAPI
 from openai import OpenAI
 
-from src.models.config import BotConfiguration
+from src.models.config import AppConfiguration
 
 
 class TestRealGreenAPIConnectivity:
@@ -36,7 +36,7 @@ class TestRealGreenAPIConnectivity:
         if not os.path.exists(config_path):
             pytest.skip("config.json not found - skipping real API test")
         
-        config = BotConfiguration.from_file(config_path)
+        config = AppConfiguration.from_file(config_path)
         config.validate()
         return config
     
@@ -134,7 +134,7 @@ class TestRealOpenAPIConnectivity:
         if not os.path.exists(config_path):
             pytest.skip("config.json not found - skipping real API test")
         
-        config = BotConfiguration.from_file(config_path)
+        config = AppConfiguration.from_file(config_path)
         config.validate()
         return config
     
@@ -250,7 +250,7 @@ class TestRealEndToEndFlow:
         if not os.path.exists(config_path):
             pytest.skip("config.json not found - skipping real E2E test")
         
-        config = BotConfiguration.from_file(config_path)
+        config = AppConfiguration.from_file(config_path)
         config.validate()
         return config
     

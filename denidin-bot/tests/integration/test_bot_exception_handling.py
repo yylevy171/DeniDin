@@ -9,7 +9,7 @@ from pathlib import Path
 from openai import OpenAI
 from src.handlers.ai_handler import AIHandler
 from src.handlers.whatsapp_handler import WhatsAppHandler
-from src.models.config import BotConfiguration
+from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage
 
 
@@ -17,7 +17,7 @@ from src.models.message import WhatsAppMessage
 def real_config():
     """Load real configuration for testing"""
     config_path = Path(__file__).parent.parent.parent / "config" / "config.json"
-    config = BotConfiguration.from_file(str(config_path))
+    config = AppConfiguration.from_file(str(config_path))
     config.validate()
     return config
 

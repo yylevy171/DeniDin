@@ -11,7 +11,7 @@ from datetime import datetime
 # Mock external dependencies before importing bot code
 sys.modules['whatsapp_chatbot_python'] = MagicMock()
 
-from src.models.config import BotConfiguration
+from src.models.config import AppConfiguration
 
 
 class TestMessageFlow:
@@ -30,7 +30,7 @@ class TestMessageFlow:
         if not os.path.exists(config_path):
             pytest.skip("config.json not found - skipping integration test")
         
-        config = BotConfiguration.from_file(config_path)
+        config = AppConfiguration.from_file(config_path)
         config.validate()
         return config
     

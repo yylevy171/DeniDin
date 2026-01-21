@@ -1,5 +1,5 @@
 """
-BotConfiguration model for managing chatbot configuration.
+AppConfiguration model for managing chatbot configuration.
 Supports loading from JSON/YAML files and validation.
 """
 import json
@@ -9,7 +9,7 @@ from typing import Optional, Dict
 
 
 @dataclass
-class BotConfiguration:
+class AppConfiguration:
     """Configuration model for the DeniDin chatbot."""
     
     green_api_instance_id: str
@@ -34,7 +34,7 @@ class BotConfiguration:
     user_roles: Dict = field(default_factory=dict)
 
     @classmethod
-    def from_file(cls, file_path: str) -> 'BotConfiguration':
+    def from_file(cls, file_path: str) -> 'AppConfiguration':
         """
         Load configuration from a JSON or YAML file.
         
@@ -42,7 +42,7 @@ class BotConfiguration:
             file_path: Path to the configuration file
             
         Returns:
-            BotConfiguration instance
+            AppConfiguration instance
             
         Raises:
             ValueError: If required fields are missing

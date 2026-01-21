@@ -13,7 +13,7 @@ from tenacity import (
     wait_fixed,
     retry_if_exception_type
 )
-from src.models.config import BotConfiguration
+from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage, AIRequest, AIResponse
 from src.utils.logger import get_logger
 from src.memory.session_manager import SessionManager
@@ -31,9 +31,9 @@ class AIHandler:
     Implements retry logic with exponential backoff for transient failures.
     """
     
-    def __init__(self, ai_client: OpenAI, config: BotConfiguration, cleanup_interval_seconds: Optional[int] = None):
+    def __init__(self, ai_client: OpenAI, config: AppConfiguration, cleanup_interval_seconds: Optional[int] = None):
         """
-        Initialize AIHandler with AI client and configuration.
+        Initialize AI handler with OpenAI client and configuration.
         
         Args:
             ai_client: Configured AI client instance (OpenAI)

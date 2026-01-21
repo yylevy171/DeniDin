@@ -1,5 +1,5 @@
-"""
-Unit tests for BotConfiguration model.
+"""  
+Unit tests for AppConfiguration model.
 Tests configuration loading from JSON/YAML files and validation.
 """
 import json
@@ -7,11 +7,9 @@ import pytest
 import tempfile
 import os
 from pathlib import Path
-from src.models.config import BotConfiguration
-
-
-class TestBotConfiguration:
-    """Test suite for BotConfiguration model."""
+from src.models.config import AppConfiguration
+class TestAppConfiguration:
+    """Test suite for AppConfiguration model."""
 
     @pytest.fixture
     def valid_config_data(self):
@@ -50,7 +48,7 @@ class TestBotConfiguration:
 
     def test_from_file_loads_json_correctly(self, temp_json_config):
         """Test that from_file() loads JSON config correctly."""
-        config = BotConfiguration.from_file(temp_json_config)
+        config = AppConfiguration.from_file(temp_json_config)
         
         assert config.green_api_instance_id == "1234567890"
         assert config.green_api_token == "abcdef123456"
@@ -65,7 +63,7 @@ class TestBotConfiguration:
 
     def test_from_file_loads_yaml_correctly(self, temp_yaml_config):
         """Test that from_file() loads YAML config correctly."""
-        config = BotConfiguration.from_file(temp_yaml_config)
+        config = AppConfiguration.from_file(temp_yaml_config)
         
         assert config.green_api_instance_id == "1234567890"
         assert config.green_api_token == "abcdef123456"
@@ -92,7 +90,7 @@ class TestBotConfiguration:
         
         try:
             with pytest.raises(ValueError) as exc_info:
-                BotConfiguration.from_file(temp_path)
+                AppConfiguration.from_file(temp_path)
             assert "green_api_token" in str(exc_info.value).lower()
         finally:
             os.unlink(temp_path)
@@ -111,7 +109,7 @@ class TestBotConfiguration:
         
         try:
             with pytest.raises(ValueError) as exc_info:
-                BotConfiguration.from_file(temp_path)
+                AppConfiguration.from_file(temp_path)
             error_message = str(exc_info.value).lower()
             assert "green_api_instance_id" in error_message
         finally:
@@ -131,7 +129,7 @@ class TestBotConfiguration:
         
         try:
             with pytest.raises(ValueError) as exc_info:
-                BotConfiguration.from_file(temp_path)
+                AppConfiguration.from_file(temp_path)
             error_message = str(exc_info.value).lower()
             assert "green_api_token" in error_message
         finally:
@@ -151,7 +149,7 @@ class TestBotConfiguration:
         
         try:
             with pytest.raises(ValueError) as exc_info:
-                BotConfiguration.from_file(temp_path)
+                AppConfiguration.from_file(temp_path)
             error_message = str(exc_info.value).lower()
             assert "ai_api_key" in error_message
         finally:
@@ -170,7 +168,7 @@ class TestBotConfiguration:
         
         try:
             with pytest.raises(ValueError) as exc_info:
-                BotConfiguration.from_file(temp_path)
+                AppConfiguration.from_file(temp_path)
             error_message = str(exc_info.value).lower()
             # All three required fields should be mentioned
             assert "green_api_instance_id" in error_message
@@ -192,7 +190,7 @@ class TestBotConfiguration:
             temp_path = f.name
         
         try:
-            config = BotConfiguration.from_file(temp_path)
+            config = AppConfiguration.from_file(temp_path)
             assert config.green_api_instance_id == "1234567890"
             assert config.green_api_token == "abcdef123456"
             assert config.ai_api_key == "sk-test123"
@@ -201,7 +199,7 @@ class TestBotConfiguration:
 
     def test_validate_passes_with_valid_ranges(self, valid_config_data):
         """Test that validate() passes with valid value ranges."""
-        config = BotConfiguration(**valid_config_data)
+        config = AppConfiguration(**valid_config_data)
         
         # Should not raise any exception
         config.validate()
@@ -209,7 +207,7 @@ class TestBotConfiguration:
     def test_validate_fails_with_invalid_temperature_low(self, valid_config_data):
         """Test that validate() fails when temperature < 0.0."""
         valid_config_data['temperature'] = -0.1
-        config = BotConfiguration(**valid_config_data)
+        config = AppConfiguration(**valid_config_data)
         
         with pytest.raises(ValueError) as exc_info:
             config.validate()
@@ -218,7 +216,7 @@ class TestBotConfiguration:
     def test_validate_fails_with_invalid_temperature_high(self, valid_config_data):
         """Test that validate() fails when temperature > 1.0."""
         valid_config_data['temperature'] = 1.5
-        config = BotConfiguration(**valid_config_data)
+        config = AppConfiguration(**valid_config_data)
         
         with pytest.raises(ValueError) as exc_info:
             config.validate()
@@ -227,7 +225,7 @@ class TestBotConfiguration:
     def test_validate_fails_with_invalid_max_tokens(self, valid_config_data):
         """Test that validate() fails when max_tokens < 1."""
         valid_config_data['max_tokens'] = 0
-        config = BotConfiguration(**valid_config_data)
+        config = AppConfiguration(**valid_config_data)
         
         with pytest.raises(ValueError) as exc_info:
             config.validate()
@@ -236,7 +234,7 @@ class TestBotConfiguration:
     def test_validate_fails_with_invalid_poll_interval(self, valid_config_data):
         """Test that validate() fails when poll_interval < 1."""
         valid_config_data['poll_interval_seconds'] = 0
-        config = BotConfiguration(**valid_config_data)
+        config = AppConfiguration(**valid_config_data)
         
         with pytest.raises(ValueError) as exc_info:
             config.validate()
@@ -247,19 +245,19 @@ class TestBotConfiguration:
         # Test valid values
         for valid_level in ["INFO", "DEBUG"]:
             valid_config_data['log_level'] = valid_level
-            config = BotConfiguration(**valid_config_data)
+            config = AppConfiguration(**valid_config_data)
             config.validate()  # Should not raise
         
         # Test invalid value
         valid_config_data['log_level'] = "INVALID"
-        config = BotConfiguration(**valid_config_data)
+        config = AppConfiguration(**valid_config_data)
         with pytest.raises(ValueError) as exc_info:
             config.validate()
         assert "log_level" in str(exc_info.value).lower()
 
     def test_config_dataclass_attributes_exist(self, valid_config_data):
         """Test that all required dataclass attributes exist."""
-        config = BotConfiguration(**valid_config_data)
+        config = AppConfiguration(**valid_config_data)
         
         # Verify all attributes are accessible
         assert hasattr(config, 'green_api_instance_id')
@@ -276,19 +274,19 @@ class TestBotConfiguration:
 
     def test_data_root_defaults_to_data(self, valid_config_data):
         """Test that data_root defaults to 'data' when not specified."""
-        config = BotConfiguration(**valid_config_data)
+        config = AppConfiguration(**valid_config_data)
         assert config.data_root == 'data'
 
     def test_data_root_can_be_customized(self, valid_config_data):
         """Test that data_root can be set to custom value (e.g., for test isolation)."""
         valid_config_data['data_root'] = '/tmp/test_data'
-        config = BotConfiguration(**valid_config_data)
+        config = AppConfiguration(**valid_config_data)
         assert config.data_root == '/tmp/test_data'
 
     def test_validate_fails_with_empty_data_root(self, valid_config_data):
         """Test that validate() fails when data_root is empty."""
         valid_config_data['data_root'] = ''
-        config = BotConfiguration(**valid_config_data)
+        config = AppConfiguration(**valid_config_data)
         
         with pytest.raises(ValueError) as exc_info:
             config.validate()
@@ -297,7 +295,7 @@ class TestBotConfiguration:
     def test_validate_fails_with_whitespace_data_root(self, valid_config_data):
         """Test that validate() fails when data_root is only whitespace."""
         valid_config_data['data_root'] = '   '
-        config = BotConfiguration(**valid_config_data)
+        config = AppConfiguration(**valid_config_data)
         
         with pytest.raises(ValueError) as exc_info:
             config.validate()
@@ -320,7 +318,7 @@ class TestBotConfiguration:
         with open(temp_config, 'w') as f:
             json.dump(config_data, f)
         
-        config = BotConfiguration.from_file(str(temp_config))
+        config = AppConfiguration.from_file(str(temp_config))
         
         # Verify storage paths are relative to data_root
         assert config.memory['session']['storage_dir'] == 'test_data/sessions'

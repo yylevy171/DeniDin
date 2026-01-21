@@ -14,7 +14,7 @@ from pathlib import Path
 sys.modules['whatsapp_chatbot_python'] = MagicMock()
 
 
-class TestBotConfiguration:
+class TestAppConfiguration:
     """Test that denidin.py loads and validates configuration correctly."""
 
     def test_bot_file_exists(self):
@@ -32,7 +32,7 @@ class TestBotConfiguration:
         required_imports = [
             'from whatsapp_chatbot_python import',
             'from openai import',
-            'from src.models.config import BotConfiguration',
+            'from src.models.config import AppConfiguration',
             'from src.utils.logger import get_logger'
         ]
         
@@ -70,7 +70,7 @@ class TestConfigValidationIntegration:
             content = f.read()
         
         # Look for config loading and validation pattern
-        assert 'BotConfiguration.from_file' in content or 'config = BotConfiguration.from_file' in content
+        assert 'AppConfiguration.from_file' in content or 'config = AppConfiguration.from_file' in content
         # Validation will be added in T042b
 
     @patch('sys.exit')
@@ -89,9 +89,9 @@ class TestConfigValidationIntegration:
             temp_path = f.name
         
         try:
-            from src.models.config import BotConfiguration
+            from src.models.config import AppConfiguration
             
-            config = BotConfiguration.from_file(temp_path)
+            config = AppConfiguration.from_file(temp_path)
             
             # Try to validate - should raise ValueError
             try:
@@ -119,9 +119,9 @@ class TestConfigValidationIntegration:
             temp_path = f.name
         
         try:
-            from src.models.config import BotConfiguration
+            from src.models.config import AppConfiguration
             
-            config = BotConfiguration.from_file(temp_path)
+            config = AppConfiguration.from_file(temp_path)
             
             with pytest.raises(ValueError) as exc_info:
                 config.validate()
@@ -153,9 +153,9 @@ class TestConfigLogging:
             temp_path = f.name
         
         try:
-            from src.models.config import BotConfiguration
+            from src.models.config import AppConfiguration
             
-            config = BotConfiguration.from_file(temp_path)
+            config = AppConfiguration.from_file(temp_path)
             config.validate()
             
             # Simulate startup logging (will be implemented in T043b)
@@ -187,10 +187,10 @@ class TestConfigLogging:
             temp_path = f.name
         
         try:
-            from src.models.config import BotConfiguration
+            from src.models.config import AppConfiguration
             from src.utils.logger import get_logger
             
-            config = BotConfiguration.from_file(temp_path)
+            config = AppConfiguration.from_file(temp_path)
             config.validate()
             
             logger = get_logger(__name__, log_level="DEBUG")
@@ -237,10 +237,10 @@ class TestConfigLogging:
             temp_path = f.name
         
         try:
-            from src.models.config import BotConfiguration
+            from src.models.config import AppConfiguration
             from src.utils.logger import get_logger
             
-            config = BotConfiguration.from_file(temp_path)
+            config = AppConfiguration.from_file(temp_path)
             logger = get_logger(__name__, log_level="INFO")
             
             logger.info(f"AI Model: {config.ai_model}")
@@ -268,10 +268,10 @@ class TestConfigLogging:
             temp_path = f.name
         
         try:
-            from src.models.config import BotConfiguration
+            from src.models.config import AppConfiguration
             from src.utils.logger import get_logger
             
-            config = BotConfiguration.from_file(temp_path)
+            config = AppConfiguration.from_file(temp_path)
             logger = get_logger(__name__, log_level="INFO")
             
             logger.info(f"Temperature: {config.temperature}")
@@ -299,10 +299,10 @@ class TestConfigLogging:
             temp_path = f.name
         
         try:
-            from src.models.config import BotConfiguration
+            from src.models.config import AppConfiguration
             from src.utils.logger import get_logger
             
-            config = BotConfiguration.from_file(temp_path)
+            config = AppConfiguration.from_file(temp_path)
             logger = get_logger(__name__, log_level="INFO")
             
             logger.info(f"Max Tokens: {config.max_tokens}")
@@ -330,10 +330,10 @@ class TestConfigLogging:
             temp_path = f.name
         
         try:
-            from src.models.config import BotConfiguration
+            from src.models.config import AppConfiguration
             from src.utils.logger import get_logger
             
-            config = BotConfiguration.from_file(temp_path)
+            config = AppConfiguration.from_file(temp_path)
             logger = get_logger(__name__, log_level="INFO")
             
             logger.info(f"Poll Interval: {config.poll_interval_seconds}s")
@@ -359,10 +359,10 @@ class TestConfigLogging:
             temp_path = f.name
         
         try:
-            from src.models.config import BotConfiguration
+            from src.models.config import AppConfiguration
             from src.utils.logger import get_logger
             
-            config = BotConfiguration.from_file(temp_path)
+            config = AppConfiguration.from_file(temp_path)
             
             # Test INFO level
             caplog.set_level(logging.INFO)
