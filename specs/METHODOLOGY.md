@@ -434,9 +434,40 @@ Development constraints and coding standards are defined in `CONSTITUTION.md`.
 
 ---
 
-**Version**: 2.1.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-01-21
+## XVII. AI Agent TDD Self-Check Protocol
+
+Before creating any implementation task or writing any production code, the AI agent MUST verify:
+
+**Mandatory Pre-Implementation Checklist:**
+1. ✅ **Tests exist first**: Corresponding test file created with comprehensive test cases
+2. ✅ **Human approval obtained**: Tests have been reviewed and explicitly approved by human
+3. ✅ **Task properly labeled**: Todo item clearly marked as "Task B (BLOCKED until Task A approved)"
+4. ✅ **No premature implementation**: No production code written before test approval
+
+**Task Creation Pattern:**
+```
+CORRECT:
+- Task A: Write tests for [Component]
+- Task B: Implement [Component] (BLOCKED until Task A approved)
+
+VIOLATION:
+- Create [Component] with [Feature]  ← Missing test-first split
+```
+
+**Enforcement:**
+- If AI agent attempts to write production code without approved tests: HALT and request test approval
+- If human requests implementation: AI must ask "Should I write tests first for approval?"
+- If tests exist but not approved: Wait for explicit human approval before implementation
+- Todo lists MUST use "Task A/Task B" pattern for all implementation work
+
+**Rationale**: This self-check prevents methodology violations during autonomous work, ensuring tests-first discipline is maintained even when humans don't explicitly invoke it.
+
+---
+
+**Version**: 2.2.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-01-21
 
 **Changelog**:
+- v2.2.0 (2026-01-21): Added "AI Agent TDD Self-Check Protocol" (XVII) to prevent methodology violations during autonomous work
 - v2.1.0 (2026-01-21): Added 10 methodology requirements from existing practice: Integration Contracts (VII), Terminology Glossary (VIII), Technology Choice Documentation (IX), Requirement Identifiers (X), Phase Validation Checkpoints, Clarifications Tracking, Estimated Duration, expanded Template Requirements
 - v2.0.0 (2026-01-21): Split from constitution - extracted SpecKit workflow principles into dedicated methodology file
 - v1.2.0 (2026-01-17): Previous unified constitution with 16 principles

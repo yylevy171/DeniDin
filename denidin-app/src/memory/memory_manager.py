@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 import uuid
 import os
 from typing import List, Dict, Any, Optional
+from src.models.user import MemoryScope
 
 
 class CollectionWrapper:
@@ -151,6 +152,7 @@ class MemoryManager:
         
         # Add default metadata
         metadata.setdefault('type', 'fact')
+        metadata.setdefault('scope', MemoryScope.PRIVATE.value)  # Default to PRIVATE
         metadata['created_at'] = datetime.now(timezone.utc).isoformat()
         
         # Generate unique ID
@@ -289,6 +291,119 @@ class MemoryManager:
                 memories.append(memory)
         
         return memories
+    
+    def recall_with_scope_filter(
+        self,
+        query: str,
+        collection_names: List[str],
+        allowed_scopes: List[MemoryScope],
+        top_k: int = 5,
+        min_similarity: float = 0.0
+    ) -> List[Dict[str, Any]]:
+        """
+        Semantic search across collections filtered by allowed scopes.
+        
+        Args:
+            query: Search query text
+            collection_names: List of collections to search
+            allowed_scopes: List of allowed MemoryScope values
+            top_k: Maximum results to return
+            min_similarity: Minimum similarity threshold (0.0-1.0)
+            
+        Returns:
+            List of dicts with keys: content, similarity, collection, metadata
+            Filtered to only include memories with allowed scopes
+        """
+        # Get all results first
+        all_results = self.recall(query, collection_names, top_k, min_similarity)
+        
+        # Filter by scope
+        return self._filter_by_scope(all_results, allowed_scopes)
+    
+    def recall_with_rbac_filter(
+        self,
+        query: str,
+        collection_names: List[str],
+        user_phone: str,
+        allowed_scopes: List[MemoryScope],
+        can_see_all_memories: bool,
+        top_k: int = 5,
+        min_similarity: float = 0.0
+    ) -> List[Dict[str, Any]]:
+        """
+        Semantic search with full RBAC filtering (scope + user phone).
+        
+        Args:
+            query: Search query text
+            collection_names: List of collections to search
+            user_phone: Phone number of requesting user
+            allowed_scopes: List of allowed MemoryScope values
+            can_see_all_memories: If True, skip user_phone filter (GODFATHER/ADMIN)
+            top_k: Maximum results to return
+            min_similarity: Minimum similarity threshold (0.0-1.0)
+            
+        Returns:
+            List of dicts filtered by both scope and user ownership
+        """
+        # Get all results first
+        all_results = self.recall(query, collection_names, top_k, min_similarity)
+        
+        # Filter by scope
+        filtered_results = self._filter_by_scope(all_results, allowed_scopes)
+        
+        # Filter by user phone (unless can see all)
+        if not can_see_all_memories:
+            filtered_results = self._filter_by_user_phone(filtered_results, user_phone)
+        
+        return filtered_results
+    
+    def _filter_by_scope(
+        self,
+        results: List[Dict[str, Any]],
+        allowed_scopes: List[MemoryScope]
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter results to only include allowed scopes.
+        
+        Args:
+            results: List of memory results
+            allowed_scopes: List of allowed MemoryScope values
+            
+        Returns:
+            Filtered list of results
+        """
+        allowed_scope_values = [scope.value for scope in allowed_scopes]
+        return [
+            result for result in results
+            if result['metadata'].get('scope', MemoryScope.PRIVATE.value) in allowed_scope_values
+        ]
+    
+    def _filter_by_user_phone(
+        self,
+        results: List[Dict[str, Any]],
+        user_phone: str,
+        skip_filter: bool = False
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter results to only include memories from specific user.
+        PUBLIC memories (without user_phone) are always included.
+        
+        Args:
+            results: List of memory results
+            user_phone: Phone number to filter by
+            skip_filter: If True, return all results (for GODFATHER/ADMIN)
+            
+        Returns:
+            Filtered list of results
+        """
+        if skip_filter:
+            return results
+        
+        return [
+            result for result in results
+            if result['metadata'].get('user_phone') == user_phone
+            or result['metadata'].get('scope') == MemoryScope.PUBLIC.value  # PUBLIC visible to all
+        ]
     
     def _create_embedding(self, text: str) -> List[float]:
         """

@@ -8,6 +8,7 @@ whatsapp-chatgpt-python>=0.0.1
 
 # OpenAI API
 openai>=1.12.0
+tiktoken>=0.5.0  # Token counting for conversation limits
 
 # Memory & Vector Storage (Feature 002+007)
 chromadb>=0.4.22

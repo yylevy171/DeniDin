@@ -4,7 +4,7 @@
 
 ### Fix run_denidin.sh and stop_denidin.sh Scripts
 **Priority:** High  
-**Status:** Pending
+**Status:** ✅ Completed (PR #33)
 
 **Problem:**
 The `run_denidin.sh` and `stop_denidin.sh` scripts currently don't work properly:
@@ -55,7 +55,7 @@ The `run_denidin.sh` and `stop_denidin.sh` scripts currently don't work properly
 
 ### Remove /reset Command
 **Priority:** Medium  
-**Status:** ✅ Completed (PR #34)
+**Status:** ✅ Completed (PR #35)
 
 **Problem:**
 The `/reset` command allows users to manually transfer their conversation to long-term memory, but this creates issues:
@@ -121,7 +121,7 @@ Rename all "openai" references to "ai" throughout the codebase:
 
 ### Rename BotConfiguration to AppConfiguration
 **Priority:** Medium  
-**Status:** Pending
+**Status:** ✅ Completed (PR #30)
 
 **Problem:**
 The class `BotConfiguration` incorrectly describes the application as a "bot", but DeniDin is an application that happens to have conversational capabilities.
@@ -149,7 +149,7 @@ Rename `BotConfiguration` to `AppConfiguration` throughout:
 
 ### Update "Bot" Terminology to "App/Application"
 **Priority:** Medium  
-**Status:** Pending
+**Status:** ✅ Completed (PR #31, #33)
 
 **Problem:**
 Documentation, specs, and code comments refer to DeniDin as a "bot" or "chatbot", which is inaccurate. DeniDin is an application with AI-powered conversational features, not just a bot.

@@ -11,9 +11,10 @@
   "max_retries": 3,
   "data_root": "test_data",
   "feature_flags": {
-    "enable_memory_system": true
+    "enable_memory_system": true,
+    "enable_rbac": true
   },
-  "godfather_phone": "1234567890@c.us",
+  "godfather_phone": "+972501234567",
   "memory": {
     "session": {
       "storage_dir": "test_data/sessions",
@@ -38,15 +39,7 @@
     "max_tokens": 0
   },
   "user_roles": {
-    "godfather": {
-      "max_tokens": 100000,
-      "can_access_memory": true,
-      "max_context_memories": 10
-    },
-    "client": {
-      "max_tokens": 4000,
-      "can_access_memory": true,
-      "max_context_memories": 3
-    }
+    "admin_phones": ["+972509999999"],
+    "blocked_phones": ["+972505555555"]
   }
 }

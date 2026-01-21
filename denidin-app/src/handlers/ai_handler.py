@@ -2,6 +2,7 @@
 AIHandler - Handles OpenAI API interactions with retry logic and error handling
 Phase 5: US3 - Error Handling & Resilience
 Phase 5 (002+007): Memory system integration
+Phase 6: RBAC (Role-Based Access Control)
 """
 import time
 from typing import Optional, List, Dict
@@ -18,6 +19,7 @@ from src.models.message import WhatsAppMessage, AIRequest, AIResponse
 from src.utils.logger import get_logger
 from src.memory.session_manager import SessionManager
 from src.memory.memory_manager import MemoryManager
+from src.utils.user_manager import UserManager
 
 logger = get_logger(__name__)
 
@@ -48,6 +50,26 @@ class AIHandler:
         self.memory_enabled = getattr(config, 'feature_flags', {}).get('enable_memory_system', False)
         self.session_manager = None
         self.memory_manager = None
+        
+        # Initialize RBAC if feature enabled
+        self.rbac_enabled = getattr(config, 'feature_flags', {}).get('enable_rbac', False)
+        self.user_manager = None
+        
+        if self.rbac_enabled:
+            logger.info("RBAC enabled - initializing UserManager")
+            godfather_phone = getattr(config, 'godfather_phone', None)
+            user_roles = getattr(config, 'user_roles', {})
+            admin_phones = user_roles.get('admin_phones', [])
+            blocked_phones = user_roles.get('blocked_phones', [])
+            
+            self.user_manager = UserManager(
+                godfather_phone=godfather_phone,
+                admin_phones=admin_phones,
+                blocked_phones=blocked_phones
+            )
+            logger.info(f"UserManager initialized with godfather: {godfather_phone}, admins: {len(admin_phones)}, blocked: {len(blocked_phones)}")
+        else:
+            logger.info("RBAC disabled by feature flag")
         
         if self.memory_enabled:
             logger.info("Memory system enabled - initializing SessionManager and MemoryManager")
@@ -94,7 +116,7 @@ class AIHandler:
         logger.debug(f"AIHandler initialized with model: {config.ai_model}")
     
     def create_request(self, message: WhatsAppMessage, chat_id: Optional[str] = None, 
-                       user_role: str = 'client') -> AIRequest:
+                       user_role: str = 'client', user_phone: Optional[str] = None) -> AIRequest:
         """
         Create an AIRequest from a WhatsApp message.
         Validates and truncates message length if needed.
@@ -102,13 +124,26 @@ class AIHandler:
         Args:
             message: WhatsApp message to convert
             chat_id: Optional chat ID for memory recall (uses message.chat_id if not provided)
-            user_role: User role for token limits ('client' or 'godfather')
+            user_role: User role for token limits ('client' or 'godfather') - DEPRECATED when RBAC enabled
+            user_phone: User's phone number for RBAC (uses message.sender_id if not provided)
             
         Returns:
             AIRequest ready for OpenAI API with optional memory context
+            
+        Raises:
+            PermissionError: If user is blocked (when RBAC enabled)
         """
         # Use provided chat_id or fall back to message.chat_id
         effective_chat_id = chat_id or message.chat_id
+        
+        # RBAC: Check if user is blocked
+        if self.rbac_enabled and self.user_manager:
+            effective_user_phone = user_phone or message.sender_id
+            user = self.user_manager.get_user(effective_user_phone)
+            
+            if user.is_blocked:
+                logger.warning(f"Blocked user attempted to create request: {effective_user_phone}")
+                raise PermissionError(f"User is blocked: {effective_user_phone}")
         
         # Validate and truncate message length
         user_prompt = message.text_content
@@ -127,12 +162,29 @@ class AIHandler:
             try:
                 # Recall relevant long-term memories
                 collection_name = f"memory_{effective_chat_id.replace('@c.us', '')}"
-                recalled_memories = self.memory_manager.recall(
-                    query=user_prompt,
-                    collection_names=[collection_name],
-                    top_k=self.memory_top_k,
-                    min_similarity=self.memory_min_similarity
-                )
+                
+                # RBAC: Use RBAC-filtered recall if enabled
+                if self.rbac_enabled and self.user_manager:
+                    effective_user_phone = user_phone or message.sender_id
+                    user = self.user_manager.get_user(effective_user_phone)
+                    
+                    recalled_memories = self.memory_manager.recall_with_rbac_filter(
+                        query=user_prompt,
+                        collection_names=[collection_name],
+                        user_phone=effective_user_phone,
+                        allowed_scopes=user.allowed_memory_scopes,
+                        can_see_all_memories=user.can_see_all_memories,
+                        top_k=self.memory_top_k,
+                        min_similarity=self.memory_min_similarity
+                    )
+                else:
+                    # Existing behavior: regular recall without RBAC
+                    recalled_memories = self.memory_manager.recall(
+                        query=user_prompt,
+                        collection_names=[collection_name],
+                        top_k=self.memory_top_k,
+                        min_similarity=self.memory_min_similarity
+                    )
                 
                 if recalled_memories:
                     memory_context = "\n\nRECALLED MEMORIES (from past conversations):\n"
@@ -205,7 +257,7 @@ class AIHandler:
     
     def get_response(self, request: AIRequest, chat_id: Optional[str] = None,
                      user_role: str = 'client', sender: Optional[str] = None,
-                     recipient: Optional[str] = None) -> AIResponse:
+                     recipient: Optional[str] = None, user_phone: Optional[str] = None) -> AIResponse:
         """
         Get AI response for a request with error handling and fallbacks.
         Includes memory system integration for session storage.
@@ -213,22 +265,42 @@ class AIHandler:
         Args:
             request: AI request to process
             chat_id: Optional chat ID for session management (uses request.chat_id if not provided)
-            user_role: User role for token limits ('client' or 'godfather')
+            user_role: User role for token limits ('client' or 'godfather') - DEPRECATED when RBAC enabled
             sender: WhatsApp sender ID for message storage
             recipient: WhatsApp recipient ID for message storage
+            user_phone: User's phone number for RBAC (uses sender if not provided)
             
         Returns:
             AIResponse with generated text or fallback message
+            
+        Raises:
+            PermissionError: If user is blocked (when RBAC enabled)
         """
         # Use provided chat_id or fall back to request.chat_id
         effective_chat_id = chat_id or request.chat_id
+        
+        # RBAC: Check if user is blocked
+        user_obj = None
+        if self.rbac_enabled and self.user_manager:
+            effective_user_phone = user_phone or sender
+            if effective_user_phone:
+                user_obj = self.user_manager.get_user(effective_user_phone)
+                
+                if user_obj.is_blocked:
+                    logger.warning(f"Blocked user attempted to get response: {effective_user_phone}")
+                    raise PermissionError(f"User is blocked: {effective_user_phone}")
         
         # Retrieve conversation history if memory enabled
         conversation_history = None
         if self.memory_enabled and self.session_manager and effective_chat_id:
             try:
-                # Get max tokens for this user role
-                max_tokens = self.max_tokens_by_role.get(user_role, 4000)
+                # RBAC: Use user's token limit if enabled
+                if self.rbac_enabled and user_obj:
+                    max_tokens = user_obj.token_limit
+                else:
+                    # Existing behavior: use role-based token limits
+                    max_tokens = self.max_tokens_by_role.get(user_role, 4000)
+                
                 conversation_history = self.session_manager.get_conversation_history(
                     whatsapp_chat=effective_chat_id,
                     max_tokens=max_tokens
@@ -255,27 +327,52 @@ class AIHandler:
             # Store messages in session if memory enabled
             if self.memory_enabled and self.session_manager and effective_chat_id:
                 try:
-                    # Store user message
-                    # sender should be WhatsApp ID (or test identifier), recipient is always 'AI' (or 'AI_test')
-                    self.session_manager.add_message(
-                        chat_id=effective_chat_id,
-                        role="user",
-                        content=request.user_prompt,
-                        user_role=user_role or "client",
-                        sender=sender or effective_chat_id,
-                        recipient=recipient or "AI"
-                    )
-                    
-                    # Store AI response
-                    # sender is always 'AI' (or 'AI_test'), recipient is WhatsApp ID (or test identifier)
-                    self.session_manager.add_message(
-                        chat_id=effective_chat_id,
-                        role="assistant",
-                        content=response_text,
-                        user_role=user_role or "client",
-                        sender=recipient or "AI",  # AI is the sender
-                        recipient=sender or effective_chat_id  # Reply goes to original sender
-                    )
+                    # RBAC: Use token limit enforcement if enabled
+                    if self.rbac_enabled and user_obj:
+                        # Store user message with token limit
+                        self.session_manager.add_message_with_token_limit(
+                            chat_id=effective_chat_id,
+                            role="user",
+                            content=request.user_prompt,
+                            user_role=user_obj.role,
+                            token_limit=user_obj.token_limit,
+                            sender=sender or effective_chat_id,
+                            recipient=recipient or "AI"
+                        )
+                        
+                        # Store AI response with token limit
+                        self.session_manager.add_message_with_token_limit(
+                            chat_id=effective_chat_id,
+                            role="assistant",
+                            content=response_text,
+                            user_role=user_obj.role,
+                            token_limit=user_obj.token_limit,
+                            sender=recipient or "AI",
+                            recipient=sender or effective_chat_id
+                        )
+                    else:
+                        # Existing behavior: regular add_message without token limits
+                        # Store user message
+                        # sender should be WhatsApp ID (or test identifier), recipient is always 'AI' (or 'AI_test')
+                        self.session_manager.add_message(
+                            chat_id=effective_chat_id,
+                            role="user",
+                            content=request.user_prompt,
+                            user_role=user_role or "client",
+                            sender=sender or effective_chat_id,
+                            recipient=recipient or "AI"
+                        )
+                        
+                        # Store AI response
+                        # sender is always 'AI' (or 'AI_test'), recipient is WhatsApp ID (or test identifier)
+                        self.session_manager.add_message(
+                            chat_id=effective_chat_id,
+                            role="assistant",
+                            content=response_text,
+                            user_role=user_role or "client",
+                            sender=recipient or "AI",  # AI is the sender
+                            recipient=sender or effective_chat_id  # Reply goes to original sender
+                        )
                     
                     logger.debug(f"Stored user + assistant messages in session {effective_chat_id}")
                 except Exception as e:

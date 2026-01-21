@@ -19,6 +19,19 @@
 - **NO os.getenv()**: Do not use `os.getenv()` or `os.environ` anywhere in the codebase
 - **Secrets storage**: API keys and tokens stored in `config/config.json` (excluded from git via `.gitignore`)
 - **Feature flags**: Use `config.feature_flags` dictionary for enabling/disabling features
+  - New features MUST be gated behind feature flags (default: `false`)
+  - When flag is disabled, code flow MUST NOT CHANGE from pre-feature implementation
+  - **NEVER modify existing working code** - only ADD new code paths that execute when flag is enabled
+  - Implementation pattern: `if config.feature_flags.get('enable_feature'): new_behavior() else: existing_behavior()`
+  - This guarantees backward compatibility and safe gradual rollout
+  - **FEATURE FLAGS MUST NEVER APPEAR IN TESTS**:
+    - DO NOT test feature flags directly (no `if feature_flag:` in tests)
+    - DO NOT write tests with different behavior based on flag state
+    - **Unit tests**: MAY set feature flags in test configs to test new feature behavior
+    - **Integration tests**: MUST NEVER set feature flags - they test default production behavior
+    - New feature unit tests should ASSUME the feature flag is enabled
+    - Existing tests for pre-feature behavior MUST NOT CHANGE when feature is added
+    - If enabling a feature flag causes existing tests to fail, investigate why - this indicates the feature violated backward compatibility
 - **Example config**: Always maintain `config/config.example.json` with safe placeholder values
 - **Validation**: Validate all configuration at startup with clear error messages
 - **Logging**: Log configuration (mask sensitive values like API keys)

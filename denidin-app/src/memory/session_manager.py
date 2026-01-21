@@ -9,11 +9,13 @@ import json
 import uuid
 import threading
 import time
+import tiktoken
 from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional, Dict
 from src.utils.logger import get_logger
+from src.models.user import Role
 
 logger = get_logger(__name__)
 
@@ -393,3 +395,193 @@ class SessionManager:
                 logger.error(f"Failed to load orphaned session {session_dir.name}: {e}")
         
         return orphaned_sessions
+    
+    def count_tokens(self, text: str, model: str = "gpt-4o-mini") -> int:
+        """
+        Count tokens in text using tiktoken.
+        
+        Args:
+            text: Text to count tokens for
+            model: Model name for tokenizer
+            
+        Returns:
+            Token count
+        """
+        encoding = tiktoken.encoding_for_model(model)
+        return len(encoding.encode(text))
+    
+    def add_message_with_tokens(
+        self,
+        chat_id: str,
+        role: str,
+        content: str,
+        user_role: Role,
+        sender: Optional[str] = None,
+        recipient: Optional[str] = None
+    ) -> str:
+        """
+        Add message and update session token count.
+        
+        Args:
+            chat_id: WhatsApp chat ID
+            role: Message role ("user" or "assistant")
+            content: Message content
+            user_role: User role (for tracking, not enforced here)
+            sender: Message sender (optional)
+            recipient: Message recipient (optional)
+            
+        Returns:
+            Message UUID
+        """
+        # Add message normally
+        message_id = self.add_message(chat_id, role, content, user_role, sender, recipient)
+        
+        # Count and add tokens
+        tokens = self.count_tokens(content)
+        session = self.get_session(chat_id)
+        session.total_tokens += tokens
+        self._save_session(session)
+        
+        return message_id
+    
+    def add_message_with_token_limit(
+        self,
+        chat_id: str,
+        role: str,
+        content: str,
+        user_role: Role,
+        token_limit: int,
+        sender: Optional[str] = None,
+        recipient: Optional[str] = None
+    ) -> str:
+        """
+        Add message with token limit enforcement and auto-pruning.
+        
+        Args:
+            chat_id: WhatsApp chat ID
+            role: Message role ("user" or "assistant")
+            content: Message content
+            user_role: User role
+            token_limit: Maximum tokens allowed for this role
+            sender: Message sender (optional)
+            recipient: Message recipient (optional)
+            
+        Returns:
+            Message UUID
+            
+        Raises:
+            ValueError: If token limit is exceeded and cannot prune
+        """
+        # Count tokens for new message
+        new_tokens = self.count_tokens(content)
+        
+        # Check if blocked user (0 token limit)
+        if token_limit == 0:
+            raise ValueError("Token limit exceeded: BLOCKED users cannot add messages")
+        
+        # Get current session
+        session = self.get_session(chat_id)
+        current_tokens = session.total_tokens
+        
+        # Check if adding this message would exceed limit
+        if current_tokens + new_tokens > token_limit:
+            # Prune oldest messages until we're under limit
+            self._prune_until_under_limit(chat_id, token_limit, new_tokens)
+        
+        # Add message with token tracking
+        return self.add_message_with_tokens(chat_id, role, content, user_role, sender, recipient)
+    
+    def calculate_session_tokens(self, chat_id: str) -> int:
+        """
+        Calculate total tokens for all messages in session.
+        
+        Args:
+            chat_id: WhatsApp chat ID
+            
+        Returns:
+            Total token count
+        """
+        session = self.get_session(chat_id)
+        session_dir = self.storage_dir / session.session_id
+        messages_dir = session_dir / "messages"
+        
+        total = 0
+        for message_id in session.message_ids:
+            message_file = messages_dir / f"{message_id}.json"
+            if message_file.exists():
+                with open(message_file) as f:
+                    message_data = json.load(f)
+                total += self.count_tokens(message_data["content"])
+        
+        return total
+    
+    def get_session_token_count(self, chat_id: str) -> int:
+        """
+        Get current token count for session.
+        
+        Args:
+            chat_id: WhatsApp chat ID
+            
+        Returns:
+            Current token count
+        """
+        session = self.get_session(chat_id)
+        return session.total_tokens
+    
+    def prune_to_limit(self, chat_id: str, keep_count: int):
+        """
+        Prune session to keep only specified number of most recent messages.
+        
+        Args:
+            chat_id: WhatsApp chat ID
+            keep_count: Number of messages to keep
+        """
+        session = self.get_session(chat_id)
+        
+        if len(session.message_ids) <= keep_count:
+            return
+        
+        # Calculate how many to remove
+        remove_count = len(session.message_ids) - keep_count
+        
+        # Remove oldest messages
+        session_dir = self.storage_dir / session.session_id
+        messages_dir = session_dir / "messages"
+        
+        for i in range(remove_count):
+            message_id = session.message_ids.pop(0)
+            message_file = messages_dir / f"{message_id}.json"
+            if message_file.exists():
+                message_file.unlink()
+        
+        # Recalculate tokens
+        session.total_tokens = self.calculate_session_tokens(chat_id)
+        self._save_session(session)
+    
+    def _prune_until_under_limit(self, chat_id: str, token_limit: int, new_message_tokens: int):
+        """
+        Remove oldest messages until session is under limit with room for new message.
+        
+        Args:
+            chat_id: WhatsApp chat ID
+            token_limit: Maximum allowed tokens
+            new_message_tokens: Tokens in message to be added
+        """
+        session = self.get_session(chat_id)
+        session_dir = self.storage_dir / session.session_id
+        messages_dir = session_dir / "messages"
+        
+        while session.total_tokens + new_message_tokens > token_limit and session.message_ids:
+            # Remove oldest message
+            message_id = session.message_ids.pop(0)
+            message_file = messages_dir / f"{message_id}.json"
+            
+            if message_file.exists():
+                with open(message_file) as f:
+                    message_data = json.load(f)
+                # Subtract tokens from total
+                session.total_tokens -= self.count_tokens(message_data["content"])
+                message_file.unlink()
+        
+        self._save_session(session)
+
