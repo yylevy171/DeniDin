@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 class Message:
     """Individual message in a conversation."""
     message_id: str
-    chat_id: str  # Session UUID reference
+    session_id: str  # Session UUID reference
     role: str  # "user" or "assistant"
     content: str
     sender: Optional[str] = None
@@ -159,7 +159,7 @@ class SessionManager:
 
         message = Message(
             message_id=message_id,
-            chat_id=session.session_id,  # FK to session UUID
+            session_id=session.session_id,  # FK to session UUID
             role=role,
             content=content,
             sender=sender,

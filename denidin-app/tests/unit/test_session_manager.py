@@ -107,7 +107,8 @@ class TestMessageHandling:
             message_data = json.load(f)
         assert message_data["role"] == "user"
         assert message_data["content"] == "Hello, DeniDin!"
-        assert message_data["chat_id"] == session.session_id
+        assert message_data["session_id"] == session.session_id  # Field should be session_id, not chat_id
+        assert "chat_id" not in message_data  # Ensure old field name is not present
         assert "timestamp" in message_data
         assert "received_at" in message_data
     

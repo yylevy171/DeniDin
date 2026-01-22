@@ -120,14 +120,21 @@ All bug fixes MUST follow a disciplined root-cause analysis and test-first workf
    - Identify exact code location and logic flaw
    - **Output**: Clear description of root cause
 
-2. **Test Gap Analysis**
+2. **🚨 HUMAN APPROVAL GATE - ROOT CAUSE 🚨**
+   - Present: Root cause analysis with proposed fix approach
+   - Provide fix options with pros/cons if multiple approaches exist
+   - Human reviews and approves root cause diagnosis and fix strategy
+   - **BLOCKING**: No test writing until approval received
+   - If rejected: Return to step 1 for deeper investigation
+
+3. **Test Gap Analysis**
    - **CRITICAL QUESTION**: Why didn't existing tests catch this bug?
    - Review test suite for coverage gaps
    - Identify missing test scenarios (edge cases, timing, realistic intervals)
    - Document test deficiencies that allowed bug to reach production
    - **Output**: Explanation of test gap + list of missing test cases
 
-3. **Write Failing Tests (Test-First)**
+4. **Write Failing Tests (Test-First)**
    - Create NEW test(s) that reproduce the bug
    - Tests MUST fail with current buggy code
    - Update EXISTING tests if they were insufficient (e.g., unrealistic test intervals)
@@ -135,25 +142,25 @@ All bug fixes MUST follow a disciplined root-cause analysis and test-first workf
    - Run tests to confirm they FAIL
    - **Output**: Failing test suite that demonstrates the bug
 
-4. **🚨 HUMAN APPROVAL GATE 🚨**
-   - Present: Root cause analysis, test gap explanation, failing tests
-   - Human reviews and approves test strategy
+5. **🚨 HUMAN APPROVAL GATE - TESTS 🚨**
+   - Present: Test gap explanation, failing tests, test strategy
+   - Human reviews and approves test changes
    - **BLOCKING**: No code changes until approval received
-   - If rejected: Return to step 1 or 3
+   - If rejected: Return to step 3 or 4
 
-5. **Implement Fix**
+6. **Implement Fix**
    - Make MINIMAL code changes to fix root cause
    - Avoid scope creep - fix ONLY the identified bug
    - Follow existing code style and patterns
    - **Output**: Code changes
 
-6. **Verify Fix**
+7. **Verify Fix**
    - Run previously-failing tests - they MUST now pass
    - Run full test suite - all tests MUST pass
    - Verify fix works with actual production data/scenario if applicable
    - **Output**: Passing test suite
 
-7. **Commit & PR**
+8. **Commit & PR**
    - Commit message format: `fix(component): brief description`
    - Example: `fix(session): run cleanup immediately at startup`
    - PR description MUST include:
