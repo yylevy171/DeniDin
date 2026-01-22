@@ -164,6 +164,42 @@ All bug fixes MUST follow a disciplined root-cause analysis and test-first workf
 
 **Rationale**: Bug fixes without understanding root cause lead to incomplete fixes or regressions. Test-gap analysis prevents the same class of bugs from recurring. Human approval ensures thorough investigation before changes.
 
+**Testing Analysis Protocol:**
+
+When running tests to diagnose issues or verify fixes:
+
+1. **ANALYZE ONLY - DO NOT MODIFY**
+   - If tests fail: STOP and analyze the failures
+   - Explain WHAT is failing and WHY
+   - Identify root cause: Is it a test issue or code issue?
+   - Present OPTIONS for fixing (with pros/cons)
+   - **CRITICAL**: Do NOT change tests without approval
+   - **CRITICAL**: Do NOT change code without approval
+
+2. **SEEK APPROVAL BEFORE ANY CHANGES**
+   - Present analysis findings to human
+   - Suggest specific changes with rationale
+   - Wait for explicit approval: "Yes, do X" or "Option 2"
+   - Only after approval: Make the approved changes
+   - If rejected: Present alternative options
+
+3. **EXAMPLE WORKFLOW**
+   ```
+   AI: "Tests are failing because X calls Y with parameter Z, but Y now expects A.
+        Options:
+        1. Update test to pass A instead of Z (if Z was wrong)
+        2. Update code to accept Z (if test is correct)
+        3. Both are wrong - need different approach
+        
+        Which option should I proceed with?"
+   
+   Human: "Option 1 - the test is outdated"
+   
+   AI: [Makes approved change to test]
+   ```
+
+**Rationale**: Test failures require human judgment to determine whether tests or code are incorrect. Premature changes can mask real bugs or break correct tests. Analysis-first approach ensures informed decisions and prevents churn.
+
 **Rationale**: TDD ensures code correctness by design, prevents rework from misunderstood requirements, enables confident refactoring, and provides living documentation of expected behavior. Human approval of tests before implementation guarantees alignment on acceptance criteria before costly coding begins.
 
 ---
