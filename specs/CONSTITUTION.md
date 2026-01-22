@@ -87,10 +87,14 @@ received_timestamp = datetime.now()  # FORBIDDEN
 - **Example branch names**: `feature/003-media-processing-phase2`, `feature/014-user-auth`, `docs/update-readme`
 
 **Branch Naming Convention**:
-- Format: `feature/###-description` (e.g., `feature/003-media-processing-phase1`)
-- Use feature number from specs directory (e.g., 003 from `specs/in-progress/003-media-document-processing/`)
-- Include phase/component for multi-phase features (e.g., `-phase1`, `-phase2`)
-- Use `docs/`, `chore/`, `fix/` prefixes for non-feature work
+- **Features**: `feature/###-description` (e.g., `feature/003-media-processing-phase1`)
+  - Use feature number from specs directory (e.g., 003 from `specs/in-progress/003-media-document-processing/`)
+  - Include phase/component for multi-phase features (e.g., `-phase1`, `-phase2`)
+- **Bug fixes**: `bugfix/component-issue-description` (e.g., `bugfix/session-expiry-memory-transfer`)
+  - Component: affected module/system (e.g., `session`, `memory`, `auth`)
+  - Issue: concise bug description in kebab-case
+  - See METHODOLOGY.md §VII for bug-fixing workflow
+- **Other**: `docs/`, `chore/` prefixes for non-feature, non-bugfix work
 
 **Requirements**:
 - NEVER push directly to master - ALL work on feature branches
