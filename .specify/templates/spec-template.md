@@ -5,6 +5,19 @@
 **Status**: Draft  
 **Input**: User description: "$ARGUMENTS"
 
+---
+
+**IMPORTANT**: This spec MUST comply with:
+- **CONSTITUTION.md** (§I-III): Coding standards, UTC timestamps, version control workflow, NO environment variables
+- **METHODOLOGY.md** (§I, VIII, IX, X): Specification-first development, Terminology Glossary (mandatory), Technology Choices, Requirement IDs
+
+**Required Sections** (per METHODOLOGY.md):
+- ✅ Terminology Glossary (§VIII) - Define all domain-specific terms
+- ✅ Technology Choices Documentation (§IX) - Document all tech decisions with rationale
+- ✅ Requirements with REQ-* identifiers (§X) - Use format REQ-CATEGORY-###
+
+---
+
 ## User Scenarios & Testing *(mandatory)*
 
 <!--

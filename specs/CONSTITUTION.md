@@ -76,26 +76,174 @@ received_timestamp = datetime.now()  # FORBIDDEN
 
 **Principle**: All work on feature branches with PRs - NEVER push directly to master.
 
+**🚨 CRITICAL RULE - ALWAYS ON A FEATURE BRANCH**:
+- **NEVER work on master branch directly** - ALL changes MUST be on a feature branch
+- **BEFORE starting ANY work**: Check current branch with `git branch --show-current`
+- **If on master**: IMMEDIATELY create feature branch with `git checkout -b feature/###-description`
+- **If unsure what feature you're working on**: STOP and ASK the user for:
+  - Feature number (e.g., 003)
+  - Feature name (e.g., media-processing)
+  - Phase/component (e.g., phase1, phase2)
+- **Example branch names**: `feature/003-media-processing-phase2`, `feature/014-user-auth`, `docs/update-readme`
+
+**Branch Naming Convention**:
+- Format: `feature/###-description` (e.g., `feature/003-media-processing-phase1`)
+- Use feature number from specs directory (e.g., 003 from `specs/in-progress/003-media-document-processing/`)
+- Include phase/component for multi-phase features (e.g., `-phase1`, `-phase2`)
+- Use `docs/`, `chore/`, `fix/` prefixes for non-feature work
+
 **Requirements**:
 - NEVER push directly to master - ALL work on feature branches
-- Branch naming: `###-feature-name` or `chore/description`, `docs/description`
 - All tests must pass before creating PR
 - Use CLI tools (`git`, `gh`) for all version control operations
-- Squash merge PRs to keep clean history
+- Merge commits (not squash) to preserve commit history
 - Delete branches after merge
 
-**Git Workflow**:
+### Standard Git/GitHub Workflow
+
+**For Every Task/Phase**:
+
 ```bash
-git checkout -b feature/my-feature
-# ... make changes ...
-git add .
-git commit -m "descriptive message"
-git push origin feature/my-feature
-gh pr create --base master --head feature/my-feature
-gh pr merge --squash --delete-branch
+# 1. Create and switch to feature branch
+git checkout -b feature/###-description
+
+# 2. Make changes, write tests, implement code
+# ... work on files ...
+
+# 3. Stage changes (be selective - only relevant files)
+git add path/to/file1.py path/to/file2.py path/to/test_file.py
+
+# 4. Commit with descriptive message following conventional commits
+git commit -m "feat: implement XYZ (CHK###)
+
+- Add feature A with validation
+- Add tests covering scenarios B, C
+- Update configuration for D
+
+CHK Requirements: CHK001-004, CHK012-015
+Tasks: TASK-00X complete"
+
+# 5. Push to remote (first time)
+git push -u origin feature/###-description
+
+# 6. Create Pull Request with detailed description
+gh pr create --title "Feature ###: Description" --body "## Summary
+
+**Tasks Completed**: TASK-00X to TASK-00Y
+
+### Changes
+- List key changes
+- Include test results
+- Reference CHK requirements
+
+### Test Results
+- X tests passing
+- Y% coverage
+
+### Files Changed
+- path/to/file1.py
+- path/to/file2.py" --base master
+
+# 7. Merge PR (regular merge, not squash)
+# Via GitHub web interface OR:
+git checkout master
+git merge --no-ff feature/###-description -m "Merge pull request #X from user/feature/###-description
+
+Feature Description"
+git push origin master
+
+# 8. Delete local branch after merge
+git branch -d feature/###-description
+
+# 9. Delete remote branch (if not auto-deleted)
+git push origin --delete feature/###-description
 ```
 
-**Rationale**: Feature branches enable proper code review, maintain stable master branch, and provide clear audit trail.
+### Commit Message Format
+
+Follow **Conventional Commits** specification:
+
+```
+<type>: <short summary> (CHK###)
+
+<detailed description>
+- Bullet points for key changes
+- Test coverage information
+- Dependencies or breaking changes
+
+CHK Requirements: CHK###, CHK###
+Tasks: TASK-### complete
+```
+
+**Types**:
+- `feat`: New feature
+- `fix`: Bug fix
+- `test`: Adding tests
+- `refactor`: Code refactoring
+- `docs`: Documentation changes
+- `chore`: Maintenance tasks
+
+**Examples**:
+
+```bash
+# Good commit message
+git commit -m "feat: Phase 1 - Document Models & Media Config (CHK001-048)
+
+Implements Feature 003 Phase 1 using TDD:
+- Document type enum with 5 types
+- MediaAttachment with file size validation
+- MediaConfig with centralized constants
+- 48 tests, 100% coverage, pylint 10/10
+
+CHK Requirements: CHK001-004, CHK012-018, CHK039-048
+Tasks: TASK-001 to TASK-005 complete (Phase 1: 5/5)"
+
+# Bad commit message
+git commit -m "updates"  # ❌ Too vague
+git commit -m "fixed stuff"  # ❌ Not descriptive
+```
+
+### Pull Request Best Practices
+
+**PR Title**: `Feature ###: Clear Description`
+
+**PR Body Template**:
+```markdown
+## Summary
+Brief overview of what this PR accomplishes
+
+## Tasks Completed
+- [x] TASK-00X: Description
+- [x] TASK-00Y: Description
+
+## Changes
+- Bullet point list of key changes
+- Include file names and what changed
+
+## Test Results
+```
+pytest output showing passing tests
+Coverage: XX%
+```
+
+## CHK Requirements Validated
+- CHK###: Description
+- CHK###: Description
+
+## Files Changed
+- `path/to/file.py` - What changed
+- `path/to/test.py` - What tests added
+
+## Next Steps
+What comes after this PR
+```
+
+**Rationale**: 
+- Feature branches enable proper code review and isolated development
+- Merge commits preserve full commit history for detailed audit trail
+- Conventional commits provide clear, searchable history
+- Detailed PR descriptions serve as documentation
+- CLI workflow ensures consistency and automation
 
 ---
 
