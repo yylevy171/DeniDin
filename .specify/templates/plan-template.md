@@ -5,6 +5,19 @@
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
+---
+
+**IMPORTANT**: This plan MUST comply with:
+- **CONSTITUTION.md** (§I-III): NO environment variables, UTC timestamps mandatory, Git workflow (feature branches + merge commits)
+- **METHODOLOGY.md** (§II, IV, VII): Template structure, Phased planning, Integration Contracts (mandatory for multi-component features)
+
+**Required Sections** (per METHODOLOGY.md):
+- ✅ Integration Contracts (§VII) - Document all component interactions with explicit contracts
+- ✅ Constitution Check (before Phase 0, after Phase 1)
+- ✅ Phased execution (Phase 0-3+) with validation gates
+
+---
+
 ## Summary
 
 [Extract from feature spec: primary requirement + technical approach from research]

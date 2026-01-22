@@ -11,8 +11,13 @@
 
 Each task follows the **Red-Green-Refactor** TDD cycle:
 1. **Red**: Write failing test first
-2. **Green**: Write minimal code to pass test
+2. **Green**: Write minimal code to pass test  
 3. **Refactor**: Clean up code while keeping tests green
+
+**CRITICAL - Human Approval Gates (per METHODOLOGY.md §VI)**:
+- ⚠️ **TEST tasks MUST be reviewed and approved by human before proceeding to CODE task**
+- ⚠️ **Once approved, tests are IMMUTABLE without explicit human re-approval**
+- This ensures alignment on acceptance criteria before implementation begins
 
 **Task Format**:
 - **Task ID**: Unique identifier
@@ -25,7 +30,111 @@ Each task follows the **Red-Green-Refactor** TDD cycle:
 **Workflow**:
 - Mark task as `[ ]` (not started), `[~]` (in progress), `[x]` (complete)
 - Always complete TEST task before corresponding CODE task
+- **PAUSE after TEST task completion for human review/approval**
 - Run all tests after each CODE task completion
+
+---
+
+## Git/GitHub Workflow for Every Task
+
+**IMPORTANT**: Follow this workflow for EVERY task or phase completion:
+
+### Step-by-Step Git Process
+
+```bash
+# 1. CREATE FEATURE BRANCH (at start of phase/task group)
+git checkout -b feature/003-media-processing-phaseX
+# Example: feature/003-media-processing-phase1
+
+# 2. WORK ON TASKS (write tests, implement code)
+# ... complete TASK-00X, TASK-00Y, etc. ...
+
+# 3. STAGE CHANGES (selective staging)
+git add denidin-app/src/path/to/new_file.py
+git add denidin-app/tests/unit/test_new_file.py
+git add denidin-app/requirements.txt
+git add specs/in-progress/003-media-document-processing/
+
+# 4. COMMIT WITH DETAILED MESSAGE
+git commit -m "feat: Phase X - Description (CHK###-###)
+
+Implements Feature 003 Phase X using TDD:
+- Key change 1
+- Key change 2
+- Test results: X tests, Y% coverage
+
+CHK Requirements: CHK###-###
+Tasks: TASK-00X to TASK-00Y complete"
+
+# 5. PUSH TO REMOTE
+git push -u origin feature/003-media-processing-phaseX
+
+# 6. CREATE PULL REQUEST
+gh pr create --title "Feature 003 Phase X: Description" --body "## Summary
+Brief description
+
+## Tasks Completed
+- TASK-00X: Description
+- TASK-00Y: Description
+
+## Test Results
+- X tests passing
+- Y% coverage
+
+## CHK Requirements
+- CHK###: Description
+
+## Next Steps
+- Next phase tasks" --base master
+
+# 7. MERGE PR (via GitHub web OR locally)
+# Via web: Click "Merge pull request" button
+# OR locally:
+git checkout master
+git merge --no-ff feature/003-media-processing-phaseX -m "Merge pull request #X
+
+Feature 003 Phase X: Description"
+git push origin master
+
+# 8. CLEAN UP BRANCHES
+git branch -d feature/003-media-processing-phaseX
+```
+
+### Commit Message Template
+
+```
+feat: Phase X - Short Description (CHK###-###)
+
+Detailed description of what was implemented:
+- Bullet point 1
+- Bullet point 2
+- Test results and coverage
+
+Implementation:
+- File 1: What it does
+- File 2: What it does
+
+Testing:
+- test_file.py: X tests (Y% coverage)
+
+CHK Requirements Validated:
+- CHK###-###: Description
+
+Tasks Completed: TASK-00X through TASK-00Y (Phase X: A/B = C%)
+```
+
+### When to Commit
+
+**Per Phase**: Create one feature branch and one PR per phase
+- Phase 1: 5 tasks → 1 branch, 1 commit, 1 PR
+- Phase 2: 2 tasks → 1 branch, 1 commit, 1 PR
+- etc.
+
+**Guidelines**:
+- Commit when all tasks in a phase are complete
+- All tests must pass before committing
+- 100% coverage achieved before committing
+- Code quality verified (pylint, mypy) before committing
 
 ---
 
@@ -1031,9 +1140,9 @@ mypy denidin-app/src/handlers/media_handler.py
 
 ---
 
-## Quick Reference: TDD Workflow
+## Quick Reference: TDD + Git Workflow
 
-For each task pair (TEST + CODE):
+### For Each Task Pair (TEST + CODE)
 
 ```bash
 # 1. RED: Write tests (should fail)
@@ -1053,10 +1162,98 @@ pytest tests/unit/test_COMPONENT.py -v
 # 4. Coverage check
 pytest tests/unit/test_COMPONENT.py --cov=src/path/to/module --cov-report=term-missing
 # Expected: 100% coverage
+```
 
-# 5. Commit
-git add tests/unit/test_COMPONENT.py src/path/to/module.py
-git commit -m "feat: implement COMPONENT with TDD (CHK###)"
+### For Each Phase Completion
+
+```bash
+# 1. STAGE: Add relevant files
+git add denidin-app/src/path/to/files.py
+git add denidin-app/tests/unit/test_*.py
+git add denidin-app/requirements.txt  # if updated
+
+# 2. COMMIT: Use conventional commits format
+git commit -m "feat: Phase X - Description (CHK###-###)
+
+Implementation details:
+- Key change 1
+- Key change 2
+- Test results: X tests, Y% coverage
+
+CHK Requirements: CHK###-###
+Tasks: TASK-00X to TASK-00Y complete (Phase X: A/B)"
+
+# 3. PUSH: To remote feature branch
+git push -u origin feature/003-media-processing-phaseX
+
+# 4. PR: Create pull request
+gh pr create --title "Feature 003 Phase X: Description" \
+  --body "## Summary
+Detailed description
+
+## Tests: X passing, Y% coverage
+## CHK: CHK###-###
+## Tasks: TASK-00X to TASK-00Y" \
+  --base master
+
+# 5. MERGE: Via GitHub web interface OR locally
+# Web: Click "Merge pull request" button
+# Local:
+git checkout master
+git merge --no-ff feature/003-media-processing-phaseX
+git push origin master
+git branch -d feature/003-media-processing-phaseX
+```
+
+### Complete Phase Workflow Example
+
+```bash
+# Start Phase 1
+git checkout -b feature/003-media-processing-phase1
+
+# Work through TASK-001 to TASK-005
+# ... write tests, implement code, verify coverage ...
+
+# Stage Phase 1 files
+git add denidin-app/src/models/document.py
+git add denidin-app/src/config/
+git add denidin-app/tests/unit/test_document_models.py
+git add denidin-app/tests/unit/test_media_config.py
+git add denidin-app/requirements.txt
+
+# Commit Phase 1
+git commit -m "feat: Phase 1 - Document Models & Media Config (CHK001-048)
+
+Implements Feature 003 Phase 1 using TDD:
+- Document type enum (5 types)
+- MediaAttachment with validation
+- MediaConfig with constants
+- 48 tests, 100% coverage, pylint 10/10
+
+Implementation:
+- src/models/document.py
+- src/config/media_config.py
+
+Testing:
+- tests/unit/test_document_models.py: 26 tests
+- tests/unit/test_media_config.py: 22 tests
+
+CHK Requirements: CHK001-004, CHK012-018, CHK039-048, CHK075-077
+Tasks: TASK-001 to TASK-005 complete (Phase 1: 5/5 = 100%)"
+
+# Push and create PR
+git push -u origin feature/003-media-processing-phase1
+gh pr create --title "Feature 003 Phase 1: Document Models & Media Config" \
+  --body "See CONSTITUTION.md §III for PR template" --base master
+
+# Merge (via web or locally)
+git checkout master
+git merge --no-ff feature/003-media-processing-phase1 \
+  -m "Merge pull request #X from user/feature/003-media-processing-phase1
+
+Feature 003 Phase 1: Document Models & Media Config"
+git push origin master
+git branch -d feature/003-media-processing-phase1
 ```
 
 ---

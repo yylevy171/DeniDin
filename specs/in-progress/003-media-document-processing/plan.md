@@ -966,6 +966,115 @@ def check_for_media_approval(self, user_message: str) -> bool:
 
 ---
 
+## Integration Contracts
+
+### WhatsAppHandler ↔ MediaHandler Contract
+
+**WhatsAppHandler MUST**:
+- Call `media_handler.process_media(message)` for all messages with `media` field
+- Pass complete `WhatsAppMessage` object with valid `media.file_url`
+- Handle `MediaProcessingError` exceptions and send user-friendly error messages
+- Not modify media files directly - delegate all processing to `MediaHandler`
+
+**MediaHandler PROVIDES**:
+- `process_media(message: WhatsAppMessage) -> DocumentMetadata` 
+- Validates file format and size before processing
+- Returns structured `DocumentMetadata` with `document_type`, `summary`, `metadata_fields`
+- Raises `MediaProcessingError` with user-readable message on failure
+
+**MediaHandler EXPECTS**:
+- `message.media.file_url`: Valid Green API download URL (not None)
+- `message.media.mime_type`: Valid MIME type string
+- `message.whatsapp_chat`: Valid WhatsApp chat ID for session linkage
+- `message.media.caption`: Optional string (user's message text with file)
+
+---
+
+### MediaManager ↔ Extractors Contract
+
+**MediaManager MUST**:
+- Call appropriate extractor based on `media_type` (ImageExtractor, PDFExtractor, DOCXExtractor)
+- Pass absolute file path to extractor methods
+- Validate file exists before calling extractor
+- Save extractor output to `.rawtext` file with UTF-8 encoding
+
+**Extractors PROVIDE**:
+- `extract_text(file_path: str) -> Dict` with keys: `extracted_text`, `extraction_quality`, `warnings`, `model_used`
+- `extraction_quality`: One of `good`, `fair`, `poor`, `failed`
+- `warnings`: List of issues encountered (empty list if none)
+- Graceful degradation - return partial results even on errors
+
+**Extractors EXPECT**:
+- `file_path`: Absolute path to existing file
+- File format matches extractor type (ImageExtractor gets JPG/PNG, etc.)
+- File size already validated by MediaManager
+- File not corrupted (but must handle gracefully if it is)
+
+---
+
+### DocumentAnalyzer ↔ AI Handler Contract
+
+**DocumentAnalyzer MUST**:
+- Call `ai_handler.analyze_document(raw_text, document_hint)` with extracted text
+- Pass `document_hint` if available from user's caption
+- Parse AI response into structured `DocumentMetadata` object
+- Default to `document_type='generic'` if AI cannot classify
+
+**AI Handler PROVIDES**:
+- `analyze_document(text: str, hint: str = None) -> Dict` with AI analysis
+- Returns: `document_type`, `summary`, `metadata_fields`, `confidence_notes`
+- Handles Hebrew text in prompts and responses
+- Uses `TEXT_MODEL` (gpt-4o-mini) for cost efficiency
+
+**AI Handler EXPECTS**:
+- `text`: Non-empty string (DocumentAnalyzer validates this)
+- `hint`: Optional context from user (e.g., "this is a contract")
+- Reasonable text length (DocumentAnalyzer handles truncation if needed)
+
+---
+
+### MediaHandler ↔ SessionManager Contract
+
+**MediaHandler MUST**:
+- Call `session_manager.add_media_message(session_id, media_attachment, summary)` after processing
+- Pass complete `MediaAttachment` object with all paths populated
+- Add summary text to conversation context
+- Link media to correct session using `whatsapp_chat` → `session_id` mapping
+
+**SessionManager PROVIDES**:
+- `add_media_message(session_id, media, summary) -> None`
+- Stores media reference in session messages
+- Includes summary in conversation history for AI context
+- Persists media link to long-term memory on session expiry
+
+**SessionManager EXPECTS**:
+- `session_id`: Valid UUID for existing session
+- `media.file_path`: Valid path that will remain accessible
+- `summary`: Human-readable summary text (not None)
+
+---
+
+### MediaManager ↔ Storage System Contract
+
+**MediaManager MUST**:
+- Create storage directory structure: `data/images/{YYYY-MM-DD}/image-{timestamp}/`
+- Use UTC timestamps for folder naming: `datetime.now(timezone.utc).timestamp()`
+- Save original file with original extension
+- Save extracted text as `{filename}.rawtext` with UTF-8 encoding
+- Never delete files (permanent storage per CHK113)
+
+**Storage System PROVIDES**:
+- Persistent file storage in `data/images/` hierarchy
+- Guaranteed availability of files for retrieval feature
+- No automatic cleanup or expiration
+
+**Storage System EXPECTS**:
+- All paths created using `Path` objects for cross-platform compatibility
+- UTF-8 encoding for all `.rawtext` files (Hebrew support)
+- Unique folder names (timestamp with microsecond precision prevents collisions)
+
+---
+
 ## Testing Strategy
 
 ### Test Coverage Goals

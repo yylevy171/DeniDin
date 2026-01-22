@@ -23,6 +23,49 @@ Currently, DeniDin only processes text messages. Users cannot send images, PDFs,
 - **Court Document Tracking**: Case numbers, rulings, deadlines
 - **Document Retrieval**: "Show me David's contract" → Re-send stored document
 
+---
+
+## Terminology Glossary
+
+**Core Media Terms:**
+- **media_type**: File category - one of: `image`, `pdf`, `docx`
+- **document_type**: AI-detected business document classification - one of: `contract`, `receipt`, `invoice`, `court_resolution`, `generic`
+- **caption**: WhatsApp message text sent WITH the media file (user's question/comment, NOT file metadata)
+- **raw_text_path**: File path to extracted text stored as `.rawtext` file (UTF-8 encoded for Hebrew support)
+
+**WhatsApp Identifiers:**
+- **whatsapp_chat**: WhatsApp chat identifier (e.g., "1234567890@c.us" for individual chats)
+- **session_id**: UUID identifier for a conversation session (links messages to sessions)
+
+**Storage Paths:**
+- **file_path**: Local storage location: `data/images/{YYYY-MM-DD}/image-{timestamp}/filename.ext`
+- **STORAGE_BASE**: Root directory for all media files: `data/images/`
+
+**Processing States:**
+- **extraction_quality**: Text extraction quality assessment - one of: `good`, `fair`, `poor`, `failed`
+- **approval_status**: User approval state - one of: `pending`, `approved`, `rejected`
+
+**File Format Identifiers:**
+- **mime_type**: MIME type string (e.g., `image/jpeg`, `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`)
+- **Supported formats**: JPG, JPEG, PNG (images); PDF (max 10 pages), DOCX (documents)
+- **Unsupported formats**: GIF, TXT, XLS, PPT, ZIP (return error message to user)
+
+**AI Model Names:**
+- **VISION_MODEL**: `gpt-4o` - Used for image and PDF page analysis
+- **TEXT_MODEL**: `gpt-4o-mini` - Used for DOCX text processing and document analysis
+
+**Metadata Field Types (Document-Specific):**
+- **Contract metadata**: `client_name`, `contract_type`, `amount`, `start_date`, `end_date`, `deliverables`
+- **Receipt metadata**: `merchant`, `date`, `total`, `items`, `payment_method`
+- **Invoice metadata**: `vendor`, `invoice_number`, `amount`, `due_date`, `line_items`
+- **Court Resolution metadata**: `case_number`, `parties`, `decision`, `deadline`
+
+**Deprecated Terms:**
+- **DEPRECATED: media_url** - Use `file_url` (Green API download URL) instead
+- **DEPRECATED: document_metadata** - Use `extracted_metadata` for type-specific fields instead
+
+---
+
 ## Use Cases
 
 ### Generic Media Processing
@@ -38,6 +81,117 @@ Currently, DeniDin only processes text messages. Users cannot send images, PDFs,
 8. **Invoice Processing**: Send invoice → AI extracts: vendor, invoice #, amount, due date, line items
 9. **Court Document Tracking**: Send court resolution → AI extracts: case #, parties, decision, deadlines
 10. **Document Retrieval**: "Show me David's contract from last month" → Bot finds and re-sends document
+
+---
+
+## Requirements
+
+### File Handling Requirements
+
+**REQ-MEDIA-001**: File Size Validation
+- Maximum file size: 10MB (10,485,760 bytes)
+- Reject files exceeding limit with user-friendly error message
+- Validate BEFORE downloading file from Green API
+
+**REQ-MEDIA-002**: Format Support
+- Supported image formats: JPG, JPEG, PNG (case-insensitive)
+- Supported document formats: PDF (max 10 pages), DOCX
+- Unsupported formats: GIF, TXT, XLS, PPT, ZIP
+- Return error message for unsupported formats
+
+**REQ-MEDIA-003**: PDF Page Limit
+- Maximum 10 pages per PDF document
+- Count pages after download, before processing
+- Reject PDFs exceeding limit with error message
+
+**REQ-MEDIA-004**: Storage Structure
+- Base path: `data/images/`
+- Folder structure: `{YYYY-MM-DD}/image-{UTC-timestamp}/`
+- UTC timestamps mandatory (per CONSTITUTION.md §II)
+- Permanent storage - no automatic deletion
+
+**REQ-MEDIA-005**: File Naming
+- Original file: Keep original filename and extension
+- Extracted text: `{original-filename}.rawtext`
+- UTF-8 encoding for all `.rawtext` files (Hebrew support)
+
+### Processing Requirements
+
+**REQ-PROC-001**: Text Extraction Quality
+- Hebrew text extraction required for all file types
+- Mixed Hebrew/English support
+- Quality assessment: `good`, `fair`, `poor`, `failed`
+- Graceful degradation on low-quality extractions
+
+**REQ-PROC-002**: Document Classification
+- AI-determined document types: contract, receipt, invoice, court_resolution, generic
+- Default to `generic` when uncertain (no confidence threshold)
+- Multi-type scenarios: AI selects best-fit type
+
+**REQ-PROC-003**: Metadata Extraction
+- Type-specific metadata fields (all optional)
+- Dynamic extraction based on document content
+- Missing fields silently omitted from summary
+- No required field validation
+
+**REQ-PROC-004**: User Approval Flow
+- Send summary to user after processing
+- Wait for user feedback/approval (no timeout)
+- Informal approval acceptable ("looks good", "thanks", "ok")
+- Iterative refinement supported
+
+### AI Model Requirements
+
+**REQ-AI-001**: Model Selection
+- Images and PDFs: `gpt-4o` (vision-enabled)
+- DOCX documents: `gpt-4o-mini` (cost-effective)
+- Document analysis: `gpt-4o-mini` (text processing)
+
+**REQ-AI-002**: Configuration Source
+- All configuration from `config/config.json`
+- NO environment variables (per CONSTITUTION.md §I)
+- Model names, API keys in config file
+
+**REQ-AI-003**: Hebrew Language Support
+- Hebrew text in prompts and responses
+- RTL direction handling in summaries
+- Hebrew character encoding (UTF-8)
+
+### Integration Requirements
+
+**REQ-INT-001**: Session Linkage
+- Media messages linked to conversation sessions
+- Summary added to conversation context
+- Media metadata persists to long-term memory
+
+**REQ-INT-002**: WhatsApp Message Handling
+- Caption field contains user's message text (not file metadata)
+- Media download via Green API `file_url`
+- Error messages sent via WhatsApp response
+
+**REQ-INT-003**: Retry Logic
+- Maximum 1 retry for file downloads (2 total attempts)
+- No retries for AI API calls (fail fast)
+- User notified of all failures
+
+### Error Handling Requirements
+
+**REQ-ERR-001**: User-Friendly Messages
+- All error messages in plain language
+- Specific guidance for each error type
+- No technical stack traces to users
+
+**REQ-ERR-002**: Graceful Degradation
+- Corrupted files: Return "unable to process" message
+- Low-quality extraction: Include quality warnings in summary
+- API failures: Clear error message, suggest retry
+
+**REQ-ERR-003**: Edge Case Handling
+- Zero-byte files: Reject with error
+- Empty documents: Process with quality warning
+- Unsupported formats: Clear format list in error
+
+---
 
 ## Technical Design
 

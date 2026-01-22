@@ -8,7 +8,26 @@ description: "Task list template for feature implementation"
 **Input**: Design documents from `/specs/[###-feature-name]/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: Test-Driven Development (TDD) - ALL tests written and approved BEFORE implementation (per Constitution Principle VI)
+---
+
+**IMPORTANT**: This task list MUST comply with:
+- **CONSTITUTION.md** (§I-III): Config-only (NO env vars), UTC timestamps, Git workflow with feature branches
+- **METHODOLOGY.md** (§VI): TDD with human approval gates - Tests MUST be approved before implementation
+
+**Critical TDD Requirements** (METHODOLOGY.md §VI):
+- ⚠️ **EVERY TEST task requires HUMAN APPROVAL before proceeding to CODE task**
+- ⚠️ **Once approved, tests are IMMUTABLE without explicit human re-approval**
+- ✅ Test coverage MUST include: happy path, edge cases, error scenarios, boundary conditions
+
+**Git Workflow** (CONSTITUTION.md §III):
+- Feature branch per phase: `feature/###-feature-name-phaseX`
+- Conventional commits with CHK/REQ references
+- Merge commits (NOT squash) to preserve history
+- See CONSTITUTION.md §III for complete workflow
+
+---
+
+**Tests**: Test-Driven Development (TDD) - ALL tests written and approved BEFORE implementation (per METHODOLOGY.md §VI)
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
