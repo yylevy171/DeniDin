@@ -20,7 +20,7 @@ from unittest.mock import Mock, MagicMock, patch
 
 from src.memory.session_manager import SessionManager
 from src.handlers.ai_handler import AIHandler
-from src.background_threads import BackgroundThreads
+from src.background_threads import SessionCleanupThread
 from src.models.config import AppConfiguration
 
 
@@ -44,8 +44,7 @@ def test_config(tmp_path):
         memory={
             "session": {
                 "storage_dir": str(test_data_root / "sessions"),
-                "session_timeout_hours": 1 / 3600,  # 1 second for testing
-                "cleanup_interval_seconds": 0.5  # Fast cleanup for tests
+                "session_timeout_hours": 1 / 3600  # 1 second for testing
             },
             "longterm": {
                 "storage_dir": str(test_data_root / "memory"),
@@ -97,13 +96,20 @@ class TestBackgroundCleanupThread:
         mock_collection.count.return_value = 1
         ai_handler.memory_manager.client.get_collection = Mock(return_value=mock_collection)
         
-        # Start background threads (cleanup should run immediately)
-        background_threads = BackgroundThreads(
-            session_manager=session_manager,
-            ai_handler=ai_handler,
+        # Create global context for SessionCleanupThread
+        class GlobalContext:
+            pass
+        
+        global_context = GlobalContext()
+        global_context.session_manager = session_manager
+        global_context.ai_handler = ai_handler
+        
+        # Start background cleanup thread (cleanup should run immediately)
+        cleanup_thread = SessionCleanupThread(
+            global_context=global_context,
             cleanup_interval_seconds=3600  # 1 hour - realistic interval
         )
-        background_threads.start()
+        cleanup_thread.start()
         
         try:
             # Wait briefly for immediate cleanup to complete
@@ -120,7 +126,7 @@ class TestBackgroundCleanupThread:
             assert expired_dir.exists(), "Expired session should be in expired/ folder"
             
         finally:
-            background_threads.stop()
+            cleanup_thread.stop()
     
     def test_active_sessions_not_moved_during_cleanup(self, test_config, tmp_path):
         """
@@ -128,10 +134,10 @@ class TestBackgroundCleanupThread:
         
         Only expired sessions should be archived/transferred.
         """
-        # Create SessionManager with active session
+        # Create SessionManager with active session (10 second timeout)
         session_manager = SessionManager(
             storage_dir=test_config.memory["session"]["storage_dir"],
-            session_timeout_hours=test_config.memory["session"]["session_timeout_hours"]
+            session_timeout_hours=10 / 3600  # 10 seconds for testing
         )
         
         chat_id = "active_user@c.us"
@@ -147,13 +153,20 @@ class TestBackgroundCleanupThread:
         ai_handler = AIHandler(mock_client, test_config)
         ai_handler.session_manager = session_manager
         
+        # Create global context for SessionCleanupThread
+        class GlobalContext:
+            pass
+        
+        global_context = GlobalContext()
+        global_context.session_manager = session_manager
+        global_context.ai_handler = ai_handler
+        
         # Start cleanup thread
-        background_threads = BackgroundThreads(
-            session_manager=session_manager,
-            ai_handler=ai_handler,
+        cleanup_thread = SessionCleanupThread(
+            global_context=global_context,
             cleanup_interval_seconds=0.5
         )
-        background_threads.start()
+        cleanup_thread.start()
         
         try:
             # Wait for at least one cleanup cycle
@@ -169,7 +182,7 @@ class TestBackgroundCleanupThread:
             assert session_manager.chat_to_session[chat_id] == session_id
             
         finally:
-            background_threads.stop()
+            cleanup_thread.stop()
     
     def test_cleanup_full_cycle_archive_transfer_remove(self, test_config, tmp_path):
         """
@@ -211,13 +224,20 @@ class TestBackgroundCleanupThread:
         mock_collection.count.return_value = 1
         ai_handler.memory_manager.client.get_collection = Mock(return_value=mock_collection)
         
+        # Create global context for SessionCleanupThread
+        class GlobalContext:
+            pass
+        
+        global_context = GlobalContext()
+        global_context.session_manager = session_manager
+        global_context.ai_handler = ai_handler
+        
         # Start cleanup
-        background_threads = BackgroundThreads(
-            session_manager=session_manager,
-            ai_handler=ai_handler,
+        cleanup_thread = SessionCleanupThread(
+            global_context=global_context,
             cleanup_interval_seconds=0.5
         )
-        background_threads.start()
+        cleanup_thread.start()
         
         try:
             # Wait for cleanup to complete (allow time for all 4 steps)
@@ -243,4 +263,4 @@ class TestBackgroundCleanupThread:
             assert archived_data.get("transferred_to_longterm", False) is True, "Should be marked as transferred"
             
         finally:
-            background_threads.stop()
+            cleanup_thread.stop()

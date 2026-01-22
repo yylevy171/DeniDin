@@ -84,9 +84,6 @@ class TestMemorySystemIntegration:
         assert session.whatsapp_chat == chat_id
         assert session.session_id is not None
         assert len(session.message_ids) == 0
-        
-        # Stop cleanup thread
-        session_manager.stop_cleanup_thread()
     
     def test_session_manager_stores_messages(self, temp_storage):
         """Test SessionManager can store and retrieve messages."""
@@ -125,8 +122,6 @@ class TestMemorySystemIntegration:
         assert history[0]['content'] == "Hello, how are you?"
         assert history[1]['role'] == 'assistant'
         assert history[1]['content'] == "I'm doing well, thank you!"
-        
-        session_manager.stop_cleanup_thread()
     
     def test_session_manager_clears_session(self, temp_storage):
         """Test SessionManager can clear sessions."""
@@ -163,8 +158,6 @@ class TestMemorySystemIntegration:
         # Verify messages cleared
         history_after = session_manager.get_conversation_history(whatsapp_chat=chat_id)
         assert len(history_after) == 0
-        
-        session_manager.stop_cleanup_thread()
     
     def test_memory_manager_stores_and_recalls(self, temp_storage, test_config):
         """Test MemoryManager can store and recall memories (requires real OpenAI API)."""
@@ -230,68 +223,6 @@ class TestMemorySystemIntegration:
         # Now it should be expired
         is_expired = session_manager.is_session_expired(session)
         assert is_expired is True
-        
-        session_manager.stop_cleanup_thread()
-    
-    def test_cleanup_interval_configurable(self, temp_storage):
-        """Test SessionManager cleanup interval is configurable."""
-        cleanup_interval = 1  # 1 second for testing
-        
-        session_manager = SessionManager(
-            storage_dir=temp_storage['session_dir'],
-            session_timeout_hours=24,
-            cleanup_interval_seconds=cleanup_interval
-        )
-        
-        assert session_manager.cleanup_interval_seconds == cleanup_interval
-        
-        session_manager.stop_cleanup_thread()
-    
-    def test_periodic_cleanup_transfers_expired_sessions(self, config_with_memory, test_config):
-        """Test periodic cleanup actually transfers expired sessions using real time."""
-        import time
-        
-        # Override config for 1-second timeout and cleanup interval
-        config_with_memory.memory['session']['session_timeout_hours'] = 1/3600  # 1 second
-        
-        openai_client = OpenAI(api_key=test_config['ai_api_key'])
-        
-        # Create AIHandler with 1-second cleanup interval
-        ai_handler = AIHandler(
-            openai_client,
-            config_with_memory,
-            cleanup_interval_seconds=1  # Check every 1 second
-        )
-        
-        chat_id = "test_periodic@c.us"
-        
-        # Add a message to create session
-        ai_handler.session_manager.add_message(
-            chat_id=chat_id,
-            role="user",
-            content="Test periodic cleanup",
-            user_role="client",
-            sender="whatsapp_tester1", recipient="AI_test"
-        )
-        
-        # Verify session exists
-        session = ai_handler.session_manager.get_session(chat_id)
-        assert session is not None
-        
-        # Wait for session to expire AND cleanup to run (2.5 seconds total)
-        # 1.5 seconds for expiration + 1 second for cleanup cycle
-        time.sleep(2.5)
-        
-        # Check that session was transferred to long-term memory
-        # Session should still exist but messages should be in long-term
-        expired_dir = Path(config_with_memory.memory['session']['storage_dir']) / "expired"
-        assert expired_dir.exists()
-        
-        # Session should be archived in expired folder
-        archived_sessions = list(expired_dir.rglob("*/session.json"))
-        assert len(archived_sessions) >= 1
-        
-        ai_handler.session_manager.stop_cleanup_thread()
     
     def test_ai_handler_stores_messages_in_session(self, config_with_memory, test_config):
         """Test AIHandler stores messages in session (requires real OpenAI API)."""
@@ -331,9 +262,6 @@ class TestMemorySystemIntegration:
         assert history[0]['content'] == "What is 2+2?"
         assert history[1]['role'] == 'assistant'
         assert len(history[1]['content']) > 0
-        
-        # Cleanup
-        ai_handler.session_manager.stop_cleanup_thread()
     
     def test_orphaned_session_recovery_active_session(self, temp_storage):
         """Test recovery loads active sessions without transfer."""
@@ -386,8 +314,6 @@ class TestMemorySystemIntegration:
         assert result['total_found'] == 1
         assert result['transferred_to_long_term'] == 0
         assert result['loaded_to_short_term'] == 1
-        
-        ai_handler.session_manager.stop_cleanup_thread()
 
 
 class TestConversationMemory:
@@ -449,6 +375,3 @@ class TestConversationMemory:
         # Verify conversation history has all 4 messages
         history = ai_handler.session_manager.get_conversation_history(whatsapp_chat=chat_id)
         assert len(history) == 4  # 2 user messages + 2 AI responses
-        
-        # Cleanup
-        ai_handler.session_manager.stop_cleanup_thread()

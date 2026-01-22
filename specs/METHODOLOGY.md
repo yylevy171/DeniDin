@@ -183,7 +183,23 @@ When running tests to diagnose issues or verify fixes:
    - Only after approval: Make the approved changes
    - If rejected: Present alternative options
 
-3. **EXAMPLE WORKFLOW**
+3. **INTEGRATION TESTS - NEVER MOCK**
+   - **CRITICAL**: Integration tests MUST use real application components
+   - Do NOT mock internal classes, managers, or handlers in integration tests
+   - Integration tests verify real interactions between actual components
+   - Use test configurations (e.g., short timeouts) instead of mocking behavior
+   - Only mock external services (APIs, databases) when truly necessary
+   - Unit tests are for mocking; integration tests are for real usage
+
+4. **LOG FILES - SINGLE SOURCE OF TRUTH**
+   - **CRITICAL**: Do NOT re-run tests just to see more log output
+   - All test logs are written to `logs/test_logs/` directory
+   - Each test module has its own log file (e.g., `test_background_cleanup.log`)
+   - Search and analyze existing log files instead of re-executing tests
+   - Re-run tests only to verify fixes, not to gather diagnostic information
+   - Use `tail`, `grep`, `find` commands to explore logs efficiently
+
+5. **EXAMPLE WORKFLOW**
    ```
    AI: "Tests are failing because X calls Y with parameter Z, but Y now expects A.
         Options:
