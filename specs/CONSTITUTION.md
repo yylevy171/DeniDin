@@ -664,6 +664,107 @@ with open("data.json", "w") as f:  # No encoding specified
   - Log exit reason and code
   - Log cleanup actions performed
 
+---
+
+## XVII. NO Monkey-Patching
+
+**Principle**: NEVER modify objects or classes at runtime. Use proper design patterns instead.
+
+**ABSOLUTE PROHIBITION**:
+- **NO runtime method replacement**: Do NOT replace methods on instances or classes after creation
+- **NO dynamic attribute injection**: Do NOT add/modify attributes on objects after instantiation
+- **NO function reassignment**: Do NOT reassign functions/methods at module or class level after import/definition
+
+**Why Monkey-Patching is Forbidden**:
+- **Breaks encapsulation**: Violates object-oriented design principles
+- **Untestable**: Creates timing-dependent bugs that are impossible to catch in tests
+- **Race conditions**: Thread-unsafe, leads to concurrency bugs
+- **Maintenance nightmare**: Hidden dependencies, impossible to trace execution flow
+- **Debugging hell**: Stack traces lie, breakpoints miss the actual code
+- **Violates expectations**: Code doesn't do what it says it does
+
+**Correct Alternatives**:
+
+1. **Dependency Injection** (pass callbacks/handlers as constructor parameters):
+```python
+# ✅ CORRECT
+class SessionManager:
+    def __init__(self, on_expire_callback=None):
+        self.on_expire_callback = on_expire_callback
+    
+    def _cleanup_expired_sessions(self):
+        for session in self.find_expired():
+            if self.on_expire_callback:
+                self.on_expire_callback(session)
+            self._archive(session)
+
+# Usage
+def transfer_to_memory(session):
+    ai_handler.transfer_session_to_long_term_memory(session.whatsapp_chat, session.session_id)
+
+session_manager = SessionManager(on_expire_callback=transfer_to_memory)
+```
+
+2. **Strategy Pattern** (pass strategy object):
+```python
+# ✅ CORRECT
+class SessionManager:
+    def __init__(self, cleanup_strategy):
+        self.cleanup_strategy = cleanup_strategy
+    
+    def _cleanup_expired_sessions(self):
+        self.cleanup_strategy.cleanup(self.find_expired())
+```
+
+3. **Template Method Pattern** (subclass and override):
+```python
+# ✅ CORRECT
+class SessionManagerWithTransfer(SessionManager):
+    def __init__(self, ai_handler, **kwargs):
+        super().__init__(**kwargs)
+        self.ai_handler = ai_handler
+    
+    def _cleanup_expired_sessions(self):
+        for session in self.find_expired():
+            self.ai_handler.transfer_session_to_long_term_memory(...)
+        super()._cleanup_expired_sessions()
+```
+
+4. **Observer Pattern** (event-based callbacks):
+```python
+# ✅ CORRECT
+class SessionManager:
+    def __init__(self):
+        self.on_expire_listeners = []
+    
+    def register_expire_listener(self, callback):
+        self.on_expire_listeners.append(callback)
+    
+    def _cleanup_expired_sessions(self):
+        for session in self.find_expired():
+            for listener in self.on_expire_listeners:
+                listener(session)
+            self._archive(session)
+```
+
+**Examples of FORBIDDEN Practices**:
+```python
+# ❌ WRONG - Runtime method replacement
+session_manager._cleanup_expired_sessions = new_cleanup_function
+
+# ❌ WRONG - Dynamic attribute injection
+session_manager.ai_handler = ai_handler
+
+# ❌ WRONG - Module-level monkey-patching
+import some_module
+some_module.original_function = my_replacement_function
+
+# ❌ WRONG - Class-level patching
+SomeClass.method = new_method
+```
+
+**Rationale**: Monkey-patching creates timing-dependent bugs (like the session transfer race condition), violates software engineering principles, and makes code unmaintainable. Proper design patterns provide type-safe, testable, and maintainable solutions.
+
 **Example**:
 ```python
 # ✅ CORRECT
@@ -713,9 +814,10 @@ All contributors must:
 
 ---
 
-**Version**: 2.1.0 | **Effective Date**: January 21, 2026
+**Version**: 2.2.0 | **Effective Date**: January 22, 2026
 
 **Changelog**:
+- v2.2.0 (2026-01-22): Added **XVII. NO Monkey-Patching** - absolute prohibition with correct design pattern alternatives (dependency injection, strategy, template method, observer)
 - v2.1.0 (2026-01-21): Added 8 technical standards from existing practice: Logging Standards (IX), Error Response Format (X), Retry Logic Details (XI), API Response Handling (XII), Data Validation (XIII), File Path Handling (XIV), JSON/File Format Standards (XV), Exit Code Standards (XVI)
 - v2.0.0 (2026-01-21): Split from methodology - isolated coding standards and technical constraints
 - v1.2.0 (2026-01-17): Previous unified constitution with 16 principles

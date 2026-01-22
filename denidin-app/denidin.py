@@ -15,6 +15,7 @@ from src.handlers.ai_handler import AIHandler
 from src.handlers.whatsapp_handler import WhatsAppHandler
 from src.memory.session_manager import SessionManager
 from src.memory.memory_manager import MemoryManager
+from src.background_threads import SessionCleanupThread, run_startup_cleanup
 
 # Configuration
 CONFIG_PATH = 'config/config.json'
@@ -69,22 +70,166 @@ ai_client = OpenAI(
     timeout=30.0
 )
 
-# Initialize handlers
-ai_handler = AIHandler(ai_client, config)
-whatsapp_handler = WhatsAppHandler()
+# Global DeniDin instance for WhatsApp message handler
+# Will be populated in __main__ block after initialize_app()
+denidin_app = None
 
 
-class GlobalContext:
+class DeniDin:
     """
-    Global context object accessible to all threads.
-    Provides centralized access to all application components.
-    Used by background threads (SessionManager cleanup) to transfer sessions.
+    DeniDin application instance.
+    Provides programmatic API for testing and direct access.
+    Used by integration tests to interact with the app without WhatsApp layer.
+    Also serves as global context for background threads (e.g., session cleanup).
     """
-    def __init__(self, session_manager, memory_manager, ai_handler, config):
-        self.session_manager = session_manager
-        self.memory_manager = memory_manager
+    def __init__(self, ai_handler, config, whatsapp_handler, cleanup_thread=None):
         self.ai_handler = ai_handler
         self.config = config
+        self.whatsapp_handler = whatsapp_handler
+        self.cleanup_thread = cleanup_thread
+        # Add references for background thread access
+        self.session_manager = ai_handler.session_manager if ai_handler.memory_enabled else None
+        self.memory_manager = ai_handler.memory_manager if ai_handler.memory_enabled else None
+        self._logger = get_logger(__name__)
+    
+    def handle_message(self, chat_id: str, content: str) -> dict:
+        """
+        Send a message to the AI and get response.
+        
+        Args:
+            chat_id: WhatsApp chat ID (e.g., "972522968679@c.us")
+            content: Message text content
+            
+        Returns:
+            dict with keys: response_text, tokens_used, session_id
+        """
+        from datetime import datetime, timezone
+        from src.models.message import WhatsAppMessage
+        
+        # Create fake WhatsApp message for testing
+        timestamp = int(datetime.now(timezone.utc).timestamp())
+        message = WhatsAppMessage(
+            message_id=f"test_{timestamp}",
+            chat_id=chat_id,
+            sender_id=chat_id,
+            sender_name="Test User",
+            text_content=content,
+            timestamp=timestamp,
+            message_type="textMessage",
+            is_group=False,
+            received_timestamp=datetime.now(timezone.utc)
+        )
+        
+        # Create AI request
+        ai_request = self.ai_handler.create_request(message)
+        
+        # Get AI response
+        ai_response = self.ai_handler.get_response(
+            ai_request,
+            sender=chat_id,
+            recipient="AI"
+        )
+        
+        # Get session_id from session manager
+        session = None
+        if self.ai_handler.memory_enabled:
+            session = self.ai_handler.session_manager.get_session(chat_id)
+        
+        return {
+            'response_text': ai_response.response_text,
+            'tokens_used': ai_response.tokens_used,
+            'session_id': session.session_id if session else None
+        }
+    
+    def get_collection(self):
+        """
+        Get ChromaDB collection for testing assertions.
+        
+        Returns:
+            ChromaDB Collection object or None if memory disabled
+        """
+        if not self.ai_handler.memory_enabled:
+            return None
+        
+        return self.ai_handler.memory_manager.client.get_collection(
+            name=self.config.memory['longterm']['collection_name']
+        )
+    
+    def get_session(self, chat_id: str):
+        """
+        Get active session for a chat ID.
+        
+        Args:
+            chat_id: WhatsApp chat ID
+            
+        Returns:
+            Session object or None
+        """
+        if not self.ai_handler.memory_enabled:
+            return None
+        
+        return self.ai_handler.session_manager.get_session(chat_id)
+    
+    def shutdown(self):
+        """
+        Gracefully shutdown the app context.
+        Stops cleanup thread if running.
+        """
+        if self.cleanup_thread:
+            self._logger.info("Stopping session cleanup thread...")
+            self.cleanup_thread.stop()
+            self._logger.info("Cleanup thread stopped")
+
+def initialize_app(config_dict: dict) -> DeniDin:
+    """
+    Initialize DeniDin app with provided configuration.
+    Used by integration tests to create app instance programmatically.
+    
+    Args:
+        config_dict: Configuration dictionary (from JSON)
+        
+    Returns:
+        DeniDin instance with handle_message(), get_collection(), shutdown() APIs
+    """
+    # Create AppConfiguration from dict
+    config = AppConfiguration(**config_dict)
+    config.validate()
+    
+    # Initialize OpenAI client
+    ai_client = OpenAI(
+        api_key=config.ai_api_key,
+        timeout=30.0
+    )
+    
+    # Initialize AI handler
+    ai_handler = AIHandler(ai_client, config)
+    
+    # Initialize WhatsApp handler
+    whatsapp_handler = WhatsAppHandler()
+    
+    # Create DeniDin instance (will be used as context for background threads)
+    denidin = DeniDin(ai_handler, config, whatsapp_handler, cleanup_thread=None)
+    
+    # Initialize memory system if enabled
+    if ai_handler.memory_enabled:
+        # Run startup cleanup using denidin as context
+        run_startup_cleanup(denidin)
+        
+        # Start cleanup thread - get interval from nested config structure
+        cleanup_interval = 3600  # Default
+        if hasattr(config, 'memory') and isinstance(config.memory, dict):
+            session_config = config.memory.get('session', {})
+            cleanup_interval = session_config.get('cleanup_interval_seconds', 3600)
+        elif hasattr(config, 'session_cleanup_interval_seconds'):
+            cleanup_interval = config.session_cleanup_interval_seconds
+        
+        cleanup_thread = SessionCleanupThread(denidin, cleanup_interval)
+        cleanup_thread.start()
+        
+        # Update denidin with cleanup thread reference
+        denidin.cleanup_thread = cleanup_thread
+    
+    return denidin
 
 
 # Initialize global context (will be populated after startup recovery)
@@ -117,14 +262,23 @@ def handle_text_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
+    # Ensure denidin_app is initialized
+    if denidin_app is None:
+        logger.error("CRITICAL: denidin_app not initialized - cannot process WhatsApp messages")
+        try:
+            notification.answer("Sorry, the application is not ready. Please try again in a moment.")
+        except Exception:
+            pass
+        return
+    
     try:
         # Validate message type
-        if not whatsapp_handler.validate_message_type(notification):
-            whatsapp_handler.handle_unsupported_message(notification)
+        if not denidin_app.whatsapp_handler.validate_message_type(notification):
+            denidin_app.whatsapp_handler.handle_unsupported_message(notification)
             return
 
         # Process notification into WhatsAppMessage (includes message_id and received_timestamp)
-        message = whatsapp_handler.process_notification(notification)
+        message = denidin_app.whatsapp_handler.process_notification(notification)
 
         # Create tracking prefix for all logs related to this message
         tracking = f"[msg_id={message.message_id}] [recv_ts={message.received_timestamp.isoformat()}]"
@@ -136,17 +290,17 @@ def handle_text_message(notification: Notification) -> None:
         )
 
         # Check if application is mentioned in group (or if 1-on-1)
-        if not whatsapp_handler.is_bot_mentioned_in_group(message):
+        if not denidin_app.whatsapp_handler.is_bot_mentioned_in_group(message):
             logger.debug(f"{tracking} Skipping group message without mention")
             return
 
         # Create AI request
-        ai_request = ai_handler.create_request(message)
+        ai_request = denidin_app.ai_handler.create_request(message)
         logger.debug(f"{tracking} Created AI request {ai_request.request_id}")
 
         # Get AI response (with retry logic and fallbacks built-in)
         # Pass sender (WhatsApp ID) and recipient ('AI') for proper message tracking
-        ai_response = ai_handler.get_response(
+        ai_response = denidin_app.ai_handler.get_response(
             ai_request,
             sender=message.sender_id,
             recipient="AI"
@@ -157,7 +311,7 @@ def handle_text_message(notification: Notification) -> None:
         )
 
         # Send response (with retry logic built-in)
-        whatsapp_handler.send_response(notification, ai_response)
+        denidin_app.whatsapp_handler.send_response(notification, ai_response)
         logger.info(f"{tracking} Response sent to {message.sender_name}")
 
     except Exception as e:
@@ -204,103 +358,42 @@ def handle_text_message(notification: Notification) -> None:
 
 if __name__ == "__main__":
     # Phase 6: Memory System Integration
-    # Initialize global context and perform startup recovery
+    # Initialize app using shared initialization function
     
     logger.info("=" * 60)
     logger.info("Phase 6: Memory System Startup")
     logger.info("=" * 60)
     
-    # Initialize global context if memory system enabled
-    if ai_handler.memory_enabled:
-        logger.info("Memory system enabled - initializing global context")
-        
-        global_context = GlobalContext(
-            session_manager=ai_handler.session_manager,
-            memory_manager=ai_handler.memory_manager,
-            ai_handler=ai_handler,
-            config=config
-        )
-        
-        # Wire cleanup thread to use global context for session transfers
-        # Update SessionManager's _cleanup_expired_sessions to call transfer
-        original_cleanup = ai_handler.session_manager._cleanup_expired_sessions
-        
-        def cleanup_with_transfer():
-            """Enhanced cleanup that transfers expired sessions to long-term memory."""
-            from datetime import datetime, timedelta, timezone
-            
-            now = datetime.now(timezone.utc)
-            cutoff = now - timedelta(hours=ai_handler.session_manager.session_timeout_hours)
-            expired_base = ai_handler.session_manager.storage_dir / "expired"
-            
-            for session_dir in ai_handler.session_manager.storage_dir.iterdir():
-                if not session_dir.is_dir() or session_dir.name == "expired":
-                    continue
-                
-                session_file = session_dir / "session.json"
-                if not session_file.exists():
-                    continue
-                
-                try:
-                    session = ai_handler.session_manager._load_session(session_dir.name)
-                    last_active = datetime.fromisoformat(session.last_active)
-                    
-                    if last_active < cutoff:
-                        # Transfer to long-term memory BEFORE archiving
-                        logger.info(
-                            f"Periodic cleanup: Transferring expired session {session.session_id} "
-                            f"to long-term memory"
-                        )
-                        
-                        try:
-                            result = global_context.ai_handler.transfer_session_to_long_term_memory(
-                                chat_id=session.whatsapp_chat,
-                                session_id=session.session_id
-                            )
-                            
-                            if result.get('success'):
-                                logger.info(
-                                    f"Successfully transferred session {session.session_id}: "
-                                    f"memory_id={result.get('memory_id')}"
-                                )
-                            else:
-                                logger.error(
-                                    f"Failed to transfer session {session.session_id}: "
-                                    f"{result.get('reason')}"
-                                )
-                        except Exception as transfer_error:
-                            logger.error(
-                                f"Error transferring session {session.session_id}: {transfer_error}",
-                                exc_info=True
-                            )
-                        
-                        # Now archive (original cleanup logic)
-                        archive_date = last_active.strftime("%Y-%m-%d")
-                        archive_dir = expired_base / archive_date
-                        archive_dir.mkdir(parents=True, exist_ok=True)
-                        
-                        dest = archive_dir / session_dir.name
-                        session_dir.rename(dest)
-                        
-                        # Remove from index
-                        if session.whatsapp_chat in ai_handler.session_manager.chat_to_session:
-                            del ai_handler.session_manager.chat_to_session[session.whatsapp_chat]
-                        
-                        logger.info(
-                            f"Archived expired session {session.session_id} to expired/{archive_date}/"
-                        )
-                        
-                except Exception as e:
-                    logger.error(f"Failed to cleanup session {session_dir.name}: {e}")
-        
-        # Replace cleanup method with enhanced version
-        ai_handler.session_manager._cleanup_expired_sessions = cleanup_with_transfer
-        
-        logger.info("Global context initialized - cleanup thread wired to transfer sessions")
-        
-        # Perform startup recovery (US-MEM-07)
+    # Convert config to dict for initialize_app
+    config_dict = {
+        'green_api_instance_id': config.green_api_instance_id,
+        'green_api_token': config.green_api_token,
+        'ai_api_key': config.ai_api_key,
+        'ai_model': config.ai_model,
+        'system_message': config.system_message,
+        'max_tokens': config.max_tokens,
+        'temperature': config.temperature,
+        'log_level': config.log_level,
+        'poll_interval_seconds': config.poll_interval_seconds,
+        'max_retries': config.max_retries,
+        'data_root': config.data_root,
+        'feature_flags': config.feature_flags,
+        'godfather_phone': config.godfather_phone,
+        'memory': config.memory,
+        'constitution_config': config.constitution_config,
+        'user_roles': config.user_roles
+    }
+    
+    # Initialize app (handles memory system, cleanup thread, recovery)
+    denidin = initialize_app(config_dict)
+    
+    # Set global denidin_app for WhatsApp message handler
+    denidin_app = denidin
+    
+    # Perform orphaned session recovery if memory enabled
+    if denidin.ai_handler.memory_enabled:
         logger.info("Starting orphaned session recovery...")
-        recovery_result = ai_handler.recover_orphaned_sessions()
+        recovery_result = denidin.ai_handler.recover_orphaned_sessions()
         
         logger.info(
             f"Session recovery complete: "
@@ -309,8 +402,6 @@ if __name__ == "__main__":
             f"{recovery_result.get('loaded_to_short_term', 0)} loaded, "
             f"{recovery_result.get('failed', 0)} failed"
         )
-    else:
-        logger.info("Memory system disabled - skipping global context and recovery")
     
     logger.info("=" * 60)
     
@@ -326,9 +417,9 @@ if __name__ == "__main__":
             logger.info("DeniDin application shutting down gracefully...")
             
             # Stop cleanup thread if memory enabled
-            if ai_handler.memory_enabled and ai_handler.session_manager:
-                logger.info("Stopping SessionManager cleanup thread...")
-                ai_handler.session_manager.stop_cleanup_thread()
+            if denidin.ai_handler.memory_enabled and denidin.cleanup_thread:
+                logger.info("Stopping session cleanup thread...")
+                denidin.cleanup_thread.stop()
             
             # Raise KeyboardInterrupt to break out of bot.run_forever()
             raise KeyboardInterrupt()
@@ -355,9 +446,9 @@ if __name__ == "__main__":
             logger.info("DeniDin application shutting down gracefully...")
             
             # Stop cleanup thread if not already stopped
-            if ai_handler.memory_enabled and ai_handler.session_manager:
-                logger.info("Stopping SessionManager cleanup thread...")
-                ai_handler.session_manager.stop_cleanup_thread()
+            if denidin.ai_handler.memory_enabled and denidin.cleanup_thread:
+                logger.info("Stopping session cleanup thread...")
+                denidin.cleanup_thread.stop()
     except Exception as e:
         # Catch any unexpected error to prevent crash
         logger.critical(

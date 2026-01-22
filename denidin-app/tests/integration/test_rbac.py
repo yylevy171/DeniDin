@@ -81,7 +81,7 @@ class TestEndToEndRBACEnforcement:
     def test_client_user_flow(self, rbac_config, mock_ai_client):
         """CLIENT user: filtered memories, 4K token limit."""
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config, cleanup_interval_seconds=3600)
+        handler = AIHandler(mock_ai_client, rbac_config)
         client_phone = "+972501111111"
         
         # Act: Create request
@@ -113,7 +113,7 @@ class TestEndToEndRBACEnforcement:
     def test_godfather_user_flow(self, rbac_config, mock_ai_client):
         """GODFATHER user: sees all private memories, 100K token limit."""
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config, cleanup_interval_seconds=3600)
+        handler = AIHandler(mock_ai_client, rbac_config)
         godfather_phone = "+972501234567"
         
         # Act
@@ -144,7 +144,7 @@ class TestEndToEndRBACEnforcement:
     def test_admin_user_flow(self, rbac_config, mock_ai_client):
         """ADMIN user: full access including SYSTEM scope."""
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config, cleanup_interval_seconds=3600)
+        handler = AIHandler(mock_ai_client, rbac_config)
         admin_phone = "+972509999999"
         
         # Act
@@ -159,7 +159,7 @@ class TestEndToEndRBACEnforcement:
     def test_blocked_user_rejected(self, rbac_config, mock_ai_client):
         """BLOCKED user: rejected at all entry points."""
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config, cleanup_interval_seconds=3600)
+        handler = AIHandler(mock_ai_client, rbac_config)
         blocked_phone = "+972505555555"
         
         message = WhatsAppMessage(
@@ -199,8 +199,7 @@ class TestTokenLimitAutoPruning:
         # Arrange
         session_manager = SessionManager(
             storage_dir=f'{temp_data_dir}/sessions',
-            session_timeout_hours=24,
-            cleanup_interval_seconds=3600
+            session_timeout_hours=24
         )
         
         chat_id = "client_long_chat@c.us"
@@ -233,8 +232,7 @@ class TestTokenLimitAutoPruning:
         # Arrange
         session_manager = SessionManager(
             storage_dir=f'{temp_data_dir}/sessions',
-            session_timeout_hours=24,
-            cleanup_interval_seconds=3600
+            session_timeout_hours=24
         )
         
         chat_id = "godfather_chat@c.us"
@@ -545,7 +543,7 @@ class TestErrorHandling:
     def test_blocked_user_create_request_raises_permission_error(self, rbac_config, mock_ai_client):
         """create_request() raises PermissionError for blocked users."""
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config, cleanup_interval_seconds=3600)
+        handler = AIHandler(mock_ai_client, rbac_config)
         blocked_phone = "+972505555555"
         
         message = WhatsAppMessage(
@@ -567,7 +565,7 @@ class TestErrorHandling:
     def test_blocked_user_get_response_raises_permission_error(self, rbac_config, mock_ai_client):
         """get_response() raises PermissionError for blocked users."""
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config, cleanup_interval_seconds=3600)
+        handler = AIHandler(mock_ai_client, rbac_config)
         blocked_phone = "+972505555555"
         
         request = AIRequest(
@@ -617,8 +615,7 @@ class TestErrorHandling:
         # Arrange
         session_manager = SessionManager(
             storage_dir=f'{temp_data_dir}/sessions',
-            session_timeout_hours=24,
-            cleanup_interval_seconds=3600
+            session_timeout_hours=24
         )
         
         chat_id = "blocked_chat@c.us"
@@ -718,8 +715,7 @@ class TestConcurrentUserScenarios:
         # Arrange
         session_manager = SessionManager(
             storage_dir=f'{temp_data_dir}/sessions',
-            session_timeout_hours=24,
-            cleanup_interval_seconds=3600
+            session_timeout_hours=24
         )
         
         # Act: Multiple users create sessions
