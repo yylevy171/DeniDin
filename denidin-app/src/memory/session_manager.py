@@ -82,9 +82,6 @@ class SessionManager:
         # In-memory index: whatsapp_chat -> session_id
         self.chat_to_session: Dict[str, str] = {}
         
-        # Load existing sessions from disk
-        self._load_sessions()
-        
         # Start background cleanup thread
         self._cleanup_thread = threading.Thread(
             target=self._cleanup_loop,
@@ -92,6 +89,12 @@ class SessionManager:
         )
         self._cleanup_running = True
         self._cleanup_thread.start()
+        
+        # Wait for first cleanup to complete (avoid race conditions)
+        time.sleep(3)
+        
+        # Load existing sessions from disk (after cleanup)
+        self._load_sessions()
         
         logger.info(
             f"SessionManager initialized: timeout={session_timeout_hours}h, "
@@ -341,10 +344,10 @@ class SessionManager:
     def _cleanup_loop(self):
         """Background thread that periodically cleans up expired sessions."""
         while self._cleanup_running:
-            time.sleep(self.cleanup_interval_seconds)
-            if self._cleanup_running:  # Check again after sleep
+            if self._cleanup_running:
                 logger.debug("Running scheduled session cleanup")
                 self._cleanup_expired_sessions()
+            time.sleep(self.cleanup_interval_seconds)
     
     def stop_cleanup_thread(self):
         """Stop the background cleanup thread."""

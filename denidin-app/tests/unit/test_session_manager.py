@@ -305,32 +305,44 @@ class TestSessionExpiration:
         assert new_session.session_id != old_session_id
         assert len(new_session.message_ids) == 0  # Fresh session
     
-    def test_cleanup_thread_runs_periodically(self, temp_session_dir):
-        """Test cleanup thread runs at configured interval."""
-        # Create manager with very short interval for testing
+    def test_cleanup_runs_immediately_at_startup(self, temp_session_dir):
+        """Test cleanup runs IMMEDIATELY at initialization, before first sleep interval."""
+        chat_id = "1234567890@c.us"
+        
+        # First, create an expired session on disk using a temporary manager
+        temp_manager = SessionManager(
+            storage_dir=str(temp_session_dir),
+            session_timeout_hours=24,
+            cleanup_interval_seconds=3600  # 1 hour - realistic interval
+        )
+        temp_manager.add_message(chat_id, "user", "Old message", "client")
+        session = temp_manager.get_session(chat_id)
+        session_id = session.session_id
+        
+        # Manually set expired timestamp
+        old_time = datetime.now(timezone.utc) - timedelta(hours=25)
+        session.last_active = old_time
+        temp_manager._save_session(session)
+        temp_manager.stop_cleanup_thread()
+        
+        # Now create NEW manager - this should cleanup immediately at startup
+        # Using realistic 1-hour cleanup interval to prove it doesn't wait
         manager = SessionManager(
             storage_dir=str(temp_session_dir),
             session_timeout_hours=24,
-            cleanup_interval_seconds=1  # 1 second for fast test
+            cleanup_interval_seconds=3600  # 1 hour
         )
         
-        chat_id = "1234567890@c.us"
-        manager.add_message(chat_id, "user", "Test", "client")
-        
-        # Expire the session
-        session = manager.get_session(chat_id)
-        session_id = session.session_id
-        old_time = datetime.now(timezone.utc) - timedelta(hours=25)
-        session.last_active = old_time
-        manager._save_session(session)
-        
-        # Wait for cleanup thread to run
-        time.sleep(2.5)  # Wait for at least 2 cleanup cycles
-        
-        # Session directory should be moved to expired/YYYY-MM-DD/
+        # Check IMMEDIATELY without sleeping
+        # With current bug: session still in active dir (cleanup hasn't run yet)
+        # With fix: session already moved to expired/ (cleanup ran at startup)
+        active_dir = Path(temp_session_dir) / session_id
         expected_date = old_time.strftime("%Y-%m-%d")
         expired_dir = Path(temp_session_dir) / "expired" / expected_date / session_id
-        assert expired_dir.exists()
+        
+        # This should PASS with fix, FAIL with current bug
+        assert not active_dir.exists(), "Expired session should be moved immediately at startup"
+        assert expired_dir.exists(), "Expired session should be in expired/ folder"
         
         manager.stop_cleanup_thread()
     

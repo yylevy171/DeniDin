@@ -99,6 +99,71 @@ All implementation MUST follow strict test-first methodology with human approval
 - Manual test checkpoints (acceptance testing) serve as user story approval gates
 - No implementation code may be written until its corresponding tests exist and are approved
 
+---
+
+## VII. Bug-Driven Development (BDD)
+
+All bug fixes MUST follow a disciplined root-cause analysis and test-first workflow.
+
+**Branch Naming:**
+- Format: `bugfix/component-issue-description`
+- Example: `bugfix/session-expiry-memory-transfer`
+- Component: affected module/system (e.g., `session`, `memory`, `whatsapp`)
+- Issue: concise description in kebab-case
+
+**Bug-Fix Workflow (Strict Order):**
+
+1. **Root Cause Investigation**
+   - Reproduce the bug in isolation with minimal test case
+   - Experiment with code to understand failure mechanism
+   - Document observed vs. expected behavior
+   - Identify exact code location and logic flaw
+   - **Output**: Clear description of root cause
+
+2. **Test Gap Analysis**
+   - **CRITICAL QUESTION**: Why didn't existing tests catch this bug?
+   - Review test suite for coverage gaps
+   - Identify missing test scenarios (edge cases, timing, realistic intervals)
+   - Document test deficiencies that allowed bug to reach production
+   - **Output**: Explanation of test gap + list of missing test cases
+
+3. **Write Failing Tests (Test-First)**
+   - Create NEW test(s) that reproduce the bug
+   - Tests MUST fail with current buggy code
+   - Update EXISTING tests if they were insufficient (e.g., unrealistic test intervals)
+   - Tests should use realistic conditions (not overly short timeouts/intervals)
+   - Run tests to confirm they FAIL
+   - **Output**: Failing test suite that demonstrates the bug
+
+4. **🚨 HUMAN APPROVAL GATE 🚨**
+   - Present: Root cause analysis, test gap explanation, failing tests
+   - Human reviews and approves test strategy
+   - **BLOCKING**: No code changes until approval received
+   - If rejected: Return to step 1 or 3
+
+5. **Implement Fix**
+   - Make MINIMAL code changes to fix root cause
+   - Avoid scope creep - fix ONLY the identified bug
+   - Follow existing code style and patterns
+   - **Output**: Code changes
+
+6. **Verify Fix**
+   - Run previously-failing tests - they MUST now pass
+   - Run full test suite - all tests MUST pass
+   - Verify fix works with actual production data/scenario if applicable
+   - **Output**: Passing test suite
+
+7. **Commit & PR**
+   - Commit message format: `fix(component): brief description`
+   - Example: `fix(session): run cleanup immediately at startup`
+   - PR description MUST include:
+     - Root cause explanation
+     - Why tests didn't catch it
+     - Test changes made
+     - Code changes made
+
+**Rationale**: Bug fixes without understanding root cause lead to incomplete fixes or regressions. Test-gap analysis prevents the same class of bugs from recurring. Human approval ensures thorough investigation before changes.
+
 **Rationale**: TDD ensures code correctness by design, prevents rework from misunderstood requirements, enables confident refactoring, and provides living documentation of expected behavior. Human approval of tests before implementation guarantees alignment on acceptance criteria before costly coding begins.
 
 ---
