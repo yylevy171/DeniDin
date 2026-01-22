@@ -233,6 +233,68 @@ All requirements MUST have unique, traceable identifiers.
 
 ---
 
+## XI. Specification Folder Structure
+
+All feature specifications MUST be organized by status and priority in standardized folders.
+
+**Folder Structure:**
+```
+specs/
+├── in-definition/     # Features with open CLARIFICATIONS, not yet ready for planning
+├── in-progress/       # Features currently being implemented (active work)
+├── P0/                # Priority 0 - Critical features (blocking production)
+├── P1/                # Priority 1 - High priority features (next sprint)
+├── P2/                # Priority 2 - Medium priority features (backlog)
+├── done/              # Completed features (implemented, tested, merged)
+├── not-doing/         # Cancelled/deprecated features (not pursuing)
+├── CONSTITUTION.md    # Coding standards and constraints
+├── METHODOLOGY.md     # Development process and workflow (this file)
+└── ROADMAP.md         # Feature priorities and status tracking
+```
+
+**Requirements:**
+- **in-definition/**: Features with unresolved CLARIFICATIONS in spec.md
+  - Status: "Draft - Needs Clarification"
+  - Action: Move to priority folder (P0/P1/P2) once clarifications resolved
+  
+- **in-progress/**: Features actively being developed
+  - Status: "Implementation in Progress" or "Testing"
+  - Action: Move to `done/` once merged to master
+  
+- **P0/**: Critical priority - blocking production issues, security fixes
+  - Must be addressed before new feature work
+  - Example: Critical bugs, production outages
+  
+- **P1/**: High priority - next planned features
+  - Ready for planning and implementation
+  - All clarifications resolved
+  
+- **P2/**: Medium priority - backlog features
+  - Fully specified but deferred
+  - Can be promoted to P1 as capacity allows
+- **done/**: Completed and merged features
+  - Serves as reference and documentation archive
+  - Never deleted (historical record)
+  
+- **not-doing/**: Cancelled, deprecated, or rejected features
+  - Features decided not to pursue
+  - Superseded by alternative approaches
+  - Serves as historical record of what was considered and why rejected
+  - Never deleted (prevents re-proposing rejected ideas)
+
+**Folder Movement Rules:**
+1. New feature starts in `in-definition/` until clarifications resolved
+2. Once clarifications answered → Move to `P0/`, `P1/`, or `P2/` based on priority
+3. When implementation begins → Move to `in-progress/`
+4. When feature merged to master → Move to `done/`
+5. When feature cancelled/rejected → Move to `not-doing/` (with rationale documented in spec)
+6. Feature folders MUST NOT exist in multiple locations simultaneously
+5. Feature folders MUST NOT exist in multiple locations simultaneously
+
+**Rationale**: Organized folder structure provides instant visibility into feature status, prevents stale specs from cluttering active work, enables priority-based planning, and maintains historical archive of completed features.
+
+---
+
 ## Development Workflow
 
 ### Feature Initialization
@@ -241,13 +303,20 @@ All requirements MUST have unique, traceable identifiers.
 2. Feature directories MUST follow naming: `specs/###-feature-name/`
 3. Branch names MUST follow: `###-feature-name` (matching directory)
 4. Spec MUST be created via `speckit.specify` agent with user input validation
+5. New feature starts in `specs/in-definition/` folder until clarifications resolved
 
 ### Workflow Progression
 
 ```text
 User Request
     ↓
-speckit.specify → spec.md (USER APPROVAL GATE)
+speckit.specify → spec.md in specs/in-definition/
+    ↓
+Resolve CLARIFICATIONS (USER APPROVAL GATE)
+    ↓
+Move to specs/P0/, specs/P1/, or specs/P2/ based on priority
+    ↓
+speckit.plan → plan.md (USER APPROVAL GATE)
     ↓
 speckit.clarify (if ambiguities detected)
     ↓

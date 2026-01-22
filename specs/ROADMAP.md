@@ -42,25 +42,28 @@
 
 See: `specs/002-007-memory-system/`
 
-### 006 - RBAC User Roles
-**Dependencies**: Memory System Phase 6-10 completion
-- Role-based access control (ADMIN, GODFATHER, CLIENT, BLOCKED)
-- Permission matrix with token limits (4K client, 100K godfather)
-- Per-role memory scopes (public, private, system)
-- Session token pruning and management
+### 006 - RBAC User Roles (January 21, 2026) - PR #37 Merged
+**Status**: ✅ COMPLETE
+- ✅ Role-based access control (ADMIN, GODFATHER, CLIENT, BLOCKED)
+- ✅ Permission matrix with token limits (4K client, 100K godfather)
+- ✅ Per-role memory scopes (public, private, system)
+- ✅ Session token pruning and management
+- ✅ 112 comprehensive tests (26 user model, 34 user manager, 15 config, 13 memory, 10 session, 8 AIHandler, 21 integration)
+- 🚀 Feature flag: `enable_rbac` (default: disabled for safe deployment)
 
 See: `specs/006-rbac-user-roles/`
 
-## Priority 1 (High)
-
-### Deployment & Operations Improvements
-- [ ] **Fix bot management scripts** - Resolve background execution issues in run_denidin.sh/stop_denidin.sh (see `ENHANCEMENTS.md`)
-  - Options: screen/tmux, proper daemon, systemd/launchd, or fix background I/O handling
-  - Current issue: Process exits immediately, verification fails, multiple instances possible
-- [ ] **Remove /reset command** - Eliminate manual session reset functionality (see `ENHANCEMENTS.md`)
-  - Remove `/reset` command handler from denidin.py
+### Deployment & Operations Improvements (January 2026) - PR #33, #35 Merged
+- ✅ **Fix bot management scripts** - Resolved background execution issues in run_denidin.sh/stop_denidin.sh (PR #33)
+  - Fixed background I/O handling for proper daemon operation
+  - Single-instance enforcement with PID file management
+  - Graceful shutdown and orphaned process detection
+- ✅ **Remove /reset command** - Eliminated manual session reset functionality (PR #35)
+  - Removed `/reset` command handler from denidin.py
   - Rely solely on automatic 24h session expiration for long-term memory transfer
   - Prevents duplicate message storage and simplifies user experience
+
+## Priority 1 (High)
 
 ### Feature Development
 - [ ] **003 - Media & Document Processing** - Support for images (GPT-4 Vision), PDFs (pdfplumber), DOCX files (python-docx) with AI analysis. **Note**: Document text extraction merged into 002+007 Phase 2 (see `specs/003-media-document-processing/`)
