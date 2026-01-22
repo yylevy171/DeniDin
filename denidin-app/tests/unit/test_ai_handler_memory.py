@@ -382,6 +382,11 @@ class TestAIHandlerSessionToLongTermMemory:
         handler.session_manager.get_conversation_history = Mock(return_value=mock_conversation)
         handler.memory_manager.remember = Mock(return_value="memory_uuid_456")
         
+        # Mock collection for verification
+        mock_collection = Mock()
+        mock_collection.count.return_value = 1
+        handler.memory_manager.client.get_collection = Mock(return_value=mock_collection)
+        
         # Call the session-to-memory transfer method
         result = handler.transfer_session_to_long_term_memory(
             chat_id="1234567890@c.us",
@@ -456,6 +461,11 @@ class TestAIHandlerSessionToLongTermMemory:
         handler.session_manager.get_session = Mock(return_value=mock_session)
         handler.session_manager.get_conversation_history = Mock(return_value=mock_conversation)
         handler.memory_manager.remember = Mock(return_value="fallback_memory_001")
+        
+        # Mock collection for verification
+        mock_collection = Mock()
+        mock_collection.count.return_value = 1
+        handler.memory_manager.client.get_collection = Mock(return_value=mock_collection)
         
         result = handler.transfer_session_to_long_term_memory(
             chat_id="test@c.us",
@@ -580,6 +590,11 @@ class TestAIHandlerStartupRecovery:
             "memory_002"   # For expired_002
         ])
         
+        # Mock collection for verification
+        mock_collection = Mock()
+        mock_collection.count.return_value = 1
+        handler.memory_manager.client.get_collection = Mock(return_value=mock_collection)
+        
         # Call startup recovery
         result = handler.recover_orphaned_sessions()
         
@@ -664,6 +679,11 @@ class TestAIHandlerStartupRecovery:
             choices=[Mock(message=Mock(content="Summary"))]
         )
         
+        # Mock collection for verification
+        mock_collection = Mock()
+        mock_collection.count.return_value = 1
+        handler.memory_manager.client.get_collection = Mock(return_value=mock_collection)
+        
         result = handler.recover_orphaned_sessions()
         
         # Should continue despite failure
@@ -694,8 +714,7 @@ class TestSessionTransferRealMethod:
         
         session_manager = SessionManager(
             storage_dir=str(session_storage),
-            session_timeout_hours=24,
-            cleanup_interval_seconds=3600
+            session_timeout_hours=24
         )
         
         # Create a real session with messages
@@ -719,6 +738,11 @@ class TestSessionTransferRealMethod:
         
         # Mock only the memory_manager.remember to avoid ChromaDB
         handler.memory_manager.remember = Mock(return_value="test_memory_id")
+        
+        # Mock collection for verification
+        mock_collection = Mock()
+        mock_collection.count.return_value = 1
+        handler.memory_manager.client.get_collection = Mock(return_value=mock_collection)
         
         # THIS SHOULD NOT RAISE TypeError about max_messages parameter
         result = handler.transfer_session_to_long_term_memory(

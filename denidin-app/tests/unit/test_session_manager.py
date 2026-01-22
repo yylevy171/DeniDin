@@ -27,12 +27,9 @@ def session_manager(temp_session_dir):
     """Create SessionManager instance for testing."""
     manager = SessionManager(
         storage_dir=str(temp_session_dir),
-        session_timeout_hours=24,
-        cleanup_interval_seconds=10  # Fast cleanup for tests
+        session_timeout_hours=24
     )
     yield manager
-    # Stop cleanup thread after test
-    manager.stop_cleanup_thread()
 
 
 class TestSessionCreation:
@@ -180,7 +177,6 @@ class TestPersistence:
         manager1 = SessionManager(storage_dir=str(temp_session_dir))
         manager1.add_message(chat_id, "user", "Persisted message", "client")
         session_id = manager1.get_session(chat_id).session_id
-        manager1.stop_cleanup_thread()
         
         # Create new manager (simulates restart)
         manager2 = SessionManager(storage_dir=str(temp_session_dir))
@@ -192,8 +188,6 @@ class TestPersistence:
         # Verify can retrieve message
         history = manager2.get_conversation_history(chat_id, "client")
         assert history[0]["content"] == "Persisted message"
-        
-        manager2.stop_cleanup_thread()
 
 
 class TestSessionExpiration:
@@ -210,11 +204,11 @@ class TestSessionExpiration:
         
         # Manually set old timestamp
         old_time = datetime.now(timezone.utc) - timedelta(hours=25)
-        session.last_active = old_time
+        session.last_active = old_time.isoformat()
         session_manager._save_session(session)
         
-        # Trigger cleanup
-        session_manager._cleanup_expired_sessions()
+        # Trigger archival (simulates what background cleanup does)
+        session_manager.archive_session(session)
         
         # Session directory should be moved to expired/YYYY-MM-DD/
         active_dir = Path(temp_session_dir) / session_id
@@ -244,11 +238,11 @@ class TestSessionExpiration:
         session = session_manager.get_session(chat_id)
         session_id = session.session_id
         old_time = datetime.now(timezone.utc) - timedelta(hours=25)
-        session.last_active = old_time
+        session.last_active = old_time.isoformat()
         session_manager._save_session(session)
         
-        # Trigger cleanup
-        session_manager._cleanup_expired_sessions()
+        # Trigger archival (simulates what background cleanup does)
+        session_manager.archive_session(session)
         
         # Entire session directory should be moved to dated subfolder
         active_dir = Path(temp_session_dir) / session_id
@@ -278,9 +272,10 @@ class TestSessionExpiration:
         assert session_manager.chat_to_session.get(chat_id) == old_session_id
         
         # Expire and cleanup
-        session.last_active = datetime.now(timezone.utc) - timedelta(hours=25)
+        session.last_active = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
         session_manager._save_session(session)
-        session_manager._cleanup_expired_sessions()
+        session_manager.archive_session(session)
+        session_manager.remove_from_index(session)
         
         # Verify session removed from index
         assert chat_id not in session_manager.chat_to_session
@@ -294,76 +289,17 @@ class TestSessionExpiration:
         old_session_id = session_manager.get_session(chat_id).session_id
         
         session = session_manager.get_session(chat_id)
-        session.last_active = datetime.now(timezone.utc) - timedelta(hours=25)
+        session.last_active = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
         session_manager._save_session(session)
         
-        # Cleanup
-        session_manager._cleanup_expired_sessions()
+        # Cleanup (simulates what background cleanup does)
+        session_manager.archive_session(session)
+        session_manager.remove_from_index(session)
         
         # Get session again - should create new one
         new_session = session_manager.get_session(chat_id)
         assert new_session.session_id != old_session_id
         assert len(new_session.message_ids) == 0  # Fresh session
-    
-    def test_cleanup_runs_immediately_at_startup(self, temp_session_dir):
-        """Test cleanup runs IMMEDIATELY at initialization, before first sleep interval."""
-        chat_id = "1234567890@c.us"
-        
-        # First, create an expired session on disk using a temporary manager
-        temp_manager = SessionManager(
-            storage_dir=str(temp_session_dir),
-            session_timeout_hours=24,
-            cleanup_interval_seconds=3600  # 1 hour - realistic interval
-        )
-        temp_manager.add_message(chat_id, "user", "Old message", "client")
-        session = temp_manager.get_session(chat_id)
-        session_id = session.session_id
-        
-        # Manually set expired timestamp
-        old_time = datetime.now(timezone.utc) - timedelta(hours=25)
-        session.last_active = old_time
-        temp_manager._save_session(session)
-        temp_manager.stop_cleanup_thread()
-        
-        # Now create NEW manager - this should cleanup immediately at startup
-        # Using realistic 1-hour cleanup interval to prove it doesn't wait
-        manager = SessionManager(
-            storage_dir=str(temp_session_dir),
-            session_timeout_hours=24,
-            cleanup_interval_seconds=3600  # 1 hour
-        )
-        
-        # Check IMMEDIATELY without sleeping
-        # With current bug: session still in active dir (cleanup hasn't run yet)
-        # With fix: session already moved to expired/ (cleanup ran at startup)
-        active_dir = Path(temp_session_dir) / session_id
-        expected_date = old_time.strftime("%Y-%m-%d")
-        expired_dir = Path(temp_session_dir) / "expired" / expected_date / session_id
-        
-        # This should PASS with fix, FAIL with current bug
-        assert not active_dir.exists(), "Expired session should be moved immediately at startup"
-        assert expired_dir.exists(), "Expired session should be in expired/ folder"
-        
-        manager.stop_cleanup_thread()
-    
-    def test_active_sessions_not_moved(self, session_manager, temp_session_dir):
-        """Test active sessions remain in place during cleanup."""
-        chat_id = "1234567890@c.us"
-        
-        # Create active session (recent timestamp)
-        session_manager.add_message(chat_id, "user", "Active message", "client")
-        session = session_manager.get_session(chat_id)
-        session_id = session.session_id
-        
-        # Run cleanup
-        session_manager._cleanup_expired_sessions()
-        
-        # Session directory should still be in active location
-        active_dir = Path(temp_session_dir) / session_id
-        assert active_dir.exists()
-        
-        # Session should still be in index
-        assert session_manager.chat_to_session.get(chat_id) == session_id
 
 
 class TestSessionManagement:
