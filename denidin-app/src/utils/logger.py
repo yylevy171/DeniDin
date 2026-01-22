@@ -8,9 +8,7 @@ Logging Strategy:
 """
 import logging
 import os
-import sys
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 
 def setup_logger(
@@ -23,7 +21,7 @@ def setup_logger(
 ) -> logging.Logger:
     """
     Set up a logger with file and console handlers.
-    
+
     Args:
         name: Name of the logger
         logs_dir: Directory to store log files (default: 'logs')
@@ -32,7 +30,7 @@ def setup_logger(
         log_level: Logging level ('INFO' or 'DEBUG')
         max_bytes: Maximum size of log file before rotation
         backup_count: Number of backup files to keep
-        
+
     Returns:
         Configured logger instance
     """
@@ -40,21 +38,21 @@ def setup_logger(
     log_path = os.path.join(logs_dir, log_filename)
     log_dir = os.path.dirname(log_path)
     os.makedirs(log_dir, exist_ok=True)
-    
+
     # Create logger
     logger = logging.getLogger(name)
     logger.setLevel(getattr(logging, log_level))
-    
+
     # Prevent duplicate handlers if logger already exists
     if logger.handlers:
         return logger
-    
+
     # Create formatter
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    
+
     # File handler with rotation
     file_handler = RotatingFileHandler(
         log_path,
@@ -64,16 +62,16 @@ def setup_logger(
     file_handler.setLevel(getattr(logging, log_level))
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
-    
+
     # Console handler (outputs to stderr)
     console_handler = logging.StreamHandler()
     console_handler.setLevel(getattr(logging, log_level))
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
-    
+
     # Prevent propagation to root logger to avoid duplicate console output
     logger.propagate = False
-    
+
     return logger
 
 
@@ -85,16 +83,16 @@ def get_logger(
 ) -> logging.Logger:
     """
     Get or create a configured logger.
-    
+
     In test environment (when root logger has handlers), uses root logger configuration.
     In production, creates separate logger with file handlers.
-    
+
     Args:
         name: Name of the logger
         logs_dir: Directory to store log files (default: 'logs')
         log_filename: Name of the log file (default: 'denidin.log')
         log_level: Logging level ('INFO' or 'DEBUG')
-        
+
     Returns:
         Configured logger instance
     """
@@ -105,7 +103,6 @@ def get_logger(
         logger = logging.getLogger(name)
         logger.setLevel(getattr(logging, log_level))
         return logger
-    
+
     # Production environment - set up logger with file handlers
     return setup_logger(name, logs_dir, log_filename, log_level)
-

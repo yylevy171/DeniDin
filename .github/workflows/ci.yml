@@ -3,8 +3,8 @@ name: CI - Lint and Test
 on:
   pull_request:
     branches: [ master ]
-  push:
-    branches: [ master ]
+  # Removed push trigger to reduce noise - CI only runs on PRs
+  # To manually trigger: use workflow_dispatch or push to PR branch
 
 jobs:
   lint:
