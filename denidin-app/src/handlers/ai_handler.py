@@ -492,7 +492,7 @@ class AIHandler:
                 logger.error(f"Session not found for transfer: {session_id}")
                 return {"success": False, "reason": "session_not_found"}
             
-            conversation = self.session_manager.get_conversation_history(chat_id, max_messages=1000)
+            conversation = self.session_manager.get_conversation_history(chat_id)
             if not conversation:
                 logger.warning(f"No conversation history for session {session_id}")
                 return {"success": False, "reason": "empty_conversation"}

@@ -671,3 +671,65 @@ class TestAIHandlerStartupRecovery:
         assert result["transferred_to_long_term"] == 1  # Only session2 succeeded
         assert result["failed"] == 1
         assert "fail_session" in result["failed_sessions"]
+
+
+class TestSessionTransferRealMethod:
+    """Test session transfer with real (non-mocked) get_conversation_history call."""
+    
+    def test_transfer_calls_get_conversation_history_correctly(self, memory_enabled_config, tmp_path):
+        """
+        Test that transfer_session_to_long_term_memory calls get_conversation_history
+        with correct parameters (NOT max_messages which doesn't exist).
+        
+        This test uses REAL SessionManager to catch parameter mismatch bugs.
+        """
+        import tempfile
+        import json
+        from pathlib import Path
+        from src.memory.session_manager import SessionManager
+        
+        # Create real SessionManager with temp storage
+        session_storage = tmp_path / "sessions"
+        session_storage.mkdir()
+        
+        session_manager = SessionManager(
+            storage_dir=str(session_storage),
+            session_timeout_hours=24,
+            cleanup_interval_seconds=3600
+        )
+        
+        # Create a real session with messages
+        chat_id = "1234567890@c.us"
+        session_manager.add_message(chat_id, "user", "Hello", "client")
+        session_manager.add_message(chat_id, "assistant", "Hi there", "client")
+        
+        # Get the session
+        session = session_manager.get_session(chat_id)
+        
+        # Mock AI client
+        client = MagicMock()
+        mock_completion = MagicMock()
+        mock_completion.choices = [MagicMock()]
+        mock_completion.choices[0].message.content = "Test summary"
+        client.chat.completions.create.return_value = mock_completion
+        
+        # Create AIHandler with real session_manager
+        handler = AIHandler(client, memory_enabled_config)
+        handler.session_manager = session_manager
+        
+        # Mock only the memory_manager.remember to avoid ChromaDB
+        handler.memory_manager.remember = Mock(return_value="test_memory_id")
+        
+        # THIS SHOULD NOT RAISE TypeError about max_messages parameter
+        result = handler.transfer_session_to_long_term_memory(
+            chat_id=chat_id,
+            session_id=session.session_id
+        )
+        
+        # Verify transfer succeeded
+        assert result["success"] is True
+        assert "memory_id" in result
+        
+        # Verify get_conversation_history was called (implicitly, through transfer)
+        # If it had been called with max_messages=1000, it would have raised TypeError
+
