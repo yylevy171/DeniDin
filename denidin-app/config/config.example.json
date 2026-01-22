@@ -11,7 +11,8 @@
   "max_retries": 3,
   "data_root": "data",
   "feature_flags": {
-    "enable_memory_system": false
+    "enable_memory_system": false,
+    "enable_rbac": false
   },
   "godfather_phone": "YOUR_GODFATHER_WHATSAPP_ID",
   "memory": {
