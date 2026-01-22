@@ -61,9 +61,9 @@ echo "Starting DeniDin application..."
 echo "Logs: $LOGFILE"
 
 # Run application in background with proper redirection
-# Use nohup to prevent SIGHUP and keep process alive when terminal closes
-# Important: Redirect order matters - stdin first, then stdout/stderr
-nohup python3 "$APP_SCRIPT" </dev/null >>"$LOGFILE" 2>&1 &
+# Redirect only stdin to /dev/null - let Python logger handle file output
+# This prevents duplicate logs (shell redirection + Python file handler)
+nohup python3 "$APP_SCRIPT" </dev/null >/dev/null 2>&1 &
 APP_PID=$!
 
 # Give the shell a moment to fork the process

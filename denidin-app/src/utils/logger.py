@@ -71,6 +71,9 @@ def setup_logger(
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
     
+    # Prevent propagation to root logger to avoid duplicate console output
+    logger.propagate = False
+    
     return logger
 
 
