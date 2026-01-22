@@ -46,6 +46,8 @@ class Session:
     created_at: str = ""
     last_active: str = ""
     total_tokens: int = 0
+    transferred_to_longterm: bool = False
+    storage_path: Optional[str] = None
 
 
 class SessionManager:
@@ -62,8 +64,7 @@ class SessionManager:
     def __init__(
         self,
         storage_dir: str = "data/sessions",
-        session_timeout_hours: int = 24,
-        cleanup_interval_seconds: int = 3600
+        session_timeout_hours: int = 24
     ):
         """
         Initialize SessionManager.
@@ -71,35 +72,19 @@ class SessionManager:
         Args:
             storage_dir: Directory for session storage
             session_timeout_hours: Hours before session expires
-            cleanup_interval_seconds: Cleanup thread interval
         """
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         
         self.session_timeout_hours = session_timeout_hours
-        self.cleanup_interval_seconds = cleanup_interval_seconds
         
         # In-memory index: whatsapp_chat -> session_id
         self.chat_to_session: Dict[str, str] = {}
         
-        # Start background cleanup thread
-        self._cleanup_thread = threading.Thread(
-            target=self._cleanup_loop,
-            daemon=True
-        )
-        self._cleanup_running = True
-        self._cleanup_thread.start()
-        
-        # Wait for first cleanup to complete (avoid race conditions)
-        time.sleep(3)
-        
-        # Load existing sessions from disk (after cleanup)
+        # Load existing sessions from disk
         self._load_sessions()
         
-        logger.info(
-            f"SessionManager initialized: timeout={session_timeout_hours}h, "
-            f"cleanup_interval={cleanup_interval_seconds}s"
-        )
+        logger.info(f"SessionManager initialized: timeout={session_timeout_hours}h")
     
     def get_session(self, chat_id: str) -> Session:
         """
@@ -215,7 +200,10 @@ class SessionManager:
             List of messages in format [{"role": "user", "content": "..."}]
         """
         session = self.get_session(whatsapp_chat)
-        session_dir = self.storage_dir / session.session_id
+        if session.storage_path:
+            session_dir = self.storage_dir / session.storage_path
+        else:
+            session_dir = self.storage_dir / session.session_id
         messages_dir = session_dir / "messages"
         
         history = []
@@ -259,7 +247,10 @@ class SessionManager:
     
     def _save_session(self, session: Session):
         """Save session metadata to disk."""
-        session_dir = self.storage_dir / session.session_id
+        if session.storage_path:
+            session_dir = self.storage_dir / session.storage_path
+        else:
+            session_dir = self.storage_dir / session.session_id
         session_dir.mkdir(parents=True, exist_ok=True)
         
         session_file = session_dir / "session.json"
@@ -277,6 +268,16 @@ class SessionManager:
     def _load_session(self, session_id: str) -> Session:
         """Load session metadata from disk."""
         session_file = self.storage_dir / session_id / "session.json"
+        
+        if not session_file.exists():
+            expired_base = self.storage_dir / "expired"
+            if expired_base.exists():
+                for date_folder in expired_base.iterdir():
+                    if date_folder.is_dir():
+                        archived_file = date_folder / session_id / "session.json"
+                        if archived_file.exists():
+                            session_file = archived_file
+                            break
         
         with open(session_file) as f:
             data = json.load(f)
@@ -301,12 +302,16 @@ class SessionManager:
                 except Exception as e:
                     logger.error(f"Failed to load session {session_dir.name}: {e}")
     
-    def _cleanup_expired_sessions(self):
-        """Move expired sessions to dated archive folders."""
+    def get_expired_sessions(self) -> List[Session]:
+        """
+        Find all expired sessions that need cleanup.
+        
+        Returns:
+            List of expired Session objects
+        """
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(hours=self.session_timeout_hours)
-        
-        expired_base = self.storage_dir / "expired"
+        expired = []
         
         for session_dir in self.storage_dir.iterdir():
             if not session_dir.is_dir() or session_dir.name == "expired":
@@ -321,40 +326,67 @@ class SessionManager:
                 last_active = datetime.fromisoformat(session.last_active)
                 
                 if last_active < cutoff:
-                    # Create dated subfolder based on session's last_active date
-                    archive_date = last_active.strftime("%Y-%m-%d")
-                    archive_dir = expired_base / archive_date
-                    archive_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    # Move entire session directory
-                    dest = archive_dir / session_dir.name
-                    session_dir.rename(dest)
-                    
-                    # Remove from index
-                    if session.whatsapp_chat in self.chat_to_session:
-                        del self.chat_to_session[session.whatsapp_chat]
-                    
-                    logger.info(
-                        f"Archived expired session {session.session_id} "
-                        f"to expired/{archive_date}/"
-                    )
+                    expired.append(session)
             except Exception as e:
-                logger.error(f"Failed to cleanup session {session_dir.name}: {e}")
+                logger.error(f"Failed to check session {session_dir.name}: {e}")
+        
+        return expired
     
-    def _cleanup_loop(self):
-        """Background thread that periodically cleans up expired sessions."""
-        while self._cleanup_running:
-            if self._cleanup_running:
-                logger.debug("Running scheduled session cleanup")
-                self._cleanup_expired_sessions()
-            time.sleep(self.cleanup_interval_seconds)
+    def archive_session(self, session: Session) -> bool:
+        """
+        Move session directory to dated expired folder.
+        
+        Args:
+            session: Session to archive
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            session_dir = self.storage_dir / session.session_id
+            if not session_dir.exists():
+                logger.warning(f"Session directory not found: {session.session_id}")
+                return False
+            
+            # Create dated subfolder
+            last_active = datetime.fromisoformat(session.last_active)
+            archive_date = last_active.strftime("%Y-%m-%d")
+            expired_base = self.storage_dir / "expired"
+            archive_dir = expired_base / archive_date
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Move entire session directory
+            dest = archive_dir / session.session_id
+            session_dir.rename(dest)
+            
+            # Update storage path and save to archived location (keep in index for AI transfer)
+            session.storage_path = f"expired/{archive_date}/{session.session_id}"
+            self._save_session(session)
+            
+            logger.info(
+                f"Archived session {session.session_id} to expired/{archive_date}/ "
+                f"(transferred={session.transferred_to_longterm}, kept in index)"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to archive session {session.session_id}: {e}")
+            return False
     
-    def stop_cleanup_thread(self):
-        """Stop the background cleanup thread."""
-        self._cleanup_running = False
-        if self._cleanup_thread.is_alive():
-            self._cleanup_thread.join(timeout=5)
-        logger.info("SessionManager cleanup thread stopped")
+    def remove_from_index(self, session: Session) -> bool:
+        """
+        Remove session from in-memory index after AI transfer.
+        
+        Args:
+            session: Session to remove
+            
+        Returns:
+            True if removed, False if not found
+        """
+        if session.whatsapp_chat in self.chat_to_session:
+            del self.chat_to_session[session.whatsapp_chat]
+            logger.info(f"Removed session {session.session_id} from index")
+            return True
+        return False
     
     def is_session_expired(self, session: Session) -> bool:
         """

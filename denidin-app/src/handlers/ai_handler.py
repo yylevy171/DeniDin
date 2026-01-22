@@ -77,14 +77,12 @@ class AIHandler:
             # Initialize SessionManager
             session_config = config.memory.get('session', {})
             
-            # Use provided cleanup_interval or default from config
-            if cleanup_interval_seconds is None:
-                cleanup_interval_seconds = session_config.get('cleanup_interval_seconds', 3600)
+            # Note: cleanup_interval_seconds moved to app-level background thread
+            # SessionManager no longer runs its own cleanup thread
             
             self.session_manager = SessionManager(
                 storage_dir=session_config.get('storage_dir', 'data/sessions'),
-                session_timeout_hours=session_config.get('session_timeout_hours', 24),
-                cleanup_interval_seconds=cleanup_interval_seconds
+                session_timeout_hours=session_config.get('session_timeout_hours', 24)
             )
             
             # Store token limits for later use in conversation retrieval
@@ -505,8 +503,8 @@ class AIHandler:
                 # Build summarization prompt
                 conv_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation])
                 summary_prompt = [
-                    {"role": "system", "content": "You are a helpful assistant that summarizes conversations concisely. Focus on key topics, decisions, and action items. Keep summaries under 500 words."},
-                    {"role": "user", "content": f"Please summarize this conversation:\n\n{conv_text}"}
+                    {"role": "system", "content": "You are a conversation summarizer that extracts both explicit and implicit information. Start your summary by listing key facts as bullet points (e.g., names, preferences, decisions, entities mentioned). Then provide context, relationships, and logical deductions. Make information easily retrievable for future questions. Keep summaries under 500 words."},
+                    {"role": "user", "content": f"Summarize this conversation, leading with facts then inferences:\n\n{conv_text}"}
                 ]
                 
                 completion = self.client.chat.completions.create(
@@ -526,6 +524,9 @@ class AIHandler:
                 used_fallback = True
             
             # Store in ChromaDB
+            collection_name = f"memory_{chat_id.replace('@c.us', '')}"
+            logger.info(f"Starting ChromaDB storage for session {session_id} in collection {collection_name}")
+            
             metadata = {
                 "type": "session_summary_fallback" if used_fallback else "session_summary",
                 "session_id": session_id,
@@ -538,9 +539,16 @@ class AIHandler:
             
             memory_id = self.memory_manager.remember(
                 content=summary_text,
-                collection_name=f"memory_{chat_id.replace('@c.us', '')}",
+                collection_name=collection_name,
                 metadata=metadata
             )
+            
+            logger.info(f"ChromaDB storage completed for session {session_id}: memory_id={memory_id}")
+            
+            # Verify storage
+            collection = self.memory_manager.client.get_collection(name=collection_name)
+            count = collection.count()
+            logger.info(f"ChromaDB collection '{collection_name}' now has {count} item(s)")
             
             logger.info(f"Session {session_id} transferred to long-term memory: {memory_id}")
             
