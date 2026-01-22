@@ -1,29 +1,119 @@
 # DeniDin
 
-A WhatsApp AI assistant with semantic memory and conversation management.
+A WhatsApp AI assistant with semantic memory, role-based access control, and conversation management.
 
 ## Overview
 
-DeniDin is a production WhatsApp application powered by OpenAI GPT-4o-mini with an advanced two-tier memory system: short-term conversation history (SessionManager) and long-term semantic memory (ChromaDB). The application maintains context across conversations and recalls relevant information automatically.
+DeniDin is a production WhatsApp application powered by OpenAI GPT-4o-mini with an advanced two-tier memory system: short-term conversation history (SessionManager) and long-term semantic memory (ChromaDB). The application maintains context across conversations, recalls relevant information automatically, and enforces role-based permissions for different user types.
 
 ## Current Status
 
-**Version**: 1.0 (Production) + Memory System (Phase 6 Complete)
+**Version**: 1.0 (Production)
+
+### Code Quality
+- 📊 **Pylint Score**: 9.81/10 (improved from 6.55/10)
+- ✅ **Test Coverage**: 90% (1,092 statements, 110 missed)
+- ✅ **Tests Passing**: 391 tests, 4 skipped
+- 🧹 **Code Standards**: Trailing whitespace removed, imports organized, encoding specified
+- 📧 **CI/CD**: Email notifications reduced (CI only runs on PRs)
+
+### Production Features
 - ✅ WhatsApp integration via Green API
 - ✅ AI responses via OpenAI GPT-4o-mini
 - ✅ Session management with UUID-based conversations
 - ✅ ChromaDB semantic memory with automatic recall
+- ✅ Role-Based Access Control (RBAC) with 4 user roles
+- ✅ Token-based session limits per role
+- ✅ Memory scope filtering (public, private, system)
 - ✅ Startup recovery for orphaned sessions
-- ✅ Automatic session transfer to long-term memory on 24h expiration
+- ✅ Automatic session cleanup and archival (24h expiration)
+- ✅ Background thread for session transfer to long-term memory
 - ✅ Data root configuration for test/prod separation
 - ✅ Sender/recipient tracking for proper message attribution
-- ✅ Application management scripts (run_denidin.sh, stop_denidin.sh)
-- ✅ 212 tests passing, 4 skipped
+- ✅ Application management scripts (run, stop, restart)
 - 🚀 Application deployed and running in production
 
-**Memory System**: Phases 1-6 complete (PR #20 merged to master)
-- Feature flag: `enable_memory_system` (default: disabled for safe deployment)
-- Next: Phase 7-10 (integration testing, documentation, validation, production enablement)
+### Feature Implementation Status
+
+**✅ Completed Features** (in `specs/done/`):
+1. ✅ **001 - WhatsApp Chatbot Passthrough** - Core messaging infrastructure
+2. ✅ **002 - Chat Session Management** - UUID-based session tracking
+3. ✅ **006 - RBAC User Roles** - 4-tier role system (Admin, Godfather, Client, Blocked)
+4. ✅ **007 - Persistent Context Memory** - ChromaDB long-term semantic memory
+5. ✅ **010 - Rename OpenAI to AI** - Generic AI handler abstraction
+6. ✅ **011 - Rename BotConfiguration to AppConfiguration** - Terminology cleanup
+7. ✅ **012 - Update Bot Terminology to App** - Consistent naming across codebase
+8. ✅ **002-007 - Memory System** - Complete two-tier memory architecture
+
+**🚧 In Progress** (in `specs/in-progress/`):
+- **003 - Media Document Processing** - Image and document handling
+
+**📋 Planned** (in `specs/in-definition/`, `specs/P0/`, `specs/P1/`, `specs/P2/`):
+- 013 - Proactive WhatsApp Messaging Core
+- 014 - Entity Extraction Group Messages
+- 015 - Topic-Based Access Control
+- 005 - MCP Morning Green Receipt
+- 008 - Scheduled Proactive Chats
+- 009 - Agentic Workflow Builder
+
+## Architecture
+
+### Memory System
+
+DeniDin implements a sophisticated two-tier memory architecture:
+
+**Tier 1: Session Manager (Short-term)**
+- UUID-based conversation tracking
+- Per-user message history with role-based token limits
+- Automatic token pruning to stay within limits
+- 24-hour session expiration with archival
+- Message persistence in JSON format
+
+**Tier 2: Memory Manager (Long-term)**
+- ChromaDB vector database for semantic search
+- Per-entity collection architecture
+- OpenAI embeddings (text-embedding-3-small)
+- Memory scopes: PUBLIC, PRIVATE, SYSTEM
+- Automatic session transfer on expiration
+
+**Background Processing**
+- SessionCleanupThread monitors expired sessions
+- 4-step atomic cleanup process:
+  1. Archive session files to `expired/YYYY-MM-DD/`
+  2. Transfer to ChromaDB via AI handler
+  3. Remove from active index
+  4. Mark as transferred
+
+### Role-Based Access Control (RBAC)
+
+Four user roles with different permissions and limits:
+
+| Role | Token Limit | Memory Access | System Access |
+|------|-------------|---------------|---------------|
+| **Admin** | Unlimited | ALL (public, private, system) | ✅ Yes |
+| **Godfather** | 100,000 | ALL private + public | ❌ No |
+| **Client** | 4,000 | Own private + public | ❌ No |
+| **Blocked** | 0 | None | ❌ No |
+
+### Test Coverage Details
+
+**100% Coverage** (7 modules):
+- ✅ config/media_config.py
+- ✅ models/document.py, message.py, state.py, user.py
+- ✅ utils/state.py, user_manager.py
+
+**90%+ Coverage** (4 modules):
+- ⭐ models/config.py (97%)
+- ⭐ memory/memory_manager.py (96%)
+- ⭐ memory/session_manager.py (93%)
+- ⭐ utils/logger.py (93%)
+
+**80%+ Coverage** (1 module):
+- 🔶 handlers/ai_handler.py (88%)
+
+**Needs Improvement** (2 modules):
+- ⚠️ handlers/whatsapp_handler.py (70%)
+- ⚠️ background_threads.py (66%)
 
 ## Governance
 
@@ -60,6 +150,50 @@ speckit.implement → Incremental delivery by user story
 ```
 
 ## Getting Started
+
+### Prerequisites
+
+- Python 3.9+
+- WhatsApp account with Green API credentials
+- OpenAI API key
+- ChromaDB (installed via requirements.txt)
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yylevy171/DeniDin.git
+   cd DeniDin/denidin-app
+   ```
+
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Configure the application:
+   ```bash
+   cp config/config.example.json config/config.json
+   # Edit config.json with your API credentials
+   ```
+
+4. Run the application:
+   ```bash
+   ./run_denidin.sh
+   ```
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run with coverage
+python -m pytest tests/ --cov=src --cov-report=term-missing --cov-report=html
+
+# Run pylint
+python -m pylint src/
+```
 
 ### Creating a New Feature
 
