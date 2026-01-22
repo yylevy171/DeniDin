@@ -2,56 +2,92 @@
 
 **Feature ID**: 003-media-document-processing  
 **Priority**: P1 (High)  
-**Status**: Planning  
-**Created**: January 17, 2026
+**Status**: Planning - Clarifications Resolved  
+**Created**: January 17, 2026  
+**Updated**: January 22, 2026  
+**Decisions Log**: See `DECISIONS.md`
 
 ## Problem Statement
 
 Currently, DeniDin only processes text messages. Users cannot send images, PDFs, or Word documents for the bot to analyze, extract content from, or use as context in conversations.
 
 **Desired Capabilities:**
-- 📷 **Images**: Analyze images, answer questions about them, extract text (OCR)
-- 📄 **PDFs**: Extract text, summarize content, answer questions about documents
+- 📷 **Images**: Analyze images, answer questions about them, extract text (OCR) - especially Hebrew text
+- 📄 **PDFs**: Extract text (including Hebrew), summarize content, identify document type, extract metadata
 - 📝 **Word Documents (DOCX)**: Parse content, summarize, use as context
+- 📋 **Business Documents**: Process contracts, receipts, invoices, court resolutions with type-specific metadata extraction
+
+**Key Business Use Cases (Integrated from Feature 013 US3):**
+- **Contract Processing**: Extract client name, contract type, amounts, dates, deliverables
+- **Receipt/Invoice Management**: Track expenses, vendor details, payment information
+- **Court Document Tracking**: Case numbers, rulings, deadlines
+- **Document Retrieval**: "Show me David's contract" → Re-send stored document
 
 ## Use Cases
 
+### Generic Media Processing
 1. **Image Analysis**: "What's in this photo?" → Bot describes the image
 2. **Document Q&A**: Send PDF → "Summarize this document" → Bot extracts and summarizes
 3. **Visual Problem Solving**: Send whiteboard photo → "Solve this math problem"
-4. **Receipt/Invoice Processing**: Send photo → "How much did I spend?"
-5. **Document Translation**: Send document → "Translate this to English"
-6. **Multi-modal Research**: Send image + ask questions about it in context
+4. **Document Translation**: Send document → "Translate this to English"
+5. **Multi-modal Research**: Send image + ask questions about it in context
+
+### Business Document Processing (Feature 013 US3 Integration)
+6. **Contract Processing**: Send contract PDF/image → AI extracts: client name, contract type, amount, dates, deliverables → User approves summary → Stored for future retrieval
+7. **Receipt Management**: Send receipt photo → AI extracts: merchant, date, total, items → Stored with metadata
+8. **Invoice Processing**: Send invoice → AI extracts: vendor, invoice #, amount, due date, line items
+9. **Court Document Tracking**: Send court resolution → AI extracts: case #, parties, decision, deadlines
+10. **Document Retrieval**: "Show me David's contract from last month" → Bot finds and re-sends document
 
 ## Technical Design
 
 ### 1. WhatsApp Media Types
 
 Green API supports these message types:
-- `imageMessage` - Images (JPG, PNG, GIF)
-- `documentMessage` - Documents (PDF, DOCX, TXT, etc.)
+- `imageMessage` - Images (JPG/JPEG, PNG)
+- `documentMessage` - Documents (PDF, DOCX)
 - `videoMessage` - Videos (future enhancement)
 - `audioMessage` - Voice notes (future enhancement)
+
+**Supported Formats** (CHK039-041):
+- **Images**: JPG, JPEG, PNG only (GIF not supported)
+- **Documents**: PDF (max 10 pages), DOCX only
+- **Not Supported**: GIF, TXT, XLS, PPT, ZIP (see error handling for messages)
 
 ### 2. Media Processing Flow
 
 ```
 WhatsApp Message (with media)
     ↓
+Validate file size (10MB max)
+    ↓
 Download media file from Green API
     ↓
-Determine file type
+Store permanently: data/images/{date}/image-{timestamp}/DeniDin-image-{timestamp}.{ext}
+    ↓
+Determine file type & validate format (JPG, PNG, PDF, DOCX only)
     ↓
 Process based on type:
-    - Image → GPT-4 Vision API
-    - PDF → Extract text → GPT API
-    - DOCX → Extract text → GPT API
+    - Image (JPG/PNG) → GPT-4o Vision API → Extract text
+    - PDF → Convert pages to images → GPT-4o Vision API → Extract text (max 10 pages)
+    - DOCX → python-docx library → Extract text → GPT-4o-mini
     ↓
-Add to conversation context
+Save raw extracted text: {filename}.rawtext
     ↓
-Generate AI response
+AI analyzes content & detects document type (contract/receipt/invoice/court_resolution/generic)
     ↓
-Send to WhatsApp
+Generate summary (natural language + type-specific bullet points)
+    ↓
+Send summary to user for approval
+    ↓
+User provides feedback/clarification (no timeout - iterative refinement)
+    ↓
+Once approved: Add to conversation context
+    (CHK112: Approval = informal satisfaction, any positive response like "looks good", "thanks", "ok")
+    ↓
+Store message with link to file location (standard session flow → long-term memory on expiry)
+    ↓
+Enable future retrieval: "Show me X's contract" → SendFileByUpload
 ```
 
 ### 3. Data Model Updates
@@ -60,12 +96,16 @@ Send to WhatsApp
 # src/models/message.py - Enhancement
 
 class MediaAttachment:
-    media_type: str          # 'image', 'document', 'pdf', 'docx'
+    media_type: str          # 'image', 'pdf', 'docx'
     file_url: str            # Green API download URL
-    file_path: str           # Local cached path (optional)
+    file_path: str           # Local storage path: data/images/{date}/image-{timestamp}/
+    raw_text_path: str       # Path to extracted .rawtext file
     mime_type: str           # 'image/jpeg', 'application/pdf', etc.
     file_size: int           # Size in bytes
-    caption: str             # Optional caption from user
+    page_count: int          # Number of pages (PDFs only)
+    caption: str             # WhatsApp message text sent with file (CHK111: user's question/comment, NOT file metadata)
+    document_type: str       # AI-detected: 'contract', 'receipt', 'invoice', 'court', 'generic'
+    extracted_metadata: Dict # Type-specific metadata (client name, amounts, dates, etc.)
     
 class WhatsAppMessage:
     # Existing fields...
@@ -74,72 +114,117 @@ class WhatsAppMessage:
 
 ### 4. Processing Components
 
-#### A. Image Processing
+#### A. Image Processing (JPG, PNG)
 
-**Technology**: OpenAI GPT-4 Vision API
+**Technology**: OpenAI GPT-4o Vision API
+
+**Decision**: Use `gpt-4o` with vision capabilities for all image analysis, including OCR for Hebrew text. No separate OCR library needed.
 
 ```python
 # src/handlers/vision_handler.py
 
 class VisionHandler:
-    def analyze_image(image_url: str, prompt: str) -> str:
+    def analyze_image(image_path: str, user_prompt: str = None) -> Dict:
         """
-        Send image to GPT-4 Vision for analysis.
-        Supports: JPG, PNG, GIF, WebP
+        Send image to GPT-4o Vision for analysis.
+        Supports: JPG, PNG
+        Returns: Extracted text + AI analysis
         """
+        with open(image_path, 'rb') as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+        
+        prompt = user_prompt or "Extract all text from this image and describe what you see."
+        
         response = openai.chat.completions.create(
-            model="gpt-4o",  # or "gpt-4-vision-preview"
+            model="gpt-4o",  # Vision-enabled model
             messages=[
                 {
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": image_url}}
+                        {
+                            "type": "image_url", 
+                            "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                        }
                     ]
                 }
             ]
         )
-        return response.choices[0].message.content
+        return {
+            "extracted_text": response.choices[0].message.content,
+            "model_used": "gpt-4o"
+        }
 ```
 
 **Features**:
 - Image description
-- Object detection
-- Text extraction (OCR)
+- Hebrew OCR (via GPT-4o vision)
 - Visual Q&A
-- Image + text context in same message
+- Document analysis from images
 
 #### B. PDF Processing
 
-**Technology**: PyPDF2 or pdfplumber
+**Technology**: GPT-4o Vision API (treat PDF pages as images)
+
+**Decision**: Convert PDF pages to images, then use GPT-4o vision for text extraction. Handles both text-based and scanned PDFs uniformly. **Maximum 10 pages** - reject larger documents.
 
 ```python
 # src/handlers/document_handler.py
 
 class DocumentHandler:
-    def extract_pdf_text(file_path: str) -> str:
-        """Extract text from PDF file."""
-        import pdfplumber
+    MAX_PDF_PAGES = 10
+    
+    def process_pdf(file_path: str) -> Dict:
+        """
+        Extract text from PDF by converting pages to images.
+        Max 10 pages. Uses GPT-4o vision for OCR.
+        """
+        import fitz  # PyMuPDF for PDF to image conversion
         
-        text = ""
-        with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages:
-                text += page.extract_text() + "\n"
-        return text
+        pdf = fitz.open(file_path)
+        page_count = len(pdf)
+        
+        if page_count > self.MAX_PDF_PAGES:
+            raise ValueError(
+                f"PDF has {page_count} pages. Maximum is {self.MAX_PDF_PAGES}. "
+                "Please send a shorter document or specify which pages to analyze."
+            )
+        
+        extracted_text = ""
+        for page_num in range(page_count):
+            page = pdf[page_num]
+            # Convert page to image
+            pix = page.get_pixmap(dpi=150)
+            image_bytes = pix.tobytes("png")
+            
+            # Send to GPT-4o vision
+            page_text = self.vision_handler.analyze_image(
+                image_bytes, 
+                f"Extract all text from page {page_num + 1}. Preserve Hebrew characters."
+            )
+            extracted_text += f"\n--- Page {page_num + 1} ---\n{page_text}\n"
+        
+        return {
+            "extracted_text": extracted_text,
+            "page_count": page_count,
+            "model_used": "gpt-4o-vision"
+        }
 ```
 
 **Features**:
-- Multi-page text extraction
-- Table extraction (advanced)
-- Image extraction from PDF (future)
-- Metadata extraction (title, author, pages)
+- Handles text-based and scanned PDFs
+- Hebrew text extraction
+- Page-by-page processing (max 10 pages)
+- Preserves text structure
 
 #### C. Word Document Processing
 
-**Technology**: python-docx
+**Technology**: python-docx + GPT-4o-mini
+
+**Decision**: Extract text using python-docx library, then process with `gpt-4o-mini` for cost efficiency (text-only processing).
 
 ```python
-def extract_docx_text(file_path: str) -> str:
+def extract_docx_text(file_path: str) -> Dict:
     """Extract text from DOCX file."""
     from docx import Document
     
@@ -147,13 +232,73 @@ def extract_docx_text(file_path: str) -> str:
     text = ""
     for paragraph in doc.paragraphs:
         text += paragraph.text + "\n"
-    return text
+    
+    return {
+        "extracted_text": text,
+        "model_used": "python-docx-library",
+        "processing_model": "gpt-4o-mini"  # For subsequent analysis
+    }
 ```
 
 **Features**:
-- Text extraction
-- Preserve basic formatting (headings, lists)
-- Extract tables (advanced)
+- Text extraction (Hebrew supported)
+- Lightweight processing
+- Cost-effective (no vision API needed)
+
+#### D. Document Type Detection & Metadata Extraction
+
+**Technology**: GPT-4o-mini (for DOCX) or GPT-4o (for images/PDFs)
+
+**Decision**: AI automatically detects document type and extracts type-specific metadata.
+
+```python
+def detect_document_type_and_extract_metadata(raw_text: str, model: str) -> Dict:
+    """
+    AI analyzes document to determine type and extract relevant metadata.
+    Supported types: contract, receipt, invoice, court, generic
+    """
+    system_prompt = """
+    Analyze this document and:
+    1. Identify the document type: contract, receipt, invoice, court_resolution, or generic
+    2. Extract relevant metadata based on type
+    3. Return a natural language summary with bullet points for key details
+    
+    Document Type Metadata:
+    - Contract: client_name, contract_type, amount, start_date, end_date, deliverables
+    - Receipt: merchant, date, total_amount, payment_method, items
+    - Invoice: vendor, invoice_number, invoice_date, due_date, total_amount, line_items
+    - Court Resolution: case_number, date, parties, ruling, next_steps
+    - Generic: summary only
+    """
+    
+    response = openai.chat.completions.create(
+        model=model,  # gpt-4o-mini or gpt-4o based on source
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": raw_text}
+        ]
+    )
+    
+    # Parse AI response into structured format
+    return {
+        "document_type": "contract",  # AI-detected
+        "summary": "Natural language summary paragraph...",
+        "metadata_bullets": [
+            "Client: David Cohen",
+            "Contract Type: Service Agreement",
+            "Amount: ₪50,000",
+            "Duration: Jan 2026 - Dec 2026"
+        ]
+    }
+
+**Document Type Detection Requirements** (CHK012-018):
+- **Classification**: AI-determined, no explicit rules or examples needed
+- **Fallback**: Default to "generic" type when uncertain (no confidence threshold)
+- **Multi-type Scenarios**: AI determines best-fit type + user context can influence classification
+- **Metadata Extraction**: All fields are optional, AI extracts what's available (dynamic per document)
+- **Missing Fields**: Silently omit from summary (future: user-driven AI rules for required fields)
+- **Ambiguous Documents**: Best-effort processing with quality warnings in summary (handwritten, partial forms, stamps/watermarks)
+```
 
 ### 5. File Management
 
@@ -161,51 +306,116 @@ def extract_docx_text(file_path: str) -> str:
 # src/utils/media_manager.py
 
 class MediaManager:
-    def download_media(file_url: str, chat_id: str) -> str:
-        """Download media from Green API, return local path."""
+    STORAGE_BASE = "data/images"
+    MAX_FILE_SIZE_MB = 10
+    
+    def download_and_store_media(file_url: str, mime_type: str) -> Dict:
+        """
+        Download media from Green API and store permanently.
+        Storage: data/images/{date}/image-{timestamp}/DeniDin-image-{timestamp}.{ext}
         
-    def get_mime_type(file_path: str) -> str:
-        """Detect MIME type of file."""
+        Storage Requirements (CHK019-024):
+        - Timestamps: UTC with microsecond precision to prevent collisions
+        - Collision Prevention: Timestamp uniqueness is sufficient (no additional handling needed)
+        - Atomicity: Not required (file and .rawtext saved independently)
+        - Disk Space: No monitoring required (operational concern, not feature requirement)
+        - Encoding: UTF-8 for .rawtext files (Hebrew support)
+        - Duplicate Detection: None (same file sent twice = two separate storage entries)
+        """
+        from datetime import datetime, timezone
+        timestamp = datetime.now(timezone.utc).timestamp()  # UTC with microseconds
+        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         
-    def cleanup_old_files(max_age_hours: int):
-        """Delete old cached media files."""
+        folder = f"{self.STORAGE_BASE}/{date_str}/image-{timestamp}"
+        os.makedirs(folder, exist_ok=True)
         
-    def validate_file_size(file_size: int, max_mb: int) -> bool:
-        """Check if file is within size limits."""
+        ext = self._get_extension(mime_type)
+        filename = f"DeniDin-image-{timestamp}.{ext}"
+        file_path = f"{folder}/{filename}"
+        
+        # Download file
+        response = requests.get(file_url)
+        with open(file_path, 'wb') as f:
+            f.write(response.content)
+        
+        return {
+            "file_path": file_path,
+            "folder": folder,
+            "filename": filename
+        }
+    
+    def save_raw_text(folder: str, filename: str, raw_text: str):
+        """Save extracted raw text alongside original file."""
+        raw_text_path = f"{folder}/{filename}.rawtext"
+        with open(raw_text_path, 'w', encoding='utf-8') as f:
+            f.write(raw_text)
+        return raw_text_path
+        
+    def validate_file_size(file_size: int) -> bool:
+        """Check if file is within 10MB limit."""
+        return file_size <= (self.MAX_FILE_SIZE_MB * 1024 * 1024)
 ```
 
-**Storage Structure**:
+**Storage Structure** (PERMANENT - no cleanup):
+(CHK113: Permanent = forever until manual deletion feature is implemented)
+(CHK114: Generic type = both fallback for low-confidence AND valid classification for misc documents)
 ```
-media/
-  ├── images/
-  │   └── {chat_id}_{timestamp}_{filename}
-  ├── documents/
-  │   └── {chat_id}_{timestamp}_{filename}
-  └── temp/
+data/images/
+  ├── 2026-01-22/
+  │   ├── image-1737561234/
+  │   │   ├── DeniDin-image-1737561234.pdf
+  │   │   └── DeniDin-image-1737561234.pdf.rawtext
+  │   └── image-1737561567/
+  │       ├── DeniDin-image-1737561567.jpg
+  │       └── DeniDin-image-1737561567.jpg.rawtext
+  └── 2026-01-23/
+      └── image-1737647890/
+          ├── DeniDin-image-1737647890.docx
+          └── DeniDin-image-1737647890.docx.rawtext
 ```
+
+**Key Points**:
+- Files stored **permanently** (no automatic deletion)
+- Both original file AND extracted raw text saved
+- Date-based organization
+- Link to folder stored in message metadata for retrieval
 
 ### 6. Integration with Chat Sessions
 
-Media becomes part of conversation context:
+Media processing integrates with existing conversation flow:
 
+**For Images/PDFs (GPT-4o Vision)**:
 ```python
 {
     "role": "user",
     "content": [
-        {"type": "text", "text": "What's in this image?"},
-        {"type": "image_url", "image_url": {"url": "..."}}
+        {"type": "text", "text": user_message_or_caption},
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
     ]
 }
 ```
 
-For documents, extracted text is added to context:
-
+**For Word Documents (GPT-4o-mini with extracted text)**:
 ```python
 {
-    "role": "system",
-    "content": f"User uploaded a PDF document. Content:\n{extracted_text}"
+    "role": "user",
+    "content": f"[Document uploaded: {filename}]\n\n{extracted_text}\n\nUser message: {user_caption}"
 }
 ```
+
+**Document Summary Approval Flow**:
+1. Bot sends generated summary to user
+2. User responds with feedback/approval (no timeout - iterative)
+3. Bot refines summary based on feedback
+4. Once user satisfied, summary becomes part of conversation context
+5. Message stored with link to file location: `media.file_path`
+6. Standard session flow: short-term → long-term memory on expiry
+
+**Document Retrieval**:
+When user asks "Show me David's contract":
+1. AI searches conversation memory for mention of David + contract
+2. Retrieves `file_path` from stored message metadata
+3. Uses Green API `SendFileByUpload` to re-send file from disk
 
 ## Configuration
 
@@ -213,103 +423,196 @@ For documents, extracted text is added to context:
 {
   "media": {
     "enabled": true,
-    "storage_path": "media/",
-    "max_file_size_mb": 20,
-    "cleanup_after_hours": 24,
-    "supported_types": {
-      "images": ["jpg", "jpeg", "png", "gif", "webp"],
-      "documents": ["pdf", "docx", "txt"]
-    }
+    "storage_path": "data/images/",
+    "max_file_size_mb": 10,
+    "max_pdf_pages": 10,
+    "supported_formats": {
+      "images": ["jpg", "jpeg", "png"],
+      "documents": ["pdf", "docx"]
+    },
+    "permanent_storage": true
   },
-  "vision": {
-    "enabled": true,
-    "model": "gpt-4o",
-    "max_detail": "high"
+  "ai_models": {
+    "vision_model": "gpt-4o",
+    "text_model": "gpt-4o-mini",
+    "document_analysis": {
+      "auto_detect_type": true,
+      "supported_types": ["contract", "receipt", "invoice", "court_resolution", "generic"]
+    }
   }
 }
 ```
+
+**Key Configuration Changes from Original Spec**:
+- Reduced `max_file_size_mb` from 20 to 10
+- Added `max_pdf_pages: 10`
+- Removed `cleanup_after_hours` (permanent storage)
+- Removed unsupported formats (GIF, TXT, WebP)
+- Added `vision_model` and `text_model` separation
+- Added `document_analysis` configuration
 
 ## Dependencies
 
 ```python
 # requirements.txt additions
-pdfplumber>=0.10.0        # PDF text extraction
-python-docx>=1.0.0        # DOCX processing
-python-magic>=0.4.27      # MIME type detection
-Pillow>=10.0.0           # Image processing utilities
+PyMuPDF>=1.23.0           # PDF to image conversion (fitz)
+python-docx>=1.0.0        # DOCX text extraction
+Pillow>=10.0.0            # Image processing utilities
 ```
+
+**Removed Dependencies** (from original spec):
+- `pdfplumber` - Not needed (using vision-based PDF processing)
+- `python-magic` - Not needed (simplified MIME type detection)
+
+**Note**: No OCR library (tesseract) needed - GPT-4o vision handles OCR
 
 ## Implementation Plan
 
-### Phase 1: Image Support
+### Phase 1: Foundation & Image Support
+- [ ] Update data models (MediaAttachment with new fields)
+- [ ] Implement MediaManager (download, permanent storage, validation)
+- [ ] Create storage folder structure (data/images/{date}/image-{timestamp}/)
+- [ ] Implement VisionHandler for GPT-4o vision integration
 - [ ] Update WhatsApp handler to detect imageMessage
-- [ ] Implement media download from Green API
-- [ ] Create VisionHandler for GPT-4 Vision integration
-- [ ] Add media to conversation context
+- [ ] Implement image processing: download → store → extract → save .rawtext
 - [ ] Write tests for image processing
 - [ ] Update config with vision settings
 
-### Phase 2: PDF Support
-- [ ] Install pdfplumber dependency
-- [ ] Create DocumentHandler for PDF extraction
-- [ ] Implement text extraction and chunking (for large PDFs)
-- [ ] Add document context to conversations
+### Phase 2: PDF Support  
+- [ ] Install PyMuPDF dependency
+- [ ] Implement PDF page count validation (10 page max)
+- [ ] Create PDF-to-image conversion in DocumentHandler
+- [ ] Integrate with VisionHandler for page-by-page OCR
+- [ ] Handle multi-page text aggregation
 - [ ] Write tests for PDF processing
-- [ ] Handle multi-page PDFs efficiently
+- [ ] Test with Hebrew PDFs
 
 ### Phase 3: DOCX Support
 - [ ] Install python-docx dependency
 - [ ] Add DOCX extraction to DocumentHandler
-- [ ] Support formatted text extraction
+- [ ] Integrate with GPT-4o-mini for analysis
+- [ ] Support Hebrew text extraction
 - [ ] Write tests for DOCX processing
 
-### Phase 4: File Management
-- [ ] Implement MediaManager for downloads
-- [ ] Add file size validation
-- [ ] Implement cleanup for old media files
-- [ ] Add error handling for download failures
+### Phase 4: Document Type Detection & Metadata Extraction
+- [ ] Implement AI-based document type detection
+- [ ] Create type-specific metadata extraction (contract, receipt, invoice, court)
+- [ ] Build summary generation (natural language + bullet points)
+- [ ] Implement approval workflow (iterative refinement, no timeout)
+- [ ] Write tests for each document type
+- [ ] Test with real business documents
 
-### Phase 5: Advanced Features
-- [ ] OCR for images without text (Tesseract)
-- [ ] Table extraction from PDFs
-- [ ] Multiple images in single message
-- [ ] Document comparison ("compare these 2 PDFs")
+### Phase 5: Document Retrieval
+- [ ] Implement document search in conversation memory
+- [ ] Integrate Green API SendFileByUpload for file re-sending
+- [ ] Add natural language queries ("Show me David's contract")
+- [ ] Handle multiple matches (ask user to clarify)
+- [ ] Write tests for retrieval workflow
+
+### Phase 6: Integration & Polish
+- [ ] Integrate with session management (standard memory flow)
+- [ ] Add comprehensive error handling
+- [ ] Performance optimization (async processing where possible)
+- [ ] Documentation updates
+- [ ] End-to-end testing
+- [ ] Production deployment
 
 ## Message Flow Examples
 
 ### Example 1: Image Analysis
 ```
-User: [sends image of sunset] "Where might this be?"
-Bot: Downloads image → Sends to GPT-4 Vision
+User: [sends sunset.jpg] "Where might this be?"
+Bot: Downloads → Stores permanently → GPT-4o vision analysis
 Bot: "This appears to be a sunset over a beach, possibly in a tropical location. 
       The palm trees and warm colors suggest somewhere near the equator..."
+[Summary sent for approval]
+User: "Perfect, thanks"
+[Approved - added to conversation context]
 ```
 
-### Example 2: PDF Summarization
+### Example 2: Contract Processing (Feature 013 US3 Integration)
 ```
-User: [sends research_paper.pdf] "Summarize this"
-Bot: Downloads PDF → Extracts 15 pages of text → Chunks appropriately
-Bot: "This research paper discusses [summary of key findings]..."
+User: [sends contract.pdf - 5 pages]
+Bot: Downloads → Stores in data/images/2026-01-22/image-1737561234/
+Bot: Converts PDF pages to images → GPT-4o vision extraction
+Bot: Detects document type: "contract"
+Bot: "I've analyzed this contract. Here's what I found:
+
+This is a service agreement between you and David Cohen for web development services.
+
+Key Details:
+• Client: David Cohen
+• Contract Type: Service Agreement  
+• Amount: ₪50,000
+• Start Date: January 15, 2026
+• End Date: December 31, 2026
+• Deliverables: E-commerce website with payment integration
+• Payment Terms: 50% upfront, 50% on delivery
+
+Does this look correct?"
+
+User: "Yes, but the end date is actually January 31, 2027"
+Bot: "Got it, I'll update that. Here's the corrected summary:
+[Updated summary with Jan 31, 2027]
+Is this better?"
+
+User: "Perfect!"
+[Approved - stored in conversation memory with link to file path]
 ```
 
-### Example 3: Multi-turn with Context
+### Example 3: Document Retrieval
 ```
-User: [sends product_spec.pdf]
-Bot: "I've received the document. How can I help you with it?"
+User: "Show me David's contract"
+Bot: Searches memory → Finds message with contract metadata
+Bot: Retrieves file from data/images/2026-01-22/image-1737561234/DeniDin-image-1737561234.pdf
+Bot: [Re-sends PDF via SendFileByUpload]
+Bot: "Here's David Cohen's service agreement from January 2026"
+```
+
+### Example 4: Receipt Processing
+```
+User: [sends receipt photo]
+Bot: GPT-4o vision analysis → Detects type: "receipt"
+Bot: "I've processed this receipt:
+
+You spent ₪287 at Super-Pharm on January 22, 2026.
+
+Key Details:
+• Merchant: Super-Pharm Tel Aviv
+• Date: January 22, 2026
+• Total: ₪287.50
+• Payment Method: Credit Card
+• Main Items: Vitamins, skincare products, toiletries
+
+Should I remember this for expense tracking?"
+```
+
+### Example 5: Multi-turn with PDF Context
+```
+User: [sends product_spec.pdf - 8 pages]
+Bot: Processes → Generates summary → Sends for approval
+User: "Looks good"
+Bot: "Great! How can I help you with this document?"
 User: "What are the technical requirements?"
-Bot: Uses extracted text from PDF as context
-Bot: "Based on the document, the technical requirements are: 1) ..."
+Bot: [References extracted text from memory]
+Bot: "Based on the document, the technical requirements are:
+1. Python 3.11+
+2. PostgreSQL database
+3. Redis for caching
+..."
 ```
 
 ## Error Handling
 
 | Error | Handling |
 |-------|----------|
-| File too large | "File exceeds 20MB limit. Please send a smaller file." |
-| Unsupported format | "I can only process images (JPG, PNG), PDFs, and Word docs." |
-| Download failed | Retry 3 times, then notify user |
-| Corrupted file | "Unable to process this file. Please try sending it again." |
-| OCR failed | "I can see the image but couldn't extract any text from it." |
+| File too large (>10MB) | "This file is [X]MB. I can only process files up to 10MB. Please send a smaller file." |
+| PDF too many pages (>10) | "This PDF has [X] pages. I can only process documents up to 10 pages. Please send a shorter document or specify which pages you need analyzed." |
+| Unsupported format (.xls, .ppt, .txt, .zip) | "I can't process this file type yet. Please send one of these formats: PDF, Word (DOCX), JPG, or PNG images." |
+| Download failed | Retry 1 time (max), then: "Unable to download this file. Please try sending it again." |
+| Corrupted file | "Unable to process this file. It might be corrupted. Please try sending it again." |
+| Vision API error | "I had trouble analyzing this image. Please try again or send a different format." |
+| Empty document | "This document appears to be empty or I couldn't extract any text from it." |
 
 ## Testing Strategy
 
@@ -327,10 +630,10 @@ Bot: "Based on the document, the technical requirements are: 1) ..."
 - Error handling for invalid files
 
 ### Manual Testing
-1. Send various image types (JPG, PNG, GIF)
-2. Send PDFs of different sizes (1 page, 50 pages)
+1. Send various image types (JPG, PNG) - GIF should be rejected
+2. Send PDFs of different sizes (1 page, 10 pages, 11 pages for boundary testing)
 3. Send DOCX documents with formatting
-4. Send unsupported file types
+4. Send unsupported file types (GIF, TXT, XLS, ZIP)
 5. Send files exceeding size limit
 
 ## Success Metrics
@@ -353,33 +656,112 @@ Bot: "Based on the document, the technical requirements are: 1) ..."
 
 ## Cost Implications
 
-- **GPT-4 Vision**: More expensive than text-only (~$0.01-0.03 per image)
-- **Storage**: Minimal cost for temporary file storage
-- **Bandwidth**: Download files from Green API
+**AI Model Usage**:
+- **GPT-4o Vision** (images/PDFs): ~$0.01-0.03 per image/page
+  - Used for: JPG, PNG images + PDF pages (max 10 pages)
+  - Cost example: 10-page PDF = ~$0.10-0.30
+- **GPT-4o-mini** (text processing): ~$0.0001 per request
+  - Used for: DOCX analysis, document type detection
+  - Cost example: DOCX analysis = ~$0.0001
 
-**Mitigation**: 
-- Set daily image analysis limits per user
-- Implement caching for repeated image requests
-- Auto-cleanup old files
+**Storage**: 
+- Permanent file storage (no cleanup)
+- 10MB max per file
+- Estimate: 100 documents/month = ~1GB/month (~$0.02/month on typical cloud storage)
 
-## Future Enhancements
+**Bandwidth**: 
+- Download files from Green API (free)
+- Upload files via SendFileByUpload (Green API pricing)
 
-- Video processing (extract frames, transcribe audio)
-- Audio/voice note transcription (Whisper API)
-- Spreadsheet processing (Excel, CSV)
-- PowerPoint/presentation processing
-- Image generation (DALL-E integration)
-- Document comparison and diff
-- Batch processing multiple files
+**Total Estimated Cost**:
+- Light usage (10 docs/month): ~$1-3/month
+- Medium usage (50 docs/month): ~$5-15/month
+- Heavy usage (200 docs/month): ~$20-60/month
+
+**Cost Optimization Strategies**:
+- Use gpt-4o-mini wherever possible (DOCX processing)
+- 10-page PDF limit prevents excessive vision API costs
+- 10MB file size limit controls bandwidth
+- No unnecessary re-processing (stored .rawtext can be reused)
+
+## Future Enhancements (Post-MVP)
+
+- **Expand file type support**: Excel (.xlsx), PowerPoint (.pptx), plain text (.txt)
+- **Increase PDF page limit**: Support >10 pages with chunked processing
+- **Video processing**: Extract frames, transcribe audio
+- **Audio/voice note transcription**: Whisper API integration
+- **Image generation**: DALL-E integration for visual responses
+- **Document comparison**: "Compare these 2 contracts and show differences"
+- **Batch processing**: Handle multiple files in single message
+- **Advanced OCR**: Fallback to Tesseract for edge cases
+- **Table extraction**: Structured data from PDF/DOCX tables
+- **Signature detection**: Identify if document is signed
+- **Multi-language support**: Beyond Hebrew/English
+
+---
+
+## Technology Choices Documentation
+
+### GPT-4o Vision for Images/PDFs
+**Decision Date**: January 22, 2026  
+**Rationale**:
+- Excellent Hebrew OCR capabilities (no separate OCR needed)
+- Handles both text-based and scanned documents uniformly
+- Simpler architecture - one processing pipeline
+- Better than traditional OCR for complex layouts
+
+**Alternatives Considered**:
+- pdfplumber + PyPDF2 (text extraction libraries): Limited to text-based PDFs, poor Hebrew support
+- pytesseract (local OCR): Requires binary installation, less accurate than GPT-4o vision
+- Cloud OCR (Azure/Google): Additional cost, redundant with GPT-4o capabilities
+
+**Migration Path**: If vision API costs become prohibitive, fall back to pytesseract for simple documents
+
+### GPT-4o-mini for Word Documents
+**Decision Date**: January 22, 2026  
+**Rationale**:
+- Cost-effective for text-only processing
+- Hebrew support confirmed
+- No vision capabilities needed for DOCX (extracted as text)
+
+**Alternatives Considered**:
+- GPT-4o for everything: Unnecessarily expensive for text processing
+- GPT-3.5-turbo: Lower quality, deprecated
+
+### PyMuPDF (fitz) for PDF-to-Image Conversion
+**Decision Date**: January 22, 2026  
+**Rationale**:
+- Fast PDF page rendering
+- High-quality image output for vision API
+- Well-maintained library
+
+**Alternatives Considered**:
+- pdf2image: Requires poppler binary dependency
+- pdfplumber: Not designed for image conversion
+
+**Note**: GPL license - verify compatibility with project licensing
+
+### Permanent Storage (No Cleanup)
+**Decision Date**: January 22, 2026  
+**Rationale**:
+- Business documents (contracts) need long-term retention
+- Enables document retrieval feature
+- Storage costs minimal (~$0.02/month for 100 docs)
+- Audit trail for legal documents
+
+**Alternatives Considered**:
+- 24-hour cleanup (original spec): Breaks document retrieval feature
+- Store summaries only: Loses original documents for verification
 
 ---
 
 **Dependencies**: 
-- Feature 002 (Chat Sessions) - Media should be part of conversation context
+- Feature 002 (Chat Sessions) - Media integrated into conversation context
+- **Feature 013 US3 MERGED** - Contract processing workflow integrated into this feature
 
 **Next Steps**:
-1. Review and approve spec
-2. Create feature branch `003-media-document-processing`
-3. Implement Phase 1 (Image Support) first
-4. Test with real images
-5. Iterate to PDF and DOCX support
+1. ✅ Review and approve spec (COMPLETE)
+2. ✅ Resolve all clarifications (COMPLETE - see DECISIONS.md)
+3. Create implementation plan (plan.md) following Spec Kit methodology
+4. Create tasks.md with TDD workflow
+5. Begin Phase 1 implementation
