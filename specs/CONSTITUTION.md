@@ -251,6 +251,99 @@ What comes after this PR
 
 ---
 
+### Merge Workflow - CRITICAL INSTRUCTIONS
+
+**🚨 WHY THIS MATTERS**: GitHub CLI (`gh pr merge`) often fails with authentication issues. The direct git merge approach bypasses GitHub's API and works reliably.
+
+**CORRECT MERGE WORKFLOW** (Use this EVERY time):
+
+```bash
+# Step 1: Ensure you're on master branch
+git checkout master
+
+# Step 2: Fetch the remote feature branch
+git fetch origin
+
+# Step 3: Merge feature branch with no-fast-forward (preserves commit history)
+git merge origin/BRANCH-NAME --no-ff -m "Merge DESCRIPTION: SUMMARY"
+
+# Step 4: Push merged changes to remote master
+git push origin master
+
+# Step 5: Delete local feature branch
+git branch -d BRANCH-NAME
+
+# Step 6: Delete remote feature branch
+git push origin --delete BRANCH-NAME
+```
+
+**Example**:
+```bash
+git checkout master
+git fetch origin
+git merge origin/bugfix/session-expiry-memory-transfer --no-ff -m "Merge bug fix: Replace chat_id with session_id in message persistence"
+git push origin master
+git branch -d bugfix/session-expiry-memory-transfer
+git push origin --delete bugfix/session-expiry-memory-transfer
+```
+
+**SINGLE COMMAND VERSION** (for efficiency):
+```bash
+# Combine push and cleanup in one line
+git push origin master && git branch -d BRANCH-NAME 2>/dev/null; git push origin --delete BRANCH-NAME
+```
+
+**WHY NOT `gh pr merge`**:
+- ❌ `gh pr merge` requires GitHub API authentication
+- ❌ Authentication tokens can expire or have permission issues
+- ❌ Adds unnecessary dependency on GitHub CLI auth state
+- ✅ Direct git merge uses SSH/HTTPS git credentials (more reliable)
+- ✅ Works consistently across different environments
+- ✅ Fewer points of failure
+
+**CRITICAL PARAMETERS**:
+- `--no-ff`: Forces a merge commit (preserves feature branch history in graph)
+- `-m "message"`: Provides clear merge commit message
+- `origin/BRANCH-NAME`: Merges from remote branch (not local copy)
+- `git fetch origin`: Ensures you have latest remote state before merging
+
+**VALIDATION STEPS**:
+After merge, verify success:
+```bash
+# Check that master has advanced
+git log --oneline -5
+
+# Verify branch is deleted locally
+git branch -a | grep BRANCH-NAME  # Should return nothing for local
+
+# Verify branch is deleted remotely
+git ls-remote --heads origin BRANCH-NAME  # Should return nothing
+```
+
+**ERROR RECOVERY**:
+If merge creates conflicts:
+```bash
+# Abort the merge
+git merge --abort
+
+# Investigate conflicts locally
+git checkout BRANCH-NAME
+git pull origin master
+# Resolve conflicts, commit, push
+# Then retry merge workflow
+```
+
+**WHEN TO USE**:
+- ✅ Use this workflow for ALL merges (bug fixes, features, config changes)
+- ✅ Use this even for simple one-line changes
+- ✅ Use this when user says "merge" without additional context
+- ❌ NEVER use `gh pr merge` unless explicitly requested by user
+
+**SUMMARY**: 
+The direct git merge workflow is the PRIMARY and PREFERRED merge method because it bypasses authentication issues and works reliably every time. It should be your FIRST ATTEMPT, not a fallback.
+
+---
+
 ## IV. Code Quality Standards
 
 **Requirements**:
