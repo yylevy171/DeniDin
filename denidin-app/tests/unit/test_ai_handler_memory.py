@@ -22,9 +22,8 @@ def memory_enabled_config():
         green_api_instance_id="test",
         green_api_token="test",
         ai_api_key="test-key",
-        ai_model="gpt-4o-mini",
-        system_message="You are a helpful assistant.",
-        max_tokens=100,
+        ai_model="gpt-4o-mini",        
+        ai_reply_max_tokens=100,
         temperature=0.7,
         log_level="INFO",
         poll_interval_seconds=5,
@@ -128,7 +127,7 @@ class TestAIHandlerGetResponseWithMemory:
         from src.models.message import AIRequest
         request = AIRequest(
             user_prompt="Hello",
-            system_message="Test",
+            constitution="Test assistant",
             max_tokens=100,
             temperature=0.7,
             model="gpt-4o-mini",
@@ -194,7 +193,7 @@ class TestAIHandlerConversationHistory:
         from src.models.message import AIRequest
         request = AIRequest(
             user_prompt="Current question",
-            system_message="Test system",
+            constitution="Test system",
             max_tokens=100,
             temperature=0.7,
             model="gpt-4o-mini",

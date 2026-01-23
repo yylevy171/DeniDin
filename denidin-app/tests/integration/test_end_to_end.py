@@ -234,11 +234,10 @@ class TestEndToEndFlow:
         assert config.green_api_token, "Missing green_api_token"
         assert config.ai_api_key, "Missing ai_api_key"
         assert config.ai_model, "Missing ai_model"
-        assert config.constitution, "Missing system_message"
         
         # Verify valid ranges
         assert 0.0 <= config.temperature <= 1.0, "Invalid temperature"
-        assert config.max_tokens >= 1, "Invalid max_tokens"
+        assert config.ai_reply_max_tokens >= 1, "Invalid ai_reply_max_tokens"
         assert config.poll_interval_seconds >= 1, "Invalid poll_interval"
         assert config.log_level in ['INFO', 'DEBUG'], "Invalid log_level"
         
@@ -246,7 +245,7 @@ class TestEndToEndFlow:
         print(f"[E2E Test] ✓ Bot is ready to start with:")
         print(f"  - Model: {config.ai_model}")
         print(f"  - Temperature: {config.temperature}")
-        print(f"  - Max tokens: {config.max_tokens}")
+        print(f"  - AI Reply Max tokens: {config.ai_reply_max_tokens}")
         print(f"  - Poll interval: {config.poll_interval_seconds}s")
 
 

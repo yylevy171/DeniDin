@@ -170,7 +170,7 @@ class TestAIRequest:
         """Test AIRequest creation with all required fields."""
         ai_request = AIRequest(
             user_prompt='What is the weather today?',
-            system_message='You are a helpful assistant.',
+            constitution='You are a helpful assistant.',
             max_tokens=1000,
             temperature=0.7,
             model='gpt-4o-mini',
@@ -189,7 +189,7 @@ class TestAIRequest:
         """Test that to_openai_payload() returns correct API format."""
         ai_request = AIRequest(
             user_prompt='Hello AI',
-            system_message='You are helpful.',
+            constitution='You are helpful.',
             max_tokens=500,
             temperature=0.5,
             model='gpt-4o-mini',
@@ -219,7 +219,7 @@ class TestAIRequest:
         # Create request without specifying request_id
         ai_request = AIRequest(
             user_prompt='Test',
-            system_message='System',
+            constitution='System',
             max_tokens=100,
             temperature=0.7,
             model='gpt-4o-mini',
@@ -235,7 +235,7 @@ class TestAIRequest:
         """Test that timestamp can be auto-populated."""
         ai_request = AIRequest(
             user_prompt='Test',
-            system_message='System',
+            constitution='System',
             max_tokens=100,
             temperature=0.7,
             model='gpt-4o-mini',
@@ -246,11 +246,11 @@ class TestAIRequest:
         assert ai_request.timestamp is not None
         assert isinstance(ai_request.timestamp, int)
 
-    def test_system_message_max_tokens_temperature_passthrough(self):
-        """Test that system_message, max_tokens, and temperature pass through correctly."""
+    def test_constitution_max_tokens_temperature_passthrough(self):
+        """Test that constitution, max_tokens, and temperature pass through correctly."""
         ai_request = AIRequest(
             user_prompt='User msg',
-            system_message='Custom system message',
+            constitution='Custom system message',
             max_tokens=2000,
             temperature=0.9,
             model='gpt-4o-mini',

@@ -128,23 +128,23 @@ class TestMessageFlow:
         client = OpenAI(api_key=config.ai_api_key)
         
         # Prepare the request (as denidin.py does)
+        # NOTE: Constitution content comes from AIHandler, not config
         messages = [
-            {"role": "system", "content": config.constitution},
+            {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": message_text}
         ]
         
         # Verify request structure
         assert messages[0]['role'] == 'system'
-        assert messages[0]['content'] == config.constitution
         assert messages[1]['role'] == 'user'
         assert messages[1]['content'] == 'Hello, can you help me?'
         
         print(f"\n[Flow Test] ✓ OpenAI send: Request structured correctly")
         print(f"[Flow Test]   Model: {config.ai_model}")
-        print(f"[Flow Test]   System message: {config.constitution[:50]}...")
+        print(f"[Flow Test]   System message: {messages[0]['content'][:50]}...")
         print(f"[Flow Test]   User message: {message_text}")
         print(f"[Flow Test]   Temperature: {config.temperature}")
-        print(f"[Flow Test]   Max tokens: {config.max_tokens}")
+        print(f"[Flow Test]   Max tokens: {config.ai_reply_max_tokens}")
     
     def test_openai_receive_response(self, mock_openai_response):
         """
@@ -227,11 +227,11 @@ class TestMessageFlow:
         response = client.chat.completions.create(
             model=config.ai_model,
             messages=[
-                {"role": "system", "content": config.constitution},
+                {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": message_text}
             ],
             temperature=config.temperature,
-            max_tokens=config.max_tokens
+            max_tokens=config.ai_reply_max_tokens
         )
         print(f"[Flow Test]   ✓ Request sent to OpenAI ({config.ai_model})")
         
@@ -261,4 +261,4 @@ class TestMessageFlow:
         assert call_args.kwargs['messages'][1]['role'] == 'user'
         assert call_args.kwargs['messages'][1]['content'] == message_text
         assert call_args.kwargs['temperature'] == config.temperature
-        assert call_args.kwargs['max_tokens'] == config.max_tokens
+        assert call_args.kwargs['max_tokens'] == config.ai_reply_max_tokens

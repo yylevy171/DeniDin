@@ -206,11 +206,11 @@ class TestRealOpenAPIConnectivity:
             response = openai_client.chat.completions.create(
                 model=config.ai_model,
                 messages=[
-                    {"role": "system", "content": config.constitution},
+                    {"role": "system", "content": "You are a helpful assistant."},
                     {"role": "user", "content": "What is 2+2? Answer with just the number."}
                 ],
                 temperature=config.temperature,
-                max_tokens=config.max_tokens
+                max_tokens=config.ai_reply_max_tokens
             )
             
             # Verify we can access all necessary fields
@@ -307,11 +307,11 @@ class TestRealEndToEndFlow:
             openai_response = openai_client.chat.completions.create(
                 model=config.ai_model,
                 messages=[
-                    {"role": "system", "content": config.constitution},
+                    {"role": "system", "content": "You are a helpful assistant."},
                     {"role": "user", "content": test_question}
                 ],
                 temperature=config.temperature,
-                max_tokens=config.max_tokens
+                max_tokens=config.ai_reply_max_tokens
             )
             
             print(f"[Real E2E Test]   ✓ Request sent to OpenAI")
