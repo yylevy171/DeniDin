@@ -312,7 +312,6 @@ class TestConfigLogging:
             os.unlink(temp_path)
 
     @patch('sys.exit')
-    @patch('sys.exit')
     def test_logs_are_info_or_debug_level(self, mock_exit, caplog):
         """Test config logs use INFO or DEBUG log level."""
         import logging

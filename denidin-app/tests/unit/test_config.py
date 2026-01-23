@@ -285,8 +285,8 @@ class TestAppConfiguration:
             "ai_api_key": "sk-test123",
             "data_root": "test_data",
             "memory": {
-                "session": {},
-                "longterm": {}
+                "session": {"storage_dir": "sessions"},  # Relative path
+                "longterm": {"storage_dir": "memory"}     # Relative path
             }
         }
         
@@ -295,7 +295,7 @@ class TestAppConfiguration:
         
         config = AppConfiguration.from_file(str(temp_config))
         
-        # Verify storage paths are relative to data_root
+        # Verify storage paths combine data_root + relative storage_dir
         assert config.memory['session']['storage_dir'] == 'test_data/sessions'
         assert config.memory['longterm']['storage_dir'] == 'test_data/memory'
         
