@@ -370,6 +370,7 @@ class TestAIHandlerSessionToLongTermMemory:
         mock_session.created_at = "2026-01-17T10:00:00Z"
         mock_session.last_active = "2026-01-17T15:30:00Z"
         mock_session.message_ids = ["msg1", "msg2", "msg3", "msg4"]
+        mock_session.storage_path = "session_uuid_123"  # Add storage_path
         
         mock_conversation = [
             {"role": "user", "content": "I need to invoice TestCorp for Q4 consulting"},
@@ -379,7 +380,7 @@ class TestAIHandlerSessionToLongTermMemory:
         ]
         
         handler.session_manager.get_session = Mock(return_value=mock_session)
-        handler.session_manager.get_conversation_history = Mock(return_value=mock_conversation)
+        handler.session_manager.get_conversation_history_for_session = Mock(return_value=mock_conversation)
         handler.memory_manager.remember = Mock(return_value="memory_uuid_456")
         
         # Mock collection for verification
@@ -388,10 +389,7 @@ class TestAIHandlerSessionToLongTermMemory:
         handler.memory_manager.client.get_collection = Mock(return_value=mock_collection)
         
         # Call the session-to-memory transfer method
-        result = handler.transfer_session_to_long_term_memory(
-            chat_id="1234567890@c.us",
-            session_id="session_uuid_123"
-        )
+        result = handler.transfer_session_to_long_term_memory(mock_session)
         
         # VERIFY CONVERSATION WAS SUMMARIZED
         # Should call OpenAI to create summary
@@ -449,6 +447,7 @@ class TestAIHandlerSessionToLongTermMemory:
         mock_session.created_at = "2026-01-17T10:00:00Z"
         mock_session.last_active = "2026-01-17T11:00:00Z"
         mock_session.message_ids = ["msg1", "msg2", "msg3", "msg4", "msg5"]
+        mock_session.storage_path = "session_fail_001"  # Add storage_path
         
         mock_conversation = [
             {"role": "user", "content": "Message 1"},
@@ -459,7 +458,7 @@ class TestAIHandlerSessionToLongTermMemory:
         ]
         
         handler.session_manager.get_session = Mock(return_value=mock_session)
-        handler.session_manager.get_conversation_history = Mock(return_value=mock_conversation)
+        handler.session_manager.get_conversation_history_for_session = Mock(return_value=mock_conversation)
         handler.memory_manager.remember = Mock(return_value="fallback_memory_001")
         
         # Mock collection for verification
@@ -467,10 +466,7 @@ class TestAIHandlerSessionToLongTermMemory:
         mock_collection.count.return_value = 1
         handler.memory_manager.client.get_collection = Mock(return_value=mock_collection)
         
-        result = handler.transfer_session_to_long_term_memory(
-            chat_id="test@c.us",
-            session_id="session_fail_001"
-        )
+        result = handler.transfer_session_to_long_term_memory(mock_session)
         
         # MUST ALWAYS SUCCEED - conversation stored even if summarization failed
         assert result["success"] is True
@@ -539,6 +535,7 @@ class TestAIHandlerStartupRecovery:
         expired_session.last_active = (now - timedelta(hours=30)).isoformat() + "Z"
         expired_session.created_at = (now - timedelta(hours=31)).isoformat() + "Z"
         expired_session.message_ids = ["m1", "m2", "m3"]
+        expired_session.storage_path = "active/expired_001"
         
         # Session 2: Still active (12 hours old) - should load to short-term
         active_session = Mock()
@@ -547,6 +544,7 @@ class TestAIHandlerStartupRecovery:
         active_session.last_active = (now - timedelta(hours=12)).isoformat() + "Z"
         active_session.created_at = (now - timedelta(hours=12)).isoformat() + "Z"
         active_session.message_ids = ["m4", "m5"]
+        active_session.storage_path = "active/active_001"
         
         # Session 3: Just expired (25 hours) - should go to long-term
         barely_expired = Mock()
@@ -555,6 +553,7 @@ class TestAIHandlerStartupRecovery:
         barely_expired.last_active = (now - timedelta(hours=25)).isoformat() + "Z"
         barely_expired.created_at = (now - timedelta(hours=26)).isoformat() + "Z"
         barely_expired.message_ids = ["m6"]
+        barely_expired.storage_path = "active/expired_002"
         
         # Mock session manager to return these orphaned sessions
         handler.session_manager.find_orphaned_sessions = Mock(return_value=[
@@ -581,7 +580,7 @@ class TestAIHandlerStartupRecovery:
         
         handler.session_manager.get_session = Mock(side_effect=get_session_side_effect)
         
-        handler.session_manager.get_conversation_history = Mock(return_value=[
+        handler.session_manager.get_conversation_history_for_session = Mock(return_value=[
             {"role": "user", "content": "Test message"}
         ])
         
@@ -644,6 +643,7 @@ class TestAIHandlerStartupRecovery:
         session1.last_active = (now - timedelta(hours=30)).isoformat() + "Z"
         session1.created_at = (now - timedelta(hours=31)).isoformat() + "Z"
         session1.message_ids = ["m1"]
+        session1.storage_path = "active/fail_session"
         
         session2 = Mock()
         session2.session_id = "good_session"
@@ -651,6 +651,7 @@ class TestAIHandlerStartupRecovery:
         session2.last_active = (now - timedelta(hours=30)).isoformat() + "Z"
         session2.created_at = (now - timedelta(hours=31)).isoformat() + "Z"
         session2.message_ids = ["m2"]
+        session2.storage_path = "active/good_session"
         
         handler.session_manager.find_orphaned_sessions = Mock(return_value=[session1, session2])
         handler.session_manager.is_session_expired = Mock(return_value=True)
@@ -665,7 +666,7 @@ class TestAIHandlerStartupRecovery:
         
         handler.session_manager.get_session = Mock(side_effect=get_session_side_effect)
         
-        handler.session_manager.get_conversation_history = Mock(return_value=[
+        handler.session_manager.get_conversation_history_for_session = Mock(return_value=[
             {"role": "user", "content": "Test"}
         ])
         
@@ -745,10 +746,7 @@ class TestSessionTransferRealMethod:
         handler.memory_manager.client.get_collection = Mock(return_value=mock_collection)
         
         # THIS SHOULD NOT RAISE TypeError about max_messages parameter
-        result = handler.transfer_session_to_long_term_memory(
-            chat_id=chat_id,
-            session_id=session.session_id
-        )
+        result = handler.transfer_session_to_long_term_memory(session)
         
         # Verify transfer succeeded
         assert result["success"] is True

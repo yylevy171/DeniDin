@@ -522,10 +522,11 @@ class TestAIHandlerRBACLongTermMemory:
         mock_session.created_at = "2024-01-01T00:00:00Z"
         mock_session.last_active = "2024-01-01T01:00:00Z"
         mock_session.message_ids = ["msg1", "msg2"]
+        mock_session.storage_path = "active/test-session-123"  # Add storage_path
         
         mock_session_manager = Mock()
         mock_session_manager.get_session.return_value = mock_session
-        mock_session_manager.get_conversation_history.return_value = [
+        mock_session_manager.get_conversation_history_for_session.return_value = [
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there"}
         ]
@@ -545,10 +546,7 @@ class TestAIHandlerRBACLongTermMemory:
         handler = AIHandler(ai_client, config, cleanup_interval_seconds=3600)
         
         # Act
-        result = handler.transfer_session_to_long_term_memory(
-            chat_id="1234567890@c.us",
-            session_id="test-session-123"
-        )
+        result = handler.transfer_session_to_long_term_memory(mock_session)
         
         # Assert
         assert result['success'] is True
