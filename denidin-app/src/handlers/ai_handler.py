@@ -17,7 +17,7 @@ from tenacity import (
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage, AIRequest, AIResponse
 from src.utils.logger import get_logger
-from src.memory.session_manager import SessionManager
+from src.memory.session_manager import SessionManager, Session
 from src.memory.memory_manager import MemoryManager
 from src.utils.user_manager import UserManager
 
@@ -461,38 +461,32 @@ class AIHandler:
 
     # Memory System Integration Methods (Feature 002+007)
 
-    def transfer_session_to_long_term_memory(self, chat_id: str, session_id: str) -> Dict:
+    def transfer_session_to_long_term_memory(self, session: Session) -> Dict:
         """
         Transfer an expired session to long-term memory.
 
         Workflow:
-        1. Retrieve session and conversation history
+        1. Retrieve conversation history from session
         2. Ask AI to summarize the conversation
         3. Store summary in ChromaDB with metadata
         4. NO FILTERING - store ALL sessions regardless of length
         5. Graceful degradation: if AI fails, store raw conversation
 
         Args:
-            chat_id: WhatsApp chat ID
-            session_id: Session UUID to transfer
+            session: Session object to transfer
 
         Returns:
             Dict with transfer status and details
         """
         if not self.memory_enabled or not self.memory_manager:
-            logger.warning(f"Transfer requested but memory system disabled: {session_id}")
+            logger.warning(f"Transfer requested but memory system disabled: {session.session_id}")
             return {"success": False, "reason": "memory_disabled"}
 
         try:
-            # Get session and conversation
-            session = self.session_manager.get_session(chat_id)
-            if not session or session.session_id != session_id:
-                logger.error(f"Session not found for transfer: {session_id}")
-                return {"success": False, "reason": "session_not_found"}
-
-            conversation = self.session_manager.get_conversation_history(chat_id)
+            # Get conversation history directly from session object
+            conversation = self.session_manager.get_conversation_history_for_session(session)
             if not conversation:
-                logger.warning(f"No conversation history for session {session_id}")
+                logger.warning(f"No conversation history for session {session.session_id}")
                 return {"success": False, "reason": "empty_conversation"}
 
             # Try to summarize with AI
@@ -515,22 +509,26 @@ class AIHandler:
                 )
 
                 summary_text = completion.choices[0].message.content
-                logger.info(f"AI summarized session {session_id}: {len(summary_text)} chars")
+                logger.info(f"AI summarized session {session.session_id}: {len(summary_text)} chars")
 
             except Exception as e:
                 # Graceful degradation: use raw conversation
-                logger.error(f"AI summarization failed for {session_id}: {e}. Using raw conversation fallback.")
+                logger.error(f"AI summarization failed for {session.session_id}: {e}. Using raw conversation fallback.")
                 summary_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation])
                 used_fallback = True
 
             # Store in ChromaDB
-            collection_name = f"memory_{chat_id.replace('@c.us', '')}"
-            logger.info(f"Starting ChromaDB storage for session {session_id} in collection {collection_name}")
+            collection_name = f"memory_{session.whatsapp_chat.replace('@c.us', '')}"
+            logger.info(f"Starting ChromaDB storage for session {session.session_id} in collection {collection_name}")
+
+            # Use whatsapp_chat directly as user_phone for RBAC filtering (includes @c.us)
+            user_phone = session.whatsapp_chat
 
             metadata = {
                 "type": "session_summary_fallback" if used_fallback else "session_summary",
-                "session_id": session_id,
-                "whatsapp_chat": chat_id,
+                "session_id": session.session_id,
+                "whatsapp_chat": session.whatsapp_chat,
+                "user_phone": user_phone,  # Required for RBAC filtering (must match sender_id format)
                 "session_start": session.created_at,
                 "session_end": session.last_active,
                 "message_count": len(session.message_ids),
@@ -543,14 +541,14 @@ class AIHandler:
                 metadata=metadata
             )
 
-            logger.info(f"ChromaDB storage completed for session {session_id}: memory_id={memory_id}")
+            logger.info(f"ChromaDB storage completed for session {session.session_id}: memory_id={memory_id}")
 
             # Verify storage
             collection = self.memory_manager.client.get_collection(name=collection_name)
             count = collection.count()
             logger.info(f"ChromaDB collection '{collection_name}' now has {count} item(s)")
 
-            logger.info(f"Session {session_id} transferred to long-term memory: {memory_id}")
+            logger.info(f"Session {session.session_id} transferred to long-term memory: {memory_id}")
 
             return {
                 "success": True,
@@ -560,7 +558,7 @@ class AIHandler:
             }
 
         except Exception as e:
-            logger.error(f"Failed to transfer session {session_id}: {e}", exc_info=True)
+            logger.error(f"Failed to transfer session {session.session_id}: {e}", exc_info=True)
             return {"success": False, "reason": "transfer_error", "error": str(e)}
 
     def recover_orphaned_sessions(self) -> Dict:
@@ -597,10 +595,7 @@ class AIHandler:
 
                     if is_expired:
                         # Transfer to long-term memory
-                        result = self.transfer_session_to_long_term_memory(
-                            chat_id=session.whatsapp_chat,
-                            session_id=session.session_id
-                        )
+                        result = self.transfer_session_to_long_term_memory(session)
 
                         if result.get("success"):
                             long_term_sessions.append(session.session_id)

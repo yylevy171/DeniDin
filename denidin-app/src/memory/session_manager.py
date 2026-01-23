@@ -200,6 +200,22 @@ class SessionManager:
             List of messages in format [{"role": "user", "content": "..."}]
         """
         session = self.get_session(whatsapp_chat)
+        return self.get_conversation_history_for_session(session, max_tokens)
+
+    def get_conversation_history_for_session(self, session: Session, max_tokens: int = None) -> List[Dict]:
+        """
+        Get conversation history for a specific session in AI format.
+
+        This method works with both active and archived sessions by using
+        the session's storage_path to locate messages on disk.
+
+        Args:
+            session: Session object
+            max_tokens: Maximum tokens to retrieve (not implemented yet)
+
+        Returns:
+            List of messages in format [{"role": "user", "content": "..."}]
+        """
         if session.storage_path:
             session_dir = self.storage_dir / session.storage_path
         else:
@@ -302,12 +318,15 @@ class SessionManager:
                 except Exception as e:
                     logger.error(f"Failed to load session {session_dir.name}: {e}")
 
-    def get_expired_sessions(self) -> List[Session]:
+    def find_expired_active_sessions(self) -> List[Session]:
         """
-        Find all expired sessions that need cleanup.
+        Find active sessions that have expired and need archival.
+
+        Scans the active sessions directory (not expired/) for sessions
+        whose last_active timestamp is older than session_timeout_hours.
 
         Returns:
-            List of expired Session objects
+            List of expired Session objects from active directory
         """
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(hours=self.session_timeout_hours)
@@ -331,6 +350,88 @@ class SessionManager:
                 logger.error(f"Failed to check session {session_dir.name}: {e}")
 
         return expired
+
+    def find_untransferred_archived_sessions(self) -> List[Session]:
+        """
+        Find archived sessions that were not transferred to long-term memory.
+
+        Scans the expired/ folder for sessions with transferred_to_longterm=False.
+        This recovers sessions from interrupted cleanup operations.
+
+        Returns:
+            List of Session objects in expired/ with transferred_to_longterm=False
+        """
+        untransferred = []
+        expired_base = self.storage_dir / "expired"
+
+        if not expired_base.exists():
+            return untransferred
+
+        # Scan all date folders in expired/
+        for date_folder in expired_base.iterdir():
+            if not date_folder.is_dir():
+                continue
+
+            # Scan all session folders in each date folder
+            for session_dir in date_folder.iterdir():
+                if not session_dir.is_dir():
+                    continue
+
+                session_file = session_dir / "session.json"
+                if not session_file.exists():
+                    continue
+
+                try:
+                    with open(session_file, encoding='utf-8') as f:
+                        data = json.load(f)
+
+                    # Only include if not yet transferred
+                    if not data.get('transferred_to_longterm', False):
+                        session = Session(**data)
+                        untransferred.append(session)
+                        logger.debug(
+                            f"Found untransferred archived session {session.session_id} "
+                            f"in {date_folder.name}"
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to check archived session {session_dir.name}: {e}")
+
+        return untransferred
+
+    def get_sessions_needing_cleanup(self) -> List[Session]:
+        """
+        Find all sessions that need cleanup processing.
+
+        Combines:
+        1. Active sessions that have expired (need archival + transfer)
+        2. Archived sessions not yet transferred (need transfer completion)
+
+        Returns:
+            List of Session objects requiring cleanup
+        """
+        expired_active = self.find_expired_active_sessions()
+        untransferred_archived = self.find_untransferred_archived_sessions()
+
+        all_sessions = expired_active + untransferred_archived
+
+        if expired_active:
+            logger.info(f"Found {len(expired_active)} expired active sessions")
+        if untransferred_archived:
+            logger.info(f"Found {len(untransferred_archived)} untransferred archived sessions")
+
+        return all_sessions
+
+    def get_expired_sessions(self) -> List[Session]:
+        """
+        DEPRECATED: Use get_sessions_needing_cleanup() instead.
+
+        Find all sessions that need cleanup processing.
+        Maintained for backward compatibility.
+
+        Returns:
+            List of Session objects requiring cleanup
+        """
+        return self.get_sessions_needing_cleanup()
 
     def archive_session(self, session: Session) -> bool:
         """

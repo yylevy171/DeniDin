@@ -8,6 +8,7 @@ Ensures atomic transfer + archival operations.
 import threading
 import time
 from src.utils.logger import get_logger
+from src.memory.session_manager import Session
 
 logger = get_logger(__name__)
 
@@ -67,6 +68,14 @@ class SessionCleanupThread:
                 self._cleanup_expired_sessions()
             time.sleep(self.cleanup_interval_seconds)
 
+    def _process_single_session(self, session: Session, log_prefix: str = ""):
+        """
+        Process a single session through cleanup workflow.
+        
+        Delegates to module-level _process_session_cleanup function.
+        """
+        _process_session_cleanup(self.global_context, session, log_prefix)
+
     def _cleanup_expired_sessions(self):
         """
         Clean up expired sessions with atomic 4-step process.
@@ -88,80 +97,10 @@ class SessionCleanupThread:
             logger.info(f"Found {len(expired_sessions)} expired session(s) to process")
 
             for session in expired_sessions:
-                try:
-                    session_start_time = time.time()
+                self._process_single_session(session)
 
-                    # STEP 1: Archive session files (updates storage_path, keeps in index)
-                    step1_start = time.time()
-                    logger.info(f"[STEP 1/4] Starting archive for session {session.session_id}")
-                    self.global_context.session_manager.archive_session(session)
-                    logger.info(f"[STEP 1/4] Archive completed in {time.time() - step1_start:.2f}s")
-
-                    # STEP 2: Transfer to ChromaDB (if not already done)
-                    if not session.transferred_to_longterm:
-                        step2_start = time.time()
-                        logger.info(
-                            f"[STEP 2/4] Starting AI transfer for session {session.session_id} "
-                            f"(chat: {session.whatsapp_chat})"
-                        )
-
-                        result = self.global_context.ai_handler.transfer_session_to_long_term_memory(
-                            chat_id=session.whatsapp_chat,
-                            session_id=session.session_id
-                        )
-
-                        logger.info(f"[STEP 2/4] AI transfer completed in {time.time() - step2_start:.2f}s")
-
-                        if result.get('success'):
-                            logger.info(
-                                f"Successfully transferred session {session.session_id}: "
-                                f"memory_id={result.get('memory_id')}"
-                            )
-
-                            # STEP 3: Remove from index (transfer complete)
-                            step3_start = time.time()
-                            logger.info(f"[STEP 3/4] Removing session {session.session_id} from index")
-                            self.global_context.session_manager.remove_from_index(session)
-                            logger.info(f"[STEP 3/4] Index removal completed in {time.time() - step3_start:.2f}s")
-
-                            # STEP 4: Mark as transferred and save to archived location
-                            step4_start = time.time()
-                            logger.info(f"[STEP 4/4] Saving transferred flag for session {session.session_id}")
-                            session.transferred_to_longterm = True
-                            self.global_context.session_manager._save_session(session)
-                            logger.info(f"[STEP 4/4] Flag save completed in {time.time() - step4_start:.2f}s")
-                        else:
-                            logger.error(
-                                f"Failed to transfer session {session.session_id}: "
-                                f"{result.get('reason')}"
-                            )
-                            # Remove from index anyway - will retry on lazy load
-                            step3_start = time.time()
-                            logger.info(f"[STEP 3/4] Removing failed session {session.session_id} from index")
-                            self.global_context.session_manager.remove_from_index(session)
-                            logger.info(f"[STEP 3/4] Index removal completed in {time.time() - step3_start:.2f}s")
-                    else:
-                        logger.debug(
-                            f"Session {session.session_id} already transferred "
-                            f"(transferred_to_longterm=True)"
-                        )
-                        # Remove from index
-                        step3_start = time.time()
-                        logger.info(f"[STEP 3/4] Removing already-transferred session {session.session_id} from index")
-                        self.global_context.session_manager.remove_from_index(session)
-                        logger.info(f"[STEP 3/4] Index removal completed in {time.time() - step3_start:.2f}s")
-
-                    total_time = time.time() - session_start_time
-                    logger.info(f"Session {session.session_id} cleanup completed in {total_time:.2f}s")
-
-                except Exception as session_error:
-                    logger.error(
-                        f"Failed to process expired session {session.session_id}: {session_error}",
-                        exc_info=True
-                    )
-
-        except Exception as e:
-            logger.error(f"Error during session cleanup: {e}", exc_info=True)
+        except Exception as cleanup_error:
+            logger.error(f"Error during session cleanup: {cleanup_error}", exc_info=True)
 
 
 def run_startup_cleanup(global_context):
@@ -186,35 +125,119 @@ def run_startup_cleanup(global_context):
         logger.info(f"Startup cleanup: Found {len(expired_sessions)} expired session(s)")
 
         for session in expired_sessions:
-            try:
-                # Same 3-step process as periodic cleanup: archive, transfer, set flag
-                # Step 1: Archive first
-                logger.info(f"Startup: Archiving session {session.session_id}")
-                global_context.session_manager.archive_session(session)
-
-                # Step 2: Transfer to long-term memory
-                if not session.transferred_to_longterm:
-                    logger.info(
-                        f"Startup: Transferring session {session.session_id} to long-term memory"
-                    )
-
-                    result = global_context.ai_handler.transfer_session_to_long_term_memory(
-                        chat_id=session.whatsapp_chat,
-                        session_id=session.session_id
-                    )
-
-                    # Step 3: Set flag after successful transfer
-                    if result.get('success'):
-                        logger.info(f"Startup: Transferred session {session.session_id}")
-                        session.transferred_to_longterm = True
-                        global_context.session_manager._save_session(session)
-                    else:
-                        logger.warning(f"Startup: Failed to transfer session {session.session_id}")
-
-            except Exception as e:
-                logger.error(f"Startup cleanup failed for session {session.session_id}: {e}")
+            _process_session_cleanup(global_context, session, "[STARTUP] ")
 
         logger.info("Startup session cleanup complete")
 
     except Exception as e:
         logger.error(f"Startup cleanup error: {e}", exc_info=True)
+
+
+def _process_session_cleanup(global_context, session: Session, log_prefix: str = ""):
+    """
+    Process a single session through the 4-step cleanup workflow.
+    
+    Shared implementation used by both periodic and startup cleanup.
+    
+    Steps:
+    1. Archive to expired/YYYY-MM-DD/ (if not already archived)
+    2. Transfer to ChromaDB (if not already transferred)
+    3. Remove from index
+    4. Set transferred_to_longterm flag
+    
+    Args:
+        global_context: Object with session_manager, memory_manager, ai_handler refs
+        session: Session object to process
+        log_prefix: Prefix for log messages (e.g., "[STARTUP] " or "")
+    """
+    try:
+        session_start_time = time.time()
+
+        # STEP 1: Archive session files (only if not already archived)
+        if session.storage_path and session.storage_path.startswith("expired/"):
+            logger.debug(
+                f"{log_prefix}[STEP 1/4] Session {session.session_id} already archived "
+                f"at {session.storage_path}, skipping archive"
+            )
+        else:
+            step1_start = time.time()
+            logger.info(f"{log_prefix}[STEP 1/4] Starting archive for session {session.session_id}")
+            global_context.session_manager.archive_session(session)
+            logger.info(f"{log_prefix}[STEP 1/4] Archive completed in {time.time() - step1_start:.2f}s")
+
+        # STEP 2: Transfer to ChromaDB (if not already done)
+        if not session.transferred_to_longterm:
+            step2_start = time.time()
+            logger.info(
+                f"{log_prefix}[STEP 2/4] Starting AI transfer for session {session.session_id} "
+                f"(chat: {session.whatsapp_chat})"
+            )
+
+            result = global_context.ai_handler.transfer_session_to_long_term_memory(
+                session=session
+            )
+
+            logger.info(f"{log_prefix}[STEP 2/4] AI transfer completed in {time.time() - step2_start:.2f}s")
+
+            if result.get('success'):
+                logger.info(
+                    f"Successfully transferred session {session.session_id}: "
+                    f"memory_id={result.get('memory_id')}"
+                )
+
+                # STEP 3: Remove from index (transfer complete)
+                step3_start = time.time()
+                was_removed = global_context.session_manager.remove_from_index(session)
+                if was_removed:
+                    logger.info(f"{log_prefix}[STEP 3/4] Removed session {session.session_id} from index")
+                else:
+                    logger.info(
+                        f"{log_prefix}[STEP 3/4] Session {session.session_id} was not in index "
+                        f"(already removed or archived session)"
+                    )
+                logger.info(f"{log_prefix}[STEP 3/4] Index removal completed in {time.time() - step3_start:.2f}s")
+
+                # STEP 4: Mark as transferred and save to archived location
+                step4_start = time.time()
+                logger.info(f"{log_prefix}[STEP 4/4] Saving transferred flag for session {session.session_id}")
+                session.transferred_to_longterm = True
+                global_context.session_manager._save_session(session)
+                logger.info(f"{log_prefix}[STEP 4/4] Flag save completed in {time.time() - step4_start:.2f}s")
+            else:
+                logger.error(
+                    f"Failed to transfer session {session.session_id}: "
+                    f"{result.get('reason')}"
+                )
+                # Remove from index anyway - will retry on lazy load
+                step3_start = time.time()
+                was_removed = global_context.session_manager.remove_from_index(session)
+                if was_removed:
+                    logger.info(f"{log_prefix}[STEP 3/4] Removed failed session {session.session_id} from index")
+                else:
+                    logger.info(
+                        f"{log_prefix}[STEP 3/4] Failed session {session.session_id} was not in index "
+                        f"(already removed or archived session)"
+                    )
+                logger.info(f"{log_prefix}[STEP 3/4] Index removal completed in {time.time() - step3_start:.2f}s")
+        else:
+            logger.debug(
+                f"Session {session.session_id} already transferred "
+                f"(transferred_to_longterm=True)"
+            )
+            # Remove from index
+            step3_start = time.time()
+            was_removed = global_context.session_manager.remove_from_index(session)
+            if was_removed:
+                logger.info(f"{log_prefix}[STEP 3/4] Removed already-transferred session {session.session_id} from index")
+            else:
+                logger.info(
+                    f"{log_prefix}[STEP 3/4] Already-transferred session {session.session_id} was not in index "
+                    f"(already removed or archived session)"
+                )
+            logger.info(f"{log_prefix}[STEP 3/4] Index removal completed in {time.time() - step3_start:.2f}s")
+
+        total_time = time.time() - session_start_time
+        logger.info(f"Session {session.session_id} cleanup completed in {total_time:.2f}s")
+
+    except Exception as session_error:
+        logger.error(f"Failed to process session {session.session_id}: {session_error}", exc_info=True)
