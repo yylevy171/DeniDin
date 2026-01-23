@@ -16,7 +16,7 @@ def mock_config():
     """Create a mock AppConfiguration for testing"""
     config = Mock(spec=AppConfiguration)
     config.ai_model = "gpt-4o-mini"
-    config.system_message = "You are a helpful assistant."
+    config.constitution = "You are a helpful assistant."
     config.max_tokens = 500
     config.temperature = 0.7
     return config

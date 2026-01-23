@@ -79,7 +79,7 @@ class AIRequest:
     """Model representing a request to the AI service."""
 
     user_prompt: str  # Changed from user_message for consistency
-    system_message: str
+    constitution: str  # Constitution content loaded from file
     max_tokens: int
     temperature: float
     model: str
@@ -108,7 +108,7 @@ class AIRequest:
             'messages': [
                 {
                     'role': 'system',
-                    'content': self.system_message
+                    'content': self.constitution
                 },
                 {
                     'role': 'user',

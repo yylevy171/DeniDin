@@ -180,7 +180,7 @@ class TestAIRequest:
         
         assert ai_request.request_id is not None  # Auto-generated
         assert ai_request.user_prompt == 'What is the weather today?'
-        assert ai_request.system_message == 'You are a helpful assistant.'
+        assert ai_request.constitution == 'You are a helpful assistant.'
         assert ai_request.max_tokens == 1000
         assert ai_request.temperature == 0.7
         assert ai_request.timestamp is not None
@@ -258,7 +258,7 @@ class TestAIRequest:
             message_id='msg_123'
         )
         
-        assert ai_request.system_message == 'Custom system message'
+        assert ai_request.constitution == 'Custom system message'
         assert ai_request.max_tokens == 2000
         assert ai_request.temperature == 0.9
 

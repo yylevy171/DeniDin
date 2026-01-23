@@ -206,7 +206,7 @@ class TestRealOpenAPIConnectivity:
             response = openai_client.chat.completions.create(
                 model=config.ai_model,
                 messages=[
-                    {"role": "system", "content": config.system_message},
+                    {"role": "system", "content": config.constitution},
                     {"role": "user", "content": "What is 2+2? Answer with just the number."}
                 ],
                 temperature=config.temperature,
@@ -307,7 +307,7 @@ class TestRealEndToEndFlow:
             openai_response = openai_client.chat.completions.create(
                 model=config.ai_model,
                 messages=[
-                    {"role": "system", "content": config.system_message},
+                    {"role": "system", "content": config.constitution},
                     {"role": "user", "content": test_question}
                 ],
                 temperature=config.temperature,

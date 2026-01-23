@@ -16,7 +16,6 @@ class AppConfiguration:
     green_api_token: str
     ai_api_key: str
     ai_model: str = 'gpt-4o-mini'
-    system_message: str = 'You are a helpful assistant.'
     ai_reply_max_tokens: int = 1000
     temperature: float = 0.7
     log_level: str = 'INFO'
@@ -75,7 +74,6 @@ class AppConfiguration:
         # Set defaults for optional fields
         defaults = {
             'ai_model': 'gpt-4o-mini',
-            'system_message': 'You are a helpful assistant.',
             'ai_reply_max_tokens': 1000,
             'temperature': 0.7,
             'log_level': 'INFO',

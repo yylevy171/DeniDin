@@ -129,19 +129,19 @@ class TestMessageFlow:
         
         # Prepare the request (as denidin.py does)
         messages = [
-            {"role": "system", "content": config.system_message},
+            {"role": "system", "content": config.constitution},
             {"role": "user", "content": message_text}
         ]
         
         # Verify request structure
         assert messages[0]['role'] == 'system'
-        assert messages[0]['content'] == config.system_message
+        assert messages[0]['content'] == config.constitution
         assert messages[1]['role'] == 'user'
         assert messages[1]['content'] == 'Hello, can you help me?'
         
         print(f"\n[Flow Test] ✓ OpenAI send: Request structured correctly")
         print(f"[Flow Test]   Model: {config.ai_model}")
-        print(f"[Flow Test]   System message: {config.system_message[:50]}...")
+        print(f"[Flow Test]   System message: {config.constitution[:50]}...")
         print(f"[Flow Test]   User message: {message_text}")
         print(f"[Flow Test]   Temperature: {config.temperature}")
         print(f"[Flow Test]   Max tokens: {config.max_tokens}")
@@ -227,7 +227,7 @@ class TestMessageFlow:
         response = client.chat.completions.create(
             model=config.ai_model,
             messages=[
-                {"role": "system", "content": config.system_message},
+                {"role": "system", "content": config.constitution},
                 {"role": "user", "content": message_text}
             ],
             temperature=config.temperature,

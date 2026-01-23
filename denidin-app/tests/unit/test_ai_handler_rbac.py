@@ -140,8 +140,8 @@ class TestAIHandlerRBACMemoryRecall:
         assert call_args.kwargs['can_see_all_memories'] is False
         
         # System message should include recalled memories
-        assert "RECALLED MEMORIES" in request.system_message
-        assert "Test memory" in request.system_message
+        assert "RECALLED MEMORIES" in request.constitution
+        assert "Test memory" in request.constitution
     
     @patch('src.handlers.ai_handler.UserManager')
     @patch('src.handlers.ai_handler.MemoryManager')

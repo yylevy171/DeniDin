@@ -30,7 +30,6 @@ def constitution_config():
         green_api_token="test",
         ai_api_key="test-key",
         ai_model="gpt-4o-mini",
-        system_message="You are a helpful assistant.",  # Fallback if constitution missing
         ai_reply_max_tokens=1000,
         temperature=0.7,
         log_level="INFO",
@@ -111,8 +110,8 @@ class TestConstitutionMtimeBasedCaching:
         request = handler.create_request(message)
         
         # Constitution should be loaded
-        assert original_content in request.system_message
-        assert "DeniDin AI Assistant Constitution" in request.system_message
+        assert original_content in request.constitution
+        assert "DeniDin AI Assistant Constitution" in request.constitution
         
         # Cache should be populated
         assert handler._constitution_content is not None
@@ -157,7 +156,7 @@ class TestConstitutionMtimeBasedCaching:
         # Should use cached content (same mtime, same object)
         assert handler._constitution_mtime == first_mtime
         assert handler._constitution_content is first_content  # Same object reference
-        assert original_content in request2.system_message
+        assert original_content in request2.constitution
     
     def test_file_modification_triggers_reload(self, constitution_config, test_constitution_file):
         """Verify file modification (mtime changed) triggers reload."""
@@ -179,7 +178,7 @@ class TestConstitutionMtimeBasedCaching:
         
         # First request
         request1 = handler.create_request(message1)
-        assert "DeniDin AI Assistant Constitution" in request1.system_message
+        assert "DeniDin AI Assistant Constitution" in request1.constitution
         first_mtime = handler._constitution_mtime
         
         # Wait to ensure mtime changes
@@ -215,12 +214,12 @@ You are now SUPER helpful and VERY enthusiastic!
         assert handler._constitution_mtime != first_mtime
         
         # New content should be present
-        assert "MODIFIED Constitution" in request2.system_message
-        assert "SUPER helpful" in request2.system_message
-        assert "VERY enthusiastic" in request2.system_message
+        assert "MODIFIED Constitution" in request2.constitution
+        assert "SUPER helpful" in request2.constitution
+        assert "VERY enthusiastic" in request2.constitution
         
         # Old content should NOT be present
-        assert "Behavioral Guidelines" not in request2.system_message
+        assert "Behavioral Guidelines" not in request2.constitution
 
 
 class TestConstitutionAsSystemMessage:
@@ -246,20 +245,14 @@ class TestConstitutionAsSystemMessage:
         
         request = handler.create_request(message)
         
-        # Constitution content should be in system message
-        assert "DeniDin AI Assistant Constitution" in request.system_message
-        assert "Behavioral Guidelines" in request.system_message
-        
-        # Old system_message should NOT be present
-        assert "You are a helpful assistant." not in request.system_message
+        # Constitution content should be in request
+        assert "DeniDin AI Assistant Constitution" in request.constitution
+        assert "Behavioral Guidelines" in request.constitution
     
-    def test_constitution_only_no_system_message_appended(self, constitution_config, test_constitution_file):
-        """Verify system_message config is NOT appended when constitution exists."""
+    def test_constitution_only_no_appending(self, constitution_config, test_constitution_file):
+        """Verify constitution is used as-is without appending anything."""
         tmp_path, constitution_content = test_constitution_file
         constitution_config.data_root = str(tmp_path)
-        
-        # Set a distinctive system_message to verify it's not used
-        constitution_config.system_message = "THIS SHOULD NOT APPEAR IN THE REQUEST"
         
         client = MagicMock()
         handler = AIHandler(client, constitution_config)
@@ -277,10 +270,7 @@ class TestConstitutionAsSystemMessage:
         request = handler.create_request(message)
         
         # Constitution should be present
-        assert "DeniDin AI Assistant Constitution" in request.system_message
-        
-        # system_message config should NOT appear
-        assert "THIS SHOULD NOT APPEAR" not in request.system_message
+        assert "DeniDin AI Assistant Constitution" in request.constitution
 
 
 class TestSingleConstitutionFile:
@@ -321,12 +311,12 @@ class TestSingleConstitutionFile:
         request = handler.create_request(message)
         
         # Only first file should be loaded
-        assert "First Constitution" in request.system_message
-        assert "Use this one" in request.system_message
+        assert "First Constitution" in request.constitution
+        assert "Use this one" in request.constitution
         
         # Second file should be ignored
-        assert "Second Constitution" not in request.system_message
-        assert "Ignore this" not in request.system_message
+        assert "Second Constitution" not in request.constitution
+        assert "Ignore this" not in request.constitution
     
     def test_single_file_string_config(self, constitution_config, tmp_path):
         """Verify new config format with single file string."""
@@ -356,8 +346,8 @@ class TestSingleConstitutionFile:
         
         request = handler.create_request(message)
         
-        assert "My Custom Constitution" in request.system_message
-        assert "Be awesome!" in request.system_message
+        assert "My Custom Constitution" in request.constitution
+        assert "Be awesome!" in request.constitution
 
 
 class TestConstitutionErrorHandling:
@@ -384,10 +374,10 @@ class TestConstitutionErrorHandling:
             message_type="text"
         )
         
-        # Should not crash, fallback to system_message
+        # Should not crash, return empty constitution
         request = handler.create_request(message)
         assert request is not None
-        assert request.system_message  # Should have some system message
+        assert request.constitution == ""  # Empty when file is empty == ""  # Empty when file missing
     
     def test_empty_constitution_file_fallback(self, constitution_config, tmp_path):
         """Verify graceful handling when constitution file is empty."""
@@ -412,10 +402,10 @@ class TestConstitutionErrorHandling:
             message_type="text"
         )
         
-        # Should not crash, fallback to system_message
+        # Should not crash, return empty constitution
         request = handler.create_request(message)
         assert request is not None
-        assert request.system_message
+        assert request.constitution == ""  # Empty when file is empty
     
     def test_partial_file_list_some_missing(self, constitution_config, tmp_path):
         """Verify graceful handling when constitution file doesn't exist (no crash)."""
@@ -443,8 +433,8 @@ class TestConstitutionErrorHandling:
         
         request = handler.create_request(message)
         
-        # Should fallback to system_message
-        assert "You are a helpful assistant." in request.system_message
+        # Should return empty constitution
+        assert request.constitution == ""
 
 
 class TestLargeConstitutionFile:
@@ -471,13 +461,13 @@ class TestLargeConstitutionFile:
         request = handler.create_request(message)
         
         # Verify large content is loaded
-        assert "Large DeniDin Constitution" in request.system_message
-        assert "Section 1" in request.system_message
-        assert "Section 499" in request.system_message
-        assert "Guideline 499" in request.system_message
+        assert "Large DeniDin Constitution" in request.constitution
+        assert "Section 1" in request.constitution
+        assert "Section 499" in request.constitution
+        assert "Guideline 499" in request.constitution
         
-        # Verify system message is substantial
-        assert len(request.system_message) > 10000  # 500 lines should be >10K chars
+        # Verify constitution is substantial
+        assert len(request.constitution) > 10000  # 500 lines should be >10K chars
     
     def test_large_constitution_performance_no_caching(self, constitution_config, large_constitution_file):
         """Verify large constitution loads efficiently even without caching."""
@@ -502,7 +492,7 @@ class TestLargeConstitutionFile:
         start = time.time()
         for _ in range(10):  # 10 requests
             request = handler.create_request(message)
-            assert "Large DeniDin Constitution" in request.system_message
+            assert "Large DeniDin Constitution" in request.constitution
         elapsed = time.time() - start
         
         # Should complete reasonably fast even without caching (~50KB file × 10 reads)
@@ -550,12 +540,12 @@ class TestConstitutionWithMemory:
         request = handler.create_request(message)
         
         # Both constitution and memory should be present
-        assert "DeniDin AI Assistant Constitution" in request.system_message
+        assert "DeniDin AI Assistant Constitution" in request.constitution
         
         # Constitution should come BEFORE memory context
-        constitution_index = request.system_message.index("DeniDin AI Assistant Constitution")
-        if "RECALLED MEMORIES" in request.system_message:
-            memory_index = request.system_message.index("RECALLED MEMORIES")
+        constitution_index = request.constitution.index("DeniDin AI Assistant Constitution")
+        if "RECALLED MEMORIES" in request.constitution:
+            memory_index = request.constitution.index("RECALLED MEMORIES")
             assert constitution_index < memory_index, "Constitution should come before memory context"
 
 

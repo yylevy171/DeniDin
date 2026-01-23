@@ -234,7 +234,7 @@ class TestEndToEndFlow:
         assert config.green_api_token, "Missing green_api_token"
         assert config.ai_api_key, "Missing ai_api_key"
         assert config.ai_model, "Missing ai_model"
-        assert config.system_message, "Missing system_message"
+        assert config.constitution, "Missing system_message"
         
         # Verify valid ranges
         assert 0.0 <= config.temperature <= 1.0, "Invalid temperature"
