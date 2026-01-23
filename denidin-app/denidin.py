@@ -251,7 +251,6 @@ logger.info(f"  AI API Key: {mask_api_key(config.ai_api_key)}")
 logger.info(f"  AI Model: {config.ai_model}")
 logger.info(f"  Temperature: {config.temperature}")
 logger.info(f"  Max Tokens: {config.ai_reply_max_tokens}")
-logger.info(f"  Poll Interval: {config.poll_interval_seconds}s")
 logger.info(f"  Log Level: {config.log_level}")
 logger.info("Handlers initialized: AIHandler, WhatsAppHandler")
 logger.info("=" * 60)
@@ -377,7 +376,6 @@ if __name__ == "__main__":
         'ai_reply_max_tokens': config.ai_reply_max_tokens,
         'temperature': config.temperature,
         'log_level': config.log_level,
-        'poll_interval_seconds': config.poll_interval_seconds,
         'data_root': config.data_root,
         'feature_flags': config.feature_flags,
         'godfather_phone': config.godfather_phone,

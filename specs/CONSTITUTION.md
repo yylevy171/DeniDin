@@ -348,6 +348,10 @@ The direct git merge workflow is the PRIMARY and PREFERRED merge method because 
 ## IV. Code Quality Standards
 
 **Requirements**:
+- **Python 3 Only**: This project uses **Python 3.8+** (Python 3.11 recommended)
+  - ALWAYS use `python3` command, NEVER `python` (which may point to Python 2)
+  - All code must be Python 3 compatible
+  - Use Python 3 features (type hints, f-strings, dataclasses, etc.)
 - **Type Hints**: All functions must have type annotations
 - **Docstrings**: All modules, classes, and functions must have Google-style docstrings
 - **PEP 8 Compliance**: Follow Python style guide (120 char line limit)
@@ -405,6 +409,9 @@ if config.feature_flags.get("enable_memory_system", False):
 - Git operations via CLI: `git add`, `git commit`, `git push`, `git checkout -b`
 - Pull request management via `gh` CLI: `gh pr create`, `gh pr merge`
 - Testing via CLI: `pytest` commands
+- **Test logs location**: All test execution logs are stored in `denidin-app/logs/test_logs/`
+  - When reviewing test results, check this directory for detailed logs
+  - Logs persist across test runs for debugging and analysis
 - All code-modifying operations must use CLI tools
 
 **Rationale**: CLI operations are scriptable, automatable, reproducible, and work consistently across platforms.

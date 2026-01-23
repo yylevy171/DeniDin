@@ -106,12 +106,12 @@ class TestConfigValidationIntegration:
 
     def test_bot_doesnt_start_with_invalid_config(self):
         """Test bot doesn't start when config validation fails."""
-        # Create config with invalid poll_interval
+        # Create config with invalid temperature
         invalid_config = {
             "green_api_instance_id": "test123",
             "green_api_token": "token123",
             "ai_api_key": "sk-test",
-            "poll_interval_seconds": 0  # Invalid: must be >= 1
+            "temperature": 2.0  # Invalid: must be between 0.0 and 1.0
         }
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -126,7 +126,7 @@ class TestConfigValidationIntegration:
             with pytest.raises(ValueError) as exc_info:
                 config.validate()
             
-            assert "poll_interval" in str(exc_info.value).lower()
+            assert "temperature" in str(exc_info.value).lower()
             
         finally:
             os.unlink(temp_path)
@@ -164,7 +164,6 @@ class TestConfigLogging:
             assert config.ai_model == "gpt-4o-mini"  # default
             assert config.temperature == 0.7  # default
             assert config.ai_reply_max_tokens == 1000  # default
-            assert config.poll_interval_seconds == 5  # default
             
         finally:
             os.unlink(temp_path)
@@ -313,36 +312,6 @@ class TestConfigLogging:
             os.unlink(temp_path)
 
     @patch('sys.exit')
-    def test_poll_interval_logged(self, mock_exit, caplog):
-        """Test poll_interval is logged on startup."""
-        import logging
-        caplog.set_level(logging.INFO)
-        
-        config_data = {
-            "green_api_instance_id": "test123",
-            "green_api_token": "token123",
-            "ai_api_key": "sk-test",
-            "poll_interval_seconds": 10
-        }
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(config_data, f)
-            temp_path = f.name
-        
-        try:
-            from src.models.config import AppConfiguration
-            from src.utils.logger import get_logger
-            
-            config = AppConfiguration.from_file(temp_path)
-            logger = get_logger(__name__, log_level="INFO")
-            
-            logger.info(f"Poll Interval: {config.poll_interval_seconds}s")
-            
-            assert "Poll Interval: 10s" in caplog.text
-            
-        finally:
-            os.unlink(temp_path)
-
     @patch('sys.exit')
     def test_logs_are_info_or_debug_level(self, mock_exit, caplog):
         """Test config logs use INFO or DEBUG log level."""

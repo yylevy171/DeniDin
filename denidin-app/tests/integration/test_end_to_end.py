@@ -238,7 +238,6 @@ class TestEndToEndFlow:
         # Verify valid ranges
         assert 0.0 <= config.temperature <= 1.0, "Invalid temperature"
         assert config.ai_reply_max_tokens >= 1, "Invalid ai_reply_max_tokens"
-        assert config.poll_interval_seconds >= 1, "Invalid poll_interval"
         assert config.log_level in ['INFO', 'DEBUG'], "Invalid log_level"
         
         print("\n[E2E Test] ✓ All configuration fields validated")
@@ -246,7 +245,6 @@ class TestEndToEndFlow:
         print(f"  - Model: {config.ai_model}")
         print(f"  - Temperature: {config.temperature}")
         print(f"  - AI Reply Max tokens: {config.ai_reply_max_tokens}")
-        print(f"  - Poll interval: {config.poll_interval_seconds}s")
 
 
 class TestManualE2EInstructions:

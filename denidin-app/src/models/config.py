@@ -19,7 +19,6 @@ class AppConfiguration:
     ai_reply_max_tokens: int = 1000
     temperature: float = 0.7
     log_level: str = 'INFO'
-    poll_interval_seconds: int = 5
 
     # Data storage configuration
     data_root: str = 'data'  # Root directory for all data storage (sessions, memory, etc.)
@@ -76,7 +75,6 @@ class AppConfiguration:
             'ai_reply_max_tokens': 1000,
             'temperature': 0.7,
             'log_level': 'INFO',
-            'poll_interval_seconds': 5,
             'data_root': 'data',
             'godfather_phone': None,
             'feature_flags': {},
@@ -138,10 +136,6 @@ class AppConfiguration:
         # Validate ai_reply_max_tokens is positive
         if self.ai_reply_max_tokens < 1:
             raise ValueError(f"ai_reply_max_tokens must be >= 1, got {self.ai_reply_max_tokens}")
-
-        # Validate poll_interval_seconds is positive
-        if self.poll_interval_seconds < 1:
-            raise ValueError(f"poll_interval_seconds must be >= 1, got {self.poll_interval_seconds}")
 
         # Validate log_level is INFO or DEBUG
         if self.log_level not in ['INFO', 'DEBUG']:
