@@ -79,9 +79,7 @@ Edit `config/config.json` and replace the placeholder values:
   "system_message": "You are a helpful AI assistant named DeniDin.",
   "max_tokens": 1000,
   "temperature": 0.7,
-  "log_level": "INFO",
-  "poll_interval_seconds": 5,
-  "max_retries": 3
+  "log_level": "INFO"
 }
 ```
 
@@ -95,8 +93,6 @@ Edit `config/config.json` and replace the placeholder values:
 - `max_tokens`: Maximum tokens in AI response
 - `temperature`: AI creativity level (0.0-1.0)
 - `log_level`: Logging verbosity ("INFO" or "DEBUG")
-- `poll_interval_seconds`: How often to check for new messages (default: 5)
-- `max_retries`: Number of retry attempts for failed API calls
 - `data_root`: Root directory for data storage (default: "data")
 - `godfather_phone`: WhatsApp ID of godfather user (format: "PHONE@c.us")
 
@@ -471,7 +467,6 @@ Change `log_level` in `config/config.json` to switch between levels.
 - Check Green API instance status in dashboard (must be "authorized")
 - Test Green API connection: `python3 -m pytest tests/integration/test_real_api_connectivity.py -v`
 - Review `logs/denidin.log` for polling errors
-- Ensure `poll_interval_seconds` is reasonable (5-10 seconds recommended)
 - Check WhatsApp business account is logged in on phone
 
 **Logs to check**: `grep "polling" logs/denidin.log` or `grep "ERROR" logs/denidin.log`

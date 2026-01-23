@@ -26,7 +26,6 @@ def memory_enabled_config():
         ai_reply_max_tokens=100,
         temperature=0.7,
         log_level="INFO",
-        poll_interval_seconds=5,
         feature_flags={"enable_memory_system": True},
         memory={
             "session": {

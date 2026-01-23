@@ -103,9 +103,7 @@ chmod 600 config/config.json  # Restrict permissions
   "system_message": "You are a helpful assistant.",
   "max_tokens": 1000,
   "temperature": 0.7,
-  "log_level": "INFO",
-  "poll_interval_seconds": 5,
-  "max_retries": 3
+  "log_level": "INFO"
 }
 ```
 
@@ -263,10 +261,11 @@ For production deployments, configure webhooks for real-time message delivery (o
 ### Current Mode: Polling
 
 DeniDin uses **polling mode** by default:
-- Polls Green API every 5 seconds (configurable via `poll_interval_seconds`)
+- Polling is handled internally by the Green API library
+- Polling interval is controlled by Green API (not configurable in DeniDin)
 - No webhook configuration needed
 - Works behind firewalls and NAT
-- Slight delay in message processing (5-10 seconds)
+- Slight delay in message processing (5-10 seconds typical)
 
 ### Future: Webhook Mode (Advanced)
 
@@ -397,7 +396,6 @@ python3 -c "from src.models.config import BotConfiguration; BotConfiguration.fro
 **Common errors:**
 - `ValueError: Missing required field` → Add required field to config.json
 - `ValueError: temperature must be between 0.0 and 1.0` → Fix temperature value
-- `ValueError: poll_interval_seconds must be >= 1` → Fix poll interval
 
 ### No Messages Received
 
@@ -408,7 +406,6 @@ python3 -c "from whatsapp_chatbot_python import GreenAPIBot; bot = GreenAPIBot('
 ```
 
 **Verify polling:**
-- Check `poll_interval_seconds` in config.json
 - Look for "Waiting for WhatsApp messages" in logs
 - Ensure WhatsApp account is active and connected
 

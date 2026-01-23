@@ -20,8 +20,7 @@ class TestAppConfiguration:
             "ai_api_key": "sk-test123",
             "ai_model": "gpt-4",
             "temperature": 0.7,
-            "log_level": "INFO",
-            "poll_interval_seconds": 5
+            "log_level": "INFO"
         }
 
     @pytest.fixture
@@ -53,7 +52,6 @@ class TestAppConfiguration:
         assert config.ai_model == "gpt-4"
         assert config.temperature == 0.7
         assert config.log_level == "INFO"
-        assert config.poll_interval_seconds == 5
 
     def test_from_file_loads_yaml_correctly(self, temp_yaml_config):
         """Test that from_file() loads YAML config correctly."""
@@ -65,7 +63,6 @@ class TestAppConfiguration:
         assert config.ai_model == "gpt-4"
         assert config.temperature == 0.7
         assert config.log_level == "INFO"
-        assert config.poll_interval_seconds == 5
 
     def test_from_file_missing_required_field_raises_error(self):
         """Test that from_file() raises ValueError when required fields are missing."""
@@ -222,15 +219,6 @@ class TestAppConfiguration:
             config.validate()
         assert "ai_reply_max_tokens" in str(exc_info.value).lower()
 
-    def test_validate_fails_with_invalid_poll_interval(self, valid_config_data):
-        """Test that validate() fails when poll_interval < 1."""
-        valid_config_data['poll_interval_seconds'] = 0
-        config = AppConfiguration(**valid_config_data)
-        
-        with pytest.raises(ValueError) as exc_info:
-            config.validate()
-        assert "poll_interval" in str(exc_info.value).lower()
-
     def test_log_level_validates_info_debug_only(self, valid_config_data):
         """Test that log_level only accepts INFO or DEBUG."""
         # Test valid values
@@ -257,7 +245,6 @@ class TestAppConfiguration:
         assert hasattr(config, 'ai_model')
         assert hasattr(config, 'temperature')
         assert hasattr(config, 'log_level')
-        assert hasattr(config, 'poll_interval_seconds')
         assert hasattr(config, 'data_root')
 
     def test_data_root_defaults_to_data(self, valid_config_data):
