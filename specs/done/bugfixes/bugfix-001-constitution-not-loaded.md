@@ -1,7 +1,7 @@
 # Bugfix 001: Constitution Config Enabled But Files Not Loaded
 
 **Created**: January 23, 2026  
-**Status**: Not Started  
+**Status**: ✅ Complete  
 **Priority**: P1 (High - Missing core AI behavior guidelines)  
 **Component**: Configuration, AI Handler, System Prompt  
 **Branch**: `bugfix/001-constitution-not-loaded`  
