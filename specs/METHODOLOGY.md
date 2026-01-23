@@ -105,10 +105,17 @@ All implementation MUST follow strict test-first methodology with human approval
 
 All bug fixes MUST follow a disciplined root-cause analysis and test-first workflow.
 
+**Bug Specification Storage:**
+- ALL bugfix specifications MUST be stored in `specs/bugfixes/` directory
+- Format: `specs/bugfixes/bugfix-###-description.md` (e.g., `specs/bugfixes/bugfix-001-constitution-not-loaded.md`)
+- Prefix: Always start with `bugfix-` to distinguish from features
+- Sequential numbering: 001, 002, 003, etc.
+- Never store bugfix specs in `specs/in-progress/` or other feature directories
+
 **Branch Naming:**
-- Format: `bugfix/component-issue-description`
-- Example: `bugfix/session-expiry-memory-transfer`
-- Component: affected module/system (e.g., `session`, `memory`, `whatsapp`)
+- Format: `bugfix/###-issue-description`
+- Example: `bugfix/001-constitution-not-loaded`
+- Number MUST match the spec file number in `specs/bugfixes/`
 - Issue: concise description in kebab-case
 
 **Bug-Fix Workflow (Strict Order):**

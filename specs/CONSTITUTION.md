@@ -90,10 +90,11 @@ received_timestamp = datetime.now()  # FORBIDDEN
 - **Features**: `feature/###-description` (e.g., `feature/003-media-processing-phase1`)
   - Use feature number from specs directory (e.g., 003 from `specs/in-progress/003-media-document-processing/`)
   - Include phase/component for multi-phase features (e.g., `-phase1`, `-phase2`)
-- **Bug fixes**: `bugfix/component-issue-description` (e.g., `bugfix/session-expiry-memory-transfer`)
-  - Component: affected module/system (e.g., `session`, `memory`, `auth`)
+- **Bug fixes**: `bugfix/###-issue-description` (e.g., `bugfix/001-constitution-not-loaded`)
+  - Use bug number from `specs/bugfixes/` directory (e.g., 001 from `specs/bugfixes/bugfix-001-constitution-not-loaded.md`)
   - Issue: concise bug description in kebab-case
   - See METHODOLOGY.md §VII for bug-fixing workflow
+  - All bugfix specs MUST be stored in `specs/bugfixes/bugfix-###-description.md`
 - **Other**: `docs/`, `chore/` prefixes for non-feature, non-bugfix work
 
 **Requirements**:
