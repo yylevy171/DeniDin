@@ -72,8 +72,7 @@ class TestMessageHandlerFunctionality:
         assert 'messages' in combined
         assert 'role' in combined
         assert 'system' in combined or 'user' in combined
-        assert 'config.system_message' in combined
-        assert 'config.ai_model' in combined or 'config.max_tokens' in combined
+        assert 'config.ai_model' in combined or 'config.ai_reply_max_tokens' in combined
 
 
 class TestMessageTrackingInLogs:

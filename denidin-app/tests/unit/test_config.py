@@ -19,8 +19,6 @@ class TestAppConfiguration:
             "green_api_token": "abcdef123456",
             "ai_api_key": "sk-test123",
             "ai_model": "gpt-4",
-            "system_message": "You are a helpful assistant.",
-            "max_tokens": 1000,
             "temperature": 0.7,
             "log_level": "INFO",
             "poll_interval_seconds": 5,
@@ -54,8 +52,6 @@ class TestAppConfiguration:
         assert config.green_api_token == "abcdef123456"
         assert config.ai_api_key == "sk-test123"
         assert config.ai_model == "gpt-4"
-        assert config.system_message == "You are a helpful assistant."
-        assert config.max_tokens == 1000
         assert config.temperature == 0.7
         assert config.log_level == "INFO"
         assert config.poll_interval_seconds == 5
@@ -69,8 +65,6 @@ class TestAppConfiguration:
         assert config.green_api_token == "abcdef123456"
         assert config.ai_api_key == "sk-test123"
         assert config.ai_model == "gpt-4"
-        assert config.system_message == "You are a helpful assistant."
-        assert config.max_tokens == 1000
         assert config.temperature == 0.7
         assert config.log_level == "INFO"
         assert config.poll_interval_seconds == 5
@@ -223,13 +217,13 @@ class TestAppConfiguration:
         assert "temperature" in str(exc_info.value).lower()
 
     def test_validate_fails_with_invalid_max_tokens(self, valid_config_data):
-        """Test that validate() fails when max_tokens < 1."""
-        valid_config_data['max_tokens'] = 0
+        """Test that validate() fails when ai_reply_max_tokens < 1."""
+        valid_config_data['ai_reply_max_tokens'] = 0
         config = AppConfiguration(**valid_config_data)
         
         with pytest.raises(ValueError) as exc_info:
             config.validate()
-        assert "max_tokens" in str(exc_info.value).lower()
+        assert "ai_reply_max_tokens" in str(exc_info.value).lower()
 
     def test_validate_fails_with_invalid_poll_interval(self, valid_config_data):
         """Test that validate() fails when poll_interval < 1."""
@@ -264,8 +258,6 @@ class TestAppConfiguration:
         assert hasattr(config, 'green_api_token')
         assert hasattr(config, 'ai_api_key')
         assert hasattr(config, 'ai_model')
-        assert hasattr(config, 'system_message')
-        assert hasattr(config, 'max_tokens')
         assert hasattr(config, 'temperature')
         assert hasattr(config, 'log_level')
         assert hasattr(config, 'poll_interval_seconds')

@@ -140,7 +140,7 @@ class AIHandler:
         
         # If no constitution file configured, fallback to system_message
         if not filename:
-            return self.config.system_message
+            return ""
         
         # Build constitution file path
         filepath = Path(self.config.data_root) / 'constitution' / filename
@@ -148,7 +148,7 @@ class AIHandler:
         # Check if file exists
         if not filepath.exists():
             logger.warning(f"Constitution file not found: {filepath}, using system_message fallback")
-            return self.config.system_message
+            return ""
         
         # Check file modification time
         try:
@@ -163,13 +163,13 @@ class AIHandler:
             # If constitution is empty after loading, fallback to system_message
             if not self._constitution_content:
                 logger.warning(f"Constitution file is empty: {filepath}, using system_message fallback")
-                return self.config.system_message
+                return ""
             
             return self._constitution_content
             
         except Exception as e:
             logger.error(f"Failed to load constitution file {filepath}: {e}", exc_info=True)
-            return self.config.system_message
+            return ""
 
     def create_request(self, message: WhatsAppMessage, chat_id: Optional[str] = None,
                        user_role: str = 'client', user_phone: Optional[str] = None) -> AIRequest:
@@ -211,7 +211,7 @@ class AIHandler:
             user_prompt = user_prompt[:MAX_MESSAGE_LENGTH]
 
         # Build system message with constitution (if configured) + optional memory context
-        system_message = self._load_constitution()
+        constitution = self._load_constitution()
 
         # Add recalled memories if memory system enabled
         if self.memory_enabled and self.memory_manager:
@@ -247,7 +247,7 @@ class AIHandler:
                     for mem in recalled_memories:
                         memory_context += f"- {mem['content']} (relevance: {mem['similarity']:.2f})\n"
 
-                    system_message += memory_context
+                    constitution += memory_context
                     logger.info(f"Added {len(recalled_memories)} recalled memories to system prompt")
             except Exception as e:
                 logger.error(f"Failed to recall memories: {e}", exc_info=True)
@@ -255,7 +255,7 @@ class AIHandler:
         # Create AI request
         request = AIRequest(
             user_prompt=user_prompt,
-            system_message=system_message,
+            constitution=constitution,
             max_tokens=self.config.ai_reply_max_tokens,
             temperature=self.config.temperature,
             model=self.config.ai_model,
@@ -292,7 +292,7 @@ class AIHandler:
         logger.debug(f"Calling OpenAI API for request {request.request_id}")
 
         # Build messages array with optional conversation history
-        messages = [{"role": "system", "content": request.system_message}]
+        messages = [{"role": "system", "content": request.constitution}]
 
         # Add conversation history if provided
         if conversation_history:

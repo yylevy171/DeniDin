@@ -179,7 +179,7 @@ class TestEndToEndRBACEnforcement:
         # Act & Assert: get_response rejects
         request = AIRequest(
             user_prompt="Test",
-            system_message="Test",
+            constitution="Test",
             max_tokens=500,
             temperature=0.7,
             model="gpt-4o-mini",
@@ -570,7 +570,7 @@ class TestErrorHandling:
         
         request = AIRequest(
             user_prompt="Test",
-            system_message="Test",
+            constitution="Test",
             max_tokens=500,
             temperature=0.7,
             model="gpt-4o-mini",

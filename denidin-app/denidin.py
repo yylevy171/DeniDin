@@ -244,8 +244,7 @@ logger.info(f"  Green API Token: {mask_api_key(config.green_api_token)}")
 logger.info(f"  AI API Key: {mask_api_key(config.ai_api_key)}")
 logger.info(f"  AI Model: {config.ai_model}")
 logger.info(f"  Temperature: {config.temperature}")
-logger.info(f"  Max Tokens: {config.max_tokens}")
-logger.info(f"  System Message: {config.system_message[:50]}...")
+logger.info(f"  Max Tokens: {config.ai_reply_max_tokens}")
 logger.info(f"  Poll Interval: {config.poll_interval_seconds}s")
 logger.info(f"  Log Level: {config.log_level}")
 logger.info(f"  Max Retries: {config.max_retries}")
@@ -370,8 +369,7 @@ if __name__ == "__main__":
         'green_api_token': config.green_api_token,
         'ai_api_key': config.ai_api_key,
         'ai_model': config.ai_model,
-        'system_message': config.system_message,
-        'max_tokens': config.max_tokens,
+        'ai_reply_max_tokens': config.ai_reply_max_tokens,
         'temperature': config.temperature,
         'log_level': config.log_level,
         'poll_interval_seconds': config.poll_interval_seconds,

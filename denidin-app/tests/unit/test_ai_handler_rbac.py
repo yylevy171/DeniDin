@@ -31,9 +31,6 @@ class TestAIHandlerRBACInitialization:
             green_api_instance_id="test-instance",
             green_api_token="test-token",
             ai_api_key="test-key",
-            ai_model="gpt-4o-mini",
-            system_message="Test system message",
-            max_tokens=500,
             temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={
@@ -75,9 +72,6 @@ class TestAIHandlerRBACMemoryRecall:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            ai_model="gpt-4o-mini",
-            system_message="Test system",
-            max_tokens=500,
             temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": []},
@@ -140,8 +134,8 @@ class TestAIHandlerRBACMemoryRecall:
         assert call_args.kwargs['can_see_all_memories'] is False
         
         # System message should include recalled memories
-        assert "RECALLED MEMORIES" in request.system_message
-        assert "Test memory" in request.system_message
+        assert "RECALLED MEMORIES" in request.constitution
+        assert "Test memory" in request.constitution
     
     @patch('src.handlers.ai_handler.UserManager')
     @patch('src.handlers.ai_handler.MemoryManager')
@@ -154,9 +148,6 @@ class TestAIHandlerRBACMemoryRecall:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            ai_model="gpt-4o-mini",
-            system_message="Test system",
-            max_tokens=500,
             temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": []},
@@ -223,9 +214,6 @@ class TestAIHandlerRBACTokenLimits:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            ai_model="gpt-4o-mini",
-            system_message="Test",
-            max_tokens=500,
             temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": []},
@@ -265,7 +253,7 @@ class TestAIHandlerRBACTokenLimits:
         
         request = AIRequest(
             user_prompt="Test prompt",
-            system_message="Test system",
+            constitution="Test system",
             max_tokens=500,
             temperature=0.7,
             model="gpt-4o-mini",
@@ -303,9 +291,6 @@ class TestAIHandlerRBACTokenLimits:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            ai_model="gpt-4o-mini",
-            system_message="Test",
-            max_tokens=500,
             temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": []},
@@ -345,7 +330,7 @@ class TestAIHandlerRBACTokenLimits:
         
         request = AIRequest(
             user_prompt="Test prompt",
-            system_message="Test system",
+            constitution="Test system",
             max_tokens=500,
             temperature=0.7,
             model="gpt-4o-mini",
@@ -384,9 +369,6 @@ class TestAIHandlerRBACBlockedUsers:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            ai_model="gpt-4o-mini",
-            system_message="Test",
-            max_tokens=500,
             temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": ["+972505555555"]},
@@ -432,9 +414,6 @@ class TestAIHandlerRBACBlockedUsers:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            ai_model="gpt-4o-mini",
-            system_message="Test",
-            max_tokens=500,
             temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": ["+972505555555"]},
@@ -457,8 +436,8 @@ class TestAIHandlerRBACBlockedUsers:
         handler = AIHandler(ai_client, config, cleanup_interval_seconds=3600)
         
         request = AIRequest(
-            user_prompt="Test",
-            system_message="Test",
+            user_prompt="Test prompt",
+            constitution="Test system",
             max_tokens=500,
             temperature=0.7,
             model="gpt-4o-mini",
@@ -494,9 +473,6 @@ class TestAIHandlerRBACLongTermMemory:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            ai_model="gpt-4o-mini",
-            system_message="Test",
-            max_tokens=500,
             temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": []},

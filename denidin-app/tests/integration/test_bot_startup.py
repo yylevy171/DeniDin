@@ -163,7 +163,7 @@ class TestConfigLogging:
             assert config.green_api_instance_id == "test_instance_123"
             assert config.ai_model == "gpt-4o-mini"  # default
             assert config.temperature == 0.7  # default
-            assert config.max_tokens == 1000  # default
+            assert config.ai_reply_max_tokens == 1000  # default
             assert config.poll_interval_seconds == 5  # default
             
         finally:
@@ -283,7 +283,7 @@ class TestConfigLogging:
 
     @patch('sys.exit')
     def test_max_tokens_logged(self, mock_exit, caplog):
-        """Test max_tokens is logged on startup."""
+        """Test ai_reply_max_tokens is logged on startup."""
         import logging
         caplog.set_level(logging.INFO)
         
@@ -291,7 +291,7 @@ class TestConfigLogging:
             "green_api_instance_id": "test123",
             "green_api_token": "token123",
             "ai_api_key": "sk-test",
-            "max_tokens": 1000
+            "ai_reply_max_tokens": 1000
         }
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -305,9 +305,9 @@ class TestConfigLogging:
             config = AppConfiguration.from_file(temp_path)
             logger = get_logger(__name__, log_level="INFO")
             
-            logger.info(f"Max Tokens: {config.max_tokens}")
+            logger.info(f"AI Reply Max Tokens: {config.ai_reply_max_tokens}")
             
-            assert "Max Tokens: 1000" in caplog.text
+            assert "AI Reply Max Tokens: 1000" in caplog.text
             
         finally:
             os.unlink(temp_path)
