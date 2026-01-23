@@ -17,7 +17,7 @@ class AppConfiguration:
     ai_api_key: str
     ai_model: str = 'gpt-4o-mini'
     system_message: str = 'You are a helpful assistant.'
-    max_tokens: int = 1000
+    ai_reply_max_tokens: int = 1000
     temperature: float = 0.7
     log_level: str = 'INFO'
     poll_interval_seconds: int = 5
@@ -76,7 +76,7 @@ class AppConfiguration:
         defaults = {
             'ai_model': 'gpt-4o-mini',
             'system_message': 'You are a helpful assistant.',
-            'max_tokens': 1000,
+            'ai_reply_max_tokens': 1000,
             'temperature': 0.7,
             'log_level': 'INFO',
             'poll_interval_seconds': 5,
@@ -135,9 +135,9 @@ class AppConfiguration:
         if not 0.0 <= self.temperature <= 1.0:
             raise ValueError(f"temperature must be between 0.0 and 1.0, got {self.temperature}")
 
-        # Validate max_tokens is positive
-        if self.max_tokens < 1:
-            raise ValueError(f"max_tokens must be >= 1, got {self.max_tokens}")
+        # Validate ai_reply_max_tokens is positive
+        if self.ai_reply_max_tokens < 1:
+            raise ValueError(f"ai_reply_max_tokens must be >= 1, got {self.ai_reply_max_tokens}")
 
         # Validate poll_interval_seconds is positive
         if self.poll_interval_seconds < 1:

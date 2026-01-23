@@ -4,7 +4,7 @@
   "ai_api_key": "sk-test1234567890abcdefghijklmnopqrstuvwxyz",
   "ai_model": "gpt-3.5-turbo",
   "system_message": "You are a test assistant.",
-  "max_tokens": 1000,
+  "ai_reply_max_tokens": 1000,
   "temperature": 0.7,
   "log_level": "DEBUG",
   "poll_interval_seconds": 5,
@@ -33,11 +33,7 @@
       "min_similarity": 0.7
     }
   },
-  "constitution_config": {
-    "enabled": false,
-    "files": [],
-    "max_tokens": 0
-  },
+  "constitution_config": {},
   "user_roles": {
     "admin_phones": ["+972509999999"],
     "blocked_phones": ["+972505555555"]
