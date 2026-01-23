@@ -118,7 +118,11 @@ class AppConfiguration:
                         if key not in config_data['memory'][section]:
                             config_data['memory'][section][key] = value
 
-        return cls(**config_data)
+        # Filter out unknown keys (backward compatibility for removed config fields)
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered_config = {k: v for k, v in config_data.items() if k in valid_fields}
+
+        return cls(**filtered_config)
 
     def validate(self) -> None:
         """

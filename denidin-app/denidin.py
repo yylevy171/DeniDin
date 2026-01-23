@@ -191,8 +191,14 @@ def initialize_app(config_dict: dict) -> DeniDin:
     Returns:
         DeniDin instance with handle_message(), get_collection(), shutdown() APIs
     """
-    # Create AppConfiguration from dict
-    config = AppConfiguration(**config_dict)
+    # Create AppConfiguration from dict (using from_dict for proper filtering)
+    # Note: We need to write config to temp file and load it properly
+    # OR filter unknown keys here similar to from_file()
+    from dataclasses import fields
+    valid_fields = {f.name for f in fields(AppConfiguration)}
+    filtered_config = {k: v for k, v in config_dict.items() if k in valid_fields}
+    
+    config = AppConfiguration(**filtered_config)
     config.validate()
     
     # Initialize OpenAI client
