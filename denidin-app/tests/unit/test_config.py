@@ -21,8 +21,7 @@ class TestAppConfiguration:
             "ai_model": "gpt-4",
             "temperature": 0.7,
             "log_level": "INFO",
-            "poll_interval_seconds": 5,
-            "max_retries": 3
+            "poll_interval_seconds": 5
         }
 
     @pytest.fixture
@@ -55,7 +54,6 @@ class TestAppConfiguration:
         assert config.temperature == 0.7
         assert config.log_level == "INFO"
         assert config.poll_interval_seconds == 5
-        assert config.max_retries == 3
 
     def test_from_file_loads_yaml_correctly(self, temp_yaml_config):
         """Test that from_file() loads YAML config correctly."""
@@ -68,7 +66,6 @@ class TestAppConfiguration:
         assert config.temperature == 0.7
         assert config.log_level == "INFO"
         assert config.poll_interval_seconds == 5
-        assert config.max_retries == 3
 
     def test_from_file_missing_required_field_raises_error(self):
         """Test that from_file() raises ValueError when required fields are missing."""
@@ -261,7 +258,6 @@ class TestAppConfiguration:
         assert hasattr(config, 'temperature')
         assert hasattr(config, 'log_level')
         assert hasattr(config, 'poll_interval_seconds')
-        assert hasattr(config, 'max_retries')
         assert hasattr(config, 'data_root')
 
     def test_data_root_defaults_to_data(self, valid_config_data):

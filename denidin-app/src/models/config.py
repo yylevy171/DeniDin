@@ -20,7 +20,6 @@ class AppConfiguration:
     temperature: float = 0.7
     log_level: str = 'INFO'
     poll_interval_seconds: int = 5
-    max_retries: int = 3
 
     # Data storage configuration
     data_root: str = 'data'  # Root directory for all data storage (sessions, memory, etc.)
@@ -78,7 +77,6 @@ class AppConfiguration:
             'temperature': 0.7,
             'log_level': 'INFO',
             'poll_interval_seconds': 5,
-            'max_retries': 3,
             'data_root': 'data',
             'godfather_phone': None,
             'feature_flags': {},
@@ -120,7 +118,11 @@ class AppConfiguration:
                         if key not in config_data['memory'][section]:
                             config_data['memory'][section][key] = value
 
-        return cls(**config_data)
+        # Filter out unknown keys (backward compatibility for removed config fields)
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered_config = {k: v for k, v in config_data.items() if k in valid_fields}
+
+        return cls(**filtered_config)
 
     def validate(self) -> None:
         """
