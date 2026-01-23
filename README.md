@@ -18,7 +18,8 @@ DeniDin is a production WhatsApp application powered by OpenAI GPT-4o-mini with 
 - ✅ Data root configuration for test/prod separation
 - ✅ Sender/recipient tracking for proper message attribution
 - ✅ Application management scripts (run_denidin.sh, stop_denidin.sh)
-- ✅ 212 tests passing, 4 skipped
+- ✅ 316 unit tests passing, 4 skipped; all integration tests passing
+- ✅ Bugfixes 001-003 complete (constitution loading, removed unused config: max_retries, poll_interval_seconds)
 - 🚀 Application deployed and running in production
 
 **Memory System**: Phases 1-6 complete (PR #20 merged to master)

@@ -9,11 +9,13 @@
 ```
 specs/bugfixes/
 ├── README.md                                  # This file
-├── bugfix-001-constitution-not-loaded.md     # Bugfix spec
-├── bugfix-002-max-retries-unused.md          # Bugfix spec
-├── bugfix-003-poll-interval-unused.md        # Bugfix spec
-├── bugfix-004-data-root-ignored.md           # Bugfix spec
+├── bugfix-004-data-root-ignored.md           # Bugfix spec (Not Started)
 └── bugfix-###-description.md                 # Future bugfix specs
+
+specs/done/bugfixes/
+├── bugfix-001-constitution-not-loaded.md     # ✅ Complete
+├── bugfix-002-max-retries-unused.md          # ✅ Complete
+└── bugfix-003-poll-interval-unused.md        # ✅ Complete
 ```
 
 ---
@@ -74,10 +76,15 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 
 | # | Title | Priority | Status | Branch |
 |---|-------|----------|--------|--------|
-| 001 | Constitution Config Not Loaded | P1 | Not Started | `bugfix/001-constitution-not-loaded` |
-| 002 | max_retries Config Value Unused | P2 | Not Started | `bugfix/002-max-retries-unused` |
-| 003 | poll_interval_seconds Config Value Unused | P3 | Not Started | `bugfix/003-poll-interval-unused` |
 | 004 | data_root Config Value Not Respected | P2 | Not Started | `bugfix/004-data-root-ignored` |
+
+## Completed Bugfixes
+
+| # | Title | Priority | Completed | PR/Commit |
+|---|-------|----------|-----------|-----|
+| 001 | Constitution Config Not Loaded | P1 | 2026-01-23 | 6610279 |
+| 002 | max_retries Config Value Unused | P2 | 2026-01-23 | #55 |
+| 003 | poll_interval_seconds Config Value Unused | P3 | 2026-01-23 | #56 |
 
 ---
 
