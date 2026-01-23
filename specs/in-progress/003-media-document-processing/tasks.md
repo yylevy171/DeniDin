@@ -196,8 +196,8 @@ class TestMediaAttachment:
         attachment = MediaAttachment(
             media_type='image',
             file_url='https://example.com/file.jpg',
-            file_path='/data/images/2026-01-22/image-123/file.jpg',
-            raw_text_path='/data/images/2026-01-22/image-123/file.jpg.rawtext',
+            file_path='/data/media/DD-972501234567-a3f4e8d2-1c9b-4e6a-8f2d-9b7c5e4d3a2b.jpg',
+            raw_text_path='/data/media/DD-972501234567-a3f4e8d2-1c9b-4e6a-8f2d-9b7c5e4d3a2b.jpg.rawtext',
             mime_type='image/jpeg',
             file_size=1024
         )
@@ -208,8 +208,8 @@ class TestMediaAttachment:
         attachment = MediaAttachment(
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
-            file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
+            file_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf',
+            raw_text_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf.rawtext',
             mime_type='application/pdf',
             file_size=5 * 1024 * 1024  # 5MB
         )
@@ -220,8 +220,8 @@ class TestMediaAttachment:
         attachment = MediaAttachment(
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
-            file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
+            file_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf',
+            raw_text_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf.rawtext',
             mime_type='application/pdf',
             file_size=15 * 1024 * 1024  # 15MB
         )
@@ -233,8 +233,8 @@ class TestMediaAttachment:
         attachment = MediaAttachment(
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
-            file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
+            file_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf',
+            raw_text_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf.rawtext',
             mime_type='application/pdf',
             file_size=10 * 1024 * 1024  # Exactly 10MB
         )
@@ -245,8 +245,8 @@ class TestMediaAttachment:
         attachment = MediaAttachment(
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
-            file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
+            file_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf',
+            raw_text_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf.rawtext',
             mime_type='application/pdf',
             file_size=1024,
             page_count=8
@@ -258,8 +258,8 @@ class TestMediaAttachment:
         attachment = MediaAttachment(
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
-            file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
+            file_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf',
+            raw_text_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf.rawtext',
             mime_type='application/pdf',
             file_size=1024,
             page_count=10
@@ -271,8 +271,8 @@ class TestMediaAttachment:
         attachment = MediaAttachment(
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
-            file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
+            file_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf',
+            raw_text_path='/data/media/DD-972501234567-b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e.pdf.rawtext',
             mime_type='application/pdf',
             file_size=1024,
             page_count=11
@@ -285,8 +285,8 @@ class TestMediaAttachment:
         attachment = MediaAttachment(
             media_type='image',
             file_url='https://example.com/img.jpg',
-            file_path='/data/images/img.jpg',
-            raw_text_path='/data/images/img.jpg.rawtext',
+            file_path='/data/media/DD-972501234567-c1d2e3f4-5a6b-7c8d-9e0f-1a2b3c4d5e6f.jpg',
+            raw_text_path='/data/media/DD-972501234567-c1d2e3f4-5a6b-7c8d-9e0f-1a2b3c4d5e6f.jpg.rawtext',
             mime_type='image/jpeg',
             file_size=1024,
             caption="What's in this photo?"
@@ -479,9 +479,10 @@ class TestMediaConfig:
         assert config.PDF_DPI == 150
     
     def test_storage_base_path(self):
-        """CHK042: Storage at data/images/."""
+        """CHK042: Storage at {data_root}/media/."""
         config = MediaConfig()
-        assert config.STORAGE_BASE == Path("data/images")
+        # Should use configurable data_root + media subdirectory
+        assert config.STORAGE_BASE == Path("data") / "media"
     
     def test_ai_model_names(self):
         """CHK044-046: Model consistency."""

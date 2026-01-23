@@ -141,20 +141,13 @@ class TestMediaManagerStorage:
     def test_create_storage_path_utc_timestamp(self):
         """CHK019: UTC timestamp with microsecond precision in path."""
         manager = MediaManager()
-        with patch('src.utils.media_manager.datetime') as mock_dt:
-            mock_now = Mock()
-            mock_now.strftime.return_value = "2026-01-22"
-            mock_now.timestamp.return_value = 1737561234.567890
-            mock_dt.now.return_value = mock_now
-            mock_dt.timezone = timezone
-            
-            with patch('pathlib.Path.mkdir'):
-                path = manager.create_storage_path()
-            
-            # Path format: data/images/YYYY-MM-DD/image-timestamp.microseconds/
-            assert "2026-01-22" in str(path)
-            # Timestamp may have trailing zeros stripped (1737561234.56789 instead of 1737561234.567890)
-            assert "image-1737561234.5678" in str(path)
+        
+        with patch('pathlib.Path.mkdir') as mock_mkdir:
+            path = manager.create_storage_path()
+        
+        # Path format: {data_root}/media/ (flat structure)
+        assert str(path) == "data/media"
+        mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
     
     def test_create_storage_path_creates_directory(self):
         """CHK020: Storage directory is created with parents."""

@@ -47,14 +47,19 @@ class MediaManager:
     
     UNSUPPORTED_FORMATS = ['gif', 'txt', 'xls', 'xlsx', 'ppt', 'pptx', 'zip']
     
-    def __init__(self, storage_base: str = "data/images"):
+    def __init__(self, data_root: str = "data", media_dir: str = "media"):
         """
         Initialize MediaManager.
         
+        File naming format: DD-{sender_phone}-{uuid}.{ext}
+        where uuid is randomly generated using uuid.uuid4()
+        
         Args:
-            storage_base: Base directory for media storage (default: data/images)
+            data_root: Root data directory from config (default: "data")
+            media_dir: Media subdirectory name (default: "media")
+                      Media files stored in: {data_root}/{media_dir}/
         """
-        self.storage_base = Path(storage_base)
+        self.storage_base = Path(data_root) / media_dir
     
     def download_file(self, url: str) -> Tuple[Optional[bytes], bool]:
         """
@@ -157,32 +162,24 @@ class MediaManager:
         CHK019: UTC timestamp with microsecond precision.
         CHK020: Create directory with parents.
         
-        Path format: data/images/YYYY-MM-DD/image-timestamp.microseconds/
+        Path format: {data_root}/{media_dir}/ (flat structure)
         
         Returns:
             Path object for storage directory
         """
-        # CHK019: UTC timestamp with microseconds
-        now = datetime.now(timezone.utc)
-        date_str = now.strftime("%Y-%m-%d")
-        timestamp = now.timestamp()
+        # CHK020: Ensure storage directory exists
+        self.storage_base.mkdir(parents=True, exist_ok=True)
         
-        # Path structure: data/images/YYYY-MM-DD/image-timestamp/
-        storage_path = self.storage_base / date_str / f"image-{timestamp}"
-        
-        # CHK020: Create directory with parents
-        storage_path.mkdir(parents=True, exist_ok=True)
-        
-        logger.debug(f"Created storage path: {storage_path}")
-        return storage_path
+        logger.debug(f"Media storage directory: {self.storage_base}")
+        return self.storage_base
     
     def save_rawtext(self, text: str, folder: Path, original_filename: str) -> Path:
         """
         Save extracted text to .rawtext file with UTF-8 encoding.
         
-        CHK023: UTF-8 encoding for .rawtext files.
-        CHK006-010: Support Hebrew text without corruption.
         
+        logger.debug(f"Media storage directory: {self.storage_base}")
+        return self.storage_base
         Args:
             text: Extracted text content
             folder: Directory to save file in
