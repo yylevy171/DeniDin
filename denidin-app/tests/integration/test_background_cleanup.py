@@ -38,7 +38,6 @@ def test_config(tmp_path):
         temperature=0.7,
         log_level="INFO",
         poll_interval_seconds=5,
-        max_retries=3,
         feature_flags={"enable_memory_system": True},
         memory={
             "session": {

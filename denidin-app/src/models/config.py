@@ -20,7 +20,6 @@ class AppConfiguration:
     temperature: float = 0.7
     log_level: str = 'INFO'
     poll_interval_seconds: int = 5
-    max_retries: int = 3
 
     # Data storage configuration
     data_root: str = 'data'  # Root directory for all data storage (sessions, memory, etc.)
@@ -78,7 +77,6 @@ class AppConfiguration:
             'temperature': 0.7,
             'log_level': 'INFO',
             'poll_interval_seconds': 5,
-            'max_retries': 3,
             'data_root': 'data',
             'godfather_phone': None,
             'feature_flags': {},

@@ -114,7 +114,7 @@ class WhatsAppHandler:
 
     @retry(
         retry=retry_if_exception_type((requests.Timeout, requests.ConnectionError, requests.HTTPError)),
-        stop=stop_after_attempt(2),  # Initial attempt + 1 retry = 2 total
+        stop=stop_after_attempt(2),  # Hardcoded: Initial attempt + 1 retry = 2 total attempts
         wait=wait_fixed(1),  # 1 second wait
         reraise=True
     )

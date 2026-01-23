@@ -117,7 +117,6 @@ def test_archived_untransferred_session_transferred_on_startup(tmp_path):
         "temperature": 0.7,
         "log_level": "INFO",
         "poll_interval_seconds": 5,
-        "max_retries": 3,
         "data_root": str(test_data_root),
         "feature_flags": {
             "enable_memory_system": True,
