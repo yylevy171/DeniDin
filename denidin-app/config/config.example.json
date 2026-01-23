@@ -4,7 +4,7 @@
   "ai_api_key": "YOUR_OPENAI_API_KEY",
   "ai_model": "gpt-3.5-turbo",
   "system_message": "You are a helpful AI assistant named DeniDin.",
-  "max_tokens": 1000,
+  "ai_reply_max_tokens": 1000,
   "temperature": 0.7,
   "log_level": "INFO",
   "poll_interval_seconds": 5,
@@ -34,9 +34,7 @@
     }
   },
   "constitution_config": {
-    "enabled": true,
-    "files": ["runtime_constitution.md"],
-    "max_tokens": 2000
+    "file": "runtime_constitution.md"
   },
   "user_roles": {
     "godfather": {

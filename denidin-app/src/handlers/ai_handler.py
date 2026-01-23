@@ -44,6 +44,10 @@ class AIHandler:
         """
         self.client = ai_client
         self.config = config
+        
+        # Constitution loading state (mtime-based caching)
+        self._constitution_content: Optional[str] = None
+        self._constitution_mtime: Optional[float] = None
 
         # Initialize memory managers if feature enabled
         # Handle configs without feature_flags (backward compatibility)
@@ -113,6 +117,60 @@ class AIHandler:
 
         logger.debug(f"AIHandler initialized with model: {config.ai_model}")
 
+    def _load_constitution(self) -> str:
+        """
+        Load constitution file with mtime-based caching.
+        Reads constitution file only when modified (checks mtime).
+        
+        Returns:
+            Constitution content if file exists and is configured, 
+            otherwise fallback to config.system_message
+        """
+        from pathlib import Path
+        
+        # Get constitution file from config (support both 'file' and legacy 'files' keys)
+        constitution_config = self.config.constitution_config
+        filename = constitution_config.get('file')
+        
+        # Backward compatibility: if 'file' not found, try 'files' array and use first
+        if not filename:
+            files_array = constitution_config.get('files', [])
+            if files_array:
+                filename = files_array[0]
+        
+        # If no constitution file configured, fallback to system_message
+        if not filename:
+            return self.config.system_message
+        
+        # Build constitution file path
+        filepath = Path(self.config.data_root) / 'constitution' / filename
+        
+        # Check if file exists
+        if not filepath.exists():
+            logger.warning(f"Constitution file not found: {filepath}, using system_message fallback")
+            return self.config.system_message
+        
+        # Check file modification time
+        try:
+            current_mtime = filepath.stat().st_mtime
+            
+            # Reload if file changed or not yet cached
+            if self._constitution_mtime != current_mtime:
+                self._constitution_content = filepath.read_text(encoding='utf-8').strip()
+                self._constitution_mtime = current_mtime
+                logger.debug(f"Constitution loaded: {filename} ({len(self._constitution_content)} chars, mtime: {current_mtime})")
+            
+            # If constitution is empty after loading, fallback to system_message
+            if not self._constitution_content:
+                logger.warning(f"Constitution file is empty: {filepath}, using system_message fallback")
+                return self.config.system_message
+            
+            return self._constitution_content
+            
+        except Exception as e:
+            logger.error(f"Failed to load constitution file {filepath}: {e}", exc_info=True)
+            return self.config.system_message
+
     def create_request(self, message: WhatsAppMessage, chat_id: Optional[str] = None,
                        user_role: str = 'client', user_phone: Optional[str] = None) -> AIRequest:
         """
@@ -152,8 +210,8 @@ class AIHandler:
             )
             user_prompt = user_prompt[:MAX_MESSAGE_LENGTH]
 
-        # Build system message with optional memory context
-        system_message = self.config.system_message
+        # Build system message with constitution (if configured) + optional memory context
+        system_message = self._load_constitution()
 
         # Add recalled memories if memory system enabled
         if self.memory_enabled and self.memory_manager:
@@ -198,7 +256,7 @@ class AIHandler:
         request = AIRequest(
             user_prompt=user_prompt,
             system_message=system_message,
-            max_tokens=self.config.max_tokens,
+            max_tokens=self.config.ai_reply_max_tokens,
             temperature=self.config.temperature,
             model=self.config.ai_model,
             chat_id=message.chat_id,
