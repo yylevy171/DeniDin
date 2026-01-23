@@ -93,13 +93,13 @@ class AppConfiguration:
             data_root = config_data.get('data_root', 'data')
             memory_defaults = {
                 'session': {
-                    'storage_dir': f'{data_root}/sessions',
+                    'storage_dir': 'sessions',  # Relative to data_root
                     'max_tokens_by_role': {'client': 4000, 'godfather': 100000},
                     'session_timeout_hours': 24
                 },
                 'longterm': {
                     'enabled': True,
-                    'storage_dir': f'{data_root}/memory',
+                    'storage_dir': 'memory',  # Relative to data_root
                     'collection_name': 'godfather_memory',
                     'embedding_model': 'text-embedding-3-small',
                     'top_k_results': 5,
@@ -115,6 +115,23 @@ class AppConfiguration:
                     for key, value in section_defaults.items():
                         if key not in config_data['memory'][section]:
                             config_data['memory'][section][key] = value
+
+            # Combine data_root with storage_dir for each section
+            for section in ['session', 'longterm']:
+                if section in config_data['memory'] and 'storage_dir' in config_data['memory'][section]:
+                    storage_dir = config_data['memory'][section]['storage_dir']
+                    
+                    # Skip absolute paths (start with / or drive letter on Windows)
+                    if storage_dir.startswith('/') or (len(storage_dir) > 1 and storage_dir[1] == ':'):
+                        continue
+                    
+                    # Backward compatibility: strip data_root prefix if present
+                    # Old configs have "data/sessions", new configs have "sessions"
+                    if storage_dir.startswith(f'{data_root}/'):
+                        storage_dir = storage_dir[len(data_root)+1:]  # Strip "data/" prefix
+                    
+                    # Combine data_root with relative storage_dir
+                    config_data['memory'][section]['storage_dir'] = f'{data_root}/{storage_dir}'
 
         # Filter out unknown keys (backward compatibility for removed config fields)
         valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
