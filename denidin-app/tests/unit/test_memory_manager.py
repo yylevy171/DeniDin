@@ -82,7 +82,7 @@ class TestMemoryManagerInitialization(unittest.TestCase):
         
         self.assertEqual(memory_manager.embedding_model, "text-embedding-3-large")
     
-    @patch('src.memory.memory_manager.chromadb.PersistentClient')
+    @patch('src.managers.memory_manager.chromadb.PersistentClient')
     def test_chromadb_initialization_failure_raises_exception(self, mock_client):
         """Test that ChromaDB init failure raises exception (ERR-MEMORY-001)."""
         # Mock ChromaDB to fail
