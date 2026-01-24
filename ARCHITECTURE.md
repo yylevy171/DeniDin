@@ -27,7 +27,7 @@ DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture wit
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │              WhatsApp Handler                             │  │
 │  │  - Message validation                                     │  │
-│  │  - Type filtering (text only)                             │  │
+│  │  - Type filtering (text, image, document)                 │  │
 │  │  - Error handling & retries                               │  │
 │  └─────────────────────┬─────────────────────────────────────┘  │
 │                        │                                         │
@@ -54,6 +54,7 @@ DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture wit
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │              AI Handler (OpenAI)                          │  │
 │  │  - GPT-4o-mini integration                                │  │
+│  │  - GPT-4o Vision API (images/PDFs)                        │  │
 │  │  - System prompt construction                             │  │
 │  │  - Memory recall integration                              │  │
 │  │  - Response generation                                    │  │
@@ -63,19 +64,33 @@ DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture wit
 │          │                                  │                   │
 │          ▼                                  ▼                   │
 │  ┌──────────────────┐          ┌──────────────────────────┐    │
-│  │  Memory Manager  │          │  Background Cleanup      │    │
-│  │  (Tier 2 Memory) │          │  Thread                  │    │
+│  │  Memory Manager  │          │  Media Extractors        │    │
+│  │  (Tier 2 Memory) │          │  (Feature 003 Phase 4)   │    │
 │  │                  │          │                          │    │
-│  │  - ChromaDB      │          │  Monitors expired        │    │
-│  │  - Vector search │          │  sessions (hourly)       │    │
-│  │  - Embeddings    │          │                          │    │
-│  │  - Per-entity    │          │  4-step cleanup:         │    │
-│  │    collections   │          │  1. Archive files        │    │
-│  │  - Scopes:       │          │  2. Transfer to          │    │
-│  │    PUBLIC,       │          │     ChromaDB             │    │
-│  │    PRIVATE,      │          │  3. Remove from index    │    │
-│  │    SYSTEM        │          │  4. Mark transferred     │    │
-│  └──────────────────┘          └──────────────────────────┘    │
+│  │  - ChromaDB      │          │  MediaExtractor Base:    │    │
+│  │  - Vector search │          │  - ImageExtractor        │    │
+│  │  - Embeddings    │          │    (Vision API)          │    │
+│  │  - Per-entity    │          │  - PDFExtractor          │    │
+│  │    collections   │          │    (page aggregation)    │    │
+│  │  - Scopes:       │          │  - DOCXExtractor         │    │
+│  │    PUBLIC,       │          │    (python-docx + AI)    │    │
+│  │    PRIVATE,      │          │                          │    │
+│  │    SYSTEM        │          │  Single AI call:         │    │
+│  └──────────────────┘          │  text + analysis         │    │
+│                                │  (~50% cost savings)     │    │
+│                                └──────────────────────────┘    │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │              Background Cleanup Thread                    │  │
+│  │                                                           │  │
+│  │  Monitors expired sessions (hourly)                      │  │
+│  │                                                           │  │
+│  │  4-step cleanup:                                         │  │
+│  │  1. Archive files                                        │  │
+│  │  2. Transfer to ChromaDB                                 │  │
+│  │  3. Remove from index                                    │  │
+│  │  4. Mark transferred                                     │  │
+│  └──────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -228,7 +243,80 @@ ChromaDB Collections:
 - Rate limit: 3 retries, 5s wait
 - Generic errors: 3 retries, 2s wait
 
-### 6. Background Cleanup Thread (`src/background_threads.py`)
+### 6. Media Extractors (`src/handlers/extractors/`)
+
+**Feature 003 Phase 4 Complete - Document Analysis Integration**
+
+**Responsibilities:**
+- Extract text from images, PDFs, and DOCX files
+- Analyze documents using AI (type, summary, key points)
+- Single AI call optimization (~50% cost savings)
+- Hebrew text support with UTF-8 encoding
+- Graceful degradation on failures
+
+**Extractor Architecture:**
+
+```
+MediaExtractor (Abstract Base)
+├── ImageExtractor
+│   └── Single Vision API call → text + analysis
+├── PDFExtractor
+│   └── Multi-page → aggregate analyses
+└── DOCXExtractor
+    └── python-docx + optional AI analysis
+```
+
+**MediaExtractor Interface Contract:**
+```python
+{
+  "extracted_text": str | List[str],  # Text content
+  "document_analysis": {               # AI-generated insights
+    "document_type": str,              # receipt, invoice, contract, etc.
+    "summary": str,                    # 1-2 sentence summary
+    "key_points": List[str]            # Important information
+  },
+  "extraction_quality": str,           # high, medium, low, failed
+  "warnings": List[str],               # Issues encountered
+  "model_used": str                    # AI model or library used
+}
+```
+
+**ImageExtractor** (`image_extractor.py`):
+- Uses GPT-4o Vision API for text extraction AND analysis
+- Single API call requests: text + document_type + summary + key_points
+- Hebrew text support via enhanced prompt
+- Layout preservation with empty line detection
+- Quality assessment: high, medium, low based on AI confidence
+
+**PDFExtractor** (`pdf_extractor.py`):
+- Converts PDF pages to images using PyMuPDF
+- Delegates to ImageExtractor for per-page processing
+- Aggregates document analysis from all pages:
+  - Document type: Most common across pages
+  - Summary: Combined from all pages
+  - Key points: Merged and deduplicated
+- Returns List[str] for per-page text
+
+**DOCXExtractor** (`docx_extractor.py`):
+- Uses python-docx for deterministic text extraction
+- Optional AI analysis via `analyze` parameter (default=True)
+- When analyze=True: AI analyzes extracted text
+- When analyze=False: Skip AI call, return document_analysis=None
+- Preserves paragraph structure with double newlines
+
+**Test Coverage:**
+- 37 tests passing (100% success rate)
+- 5 base interface tests
+- 10 ImageExtractor tests
+- 10 PDFExtractor tests
+- 12 DOCXExtractor tests
+
+**Cost Optimization:**
+- Before: 2 AI calls (text + analysis) = $0.02-0.04 per document
+- After: 1 AI call (combined) = $0.01-0.02 per document
+- Savings: ~50% cost reduction + faster processing
+
+### 7. Background Cleanup Thread (`src/background_threads.py`)
 
 **Responsibilities:**
 - Monitor for expired sessions (hourly)
@@ -372,12 +460,13 @@ Removed (deleted from active index)
 
 ## Testing
 
-### Test Coverage: 90%
+### Test Coverage: 92%
 
 **100% Coverage:**
 - Models (user, message, state, document, config)
 - Utils (state, user_manager)
 - Config (media_config)
+- **Extractors (MediaExtractor, ImageExtractor, PDFExtractor, DOCXExtractor)** - 37 tests
 
 **90%+ Coverage:**
 - Memory Manager (96%)
@@ -392,7 +481,9 @@ Removed (deleted from active index)
 - Background Threads (66%) - cleanup logic
 
 ### Test Categories
-- **Unit Tests**: 300+ tests for individual components
+- **Unit Tests**: 337+ tests for individual components
+  - Extractors: 37 tests (5 base + 10 image + 10 pdf + 12 docx)
+  - Core components: 300+ tests
 - **Integration Tests**: 87 tests for cross-component workflows
 - **RBAC Tests**: 40+ tests for permission enforcement
 - **Memory Tests**: 50+ tests for storage and recall
@@ -447,6 +538,10 @@ Removed (deleted from active index)
 See `specs/in-definition/`, `specs/P0/`, `specs/P1/`, `specs/P2/` for planned features:
 
 - **003**: Media & document processing
+  - ✅ Phase 1-3: Media Model, Text Extractors (Complete)
+  - ✅ Phase 4: Enhanced Extractors with Document Analysis (Complete - PR #64)
+  - 📋 Phase 5: Document Retrieval (search and re-send)
+  - 📋 Phase 6: WhatsApp Integration
 - **013**: Proactive WhatsApp messaging
 - **014**: Entity extraction from group messages
 - **015**: Topic-based access control
