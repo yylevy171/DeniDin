@@ -39,7 +39,7 @@ class MediaExtractor(ABC):
         self.ai_handler = denidin_context.ai_handler
     
     @abstractmethod
-    def extract_text(self, media: Media) -> Dict:
+    def extract_text(self, media: Media, caption: str = "") -> Dict:
         """
         Extract text and analyze document.
         
@@ -47,6 +47,7 @@ class MediaExtractor(ABC):
         
         Args:
             media: Media object containing file data in memory
+            caption: User's message/question sent with the file (optional)
             
         Returns:
             {

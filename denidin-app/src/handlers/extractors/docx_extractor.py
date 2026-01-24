@@ -12,6 +12,7 @@ CHK Requirements:
 - CHK078: Empty document handling
 """
 import io
+from pathlib import Path
 from typing import Dict, List, Optional
 from docx import Document
 from src.models.media import Media
@@ -30,7 +31,7 @@ class DOCXExtractor(MediaExtractor):
         """
         super().__init__(denidin_context)
     
-    def extract_text(self, media: Media, analyze: bool = True) -> Dict:
+    def extract_text(self, media: Media, analyze: bool = True, caption: str = "") -> Dict:
         """
         Extract text from DOCX and optionally analyze with AI (Phase 4).
         
@@ -43,6 +44,7 @@ class DOCXExtractor(MediaExtractor):
         Args:
             media: Media object containing DOCX data in memory
             analyze: If True, use AI to analyze document type/content (Phase 4)
+            caption: User's message/question sent with the document (optional)
             
         Returns:
             {
@@ -93,7 +95,7 @@ class DOCXExtractor(MediaExtractor):
             
             if analyze and extracted_text:
                 # Call AI to analyze the extracted text
-                analysis_result = self._analyze_document(extracted_text)
+                analysis_result = self._analyze_document(extracted_text, caption)
                 document_analysis = analysis_result["document_analysis"]
                 model_used = f"python-docx + {analysis_result['model_used']}"
             
@@ -115,12 +117,13 @@ class DOCXExtractor(MediaExtractor):
                 "model_used": "python-docx"
             }
     
-    def _analyze_document(self, text: str) -> Dict:
+    def _analyze_document(self, text: str, caption: str = "") -> Dict:
         """
         Analyze extracted text using AI to determine document type and extract insights.
         
         Args:
             text: Extracted text from DOCX
+            caption: User's message/question sent with the document (optional)
             
         Returns:
             {
@@ -138,29 +141,30 @@ class DOCXExtractor(MediaExtractor):
         if len(text) > max_chars:
             truncated_text += "\n[... text truncated for analysis ...]"
         
-        prompt = f"""Analyze this document text and provide:
-1. DOCUMENT_TYPE: What type of document is this? (e.g., receipt, invoice, letter, contract, resume, notes, article, generic)
-2. SUMMARY: A concise 1-2 sentence summary of the document's content
-3. KEY_POINTS: Important information from the document (bullet points)
-
-Document text:
-{truncated_text}
-
-Respond in this format:
-DOCUMENT_TYPE: <type>
-SUMMARY: <summary>
-KEY_POINTS:
-- <point 1>
-- <point 2>
-...
-"""
+        # Build prompt with optional user context
+        user_context = f"\n\nUser's question/message: {caption}" if caption else ""
+        addressing_note = " addressing the user's question" if caption else ""
+        focusing_note = ", focusing on what the user asked about" if caption else ""
+        
+        # Load prompt template from file (go up 4 levels: extractors → handlers → src → denidin-app)
+        prompt_path = Path(__file__).parent.parent.parent.parent / "prompts" / "docx_analysis.txt"
+        prompt_template = prompt_path.read_text(encoding="utf-8")
+        
+        # Format prompt with context
+        prompt = prompt_template.format(
+            document_text=truncated_text,
+            user_context=user_context,
+            addressing_note=addressing_note,
+            focusing_note=focusing_note
+        )
         
         try:
-            # Use text model for analysis (no vision needed)
-            response = self.ai_handler.send_message(
-                prompt,
-                system_prompt="You are a document analysis assistant. Extract key information clearly and concisely."
-            )
+            # Load constitution and prepend to prompt (NO system message!)
+            constitution = self.ai_handler._load_constitution()
+            full_prompt = f"{constitution}\n\n{prompt}" if constitution else prompt
+            
+            # Use text model for analysis (constitution in user prompt, NOT system message)
+            response = self.ai_handler.send_message(full_prompt)
             
             # Parse response
             analysis = self._parse_analysis_response(response)

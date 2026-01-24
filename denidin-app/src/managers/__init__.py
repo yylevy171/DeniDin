@@ -7,13 +7,13 @@ and utilities (pure functions).
 """
 
 from src.managers.user_manager import UserManager
-from src.managers.media_manager import MediaManager
+from src.managers.media_file_manager import MediaFileManager
 from src.managers.session_manager import SessionManager
 from src.managers.memory_manager import MemoryManager
 
 __all__ = [
     'UserManager',
-    'MediaManager',
+    'MediaFileManager',
     'SessionManager',
     'MemoryManager',
 ]

@@ -252,11 +252,19 @@ What comes after this PR
 
 ---
 
-### Merge Workflow - CRITICAL INSTRUCTIONS
+### Merge Workflow
 
-**🚨 WHY THIS MATTERS**: GitHub CLI (`gh pr merge`) often fails with authentication issues. The direct git merge approach bypasses GitHub's API and works reliably.
+**Standard Workflow Using GitHub CLI**:
 
-**CORRECT MERGE WORKFLOW** (Use this EVERY time):
+```bash
+# After creating PR with 'gh pr create', merge it:
+gh pr merge --merge --delete-branch
+
+# Or specify PR number:
+gh pr merge 123 --merge --delete-branch
+```
+
+**Manual Git Workflow** (if preferred):
 
 ```bash
 # Step 1: Ensure you're on master branch
@@ -278,35 +286,10 @@ git branch -d BRANCH-NAME
 git push origin --delete BRANCH-NAME
 ```
 
-**Example**:
-```bash
-git checkout master
-git fetch origin
-git merge origin/bugfix/session-expiry-memory-transfer --no-ff -m "Merge bug fix: Replace chat_id with session_id in message persistence"
-git push origin master
-git branch -d bugfix/session-expiry-memory-transfer
-git push origin --delete bugfix/session-expiry-memory-transfer
-```
-
-**SINGLE COMMAND VERSION** (for efficiency):
-```bash
-# Combine push and cleanup in one line
-git push origin master && git branch -d BRANCH-NAME 2>/dev/null; git push origin --delete BRANCH-NAME
-```
-
-**WHY NOT `gh pr merge`**:
-- ❌ `gh pr merge` requires GitHub API authentication
-- ❌ Authentication tokens can expire or have permission issues
-- ❌ Adds unnecessary dependency on GitHub CLI auth state
-- ✅ Direct git merge uses SSH/HTTPS git credentials (more reliable)
-- ✅ Works consistently across different environments
-- ✅ Fewer points of failure
-
-**CRITICAL PARAMETERS**:
-- `--no-ff`: Forces a merge commit (preserves feature branch history in graph)
-- `-m "message"`: Provides clear merge commit message
-- `origin/BRANCH-NAME`: Merges from remote branch (not local copy)
-- `git fetch origin`: Ensures you have latest remote state before merging
+**Key Parameters**:
+- `--merge`: Create merge commit (preserves feature branch history)
+- `--delete-branch`: Automatically delete branch after merge
+- `--no-ff`: Forces merge commit even if fast-forward possible
 
 **VALIDATION STEPS**:
 After merge, verify success:
