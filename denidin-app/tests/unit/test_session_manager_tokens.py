@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, patch
-from src.memory.session_manager import SessionManager
+from src.managers.session_manager import SessionManager
 from src.models.user import Role
 
 

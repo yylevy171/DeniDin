@@ -1,5 +1,5 @@
 """
-Background threads for application-level tasks.
+Session cleanup service for application-level tasks.
 
 App-level cleanup thread with access to global context (SessionManager, MemoryManager, AIHandler).
 Ensures atomic transfer + archival operations.
@@ -8,7 +8,7 @@ Ensures atomic transfer + archival operations.
 import threading
 import time
 from src.utils.logger import get_logger
-from src.memory.session_manager import Session
+from src.managers.session_manager import Session
 
 logger = get_logger(__name__)
 

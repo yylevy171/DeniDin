@@ -13,8 +13,8 @@ import shutil
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from src.memory.session_manager import SessionManager
-from src.memory.memory_manager import MemoryManager
+from src.managers.session_manager import SessionManager
+from src.managers.memory_manager import MemoryManager
 from src.models.config import AppConfiguration
 
 

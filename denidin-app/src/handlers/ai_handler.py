@@ -17,9 +17,9 @@ from tenacity import (
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage, AIRequest, AIResponse
 from src.utils.logger import get_logger
-from src.memory.session_manager import SessionManager, Session
-from src.memory.memory_manager import MemoryManager
-from src.utils.user_manager import UserManager
+from src.managers.session_manager import SessionManager, Session
+from src.managers.memory_manager import MemoryManager
+from src.managers.user_manager import UserManager
 
 logger = get_logger(__name__)
 

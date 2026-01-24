@@ -2,7 +2,7 @@
 
 import pytest
 from src.models.user import User, Role, MemoryScope
-from src.utils.user_manager import UserManager
+from src.managers.user_manager import UserManager
 
 
 class TestUserManagerInitialization:
