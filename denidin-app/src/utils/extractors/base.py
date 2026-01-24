@@ -36,6 +36,7 @@ class MediaExtractor(ABC):
         """
         self.context = denidin_context
         self.config = denidin_context.config
+        self.ai_handler = denidin_context.ai_handler
     
     @abstractmethod
     def extract_text(self, media: Media) -> Dict:
