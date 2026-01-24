@@ -119,7 +119,6 @@ class TestMediaMessageDetection:
     
     def test_detect_image_message(self, whatsapp_handler, mock_notification_image):
         """Test that imageMessage type is correctly identified"""
-        # This will fail - method doesn't exist yet
         result = whatsapp_handler.is_media_message(mock_notification_image)
         
         assert result is True
@@ -127,7 +126,6 @@ class TestMediaMessageDetection:
     
     def test_detect_document_message(self, whatsapp_handler, mock_notification_document):
         """Test that documentMessage type is correctly identified"""
-        # This will fail - method doesn't exist yet
         result = whatsapp_handler.is_media_message(mock_notification_document)
         
         assert result is True
@@ -135,14 +133,12 @@ class TestMediaMessageDetection:
     
     def test_ignore_video_message_future(self, whatsapp_handler, mock_notification_video):
         """Test that videoMessage is not processed (future scope)"""
-        # This will fail - method doesn't exist yet
         result = whatsapp_handler.is_supported_media_message(mock_notification_video)
         
         assert result is False
     
     def test_ignore_audio_message_future(self, whatsapp_handler, mock_notification_audio):
         """Test that audioMessage is not processed (future scope)"""
-        # This will fail - method doesn't exist yet
         result = whatsapp_handler.is_supported_media_message(mock_notification_audio)
         
         assert result is False
@@ -166,7 +162,6 @@ class TestMediaHandlerIntegration:
         # Inject MediaHandler into WhatsAppHandler
         whatsapp_handler.media_handler = mock_media_handler
         
-        # This will fail - method doesn't exist yet
         whatsapp_handler.handle_media_message(mock_notification_image)
         
         # Verify MediaHandler was called with correct parameters (CHK111: caption from webhook)
@@ -198,7 +193,6 @@ class TestMediaHandlerIntegration:
         # Inject MediaHandler into WhatsAppHandler
         whatsapp_handler.media_handler = mock_media_handler
         
-        # This will fail - method doesn't exist yet
         whatsapp_handler.handle_media_message(mock_notification_document)
         
         # Verify error message was sent to user
@@ -242,7 +236,6 @@ class TestCaptionHandling:
         
         whatsapp_handler.media_handler = mock_media_handler
         
-        # This will fail - method doesn't exist yet
         whatsapp_handler.handle_media_message(notification)
         
         # Verify caption from webhook was passed to MediaHandler (CHK111)
@@ -281,7 +274,6 @@ class TestCaptionHandling:
         
         whatsapp_handler.media_handler = mock_media_handler
         
-        # This will fail - method doesn't exist yet
         whatsapp_handler.handle_media_message(notification)
         
         # Verify empty string was passed, not None
