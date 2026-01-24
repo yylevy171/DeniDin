@@ -18,9 +18,9 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, MagicMock, patch
 
-from src.memory.session_manager import SessionManager
+from src.managers.session_manager import SessionManager
 from src.handlers.ai_handler import AIHandler
-from src.background_threads import SessionCleanupThread
+from src.services.cleanup_service import SessionCleanupThread
 from src.models.config import AppConfiguration
 
 

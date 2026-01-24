@@ -11,7 +11,7 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from src.memory.session_manager import SessionManager, Session, Message
+from src.managers.session_manager import SessionManager, Session, Message
 
 
 @pytest.fixture

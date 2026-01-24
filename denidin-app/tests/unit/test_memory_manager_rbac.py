@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, MagicMock, patch
-from src.memory.memory_manager import MemoryManager
+from src.managers.memory_manager import MemoryManager
 from src.models.user import MemoryScope
 
 

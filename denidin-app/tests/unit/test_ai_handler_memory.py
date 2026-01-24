@@ -704,7 +704,7 @@ class TestSessionTransferRealMethod:
         import tempfile
         import json
         from pathlib import Path
-        from src.memory.session_manager import SessionManager
+        from src.managers.session_manager import SessionManager
         
         # Create real SessionManager with temp storage
         session_storage = tmp_path / "sessions"

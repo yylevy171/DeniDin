@@ -11,8 +11,8 @@ from datetime import datetime, timedelta, timezone
 from openai import OpenAI
 from src.models.config import AppConfiguration
 from src.handlers.ai_handler import AIHandler
-from src.memory.session_manager import SessionManager
-from src.memory.memory_manager import MemoryManager
+from src.managers.session_manager import SessionManager
+from src.managers.memory_manager import MemoryManager
 
 
 @pytest.fixture(scope="module")

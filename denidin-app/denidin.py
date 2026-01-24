@@ -13,9 +13,9 @@ from src.models.config import AppConfiguration
 from src.utils.logger import get_logger
 from src.handlers.ai_handler import AIHandler
 from src.handlers.whatsapp_handler import WhatsAppHandler
-from src.memory.session_manager import SessionManager
-from src.memory.memory_manager import MemoryManager
-from src.background_threads import SessionCleanupThread, run_startup_cleanup
+from src.managers.session_manager import SessionManager
+from src.managers.memory_manager import MemoryManager
+from src.services.cleanup_service import SessionCleanupThread, run_startup_cleanup
 
 # Configuration
 CONFIG_PATH = 'config/config.json'

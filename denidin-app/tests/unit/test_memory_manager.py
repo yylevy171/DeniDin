@@ -21,7 +21,7 @@ from datetime import datetime
 import uuid
 from openai import OpenAI
 
-from src.memory.memory_manager import MemoryManager
+from src.managers.memory_manager import MemoryManager
 from src.models.config import AppConfiguration
 
 

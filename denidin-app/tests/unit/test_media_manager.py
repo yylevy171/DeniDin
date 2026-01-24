@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import Mock, patch, mock_open
 from pathlib import Path
 from datetime import datetime, timezone
-from src.utils.media_manager import MediaManager
+from src.managers.media_manager import MediaManager
 
 
 class TestMediaManagerDownload:

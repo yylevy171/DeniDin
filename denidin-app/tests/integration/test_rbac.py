@@ -22,9 +22,9 @@ from src.models.config import AppConfiguration
 from src.models.user import Role, MemoryScope
 from src.models.message import WhatsAppMessage, AIRequest
 from src.handlers.ai_handler import AIHandler
-from src.utils.user_manager import UserManager
-from src.memory.memory_manager import MemoryManager
-from src.memory.session_manager import SessionManager
+from src.managers.user_manager import UserManager
+from src.managers.memory_manager import MemoryManager
+from src.managers.session_manager import SessionManager
 
 
 @pytest.fixture
