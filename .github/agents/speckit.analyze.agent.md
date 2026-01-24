@@ -18,7 +18,7 @@ Identify inconsistencies, duplications, ambiguities, and underspecified items ac
 
 **STRICTLY READ-ONLY**: Do **not** modify any files. Output a structured analysis report. Offer an optional remediation plan (user must explicitly approve before any follow-up editing commands would be invoked manually).
 
-**Methodology & Constitution Authority**: The project methodology (`specs/METHODOLOGY.md`) and constitution (`specs/CONSTITUTION.md`) are **non-negotiable** within this analysis scope. Violations are automatically CRITICAL and require adjustment of the spec, plan, or tasks—not dilution, reinterpretation, or silent ignoring of the principle. If a principle itself needs to change, that must occur in a separate, explicit update outside `/speckit.analyze`.
+**Methodology & Constitution Authority**: The project methodology (`.github/METHODOLOGY.md`) and constitution (`.github/CONSTITUTION.md`) are **non-negotiable** within this analysis scope. Violations are automatically CRITICAL and require adjustment of the spec, plan, or tasks—not dilution, reinterpretation, or silent ignoring of the principle. If a principle itself needs to change, that must occur in a separate, explicit update outside `/speckit.analyze`.
 
 ## Execution Steps
 
@@ -62,7 +62,7 @@ Load only the minimal necessary context from each artifact:
 
 **From constitution:**
 
-- Load `specs/METHODOLOGY.md` and `specs/CONSTITUTION.md` for principle validation
+- Load `.github/METHODOLOGY.md` and `.github/CONSTITUTION.md` for principle validation
 
 ### 3. Build Semantic Models
 

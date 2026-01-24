@@ -4,9 +4,9 @@
 
 **ALWAYS read these documents at the start of every chat session:**
 
-1. **`specs/METHODOLOGY.md`** - Development workflow, TDD process, Bug-Driven Development (BDD), agent collaboration
-2. **`specs/CONSTITUTION.md`** - Coding standards, technical constraints, feature flags, UTC timestamps, version control
-3. **`ARCHITECTURE.md`** - System architecture, components, data flow, integration points
+1. **`.github/METHODOLOGY.md`** - Development workflow, TDD process, Bug-Driven Development (BDD), agent collaboration
+2. **`.github/CONSTITUTION.md`** - Coding standards, technical constraints, feature flags, UTC timestamps, version control
+3. **`.github/ARCHITECTURE.md`** - System architecture, components, data flow, integration points
 4. **`README.md`** - Project overview, setup instructions, configuration guide
 
 ## Quick Reference
