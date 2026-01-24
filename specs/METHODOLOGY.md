@@ -99,6 +99,47 @@ All implementation MUST follow strict test-first methodology with human approval
 - Manual test checkpoints (acceptance testing) serve as user story approval gates
 - No implementation code may be written until its corresponding tests exist and are approved
 
+**TDD Workflow (6 Steps with Human Gates):**
+
+1. **EXPLAIN Test Plan** (NEW MANDATORY STEP)
+   - Describe in plain language WHAT will be tested and WHY
+   - List all test cases with their purpose
+   - Identify CHK requirements each test validates
+   - Explain expected behavior and edge cases
+   - **Output**: Human-readable test plan explanation
+   - **BLOCKING**: Get human approval of test plan before writing tests
+
+2. **🚨 HUMAN APPROVAL GATE - TEST PLAN 🚨**
+   - Present: Test plan explanation, test cases, CHK mappings
+   - Human reviews and approves test strategy
+   - **BLOCKING**: No test writing until approval received
+   - If rejected: Revise test plan based on feedback
+
+3. **RED Phase - Write Failing Tests**
+   - Write tests based on approved test plan
+   - Tests MUST fail initially (no implementation exists yet)
+   - Follow test file naming conventions
+   - Run tests to verify they fail
+   - **Output**: Failing test suite
+
+4. **🚨 HUMAN APPROVAL GATE - TESTS 🚨**
+   - Present: Written tests, test results showing failures
+   - Human reviews test implementation quality
+   - **BLOCKING**: No code implementation until approval received
+   - If rejected: Revise tests based on feedback
+
+5. **GREEN Phase - Implement Code**
+   - Write minimal code to make tests pass
+   - Follow existing code patterns and style
+   - Run tests to verify they pass
+   - **Output**: Passing test suite
+
+6. **REFACTOR Phase - Clean Up**
+   - Improve code quality while keeping tests green
+   - Remove duplication, improve naming
+   - Run tests after each refactor to ensure they still pass
+   - **Output**: Clean, tested code
+
 ---
 
 ## VII. Bug-Driven Development (BDD)

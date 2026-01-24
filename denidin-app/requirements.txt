@@ -13,6 +13,11 @@ tiktoken>=0.5.0  # Token counting for conversation limits
 # Memory & Vector Storage (Feature 002+007)
 chromadb>=0.4.22
 
+# Media Processing (Feature 003)
+PyMuPDF>=1.23.0           # PDF to image conversion (fitz)
+python-docx>=1.0.0        # DOCX text extraction
+Pillow>=10.0.0            # Image processing utilities
+
 # Configuration & Data
 PyYAML>=6.0
 
