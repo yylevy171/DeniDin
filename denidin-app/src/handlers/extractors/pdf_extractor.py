@@ -43,12 +43,16 @@ class PDFExtractor(MediaExtractor):
         # Create ImageExtractor for page processing
         self.image_extractor = ImageExtractor(denidin_context)
     
-    def extract_text(self, media: Media) -> Dict:
+    def extract_text(self, media: Media, caption: str = "") -> Dict:
         """
         Extract text AND analyze document from PDF (Phase 4 enhancement).
         
         Converts each page to image, extracts text + analysis per page,
         then aggregates into single document analysis.
+        
+        Args:
+            media: Media object containing PDF data
+            caption: User's message/question sent with the PDF (optional)
         
         Args:
             media: Media object containing PDF data in memory
@@ -120,7 +124,8 @@ class PDFExtractor(MediaExtractor):
                     )
                     
                     # Delegate to ImageExtractor (returns text + analysis)
-                    page_result = self.image_extractor.extract_text(page_media)
+                    # Pass caption to provide context for analysis
+                    page_result = self.image_extractor.extract_text(page_media, caption=caption)
                     
                     # Collect per-page results
                     extracted_texts.append(page_result["extracted_text"])

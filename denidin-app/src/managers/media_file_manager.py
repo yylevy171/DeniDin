@@ -1,4 +1,4 @@
-"""MediaManager - File download, storage, and validation.
+"""MediaFileManager - File download, storage, and validation.
 
 Handles:
 - Downloading files from Green API
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Tuple
 
 
-class MediaManager:
+class MediaFileManager:
     """Handles file download, storage, and validation."""
     
     # Configuration constants (CHK decisions)
@@ -26,7 +26,7 @@ class MediaManager:
     
     def __init__(self, denidin_context):
         """
-        Initialize MediaManager.
+        Initialize MediaFileManager.
         
         Args:
             denidin_context: Global DeniDin context with config

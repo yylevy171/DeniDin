@@ -2,12 +2,13 @@
 
 **Feature ID**: 003-media-document-processing  
 **Priority**: P1 (High)  
-**Status**: In Progress - Phase 4 Complete ✅ (Enhanced Extractors with Document Analysis)  
+**Status**: In Progress - Phase 5 Starting (Media Handler Orchestration)  
 **Created**: January 17, 2026  
 **Updated**: January 24, 2026  
 **Decisions Log**: See `DECISIONS.md`  
 **Phase 3 Implementation Decisions**: See § Phase 3 Implementation Choices below  
-**Phase 4 Decision**: Merge document analysis INTO extractors (single AI call for text + analysis)
+**Phase 4 Decision**: Merge document analysis INTO extractors (single AI call for text + analysis)  
+**Phase 5 Clarification**: NO DocumentAnalyzer component - extractors already provide document_analysis
 
 ## Problem Statement
 
@@ -680,17 +681,40 @@ Pillow>=10.0.0            # Image processing utilities
 - 1f72d00: PDFExtractor enhancement
 - 8899fcf: DOCXExtractor enhancement + base class fix
 
-**Status**: Phase 4 complete. Ready for Phase 5 (Document Retrieval) or integration work.
+**Status**: Phase 4 complete. Ready for Phase 5 (Media Handler Orchestration).
 
-### Phase 5: Document Retrieval
+### Phase 5: Media Handler Orchestration
+**Goal**: Create MediaHandler to coordinate the complete media processing workflow.
+
+**Note**: DocumentAnalyzer component is NOT needed - extractors already return document analysis in Phase 4.
+
+- [ ] Create MediaHandler class to orchestrate workflow
+- [ ] Integrate with MediaManager (download, validate, storage)
+- [ ] Route to appropriate extractor based on file type
+- [ ] Format user-friendly summary from extractor's document_analysis
+- [ ] Create MediaAttachment model from results
+- [ ] Handle all error cases (file size, format, download, extraction failures)
+- [ ] Write 14 MediaHandler unit tests
+- [ ] Verify end-to-end flow works
+
+**Implementation**: MediaHandler receives file → validates → calls extractor → formats summary → returns response
+
+### Phase 6: WhatsApp Integration
+- [ ] Detect media messages in WhatsApp Handler
+- [ ] Route media messages to Media Handler
+- [ ] Send summary to user for approval
+- [ ] Handle approval workflow (informal acceptance)
+- [ ] Add approved media to conversation context
+- [ ] Write WhatsApp media integration tests
+
+### Phase 7: Document Retrieval (Future)
 - [ ] Implement document search in conversation memory
 - [ ] Integrate Green API SendFileByUpload for file re-sending
 - [ ] Add natural language queries ("Show me David's contract")
 - [ ] Handle multiple matches (ask user to clarify)
 - [ ] Write tests for retrieval workflow
 
-### Phase 6: Integration & Polish
-- [ ] Integrate with session management (standard memory flow)
+### Phase 8: Production Polish
 - [ ] Add comprehensive error handling
 - [ ] Performance optimization (async processing where possible)
 - [ ] Documentation updates
@@ -1302,4 +1326,57 @@ Return as JSON:
 **Original Phase 4** (Document Analyzer) - **CANCELLED**  
 Merged into extractor enhancements for better efficiency and quality.
 **Test Coverage**: 30/30 tests passing
+
+---
+
+## Phase 5 Architecture Clarification
+
+**Date**: January 24, 2026  
+**Clarification**: MediaHandler does NOT need DocumentAnalyzer component
+
+### Background
+The original plan.md (written before Phase 4) described a `DocumentAnalyzer` component that would:
+1. Receive extracted text from extractors
+2. Call AI to analyze document type and extract metadata  
+3. Format user-facing summary
+
+### Why DocumentAnalyzer is NOT Needed
+
+**Phase 4 already provides everything**:
+- Extractors return `document_analysis` with type, summary, and key_points
+- Analysis happens in the SAME AI call as text extraction (cost-efficient)
+- AI sees the actual visual document (better quality than text-only analysis)
+
+### Simplified Phase 5 Architecture
+
+**MediaHandler responsibilities**:
+1. Coordinate workflow (download, validate, store, extract)
+2. Route to appropriate extractor based on file type
+3. Format extractor's `document_analysis` into user-friendly summary
+4. Create MediaAttachment from results
+5. Handle errors gracefully
+
+**Example flow**:
+```python
+# MediaHandler.process_media_message()
+extraction_result = self.image_extractor.extract_text(media)
+# extraction_result already contains document_analysis!
+
+summary = self._format_summary(extraction_result["document_analysis"])
+# Just format the analysis that's already there
+
+return {
+    "success": True,
+    "summary": summary,
+    "document_metadata": extraction_result["document_analysis"]
+}
+```
+
+**Benefits**:
+- ✅ Simpler architecture - one less component
+- ✅ No additional AI calls - extractors already did the work
+- ✅ Consistent with Phase 4 design - use what's already built
+- ✅ Easier testing - mock extractors, they return full results
+
+---
 

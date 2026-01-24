@@ -13,6 +13,7 @@ CHK Requirements:
 - CHK078: Empty document handling
 """
 from typing import Dict, List
+from pathlib import Path
 from src.models.media import Media
 from src.handlers.extractors.base import MediaExtractor
 
@@ -35,7 +36,7 @@ class ImageExtractor(MediaExtractor):
         self.ai_handler = denidin_context.ai_handler
         self.vision_model = self.config.ai_vision_model
     
-    def extract_text(self, media: Media) -> Dict:
+    def extract_text(self, media: Media, caption: str = "") -> Dict:
         """
         Extract text AND analyze document from image (Phase 4 enhancement).
         
@@ -48,6 +49,7 @@ class ImageExtractor(MediaExtractor):
         
         Args:
             media: Media object containing image data in memory
+            caption: User's message/question sent with the image (optional)
             
         Returns:
             {
@@ -63,30 +65,24 @@ class ImageExtractor(MediaExtractor):
             }
         """
         try:
+            # Load prompt template from external file
+            prompt_path = Path(__file__).parent.parent.parent.parent / "prompts" / "image_analysis.txt"
+            prompt_template = prompt_path.read_text(encoding='utf-8')
+            
             # CHK027: Enhanced prompt for text extraction + document analysis
-            prompt = (
-                "Analyze this image and extract ALL information:\n\n"
-                "1. TEXT EXTRACTION:\n"
-                "   - Extract all text preserving layout, paragraphs, and line breaks\n"
-                "   - Maintain RTL direction for Hebrew text\n"
-                "   - Preserve document structure\n\n"
-                "2. DOCUMENT ANALYSIS:\n"
-                "   - Identify document type: contract, receipt, invoice, court_resolution, or generic\n"
-                "   - Provide a brief summary (1-2 sentences)\n"
-                "   - List key points (names, amounts, dates, important details)\n\n"
-                "3. QUALITY ASSESSMENT:\n"
-                "   - Rate your confidence: high/medium/low\n"
-                "   - Note any issues with image clarity or text legibility\n\n"
-                "Format response as:\n"
-                "TEXT:\n[extracted text]\n\n"
-                "DOCUMENT_TYPE: [type]\n"
-                "SUMMARY: [summary]\n"
-                "KEY_POINTS:\n- [point 1]\n- [point 2]\n...\n\n"
-                "CONFIDENCE: [high/medium/low]\n"
-                "NOTES: [optional notes]"
+            # Include user's caption/question for context
+            user_context = f"\n\nUser's question/message: {caption}" if caption else ""
+            addressing_note = " addressing the user's question" if caption else ""
+            focusing_note = ", focusing on what the user asked about" if caption else ""
+            
+            # Format the prompt with context
+            prompt = prompt_template.format(
+                user_context=user_context,
+                addressing_note=addressing_note,
+                focusing_note=focusing_note
             )
             
-            # Call Vision API with in-memory media
+            # Call Vision API with in-memory media (constitution prepended in _vision_extract)
             response = self._vision_extract(media, prompt)
             
             # Parse enhanced response from AI

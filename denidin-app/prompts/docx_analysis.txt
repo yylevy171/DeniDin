@@ -1,0 +1,15 @@
+Analyze this document text and provide:
+1. DOCUMENT_TYPE: What type of document is this? (e.g., receipt, invoice, letter, contract, resume, notes, article, generic)
+2. SUMMARY: A concise 1-2 sentence summary of the document's content{addressing_note}
+3. KEY_POINTS: Important information from the document (bullet points){focusing_note}
+
+Document text:
+{document_text}{user_context}
+
+Respond in this format:
+DOCUMENT_TYPE: <type>
+SUMMARY: <summary>
+KEY_POINTS:
+- <point 1>
+- <point 2>
+...
