@@ -38,8 +38,9 @@ Currently, DeniDin only processes text messages. Users cannot send images, PDFs,
 - **session_id**: UUID identifier for a conversation session (links messages to sessions)
 
 **Storage Paths:**
-- **file_path**: Local storage location: `data/images/{YYYY-MM-DD}/image-{timestamp}/filename.ext`
-- **STORAGE_BASE**: Root directory for all media files: `data/images/`
+- **file_path**: Local storage location: `{data_root}/media/DD-{sender_phone}-{uuid}.{ext}`
+- **STORAGE_BASE**: Root directory for all media files: `{data_root}/media/`
+- **Filename Format**: `DD-{sender_phone}-{uuid}.{ext}` where uuid is randomly generated
 
 **Processing States:**
 - **extraction_quality**: Text extraction quality assessment - one of: `good`, `fair`, `poor`, `failed`
@@ -51,8 +52,8 @@ Currently, DeniDin only processes text messages. Users cannot send images, PDFs,
 - **Unsupported formats**: GIF, TXT, XLS, PPT, ZIP (return error message to user)
 
 **AI Model Names:**
-- **VISION_MODEL**: `gpt-4o` - Used for image and PDF page analysis
-- **TEXT_MODEL**: `gpt-4o-mini` - Used for DOCX text processing and document analysis
+- **VISION_MODEL**: From config `ai_vision_model` (default: `gpt-4o`) - Used for image and PDF page analysis
+- **TEXT_MODEL**: From config `ai_model` (default: `gpt-4o-mini`) - Used for DOCX text processing and document analysis
 
 **Metadata Field Types (Document-Specific):**
 - **Contract metadata**: `client_name`, `contract_type`, `amount`, `start_date`, `end_date`, `deliverables`
@@ -105,15 +106,16 @@ Currently, DeniDin only processes text messages. Users cannot send images, PDFs,
 - Reject PDFs exceeding limit with error message
 
 **REQ-MEDIA-004**: Storage Structure
-- Base path: `data/images/`
-- Folder structure: `{YYYY-MM-DD}/image-{UTC-timestamp}/`
-- UTC timestamps mandatory (per CONSTITUTION.md §II)
+- Base path: `{data_root}/media/` (flat structure, no date subdirectories)
+- File naming: `DD-{sender_phone}-{uuid}.{ext}` where uuid is randomly generated
+- UUID generation ensures collision prevention
 - Permanent storage - no automatic deletion
 
 **REQ-MEDIA-005**: File Naming
-- Original file: Keep original filename and extension
-- Extracted text: `{original-filename}.rawtext`
+- Original file: `DD-{sender_phone}-{uuid}.{ext}` (uuid-based, includes sender identification)
+- Extracted text: `DD-{sender_phone}-{uuid}.{ext}.rawtext`
 - UTF-8 encoding for all `.rawtext` files (Hebrew support)
+- UUID generated using Python's uuid.uuid4() for uniqueness
 
 ### Processing Requirements
 
@@ -143,9 +145,9 @@ Currently, DeniDin only processes text messages. Users cannot send images, PDFs,
 ### AI Model Requirements
 
 **REQ-AI-001**: Model Selection
-- Images and PDFs: `gpt-4o` (vision-enabled)
-- DOCX documents: `gpt-4o-mini` (cost-effective)
-- Document analysis: `gpt-4o-mini` (text processing)
+- Images and PDFs: `ai_vision_model` from config (default: `gpt-4o`)
+- DOCX documents: `ai_model` from config (default: `gpt-4o-mini`)
+- Document analysis: `ai_model` from config
 
 **REQ-AI-002**: Configuration Source
 - All configuration from `config/config.json`
@@ -217,7 +219,9 @@ Validate file size (10MB max)
     ↓
 Download media file from Green API
     ↓
-Store permanently: data/images/{date}/image-{timestamp}/DeniDin-image-{timestamp}.{ext}
+Generate UUID for unique filename
+    ↓
+Store permanently: {data_root}/media/DD-{sender_phone}-{uuid}.{ext}
     ↓
 Determine file type & validate format (JPG, PNG, PDF, DOCX only)
     ↓
@@ -252,7 +256,7 @@ Enable future retrieval: "Show me X's contract" → SendFileByUpload
 class MediaAttachment:
     media_type: str          # 'image', 'pdf', 'docx'
     file_url: str            # Green API download URL
-    file_path: str           # Local storage path: data/images/{date}/image-{timestamp}/
+    file_path: str           # Local storage path: {data_root}/media/DD-{sender_phone}-{uuid}.{ext}
     raw_text_path: str       # Path to extracted .rawtext file
     mime_type: str           # 'image/jpeg', 'application/pdf', etc.
     file_size: int           # Size in bytes
@@ -278,6 +282,9 @@ class WhatsAppMessage:
 # src/handlers/vision_handler.py
 
 class VisionHandler:
+    def __init__(self, config):
+        self.vision_model = config.get('ai_vision_model', 'gpt-4o')
+    
     def analyze_image(image_path: str, user_prompt: str = None) -> Dict:
         """
         Send image to GPT-4o Vision for analysis.
@@ -290,7 +297,7 @@ class VisionHandler:
         prompt = user_prompt or "Extract all text from this image and describe what you see."
         
         response = openai.chat.completions.create(
-            model="gpt-4o",  # Vision-enabled model
+            model=self.vision_model,  # From config: ai_vision_model
             messages=[
                 {
                     "role": "user",
@@ -306,7 +313,7 @@ class VisionHandler:
         )
         return {
             "extracted_text": response.choices[0].message.content,
-            "model_used": "gpt-4o"
+            "model_used": self.vision_model
         }
 ```
 
@@ -327,6 +334,10 @@ class VisionHandler:
 
 class DocumentHandler:
     MAX_PDF_PAGES = 10
+    
+    def __init__(self, config, vision_handler):
+        self.vision_handler = vision_handler
+        self.vision_model = config.get('ai_vision_model', 'gpt-4o')
     
     def process_pdf(file_path: str) -> Dict:
         """
@@ -375,10 +386,10 @@ class DocumentHandler:
 
 **Technology**: python-docx + GPT-4o-mini
 
-**Decision**: Extract text using python-docx library, then process with `gpt-4o-mini` for cost efficiency (text-only processing).
+**Decision**: Extract text using python-docx library, then process with `ai_model` from config (default: `gpt-4o-mini`) for cost efficiency (text-only processing).
 
 ```python
-def extract_docx_text(file_path: str) -> Dict:
+def extract_docx_text(file_path: str, config: dict) -> Dict:
     """Extract text from DOCX file."""
     from docx import Document
     
@@ -390,7 +401,7 @@ def extract_docx_text(file_path: str) -> Dict:
     return {
         "extracted_text": text,
         "model_used": "python-docx-library",
-        "processing_model": "gpt-4o-mini"  # For subsequent analysis
+        "processing_model": config.get('ai_model', 'gpt-4o-mini')  # From config
     }
 ```
 
@@ -401,16 +412,18 @@ def extract_docx_text(file_path: str) -> Dict:
 
 #### D. Document Type Detection & Metadata Extraction
 
-**Technology**: GPT-4o-mini (for DOCX) or GPT-4o (for images/PDFs)
+**Technology**: ai_model from config (for DOCX) or ai_vision_model (for images/PDFs)
 
 **Decision**: AI automatically detects document type and extracts type-specific metadata.
 
 ```python
-def detect_document_type_and_extract_metadata(raw_text: str, model: str) -> Dict:
+def detect_document_type_and_extract_metadata(raw_text: str, config: dict, source_type: str) -> Dict:
     """
     AI analyzes document to determine type and extract relevant metadata.
     Supported types: contract, receipt, invoice, court, generic
     """
+    # Use vision model for images/PDFs, text model for DOCX
+    model = config.get('ai_vision_model') if source_type in ['image', 'pdf'] else config.get('ai_model')
     system_prompt = """
     Analyze this document and:
     1. Identify the document type: contract, receipt, invoice, court_resolution, or generic
@@ -460,31 +473,31 @@ def detect_document_type_and_extract_metadata(raw_text: str, model: str) -> Dict
 # src/utils/media_manager.py
 
 class MediaManager:
-    STORAGE_BASE = "data/images"
+    STORAGE_BASE = Path(data_root) / "media"
     MAX_FILE_SIZE_MB = 10
     
-    def download_and_store_media(file_url: str, mime_type: str) -> Dict:
+    def download_and_store_media(file_url: str, mime_type: str, sender_phone: str) -> Dict:
         """
         Download media from Green API and store permanently.
-        Storage: data/images/{date}/image-{timestamp}/DeniDin-image-{timestamp}.{ext}
+        Storage: {data_root}/media/DD-{sender_phone}-{uuid}.{ext}
         
         Storage Requirements (CHK019-024):
-        - Timestamps: UTC with microsecond precision to prevent collisions
-        - Collision Prevention: Timestamp uniqueness is sufficient (no additional handling needed)
+        - UUID: Randomly generated uuid4() for collision prevention
+        - Sender Identification: Phone number included for file organization
         - Atomicity: Not required (file and .rawtext saved independently)
         - Disk Space: No monitoring required (operational concern, not feature requirement)
         - Encoding: UTF-8 for .rawtext files (Hebrew support)
         - Duplicate Detection: None (same file sent twice = two separate storage entries)
         """
-        from datetime import datetime, timezone
-        timestamp = datetime.now(timezone.utc).timestamp()  # UTC with microseconds
-        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        import uuid
+        file_uuid = uuid.uuid4()
         
-        folder = f"{self.STORAGE_BASE}/{date_str}/image-{timestamp}"
+        # Flat structure in media directory
+        folder = self.STORAGE_BASE
         os.makedirs(folder, exist_ok=True)
         
         ext = self._get_extension(mime_type)
-        filename = f"DeniDin-image-{timestamp}.{ext}"
+        filename = f"DD-{sender_phone}-{file_uuid}.{ext}"
         file_path = f"{folder}/{filename}"
         
         # Download file
@@ -514,18 +527,13 @@ class MediaManager:
 (CHK113: Permanent = forever until manual deletion feature is implemented)
 (CHK114: Generic type = both fallback for low-confidence AND valid classification for misc documents)
 ```
-data/images/
-  ├── 2026-01-22/
-  │   ├── image-1737561234/
-  │   │   ├── DeniDin-image-1737561234.pdf
-  │   │   └── DeniDin-image-1737561234.pdf.rawtext
-  │   └── image-1737561567/
-  │       ├── DeniDin-image-1737561567.jpg
-  │       └── DeniDin-image-1737561567.jpg.rawtext
-  └── 2026-01-23/
-      └── image-1737647890/
-          ├── DeniDin-image-1737647890.docx
-          └── DeniDin-image-1737647890.docx.rawtext
+{data_root}/media/
+  ├── DD-972501234567-a3f4e8d2-1c9b-4e6a-8f2d-9b7c5e4d3a2b.pdf
+  ├── DD-972501234567-a3f4e8d2-1c9b-4e6a-8f2d-9b7c5e4d3a2b.pdf.rawtext
+  ├── DD-972509876543-f7e2d1c4-6b8a-4d9e-7f3c-2a1b8e5d4c3f.jpg
+  ├── DD-972509876543-f7e2d1c4-6b8a-4d9e-7f3c-2a1b8e5d4c3f.jpg.rawtext
+  ├── DD-972501234567-c9b8a7d6-5e4f-3c2b-1a9e-8d7c6b5a4f3e.docx
+  └── DD-972501234567-c9b8a7d6-5e4f-3c2b-1a9e-8d7c6b5a4f3e.docx.rawtext
 ```
 
 **Key Points**:
@@ -577,7 +585,7 @@ When user asks "Show me David's contract":
 {
   "media": {
     "enabled": true,
-    "storage_path": "data/images/",
+    "storage_path": "{data_root}/media/",
     "max_file_size_mb": 10,
     "max_pdf_pages": 10,
     "supported_formats": {
@@ -586,13 +594,11 @@ When user asks "Show me David's contract":
     },
     "permanent_storage": true
   },
-  "ai_models": {
-    "vision_model": "gpt-4o",
-    "text_model": "gpt-4o-mini",
-    "document_analysis": {
-      "auto_detect_type": true,
-      "supported_types": ["contract", "receipt", "invoice", "court_resolution", "generic"]
-    }
+  "ai_model": "gpt-4o-mini",
+  "ai_vision_model": "gpt-4o",
+  "document_analysis": {
+    "auto_detect_type": true,
+    "supported_types": ["contract", "receipt", "invoice", "court_resolution", "generic"]
   }
 }
 ```
@@ -602,7 +608,7 @@ When user asks "Show me David's contract":
 - Added `max_pdf_pages: 10`
 - Removed `cleanup_after_hours` (permanent storage)
 - Removed unsupported formats (GIF, TXT, WebP)
-- Added `vision_model` and `text_model` separation
+- Use existing `ai_model` and new `ai_vision_model` config parameters (not nested under ai_models)
 - Added `document_analysis` configuration
 
 ## Dependencies
@@ -625,7 +631,7 @@ Pillow>=10.0.0            # Image processing utilities
 ### Phase 1: Foundation & Image Support
 - [ ] Update data models (MediaAttachment with new fields)
 - [ ] Implement MediaManager (download, permanent storage, validation)
-- [ ] Create storage folder structure (data/images/{date}/image-{timestamp}/)
+- [ ] Create storage folder structure ({data_root}/media/)
 - [ ] Implement VisionHandler for GPT-4o vision integration
 - [ ] Update WhatsApp handler to detect imageMessage
 - [ ] Implement image processing: download → store → extract → save .rawtext
@@ -687,7 +693,7 @@ User: "Perfect, thanks"
 ### Example 2: Contract Processing (Feature 013 US3 Integration)
 ```
 User: [sends contract.pdf - 5 pages]
-Bot: Downloads → Stores in data/images/2026-01-22/image-1737561234/
+Bot: Downloads → Stores in {data_root}/media/DD-972501234567-{uuid}.pdf
 Bot: Converts PDF pages to images → GPT-4o vision extraction
 Bot: Detects document type: "contract"
 Bot: "I've analyzed this contract. Here's what I found:
@@ -718,7 +724,7 @@ User: "Perfect!"
 ```
 User: "Show me David's contract"
 Bot: Searches memory → Finds message with contract metadata
-Bot: Retrieves file from data/images/2026-01-22/image-1737561234/DeniDin-image-1737561234.pdf
+Bot: Retrieves file from {data_root}/media/DD-972501234567-{uuid}.pdf
 Bot: [Re-sends PDF via SendFileByUpload]
 Bot: "Here's David Cohen's service agreement from January 2026"
 ```
