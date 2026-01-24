@@ -1,6 +1,8 @@
 """
-Image Text Extractor (Feature 003 Phase 3.1)
-Extract text from images using GPT-4o Vision API.
+Image Text Extractor (Feature 003 Phase 3.1 + Phase 4 Enhancement)
+Extract text from images AND analyze documents using GPT-4o Vision API.
+
+Phase 4 Enhancement: Single AI call returns text + document analysis.
 
 CHK Requirements:
 - CHK006: Hebrew text extraction required
@@ -12,10 +14,15 @@ CHK Requirements:
 """
 from typing import Dict, List
 from src.models.media import Media
+from src.utils.extractors.base import MediaExtractor
 
 
-class ImageExtractor:
-    """Extract text from images using GPT-4o Vision."""
+class ImageExtractor(MediaExtractor):
+    """
+    Extract text and analyze documents from images using GPT-4o Vision.
+    
+    Phase 4: Enhanced to return text + document analysis in single AI call.
+    """
     
     def __init__(self, denidin_context):
         """
@@ -24,14 +31,19 @@ class ImageExtractor:
         Args:
             denidin_context: DeniDin instance with ai_handler and config
         """
-        self.context = denidin_context
+        super().__init__(denidin_context)
         self.ai_handler = denidin_context.ai_handler
-        self.config = denidin_context.config
         self.vision_model = self.config.ai_vision_model
     
     def extract_text(self, media: Media) -> Dict:
         """
-        Extract text from image with Hebrew support.
+        Extract text AND analyze document from image (Phase 4 enhancement).
+        
+        Single AI call returns:
+        - Extracted text with Hebrew support and layout preservation
+        - Document analysis (type, summary, key points)
+        - Quality assessment
+        
         CHK006-011: Hebrew text extraction with layout preservation.
         
         Args:
@@ -40,42 +52,60 @@ class ImageExtractor:
         Returns:
             {
                 "extracted_text": str,
+                "document_analysis": {
+                    "document_type": str,
+                    "summary": str,
+                    "key_points": List[str]
+                },
                 "extraction_quality": str,  # "high", "medium", "low", "failed"
                 "warnings": List[str],
                 "model_used": str  # e.g. "gpt-4o"
             }
         """
         try:
-            # CHK027: Use specific prompt with quality self-assessment
+            # CHK027: Enhanced prompt for text extraction + document analysis
             prompt = (
-                "Extract all text from this image. "
-                "Preserve layout, paragraphs, and line breaks. "
-                "Maintain RTL direction for Hebrew text. "
-                "After extraction, assess your confidence level (high/medium/low) "
-                "based on image clarity, text legibility, and OCR certainty. "
-                "Format your response as:\n"
-                "TEXT:\n[extracted text here]\n"
+                "Analyze this image and extract ALL information:\n\n"
+                "1. TEXT EXTRACTION:\n"
+                "   - Extract all text preserving layout, paragraphs, and line breaks\n"
+                "   - Maintain RTL direction for Hebrew text\n"
+                "   - Preserve document structure\n\n"
+                "2. DOCUMENT ANALYSIS:\n"
+                "   - Identify document type: contract, receipt, invoice, court_resolution, or generic\n"
+                "   - Provide a brief summary (1-2 sentences)\n"
+                "   - List key points (names, amounts, dates, important details)\n\n"
+                "3. QUALITY ASSESSMENT:\n"
+                "   - Rate your confidence: high/medium/low\n"
+                "   - Note any issues with image clarity or text legibility\n\n"
+                "Format response as:\n"
+                "TEXT:\n[extracted text]\n\n"
+                "DOCUMENT_TYPE: [type]\n"
+                "SUMMARY: [summary]\n"
+                "KEY_POINTS:\n- [point 1]\n- [point 2]\n...\n\n"
                 "CONFIDENCE: [high/medium/low]\n"
-                "NOTES: [any issues or uncertainties]"
+                "NOTES: [optional notes]"
             )
             
             # Call Vision API with in-memory media
             response = self._vision_extract(media, prompt)
             
-            # Parse structured response from AI
+            # Parse enhanced response from AI
             response_text = response.get("text", "")
-            extracted_text, confidence, ai_notes = self._parse_ai_response(response_text)
+            result = self._parse_enhanced_response(response_text)
             
             # CHK007: Collect warnings
             warnings: List[str] = []
-            
-            # Add AI's own notes as warnings if present
-            if ai_notes:
-                warnings.append(f"AI notes: {ai_notes}")
+            if result["ai_notes"]:
+                warnings.append(f"AI notes: {result['ai_notes']}")
             
             return {
-                "extracted_text": extracted_text,
-                "extraction_quality": confidence,  # Use AI confidence directly
+                "extracted_text": result["extracted_text"],
+                "document_analysis": {
+                    "document_type": result["document_type"],
+                    "summary": result["summary"],
+                    "key_points": result["key_points"]
+                },
+                "extraction_quality": result["confidence"],
                 "warnings": warnings,
                 "model_used": self.vision_model
             }
@@ -84,6 +114,11 @@ class ImageExtractor:
             # CHK007: Fail gracefully
             return {
                 "extracted_text": "",
+                "document_analysis": {
+                    "document_type": "generic",
+                    "summary": "Analysis failed",
+                    "key_points": []
+                },
                 "extraction_quality": "failed",
                 "warnings": [f"Extraction failed: {str(e)}"],
                 "model_used": self.vision_model
@@ -127,6 +162,118 @@ class ImageExtractor:
         )
         
         return {"text": response.choices[0].message.content}
+    
+    def _parse_enhanced_response(self, response_text: str) -> dict:
+        """
+        Parse enhanced AI response with text + document analysis.
+        
+        Expected format:
+            TEXT:
+            [extracted text]
+            
+            DOCUMENT_TYPE: [type]
+            SUMMARY: [summary]
+            KEY_POINTS:
+            - [point 1]
+            - [point 2]
+            
+            CONFIDENCE: high/medium/low
+            NOTES: [optional notes]
+        
+        Args:
+            response_text: Raw response from AI
+            
+        Returns:
+            {
+                "extracted_text": str,
+                "document_type": str,
+                "summary": str,
+                "key_points": List[str],
+                "confidence": str,
+                "ai_notes": str
+            }
+        """
+        # Default values
+        result = {
+            "extracted_text": response_text,
+            "document_type": "generic",
+            "summary": "",
+            "key_points": [],
+            "confidence": "medium",
+            "ai_notes": ""
+        }
+        
+        try:
+            lines = response_text.split("\n")
+            current_section = None
+            text_lines = []
+            key_points = []
+            
+            for line in lines:
+                line_stripped = line.strip()
+                
+                if line_stripped.startswith("TEXT:"):
+                    current_section = "text"
+                    continue
+                elif line_stripped.startswith("DOCUMENT_TYPE:"):
+                    current_section = "doc_type"
+                    doc_type = line_stripped.replace("DOCUMENT_TYPE:", "").strip().lower()
+                    result["document_type"] = doc_type if doc_type else "generic"
+                    continue
+                elif line_stripped.startswith("SUMMARY:"):
+                    current_section = "summary"
+                    summary = line_stripped.replace("SUMMARY:", "").strip()
+                    result["summary"] = summary
+                    continue
+                elif line_stripped.startswith("KEY_POINTS:"):
+                    current_section = "key_points"
+                    continue
+                elif line_stripped.startswith("CONFIDENCE:"):
+                    current_section = "confidence"
+                    conf = line_stripped.replace("CONFIDENCE:", "").strip().lower()
+                    result["confidence"] = conf if conf in ["high", "medium", "low"] else "medium"
+                    continue
+                elif line_stripped.startswith("NOTES:"):
+                    current_section = "notes"
+                    notes = line_stripped.replace("NOTES:", "").strip()
+                    result["ai_notes"] = notes
+                    continue
+                
+                # Accumulate content for current section
+                if current_section == "text":
+                    # Preserve empty lines for layout
+                    text_lines.append(line)
+                elif current_section == "summary" and line_stripped:
+                    # Handle multi-line summary
+                    if result["summary"]:
+                        result["summary"] += " " + line_stripped
+                    else:
+                        result["summary"] = line_stripped
+                elif current_section == "key_points":
+                    if line_stripped.startswith("-") or line_stripped.startswith("•"):
+                        point = line_stripped.lstrip("-•").strip()
+                        if point:
+                            key_points.append(point)
+                elif current_section == "notes" and line_stripped:
+                    # Handle multi-line notes
+                    if result["ai_notes"]:
+                        result["ai_notes"] += " " + line_stripped
+                    else:
+                        result["ai_notes"] = line_stripped
+            
+            # Set extracted text
+            if text_lines:
+                result["extracted_text"] = "\n".join(text_lines).strip()
+            
+            # Set key points
+            if key_points:
+                result["key_points"] = key_points
+                
+        except Exception:
+            # If parsing fails, use defaults with raw text
+            pass
+        
+        return result
     
     def _parse_ai_response(self, response_text: str) -> tuple[str, str, str]:
         """

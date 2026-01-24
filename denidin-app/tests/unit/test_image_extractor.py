@@ -164,3 +164,85 @@ class TestImageExtractor:
         result = extractor.extract_text(test_media)
         
         assert result["extraction_quality"] == "medium"
+    
+    # ========== Phase 4: Document Analysis Tests ==========
+    
+    def test_extract_includes_document_analysis(self, extractor, test_media, mock_denidin):
+        """
+        Phase 4: Verify extract_text returns document_analysis structure.
+        """
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = (
+            "TEXT:\nContract Agreement\n\n"
+            "DOCUMENT_TYPE: contract\n"
+            "SUMMARY: Service agreement between parties\n"
+            "KEY_POINTS:\n"
+            "- Client: David Cohen\n"
+            "- Amount: ₪50,000\n"
+            "CONFIDENCE: high"
+        )
+        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
+        
+        result = extractor.extract_text(test_media)
+        
+        # Verify document_analysis exists
+        assert "document_analysis" in result
+        analysis = result["document_analysis"]
+        
+        # Verify all required fields
+        assert "document_type" in analysis
+        assert "summary" in analysis
+        assert "key_points" in analysis
+        
+        # Verify content
+        assert analysis["document_type"] == "contract"
+        assert "agreement" in analysis["summary"].lower()
+        assert isinstance(analysis["key_points"], list)
+        assert len(analysis["key_points"]) == 2
+        assert "David Cohen" in analysis["key_points"][0]
+    
+    def test_document_analysis_generic_fallback(self, extractor, test_media, mock_denidin):
+        """
+        Phase 4: When AI can't determine type, defaults to 'generic'.
+        """
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = (
+            "TEXT:\nSome random notes\n\n"
+            "DOCUMENT_TYPE: generic\n"
+            "SUMMARY: Unstructured personal notes\n"
+            "KEY_POINTS:\n"
+            "- Note about meeting\n"
+            "CONFIDENCE: medium"
+        )
+        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
+        
+        result = extractor.extract_text(test_media)
+        
+        assert result["document_analysis"]["document_type"] == "generic"
+    
+    def test_prompt_includes_document_analysis_request(self, extractor, test_media, mock_denidin):
+        """
+        Phase 4: Verify enhanced prompt requests document analysis.
+        """
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = (
+            "TEXT:\nTest\n\nDOCUMENT_TYPE: generic\nSUMMARY: test\nKEY_POINTS:\n- test\nCONFIDENCE: high"
+        )
+        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
+        
+        extractor.extract_text(test_media)
+        
+        call_args = mock_denidin.ai_handler.client.chat.completions.create.call_args
+        messages = call_args[1]["messages"]
+        user_content = messages[0]["content"]
+        text_part = next((item["text"] for item in user_content if item.get("type") == "text"), "")
+        
+        # Verify prompt requests analysis
+        assert "document" in text_part.lower()
+        assert "analysis" in text_part.lower() or "analyze" in text_part.lower()
+        assert "summary" in text_part.lower()
+        assert "key" in text_part.lower() and "point" in text_part.lower()
+
