@@ -14,7 +14,7 @@ CHK Requirements:
 """
 from typing import Dict, List
 from src.models.media import Media
-from src.utils.extractors.base import MediaExtractor
+from src.handlers.extractors.base import MediaExtractor
 
 
 class ImageExtractor(MediaExtractor):

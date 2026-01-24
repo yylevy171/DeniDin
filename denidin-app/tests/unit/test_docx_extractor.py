@@ -14,7 +14,7 @@ import pytest
 import io
 from unittest.mock import Mock, patch
 from docx import Document
-from src.utils.extractors.docx_extractor import DOCXExtractor
+from src.handlers.extractors.docx_extractor import DOCXExtractor
 from src.models.media import Media
 
 

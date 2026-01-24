@@ -19,8 +19,8 @@ except ImportError:
     fitz = None
 
 from src.models.media import Media
-from src.utils.extractors.base import MediaExtractor
-from src.utils.extractors.image_extractor import ImageExtractor
+from src.handlers.extractors.base import MediaExtractor
+from src.handlers.extractors.image_extractor import ImageExtractor
 
 
 class PDFExtractor(MediaExtractor):

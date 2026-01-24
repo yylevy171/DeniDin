@@ -15,7 +15,7 @@ import io
 from typing import Dict, List, Optional
 from docx import Document
 from src.models.media import Media
-from src.utils.extractors.base import MediaExtractor
+from src.handlers.extractors.base import MediaExtractor
 
 
 class DOCXExtractor(MediaExtractor):

@@ -4,7 +4,7 @@ Tests for MediaExtractor base interface (Feature 003 Phase 4).
 Tests the interface contract that all extractors must implement.
 """
 import pytest
-from src.utils.extractors.base import MediaExtractor
+from src.handlers.extractors.base import MediaExtractor
 from src.models.media import Media
 
 

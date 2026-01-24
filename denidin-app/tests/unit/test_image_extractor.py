@@ -12,7 +12,7 @@ CHK Requirements Validated:
 """
 import pytest
 from unittest.mock import Mock
-from src.utils.extractors.image_extractor import ImageExtractor
+from src.handlers.extractors.image_extractor import ImageExtractor
 from src.models.media import Media
 
 

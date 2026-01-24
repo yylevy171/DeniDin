@@ -12,7 +12,7 @@ Phase 4: Document analysis aggregation from multiple pages
 """
 import pytest
 from unittest.mock import Mock, MagicMock, patch
-from src.utils.extractors.pdf_extractor import PDFExtractor
+from src.handlers.extractors.pdf_extractor import PDFExtractor
 from src.models.media import Media
 
 
@@ -36,7 +36,7 @@ def mock_image_extractor():
 @pytest.fixture
 def pdf_extractor(mock_denidin_context, mock_image_extractor):
     """Create PDFExtractor with mocked dependencies."""
-    with patch('src.utils.extractors.pdf_extractor.ImageExtractor', return_value=mock_image_extractor):
+    with patch('src.handlers.extractors.pdf_extractor.ImageExtractor', return_value=mock_image_extractor):
         extractor = PDFExtractor(mock_denidin_context)
     return extractor
 
@@ -50,7 +50,7 @@ def test_extract_hebrew_multipage_pdf(pdf_extractor, mock_image_extractor):
     pdf_media = Media.from_bytes(b"fake PDF data", "application/pdf", "test.pdf")
     
     # Mock PyMuPDF to return 3 pages
-    with patch('src.utils.extractors.pdf_extractor.fitz') as mock_fitz:
+    with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
         mock_doc = MagicMock()
         mock_doc.__len__.return_value = 3
         mock_doc.__iter__.return_value = [Mock(), Mock(), Mock()]
@@ -135,7 +135,7 @@ def test_extract_single_page_pdf(pdf_extractor, mock_image_extractor):
     """
     pdf_media = Media.from_bytes(b"fake PDF data", "application/pdf", "single.pdf")
     
-    with patch('src.utils.extractors.pdf_extractor.fitz') as mock_fitz:
+    with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
         mock_doc = MagicMock()
         mock_doc.__len__.return_value = 1
         mock_page = Mock()
@@ -179,7 +179,7 @@ def test_extract_empty_pdf(pdf_extractor, mock_image_extractor):
     """
     pdf_media = Media.from_bytes(b"fake empty PDF", "application/pdf", "empty.pdf")
     
-    with patch('src.utils.extractors.pdf_extractor.fitz') as mock_fitz:
+    with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
         mock_doc = MagicMock()
         mock_doc.__len__.return_value = 0
         mock_doc.__iter__.return_value = []
@@ -207,7 +207,7 @@ def test_pymupdf_failure_handling(pdf_extractor, mock_image_extractor):
     """
     pdf_media = Media.from_bytes(b"corrupted PDF", "application/pdf", "bad.pdf")
     
-    with patch('src.utils.extractors.pdf_extractor.fitz') as mock_fitz:
+    with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
         mock_fitz.open.side_effect = Exception("PDF parsing error")
         
         result = pdf_extractor.extract_text(pdf_media)
@@ -232,7 +232,7 @@ def test_mixed_quality_pages(pdf_extractor, mock_image_extractor):
     """
     pdf_media = Media.from_bytes(b"fake PDF", "application/pdf", "mixed.pdf")
     
-    with patch('src.utils.extractors.pdf_extractor.fitz') as mock_fitz:
+    with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
         mock_doc = MagicMock()
         mock_doc.__len__.return_value = 4
         mock_doc.__iter__.return_value = [Mock(), Mock(), Mock(), Mock()]
@@ -266,7 +266,7 @@ def test_image_extractor_delegation(pdf_extractor, mock_image_extractor):
     """
     pdf_media = Media.from_bytes(b"fake PDF", "application/pdf", "test.pdf")
     
-    with patch('src.utils.extractors.pdf_extractor.fitz') as mock_fitz:
+    with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
         mock_doc = MagicMock()
         mock_doc.__len__.return_value = 2
         mock_page1, mock_page2 = Mock(), Mock()
@@ -320,7 +320,7 @@ def test_aggregates_document_type_most_common(pdf_extractor, mock_image_extracto
     """
     pdf_media = Media.from_bytes(b"fake PDF", "application/pdf", "mixed.pdf")
     
-    with patch('src.utils.extractors.pdf_extractor.fitz') as mock_fitz:
+    with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
         mock_doc = MagicMock()
         mock_doc.__len__.return_value = 4
         mock_doc.__iter__.return_value = [Mock(), Mock(), Mock(), Mock()]
@@ -352,7 +352,7 @@ def test_aggregates_key_points_with_deduplication(pdf_extractor, mock_image_extr
     """
     pdf_media = Media.from_bytes(b"fake PDF", "application/pdf", "points.pdf")
     
-    with patch('src.utils.extractors.pdf_extractor.fitz') as mock_fitz:
+    with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
         mock_doc = MagicMock()
         mock_doc.__len__.return_value = 3
         mock_doc.__iter__.return_value = [Mock(), Mock(), Mock()]
@@ -392,7 +392,7 @@ def test_aggregates_summaries_from_all_pages(pdf_extractor, mock_image_extractor
     """
     pdf_media = Media.from_bytes(b"fake PDF", "application/pdf", "summary.pdf")
     
-    with patch('src.utils.extractors.pdf_extractor.fitz') as mock_fitz:
+    with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
         mock_doc = MagicMock()
         mock_doc.__len__.return_value = 2
         mock_doc.__iter__.return_value = [Mock(), Mock()]
@@ -424,7 +424,7 @@ def test_handles_failed_page_analysis_gracefully(pdf_extractor, mock_image_extra
     """
     pdf_media = Media.from_bytes(b"fake PDF", "application/pdf", "partial.pdf")
     
-    with patch('src.utils.extractors.pdf_extractor.fitz') as mock_fitz:
+    with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
         mock_doc = MagicMock()
         mock_doc.__len__.return_value = 3
         
