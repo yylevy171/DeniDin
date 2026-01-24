@@ -2,10 +2,11 @@
 
 **Feature ID**: 003-media-document-processing  
 **Priority**: P1 (High)  
-**Status**: Planning - Clarifications Resolved  
+**Status**: In Progress - Phase 3 Complete (Text Extraction)  
 **Created**: January 17, 2026  
-**Updated**: January 22, 2026  
-**Decisions Log**: See `DECISIONS.md`
+**Updated**: January 24, 2026  
+**Decisions Log**: See `DECISIONS.md`  
+**Phase 3 Implementation Decisions**: See § Phase 3 Implementation Choices below
 
 ## Problem Statement
 
@@ -922,6 +923,274 @@ Bot: "Based on the document, the technical requirements are:
 **Next Steps**:
 1. ✅ Review and approve spec (COMPLETE)
 2. ✅ Resolve all clarifications (COMPLETE - see DECISIONS.md)
-3. Create implementation plan (plan.md) following Spec Kit methodology
-4. Create tasks.md with TDD workflow
-5. Begin Phase 1 implementation
+3. ✅ Create implementation plan (plan.md) following Spec Kit methodology (COMPLETE)
+4. ✅ Create tasks.md with TDD workflow (COMPLETE)
+5. ✅ Phase 3: Text Extraction (COMPLETE - PR #61 merged)
+6. → Phase 4: Document Analysis (NEXT)
+
+---
+
+## Phase 3 Implementation Choices
+
+**Completed**: January 24, 2026  
+**PR**: #61 (merged to master)  
+**Test Coverage**: 30 passing tests
+
+### Architecture Decisions Made During Implementation
+
+#### 1. In-Memory Media Processing (Media Model)
+
+**Decision**: Create `Media` model for in-memory file handling instead of file path passing
+
+**Rationale**:
+- Decouples extractors from file I/O
+- Enables easier testing with mock data
+- Better memory management (10MB limit enforced)
+- Cleaner API boundaries
+
+**Implementation**:
+```python
+@dataclass
+class Media:
+    data: bytes           # Raw file content (max 10MB)
+    mime_type: str        # MIME type validation
+    filename: Optional[str]
+    
+    def to_base64() -> str       # For API calls
+    def get_data_url() -> str    # data:mime;base64,... format
+```
+
+**Impact on Future Phases**:
+- Phase 4 (Document Analysis): Will receive Media objects
+- Phase 5 (Media Handler): Must create Media from downloads
+- All extractors use consistent Media interface
+
+---
+
+#### 2. DeniDin Context Pattern
+
+**Decision**: Pass DeniDin global context to extractors instead of individual dependencies
+
+**Implementation**:
+```python
+class ImageExtractor:
+    def __init__(self, denidin_context):
+        self.ai_handler = denidin_context.ai_handler
+        self.config = denidin_context.config
+```
+
+**Rationale**:
+- Single source of truth for configuration
+- Easier dependency injection
+- Consistent with existing codebase patterns (AIHandler, SessionManager)
+- Simplified testing (mock one object)
+
+**Impact on Future Phases**:
+- All new components should use DeniDin context
+- Media Handler will be initialized with denidin_context
+- Document Analyzer will use same pattern
+
+---
+
+#### 3. Constitution in User Prompt (NO System Message)
+
+**Decision**: Prepend constitution to user prompt instead of using system message
+
+**Rationale**:
+- Project spent "hours" removing system message pattern
+- Constitutional architecture enforced across all AI interactions
+- User prompt = constitution + actual prompt
+
+**Implementation**:
+```python
+def _vision_extract(self, media: Media, prompt: str):
+    constitution = self.ai_handler._load_constitution()
+    full_prompt = f"{constitution}\n\n{prompt}" if constitution else prompt
+    # NO system message in messages array
+```
+
+**Impact on Future Phases**:
+- Document Analyzer must follow same pattern
+- Any AI calls must prepend constitution to user content
+- System message should NEVER be used
+
+---
+
+#### 4. AI Self-Assessment for Quality
+
+**Decision**: Let AI self-assess extraction quality instead of using arbitrary heuristics
+
+**Original Approach** (rejected):
+- Text length > 100 chars = "good"
+- Text length 10-100 = "fair"  
+- Text length < 10 = "poor"
+
+**Final Approach**:
+```python
+prompt = (
+    "Extract all text from this image. "
+    "After extraction, assess your confidence level (high/medium/low) "
+    "Format: TEXT:\n[text]\nCONFIDENCE: [high/medium/low]\nNOTES: [issues]"
+)
+```
+
+**Rationale**:
+- Text length doesn't indicate accuracy (short text can be perfect)
+- AI knows when image is blurry, text is unclear, or confidence is low
+- More accurate quality assessment
+- Provides reasoning in NOTES field
+
+**Impact on Future Phases**:
+- Document analysis can use similar confidence self-assessment
+- Quality warnings can reference AI's notes
+- No need for arbitrary thresholds
+
+---
+
+#### 5. PDF Per-Page Array Results
+
+**Decision**: Return per-page arrays instead of concatenated text
+
+**Implementation**:
+```python
+{
+    "extracted_text": ["page 1 text", "page 2 text", "page 3 text"],
+    "extraction_quality": ["high", "medium", "high"],
+    "warnings": [[], ["blur detected"], []],
+    "model_used": "gpt-4o"  # Single value (same model)
+}
+```
+
+**Rationale**:
+- Preserves page-level granularity
+- Caller can decide how to aggregate
+- Quality issues can be traced to specific pages
+- Easier debugging of multi-page PDFs
+
+**Impact on Future Phases**:
+- Document Analyzer will receive per-page data
+- Media Handler can display page-specific warnings
+- Future: Could enable "extract only pages 2-5" feature
+
+---
+
+#### 6. DOCX Uses python-docx Only (No AI)
+
+**Decision**: DOCX extraction is deterministic (no AI model needed)
+
+**Implementation**:
+```python
+class DOCXExtractor:
+    def extract_text(self, media: Media) -> Dict:
+        doc = Document(io.BytesIO(media.data))
+        # Extract paragraphs and tables
+        return {
+            "extracted_text": str,      # Single string
+            "warnings": List[str],
+            "model_used": "python-docx"  # Library, not AI model
+        }
+```
+
+**Rationale**:
+- DOCX is structured XML (no OCR needed)
+- python-docx provides clean text extraction
+- No AI cost for simple text files
+- Reserves AI for actual document analysis (Phase 4)
+
+**Impact on Future Phases**:
+- Phase 4 will use AI to ANALYZE extracted text (not extract it)
+- Consistent with original decision (DOCX uses ai_model, not ai_vision_model)
+- Cost optimization: Only pay for AI when needed
+
+---
+
+#### 7. No Hardcoded Model Names
+
+**Decision**: Always use config values for model names
+
+**Enforcement**:
+```python
+# ❌ WRONG
+self.vision_model = "gpt-4o"
+
+# ✅ CORRECT
+self.vision_model = self.config.ai_vision_model
+```
+
+**Rationale**:
+- User discovered hardcoded "gpt-4o" during implementation
+- Config is single source of truth (CONSTITUTION.md §I)
+- Enables easy model switching in production
+- Testing can use different models
+
+**Impact on Future Phases**:
+- Document Analyzer must use `config.ai_model`
+- Media Handler uses config for all AI calls
+- NO hardcoded model references anywhere
+
+---
+
+#### 8. Test Data Strategy: Mocks Only
+
+**Decision**: Use mocks for extractor tests, no real image fixtures
+
+**Rationale**:
+- Unit tests should test logic, not external APIs
+- Real fixtures increase repository size
+- Mocks enable testing edge cases (corrupted files, etc.)
+- Faster test execution
+
+**Implementation**:
+```python
+def create_docx_media(*paragraphs) -> Media:
+    doc = Document()
+    for para_text in paragraphs:
+        doc.add_paragraph(para_text)
+    # Return in-memory Media object
+```
+
+**Impact on Future Phases**:
+- Integration tests will use real files
+- Unit tests always mock Media objects
+- Test fixtures in separate directory if needed
+
+---
+
+### Updated Technical Constraints
+
+Based on Phase 3 implementation:
+
+1. **All extractors MUST**:
+   - Accept `Media` objects (not file paths)
+   - Use DeniDin context for initialization
+   - Prepend constitution to user prompts (no system messages)
+   - Use config values for model names (no hardcoding)
+
+2. **Future components MUST**:
+   - Follow established patterns (DeniDin context, Media model)
+   - No system messages (constitution in user prompt)
+   - Use AI self-assessment where applicable
+   - Mock external dependencies in unit tests
+
+3. **Configuration Source**:
+   - `ai_vision_model` for Image/PDF extractors
+   - `ai_model` for Document Analyzer (Phase 4)
+   - All config from `config/config.json` (NO environment variables)
+
+---
+
+### Files Created in Phase 3
+
+1. `src/models/media.py` - Media model (10 tests)
+2. `src/utils/extractors/image_extractor.py` - Image text extraction (7 tests)
+3. `src/utils/extractors/pdf_extractor.py` - PDF page processing (6 tests)
+4. `src/utils/extractors/docx_extractor.py` - DOCX text extraction (7 tests)
+5. `src/utils/extractors/__init__.py` - Package init
+6. `tests/unit/test_media.py` - Media model tests
+7. `tests/unit/test_image_extractor.py` - Image extractor tests
+8. `tests/unit/test_pdf_extractor.py` - PDF extractor tests
+9. `tests/unit/test_docx_extractor.py` - DOCX extractor tests
+
+**Total Lines Added**: 1,233 insertions  
+**Test Coverage**: 30/30 tests passing
+
