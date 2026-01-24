@@ -20,10 +20,17 @@ class WhatsAppHandler:
     """
     Handles WhatsApp message processing and response sending.
     Implements retry logic with exponential backoff for Green API calls.
+    Phase 6: Adds media message detection and routing to MediaHandler.
     """
 
-    def __init__(self):
-        """Initialize WhatsAppHandler"""
+    def __init__(self, media_handler=None):
+        """
+        Initialize WhatsAppHandler
+        
+        Args:
+            media_handler: Optional MediaHandler instance for processing media messages
+        """
+        self.media_handler = media_handler
         logger.debug("WhatsAppHandler initialized")
 
     def process_notification(self, notification: Notification) -> WhatsAppMessage:
@@ -193,3 +200,91 @@ class WhatsAppHandler:
         except Exception as e:
             logger.error(f"Unexpected error sending response: {e}", exc_info=True)
             raise
+
+    def is_media_message(self, notification: Notification) -> bool:
+        """
+        Check if notification contains a media message.
+        
+        Args:
+            notification: Green API notification
+            
+        Returns:
+            True if message is a media type (image, document, video, audio), False otherwise
+        """
+        message_type = notification.event.get('messageData', {}).get('typeMessage', '')
+        return message_type in ['imageMessage', 'documentMessage', 'videoMessage', 'audioMessage']
+    
+    def get_media_type(self, notification: Notification) -> str:
+        """
+        Get the media message type from notification.
+        
+        Args:
+            notification: Green API notification
+            
+        Returns:
+            Media type string (e.g., 'imageMessage', 'documentMessage')
+        """
+        return notification.event.get('messageData', {}).get('typeMessage', '')
+    
+    def is_supported_media_message(self, notification: Notification) -> bool:
+        """
+        Check if the media message type is supported for processing.
+        Currently only imageMessage and documentMessage are supported.
+        Video and audio are future scope.
+        
+        Args:
+            notification: Green API notification
+            
+        Returns:
+            True if media type is supported, False otherwise
+        """
+        message_type = self.get_media_type(notification)
+        return message_type in ['imageMessage', 'documentMessage']
+    
+    def handle_media_message(self, notification: Notification) -> None:
+        """
+        Process WhatsApp media messages (images, documents).
+        Routes to MediaHandler and sends summary back to user.
+        CHK111: Caption is WhatsApp message text from webhook, not file metadata.
+        
+        Args:
+            notification: Green API notification containing media message
+        """
+        if not self.media_handler:
+            logger.error("MediaHandler not initialized, cannot process media")
+            return
+        
+        message_data = notification.event.get('messageData', {})
+        sender_data = notification.event.get('senderData', {})
+        
+        # Extract media information from Green API webhook
+        file_url = message_data.get('downloadUrl', '')
+        filename = message_data.get('fileName', 'unknown')
+        mime_type = message_data.get('mimeType', '')
+        file_size = message_data.get('fileSize', 0)
+        caption = message_data.get('caption', '')  # CHK111: WhatsApp message text
+        sender = sender_data.get('sender', '')
+        
+        logger.info(f"Processing media message: {filename} ({mime_type}) from {sender}")
+        
+        # Process media through MediaHandler
+        result = self.media_handler.process_media_message(
+            file_url=file_url,
+            filename=filename,
+            mime_type=mime_type,
+            file_size=file_size,
+            caption=caption,  # CHK111: User's message text
+            sender=sender
+        )
+        
+        if not result.get("success", False):
+            # Send error message to user
+            error_message = result.get("error_message", "Sorry, I couldn't process this file.")
+            logger.warning(f"Media processing failed: {error_message}")
+            notification.answer(error_message)
+            return
+        
+        # Send summary to user (no approval workflow - just send as reply)
+        summary = result.get("summary", "")
+        logger.info(f"Sending media processing summary to {sender}")
+        notification.answer(summary)
