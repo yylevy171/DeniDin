@@ -2,9 +2,9 @@
 
 **Feature ID**: 003-media-document-processing  
 **Priority**: P1 (High)  
-**Status**: In Progress - Phase 5 Starting (Media Handler Orchestration)  
+**Status**: In Progress - Phase 5 Complete (Media Handler + Prompt Externalization)  
 **Created**: January 17, 2026  
-**Updated**: January 24, 2026  
+**Updated**: January 25, 2026  
 **Decisions Log**: See `DECISIONS.md`  
 **Phase 3 Implementation Decisions**: See § Phase 3 Implementation Choices below  
 **Phase 4 Decision**: Merge document analysis INTO extractors (single AI call for text + analysis)  

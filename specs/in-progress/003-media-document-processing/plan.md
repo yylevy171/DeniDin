@@ -2,8 +2,8 @@
 
 **Feature ID**: 003-media-document-processing  
 **Created**: January 22, 2026  
-**Updated**: January 24, 2026  
-**Status**: Phase 3 Complete - Text Extractors Implemented  
+**Updated**: January 25, 2026  
+**Status**: Phase 5 Complete - MediaHandler Orchestration + Prompts Externalized  
 **Approach**: Test-Driven Development (TDD)  
 **Dependencies**: Feature 002 (Chat Sessions)
 
@@ -859,6 +859,33 @@ class MediaHandler:
             "error_message": message
         }
 ```
+
+**✅ Phase 5 Implementation Status (January 25, 2026)**
+
+**Completed:**
+- ✅ MediaHandler orchestration (14 tests passing)
+- ✅ MediaFileManager for file operations (19 tests)
+- ✅ Flat storage structure: `{data_root}/media/DD-{phone}-{uuid}.{ext}`
+- ✅ Constitution/caption validation tests (8 tests)
+- ✅ **BONUS**: Externalized AI prompts to `prompts/` directory
+  - `prompts/docx_analysis.txt` - DOCX document analysis prompt
+  - `prompts/image_analysis.txt` - Image text extraction + analysis prompt
+  - Removed 35+ lines of hardcoded prompts from extractors
+
+**Architecture Changes:**
+- MediaManager → MediaFileManager (renamed for clarity)
+- MediaHandler = orchestration layer (download → validate → extract → store)
+- MediaFileManager = file operations only
+- External prompt templates with dynamic context variables
+
+**Test Results:**
+- 373 tests passing (365 core + 8 constitution/caption)
+- All extractors load prompts from external files
+- Constitution architecture verified across all AI calls
+
+**Pull Requests:**
+- PR #66: Phase 5 MediaHandler + Prompt Externalization (merged)
+- PR #67: Remove empty src/config directory (merged)
 
 ---
 
