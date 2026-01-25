@@ -976,18 +976,79 @@ def check_for_media_approval(self, user_message: str) -> bool:
 
 ### Phase 7: Integration Testing (TDD)
 
-**Goal**: End-to-end workflow validation
+**Goal**: End-to-end workflow validation for all 10 use cases
 
 #### 7.1 Integration Tests
 **Test**: `tests/integration/test_media_flow_integration.py`
 
 ```python
-# Integration test cases:
-- test_complete_image_flow_end_to_end()
-- test_complete_pdf_flow_end_to_end()
-- test_complete_docx_flow_end_to_end()
-- test_contract_processing_with_retrieval()  # UC6 + UC10
-- test_receipt_processing_workflow()  # UC7
+# Integration test cases (10 tests for UC1-UC10):
+
+# UC1: Media without caption
+- test_uc1_media_without_caption_automatic_analysis()
+  # Send image/PDF/DOCX with no caption
+  # Verify automatic metadata extraction
+  # Verify Hebrew response
+
+# UC2: Unsupported media rejection  
+- test_uc2_unsupported_media_rejection()
+  # Send audio/video/GIF/TXT
+  # Verify rejection with Hebrew error
+  # Verify supported formats listed
+
+# UC3: Document analysis + contextual Q&A
+- test_uc3a_pdf_contract_contextual_qa()
+  # Send contract PDF
+  # Extract: Peter Adam, 20,000 NIS, Jan 29
+  # Ask: "מתי הסכום מפיטר צריך להתקבל?"
+  # Verify: "29 בינואר, בעוד 3 ימים"
+  # Ask: "כמה פיטר חייב?"
+  # Verify: "20,000 ש\"ח לפי החוזה"
+
+- test_uc3b_docx_document_qa()
+  # Send DOCX, ask questions about metadata
+  
+- test_uc3c_image_receipt_qa()
+  # Send receipt image, ask about items/total
+
+# UC4: Metadata correction
+- test_uc4_metadata_correction_flow()
+  # Bot extracts metadata
+  # User: "הסכום הוא 25,000 לא 20,000"
+  # Verify bot accepts and updates
+  # Verify future answers use corrected value
+
+# UC5: Missing identification prompt
+- test_uc5_missing_identification_prompt()
+  # Document with no client info
+  # Verify bot asks for identification in Hebrew
+  # User provides name/phone
+  # Verify added to metadata
+
+# UC6-9: Business document processing
+- test_uc6_contract_processing()
+- test_uc7_receipt_management()
+- test_uc8_invoice_processing()
+- test_uc9_court_document_tracking()
+
+# UC10: Document retrieval
+- test_uc10_document_retrieval()
+  # Store documents
+  # Ask: "הראה לי את החוזה של דוד"
+  # Verify correct document retrieved
+```
+
+#### 7.2 Language Requirement Testing
+**CRITICAL**: All tests must verify Hebrew language responses
+
+```python
+def verify_hebrew_response(response_text):
+    \"\"\"Verify response is in Hebrew\"\"\"
+    # Check for Hebrew characters
+    assert any('\u05d0' <= c <= '\u05ea' for c in response_text)
+    # Verify no English-only responses
+    assert not response_text.strip().replace(' ', '').isascii()
+```
 - test_multi_turn_conversation_with_pdf()  # UC5, CHK059
 - test_rapid_multiple_documents()  # CHK062
 - test_concurrent_processing()  # CHK072

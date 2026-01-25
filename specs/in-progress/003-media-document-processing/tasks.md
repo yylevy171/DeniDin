@@ -1120,7 +1120,66 @@ class TestImageExtractor:
 
 **File**: `denidin-app/tests/integration/test_media_flow_integration.py`
 
-**Test Cases** (8 end-to-end tests - see plan.md Phase 7.1)
+**Test Cases** (10 end-to-end tests covering all use cases):
+
+1. **test_uc1_media_without_caption_automatic_analysis**
+   - Send image/PDF/DOCX without caption
+   - Verify bot analyzes and sends summary with metadata
+   - Verify message in Hebrew (default language)
+
+2. **test_uc2_unsupported_media_rejection**
+   - Send audio/video file
+   - Verify bot rejects with error in Hebrew
+   - Send GIF/TXT file
+   - Verify error message lists supported formats
+
+3. **test_uc3a_pdf_contract_contextual_qa**
+   - Send PDF contract (Peter Adam, 20,000 NIS, Jan 29 2026)
+   - Verify metadata extraction
+   - Ask "מתי הסכום מפיטר צריך להתקבל?"
+   - Verify bot answers "29 בינואר, בעוד 3 ימים"
+   - Ask "כמה פיטר חייב?"
+   - Verify bot answers "20,000 ש\"ח לפי החוזה"
+
+4. **test_uc3b_docx_document_qa**
+   - Send DOCX with metadata
+   - Ask contextual questions
+   - Verify answers from extracted metadata
+
+5. **test_uc3c_image_receipt_qa**
+   - Send receipt image
+   - Verify merchant, date, total extraction
+   - Ask questions about receipt items
+   - Verify answers from metadata
+
+6. **test_uc4_metadata_correction_flow**
+   - Send document, bot extracts metadata
+   - User corrects amount: "הסכום הוא 25,000 לא 20,000"
+   - Verify bot confirms in Hebrew
+   - Verify bot resends corrected summary
+   - Ask question using corrected value
+   - Verify answer uses 25,000
+
+7. **test_uc5_missing_identification_prompt**
+   - Send document with no client info
+   - Verify bot asks for identification in Hebrew
+   - User provides name/phone
+   - Verify bot adds to metadata and confirms
+
+8. **test_uc6_contract_processing**
+   - Send contract
+   - Verify extraction and storage
+   - Verify no approval workflow (direct summary reply)
+
+9. **test_uc7_uc8_uc9_receipt_invoice_court_processing**
+   - Test receipt, invoice, court document processing
+   - Verify type-specific metadata extraction
+   - Verify storage
+
+10. **test_uc10_document_retrieval**
+    - Store multiple documents
+    - Ask "הראה לי את החוזה של דוד מהחודש שעבר"
+    - Verify bot finds and re-sends correct document
 
 **Acceptance**:
 - All tests FAIL initially (Red)
@@ -1357,7 +1416,21 @@ pytest-mock>=3.12.0  # Mocking
 - [ ] 100% unit test coverage for new code
 - [ ] All 27 CHK requirements tested
 - [ ] All 10 use cases (UC1-UC10) validated
+  - [ ] UC1: Media without caption - automatic analysis
+  - [ ] UC2: Unsupported media rejection with Hebrew errors
+  - [ ] UC3a: PDF contract + contextual Q&A
+  - [ ] UC3b: DOCX document + contextual Q&A
+  - [ ] UC3c: Image receipt + contextual Q&A
+  - [ ] UC4: Metadata correction flow
+  - [ ] UC5: Missing identification prompts
+  - [ ] UC6: Contract processing
+  - [ ] UC7: Receipt management
+  - [ ] UC8: Invoice processing
+  - [ ] UC9: Court document tracking
+  - [ ] UC10: Document retrieval
 - [ ] Hebrew text processing verified
+- [ ] **CRITICAL**: All bot messages in Hebrew (default language)
+- [ ] **CRITICAL**: All error messages in Hebrew
 - [ ] TDD workflow followed for every component
 
 ---
