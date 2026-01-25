@@ -10,6 +10,28 @@
 **Phase 4 Decision**: Merge document analysis INTO extractors (single AI call for text + analysis)  
 **Phase 5 Clarification**: NO DocumentAnalyzer component - extractors already provide document_analysis
 
+## ⚠️ CRITICAL REQUIREMENT: Language
+
+**ALL BOT INTERACTIONS MUST BE IN THE USER'S LANGUAGE**
+
+- **Default language: HEBREW** - If user language cannot be determined, use Hebrew
+- Language detection from user's conversation history
+- All messages MUST be translated:
+  - Summaries and metadata reports
+  - Error messages (file size, unsupported formats, processing failures)
+  - Prompts (missing identification, corrections)
+  - Contextual answers to user questions
+- No English-only responses allowed
+- Hebrew is the primary language for this bot
+
+**Examples:**
+- ✅ Correct: "הקובץ גדול מדי (מקסימום 10MB)"
+- ❌ Wrong: "File too large (max 10MB)"
+- ✅ Correct: "מצאתי חוזה. לקוח: פיטר אדם, סכום: 20,000 ש\"ח"
+- ❌ Wrong: "Found contract. Client: Peter Adam, Amount: 20,000 NIS"
+
+---
+
 ## Problem Statement
 
 Currently, DeniDin only processes text messages. Users cannot send images, PDFs, or Word documents for the bot to analyze, extract content from, or use as context in conversations.
@@ -72,19 +94,86 @@ Currently, DeniDin only processes text messages. Users cannot send images, PDFs,
 
 ## Use Cases
 
-### Generic Media Processing
-1. **Image Analysis**: "What's in this photo?" → Bot describes the image
-2. **Document Q&A**: Send PDF → "Summarize this document" → Bot extracts and summarizes
-3. **Visual Problem Solving**: Send whiteboard photo → "Solve this math problem"
-4. **Document Translation**: Send document → "Translate this to English"
-5. **Multi-modal Research**: Send image + ask questions about it in context
+### Core Media Processing Use Cases
+
+**UC1: Media Without Caption - Automatic Analysis**
+- User sends media file (image/PDF/DOCX) with NO caption
+- Bot automatically analyzes media type and extracts relevant metadata
+- Bot sends summary with document type and extracted metadata
+- Example: User sends contract image → Bot: "מצאתי חוזה. לקוח: פיטר אדם, סכום: 20,000 ש״ח, תאריך יעד: 29 בינואר 2026"
+
+**UC2: Unsupported Media Type - Rejection**
+- User sends unsupported media (audio, video) or unsupported file format (GIF, TXT, XLS, etc.)
+- Bot rejects with clear error message explaining supported formats
+- Error message in user's language (Hebrew default)
+- Example: "אני לא יכול לעבד סוגי קבצים מסוג וידאו. אני תומך ב: תמונות (JPG, PNG), PDF (עד 10 עמודים), DOCX"
+
+**UC3: Document Analysis + Contextual Q&A**
+
+**UC3a: PDF Contract Analysis**
+- User sends PDF contract (no caption)
+- Bot extracts: client name (Peter Adam), amount (20,000 NIS), date due (Jan 29, 2026)
+- Bot sends summary in Hebrew: "מצאתי חוזה. לקוח: פיטר אדם, סכום: 20,000 ש״ח, תאריך יעד: 29 בינואר 2026"
+- User asks: "מתי הסכום מפיטר צריך להתקבל?" 
+- Bot replies: "29 בינואר, בעוד 3 ימים"
+- User asks: "כמה פיטר חייב?"
+- Bot replies: "פיטר חייב 20,000 ש״ח לפי החוזה"
+
+**UC3b: DOCX Document Analysis**
+- User sends DOCX file
+- Bot extracts text and metadata
+- User asks questions about specific data points in document
+- Bot answers using extracted metadata and context
+
+**UC3c: Image Receipt Analysis**
+- User sends receipt image
+- Bot extracts: merchant, date, total, items
+- User asks questions about receipt details
+- Bot answers from extracted metadata
+
+**UC4: User Correction of Metadata**
+- User sends document with no caption
+- Bot returns summary and metadata
+- User corrects mistaken metadata (e.g., "הסכום הוא 25,000 לא 20,000")
+- Bot accepts correction: "תודה על התיקון. עדכנתי את הסכום ל-25,000 ש״ח"
+- Bot resends corrected summary and metadata
+- User's correction becomes the authoritative data
+- Future questions use corrected values
+
+**UC5: Missing Client Identification - Bot Prompts**
+- User sends document with no caption
+- Bot analyzes and finds NO client/user identification in metadata
+- Bot sends summary + metadata + prompt: "האם תרצה להוסיף פרטי זיהוי למסמך זה? (שם, טלפון, אימייל)"
+- User can provide identification or skip
+- If provided, bot adds to metadata and confirms
 
 ### Business Document Processing (Feature 013 US3 Integration)
-6. **Contract Processing**: Send contract PDF/image → AI extracts: client name, contract type, amount, dates, deliverables → User approves summary → Stored for future retrieval
-7. **Receipt Management**: Send receipt photo → AI extracts: merchant, date, total, items → Stored with metadata
-8. **Invoice Processing**: Send invoice → AI extracts: vendor, invoice #, amount, due date, line items
-9. **Court Document Tracking**: Send court resolution → AI extracts: case #, parties, decision, deadlines
-10. **Document Retrieval**: "Show me David's contract from last month" → Bot finds and re-sends document
+
+**UC6: Contract Processing**
+- User sends contract PDF/image
+- AI extracts: client name, contract type, amount, dates, deliverables
+- Bot sends summary as reply (no approval workflow)
+- Stored for future retrieval
+
+**UC7: Receipt Management**
+- User sends receipt photo
+- AI extracts: merchant, date, total, items
+- Stored with metadata for expense tracking
+
+**UC8: Invoice Processing**
+- User sends invoice
+- AI extracts: vendor, invoice #, amount, due date, line items
+- Stored with metadata
+
+**UC9: Court Document Tracking**
+- User sends court resolution
+- AI extracts: case #, parties, decision, deadlines
+- Stored for legal tracking
+
+**UC10: Document Retrieval**
+- User asks "הראה לי את החוזה של דוד מהחודש שעבר"
+- Bot searches conversation memory
+- Finds and re-sends document using `SendFileByUpload`
 
 ---
 
@@ -139,11 +228,19 @@ Currently, DeniDin only processes text messages. Users cannot send images, PDFs,
 - Missing fields silently omitted from summary
 - No required field validation
 
-**REQ-PROC-004**: User Approval Flow
-- Send summary to user after processing
-- Wait for user feedback/approval (no timeout)
-- Informal approval acceptable ("looks good", "thanks", "ok")
-- Iterative refinement supported
+**REQ-PROC-004**: Metadata Correction Flow
+- User can correct any extracted metadata after initial analysis
+- Bot accepts corrections with confirmation message (in user's language)
+- Corrected metadata overwrites AI-extracted values
+- Future queries use corrected data as authoritative
+- Example: User corrects amount from 20,000 to 25,000 → Bot updates and confirms
+
+**REQ-PROC-005**: Missing Identification Prompts
+- When document metadata lacks client/user identification (name, phone, email)
+- Bot proactively asks if user wants to add identification
+- Prompt in user's language (Hebrew default)
+- User can provide info or skip
+- If provided, added to document metadata
 
 ### AI Model Requirements
 
@@ -157,10 +254,21 @@ Currently, DeniDin only processes text messages. Users cannot send images, PDFs,
 - NO environment variables (per CONSTITUTION.md §I)
 - Model names, API keys in config file
 
-**REQ-AI-003**: Hebrew Language Support
+**REQ-AI-003**: Language Detection and Response
+- **CRITICAL**: ALL bot interactions MUST be in the user's language
+- Language detection from user's message history
+- **Default language: HEBREW** if language cannot be determined
+- All messages (summaries, errors, prompts) MUST be translated
 - Hebrew text in prompts and responses
 - RTL direction handling in summaries
 - Hebrew character encoding (UTF-8)
+
+**REQ-AI-004**: Error Message Localization
+- **CRITICAL**: ALL error messages MUST be in user's language (Hebrew default)
+- Unsupported format errors in Hebrew: "אני לא יכול לעבד סוגי קבצים מסוג..."
+- File size errors in Hebrew: "הקובץ גדול מדי (מקסימום 10MB)"
+- Processing errors in Hebrew: "לא הצלחתי לעבד את הקובץ"
+- If user language is English, provide English errors
 
 ### Integration Requirements
 
