@@ -3,7 +3,7 @@
 **Feature ID**: 003-media-document-processing  
 **Created**: January 22, 2026  
 **Updated**: January 25, 2026  
-**Status**: Phase 5 Complete - MediaHandler Orchestration + Prompts Externalized  
+**Status**: Phase 6 Complete - WhatsApp Integration | Phase 7 Ready (Use Cases Revised)  
 **Approach**: Test-Driven Development (TDD)  
 **Dependencies**: Feature 002 (Chat Sessions)
 
@@ -18,6 +18,13 @@ This plan implements media file processing for WhatsApp messages using a **TDD-f
 2. Write minimal code to pass test (Green)
 3. Refactor for quality (Refactor)
 4. Repeat
+
+**⚠️ CRITICAL REQUIREMENTS**:
+- **Hebrew Language Default**: ALL bot responses MUST be in Hebrew unless user explicitly uses another language
+- **Use Case Focus**: Implementation validates 10 real-world business scenarios (UC1-UC10)
+- **Contextual Q&A**: Users can ask follow-up questions about document metadata (UC3 - Most Important)
+- **Metadata Correction**: Users can correct bot errors, corrections become authoritative (UC4)
+- **Proactive Prompts**: Bot asks for missing client identification (UC5)
 
 ---
 
@@ -1043,16 +1050,19 @@ def check_for_media_approval(self, user_message: str) -> bool:
 
 ```python
 def verify_hebrew_response(response_text):
-    \"\"\"Verify response is in Hebrew\"\"\"
+    """Verify response is in Hebrew"""
     # Check for Hebrew characters
     assert any('\u05d0' <= c <= '\u05ea' for c in response_text)
     # Verify no English-only responses
     assert not response_text.strip().replace(' ', '').isascii()
 ```
-- test_multi_turn_conversation_with_pdf()  # UC5, CHK059
-- test_rapid_multiple_documents()  # CHK062
-- test_concurrent_processing()  # CHK072
-```
+
+**Language Test Requirements:**
+- Every use case test MUST verify Hebrew responses
+- Error messages MUST be in Hebrew (default language)
+- All prompts to user MUST be in Hebrew
+- Metadata summaries MUST be in Hebrew
+- Only exception: If user explicitly uses English, respond in English
 
 ---
 
@@ -1232,12 +1242,30 @@ Pillow>=10.0.0       # Image utilities
 
 ## Success Criteria
 
-- [ ] All unit tests passing (100% coverage)
+**Phase Completion:**
+- [x] Phase 1-6: Complete (470 tests passing)
+- [ ] Phase 7: Integration testing with 10 use cases
+
+**Use Case Validation (Phase 7):**
+- [ ] UC1: Media without caption → automatic analysis (Hebrew)
+- [ ] UC2: Unsupported media → rejection with Hebrew errors
+- [ ] UC3a: PDF contract → contextual Q&A (Peter Adam example)
+- [ ] UC3b: DOCX → contextual Q&A
+- [ ] UC3c: Image receipt → contextual Q&A  
+- [ ] UC4: Metadata correction flow
+- [ ] UC5: Missing identification → proactive prompts
+- [ ] UC6-9: Business document processing
+- [ ] UC10: Document retrieval
+
+**Quality Gates:**
+- [ ] All unit tests passing (100% coverage for new code)
 - [ ] All integration tests passing (10 use cases)
 - [ ] Hebrew text extraction validated with test dataset
 - [ ] All CHK checklist requirements addressed in tests
 - [ ] Error handling tested for all edge cases
 - [ ] TDD workflow followed for all components
+- [ ] **CRITICAL**: All bot messages in Hebrew (default language)
+- [ ] **CRITICAL**: Contextual Q&A working (UC3 - most important)
 
 ---
 

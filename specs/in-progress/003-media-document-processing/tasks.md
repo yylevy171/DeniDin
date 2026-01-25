@@ -3,9 +3,16 @@
 **Feature ID**: 003-media-document-processing  
 **Created**: January 22, 2026  
 **Updated**: January 25, 2026  
-**Status**: Phase 6 Complete (470 tests passing)  
+**Status**: Phase 6 Complete (470 tests passing) | Phase 7 Ready  
 **Approach**: Test-Driven Development (TDD)  
 **Estimated Duration**: 13-20 days
+
+**⚠️ CRITICAL REQUIREMENTS**:
+- **Hebrew Language Default**: ALL bot responses MUST be in Hebrew
+- **Use Cases**: 10 real-world business scenarios (UC1-UC10)
+- **Contextual Q&A**: UC3 (most important) - users ask follow-up questions about metadata
+- **Metadata Correction**: UC4 - users can correct bot errors
+- **Proactive Prompts**: UC5 - bot asks for missing client info
 
 ---
 
@@ -1116,73 +1123,108 @@ class TestImageExtractor:
 - **Dependencies**: TASK-019
 - **Estimate**: 5h
 - **Status**: [ ]
-- **CHK References**: All use cases UC1-UC10, CHK059, CHK062, CHK072
+- **CHK References**: All use cases UC1-UC10, CHK009, CHK027, CHK055, CHK059, CHK062, CHK072
 
 **File**: `denidin-app/tests/integration/test_media_flow_integration.py`
 
-**Test Cases** (10 end-to-end tests covering all use cases):
+**⚠️ CRITICAL**: All bot responses MUST be verified in Hebrew (default language)
+
+**Test Cases** (10 end-to-end tests covering all revised use cases):
 
 1. **test_uc1_media_without_caption_automatic_analysis**
-   - Send image/PDF/DOCX without caption
-   - Verify bot analyzes and sends summary with metadata
-   - Verify message in Hebrew (default language)
+   - **Scenario**: User sends image/PDF/DOCX without caption
+   - **Expected**: 
+     - Bot analyzes and sends summary with metadata in Hebrew
+     - No user approval required
+     - Summary includes: document type, key fields, date extracted
+   - **Hebrew Check**: Verify response uses Hebrew phrases: "זוהה מסמך מסוג...", "פרטים שחולצו:", "תאריך:"
 
 2. **test_uc2_unsupported_media_rejection**
-   - Send audio/video file
-   - Verify bot rejects with error in Hebrew
-   - Send GIF/TXT file
-   - Verify error message lists supported formats
+   - **Scenario**: User sends audio/video/GIF/TXT file
+   - **Expected**:
+     - Bot rejects with error message in Hebrew
+     - Error lists supported formats: תמונות (JPG, PNG), PDF, DOCX
+     - Helpful guidance: "אנא שלח מסמך בפורמט נתמך"
+   - **Hebrew Check**: Verify error messages use Hebrew terminology
 
-3. **test_uc3a_pdf_contract_contextual_qa**
-   - Send PDF contract (Peter Adam, 20,000 NIS, Jan 29 2026)
-   - Verify metadata extraction
-   - Ask "מתי הסכום מפיטר צריך להתקבל?"
-   - Verify bot answers "29 בינואר, בעוד 3 ימים"
-   - Ask "כמה פיטר חייב?"
-   - Verify bot answers "20,000 ש\"ח לפי החוזה"
+3. **test_uc3a_pdf_contract_contextual_qa** (MOST IMPORTANT)
+   - **Scenario**: 
+     - User sends PDF contract (Peter Adam, 20,000 NIS, payment due Jan 29 2026)
+     - Bot extracts metadata and sends Hebrew summary
+     - User asks: "מתי הסכום מפיטר צריך להתקבל?"
+     - User asks: "כמה פיטר חייב?"
+   - **Expected**:
+     - First answer: "29 בינואר, בעוד 3 ימים" (calculates days from current date)
+     - Second answer: "20,000 ש\"ח לפי החוזה"
+     - Answers reference stored metadata, not re-analysis
+   - **Hebrew Check**: All Q&A in Hebrew, proper date formatting
 
-4. **test_uc3b_docx_document_qa**
-   - Send DOCX with metadata
-   - Ask contextual questions
-   - Verify answers from extracted metadata
+4. **test_uc3b_docx_document_contextual_qa**
+   - **Scenario**: User sends DOCX document, asks questions about content
+   - **Expected**:
+     - Bot extracts metadata (tables, structured data)
+     - Answers questions using extracted metadata
+     - Contextual understanding (references previous messages)
+   - **Hebrew Check**: Q&A flow entirely in Hebrew
 
-5. **test_uc3c_image_receipt_qa**
-   - Send receipt image
-   - Verify merchant, date, total extraction
-   - Ask questions about receipt items
-   - Verify answers from metadata
+5. **test_uc3c_image_receipt_contextual_qa**
+   - **Scenario**: User sends receipt image, asks about items/totals
+   - **Expected**:
+     - Bot extracts: merchant name, date, total amount, line items
+     - Answers questions: "כמה עלה הקפה?", "איזה תאריך?"
+     - Uses OCR + vision analysis for Hebrew receipts
+   - **Hebrew Check**: Receipt text in Hebrew, Q&A in Hebrew
 
 6. **test_uc4_metadata_correction_flow**
-   - Send document, bot extracts metadata
-   - User corrects amount: "הסכום הוא 25,000 לא 20,000"
-   - Verify bot confirms in Hebrew
-   - Verify bot resends corrected summary
-   - Ask question using corrected value
-   - Verify answer uses 25,000
+   - **Scenario**:
+     - Bot extracts metadata (amount: 20,000)
+     - User corrects: "הסכום הוא 25,000 לא 20,000"
+   - **Expected**:
+     - Bot confirms correction in Hebrew: "תיקנתי את הסכום ל-25,000 ש\"ח"
+     - Bot re-sends corrected summary
+     - Subsequent questions use corrected value (25,000)
+   - **Hebrew Check**: Correction confirmation in natural Hebrew
 
 7. **test_uc5_missing_identification_prompt**
-   - Send document with no client info
-   - Verify bot asks for identification in Hebrew
-   - User provides name/phone
-   - Verify bot adds to metadata and confirms
+   - **Scenario**: User sends document with no client name/phone
+   - **Expected**:
+     - Bot proactively asks: "על שם מי המסמך הזה? (שם מלא ומספר טלפון)"
+     - User provides: "דוד כהן 0501234567"
+     - Bot adds to metadata and confirms: "נשמר עבור דוד כהן (0501234567)"
+   - **Hebrew Check**: Prompt and confirmation in Hebrew
 
 8. **test_uc6_contract_processing**
-   - Send contract
-   - Verify extraction and storage
-   - Verify no approval workflow (direct summary reply)
+   - **Scenario**: User sends contract document
+   - **Expected**:
+     - Bot extracts: parties, amounts, dates, terms
+     - Sends summary immediately (NO approval workflow)
+     - Stores metadata for future queries
+   - **Hebrew Check**: Summary in Hebrew
 
 9. **test_uc7_uc8_uc9_receipt_invoice_court_processing**
-   - Test receipt, invoice, court document processing
-   - Verify type-specific metadata extraction
-   - Verify storage
+   - **Scenario**: User sends receipt/invoice/court document
+   - **Expected**:
+     - Type-specific extraction:
+       - Receipt: merchant, items, total
+       - Invoice: vendor, line items, payment terms
+       - Court: case number, parties, resolution date
+     - Storage with correct DocumentType
+   - **Hebrew Check**: All summaries in Hebrew
 
 10. **test_uc10_document_retrieval**
-    - Store multiple documents
-    - Ask "הראה לי את החוזה של דוד מהחודש שעבר"
-    - Verify bot finds and re-sends correct document
+    - **Scenario**: 
+      - Store multiple documents over time
+      - User asks: "הראה לי את החוזה של דוד מהחודש שעבר"
+    - **Expected**:
+      - Bot searches by: client name, document type, date range
+      - Finds and re-sends correct document
+      - Response: "מצאתי את החוזה של דוד מ-15 בדצמבר" + file link
+    - **Hebrew Check**: Search query and response in Hebrew
 
 **Acceptance**:
-- All tests FAIL initially (Red)
+- All 10 tests FAIL initially (Red phase)
+- Each test includes Hebrew language assertion helper
+- All use cases map to revised spec.md UC1-UC10
 
 ---
 
@@ -1193,46 +1235,81 @@ class TestImageExtractor:
 - **Status**: [ ]
 
 **Actions**:
-- Run integration tests
-- Fix any cross-component issues
-- Ensure all 10 use cases work
+- Run all 10 integration tests
+- Fix any cross-component issues (MediaHandler ↔ WhatsAppHandler ↔ Extractors)
+- Ensure Hebrew responses across all components
+- Verify metadata flows correctly through full stack
+- Test contextual Q&A with memory lookups
 
 **Acceptance**:
-- All integration tests pass (Green)
-- All use cases validated
+- All 10 integration tests pass (Green phase)
+- All use cases (UC1-UC10) validated in Hebrew
+- No cross-component errors
+- Session context maintained across multi-turn conversations
 
 ---
 
-### TASK-022: Hebrew Test Data Setup
+### TASK-022: Hebrew Language Verification
 - **Type**: CODE
-- **Dependencies**: None
+- **Dependencies**: TASK-021
 - **Estimate**: 3h
 - **Status**: [ ]
-- **CHK References**: CHK009, CHK055
+- **CHK References**: CHK009, CHK027, CHK055, REQ-AI-003, REQ-AI-004
+
+**⚠️ CRITICAL**: Implement Hebrew default language across ALL bot interactions
 
 **Actions**:
+```python
+# Create Hebrew verification helper (tests/unit/test_hebrew_language.py)
+def assert_hebrew_response(text: str) -> None:
+    """Verify response is primarily in Hebrew."""
+    hebrew_chars = sum(1 for c in text if '\u0590' <= c <= '\u05FF')
+    assert hebrew_chars > len(text) * 0.3, f"Response not primarily Hebrew: {text}"
+
+# Apply to all error messages (src/handlers/media_handler.py)
+ERROR_MESSAGES = {
+    "unsupported_media": "סוג קובץ לא נתמך. אנא שלח תמונה (JPG/PNG), PDF או DOCX.",
+    "processing_failed": "שגיאה בעיבוד המסמך. אנא נסה שוב.",
+    "missing_file": "לא נמצא קובץ מצורף. אנא שלח מסמך.",
+}
+
+# Test Hebrew extraction prompts
+def test_image_extractor_uses_hebrew_prompt():
+    """CHK027: Hebrew extraction prompt."""
+    extractor = ImageExtractor(mock_client)
+    extractor.extract_text("test.jpg")
+    
+    # Verify prompt includes Hebrew instructions
+    call_args = mock_client.vision_extract.call_args[0][1]
+    assert "עברית" in call_args
+    assert "Hebrew" in call_args
+```
+
+**Test Data**:
 ```bash
-# Create test data directory
+# Create Hebrew test documents (tests/fixtures/hebrew/)
 mkdir -p denidin-app/tests/fixtures/hebrew
 
-# Collect Hebrew test documents:
-# - Hebrew contract PDF
-# - Hebrew receipt image (JPG)
-# - Hebrew invoice DOCX
-# - Mixed Hebrew/English documents
-# - Handwritten Hebrew notes (for ambiguity testing)
+# Required files:
+# - contract_hebrew.pdf (חוזה בעברית)
+# - receipt_hebrew.jpg (קבלה סרוקה)
+# - invoice_hebrew.docx (חשבונית)
+# - mixed_lang.pdf (Hebrew + English)
+# - handwritten_hebrew.jpg (כתב יד עברי)
 ```
 
 **Acceptance**:
-- At least 5 Hebrew test documents
-- Cover all document types
-- Include edge cases
+- Hebrew verification helper created
+- All error messages translated to Hebrew
+- All AI prompts include Hebrew instructions
+- At least 5 Hebrew test documents added
+- Language detection defaults to Hebrew (REQ-AI-003)
 
 ---
 
 ### TASK-023: Final Coverage & Quality Check
 - **Type**: CODE
-- **Dependencies**: TASK-021
+- **Dependencies**: TASK-022
 - **Estimate**: 2h
 - **Status**: [ ]
 
@@ -1245,27 +1322,28 @@ pytest denidin-app/tests/ -v
 pytest denidin-app/tests/ --cov=src --cov-report=html --cov-report=term
 
 # Verify 100% coverage for new modules
-pytest denidin-app/tests/unit/ --cov=src/utils/media_manager --cov-fail-under=100
-pytest denidin-app/tests/unit/ --cov=src/utils/extractors --cov-fail-under=100
+pytest denidin-app/tests/unit/ --cov=src/managers/media_manager --cov-fail-under=100
+pytest denidin-app/tests/unit/ --cov=src/handlers/extractors --cov-fail-under=100
 pytest denidin-app/tests/unit/ --cov=src/handlers/media_handler --cov-fail-under=100
 
 # Run linting
-pylint denidin-app/src/utils/media_manager.py
-pylint denidin-app/src/utils/extractors/
+pylint denidin-app/src/managers/media_manager.py
+pylint denidin-app/src/handlers/extractors/
 pylint denidin-app/src/handlers/media_handler.py
 
 # Type checking
-mypy denidin-app/src/utils/media_manager.py
-mypy denidin-app/src/utils/extractors/
+mypy denidin-app/src/managers/media_manager.py
+mypy denidin-app/src/handlers/extractors/
 mypy denidin-app/src/handlers/media_handler.py
 ```
 
 **Acceptance**:
 - 100% unit test coverage for new code
-- All integration tests pass
-- No linting errors
-- No type errors
+- All 10 integration tests pass
+- No linting errors (pylint 10/10)
+- No type errors (mypy clean)
 - All 27 CHK requirements validated in tests
+- **CRITICAL**: All use cases (UC1-UC10) verified with Hebrew responses
 
 ---
 
@@ -1403,35 +1481,49 @@ pytest-mock>=3.12.0  # Mocking
 
 ## Success Criteria
 
-**Phase Completion**:
-- [ ] Phase 1: All model tests pass, 100% coverage
-- [ ] Phase 2: All file management tests pass, 100% coverage
-- [ ] Phase 3: All extractor tests pass, 100% coverage, Hebrew validation
-- [ ] Phase 4: All analyzer tests pass, 100% coverage
-- [ ] Phase 5: All handler tests pass, 100% coverage
-- [x] Phase 6: WhatsApp integration tests pass
-- [ ] Phase 7: All integration tests pass, all use cases validated
+**Phase Completion Tracking**:
+- [x] Phase 1: All model tests pass, 100% coverage (TASK-001 to TASK-005)
+- [x] Phase 2: All file management tests pass, 100% coverage (TASK-006 to TASK-007)
+- [x] Phase 3: All extractor tests pass, 100% coverage, Hebrew validation (TASK-008 to TASK-011)
+- [x] Phase 4: All analyzer tests pass, 100% coverage (TASK-012 to TASK-013)
+- [x] Phase 5: All handler tests pass, 100% coverage (TASK-014 to TASK-017)
+- [x] Phase 6: WhatsApp integration tests pass (TASK-018 to TASK-019) - **470 tests passing**
+- [ ] Phase 7: All integration tests pass, all use cases validated (TASK-020 to TASK-023)
 
-**Overall**:
-- [ ] 100% unit test coverage for new code
-- [ ] All 27 CHK requirements tested
-- [ ] All 10 use cases (UC1-UC10) validated
-  - [ ] UC1: Media without caption - automatic analysis
-  - [ ] UC2: Unsupported media rejection with Hebrew errors
-  - [ ] UC3a: PDF contract + contextual Q&A
-  - [ ] UC3b: DOCX document + contextual Q&A
-  - [ ] UC3c: Image receipt + contextual Q&A
-  - [ ] UC4: Metadata correction flow
-  - [ ] UC5: Missing identification prompts
-  - [ ] UC6: Contract processing
-  - [ ] UC7: Receipt management
-  - [ ] UC8: Invoice processing
-  - [ ] UC9: Court document tracking
-  - [ ] UC10: Document retrieval
-- [ ] Hebrew text processing verified
-- [ ] **CRITICAL**: All bot messages in Hebrew (default language)
-- [ ] **CRITICAL**: All error messages in Hebrew
-- [ ] TDD workflow followed for every component
+**Use Case Validation** (Phase 7 - Integration Testing):
+- [ ] **UC1**: Media without caption → automatic analysis in Hebrew
+- [ ] **UC2**: Unsupported media → Hebrew error messages with format guidance
+- [ ] **UC3a**: PDF contract + contextual Q&A (MOST IMPORTANT)
+  - User asks: "מתי הסכום מפיטר צריך להתקבל?" → Bot: "29 בינואר, בעוד 3 ימים"
+  - User asks: "כמה פיטר חייב?" → Bot: "20,000 ש\"ח לפי החוזה"
+- [ ] **UC3b**: DOCX document + contextual Q&A in Hebrew
+- [ ] **UC3c**: Image receipt + contextual Q&A in Hebrew
+- [ ] **UC4**: Metadata correction flow
+  - User: "הסכום הוא 25,000 לא 20,000"
+  - Bot confirms correction and updates metadata
+- [ ] **UC5**: Missing identification prompts
+  - Bot asks: "על שם מי המסמך הזה?"
+  - User provides client details
+- [ ] **UC6**: Contract processing (no approval workflow)
+- [ ] **UC7**: Receipt management with item-level extraction
+- [ ] **UC8**: Invoice processing with payment terms
+- [ ] **UC9**: Court document tracking with case numbers
+- [ ] **UC10**: Document retrieval by client/type/date
+  - User: "הראה לי את החוזה של דוד מהחודש שעבר"
+  - Bot finds and re-sends correct document
+
+**Overall Quality Gates**:
+- [ ] 100% unit test coverage for all new code
+- [ ] All 27 CHK requirements tested and passing
+- [ ] **CRITICAL**: Hebrew language default verified across ALL bot interactions
+  - [ ] All error messages in Hebrew (REQ-AI-004)
+  - [ ] All AI prompts include Hebrew instructions (REQ-AI-003)
+  - [ ] All responses use Hebrew terminology
+  - [ ] Language detection defaults to Hebrew
+- [ ] TDD workflow followed for every component (RED-GREEN-REFACTOR)
+- [ ] No linting errors (pylint 10/10)
+- [ ] No type errors (mypy clean)
+- [ ] All integration tests passing (10/10 use cases)
 
 ---
 
