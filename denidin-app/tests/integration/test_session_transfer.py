@@ -12,9 +12,20 @@ import pytest
 import time
 import json
 import shutil
+import stat
 from pathlib import Path
 from datetime import datetime
 import denidin
+
+
+def remove_readonly(func, path, excinfo):
+    """Error handler for shutil.rmtree that handles readonly files.
+    
+    ChromaDB may set files as readonly, causing rmtree to fail.
+    This handler makes files writable before deletion.
+    """
+    Path(path).chmod(stat.S_IWRITE)
+    func(path)
 
 
 @pytest.fixture(scope="module")
@@ -75,11 +86,11 @@ def test_session_transfer_and_recall_after_expiration(test_config):
     sessions_dir = test_data_root / 'sessions'
     memory_dir = test_data_root / 'memory'
     
-    # Clean previous test runs
+    # Clean previous test runs - use onerror handler for readonly files
     if sessions_dir.exists():
-        shutil.rmtree(sessions_dir)
+        shutil.rmtree(sessions_dir, onerror=remove_readonly)
     if memory_dir.exists():
-        shutil.rmtree(memory_dir)
+        shutil.rmtree(memory_dir, onerror=remove_readonly)
     
     denidin_app = None
     

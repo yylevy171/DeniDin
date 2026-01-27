@@ -38,7 +38,6 @@ class TestMediaAttachment:
             media_type='image',
             file_url='https://example.com/file.jpg',
             file_path='/data/images/2026-01-22/image-123/file.jpg',
-            raw_text_path='/data/images/2026-01-22/image-123/file.jpg.rawtext',
             mime_type='image/jpeg',
             file_size=1024
         )
@@ -52,7 +51,6 @@ class TestMediaAttachment:
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
             file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
             mime_type='application/pdf',
             file_size=5 * 1024 * 1024  # 5MB
         )
@@ -64,7 +62,6 @@ class TestMediaAttachment:
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
             file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
             mime_type='application/pdf',
             file_size=15 * 1024 * 1024  # 15MB
         )
@@ -77,7 +74,6 @@ class TestMediaAttachment:
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
             file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
             mime_type='application/pdf',
             file_size=10 * 1024 * 1024  # Exactly 10MB
         )
@@ -89,7 +85,6 @@ class TestMediaAttachment:
             media_type='image',
             file_url='https://example.com/empty.jpg',
             file_path='/data/images/empty.jpg',
-            raw_text_path='/data/images/empty.jpg.rawtext',
             mime_type='image/jpeg',
             file_size=0
         )
@@ -102,7 +97,6 @@ class TestMediaAttachment:
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
             file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
             mime_type='application/pdf',
             file_size=1024,
             page_count=8
@@ -115,7 +109,6 @@ class TestMediaAttachment:
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
             file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
             mime_type='application/pdf',
             file_size=1024,
             page_count=10
@@ -128,7 +121,6 @@ class TestMediaAttachment:
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
             file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
             mime_type='application/pdf',
             file_size=1024,
             page_count=11
@@ -142,7 +134,6 @@ class TestMediaAttachment:
             media_type='pdf',
             file_url='https://example.com/doc.pdf',
             file_path='/data/images/doc.pdf',
-            raw_text_path='/data/images/doc.pdf.rawtext',
             mime_type='application/pdf',
             file_size=1024,
             page_count=1
@@ -155,7 +146,6 @@ class TestMediaAttachment:
             media_type='image',
             file_url='https://example.com/img.jpg',
             file_path='/data/images/img.jpg',
-            raw_text_path='/data/images/img.jpg.rawtext',
             mime_type='image/jpeg',
             file_size=1024
             # page_count not provided - should be fine for images
@@ -168,7 +158,6 @@ class TestMediaAttachment:
             media_type='image',
             file_url='https://example.com/img.jpg',
             file_path='/data/images/img.jpg',
-            raw_text_path='/data/images/img.jpg.rawtext',
             mime_type='image/jpeg',
             file_size=1024,
             caption="What's in this photo?"
@@ -181,7 +170,6 @@ class TestMediaAttachment:
             media_type='image',
             file_url='https://example.com/img.jpg',
             file_path='/data/images/img.jpg',
-            raw_text_path='/data/images/img.jpg.rawtext',
             mime_type='image/jpeg',
             file_size=1024
             # No caption provided
@@ -315,7 +303,6 @@ class TestMediaAttachmentIntegration:
             media_type='pdf',
             file_url='https://example.com/contract.pdf',
             file_path='/data/images/2026-01-22/image-123/contract.pdf',
-            raw_text_path='/data/images/2026-01-22/image-123/contract.pdf.rawtext',
             mime_type='application/pdf',
             file_size=2 * 1024 * 1024,
             page_count=5,
@@ -336,17 +323,3 @@ class TestMediaAttachmentIntegration:
         attachment.validate()
         assert attachment.media_type == 'pdf'
         assert metadata.document_type == DocumentType.CONTRACT
-    
-    def test_hebrew_text_storage_in_rawtext_file(self):
-        """CHK023: UTF-8 encoding for Hebrew text in .rawtext files."""
-        attachment = MediaAttachment(
-            media_type='image',
-            file_url='https://example.com/hebrew.jpg',
-            file_path='/data/images/hebrew.jpg',
-            raw_text_path='/data/images/hebrew.jpg.rawtext',
-            mime_type='image/jpeg',
-            file_size=1024
-        )
-        # rawtext file should support Hebrew characters (UTF-8)
-        # This is enforced at file writing level, not model level
-        assert attachment.raw_text_path.endswith('.rawtext')

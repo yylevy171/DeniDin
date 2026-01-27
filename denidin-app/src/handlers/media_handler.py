@@ -126,14 +126,7 @@ class MediaHandler:
                     "It might be empty or corrupted."
                 )
             
-            # Step 8: Save raw text (CHK023: UTF-8 encoding)
-            rawtext_path = self.media_file_manager.save_rawtext(
-                extracted_text,
-                storage_folder,
-                filename
-            )
-            
-            # Step 9: Format summary from extractor's document_analysis
+            # Step 8: Format summary from extractor's document_analysis
             document_analysis = extraction_result.get("document_analysis")
             if document_analysis:
                 summary = self._format_summary(document_analysis)
@@ -141,12 +134,11 @@ class MediaHandler:
                 # Fallback if no analysis (shouldn't happen in Phase 4+)
                 summary = "Document processed successfully."
             
-            # Step 10: Create MediaAttachment model
+            # Step 9: Create MediaAttachment model
             attachment = MediaAttachment(
                 media_type=media_type,
                 file_url=file_url,
                 file_path=str(file_path),
-                raw_text_path=str(rawtext_path),
                 mime_type=mime_type,
                 file_size=file_size,
                 page_count=extraction_result.get("page_count"),

@@ -18,7 +18,6 @@ class MediaAttachment:
         media_type: File category - 'image', 'pdf', 'docx'
         file_url: Green API download URL
         file_path: Local storage path
-        raw_text_path: Path to extracted .rawtext file
         mime_type: MIME type string (e.g., 'image/jpeg')
         file_size: File size in bytes
         page_count: Number of pages (PDFs only)
@@ -28,7 +27,6 @@ class MediaAttachment:
     media_type: str
     file_url: str
     file_path: str
-    raw_text_path: str
     mime_type: str
     file_size: int
     page_count: Optional[int] = None

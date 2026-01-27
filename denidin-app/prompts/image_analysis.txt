@@ -1,5 +1,7 @@
 Analyze this image and extract ALL information:
 
+**IMPORTANT: Respond in Hebrew (עברית). Use the format keywords in English but write all content (summary, key points, extracted text) in Hebrew.**
+
 1. TEXT EXTRACTION:
    - Extract all text preserving layout, paragraphs, and line breaks
    - Maintain RTL direction for Hebrew text
@@ -7,8 +9,8 @@ Analyze this image and extract ALL information:
 
 2. DOCUMENT ANALYSIS:
    - Identify document type: contract, receipt, invoice, court_resolution, or generic
-   - Provide a brief summary (1-2 sentences){addressing_note}
-   - List key points (names, amounts, dates, important details){focusing_note}
+   - Provide a brief summary (1-2 sentences) in Hebrew{addressing_note}
+   - List key points (names, amounts, dates, important details) in Hebrew{focusing_note}
 
 3. QUALITY ASSESSMENT:
    - Rate your confidence: high/medium/low

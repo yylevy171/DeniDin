@@ -3,6 +3,7 @@ Unit tests for AIHandler timeout and rate limit handling (Phase 5: US3)
 Tests fallback responses for API failures
 """
 import pytest
+from pathlib import Path
 from datetime import datetime, timezone
 from unittest.mock import Mock, MagicMock, patch
 from openai import APITimeoutError, RateLimitError
@@ -19,7 +20,7 @@ def mock_config():
     config.ai_reply_max_tokens = 500
     config.temperature = 0.7
     config.constitution_config = {}
-    config.data_root = "data"
+    config.data_root = str(Path(__file__).parent.parent.parent / "test_data")
     return config
 
 

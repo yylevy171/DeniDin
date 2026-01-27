@@ -22,7 +22,6 @@ class MediaFileManager:
     MAX_FILE_SIZE_MB = 10
     MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
     MAX_DOWNLOAD_RETRIES = 1  # CHK048: 1 retry max
-    RAWTEXT_ENCODING = "utf-8"  # CHK023: Hebrew support
     
     def __init__(self, denidin_context):
         """
@@ -40,16 +39,26 @@ class MediaFileManager:
     
     def download_file(self, file_url: str) -> Tuple[bytes, bool]:
         """
-        Download file from Green API with retry logic.
+        Download file from Green API or local file:// URL with retry logic.
         
         CHK048: Max 1 retry (2 total attempts)
         
         Args:
-            file_url: Green API download URL
+            file_url: Green API download URL or file:// URL for testing
         
         Returns:
             (file_content, success) - Empty bytes and False if failed
         """
+        # Handle file:// URLs for testing
+        if file_url.startswith('file://'):
+            try:
+                filepath = file_url[7:]  # Remove 'file://' prefix
+                with open(filepath, 'rb') as f:
+                    return (f.read(), True)
+            except (FileNotFoundError, IOError):
+                return (b"", False)
+        
+        # Handle HTTP/HTTPS URLs
         for attempt in range(self.MAX_DOWNLOAD_RETRIES + 1):
             try:
                 response = requests.get(file_url, timeout=30)
@@ -156,23 +165,3 @@ class MediaFileManager:
         with open(file_path, 'wb') as f:
             f.write(content)
         return file_path
-    
-    def save_rawtext(self, text: str, folder: Path, filename: str) -> Path:
-        """
-        Save extracted text as UTF-8 .rawtext file.
-        
-        CHK023: UTF-8 encoding for Hebrew support
-        CHK006-010: Supports Hebrew content
-        
-        Args:
-            text: Extracted text content
-            folder: Storage folder path
-            filename: Original filename
-        
-        Returns:
-            Path to saved .rawtext file
-        """
-        rawtext_path = folder / f"{filename}.rawtext"
-        with open(rawtext_path, 'w', encoding=self.RAWTEXT_ENCODING) as f:
-            f.write(text)
-        return rawtext_path

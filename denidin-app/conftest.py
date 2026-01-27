@@ -8,7 +8,11 @@ Automatically configures logging for all tests:
 import sys
 import pytest
 import logging
+import warnings
 from pathlib import Path
+
+# Suppress SWIG deprecation warnings from ChromaDB before any imports
+warnings.filterwarnings("ignore", message=".*builtin type.*has no __module__ attribute")
 
 # Add src directory to Python path for imports
 project_root = Path(__file__).parent
@@ -16,6 +20,21 @@ sys.path.insert(0, str(project_root / "src"))
 
 # Track current test file for logging
 _current_test_file = None
+
+
+def pytest_configure(config):
+    """Register custom markers and filter warnings."""
+    config.addinivalue_line(
+        "markers", 
+        "expensive: Tests that use real OpenAI APIs and incur costs (skip by default)"
+    )
+    
+    # Suppress harmless SWIG deprecation warnings from ChromaDB
+    warnings.filterwarnings(
+        "ignore",
+        message=".*builtin type.*has no __module__ attribute",
+        category=DeprecationWarning
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)

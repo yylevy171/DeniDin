@@ -22,7 +22,6 @@ class MediaManager:
     MAX_FILE_SIZE_MB = 10
     MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
     MAX_DOWNLOAD_RETRIES = 1  # CHK048: 1 retry max
-    RAWTEXT_ENCODING = "utf-8"  # CHK023: Hebrew support
     
     def __init__(self, denidin_context):
         """
@@ -156,23 +155,3 @@ class MediaManager:
         with open(file_path, 'wb') as f:
             f.write(content)
         return file_path
-    
-    def save_rawtext(self, text: str, folder: Path, filename: str) -> Path:
-        """
-        Save extracted text as UTF-8 .rawtext file.
-        
-        CHK023: UTF-8 encoding for Hebrew support
-        CHK006-010: Supports Hebrew content
-        
-        Args:
-            text: Extracted text content
-            folder: Storage folder path
-            filename: Original filename
-        
-        Returns:
-            Path to saved .rawtext file
-        """
-        rawtext_path = folder / f"{filename}.rawtext"
-        with open(rawtext_path, 'w', encoding=self.RAWTEXT_ENCODING) as f:
-            f.write(text)
-        return rawtext_path
