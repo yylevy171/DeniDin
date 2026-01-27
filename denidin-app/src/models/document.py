@@ -67,7 +67,6 @@ class MediaAttachment:
         media_type: 'image', 'pdf', or 'docx'
         file_url: Green API download URL
         file_path: Local storage path (data/images/{date}/image-{timestamp}/file.ext)
-        raw_text_path: Path to .rawtext file with extracted text
         mime_type: MIME type from WhatsApp
         file_size: Size in bytes
         page_count: Number of pages (PDF only, optional)
@@ -76,7 +75,6 @@ class MediaAttachment:
     media_type: str
     file_url: str
     file_path: str
-    raw_text_path: str
     mime_type: str
     file_size: int
     page_count: Optional[int] = None

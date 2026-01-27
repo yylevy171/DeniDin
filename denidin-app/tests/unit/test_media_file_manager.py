@@ -23,7 +23,7 @@ def mock_denidin():
     return mock
 
 
-class TestMediaManagerDownload:
+class TestMediaFileManagerDownload:
     """Test file download functionality with retry logic."""
     
     def test_download_file_success(self, mock_denidin):
@@ -73,7 +73,7 @@ class TestMediaManagerDownload:
             assert mock_get.call_count == 2  # Original + 1 retry
 
 
-class TestMediaManagerValidation:
+class TestMediaFileManagerValidation:
     """Test file size and format validation."""
     
     def test_validate_file_size_under_limit(self, mock_denidin):
@@ -144,7 +144,7 @@ class TestMediaManagerValidation:
             manager.validate_format("notes.txt", "text/plain")
 
 
-class TestMediaManagerStorage:
+class TestMediaFileManagerStorage:
     """Test file storage path generation."""
     
     def test_create_storage_path_utc_timestamp(self, mock_denidin):

@@ -1,7 +1,10 @@
 Analyze this document text and provide:
-1. DOCUMENT_TYPE: What type of document is this? (e.g., receipt, invoice, letter, contract, resume, notes, article, generic)
-2. SUMMARY: A concise 1-2 sentence summary of the document's content{addressing_note}
-3. KEY_POINTS: Important information from the document (bullet points){focusing_note}
+
+**IMPORTANT: Respond in Hebrew (עברית). Use the format keywords in English but write all content (document type, summary, key points) in Hebrew.**
+
+1. DOCUMENT_TYPE: What type of document is this? (e.g., receipt, invoice, letter, contract, resume, notes, article, generic) - respond in Hebrew
+2. SUMMARY: A concise 1-2 sentence summary of the document's content in Hebrew{addressing_note}
+3. KEY_POINTS: Important information from the document (bullet points) in Hebrew{focusing_note}
 
 Document text:
 {document_text}{user_context}

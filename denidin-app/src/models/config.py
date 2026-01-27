@@ -16,6 +16,7 @@ class AppConfiguration:
     green_api_token: str
     ai_api_key: str
     ai_model: str = 'gpt-4o-mini'
+    ai_vision_model: str = 'gpt-4o'  # Vision model for image/document processing
     ai_reply_max_tokens: int = 1000
     temperature: float = 0.7
     log_level: str = 'INFO'
@@ -72,6 +73,7 @@ class AppConfiguration:
         # Set defaults for optional fields
         defaults = {
             'ai_model': 'gpt-4o-mini',
+            'ai_vision_model': 'gpt-4o',
             'ai_reply_max_tokens': 1000,
             'temperature': 0.7,
             'log_level': 'INFO',
