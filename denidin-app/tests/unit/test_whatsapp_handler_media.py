@@ -33,11 +33,12 @@ def mock_notification_image():
         'typeWebhook': 'incomingMessageReceived',
         'messageData': {
             'typeMessage': 'imageMessage',
-            'downloadUrl': 'https://api.green-api.com/file/abc123',
-            'caption': 'What is in this photo?',
-            'fileName': 'IMG_001.jpg',
-            'mimeType': 'image/jpeg',
-            'fileSize': 2048000  # ~2MB
+            'fileMessageData': {
+                'downloadUrl': 'https://api.green-api.com/file/abc123',
+                'caption': 'What is in this photo?',
+                'fileName': 'IMG_001.jpg',
+                'mimeType': 'image/jpeg'
+            }
         },
         'senderData': {
             'sender': '972501234567@c.us',
@@ -56,11 +57,12 @@ def mock_notification_document():
         'typeWebhook': 'incomingMessageReceived',
         'messageData': {
             'typeMessage': 'documentMessage',
-            'downloadUrl': 'https://api.green-api.com/file/xyz789',
-            'caption': 'Please review this contract',
-            'fileName': 'contract.pdf',
-            'mimeType': 'application/pdf',
-            'fileSize': 5120000  # ~5MB
+            'fileMessageData': {
+                'downloadUrl': 'https://api.green-api.com/file/xyz789',
+                'caption': 'Please review this contract',
+                'fileName': 'contract.pdf',
+                'mimeType': 'application/pdf'
+            }
         },
         'senderData': {
             'sender': '972501234567@c.us',
@@ -79,11 +81,12 @@ def mock_notification_video():
         'typeWebhook': 'incomingMessageReceived',
         'messageData': {
             'typeMessage': 'videoMessage',
-            'downloadUrl': 'https://api.green-api.com/file/vid123',
-            'caption': 'Check out this video',
-            'fileName': 'video.mp4',
-            'mimeType': 'video/mp4',
-            'fileSize': 10240000  # ~10MB
+            'fileMessageData': {
+                'downloadUrl': 'https://api.green-api.com/file/vid123',
+                'caption': 'Check out this video',
+                'fileName': 'video.mp4',
+                'mimeType': 'video/mp4'
+            }
         },
         'senderData': {
             'sender': '972501234567@c.us',
@@ -102,10 +105,11 @@ def mock_notification_audio():
         'typeWebhook': 'incomingMessageReceived',
         'messageData': {
             'typeMessage': 'audioMessage',
-            'downloadUrl': 'https://api.green-api.com/file/aud456',
-            'fileName': 'voice.ogg',
-            'mimeType': 'audio/ogg',
-            'fileSize': 512000  # ~512KB
+            'fileMessageData': {
+                'downloadUrl': 'https://api.green-api.com/file/aud456',
+                'fileName': 'voice.ogg',
+                'mimeType': 'audio/ogg'
+            }
         },
         'senderData': {
             'sender': '972501234567@c.us',
@@ -170,7 +174,7 @@ class TestMediaHandlerIntegration:
             file_url='https://api.green-api.com/file/abc123',
             filename='IMG_001.jpg',
             mime_type='image/jpeg',
-            file_size=2048000,
+            file_size=0,  # Green API doesn't provide fileSize - set to 0
             caption='What is in this photo?',  # CHK111: WhatsApp message text
             sender_phone='972501234567@c.us'
         )
@@ -209,18 +213,19 @@ class TestCaptionHandling:
         self, whatsapp_handler, mock_media_handler
     ):
         """Test that caption comes from webhook messageData, not file embedded metadata"""
-        # Create notification with caption in messageData (CHK111)
+        # Create notification with caption in fileMessageData (CHK111)
         notification = MagicMock(spec=Notification)
         notification.answer = MagicMock()
         notification.event = {
             'typeWebhook': 'incomingMessageReceived',
             'messageData': {
                 'typeMessage': 'imageMessage',
-                'downloadUrl': 'https://api.green-api.com/file/test',
-                'caption': 'User typed this question',  # CHK111: This is what user typed
-                'fileName': 'photo.jpg',
-                'mimeType': 'image/jpeg',
-                'fileSize': 1024000
+                'fileMessageData': {
+                    'downloadUrl': 'https://api.green-api.com/file/test',
+                    'caption': 'User typed this question',  # CHK111: This is what user typed
+                    'fileName': 'photo.jpg',
+                    'mimeType': 'image/jpeg'
+                }
             },
             'senderData': {
                 'sender': '972501234567@c.us',
@@ -247,18 +252,19 @@ class TestCaptionHandling:
         self, whatsapp_handler, mock_media_handler
     ):
         """Test that missing caption results in empty string, not None"""
-        # Create notification without caption
+        # Create notification without caption (using correct nested structure)
         notification = MagicMock(spec=Notification)
         notification.answer = MagicMock()
         notification.event = {
             'typeWebhook': 'incomingMessageReceived',
             'messageData': {
                 'typeMessage': 'documentMessage',
-                'downloadUrl': 'https://api.green-api.com/file/test',
-                # No caption field
-                'fileName': 'doc.pdf',
-                'mimeType': 'application/pdf',
-                'fileSize': 2048000
+                'fileMessageData': {
+                    'downloadUrl': 'https://api.green-api.com/file/test',
+                    # No caption field
+                    'fileName': 'doc.pdf',
+                    'mimeType': 'application/pdf'
+                }
             },
             'senderData': {
                 'sender': '972501234567@c.us',
