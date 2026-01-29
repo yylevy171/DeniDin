@@ -53,6 +53,7 @@ def pytest_runtest_setup(item):
     """
     Pytest hook: Configure logging before each test runs.
     Automatically sets up per-test-file logging.
+    Clears all existing loggers to ensure test logs go to test_logs directory.
     """
     global _current_test_file
     
@@ -67,12 +68,21 @@ def pytest_runtest_setup(item):
     # Ensure the directory exists
     log_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Remove all existing handlers from root logger and reconfigure
-    root_logger = logging.getLogger()
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
+    # Clear ALL existing loggers and their handlers (including module-level loggers)
+    # This ensures that any loggers created during module import are reconfigured
+    loggers_to_clear = [logging.getLogger()] + [
+        logging.getLogger(name) for name in logging.root.manager.loggerDict
+    ]
     
-    # Set up file handler for this test file
+    for logger_obj in loggers_to_clear:
+        if isinstance(logger_obj, logging.Logger):
+            for handler in logger_obj.handlers[:]:
+                handler.close()
+                logger_obj.removeHandler(handler)
+    
+    # Set up root logger with file handler for this test file
+    root_logger = logging.getLogger()
+    
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
@@ -83,6 +93,12 @@ def pytest_runtest_setup(item):
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
     root_logger.setLevel(logging.DEBUG)
+    
+    # Ensure all child loggers inherit from root
+    for name in logging.root.manager.loggerDict:
+        logger_obj = logging.getLogger(name)
+        if isinstance(logger_obj, logging.Logger):
+            logger_obj.propagate = True  # Ensure propagation to root logger
 
 
 @pytest.fixture(scope="module")

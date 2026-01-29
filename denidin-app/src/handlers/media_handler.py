@@ -83,15 +83,17 @@ class MediaHandler:
             }
         """
         try:
-            # Step 1: Validate file size (CHK001-002, CHK075)
-            self.media_file_manager.validate_file_size(file_size)
-            
-            # Step 2: Download file (CHK048: 1 retry max)
+            # Step 1: Download file first (CHK048: 1 retry max)
+            # Note: Green API doesn't provide file_size in webhook, so we download first
             content, success = self.media_file_manager.download_file(file_url)
             if not success:
                 return self._error_response(
                     "Unable to download this file. Please try sending it again."
                 )
+            
+            # Step 2: Validate file size from downloaded content (CHK001-002, CHK075)
+            actual_file_size = len(content)
+            self.media_file_manager.validate_file_size(actual_file_size)
             
             # Step 3: Validate format and determine media type (CHK039-041)
             media_type = self.media_file_manager.validate_format(filename, mime_type)

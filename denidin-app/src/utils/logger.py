@@ -69,7 +69,8 @@ def setup_logger(
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    # Prevent propagation to root logger to avoid duplicate console output
+    # In production, prevent propagation to avoid duplicate output
+    # In tests, propagation is enabled by conftest.py
     logger.propagate = False
 
     return logger

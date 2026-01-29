@@ -23,45 +23,13 @@ See .github/CONSTITUTION.md §V for integration test definition.
 import pytest
 from pathlib import Path
 from src.models.config import AppConfiguration
+from src.models.green_api import GreenApiNotification
 from src.constants.error_messages import (
     APP_NOT_READY_RETRY_LATER,
     UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
     ERROR_PROCESSING_MESSAGE_TRY_AGAIN,
     FAILED_TO_PROCESS_FILE_DEFAULT
 )
-
-
-class FakeNotification:
-    """Real notification object (not mocked) that captures what's sent to user."""
-    
-    def __init__(self, message_type: str):
-        self.event = {
-            'messageData': {
-                'typeMessage': message_type,
-                'textMessage': 'Test message',
-                'downloadUrl': 'https://example.com/media.jpg',
-                'fileName': 'test.jpg',
-                'mimeType': 'image/jpeg',
-                'fileSize': 1024,
-                'caption': ''
-            },
-            'senderData': {
-                'sender': '972522968679@c.us',
-                'senderName': 'Test User',
-                'senderEmail': 'test@example.com'
-            }
-        }
-        self.sent_messages = []
-    
-    def answer(self, message: str) -> None:
-        """Called when bot sends response to user."""
-        self.sent_messages.append(message)
-    
-    def get_sent_message(self) -> str:
-        """Get the message sent to user."""
-        if self.sent_messages:
-            return self.sent_messages[0]
-        return None
 
 
 @pytest.mark.integration
@@ -127,11 +95,20 @@ class TestMediaWebhookRoutingUserPerspective:
         - If error: I get the EXACT error message constant
         
         **CRITICAL**: If handler is missing or doesn't respond, user gets silent drop.
+        
+        **Uses GreenApiNotification**: Real Green API webhook structure (nested fileMessageData)
         """
         from denidin import handle_image_message
         
-        # Create REAL notification (not mocked)
-        notification = FakeNotification("imageMessage")
+        # Create REAL Green API webhook notification (not mocked)
+        notification = GreenApiNotification.create_image_message(
+            sender="972522968679@c.us",
+            download_url="https://example.com/media.jpg",
+            file_name="test.jpg",
+            mime_type="image/jpeg",
+            caption="",
+            sender_name="Test User"
+        )
         
         # When: User sends image message
         handle_image_message(notification)
@@ -156,10 +133,20 @@ class TestMediaWebhookRoutingUserPerspective:
         - I send a document
         - Bot should reply (not silence)
         - I get the EXACT error message constant
+        
+        **Uses GreenApiNotification**: Real Green API webhook structure (nested fileMessageData)
         """
         from denidin import handle_document_message
         
-        notification = FakeNotification("documentMessage")
+        # Create REAL Green API webhook notification (not mocked)
+        notification = GreenApiNotification.create_document_message(
+            sender="972522968679@c.us",
+            download_url="https://example.com/document.pdf",
+            file_name="test.pdf",
+            mime_type="application/pdf",
+            caption="",
+            sender_name="Test User"
+        )
         
         handle_document_message(notification)
         
@@ -184,7 +171,21 @@ class TestMediaWebhookRoutingUserPerspective:
         """
         from denidin import handle_unsupported_message_default, denidin_app
         
-        notification = FakeNotification("unknownMessageType")
+        # Create notification for unsupported message type (no fileMessageData)
+        notification = GreenApiNotification(
+            typeWebhook="incomingMessageReceived",
+            timestamp=1588091580,
+            idMessage="TEST_MESSAGE_ID",
+            senderData={
+                "chatId": "972522968679@c.us",
+                "sender": "972522968679@c.us",
+                "senderName": "Test User"
+            },
+            messageData={
+                "typeMessage": "unknownMessageType",
+                "textMessage": "Test message"
+            }
+        )
         
         if denidin_app is None:
             handle_unsupported_message_default(notification)
@@ -211,10 +212,35 @@ class TestMediaWebhookRoutingUserPerspective:
         Given: User sends videoMessage via WhatsApp
         When: Bot receives the webhook
         Then: User gets a response with EXACT error message
+        
+        **Uses GreenApiNotification**: Real Green API webhook structure (nested fileMessageData)
         """
         from denidin import handle_video_message
         
-        notification = FakeNotification("videoMessage")
+        # Create REAL Green API webhook notification for video
+        notification = GreenApiNotification(
+            typeWebhook="incomingMessageReceived",
+            timestamp=1588091580,
+            idMessage="TEST_MESSAGE_ID",
+            senderData={
+                "chatId": "972522968679@c.us",
+                "sender": "972522968679@c.us",
+                "senderName": "Test User"
+            },
+            messageData={
+                "typeMessage": "videoMessage",
+                "fileMessageData": {
+                    "downloadUrl": "https://example.com/video.mp4",
+                    "fileName": "test.mp4",
+                    "mimeType": "video/mp4",
+                    "caption": "",
+                    "jpegThumbnail": "",
+                    "isForwarded": False,
+                    "forwardingScore": 0,
+                    "videoNote": False
+                }
+            }
+        )
         
         handle_video_message(notification)
         
@@ -231,10 +257,34 @@ class TestMediaWebhookRoutingUserPerspective:
         Given: User sends audioMessage via WhatsApp
         When: Bot receives the webhook
         Then: User gets a response with EXACT error message
+        
+        **Uses GreenApiNotification**: Real Green API webhook structure (nested fileMessageData)
         """
         from denidin import handle_audio_message
         
-        notification = FakeNotification("audioMessage")
+        # Create REAL Green API webhook notification for audio
+        notification = GreenApiNotification(
+            typeWebhook="incomingMessageReceived",
+            timestamp=1588091580,
+            idMessage="TEST_MESSAGE_ID",
+            senderData={
+                "chatId": "972522968679@c.us",
+                "sender": "972522968679@c.us",
+                "senderName": "Test User"
+            },
+            messageData={
+                "typeMessage": "audioMessage",
+                "fileMessageData": {
+                    "downloadUrl": "https://example.com/audio.mp3",
+                    "fileName": "test.mp3",
+                    "mimeType": "audio/mpeg",
+                    "caption": "",
+                    "jpegThumbnail": "",
+                    "isForwarded": False,
+                    "forwardingScore": 0
+                }
+            }
+        )
         
         handle_audio_message(notification)
         
