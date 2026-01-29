@@ -6,6 +6,7 @@ CHK111: Caption is WhatsApp message text from webhook
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from src.handlers.whatsapp_handler import WhatsAppHandler
+from src.constants.error_messages import FAILED_TO_PROCESS_FILE_DEFAULT
 from whatsapp_chatbot_python import Notification
 
 
@@ -171,7 +172,7 @@ class TestMediaHandlerIntegration:
             mime_type='image/jpeg',
             file_size=2048000,
             caption='What is in this photo?',  # CHK111: WhatsApp message text
-            sender='972501234567@c.us'
+            sender_phone='972501234567@c.us'
         )
         
         # Verify summary was sent back to user
@@ -195,9 +196,9 @@ class TestMediaHandlerIntegration:
         
         whatsapp_handler.handle_media_message(mock_notification_document)
         
-        # Verify error message was sent to user
+        # Verify error message was sent to user (exact constant)
         mock_notification_document.answer.assert_called_once_with(
-            "Sorry, I couldn't process this PDF. The file may be corrupted or too large."
+            FAILED_TO_PROCESS_FILE_DEFAULT
         )
 
 

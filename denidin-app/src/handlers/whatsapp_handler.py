@@ -10,6 +10,10 @@ from tenacity import (
     retry_if_exception_type
 )
 from whatsapp_chatbot_python import Notification
+from src.constants.error_messages import (
+    UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
+    FAILED_TO_PROCESS_FILE_DEFAULT
+)
 from src.models.message import WhatsAppMessage, AIResponse
 from src.utils.logger import get_logger
 
@@ -111,7 +115,7 @@ class WhatsAppHandler:
 
         logger.info(f"Sending unsupported message auto-reply to {sender_name} for {message_type}")
 
-        auto_reply = "I currently only support text messages. Please send your message as text."
+        auto_reply = UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES
 
         try:
             notification.answer(auto_reply)
@@ -274,14 +278,13 @@ class WhatsAppHandler:
             mime_type=mime_type,
             file_size=file_size,
             caption=caption,  # CHK111: User's message text
-            sender=sender
+            sender_phone=sender
         )
         
         if not result.get("success", False):
             # Send error message to user
-            error_message = result.get("error_message", "Sorry, I couldn't process this file.")
-            logger.warning(f"Media processing failed: {error_message}")
-            notification.answer(error_message)
+            logger.warning(f"Media processing failed: {result.get('error_message', 'Unknown error')}")
+            notification.answer(FAILED_TO_PROCESS_FILE_DEFAULT)
             return
         
         # Send summary to user (no approval workflow - just send as reply)

@@ -13,12 +13,41 @@
 Every feature MUST begin with a complete specification before any implementation starts.
 
 **Requirements:**
-- User scenarios with prioritized user stories (P1, P2, P3...) that are independently testable
-- Functional requirements with clear acceptance criteria (Given-When-Then format)
+- **MANDATORY User Stories** (BLOCKING gate):
+  - Feature specification MUST include `user-stories.md` file BEFORE spec can be approved
+  - If user stories don't exist: STOP work and ask: "Please provide user stories for this feature in Given-When-Then format"
+  - User stories MUST define complete end-to-end flows from external entry point (user action, webhook, API request) through system to response
+  - Each story traces: External Input → System Processing → Output/Response
+  - Examples of GOOD user stories:
+    - "Given user sends imageMessage via WhatsApp → When bot receives webhook → Then router dispatches to media handler → And bot sends response"
+    - "Given admin API request arrives with auth header → When request validates → Then endpoint executes → And response returns to client"
+  - Examples of BAD (incomplete) user stories:
+    - "User sends image → Bot analyzes it" (doesn't specify entry point or routing)
+    - "System processes document" (too vague, no Given-When-Then)
+  - User stories MUST follow **Given-When-Then** format (Gherkin/BDD style)
+  - Acceptance criteria must be independently testable and verifiable
+  - User stories with prioritized levels (P1, P2, P3...) that are independently testable
+- Functional requirements with clear acceptance criteria matching the user stories
 - Edge cases and error scenarios explicitly documented
 - Each user story MUST be deliverable as a standalone MVP increment
+- Integration test requirements MUST be explicit in user stories (see CONSTITUTION §V)
+  - For each user story: Explicitly list "Router/Dispatcher Requirement: [what needs to be routed/dispatched]"
+  - Example: "Router Requirement: @bot.router.message(type_message='imageMessage') must route to WhatsAppHandler"
 
-**Rationale**: Specification-first development prevents scope creep, ensures stakeholder alignment before costly implementation, and enables parallel work streams by clearly defining deliverable increments.
+**Critical Validation Gate**:
+- ❌ Feature spec WITHOUT user stories = BLOCK - Request them
+- ❌ User stories WITHOUT Given-When-Then format = BLOCK - Request proper format
+- ❌ User stories that don't trace entry point → processing → response = BLOCK - Request complete E2E flows
+- ✅ Only proceed to implementation when user stories define complete end-to-end flows
+
+**Why This Matters**:
+Feature 003 (Media Processing) was marked complete but had missing router handlers because:
+- ❌ Spec had "use cases" but NO formal user stories in Given-When-Then format
+- ❌ Use cases described "what bot does" but NOT "how user request reaches bot"
+- ❌ No story explicitly said "When imageMessage webhook arrives, @bot.router.message(imageMessage) must route it"
+- ✅ Feature 002+007 had formal user stories → bug would have been caught in review
+
+**Rationale**: Specification-first development prevents scope creep, ensures stakeholder alignment before costly implementation, and enables parallel work streams by clearly defining deliverable increments. User stories trace complete system flows from user perspective, catching routing/integration gaps that component-focused specs miss.
 
 ---
 
@@ -27,6 +56,11 @@ Every feature MUST begin with a complete specification before any implementation
 All artifacts MUST follow standardized templates to ensure uniform structure and completeness.
 
 **Requirements:**
+- `user-stories.md` MUST exist for every feature (MANDATORY, blocks spec approval)
+  - MUST use Given-When-Then (Gherkin/BDD) format
+  - Each story must trace complete end-to-end flow from external entry point to response
+  - Each story must explicitly list integration/routing requirements
+  - If file doesn't exist: Ask for it, BLOCK spec approval until provided
 - `spec.md` MUST use `.specify/templates/spec-template.md` structure
 - `plan.md` MUST use `.specify/templates/plan-template.md` structure
 - `tasks.md` MUST use `.specify/templates/tasks-template.md` structure
@@ -34,7 +68,7 @@ All artifacts MUST follow standardized templates to ensure uniform structure and
 - Placeholder tokens (e.g., `[FEATURE]`, `[DATE]`) MUST be replaced with concrete values
 - No deviation from template structure without explicit methodology amendment
 
-**Rationale**: Templates enforce consistency across features, reduce cognitive load for reviewers, enable automated validation, and ensure critical sections are never omitted.
+**Rationale**: Templates enforce consistency across features, reduce cognitive load for reviewers, enable automated validation, and ensure critical sections are never omitted. User stories in Given-When-Then format ensure end-to-end thinking.
 
 ---
 

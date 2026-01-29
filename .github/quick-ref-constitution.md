@@ -60,6 +60,16 @@
 
 ## Testing
 
+### Integration Tests: E2E from User Perspective
+- **Integration Test** = External entry point (webhook, HTTP request, user action) → complete system flow → response
+  - Example: "Green API webhook → @bot.router dispatcher → handler → response to user"
+  - Entry point is OUTSIDE the application, not a direct Python method call
+- **Component Test** = Direct Python method calls linking internal components
+  - Valid for testing component interfaces, but NOT the complete integration
+- **Critical for routing**: Integration tests MUST verify dispatchers/routers work
+  - For each new message type: Test that @bot.router.message catches it (Feature 003 bug: imageMessage router missing)
+- See `.github/CONSTITUTION.md §V` for full integration test requirements
+
 ### Pytest Commands
 ```bash
 # All tests
@@ -80,6 +90,7 @@ pytest tests/unit/test_module.py::test_function -xvs
 - New phases ADD new tests, never modify existing ones
 - Unit tests MAY set feature flags to test new features
 - Integration tests MUST NEVER set feature flags (test production behavior)
+- Integration tests MUST simulate real entry points (not bypass routers)
 
 ### Common Test Issues
 - **SWIG warnings**: Already suppressed in `pytest.ini`

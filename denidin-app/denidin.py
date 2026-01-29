@@ -11,8 +11,15 @@ from whatsapp_chatbot_python import GreenAPIBot, Notification
 from openai import OpenAI
 from src.models.config import AppConfiguration
 from src.utils.logger import get_logger
+from src.constants.error_messages import (
+    APP_NOT_READY_RETRY_LATER,
+    UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
+    ERROR_PROCESSING_MESSAGE_TRY_AGAIN,
+    FAILED_TO_PROCESS_FILE_DEFAULT
+)
 from src.handlers.ai_handler import AIHandler
 from src.handlers.whatsapp_handler import WhatsAppHandler
+from src.handlers.media_handler import MediaHandler
 from src.managers.session_manager import SessionManager
 from src.managers.memory_manager import MemoryManager
 from src.services.cleanup_service import SessionCleanupThread, run_startup_cleanup
@@ -180,6 +187,22 @@ class DeniDin:
             self.cleanup_thread.stop()
             self._logger.info("Cleanup thread stopped")
 
+def _handle_not_initialized_error(notification: Notification, message_type: str) -> None:
+    """
+    Handle error response when denidin_app is not initialized.
+    Consolidates error handling for all message type routers.
+    
+    Args:
+        notification: Green API notification to respond to
+        message_type: Type of message being processed (for logging)
+    """
+    logger.error(f"CRITICAL: denidin_app not initialized - cannot process {message_type} messages")
+    try:
+        notification.answer(APP_NOT_READY_RETRY_LATER)
+    except Exception:
+        pass
+
+
 def initialize_app(config_dict: dict) -> DeniDin:
     """
     Initialize DeniDin app with provided configuration.
@@ -210,11 +233,15 @@ def initialize_app(config_dict: dict) -> DeniDin:
     # Initialize AI handler
     ai_handler = AIHandler(ai_client, config)
     
-    # Initialize WhatsApp handler
+    # Initialize WhatsApp handler (without media_handler initially)
     whatsapp_handler = WhatsAppHandler()
     
-    # Create DeniDin instance (will be used as context for background threads)
+    # Create DeniDin instance (will be used as context for background threads and MediaHandler)
     denidin = DeniDin(ai_handler, config, whatsapp_handler, cleanup_thread=None)
+    
+    # Initialize MediaHandler with DeniDin context and attach to WhatsAppHandler
+    media_handler = MediaHandler(denidin)
+    whatsapp_handler.media_handler = media_handler
     
     # Initialize memory system if enabled
     if ai_handler.memory_enabled:
@@ -267,11 +294,7 @@ def handle_text_message(notification: Notification) -> None:
     """
     # Ensure denidin_app is initialized
     if denidin_app is None:
-        logger.error("CRITICAL: denidin_app not initialized - cannot process WhatsApp messages")
-        try:
-            notification.answer("Sorry, the application is not ready. Please try again in a moment.")
-        except Exception:
-            pass
+        _handle_not_initialized_error(notification, "text")
         return
     
     try:
@@ -335,11 +358,7 @@ def handle_text_message(notification: Notification) -> None:
 
         # Send generic fallback message to user
         try:
-            fallback_message = (
-                "Sorry, I encountered an error processing your message. "
-                "Please try again."
-            )
-            notification.answer(fallback_message)
+            notification.answer(ERROR_PROCESSING_MESSAGE_TRY_AGAIN)
             try:
                 logger.info(f"{tracking} Generic fallback message sent to user")
             except (NameError, AttributeError):
@@ -356,6 +375,87 @@ def handle_text_message(notification: Notification) -> None:
                     f"Failed to send fallback message (no tracking available): {fallback_error}",
                     exc_info=True
                 )
+
+
+@bot.router.message(type_message="imageMessage")
+def handle_image_message(notification: Notification) -> None:
+    """
+    Handle incoming image messages from WhatsApp.
+    Routes to MediaHandler for image analysis.
+    
+    Args:
+        notification: Green API notification object containing image data
+    """
+    if denidin_app is None:
+        _handle_not_initialized_error(notification, "image")
+        return
+    
+    denidin_app.whatsapp_handler.handle_media_message(notification)
+
+
+@bot.router.message(type_message="documentMessage")
+def handle_document_message(notification: Notification) -> None:
+    """
+    Handle incoming document messages from WhatsApp.
+    Routes to MediaHandler for document processing (PDF, DOCX, etc.).
+    
+    Args:
+        notification: Green API notification object containing document data
+    """
+    if denidin_app is None:
+        _handle_not_initialized_error(notification, "document")
+        return
+    
+    denidin_app.whatsapp_handler.handle_media_message(notification)
+
+
+@bot.router.message(type_message="videoMessage")
+def handle_video_message(notification: Notification) -> None:
+    """
+    Handle incoming video messages from WhatsApp.
+    Routes to MediaHandler for video processing.
+    
+    Args:
+        notification: Green API notification object containing video data
+    """
+    if denidin_app is None:
+        _handle_not_initialized_error(notification, "video")
+        return
+    
+    denidin_app.whatsapp_handler.handle_media_message(notification)
+
+
+@bot.router.message(type_message="audioMessage")
+def handle_audio_message(notification: Notification) -> None:
+    """
+    Handle incoming audio messages from WhatsApp.
+    Routes to MediaHandler for audio processing.
+    
+    Args:
+        notification: Green API notification object containing audio data
+    """
+    if denidin_app is None:
+        _handle_not_initialized_error(notification, "audio")
+        return
+    
+    denidin_app.whatsapp_handler.handle_media_message(notification)
+
+
+@bot.router.message()
+def handle_unsupported_message_default(notification: Notification) -> None:
+    """
+    Catch-all handler for unsupported message types.
+    Prevents silent drops - sends Hebrew error message to user.
+    Called for any message type without a specific handler.
+    
+    Args:
+        notification: Green API notification object containing message data
+    """
+    if denidin_app is None:
+        _handle_not_initialized_error(notification, "unsupported")
+        return
+    
+    denidin_app.whatsapp_handler.handle_unsupported_message(notification)
 
 
 
