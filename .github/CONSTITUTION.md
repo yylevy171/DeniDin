@@ -345,7 +345,68 @@ The direct git merge workflow is the PRIMARY and PREFERRED merge method because 
 
 ---
 
-## V. Feature Flags for Safe Deployment
+## V. Integration Tests: End-to-End from User Perspective
+
+**Principle**: Integration tests trace complete request flow from external entry point through all system layers to user response. They are NOT component linking tests.
+
+**Definition**:
+- **Integration Test** (End-to-End): Simulates real external entry point (Green API webhook, user input, API request) and traces complete flow through all system layers to response
+  - Example: "Green API sends imageMessage webhook → router dispatches → handler processes → response sent to user"
+  - Tests actual system integration from user perspective, not internal component linking
+  - Entry point is OUTSIDE the application (webhook, HTTP request, etc.)
+  
+- **Component Integration Test** (Subsystem): Tests how internal components work together, using direct method calls or internal APIs
+  - Example: "Create MediaHandler → call process_media_message() → verify extractors work"
+  - Entry point is INSIDE the application (direct Python method call)
+  - Tests internal component orchestration
+  - **MUST be clearly labeled** to distinguish from true integration tests
+
+**Requirements**:
+- **Integration tests MUST simulate real external entry points**:
+  - For Green API webhooks: Mock Green API but send real webhook JSON through bot.router dispatcher
+  - For HTTP APIs: Send real HTTP requests to the application
+  - For user interactions: Simulate real user action (send message, upload file, etc.)
+  - Entry point is NEVER a direct Python method call to internal components
+  
+- **Integration tests MUST trace complete request path**:
+  - External entry → Router/Dispatcher → Handler → Business Logic → Response
+  - Verify EACH layer correctly passes request to next layer
+  - Example: Webhook → @bot.router.message(type) → WhatsAppHandler → MediaHandler → Response
+  
+- **Integration tests MUST verify dispatcher/routing behavior**:
+  - For each new message type: Verify @bot.router.message decorator catches the message
+  - For each new endpoint: Verify correct handler is dispatched
+  - For each new webhook: Verify router knows about it (no silent drops)
+  - This is the CRITICAL gap that prevented detection of missing imageMessage router
+  
+- **Component linking tests MAY use direct method calls**:
+  - Clearly label as "Component Integration" or "Subsystem Integration", NOT "Integration Test"
+  - These test internal component orchestration, valid for verifying component interfaces
+  - But MUST NOT be the ONLY integration layer - must have E2E integration tests above them
+  
+- **Real external APIs vs mocking**:
+  - MUST use real application layers (routers, handlers, managers)
+  - MUST mock external services (OpenAI, Green API download URLs, databases) for cost/speed
+  - Example: Mock Green API webhook response but test through real bot.router dispatcher
+  
+- **Integration test file naming**:
+  - True integration tests (E2E from external entry point): `tests/e2e/` or `tests/integration/test_*_e2e.py`
+  - Component linking tests (internal method calls): `tests/component/` or `tests/subsystem/test_*_component.py`
+  - Clearly distinguish so tests match their actual scope
+
+**Why This Matters**:
+The Feature 003 bug (no response when sending real image) existed because:
+- ✅ Component tests verified MediaHandler + extractors work perfectly (tested internal linking)
+- ❌ Integration tests never simulated Green API webhook → router dispatch (missed external entry point)
+- ❌ Routers added to denidin.py were never tested (routing layer completely untested)
+
+Integration tests must explicitly verify "when external entry arrives, does system route it correctly?"
+
+**Rationale**: Integration tests from external perspective catch routing, dispatcher, and system-level bugs that component tests cannot. They verify the complete request path works end-to-end.
+
+---
+
+## VI. Feature Flags for Safe Deployment
 
 **Principle**: New features deployed behind feature flags to enable safe rollouts.
 

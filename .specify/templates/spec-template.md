@@ -7,14 +7,35 @@
 
 ---
 
-**IMPORTANT**: This spec MUST comply with:
-- **CONSTITUTION.md** (§I-III): Coding standards, UTC timestamps, version control workflow, NO environment variables
-- **METHODOLOGY.md** (§I, VIII, IX, X): Specification-first development, Terminology Glossary (mandatory), Technology Choices, Requirement IDs
+**CRITICAL - MANDATORY REQUIREMENT**:
+🚨 **This feature MUST have a separate `user-stories.md` file** before spec approval:
+- Spec approval is BLOCKED if `user-stories.md` does not exist
+- If user stories are not provided, STOP and request them: "Please provide user stories in Given-When-Then format"
+- See example structure in this section below and in `.github/METHODOLOGY.md §I`
 
-**Required Sections** (per METHODOLOGY.md):
-- ✅ Terminology Glossary (§VIII) - Define all domain-specific terms
-- ✅ Technology Choices Documentation (§IX) - Document all tech decisions with rationale
-- ✅ Requirements with REQ-* identifiers (§X) - Use format REQ-CATEGORY-###
+**IMPORTANT**: This spec MUST comply with:
+- **CONSTITUTION.md** (§I-III, §V): Coding standards, UTC timestamps, version control workflow, NO environment variables, Integration tests as E2E
+- **METHODOLOGY.md** (§I, II, VIII, IX, X): Specification-first development, User stories mandatory, Terminology Glossary, Technology Choices, Requirement IDs
+
+**Required Files & Sections** (per METHODOLOGY.md):
+- ✅ **`user-stories.md`** (MANDATORY) - Given-When-Then format, end-to-end flows, router/integration requirements explicit
+- ✅ **`spec.md`** (this file) - Terminology Glossary, Technology Choices, Requirements with REQ-* identifiers
+- ✅ **`plan.md`** - Phase-based implementation plan
+- ✅ **`tasks.md`** - Dependency-ordered task list
+
+---
+
+## User Stories Reference
+
+**NOTE**: Complete user stories are defined in **`user-stories.md`** file (SEPARATE from this spec).
+
+This section is a QUICK REFERENCE ONLY. The authoritative user stories document has:
+- Complete Given-When-Then acceptance criteria
+- Explicit routing/dispatcher requirements (e.g., "@bot.router.message(type_message='imageMessage')")
+- Complete system flow descriptions (webhook → router → handler → response)
+- Integration test requirements for each story
+
+Example structure (see `user-stories.md` for full version):
 
 ---
 

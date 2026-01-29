@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 import requests
 from src.handlers.whatsapp_handler import WhatsAppHandler
+from src.constants.error_messages import UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES
 from src.models.message import AIResponse, WhatsAppMessage
 from whatsapp_chatbot_python import Notification
 
@@ -199,7 +200,8 @@ class TestUnsupportedMessageTypes:
         # Should send auto-reply
         mock_notification.answer.assert_called_once()
         reply_text = mock_notification.answer.call_args[0][0]
-        assert "only support text" in reply_text.lower() or "text messages" in reply_text.lower()
+        # Should return the exact unsupported message constant
+        assert reply_text == UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES
     
     @patch('src.handlers.whatsapp_handler.logger')
     def test_bot_continues_after_unsupported_message(
