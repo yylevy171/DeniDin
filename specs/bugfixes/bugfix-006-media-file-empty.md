@@ -7,13 +7,19 @@ bugfix-006-media-file-empty
 Media Flow Integration: File Empty Error in Real Life Test
 
 ## Status
-Open
+Resolved
 
 ## Date Opened
 2026-01-29
 
+## Date Closed
+2026-01-29
+
 ## Reported By
 yylevy171
+
+## Fixed By
+GitHub Copilot (BDD workflow)
 
 ## Affected Area
 - Integration: Media Flow
@@ -149,10 +155,11 @@ Notice: `filename="unknown"`, `mime_type=""` (empty parentheses) - all defaults 
 
 ## Acceptance Criteria
 - [x] The bug is reproducible in a test
-- [ ] A failing test is added to cover the scenario
+- [x] A failing test is added to cover the scenario  
 - [x] The root cause is identified and documented
-- [ ] The bug is fixed and the test passes
-- [ ] No regression in related media flow functionality
+- [x] The bug is fixed and the test passes
+- [x] No regression in related media flow functionality
+- [x] Test logs isolated from production logs
 
 ## Test Proposal
 
@@ -212,13 +219,75 @@ self.event = {
 - Only external service (Green API download URL) is fake (per CONSTITUTION §V: "MUST mock external services")
 - This is integration testing from user perspective: "User sends imageMessage → Does bot respond correctly?"
 
-## References
-- `.github/CONSTITUTION.md`
-- `.github/METHODOLOGY.md`
-- `specs/bugfixes/README.md`
-- `tests/integration/test_media_flow_integration.py`
+## Resolution
 
-## Next Steps
+### Implementation Summary
+
+**Commits:** 
+- `8fc7011` - Fix bugfix-006: Correct Green API webhook parsing for media files
+
+**Changes Made:**
+
+1. **`src/handlers/whatsapp_handler.py`** (Lines 260-275):
+   - Changed to read from `messageData.fileMessageData` instead of `messageData` directly
+   - Removed incorrect `fileSize` extraction (Green API doesn't provide it)
+   - Added comment explaining Green API webhook structure
+
+2. **`src/handlers/media_handler.py`** (Lines 86-98):
+   - Reordered steps: Download FIRST, then validate size
+   - Validates `len(content)` instead of webhook-provided `file_size`
+   - Ensures accurate size validation from actual downloaded content
+
+3. **`src/models/green_api.py`** (NEW FILE):
+   - Created complete Green API webhook data models matching official spec
+   - `GreenApiNotification`, `MessageData`, `FileMessageData`, `SenderData`, `InstanceData`
+   - Factory methods for creating test notifications
+   - Implements `Notification` interface for compatibility
+
+4. **`tests/integration/test_media_webhook_routing.py`**:
+   - Replaced incorrect `FakeNotification` with `GreenApiNotification`
+   - All tests now use correct nested `fileMessageData` structure
+   - Tests verify integration from user perspective (no mocking per CONSTITUTION §V)
+
+5. **`conftest.py`** and **`src/utils/logger.py`**:
+   - Fixed test logging to write to `logs/test_logs/` instead of production `logs/denidin.log`
+   - Ensures test logs are properly isolated
+
+### Verification
+
+✅ **All integration tests pass:**
+```bash
+pytest tests/integration/test_media_webhook_routing.py -v
+# 5 passed in 8.88s
+```
+
+✅ **Manual verification shows correct filename extraction:**
+```
+Processing media message: test.jpg (image/jpeg) from 972522968679@c.us
+```
+Previously showed: `unknown ()` - confirming the bug is fixed
+
+✅ **Test logs correctly isolated to `test_logs/` directory**
+
+### Root Cause Confirmed
+
+The bug occurred because:
+1. Production code read from wrong JSON path (`messageData` instead of `messageData.fileMessageData`)
+2. Integration test used same incorrect structure, so bug wasn't caught
+3. Both code and test agreed on wrong structure → test passed incorrectly
+
+### Lessons Learned
+
+1. **Always verify external API documentation** - Don't assume payload structure
+2. **Integration tests must match production reality** - Test data must reflect actual API responses
+3. **Green API specific**: `fileSize` is NOT provided in webhooks - must download first
+4. **Test isolation critical** - Tests writing to production logs can mask issues
+
+## References
+- `.github/CONSTITUTION.md` §V (Integration Tests)
+- `.github/BUG_DRIVEN_DEVELOPMENT.md`
+- Green API Documentation: https://green-api.com/en/docs/api/receiving/notifications-format/incoming-message/ImageMessage/
+- `specs/bugfixes/README.md`
 1. Investigate and document the root cause.
 2. Add a failing test that reproduces the issue.
 3. Implement a fix following TDD/BDD workflow.
