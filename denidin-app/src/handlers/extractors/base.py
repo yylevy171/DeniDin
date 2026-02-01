@@ -1,7 +1,7 @@
 """
-Base interface for media extractors (Feature 003 Phase 4).
+Base interface for media analyzers (Feature 003 Phase 4).
 
-Defines the contract that all media extractors must implement.
+Defines the contract that all media analyzers must implement.
 Ensures consistent return format across all media types.
 """
 from abc import ABC, abstractmethod
@@ -11,11 +11,10 @@ from src.models.media import Media
 
 class MediaExtractor(ABC):
     """
-    Base interface for all media extractors.
+    Base interface for all media analyzers.
     
-    All extractors must implement extract_text() which returns:
-    - extracted_text: The raw text content
-    - document_analysis: AI-generated analysis (type, summary, key_points)
+    All analyzers must implement analyze_media() which returns:
+    - raw_response: The full unmodified AI response
     - extraction_quality: Quality assessment
     - warnings: List of issues encountered
     - model_used: Which model/library was used
@@ -24,7 +23,7 @@ class MediaExtractor(ABC):
     1. Consistent return format across all media types
     2. Easy addition of new media types (audio, video, etc.)
     3. Clear contract for testing
-    4. Flexibility for different extraction strategies
+    4. Flexibility for different analysis strategies
     """
     
     def __init__(self, denidin_context):
@@ -39,9 +38,9 @@ class MediaExtractor(ABC):
         self.ai_handler = denidin_context.ai_handler
     
     @abstractmethod
-    def extract_text(self, media: Media, caption: str = "") -> Dict:
+    def analyze_media(self, media: Media, caption: str = "") -> Dict:
         """
-        Extract text and analyze document.
+        Analyze media and return AI response.
         
         Must return consistent structure across all implementations.
         
@@ -51,12 +50,7 @@ class MediaExtractor(ABC):
             
         Returns:
             {
-                "extracted_text": str | List[str],  # Text content (List for multi-page)
-                "document_analysis": {              # AI-generated analysis
-                    "document_type": str,           # e.g., "contract", "receipt", "generic"
-                    "summary": str,                 # Natural language summary
-                    "key_points": List[str]         # Bullet points of key info
-                } | None,                           # None if analysis skipped (DOCX analyze=False)
+                "raw_response": str,                # Full unmodified AI response
                 "extraction_quality": str | List[str],  # "high", "medium", "low", "failed"
                 "warnings": List[str] | List[List[str]],  # Issues encountered
                 "model_used": str                   # e.g., "gpt-4o", "python-docx"
@@ -66,12 +60,12 @@ class MediaExtractor(ABC):
     
     def supports_analysis(self) -> bool:
         """
-        Whether this extractor includes document analysis.
+        Whether this analyzer includes AI analysis.
         
-        Override if extractor optionally supports analysis.
-        Default: True (most extractors use AI which includes analysis).
+        Override if analyzer optionally supports analysis.
+        Default: True (most analyzers use AI).
         
         Returns:
-            True if document_analysis is always/optionally included
+            True if AI analysis is always/optionally included
         """
         return True

@@ -102,39 +102,29 @@ class MediaHandler:
             media = Media(data=content, mime_type=mime_type, filename=filename)
             
             # Step 5: Extract text + document analysis (Phase 4 extractors)
-            # Extractors work with in-memory Media objects, not file paths
+            # Analyzers work with in-memory Media objects, not file paths
             # Pass caption to provide user context for analysis
-            extraction_result = self._extract_text(media_type, media, caption)
+            analysis_result = self._extract_text(media_type, media, caption)
             
             # Step 6: Create storage folder (CHK019: UTC timestamps)
             storage_folder = self.media_file_manager.create_storage_path()
             
             # Step 7: Save file with DD-{sender_phone}-{uuid}.{ext} naming
-            # File saved AFTER extraction for archival purposes
+            # File saved AFTER analysis for archival purposes
             file_path = self.media_file_manager.save_file(
                 content, storage_folder, filename, sender_phone
             )
             
-            # Check if extraction succeeded
-            extracted_text = extraction_result.get("extracted_text", "")
+            # Step 8: Get the raw AI response as summary (uses only prompts from txt files)
+            # The prompt file defines the format, AI returns it, we pass it as-is
+            summary = analysis_result.get("raw_response", "")
             
-            # Handle list (PDF multi-page) or string
-            if isinstance(extracted_text, list):
-                extracted_text = "\n\n".join(extracted_text)
-            
-            if not extracted_text:
+            # Verify we got a summary from the AI
+            if not summary:
                 return self._error_response(
-                    "Unable to extract text from this file. "
-                    "It might be empty or corrupted."
+                    "Unable to analyze this file. "
+                    "The AI did not return a summary."
                 )
-            
-            # Step 8: Format summary from extractor's document_analysis
-            document_analysis = extraction_result.get("document_analysis")
-            if document_analysis:
-                summary = self._format_summary(document_analysis)
-            else:
-                # Fallback if no analysis (shouldn't happen in Phase 4+)
-                summary = "Document processed successfully."
             
             # Step 9: Create MediaAttachment model
             attachment = MediaAttachment(
@@ -143,7 +133,7 @@ class MediaHandler:
                 file_path=str(file_path),
                 mime_type=mime_type,
                 file_size=file_size,
-                page_count=extraction_result.get("page_count"),
+                page_count=analysis_result.get("page_count"),
                 caption=caption
             )
             
@@ -165,7 +155,7 @@ class MediaHandler:
     
     def _extract_text(self, media_type: str, media: Media, caption: str = "") -> Dict:
         """
-        Route to appropriate extractor based on media type.
+        Route to appropriate analyzer based on media type.
         
         Args:
             media_type: 'image', 'pdf', or 'docx'
@@ -173,49 +163,16 @@ class MediaHandler:
             caption: User's message/question sent with the file (optional)
         
         Returns:
-            Extraction result with extracted_text, document_analysis, etc.
+            Analysis result with raw_response, extraction_quality, etc.
         """
         if media_type == 'image':
-            return self.image_extractor.extract_text(media, caption=caption)
+            return self.image_extractor.analyze_media(media, caption=caption)
         elif media_type == 'pdf':
-            return self.pdf_extractor.extract_text(media, caption=caption)
+            return self.pdf_extractor.analyze_media(media, caption=caption)
         elif media_type == 'docx':
-            return self.docx_extractor.extract_text(media, caption=caption)
+            return self.docx_extractor.analyze_media(media, caption=caption)
         else:
             raise ValueError(f"Unknown media type: {media_type}")
-    
-    def _format_summary(self, document_analysis: Dict) -> str:
-        """
-        Format document_analysis into user-friendly summary.
-        
-        Format:
-        - Summary paragraph
-        - Bullet points for key_points
-        - Currency symbols preserved (CHK037)
-        
-        Args:
-            document_analysis: {
-                "document_type": str,
-                "summary": str,
-                "key_points": List[str]
-            }
-        
-        Returns:
-            Formatted summary string
-        """
-        summary_lines = []
-        
-        # Add summary paragraph
-        if document_analysis.get("summary"):
-            summary_lines.append(document_analysis["summary"])
-            summary_lines.append("")  # Blank line
-        
-        # Add key points as bullets (CHK036)
-        key_points = document_analysis.get("key_points", [])
-        for point in key_points:
-            summary_lines.append(f"• {point}")
-        
-        return "\n".join(summary_lines)
     
     def _error_response(self, message: str) -> Dict:
         """

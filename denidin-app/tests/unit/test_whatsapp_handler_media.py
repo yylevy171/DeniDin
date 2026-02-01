@@ -287,3 +287,176 @@ class TestCaptionHandling:
         call_kwargs = mock_media_handler.process_media_message.call_args[1]
         assert call_kwargs['caption'] == ''
         assert call_kwargs['caption'] is not None
+
+
+class TestGreenApiWebhookStructure:
+    """
+    BUGFIX-007: Test that webhook notifications match Green API specification.
+    These tests verify that our test fixtures and real webhooks have all required fields.
+    """
+    
+    def test_image_notification_has_required_chatid(self, mock_notification_image):
+        """
+        Test that image notification senderData includes chatId (required by Green API).
+        
+        BUG: Current fixtures missing chatId - notification.answer() needs this to send responses.
+        According to Green API docs, senderData MUST have both chatId and sender.
+        """
+        sender_data = mock_notification_image.event.get('senderData', {})
+        
+        # This test will FAIL because fixture is missing chatId
+        assert 'chatId' in sender_data, (
+            "senderData missing required 'chatId' field - "
+            "notification.answer() needs chatId to send responses. "
+            "See: https://green-api.com/en/docs/api/receiving/notifications-format/incoming-message/ImageMessage/"
+        )
+        assert sender_data['chatId'] is not None
+        assert sender_data['chatId'] != ''
+    
+    def test_document_notification_has_required_chatid(self, mock_notification_document):
+        """
+        Test that document notification senderData includes chatId (required by Green API).
+        """
+        sender_data = mock_notification_document.event.get('senderData', {})
+        
+        # This test will FAIL because fixture is missing chatId
+        assert 'chatId' in sender_data, (
+            "senderData missing required 'chatId' field - "
+            "notification.answer() needs chatId to send responses"
+        )
+        assert sender_data['chatId'] is not None
+        assert sender_data['chatId'] != ''
+    
+    def test_chatid_matches_sender_for_personal_chat(self, mock_notification_image):
+        """
+        Test that for 1-on-1 chats, chatId equals sender (Green API convention).
+        
+        In personal chats: chatId == sender (e.g., "79001234567@c.us")
+        In group chats: chatId != sender (chatId uses @g.us suffix)
+        """
+        sender_data = mock_notification_image.event.get('senderData', {})
+        
+        # For personal chats, chatId should equal sender
+        if 'chatId' in sender_data and 'sender' in sender_data:
+            # If sender ends with @c.us (personal chat), chatId should match
+            if sender_data['sender'].endswith('@c.us'):
+                assert sender_data['chatId'] == sender_data['sender'], (
+                    "For personal chats, chatId should equal sender"
+                )
+    
+    def test_all_required_senderdata_fields_present(self, mock_notification_image):
+        """
+        Test that senderData has all mandatory Green API fields.
+        
+        Required fields per Green API docs:
+        - chatId (MANDATORY) - where to send the response
+        - sender (MANDATORY) - who sent the message
+        - chatName (OPTIONAL)
+        - senderName (OPTIONAL)  
+        - senderContactName (OPTIONAL)
+        """
+        sender_data = mock_notification_image.event.get('senderData', {})
+        
+        # Mandatory fields
+        assert 'chatId' in sender_data, "Missing required field: chatId"
+        assert 'sender' in sender_data, "Missing required field: sender"
+        
+        # Verify non-empty
+        assert sender_data['chatId'], "chatId cannot be empty"
+        assert sender_data['sender'], "sender cannot be empty"
+
+
+# Helper functions for bugfix-007 validation tests
+def create_mock_notification_image():
+    """Create mock image notification AS CURRENT CODE DOES (missing chatId)."""
+    notification = MagicMock(spec=Notification)
+    notification.answer = MagicMock()
+    notification.event = {
+        'typeWebhook': 'incomingMessageReceived',
+        'messageData': {
+            'typeMessage': 'imageMessage',
+            'fileMessageData': {
+                'downloadUrl': 'https://api.green-api.com/file/abc123',
+                'caption': 'What is in this photo?',
+                'fileName': 'IMG_001.jpg',
+                'mimeType': 'image/jpeg'
+            }
+        },
+        'senderData': {
+            # MISSING chatId - this is the bug
+            'sender': '972501234567@c.us',
+            'senderName': 'David Cohen'
+        }
+    }
+    return notification
+
+
+def create_mock_notification_document():
+    """Create mock document notification AS CURRENT CODE DOES (missing chatId)."""
+    notification = MagicMock(spec=Notification)
+    notification.answer = MagicMock()
+    notification.event = {
+        'typeWebhook': 'incomingMessageReceived',
+        'messageData': {
+            'typeMessage': 'documentMessage',
+            'fileMessageData': {
+                'downloadUrl': 'https://api.green-api.com/file/xyz789',
+                'caption': 'Please review this contract',
+                'fileName': 'contract.pdf',
+                'mimeType': 'application/pdf'
+            }
+        },
+        'senderData': {
+            # MISSING chatId
+            'sender': '972501234567@c.us',
+            'senderName': 'Sarah Levy'
+        }
+    }
+    return notification
+
+
+def create_mock_notification_video():
+    """Create mock video notification AS CURRENT CODE DOES (missing chatId)."""
+    notification = MagicMock(spec=Notification)
+    notification.answer = MagicMock()
+    notification.event = {
+        'typeWebhook': 'incomingMessageReceived',
+        'messageData': {
+            'typeMessage': 'videoMessage',
+            'fileMessageData': {
+                'downloadUrl': 'https://api.green-api.com/file/vid123',
+                'caption': 'Check out this video',
+                'fileName': 'video.mp4',
+                'mimeType': 'video/mp4'
+            }
+        },
+        'senderData': {
+            # MISSING chatId
+            'sender': '972501234567@c.us',
+            'senderName': 'Mike Jones'
+        }
+    }
+    return notification
+
+
+def create_mock_notification_audio():
+    """Create mock audio notification AS CURRENT CODE DOES (missing chatId)."""
+    notification = MagicMock(spec=Notification)
+    notification.answer = MagicMock()
+    notification.event = {
+        'typeWebhook': 'incomingMessageReceived',
+        'messageData': {
+            'typeMessage': 'audioMessage',
+            'fileMessageData': {
+                'downloadUrl': 'https://api.green-api.com/file/aud456',
+                'fileName': 'voice.ogg',
+                'mimeType': 'audio/ogg'
+            }
+        },
+        'senderData': {
+            # MISSING chatId
+            'sender': '972501234567@c.us',
+            'senderName': 'Rachel Green'
+        }
+    }
+    return notification

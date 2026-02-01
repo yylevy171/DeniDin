@@ -194,9 +194,8 @@ class TestMediaFlowIntegration:
         # Note: Exact matching depends on AI extraction quality
         assert "20,000" in summary or "20000" in summary, "Amount not found in summary"
         
-        # Hebrew verification
-        # Note: May need adjustment if responses aren't Hebrew yet
-        # assert_hebrew_response(summary)
+        # Hebrew verification - MUST be Hebrew only
+        assert_hebrew_response(summary, min_ratio=0.85)
     
     @pytest.mark.expensive
     def test_uc5_missing_identification_prompt(self, media_handler, fixtures_dir):
@@ -453,6 +452,11 @@ class TestMediaFlowIntegration:
             print(f"Summary: {result['summary']}")
             
             assert result["success"] is True
+            
+            # Verify Hebrew-only response
+            summary = result["summary"]
+            if summary:
+                assert_hebrew_response(summary, min_ratio=0.85)
     
     @pytest.mark.expensive
     def test_real_hebrew_docx(self, media_handler, fixtures_dir):
@@ -480,6 +484,11 @@ class TestMediaFlowIntegration:
         print(f"Summary: {result['summary']}")
         
         assert result["success"] is True
+        
+        # Verify Hebrew-only response
+        summary = result["summary"]
+        if summary:
+            assert_hebrew_response(summary, min_ratio=0.85)
     
     @pytest.mark.expensive
     def test_real_hebrew_pdf(self, media_handler, fixtures_dir):
@@ -507,3 +516,8 @@ class TestMediaFlowIntegration:
         print(f"Summary: {result['summary']}")
         
         assert result["success"] is True
+        
+        # Verify Hebrew-only response
+        summary = result["summary"]
+        if summary:
+            assert_hebrew_response(summary, min_ratio=0.85)

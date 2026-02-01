@@ -5,6 +5,37 @@ These models represent the EXACT webhook notification structures as defined by G
 Documentation: https://green-api.com/en/docs/api/receiving/notifications-format/
 
 All models match Green API specification precisely for accurate testing and integration.
+
+**CRITICAL: SDK Integration with whatsapp-chatbot-python**
+
+We use the official Green API Python SDK: whatsapp-chatbot-python (v0.9.8+)
+GitHub: https://github.com/green-api/whatsapp-chatbot-python
+
+The SDK provides:
+- GreenAPIBot: Bot instance that connects to Green API
+- Notification: Wrapper around webhook notifications with .answer() method
+
+**Why chatId is REQUIRED in senderData:**
+
+When our handlers call notification.answer(message), the SDK internally:
+1. Calls notification.get_chat() 
+2. Extracts chatId from notification.event["senderData"]["chatId"]
+3. Calls Green API SendMessage endpoint with the chatId
+
+Without chatId in senderData, notification.answer() will raise KeyError.
+
+This is an SDK requirement, not a direct Green API API requirement. The Green API
+SendMessage endpoint only needs {chatId, message}, but the SDK's convenience method
+notification.answer() depends on chatId being in the incoming notification structure.
+
+**Incoming vs Outgoing Structure:**
+- Incoming (webhook): Complex nested structure with senderData.chatId
+- Outgoing (SendMessage API): Flat {chatId, message}
+- SDK bridges these by extracting chatId from incoming structure
+
+**Test Fixture Requirements:**
+All test fixtures MUST include chatId in senderData to match real Green API webhooks
+and to be compatible with the SDK's notification.answer() method.
 """
 
 from dataclasses import dataclass, field
@@ -21,9 +52,19 @@ class InstanceData:
 
 @dataclass
 class SenderData:
-    """Green API sender data object."""
-    chatId: str
-    sender: str
+    """
+    Green API sender data object.
+    
+    **CRITICAL FIELD: chatId**
+    - chatId is REQUIRED for notification.answer() to work
+    - SDK extracts chatId to determine where to send responses
+    - For 1-on-1 chats: chatId == sender (same WhatsApp ID)
+    - For group chats: chatId = group ID, sender = individual who sent message
+    
+    Without chatId, the SDK cannot route responses and will raise KeyError.
+    """
+    chatId: str  # REQUIRED - where to send the response
+    sender: str  # REQUIRED - who sent the message
     chatName: Optional[str] = None
     senderName: Optional[str] = None
     senderContactName: Optional[str] = None
@@ -83,200 +124,82 @@ class MessageData:
     textMessage: Optional[str] = None
 
 
-@dataclass
-class GreenApiNotification:
+class NotificationValidationError(Exception):
     """
-    Complete Green API webhook notification object.
+    Raised when notification object fails validation before sending response.
     
-    This represents the EXACT structure sent by Green API webhooks.
-    Use this for integration testing to ensure webhook parsing is correct.
-    
-    Example for imageMessage:
-    {
-      "typeWebhook": "incomingMessageReceived",
-      "instanceData": {...},
-      "timestamp": 1588091580,
-      "idMessage": "F7AEC1B7086ECDC7E6E45923F5EDB825",
-      "senderData": {...},
-      "messageData": {
-        "typeMessage": "imageMessage",
-        "fileMessageData": {
-          "downloadUrl": "https://api.green-api.com/...",
-          "caption": "Image",
-          "fileName": "example.jpg",
-          "mimeType": "image/jpeg"
-        }
-      }
-    }
+    This exception is raised when trying to validate a notification that doesn't
+    match the structure required by the whatsapp-chatbot-python SDK.
     """
-    typeWebhook: str
-    timestamp: int
-    idMessage: str
-    senderData: SenderData
-    messageData: MessageData
-    instanceData: Optional[InstanceData] = None
+    pass
+
+
+def validate_notification_for_response(notification: Any) -> None:
+    """
+    Validate that notification has required fields for SDK's notification.answer().
     
-    # For compatibility with whatsapp_chatbot_python library's Notification interface
-    def __init__(
-        self,
-        typeWebhook: str,
-        timestamp: int,
-        idMessage: str,
-        senderData: Dict[str, Any],
-        messageData: Dict[str, Any],
-        instanceData: Optional[Dict[str, Any]] = None
-    ):
-        self.typeWebhook = typeWebhook
-        self.timestamp = timestamp
-        self.idMessage = idMessage
-        self.instanceData = InstanceData(**instanceData) if instanceData else None
-        self.senderData = SenderData(**senderData)
-        
-        # Build MessageData with nested FileMessageData if present
-        msg_data_dict = messageData.copy()
-        if 'fileMessageData' in msg_data_dict and msg_data_dict['fileMessageData']:
-            msg_data_dict['fileMessageData'] = FileMessageData(**msg_data_dict['fileMessageData'])
-        if 'quotedMessage' in msg_data_dict and msg_data_dict['quotedMessage']:
-            msg_data_dict['quotedMessage'] = QuotedMessage(**msg_data_dict['quotedMessage'])
-        
-        self.messageData = MessageData(**msg_data_dict)
-        
-        # For compatibility with Notification interface: store as 'event' dict
-        # The 'event' property should match the full Green API webhook structure
-        self.event = {
-            'typeWebhook': typeWebhook,
-            'timestamp': timestamp,
-            'idMessage': idMessage,
-            'messageData': messageData,  # Keep original dict with nested structure
-            'senderData': senderData
-        }
-        if instanceData:
-            self.event['instanceData'] = instanceData
-        
-        # Store sent messages for testing
-        self._sent_messages = []
+    **CRITICAL: SDK Dependency**
+    The whatsapp-chatbot-python SDK's notification.answer() method internally calls:
+        notification.get_chat() -> returns notification.event["senderData"]["chatId"]
     
-    def answer(self, message: str) -> None:
-        """
-        Send response to user (for testing - captures the message).
-        This implements the Notification interface for compatibility.
-        """
-        self._sent_messages.append(message)
+    Without chatId, the SDK raises KeyError and cannot send responses.
     
-    def get_sent_message(self) -> Optional[str]:
-        """Get the first message sent to user (for test assertions)."""
-        return self._sent_messages[0] if self._sent_messages else None
+    This validation catches structural issues BEFORE calling notification.answer(),
+    providing clear error messages for debugging.
     
-    @classmethod
-    def create_image_message(
-        cls,
-        sender: str,
-        download_url: str,
-        file_name: str = "image.jpg",
-        mime_type: str = "image/jpeg",
-        caption: str = "",
-        sender_name: str = "Test User",
-        chat_id: Optional[str] = None
-    ) -> "GreenApiNotification":
-        """
-        Factory method to create a realistic imageMessage webhook notification.
-        
-        Args:
-            sender: WhatsApp ID (e.g., "972501234567@c.us")
-            download_url: File download URL
-            file_name: Image file name
-            mime_type: Image MIME type
-            caption: Image caption
-            sender_name: Sender display name
-            chat_id: Chat ID (defaults to sender for direct messages)
-        
-        Returns:
-            GreenApiNotification with correct nested structure
-        """
-        chat_id = chat_id or sender
-        
-        return cls(
-            typeWebhook="incomingMessageReceived",
-            timestamp=1588091580,
-            idMessage="TEST_MESSAGE_ID",
-            instanceData={
-                "idInstance": 7103000000,
-                "wid": "79876543210@c.us",
-                "typeInstance": "whatsapp"
-            },
-            senderData={
-                "chatId": chat_id,
-                "sender": sender,
-                "senderName": sender_name,
-                "chatName": sender_name
-            },
-            messageData={
-                "typeMessage": "imageMessage",
-                "fileMessageData": {
-                    "downloadUrl": download_url,
-                    "caption": caption,
-                    "fileName": file_name,
-                    "mimeType": mime_type,
-                    "jpegThumbnail": "",
-                    "isForwarded": False,
-                    "forwardingScore": 0
-                }
-            }
+    **NOT a Green API requirement** - The Green API SendMessage endpoint only needs
+    {chatId, message}. This is a requirement of the SDK's convenience wrapper.
+    
+    Args:
+        notification: Notification object from whatsapp-chatbot-python SDK
+    
+    Raises:
+        NotificationValidationError: If notification structure doesn't match SDK requirements
+    
+    Required structure for SDK compatibility:
+        notification.event['senderData']['chatId'] - MUST exist and be non-empty
+    
+    Example usage in handlers:
+        >>> validate_notification_for_response(notification)
+        >>> notification.answer("Response message")  # Safe - SDK can extract chatId
+    """
+    # Check notification has event dict
+    if not hasattr(notification, 'event'):
+        raise NotificationValidationError(
+            "Notification object missing 'event' attribute. "
+            "Cannot validate notification structure."
         )
     
-    @classmethod
-    def create_document_message(
-        cls,
-        sender: str,
-        download_url: str,
-        file_name: str,
-        mime_type: str,
-        caption: str = "",
-        sender_name: str = "Test User",
-        chat_id: Optional[str] = None
-    ) -> "GreenApiNotification":
-        """
-        Factory method to create a realistic documentMessage webhook notification.
-        
-        Args:
-            sender: WhatsApp ID (e.g., "972501234567@c.us")
-            download_url: File download URL
-            file_name: Document file name
-            mime_type: Document MIME type
-            caption: Document caption
-            sender_name: Sender display name
-            chat_id: Chat ID (defaults to sender for direct messages)
-        
-        Returns:
-            GreenApiNotification with correct nested structure
-        """
-        chat_id = chat_id or sender
-        
-        return cls(
-            typeWebhook="incomingMessageReceived",
-            timestamp=1588091580,
-            idMessage="TEST_MESSAGE_ID",
-            instanceData={
-                "idInstance": 7103000000,
-                "wid": "79876543210@c.us",
-                "typeInstance": "whatsapp"
-            },
-            senderData={
-                "chatId": chat_id,
-                "sender": sender,
-                "senderName": sender_name,
-                "chatName": sender_name
-            },
-            messageData={
-                "typeMessage": "documentMessage",
-                "fileMessageData": {
-                    "downloadUrl": download_url,
-                    "caption": caption,
-                    "fileName": file_name,
-                    "mimeType": mime_type,
-                    "jpegThumbnail": "",
-                    "isForwarded": False,
-                    "forwardingScore": 0
-                }
-            }
+    event = notification.event
+    
+    # Check senderData exists
+    if 'senderData' not in event:
+        raise NotificationValidationError(
+            "Notification event missing 'senderData' field. "
+            "Cannot send response without sender information.\n"
+            f"Event keys: {list(event.keys())}"
+        )
+    
+    sender_data = event['senderData']
+    
+    # Check chatId exists (CRITICAL for SDK compatibility)
+    if 'chatId' not in sender_data:
+        raise NotificationValidationError(
+            "Notification senderData missing required 'chatId' field.\n"
+            "The whatsapp-chatbot-python SDK requires chatId to route responses.\n"
+            "SDK calls: notification.get_chat() -> event['senderData']['chatId']\n"
+            f"Current senderData keys: {list(sender_data.keys())}\n"
+            f"Current senderData: {sender_data}\n"
+            "\n"
+            "Fix: Ensure test fixtures include chatId in senderData.\n"
+            "Real Green API webhooks ALWAYS include chatId.\n"
+            "For 1-on-1 chats: chatId should equal sender field."
+        )
+    
+    # Check chatId is not empty
+    chat_id = sender_data['chatId']
+    if not chat_id or not str(chat_id).strip():
+        raise NotificationValidationError(
+            f"Notification senderData has empty chatId: '{chat_id}'. "
+            "chatId must be a non-empty string to route responses."
         )

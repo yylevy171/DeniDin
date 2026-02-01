@@ -458,6 +458,19 @@ if config.feature_flags.get("enable_memory_system", False):
   - Logs persist across test runs for debugging and analysis
 - All code-modifying operations must use CLI tools
 
+**Test Execution Efficiency**:
+- **DO NOT run tests repeatedly without code changes**
+- **Workflow**:
+  1. Run test ONCE and redirect ALL output to a log file: `pytest ... > test_output.log 2>&1`
+  2. Analyze the log file to understand failures
+  3. Make code changes based on analysis
+  4. ONLY THEN run the test again
+- **Rationale**: 
+  - Integration tests make expensive API calls ($0.02-0.05 per test)
+  - Running tests wastes time and money without providing new information
+  - Log files contain complete diagnostic information - use them
+  - Tests should only be re-run after code changes that might affect results
+
 **Rationale**: CLI operations are scriptable, automatable, reproducible, and work consistently across platforms.
 
 ---

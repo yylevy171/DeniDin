@@ -14,9 +14,12 @@ CHK Requirements:
 import io
 from pathlib import Path
 from typing import Dict, List, Optional
+import logging
 from docx import Document
 from src.models.media import Media
 from src.handlers.extractors.base import MediaExtractor
+
+logger = logging.getLogger(__name__)
 
 
 class DOCXExtractor(MediaExtractor):
@@ -31,29 +34,24 @@ class DOCXExtractor(MediaExtractor):
         """
         super().__init__(denidin_context)
     
-    def extract_text(self, media: Media, analyze: bool = True, caption: str = "") -> Dict:
+    def analyze_media(self, media: Media, analyze: bool = True, caption: str = "") -> Dict:
         """
-        Extract text from DOCX and optionally analyze with AI (Phase 4).
+        Analyze DOCX using AI (Phase 4).
         
         Text extraction is always done via python-docx (no AI needed).
-        Document analysis is optional and requires AI call.
+        Document analysis is optional and uses AI call.
         
         CHK006: Hebrew support via UTF-8.
         CHK010: Preserve paragraph structure.
         
         Args:
             media: Media object containing DOCX data in memory
-            analyze: If True, use AI to analyze document type/content (Phase 4)
+            analyze: If True, use AI to analyze document (Phase 4)
             caption: User's message/question sent with the document (optional)
             
         Returns:
             {
-                "extracted_text": str,
-                "document_analysis": {  # Only if analyze=True
-                    "document_type": str,
-                    "summary": str,
-                    "key_points": List[str]
-                } or None,  # None if analyze=False
+                "raw_response": str,  # AI analysis response
                 "extraction_quality": str,
                 "warnings": List[str],
                 "model_used": str  # "python-docx" or "python-docx + gpt-4o"
@@ -89,19 +87,18 @@ class DOCXExtractor(MediaExtractor):
                 warnings.append("Document appears empty")
             
             # Phase 4: Optional AI-powered document analysis
-            document_analysis = None
             model_used = "python-docx"
             extraction_quality = "high"  # python-docx is deterministic
+            raw_response = ""
             
             if analyze and extracted_text:
                 # Call AI to analyze the extracted text
                 analysis_result = self._analyze_document(extracted_text, caption)
-                document_analysis = analysis_result["document_analysis"]
+                raw_response = analysis_result.get("raw_response", "")
                 model_used = f"python-docx + {analysis_result['model_used']}"
             
             return {
-                "extracted_text": extracted_text,
-                "document_analysis": document_analysis,
+                "raw_response": raw_response,
                 "extraction_quality": extraction_quality,
                 "warnings": warnings,
                 "model_used": model_used
@@ -110,10 +107,9 @@ class DOCXExtractor(MediaExtractor):
         except Exception as e:
             # CHK005, CHK007: Graceful failure on corrupted/invalid files
             return {
-                "extracted_text": "",
-                "document_analysis": None,
+                "raw_response": "",
                 "extraction_quality": "failed",
-                "warnings": [f"DOCX extraction failed: {str(e)}"],
+                "warnings": [f"DOCX analysis failed: {str(e)}"],
                 "model_used": "python-docx"
             }
     
@@ -127,6 +123,7 @@ class DOCXExtractor(MediaExtractor):
             
         Returns:
             {
+                "raw_response": str,  # Full AI response from prompt
                 "document_analysis": {
                     "document_type": str,
                     "summary": str,
@@ -158,25 +155,51 @@ class DOCXExtractor(MediaExtractor):
             focusing_note=focusing_note
         )
         
+        logger.info(f"[DOCXExtractor._analyze_document] Exact prompt being sent ({len(prompt)} chars):")
+        logger.info(f"[DOCXExtractor._analyze_document] {prompt}")
+        
         try:
             # Load constitution and prepend to prompt (NO system message!)
             constitution = self.ai_handler._load_constitution()
             full_prompt = f"{constitution}\n\n{prompt}" if constitution else prompt
             
+            logger.debug(f"[DOCXExtractor._analyze_document] Full prompt length: {len(full_prompt)} chars")
+            logger.debug(f"[DOCXExtractor._analyze_document] Constitution loaded: {bool(constitution)}")
+            logger.debug(f"[DOCXExtractor._analyze_document] Constitution preview: {constitution[:200] if constitution else 'NONE'}")
+            
             # Use text model for analysis (constitution in user prompt, NOT system message)
-            response = self.ai_handler.send_message(full_prompt)
-            
-            # Parse response
-            analysis = self._parse_analysis_response(response)
-            
+            from src.models.message import AIRequest
+            request = AIRequest(
+                user_prompt=full_prompt,
+                constitution=constitution,
+                max_tokens=self.config.ai_reply_max_tokens,
+                temperature=self.config.temperature,
+                model=self.config.ai_model,
+                chat_id="docx-analysis",
+                message_id="docx-analysis"
+            )
+            ai_response = self.ai_handler.get_response(request)
+            response_text = ai_response.response_text
+
+            logger.info(f"[DOCXExtractor._analyze_document] Raw AI response ({len(response_text)} chars):")
+            logger.info(f"[DOCXExtractor._analyze_document] {response_text}")
+
+            # No parsing - just pass raw response through as-is
             return {
-                "document_analysis": analysis,
+                "raw_response": response_text,  # Full unmodified AI response
+                "document_analysis": {
+                    "document_type": "generic",
+                    "summary": "See raw_response",
+                    "key_points": []
+                },
                 "model_used": self.config.ai_model  # Text model, not vision
             }
             
         except Exception as e:
             # Fallback on AI failure
+            logger.error(f"[DOCXExtractor._analyze_document] Analysis failed: {str(e)}", exc_info=True)
             return {
+                "raw_response": "",
                 "document_analysis": {
                     "document_type": "generic",
                     "summary": "Document analysis failed",
@@ -184,45 +207,4 @@ class DOCXExtractor(MediaExtractor):
                 },
                 "model_used": self.config.ai_model
             }
-    
-    def _parse_analysis_response(self, response: str) -> Dict:
-        """
-        Parse AI response into structured document_analysis.
-        
-        Args:
-            response: AI response text
-            
-        Returns:
-            {
-                "document_type": str,
-                "summary": str,
-                "key_points": List[str]
-            }
-        """
-        document_type = "generic"
-        summary = ""
-        key_points = []
-        
-        lines = response.strip().split("\n")
-        current_section = None
-        
-        for line in lines:
-            line = line.strip()
-            
-            if line.startswith("DOCUMENT_TYPE:"):
-                document_type = line.split(":", 1)[1].strip().lower()
-            elif line.startswith("SUMMARY:"):
-                summary = line.split(":", 1)[1].strip()
-            elif line.startswith("KEY_POINTS:"):
-                current_section = "key_points"
-            elif current_section == "key_points" and line.startswith("-"):
-                point = line.lstrip("-").strip()
-                if point:
-                    key_points.append(point)
-        
-        return {
-            "document_type": document_type,
-            "summary": summary or "Document text extracted",
-            "key_points": key_points
-        }
 
