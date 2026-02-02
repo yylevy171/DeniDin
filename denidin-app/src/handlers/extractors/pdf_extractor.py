@@ -13,6 +13,7 @@ CHK Requirements:
 """
 from typing import Dict, List
 import io
+import logging
 try:
     import fitz  # PyMuPDF
 except ImportError:
@@ -21,6 +22,8 @@ except ImportError:
 from src.models.media import Media
 from src.handlers.extractors.base import MediaExtractor
 from src.handlers.extractors.image_extractor import ImageExtractor
+
+logger = logging.getLogger(__name__)
 
 
 class PDFExtractor(MediaExtractor):
@@ -43,31 +46,25 @@ class PDFExtractor(MediaExtractor):
         # Create ImageExtractor for page processing
         self.image_extractor = ImageExtractor(denidin_context)
     
-    def extract_text(self, media: Media, caption: str = "") -> Dict:
+    def analyze_media(self, media: Media, caption: str = "") -> Dict:
         """
-        Extract text AND analyze document from PDF (Phase 4 enhancement).
+        Analyze PDF using GPT-4o Vision (Phase 4 enhancement).
         
-        Converts each page to image, extracts text + analysis per page,
-        then aggregates into single document analysis.
-        
-        Args:
-            media: Media object containing PDF data
-            caption: User's message/question sent with the PDF (optional)
+        Multi-page PDF processing:
+        1. Convert each page to image
+        2. Send to Vision API for analysis
+        3. Combine raw_responses from all pages
         
         Args:
             media: Media object containing PDF data in memory
+            caption: User's message/question sent with the PDF (optional)
             
         Returns:
             {
-                "extracted_text": List[str],  # Per-page text
-                "document_analysis": {         # Aggregated from all pages
-                    "document_type": str,
-                    "summary": str,
-                    "key_points": List[str]
-                },
-                "extraction_quality": List[str],  # Per-page quality
-                "warnings": List[List[str]],  # Per-page warnings
-                "model_used": str
+                "raw_response": str,  # Combined AI responses from all pages
+                "extraction_quality": List[str],  # Quality per page
+                "warnings": List[List[str]],  # Warnings per page
+                "model_used": str  # e.g. "gpt-4o"
             }
         """
         try:
@@ -93,7 +90,7 @@ class PDFExtractor(MediaExtractor):
             if page_count == 0:
                 pdf_document.close()
                 return {
-                    "extracted_text": [],
+                    "raw_response": "סיכום: Empty PDF document",
                     "document_analysis": {
                         "document_type": "generic",
                         "summary": "Empty PDF document",
@@ -105,16 +102,17 @@ class PDFExtractor(MediaExtractor):
                 }
             
             # Process each page
-            extracted_texts = []
+            raw_responses = []  # Collect raw_response from each page
             extraction_qualities = []
             warnings_list = []
-            page_analyses = []  # Phase 4: Collect analyses from each page
+            page_analyses = []  # Collect analyses from each page
             
             for page_num, page in enumerate(pdf_document):
                 try:
                     # Convert page to image (PNG format)
                     pixmap = page.get_pixmap()
                     png_bytes = pixmap.tobytes(output="png")
+                    logger.info(f"[PDFExtractor.analyze_media] Page {page_num + 1}: Converted to PNG ({len(png_bytes)} bytes, {pixmap.width}x{pixmap.height}px)")
                     
                     # Create Media object for the page image
                     page_media = Media.from_bytes(
@@ -123,31 +121,33 @@ class PDFExtractor(MediaExtractor):
                         filename=f"page_{page_num + 1}.png"
                     )
                     
-                    # Delegate to ImageExtractor (returns text + analysis)
+                    # Delegate to ImageExtractor (returns raw_response)
                     # Pass caption to provide context for analysis
-                    page_result = self.image_extractor.extract_text(page_media, caption=caption)
+                    logger.info(f"[PDFExtractor.analyze_media] Sending page {page_num + 1} to ImageExtractor")
+                    page_result = self.image_extractor.analyze_media(page_media, caption=caption)
                     
                     # Collect per-page results
-                    extracted_texts.append(page_result["extracted_text"])
+                    raw_responses.append(page_result["raw_response"])
                     extraction_qualities.append(page_result["extraction_quality"])
                     warnings_list.append(page_result["warnings"])
-                    page_analyses.append(page_result["document_analysis"])
+                    logger.info(f"[PDFExtractor.analyze_media] Page {page_num + 1} analysis complete: {len(page_result.get('raw_response', ''))} chars")
                     
                 except Exception as e:
                     # CHK007: Handle per-page failures gracefully
-                    extracted_texts.append("")
+                    logger.error(f"[PDFExtractor.analyze_media] Page {page_num + 1} failed: {e}", exc_info=True)
+                    raw_responses.append("")
                     extraction_qualities.append("failed")
                     warnings_list.append([f"Page {page_num + 1} failed: {str(e)}"])
-                    page_analyses.append(None)
             
             pdf_document.close()
             
-            # Phase 4: Aggregate document analysis from all pages
-            aggregated_analysis = self._aggregate_document_analysis(page_analyses)
+            # For PDFs, combine raw_responses from all pages
+            combined_raw_response = "\n---\n".join([r for r in raw_responses if r])
+            if not combined_raw_response:
+                combined_raw_response = "סיכום: PDF analysis completed but no content extracted"
             
             return {
-                "extracted_text": extracted_texts,
-                "document_analysis": aggregated_analysis,
+                "raw_response": combined_raw_response,
                 "extraction_quality": extraction_qualities,
                 "warnings": warnings_list,
                 "model_used": self.vision_model
@@ -156,69 +156,9 @@ class PDFExtractor(MediaExtractor):
         except Exception as e:
             # CHK007: Fail gracefully on PDF-level errors
             return {
-                "extracted_text": [],
-                "document_analysis": {
-                    "document_type": "generic",
-                    "summary": "PDF analysis failed",
-                    "key_points": []
-                },
+                "raw_response": "",
                 "extraction_quality": [],
-                "warnings": [[f"PDF extraction failed: {str(e)}"]],
+                "warnings": [[f"PDF analysis failed: {str(e)}"]],
                 "model_used": self.vision_model
             }
-    
-    def _aggregate_document_analysis(self, page_analyses: List[Dict]) -> Dict:
-        """
-        Aggregate document analysis from multiple pages into single summary.
-        
-        Strategy:
-        - document_type: Use most common type across pages
-        - summary: Combine summaries from all pages
-        - key_points: Merge and deduplicate key points
-        
-        Args:
-            page_analyses: List of document_analysis dicts from each page
-            
-        Returns:
-            Aggregated document_analysis dict
-        """
-        # Filter out None/failed analyses
-        valid_analyses = [a for a in page_analyses if a is not None]
-        
-        if not valid_analyses:
-            return {
-                "document_type": "generic",
-                "summary": "No valid analysis available",
-                "key_points": []
-            }
-        
-        # Determine document type (most common)
-        doc_types = [a["document_type"] for a in valid_analyses]
-        document_type = max(set(doc_types), key=doc_types.count) if doc_types else "generic"
-        
-        # Combine summaries
-        summaries = [a["summary"] for a in valid_analyses if a["summary"]]
-        if summaries:
-            if len(summaries) == 1:
-                summary = summaries[0]
-            else:
-                summary = f"Multi-page document: {' '.join(summaries)[:200]}..."  # Limit length
-        else:
-            summary = "PDF document"
-        
-        # Merge and deduplicate key points
-        all_points = []
-        seen_points = set()
-        for analysis in valid_analyses:
-            for point in analysis.get("key_points", []):
-                # Simple deduplication by lowercased content
-                point_lower = point.lower()
-                if point_lower not in seen_points:
-                    all_points.append(point)
-                    seen_points.add(point_lower)
-        
-        return {
-            "document_type": document_type,
-            "summary": summary,
-            "key_points": all_points
-        }
+

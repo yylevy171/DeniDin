@@ -262,12 +262,18 @@ class WhatsAppHandler:
         sender_data = notification.event.get('senderData', {})
         
         # Extract media information from Green API webhook
-        file_url = message_data.get('downloadUrl', '')
-        filename = message_data.get('fileName', 'unknown')
-        mime_type = message_data.get('mimeType', '')
-        file_size = message_data.get('fileSize', 0)
-        caption = message_data.get('caption', '')  # CHK111: WhatsApp message text
+        # Green API nests file metadata inside fileMessageData object
+        file_message_data = message_data.get('fileMessageData', {})
+        
+        file_url = file_message_data.get('downloadUrl', '')
+        filename = file_message_data.get('fileName', 'unknown')
+        mime_type = file_message_data.get('mimeType', '')
+        caption = file_message_data.get('caption', '')  # CHK111: WhatsApp message text
         sender = sender_data.get('sender', '')
+        
+        # Note: Green API does NOT provide fileSize in webhook
+        # File size will be determined after download by MediaFileManager
+        file_size = 0  # Placeholder - actual size determined after download
         
         logger.info(f"Processing media message: {filename} ({mime_type}) from {sender}")
         

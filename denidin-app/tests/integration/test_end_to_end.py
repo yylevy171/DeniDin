@@ -6,10 +6,8 @@ import os
 import sys
 import time
 import pytest
-from unittest.mock import patch, MagicMock
 
-# Mock external dependencies
-sys.modules['whatsapp_chatbot_python'] = MagicMock()
+# Real external dependencies (no mocking)
 
 from whatsapp_api_client_python.API import GreenAPI
 from src.models.config import AppConfiguration

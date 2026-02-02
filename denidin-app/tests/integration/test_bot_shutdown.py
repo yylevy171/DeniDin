@@ -6,11 +6,9 @@ Phase 6: US4 - Configuration & Deployment (T047a)
 import sys
 import signal
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 
-# Mock external dependencies
-sys.modules['whatsapp_chatbot_python'] = MagicMock()
+# Real external dependencies (no mocking)
 
 
 class TestGracefulShutdown:
@@ -124,24 +122,6 @@ class TestGracefulShutdown:
                 break
         
         assert in_keyboard_interrupt_block, "KeyboardInterrupt exception handler not found"
-
-    @patch('signal.signal')
-    def test_mock_signal_handlers(self, mock_signal):
-        """Test that signal handlers can be mocked and registered."""
-        import signal
-        
-        # Create mock signal handler
-        def mock_handler(signum, frame):
-            print(f"Received signal {signum}")
-        
-        # Register handler (this is what bot.py will do in T047b)
-        signal.signal(signal.SIGINT, mock_handler)
-        signal.signal(signal.SIGTERM, mock_handler)
-        
-        # In actual implementation, this would be in denidin.py
-        # For now, verify signal registration works
-        mock_signal.assert_any_call(signal.SIGINT, mock_handler)
-        mock_signal.assert_any_call(signal.SIGTERM, mock_handler)
 
     def test_shutdown_handler_structure_in_bot_file(self):
         """Test that bot file has proper structure for graceful shutdown."""

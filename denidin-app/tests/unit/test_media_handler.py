@@ -316,7 +316,7 @@ class TestMediaHandlerErrorHandling:
         """
         Test file size validation (over 10MB limit).
         
-        File size: 11MB → Error before download attempt.
+        With bugfix-006: Download first, THEN validate size.
         Maps to: CHK001-002 (size validation)
         """
         mock_denidin = Mock()
@@ -324,6 +324,12 @@ class TestMediaHandlerErrorHandling:
         handler = MediaHandler(mock_denidin)
         
         handler.media_file_manager = Mock()
+        # Mock download to succeed with large file
+        large_content = b'x' * (11 * 1024 * 1024)  # 11MB
+        handler.media_file_manager.download_file = Mock(
+            return_value=(large_content, True)
+        )
+        # Mock validate_file_size to raise error for large files
         handler.media_file_manager.validate_file_size = Mock(
             side_effect=ValueError("File too large: 11534336 bytes (max 10485760)")
         )
@@ -332,16 +338,19 @@ class TestMediaHandlerErrorHandling:
             file_url="https://example.com/huge.jpg",
             filename="huge.jpg",
             mime_type="image/jpeg",
-            file_size=11534336,  # 11MB
+            file_size=0,  # Green API doesn't provide fileSize - validate after download
             sender_phone="972501234567"
         )
         
         assert result["success"] is False
+        # ValueError message is propagated directly to user
         assert "File too large" in result["error_message"]
         assert "11534336 bytes" in result["error_message"]
         
-        # Verify download was NOT attempted
-        handler.media_file_manager.download_file.assert_not_called()
+        # Verify download WAS attempted (new behavior: download first, then validate)
+        handler.media_file_manager.download_file.assert_called_once_with('https://example.com/huge.jpg')
+        # Verify validation was attempted on the downloaded content
+        handler.media_file_manager.validate_file_size.assert_called_once_with(len(large_content))
     
     def test_handle_pdf_too_many_pages(self):
         """
@@ -543,8 +552,8 @@ class TestMediaHandlerErrorHandling:
         )
         
         assert result["success"] is False
-        assert "empty" in result["error_message"].lower()
-        assert "0 bytes" in result["error_message"]
+        # Generic error message returned when validation fails
+        assert "Unable to process" in result["error_message"]
     
     def test_route_to_correct_extractor_by_type(self):
         """

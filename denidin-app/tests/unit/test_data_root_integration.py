@@ -11,7 +11,6 @@ import json
 import pytest
 import shutil
 from pathlib import Path
-from unittest.mock import MagicMock
 
 from src.managers.session_manager import SessionManager
 from src.managers.memory_manager import MemoryManager

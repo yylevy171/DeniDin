@@ -1,17 +1,15 @@
 """
 Integration tests for denidin.py initialization and startup.
-Tests bot behavior end-to-end with simplified mocking.
+Tests bot behavior end-to-end.
 """
 import os
 import sys
 import pytest
 import tempfile
 import json
-from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 
-# Mock external dependencies BEFORE importing bot
-sys.modules['whatsapp_chatbot_python'] = MagicMock()
+# Real external dependencies (no mocking)
 
 
 class TestAppConfiguration:

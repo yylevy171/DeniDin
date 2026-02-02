@@ -64,7 +64,7 @@ def test_extract_hebrew_multipage_pdf(pdf_extractor, mock_image_extractor):
         mock_fitz.open.return_value = mock_doc
         
         # Mock ImageExtractor to return different results per page
-        mock_image_extractor.extract_text.side_effect = [
+        mock_image_extractor.analyze_media.side_effect = [
             {
                 "extracted_text": "עמוד ראשון",
                 "document_analysis": {
@@ -101,10 +101,10 @@ def test_extract_hebrew_multipage_pdf(pdf_extractor, mock_image_extractor):
         ]
         
         # Extract text
-        result = pdf_extractor.extract_text(pdf_media)
+        result = pdf_extractor.analyze_media(pdf_media)
         
         # Verify per-page arrays
-        assert result["extracted_text"] == ["עמוד ראשון", "עמוד שני", "עמוד שלישי"]
+        assert result["raw_response"] == ["עמוד ראשון", "עמוד שני", "עמוד שלישי"]
         assert result["extraction_quality"] == ["high", "medium", "high"]
         assert result["warnings"] == [[], ["AI notes: slight blur"], []]
         assert result["model_used"] == "gpt-4o"
@@ -157,10 +157,10 @@ def test_extract_single_page_pdf(pdf_extractor, mock_image_extractor):
             "model_used": "gpt-4o"
         }
         
-        result = pdf_extractor.extract_text(pdf_media)
+        result = pdf_extractor.analyze_media(pdf_media)
         
         # Single-element arrays
-        assert result["extracted_text"] == ["Single page text"]
+        assert result["raw_response"] == ["Single page text"]
         assert result["extraction_quality"] == ["high"]
         assert result["warnings"] == [[]]
         assert result["model_used"] == "gpt-4o"
@@ -185,10 +185,10 @@ def test_extract_empty_pdf(pdf_extractor, mock_image_extractor):
         mock_doc.__iter__.return_value = []
         mock_fitz.open.return_value = mock_doc
         
-        result = pdf_extractor.extract_text(pdf_media)
+        result = pdf_extractor.analyze_media(pdf_media)
         
         # Empty arrays for empty PDF
-        assert result["extracted_text"] == []
+        assert result["raw_response"] == []
         assert result["extraction_quality"] == []
         assert result["warnings"] == []
         assert result["model_used"] == "gpt-4o"
@@ -210,10 +210,10 @@ def test_pymupdf_failure_handling(pdf_extractor, mock_image_extractor):
     with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
         mock_fitz.open.side_effect = Exception("PDF parsing error")
         
-        result = pdf_extractor.extract_text(pdf_media)
+        result = pdf_extractor.analyze_media(pdf_media)
         
         # Failed extraction
-        assert result["extracted_text"] == []
+        assert result["raw_response"] == []
         assert result["extraction_quality"] == []
         assert len(result["warnings"]) == 1
         assert len(result["warnings"][0]) == 1
@@ -245,14 +245,14 @@ def test_mixed_quality_pages(pdf_extractor, mock_image_extractor):
         mock_fitz.open.return_value = mock_doc
         
         # Different quality per page
-        mock_image_extractor.extract_text.side_effect = [
+        mock_image_extractor.analyze_media.side_effect = [
             {"extracted_text": "p1", "document_analysis": {"document_type": "generic", "summary": "s1", "key_points": []}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"},
             {"extracted_text": "p2", "document_analysis": {"document_type": "generic", "summary": "s2", "key_points": []}, "extraction_quality": "low", "warnings": ["blurry"], "model_used": "gpt-4o"},
             {"extracted_text": "p3", "document_analysis": {"document_type": "generic", "summary": "s3", "key_points": []}, "extraction_quality": "medium", "warnings": [], "model_used": "gpt-4o"},
             {"extracted_text": "p4", "document_analysis": {"document_type": "generic", "summary": "s4", "key_points": []}, "extraction_quality": "failed", "warnings": ["unreadable"], "model_used": "gpt-4o"}
         ]
         
-        result = pdf_extractor.extract_text(pdf_media)
+        result = pdf_extractor.analyze_media(pdf_media)
         
         # Preserve per-page quality
         assert result["extraction_quality"] == ["high", "low", "medium", "failed"]
@@ -294,7 +294,7 @@ def test_image_extractor_delegation(pdf_extractor, mock_image_extractor):
             "model_used": "gpt-4o"
         }
         
-        result = pdf_extractor.extract_text(pdf_media)
+        result = pdf_extractor.analyze_media(pdf_media)
         
         # Verify ImageExtractor was called with Media objects
         assert mock_image_extractor.extract_text.call_count == 2
@@ -333,14 +333,14 @@ def test_aggregates_document_type_most_common(pdf_extractor, mock_image_extracto
         mock_fitz.open.return_value = mock_doc
         
         # Pages 1,2,4 are invoices, page 3 is receipt
-        mock_image_extractor.extract_text.side_effect = [
+        mock_image_extractor.analyze_media.side_effect = [
             {"extracted_text": "p1", "document_analysis": {"document_type": "invoice", "summary": "s1", "key_points": []}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"},
             {"extracted_text": "p2", "document_analysis": {"document_type": "invoice", "summary": "s2", "key_points": []}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"},
             {"extracted_text": "p3", "document_analysis": {"document_type": "receipt", "summary": "s3", "key_points": []}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"},
             {"extracted_text": "p4", "document_analysis": {"document_type": "invoice", "summary": "s4", "key_points": []}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"}
         ]
         
-        result = pdf_extractor.extract_text(pdf_media)
+        result = pdf_extractor.analyze_media(pdf_media)
         
         # Most common type is "invoice" (3 out of 4)
         assert result["document_analysis"]["document_type"] == "invoice"
@@ -364,13 +364,13 @@ def test_aggregates_key_points_with_deduplication(pdf_extractor, mock_image_extr
         
         mock_fitz.open.return_value = mock_doc
         
-        mock_image_extractor.extract_text.side_effect = [
+        mock_image_extractor.analyze_media.side_effect = [
             {"extracted_text": "p1", "document_analysis": {"document_type": "generic", "summary": "s1", "key_points": ["Point A", "Point B"]}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"},
             {"extracted_text": "p2", "document_analysis": {"document_type": "generic", "summary": "s2", "key_points": ["Point B", "Point C", "point a"]}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"},  # "point a" is duplicate of "Point A"
             {"extracted_text": "p3", "document_analysis": {"document_type": "generic", "summary": "s3", "key_points": ["Point D"]}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"}
         ]
         
-        result = pdf_extractor.extract_text(pdf_media)
+        result = pdf_extractor.analyze_media(pdf_media)
         
         key_points = result["document_analysis"]["key_points"]
         
@@ -404,12 +404,12 @@ def test_aggregates_summaries_from_all_pages(pdf_extractor, mock_image_extractor
         
         mock_fitz.open.return_value = mock_doc
         
-        mock_image_extractor.extract_text.side_effect = [
+        mock_image_extractor.analyze_media.side_effect = [
             {"extracted_text": "p1", "document_analysis": {"document_type": "generic", "summary": "First page summary", "key_points": []}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"},
             {"extracted_text": "p2", "document_analysis": {"document_type": "generic", "summary": "Second page summary", "key_points": []}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"}
         ]
         
-        result = pdf_extractor.extract_text(pdf_media)
+        result = pdf_extractor.analyze_media(pdf_media)
         
         summary = result["document_analysis"]["summary"]
         
@@ -446,16 +446,16 @@ def test_handles_failed_page_analysis_gracefully(pdf_extractor, mock_image_extra
         mock_fitz.open.return_value = mock_doc
         
         # First two pages succeed, third fails
-        mock_image_extractor.extract_text.side_effect = [
+        mock_image_extractor.analyze_media.side_effect = [
             {"extracted_text": "p1", "document_analysis": {"document_type": "generic", "summary": "Page 1", "key_points": ["A"]}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"},
             {"extracted_text": "p2", "document_analysis": {"document_type": "generic", "summary": "Page 2", "key_points": ["B"]}, "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o"}
         ]
         
-        result = pdf_extractor.extract_text(pdf_media)
+        result = pdf_extractor.analyze_media(pdf_media)
         
         # Should have 3 text entries (including failed page)
-        assert len(result["extracted_text"]) == 3
-        assert result["extracted_text"][2] == ""  # Failed page
+        assert len(result["raw_response"]) == 3
+        assert result["raw_response"][2] == ""  # Failed page
         
         # But document analysis aggregates only successful pages
         analysis = result["document_analysis"]

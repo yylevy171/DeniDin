@@ -303,9 +303,10 @@ class TestMemorySystemIntegration:
             }
         )
         
-        from unittest.mock import Mock
-        mock_client = Mock(spec=OpenAI)
-        ai_handler = AIHandler(mock_client, config)
+        # Use real OpenAI client from config
+        from openai import OpenAI
+        real_client = OpenAI(api_key=config.ai_api_key)
+        ai_handler = AIHandler(real_client, config)
         
         # Manually call recovery
         result = ai_handler.recover_orphaned_sessions()

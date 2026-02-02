@@ -1,18 +1,19 @@
-Analyze this document text and provide:
+ניתח את טקסט המסמך וענה בעברית בלבד:
 
-**IMPORTANT: Respond in Hebrew (עברית). Use the format keywords in English but write all content (document type, summary, key points) in Hebrew.**
+**חשוב: תשובה בעברית בלבד - אל תשתמש בטקסט באנגלית כלל!**
 
-1. DOCUMENT_TYPE: What type of document is this? (e.g., receipt, invoice, letter, contract, resume, notes, article, generic) - respond in Hebrew
-2. SUMMARY: A concise 1-2 sentence summary of the document's content in Hebrew{addressing_note}
-3. KEY_POINTS: Important information from the document (bullet points) in Hebrew{focusing_note}
+1. סוג מסמך: איזה סוג מסמך זה? (למשל: קבלה, חשבונית, מכתב, חוזה, קורות חיים, הערות, מאמר, כללי)
+2. סיכום: סיכום תמציתי בן 1-2 משפטים של תוכן המסמך{addressing_note}
+3. נקודות חשובות: מידע חשוב מהמסמך (בנקודות עם תג-סיום){focusing_note}
 
-Document text:
+טקסט המסמך:
 {document_text}{user_context}
 
-Respond in this format:
-DOCUMENT_TYPE: <type>
-SUMMARY: <summary>
-KEY_POINTS:
-- <point 1>
-- <point 2>
+תן תשובה בפורמט זה (כל דבר בעברית בלבד):
+
+סוג מסמך: <סוג>
+סיכום: <סיכום>
+נקודות חשובות:
+• <נקודה 1>
+• <נקודה 2>
 ...
