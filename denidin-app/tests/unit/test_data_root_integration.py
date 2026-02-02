@@ -17,7 +17,6 @@ from src.managers.session_manager import SessionManager
 from src.managers.memory_manager import MemoryManager
 from src.models.config import AppConfiguration
 
-
 class TestDataRootIntegration:
     """Integration tests for data_root with memory managers."""
 
