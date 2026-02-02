@@ -29,14 +29,9 @@ class TestMediaHandlerHappyPaths:
         mock_denidin = Mock()
         mock_denidin.config.data_root = "/tmp/test_data"
         
-        # Mock ImageExtractor returns full result with document_analysis
+        # Mock ImageExtractor returns actual result format with raw_response
         mock_image_result = {
-            "extracted_text": "Contract between parties...",
-            "document_analysis": {
-                "document_type": "contract",
-                "summary": "Service agreement for web development",
-                "key_points": ["Client: David Cohen", "Amount: ₪50,000", "Duration: 1 year"]
-            },
+            "raw_response": "Contract between parties... Service agreement for web development. Client: David Cohen, Amount: ₪50,000, Duration: 1 year",
             "extraction_quality": "high",
             "warnings": [],
             "model_used": "gpt-4o"
@@ -46,7 +41,7 @@ class TestMediaHandlerHappyPaths:
         
         # Mock extractors
         handler.image_extractor = Mock()
-        handler.image_extractor.extract_text = Mock(return_value=mock_image_result)
+        handler.image_extractor.analyze_media = Mock(return_value=mock_image_result)
         
         # Mock MediaFileManager
         handler.media_file_manager = Mock()
@@ -78,7 +73,7 @@ class TestMediaHandlerHappyPaths:
         assert result["error_message"] is None
         
         # Verify extractor was called
-        handler.image_extractor.extract_text.assert_called_once()
+        handler.image_extractor.analyze_media.assert_called_once()
         
         # Verify save_file was called with sender_phone
         handler.media_file_manager.save_file.assert_called_once()
@@ -97,21 +92,15 @@ class TestMediaHandlerHappyPaths:
         
         # Mock PDFExtractor returns multi-page result
         mock_pdf_result = {
-            "extracted_text": ["Page 1 text", "Page 2 text", "Page 3 text"],
-            "document_analysis": {
-                "document_type": "invoice",
-                "summary": "Invoice from vendor for services",
-                "key_points": ["Vendor: Tech Corp", "Amount: ₪25,000", "Due: 2026-02-15"]
-            },
+            "raw_response": "Page 1 text\n---\nPage 2 text\n---\nPage 3 text",
             "extraction_quality": ["high", "high", "high"],
             "warnings": [[], [], []],
-            "model_used": "gpt-4o",
-            "page_count": 3
+            "model_used": "gpt-4o"
         }
         
         handler = MediaHandler(mock_denidin)
         handler.pdf_extractor = Mock()
-        handler.pdf_extractor.extract_text = Mock(return_value=mock_pdf_result)
+        handler.pdf_extractor.analyze_media = Mock(return_value=mock_pdf_result)
         
         # Mock MediaManager
         handler.media_file_manager = Mock()
@@ -131,9 +120,8 @@ class TestMediaHandlerHappyPaths:
         )
         
         assert result["success"] is True
-        assert "Invoice from vendor" in result["summary"]
-        assert result["media_attachment"].page_count == 3
-        handler.pdf_extractor.extract_text.assert_called_once()
+        assert "Page" in result["summary"]
+        handler.pdf_extractor.analyze_media.assert_called_once()
     
     def test_process_docx_message_complete_flow(self):
         """
@@ -146,12 +134,7 @@ class TestMediaHandlerHappyPaths:
         mock_denidin.config.data_root = "/tmp/test_data"
         
         mock_docx_result = {
-            "extracted_text": "Document content in Hebrew and English...",
-            "document_analysis": {
-                "document_type": "generic",
-                "summary": "General document with mixed content",
-                "key_points": ["Topic: Project planning", "Status: Draft"]
-            },
+            "raw_response": "Document content in Hebrew and English...",
             "extraction_quality": "high",
             "warnings": [],
             "model_used": "python-docx"
@@ -159,7 +142,7 @@ class TestMediaHandlerHappyPaths:
         
         handler = MediaHandler(mock_denidin)
         handler.docx_extractor = Mock()
-        handler.docx_extractor.extract_text = Mock(return_value=mock_docx_result)
+        handler.docx_extractor.analyze_media = Mock(return_value=mock_docx_result)
         
         handler.media_file_manager = Mock()
         handler.media_file_manager.download_file = Mock(return_value=(b"fake_docx_data", True))
@@ -178,38 +161,65 @@ class TestMediaHandlerHappyPaths:
         )
         
         assert result["success"] is True
-        assert "General document" in result["summary"]
-        handler.docx_extractor.extract_text.assert_called_once()
+        assert "Document" in result["summary"]
+        handler.docx_extractor.analyze_media.assert_called_once()
     
     def test_format_summary_with_metadata_bullets(self):
         """
-        Test summary formatting with bullet points.
+        Test that AI response with bullet points is preserved.
         
-        Given document_analysis with type, summary, key_points,
-        verify formatted as: summary paragraph + bullet list.
+        AI formats the summary with bullet points in its response.
+        MediaHandler passes through the raw AI response as-is.
         Maps to: CHK036 (bullet formatting), CHK037 (currency symbols)
         """
         mock_denidin = Mock()
         mock_denidin.config.data_root = "/tmp/test_data"
         handler = MediaHandler(mock_denidin)
         
-        document_analysis = {
-            "document_type": "receipt",
-            "summary": "Receipt from Super-Pharm for personal care items",
-            "key_points": [
-                "Merchant: Super-Pharm Tel Aviv",
-                "Date: 2026-01-22",
-                "Total: ₪287.50",
-                "Payment: Credit Card"
-            ]
-        }
+        # Mock extractors
+        handler.image_extractor = Mock()
+        handler.pdf_extractor = Mock()
+        handler.docx_extractor = Mock()
+        handler.media_file_manager = Mock()
         
-        summary = handler._format_summary(document_analysis)
+        # AI response with bullet points - this is what the AI returns
+        ai_response_with_bullets = """Receipt from Super-Pharm for personal care items
+
+• Merchant: Super-Pharm Tel Aviv
+• Date: 2026-01-22
+• Total: ₪287.50
+• Payment: Credit Card"""
+        
+        # Mock the extractor to return this formatted response
+        handler.pdf_extractor.analyze_media = Mock(return_value={
+            "raw_response": ai_response_with_bullets,
+            "extraction_quality": "high",
+            "page_count": 1
+        })
+        
+        handler.media_file_manager.download_file = Mock(return_value=(b"fake_pdf_data", True))
+        handler.media_file_manager.validate_file_size = Mock(return_value=None)
+        handler.media_file_manager.validate_format = Mock(return_value="pdf")
+        handler.media_file_manager.create_storage_path = Mock(return_value=Path("/tmp/media"))
+        handler.media_file_manager.save_file = Mock(return_value=Path("/tmp/media/DD-972501234567-uuid.pdf"))
+        handler.media_file_manager.save_rawtext = Mock(return_value=Path("/tmp/media/DD-972501234567-uuid.pdf.rawtext"))
+        
+        result = handler.process_media_message(
+            file_url="https://example.com/receipt.pdf",
+            filename="receipt.pdf",
+            mime_type="application/pdf",
+            file_size=50000,
+            sender_phone="972501234567"
+        )
+        
+        # Verify the AI's formatted response is preserved
+        assert result["success"] is True
+        summary = result["summary"]
         
         # Verify summary paragraph
         assert "Receipt from Super-Pharm" in summary
         
-        # Verify bullet points (CHK036)
+        # Verify bullet points are preserved (CHK036)
         assert "• Merchant: Super-Pharm Tel Aviv" in summary
         assert "• Total: ₪287.50" in summary  # CHK037: Currency symbol preserved
         assert "• Date: 2026-01-22" in summary
@@ -228,7 +238,7 @@ class TestMediaHandlerHappyPaths:
         handler = MediaHandler(mock_denidin)
         
         mock_result = {
-            "extracted_text": "Contract text",
+            "raw_response": "Contract text",
             "document_analysis": {
                 "document_type": "contract",
                 "summary": "Service contract",
@@ -240,7 +250,7 @@ class TestMediaHandlerHappyPaths:
         }
         
         handler.image_extractor = Mock()
-        handler.image_extractor.extract_text = Mock(return_value=mock_result)
+        handler.image_extractor.analyze_media = Mock(return_value=mock_result)
         
         handler.media_file_manager = Mock()
         handler.media_file_manager.download_file = Mock(return_value=(b"data", True))
@@ -274,7 +284,7 @@ class TestMediaHandlerHappyPaths:
         handler = MediaHandler(mock_denidin)
         
         mock_result = {
-            "extracted_text": "Text",
+            "raw_response": "Text",
             "document_analysis": {
                 "document_type": "generic",
                 "summary": "Document summary",
@@ -286,7 +296,7 @@ class TestMediaHandlerHappyPaths:
         }
         
         handler.image_extractor = Mock()
-        handler.image_extractor.extract_text = Mock(return_value=mock_result)
+        handler.image_extractor.analyze_media = Mock(return_value=mock_result)
         
         handler.media_file_manager = Mock()
         handler.media_file_manager.download_file = Mock(return_value=(b"data", True))
@@ -365,7 +375,7 @@ class TestMediaHandlerErrorHandling:
         
         # Mock PDFExtractor raises ValueError for too many pages
         handler.pdf_extractor = Mock()
-        handler.pdf_extractor.extract_text = Mock(
+        handler.pdf_extractor.analyze_media = Mock(
             side_effect=ValueError("PDF has 15 pages (max 10)")
         )
         
@@ -457,7 +467,7 @@ class TestMediaHandlerErrorHandling:
         
         # Extractor returns failed extraction
         mock_failed_result = {
-            "extracted_text": "",
+            "raw_response": "",
             "document_analysis": None,
             "extraction_quality": "failed",
             "warnings": ["Corrupted file or unreadable format"],
@@ -465,7 +475,7 @@ class TestMediaHandlerErrorHandling:
         }
         
         handler.image_extractor = Mock()
-        handler.image_extractor.extract_text = Mock(return_value=mock_failed_result)
+        handler.image_extractor.analyze_media = Mock(return_value=mock_failed_result)
         
         handler.media_file_manager = Mock()
         handler.media_file_manager.download_file = Mock(return_value=(b"corrupted_data", True))
@@ -483,8 +493,7 @@ class TestMediaHandlerErrorHandling:
         )
         
         assert result["success"] is False
-        assert "Unable to extract text" in result["error_message"]
-        assert "empty or corrupted" in result["error_message"]
+        assert "Unable to analyze this file" in result["error_message"]
     
     def test_handle_empty_document(self):
         """
@@ -499,7 +508,7 @@ class TestMediaHandlerErrorHandling:
         handler = MediaHandler(mock_denidin)
         
         mock_empty_result = {
-            "extracted_text": "",
+            "raw_response": "",
             "document_analysis": None,
             "extraction_quality": "poor",
             "warnings": ["Document appears empty"],
@@ -507,7 +516,7 @@ class TestMediaHandlerErrorHandling:
         }
         
         handler.docx_extractor = Mock()
-        handler.docx_extractor.extract_text = Mock(return_value=mock_empty_result)
+        handler.docx_extractor.analyze_media = Mock(return_value=mock_empty_result)
         
         handler.media_file_manager = Mock()
         handler.media_file_manager.download_file = Mock(return_value=(b"empty_docx", True))
@@ -525,7 +534,7 @@ class TestMediaHandlerErrorHandling:
         )
         
         assert result["success"] is False
-        assert "empty" in result["error_message"].lower()
+        assert "unable to analyze" in result["error_message"].lower()
     
     def test_handle_zero_byte_file(self):
         """
@@ -576,16 +585,16 @@ class TestMediaHandlerErrorHandling:
         handler.docx_extractor = Mock()
         
         mock_result = {
-            "extracted_text": "text",
+            "raw_response": "text",
             "document_analysis": {"document_type": "generic", "summary": "doc", "key_points": []},
             "extraction_quality": "high",
             "warnings": [],
             "model_used": "test"
         }
         
-        handler.image_extractor.extract_text = Mock(return_value=mock_result)
-        handler.pdf_extractor.extract_text = Mock(return_value=mock_result)
-        handler.docx_extractor.extract_text = Mock(return_value=mock_result)
+        handler.image_extractor.analyze_media = Mock(return_value=mock_result)
+        handler.pdf_extractor.analyze_media = Mock(return_value=mock_result)
+        handler.docx_extractor.analyze_media = Mock(return_value=mock_result)
         
         handler.media_file_manager = Mock()
         handler.media_file_manager.download_file = Mock(return_value=(b"data", True))
@@ -597,16 +606,16 @@ class TestMediaHandlerErrorHandling:
         # Test image routing
         handler.media_file_manager.validate_format = Mock(return_value="image")
         handler.process_media_message("url", "file.jpg", "image/jpeg", 1000, "972501234567")
-        handler.image_extractor.extract_text.assert_called_once()
+        handler.image_extractor.analyze_media.assert_called_once()
         
         # Test PDF routing
-        handler.image_extractor.extract_text.reset_mock()
+        handler.image_extractor.analyze_media.reset_mock()
         handler.media_file_manager.validate_format = Mock(return_value="pdf")
         handler.process_media_message("url", "file.pdf", "application/pdf", 1000, "972501234567")
-        handler.pdf_extractor.extract_text.assert_called_once()
+        handler.pdf_extractor.analyze_media.assert_called_once()
         
         # Test DOCX routing
-        handler.pdf_extractor.extract_text.reset_mock()
+        handler.pdf_extractor.analyze_media.reset_mock()
         handler.media_file_manager.validate_format = Mock(return_value="docx")
         handler.process_media_message("url", "file.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 1000, "972501234567")
-        handler.docx_extractor.extract_text.assert_called_once()
+        handler.docx_extractor.analyze_media.assert_called_once()

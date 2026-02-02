@@ -41,6 +41,7 @@ def mock_notification_image():
             }
         },
         'senderData': {
+            'chatId': '972501234567@c.us',
             'sender': '972501234567@c.us',
             'senderName': 'David Cohen'
         }
@@ -65,6 +66,7 @@ def mock_notification_document():
             }
         },
         'senderData': {
+            'chatId': '972501234567@c.us',
             'sender': '972501234567@c.us',
             'senderName': 'Sarah Levy'
         }
@@ -89,6 +91,7 @@ def mock_notification_video():
             }
         },
         'senderData': {
+            'chatId': '972501234567@c.us',
             'sender': '972501234567@c.us',
             'senderName': 'Mike Jones'
         }
@@ -112,6 +115,7 @@ def mock_notification_audio():
             }
         },
         'senderData': {
+            'chatId': '972501234567@c.us',
             'sender': '972501234567@c.us',
             'senderName': 'Rachel Green'
         }
@@ -228,6 +232,7 @@ class TestCaptionHandling:
                 }
             },
             'senderData': {
+                'chatId': '972501234567@c.us',
                 'sender': '972501234567@c.us',
                 'senderName': 'Test User'
             }
@@ -267,6 +272,7 @@ class TestCaptionHandling:
                 }
             },
             'senderData': {
+                'chatId': '972501234567@c.us',
                 'sender': '972501234567@c.us',
                 'senderName': 'Test User'
             }
