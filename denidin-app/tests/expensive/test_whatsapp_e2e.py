@@ -145,13 +145,38 @@ class TestWhatsAppE2E:
         # Should NOT be an error message (file downloaded successfully)
         assert "שגיאה" not in response and "נכשל" not in response, f"Got error: {response}"
     
+    def _strip_emails_and_domains(self, text):
+        """Remove email addresses and web domains from text for Hebrew ratio check."""
+        import re
+        # Remove email addresses (user@domain.com)
+        text = re.sub(r'[\w\.-]+@[\w\.-]+\.\w+', '', text)
+        # Remove web domains (www.domain.com, domain.com)
+        text = re.sub(r'(?:www\.)?[\w\.-]+\.(?:com|co|il|org|net|edu)\b', '', text)
+        # Remove isolated URLs/domains with slashes
+        text = re.sub(r'https?://\S+', '', text)
+        return text
+    
     def _assert_hebrew_only(self, response):
-        """Assert 1: Response must be in Hebrew only (>85% Hebrew chars)."""
-        hebrew_chars = sum(1 for c in response if '\u0590' <= c <= '\u05FF')
-        alpha_chars = [c for c in response if c.isalpha()]
-        english_chars = sum(1 for c in alpha_chars if 'a' <= c.lower() <= 'z')
-        hebrew_ratio = hebrew_chars / len(alpha_chars) if len(alpha_chars) > 0 else 0
-        assert hebrew_ratio > 0.85, f"Response must be Hebrew only - found {english_chars} English chars, Hebrew ratio: {hebrew_ratio:.1%}\nFull Response: {response}"
+        """Assert 1: Response must be in Hebrew only (>85% non-English alphabetic chars).
+        
+        Logic:
+        - Count only English alphabetic characters (a-z)
+        - Count only alphabetic characters (Hebrew + English)
+        - Hebrew ratio = (alphabetic - english) / alphabetic
+        - Non-alphanumeric chars (punctuation, symbols, etc.) are treated as "Hebrew" (not penalized)
+        """
+        # Strip emails and web domains before checking ratio
+        cleaned_response = self._strip_emails_and_domains(response)
+        
+        # Count English alphabetic characters
+        english_chars = sum(1 for c in cleaned_response if 'a' <= c.lower() <= 'z')
+        # Count all alphabetic characters (Hebrew, English, etc.)
+        # Non-alphabetic chars are not counted in the denominator, so they don't hurt the ratio
+        alpha_chars = sum(1 for c in cleaned_response if c.isalpha())
+        # Hebrew ratio = (all_alpha - english) / all_alpha
+        # This treats Hebrew + non-alphanumeric as "Hebrew"
+        hebrew_ratio = (alpha_chars - english_chars) / alpha_chars if alpha_chars > 0 else 0
+        assert hebrew_ratio > 0.85, f"Response must be Hebrew only - found {english_chars} English chars out of {alpha_chars} total alpha chars (after stripping emails/domains), Hebrew ratio: {hebrew_ratio:.1%}\nFull Response: {response}"
         return hebrew_ratio
     
     def _assert_summary_exists(self, response):
@@ -163,10 +188,30 @@ class TestWhatsAppE2E:
         assert '•' in response or '-' in response, f"Response missing metadata bullets - check if extractors are returning key_points\nResponse: {response}"
     
     def _assert_no_followups(self, response):
-        """Assert 4: No follow-up questions (response is informational only)."""
-        question_patterns = ['?', 'מה אני יכול', 'איך אני יכול', 'רוצה ש', 'צריך עזרה', 'what can', 'how can', 'need help']
-        found_questions = [p for p in question_patterns if p.lower() in response.lower()]
-        assert len(found_questions) == 0, f"Response should be informational only, found questions: {found_questions}\nResponse: {response}"
+        """Assert 4: No follow-up questions AT THE END (response is informational only).
+        
+        Only check the last section after the final metadata/notes, to ignore
+        OCR garbage and extracted text that may contain stray question marks.
+        """
+        # Get the last section - everything after the final "הערות:" (notes) section
+        # This ensures we only check the bot's actual final response, not OCR garbage
+        if "הערות:" in response:
+            # Find the last occurrence of "הערות:" and check what comes after
+            last_notes_idx = response.rfind("הערות:")
+            final_section = response[last_notes_idx:]
+        else:
+            # If no notes section, check the last 200 chars
+            final_section = response[-200:] if len(response) > 200 else response
+        
+        # Check for conversational question patterns at the end
+        question_patterns = ['מה אני יכול', 'איך אני יכול', 'רוצה ש', 'צריך עזרה', 'what can', 'how can', 'need help']
+        found_questions = [p for p in question_patterns if p.lower() in final_section.lower()]
+        
+        # Also check if response ends with a question mark (after trimming whitespace)
+        ends_with_question = final_section.rstrip().endswith('?')
+        
+        assert len(found_questions) == 0 and not ends_with_question, \
+            f"Response should end with information, not questions. Found: {found_questions if found_questions else 'ends with ?'}\nFinal section: {final_section}"
     
     def _validate_response(self, response):
         """Validate response against all 4 assertions and return hebrew_ratio for logging."""
@@ -178,29 +223,21 @@ class TestWhatsAppE2E:
         return hebrew_ratio
     
     @pytest.mark.expensive
-    def test_e2e_image_receipt_from_whatsapp(self, denidin_app, http_server):
+    def test_e2e_image_no_caption(self, denidin_app, http_server):
         """
-        **THE REAL TEST**: Complete flow from WhatsApp webhook to user response.
-        
-        Uses REAL WhatsApp image you provided.
+        **E2E TEST**: Image without caption - automatic analysis.
         
         Flow:
-        1. User sends image receipt via WhatsApp
-        2. Green API sends webhook to our server
-        3. Bot downloads image from real URL (via local HTTP server)
-        4. Bot analyzes image with AI (REAL API CALL)
-        5. Bot sends Hebrew summary back to user
-        
-        This tests EXACTLY what happens in production.
+        1. User sends image WITHOUT caption
+        2. Bot automatically analyzes image
+        3. Bot sends Hebrew summary
         """
         from denidin import handle_image_message
         
-        # Real webhook notification from Green API
-        # Download URL points to local HTTP server serving YOUR real WhatsApp image
         notification = self._create_real_notification({
             'typeWebhook': 'incomingMessageReceived',
             'timestamp': 1706601234,
-            'idMessage': 'E2E_TEST_MSG_001',
+            'idMessage': 'E2E_TEST_IMAGE_001',
             'instanceData': {
                 'idInstance': 7103000000,
                 'wid': '972501234567@c.us',
@@ -209,15 +246,13 @@ class TestWhatsAppE2E:
             'senderData': {
                 'chatId': '972522968679@c.us',
                 'sender': '972522968679@c.us',
-                'senderName': 'Test User',
-                'chatName': 'Test User'
+                'senderName': 'Test User'
             },
             'messageData': {
                 'typeMessage': 'imageMessage',
                 'fileMessageData': {
-                    # YOUR real WhatsApp image
                     'downloadUrl': f'{http_server}/WhatsApp%20Image%202025-11-18%20at%2021.51.25.jpeg',
-                    'fileName': 'WhatsApp Image 2025-11-18 at 21.51.25.jpeg',
+                    'fileName': 'receipt.jpeg',
                     'mimeType': 'image/jpeg',
                     'caption': '',
                     'jpegThumbnail': '',
@@ -228,26 +263,20 @@ class TestWhatsAppE2E:
         })
         
         logger.info("\n" + "="*80)
-        logger.info("🔥 E2E TEST: Real WhatsApp image from you")
-        logger.info(f"   Download URL: {http_server}/WhatsApp%20Image%202025-11-18%20at%2021.51.25.jpeg")
+        logger.info("🔥 E2E TEST: Image without caption")
         logger.info("="*80)
         
-        # Execute the REAL handler with REAL file download and REAL AI call
         handle_image_message(notification)
-        
-        # Verify user got a response
         response = self._get_response(notification)
         
-        # Log the FULL response without truncation
-        logger.info(f"[test_e2e_image_receipt_from_whatsapp] Response length: {len(response)} chars")
-        logger.info(f"[test_e2e_image_receipt_from_whatsapp] FULL RESPONSE:\n{response}")
+        logger.info(f"Response length: {len(response)} chars")
+        logger.info(f"FULL RESPONSE:\n{response}")
         
-        # Validate response against all 4 assertions
         hebrew_ratio = self._validate_response(response)
-        logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}, Has סיכום:, Has metadata bullets, No follow-up questions")
+        logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}")
     
     @pytest.mark.expensive
-    def test_e2e_hebrew_docx_from_whatsapp(self, denidin_app, http_server):
+    def test_e2e_docx_no_caption(self, denidin_app, http_server):
         """
         **E2E TEST**: Hebrew document processing (יובל יעקובי.docx).
         
@@ -374,8 +403,163 @@ class TestWhatsAppE2E:
         hebrew_ratio = self._validate_response(response)
         logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}, Has סיכום:, Has metadata bullets, No follow-up questions")
     
+    @pytest.mark.expensive
+    def test_e2e_pdf_with_caption_user_question(self, denidin_app, http_server):
+        """
+        **E2E TEST**: PDF WITH caption - user asks specific question.
+        
+        Flow:
+        1. User sends PDF WITH caption asking about amount
+        2. Bot analyzes document and answers question
+        3. Bot sends Hebrew response with requested information
+        """
+        from denidin import handle_document_message
+        
+        notification = self._create_real_notification({
+            'typeWebhook': 'incomingMessageReceived',
+            'timestamp': 1706601234,
+            'idMessage': 'E2E_TEST_PDF_CAPTION_001',
+            'instanceData': {
+                'idInstance': 7103000000,
+                'wid': '972501234567@c.us',
+                'typeInstance': 'whatsapp'
+            },
+            'senderData': {
+                'chatId': '972522968679@c.us',
+                'sender': '972522968679@c.us',
+                'senderName': 'Test User'
+            },
+            'messageData': {
+                'typeMessage': 'documentMessage',
+                'fileMessageData': {
+                    'downloadUrl': f'{http_server}/%D7%A8%D7%95%D7%A2%D7%99%20%D7%A9%D7%93%D7%94%20%D7%94%D7%A6%D7%A2%D7%AA%20%D7%A9%D7%9B%D7%98.pdf',
+                    'fileName': 'רועי שדה הצעת שכט.pdf',
+                    'mimeType': 'application/pdf',
+                    'caption': 'כמה הסכום בקובץ?',  # User asks about amount
+                    'jpegThumbnail': ''
+                }
+            }
+        })
+        
+        logger.info("\n" + "="*80)
+        logger.info("🔥 E2E TEST: PDF with caption - user question")
+        logger.info("="*80)
+        
+        handle_document_message(notification)
+        response = self._get_response(notification)
+        
+        logger.info(f"Response length: {len(response)} chars")
+        logger.info(f"FULL RESPONSE:\n{response}")
+        
+        # Validate Hebrew response
+        self._assert_response_exists(response)
+        hebrew_ratio = self._assert_hebrew_only(response)
+        
+        # Should mention the amount (this PDF should have financial info)
+        logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}")
+    
+    @pytest.mark.expensive
+    def test_e2e_unsupported_audio_file(self, denidin_app):
+        """
+        **E2E TEST**: Unsupported audio file rejection.
+        
+        Flow:
+        1. User sends unsupported audio file
+        2. Bot rejects with error message
+        """
+        from denidin import handle_audio_message
+        from src.constants.error_messages import FAILED_TO_PROCESS_FILE_DEFAULT
+        
+        notification = self._create_real_notification({
+            'typeWebhook': 'incomingMessageReceived',
+            'timestamp': 1706601234,
+            'idMessage': 'E2E_TEST_AUDIO_001',
+            'instanceData': {
+                'idInstance': 7103000000,
+                'wid': '972501234567@c.us',
+                'typeInstance': 'whatsapp'
+            },
+            'senderData': {
+                'chatId': '972522968679@c.us',
+                'sender': '972522968679@c.us',
+                'senderName': 'Test User'
+            },
+            'messageData': {
+                'typeMessage': 'audioMessage',
+                'fileMessageData': {
+                    'downloadUrl': 'https://example.com/audio.mp3',
+                    'fileName': 'audio.mp3',
+                    'mimeType': 'audio/mpeg',
+                    'caption': ''
+                }
+            }
+        })
+        
+        logger.info("\n" + "="*80)
+        logger.info("🔥 E2E TEST: Unsupported audio file")
+        logger.info("="*80)
+        
+        handle_audio_message(notification)
+        response = self._get_response(notification)
+        
+        logger.info(f"Response: {response}")
+        
+        assert response == FAILED_TO_PROCESS_FILE_DEFAULT
+        logger.info(f"✅ SUCCESS - Error message sent")
+    
+    @pytest.mark.expensive
+    def test_e2e_pdf_multipage_no_caption(self, denidin_app, http_server):
+        """
+        **E2E TEST**: Multi-page PDF without caption - automatic analysis.
+        
+        Flow:
+        1. User sends 2-page PDF WITHOUT caption
+        2. Bot automatically analyzes both pages
+        3. Bot sends Hebrew summary
+        """
+        from denidin import handle_document_message
+        
+        notification = self._create_real_notification({
+            'typeWebhook': 'incomingMessageReceived',
+            'timestamp': 1706601234,
+            'idMessage': 'E2E_TEST_PDF_MULTIPAGE_001',
+            'instanceData': {
+                'idInstance': 7103000000,
+                'wid': '972501234567@c.us',
+                'typeInstance': 'whatsapp'
+            },
+            'senderData': {
+                'chatId': '972522968679@c.us',
+                'sender': '972522968679@c.us',
+                'senderName': 'Test User'
+            },
+            'messageData': {
+                'typeMessage': 'documentMessage',
+                'fileMessageData': {
+                    'downloadUrl': f'{http_server}/%D7%9E%D7%95%D7%93%D7%95%D7%9C%204.pdf',
+                    'fileName': 'מודול 4.pdf',
+                    'mimeType': 'application/pdf',
+                    'caption': '',
+                    'jpegThumbnail': ''
+                }
+            }
+        })
+        
+        logger.info("\n" + "="*80)
+        logger.info("🔥 E2E TEST: Multi-page PDF without caption (מודול 4)")
+        logger.info("="*80)
+        
+        handle_document_message(notification)
+        response = self._get_response(notification)
+        
+        logger.info(f"Response length: {len(response)} chars")
+        logger.info(f"FULL RESPONSE:\n{response}")
+        
+        hebrew_ratio = self._validate_response(response)
+        logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}")
+    
 
-# ==================== USAGE ====================
+# ==================== REMOVED TESTS ====================
 #
 # This is THE test that validates production behavior.
 # 

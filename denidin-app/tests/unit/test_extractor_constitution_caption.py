@@ -44,7 +44,7 @@ class TestConstitutionUsage:
         
         with patch('pathlib.Path.read_text', mock_read_text):
             # Extract
-            extractor.extract_text(media)
+            extractor.analyze_media(media)
         
         # Verify constitution was loaded
         mock_denidin.ai_handler._load_constitution.assert_called_once()
@@ -89,7 +89,7 @@ class TestConstitutionUsage:
             mock_doc_class.return_value = mock_doc
             
             media = Media(data=b"fake_docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            extractor.extract_text(media, analyze=True)
+            extractor.analyze_media(media, analyze=True)
         
         # Verify constitution was loaded and used
         mock_denidin.ai_handler._load_constitution.assert_called_once()
@@ -128,7 +128,7 @@ class TestConstitutionUsage:
             mock_fitz.open.return_value = mock_pdf
             
             media = Media(data=b"fake_pdf", mime_type="application/pdf")
-            extractor.extract_text(media, caption="What's the total amount?")
+            extractor.analyze_media(media, caption="What's the total amount?")
         
         # Verify caption in prompt
         call_args = mock_denidin.ai_handler.client.chat.completions.create.call_args
@@ -164,7 +164,7 @@ class TestCaptionContext:
             raise FileNotFoundError(f"Test: unexpected path read: {self}")
         
         with patch('pathlib.Path.read_text', mock_read_text):
-            extractor.extract_text(media, caption="Who is the client in this contract?")
+            extractor.analyze_media(media, caption="Who is the client in this contract?")
         
         call_args = mock_denidin.ai_handler.client.chat.completions.create.call_args
         messages = call_args[1]["messages"]
@@ -196,7 +196,7 @@ class TestCaptionContext:
             raise FileNotFoundError(f"Test: unexpected path read: {self}")
         
         with patch('pathlib.Path.read_text', mock_read_text):
-            result = extractor.extract_text(media)
+            result = extractor.analyze_media(media)
         
         # Should succeed
         assert "extracted_text" in result
@@ -233,7 +233,7 @@ class TestCaptionContext:
             mock_doc_class.return_value = mock_doc
             
             media = Media(data=b"docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            extractor.extract_text(media, analyze=True, caption="What is the total amount?")
+            extractor.analyze_media(media, analyze=True, caption="What is the total amount?")
         
         call_args = mock_denidin.ai_handler.send_message.call_args
         prompt = call_args[0][0]
@@ -266,7 +266,7 @@ class TestCaptionContext:
             mock_doc_class.return_value = mock_doc
             
             media = Media(data=b"docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            extractor.extract_text(media, analyze=True, caption="Who is the client?")
+            extractor.analyze_media(media, analyze=True, caption="Who is the client?")
         
         call_args = mock_denidin.ai_handler.send_message.call_args
         prompt = call_args[0][0]
@@ -305,7 +305,7 @@ class TestCaptionContext:
             mock_fitz.open.return_value = mock_pdf
             
             media = Media(data=b"pdf", mime_type="application/pdf")
-            extractor.extract_text(media, caption="Find the invoice number")
+            extractor.analyze_media(media, caption="Find the invoice number")
         
         # All 3 pages should have been called
         assert call_count[0] == 3

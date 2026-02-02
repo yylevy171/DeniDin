@@ -61,10 +61,10 @@ def test_extract_simple_docx_text(docx_extractor, mock_denidin_context):
     media = create_docx_media("Hello World", "This is a test document")
     
     # Phase 4: analyze=False should skip AI call
-    result = docx_extractor.extract_text(media, analyze=False)
+    result = docx_extractor.analyze_media(media, analyze=False)
     
-    assert "Hello World" in result["extracted_text"]
-    assert "This is a test document" in result["extracted_text"]
+    assert "Hello World" in result["raw_response"]
+    assert "This is a test document" in result["raw_response"]
     assert result["model_used"] == "python-docx"
     assert result["document_analysis"] is None  # Phase 4: No analysis
     assert result["extraction_quality"] == "high"
@@ -82,10 +82,10 @@ def test_extract_hebrew_text(docx_extractor, mock_denidin_context):
     media = create_docx_media("שלום עולם", "זהו מסמך בדיקה")
     
     # Test without analysis
-    result = docx_extractor.extract_text(media, analyze=False)
+    result = docx_extractor.analyze_media(media, analyze=False)
     
-    assert "שלום עולם" in result["extracted_text"]
-    assert "זהו מסמך בדיקה" in result["extracted_text"]
+    assert "שלום עולם" in result["raw_response"]
+    assert "זהו מסמך בדיקה" in result["raw_response"]
     assert result["model_used"] == "python-docx"
     assert result["document_analysis"] is None
     assert len(result["warnings"]) == 0
@@ -98,10 +98,10 @@ def test_preserve_paragraph_structure(docx_extractor, mock_denidin_context):
     """
     media = create_docx_media("First paragraph", "Second paragraph", "Third paragraph")
     
-    result = docx_extractor.extract_text(media, analyze=False)
+    result = docx_extractor.analyze_media(media, analyze=False)
     
     # Check paragraphs are separated
-    assert "First paragraph\n\nSecond paragraph\n\nThird paragraph" == result["extracted_text"]
+    assert "First paragraph\n\nSecond paragraph\n\nThird paragraph" == result["raw_response"]
     assert len(result["warnings"]) == 0
 
 
@@ -112,9 +112,9 @@ def test_handle_empty_docx(docx_extractor, mock_denidin_context):
     """
     media = create_docx_media()  # No paragraphs
     
-    result = docx_extractor.extract_text(media, analyze=False)
+    result = docx_extractor.analyze_media(media, analyze=False)
     
-    assert result["extracted_text"] == ""
+    assert result["raw_response"] == ""
     assert len(result["warnings"]) == 1
     assert "empty" in result["warnings"][0].lower()
     assert result["model_used"] == "python-docx"
@@ -133,9 +133,9 @@ def test_handle_corrupted_docx(docx_extractor, mock_denidin_context):
         filename="corrupted.docx"
     )
     
-    result = docx_extractor.extract_text(corrupted_media, analyze=False)
+    result = docx_extractor.analyze_media(corrupted_media, analyze=False)
     
-    assert result["extracted_text"] == ""
+    assert result["raw_response"] == ""
     assert len(result["warnings"]) >= 1
     assert result["model_used"] == "python-docx"
     assert result["document_analysis"] is None
@@ -163,12 +163,12 @@ def test_extract_text_ignoring_formatting(docx_extractor, mock_denidin_context):
         filename="formatted.docx"
     )
     
-    result = docx_extractor.extract_text(media, analyze=False)
+    result = docx_extractor.analyze_media(media, analyze=False)
     
     # All text should be extracted as plain text
-    assert "Normal text." in result["extracted_text"]
-    assert "Bold text." in result["extracted_text"]
-    assert "Italic text." in result["extracted_text"]
+    assert "Normal text." in result["raw_response"]
+    assert "Bold text." in result["raw_response"]
+    assert "Italic text." in result["raw_response"]
     assert len(result["warnings"]) == 0
 
 
@@ -200,14 +200,14 @@ def test_extract_complex_structure(docx_extractor, mock_denidin_context):
         filename="complex.docx"
     )
     
-    result = docx_extractor.extract_text(media, analyze=False)
+    result = docx_extractor.analyze_media(media, analyze=False)
     
     # Should extract headings, paragraphs, and table text
-    assert "Document Title" in result["extracted_text"]
-    assert "Introduction paragraph" in result["extracted_text"]
-    assert "Cell 1" in result["extracted_text"]
-    assert "Cell 2" in result["extracted_text"]
-    assert "Conclusion paragraph" in result["extracted_text"]
+    assert "Document Title" in result["raw_response"]
+    assert "Introduction paragraph" in result["raw_response"]
+    assert "Cell 1" in result["raw_response"]
+    assert "Cell 2" in result["raw_response"]
+    assert "Conclusion paragraph" in result["raw_response"]
 
 
 # ===== Phase 4: AI-Powered Document Analysis Tests =====
@@ -227,10 +227,10 @@ KEY_POINTS:
 - Due date 2024-01-01"""
     
     # Phase 4: analyze=True (default) should call AI
-    result = docx_extractor.extract_text(media, analyze=True)
+    result = docx_extractor.analyze_media(media, analyze=True)
     
     # Text extraction should work
-    assert "Invoice #12345" in result["extracted_text"]
+    assert "Invoice #12345" in result["raw_response"]
     
     # Document analysis should be present
     assert result["document_analysis"] is not None
@@ -252,10 +252,10 @@ def test_analyze_skipped_when_false(docx_extractor, mock_denidin_context):
     """
     media = create_docx_media("Some document text")
     
-    result = docx_extractor.extract_text(media, analyze=False)
+    result = docx_extractor.analyze_media(media, analyze=False)
     
     # Text extraction should work
-    assert "Some document text" in result["extracted_text"]
+    assert "Some document text" in result["raw_response"]
     
     # No document analysis
     assert result["document_analysis"] is None
@@ -278,7 +278,7 @@ KEY_POINTS:
 - Content present"""
     
     # Call without analyze parameter (should default to True)
-    result = docx_extractor.extract_text(media)
+    result = docx_extractor.analyze_media(media)
     
     # Should have document analysis
     assert result["document_analysis"] is not None
@@ -295,10 +295,10 @@ def test_analyze_graceful_ai_failure(docx_extractor, mock_denidin_context):
     # Mock AI failure
     mock_denidin_context.ai_handler.send_message.side_effect = Exception("AI service down")
     
-    result = docx_extractor.extract_text(media, analyze=True)
+    result = docx_extractor.analyze_media(media, analyze=True)
     
     # Text extraction should still work
-    assert "Document text" in result["extracted_text"]
+    assert "Document text" in result["raw_response"]
     
     # Document analysis should have fallback values
     assert result["document_analysis"] is not None
@@ -313,10 +313,10 @@ def test_analyze_empty_document_no_ai_call(docx_extractor, mock_denidin_context)
     """
     media = create_docx_media()  # Empty
     
-    result = docx_extractor.extract_text(media, analyze=True)
+    result = docx_extractor.analyze_media(media, analyze=True)
     
     # Empty text
-    assert result["extracted_text"] == ""
+    assert result["raw_response"] == ""
     
     # No AI call for empty document
     assert result["document_analysis"] is None

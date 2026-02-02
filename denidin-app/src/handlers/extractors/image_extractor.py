@@ -130,7 +130,14 @@ class ImageExtractor(MediaExtractor):
         logger.debug(f"[ImageExtractor._vision_extract] Constitution loaded: {bool(constitution)}")
         logger.debug(f"[ImageExtractor._vision_extract] Constitution preview: {constitution[:200] if constitution else 'NONE'}")
         
+        # Get the data URL
+        data_url = media.get_data_url()
+        logger.info(f"[ImageExtractor._vision_extract] Media data URL length: {len(data_url)} chars")
+        logger.info(f"[ImageExtractor._vision_extract] Media data URL preview: {data_url[:100]}...")
+        logger.info(f"[ImageExtractor._vision_extract] Media file size: {media.size} bytes, MIME type: {media.mime_type}")
+        
         # Call OpenAI Vision API with in-memory data URL
+        logger.info(f"[ImageExtractor._vision_extract] Sending request to OpenAI Vision API")
         response = self.ai_handler.client.chat.completions.create(
             model=self.vision_model,
             messages=[
@@ -141,7 +148,7 @@ class ImageExtractor(MediaExtractor):
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": media.get_data_url()  # Use Media's data URL method
+                                "url": data_url
                             }
                         }
                     ]

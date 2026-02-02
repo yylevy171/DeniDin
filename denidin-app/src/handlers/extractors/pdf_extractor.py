@@ -112,6 +112,7 @@ class PDFExtractor(MediaExtractor):
                     # Convert page to image (PNG format)
                     pixmap = page.get_pixmap()
                     png_bytes = pixmap.tobytes(output="png")
+                    logger.info(f"[PDFExtractor.analyze_media] Page {page_num + 1}: Converted to PNG ({len(png_bytes)} bytes, {pixmap.width}x{pixmap.height}px)")
                     
                     # Create Media object for the page image
                     page_media = Media.from_bytes(
@@ -122,15 +123,18 @@ class PDFExtractor(MediaExtractor):
                     
                     # Delegate to ImageExtractor (returns raw_response)
                     # Pass caption to provide context for analysis
+                    logger.info(f"[PDFExtractor.analyze_media] Sending page {page_num + 1} to ImageExtractor")
                     page_result = self.image_extractor.analyze_media(page_media, caption=caption)
                     
                     # Collect per-page results
                     raw_responses.append(page_result["raw_response"])
                     extraction_qualities.append(page_result["extraction_quality"])
                     warnings_list.append(page_result["warnings"])
+                    logger.info(f"[PDFExtractor.analyze_media] Page {page_num + 1} analysis complete: {len(page_result.get('raw_response', ''))} chars")
                     
                 except Exception as e:
                     # CHK007: Handle per-page failures gracefully
+                    logger.error(f"[PDFExtractor.analyze_media] Page {page_num + 1} failed: {e}", exc_info=True)
                     raw_responses.append("")
                     extraction_qualities.append("failed")
                     warnings_list.append([f"Page {page_num + 1} failed: {str(e)}"])

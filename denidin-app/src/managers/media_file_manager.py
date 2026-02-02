@@ -9,8 +9,11 @@ Handles:
 
 import uuid
 import requests
+import logging
 from pathlib import Path
 from typing import Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class MediaFileManager:
@@ -54,18 +57,27 @@ class MediaFileManager:
             try:
                 filepath = file_url[7:]  # Remove 'file://' prefix
                 with open(filepath, 'rb') as f:
-                    return (f.read(), True)
-            except (FileNotFoundError, IOError):
+                    content = f.read()
+                    logger.info(f"[MediaFileManager.download_file] File URL downloaded: {len(content)} bytes from {filepath}")
+                    return (content, True)
+            except (FileNotFoundError, IOError) as e:
+                logger.error(f"[MediaFileManager.download_file] File URL download failed: {e}")
                 return (b"", False)
         
         # Handle HTTP/HTTPS URLs
+        logger.info(f"[MediaFileManager.download_file] Starting HTTP download from: {file_url}")
         for attempt in range(self.MAX_DOWNLOAD_RETRIES + 1):
             try:
                 response = requests.get(file_url, timeout=30)
                 response.raise_for_status()
-                return (response.content, True)
-            except requests.RequestException:
+                content = response.content
+                logger.info(f"[MediaFileManager.download_file] HTTP download successful (attempt {attempt + 1}): {len(content)} bytes")
+                logger.info(f"[MediaFileManager.download_file] Response headers: Content-Type={response.headers.get('Content-Type')}, Content-Length={response.headers.get('Content-Length')}")
+                return (content, True)
+            except requests.RequestException as e:
+                logger.warning(f"[MediaFileManager.download_file] HTTP download attempt {attempt + 1} failed: {e}")
                 if attempt == self.MAX_DOWNLOAD_RETRIES:
+                    logger.error(f"[MediaFileManager.download_file] All download attempts failed")
                     return (b"", False)
                 continue
         return (b"", False)

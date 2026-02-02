@@ -404,6 +404,47 @@ Integration tests must explicitly verify "when external entry arrives, does syst
 
 **Rationale**: Integration tests from external perspective catch routing, dispatcher, and system-level bugs that component tests cannot. They verify the complete request path works end-to-end.
 
+### 🚨 CRITICAL: NO MOCKING IN INTEGRATION TESTS
+
+**ABSOLUTE RULE**: Integration tests MUST NEVER import or use `unittest.mock`.
+
+**Forbidden**:
+```python
+# ❌ FORBIDDEN IN INTEGRATION TESTS
+from unittest.mock import Mock, patch, MagicMock
+import unittest.mock
+
+# ❌ FORBIDDEN - even inside methods
+def test_something():
+    from unittest.mock import Mock  # ❌ NOT ALLOWED
+    mock = Mock()
+```
+
+**What to do instead**:
+- **Real system**: Use actual application code (routers, handlers, managers, models)
+- **External dependencies**: Find a real service or skip the test if unavailable
+  - Can't connect to OpenAI API? Use `@pytest.mark.expensive` to skip in CI/CD but run locally when needed
+  - Can't download from Green API? Serve test files from local HTTP server (see test_whatsapp_e2e.py for example)
+  - Can't write to production database? Use test database with real code, not mocks
+- **Setup/teardown**: Create real objects, not fake ones
+  - Create REAL Notification objects: `notification = Notification.__new__(Notification)` with event dict
+  - Create REAL config: `config = AppConfiguration.from_file("config/config.test.json")`
+  - Create REAL managers: `session_mgr = SessionManager(config)` (not `Mock(spec=SessionManager)`)
+
+**Why No Mocking**:
+1. **Mocks hide bugs**: They let tests pass while real code fails
+2. **Mocks couple tests to implementation**: Refactoring breaks tests even when functionality is fine
+3. **Integration tests verify REAL behavior**: They MUST use real system to catch real problems
+4. **External APIs are the issue**: Mock those with actual test services/servers, not Mock objects
+5. **Your tests should break if you break the code**: If tests pass with mocks but code fails, mocks lied to you
+
+**Code Review**: Every PR with integration tests MUST verify:
+- ✅ NO `import Mock` anywhere in test files
+- ✅ NO `@patch` decorators
+- ✅ NO `MagicMock()` calls
+- ✅ NO mocking internal application components (routers, handlers, models, managers)
+- ✅ OK to mock external services IF you provide real test alternatives (local HTTP server, test database, fixture files)
+
 ---
 
 ## VI. Feature Flags for Safe Deployment

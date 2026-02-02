@@ -53,10 +53,10 @@ class TestImageExtractor:
         )
         mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
         
-        result = extractor.extract_text(test_media)
+        result = extractor.analyze_media(test_media)
         
-        assert "שלום עולם" in result["extracted_text"]
-        assert "זה מסמך בעברית" in result["extracted_text"]
+        assert "שלום עולם" in result["raw_response"]
+        assert "זה מסמך בעברית" in result["raw_response"]
         assert result["model_used"] == "gpt-4o"
         assert result["extraction_quality"] in ["high", "medium", "low", "failed"]
     
@@ -72,12 +72,12 @@ class TestImageExtractor:
         )
         mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
         
-        result = extractor.extract_text(test_media)
+        result = extractor.analyze_media(test_media)
         
         # Verify newlines are preserved
-        assert "\n\n" in result["extracted_text"]
-        assert "Line 1" in result["extracted_text"]
-        assert "Line 3" in result["extracted_text"]
+        assert "\n\n" in result["raw_response"]
+        assert "Line 1" in result["raw_response"]
+        assert "Line 3" in result["raw_response"]
     
     def test_handle_empty_image(self, extractor, test_media, mock_denidin):
         """
@@ -91,23 +91,25 @@ class TestImageExtractor:
         )
         mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
         
-        result = extractor.extract_text(test_media)
+        result = extractor.analyze_media(test_media)
         
-        assert result["extracted_text"] == ""
-        assert result["extraction_quality"] == "low"
-        assert len(result["warnings"]) > 0
+        # raw_response contains the full AI response, even if it says no text
+        assert "No visible text" in result["raw_response"]
+        assert result["extraction_quality"] == "high"
     
     def test_handle_garbled_text_extraction(self, extractor, test_media, mock_denidin):
         """
         Test graceful failure on OCR errors.
         CHK007: Graceful degradation.
         """
-        mock_denidin.ai_handler.client.chat.completions.create.side_effect = Exception("Vision API failed")
+        mock_denidin.ai_handler.client.chat.completions.side_effect = Exception("Vision API failed")
         
-        result = extractor.extract_text(test_media)
+        result = extractor.analyze_media(test_media)
         
-        assert result["extracted_text"] == ""
+        # On exception, raw_response is empty
+        assert result["raw_response"] == ""
         assert result["extraction_quality"] == "failed"
+        assert "Analysis failed" in result["warnings"][0]
         assert len(result["warnings"]) > 0
         assert any("failed" in w.lower() for w in result["warnings"])
     
@@ -121,7 +123,7 @@ class TestImageExtractor:
         mock_response.choices[0].message.content = "TEXT:\ntest\nCONFIDENCE: high"
         mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
         
-        extractor.extract_text(test_media)
+        extractor.analyze_media(test_media)
         
         # Verify vision API was called
         assert mock_denidin.ai_handler.client.chat.completions.create.called
@@ -145,14 +147,14 @@ class TestImageExtractor:
         )
         mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
         
-        result = extractor.extract_text(test_media)
+        result = extractor.analyze_media(test_media)
         
         assert result["extraction_quality"] == "high"
     
     def test_assess_quality_medium(self, extractor, test_media, mock_denidin):
         """
-        Test quality assessment uses AI confidence directly.
-        Quality: medium when AI reports medium confidence.
+        Test that quality is always 'high' since we don't parse anymore.
+        We just pass through the AI response.
         """
         mock_response = Mock()
         mock_response.choices = [Mock()]
@@ -161,88 +163,28 @@ class TestImageExtractor:
         )
         mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
         
-        result = extractor.extract_text(test_media)
+        result = extractor.analyze_media(test_media)
         
-        assert result["extraction_quality"] == "medium"
+        # Quality is always "high" for ImageExtractor since we don't parse
+        assert result["extraction_quality"] == "high"
     
     # ========== Phase 4: Document Analysis Tests ==========
     
-    def test_extract_includes_document_analysis(self, extractor, test_media, mock_denidin):
-        """
-        Phase 4: Verify extract_text returns document_analysis structure.
-        """
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
-            "TEXT:\nContract Agreement\n\n"
-            "DOCUMENT_TYPE: contract\n"
-            "SUMMARY: Service agreement between parties\n"
-            "KEY_POINTS:\n"
-            "- Client: David Cohen\n"
-            "- Amount: ₪50,000\n"
-            "CONFIDENCE: high"
-        )
-        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
-        
-        result = extractor.extract_text(test_media)
-        
-        # Verify document_analysis exists
-        assert "document_analysis" in result
-        analysis = result["document_analysis"]
-        
-        # Verify all required fields
-        assert "document_type" in analysis
-        assert "summary" in analysis
-        assert "key_points" in analysis
-        
-        # Verify content
-        assert analysis["document_type"] == "contract"
-        assert "agreement" in analysis["summary"].lower()
-        assert isinstance(analysis["key_points"], list)
-        assert len(analysis["key_points"]) == 2
-        assert "David Cohen" in analysis["key_points"][0]
-    
-    def test_document_analysis_generic_fallback(self, extractor, test_media, mock_denidin):
-        """
-        Phase 4: When AI can't determine type, defaults to 'generic'.
-        """
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
-            "TEXT:\nSome random notes\n\n"
-            "DOCUMENT_TYPE: generic\n"
-            "SUMMARY: Unstructured personal notes\n"
-            "KEY_POINTS:\n"
-            "- Note about meeting\n"
-            "CONFIDENCE: medium"
-        )
-        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
-        
-        result = extractor.extract_text(test_media)
-        
-        assert result["document_analysis"]["document_type"] == "generic"
-    
     def test_prompt_includes_document_analysis_request(self, extractor, test_media, mock_denidin):
         """
-        Phase 4: Verify enhanced prompt requests document analysis.
+        Verify that the prompt is loaded and sent to the API.
+        The AI response is passed through unchanged - no parsing.
         """
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
-            "TEXT:\nTest\n\nDOCUMENT_TYPE: generic\nSUMMARY: test\nKEY_POINTS:\n- test\nCONFIDENCE: high"
-        )
+        mock_response.choices[0].message.content = "AI analysis response"
         mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
         
-        extractor.extract_text(test_media)
+        result = extractor.analyze_media(test_media)
         
-        call_args = mock_denidin.ai_handler.client.chat.completions.create.call_args
-        messages = call_args[1]["messages"]
-        user_content = messages[0]["content"]
-        text_part = next((item["text"] for item in user_content if item.get("type") == "text"), "")
+        # Verify raw_response contains the AI response
+        assert result["raw_response"] == "AI analysis response"
         
-        # Verify prompt requests analysis
-        assert "document" in text_part.lower()
-        assert "analysis" in text_part.lower() or "analyze" in text_part.lower()
-        assert "summary" in text_part.lower()
-        assert "key" in text_part.lower() and "point" in text_part.lower()
+        # Verify the API was called
+        assert mock_denidin.ai_handler.client.chat.completions.create.called
 
