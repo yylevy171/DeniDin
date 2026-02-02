@@ -998,6 +998,70 @@ except Exception as e:
 
 ---
 
+## XVIII. Definition of Done (DoD)
+
+**Every feature and bugfix MUST satisfy all of the following before being marked complete:**
+
+### Code Quality
+- [x] All tests pass (unit, integration, and end-to-end as applicable)
+- [x] Code follows all CONST and METH requirements
+- [x] No linting errors (pylint score 10/10 or higher)
+- [x] Code is reviewed and approved by at least one peer
+- [x] No hardcoded secrets, env vars, or debugging code left behind
+- [x] Type hints are present (Pylance/mypy compliant)
+
+### Testing
+- [x] New feature: Unit tests written FIRST (TDD), integration tests as needed
+- [x] Bugfix: Failing test added to demonstrate the bug, then fixed, then test passes
+- [x] Test coverage: New code has >85% coverage (exceptions allowed for complex external integrations)
+- [x] Tests don't depend on execution order or external state
+- [x] Tests are deterministic (no flaky tests)
+
+### Documentation
+- [x] Code is self-documenting (clear function/variable names, type hints)
+- [x] Complex logic has inline comments explaining WHY (not WHAT)
+- [x] Docstrings present for public functions and classes
+- [x] Commit messages follow Conventional Commits format with clear description
+
+### Memory Bank Update
+- [x] **Memory Bank Updated**: If this feature/bugfix introduces new standards, patterns, or project knowledge, add or update entries in `.github/memory/`
+  - New architectural patterns → add to `architecture-patterns.md` (or create new entry)
+  - New standards or gotchas → add to `const-rules.md` or create new entry
+  - Major project changes → update `project-structure.md`
+  - Bug lessons learned → create `bugfix-###-lessons-learned.md`
+  - Update `index.json` with new entries
+  - This ensures future contributors and tools have access to this knowledge
+
+### Git & PR
+- [x] Branch follows naming convention: `feature/###-description` or `bugfix/###-description`
+- [x] PR includes clear description, test results, and files changed
+- [x] All commits follow Conventional Commits format
+- [x] No merge conflicts on master
+- [x] PR is merged with `--merge` (not squash) to preserve commit history
+
+### Feature Flags (if applicable)
+- [x] New features gated behind feature flags (default: `false`)
+- [x] Feature flag is documented in config and code
+- [x] Rollback plan exists if flag needs to be disabled
+
+### Configuration
+- [x] No new environment variables introduced (use `config.json` only)
+- [x] New config keys added to `config.example.json` with safe defaults
+- [x] Configuration validated at startup with clear error messages
+
+### Performance & Security (as applicable)
+- [x] No N+1 queries or obvious performance issues
+- [x] No new security vulnerabilities introduced
+- [x] External API calls are mocked in tests
+- [x] Secrets are never logged
+
+**Memory Bank Guidance**: 
+- If this is your first time updating the memory bank, see `.github/memory/README.md` for format.
+- The memory bank is NOT a code dump — entries should be short (~1-3 paragraphs) and focused on one fact or set of related facts.
+- Use YAML frontmatter and clear tags so future contributors can find the knowledge.
+
+---
+
 ## Enforcement
 
 All contributors must:
@@ -1005,6 +1069,7 @@ All contributors must:
 2. Follow all principles for all code
 3. Complete version control steps for all phases
 4. Never compromise on standards or security
+5. Satisfy the Definition of Done before marking work complete
 
 **Violations**:
 - PRs not following this constitution will be rejected
