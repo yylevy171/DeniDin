@@ -10,5 +10,63 @@
         ".specify/scripts/bash/": true,
         ".specify/scripts/powershell/": true
     }
+    ,
+    // Copilot agent configuration to make workspace agent selectable in Copilot Chat
+    "github.copilot.chat.codeGeneration.agents": [
+        {
+            "name": "principal-software-engineer",
+            "description": "Principal-level software engineering guidance",
+            "filePath": ".github/agents/principal-software-engineer.agent.md"
+        }
+    ],
+    "github.copilot.chat.customAgents": [
+        {
+            "name": "principal-software-engineer",
+            "description": "Principal-level software engineering guidance",
+            "filePath": ".github/agents/principal-software-engineer.agent.md"
+        }
+    ]
+
+    ,
+    // Additional key some Copilot Chat builds read
+    "github.copilot.chat.agents": [
+        {
+            "name": "principal-software-engineer",
+            "description": "Principal-level software engineering guidance",
+            "filePath": ".github/agents/principal-software-engineer.agent.md"
+        }
+    ]
+
+    ,
+    // Backup keys for other Copilot/Copilot Chat versions
+    "copilot.chat.customAgents": [
+        {
+            "name": "principal-software-engineer",
+            "description": "Principal-level software engineering guidance",
+            "filePath": ".github/agents/principal-software-engineer.agent.md"
+        }
+    ],
+    "copilot.customAgents": [
+        {
+            "name": "principal-software-engineer",
+            "description": "Principal-level software engineering guidance",
+            "filePath": ".github/agents/principal-software-engineer.agent.md"
+        }
+    ],
+    "github.copilot.agents": [
+        {
+            "name": "principal-software-engineer",
+            "description": "Principal-level software engineering guidance",
+            "filePath": ".github/agents/principal-software-engineer.agent.md"
+        }
+    ],
+    "copilot.agents": [
+        {
+            "name": "principal-software-engineer",
+            "description": "Principal-level software engineering guidance",
+            "filePath": ".github/agents/principal-software-engineer.agent.md"
+        }
+    ]
 }
+
 

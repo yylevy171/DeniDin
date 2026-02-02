@@ -5,10 +5,12 @@
 **ALWAYS read these documents at the start of every chat session:**
 
 1. **`.github/quick-ref-constitution.md`** - Quick reference for core constraints (THIS IS LOADED INTO CONTEXT)
-2. **`.github/CONSTITUTION.md`** - Complete coding standards, technical constraints, feature flags, UTC timestamps, version control
-3. **`.github/METHODOLOGY.md`** - Development workflow, TDD process, Bug-Driven Development (BDD), agent collaboration
+2. **`.github/CONSTITUTION.md`** (**CONST**) - Complete coding standards, technical constraints, feature flags, UTC timestamps, version control
+3. **`.github/METHODOLOGY.md`** (**METH**) - Development workflow, TDD process, Bug-Driven Development (BDD), agent collaboration
 4. **`.github/ARCHITECTURE.md`** - System architecture, components, data flow, integration points
 5. **`README.md`** - Project overview, setup instructions, configuration guide
+
+**Use "CONST" to refer to CONSTITUTION.md and "METH" to refer to METHODOLOGY.md in your prompts.**
 
 ## Quick Reference
 

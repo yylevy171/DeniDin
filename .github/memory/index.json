@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "lastUpdated": "2026-02-02T00:00:00Z",
+  "entries": [
+    {
+      "id": "const-rules",
+      "title": "CONST: Constitution Rules",
+      "filePath": ".github/memory/const-rules.md",
+      "tags": ["constitution", "rules", "standards"],
+      "summary": "Core coding standards: no env vars, UTC timestamps, feature branches, feature flags"
+    },
+    {
+      "id": "meth-workflow",
+      "title": "METH: Development Workflow",
+      "filePath": ".github/memory/meth-workflow.md",
+      "tags": ["methodology", "workflow", "tdd", "bdd"],
+      "summary": "Spec-first, TDD/BDD gates, Git workflow, approval requirements"
+    },
+    {
+      "id": "project-structure",
+      "title": "Project Structure",
+      "filePath": ".github/memory/project-structure.md",
+      "tags": ["project", "layout", "structure"],
+      "summary": "Key directories and file locations in the DeniDin repository"
+    }
+  ]
+}
