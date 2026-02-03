@@ -41,12 +41,14 @@ Users want to interact with Morning's Green Receipt (חשבונית ירוקה) 
 - Document generation (PDF receipts)
 - Business analytics
 
-**API Access**: Morning's API availability is currently unknown and requires Phase 0 research
-- **Status**: API existence and access not yet confirmed - this is a Phase 0 blocking task
-- Need to verify if Morning provides REST API
-- Authentication method (API key, OAuth, etc.) - TBD pending API discovery
-- Rate limits and quotas - TBD
-- Webhook support for real-time updates - TBD
+**API Access**: ✅ **CONFIRMED** - Morning provides REST API via Green Invoice
+- **Status**: Public REST API exists and documented (https://greeninvoice.docs.apiary.io/)
+- **Base URL**: https://api.greeninvoice.co.il/api/v1/
+- **Sandbox URL**: https://sandbox.d.greeninvoice.co.il/api/v1/
+- **Authentication**: JWT Bearer Token (obtained via API key)
+- **Rate Limit**: ~3 requests/second (429 status if exceeded)
+- **Webhook Support**: Yes - POST to callback URLs for async operations
+- **Language**: Full Hebrew support (error messages, fields, documentation all in Hebrew)
 
 ## Architecture
 
@@ -743,16 +745,45 @@ def format_invoice_response_hebrew(invoice: Invoice) -> str:
 ## Research Checklist
 
 **CRITICAL - Phase 0 Blockers** (Must complete before any implementation):
-- [ ] Morning API documentation availability - **BLOCKER: Confirm API exists**
-- [ ] API authentication method
-- [ ] Available endpoints and features
-- [ ] Rate limits and quotas
-- [ ] Webhook support
-- [ ] Test/sandbox environment
-- [ ] API pricing/costs
-- [ ] Hebrew language support in API
+- [x] Morning API documentation availability - **✅ CONFIRMED: Public REST API with full documentation**
+- [x] API authentication method - **✅ JWT Bearer Token via API key**
+- [x] Available endpoints and features - **✅ Documented (see api-documentation.md)**
+- [x] Rate limits and quotas - **✅ ~3 requests/second**
+- [x] Webhook support - **✅ Yes, for async operations**
+- [x] Test/sandbox environment - **✅ Yes, separate sandbox with own API key**
+- [x] API pricing/costs - **✅ Access requires "Best" subscription or higher**
+- [x] Hebrew language support in API - **✅ Full Hebrew support**
 
-**Risk**: If Morning does not provide a public API, this feature requires complete redesign (alternative approaches: web scraping, browser automation, or partnering with Morning for API access).
+**Phase 0 Status**: ✅ COMPLETE - API is production-ready and well-documented
+
+### Key Findings from API Research
+
+**Endpoints Mapping to MCP Tools**:
+1. `create_invoice` → POST /documents (type: 305 for invoice, 320 for receipt)
+2. `list_invoices` → GET /documents/search (with filters)
+3. `get_invoice_details` → GET /documents/{id}
+4. `update_invoice_status` → PUT /documents/{id} (open/close)
+5. `add_client` → POST /clients
+6. `get_financial_summary` → GET /documents/search (aggregate results)
+7. `send_invoice` → PUT /documents/{id} + POST to email/WhatsApp (via DeniDin integration)
+8. `download_invoice_pdf` → GET /documents/{id}/preview (returns Base64 PDF)
+
+**Authentication Flow**:
+1. User provides API key (configured in MCP server)
+2. Server calls POST /account/token with API key
+3. Receive JWT token (valid 1 hour)
+4. Use token in Bearer auth header for all subsequent calls
+5. Refresh token as needed
+
+**Important Constraints**:
+- API is case-sensitive - parameter validation critical
+- CORS not supported - requests must be server-side only ✅
+- Requires "Best" subscription or higher
+- No static IP whitelist (webhooks work from any IP)
+- Errors returned in Hebrew with numeric codes
+- Document types: 305=invoice, 320=receipt, others for orders/etc.
+
+**Risk**: Mitigated - API is production-ready and fully documented. No alternative approaches needed.
 
 ## Clarifications
 

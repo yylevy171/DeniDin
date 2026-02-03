@@ -1,0 +1,402 @@
+morning by Green Invoice APIIntroductionmorning by Green Invoice LogoOverviewEndpoint URLGreen Invoice system includes multiple environments, each environment serves a different purpose.The environments have different databases & API keys - which means that data generated on one environment won't be available on another.Sandbox: This environment is used for testing, so that you can do whatever you want without destroying your own data. This environment includes the latest updates for our system. In order to use this environment you have to create a new user (just like in the regular / production site) in the environment at: https://lp.sandbox.d.greeninvoice.co.il/join/. The base URL for the API interaction is https://sandbox.d.greeninvoice.co.il/api/v1/.Note: There is no need to enter your credit card information when adding a subscription as we use a demo credit card to add a sandbox subscription for you.Note: When testing the payments section in sandbox - a preconfigured testing credit card will be entered, the allowed amount for testing is up to (or equal to 5000 ILS), more than that amount will result in a card issue (in-order to demonstrate failing card).Production: This environment is the default one. The base URL for the API interaction is https://api.greeninvoice.co.il/api/v1/.AuthorizationMost of the requests to morning by Green Invoice's API require you to authenticate yourself to the service (this excludes the login and tools endpoints). In order to do this you must send the correct HTTP header with the correct JSON Web Token (JWT).This Authorization header is the header that will be used for authorizing your access to your account resources and it allows our system to decide which permissions are granted. The header also contains information regarding the active business.The Authorization header is obtained by making a request to /account/token endpoint of the API as explained in here.The Authorization header structure is as follows: Authorization: Bearer {JWT}, where {JWT} is the JSON Web Token.NOTE: There are 2 different Authorization types - Bearer and Basic. If you are a partner, some of the endpoint you will use will require you to state your Authorization code as Basic, else - use Bearer.HTTP response codes200 — Success Everything went smooth.400 — Bad Request There was a validation error with the input.401 — Unauthorized Missing or incorrect JSON Web Token (JWT) in Authorization header.403 — Forbidden You are trying to request a resource you aren't allowed to.404 — Not Found One or more of the required resources was not found, or you do not own the resource.500 — Internal Server Error This is an issue with morning by Green Invoice's servers processing your request. In most cases we are notified so that we can investigate the issue.Error CodesWhen working with the morning by Green Invoice system you might have to tackle error codes that you will receive as response.Whenever the morning by Green Invoice servers detect an error it will return a JSON object containing error details:{
+    "errorCode": 2002,
+    "errorMessage": "מייל או סיסמה לא נכונים."
+}
+Green Invoice system is in Hebrew language and therefore the errors you will receive are in Hebrew.We have added a list for you to view of the error code numbers and their descriptions (the descriptions are in Hebrew).
+Error Code	Description
+401	גישה נדחתה, נא להתחבר מחדש.
+1002	שדה שם ריק.
+1003	לא נמצא עסק פעיל בחשבון.
+1004	Empty request body or invalid JSON.
+1005	שגיאה במהלך שמירה.
+1006	נא לחדש את המינוי.
+1007	חסרה הרשאה מתאימה.
+403	גישה אסורה.
+404	פריט לא נמצא.
+405	Method Not Allowed.
+1008	פריט לא עודכן, כיוון שלא בוצעו שינויים.
+1009	יש לבחור כתובות מייל.
+1010	קיימת כבר בקשה עם נתונים זהים.
+1011	שפה לא נתמכת.
+1012	פעולה זו נתמכת במינוי גבוה יותר.
+1013	קובץ ריק או לא תקין.
+1014	סוג קובץ לא נתמך.
+1015	יש להסדיר את החוב בחשבון על מנת לבצע את הפעולה.
+1016	שגיאה בעדכון בסיס נתונים.
+1017	שגיאה כללית.
+1018	שגיאה בשליחת מייל. יתכן וכתובת המייל חסומה או לא תקינה.
+1019	כתובת המייל של הנמען חסומה לשליחה.
+1020	שגיאת הצפנה.
+1100	שדה {id} לא תקין
+1101	לא נשלחו שדות לעדכון.
+1102	כתובת מייל לא תקינה.
+1103	כתובת אתר לא תקינה.
+1104	קוד מדינה לא תקין.
+1105	ערך תנאי תשלום לא תקין.
+1106	ערך קוד מטבע לא תקין.
+1107	שער המרה לא תקין, ערך צריך להיות גדול מאפס.
+1108	שיעור מע"מ לא תקין. צריך להיות בין 0-1.
+1109	קיימת שורה עם מע"מ במסמך ללא מע"מ.
+1110	מחיר לא תקין.
+2000	החשבון עדיין לא פעיל.
+2001	משתמש חסום.
+2002	מייל או סיסמה לא נכונים.
+2003	משתמש לא קיים.
+2004	נא למלא שם פרטי.
+2005	נא למלא שם משפחה.
+2006	סיסמה לא תקינה. צריכה להיות 8-16 ספרות או תווים.
+2007	מייל תפוס.
+2008	סיסמה נוכחית לא נכונה.
+2009	מספר ת.ז. לא תקין.
+2010	החשבון כבר הופעל.
+2012	ערך id לא תקין.
+2013	ערך type לא תקין.
+2014	נתוני מפתח לא נכונים.
+1111	מספר עוסק / ח.פ אינו תקין.
+1112	לא ניתן להוסיף מסמכים. בחודש זה הופקה כמות המסמכים המירבית לחשבון.
+1113	שדה תקבול לא נשלח.
+1114	תאריך התחלה לא תקין.
+1115	תאריך סיום לא תקין.
+1116	סכום מע״מ לא תקין.
+1117	תאריך לא תקין.
+1118	לא ניתן לרכוש שירותים נוספים ללא מסלול פעיל בתשלום.
+1119	גודל עמוד צריך להיות לכל היותר 100.
+1120	כתובת הדומיין של המייל לא תקינה.
+2100	סוג עוסק לא תקין.
+2101	שם העסק לא יכול להיות ריק.
+2102	לא ניתן להוסיף עוד עסקים במסגרת המינוי.
+2103	נא למלא כתובת עסק.
+2104	נא למלא עיר.
+2105	קובץ לא תקין או גדול מ 5M.
+2106	סוג קובץ לא נתמך.
+2107	מספר תבנית עיצוב לא תקין.
+2125	מספר סקין בתבנית עיצוב לא תקין.
+2126	אחוז מקדמות אינו תקין. ערך תקין הוא מספר בין 0-35.
+2127	ערך תחום עיסוק לא תקין.
+2128	ערך מקצוע לא תקין.
+2129	ערך סדר עיצוב שדות תקבולים במסמך לא תקין.
+2108	לא נמצא עסק.
+2109	מספר סניף בנק יכול להכיל עד 5 תווים.
+2110	עסק עם שם זהה כבר רשום בחשבון.
+2111	מספר עוסק / ח.פ כבר קיים בחשבון.
+2112	מספר עוסק / ח.פ כבר קיים במערכת תחת חשבון אחר.
+2113	מספר עוסק / ח.פ כבר רשום בחשבון פעמיים. ניתן עד להקים עד 2 עסקים עם אותו מספר עוסק.
+2114	מספר תיק ניכויים אינו תקין.
+2115	אחוז ניכוי במקור אינו תקין. ערך תקין הוא מספר בין 0-35.
+2116	ערך שיטת דיווח לא תקין.
+2117	ניתן להוסיף עד 3 כתובות מייל להנהלת חשבונות.
+2118	חלק מההשדות לא עודכנו. קיים עסק נוסף עם מספר עוסק זהה ולכן חייב להישמר ביניהם טווח הפרש של לפחות 8,000.
+2119	מספור מסמך לא תקין. ערכים תקינים בין 1-999999999.
+2120	שדה {types} לא נשלח.
+2121	לא ניתן לעדכן מספור זה מאחר וכבר הופקו מסמכים בשנה זו.
+2122	לא ניתן לבצע פעולה זו בעסק מוקפא.
+2123	ערך {id} לא תקין של העסק
+2124	תוכן בתחתית המסמך מוגבל ל-2000 תווים.
+2200	ניתן להוסיף עד 3 כתובות מייל ללקוח.
+2201	נא למלא שם לקוח.
+2202	לא ניתן לאחד לקוח פעיל.
+2203	לא ניתן למחוק לקוח שהופקו עבורו מסמכים.
+2204	שדה {id} של לקוח מטרה לא נשלח.
+2205	לא נמצאו לקוחות חדשים או שהקובץ המיובא אינו תקין.
+2206	ניתן להוסיף עד 3 תגיות ללקוח.
+2207	קובץ לא תקין או גדול מ 5M.
+2208	יתרה לא תקינה.
+2209	הכנסות לא תקינות.
+2210	לא ניתן למחוק לקוח בעל כרטיסי אשראי שמורים.
+2250	ניתן להוסיף עד 3 כתובות מייל לספק.
+2251	נא למלא שם ספק.
+2252	לא ניתן לאחד ספק פעיל.
+2253	לא ניתן למחוק ספק ששויכו אליו הוצאות.
+2254	שדה {id} של ספק מטרה לא נשלח.
+2255	לא נמצאו ספקים חדשים ותקינים בקובץ היבוא.
+2256	ניתן להוסיף עד 3 תגיות ללקוח.
+2257	קובץ לא תקין או גדול מ 5M.
+2258	יתרה לא תקינה.
+2259	הכנסות לא תקינות.
+2300	נא למלא שם פריט.
+2301	נא למלא תיאור פריט.
+2302	לא נמצאו פריטים חדשים ותקינים בקובץ היבוא.
+2305	קובץ לא תקין או גדול מ 5M.
+2400	לא ניתן לסגור מסמך שאינו פתוח.
+2401	לא ניתן לפתוח מסמך שאינו סגור ידנית.
+2402	שדה {ids} לא נשלח או לא תקין.
+2403	סוג מסמך לא נשלח או אינו נתמך עבור סוג עסק זה.
+2404	Invalid or missing {linkType} field. Can be only (copy|cancel|link).
+2405	התאריך שנבחר עתידי או מוקדם מדי לסוג מסמך זה.
+2406	ערך שפה לא תקין.
+2407	ערך קוד מטבע לא תקין.
+2408	תאריך לתשלום עד לא תקין.
+2409	סוג מע"מ לא תקין.
+2410	שדה לקוח {client} חסר.
+2411	לקוח לא קיים.
+2412	חשבונית עצמית יכולה להיות מופקת רק עם סוג חשבונית מס.
+2413	נא למלא לפחות שירות או פריט אחד.
+2414	סכום תשלום לא תקין. צריך להיות מספר עשרוני.
+2415	תיאור שורה לא יכול להיות ריק.
+2416	סכום מסמך לא תקין. צריך להיות שונה מאפס.
+2417	סכום מסמך לא תקין. צריך להיות גדול מאפס.
+2418	סכום מסמך לא תקין. צריך להיות גדול או שווה לאפס.
+2419	נא למלא לפחות שורת תקבולים אחת.
+2420	Invalid discount type. Can be 'sum' or 'percentage'.
+2421	קוד סוג תשלום לא תקין.
+2422	קיים חוסר התאמה בין סכום התקבולים לסכום התשלומים.
+2423	סוג כרטיס אשראי לא תקין.
+2424	קוד סוג עסקה לא תקין.
+2425	מספר תשלומים יכול להיות רק 1-36.
+2426	תאריך תקבול ריק, עתידי או לא תקין.
+2427	לא ניתן לשלוח במייל מסמך שלא נחתם דיגיטלית.
+2428	נא למלא שורת תקבולים אחת לפחות בנוסף לניכוי במקור.
+2429	מסמך מקושר לא נמצא.
+2430	ערך כמות צריך להיות גדול מ 1.
+2431	כמות מירבית מותרת של שורות הכנסה / תשלום היא 200 למסמך.
+2432	סוג עותק מסמך לא נתמך.
+2433	סוג סטטוס הפצת מייל לא נתמך.
+2434	ערך סכום תקבול צריך להיות שונה מ 0.
+2435	ערך טקסט הערות לא תקין.
+2436	ערך טקסט תחתון לא תקין.
+2437	ערך שליחת מסמך במייל לא תקין.
+2500	כתובת לא תקינה.
+2501	קטגוריה חסרה.
+2502	כותרת חסרה.
+2503	כתובת חסרה.
+2504	רשימת מיון ריקה.
+2600	לא נמצא מסוף סליקה פעיל.
+2601	קיימת בעיה בחיוב אשראי, נא ליצור קשר עם התמיכה.
+2602	שגיאה בחיבור תוסף.
+2603	שגיאה בחיוב כרטיס אשראי.
+2604	ערך flow לא תקין.
+2605	לא נשלח תוכן מסמך.
+2606	שגיאה בשינוי סטטוס מסוף.
+2607	סוג טוקן לא תקין.
+2608	4 ספרות של כרטיס אשראי אינם תקינים.
+2609	סוג מזהה עסקה לא תקין.
+2610	סכום תשלום לא תקין. צריך להיות גדול מאפס.
+2611	שגיאת אשראי.
+2612	מזהה עסקה לא תקין.
+2613	סוג סטטוס עסקה לא תקין.
+2614	שדה מותאם אישית לא תקין.
+2615	לא ניתן לבטל עסקה שבוטלה.
+2616	לא ניתן לבטל עסקה, נא לבצע זיכוי.
+2617	לא ניתן לזכות עסקה.
+2618	לא ניתן לבטל עסקה שבוטלה.
+2619	שדה סוג חיוב לא תקין
+2620	בקשה הושלמה בעבר.
+2621	לא ניתן לבטל או לזכות עסקה.
+2622	שם בעל כרטיס לא תקין.
+2623	תוקף כרטיס לא תקין.
+2624	לא ניתן לזכות עסקה בסכום גדול מהסכום המקורי.
+2625	לתוסף שנבחר אין הרשאה לשמירת כרטיסי אשראי.
+2626	שם משלם לא תקין.
+2627	כרטיס אשראי שמור לא קיים או לא פעיל.
+2700	מפתח API לא תקין.
+2701	מצב מפתח API לא תקין.
+2702	סוג מפתח דורש הזדהות נוספת.
+2800	קוד חשבון ריק.
+2801	סוג ממשק לא ניתן לסנכרון.
+2802	סוג ממשק חיצוני לא תקין.
+2803	שגיאת התחברות לממשק חיצוני.
+2804	שגיאת תוסף.
+2805	תוסף לא פעיל.
+2900	תאריך התחלה לא תקין.
+2901	תאריך סיום לא תקין או שאינו מאפשר לפחות הפקת מסמך אחד.
+2902	תקופת חזרה לא תקינה.
+2903	סטטוס ריטיינר לא תקין.
+2904	תאריך ריטיינר לא תקין.
+3000	שגיאה כללית.
+3001	לא קיים כרטיס אשראי בחשבון.
+3002	סוג המינוי שנשלח לא קיים.
+4000	סוג נתונים לא תקין.
+3003	סוג פעולה לא נתמך.
+3004	שדה אחד או יותר חסרים.
+3005	מינוי זהה קיים בחשבון.
+3006	מכסת ההרשמות היומית הסתיימה. נסו שוב מחר או פנו למנהל תיק הלקוח שלכם להגדלת המכסה היומית.
+3007	מכסת החיבורים היומית הסתיימה. נסו שוב מחר או פנו למנהל תיק הלקוח שלכם להגדלת המכסה היומית.
+3008	לא ניתן להפעיל את החיבור.
+3009	סוג טרנזאקציה לא נתמכת.
+3010	קיים חוב בחשבון. נא להסדיר את החוב לפני רכישת מינוי חדש.
+3100	שם תגית ריק.
+3101	אורך מקסימלי של תגית אפשרי עד 30 תווים.
+3200	סוג משימה לא נתמך.
+3300	סוג סטטוס הוצאה לא נתמך.
+3301	סכום הוצאה לא תקין.
+3302	סכום מע״מ בהוצאה לא תקין.
+3303	נא לצרף קובץ עבור ההוצאה.
+3304	סוג טיוטת הוצאה לא נתמך.
+3305	טיוטת הוצאה מקושרת לא נמצאה.
+3306	מספר מסמך הוצאה לא תקין.
+3307	תאריך מסמך הוצאה לא תקין.
+3308	סוג מסמך הוצאה לא תקין.
+3309	לא ניתן לסווג מסמכי הכנסה של העסק כהוצאה.
+3310	חודש דיווח לא תקין.
+3311	נא למלא פרטי ספק.
+3312	נא למלא פרטי סוג הוצאה.
+3313	שדה expenseIds לא תקין.
+3314	לא ניתן לעדכן הוצאה לאחר שדווחה.
+3315	לא ניתן לפתוח הוצאה שלא דווחה.
+3316	לא ניתן לסגור הוצאה שאינה פתוחה.
+3317	סוג אמצעי התשלום של ההוצאה לא תקין.
+3318	מיקום משרד לא תקין.
+3319	מספר חדרים לא תקין.
+3320	מספר רכב לא תקין.
+3400	נא למלא כותרת לחשבון.
+3401	שיעור הוצאה מוכרת לא תקין.
+3402	שיעור מע״מ מוכר לא תקין.
+3403	סוג ההוצאה לא תקין.
+3404	קוד 6111 לא תקין.
+3405	לא ניתן למחוק סוג הוצאה ששויכו אליו הוצאות.
+NotesThe API is case sensitive - make sure to validate that the parameters you send are in their correct form.Getting StartedAPI KeyA user must acquire an API key (which is done within the morning by Green Invoice website and is explained in here) in-order to start using the API.Once a key is acquired the user can then start using the API key.SubscriptionAccess to morning by Green Invoice API is granted only to users that are on the Best subscription and above. more info on the available subscriptions can be found in the paying section.API LimitationsThe average rate limit of the API is approximately 3 requests per second. Too many requests will result in status code 429 (Too Many Requests) given by the server. CORS is not supported - you should not use this API from a browser.SupportThe tech support email is solely for support in matters of the API documentation.If you have any general question or proposal that requires support please contact the support team instead in here.Before contacting the tech support please read the API documentation very carefully.If you still haven't found an answer to your question or if you think there is a lack in documentation in one of the sections, please contact us at support@morning.co.Once submitting a question, please make sure to submit all the details for your question, so that we can provide the best answer possible.If the question you are submitting is related to a specific API endpoint, please make sure to also provide us with the data you sent such as - request endpoint, request type used, headers, request parameters, as well as response status and the response itself that was given by the server.PostmanPostman is an amazing application. It's a tool that allows developers to make HTTP requests extremely easy, save examples, work under different environments, we LOVE it!Postman is downloadable for free use from here and supported with lots of developer docs here.We are providing you the full collection of this API for your usage with Postman, this collection includes examples of different requests & responses, the endpoints, documentation to immensely ease your interaction with our API.After downloading Postman click on the following button to download our collection:Run in PostmanGenerate code using PostmanPostman allows for easy code generation to use with your favorite language.After downloading and using our Postman collection follow the GIF below to generate the code for your used language:Generate Code-POSTMANWebhooks (Callback URLs)Some parameters in our API send webhooks (also called Callback URLs, Notification URL) to a defined URL.Webhooks is a way for third party systems to get notified regarding an event that occurred in our system.Once you as a third party system have subscribed to listen to a specific event (e.g.: a document has finished processing), and that event occurred - your subscribed callback URL will be notified with information regarding the event.NOTE: Due to our system state-less characteristics we do not have a static IP that you can whitelist.Inspecting Webhooks for Local DevelopmentYou might have noticed that receiving these webhooks to a local development machine is impossible due to your local development machine not being visible in the public net.There is an easy fix for that - using interceptor websites.Websites such as https://webhook.site can intercept a webhook from our servers and let you inspect the received information.To use them - just create a URL and assign the callback parameter with the given URL. Once our servers have finished processing your request, they will send a webhook notification to that interceptor callback URL, and you - will be able to inspect the data, just as shown in the image below:Inspecting WebhooksAn alternative, better solution is to use ngrok, which is a bit more advanced so we will not cover it on this guide.
+ReferenceAccountGreen Invoice uses JSON Web Tokens (JWT) to save session data (due to it's state-less characteristics), you can read more about JWT here.The session data will later allow us to identify your user.
+Receiving a JWT Token using an API Key
+Receiving a JWT Token using an API Key
+This endpoint requires a generated API key that can be acquired through the Green Invoice website and is explained in here.This endpoint returns a JSON Web Token (JWT) in a header named X-Authorization-Bearer and in a field within a JSON called token.NOTE: The JSON Web Token (JWT) is valid for only a temporal time (currently for 1 hour), once a token becomes invalid, making requests for JWT required endpoints will result in a 401 Unauthorized error, and you will be required to request a new token.NOTE: The JSON Web Token (JWT) that is given by this endpoint includes information regarding the default business.Note for partners: When using partner keys, an extra request header Authorization is required with an input of Basic JWT (Where JWT is your partner Authorization code).To explain it even better, we made this general flowchart:Receiving a JWT Token using an API KeyAlso - this GIF will give you general idea on how to practically make the request (we used Postman):Receiving a JWT Token using an API Key-POSTMANReset Password
+Reset Password
+Sends an email to the user, with password reset instructions.
+BusinessesBusinesses are a main component of Green Invoice system.Each business contains it's own documents, clients, items & settings.
+Basic Business Actions
+Get All User Businesses
+Update a Business
+Get Current Business
+Get Current Business
+Get Business By ID
+Get Business By ID
+Business Related Files
+Upload Business Related Files
+Upload business logo, signature, bookkeeping document, deduction document.NOTE:: The uploaded files need to be in Base64. The current allowed file types are: GIF, PNG, JPG, SVG, PDF.
+Delete Business Related Files
+Handling Documents NumberingWhen generating a document, the document receive a number, this number has to be unique for each document of the same type for accounting.Each document type starts from a different number.Some users that have migrated from other invoice systems might require to start from a different number in-order to keep their documents numbering intact & consecutive.
+Get All Documents Numbering
+Modify Initial Documents Numbering
+This endpoint allows you to modify a document type initial numbering. Once modified and a first document of that type was generated - the document number will be locked for the specific type.Get Business Documents Footer
+Get Business Documents Footer
+NOTE: If no footer was set then the output will be an empty JSON.Get Business Types
+Get Business Types
+ClientsYou may add re-curring clients to your Green Invoice business user. This will allow you to add more information on the clients.The information can later be used to help you stay in touch with the clients and follow documents generated regarding their activities, as well as contact person, bank account and other information.
+Add Client
+Add Client
+Adds a new client to the active business.Interacting with Existing Clients
+Get Client
+Update Client
+Delete Client
+NOTE: Only inactive clients can be deleted.Search Clients
+Search Clients
+Associate Existing Documents to a Client
+Associate Existing Documents to a Client
+Merge Clients
+Merge Clients
+NOTE: In-order to merge clients, one of them must be inactive. Once merged - the inactive client will be deleted and all his documents will be added to the merged client.Update Client Balance
+Update Client Balance
+Update the balance of a client.This endpoint will recalculate the final payment amount of a client by the given requested balance.To reset a client's balance - insert 0 as value.
+SuppliersTo ease the process of entering the same supplier on multiple expenses you are able to create a supplier once and use it various times later while creating expenses.
+Add Supplier
+Add Supplier
+Interacting with Existing Supplier
+Get Supplier
+Update Supplier
+Delete Supplier
+Search Suppliers
+Search Suppliers
+Merge Suppliers
+Merge Suppliers
+NOTE: In-order to merge suppliers, one of them must be inactive. Once merged - the inactive supplier will be deleted and all his documents will be added to the merged supplier.
+ItemsWhile generating documents you are usually requested to add items.Items are products that are bought from you, it can be either a real product (such as electronic device, restaurant dish) or a virtual service (such as a programmer hour)..To ease the process of entering the same item on multiple documents you are able to create an item once and use it various times later while creating a document.
+Add Item
+Add Item
+Interacting with Existing Items
+Get Item
+Update Item
+Delete Item
+Search Items
+Search Items
+DocumentsThe main component of the Green Invoice system is the documents, these documents can be of different types, such as but not only - order, invoice, receipt.Documents are business specific, and only the documents of the current used business are visible to you.
+Add DocumentAdd a document to the current business.The document will be generated based on the default business & document settings, and by any overriding request attributes that we receive in this endpoint.NOTE: When declaring your vatType there's multiple different declarations. You can define the general vatType of the document, but - you can also define each income row vatType.NOTE: linkedDocumentIds allows you to state the related / relevant documents, e.g.: when creating a receipt, attach your original invoice document ID as one of the ids in the linkedDocumentIds - this in turn will automatically close the original invoice if needed.NOTE: linkedPaymentId allows you to define the paymentId that the document is going to be relevant to, this can be attached only to invoice documents (type 305).
+Add Document
+Get a Preview DocumentPreviews a document before the actual generation.This endpoint returns a file in Base64 format (you can read more about Base64 here).If you would like to view the file on your website there are build-in plugins to display PDF, other than that - if you would like to have a consistent user experience through all browsers (including mobile browsers) we would suggest using PDF.js (an amazing Mozilla library) is available and can view PDF from Base64 format.If you would like to add a download button for the preview in your website, here is a simple script to do that (do not forget to switch the {base64string} with the Base64 file that you received from the result):<a download="preview-document.pdf" href="data:application/pdf;base64,{base64string}">Download Preview</a>
+NOTE: If you would like just to check how a preview file looks, use the string that was given in the file property from our server response, put it in the following website: https://www.freeformatter.com/base64-encoder.html and click DECODE AND DOWNLOAD. This will download the base64 string as a PDF file into your computer so that you can view it.
+Get a Preview Document
+Interacting with Existing Documents
+Get Document
+Search DocumentsSearch all generated documents (with possibility to filters).
+Search Documents
+Search Payments in DocumentsSearch payments in documents, using different filters.
+Search Payments in Documents
+Close Document
+Close Document
+Open Document
+Open Document
+Get Linked DocumentsGet information about linked / related documents to a specific document.
+Get Linked Documents
+Get Document Download LinksGet information about linked / related documents to a specific document.
+Get Document Download Links
+Get Document Type InformationGet information about specific document type.
+Get Document Information
+Get Document TemplatesRetrieves information regarding the available templates and their corresponding colors / skins in the system.
+Get Document Templates
+Get Document TypesRetrieve information regarding the available document types that are open for the current business.
+Get Document Types
+Get Document StatusesRetrieve information regarding the available document statuses.
+Get Document Statuses
+ExpensesExpenses allow you to track your records about outcome and to understand your cash flow better.
+Add ExpenseAdd an expense to the current business.The expense will be generated based on the default business & document settings, and by any overriding request attributes that we receive in this endpoint.
+Add Expense
+Interacting with Existing Expenses
+Get Expense
+Update Expense
+Delete Expense
+Search ExpensesSearch all generated expenses (with possibility to filters).
+Search Expenses
+Open Expense
+Open Expense
+Close Expense
+Close Expense
+Get Allowed Expenses StatusesShows the expense statuses the selected business can use when interacting with the expenses endpoints.
+Get Allowed Expenses Statuses
+Get Accounting ClassificationsShows the accounting classifications that were defined for this business. The classification can be specified in the accountingClassification field when adding or updating an expense.
+Get Accounting Classifications
+Create an Expense Draft / Update an Existing Expense by FileWe have made changes to the way expense files are uploaded to enhance information security in our system. Therefore, from now on, every action used to upload files to the system (currently there are only two) will require two steps:Send a GET request to get a file upload URLUse attributes from the response of the previous request in order to upload the file by the relevant POST requestNOTE: These actions are asynchronous. Therefore, if you'd like to receive a notification of whether the action has been completed, you can set up a webhook (currently available only on the GUI) for the following events:'expense-draft/parsed' (for creating a new expense draft)'expense-file/updated' (for an updating an existing expense)'expense-draft/declined''file/infected'→ Use this guide to set up Webhooks.
+Get File Upload URL
+NOTE:The PRODUCTION URL is: https://apigw.greeninvoice.co.il/file-upload/v1/urlThe SANDBOX URL is: https://api.sandbox.d.greeninvoice.co.il/file-upload/v1/urlCode exampleNOTE: Referenced to the next actionsNOTE: we will upload the file to the response URL in the following way: the fields received will be added to the data sent see code example:interface File extends Blob { readonly name: string; }async uploadFile(file: File, headers: object): Promise<any> {
+    const presignedPost = await this.getSignedUrl();
+    const data = new FormData();
+    Object.entries(presignedPost.fields).forEach(([field, value]) => {
+        data.append(field, value);
+    });
+    
+    data.append('file', file, file?.name);
+    
+    // make sure the headers contain 'Content-Type': 'multipart/form-data'
+    return this.http.post(presignedPost.url, data, headers);
+}
+Add Expense Draft by File (Create Draft)
+Add an expense draft to the current business.NOTES:Uploading a file always creates an expense draft - in order to generate an actual expense you need to "manually" approve the 'expense draft' after filling any required details.Use the url field you received in the response of the previous request (Get File Upload URL)
+Update Expense File
+NOTES:The expense could not be updated once reported (Expense status = 20)Use the url field you received in the response of the previous request (Get File Upload URL)Search Expense DraftsSearch all generated expense drafts (with possibility to filters).
+Search Expense Drafts
+PaymentsProvides interaction with our online invoice payments system.
+Get Payment FormGet a payment form. This form can be used in an IFrame in your website to provide payment request abilities for invoices within websites.After the payment was made - the system will automatically generate a document for you.NOTE: Access to this endpoint is given only to accounts with one of the following clearing plugins:Cardcom (E-COMMERCE terminal type)IsracardDigital Payments (by Grow)NOTE: If you do not require the automatic creation of a document in our system - there is no need to use our payment system on your website, just use your favorite clearing company API directly.Payment Flow
+Get Payment Form
+Search Credit Card TokensSearch saved credit card tokens.
+Search Credit Card Tokens
+Charge Credit Card TokenCharge a credit card token. Document created data is returned.
+Charge Credit Card Token
+PartnersNOTES:Preforming actions in user accounts are restricted only for existing users in 'morning' with Best or higher subscriptions.Currently, partners are unable to create new user accounts.To use the partners endpoints you have to be a Green Invoice partner.A morning by Green Invoice partner can connect third-party application to Green Invoice and control connected users through his application.Once you are a Green Invoice partner you'll get an authorization code.As you can understand, in-order to work under a controlled user, there will be 3 steps:Request authorization from an existing morning by Green Invoice user. Doing so - will return a key which you should store and protect it from unauthorized access, the key - includes the user API key ID and API secret.Using your partner Authorization code you should then request a JSON Web Token (JWT) for that user, using /account/token endpoint.The last step is to use the user Authorization code that was received in the /account/token endpoint under other endpoints and basically - control your user.NOTE: An inactive partner account will result in 403 (Forbidden) status from the server.
+Get Partner Users
+Get All Connected Users
+Gets all the connected and approved users.To get the user API keys related to your partner make a request using the user email with Get Connected User endpoint.Request User Approval
+Request User Approval
+Connect existing morning by Green Invoice user to partner.The user will then receive an email with request to approve the third-party connection.Once the user approves the request, you will get a JSON POST request notification to the callback url that you have specified in the url parameter you stated.This JSON POST notification will include the email that you requested to connect (so that you can identify to which user this key is relevant to).NOTE: The connection approval email that the user receives expires within 3 days, once this connection request expires and wasn't approved by the user - a new connection request must be initiated.SECURITY NOTE: You will also get a special header X-Data-Signature with the signed SHA256 value of the body using your partner auth token as the signature salt key, this can be used at your side to identify the credibility of the source once you receive the POST request notification. This validation is done by comparing the given X-Data-Signature data to the a self-encrypted JSON data (by applying the your partner Authorization code as salt using SHA256 on the received JSON). This step is not a must but a security measure that can be taken by you to forbid request forgeries. Examples of creating base64 hashes using HMAC SHA256 in different languages can be found hereNOTE: In our Postman collection we provide an example of the JSON POST notification that you will receive to your callback URL - you can use it for testing.To explain it even better, we made this flowchart:Request User Approval FlowchartGet Connected User
+Get Connected User
+Gets an already connected and approved user.This will return API keys of the user which are relevant only to your partner account.Disconnect Partner User
+Disconnect Partner User
+Removes a connected user from your partner.This will remove any partner related API keys from all the connected businesses of the user that was created and your will no longer be able to access it's resources.In case you are billed on this user, you will no longer pay on any future documents.Once the user is removed, the user will get a notification email regarding the disconnection.A disconnected partner user can reconnect at any time.NOTE: All of the businesses of the specified user that relates to your partner will be disconnected.
+ToolsDifferent tools and objects resources that can be of help to you.The tools does not require a JWT token and are accessible to everyone for use.NOTE: The base URL is: https://cache.greeninvoice.co.il
+Get Supported Business Categories
+Get Supported Business Categories
+Get the supported business categories and their sub categories.NOTES:The Endpoint URL is: https://cache.greeninvoice.co.il/businesses/v1/occupations?locale=he_ILThe locale=he_IL parameter is required.Get Supported Countries
+Get Supported Countries
+Get all countries supported ordered by alphabetical order.NOTES:The Endpoint URL is: https://cache.greeninvoice.co.il/geo-location/v1/countries?locale={locale}The locale parameter is required.Get Supported Cities
+Get Supported Cities
+Get all cities supported ordered by alphabetical order.NOTES:The Endpoint URL is: https://cache.greeninvoice.co.il/geo-location/v1/cities?locale={locale}&country=ILThe locale and country=IL parameters are required.Get Supported Currencies
+Get Supported Currencies
+Get the supported currencies. Retrieves the latest currency and the preivious day exchange rates by specified base currency.NOTES:The Endpoint URL is: https://cache.greeninvoice.co.il/currency-exchange/v1/latest?base={base}The base parameter is required.
+
+No action selectedYou can try selecting 'Receiving a JWT Token using an API Key' from the left column.Learn more about using the documentation.
