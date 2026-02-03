@@ -41,11 +41,12 @@ Users want to interact with Morning's Green Receipt (חשבונית ירוקה) 
 - Document generation (PDF receipts)
 - Business analytics
 
-**API Access**: Need to research Morning's API documentation
-- Check if Morning provides REST API
-- Authentication method (API key, OAuth, etc.)
-- Rate limits and quotas
-- Webhook support for real-time updates
+**API Access**: Morning's API availability is currently unknown and requires Phase 0 research
+- **Status**: API existence and access not yet confirmed - this is a Phase 0 blocking task
+- Need to verify if Morning provides REST API
+- Authentication method (API key, OAuth, etc.) - TBD pending API discovery
+- Rate limits and quotas - TBD
+- Webhook support for real-time updates - TBD
 
 ## Architecture
 
@@ -274,7 +275,7 @@ denidin-mcp-morning/
 ```python
 {
     "name": "send_invoice",
-    "description": "Send invoice to client via email",
+    "description": "Send invoice to client via WhatsApp",
     "inputSchema": {
         "type": "object",
         "properties": {
@@ -282,10 +283,9 @@ denidin-mcp-morning/
                 "type": "string",
                 "description": "Invoice ID"
             },
-            "email": {
+            "phone_number": {
                 "type": "string",
-                "format": "email",
-                "description": "Recipient email (optional if client has email)"
+                "description": "Recipient phone number (optional if client has phone)"
             },
             "message": {
                 "type": "string",
@@ -424,16 +424,16 @@ class MorningClient:
         response.raise_for_status()
         return response.json()
     
-    def send_invoice_email(
+    def send_invoice_whatsapp(
         self,
         invoice_id: str,
-        email: str = None,
+        phone_number: str = None,
         message: str = None
     ) -> dict:
-        """Send invoice to client via email."""
+        """Send invoice to client via WhatsApp."""
         payload = {}
-        if email:
-            payload["email"] = email
+        if phone_number:
+            payload["phone_number"] = phone_number
         if message:
             payload["message"] = message
             
@@ -479,7 +479,7 @@ class Invoice(BaseModel):
     amount: float
     currency: str = "ILS"
     description: str
-    status: str  # 'paid', 'unpaid', 'overdue', 'cancelled'
+    status: str  # 'paid', 'unpaid', 'overdue', 'cancelled' - status determined by Morning API, not locally
     issue_date: date
     due_date: Optional[date] = None
     payment_date: Optional[date] = None
@@ -552,14 +552,14 @@ class FinancialSummary(BaseModel):
 
 ### Phase 2: Invoice Management
 - [ ] Implement `update_invoice_status` tool
-- [ ] Implement `send_invoice` tool
+- [ ] Implement `send_invoice` tool (WhatsApp delivery via phone number)
 - [ ] Implement `download_invoice_pdf` tool
-- [ ] Add error handling for API failures
+- [ ] Add error handling for API failures and missing phone numbers
 
 ### Phase 3: Client Management
 - [ ] Implement `add_client` tool
-- [ ] Add client search/resolution
-- [ ] Handle client name disambiguation
+- [ ] Add client search/resolution with fuzzy matching
+- [ ] Handle client name disambiguation - display all matches with IDs and ask user to select
 
 ### Phase 4: Financial Reports
 - [ ] Implement `get_financial_summary` tool
@@ -639,8 +639,8 @@ Bot → MCP Tool Call:
 send_invoice(invoice_id="INV-001")
 
 Response:
-"✅ Invoice INV-001 sent to tech-corp@example.com
-Subject: Invoice for Consulting Services
+"✅ Invoice INV-001 sent via WhatsApp to +972-50-1234567
+Client: Tech Corp
 Status: Delivered"
 ```
 
@@ -687,9 +687,11 @@ Status: Delivered"
 ## Error Handling
 
 | Error | User Message |
-|-------|--------------|
+|-------|--------------||
 | API authentication failed | "❌ Morning API authentication failed. Check API key." |
 | Client not found | "❌ Client 'X' not found. Would you like to add them?" |
+| Multiple clients match | "❓ Multiple clients match 'X':\n1. Tech Corp Ltd (ID: 123)\n2. Tech Corp Inc (ID: 456)\nReply with the number or ID to select." |
+| Client missing phone | "❌ Client has no phone number. Please provide: send invoice to [phone number]" |
 | Invalid amount | "❌ Invalid amount. Please use format: 1000 or 1000.50" |
 | API rate limit | "❌ Too many requests. Please try again in 1 minute." |
 | Network error | "❌ Unable to connect to Morning API. Check connection." |
@@ -702,11 +704,13 @@ Status: Delivered"
 
 ## Hebrew Language Support
 
-Since Morning is an Israeli service and uses Hebrew:
+Since Morning is an Israeli service, all invoice responses will be in Hebrew:
 - Support Hebrew client names (e.g., "חברת הייטק בע״מ")
-- Handle Hebrew currency symbol (₪)
+- All user-facing messages in Hebrew
+- Hebrew currency symbol (₪)
 - Support Hebrew invoice descriptions
 - Date formatting: DD/MM/YYYY (Israeli standard)
+- Status messages in Hebrew (שולם, לא שולם, פג תוקף, בוטל)
 
 ```python
 def format_invoice_response_hebrew(invoice: Invoice) -> str:
@@ -738,8 +742,8 @@ def format_invoice_response_hebrew(invoice: Invoice) -> str:
 
 ## Research Checklist
 
-Before implementation, need to verify:
-- [ ] Morning API documentation availability
+**CRITICAL - Phase 0 Blockers** (Must complete before any implementation):
+- [ ] Morning API documentation availability - **BLOCKER: Confirm API exists**
 - [ ] API authentication method
 - [ ] Available endpoints and features
 - [ ] Rate limits and quotas
@@ -747,6 +751,17 @@ Before implementation, need to verify:
 - [ ] Test/sandbox environment
 - [ ] API pricing/costs
 - [ ] Hebrew language support in API
+
+**Risk**: If Morning does not provide a public API, this feature requires complete redesign (alternative approaches: web scraping, browser automation, or partnering with Morning for API access).
+
+## Clarifications
+
+### Session 2026-02-03
+- Q: What is the current status of Morning API availability? → A: Morning's API availability is unknown - need to research first (Phase 0)
+- Q: When multiple clients match a name during invoice creation, how should the system respond? → A: Display all matches with IDs, ask user to select or clarify
+- Q: How should the system determine when an invoice status becomes "overdue"? → A: The system does not need to determine this - rely on Morning API status
+- Q: What should happen when sending invoice to client with no email on file? → A: Default delivery is WhatsApp via phone number, not email - prompt for phone if missing
+- Q: For Hebrew language support, when should invoice responses be in Hebrew vs English? → A: Always use Hebrew (Israeli business standard)
 
 ---
 
