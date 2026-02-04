@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "denidin-morning config schema",
+  "type": "object",
+  "properties": {
+    "morning": {
+      "type": "object",
+      "properties": {
+        "api_key": { "type": "string" },
+        "api_url": { "type": "string", "format": "uri" },
+        "sandbox_api_url": { "type": "string", "format": "uri" },
+        "file_upload_url": { "type": "string", "format": "uri" },
+        "default_currency": { "type": "string", "default": "ILS" },
+        "default_vat_rate": { "type": "number", "default": 0.17 },
+        "timezone": { "type": "string", "default": "UTC" },
+        "token_ttl_seconds": { "type": "integer", "default": 3600 },
+        "refresh_before_seconds": { "type": "integer", "default": 300 },
+        "rate_limit_per_second": { "type": "number", "default": 3 }
+      },
+      "required": ["api_key", "api_url"]
+    },
+    "mcp": {
+      "type": "object",
+      "properties": {
+        "server_name": { "type": "string" },
+        "log_level": { "type": "string", "enum": ["DEBUG","INFO","WARN","ERROR"], "default": "INFO" },
+        "secrets_backend": { "type": "string", "enum": ["vault","file"], "default": "file" }
+      }
+    }
+  },
+  "required": ["morning"]
+}

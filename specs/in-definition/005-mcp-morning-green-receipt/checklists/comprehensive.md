@@ -23,7 +23,7 @@
 - [ ] CHK009 - Are sandbox vs production environment switching requirements clearly specified? [Clarity, Spec §API Access]
 
 ### Requirement Consistency
-- [ ] CHK010 - Are API base URLs consistent between spec and implementation plan (api.greeninvoice.co.il vs morning.co.il)? [Consistency, Spec §API Access]
+- [ ] CHK010 - Are API base URLs consistent between spec and implementation plan (use canonical sandbox `https://sandbox.d.greeninvoice.co.il/api/v1/` and production `https://api.greeninvoice.co.il/api/v1/`)? [Consistency, Spec §API Access]
 - [ ] CHK011 - Are Hebrew language requirements consistent across error handling, responses, and user interactions? [Consistency, Spec §API Access]
 - [ ] CHK012 - Do document type codes (305=invoice, 320=receipt) align across all tool definitions? [Consistency, Spec §Key Findings]
 
@@ -94,7 +94,7 @@
 ## Security Requirements
 
 ### Authentication & Authorization Completeness
-- [ ] CHK045 - Are API key storage requirements defined (environment variables, secure config)? [Completeness, Spec §Configuration]
+- [ ] CHK045 - Are API key storage requirements defined (use `config/config.json` and organization secret injection)? [Completeness, Spec §Configuration]
 - [ ] CHK046 - Are JWT token storage security requirements specified (in-memory, no persistence)? [Gap]
 - [ ] CHK047 - Are authorization scope requirements defined for partner vs user API keys? [Gap, Spec §Partners]
 - [ ] CHK048 - Are webhook signature verification requirements specified (X-Data-Signature HMAC SHA256)? [Completeness, Spec §Webhooks]
@@ -121,7 +121,7 @@
 
 ### Configuration Clarity
 - [ ] CHK059 - Is the config file format (JSON) and schema clearly defined with examples? [Clarity, Spec §Configuration]
-- [ ] CHK060 - Are environment variable naming conventions clearly specified? [Clarity, Spec §MCP Server Config]
+- [ ] CHK060 - Are `config/config.json` field naming conventions clearly specified? [Clarity, Spec §MCP Server Config]
 - [ ] CHK061 - Is the distinction between user config and system defaults clearly defined? [Gap]
 
 ### Configuration Flexibility
@@ -225,7 +225,7 @@
 - [ ] CHK111 - Are Claude Desktop integration requirements specified? [Completeness, Spec §MCP Server Config]
 
 ### Configuration Management
-- [ ] CHK112 - Are environment variable management requirements defined? [Completeness, Spec §MCP Server Config]
+- [ ] CHK112 - Is configuration management via `config/config.json` (including secret injection process) defined? [Completeness, Spec §MCP Server Config]
 - [ ] CHK113 - Are secrets management requirements specified (API key storage)? [Gap]
 - [ ] CHK114 - Are deployment validation requirements defined (health checks)? [Gap]
 

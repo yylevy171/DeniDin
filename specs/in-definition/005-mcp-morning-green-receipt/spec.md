@@ -1,8 +1,8 @@
 # Feature Spec: MCP Integration with Morning Green Receipt
 
-**Feature ID**: 005-mcp-morning-green-receipt  
-**Priority**: P2 (Medium)  
-**Status**: Planning  
+**Feature ID**: 005-mcp-morning-green-receipt
+**Priority**: P2 (Medium)
+**Status**: Planning
 **Created**: January 17, 2026
 
 ## Problem Statement
@@ -26,6 +26,51 @@ Users want to interact with Morning's Green Receipt (חשבונית ירוקה) 
 6. **Document Retrieval**: "Get me the PDF for invoice #789"
 7. **Status Updates**: "Did invoice #456 get paid?"
 8. **Bulk Operations**: "Mark all invoices from November as paid"
+
+## Background: Morning Green Receipt Service
+
+**Company**: Morning (https://morning.co.il/)
+**Product**: Green Receipt (חשבונית ירוקה)
+**Purpose**: Israeli digital invoicing and receipt management system
+
+**Key Features**:
+- Digital invoice/receipt creation
+- Client management
+- Payment tracking
+- Tax reporting (Israeli tax compliance)
+- Document generation (PDF receipts)
+- Business analytics
+
+**API Access (canonical)**: See `endpoints.md` for canonical sandbox and production endpoints, file-upload endpoints, and caching APIs.
+
+**Authentication**: JWT Bearer Token (obtained via API key)
+**Rate Limit**: ~3 requests/second (429 status if exceeded) — clarify scope (per API key) and define client retry/backoff in implementation plan
+**Webhook Support**: Yes - POST to callback URLs for async operations
+**Language**: Full Hebrew support (error messages, fields, documentation all in Hebrew)
+
+## Configuration
+
+Per the project Constitution, ALL runtime configuration MUST be supplied via `config/config.json`. Do NOT use environment variables for application configuration or secrets. The implementation MUST read the configuration file at startup and validate it against the canonical schema in `specs/in-definition/005-mcp-morning-green-receipt/artifacts/config.schema.json`.
+
+Example `config/config.json` (development/test template; never commit live secrets):
+
+```json
+{
+    "morning": {
+        "api_key": "PASTE_YOUR_TEST_API_KEY_HERE",
+        "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+        "default_currency": "ILS",
+        "default_vat_rate": 0.17,
+        "token_ttl_seconds": 3600,
+        "refresh_before_seconds": 300
+    }
+}
+```
+
+Security note: For CI and deployment, inject `config/config.json` from your organization's secret manager at deploy time; do not commit live secrets to the repository. DO NOT use environment variables for runtime configuration or secret storage — this repository's Constitution mandates all runtime config be supplied via `config/config.json`.
+
+
+<!-- Duplicate Problem Statement and Use Cases removed to avoid drift. The canonical Problem Statement and Use Cases are maintained earlier in this file; if you need the original snapshot it was moved to `specs/archive/005-mcp-morning-green-receipt/merged_from_specs_005.md`. -->
 
 ## Background: Morning Green Receipt Service
 
@@ -326,7 +371,7 @@ denidin-mcp-morning/
 class MorningClient:
     """Client for Morning Green Receipt API."""
     
-    def __init__(self, api_key: str, base_url: str = "https://api.morning.co.il/v1"):
+    def __init__(self, api_key: str, base_url: str = "https://sandbox.d.greeninvoice.co.il/api/v1/"):
         self.api_key = api_key
         self.base_url = base_url
         self.session = requests.Session()
@@ -503,36 +548,22 @@ class FinancialSummary(BaseModel):
 
 ## Configuration
 
-### MCP Server Config
+### Configuration
+
+Per the repository Constitution, ALL runtime configuration MUST be supplied via `config/config.json`. Do not rely on environment variables for application configuration or secrets. For CI and deployment, inject `config/config.json` from your organization's secret manager at deploy time — do not commit live secrets.
+
+Example `config/config.json` (development/test template; never commit live secrets):
 
 ```json
-// claude_desktop_config.json
 {
-  "mcpServers": {
-    "denidin-morning": {
-      "command": "python",
-      "args": ["-m", "denidin_mcp_morning"],
-      "env": {
-        "MORNING_API_KEY": "your_api_key_here",
-        "MORNING_API_URL": "https://api.morning.co.il/v1"
-      }
+    "morning": {
+        "api_key": "PASTE_YOUR_TEST_API_KEY_HERE",
+        "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+        "default_currency": "ILS",
+        "default_vat_rate": 0.17,
+        "token_ttl_seconds": 3600,
+        "refresh_before_seconds": 300
     }
-  }
-}
-```
-
-### Application Config
-
-```json
-// config.json
-{
-  "morning": {
-    "api_key": "${MORNING_API_KEY}",
-    "api_url": "https://api.morning.co.il/v1",
-    "default_currency": "ILS",
-    "default_vat_rate": 0.17,
-    "timezone": "Asia/Jerusalem"
-  }
 }
 ```
 
@@ -798,6 +829,26 @@ def format_invoice_response_hebrew(invoice: Invoice) -> str:
 
 **Next Steps**:
 1. **Research Morning API** - Get documentation and credentials
+
+## Checklist Resolution (actioned items)
+
+The comprehensive checklist (`checklists/comprehensive.md`) was reviewed and the following artifacts and spec updates were added to resolve identified gaps and provide machine-readable references.
+
+- **Error codes**: created `artifacts/error_codes_raw.txt` containing the full error-code list extracted from the Morning docs (addresses CHK036, CHK039). Next step: parse into `error_codes.json` for programmatic mapping.
+- **Configuration schema**: added `artifacts/config.schema.json` with required config keys, token TTL, refresh window, and rate-limit settings (addresses CHK055-CHK061, CHK045).
+- **MCP tools stubs**: added `artifacts/mcp_tools_schema.json` as a placeholder for tool input/output schemas; this is the canonical place to complete CHK013-CHK016 and CHK021-CHK023.
+- **Spec sections added / clarified**: appended this Checklist Resolution section and created clear TODO anchors in the spec for the following areas: auth/token refresh strategy (CHK001, CHK006, CHK042), rate limit and retry/backoff (CHK003, CHK038), webhook signature verification (CHK048), file upload flow and presigned URLs (CHK004), WhatsApp delivery behavior (CHK065-CHK071), testing requirements (CHK075-CHK085), and security requirements (CHK049-CHK054).
+
+### Concrete next actions (short-term)
+
+1. Convert `artifacts/error_codes_raw.txt` → `artifacts/error_codes.json` (scripted parse) and add to repo. This will close CHK036 and CHK039.
+2. Fill `artifacts/mcp_tools_schema.json` with full input/output schemas (per CHK013, CHK015, CHK016) and reference from `spec.md` and `src/models.py`.
+3. Implement token refresh helper and document the exact refresh timing in `spec.md` (choices: refresh at TTL-300s or use proactive background refresh) to close CHK001/CHK006/CHK042.
+4. Add retry/backoff policy in `spec.md` (exponential backoff with jitter, max attempts) and implement in `morning_client.py` to close CHK003/CHK038.
+5. Create `specs/in-definition/005-mcp-morning-green-receipt/test-plan.md` with detailed sandbox setup steps and sample test data to address CHK075-CHK084.
+
+These artifacts and TODOs are intentionally explicit to make follow-up implementation work focused and traceable back to CHK identifiers in the checklist.
+
 2. Review and approve spec
 3. Set up test account with Morning
 4. Create MCP server project

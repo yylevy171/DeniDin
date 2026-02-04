@@ -109,6 +109,10 @@ All feature context MUST reside in structured markdown documents; code comments 
 
 **Requirements:**
 - `specs/[###-feature]/` directory MUST contain all feature artifacts
+ - `specs/[###-feature]/` directory MUST contain all feature artifacts
+ - STORAGE LOCATION POLICY (NEW): All new and updated feature specs, bugfix specs, and any other specification documents MUST be authored and stored under the `specs/in-definition/` hierarchy (for features) or `specs/bugfixes/` (for bugfix specs). The parent `specs/` folder (top-level `specs/` entries such as `specs/005-mcp-morning-green-receipt/`) is deprecated for active authoring and MUST NOT be used to store authoritative specs going forward.
+   - Rationale: this eliminates duplication and ensures automation and reviewers always find canonical artifacts in a single location.
+   - Enforcement: CI and tooling SHOULD prefer `specs/in-definition/` as the canonical source; reviewers MUST flag PRs that add or modify authoritative spec files outside `specs/in-definition/` or `specs/bugfixes/` and request relocation into the correct folder before merging.
 - `plan.md` is the technical authority for implementation decisions
 - `spec.md` is the functional authority for requirements and acceptance criteria
 - `tasks.md` is the execution authority for implementation sequence

@@ -51,6 +51,9 @@ htmlcov/
 .env
 .env.local
 
+# Ignore sensitive API key file for greeninvoice feature
+specs/in-definition/005-mcp-morning-green-receipt/greeninvoice-apikey
+
 # Logs
 *.log
 logs/

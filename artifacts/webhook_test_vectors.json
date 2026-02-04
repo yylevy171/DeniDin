@@ -1,0 +1,22 @@
+{
+  "secret": "test_webhook_secret",
+  "note": "Canonical JSON uses sorted keys and separators=(',',':') and UTF-8 encoding. Signatures are hex-encoded sha256 HMAC over the canonical JSON bytes.",
+  "vectors": [
+    {
+      "name": "parsed-example-1",
+      "payload": {"id":"123","status":"parsed","parsed_metadata":{"foo":"bar"}},
+      "canonical": "{\"id\":\"123\",\"parsed_metadata\":{\"foo\":\"bar\"},\"status\":\"parsed\"}",
+      "x_data_timestamp": "2026-02-04T12:00:00Z",
+      "signature": "fad92984c6a5ee9e86df7610094e8569cb3bdac85d66e241c4f5f24b3667e788",
+      "note": "fresh within 5 minute window"
+    },
+    {
+      "name": "pending-example-2",
+      "payload": {"id":"456","status":"pending","parsed_metadata":{"amount":1000}},
+      "canonical": "{\"id\":\"456\",\"parsed_metadata\":{\"amount\":1000},\"status\":\"pending\"}",
+      "x_data_timestamp": "2026-02-04T11:50:00Z",
+      "signature": "feb5439c4c9b90de5aabe5366333f29f43bbfeb046d9471a6753072c98325bd11",
+      "note": "expired (10 minutes old) - should fail replay check if window=5m"
+    }
+  ]
+}
