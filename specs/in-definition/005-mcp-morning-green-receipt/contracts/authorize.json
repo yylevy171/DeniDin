@@ -1,0 +1,15 @@
+{
+  "$id": "https://denidin.example/schemas/mcp/authorize.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Authorize Request",
+  "type": "object",
+  "properties": {
+    "client_id": {"type": "string"},
+    "client_secret": {"type": "string"}
+  },
+  "required": ["client_id","client_secret"],
+  "example": {
+    "client_id": "test_client",
+    "client_secret": "s3cret"
+  }
+}

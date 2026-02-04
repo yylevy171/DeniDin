@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MCP Tools schemas",
+  "type": "object",
+  "properties": {
+    "create_invoice": {
+      "type": "object",
+      "properties": {
+        "client_name": { "type": "string" },
+        "client_id": { "type": "string" },
+        "amount": { "type": "number", "minimum": 0.01 },
+        "description": { "type": "string" },
+        "due_date": { "type": "string", "format": "date" },
+        "vat_included": { "type": "boolean", "default": true },
+        "currency": { "type": "string", "default": "ILS" }
+      },
+      "oneOf": [
+        { "required": ["client_name", "amount", "description"] },
+        { "required": ["client_id", "amount", "description"] }
+      {
+        "tools": [
+          {"name":"authorize","contract":"specs/in-definition/005-mcp-morning-green-receipt/contracts/authorize.json"},
+          {"name":"receipt_parse","contract":"specs/in-definition/005-mcp-morning-green-receipt/contracts/receipt_parse.json"},
+          {"name":"upload_file","contract":"specs/in-definition/005-mcp-morning-green-receipt/contracts/upload_file.json"},
+          {"name":"get_status","contract":"specs/in-definition/005-mcp-morning-green-receipt/contracts/get_status.json"},
+          {"name":"list_receipts","contract":"specs/in-definition/005-mcp-morning-green-receipt/contracts/list_receipts.json"},
+          {"name":"webhook","contract":"specs/in-definition/005-mcp-morning-green-receipt/contracts/webhook.json"},
+          {"name":"health","contract":"specs/in-definition/005-mcp-morning-green-receipt/contracts/health.json"},
+          {"name":"metrics","contract":"specs/in-definition/005-mcp-morning-green-receipt/contracts/metrics.json"}
+        ]
+      }
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["paid","unpaid","overdue","all"] },
+        "from_date": { "type": "string", "format": "date" },
+        "to_date": { "type": "string", "format": "date" },
+        "client_name": { "type": "string" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
+      }
+    },
+    "get_invoice_details": {
+      "type": "object",
+      "properties": {
+        "invoice_id": { "type": "string" }
+      },
+      "required": ["invoice_id"]
+    },
+    "update_invoice_status": {
+      "type": "object",
+      "properties": {
+        "invoice_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["paid","unpaid","cancelled"] },
+        "payment_date": { "type": "string", "format": "date" }
+      },
+      "required": ["invoice_id","status"]
+    },
+    "add_client": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "tax_id": { "type": "string" },
+        "address": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "get_financial_summary": {
+      "type": "object",
+      "properties": {
+        "period": { "type": "string", "enum": ["month","quarter","year","custom"] },
+        "from_date": { "type": "string", "format": "date" },
+        "to_date": { "type": "string", "format": "date" }
+      },
+      "required": ["period"]
+    },
+    "send_invoice": {
+      "type": "object",
+      "properties": {
+        "invoice_id": { "type": "string" },
+        "phone_number": { "type": "string" },
+        "message": { "type": "string" },
+        "via": { "type": "string", "enum": ["whatsapp","email"], "default": "whatsapp" }
+      },
+      "required": ["invoice_id"]
+    },
+    "download_invoice_pdf": {
+      "type": "object",
+      "properties": {
+        "invoice_id": { "type": "string" },
+        "as_base64": { "type": "boolean", "default": false }
+      },
+      "required": ["invoice_id"]
+    }
+  },
+  "additionalProperties": false,
+  "description": "Concrete input schemas for MCP tools. These satisfy CHK013-CHK016; update as API evolves."
+}
+

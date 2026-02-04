@@ -111,6 +111,30 @@ find_feature_dir_by_prefix() {
 
     # Handle results
     if [[ ${#matches[@]} -eq 0 ]]; then
+        # No match found in `specs/` - attempt fallback to `specs/in-definition/`
+        local in_def_dir="$repo_root/specs/in-definition"
+        if [[ -d "$in_def_dir" ]]; then
+            for dir in "$in_def_dir"/"$prefix"-*; do
+                if [[ -d "$dir" ]]; then
+                    matches+=("$(basename "$dir")")
+                fi
+            done
+        fi
+
+        if [[ ${#matches[@]} -eq 1 ]]; then
+            # If the single match came from in-definition, prefer that absolute path
+            if [[ -d "$specs_dir/${matches[0]}" ]]; then
+                echo "$specs_dir/${matches[0]}"
+            else
+                echo "$in_def_dir/${matches[0]}"
+            fi
+            return
+        elif [[ ${#matches[@]} -gt 1 ]]; then
+            echo "ERROR: Multiple spec directories found with prefix '$prefix' across specs/ and specs/in-definition/: ${matches[*]}" >&2
+            echo "$specs_dir/$branch_name"
+            return
+        fi
+
         # No match found - return the branch name path (will fail later with clear error)
         echo "$specs_dir/$branch_name"
     elif [[ ${#matches[@]} -eq 1 ]]; then

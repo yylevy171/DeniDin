@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "create_invoice",
+  "type": "object",
+  "properties": {
+    "client_name": {"type": "string"},
+    "amount": {"type": "number", "minimum": 0},
+    "description": {"type": "string"},
+    "due_date": {"type": "string", "format": "date"},
+    "vat_included": {"type": "boolean", "default": true}
+  },
+  "required": ["client_name", "amount", "description"]
+}

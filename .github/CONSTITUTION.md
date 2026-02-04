@@ -4,6 +4,21 @@
 **Last Updated**: January 21, 2026  
 **Purpose**: Development constraints, coding standards, and technical guidelines
 
+---
+
+## ZERO MOCKING POLICY (ABSOLUTE)
+
+**NO MOCKING WHATSOEVER UNTIL THE END OF ETERNITY, WITH NO EXCEPTION.**
+
+This rule is absolute and applies to all tests, documentation samples, and code in the repository. It takes precedence over any other guidance in this Constitution or in project methodology documents. Any code, test, or PR that introduces or re-introduces mocking (including `unittest.mock`, `patch`, `MagicMock`, or in-process stubs used to simulate external services) will be rejected by CI and reviewers.
+
+Guidelines under this rule:
+- Use real sandbox endpoints, recorded immutable fixtures stored under `specs/.../artifacts/`, or controlled test environments—do NOT use in-process mocks.
+- Local developer-only hack mocks used during debugging must be removed before committing.
+- Additions of mocking libraries or helper utilities for mocking are forbidden in new commits.
+
+Rationale: The project mandates realistic integration and test behavior; this absolute rule enforces that principle repository-wide.
+
 > **Note**: This file defines WHAT we enforce (technical constraints, standards).  
 > For HOW we work (workflow, process, TDD), see `METHODOLOGY.md`.  
 > **When creating/updating specs**: Reference BOTH files.

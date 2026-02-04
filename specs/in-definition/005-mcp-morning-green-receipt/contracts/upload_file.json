@@ -1,0 +1,13 @@
+{
+  "$id": "https://denidin.example/schemas/mcp/upload_file.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "File Upload",
+  "type": "object",
+  "properties": {
+    "filename": {"type": "string"},
+    "content_type": {"type": "string"},
+    "size": {"type": "integer"}
+  },
+  "required": ["filename","content_type"],
+  "response_example": {"upload_url": "https://sandbox.example/upload/xxx"}
+}

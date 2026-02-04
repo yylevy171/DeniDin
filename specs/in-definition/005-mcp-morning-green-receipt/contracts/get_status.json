@@ -1,0 +1,11 @@
+{
+  "$id": "https://denidin.example/schemas/mcp/get_status.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Get Parse Status",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string"}
+  },
+  "required": ["id"],
+  "response_example": {"id": "123", "status": "parsed", "parsed_metadata": {"foo":"bar"}}
+}

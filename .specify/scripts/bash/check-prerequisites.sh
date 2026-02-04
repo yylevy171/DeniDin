@@ -106,15 +106,31 @@ if [[ ! -d "$FEATURE_DIR" ]]; then
     exit 1
 fi
 
-if [[ ! -f "$IMPL_PLAN" ]]; then
-    echo "ERROR: plan.md not found in $FEATURE_DIR" >&2
+ALT_FEATURE_DIR="$REPO_ROOT/specs/in-definition/$(basename "$FEATURE_DIR")"
+
+# Helper to check file existence in FEATURE_DIR or ALT_FEATURE_DIR
+file_exists_either() {
+    local p="$1"
+    local rel="$2"
+    if [[ -f "$p" ]]; then
+        return 0
+    fi
+    if [[ -n "$ALT_FEATURE_DIR" && -f "$ALT_FEATURE_DIR/$rel" ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Ensure we have an implementation plan either in feature dir or in-definition fallback
+if ! file_exists_either "$IMPL_PLAN" "plan.md"; then
+    echo "ERROR: plan.md not found in $FEATURE_DIR or in-definition fallback ($ALT_FEATURE_DIR)" >&2
     echo "Run /speckit.plan first to create the implementation plan." >&2
     exit 1
 fi
 
 # Check for tasks.md if required
-if $REQUIRE_TASKS && [[ ! -f "$TASKS" ]]; then
-    echo "ERROR: tasks.md not found in $FEATURE_DIR" >&2
+if $REQUIRE_TASKS && ! file_exists_either "$TASKS" "tasks.md"; then
+    echo "ERROR: tasks.md not found in $FEATURE_DIR or in-definition fallback ($ALT_FEATURE_DIR)" >&2
     echo "Run /speckit.tasks first to create the task list." >&2
     exit 1
 fi
@@ -123,18 +139,18 @@ fi
 docs=()
 
 # Always check these optional docs
-[[ -f "$RESEARCH" ]] && docs+=("research.md")
-[[ -f "$DATA_MODEL" ]] && docs+=("data-model.md")
+[[ -f "$RESEARCH" || -f "$ALT_FEATURE_DIR/research.md" ]] && docs+=("research.md")
+[[ -f "$DATA_MODEL" || -f "$ALT_FEATURE_DIR/data-model.md" ]] && docs+=("data-model.md")
 
 # Check contracts directory (only if it exists and has files)
-if [[ -d "$CONTRACTS_DIR" ]] && [[ -n "$(ls -A "$CONTRACTS_DIR" 2>/dev/null)" ]]; then
+if [[ -d "$CONTRACTS_DIR" && -n "$(ls -A "$CONTRACTS_DIR" 2>/dev/null)" ]] || [[ -d "$ALT_FEATURE_DIR/contracts" && -n "$(ls -A "$ALT_FEATURE_DIR/contracts" 2>/dev/null)" ]]; then
     docs+=("contracts/")
 fi
 
-[[ -f "$QUICKSTART" ]] && docs+=("quickstart.md")
+[[ -f "$QUICKSTART" || -f "$ALT_FEATURE_DIR/quickstart.md" ]] && docs+=("quickstart.md")
 
 # Include tasks.md if requested and it exists
-if $INCLUDE_TASKS && [[ -f "$TASKS" ]]; then
+if $INCLUDE_TASKS && ( [[ -f "$TASKS" ]] || [[ -f "$ALT_FEATURE_DIR/tasks.md" ]] ); then
     docs+=("tasks.md")
 fi
 

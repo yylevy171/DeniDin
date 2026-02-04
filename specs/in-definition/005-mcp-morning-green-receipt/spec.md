@@ -1,8 +1,8 @@
 # Feature Spec: MCP Integration with Morning Green Receipt
 
-**Feature ID**: 005-mcp-morning-green-receipt  
-**Priority**: P2 (Medium)  
-**Status**: Planning  
+**Feature ID**: 005-mcp-morning-green-receipt
+**Priority**: P2 (Medium)
+**Status**: Planning
 **Created**: January 17, 2026
 
 ## Problem Statement
@@ -29,6 +29,51 @@ Users want to interact with Morning's Green Receipt (חשבונית ירוקה) 
 
 ## Background: Morning Green Receipt Service
 
+**Company**: Morning (https://morning.co.il/)
+**Product**: Green Receipt (חשבונית ירוקה)
+**Purpose**: Israeli digital invoicing and receipt management system
+
+**Key Features**:
+- Digital invoice/receipt creation
+- Client management
+- Payment tracking
+- Tax reporting (Israeli tax compliance)
+- Document generation (PDF receipts)
+- Business analytics
+
+**API Access (canonical)**: See `endpoints.md` for canonical sandbox and production endpoints, file-upload endpoints, and caching APIs.
+
+**Authentication**: JWT Bearer Token (obtained via API key)
+**Rate Limit**: ~3 requests/second (429 status if exceeded) — clarify scope (per API key) and define client retry/backoff in implementation plan
+**Webhook Support**: Yes - POST to callback URLs for async operations
+**Language**: Full Hebrew support (error messages, fields, documentation all in Hebrew)
+
+## Configuration
+
+Per the project Constitution, ALL runtime configuration MUST be supplied via `config/config.json`. Do NOT use environment variables for application configuration or secrets. The implementation MUST read the configuration file at startup and validate it against the canonical schema in `specs/in-definition/005-mcp-morning-green-receipt/artifacts/config.schema.json`.
+
+Example `config/config.json` (development/test template; never commit live secrets):
+
+```json
+{
+    "morning": {
+        "api_key": "PASTE_YOUR_TEST_API_KEY_HERE",
+        "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+        "default_currency": "ILS",
+        "default_vat_rate": 0.17,
+        "token_ttl_seconds": 3600,
+        "refresh_before_seconds": 300
+    }
+}
+```
+
+Security note: For CI and deployment, inject `config/config.json` from your organization's secret manager at deploy time; do not commit live secrets to the repository. DO NOT use environment variables for runtime configuration or secret storage — this repository's Constitution mandates all runtime config be supplied via `config/config.json`.
+
+
+<!-- Duplicate Problem Statement and Use Cases removed to avoid drift. The canonical Problem Statement and Use Cases are maintained earlier in this file; if you need the original snapshot it was moved to `specs/archive/005-mcp-morning-green-receipt/merged_from_specs_005.md`. -->
+
+## Background: Morning Green Receipt Service
+
 **Company**: Morning (https://morning.co.il/)  
 **Product**: Green Receipt (חשבונית ירוקה)  
 **Purpose**: Israeli digital invoicing and receipt management system
@@ -41,11 +86,14 @@ Users want to interact with Morning's Green Receipt (חשבונית ירוקה) 
 - Document generation (PDF receipts)
 - Business analytics
 
-**API Access**: Need to research Morning's API documentation
-- Check if Morning provides REST API
-- Authentication method (API key, OAuth, etc.)
-- Rate limits and quotas
-- Webhook support for real-time updates
+**API Access**: ✅ **CONFIRMED** - Morning provides REST API via Green Invoice
+- **Status**: Public REST API exists and documented (https://greeninvoice.docs.apiary.io/)
+- **Base URL**: https://api.greeninvoice.co.il/api/v1/
+- **Sandbox URL**: https://sandbox.d.greeninvoice.co.il/api/v1/
+- **Authentication**: JWT Bearer Token (obtained via API key)
+- **Rate Limit**: ~3 requests/second (429 status if exceeded)
+- **Webhook Support**: Yes - POST to callback URLs for async operations
+- **Language**: Full Hebrew support (error messages, fields, documentation all in Hebrew)
 
 ## Architecture
 
@@ -274,7 +322,7 @@ denidin-mcp-morning/
 ```python
 {
     "name": "send_invoice",
-    "description": "Send invoice to client via email",
+    "description": "Send invoice to client via WhatsApp",
     "inputSchema": {
         "type": "object",
         "properties": {
@@ -282,10 +330,9 @@ denidin-mcp-morning/
                 "type": "string",
                 "description": "Invoice ID"
             },
-            "email": {
+            "phone_number": {
                 "type": "string",
-                "format": "email",
-                "description": "Recipient email (optional if client has email)"
+                "description": "Recipient phone number (optional if client has phone)"
             },
             "message": {
                 "type": "string",
@@ -324,7 +371,7 @@ denidin-mcp-morning/
 class MorningClient:
     """Client for Morning Green Receipt API."""
     
-    def __init__(self, api_key: str, base_url: str = "https://api.morning.co.il/v1"):
+    def __init__(self, api_key: str, base_url: str = "https://sandbox.d.greeninvoice.co.il/api/v1/"):
         self.api_key = api_key
         self.base_url = base_url
         self.session = requests.Session()
@@ -424,16 +471,16 @@ class MorningClient:
         response.raise_for_status()
         return response.json()
     
-    def send_invoice_email(
+    def send_invoice_whatsapp(
         self,
         invoice_id: str,
-        email: str = None,
+        phone_number: str = None,
         message: str = None
     ) -> dict:
-        """Send invoice to client via email."""
+        """Send invoice to client via WhatsApp."""
         payload = {}
-        if email:
-            payload["email"] = email
+        if phone_number:
+            payload["phone_number"] = phone_number
         if message:
             payload["message"] = message
             
@@ -479,7 +526,7 @@ class Invoice(BaseModel):
     amount: float
     currency: str = "ILS"
     description: str
-    status: str  # 'paid', 'unpaid', 'overdue', 'cancelled'
+    status: str  # 'paid', 'unpaid', 'overdue', 'cancelled' - status determined by Morning API, not locally
     issue_date: date
     due_date: Optional[date] = None
     payment_date: Optional[date] = None
@@ -501,36 +548,22 @@ class FinancialSummary(BaseModel):
 
 ## Configuration
 
-### MCP Server Config
+### Configuration
+
+Per the repository Constitution, ALL runtime configuration MUST be supplied via `config/config.json`. Do not rely on environment variables for application configuration or secrets. For CI and deployment, inject `config/config.json` from your organization's secret manager at deploy time — do not commit live secrets.
+
+Example `config/config.json` (development/test template; never commit live secrets):
 
 ```json
-// claude_desktop_config.json
 {
-  "mcpServers": {
-    "denidin-morning": {
-      "command": "python",
-      "args": ["-m", "denidin_mcp_morning"],
-      "env": {
-        "MORNING_API_KEY": "your_api_key_here",
-        "MORNING_API_URL": "https://api.morning.co.il/v1"
-      }
+    "morning": {
+        "api_key": "PASTE_YOUR_TEST_API_KEY_HERE",
+        "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+        "default_currency": "ILS",
+        "default_vat_rate": 0.17,
+        "token_ttl_seconds": 3600,
+        "refresh_before_seconds": 300
     }
-  }
-}
-```
-
-### Application Config
-
-```json
-// config.json
-{
-  "morning": {
-    "api_key": "${MORNING_API_KEY}",
-    "api_url": "https://api.morning.co.il/v1",
-    "default_currency": "ILS",
-    "default_vat_rate": 0.17,
-    "timezone": "Asia/Jerusalem"
-  }
 }
 ```
 
@@ -552,14 +585,14 @@ class FinancialSummary(BaseModel):
 
 ### Phase 2: Invoice Management
 - [ ] Implement `update_invoice_status` tool
-- [ ] Implement `send_invoice` tool
+- [ ] Implement `send_invoice` tool (WhatsApp delivery via phone number)
 - [ ] Implement `download_invoice_pdf` tool
-- [ ] Add error handling for API failures
+- [ ] Add error handling for API failures and missing phone numbers
 
 ### Phase 3: Client Management
 - [ ] Implement `add_client` tool
-- [ ] Add client search/resolution
-- [ ] Handle client name disambiguation
+- [ ] Add client search/resolution with fuzzy matching
+- [ ] Handle client name disambiguation - display all matches with IDs and ask user to select
 
 ### Phase 4: Financial Reports
 - [ ] Implement `get_financial_summary` tool
@@ -639,8 +672,8 @@ Bot → MCP Tool Call:
 send_invoice(invoice_id="INV-001")
 
 Response:
-"✅ Invoice INV-001 sent to tech-corp@example.com
-Subject: Invoice for Consulting Services
+"✅ Invoice INV-001 sent via WhatsApp to +972-50-1234567
+Client: Tech Corp
 Status: Delivered"
 ```
 
@@ -687,9 +720,11 @@ Status: Delivered"
 ## Error Handling
 
 | Error | User Message |
-|-------|--------------|
+|-------|--------------||
 | API authentication failed | "❌ Morning API authentication failed. Check API key." |
 | Client not found | "❌ Client 'X' not found. Would you like to add them?" |
+| Multiple clients match | "❓ Multiple clients match 'X':\n1. Tech Corp Ltd (ID: 123)\n2. Tech Corp Inc (ID: 456)\nReply with the number or ID to select." |
+| Client missing phone | "❌ Client has no phone number. Please provide: send invoice to [phone number]" |
 | Invalid amount | "❌ Invalid amount. Please use format: 1000 or 1000.50" |
 | API rate limit | "❌ Too many requests. Please try again in 1 minute." |
 | Network error | "❌ Unable to connect to Morning API. Check connection." |
@@ -702,11 +737,13 @@ Status: Delivered"
 
 ## Hebrew Language Support
 
-Since Morning is an Israeli service and uses Hebrew:
+Since Morning is an Israeli service, all invoice responses will be in Hebrew:
 - Support Hebrew client names (e.g., "חברת הייטק בע״מ")
-- Handle Hebrew currency symbol (₪)
+- All user-facing messages in Hebrew
+- Hebrew currency symbol (₪)
 - Support Hebrew invoice descriptions
 - Date formatting: DD/MM/YYYY (Israeli standard)
+- Status messages in Hebrew (שולם, לא שולם, פג תוקף, בוטל)
 
 ```python
 def format_invoice_response_hebrew(invoice: Invoice) -> str:
@@ -738,20 +775,80 @@ def format_invoice_response_hebrew(invoice: Invoice) -> str:
 
 ## Research Checklist
 
-Before implementation, need to verify:
-- [ ] Morning API documentation availability
-- [ ] API authentication method
-- [ ] Available endpoints and features
-- [ ] Rate limits and quotas
-- [ ] Webhook support
-- [ ] Test/sandbox environment
-- [ ] API pricing/costs
-- [ ] Hebrew language support in API
+**CRITICAL - Phase 0 Blockers** (Must complete before any implementation):
+- [x] Morning API documentation availability - **✅ CONFIRMED: Public REST API with full documentation**
+- [x] API authentication method - **✅ JWT Bearer Token via API key**
+- [x] Available endpoints and features - **✅ Documented (see api-documentation.md)**
+- [x] Rate limits and quotas - **✅ ~3 requests/second**
+- [x] Webhook support - **✅ Yes, for async operations**
+- [x] Test/sandbox environment - **✅ Yes, separate sandbox with own API key**
+- [x] API pricing/costs - **✅ Access requires "Best" subscription or higher**
+- [x] Hebrew language support in API - **✅ Full Hebrew support**
+
+**Phase 0 Status**: ✅ COMPLETE - API is production-ready and well-documented
+
+### Key Findings from API Research
+
+**Endpoints Mapping to MCP Tools**:
+1. `create_invoice` → POST /documents (type: 305 for invoice, 320 for receipt)
+2. `list_invoices` → GET /documents/search (with filters)
+3. `get_invoice_details` → GET /documents/{id}
+4. `update_invoice_status` → PUT /documents/{id} (open/close)
+5. `add_client` → POST /clients
+6. `get_financial_summary` → GET /documents/search (aggregate results)
+7. `send_invoice` → PUT /documents/{id} + POST to email/WhatsApp (via DeniDin integration)
+8. `download_invoice_pdf` → GET /documents/{id}/preview (returns Base64 PDF)
+
+**Authentication Flow**:
+1. User provides API key (configured in MCP server)
+2. Server calls POST /account/token with API key
+3. Receive JWT token (valid 1 hour)
+4. Use token in Bearer auth header for all subsequent calls
+5. Refresh token as needed
+
+**Important Constraints**:
+- API is case-sensitive - parameter validation critical
+- CORS not supported - requests must be server-side only ✅
+- Requires "Best" subscription or higher
+- No static IP whitelist (webhooks work from any IP)
+- Errors returned in Hebrew with numeric codes
+- Document types: 305=invoice, 320=receipt, others for orders/etc.
+
+**Risk**: Mitigated - API is production-ready and fully documented. No alternative approaches needed.
+
+## Clarifications
+
+### Session 2026-02-03
+- Q: What is the current status of Morning API availability? → A: Morning's API availability is unknown - need to research first (Phase 0)
+- Q: When multiple clients match a name during invoice creation, how should the system respond? → A: Display all matches with IDs, ask user to select or clarify
+- Q: How should the system determine when an invoice status becomes "overdue"? → A: The system does not need to determine this - rely on Morning API status
+- Q: What should happen when sending invoice to client with no email on file? → A: Default delivery is WhatsApp via phone number, not email - prompt for phone if missing
+- Q: For Hebrew language support, when should invoice responses be in Hebrew vs English? → A: Always use Hebrew (Israeli business standard)
 
 ---
 
 **Next Steps**:
 1. **Research Morning API** - Get documentation and credentials
+
+## Checklist Resolution (actioned items)
+
+The comprehensive checklist (`checklists/comprehensive.md`) was reviewed and the following artifacts and spec updates were added to resolve identified gaps and provide machine-readable references.
+
+- **Error codes**: created `artifacts/error_codes_raw.txt` containing the full error-code list extracted from the Morning docs (addresses CHK036, CHK039). Next step: parse into `error_codes.json` for programmatic mapping.
+- **Configuration schema**: added `artifacts/config.schema.json` with required config keys, token TTL, refresh window, and rate-limit settings (addresses CHK055-CHK061, CHK045).
+- **MCP tools stubs**: added `artifacts/mcp_tools_schema.json` as a placeholder for tool input/output schemas; this is the canonical place to complete CHK013-CHK016 and CHK021-CHK023.
+- **Spec sections added / clarified**: appended this Checklist Resolution section and created clear TODO anchors in the spec for the following areas: auth/token refresh strategy (CHK001, CHK006, CHK042), rate limit and retry/backoff (CHK003, CHK038), webhook signature verification (CHK048), file upload flow and presigned URLs (CHK004), WhatsApp delivery behavior (CHK065-CHK071), testing requirements (CHK075-CHK085), and security requirements (CHK049-CHK054).
+
+### Concrete next actions (short-term)
+
+1. Convert `artifacts/error_codes_raw.txt` → `artifacts/error_codes.json` (scripted parse) and add to repo. This will close CHK036 and CHK039.
+2. Fill `artifacts/mcp_tools_schema.json` with full input/output schemas (per CHK013, CHK015, CHK016) and reference from `spec.md` and `src/models.py`.
+3. Implement token refresh helper and document the exact refresh timing in `spec.md` (choices: refresh at TTL-300s or use proactive background refresh) to close CHK001/CHK006/CHK042.
+4. Add retry/backoff policy in `spec.md` (exponential backoff with jitter, max attempts) and implement in `morning_client.py` to close CHK003/CHK038.
+5. Create `specs/in-definition/005-mcp-morning-green-receipt/test-plan.md` with detailed sandbox setup steps and sample test data to address CHK075-CHK084.
+
+These artifacts and TODOs are intentionally explicit to make follow-up implementation work focused and traceable back to CHK identifiers in the checklist.
+
 2. Review and approve spec
 3. Set up test account with Morning
 4. Create MCP server project
