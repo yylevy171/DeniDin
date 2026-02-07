@@ -5,8 +5,9 @@
 ```json
 {
   "morning": {
-    "api_key": "<YOUR_API_KEY>",
-    "base_url": "https://sandbox.d.greeninvoice.co.il/api/v1",
+    "api_key_id": "<YOUR_API_KEY_ID>",
+    "api_key_secret": "<YOUR_API_KEY_SECRET>",
+    "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1",
     "token_ttl_seconds": 3600,
     "refresh_before_seconds": 300
   },

@@ -2,6 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "get_invoice_details",
   "type": "object",
+  "x-http": {
+    "method": "GET",
+    "path": "/api/v1/documents/{id}",
+    "notes": "Fetch document/invoice details by id (maps to GET /api/v1/documents/{id} in Postman)."
+  },
   "properties": {
     "invoice_id": {"type": "string"}
   },

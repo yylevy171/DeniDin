@@ -2,6 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "get_financial_summary",
   "type": "object",
+  "x-http": {
+    "method": "POST",
+    "path": "/documents/search",
+    "notes": "Use documents search with aggregation filters (Postman canonical)."
+  },
   "properties": {
     "period": {"type": "string", "enum": ["month", "quarter", "year", "custom"]},
     "from_date": {"type": "string", "format": "date"},

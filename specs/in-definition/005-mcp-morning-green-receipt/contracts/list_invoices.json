@@ -2,6 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "list_invoices",
   "type": "object",
+  "x-http": {
+    "method": "POST",
+    "path": "/documents/search",
+    "notes": "Per Postman collection: search documents via POST /documents/search with filters in JSON body"
+  },
   "properties": {
     "status": {"type": "string", "enum": ["paid", "unpaid", "overdue", "all"]},
     "from_date": {"type": "string", "format": "date"},

@@ -3,6 +3,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "File Upload",
   "type": "object",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/businesses/upload",
+    "notes": "Upload business file (logo/signature/document) — Postman: POST /api/v1/businesses/upload."
+  },
   "properties": {
     "filename": {"type": "string"},
     "content_type": {"type": "string"},

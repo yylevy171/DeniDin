@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "morning_token_exchange",
+  "type": "object",
+  "description": "Request body for Morning /account/token exchange (Postman canonical).",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/account/token",
+    "notes": "Exchange API key id+secret for a JWT (Postman canonical)."
+  },
+  "properties": {
+    "id": { "type": "string", "description": "API key id (api_key_id)" },
+    "secret": { "type": "string", "description": "API key secret (api_key_secret)" }
+  },
+  "required": ["id", "secret"],
+  "response_example": { "token": "<JWT>", "expires": 3600 }
+}

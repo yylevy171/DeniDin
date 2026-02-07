@@ -26,7 +26,7 @@ from src.models.config import AppConfiguration
 
 
 # Load test configuration once for all tests (CONSTITUTION I)
-TEST_CONFIG_PATH = 'config/config.test.json'
+TEST_CONFIG_PATH = 'denidin-app/config/config.test.json'
 try:
     test_config = AppConfiguration.from_file(TEST_CONFIG_PATH)
     # Create OpenAI client from config (CONSTITUTION I - config file, not env vars)

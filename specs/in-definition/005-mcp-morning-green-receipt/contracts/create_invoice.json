@@ -2,6 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "create_invoice",
   "type": "object",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/documents",
+    "notes": "Create a new document/invoice (Postman: Add Document -> POST /api/v1/documents)."
+  },
   "properties": {
     "client_name": {"type": "string"},
     "amount": {"type": "number", "minimum": 0},

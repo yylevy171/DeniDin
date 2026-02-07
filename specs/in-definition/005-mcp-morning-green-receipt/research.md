@@ -42,8 +42,9 @@ This document resolves the NEEDS CLARIFICATION items from `plan.md` Technical Co
 
 ## Decision: Configuration
 - Decision: Store configuration in `config/config.json` (per Constitution). Add required keys:
-  - `morning.api_key` (string)
-  - `morning.base_url` (string)
+  - `morning.api_key_id` (string)
+  - `morning.api_key_secret` (string)
+  - `morning.api_url` (string)
   - `morning.token_ttl_seconds` (number, default 3600)
   - `morning.refresh_before_seconds` (number, default 300)
   - `feature_flags.enable_morning_integration` (bool)

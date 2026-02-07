@@ -23,11 +23,30 @@ def _build_session(retries: int = 3, backoff_factor: float = 0.5):
 
 
 class MorningClient:
-    """Client for Morning Green Receipt API with token management and retries."""
+    """Client for Morning Green Receipt API with token management and retries.
 
-    def __init__(self, api_key: str, base_url: str = "https://api.greeninvoice.co.il/api/v1", token_ttl_seconds: int = 3600, refresh_before_seconds: int = 300, retries: int = 3):
+    Accepts either a single `api_key` string or `api_key_id` + `api_key_secret` pair.
+    """
+
+    def __init__(
+        self,
+        api_key: str = None,
+        api_key_id: str = None,
+        api_key_secret: str = None,
+        base_url: str = "https://api.greeninvoice.co.il/api/v1",
+        token_ttl_seconds: int = 3600,
+        refresh_before_seconds: int = 300,
+        retries: int = 3,
+    ):
         self.base_url = base_url.rstrip("/")
-        self.auth = MorningAuth(api_key=api_key, base_url=self.base_url, token_ttl_seconds=token_ttl_seconds, refresh_before_seconds=refresh_before_seconds)
+        self.auth = MorningAuth(
+            api_key=api_key,
+            api_key_id=api_key_id,
+            api_key_secret=api_key_secret,
+            base_url=self.base_url,
+            token_ttl_seconds=token_ttl_seconds,
+            refresh_before_seconds=refresh_before_seconds,
+        )
         self.session = _build_session(retries=retries)
 
     def _auth_headers(self) -> dict:
@@ -44,7 +63,8 @@ class MorningClient:
     def list_invoices(self, params: dict = None) -> List[dict]:
         url = f"{self.base_url}/documents/search"
         headers = self._auth_headers()
-        resp = self.session.get(url, params=params or {}, headers=headers, timeout=15)
+        # The Morning API expects a POST to /documents/search with a JSON body (see Postman collection).
+        resp = self.session.post(url, json=params or {}, headers=headers, timeout=20)
         resp.raise_for_status()
         return resp.json()
 

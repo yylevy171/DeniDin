@@ -2,6 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "download_invoice_pdf",
   "type": "object",
+  "x-http": {
+    "method": "GET",
+    "path": "/api/v1/documents/download",
+    "notes": "Download PDF via query param `d`. Postman collection includes these URLs only as example strings embedded in response bodies (e.g. `url.origin`), not as an explicit recorded GET request. The contract is kept as GET /api/v1/documents/download for semantic clarity."
+  },
   "properties": {
     "invoice_id": {"type": "string"}
   },
