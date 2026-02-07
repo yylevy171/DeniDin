@@ -57,7 +57,8 @@ Example `config/config.json` (development/test template; never commit live secre
 ```json
 {
     "morning": {
-        "api_key": "PASTE_YOUR_TEST_API_KEY_HERE",
+        "api_key_id": "PASTE_YOUR_TEST_API_KEY_ID_HERE",
+        "api_key_secret": "PASTE_YOUR_TEST_API_KEY_SECRET_HERE",
         "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
         "default_currency": "ILS",
         "default_vat_rate": 0.17,
@@ -93,11 +94,14 @@ Security note: For CI and deployment, inject `config/config.json` from your orga
 - **Authentication**: JWT Bearer Token (obtained via API key)
 - **Rate Limit**: ~3 requests/second (429 status if exceeded)
 - **Webhook Support**: Yes - POST to callback URLs for async operations
+- **Webhook Support (implementation decision)**: Deferred for initial rollout. We will NOT implement webhook handlers in Phase 1; instead, the MCP server will poll Morning endpoints for status updates. This simplifies deployment and avoids exposing callback URLs until webhook security and operations are validated.
 - **Language**: Full Hebrew support (error messages, fields, documentation all in Hebrew)
 
+- **Spec sections added / clarified**: appended this Checklist Resolution section and created clear TODO anchors in the spec for the following areas: auth/token refresh strategy (CHK001, CHK006, CHK042), rate limit and retry/backoff (CHK003, CHK038), webhook signature verification (CHK048) (DEFERRED), file upload flow and presigned URLs (CHK004), WhatsApp delivery behavior (CHK065-CHK071), testing requirements (CHK075-CHK085), and security requirements (CHK049-CHK054).
 ## Architecture
 
-```
+5. Defer webhook signature verification and webhook handler implementation to Phase 2; in Phase 1 implement polling for document status and webhook-like state (poll interval configurable in `config/config.json`).
+6. Create `specs/in-definition/005-mcp-morning-green-receipt/test-plan.md` with detailed sandbox setup steps and sample test data to address CHK075-CHK084.
 MCP Client (Claude Desktop, WhatsApp via DeniDin, etc.)
     ↓
 MCP Protocol
@@ -594,6 +598,22 @@ Example `config/config.json` (development/test template; never commit live secre
 - [ ] Add client search/resolution with fuzzy matching
 - [ ] Handle client name disambiguation - display all matches with IDs and ask user to select
 
+### Client resolution workflow (authoritative decision)
+The system MUST follow this exact workflow when resolving or creating clients. The user will never provide a `client_id`; resolutions are always by provided attributes (name, phone, email, tax_id, etc.).
+
+- 1) Interpret user input: parse the user's free-text input and extract candidate identifiers (name, phone, email). Use the project's vector/index store (Chroma DB) to help classify the input type and normalize tokens before searching.
+- 2) Search Morning: perform a fuzzy search against Morning `GET /clients/search` and local cache using a tokenized + fuzzy matching strategy (do not rely on exact match only). Combine exact and fuzzy matches, rank by confidence.
+- 3) Clarify with user: if multiple plausible matches or low-confidence match, present the top N choices (with brief distinguishing fields) and ask the user to confirm by number or provide more details. Repeat until the client details are clear.
+- 4) ALWAYS require user confirmation before any non-read Morning action (create, update, delete, send). The confirmation must be explicit (user types `yes`, selects a confirmation button, or replies with the chosen client ID/number).
+- 5) If a match is found but missing fields needed for the requested operation (e.g., missing phone for WhatsApp delivery), ask the user to supply the missing field(s). When the user supplies new data and agrees to persist it, show an exact summary: `Update client ID 123: phone from "<old>" to "<new>"` and require explicit confirmation before calling Morning to update.
+- 6) If no client exists (search returned none), show the EXACT details you will create and require confirmation: `Create new client: name="X", phone="Y", email="Z"` before calling `POST /clients`.
+- 7) After any create/update action is confirmed and executed, echo the authoritative Morning `client_id` and the final canonical client record to the user.
+
+Notes:
+- Use Chroma DB to improve matching for noisy user text and to store canonical normalized tokens for local cache entries.
+- Fuzzy matching must be tuned in tests; prefer human-in-the-loop confirmation instead of automatic selection when confidence < 0.9.
+- Persisted updates to client records must be auditable and only executed after explicit user confirmation.
+
 ### Phase 4: Financial Reports
 - [ ] Implement `get_financial_summary` tool
 - [ ] Add date range helpers (this month, last quarter, etc.)
@@ -791,66 +811,42 @@ def format_invoice_response_hebrew(invoice: Invoice) -> str:
 
 **Endpoints Mapping to MCP Tools**:
 1. `create_invoice` → POST /documents (type: 305 for invoice, 320 for receipt)
-2. `list_invoices` → GET /documents/search (with filters)
+2. `list_invoices` → POST /documents/search (with filters in JSON body)
 3. `get_invoice_details` → GET /documents/{id}
 4. `update_invoice_status` → PUT /documents/{id} (open/close)
 5. `add_client` → POST /clients
-6. `get_financial_summary` → GET /documents/search (aggregate results)
+6. `get_financial_summary` → POST /documents/search (aggregate results via aggregation in JSON body)
 7. `send_invoice` → PUT /documents/{id} + POST to email/WhatsApp (via DeniDin integration)
 8. `download_invoice_pdf` → GET /documents/{id}/preview (returns Base64 PDF)
+```python
+# src/denidin_mcp_morning/morning_client.py
 
-**Authentication Flow**:
-1. User provides API key (configured in MCP server)
-2. Server calls POST /account/token with API key
-3. Receive JWT token (valid 1 hour)
-4. Use token in Bearer auth header for all subsequent calls
-5. Refresh token as needed
+class MorningClient:
+    """Client for Morning Green Receipt API that accepts API key id+secret and exchanges them for a JWT.
+    Uses POST /documents/search for document search endpoints (per Postman collection).
+    """
 
-**Important Constraints**:
-- API is case-sensitive - parameter validation critical
-- CORS not supported - requests must be server-side only ✅
-- Requires "Best" subscription or higher
-- No static IP whitelist (webhooks work from any IP)
-- Errors returned in Hebrew with numeric codes
-- Document types: 305=invoice, 320=receipt, others for orders/etc.
+    def __init__(self, api_key: str = None, api_key_id: str = None, api_key_secret: str = None, base_url: str = "https://sandbox.d.greeninvoice.co.il/api/v1/"):
+        # Accept either a single api_key or the id/secret pair; use an Auth helper to obtain JWTs.
+        self.api_key = api_key
+        self.api_key_id = api_key_id
+        self.api_key_secret = api_key_secret
+        self.base_url = base_url.rstrip('/')
+        self.session = requests.Session()
+        self.auth = Auth(api_key=api_key, api_key_id=api_key_id, api_key_secret=api_key_secret, base_url=self.base_url)
 
-**Risk**: Mitigated - API is production-ready and fully documented. No alternative approaches needed.
+    def list_invoices(self, filters: dict = None) -> dict:
+        """List invoices — POSTs to /documents/search with filters in JSON body (Postman canonical).
+        Returns the parsed JSON response.
+        """
+        url = f"{self.base_url}/documents/search"
+        token = self.auth.get_token()
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        payload = filters or {}
+        response = self.session.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()
 
-## Clarifications
+    # Other methods should also use the token from self.auth and follow Postman shapes.
+``` 
 
-### Session 2026-02-03
-- Q: What is the current status of Morning API availability? → A: Morning's API availability is unknown - need to research first (Phase 0)
-- Q: When multiple clients match a name during invoice creation, how should the system respond? → A: Display all matches with IDs, ask user to select or clarify
-- Q: How should the system determine when an invoice status becomes "overdue"? → A: The system does not need to determine this - rely on Morning API status
-- Q: What should happen when sending invoice to client with no email on file? → A: Default delivery is WhatsApp via phone number, not email - prompt for phone if missing
-- Q: For Hebrew language support, when should invoice responses be in Hebrew vs English? → A: Always use Hebrew (Israeli business standard)
-
----
-
-**Next Steps**:
-1. **Research Morning API** - Get documentation and credentials
-
-## Checklist Resolution (actioned items)
-
-The comprehensive checklist (`checklists/comprehensive.md`) was reviewed and the following artifacts and spec updates were added to resolve identified gaps and provide machine-readable references.
-
-- **Error codes**: created `artifacts/error_codes_raw.txt` containing the full error-code list extracted from the Morning docs (addresses CHK036, CHK039). Next step: parse into `error_codes.json` for programmatic mapping.
-- **Configuration schema**: added `artifacts/config.schema.json` with required config keys, token TTL, refresh window, and rate-limit settings (addresses CHK055-CHK061, CHK045).
-- **MCP tools stubs**: added `artifacts/mcp_tools_schema.json` as a placeholder for tool input/output schemas; this is the canonical place to complete CHK013-CHK016 and CHK021-CHK023.
-- **Spec sections added / clarified**: appended this Checklist Resolution section and created clear TODO anchors in the spec for the following areas: auth/token refresh strategy (CHK001, CHK006, CHK042), rate limit and retry/backoff (CHK003, CHK038), webhook signature verification (CHK048), file upload flow and presigned URLs (CHK004), WhatsApp delivery behavior (CHK065-CHK071), testing requirements (CHK075-CHK085), and security requirements (CHK049-CHK054).
-
-### Concrete next actions (short-term)
-
-1. Convert `artifacts/error_codes_raw.txt` → `artifacts/error_codes.json` (scripted parse) and add to repo. This will close CHK036 and CHK039.
-2. Fill `artifacts/mcp_tools_schema.json` with full input/output schemas (per CHK013, CHK015, CHK016) and reference from `spec.md` and `src/models.py`.
-3. Implement token refresh helper and document the exact refresh timing in `spec.md` (choices: refresh at TTL-300s or use proactive background refresh) to close CHK001/CHK006/CHK042.
-4. Add retry/backoff policy in `spec.md` (exponential backoff with jitter, max attempts) and implement in `morning_client.py` to close CHK003/CHK038.
-5. Create `specs/in-definition/005-mcp-morning-green-receipt/test-plan.md` with detailed sandbox setup steps and sample test data to address CHK075-CHK084.
-
-These artifacts and TODOs are intentionally explicit to make follow-up implementation work focused and traceable back to CHK identifiers in the checklist.
-
-2. Review and approve spec
-3. Set up test account with Morning
-4. Create MCP server project
-5. Implement Phase 1 (Core Invoice Operations)
-6. Test with real Morning account

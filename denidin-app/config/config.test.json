@@ -1,6 +1,9 @@
 {
-  "green_api_instance_id": "test_instance_id",
-  "green_api_token": "test_token_1234567890",
+  "morning": {
+    "api_key_id": "6ab47b18-0d57-4d59-9a64-bc8d30aa188d",
+    "api_key_secret": "],n4i;oo>^2aJ|eOPDIoo![1>kg+C6&z",
+    "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/"
+  },
   "ai_api_key": "sk-test1234567890abcdefghijklmnopqrstuvwxyz",
   "ai_model": "gpt-3.5-turbo",
   "ai_reply_max_tokens": 1000,

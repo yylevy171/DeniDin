@@ -2,6 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "add_client",
   "type": "object",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/clients",
+    "notes": "Create a client in Green Invoice (Postman collection mapping)."
+  },
   "properties": {
     "name": {"type": "string"},
     "email": {"type": "string", "format": "email"},
