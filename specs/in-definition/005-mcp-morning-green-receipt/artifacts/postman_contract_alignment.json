@@ -1,0 +1,49 @@
+{
+  "postman_endpoints_count": 73,
+  "unique_postman_paths_count": 73,
+  "contracts_checked": 17,
+  "missing_x_http": [],
+  "unmatched_contracts": [],
+  "ambiguous_mappings": [
+    {
+      "file": "download_invoice_pdf.json",
+      "contract_method": "GET",
+      "contract_path": "/api/v1/documents/download",
+      "pm_matches": [
+        [
+          "POST",
+          "/api/v1/documents"
+        ],
+        [
+          "POST",
+          "/"
+        ]
+      ],
+      "note": "Download URLs appear as example strings in response bodies in the Postman collection; no explicit GET request was recorded. Contract kept as GET for semantic clarity."
+    },
+    {
+      "file": "health.json",
+      "contract_method": "GET",
+      "contract_path": "/api/v1/health",
+      "pm_matches": [
+        [
+          "POST",
+          "/"
+        ]
+      ],
+      "note": "Health endpoint is not present in Postman; this is an internal/conservative mapping."
+    },
+    {
+      "file": "metrics.json",
+      "contract_method": "GET",
+      "contract_path": "/metrics",
+      "pm_matches": [
+        [
+          "POST",
+          "/"
+        ]
+      ],
+      "note": "Metrics endpoint is internal and not part of provider Postman collection."
+    }
+  ]
+}
