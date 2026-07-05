@@ -32,14 +32,14 @@ DeniDin is a WhatsApp chatbot with a sophisticated two-tier memory system. It re
 ## Setup Instructions
 
 > **Note for AI Assistants:** 
-> - All commands must be run from `/Users/yaronl/personal/DeniDin/denidin-app/` directory
-> - Always prefix commands with: `cd /Users/yaronl/personal/DeniDin/denidin-app &&`
+> - All commands must be run from `/Users/yaronl/personal/DeniDin/apps/denidin-app/` directory
+> - Always prefix commands with: `cd /Users/yaronl/personal/DeniDin/apps/denidin-app &&`
 > - Main git branch is `master`, not `main`
 
 ### 1. Clone and Navigate
 
 ```bash
-cd denidin-app/
+cd apps/denidin-app/
 ```
 
 ### 2. Create Virtual Environment
@@ -163,6 +163,18 @@ This will gracefully shut down the application (sends SIGTERM, waits for cleanup
 **Alternative:**
 Press `Ctrl+C` if running manually, or use `kill -TERM <PID>`.
 
+### Docker
+
+```bash
+docker build -t denidin-app .
+docker run --rm \
+  -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
+  denidin-app
+```
+Or via the repo-root `docker-compose.yml`: `docker compose up denidin-app`.
+
 ## Architecture
 
 ### System Overview
@@ -229,7 +241,7 @@ Press `Ctrl+C` if running manually, or use `kill -TERM <PID>`.
 ## Project Structure
 
 ```
-denidin-app/
+apps/denidin-app/
 ├── denidin.py                  # Main entry point (223 lines)
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # This file

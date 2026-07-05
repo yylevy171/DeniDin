@@ -4,20 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Layout
 
-This repo contains two independent Python codebases plus SpecKit governance docs:
+This repo is split into two independently deployable apps under `apps/`, plus SpecKit governance docs:
 
-- **`denidin-app/`** — the production WhatsApp AI assistant (main application). All app development happens here; it has its own `.pylintrc`, `mypy.ini`, `pytest.ini`, `requirements.txt`, and virtualenv expectations.
-- **`src/denidin_mcp_morning/`** — a small standalone client (`MorningClient`, `MorningAuth`) for the Morning/Green Invoice API (Israeli invoicing), used by `denidin-app/tests/integration/test_morning_sandbox_*.py`. Feature work for this lives under `specs/in-definition/005-mcp-morning-green-receipt/` and `specs/archive/005-mcp-morning-green-receipt/`.
+- **`apps/denidin-app/`** — the production WhatsApp AI assistant (main application). All app development happens here; it has its own `.pylintrc`, `mypy.ini`, `pytest.ini`, `requirements.txt`, `Dockerfile`, and virtualenv expectations.
+- **`apps/morning-mcp-app/`** — a standalone app for the Morning/Green Invoice API (Israeli invoicing), currently shipping just a client library (`MorningClient`, `MorningAuth` under its own `src/denidin_mcp_morning/`) and its sandbox-backed integration test suite. It has its own `requirements.txt`, `pytest.ini`, `Makefile`, `Dockerfile`, and config files — fully independent of `apps/denidin-app/`. No MCP server exists yet; that's future work tracked under `specs/in-definition/005-mcp-morning-green-receipt/`.
 - **`specs/`** — SpecKit-style feature specifications, organized by status: `in-definition/`, `P1/`, `P2/`, `done/`, `not-doing/`, `bugfixes/`, `checklists/`. See "Spec-Driven Workflow" below.
 - **`.github/`** — the project's constitution/methodology docs (see "Governance Docs" below) — these are binding rules for how work is done here, not just background reading.
+- **`docker-compose.yml`** (repo root) — local-dev convenience for running both apps together; each app also builds/runs standalone via its own `Dockerfile` (`docker build`/`docker run` from within the app's own directory, no dependency on the other app or on compose).
 
-**Almost all day-to-day commands below assume `cd denidin-app` first.**
+**Almost all day-to-day commands below assume `cd apps/denidin-app` first**, unless working on the morning app (`cd apps/morning-mcp-app`).
 
 ## Commands
 
 ### Setup
 ```bash
-cd denidin-app
+cd apps/denidin-app
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp config/config.example.json config/config.json  # then fill in real credentials
@@ -25,15 +26,16 @@ cp config/config.example.json config/config.json  # then fill in real credential
 
 ### Run
 ```bash
-cd denidin-app
+cd apps/denidin-app
 ./run_denidin.sh      # start (enforces single instance via PID file)
 ./stop_denidin.sh      # graceful SIGTERM shutdown
 python3 denidin.py     # run directly (foreground)
+docker build -t denidin-app . && docker run --rm -v "$(pwd)/config:/app/config" -v "$(pwd)/data:/app/data" -v "$(pwd)/logs:/app/logs" denidin-app   # containerized
 ```
 
 ### Test
 ```bash
-cd denidin-app
+cd apps/denidin-app
 python3 -m pytest tests/ -v --tb=short          # full suite (expensive tests skipped by default)
 python3 -m pytest tests/unit/ -v                # unit only
 python3 -m pytest tests/integration/ -v         # integration only
@@ -41,15 +43,25 @@ python3 -m pytest tests/unit/test_session_manager.py::test_function -xvs   # sin
 python3 -m pytest tests/ -v -m expensive        # include tests that hit real OpenAI APIs (costs money)
 python3 -m pytest tests/ --cov=src --cov-report=html   # coverage (htmlcov/index.html)
 ```
-Also runnable from repo root via `make test` (wraps the same pytest invocation from `denidin-app/`).
+Also runnable from repo root via `make test` (wraps the same pytest invocation from `apps/denidin-app/`).
 
 Expensive tests (`tests/expensive/`, marked `@pytest.mark.expensive`) hit real OpenAI APIs and cost money — they are excluded by default (`pytest.ini` sets `addopts = -m "not expensive"`). Don't run them repeatedly; per the project methodology, run once, redirect to a log file, analyze the log, and only re-run after a code change.
 
 ### Lint & Type-check
 ```bash
-cd denidin-app
+cd apps/denidin-app
 python3 -m pylint src/ --fail-under=7.0 --rcfile=.pylintrc   # or: make lint (from repo root)
 python3 -m mypy src/ --config-file=mypy.ini
+```
+
+### morning-mcp-app (self-contained, own Makefile)
+```bash
+cd apps/morning-mcp-app
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+cp config/config.example.json config/config.json  # then fill in real Morning API credentials
+make test            # or: python3 -m pytest tests/ -v --tb=short
+make docker-build && make docker-run
 ```
 
 ## Governance Docs — Read Before Non-Trivial Work
@@ -74,7 +86,7 @@ Note: `CONSTITUTION.md` opens with an absolute "ZERO MOCKING POLICY" banner clai
 - **Tests are immutable once approved** — new phases add tests, they don't rewrite existing ones, without explicit human sign-off.
 - Retry policy: retry once on 5xx/timeout after 1s; never retry 4xx. User-facing errors are friendly (`"[emoji] [what happened]. [what to do next]."`); technical detail goes to logs only.
 
-## Architecture (`denidin-app/`)
+## Architecture (`apps/denidin-app/`)
 
 DeniDin is a WhatsApp bot (Green API) that forwards messages to OpenAI (GPT-4o-mini) with a two-tier memory system, RBAC, and media processing. Full diagrammed architecture: `.github/ARCHITECTURE.md`.
 
@@ -93,7 +105,7 @@ Green API webhook → denidin.py @bot.router.message(type_message=...) handlers
 ```
 Non-text messages (`imageMessage`, `documentMessage`, `videoMessage`, `audioMessage`) route through the same dispatcher pattern in `denidin.py` to `WhatsAppHandler.handle_media_message()` → `MediaHandler` → the extractor pipeline below. There is also a catch-all `@bot.router.message()` handler so no message type is silently dropped.
 
-### Key components (`denidin-app/src/`)
+### Key components (`apps/denidin-app/src/`)
 - **`denidin.py`** (repo root of the app, not under `src/`) — entry point; owns the global `bot` (GreenAPIBot) and `denidin_app` (a `DeniDin` instance holding `ai_handler`, `config`, `whatsapp_handler`, `cleanup_thread`); registers all `@bot.router.message(...)` handlers; `initialize_app(config_dict)` is the shared bootstrap used by both `__main__` and integration tests (constructs `AIHandler` → `WhatsAppHandler` → `MediaHandler`, wires memory startup recovery + cleanup thread if `enable_memory_system`).
 - **`handlers/whatsapp_handler.py`** — Green API integration, message-type validation, group-mention detection, response sending/truncation.
 - **`handlers/ai_handler.py`** — OpenAI integration, system-prompt construction, memory recall integration, session-to-long-term-memory transfer, RBAC-aware token limits.
@@ -112,8 +124,8 @@ Non-text messages (`imageMessage`, `documentMessage`, `videoMessage`, `audioMess
 - `data/sessions/`, `data/memory/` (ChromaDB), `data/constitution/` — all gitignored runtime state, isolated from test data via the `data_root` config field.
 - `logs/denidin.log` (production) and `logs/test_logs/{test_file}.log` (per-test-file, auto-configured by `conftest.py`) — check these logs instead of re-running expensive tests to get more diagnostic detail.
 
-### `src/denidin_mcp_morning/` (top-level, separate from `denidin-app`)
-Standalone `MorningClient`/`MorningAuth` for the Morning (Green Invoice) sandbox API — token-managed HTTP client with retry/backoff (`requests` + urllib3 `Retry`). Exercised by `denidin-app/tests/integration/test_morning_sandbox_*.py`. This is a distinct package (own `src/` at repo root, not under `denidin-app/`) — don't confuse its import path with `denidin-app/src/`.
+### `apps/morning-mcp-app/` (separate app, own package/tests/config/Docker)
+Standalone `MorningClient`/`MorningAuth` for the Morning (Green Invoice) sandbox API — token-managed HTTP client with retry/backoff (`requests` + urllib3 `Retry`). Own package at `apps/morning-mcp-app/src/denidin_mcp_morning/`, imported as `from denidin_mcp_morning.morning_client import MorningClient` (its `conftest.py` puts its own `src/` on `sys.path` — no cross-app imports, no `sys.path` reach-through into `apps/denidin-app/`). Exercised by `apps/morning-mcp-app/tests/integration/test_morning_sandbox_*.py`, which hit the real Morning sandbox (constitution: no mocking). Config lives in its own `config/{config.example.json,config.test.json,config.json}` (flat shape: `api_key_id`/`api_key_secret`/`api_url`) — no longer shares config files with `apps/denidin-app/`.
 
 ## Spec-Driven Workflow
 
