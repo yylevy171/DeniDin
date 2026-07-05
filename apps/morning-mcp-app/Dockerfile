@@ -7,6 +7,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Package lives under src/ (see conftest.py for the equivalent test-time setup);
+# set PYTHONPATH so it's importable for any in-container usage, not just pytest.
+ENV PYTHONPATH=/app/src
+
 VOLUME ["/app/config"]
 
 # No MCP server exists yet (structural split only — see README "Status").
