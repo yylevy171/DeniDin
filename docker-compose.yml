@@ -1,0 +1,20 @@
+# Local dev convenience only. Both services remain fully buildable/runnable
+# standalone without compose, e.g.:
+#   cd apps/denidin-app && docker build -t denidin-app . && docker run ...
+#   cd apps/morning-mcp-app && docker build -t morning-mcp-app . && docker run ...
+
+services:
+  denidin-app:
+    build:
+      context: ./apps/denidin-app
+    volumes:
+      - ./apps/denidin-app/config:/app/config
+      - ./apps/denidin-app/data:/app/data
+      - ./apps/denidin-app/logs:/app/logs
+    restart: unless-stopped
+
+  morning-mcp-app:
+    build:
+      context: ./apps/morning-mcp-app
+    volumes:
+      - ./apps/morning-mcp-app/config:/app/config
