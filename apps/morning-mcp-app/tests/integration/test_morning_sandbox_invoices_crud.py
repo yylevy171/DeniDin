@@ -4,15 +4,10 @@ from datetime import datetime, timedelta
 import pytest
 import time
 
+from denidin_mcp_morning.morning_client import MorningClient
 
-ROOT = Path(__file__).resolve().parents[3]
-
-# Always use the canonical test config under denidin-app
-CONFIG_PATH = ROOT / "denidin-app" / "config" / "config.test.json"
-
-# Ensure repo root on sys.path so `src.*` imports work regardless of pytest env
-import sys
-sys.path.insert(0, str(ROOT))
+APP_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
 
 
 def _load_config():
@@ -23,42 +18,14 @@ def _load_config():
 @pytest.fixture(scope="module")
 def morning_client():
     cfg = _load_config()
-    morning_cfg = cfg.get("morning", {}) if isinstance(cfg, dict) else {}
+    morning_cfg = cfg if isinstance(cfg, dict) else {}
     api_key_id = morning_cfg.get("api_key_id")
     api_key_secret = morning_cfg.get("api_key_secret")
     base_url = morning_cfg.get("api_url", "https://sandbox.d.greeninvoice.co.il/api/v1/")
 
     if not (api_key_id and api_key_secret):
-        pytest.skip("No `morning.api_key_id`/`morning.api_key_secret` in test config")
+        pytest.skip("No `api_key_id`/`api_key_secret` in test config")
 
-    # Load package modules directly from files but register a synthetic package
-    # so relative imports inside the package (e.g. `from .auth import MorningAuth`) work.
-    from importlib.util import spec_from_file_location, module_from_spec
-    import types, sys
-
-    pkg_name = "src.denidin_mcp_morning"
-    pkg_path = ROOT / "src" / "denidin_mcp_morning"
-
-    # Register synthetic package
-    pkg = types.ModuleType(pkg_name)
-    pkg.__path__ = [str(pkg_path)]
-    sys.modules[pkg_name] = pkg
-
-    # Load auth module first
-    auth_path = pkg_path / "auth.py"
-    auth_spec = spec_from_file_location(f"{pkg_name}.auth", str(auth_path))
-    auth_mod = module_from_spec(auth_spec)
-    auth_spec.loader.exec_module(auth_mod)
-    sys.modules[f"{pkg_name}.auth"] = auth_mod
-
-    # Now load morning_client module under the package name
-    mc_path = pkg_path / "morning_client.py"
-    mc_spec = spec_from_file_location(f"{pkg_name}.morning_client", str(mc_path))
-    mc_mod = module_from_spec(mc_spec)
-    mc_spec.loader.exec_module(mc_mod)
-    sys.modules[f"{pkg_name}.morning_client"] = mc_mod
-
-    MorningClient = mc_mod.MorningClient
     return MorningClient(api_key_id=api_key_id, api_key_secret=api_key_secret, base_url=base_url)
 
 
