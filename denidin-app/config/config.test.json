@@ -35,7 +35,9 @@
       "min_similarity": 0.7
     }
   },
-  "constitution_config": {},
+  "constitution_config": {
+    "file": "runtime_constitution.md"
+  },
   "user_roles": {
     "admin_phones": ["+972509999999"],
     "blocked_phones": ["+972505555555"]

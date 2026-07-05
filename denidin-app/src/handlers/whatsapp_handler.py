@@ -68,8 +68,9 @@ class WhatsAppHandler:
             True if message type is supported, False otherwise
         """
         message_type = notification.event.get('messageData', {}).get('typeMessage', '')
-
-        if message_type != 'textMessage':
+        logger.debug(f"received whatsapp notification: {notification}")
+        
+        if message_type != 'extendedTextMessage' and message_type != "textMessage":
             logger.warning(f"Unsupported message type received: {message_type}")
             return False
 
