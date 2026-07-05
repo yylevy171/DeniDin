@@ -66,4 +66,4 @@ logs/
 # Vendor reference repos (do not track)
 specs/in-definition/005-mcp-morning-green-receipt/third_party/green-invoice/
 specs/in-definition/005-mcp-morning-green-receipt/third_party/python-greeninvoice-client/
-denidin-app/.denidin.pid
+apps/denidin-app/.denidin.pid
