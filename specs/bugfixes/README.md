@@ -78,7 +78,6 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 |---|-------|----------|--------|--------|
 | 004 | data_root Config Value Not Respected | P2 | Not Started | `bugfix/004-data-root-ignored` |
 | 005 | Media Flow Integration - File Empty Issue | - | Open | - |
-| 008 | Forwarded Text Messages (extendedTextMessage) Not Routed/Extracted | P1 | Fixed | `bugfix/008-extended-text-message-not-routed` |
 
 ## Completed Bugfixes
 
@@ -89,6 +88,7 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 | 003 | poll_interval_seconds Config Value Unused | P3 | 2026-01-23 | #56 |
 | 006 | Media Flow Integration - File Empty Issue (resolved) | - | 2026-01-29 | - |
 | 007 | Media Response Missing ChatId / Notification Data Validation | P0 | 2026-01-29 | #75-78 |
+| 008 | Forwarded Text Messages (extendedTextMessage) Not Routed/Extracted | P1 | 2026-07-07 | #90 |
 
 ---
 
