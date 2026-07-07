@@ -242,6 +242,9 @@ def initialize_app(config_dict: dict) -> DeniDin:
     # Initialize MediaHandler with DeniDin context and attach to WhatsAppHandler
     media_handler = MediaHandler(denidin)
     whatsapp_handler.media_handler = media_handler
+    # Give the WhatsApp handler access to the DeniDin singleton (config, ai_handler)
+    # so it can persist processed media messages to the session (bugfix-009).
+    whatsapp_handler.denidin = denidin
     
     # Initialize memory system if enabled
     if ai_handler.memory_enabled:

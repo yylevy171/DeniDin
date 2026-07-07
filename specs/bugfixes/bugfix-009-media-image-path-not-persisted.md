@@ -7,7 +7,7 @@ bugfix-009-media-image-path-not-persisted
 Image/media messages leave no session record, so `image_path` is never persisted
 
 ## Status
-Open
+Fixed — verified GREEN via expensive E2E tests (image/DOCX/PDF)
 
 ## Date Opened
 2026-07-07
@@ -63,31 +63,43 @@ Existing media integration/expensive tests assert that a summary is *sent* to th
 assert that a session message was created, and none assert that `image_path` points to the saved
 file. The persistence side-effect of the media flow was completely unverified.
 
-## Fix Approach (decided)
-Persist a single `user` message carrying `image_path` when media is processed (no separate
-AI-analysis message):
+## Fix Approach (implemented)
+Persist the media message to the session mirroring the text flow — a `user` message carrying
+`image_path` **and** an `assistant` message holding the AI analysis:
 
 1. Thread an optional `image_path` param (default `None`) through `add_message_with_tokens` and
    `add_message_with_token_limit`, forwarding to `add_message`. Backward-compatible: behavior is
    identical when omitted.
-2. Add `AIHandler.store_media_message(chat_id, content, sender, recipient, image_path, user_phone)`
-   that stores one `role="user"` message through the existing RBAC token-limit path with
-   `image_path` set (reuses the storage logic at `ai_handler.py:386-434`).
-3. Wire `ai_handler` into `WhatsAppHandler.__init__`; in the success branch of
-   `handle_media_message`, call `ai_handler.store_media_message(...)` with
-   `content = caption or filename/placeholder` and
-   `image_path = result["media_attachment"].file_path`. Update `initialize_app`
-   (`denidin.py:206-260`) to pass `ai_handler` (created before `WhatsAppHandler`).
+2. Add `WhatsAppHandler._persist_media_message(chat_id, caption, analysis, sender, image_path)`
+   (persistence is a WhatsApp-handler concern, independent of AI). It reaches the session store via
+   the DeniDin singleton (`self.denidin.ai_handler.session_manager` / `.user_manager`), converts
+   `image_path` to a path **relative to `config.data_root`**, and stores a `user` message
+   (`content = caption`, `image_path` set) and an `assistant` message (`content = analysis`) using
+   the RBAC token-limit path when enabled, else `add_message`.
+3. `WhatsAppHandler` gains a `self.denidin` context attribute (declared in `__init__`, set in
+   `initialize_app` right after the `DeniDin` singleton is built — same pattern as `media_handler`;
+   no constructor injection of `ai_handler`). `handle_media_message` calls `_persist_media_message`
+   on success with `image_path = result["media_attachment"].file_path`.
+
+Note: earlier draft considered a single user message and an `AIHandler.store_media_message` helper;
+final decision (per reporter) persists both user + assistant, and keeps the logic on the WhatsApp
+handler routed through the `denidin` singleton.
 
 ## Acceptance Criteria
-- [ ] Failing test(s) reproduce the missing `image_path` persistence.
-- [ ] Sending a media message persists a `user` session message with `image_path` = saved file path.
-- [ ] `add_message_with_token_limit(..., image_path=...)` persists `image_path` to JSON (unit).
-- [ ] Integration test drives an `imageMessage` webhook through `bot.router` (no internal mocks) and
-      asserts the on-disk session message has `image_path` pointing at the `data/media/DD-*` file.
-- [ ] Expensive tests for every media type assert both (a) the file is persisted on disk and (b) the
-      session message's `image_path` equals that path.
-- [ ] No regression to text-message storage or the media summary reply.
+- [x] Failing test(s) reproduce the missing persistence (RED confirmed: "media message persisted
+      NOTHING to the session").
+- [x] Sending a media message persists a `user` session message with `image_path` (relative to
+      `data_root`) pointing at the saved `media/DD-*` file, plus an `assistant` message with the
+      analysis.
+- [x] Expensive E2E tests (image/DOCX/PDF) drive the real `handle_*_message` pipeline and assert
+      both (a) the file exists on disk and (b) the session `user` message's `image_path` resolves to
+      it; all three GREEN after fix.
+- [x] No regression to text-message storage or the media summary reply.
+
+## Test Strategy Note
+Per reporter preference (and the repo's no-mocking stance), verification is via **expensive
+real-API E2E tests only** (`tests/expensive/test_media_e2e.py`) — no unit/component/mock tests.
+Tests were shown RED before the fix and GREEN after.
 
 ## References
 - `.github/CONSTITUTION.md`

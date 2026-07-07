@@ -13,7 +13,9 @@ Run with: pytest tests/expensive/test_media_e2e.py -m expensive -v
 """
 
 import pytest
+import json
 import logging
+import os
 import threading
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -34,6 +36,70 @@ from .e2e_helpers import (
 # Configure logging for tests
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+def assert_media_message_persisted(denidin_app, data_root, chat_id, before_ids):
+    """
+    bugfix-009: assert a processed media message is persisted to the session.
+
+    Reads the chat's session messages off disk (NO MOCKING) and verifies, among the
+    messages added since ``before_ids``:
+      * a ``user`` message carries a non-null ``image_path`` that is stored RELATIVE
+        to data_root and whose resolved file (``data_root / image_path``) exists on disk, and
+      * an ``assistant`` message holds the AI analysis/summary (non-empty content),
+    mirroring the two-sided persistence of the normal text flow.
+
+    Args:
+        denidin_app: initialized DeniDin app (real, not mocked)
+        data_root: configured data_root (media files + sessions live under here)
+        chat_id: WhatsApp chat id used in the test webhook
+        before_ids: set of session message_ids captured BEFORE the handler ran
+    """
+    session_manager = denidin_app.ai_handler.session_manager
+    session = session_manager.get_session(chat_id)
+    messages_dir = Path(session_manager.storage_dir) / session.session_id / "messages"
+
+    new_ids = [mid for mid in session.message_ids if mid not in before_ids]
+    assert new_ids, (
+        "bugfix-009: media message persisted NOTHING to the session "
+        f"(no new messages for chat {chat_id})"
+    )
+
+    new_messages = []
+    for message_id in new_ids:
+        with open(messages_dir / f"{message_id}.json", encoding="utf-8") as f:
+            new_messages.append(json.load(f))
+
+    # User side: message with image_path (relative to data_root) pointing at a real file.
+    user_with_image = [
+        m for m in new_messages if m["role"] == "user" and m.get("image_path")
+    ]
+    assert user_with_image, (
+        "bugfix-009: no user message with image_path was persisted for the media message. "
+        f"New messages: {new_messages}"
+    )
+    image_path = user_with_image[0]["image_path"]
+    assert not os.path.isabs(image_path), (
+        f"bugfix-009: image_path must be relative to data_root, got absolute: {image_path}"
+    )
+    resolved = Path(data_root) / image_path
+    assert resolved.exists(), (
+        f"bugfix-009: persisted image_path does not point to a real file on disk: {resolved}"
+    )
+
+    # Assistant side: the AI analysis/summary is persisted too.
+    assistant_msgs = [
+        m for m in new_messages if m["role"] == "assistant" and (m.get("content") or "").strip()
+    ]
+    assert assistant_msgs, (
+        "bugfix-009: AI analysis/summary was not persisted as an assistant message. "
+        f"New messages: {new_messages}"
+    )
+
+    logger.info(
+        f"✅ bugfix-009: persisted user(image_path={image_path}) + assistant(analysis) "
+        f"for chat {chat_id}"
+    )
 
 
 @pytest.mark.expensive
@@ -467,7 +533,138 @@ class TestWhatsAppE2E:
         
         hebrew_ratio = validate_response_full(response)
         logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}")
-    
+        # ==================== bugfix-009: media persisted to session ====================
+
+    @pytest.mark.expensive
+    def test_e2e_image_persists_image_path_and_analysis(self, denidin_app, http_server, config):
+        """
+        **bugfix-009 E2E (image)**: sending an image persists a user message with
+        image_path (relative to data_root, file on disk) AND the AI analysis as an
+        assistant message.
+
+        RED before fix: media flow persists nothing to the session.
+        """
+        from denidin import handle_image_message
+
+        chat_id = '972522968679@c.us'
+        session_manager = denidin_app.ai_handler.session_manager
+        before_ids = set(session_manager.get_session(chat_id).message_ids)
+
+        notification = create_real_notification({
+            'typeWebhook': 'incomingMessageReceived',
+            'timestamp': 1706601234,
+            'idMessage': 'E2E_BF009_IMAGE_001',
+            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
+            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
+            'messageData': {
+                'typeMessage': 'imageMessage',
+                'fileMessageData': {
+                    'downloadUrl': f'{http_server}/WhatsApp%20Image%202025-11-18%20at%2021.51.25.jpeg',
+                    'fileName': 'receipt.jpeg',
+                    'mimeType': 'image/jpeg',
+                    'caption': '',
+                    'jpegThumbnail': '',
+                    'isForwarded': False,
+                    'forwardingScore': 0
+                }
+            }
+        })
+
+        logger.info("\n" + "=" * 80)
+        logger.info("🔥 bugfix-009 E2E: image persistence")
+        logger.info("=" * 80)
+
+        handle_image_message(notification)
+
+        assert get_response(notification), "User got no response"
+        assert_media_message_persisted(denidin_app, config.data_root, chat_id, before_ids)
+
+    @pytest.mark.expensive
+    def test_e2e_docx_persists_image_path_and_analysis(self, denidin_app, http_server, config):
+        """
+        **bugfix-009 E2E (DOCX)**: sending a Word doc persists a user message with
+        image_path (the saved file, relative to data_root) AND the AI analysis.
+
+        RED before fix: media flow persists nothing to the session.
+        """
+        from denidin import handle_document_message
+
+        chat_id = '972522968679@c.us'
+        session_manager = denidin_app.ai_handler.session_manager
+        before_ids = set(session_manager.get_session(chat_id).message_ids)
+
+        notification = create_real_notification({
+            'typeWebhook': 'incomingMessageReceived',
+            'timestamp': 1706601234,
+            'idMessage': 'E2E_BF009_DOCX_001',
+            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
+            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User', 'chatName': 'Test User'},
+            'messageData': {
+                'typeMessage': 'documentMessage',
+                'fileMessageData': {
+                    'downloadUrl': f'{http_server}/%D7%99%D7%95%D7%91%D7%9C%20%D7%99%D7%A2%D7%A7%D7%95%D7%91%D7%99.docx',
+                    'fileName': 'יובל יעקובי.docx',
+                    'mimeType': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'caption': '',
+                    'jpegThumbnail': '',
+                    'isForwarded': False,
+                    'forwardingScore': 0
+                }
+            }
+        })
+
+        logger.info("\n" + "=" * 80)
+        logger.info("🔥 bugfix-009 E2E: DOCX persistence")
+        logger.info("=" * 80)
+
+        handle_document_message(notification)
+
+        assert get_response(notification), "User got no response"
+        assert_media_message_persisted(denidin_app, config.data_root, chat_id, before_ids)
+
+    @pytest.mark.expensive
+    def test_e2e_pdf_persists_image_path_and_analysis(self, denidin_app, http_server, config):
+        """
+        **bugfix-009 E2E (PDF)**: sending a PDF persists a user message with
+        image_path (the saved file, relative to data_root) AND the AI analysis.
+
+        RED before fix: media flow persists nothing to the session.
+        """
+        from denidin import handle_document_message
+
+        chat_id = '972522968679@c.us'
+        session_manager = denidin_app.ai_handler.session_manager
+        before_ids = set(session_manager.get_session(chat_id).message_ids)
+
+        notification = create_real_notification({
+            'typeWebhook': 'incomingMessageReceived',
+            'timestamp': 1706601234,
+            'idMessage': 'E2E_BF009_PDF_001',
+            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
+            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User', 'chatName': 'Test User'},
+            'messageData': {
+                'typeMessage': 'documentMessage',
+                'fileMessageData': {
+                    'downloadUrl': f'{http_server}/%D7%A8%D7%95%D7%A2%D7%99%20%D7%A9%D7%93%D7%94%20%D7%94%D7%A6%D7%A2%D7%AA%20%D7%A9%D7%9B%D7%98.pdf',
+                    'fileName': 'רועי שדה הצעת שכט.pdf',
+                    'mimeType': 'application/pdf',
+                    'caption': '',
+                    'jpegThumbnail': '',
+                    'isForwarded': False,
+                    'forwardingScore': 0
+                }
+            }
+        })
+
+        logger.info("\n" + "=" * 80)
+        logger.info("🔥 bugfix-009 E2E: PDF persistence")
+        logger.info("=" * 80)
+
+        handle_document_message(notification)
+
+        assert get_response(notification), "User got no response"
+        assert_media_message_persisted(denidin_app, config.data_root, chat_id, before_ids)
+
 
 # ==================== REMOVED TESTS ====================
 #

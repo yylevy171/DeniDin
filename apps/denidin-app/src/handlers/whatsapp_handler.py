@@ -3,6 +3,7 @@ WhatsAppHandler - Handles WhatsApp message processing with retry logic
 Phase 5: US3 - Error Handling & Resilience
 """
 import requests
+from pathlib import Path
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -35,6 +36,10 @@ class WhatsAppHandler:
             media_handler: Optional MediaHandler instance for processing media messages
         """
         self.media_handler = media_handler
+        # DeniDin singleton context (config, ai_handler, etc.). Set post-construction
+        # in initialize_app (like media_handler), since the context is built after
+        # this handler. Used to persist processed media messages to the session.
+        self.denidin = None
         logger.debug("WhatsAppHandler initialized")
 
     def process_notification(self, notification: Notification) -> WhatsAppMessage:
@@ -298,3 +303,81 @@ class WhatsAppHandler:
         summary = result.get("summary", "")
         logger.info(f"Sending media processing summary to {sender}")
         notification.answer(summary)
+
+        # bugfix-009: persist the media message to the session, mirroring the text
+        # flow (user message + assistant analysis), so the saved media path is recorded
+        # and the analysis stays in conversation context.
+        chat_id = sender_data.get('chatId', sender)
+        media_attachment = result.get("media_attachment")
+        image_path = media_attachment.file_path if media_attachment else None
+        self._persist_media_message(
+            chat_id=chat_id,
+            caption=caption,
+            analysis=summary,
+            sender=sender,
+            image_path=image_path,
+        )
+
+    def _persist_media_message(self, chat_id, caption, analysis, sender, image_path):
+        """
+        Persist a processed media message to the session (user + assistant).
+
+        Mirrors the text flow: stores a user message carrying the saved media path
+        (relative to data_root) and the AI analysis/summary as an assistant message.
+        Reaches the session store via the DeniDin singleton. No-op if memory disabled.
+
+        Args:
+            chat_id: WhatsApp chat ID (session key)
+            caption: User's caption text (may be empty)
+            analysis: AI analysis/summary to store as the assistant message
+            sender: WhatsApp sender ID
+            image_path: Absolute path to the saved media file (or None)
+        """
+        if not self.denidin:
+            return
+
+        ai_handler = self.denidin.ai_handler
+        if not ai_handler.memory_enabled or not ai_handler.session_manager:
+            return
+
+        session_manager = ai_handler.session_manager
+
+        # Store image_path relative to data_root so it survives moving the data
+        # directory or running on a different machine.
+        relative_image_path = None
+        if image_path:
+            try:
+                data_root = Path(self.denidin.config.data_root).resolve()
+                relative_image_path = str(Path(image_path).resolve().relative_to(data_root))
+            except ValueError:
+                relative_image_path = image_path
+
+        try:
+            if ai_handler.rbac_enabled and ai_handler.user_manager:
+                user = ai_handler.user_manager.get_user(sender)
+                if user.is_blocked:
+                    logger.warning(f"Skipping media persistence for blocked user: {sender}")
+                    return
+                session_manager.add_message_with_token_limit(
+                    chat_id=chat_id, role="user", content=caption or "",
+                    user_role=user.role, token_limit=user.token_limit,
+                    sender=sender, recipient="AI", image_path=relative_image_path,
+                )
+                session_manager.add_message_with_token_limit(
+                    chat_id=chat_id, role="assistant", content=analysis,
+                    user_role=user.role, token_limit=user.token_limit,
+                    sender="AI", recipient=sender,
+                )
+            else:
+                session_manager.add_message(
+                    chat_id=chat_id, role="user", content=caption or "",
+                    user_role="client", sender=sender, recipient="AI",
+                    image_path=relative_image_path,
+                )
+                session_manager.add_message(
+                    chat_id=chat_id, role="assistant", content=analysis,
+                    user_role="client", sender="AI", recipient=sender,
+                )
+            logger.debug(f"Persisted media message (user+assistant) to session for {chat_id}")
+        except Exception as e:
+            logger.error(f"Failed to persist media message to session: {e}", exc_info=True)
