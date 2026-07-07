@@ -97,8 +97,13 @@ class TestWhatsAppE2E:
         config.validate()
         # Use isolated test_data_root (with its own copy of the constitution file)
         # so these tests use real API credentials without touching production
-        # session/memory data.
-        config.data_root = str(Path(__file__).parent.parent.parent / "test_data")
+        # session/memory data. SessionManager/MemoryManager read storage paths
+        # from config.memory[...]['storage_dir'] directly (not config.data_root),
+        # so those must be overridden too.
+        test_data_root = Path(__file__).parent.parent.parent / "test_data"
+        config.data_root = str(test_data_root)
+        config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
+        config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
 
         return config
     
