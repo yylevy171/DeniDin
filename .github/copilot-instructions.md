@@ -37,5 +37,6 @@
 
 - Specs: `specs/in-progress/###-feature-name/`
 - Bugfixes: `specs/bugfixes/bugfix-###-description.md`
-- Config: `denidin-app/config/config.json`
-- Tests: `denidin-app/tests/unit/` and `denidin-app/tests/integration/`
+- Two independent apps under `apps/`: `apps/denidin-app/` (WhatsApp bot) and `apps/morning-mcp-app/` (Morning/Green Invoice client) - each has its own config, tests, requirements, and Dockerfile
+- Config: `apps/denidin-app/config/config.json` (or `apps/morning-mcp-app/config/config.json`)
+- Tests: `apps/denidin-app/tests/{unit,integration,expensive}/` and `apps/morning-mcp-app/tests/integration/`

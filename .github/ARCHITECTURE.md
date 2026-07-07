@@ -1,10 +1,12 @@
 # DeniDin Architecture
 
-**Version**: 1.0 | **Last Updated**: 2026-01-23 | **Status**: Production
+**Version**: 1.1 | **Last Updated**: 2026-07-07 | **Status**: Production
 
 ## Overview
 
 DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture with role-based access control. The system processes messages through a pipeline that includes session management, AI response generation, semantic memory recall, and automated background cleanup.
+
+**Repo structure**: this document describes `apps/denidin-app/`, one of two independently deployable apps in this monorepo under `apps/`. The other, `apps/morning-mcp-app/`, is a much smaller standalone Morning/Green Invoice API client — see "Sibling App: morning-mcp-app" near the end of this document. All `src/...` paths below are relative to `apps/denidin-app/`.
 
 ## System Architecture
 
@@ -110,7 +112,7 @@ DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture wit
 - Message tracking with unique IDs
 - Sender/recipient attribution
 
-### 2. User Manager (`src/utils/user_manager.py`)
+### 2. User Manager (`src/managers/user_manager.py`)
 
 **Responsibilities:**
 - User role determination based on phone number
@@ -138,7 +140,7 @@ Blocked (lowest)
 | Client | 4,000 | Own private + public | ❌ None |
 | Blocked | 0 | None | ❌ None |
 
-### 3. Session Manager (`src/memory/session_manager.py`)
+### 3. Session Manager (`src/managers/session_manager.py`)
 
 **Tier 1 Memory - Short-term conversation history**
 
@@ -178,7 +180,7 @@ data/sessions/
 }
 ```
 
-### 4. Memory Manager (`src/memory/memory_manager.py`)
+### 4. Memory Manager (`src/managers/memory_manager.py`)
 
 **Tier 2 Memory - Long-term semantic memory**
 
@@ -317,7 +319,7 @@ MediaExtractor (Abstract Base)
 - After: 1 AI call (combined) = $0.01-0.02 per document
 - Savings: ~50% cost reduction + faster processing
 
-### 7. Background Cleanup Thread (`src/background_threads.py`)
+### 7. Background Cleanup Thread (`src/services/cleanup_service.py`)
 
 **Responsibilities:**
 - Monitor for expired sessions (hourly)
@@ -461,7 +463,7 @@ Removed (deleted from active index)
 
 ## Testing
 
-### Test Coverage: 92%
+### Test Coverage (per-component figures below are historical/approximate - re-run `pytest --cov=src --cov-report=html` for current numbers)
 
 **100% Coverage:**
 - Models (user, message, state, document, config)
@@ -482,22 +484,36 @@ Removed (deleted from active index)
 - Background Threads (66%) - cleanup logic
 
 ### Test Categories
-- **Unit Tests**: 337+ tests for individual components
-  - Extractors: 37 tests (5 base + 10 image + 10 pdf + 12 docx)
-  - Core components: 300+ tests
-- **Integration Tests**: 87 tests for cross-component workflows
-- **RBAC Tests**: 40+ tests for permission enforcement
-- **Memory Tests**: 50+ tests for storage and recall
+As of 2026-07-07: **508 total tests** (`pytest tests/ --collect-only -q -m expensive`) - **491 run by default**, **17 marked `@pytest.mark.expensive`** (real, billed OpenAI API calls; require explicit human approval, run one at a time - see CONSTITUTION.md §VII and CLAUDE.md).
+- Unit tests: `tests/unit/`
+- Integration tests (E2E from external entry point, no mocking): `tests/integration/`
+- Expensive tests (real API calls): `tests/expensive/`
 
 ## Deployment
 
-### Production Environment
+Two supported deployment paths - Docker is the recommended default for new deployments; systemd remains valid for existing bare-metal hosts.
+
+### Docker (recommended)
+```bash
+cd apps/denidin-app
+docker build -t denidin-app .
+docker run --rm \
+  -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/logs:/app/logs" \
+  denidin-app
+```
+Or via the repo-root `docker-compose.yml`: `docker compose up denidin-app`. The container runs `denidin.py` directly as PID 1 (it already handles SIGINT/SIGTERM) - the PID-file scripts (`run_denidin.sh`/`stop_denidin.sh`) are bare-metal-only and are not used inside the container. `config/`, `data/`, and `logs/` are mounted volumes since `config/config.json` is gitignored and `data/`/`logs/` are mutable runtime state.
+
+### Bare Metal / systemd
 - **Platform**: Linux server
 - **Python**: 3.9+
 - **Data Directory**: Persistent volume mount
 - **Logs**: Rotating file logs (100MB max)
 - **Process Management**: systemd service
 - **Monitoring**: Log-based health checks
+
+See `apps/denidin-app/DEPLOYMENT.md` for the full systemd setup guide.
 
 ### Startup Sequence
 1. Load configuration
@@ -546,6 +562,19 @@ See `specs/in-definition/`, `specs/P0/`, `specs/P1/`, `specs/P2/` for planned fe
 - **013**: Proactive WhatsApp messaging
 - **014**: Entity extraction from group messages
 - **015**: Topic-based access control
-- **005**: MCP morning green receipt integration
+- **005**: MCP morning green receipt integration - client library extracted to `apps/morning-mcp-app/` (structural split only); the actual MCP server (FastAPI, 8 tools) described in `specs/in-definition/005-mcp-morning-green-receipt/plan.md` is not yet built - see "Sibling App: morning-mcp-app" below
 - **008**: Scheduled proactive chats
 - **009**: Agentic workflow builder
+
+## Sibling App: morning-mcp-app
+
+`apps/morning-mcp-app/` is a separate, independently deployable app in this same monorepo (own `src/`, `tests/`, `config/`, `requirements.txt`, `Dockerfile`, `Makefile`) - it does **not** import from or share code with `apps/denidin-app/`, and the two are not currently wired to talk to each other.
+
+**Current state**: a thin, real REST client for the Morning (Green Invoice) API -
+- `src/denidin_mcp_morning/morning_client.py` - `MorningClient` (create/list/get invoices, `requests` + urllib3 retry/backoff)
+- `src/denidin_mcp_morning/auth.py` - `MorningAuth` (API key ID/secret → JWT exchange, token refresh)
+- No MCP server, no FastAPI, no tool registration yet - the intended design (8 MCP tools: `create_invoice`, `list_invoices`, `get_invoice_details`, `update_invoice_status`, `add_client`, `get_financial_summary`, `send_invoice`, `download_invoice_pdf`) is documented but unbuilt in `specs/in-definition/005-mcp-morning-green-receipt/`.
+
+**Testing**: `apps/morning-mcp-app/tests/integration/` hits the real Morning **sandbox** API (no mocking, per constitution) - config in its own `config/{config.example.json,config.test.json,config.json}` (flat shape: `api_key_id`/`api_key_secret`/`api_url`).
+
+**Deployment**: `apps/morning-mcp-app/Dockerfile` builds a lightweight `python:3.9-slim` image (`ENV PYTHONPATH=/app/src` so the package is importable); since no server exists yet, its default `CMD` is a placeholder (`tail -f /dev/null`) rather than implying functionality that doesn't exist - see the Dockerfile's comment for the exact command to swap in once `server.py` lands. Runnable standalone or via the repo-root `docker-compose.yml`.

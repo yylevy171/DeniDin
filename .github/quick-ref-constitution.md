@@ -71,19 +71,23 @@
 - See `.github/CONSTITUTION.md §V` for full integration test requirements
 
 ### Pytest Commands
+Run from inside the app you're working on: `cd apps/denidin-app` or `cd apps/morning-mcp-app`.
 ```bash
-# All tests
+# All tests (expensive tests skipped by default)
 pytest tests/ -v
 
 # Unit tests only
 pytest tests/unit/ -v
 
-# With expensive API tests
-pytest tests/integration/ -v -m expensive
-
 # Single test
 pytest tests/unit/test_module.py::test_function -xvs
 ```
+
+### Expensive Tests (real, paid API calls - `tests/expensive/`, `@pytest.mark.expensive`)
+- **Human approval required before every single run** - no exceptions, even one test, even mid-task
+- **Never run them all together** - one test at a time, never a bare `-m expensive` sweep
+- Read `logs/test_logs/` before re-running - don't burn money re-deriving known info
+- Only re-run a previously-failed one once confident a fix addresses it
 
 ### Test Standards
 - Once approved, tests are IMMUTABLE (never modify without human approval)
@@ -268,7 +272,7 @@ else:
 
 ---
 
-**Last Updated**: January 27, 2026  
-**Version**: 1.0.0 (Instruction File)
+**Last Updated**: July 7, 2026  
+**Version**: 1.1.0 (Instruction File)
 
 See `.github/CONSTITUTION.md` for complete reference documentation.

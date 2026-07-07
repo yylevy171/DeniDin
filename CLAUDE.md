@@ -40,12 +40,11 @@ python3 -m pytest tests/ -v --tb=short          # full suite (expensive tests sk
 python3 -m pytest tests/unit/ -v                # unit only
 python3 -m pytest tests/integration/ -v         # integration only
 python3 -m pytest tests/unit/test_session_manager.py::test_function -xvs   # single test
-python3 -m pytest tests/ -v -m expensive        # include tests that hit real OpenAI APIs (costs money)
 python3 -m pytest tests/ --cov=src --cov-report=html   # coverage (htmlcov/index.html)
 ```
 Also runnable from repo root via `make test` (wraps the same pytest invocation from `apps/denidin-app/`).
 
-Expensive tests (`tests/expensive/`, marked `@pytest.mark.expensive`) hit real OpenAI APIs and cost money — they are excluded by default (`pytest.ini` sets `addopts = -m "not expensive"`). Don't run them repeatedly; per the project methodology, run once, redirect to a log file, analyze the log, and only re-run after a code change.
+Expensive tests (`tests/expensive/`, marked `@pytest.mark.expensive`) hit real OpenAI APIs and cost money — they are excluded by default (`pytest.ini` sets `addopts = -m "not expensive"`). Don't run them repeatedly — read `logs/test_logs/` for a prior run's output before re-running, and only re-run after a code change you're confident fixes the issue.
 
 **Expensive test rules (strict):**
 - **User approval is required before running any expensive test, every single time** — no exceptions, even for a single test, even as part of a larger approved task.
