@@ -7,6 +7,29 @@ bugfix-010-active-session-context-lost-on-restart
 Recently-active session loses conversation context after app restart
 
 ## Status
+CLOSED — NOT REPRODUCIBLE (2026-07-08)
+
+## Resolution — NOT REPRODUCIBLE (2026-07-08)
+A live, real-app reproduction was performed via the actual entry point (WhatsApp → Green API →
+`bot.router` → handlers), with an **immediate** restart between "establish identity" and "ask
+identity" — the exact scenario the reporter described. Behavior-neutral DEBUG instrumentation
+(a complete dump of `conversation_history` at the single AI-call choke point `_call_openai_api`)
+captured the exact history handed to the model on the post-restart turn.
+
+**Result:** context was fully preserved across the restart. The post-restart AI call
+(`req_2e81e0c55bbc`, 2026-07-08 00:59:14) reloaded **34 messages intact** from disk, including the
+identity exchange, and the AI answered identity questions correctly. `_load_sessions` re-indexed the
+active session with no `Failed to load session` errors and no post-restart `Created new session`.
+
+The immediate-restart symptom **did not reproduce**; the reload mechanism (disk → history replay on
+every turn) works as designed. Instrumentation was reverted after the run (no source changes remain).
+
+Caveat / follow-up (out of scope, latent — NOT this bug): the **>24h expiry boundary** path remains a
+real asymmetry — a session idle >24h is archived to `expired/` on startup, which `_load_sessions`
+skips, dropping it from the active index (see "Known Secondary Gap"). Not exercised here because the
+reported failure was immediate; tracked as a candidate follow-up ticket, not part of this closure.
+
+### Original status (historical)
 Open — Root cause NOT yet established (requires live reproduction)
 
 ## Date Opened
