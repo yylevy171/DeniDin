@@ -77,6 +77,7 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 | # | Title | Priority | Status | Branch |
 |---|-------|----------|--------|--------|
 | 004 | data_root Config Value Not Respected | P2 | Not Started | `bugfix/004-data-root-ignored` |
+| 005 | Media Flow Integration - File Empty Issue | - | Open | - |
 
 ## Completed Bugfixes
 
@@ -85,6 +86,8 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 | 001 | Constitution Config Not Loaded | P1 | 2026-01-23 | 6610279 |
 | 002 | max_retries Config Value Unused | P2 | 2026-01-23 | #55 |
 | 003 | poll_interval_seconds Config Value Unused | P3 | 2026-01-23 | #56 |
+| 006 | Media Flow Integration - File Empty Issue (resolved) | - | 2026-01-29 | - |
+| 007 | Media Response Missing ChatId / Notification Data Validation | P0 | 2026-01-29 | #75-78 |
 
 ---
 
