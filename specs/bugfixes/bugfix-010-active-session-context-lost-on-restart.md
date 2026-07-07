@@ -75,24 +75,47 @@ So the observed symptom **contradicts** the live evidence. The root cause theref
 by static analysis and requires a **controlled live reproduction with instrumentation** before any
 fix is proposed.
 
-## Leading Hypothesis (best match for the reported symptom)
-**(a) storage_dir resolves to a different absolute path depending on how the app is launched (CWD).**
-`storage_dir` is the *relative* `data/sessions`, resolved against the process CWD. `./run_denidin.sh`
-and `python3 denidin.py` (or Docker) can run from different working directories, so the running
-process may read/write `data/sessions` at a **different absolute path** than where the prior session
-lives. This precisely fits the reporter's paradox — *"the app seems to remember it (the files are
-there on disk) but the AI loses the session"*: the on-disk session exists under one path, while the
-restarted process rebuilds its index from an empty/other path, finds nothing, and creates a brand-new
-empty session. Same class of defect as `bugfix-004-data-root-ignored`. Confirming signal: a
-post-restart `"Created new session ... for chat ..."` and the resolved absolute `storage_dir` differing
-between launches.
+### Findings from free (no-restart) investigation — 2026-07-08
+Ruled out from code + existing `logs/denidin.log` without a new repro:
+- **(a) CWD/storage_dir**: ruled out — config path is also relative, so the app only runs from the
+  app dir; `storage_dir` resolves consistently. See the hypothesis (a) section.
+- **(c) load exception**: no `"Failed to load session"` / `"Failed to check session"` entries in the
+  log — the index rebuilds cleanly; sessions are not being dropped on load.
+- **Index behavior**: no post-restart `"Created new session"` for the active chat; the session is
+  reused and "Retrieved N" climbs across restarts — i.e. context is preserved in this captured run.
+- **Unrelated observation**: cleanup repeatedly fails to transfer old expired sessions
+  `b1035d74`/`f82f4a42` with `empty_conversation` on every startup — a separate cleanup defect, not
+  this bug (candidate follow-up ticket).
 
-## Other Hypotheses To Rule Out During Reproduction
-- **(a-restated) CWD/`data_root` resolution** — see Leading Hypothesis above.
+Net: the obvious causes are eliminated; a fresh instrumented "Leo" reproduction is required to catch
+the failing link, since the currently-captured log only shows the *working* path.
+
+## Hypothesis (a) CWD/storage_dir resolution — LARGELY RULED OUT (2026-07-08)
+Initially the leading theory (would fit "files exist but AI forgets"). Ruled out by code inspection
+for the reporter's two launch methods: `run_denidin.sh` does `cd "$SCRIPT_DIR"` (app dir), and
+`python3 denidin.py` can only start from the app dir anyway because `CONFIG_PATH = 'config/config.json'`
+is itself relative (from a wrong CWD, config load fails → exit 2 before any session work). Since
+`from_file` combines `storage_dir` as the relative `data/sessions`, both methods resolve it to the
+**same** `apps/denidin-app/data/sessions`. Still worth a one-line confirmation via instrumentation
+(log the resolved absolute `storage_dir`), but no longer the primary suspect. NOTE: Docker (CWD `/app`,
+mounted `data` volume) is also consistent — only relevant if the reporter ever restarts via a
+different mechanism.
+
+## Hypotheses To Test During Reproduction (revised)
+- **(a) CWD/storage_dir resolution** — largely ruled out (above); confirm resolved absolute path once.
 - **(b) chat-id key mismatch:** stored `session.whatsapp_chat` vs retrieval `effective_chat_id`
   (`chat_id or request.chat_id`, `ai_handler.py:338-366`).
-- **(c) load exception:** an exception in `_load_sessions`/`_load_session` for that session (caught &
-  logged, `session_manager.py:318-319`) silently drops it from the index.
+- **(c) load exception on restart — ELEVATED (strongest restart-specific asymmetry):** the index is
+  populated two different ways. Within a run, `get_session` inserts `chat_to_session[chat]=session_id`
+  at session **creation** (`session_manager.py:121`). After a restart, the index is rebuilt **only**
+  by `_load_sessions` (`session_manager.py:303-319`), which wraps each `_load_session` in
+  `try/except` and, on **any** exception, logs and **skips** the session (never indexing it). So a
+  session that worked all through a run can vanish from the index after restart if its
+  `session.json` fails to load — e.g. `Session(**data)` raising `TypeError` on an unexpected/missing
+  field (schema drift), a JSON parse error, or a partial write. Result: `get_session` misses the
+  index → **creates a new empty session** → context lost, while the original files still sit on disk
+  ("app seems to remember, AI forgets"). Confirming signals: a `_load_sessions` error log for that
+  `session_id` at startup, then a post-restart `"Created new session"` for the chat.
 - **(d) history-retrieval exception:** a swallowed exception in `get_conversation_history`
   (`ai_handler.py:369-370`) yields empty history even though the session is intact.
 
