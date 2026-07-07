@@ -19,6 +19,16 @@ def real_config():
     config_path = Path(__file__).parent.parent.parent / "config" / "config.json"
     config = AppConfiguration.from_file(str(config_path))
     config.validate()
+    # Isolate session/memory storage from production data (data/) so this
+    # test's real API call doesn't write into real production state.
+    # SessionManager/MemoryManager read storage paths from
+    # config.memory[...]['storage_dir'], not config.data_root.
+    test_data_root = Path(__file__).parent.parent.parent / "test_data"
+    config.data_root = str(test_data_root)
+    if 'session' in config.memory:
+        config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
+    if 'longterm' in config.memory:
+        config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
     return config
 
 
@@ -42,7 +52,8 @@ def real_whatsapp_handler():
 
 class TestBotExceptionHandlingWithRealAPI:
     """Test exception handling with 1 REAL API call to prove end-to-end functionality"""
-    
+
+    @pytest.mark.expensive
     def test_openai_error_handling_real_api(self, real_ai_handler):
         """Test AIHandler catches REAL OpenAI API error - 1 REAL API CALL"""
         # Create a real message
