@@ -134,8 +134,15 @@ class TestWhatsAppValidation:
 
 
 class TestMessageLengthValidation:
-    """Test AIHandler message length validation - NO API calls"""
-    
+    """Test AIHandler message length validation via create_request().
+
+    NOTE: create_request() triggers a real OpenAI embeddings API call via
+    memory recall (real_config's production config.json has
+    enable_memory_system=True), so these are NOT free despite only
+    asserting on truncation logic. Marked expensive accordingly.
+    """
+
+    @pytest.mark.expensive
     def test_long_prompt_truncated_to_10000(self, real_ai_handler):
         """Test long prompt truncated to 10000 chars"""
         from datetime import datetime, timezone
@@ -154,6 +161,7 @@ class TestMessageLengthValidation:
         request = real_ai_handler.create_request(long_message)
         assert len(request.user_prompt) <= 10000
     
+    @pytest.mark.expensive
     def test_short_messages_pass_through(self, real_ai_handler):
         """Test short messages (<10000) pass through unchanged"""
         from datetime import datetime, timezone
