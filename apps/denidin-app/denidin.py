@@ -283,7 +283,7 @@ logger.info("Handlers initialized: AIHandler, WhatsAppHandler")
 logger.info("=" * 60)
 
 
-@bot.router.message(type_message="textMessage")
+@bot.router.message(type_message=["textMessage", "extendedTextMessage"])
 def handle_text_message(notification: Notification) -> None:
     """
     Handle incoming text messages from WhatsApp with comprehensive error handling.

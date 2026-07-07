@@ -252,6 +252,65 @@ class TestMediaWebhookRoutingUserPerspective:
                 f"Got: {sent_message}"
             )
     
+    def test_extended_text_message_routes_to_text_handler_not_unsupported(self, config):
+        """
+        **BDD Scenario**: User forwards/quotes a text message via WhatsApp
+
+        Given: User forwards a text message (Green API reports it as
+               typeMessage "extendedTextMessage", not "textMessage")
+        When: The real bot.router dispatches the webhook event
+        Then: It resolves to the text-message handler, not the
+              "unsupported message type" catch-all
+
+        bugfix-008 root cause: no @bot.router.message(...) registration exists
+        for "extendedTextMessage", so the SDK's real Observer/Handler filter
+        matching (used as-is here, not mocked) falls through to the catch-all
+        handler and the user gets an incorrect "unsupported" auto-reply.
+
+        This test uses the REAL, production bot.router.message.handlers list -
+        populated by the actual @bot.router.message(...) decorators when
+        denidin.py was imported - and the SDK's real Handler.check_event /
+        Notification classes to determine which registered handler would
+        fire first. No internal component is mocked.
+        """
+        import denidin as denidin_module
+        from whatsapp_chatbot_python.manager.handler import Notification as SdkNotification
+
+        event = {
+            'typeWebhook': 'incomingMessageReceived',
+            'senderData': {
+                'chatId': '972522968679@c.us',
+                'sender': '972522968679@c.us',
+                'senderName': 'Test User'
+            },
+            'messageData': {
+                'typeMessage': 'extendedTextMessage',
+                'extendedTextMessageData': {
+                    'text': 'This is a forwarded message'
+                }
+            }
+        }
+
+        router = denidin_module.bot.router
+        notification = SdkNotification(event, router.api, router.message.state_manager)
+
+        matched_handler = None
+        for handler in router.message.handlers:
+            if handler.check_event(notification):
+                matched_handler = handler.handler
+                break
+
+        assert matched_handler is not None, (
+            "No registered handler matched an extendedTextMessage event at all - "
+            "the message would be silently dropped."
+        )
+        assert matched_handler is denidin_module.handle_text_message, (
+            "CRITICAL: forwarded/quoted text (extendedTextMessage) is not routed "
+            "to the text handler.\n"
+            f"Matched handler instead: {matched_handler.__name__}\n"
+            "Expected: handle_text_message"
+        )
+
     def test_video_message_user_gets_response(self, config):
         """
         **BDD Scenario**: User sends video via WhatsApp

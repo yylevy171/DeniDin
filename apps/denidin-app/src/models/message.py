@@ -39,9 +39,17 @@ class WhatsAppMessage:
         message_data = event.get('messageData', {})
         sender_data = event.get('senderData', {})
 
-        # Extract text content
-        text_message_data = message_data.get('textMessageData', {})
-        text_content = text_message_data.get('textMessage', '')
+        # Extract message metadata
+        message_type = message_data.get('typeMessage', 'textMessage')
+
+        # Extract text content. Forwarded messages, quoted replies, and
+        # messages with a link preview arrive as extendedTextMessage, with
+        # the body nested under extendedTextMessageData.text instead of
+        # textMessageData.textMessage.
+        if message_type == 'extendedTextMessage':
+            text_content = message_data.get('extendedTextMessageData', {}).get('text', '')
+        else:
+            text_content = message_data.get('textMessageData', {}).get('textMessage', '')
 
         # Extract sender info
         chat_id = sender_data.get('chatId', '')
@@ -50,9 +58,6 @@ class WhatsAppMessage:
 
         # Detect if it's a group chat (group chats have @g.us in chat_id)
         is_group = '@g.us' in chat_id
-
-        # Extract message metadata
-        message_type = message_data.get('typeMessage', 'textMessage')
         timestamp = event.get('timestamp', int(datetime.now(timezone.utc).timestamp()))
 
         # Generate unique message ID (UUID) for tracking throughout lifecycle

@@ -78,6 +78,7 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 |---|-------|----------|--------|--------|
 | 004 | data_root Config Value Not Respected | P2 | Not Started | `bugfix/004-data-root-ignored` |
 | 005 | Media Flow Integration - File Empty Issue | - | Open | - |
+| 008 | Forwarded Text Messages (extendedTextMessage) Not Routed/Extracted | P1 | Fixed | `bugfix/008-extended-text-message-not-routed` |
 
 ## Completed Bugfixes
 
