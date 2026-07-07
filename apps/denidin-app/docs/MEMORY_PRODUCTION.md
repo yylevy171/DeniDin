@@ -162,7 +162,7 @@ Before enabling the memory system:
        "longterm": {
          "enabled": true,
          "top_k_results": 5,
-         "min_similarity": 0.7
+         "min_similarity": 0.15
        }
      }
    }
@@ -226,8 +226,8 @@ with open('config/config.json') as f:
 mgr = MemoryManager(
     storage_dir=config['memory']['longterm']['storage_dir'],
     collection_name=config['memory']['longterm']['collection_name'],
-    embedding_model=config['memory']['longterm']['embedding_model'],
-    openai_api_key=config['openai_api_key']
+    embedding_model=config['ai_embedding_model'],  # top-level field, not nested under memory.longterm
+    openai_api_key=config['ai_api_key']
 )
 print(f'Memory count: {mgr.collection.count()}')
 "
@@ -300,7 +300,7 @@ grep "recall" logs/denidin.log | wc -l
 
 **Solutions:**
 1. Reduce `top_k_results` from 5 to 3
-2. Increase `min_similarity` from 0.7 to 0.8
+2. Increase `min_similarity` (default 0.15, tuned for `text-embedding-3-large` — try 0.2-0.25; note this threshold is model-specific, see `ai_embedding_model`)
 3. Disable long-term memory: `"longterm": {"enabled": false}`
 
 ### Issue: Sessions not expiring
@@ -399,13 +399,13 @@ tar -xzf memory_backup_YYYYMMDD.tar.gz
 
 **Problem**: Irrelevant memories being recalled
 
-**Solution**: Increase similarity threshold
+**Solution**: Increase similarity threshold (note: thresholds are model-specific — these values assume `ai_embedding_model: text-embedding-3-large`, the current default; re-tune if you change embedding models)
 ```json
 {
   "memory": {
     "longterm": {
-      "min_similarity": 0.8,  // Increase from 0.7
-      "top_k_results": 3      // Reduce from 5
+      "min_similarity": 0.25,  // Increase from default 0.15
+      "top_k_results": 3       // Reduce from 5
     }
   }
 }

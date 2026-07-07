@@ -219,10 +219,10 @@ MemoryManager(
 **Parameters:**
 - `storage_dir`: Directory for ChromaDB storage
 - `collection_name`: ChromaDB collection name
-- `embedding_model`: OpenAI embedding model (e.g., "text-embedding-3-small")
+- `embedding_model`: OpenAI embedding model, sourced from top-level config field `ai_embedding_model` (default: "text-embedding-3-large"; note: similarity thresholds are model-specific, see `min_similarity` below)
 - `openai_api_key`: OpenAI API key
 - `top_k_results`: Maximum memories to return (default: 5)
-- `min_similarity`: Minimum similarity score (default: 0.7)
+- `min_similarity`: Minimum similarity score (default: 0.15 — recalibrated for text-embedding-3-large; the old default of 0.7 was tuned for text-embedding-3-small and does not carry over)
 
 **Example:**
 ```python
@@ -231,10 +231,10 @@ from src.memory.memory_manager import MemoryManager
 memory_mgr = MemoryManager(
     storage_dir="data/memory",
     collection_name="godfather_memory",
-    embedding_model="text-embedding-3-small",
+    embedding_model="text-embedding-3-large",
     openai_api_key="sk-...",
     top_k_results=5,
-    min_similarity=0.7
+    min_similarity=0.15
 )
 ```
 
@@ -356,7 +356,7 @@ session_mgr = SessionManager(
 memory_mgr = MemoryManager(
     storage_dir="data/memory",
     collection_name="godfather_memory",
-    embedding_model="text-embedding-3-small",
+    embedding_model="text-embedding-3-large",
     openai_api_key="sk-..."
 )
 

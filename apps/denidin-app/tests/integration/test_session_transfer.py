@@ -54,15 +54,15 @@ def test_config():
     config['memory']['longterm']['enabled'] = True
     config['memory']['longterm']['storage_dir'] = str(test_data_root / 'memory')
     config['memory']['longterm']['collection_name'] = 'test_memory_transfer'
-    config['memory']['longterm']['embedding_model'] = 'text-embedding-3-small'
     config['memory']['longterm']['top_k_results'] = 5
-    config['memory']['longterm']['min_similarity'] = 0.2  # Lower threshold for test
+    config['memory']['longterm']['min_similarity'] = 0.15  # Re-tuned for text-embedding-3-large (Feature 016) - see spec.md Edge Cases
     
     return config
 
 
 
 
+@pytest.mark.expensive
 def test_session_transfer_and_recall_after_expiration(test_config):
     """
     E2E TEST - Reproduces production bug where expired sessions are archived but NOT transferred to ChromaDB.
@@ -178,7 +178,19 @@ def test_session_transfer_and_recall_after_expiration(test_config):
             min_similarity=0.0  # Get all results to see what's there
         )
         print(f"  Recalled {len(recalled)} memories: {recalled}")
-        
+
+        # ==================== PHASE 6.5: Verify embedding-model provenance (Feature 016) ====================
+        # Every memory written to ChromaDB must record which embedding model produced it,
+        # so a future embedding-model change can detect/handle mismatches (REQ-DATA-001).
+        configured_embedding_model = denidin_app.ai_handler.config.ai_embedding_model
+        assert len(recalled) >= 1, "Expected at least one recalled memory to check provenance metadata"
+        assert recalled[0]['metadata'].get('embedding_model') == configured_embedding_model, (
+            f"Recalled memory metadata should record the embedding model actually used "
+            f"(config.ai_embedding_model={configured_embedding_model!r}), "
+            f"got: {recalled[0]['metadata'].get('embedding_model')!r}"
+        )
+        print(f"✓ Recalled memory metadata records embedding_model: {recalled[0]['metadata'].get('embedding_model')}")
+
         response2 = denidin_app.handle_message(chat_id, "What's my name?")
         print(f"✓ Got response: {response2['response_text'][:200]}...")
         

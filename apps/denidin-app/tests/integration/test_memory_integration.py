@@ -59,7 +59,6 @@ def config_with_memory(temp_storage, test_config):
                 'enabled': True,
                 'storage_dir': f"{temp_storage['temp_dir']}/memory",
                 'collection_name': 'test_memory',
-                'embedding_model': 'text-embedding-3-small',
                 'top_k_results': 5,
                 'min_similarity': 0.7
             }

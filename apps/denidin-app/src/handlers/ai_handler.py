@@ -100,7 +100,7 @@ class AIHandler:
             if longterm_config.get('enabled', True):
                 self.memory_manager = MemoryManager(
                     storage_dir=longterm_config.get('storage_dir', 'data/memory'),
-                    embedding_model=longterm_config.get('embedding_model', 'text-embedding-3-small'),
+                    embedding_model=config.ai_embedding_model,
                     ai_client=self.client
                 )
 
@@ -115,7 +115,10 @@ class AIHandler:
         else:
             logger.info("Memory system disabled by feature flag")
 
-        logger.debug(f"AIHandler initialized with model: {config.ai_model}")
+        logger.debug(
+            f"AIHandler initialized with models: text={config.ai_model}, "
+            f"vision={config.ai_vision_model}, embedding={config.ai_embedding_model}"
+        )
 
     def _load_constitution(self) -> str:
         """

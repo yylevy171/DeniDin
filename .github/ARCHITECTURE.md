@@ -186,7 +186,7 @@ data/sessions/
 
 **Responsibilities:**
 - ChromaDB persistent vector database
-- OpenAI embedding generation (text-embedding-3-small)
+- OpenAI embedding generation (model configurable via `config.ai_embedding_model`, default `text-embedding-3-large`)
 - Semantic search and recall
 - Per-entity collection management
 - Memory scope enforcement

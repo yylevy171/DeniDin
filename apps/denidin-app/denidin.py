@@ -473,6 +473,8 @@ if __name__ == "__main__":
         'green_api_token': config.green_api_token,
         'ai_api_key': config.ai_api_key,
         'ai_model': config.ai_model,
+        'ai_vision_model': config.ai_vision_model,
+        'ai_embedding_model': config.ai_embedding_model,
         'ai_reply_max_tokens': config.ai_reply_max_tokens,
         'temperature': config.temperature,
         'log_level': config.log_level,
