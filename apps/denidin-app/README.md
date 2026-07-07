@@ -75,7 +75,9 @@ Edit `config/config.json` and replace the placeholder values:
   "green_api_instance_id": "YOUR_GREEN_API_INSTANCE_ID",
   "green_api_token": "YOUR_GREEN_API_TOKEN",
   "openai_api_key": "YOUR_OPENAI_API_KEY",
-  "ai_model": "gpt-3.5-turbo",
+  "ai_model": "gpt-4o-mini",
+  "ai_vision_model": "gpt-4o-mini",
+  "ai_embedding_model": "text-embedding-3-large",
   "system_message": "You are a helpful AI assistant named DeniDin.",
   "max_tokens": 1000,
   "temperature": 0.7,
@@ -88,7 +90,9 @@ Edit `config/config.json` and replace the placeholder values:
 - `green_api_instance_id`: Your Green API instance ID (from Green API dashboard)
 - `green_api_token`: Your Green API token
 - `openai_api_key`: Your OpenAI API key
-- `ai_model`: OpenAI model to use (e.g., "gpt-3.5-turbo", "gpt-4o-mini")
+- `ai_model`: OpenAI model for text conversations (e.g., "gpt-3.5-turbo", "gpt-4o-mini") — default "gpt-4o-mini"
+- `ai_vision_model`: OpenAI model for image/PDF extraction (e.g., "gpt-4o-mini", "gpt-4o") — default "gpt-4o-mini"
+- `ai_embedding_model`: OpenAI embedding model for long-term memory search (e.g., "text-embedding-3-small", "text-embedding-3-large") — default "text-embedding-3-large"
 - `system_message`: System prompt for the AI assistant
 - `max_tokens`: Maximum tokens in AI response
 - `temperature`: AI creativity level (0.0-1.0)
@@ -116,9 +120,8 @@ Edit `config/config.json` and replace the placeholder values:
       "enabled": true,
       "storage_dir": "data/memory",
       "collection_name": "godfather_memory",
-      "embedding_model": "text-embedding-3-small",
       "top_k_results": 5,
-      "min_similarity": 0.7
+      "min_similarity": 0.15
     }
   }
 }
@@ -292,7 +295,7 @@ The memory system consists of two layers:
 
 2. **Long-term Memory (MemoryManager)**: Semantic memory across all conversations
    - ChromaDB vector database
-   - OpenAI embeddings (text-embedding-3-small)
+   - OpenAI embeddings (`ai_embedding_model`, default text-embedding-3-large)
    - Automatic recall based on message relevance
    - Persistent storage in `data/memory/`
 
@@ -394,7 +397,7 @@ Manually ends the current session and transfers it to long-term memory.
 **Long-term Memory:**
 - Location: `data/memory/chroma.sqlite3`
 - Format: ChromaDB vector database
-- Embeddings: OpenAI text-embedding-3-small
+- Embeddings: OpenAI, model configurable via `ai_embedding_model` (default text-embedding-3-large)
 
 **Backup Recommendations:**
 - Backup `data/sessions/` for conversation history
@@ -557,13 +560,15 @@ Change `log_level` in `config/config.json` to switch between levels.
 ## FAQ
 
 **Q: How much does it cost to run DeniDin?**  
-A: Costs depend on message volume and OpenAI model:
+A: Costs depend on message volume and OpenAI models used:
 - Green API: ~$10-20/month for WhatsApp Business API access
-- OpenAI: ~$0.002 per 1K tokens (gpt-3.5-turbo) or ~$0.03 per 1K tokens (gpt-4o)
-- For 100 messages/day with avg 500 tokens each: ~$3-150/month depending on model
+- OpenAI text (`ai_model`, default `gpt-4o-mini`): ~$0.15/$0.60 per 1M input/output tokens
+- OpenAI vision (`ai_vision_model`, default `gpt-4o-mini`): same pricing as text, used for image/PDF extraction
+- OpenAI embeddings (`ai_embedding_model`, default `text-embedding-3-large`): ~$0.13 per 1M tokens, used for long-term memory search
+- For 100 messages/day with avg 500 tokens each: a few dollars/month at these defaults; using `gpt-4o` instead of `gpt-4o-mini` for text/vision costs roughly 15-17x more
 
-**Q: Can I change the AI model?**  
-A: Yes! Edit `ai_model` in `config/config.json`. Options: `gpt-4o-mini`, `gpt-3.5-turbo`, `gpt-4o`. Restart bot after changing.
+**Q: Can I change the AI models?**  
+A: Yes! Three independently configurable models in `config/config.json`: `ai_model` (text), `ai_vision_model` (image/PDF extraction), `ai_embedding_model` (long-term memory embeddings). Restart bot after changing.
 
 **Q: Why polling instead of webhooks?**  
 A: Phase 1 uses polling for simplicity. Webhooks will be added in future phases for lower latency and resource usage.

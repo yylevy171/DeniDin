@@ -2,7 +2,9 @@
   "green_api_instance_id": "YOUR_GREEN_API_INSTANCE_ID",
   "green_api_token": "YOUR_GREEN_API_TOKEN",
   "ai_api_key": "YOUR_OPENAI_API_KEY",
-  "ai_model": "gpt-3.5-turbo",
+  "ai_model": "gpt-4o-mini",
+  "ai_vision_model": "gpt-4o-mini",
+  "ai_embedding_model": "text-embedding-3-large",
   "ai_reply_max_tokens": 1000,
   "temperature": 0.7,
   "log_level": "INFO",
@@ -27,9 +29,8 @@
       "enabled": true,
       "storage_dir": "data/memory",
       "collection_name": "godfather_memory",
-      "embedding_model": "text-embedding-3-small",
       "top_k_results": 5,
-      "min_similarity": 0.7
+      "min_similarity": 0.15
     }
   },
   "constitution_config": {

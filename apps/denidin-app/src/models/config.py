@@ -16,7 +16,8 @@ class AppConfiguration:
     green_api_token: str
     ai_api_key: str
     ai_model: str = 'gpt-4o-mini'
-    ai_vision_model: str = 'gpt-4o'  # Vision model for image/document processing
+    ai_vision_model: str = 'gpt-4o-mini'  # Vision model for image/document processing
+    ai_embedding_model: str = 'text-embedding-3-large'  # Embedding model for long-term memory (ChromaDB)
     ai_reply_max_tokens: int = 1000
     temperature: float = 0.7
     log_level: str = 'INFO'
@@ -73,7 +74,8 @@ class AppConfiguration:
         # Set defaults for optional fields
         defaults = {
             'ai_model': 'gpt-4o-mini',
-            'ai_vision_model': 'gpt-4o',
+            'ai_vision_model': 'gpt-4o-mini',
+            'ai_embedding_model': 'text-embedding-3-large',
             'ai_reply_max_tokens': 1000,
             'temperature': 0.7,
             'log_level': 'INFO',
@@ -103,7 +105,6 @@ class AppConfiguration:
                     'enabled': True,
                     'storage_dir': 'memory',  # Relative to data_root
                     'collection_name': 'godfather_memory',
-                    'embedding_model': 'text-embedding-3-small',
                     'top_k_results': 5,
                     'min_similarity': 0.7
                 }
@@ -163,3 +164,9 @@ class AppConfiguration:
         # Validate data_root is not empty
         if not self.data_root or not self.data_root.strip():
             raise ValueError("data_root must not be empty")
+
+        # Validate model fields are not empty
+        for field_name in ('ai_model', 'ai_vision_model', 'ai_embedding_model'):
+            value = getattr(self, field_name)
+            if not value or not value.strip():
+                raise ValueError(f"{field_name} must not be empty")

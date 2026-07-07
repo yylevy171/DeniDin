@@ -154,6 +154,7 @@ class MemoryManager:
         # Add default metadata
         metadata.setdefault('type', 'fact')
         metadata.setdefault('scope', MemoryScope.PRIVATE.value)  # Default to PRIVATE
+        metadata.setdefault('embedding_model', self.embedding_model)
         metadata['created_at'] = datetime.now(timezone.utc).isoformat()
 
         # Generate unique ID

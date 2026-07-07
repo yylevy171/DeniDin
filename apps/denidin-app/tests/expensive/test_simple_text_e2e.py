@@ -115,7 +115,7 @@ class TestSimpleTextE2E:
             'messageData': {
                 'typeMessage': 'textMessage',
                 'textMessageData': {
-                    'body': 'יוסי 7500 שקל'  # Simple Hebrew message
+                    'textMessage': 'יוסי 7500 שקל'  # Simple Hebrew message
                 }
             }
         })
