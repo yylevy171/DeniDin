@@ -3,7 +3,54 @@
 **Feature**: 005-mcp-morning-green-receipt  
 **Purpose**: Validate completeness, clarity, and consistency of all requirements before implementation  
 **Created**: 2026-02-03  
+**Updated**: 2026-07-08 (resolution pass — see below)
 **Type**: Multi-domain comprehensive review
+
+---
+
+## Resolution Status (2026-07-08 — scope-narrowed to the 8 invoice tools)
+
+This checklist was authored against an over-broad, contradictory spec. After the 005
+validation/rewrite (scope = 8 invoice-management tools; receipt-parsing/webhook split to
+feature 017; WhatsApp delivery deferred; MCP framework = FastMCP/streamable-HTTP; flat
+config), items fall into three buckets:
+
+**RESOLVED by the rewrite** (addressed in `spec.md` / `plan.md` / `artifacts/config.schema.json`):
+- Auth & token lifecycle — CHK001, CHK006, CHK008, CHK042, CHK046 (JWT via `MorningAuth`,
+  in-memory, refresh-before-expiry; `token_ttl_seconds`/`refresh_before_seconds` in config).
+- API/endpoint mapping — CHK002, CHK009, CHK010, CHK012 (8 tool→endpoint table in spec;
+  sandbox/prod URLs in `endpoints.md`; document type 305/320).
+- Rate limit & retry — CHK003, CHK038, CHK099 (client-side ~3 req/s; urllib3 retry on 429/5xx).
+- Tool schemas & validation — CHK013, CHK014, CHK015, CHK016 (per-tool `contracts/*.json` +
+  Pydantic models; enums/required fields defined).
+- Config — CHK055, CHK056, CHK057, CHK059, CHK060, CHK112 (flat schema, startup validation,
+  no env vars).
+- Error handling — CHK035, CHK039, CHK040, CHK041 (spec §Error Handling table; friendly
+  messages, technical detail to logs).
+- Data models — CHK024, CHK025, CHK028, CHK031 (Pydantic, real document shape, UTC).
+- Security — CHK045, CHK052, CHK053 (config.json-only secrets, server-side only, HTTPS).
+- Testing — CHK075, CHK076, CHK077, CHK079, CHK080, CHK083 (real-sandbox integration tests
+  only; entry point = MCP tool; TDD RED-before-GREEN).
+- I18n — CHK086, CHK089 (Hebrew/₪/DD-MM-YYYY in `formatters.py`).
+
+**DEFERRED — out of scope for this P2 feature** (tracked, not blocking readiness):
+- WhatsApp integration — CHK065–CHK071, CHK119 → future feature, architecture TBD (spec
+  §Future Work); `send_invoice` uses Morning-native send only.
+- Feature 003/004 dependencies — CHK072, CHK073, CHK123 → not applicable (app is standalone).
+- Webhook / file-upload / receipt parsing — CHK004, CHK048 → moved to feature 017.
+- Multi-tenant / scale / perf-SLA — CHK096–CHK105 → single sandbox tenant; revisit later.
+- Runtime config hot-reload, multi-env, per-user overrides — CHK062–CHK064 → not needed now.
+- Full 100+ Hebrew error-code mapping — CHK036 → map on demand from `artifacts/error_codes.json`.
+
+**OPEN — nice-to-have, non-blocking** (address during implementation as they arise):
+- Fuzzy client-name matching/thresholds — CHK017, CHK018, CHK115 → client (model) drives
+  disambiguation via `add_client`/`list_invoices`; richer server-side resolution is a later
+  enhancement.
+- Observability depth — CHK106, CHK107, CHK108 → basic structured logging in T015.
+
+**Readiness verdict**: all *blocking* Completeness/Clarity/Consistency items for the 8-tool
+scope are RESOLVED; remaining items are DEFERRED (out of scope) or OPEN (non-blocking). The
+spec is Ready for Implementation.
 
 ---
 
@@ -269,8 +316,10 @@
 - Gaps Identified: 58 items
 - Ambiguities/Conflicts: 8 items
 
-**Next Steps**:
-1. Review and resolve all [Gap] items before Planning phase
-2. Clarify all [Ambiguity] items with stakeholders
-3. Validate all [Assumption] items
-4. Ensure ≥80% traceability (101/127 items reference spec sections)
+**Next Steps** (superseded by the Resolution Status section at the top, 2026-07-08):
+- Blocking items for the 8-tool scope are resolved in `spec.md`/`plan.md`; out-of-scope
+  items are explicitly deferred (WhatsApp → future; receipt-parsing → feature 017;
+  scale/perf → later). Proceed to implementation via `tasks.md` under the TDD gates.
+
+> Note: the original 127-item statistics below reflect the pre-rewrite over-broad spec and
+> are retained for history; see the Resolution Status section for the current disposition.

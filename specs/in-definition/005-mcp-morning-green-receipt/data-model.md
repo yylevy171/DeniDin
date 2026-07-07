@@ -1,11 +1,18 @@
 # data-model.md
 
-Entities extracted from the feature spec and Phase‑0 research.
+Entities extracted from the feature spec and Phase‑0 research. These are **Pydantic
+models** (`apps/morning-mcp-app/src/denidin_mcp_morning/models.py`) that validate MCP tool
+inputs/outputs and map 1:1 to Morning API responses. Persistence is not required. All
+`datetime` fields are **UTC** (`datetime.now(timezone.utc)`, CONSTITUTION §II).
+
+Scope note: `ExpenseDraft` (below) belongs to the deferred receipt-parsing product
+(`specs/in-definition/017-mcp-morning-receipt-parsing/`) and is **not** used by the 8
+invoice tools in this feature; kept here only as a reference for that future split.
 
 ## Invoice
 - id: string (Morning `documentId` / GUID)
 - number: string (human-friendly document number)
-- type: integer (document type id, e.g., 305 invoice, 200 receipt)
+- type: integer (Morning document type id, e.g., 305 = tax invoice, 320 = receipt)
 - status: string ("draft", "open", "closed", "paid", "cancelled")
 - business_id: string
 - client_id: string
