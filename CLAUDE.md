@@ -47,6 +47,14 @@ Also runnable from repo root via `make test` (wraps the same pytest invocation f
 
 Expensive tests (`tests/expensive/`, marked `@pytest.mark.expensive`) hit real OpenAI APIs and cost money — they are excluded by default (`pytest.ini` sets `addopts = -m "not expensive"`). Don't run them repeatedly; per the project methodology, run once, redirect to a log file, analyze the log, and only re-run after a code change.
 
+**Expensive test rules (strict):**
+- **User approval is required before running any expensive test, every single time** — no exceptions, even for a single test, even as part of a larger approved task.
+- **Never run expensive tests all together.** Go one at a time (`pytest tests/expensive/test_X.py::test_name -v -m expensive`), never a bare `-m expensive` sweep.
+- **Read existing logs in `logs/test_logs/` before re-running anything.** A prior run's log may already answer the question.
+- **Only re-run a previously-failed expensive test once you're confident a fix addresses the failure** — don't re-run speculatively to "see what happens."
+
+**Never redirect test output to `/tmp` or other ad-hoc log files.** Each app's `conftest.py` already writes per-test-file logs to `logs/test_logs/{test_file}.log` automatically (see `pytest_runtest_setup` in `apps/denidin-app/conftest.py`); read from there instead of teeing to a custom path. This applies to both apps under `apps/`.
+
 ### Lint & Type-check
 ```bash
 cd apps/denidin-app
