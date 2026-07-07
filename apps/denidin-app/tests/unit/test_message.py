@@ -56,9 +56,37 @@ class TestWhatsAppMessage:
     def test_from_notification_parses_textmessage_correctly(self, sample_text_notification):
         """Test that from_notification() parses textMessage correctly."""
         message = WhatsAppMessage.from_notification(sample_text_notification)
-        
+
         assert message.text_content == 'Hello, how are you?'
         assert message.message_type == 'textMessage'
+
+    def test_from_notification_extracts_extended_text_message_body(self):
+        """
+        bugfix-008: forwarded/quoted/link-preview text arrives as extendedTextMessage,
+        with the body nested under extendedTextMessageData.text (Green API's real shape),
+        not textMessageData.textMessage.
+        """
+        notification = Mock()
+        notification.event = {
+            'typeWebhook': 'incomingMessageReceived',
+            'messageData': {
+                'typeMessage': 'extendedTextMessage',
+                'extendedTextMessageData': {
+                    'text': 'This is a forwarded message'
+                }
+            },
+            'senderData': {
+                'chatId': '1234567890@c.us',
+                'sender': '1234567890@c.us',
+                'senderName': 'John Doe'
+            },
+            'timestamp': 1234567890
+        }
+
+        message = WhatsAppMessage.from_notification(notification)
+
+        assert message.text_content == 'This is a forwarded message'
+        assert message.message_type == 'extendedTextMessage'
 
     def test_from_notification_extracts_sender_info(self, sample_text_notification):
         """Test that from_notification() extracts sender information."""
