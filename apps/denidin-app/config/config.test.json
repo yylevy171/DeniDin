@@ -1,4 +1,6 @@
 {
+  "green_api_instance_id": "1234567890",
+  "green_api_token": "test1234567890abcdefghijklmnopqrstuvwxyz1234567890",
   "ai_api_key": "sk-test1234567890abcdefghijklmnopqrstuvwxyz",
   "ai_model": "gpt-3.5-turbo",
   "ai_reply_max_tokens": 1000,
