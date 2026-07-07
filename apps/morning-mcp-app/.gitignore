@@ -1,0 +1,8 @@
+config/config.json
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+logs/
+.DS_Store

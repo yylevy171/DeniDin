@@ -56,7 +56,7 @@ For production deployment, use a cloud VM with the following minimum specificati
 ```bash
 cd /opt
 sudo git clone https://github.com/yylevy171/DeniDin.git
-cd DeniDin/denidin-app
+cd DeniDin/apps/denidin-app
 ```
 
 ### 2. Install Python Dependencies
@@ -145,13 +145,13 @@ Wants=network-online.target
 Type=simple
 User=denidin
 Group=denidin
-WorkingDirectory=/opt/DeniDin/denidin-app
-Environment="PATH=/opt/DeniDin/denidin-app/venv/bin"
-ExecStart=/opt/DeniDin/denidin-app/venv/bin/python3 /opt/DeniDin/denidin-app/denidin.py
+WorkingDirectory=/opt/DeniDin/apps/denidin-app
+Environment="PATH=/opt/DeniDin/apps/denidin-app/venv/bin"
+ExecStart=/opt/DeniDin/apps/denidin-app/venv/bin/python3 /opt/DeniDin/apps/denidin-app/denidin.py
 
 # Alternative: Use management scripts for single-instance enforcement
-# ExecStart=/opt/DeniDin/denidin-app/run_denidin.sh
-# ExecStop=/opt/DeniDin/denidin-app/stop_denidin.sh
+# ExecStart=/opt/DeniDin/apps/denidin-app/run_denidin.sh
+# ExecStop=/opt/DeniDin/apps/denidin-app/stop_denidin.sh
 
 # Restart policy
 Restart=always
@@ -162,7 +162,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/DeniDin/denidin-app/logs /opt/DeniDin/denidin-app/state
+ReadWritePaths=/opt/DeniDin/apps/denidin-app/logs /opt/DeniDin/apps/denidin-app/state
 
 # Logging
 StandardOutput=journal
@@ -177,7 +177,7 @@ WantedBy=multi-user.target
 
 ```bash
 sudo useradd -r -s /bin/false denidin
-sudo chown -R denidin:denidin /opt/DeniDin/denidin-app
+sudo chown -R denidin:denidin /opt/DeniDin/apps/denidin-app
 ```
 
 ### 3. Enable and Start Service
@@ -220,13 +220,13 @@ DeniDin writes logs to `logs/denidin.log` with automatic rotation:
 
 ```bash
 # Follow application logs
-tail -f /opt/DeniDin/denidin-app/logs/denidin.log
+tail -f /opt/DeniDin/apps/denidin-app/logs/denidin.log
 
 # Follow with grep filtering
-tail -f /opt/DeniDin/denidin-app/logs/denidin.log | grep ERROR
+tail -f /opt/DeniDin/apps/denidin-app/logs/denidin.log | grep ERROR
 
 # View last 100 lines
-tail -n 100 /opt/DeniDin/denidin-app/logs/denidin.log
+tail -n 100 /opt/DeniDin/apps/denidin-app/logs/denidin.log
 ```
 
 ### Log Levels

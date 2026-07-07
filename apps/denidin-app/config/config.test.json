@@ -1,9 +1,6 @@
 {
-  "morning": {
-    "api_key_id": "6ab47b18-0d57-4d59-9a64-bc8d30aa188d",
-    "api_key_secret": "],n4i;oo>^2aJ|eOPDIoo![1>kg+C6&z",
-    "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/"
-  },
+  "green_api_instance_id": "1234567890",
+  "green_api_token": "test1234567890abcdefghijklmnopqrstuvwxyz1234567890",
   "ai_api_key": "sk-test1234567890abcdefghijklmnopqrstuvwxyz",
   "ai_model": "gpt-3.5-turbo",
   "ai_reply_max_tokens": 1000,
@@ -35,7 +32,9 @@
       "min_similarity": 0.7
     }
   },
-  "constitution_config": {},
+  "constitution_config": {
+    "file": "runtime_constitution.md"
+  },
   "user_roles": {
     "admin_phones": ["+972509999999"],
     "blocked_phones": ["+972505555555"]

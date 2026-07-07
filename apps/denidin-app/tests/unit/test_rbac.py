@@ -38,8 +38,8 @@ def temp_data_dir():
 @pytest.fixture
 def rbac_config(temp_data_dir):
     """Load AppConfiguration from config.test.json with RBAC enabled."""
-    # Load base config from test config file (original location under `denidin-app/config`)
-    config = AppConfiguration.from_file('denidin-app/config/config.test.json')
+    config_path = Path(__file__).resolve().parent.parent.parent / "config" / "config.test.json"
+    config = AppConfiguration.from_file(str(config_path))
     
     # Override storage directories to use temp_data_dir
     config.memory['session']['storage_dir'] = f'{temp_data_dir}/sessions'

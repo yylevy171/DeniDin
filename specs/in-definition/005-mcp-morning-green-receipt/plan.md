@@ -6,6 +6,14 @@
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
+**Addendum (repo split)**: The `denidin_mcp_morning` package now lives at
+`apps/morning-mcp-app/src/denidin_mcp_morning/` as its own independently
+runnable/testable/dockerized app, not inside the `denidin-app` monorepo tree
+described below. This overrides the "self-contained... avoids introducing a
+new top-level project" framing in the Project Structure section for directory
+layout only — the tool-level design (8 MCP tools, FastAPI server) below remains
+valid future-work guidance.
+
 ---
 
 **IMPORTANT**: This plan MUST comply with:
