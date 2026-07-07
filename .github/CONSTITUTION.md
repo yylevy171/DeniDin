@@ -509,9 +509,11 @@ if config.feature_flags.get("enable_memory_system", False):
 - Git operations via CLI: `git add`, `git commit`, `git push`, `git checkout -b`
 - Pull request management via `gh` CLI: `gh pr create`, `gh pr merge`
 - Testing via CLI: `pytest` commands
-- **Test logs location**: All test execution logs are stored in `denidin-app/logs/test_logs/`
+- **Test logs location**: All test execution logs are stored in `apps/denidin-app/logs/test_logs/` (each app under `apps/` has its own `logs/test_logs/`)
   - When reviewing test results, check this directory for detailed logs
   - Logs persist across test runs for debugging and analysis
+  - Never redirect test output to `/tmp` or other ad-hoc log files — use only the app's own `logs/test_logs/` location
+- **Expensive tests** (`@pytest.mark.expensive`, real paid API calls): require explicit human approval before every single run, run one at a time (never a bare `-m expensive` sweep), read existing logs before re-running, and only re-run a previously-failed one once confident a fix addresses it
 - All code-modifying operations must use CLI tools
 
 **Test Execution Efficiency**:
@@ -1028,9 +1030,10 @@ All contributors must:
 
 ---
 
-**Version**: 2.2.0 | **Effective Date**: January 22, 2026
+**Version**: 2.3.0 | **Effective Date**: July 7, 2026
 
 **Changelog**:
+- v2.3.0 (2026-07-07): Repo split into `apps/denidin-app/` and `apps/morning-mcp-app/` (each independently runnable/testable/dockerized) - updated test logs location path accordingly; added expensive-test approval rules (§VII)
 - v2.2.0 (2026-01-22): Added **XVII. NO Monkey-Patching** - absolute prohibition with correct design pattern alternatives (dependency injection, strategy, template method, observer)
 - v2.1.0 (2026-01-21): Added 8 technical standards from existing practice: Logging Standards (IX), Error Response Format (X), Retry Logic Details (XI), API Response Handling (XII), Data Validation (XIII), File Path Handling (XIV), JSON/File Format Standards (XV), Exit Code Standards (XVI)
 - v2.0.0 (2026-01-21): Split from methodology - isolated coding standards and technical constraints

@@ -111,13 +111,23 @@ All templates are located in `.specify/templates/`:
 
 ```
 DeniDin/
+├── apps/
+│   ├── denidin-app/               # WhatsApp AI assistant (production app)
+│   │   ├── src/, tests/, config/
+│   │   └── Dockerfile
+│   └── morning-mcp-app/           # Morning/Green Invoice API client
+│       ├── src/, tests/, config/
+│       └── Dockerfile
+├── docker-compose.yml              # Local dev convenience for both apps
 ├── .specify/
 │   ├── memory/
 │   │   └── constitution.md       # Project governance
 │   ├── templates/                # All document templates
 │   └── scripts/                  # Automation scripts
 ├── .github/
-│   └── agents/                   # AI agent definitions
+│   ├── agents/                   # AI agent definitions
+│   ├── CONSTITUTION.md           # Coding standards and constraints
+│   └── ARCHITECTURE.md           # System architecture
 └── specs/                        # Feature specifications
     └── ###-feature-name/
         ├── spec.md
@@ -125,6 +135,8 @@ DeniDin/
         ├── tasks.md
         └── [design artifacts]
 ```
+
+Each app under `apps/` is independently runnable, testable, and dockerized — see `apps/denidin-app/README.md` and `apps/morning-mcp-app/README.md` for app-specific setup. Root-level `CLAUDE.md` has the full architecture/commands reference for AI-assisted development.
 
 ## License
 
