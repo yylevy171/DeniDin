@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/016-ai-model-selection`
 **Created**: 2026-07-07
-**Status**: Clarified - Ready for Planning
+**Status**: Done - Merged to master (PR #88, 2026-07-07)
 **Input**: User description: "separate the ai model into 2 or 3 separate models based on the action they need to perform: default text model, image/PDF/docx extraction model, and a text-embedding model that captures Hebrew semantics well for session search. All models should be relatively cheap but good quality, and driven entirely by config."
 
 ---
