@@ -1,33 +1,74 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "denidin-morning config schema",
+  "description": "Canonical config schema for apps/morning-mcp-app/config/config.json. FLAT shape: the three required credential keys are top-level (matching the real config.example.json / config.test.json and the existing sandbox integration tests, which read them flat). All runtime config comes from this file per CONSTITUTION §I (no environment variables).",
   "type": "object",
   "properties": {
-    "morning": {
-      "type": "object",
-      "properties": {
-        "api_key_id": { "type": "string" },
-        "api_key_secret": { "type": "string" },
-        "api_url": { "type": "string", "format": "uri" },
-        "sandbox_api_url": { "type": "string", "format": "uri" },
-        "file_upload_url": { "type": "string", "format": "uri" },
-        "default_currency": { "type": "string", "default": "ILS" },
-        "default_vat_rate": { "type": "number", "default": 0.17 },
-        "timezone": { "type": "string", "default": "UTC" },
-        "token_ttl_seconds": { "type": "integer", "default": 3600 },
-        "refresh_before_seconds": { "type": "integer", "default": 300 },
-        "rate_limit_per_second": { "type": "number", "default": 3 }
-      },
-      "required": ["api_key_id", "api_key_secret", "api_url"]
+    "api_key_id": {
+      "type": "string",
+      "description": "Morning API key id, used in the /account/token JWT exchange."
+    },
+    "api_key_secret": {
+      "type": "string",
+      "description": "Morning API key secret, used in the /account/token JWT exchange."
+    },
+    "api_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL for the Morning REST API. Sandbox: https://sandbox.d.greeninvoice.co.il/api/v1/ ; Production: https://api.greeninvoice.co.il/api/v1/"
+    },
+    "file_upload_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional: Morning file-upload gateway base URL (separate domain). Reserved for the future receipt-parsing feature (017); not used by the 8 invoice tools."
+    },
+    "default_currency": { "type": "string", "default": "ILS" },
+    "default_vat_rate": { "type": "number", "default": 0.17 },
+    "token_ttl_seconds": {
+      "type": "integer",
+      "default": 3600,
+      "description": "Assumed JWT lifetime; MorningAuth caches the token for this long."
+    },
+    "refresh_before_seconds": {
+      "type": "integer",
+      "default": 300,
+      "description": "Refresh the token when it is within this many seconds of expiry."
+    },
+    "rate_limit_per_second": {
+      "type": "number",
+      "default": 3,
+      "description": "Client-side rate limit to stay under Morning's ~3 req/s (429) ceiling."
     },
     "mcp": {
       "type": "object",
+      "description": "FastMCP server settings (streamable-HTTP transport).",
       "properties": {
-        "server_name": { "type": "string" },
-        "log_level": { "type": "string", "enum": ["DEBUG","INFO","WARN","ERROR"], "default": "INFO" },
-        "secrets_backend": { "type": "string", "enum": ["vault","file"], "default": "file" }
+        "server_name": { "type": "string", "default": "denidin-morning" },
+        "host": { "type": "string", "default": "127.0.0.1" },
+        "port": { "type": "integer", "default": 8000 },
+        "transport": {
+          "type": "string",
+          "enum": ["streamable-http", "stdio", "sse"],
+          "default": "streamable-http"
+        },
+        "log_level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARN", "ERROR"],
+          "default": "INFO"
+        }
+      }
+    },
+    "feature_flags": {
+      "type": "object",
+      "description": "Feature gates per CONSTITUTION §I/§VI (default false).",
+      "properties": {
+        "enable_mcp_server": {
+          "type": "boolean",
+          "default": false,
+          "description": "Gate for starting the FastMCP server. When false, the server entrypoint does not start; the existing client library and its integration tests are unaffected."
+        }
       }
     }
   },
-  "required": ["morning"]
+  "required": ["api_key_id", "api_key_secret", "api_url"]
 }

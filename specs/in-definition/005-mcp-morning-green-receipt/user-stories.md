@@ -1,100 +1,117 @@
-```markdown
-# user-stories.md — Given/When/Then user stories (METHODOLOGY §I requirement)
+# User Stories — Feature 005 (MCP → Morning, Invoice Management)
 
-Each user story below follows Given-When-Then format and includes acceptance criteria and router/dispatcher requirements.
+Given-When-Then user stories (METHODOLOGY §I). The **external entry point** for this app is
+an **MCP tool call** (the server registers each tool with `@mcp.tool()` and serves it over
+streamable-HTTP). This replaces the WhatsApp `@bot.router.message` router concept, which
+belongs to `denidin-app`, not here. Natural-language intent parsing is the MCP **client's**
+job (e.g. the OpenAI model); these stories begin at the validated tool call.
 
-1) Invoice Creation
-Given a user sends a natural-language request via MCP (WhatsApp or desktop) to create an invoice
-When the NLU extracts a `create_invoice` intent with `client_name`, `amount`, and `description`
-Then the MCP server must call the `create_invoice` tool with validated schema and return a human-readable confirmation including invoice number, amount, status and PDF link.
-
-Acceptance criteria:
-- Tool input validated against `contracts/create_invoice.json`.
-- If multiple clients match `client_name`, respond with a selection prompt listing candidates with IDs.
-- On success, respond in Hebrew with invoice number and PDF link.
-
-Router Requirement: `@bot.router.message(intent='create_invoice')` must route to `denidin_mcp_morning.tools.create_invoice`.
-
-2) Invoice Query (List)
-Given a user requests invoices for a date range or 'this month' via MCP
-When NLU maps the request to `list_invoices` with optional `status`, `from_date`, `to_date`
-Then MCP server must call `list_invoices` tool, format results into a readable list (max 10 items, paginated) and include totals.
-
-Acceptance criteria:
-- Parameters validated against `contracts/list_invoices.json`.
-- Response includes at most 10 items and a continuation token if more results exist.
-
-Router Requirement: `@bot.router.message(intent='list_invoices')` → `denidin_mcp_morning.tools.list_invoices`.
-
-3) Payment Tracking / Status
-Given a user asks "Which invoices are still unpaid?" or asks for a specific invoice status
-When the request maps to `list_invoices` (status=unpaid) or `get_invoice_details` (invoice_id provided)
-Then the MCP server returns invoice statuses and summary counts; for `get_invoice_details`, return detailed payment records.
-
-Acceptance criteria:
-- `get_invoice_details` requires `invoice_id` and returns `status`, `payments`, `issue_date`, `due_date`.
-- `list_invoices` returns unpaid invoice list and totals.
-
-Router Requirement: map payments/status queries to `list_invoices` or `get_invoice_details` as appropriate.
-
-4) Client Management (Add Client)
-Given a user requests "Add a new client named X" with optional fields (email, phone, tax_id)
-When NLU maps to `add_client` intent and validated payload
-Then MCP server calls `add_client` tool and returns the created client ID and summary.
-
-Acceptance criteria:
-- Input validated against `contracts/add_client.json`.
-- If required fields missing, prompt user for them.
-
-Router Requirement: `@bot.router.message(intent='add_client')` → `denidin_mcp_morning.tools.add_client`.
-
-5) Financial Reports
-Given a user asks for a period summary (month/quarter/year/custom)
-When NLU maps to `get_financial_summary` with `period` and optional `from_date`/`to_date`
-Then MCP server calls the summary tool, aggregates results if necessary, and returns totals and counts in Hebrew.
-
-Acceptance criteria:
-- `period` validated per `contracts/get_financial_summary.json`.
-- Response contains total_invoiced, total_paid, total_unpaid, invoice_count.
-
-Router Requirement: `@bot.router.message(intent='get_financial_summary')` → `denidin_mcp_morning.tools.get_financial_summary`.
-
-6) Document Retrieval (Download PDF)
-Given a user asks for the PDF of invoice #ID
-When NLU extracts `invoice_id` and maps to `download_invoice_pdf`
-Then MCP server returns a pre-signed URL or Base64 PDF (short responses should be a link) and offer to send via WhatsApp.
-
-Acceptance criteria:
-- `download_invoice_pdf` returns `pdf_url` or `file_base64` and valid URL expires per provider.
-- If user requests sending via WhatsApp, call `send_invoice` with the invoice_id and phone.
-
-Router Requirement: `@bot.router.message(intent='download_invoice_pdf')` → `denidin_mcp_morning.tools.download_invoice_pdf`.
-
-7) Status Updates (Ask if paid)
-Given a user asks "Did invoice #123 get paid?"
-When NLU extracts `invoice_id` and maps to `get_invoice_details`
-Then MCP server returns status and payment details, and if unpaid, suggests actions (send reminder, mark paid) with quick action buttons.
-
-Acceptance criteria:
-- Response must include `status` and `payments` (if any).
-- Provide suggested quick actions when unpaid.
-
-Router Requirement: `@bot.router.message(intent='get_invoice_status')` → `denidin_mcp_morning.tools.get_invoice_details`.
-
-8) Bulk Operations (Mark multiple invoices paid)
-Given a user requests a bulk operation (e.g., mark November invoices as paid)
-When NLU maps to `update_invoice_status` with filter or list of invoice IDs
-Then MCP server confirms operation with the user (listing affected invoices) before applying; upon confirmation, perform updates and return a summary of success/failure counts.
-
-Acceptance criteria:
-- Confirmation step required for destructive/bulk ops.
-- Partial failures reported with reasons (e.g., invoice not found, API error).
-
-Router Requirement: Bulk ops route to `denidin_mcp_morning.tools.update_invoice_status` with explicit confirmation flow in `server.py`.
+Each story lists its acceptance criteria and its **MCP Tool Requirement** (the tool that
+must be registered and dispatchable). Per METHODOLOGY §VI, each story is covered by a
+**real Morning-sandbox integration test** (no mocks) that fails before implementation.
 
 ---
-Notes:
-- All user stories must be accompanied by unit and integration tests per `METHODOLOGY.md` §VI (TDD). Each story must list the tests that will be written (happy path + edge cases).
-- All responses should be in Hebrew by default (unless user preference indicates otherwise).
 
-``` 
+## US1 — Invoice Creation
+**Given** an MCP client calls `create_invoice` with `client_name`, `amount`, `description`
+**When** the server validates the input against `contracts/create_invoice.json` and maps it
+onto a Morning document payload
+**Then** it calls `MorningClient.create_invoice` (`POST /documents`) and returns a
+human-readable (Hebrew) confirmation with the invoice number, amount, status, and PDF link.
+
+Acceptance criteria:
+- Input validated against `contracts/create_invoice.json` (and the Pydantic model).
+- On success, respond in Hebrew with the Morning `documentId` and a PDF link.
+- Friendly error if the amount is invalid or the client can't be resolved.
+
+**MCP Tool Requirement**: `@mcp.tool() create_invoice` registered and dispatchable over
+streamable-HTTP → `denidin_mcp_morning.tools.create_invoice`.
+
+## US2 — Invoice Query / List
+**Given** a client calls `list_invoices` with optional `status`/`from_date`/`to_date`/`client_name`
+**When** the server validates and calls `MorningClient.list_invoices` (`POST /documents/search`)
+**Then** it returns a readable list (≤10 items, continuation token if more) with totals.
+
+Acceptance criteria:
+- Params validated against `contracts/list_invoices.json`.
+- At most 10 items per response; continuation token when more results exist.
+
+**MCP Tool Requirement**: `@mcp.tool() list_invoices` → `tools.list_invoices`.
+
+## US3 — Payment Tracking / Status
+**Given** a client calls `get_invoice_details` (with `invoice_id`) or `list_invoices` (status=unpaid)
+**When** the server validates and calls the corresponding Morning endpoint
+**Then** it returns status + payment records for one invoice, or the unpaid list with totals.
+
+Acceptance criteria:
+- `get_invoice_details` requires `invoice_id`; returns `status`, `payments`, `issue_date`, `due_date`.
+- `list_invoices` (unpaid) returns the list and totals.
+
+**MCP Tool Requirement**: `@mcp.tool() get_invoice_details` → `tools.get_invoice_details`
+(and `list_invoices` for the aggregate view).
+
+## US4 — Client Management (Add Client)
+**Given** a client calls `add_client` with `name` (+ optional `email`/`phone`/`tax_id`/`address`)
+**When** the server validates against `contracts/add_client.json`
+**Then** it calls `MorningClient.add_client` (`POST /clients`) and returns the created
+client id + summary.
+
+Acceptance criteria:
+- `name` required; missing required fields → friendly prompt for them.
+
+**MCP Tool Requirement**: `@mcp.tool() add_client` → `tools.add_client`.
+
+## US5 — Financial Reports
+**Given** a client calls `get_financial_summary` with `period` (+ optional dates)
+**When** the server validates against `contracts/get_financial_summary.json`
+**Then** it aggregates via `POST /documents/search` and returns totals/counts in Hebrew.
+
+Acceptance criteria:
+- Response includes `total_invoiced`, `total_paid`, `total_unpaid`, `invoice_count`.
+
+**MCP Tool Requirement**: `@mcp.tool() get_financial_summary` → `tools.get_financial_summary`.
+
+## US6 — Update Invoice Status
+**Given** a client calls `update_invoice_status` with `invoice_id` + `status` (+ optional `payment_date`)
+**When** the server validates against `contracts/update_invoice_status.json`
+**Then** it updates the document (`PUT /documents/{id}`) and returns the new status.
+
+Acceptance criteria:
+- `invoice_id` + `status` required; invalid/nonexistent id → friendly error.
+
+**MCP Tool Requirement**: `@mcp.tool() update_invoice_status` → `tools.update_invoice_status`.
+
+## US7 — Send Invoice (Morning-native delivery)
+**Given** a client calls `send_invoice` with `invoice_id` (+ optional `phone_number`/`message`)
+**When** the server validates against `contracts/send_invoice.json`
+**Then** it triggers **Morning's own** send (`POST /documents/{id}/send`, email/SMS) and
+returns a delivery confirmation. It does **not** call `denidin-app`.
+
+Acceptance criteria:
+- `invoice_id` required; if the client has no contact and none is supplied → friendly error
+  asking for a phone/email.
+- No import of or dependency on `denidin-app`.
+- (Future, architecture TBD: delivering over WhatsApp from denidin-app's number — spec §Future Work.)
+
+**MCP Tool Requirement**: `@mcp.tool() send_invoice` → `tools.send_invoice`.
+
+## US8 — Download Invoice PDF
+**Given** a client calls `download_invoice_pdf` with `invoice_id`
+**When** the server validates against `contracts/download_invoice_pdf.json`
+**Then** it returns a PDF download URL (or Base64) obtained from Morning.
+
+Acceptance criteria:
+- Returns `pdf_url` or `file_base64`; nonexistent id → friendly error.
+
+**MCP Tool Requirement**: `@mcp.tool() download_invoice_pdf` → `tools.download_invoice_pdf`.
+
+---
+
+## Cross-cutting
+- **Entry point / dispatch story**: Given the FastMCP server is running with
+  `feature_flags.enable_mcp_server=true`, When an MCP client connects over streamable-HTTP,
+  Then all 8 tools are discoverable and invocable (covered by the E2E dispatch test,
+  `tests/integration/test_mcp_server_e2e.py`).
+- Responses are Hebrew by default (₪, DD/MM/YYYY, Hebrew status terms).
+- Each story is verified by a **real Morning-sandbox integration test** (no mocks) that
+  fails before implementation, per METHODOLOGY §VI and CONSTITUTION §V.
