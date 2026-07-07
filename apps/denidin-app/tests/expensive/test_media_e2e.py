@@ -95,9 +95,11 @@ class TestWhatsAppE2E:
         
         config = AppConfiguration.from_file(str(config_path))
         config.validate()
-        # Use production data_root to access the real constitution file
-        config.data_root = str(Path(__file__).parent.parent.parent / "data")
-        
+        # Use isolated test_data_root (with its own copy of the constitution file)
+        # so these tests use real API credentials without touching production
+        # session/memory data.
+        config.data_root = str(Path(__file__).parent.parent.parent / "test_data")
+
         return config
     
     @pytest.fixture
