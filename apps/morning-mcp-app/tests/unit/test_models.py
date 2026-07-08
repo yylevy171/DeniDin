@@ -74,6 +74,29 @@ def test_invoice_model_coerces_integer_document_number_to_string():
     assert invoice.number == "50002"
 
 
+@pytest.mark.parametrize(
+    "morning_status_code,expected_status",
+    [(0, "unpaid"), (1, "paid"), (2, "paid"), (3, "cancelled"), (4, "cancelled")],
+)
+def test_invoice_model_maps_morning_numeric_status_codes(morning_status_code, expected_status):
+    """Regression: /documents(/search) returns `status` as an int (discovered
+    via the real sandbox in test_morning_sandbox_list_invoices_tool.py), whose
+    meaning was confirmed live against GET /documents/statuses."""
+    with_status = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, status=morning_status_code)
+
+    invoice = Invoice.model_validate(with_status)
+
+    assert invoice.status == expected_status
+
+
+def test_invoice_model_preserves_already_string_status():
+    with_status = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, status="unpaid")
+
+    invoice = Invoice.model_validate(with_status)
+
+    assert invoice.status == "unpaid"
+
+
 def test_client_model_requires_name():
     with pytest.raises(ValidationError):
         Client.model_validate({"email": "a@b.com"})

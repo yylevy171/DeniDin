@@ -77,9 +77,21 @@ tests (25 new unit + the 10 existing sandbox integration tests, unchanged). Full
   Immutability). Both sandbox tests + all 26 unit tests pass; 38/38 full suite green.
 
 ### US2 — `list_invoices` (client method exists)
-- [ ] **T007a** [US2] Failing real-sandbox test `test_morning_sandbox_list_invoices_tool.py`
-  (filters, ≤10 items + continuation token).
-- [ ] **T007b** [US2] Implement `list_invoices` tool in `tools.py`.
+- [x] **T007a** [US2] Wrote failing real-sandbox test
+  `test_morning_sandbox_list_invoices_tool.py` (seeds a real invoice via US1's
+  `create_invoice`, finds it by `client_name`; no-match returns a readable string;
+  ≤10-item cap). Confirmed RED (`ImportError: list_invoices`) before implementation.
+- [x] **T007b** [US2] Implemented `list_invoices` in `tools.py`: maps friendly filters
+  (`from_date`/`to_date`/`client_name`) onto Morning's real `/documents/search` params
+  (`fromDate`/`toDate`/`clientName`); `status` filtered **client-side** (server-side param
+  name unconfirmed in available docs); each result parsed via the existing `Invoice` model,
+  skipping unparseable items; new `formatters.format_invoice_list()` caps at 10 with a
+  "more results" note. **Real-sandbox finding**: `/documents/search` returns `status` as an
+  int document-status code, not a string — queried the live `GET /documents/statuses`
+  endpoint to get the authoritative mapping (0=open, 1=closed, 2=manually closed,
+  3=cancelling, 4=cancelled) and added a `field_validator` on `Invoice.status` mapping
+  these onto this app's paid/unpaid/cancelled vocabulary, with new regression tests
+  (existing approved tests left unmodified). 47/47 full suite green.
 
 ### US3 — `get_invoice_details` (client method exists) + `update_invoice_status` (new)
 - [ ] **T008a** [US3] Failing real-sandbox test `test_morning_sandbox_invoice_status_tools.py`

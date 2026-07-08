@@ -13,6 +13,19 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
+# Morning's real /documents(/search) status codes, confirmed live against
+# GET /documents/statuses (2026-07-08): 0 open, 1 closed, 2 manually closed,
+# 3 cancelling document, 4 cancelled document. Mapped onto this app's
+# canonical status vocabulary (paid/unpaid/cancelled) used throughout
+# formatters.py and the tool contracts.
+_MORNING_STATUS_CODES = {
+    0: "unpaid",
+    1: "paid",
+    2: "paid",
+    3: "cancelled",
+    4: "cancelled",
+}
+
 
 class Client(BaseModel):
     """A Morning client (customer) record."""
@@ -72,6 +85,23 @@ class Invoice(BaseModel):
     def _coerce_number_to_str(cls, value: Any) -> Optional[str]:
         """Morning's real `/documents` response returns `number` as an int (e.g. 50002)."""
         return str(value) if value is not None else None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _normalize_status(cls, value: Any) -> Optional[str]:
+        """Map Morning's numeric document-status codes onto our canonical vocabulary.
+
+        Morning's /documents(/search) responses return `status` as an int
+        (confirmed live against GET /documents/statuses); string statuses
+        (e.g. already-canonical values used internally) pass through unchanged.
+        """
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, int):
+            return _MORNING_STATUS_CODES.get(value, str(value))
+        return str(value)
 
     @model_validator(mode="before")
     @classmethod

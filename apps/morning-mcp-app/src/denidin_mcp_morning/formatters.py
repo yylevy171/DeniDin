@@ -4,6 +4,7 @@ Responses are Hebrew by default (spec.md §REQ-I18N-001): ₪ currency,
 DD/MM/YYYY dates, Hebrew status terms.
 """
 from datetime import date
+from typing import List
 
 from .models import Invoice
 
@@ -45,3 +46,25 @@ def format_invoice_confirmation(invoice: Invoice) -> str:
         lines.append(f"תאריך יעד: {format_date_il(invoice.due_date)}")
 
     return "\n".join(lines)
+
+
+def format_invoice_list(invoices: List[Invoice], has_more: bool = False) -> str:
+    """Build a Hebrew, human-readable list of invoices (user-stories.md US2).
+
+    Args:
+        invoices: Already-capped list (caller enforces the max-10 limit).
+        has_more: Whether more results exist beyond this page.
+
+    Returns:
+        A Hebrew multi-line string; a friendly "no results" message if empty.
+    """
+    if not invoices:
+        return "לא נמצאו חשבוניות התואמות את החיפוש."
+
+    blocks = [format_invoice_confirmation(invoice) for invoice in invoices]
+    message = "\n\n".join(blocks)
+
+    if has_more:
+        message += "\n\nיש תוצאות נוספות שלא הוצגו."
+
+    return message
