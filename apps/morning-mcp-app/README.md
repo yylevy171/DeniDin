@@ -4,22 +4,24 @@ Standalone client for the Morning (Green Invoice) API — Israeli invoicing/rece
 
 ## Status
 
-This app currently ships only the `MorningClient`/`MorningAuth` library
-(`src/denidin_mcp_morning/`) and its sandbox-backed integration test suite. There
-is **no MCP server, CLI, or HTTP entrypoint yet**. The intended MCP server
-(FastAPI, 8 tools: `create_invoice`, `list_invoices`, `get_invoice_details`,
-`update_invoice_status`, `add_client`, `get_financial_summary`, `send_invoice`,
-`download_invoice_pdf`) is described in
-`specs/in-definition/005-mcp-morning-green-receipt/plan.md` and is future work.
+This app currently ships the `MorningClient`/`MorningAuth` library
+(`src/denidin_mcp_morning/`) and its sandbox-backed integration test suite, plus
+work in progress on the MCP server itself (FastMCP over streamable-HTTP, 8 tools:
+`create_invoice`, `list_invoices`, `get_invoice_details`, `update_invoice_status`,
+`add_client`, `get_financial_summary`, `send_invoice`, `download_invoice_pdf`) per
+`specs/in-definition/005-mcp-morning-green-receipt/plan.md` and `tasks.md`.
 
-This app was split out of the main `denidin-app` monorepo so that the eventual MCP
-server has its own independently runnable, testable, and deployable home.
+This app was split out of the main `denidin-app` monorepo so that the MCP server
+has its own independently runnable, testable, and deployable home.
 
 ## Setup
 
+**Requires Python 3.10+** (the `mcp` SDK does not support 3.9). Developed against
+3.11 to match `apps/denidin-app`'s recommended version.
+
 ```bash
 cd apps/morning-mcp-app
-python3 -m venv venv && source venv/bin/activate
+python3.11 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp config/config.example.json config/config.json  # then fill in real credentials
 ```

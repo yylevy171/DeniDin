@@ -23,24 +23,36 @@
 
 ## Phase 1 — Foundation
 
-- [ ] **T001** Add `mcp` (FastMCP) and `pydantic` to `requirements.txt`; pin compatible
-  versions; `pip install -r requirements.txt` succeeds.
-- [ ] **T002** [P] Extend `config/config.example.json` to the full flat shape from
-  `../../specs/in-definition/005-mcp-morning-green-receipt/artifacts/config.schema.json`
-  (add `default_currency`, `default_vat_rate`, `token_ttl_seconds`, `refresh_before_seconds`,
-  `rate_limit_per_second`, `mcp{}`, `feature_flags.enable_mcp_server`). Keep the 3 required
-  keys top-level so existing tests are unaffected.
-- [ ] **T003** Implement `src/denidin_mcp_morning/config.py`: load flat `config/config.json`
-  via `pathlib.Path`, validate against `artifacts/config.schema.json` (jsonschema), expose a
-  typed config object by dependency injection. No env vars.
-- [ ] **T004** [P] Implement `src/denidin_mcp_morning/models.py`: Pydantic `Invoice`,
-  `Client`, `Payment`, `FinancialSummary` mapping the real Morning document shape
-  (`../.../data-model.md`); UTC datetimes.
-- [ ] **T005** [P] Implement `src/denidin_mcp_morning/formatters.py`: Hebrew/₪/VAT/date
+- [x] **T001** Add `mcp` (FastMCP) and `pydantic` to `requirements.txt`; pin compatible
+  versions; `pip install -r requirements.txt` succeeds. **Note**: `mcp` requires Python
+  ≥3.10 — app bumped to Python 3.11 (`Dockerfile` now `python:3.11-slim`; local venv
+  recreated with `python3.11`; README updated). Also added `email-validator` (required by
+  Pydantic `EmailStr`) and `jsonschema`.
+- [x] **T002** [P] Extend `config/config.example.json` to the full flat shape from
+  `artifacts/config.schema.json` (added `default_currency`, `default_vat_rate`,
+  `token_ttl_seconds`, `refresh_before_seconds`, `rate_limit_per_second`, `mcp{}`,
+  `feature_flags.enable_mcp_server`). **Also fixed**: the file previously contained a real
+  (committed) sandbox secret identical to `config.test.json`, violating CONSTITUTION §I's
+  "safe placeholder values" rule for example configs — replaced with placeholder text;
+  `config.test.json` (which intentionally holds real sandbox creds for the integration
+  tests) was left untouched.
+- [x] **T003** Implemented `src/denidin_mcp_morning/config.py`: loads flat
+  `config/config.json` via `pathlib.Path`, validates against a **self-contained**
+  `config/config.schema.json` (copied into the app; the `specs/.../artifacts/` copy isn't
+  shipped in the Docker image) via `jsonschema`. No env vars (test asserts this).
+  Tests: `tests/unit/test_config.py` (7 tests).
+- [x] **T004** [P] Implemented `src/denidin_mcp_morning/models.py`: Pydantic `Invoice`,
+  `Client`, `Payment`, `FinancialSummary` mapping the real Morning document shape (nested
+  `client{}`/`emails[]`, `date`/`dueDate`, `total`/`vatAmount`); UTC-aware where applicable.
+  Tests: `tests/unit/test_models.py` (8 tests).
+- [x] **T005** [P] Implemented `src/denidin_mcp_morning/formatters.py`: Hebrew/₪/VAT/date
   (DD/MM/YYYY) formatting + Hebrew status terms (שולם/לא שולם/פג תוקף/בוטל).
+  Tests: `tests/unit/test_formatters.py` (8 tests).
 
-**Checkpoint**: config loads+validates; models validate a real `/documents` response;
-`pytest tests/ --collect-only` still collects the existing sandbox tests unchanged.
+**Checkpoint**: ✅ met — config loads+validates (incl. rejecting the old nested shape);
+models validate a real `/documents` response; `pytest tests/ --collect-only` collects 35
+tests (25 new unit + the 10 existing sandbox integration tests, unchanged). Full unit run:
+25/25 passed.
 
 ---
 

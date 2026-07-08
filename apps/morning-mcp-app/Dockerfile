@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -13,10 +13,10 @@ ENV PYTHONPATH=/app/src
 
 VOLUME ["/app/config"]
 
-# No MCP server exists yet (structural split only — see README "Status").
-# This placeholder keeps the container running so it can be exec'd into /
-# used as a base for local iteration, without implying functionality that
-# doesn't exist. Once the MCP server exists (see
-# specs/in-definition/005-mcp-morning-green-receipt/plan.md), replace with:
-#   CMD ["python3", "-m", "uvicorn", "denidin_mcp_morning.server:app", "--host", "0.0.0.0", "--port", "8080"]
+# server.py (FastMCP over streamable-HTTP) is being built incrementally per
+# specs/in-definition/005-mcp-morning-green-receipt/tasks.md (Phase 3, T013).
+# Until it lands, this placeholder keeps the container running so it can be
+# exec'd into / used as a base for local iteration, without implying
+# functionality that doesn't exist. Once server.py exists, replace with:
+#   CMD ["python3", "-m", "denidin_mcp_morning.server"]
 CMD ["tail", "-f", "/dev/null"]
