@@ -90,3 +90,11 @@ class MorningClient:
         resp = self.session.post(url, headers=headers, timeout=15)
         resp.raise_for_status()
         return resp.json() if resp.content else {}
+
+    def add_client(self, payload: dict) -> dict:
+        """Create a new client (POST /clients)."""
+        url = f"{self.base_url}/clients"
+        headers = self._auth_headers()
+        resp = self.session.post(url, json=payload, headers=headers, timeout=15)
+        resp.raise_for_status()
+        return resp.json()

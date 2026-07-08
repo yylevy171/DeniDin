@@ -122,10 +122,21 @@ tests (25 new unit + the 10 existing sandbox integration tests, unchanged). Full
   - 53/53 full suite green (32 unit + 21 integration).
 
 ### US4 — `add_client` (new)
-- [ ] **T009a** [US4] Failing real-sandbox test `test_morning_sandbox_add_client_tool.py`
-  (required `name`; creates client, returns id).
-- [ ] **T009b** [US4] Add `MorningClient.add_client` (`POST /clients`) and the `add_client`
-  tool in `tools.py`.
+- [x] **T009a** [US4] Wrote failing real-sandbox test `test_morning_sandbox_add_client_tool.py`
+  (name-only and full-details cases). Confirmed RED (`ImportError: add_client`) before
+  implementation.
+- [x] **T009b** [US4] Added `MorningClient.add_client` (`POST /clients`) and the `add_client`
+  tool in `tools.py`. Real field names confirmed via the Postman collection's "Add Client"
+  example: `emails` (list, not singular `email`), `taxId` (camelCase, not `tax_id`).
+  **Real-sandbox finding**: `phone` doesn't appear in the Postman collection's client
+  examples at all, so it looked possibly unsupported — tested live and confirmed it **is** a
+  real, valid field (round-tripped correctly in the response); the Postman example response
+  simply hadn't set it. The only real failure hit was a test-data bug, not a code bug:
+  `tax_id="123456789"` fails Morning's Israeli-tax-ID checksum validation (errorCode 1111,
+  `"מספר עוסק / ח.פ אינו תקין"`) — fixed by reusing the Postman collection's own known-valid
+  example ID (`308253681`). 55/55 full suite green (one unrelated flaky rerun in
+  `list_invoices` due to sandbox indexing delay under concurrent test load — passes reliably
+  in isolation, not a regression).
 
 ### US5 — `get_financial_summary` (new)
 - [ ] **T010a** [US5] Failing real-sandbox test `test_morning_sandbox_financial_summary_tool.py`

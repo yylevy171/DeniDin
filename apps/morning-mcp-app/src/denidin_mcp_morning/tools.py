@@ -417,6 +417,58 @@ def update_invoice_status(
     else:
         raise ValueError(f"Unsupported status: {status!r}. Expected 'paid', 'unpaid', or 'cancelled'.")
 
-    updated = client.get_invoice(invoice_id)
-    invoice = Invoice.model_validate(updated)
-    return format_invoice_confirmation(invoice)
+
+def _build_add_client_payload(
+    name: str,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    tax_id: Optional[str] = None,
+    address: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Map friendly add_client inputs onto the real Morning /clients payload.
+
+    Real field names (confirmed via the Postman collection's "Add Client"
+    example): `emails` is a list, `taxId` is camelCase. `phone` does not
+    appear anywhere in the Postman collection's client schemas/examples —
+    it's sent optimistically; Morning may silently ignore it (see the
+    real-sandbox test for what's actually observed).
+    """
+    payload: Dict[str, Any] = {"name": name}
+    if email:
+        payload["emails"] = [email]
+    if phone:
+        payload["phone"] = phone
+    if tax_id:
+        payload["taxId"] = tax_id
+    if address:
+        payload["address"] = address
+    return payload
+
+
+def add_client(
+    client: MorningClient,
+    name: str,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    tax_id: Optional[str] = None,
+    address: Optional[str] = None,
+) -> str:
+    """Add a new client to Morning and return a Hebrew confirmation.
+
+    MCP tool: add_client (contracts/add_client.json, user-stories.md US4).
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        name: Client/company name (required).
+        email: Optional client email.
+        phone: Optional client phone number.
+        tax_id: Optional Israeli business tax ID (ע"מ).
+        address: Optional client address.
+
+    Returns:
+        A Hebrew confirmation string with the created client's name and id.
+    """
+    payload = _build_add_client_payload(name, email, phone, tax_id, address)
+    response = client.add_client(payload)
+    client_id = response.get("id", "")
+    return f"נוצר לקוח חדש: {name} (מזהה: {client_id})"
