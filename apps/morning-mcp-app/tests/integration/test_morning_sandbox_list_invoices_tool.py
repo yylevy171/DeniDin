@@ -53,14 +53,19 @@ def test_list_invoices_tool_finds_seeded_invoice_by_client_name(morning_client, 
 
     client_name = seeded_invoice["client_name"]
 
+    # Widened from an earlier 6x/1s window (up to 6s) after an observed flake
+    # under a full-suite run creating many sandbox documents in quick
+    # succession — Morning's search index can lag further behind under that
+    # load than in isolation. 12x/1.5s (up to 18s) gives realistic headroom
+    # while still exiting immediately once found.
     found = False
     result = None
-    for _ in range(6):
+    for _ in range(12):
         result = list_invoices(morning_client, client_name=client_name)
         if client_name in result:
             found = True
             break
-        time.sleep(1)
+        time.sleep(1.5)
 
     assert found, f"Seeded invoice for {client_name!r} not found in list_invoices result: {result!r}"
 
