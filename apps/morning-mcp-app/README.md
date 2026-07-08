@@ -14,6 +14,10 @@ work in progress on the MCP server itself (FastMCP over streamable-HTTP, 8 tools
 This app was split out of the main `denidin-app` monorepo so that the MCP server
 has its own independently runnable, testable, and deployable home.
 
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full layer-by-layer breakdown
+(config → auth → client → tools → server), the request-flow diagram, and the
+current implementation status per layer.
+
 ## Setup
 
 **Requires Python 3.10+** (the `mcp` SDK does not support 3.9). Developed against

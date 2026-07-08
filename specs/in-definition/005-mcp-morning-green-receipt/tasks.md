@@ -63,12 +63,18 @@ tests (25 new unit + the 10 existing sandbox integration tests, unchanged). Full
 > `@mcp.tool()` wrapper in `tools.py`).
 
 ### US1 — `create_invoice` (client method exists)
-- [ ] **T006a** [US1] Write failing real-sandbox test
+- [x] **T006a** [US1] Wrote failing real-sandbox test
   `tests/integration/test_morning_sandbox_create_invoice_tool.py` driving the MCP tool
-  (input mapping → `MorningClient.create_invoice` → sandbox document created).
-- [ ] **T006b** [US1] Implement `create_invoice` tool in `src/denidin_mcp_morning/tools.py`
-  (validate vs `contracts/create_invoice.json`, map friendly inputs → Morning payload,
-  format response).
+  (input mapping → `MorningClient.create_invoice` → sandbox document created). Confirmed
+  RED (`ModuleNotFoundError: denidin_mcp_morning.tools`) before implementation.
+- [x] **T006b** [US1] Implemented `create_invoice` tool in `src/denidin_mcp_morning/tools.py`
+  (maps friendly inputs → Morning `/documents` payload — type 305, one `income[]` line, one
+  `payment[]` line since the sandbox requires at least one — then formats a Hebrew
+  confirmation). **Real-sandbox finding**: Morning's response returns `number` as an int
+  (e.g. `50002`), not a string as `models.Invoice` originally assumed; fixed with a
+  `field_validator` coercion in `models.py` + a new regression test in
+  `tests/unit/test_models.py` (existing approved tests left unmodified, per Test
+  Immutability). Both sandbox tests + all 26 unit tests pass; 38/38 full suite green.
 
 ### US2 — `list_invoices` (client method exists)
 - [ ] **T007a** [US2] Failing real-sandbox test `test_morning_sandbox_list_invoices_tool.py`

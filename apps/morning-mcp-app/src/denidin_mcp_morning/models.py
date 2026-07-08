@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 class Client(BaseModel):
@@ -66,6 +66,12 @@ class Invoice(BaseModel):
     status: Optional[str] = None
     payments: List[Payment] = Field(default_factory=list)
     pdf_url: Optional[str] = None
+
+    @field_validator("number", mode="before")
+    @classmethod
+    def _coerce_number_to_str(cls, value: Any) -> Optional[str]:
+        """Morning's real `/documents` response returns `number` as an int (e.g. 50002)."""
+        return str(value) if value is not None else None
 
     @model_validator(mode="before")
     @classmethod

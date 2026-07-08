@@ -63,6 +63,17 @@ def test_invoice_model_defaults_currency_to_ils_when_omitted():
     assert invoice.currency == "ILS"
 
 
+def test_invoice_model_coerces_integer_document_number_to_string():
+    """Regression: the real Morning /documents response returns `number` as an
+    int (discovered via the real sandbox in test_morning_sandbox_create_invoice_tool.py),
+    not the string this model originally assumed."""
+    int_number = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, number=50002)
+
+    invoice = Invoice.model_validate(int_number)
+
+    assert invoice.number == "50002"
+
+
 def test_client_model_requires_name():
     with pytest.raises(ValidationError):
         Client.model_validate({"email": "a@b.com"})
