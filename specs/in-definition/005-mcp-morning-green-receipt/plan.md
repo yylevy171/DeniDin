@@ -15,7 +15,7 @@ execution, §VI TDD, §VII integration contracts, §IX technology choices).
 
 ## Summary
 
-Build a standalone MCP server in `apps/morning-mcp-app/` exposing **8 invoice-management
+Build a standalone MCP server in `apps/morning-mcp-app/` exposing **7 invoice-management
 tools** over the Morning (Green Invoice) REST API, consumable by OpenAI models as a remote
 MCP tool. Authentication and a partial HTTP client already exist (`MorningAuth`,
 `MorningClient` with 3 of the needed operations, plus real-sandbox integration tests). This
@@ -81,7 +81,7 @@ Tracking.
   matching Morning's document/client shapes (see `data-model.md`).
 
 ### MCP client ↔ FastMCP server (`server.py`)
-- **server.py MUST**: register all 8 tools with `@mcp.tool()`; expose them over
+- **server.py MUST**: register all 7 tools with `@mcp.tool()`; expose them over
   streamable-HTTP on the configured host/port; start only when
   `feature_flags.enable_mcp_server` is true.
 - **server PROVIDES**: MCP tool discovery + dispatch; each tool returns a human-readable
@@ -102,7 +102,7 @@ specs/in-definition/005-mcp-morning-green-receipt/
 ├── user-stories.md
 ├── quickstart.md
 ├── endpoints.md
-├── contracts/           # 8 invoice tools + morning_token_exchange
+├── contracts/           # 7 invoice tools + morning_token_exchange
 ├── artifacts/           # config.schema.json (flat), mcp_tools_schema.json, error_codes.json
 └── checklists/comprehensive.md
 ```
@@ -154,7 +154,7 @@ method (if needed) + the `@mcp.tool()` wrapper (Task B) → green. **Checkpoint*
 callable end-to-end against the sandbox.
 
 ### Phase 3 — Server + E2E dispatch
-`server.py` FastMCP over streamable-HTTP registering all 8 tools, gated by the feature flag.
+`server.py` FastMCP over streamable-HTTP registering all 7 tools, gated by the feature flag.
 Add the E2E test that starts the server and invokes a tool via an MCP client (proves
 registration/dispatch — §V routing). **Checkpoint**: OpenAI-style remote MCP client can
 discover and call the tools locally.

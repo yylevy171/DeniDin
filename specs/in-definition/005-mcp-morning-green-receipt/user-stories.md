@@ -74,28 +74,20 @@ Acceptance criteria:
 ## US6 — Update Invoice Status
 **Given** a client calls `update_invoice_status` with `invoice_id` + `status` (+ optional `payment_date`)
 **When** the server validates against `contracts/update_invoice_status.json`
-**Then** it updates the document (`PUT /documents/{id}`) and returns the new status.
+**Then** it applies the real Morning mechanism for that status — "paid" issues a linked
+Receipt, "cancelled" issues a linked Credit Invoice (Israeli law forbids voiding a tax
+invoice outright), "unpaid" is idempotent or rejected if already paid (no reversal exists;
+see `contracts/update_invoice_status.json` for the full mechanism, confirmed live) — and
+returns the new status.
 
 Acceptance criteria:
 - `invoice_id` + `status` required; invalid/nonexistent id → friendly error.
+- "cancelled" — the real-world use case: the user made a mistake creating the invoice
+  (wrong amount, typo) and needs it voided so a corrected one can be created instead.
 
 **MCP Tool Requirement**: `@mcp.tool() update_invoice_status` → `tools.update_invoice_status`.
 
-## US7 — Send Invoice (Morning-native delivery)
-**Given** a client calls `send_invoice` with `invoice_id` (+ optional `phone_number`/`message`)
-**When** the server validates against `contracts/send_invoice.json`
-**Then** it triggers **Morning's own** send (`POST /documents/{id}/send`, email/SMS) and
-returns a delivery confirmation. It does **not** call `denidin-app`.
-
-Acceptance criteria:
-- `invoice_id` required; if the client has no contact and none is supplied → friendly error
-  asking for a phone/email.
-- No import of or dependency on `denidin-app`.
-- (Future, architecture TBD: delivering over WhatsApp from denidin-app's number — spec §Future Work.)
-
-**MCP Tool Requirement**: `@mcp.tool() send_invoice` → `tools.send_invoice`.
-
-## US8 — Download Invoice PDF
+## US7 — Download Invoice PDF
 **Given** a client calls `download_invoice_pdf` with `invoice_id`
 **When** the server validates against `contracts/download_invoice_pdf.json`
 **Then** it returns a PDF download URL (or Base64) obtained from Morning.
@@ -110,7 +102,7 @@ Acceptance criteria:
 ## Cross-cutting
 - **Entry point / dispatch story**: Given the FastMCP server is running with
   `feature_flags.enable_mcp_server=true`, When an MCP client connects over streamable-HTTP,
-  Then all 8 tools are discoverable and invocable (covered by the E2E dispatch test,
+  Then all 7 tools are discoverable and invocable (covered by the E2E dispatch test,
   `tests/integration/test_mcp_server_e2e.py`).
 - Responses are Hebrew by default (₪, DD/MM/YYYY, Hebrew status terms).
 - Each story is verified by a **real Morning-sandbox integration test** (no mocks) that

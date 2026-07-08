@@ -157,11 +157,23 @@ tests (25 new unit + the 10 existing sandbox integration tests, unchanged). Full
   shows in `invoice_count`/`unpaid_invoice_count`. `contracts/get_financial_summary.json`
   updated to document this. 59/59 full suite green.
 
-### US6 — `send_invoice` (new; Morning-native send, NO denidin-app dependency)
-- [ ] **T011a** [US6] Failing real-sandbox test `test_morning_sandbox_send_invoice_tool.py`
-  (send via `POST /documents/{id}/send`; missing-contact error path).
-- [ ] **T011b** [US6] Add `MorningClient.send_invoice` and the `send_invoice` tool in
-  `tools.py`. Must not import/call `denidin-app`.
+### US6 — `send_invoice` — DROPPED (not a tool; see spec.md §Scope)
+- [x] **T011** [US6] Investigated `POST /documents/{id}/distribute` (Postman-only endpoint)
+  live: returns `errorCode 3003` "unsupported operation type" regardless of document type
+  (305/320) or the `senderEnabled` account setting (tested both `false`→`true`→reverted).
+  **Proved this is not a sandbox restriction but a genuinely undocumented endpoint**: diffed
+  every `documents/*` path in the full official API reference (`jsapi.apiary.io`) — `info`,
+  `payments`, `preview`, `search`, `statuses`, `templates`, `types`, `{id}` are all
+  documented and all work; `distribute`/`send` appear nowhere in it, while every other
+  endpoint this app actually uses does. Conclusion: `/distribute` is an internal,
+  browser-session-only endpoint behind Morning's own web UI "Send" button, not a supported
+  partner/API-key integration point — no amount of payload tweaking would fix this.
+  **Decision**: drop `send_invoice` entirely rather than ship a tool that can never work, or
+  redefine it as a thin "assemble info" wrapper — a wrapper would only recombine
+  `get_invoice_details` + `download_invoice_pdf`, which the calling MCP client can already
+  compose itself. Removed the in-progress (uncommitted) `tools.send_invoice`,
+  `MorningClient.distribute_invoice`, `contracts/send_invoice.json`, and the corresponding
+  test file. `spec.md`/`user-stories.md`/`plan.md` updated to 7 tools.
 
 ### US7 — `download_invoice_pdf` (new)
 - [ ] **T012a** [US7] Failing real-sandbox test `test_morning_sandbox_download_pdf_tool.py`
@@ -169,7 +181,7 @@ tests (25 new unit + the 10 existing sandbox integration tests, unchanged). Full
 - [ ] **T012b** [US7] Add `MorningClient.get_invoice_pdf` and the `download_invoice_pdf`
   tool in `tools.py`.
 
-**Checkpoint**: all 8 tools callable end-to-end against the sandbox; every tool's test was
+**Checkpoint**: all 7 tools callable end-to-end against the sandbox; every tool's test was
 RED before its implementation.
 
 ---
@@ -177,7 +189,7 @@ RED before its implementation.
 ## Phase 3 — FastMCP server + E2E dispatch
 
 - [ ] **T013** Implement `src/denidin_mcp_morning/server.py`: FastMCP server registering all
-  8 tools via `@mcp.tool()`, served over **streamable-HTTP** on configured host/port;
+  7 tools via `@mcp.tool()`, served over **streamable-HTTP** on configured host/port;
   `MorningClient` injected; startup gated by `feature_flags.enable_mcp_server`.
 - [ ] **T014a** E2E test `tests/integration/test_mcp_server_e2e.py`: start the FastMCP
   server, connect an MCP client, list tools (assert all 8 present) and invoke one against
@@ -204,7 +216,7 @@ RED before its implementation.
 
 - Phase 1 (T001–T005) before Phase 2.
 - Per story: `a` (approved failing test) **before** `b` (implementation).
-- Phase 3 (server) after the 8 tools exist. Phase 4 last.
+- Phase 3 (server) after the 7 tools exist. Phase 4 last.
 
 ## MVP
 

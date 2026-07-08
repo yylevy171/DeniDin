@@ -3,22 +3,23 @@
 **Feature**: 005-mcp-morning-green-receipt  
 **Purpose**: Validate completeness, clarity, and consistency of all requirements before implementation  
 **Created**: 2026-02-03  
-**Updated**: 2026-07-08 (resolution pass — see below)
+**Updated**: 2026-07-08 (resolution pass — see below; further updated same day after
+`send_invoice` was dropped during implementation — see the note under DEFERRED below)
 **Type**: Multi-domain comprehensive review
 
 ---
 
-## Resolution Status (2026-07-08 — scope-narrowed to the 8 invoice tools)
+## Resolution Status (2026-07-08 — scope-narrowed to the 7 invoice tools)
 
 This checklist was authored against an over-broad, contradictory spec. After the 005
-validation/rewrite (scope = 8 invoice-management tools; receipt-parsing/webhook split to
-feature 017; WhatsApp delivery deferred; MCP framework = FastMCP/streamable-HTTP; flat
-config), items fall into three buckets:
+validation/rewrite (scope = 8 invoice-management tools, later 7 once `send_invoice` was
+dropped during implementation — see below; receipt-parsing/webhook split to feature 017;
+MCP framework = FastMCP/streamable-HTTP; flat config), items fall into three buckets:
 
 **RESOLVED by the rewrite** (addressed in `spec.md` / `plan.md` / `artifacts/config.schema.json`):
 - Auth & token lifecycle — CHK001, CHK006, CHK008, CHK042, CHK046 (JWT via `MorningAuth`,
   in-memory, refresh-before-expiry; `token_ttl_seconds`/`refresh_before_seconds` in config).
-- API/endpoint mapping — CHK002, CHK009, CHK010, CHK012 (8 tool→endpoint table in spec;
+- API/endpoint mapping — CHK002, CHK009, CHK010, CHK012 (7 tool→endpoint table in spec;
   sandbox/prod URLs in `endpoints.md`; document type 305/320).
 - Rate limit & retry — CHK003, CHK038, CHK099 (client-side ~3 req/s; urllib3 retry on 429/5xx).
 - Tool schemas & validation — CHK013, CHK014, CHK015, CHK016 (per-tool `contracts/*.json` +
@@ -34,8 +35,15 @@ config), items fall into three buckets:
 - I18n — CHK086, CHK089 (Hebrew/₪/DD-MM-YYYY in `formatters.py`).
 
 **DEFERRED — out of scope for this P2 feature** (tracked, not blocking readiness):
-- WhatsApp integration — CHK065–CHK071, CHK119 → future feature, architecture TBD (spec
-  §Future Work); `send_invoice` uses Morning-native send only.
+- WhatsApp/email delivery ("send_invoice") — CHK065–CHK071, CHK117, CHK119 → **not deferred,
+  dropped entirely** (2026-07-08, mid-implementation): Morning's public API has no
+  documented endpoint to deliver a document at all — the only candidate
+  (`/documents/{id}/distribute`) is confirmed (by diffing the full official API reference
+  against the Postman collection) to be an undocumented, browser-session-only endpoint that
+  consistently 400s for API-key auth. A `send_invoice` tool would only have recombined
+  `get_invoice_details` + `download_invoice_pdf` with no real delivery behind it, so it was
+  removed rather than shipped non-functional (see `tasks.md` T011, `spec.md` §Scope). These
+  CHK items are N/A rather than deferred — there is no tool for them to apply to.
 - Feature 003/004 dependencies — CHK072, CHK073, CHK123 → not applicable (app is standalone).
 - Webhook / file-upload / receipt parsing — CHK004, CHK048 → moved to feature 017.
 - Multi-tenant / scale / perf-SLA — CHK096–CHK105 → single sandbox tenant; revisit later.
