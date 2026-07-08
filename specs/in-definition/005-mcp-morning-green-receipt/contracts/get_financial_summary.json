@@ -4,13 +4,13 @@
   "type": "object",
   "x-http": {
     "method": "POST",
-    "path": "/documents/search",
-    "notes": "Use documents search with aggregation filters (Postman canonical)."
+    "path": "/api/v1/documents/search",
+    "notes": "Morning has no dedicated summary/aggregation endpoint (confirmed against the Postman collection) — aggregated client-side over /documents/search results for the resolved date range. KNOWN LIMITATION (confirmed live 2026-07-08): cancelling an invoice issues a linked Credit Invoice (type 330) but does not change the original invoice's own `status`, and Morning does not return `linkedDocumentIds` on read for either document, so a specific cancelled invoice cannot be excluded from the paid/unpaid tally without this app persisting that mapping itself (it deliberately does not — see plan.md, stateless). As an accounting approximation: counts/paid/unpaid classification are computed only over primary sale document types (305 tax invoice, 320 invoice+receipt); Credit Invoice (330) amounts are netted out of total_invoiced so a cancelled invoice's face value doesn't inflate reported revenue, but its count still appears in invoice_count/unpaid_invoice_count."
   },
   "properties": {
     "period": {"type": "string", "enum": ["month", "quarter", "year", "custom"]},
-    "from_date": {"type": "string", "format": "date"},
-    "to_date": {"type": "string", "format": "date"}
+    "from_date": {"type": "string", "format": "date", "description": "Required if period=custom."},
+    "to_date": {"type": "string", "format": "date", "description": "Required if period=custom."}
   },
   "required": ["period"]
 }

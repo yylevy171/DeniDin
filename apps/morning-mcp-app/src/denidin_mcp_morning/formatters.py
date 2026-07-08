@@ -6,7 +6,7 @@ DD/MM/YYYY dates, Hebrew status terms.
 from datetime import date
 from typing import List
 
-from .models import Invoice
+from .models import FinancialSummary, Invoice
 
 _STATUS_HE = {
     "paid": "שולם",
@@ -62,6 +62,21 @@ def format_invoice_details(invoice: Invoice) -> str:
             lines.append(f"  - {format_currency_ils(payment.amount)} ({format_date_il(payment.payment_date)})")
 
     return "\n".join(lines)
+
+
+def format_financial_summary(summary: FinancialSummary) -> str:
+    """Build a Hebrew, human-readable financial summary (user-stories.md US5)."""
+    return "\n".join(
+        [
+            f"סיכום כספי: {format_date_il(summary.period_start)} - {format_date_il(summary.period_end)}",
+            f"סה\"כ הופק: {format_currency_ils(summary.total_invoiced)}",
+            f"שולם: {format_currency_ils(summary.total_paid)}",
+            f"לא שולם: {format_currency_ils(summary.total_unpaid)}",
+            f"מספר חשבוניות: {summary.invoice_count} "
+            f"({summary.paid_invoice_count} שולמו, {summary.unpaid_invoice_count} לא שולמו)",
+            f"ממוצע לחשבונית: {format_currency_ils(summary.average_invoice_amount)}",
+        ]
+    )
 
 
 def format_invoice_list(invoices: List[Invoice], has_more: bool = False) -> str:

@@ -14,13 +14,20 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import ValidationError
 
-from .formatters import format_invoice_confirmation, format_invoice_details, format_invoice_list
-from .models import Invoice
+from .formatters import (
+    format_financial_summary,
+    format_invoice_confirmation,
+    format_invoice_details,
+    format_invoice_list,
+)
+from .models import FinancialSummary, Invoice
 from .morning_client import MorningClient
 
 logger = logging.getLogger(__name__)
 
 _TAX_INVOICE_DOCUMENT_TYPE = 305
+_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE = 320
+_PRIMARY_INVOICE_DOCUMENT_TYPES = {_TAX_INVOICE_DOCUMENT_TYPE, _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE}
 _CREDIT_INVOICE_DOCUMENT_TYPE = 330  # "חשבונית זיכוי" — confirmed live via GET /documents/types
 _LIST_INVOICES_MAX_ITEMS = 10
 _STATUS_ALIASES = {
@@ -472,3 +479,120 @@ def add_client(
     response = client.add_client(payload)
     client_id = response.get("id", "")
     return f"נוצר לקוח חדש: {name} (מזהה: {client_id})"
+
+
+def _resolve_period_dates(
+    period: str,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+) -> tuple:
+    """Resolve a friendly period name to a concrete (from_date, to_date) range."""
+    today = datetime.now(timezone.utc).date()
+
+    if period == "custom":
+        if not (from_date and to_date):
+            raise ValueError("period='custom' requires both from_date and to_date")
+        return from_date, to_date
+
+    if period == "month":
+        start = today.replace(day=1)
+    elif period == "quarter":
+        quarter_start_month = 3 * ((today.month - 1) // 3) + 1
+        start = today.replace(month=quarter_start_month, day=1)
+    elif period == "year":
+        start = today.replace(month=1, day=1)
+    else:
+        raise ValueError(f"Unsupported period: {period!r}. Expected 'month', 'quarter', 'year', or 'custom'.")
+
+    return start.isoformat(), today.isoformat()
+
+
+def _display_amount(invoice: Invoice) -> float:
+    return invoice.total_amount if invoice.total_amount is not None else invoice.amount
+
+
+def get_financial_summary(
+    client: MorningClient,
+    period: str,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+) -> str:
+    """Aggregate totals/counts for a period and return a Hebrew summary.
+
+    MCP tool: get_financial_summary (contracts/get_financial_summary.json,
+    user-stories.md US5).
+
+    Morning has no dedicated summary/aggregation endpoint (confirmed against
+    the Postman collection) — this aggregates client-side over
+    `/documents/search` results for the resolved date range.
+
+    Known limitation (documented, not silently papered over): cancelling an
+    invoice (see update_invoice_status status="cancelled") issues a linked
+    Credit Invoice but does NOT change the original invoice's own `status`
+    field (confirmed live), and Morning does not return `linkedDocumentIds`
+    on read for either document — so a specific cancelled invoice cannot be
+    excluded from the paid/unpaid tally without this app persisting that
+    mapping itself, which it deliberately does not do (plan.md: stateless).
+    As a defensible accounting approximation, this aggregates counts and
+    paid/unpaid classification only over primary sale document types (305
+    tax invoice, 320 invoice+receipt), and nets Credit Invoice (330) amounts
+    out of `total_invoiced` so a cancelled invoice's face value doesn't
+    inflate reported revenue — but its count still appears in
+    invoice_count/unpaid_invoice_count since its own status is unchanged.
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        period: One of "month", "quarter", "year", "custom".
+        from_date: Required if period="custom", ISO format YYYY-MM-DD.
+        to_date: Required if period="custom", ISO format YYYY-MM-DD.
+
+    Returns:
+        A Hebrew financial summary string.
+
+    Raises:
+        ValueError: if `period` is invalid, or "custom" without both dates.
+    """
+    start, end = _resolve_period_dates(period, from_date, to_date)
+    response = client.list_invoices(params={"fromDate": start, "toDate": end})
+    raw_items = _extract_items(response)
+
+    invoices: List[Invoice] = []
+    credit_note_total = 0.0
+
+    for item in raw_items:
+        document_type = item.get("type")
+        try:
+            parsed = Invoice.model_validate(item)
+        except ValidationError as exc:
+            logger.warning("Skipping unparseable document in get_financial_summary: %s", exc)
+            continue
+
+        if document_type == _CREDIT_INVOICE_DOCUMENT_TYPE:
+            credit_note_total += _display_amount(parsed)
+            continue
+        if document_type not in _PRIMARY_INVOICE_DOCUMENT_TYPES:
+            continue  # skip receipts/orders/other non-sale document types
+
+        invoices.append(parsed)
+
+    paid_invoices = [invoice for invoice in invoices if invoice.status == "paid"]
+    unpaid_invoices = [invoice for invoice in invoices if invoice.status != "paid"]
+
+    total_invoiced = sum(_display_amount(invoice) for invoice in invoices) - credit_note_total
+    total_paid = sum(_display_amount(invoice) for invoice in paid_invoices)
+    total_unpaid = sum(_display_amount(invoice) for invoice in unpaid_invoices)
+    invoice_count = len(invoices)
+    average = total_invoiced / invoice_count if invoice_count else 0.0
+
+    summary = FinancialSummary(
+        period_start=start,
+        period_end=end,
+        total_invoiced=total_invoiced,
+        total_paid=total_paid,
+        total_unpaid=total_unpaid,
+        invoice_count=invoice_count,
+        paid_invoice_count=len(paid_invoices),
+        unpaid_invoice_count=len(unpaid_invoices),
+        average_invoice_amount=average,
+    )
+    return format_financial_summary(summary)

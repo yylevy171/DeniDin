@@ -139,10 +139,23 @@ tests (25 new unit + the 10 existing sandbox integration tests, unchanged). Full
   in isolation, not a regression).
 
 ### US5 — `get_financial_summary` (new)
-- [ ] **T010a** [US5] Failing real-sandbox test `test_morning_sandbox_financial_summary_tool.py`
-  (period → totals/counts).
-- [ ] **T010b** [US5] Add `MorningClient.get_financial_summary` (`POST /documents/search`
-  aggregation) and the tool in `tools.py`.
+- [x] **T010a** [US5] Wrote failing real-sandbox test `test_morning_sandbox_financial_summary_tool.py`
+  (month period includes a seeded invoice; custom period requires both dates; unknown period
+  rejected; zero-result custom range returns ₪0.00). Confirmed RED before implementation.
+- [x] **T010b** [US5] Implemented `get_financial_summary` in `tools.py`, aggregating
+  client-side over the existing `MorningClient.list_invoices` (`POST /documents/search`) —
+  Morning has **no dedicated summary/aggregation endpoint** (confirmed against the Postman
+  collection). New `formatters.format_financial_summary` + reused `FinancialSummary` model.
+  **Real-sandbox finding with a genuine scoping consequence**: cancelling an invoice (US3)
+  issues a linked Credit Invoice but does **not** change the original's own `status`
+  (confirmed live — still `0`/unpaid after cancellation), and `linkedDocumentIds` is not
+  returned on read for either document. Since this app is deliberately stateless (`plan.md`),
+  a specific cancelled invoice cannot be excluded from the paid/unpaid tally without adding
+  persistence this app doesn't have. Documented approximation: counts/paid/unpaid classify
+  only primary sale types (305/320); Credit Invoice (330) amounts are netted out of
+  `total_invoiced` so cancelled invoices don't inflate reported revenue, but their count still
+  shows in `invoice_count`/`unpaid_invoice_count`. `contracts/get_financial_summary.json`
+  updated to document this. 59/59 full suite green.
 
 ### US6 — `send_invoice` (new; Morning-native send, NO denidin-app dependency)
 - [ ] **T011a** [US6] Failing real-sandbox test `test_morning_sandbox_send_invoice_tool.py`
