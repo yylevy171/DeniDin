@@ -596,3 +596,37 @@ def get_financial_summary(
         average_invoice_amount=average,
     )
     return format_financial_summary(summary)
+
+
+def download_invoice_pdf(client: MorningClient, invoice_id: str, lang: str = "he") -> str:
+    """Return a PDF download link for an invoice, in a Hebrew confirmation string.
+
+    MCP tool: download_invoice_pdf (contracts/download_invoice_pdf.json,
+    user-stories.md US7).
+
+    Real mechanism (confirmed live): no separate download endpoint call is
+    needed — `GET /documents/{id}` (the existing `MorningClient.get_invoice`)
+    already returns a `url: {he, origin}` object with ready-to-use, pre-signed
+    PDF download links (`GET /documents/download?d=...`).
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        invoice_id: Morning document id.
+        lang: Which link to prefer — "he" (Hebrew) or "origin" (default/English).
+            Falls back to whichever is present if the preferred one is missing.
+
+    Returns:
+        A Hebrew confirmation string containing the PDF download URL.
+
+    Raises:
+        ValueError: if no download URL is present on the document at all.
+    """
+    original = client.get_invoice(invoice_id)
+    urls = original.get("url") or {}
+    pdf_url = urls.get(lang) or urls.get("origin") or urls.get("he")
+
+    if not pdf_url:
+        raise ValueError(f"No PDF download URL available for invoice {invoice_id!r}.")
+
+    invoice_number = original.get("number", invoice_id)
+    return f"קישור להורדת חשבונית מספר {invoice_number}:\n{pdf_url}"

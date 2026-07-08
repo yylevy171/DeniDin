@@ -176,13 +176,17 @@ tests (25 new unit + the 10 existing sandbox integration tests, unchanged). Full
   test file. `spec.md`/`user-stories.md`/`plan.md` updated to 7 tools.
 
 ### US7 — `download_invoice_pdf` (new)
-- [ ] **T012a** [US7] Failing real-sandbox test `test_morning_sandbox_download_pdf_tool.py`
-  (returns PDF URL or Base64).
-- [ ] **T012b** [US7] Add `MorningClient.get_invoice_pdf` and the `download_invoice_pdf`
-  tool in `tools.py`.
+- [x] **T012a** [US7] Wrote failing real-sandbox test `test_morning_sandbox_download_pdf_tool.py`
+  (returns a real download URL; nonexistent invoice raises). Confirmed RED
+  (`ImportError: download_invoice_pdf`) before implementation.
+- [x] **T012b** [US7] Implemented `download_invoice_pdf` in `tools.py`. **No new client
+  method needed** — `GET /documents/{id}` (the existing `MorningClient.get_invoice`) already
+  returns a `url: {he, origin}` object with ready-to-use, pre-signed PDF download links
+  (`GET /documents/download?d=...`); confirmed live on both a create response and a
+  subsequent `get_invoice` fetch. 61/61 full suite green.
 
-**Checkpoint**: all 7 tools callable end-to-end against the sandbox; every tool's test was
-RED before its implementation.
+**Checkpoint**: ✅ met — all 7 tools callable end-to-end against the sandbox; every tool's
+test was RED before its implementation.
 
 ---
 
