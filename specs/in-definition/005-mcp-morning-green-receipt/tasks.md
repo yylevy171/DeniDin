@@ -94,10 +94,32 @@ tests (25 new unit + the 10 existing sandbox integration tests, unchanged). Full
   (existing approved tests left unmodified). 47/47 full suite green.
 
 ### US3 — `get_invoice_details` (client method exists) + `update_invoice_status` (new)
-- [ ] **T008a** [US3] Failing real-sandbox test `test_morning_sandbox_invoice_status_tools.py`
-  (get details returns status/payments; update status via `PUT /documents/{id}`).
-- [ ] **T008b** [US3] Add `MorningClient.update_invoice_status` (`PUT /documents/{id}`) and
-  implement `get_invoice_details` + `update_invoice_status` tools in `tools.py`.
+- [x] **T008a** [US3] Wrote failing real-sandbox test `test_morning_sandbox_invoice_status_tools.py`
+  (get details returns status/dates; paid/unpaid/cancelled transitions; idempotency and
+  rejection edge cases). Confirmed RED before implementation.
+- [x] **T008b** [US3] Implemented `get_invoice_details` (new `formatters.format_invoice_details`)
+  and `update_invoice_status` in `tools.py`. **Real-sandbox findings that changed the design
+  from what the contract assumed**:
+  - There is no `PUT /documents/{id}/status`. `POST /documents/{id}/close` and `/open` exist
+    (added to `MorningClient`) but return 400 (`errorCode 3000`) for tax invoices (type 305) —
+    live testing showed they only apply to other document lifecycles (orders/proformas), not
+    invoices.
+  - **"paid"** is instead achieved by issuing a **linked Receipt** (type 400,
+    `linkedDocumentIds=[invoice_id]`) via the existing generic `POST /documents` — confirmed
+    live: this flips the original's `status` automatically (`None`/`0` → `1`). Idempotent
+    no-op if already paid.
+  - **"unpaid"**: idempotent no-op if not yet paid; raises `ValueError` if already paid —
+    `POST /documents/{id}/open` on a receipt-closed invoice returns 400
+    (`errorCode 2401`, `"לא ניתן לפתוח מסמך שאינו סגור ידנית"` — cannot reopen a document that
+    wasn't manually closed). No supported reversal exists.
+  - **"cancelled" — the case the user explicitly asked to fully support** (mistake made
+    creating an invoice; needs voiding so a corrected one can be created): implemented as a
+    linked **Credit Invoice** (type 330, `"חשבונית זיכוי"` — confirmed live via
+    `GET /documents/types`) via the same generic `POST /documents`, since Israeli law forbids
+    deleting/voiding an issued tax invoice outright. `contracts/update_invoice_status.json`
+    updated to document all of the above (its original `PUT .../status` assumption was wrong).
+  - Status codes (0/1/2/3/4) were confirmed live via `GET /documents/statuses` (see US2 entry).
+  - 53/53 full suite green (32 unit + 21 integration).
 
 ### US4 — `add_client` (new)
 - [ ] **T009a** [US4] Failing real-sandbox test `test_morning_sandbox_add_client_tool.py`

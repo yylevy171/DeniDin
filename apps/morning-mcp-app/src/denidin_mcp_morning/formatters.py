@@ -48,6 +48,22 @@ def format_invoice_confirmation(invoice: Invoice) -> str:
     return "\n".join(lines)
 
 
+def format_invoice_details(invoice: Invoice) -> str:
+    """Build a full Hebrew details view (user-stories.md US3): status, dates,
+    payments, in addition to the base confirmation fields."""
+    lines = [format_invoice_confirmation(invoice)]
+
+    if invoice.issue_date:
+        lines.append(f"תאריך הפקה: {format_date_il(invoice.issue_date)}")
+
+    if invoice.payments:
+        lines.append("תשלומים:")
+        for payment in invoice.payments:
+            lines.append(f"  - {format_currency_ils(payment.amount)} ({format_date_il(payment.payment_date)})")
+
+    return "\n".join(lines)
+
+
 def format_invoice_list(invoices: List[Invoice], has_more: bool = False) -> str:
     """Build a Hebrew, human-readable list of invoices (user-stories.md US2).
 
