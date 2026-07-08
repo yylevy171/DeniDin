@@ -553,7 +553,8 @@ class SessionManager:
         content: str,
         user_role: Role,
         sender: Optional[str] = None,
-        recipient: Optional[str] = None
+        recipient: Optional[str] = None,
+        image_path: Optional[str] = None
     ) -> str:
         """
         Add message and update session token count.
@@ -565,12 +566,15 @@ class SessionManager:
             user_role: User role (for tracking, not enforced here)
             sender: Message sender (optional)
             recipient: Message recipient (optional)
+            image_path: Path to associated media file (optional)
 
         Returns:
             Message UUID
         """
         # Add message normally
-        message_id = self.add_message(chat_id, role, content, user_role, sender, recipient)
+        message_id = self.add_message(
+            chat_id, role, content, user_role, sender, recipient, image_path=image_path
+        )
 
         # Count and add tokens
         tokens = self.count_tokens(content)
@@ -588,7 +592,8 @@ class SessionManager:
         user_role: Role,
         token_limit: int,
         sender: Optional[str] = None,
-        recipient: Optional[str] = None
+        recipient: Optional[str] = None,
+        image_path: Optional[str] = None
     ) -> str:
         """
         Add message with token limit enforcement and auto-pruning.
@@ -601,6 +606,7 @@ class SessionManager:
             token_limit: Maximum tokens allowed for this role
             sender: Message sender (optional)
             recipient: Message recipient (optional)
+            image_path: Path to associated media file (optional)
 
         Returns:
             Message UUID
@@ -625,7 +631,9 @@ class SessionManager:
             self._prune_until_under_limit(chat_id, token_limit, new_tokens)
 
         # Add message with token tracking
-        return self.add_message_with_tokens(chat_id, role, content, user_role, sender, recipient)
+        return self.add_message_with_tokens(
+            chat_id, role, content, user_role, sender, recipient, image_path=image_path
+        )
 
     def calculate_session_tokens(self, chat_id: str) -> int:
         """
