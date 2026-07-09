@@ -147,3 +147,29 @@ def test_load_config_reads_mcp_auth_token_when_present(tmp_path):
     config = load_config(config_with_token)
 
     assert config.mcp_auth_token == "super-secret-token"
+
+
+def test_load_config_defaults_openai_api_key_to_none():
+    """No openai_api_key configured -> tests/expensive (T021) must skip gracefully."""
+    config = load_config(TEST_CONFIG_PATH)
+
+    assert config.openai_api_key is None
+
+
+def test_load_config_reads_openai_api_key_when_present(tmp_path):
+    config_with_key = tmp_path / "config.json"
+    config_with_key.write_text(
+        json.dumps(
+            {
+                "api_key_id": "x",
+                "api_key_secret": "y",
+                "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+                "openai_api_key": "sk-test-key-value",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_with_key)
+
+    assert config.openai_api_key == "sk-test-key-value"

@@ -141,27 +141,52 @@ except Exception:
 " 2>/dev/null) || NGROK_CONFIG=""
 eval "$NGROK_CONFIG"
 
-if [ -n "$NGROK_AUTHTOKEN" ] && [ -n "$NGROK_DOMAIN" ]; then
+# NOTE: ngrok's free tier only requires an authtoken (free account, no
+# payment) - a reserved/static domain is a PAID feature. mcp.ngrok_domain is
+# therefore optional here: if unset, we start a plain (free) tunnel with a
+# random URL and print it by querying ngrok's local API
+# (http://127.0.0.1:4040/api/tunnels) after startup, since the URL isn't
+# known ahead of time in that case.
+if [ -n "$NGROK_AUTHTOKEN" ]; then
     if ! command -v ngrok >/dev/null 2>&1; then
         echo ""
-        echo "WARNING: mcp.ngrok_authtoken/ngrok_domain are configured, but the 'ngrok'"
-        echo "         CLI is not installed. Server is running locally only (no public"
-        echo "         tunnel). Install ngrok to enable it: https://ngrok.com/download"
+        echo "WARNING: mcp.ngrok_authtoken is configured, but the 'ngrok' CLI is not"
+        echo "         installed. Server is running locally only (no public tunnel)."
+        echo "         Install: brew install --cask ngrok  (or https://ngrok.com/download)"
     elif [ -f "$NGROK_PIDFILE" ] && is_ngrok_running "$(cat "$NGROK_PIDFILE")"; then
         echo ""
         echo "ngrok tunnel already running (PID $(cat "$NGROK_PIDFILE")) - not starting a second one."
     else
         echo ""
-        echo "Starting persistent ngrok tunnel -> https://$NGROK_DOMAIN"
         ngrok config add-authtoken "$NGROK_AUTHTOKEN" >/dev/null 2>&1 || true
-        nohup ngrok http --domain="$NGROK_DOMAIN" "$MCP_PORT" </dev/null >"$NGROK_LOGFILE" 2>&1 &
+        if [ -n "$NGROK_DOMAIN" ]; then
+            echo "Starting ngrok tunnel (reserved domain) -> https://$NGROK_DOMAIN"
+            nohup ngrok http --domain="$NGROK_DOMAIN" "$MCP_PORT" </dev/null >"$NGROK_LOGFILE" 2>&1 &
+        else
+            echo "Starting ngrok tunnel (free tier, random URL)..."
+            nohup ngrok http "$MCP_PORT" </dev/null >"$NGROK_LOGFILE" 2>&1 &
+        fi
         NGROK_PID=$!
         sleep 0.5
         echo "$NGROK_PID" > "$NGROK_PIDFILE"
         sleep 2
         if is_ngrok_running "$NGROK_PID"; then
-            echo "✓ ngrok tunnel started (PID $NGROK_PID) -> https://$NGROK_DOMAIN"
+            if [ -n "$NGROK_DOMAIN" ]; then
+                PUBLIC_URL="https://$NGROK_DOMAIN"
+            else
+                PUBLIC_URL=$("$PYTHON_BIN" -c "
+import json, urllib.request
+try:
+    with urllib.request.urlopen('http://127.0.0.1:4040/api/tunnels', timeout=5) as resp:
+        data = json.load(resp)
+    print(data['tunnels'][0]['public_url'])
+except Exception:
+    print('(check http://127.0.0.1:4040 for the assigned URL)')
+" 2>/dev/null)
+            fi
+            echo "✓ ngrok tunnel started (PID $NGROK_PID) -> $PUBLIC_URL"
             echo "  ngrok logs: $NGROK_LOGFILE"
+            echo "  ngrok local inspector: http://127.0.0.1:4040"
         else
             echo "✗ ngrok tunnel failed to start. Check $NGROK_LOGFILE"
             rm -f "$NGROK_PIDFILE"

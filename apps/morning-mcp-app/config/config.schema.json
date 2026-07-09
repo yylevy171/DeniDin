@@ -39,12 +39,20 @@
       "default": 3,
       "description": "Client-side rate limit to stay under Morning's ~3 req/s (429) ceiling."
     },
+    "openai_api_key": {
+      "type": "string",
+      "description": "OpenAI API key used only by tests/expensive/test_openai_invokes_mcp_e2e.py (Phase 5, T021) to drive this server as a remote MCP tool via the real OpenAI Responses API. Not read by the server itself. Never commit a real value - keep it in config/config.json only."
+    },
     "mcp": {
       "type": "object",
       "description": "FastMCP server settings (streamable-HTTP transport).",
       "properties": {
         "server_name": { "type": "string", "default": "denidin-morning" },
-        "host": { "type": "string", "default": "127.0.0.1" },
+        "host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Bind address. The default (127.0.0.1, loopback-only) is correct and safest for plain local dev, but is NOT reachable through Docker's port mapping (-p) or an ngrok tunnel targeting the container - a process bound only to the container's own loopback cannot be reached from outside its network namespace (confirmed live: curl from the host got a connection failure until this was changed). Docker/container deployments MUST set this to '0.0.0.0' in the mounted config.json."
+        },
         "port": { "type": "integer", "default": 8000 },
         "transport": {
           "type": "string",

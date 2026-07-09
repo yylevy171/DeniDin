@@ -57,12 +57,28 @@ real credentials or contains placeholder-looking values.
 ## Running the MCP server
 
 ```bash
-python3 -m denidin_mcp_morning.server
+./run_morning_mcp.sh      # start (PID-file enforced single instance)
+./stop_morning_mcp.sh     # graceful stop
+./restart_morning_mcp.sh  # stop + start
+python3 -m denidin_mcp_morning.server   # or run directly (foreground)
 ```
 Starts the FastMCP server over streamable-HTTP (host/port/transport configurable
 under `mcp{}` in `config/config.json`). Startup is gated behind
 `feature_flags.enable_mcp_server` (default `false`) — with it off, the process
 exits immediately with a clear message rather than silently serving nothing.
+Logs go to `logs/morning-mcp.log` (production) or `logs/test_logs/{test_file}.log`
+(tests), mirroring `denidin-app`'s logging.
+
+### Exposing the server publicly (optional — needed for OpenAI's remote-MCP connector)
+
+Set `mcp.ngrok_authtoken` in `config/config.json` (a **free** ngrok account is
+enough — no paid plan needed; `mcp.ngrok_domain` is optional and only relevant
+if you have a paid reserved/static domain). `run_morning_mcp.sh` then starts a
+tunnel alongside the server and prints its public URL;
+`stop_morning_mcp.sh` tears the tunnel down too. Protect the server with
+`mcp.auth_token` (a shared bearer secret) before exposing it — see
+`ARCHITECTURE.md` for why (the server has no auth by default, and its tools
+include state-changing operations).
 
 ## Docker
 
@@ -72,5 +88,14 @@ docker run --rm -p 8000:8000 -v "$(pwd)/config:/app/config:ro" morning-mcp-app
 ```
 Runs the MCP server (same feature-flag gate as above — set
 `feature_flags.enable_mcp_server: true` in the mounted `config/config.json` or
-the container exits immediately). Can also be run via the root
+the container exits immediately). The image includes `ngrok`; if
+`mcp.ngrok_authtoken` is set in the mounted config, `docker-entrypoint.sh`
+starts a tunnel automatically before starting the server and prints the
+public URL to container logs (`docker logs`). Can also be run via the root
 `docker-compose.yml` (`docker compose up morning-mcp-app`).
+
+**⚠️ Required for Docker**: set `"mcp": {"host": "0.0.0.0"}` in the mounted
+`config/config.json`. The default `127.0.0.1` (correct for plain local dev)
+binds to the container's own loopback only — confirmed live that `-p`
+port-mapped traffic (and an ngrok tunnel targeting the container) cannot
+reach the process at all until this is changed to `0.0.0.0`.

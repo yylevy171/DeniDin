@@ -346,30 +346,63 @@ Mirror denidin-app's own patterns exactly (inspected live from
     account authtoken/reserved domain has been provided yet — the actual tunnel
     start/reachability can't be verified until those exist (see T021 below).
   - 97/97 full suite green (no regressions).
-- [ ] **T021** [E2E-EXPENSIVE] Real end-to-end test where an **external
-  OpenAI call** actually drives the running MCP server as a remote-MCP tool
-  source (not just our own MCP client, per T014): start the real FastMCP
-  server (same pattern as `test_mcp_server_e2e.py`) with `mcp.auth_token` set
-  (T021-auth), tunnel it publicly, configure an OpenAI Responses API call
-  with this server (+ bearer header) registered as a remote MCP tool, send
-  a natural-language prompt (e.g. "create an invoice for Test Corp for 50
-  NIS"), assert the model actually invoked `create_invoice` and a real
-  document was created in the Morning sandbox (verify via
-  `get_invoice_details`/`list_invoices`). New file under a new
-  `tests/expensive/` folder (mirroring denidin-app's), marked
-  `@pytest.mark.expensive`; update `pytest.ini` to register the marker and
-  add `addopts = -m "not expensive"` so it's skipped by default (mirroring
-  denidin-app's `pytest.ini`). Requires a real OpenAI API key
-  (`config/config.json`'s own new field, per user decision 2026-07-09) and an
-  ngrok reserved/static domain (persistent tunnel, per user decision
-  2026-07-09 — the ephemeral-per-test-run alternative was also considered and
-  rejected in favor of a stable URL). Skip gracefully if credentials/tunnel
-  aren't configured. Follows the same expensive-test rules as denidin-app
-  (CONSTITUTION §VII / CLAUDE.md): **human approval required before every
-  single run**, run it alone (never batched), read `logs/test_logs/` before
-  re-running, only re-run after a confident fix.
-  **Still needed from the user before this can be built**: an ngrok account
-  authtoken + reserved/static domain (paid plan), and the OpenAI API key.
+- [x] **T021** [E2E-EXPENSIVE] Written (per explicit user instruction, **not yet run** —
+  requires the approval gate below first). Real end-to-end test where an **external
+  OpenAI call** actually drives the running MCP server as a remote-MCP tool source (not
+  just our own MCP client, per T014).
+  - **Design correction mid-task**: the user initially wanted a *persistent* reserved-domain
+    tunnel (hence T021-tunnel-scripts), then clarified they don't want to pay for ngrok.
+    ngrok's **free tier is genuinely sufficient** — a no-cost account + authtoken gives a
+    tunnel, just with a *random* URL instead of a stable one; a paid plan is only needed for
+    a *reserved* domain. Since the test only needs the URL for its own runtime (not
+    indefinitely), this switched the design back to an **ephemeral, per-test-run tunnel**
+    with the URL fetched dynamically from ngrok's local inspector API
+    (`http://127.0.0.1:4040/api/tunnels`) — new `tests/expensive/e2e_helpers.py`
+    (`ngrok_tunnel()` context manager: starts `ngrok http <port>`, polls the local API for
+    the public HTTPS URL, tears the process down after). This is also strictly safer than a
+    permanent tunnel (smaller exposure window for an unauthenticated-by-default server whose
+    tools include state-changing operations).
+  - **Verified the tunnel mechanism works, independent of OpenAI** (per explicit
+    instruction — "not from openai, but any other way"): new
+    `tests/integration/test_ngrok_tunnel.py` starts the real local server + a real ngrok
+    tunnel, then hits the **public** ngrok URL directly with `requests` to prove real
+    internet traffic reaches the local process (checked via the bearer-auth boundary: no
+    token → 401, correct token → not 401). Currently **skips** (no `ngrok_authtoken`
+    configured yet — user is signing up for a free account); ready to run for real once
+    provided.
+  - **OpenAI API key**: copied from `apps/denidin-app/config/config.json`'s `ai_api_key`
+    into this app's own `config/config.json` as `openai_api_key` (per user decision — own
+    config, not shared/read from denidin-app). New schema field (both `config.schema.json`
+    copies), read-only by the expensive test itself (not by `server.py`).
+  - **`tests/expensive/test_openai_invokes_mcp_e2e.py`**: starts the real bearer-protected
+    local server, opens the real ephemeral ngrok tunnel, calls the real OpenAI Responses API
+    (`client.responses.create(tools=[{"type": "mcp", "server_url": ..., "headers":
+    {"Authorization": "Bearer ..."}, "require_approval": "never"}])`) with a natural-language
+    prompt, asserts an output item with `type == "mcp_call"` and `name == "create_invoice"`
+    exists with no `error`, then **independently verifies** (not just trusting the model's
+    textual claim) that a matching document actually landed in the Morning sandbox via
+    `MorningClient.list_invoices`. The `McpCall` output-item schema (`.name`, `.arguments`,
+    `.output`, `.error`, `.status`, discriminated by `type == "mcp_call"`) was confirmed by
+    reading the installed `openai` SDK's own
+    `openai.types.responses.response_output_item.McpCall` class directly — documentation
+    coverage of this is thin, so the SDK's type definitions were treated as the authoritative
+    source, not guessed.
+  - `pytest.ini` updated: registered the `expensive` marker + `addopts = -m "not expensive"`
+    (mirroring denidin-app), so this test is **excluded by default**. **Confirmed**: full
+    default suite run collects 100/101 (1 correctly deselected), the expensive test collects
+    fine under `-m expensive --collect-only` (imports/syntax valid), and has **not been
+    executed** — no OpenAI billing has occurred.
+  - **⚠️ Flagged, not fixed (explicit user instruction: "dont")**: `config/config.json`'s
+    `api_url` points at Green Invoice **production**, not sandbox. If this test is ever run
+    against that config, a successful `create_invoice` call creates a **real invoice in the
+    real production Morning account** — this is not a test-only side effect. Whoever
+    approves running T021 should confirm which `api_url` they intend to hit first.
+  - **Before running**: (1) provide a free ngrok authtoken (no payment needed) so
+    `test_ngrok_tunnel.py` can be verified for real and `mcp.ngrok_authtoken` populated; (2)
+    confirm the `OPENAI_MODEL` constant (currently `"gpt-4.1"`) is still a valid/available
+    model; (3) explicit human approval per CONSTITUTION §VII/CLAUDE.md — human approval
+    required before every single run, run alone (never batched), read `logs/test_logs/`
+    before re-running, only re-run after a confident fix.
 
 ---
 
