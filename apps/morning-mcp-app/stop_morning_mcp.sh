@@ -6,6 +6,28 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIDFILE="$SCRIPT_DIR/.morning_mcp.pid"
+NGROK_PIDFILE="$SCRIPT_DIR/.ngrok.pid"
+
+# Stop the ngrok tunnel (if one was started by run_morning_mcp.sh) whenever
+# this script exits, regardless of which path/exit code below was taken.
+stop_ngrok_if_running() {
+    if [ ! -f "$NGROK_PIDFILE" ]; then
+        return 0
+    fi
+    local ngrok_pid
+    ngrok_pid=$(cat "$NGROK_PIDFILE")
+    if ps -p "$ngrok_pid" > /dev/null 2>&1 && ps -p "$ngrok_pid" -o command= | grep -iq "ngrok"; then
+        echo "Stopping ngrok tunnel (PID $ngrok_pid)..."
+        kill -TERM "$ngrok_pid" 2>/dev/null || true
+        sleep 1
+        if ps -p "$ngrok_pid" > /dev/null 2>&1; then
+            kill -9 "$ngrok_pid" 2>/dev/null || true
+        fi
+        echo "✓ ngrok tunnel stopped"
+    fi
+    rm -f "$NGROK_PIDFILE"
+}
+trap stop_ngrok_if_running EXIT
 
 # Check if PID file exists
 if [ ! -f "$PIDFILE" ]; then

@@ -59,6 +59,14 @@
         "auth_token": {
           "type": "string",
           "description": "Optional shared bearer-token secret. If set, the MCP server rejects any request without a matching 'Authorization: Bearer <token>' header (401). If unset (default), no auth is enforced - appropriate for pure local/dev use. Set once the server is exposed via a tunnel/public URL."
+        },
+        "ngrok_authtoken": {
+          "type": "string",
+          "description": "Optional ngrok account authtoken. If set (with ngrok_domain), run_morning_mcp.sh starts a persistent ngrok tunnel exposing this server publicly (used by the expensive OpenAI remote-MCP E2E test). If unset, no tunnel is started."
+        },
+        "ngrok_domain": {
+          "type": "string",
+          "description": "Optional ngrok reserved/static domain (requires a paid ngrok plan) for a stable hostname. Only used if ngrok_authtoken is also set."
         }
       }
     },

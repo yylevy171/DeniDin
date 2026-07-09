@@ -13,7 +13,9 @@
     "port": 8000,
     "transport": "streamable-http",
     "log_level": "INFO",
-    "auth_token": ""
+    "auth_token": "",
+    "ngrok_authtoken": "",
+    "ngrok_domain": ""
   },
   "feature_flags": {
     "enable_mcp_server": false

@@ -99,6 +99,37 @@ def test_load_config_defaults_mcp_auth_token_to_none():
     assert config.mcp_auth_token is None
 
 
+def test_load_config_defaults_ngrok_fields_to_none():
+    """No ngrok config -> run_morning_mcp.sh skips tunnel setup entirely (see T021-tunnel)."""
+    config = load_config(TEST_CONFIG_PATH)
+
+    assert config.mcp_ngrok_authtoken is None
+    assert config.mcp_ngrok_domain is None
+
+
+def test_load_config_reads_ngrok_fields_when_present(tmp_path):
+    config_with_ngrok = tmp_path / "config.json"
+    config_with_ngrok.write_text(
+        json.dumps(
+            {
+                "api_key_id": "x",
+                "api_key_secret": "y",
+                "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+                "mcp": {
+                    "ngrok_authtoken": "ngrok-token-value",
+                    "ngrok_domain": "example.ngrok-free.app",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_with_ngrok)
+
+    assert config.mcp_ngrok_authtoken == "ngrok-token-value"
+    assert config.mcp_ngrok_domain == "example.ngrok-free.app"
+
+
 def test_load_config_reads_mcp_auth_token_when_present(tmp_path):
     config_with_token = tmp_path / "config.json"
     config_with_token.write_text(

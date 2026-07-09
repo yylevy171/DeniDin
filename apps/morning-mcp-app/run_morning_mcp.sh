@@ -9,6 +9,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_MODULE="denidin_mcp_morning.server"
 PIDFILE="$SCRIPT_DIR/.morning_mcp.pid"
 LOGFILE="$SCRIPT_DIR/logs/morning-mcp.log"
+NGROK_PIDFILE="$SCRIPT_DIR/.ngrok.pid"
+NGROK_LOGFILE="$SCRIPT_DIR/logs/ngrok.log"
+CONFIG_FILE="$SCRIPT_DIR/config/config.json"
 
 # Prefer this app's own venv (it needs Python 3.10+ and the `mcp` package,
 # which a bare ambient `python3` may not have/satisfy) - fall back to
@@ -35,6 +38,20 @@ is_running() {
     if ps -p "$pid" > /dev/null 2>&1; then
         # Verify it's actually our application (case-insensitive match)
         if ps -p "$pid" -o command= | grep -iq "python.*denidin_mcp_morning\.server"; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Function to check if the ngrok tunnel process is running
+is_ngrok_running() {
+    local pid=$1
+    if [ -z "$pid" ]; then
+        return 1
+    fi
+    if ps -p "$pid" > /dev/null 2>&1; then
+        if ps -p "$pid" -o command= | grep -iq "ngrok"; then
             return 0
         fi
     fi
@@ -102,4 +119,52 @@ else
     echo "  (Common cause: feature_flags.enable_mcp_server is false in config/config.json)"
     rm -f "$PIDFILE"
     exit 1
+fi
+
+# --- Optional ngrok tunnel (Phase 5, T021) ---
+# Only attempted if the server itself started successfully. Reads
+# mcp.ngrok_authtoken/mcp.ngrok_domain via our own config loader (so schema
+# validation/defaults stay in one place); no-ops entirely if either is unset
+# - this is the common case and changes nothing about local/CI behavior.
+NGROK_CONFIG=$(PYTHONPATH="$SCRIPT_DIR/src" "$PYTHON_BIN" -c "
+from pathlib import Path
+from denidin_mcp_morning.config import load_config
+try:
+    config = load_config(Path('$CONFIG_FILE'))
+    print(f'NGROK_AUTHTOKEN={config.mcp_ngrok_authtoken or \"\"}')
+    print(f'NGROK_DOMAIN={config.mcp_ngrok_domain or \"\"}')
+    print(f'MCP_PORT={config.mcp_port}')
+except Exception:
+    print('NGROK_AUTHTOKEN=')
+    print('NGROK_DOMAIN=')
+    print('MCP_PORT=8000')
+" 2>/dev/null) || NGROK_CONFIG=""
+eval "$NGROK_CONFIG"
+
+if [ -n "$NGROK_AUTHTOKEN" ] && [ -n "$NGROK_DOMAIN" ]; then
+    if ! command -v ngrok >/dev/null 2>&1; then
+        echo ""
+        echo "WARNING: mcp.ngrok_authtoken/ngrok_domain are configured, but the 'ngrok'"
+        echo "         CLI is not installed. Server is running locally only (no public"
+        echo "         tunnel). Install ngrok to enable it: https://ngrok.com/download"
+    elif [ -f "$NGROK_PIDFILE" ] && is_ngrok_running "$(cat "$NGROK_PIDFILE")"; then
+        echo ""
+        echo "ngrok tunnel already running (PID $(cat "$NGROK_PIDFILE")) - not starting a second one."
+    else
+        echo ""
+        echo "Starting persistent ngrok tunnel -> https://$NGROK_DOMAIN"
+        ngrok config add-authtoken "$NGROK_AUTHTOKEN" >/dev/null 2>&1 || true
+        nohup ngrok http --domain="$NGROK_DOMAIN" "$MCP_PORT" </dev/null >"$NGROK_LOGFILE" 2>&1 &
+        NGROK_PID=$!
+        sleep 0.5
+        echo "$NGROK_PID" > "$NGROK_PIDFILE"
+        sleep 2
+        if is_ngrok_running "$NGROK_PID"; then
+            echo "✓ ngrok tunnel started (PID $NGROK_PID) -> https://$NGROK_DOMAIN"
+            echo "  ngrok logs: $NGROK_LOGFILE"
+        else
+            echo "✗ ngrok tunnel failed to start. Check $NGROK_LOGFILE"
+            rm -f "$NGROK_PIDFILE"
+        fi
+    fi
 fi

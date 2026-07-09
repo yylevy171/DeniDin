@@ -325,6 +325,27 @@ Mirror denidin-app's own patterns exactly (inspected live from
     via `requests`, then a full real MCP tool-listing round trip with the correct token via
     `httpx.AsyncClient` + `streamable_http_client`). 2 new config tests. 95/95 full suite
     green.
+- [x] **T021-tunnel-scripts** [prerequisite for T021] ngrok tunnel management in
+  `run_morning_mcp.sh`/`stop_morning_mcp.sh`, per user decision 2026-07-09 (persistent
+  reserved-domain tunnel, managed by the run script rather than per-test-run):
+  - New config fields `mcp.ngrok_authtoken`/`mcp.ngrok_domain` (optional, default unset) —
+    2 new unit tests.
+  - `run_morning_mcp.sh`: after the server itself starts successfully, reads these via the
+    app's own `load_config()`; if both set, runs `ngrok config add-authtoken` +
+    `ngrok http --domain=<domain> <port>` in the background, tracks its PID in `.ngrok.pid`,
+    verifies it started. If unset (the common case), this whole section no-ops — **verified
+    live**: a full start/stop cycle with no ngrok config produces byte-identical output to
+    before this change. If `ngrok_authtoken`/`ngrok_domain` ARE set but the `ngrok` CLI isn't
+    installed (the actual case on this dev machine), prints a clear warning and continues —
+    **verified live**: server still starts fine, warning shown, no crash.
+  - `stop_morning_mcp.sh`: added a `trap ... EXIT` that stops the ngrok process (if
+    `.ngrok.pid` exists) on every exit path.
+  - Added `.ngrok.pid` to `.gitignore`; documented both fields in `config.example.json` and
+    both `config.schema.json` copies.
+  - **Still not testable end-to-end**: `ngrok` isn't installed on this machine, and no
+    account authtoken/reserved domain has been provided yet — the actual tunnel
+    start/reachability can't be verified until those exist (see T021 below).
+  - 97/97 full suite green (no regressions).
 - [ ] **T021** [E2E-EXPENSIVE] Real end-to-end test where an **external
   OpenAI call** actually drives the running MCP server as a remote-MCP tool
   source (not just our own MCP client, per T014): start the real FastMCP

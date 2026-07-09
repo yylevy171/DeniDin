@@ -35,6 +35,8 @@ class MorningMCPConfig:
     mcp_transport: str
     mcp_log_level: str
     mcp_auth_token: Optional[str]
+    mcp_ngrok_authtoken: Optional[str]
+    mcp_ngrok_domain: Optional[str]
     enable_mcp_server: bool
 
 
@@ -90,6 +92,8 @@ def load_config(path: Path) -> MorningMCPConfig:
         mcp_port=mcp_section.get("port", 8000),
         mcp_transport=mcp_section.get("transport", "streamable-http"),
         mcp_log_level=mcp_section.get("log_level", "INFO"),
-        mcp_auth_token=mcp_section.get("auth_token"),
+        mcp_auth_token=mcp_section.get("auth_token") or None,
+        mcp_ngrok_authtoken=mcp_section.get("ngrok_authtoken") or None,
+        mcp_ngrok_domain=mcp_section.get("ngrok_domain") or None,
         enable_mcp_server=feature_flags.get("enable_mcp_server", False),
     )

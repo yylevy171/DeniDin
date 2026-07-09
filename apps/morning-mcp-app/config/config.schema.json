@@ -59,6 +59,14 @@
         "auth_token": {
           "type": "string",
           "description": "Optional shared bearer-token secret. If set, the MCP server rejects any request without a matching 'Authorization: Bearer <token>' header (401) - see server.py's BearerTokenMiddleware. If unset (default), no auth is enforced - appropriate for pure local/dev use (this server has one expected main consumer, denidin-app, plus ad hoc manual tests; set this once the server is exposed via a tunnel/public URL). Never commit a real value - keep it in config/config.json only."
+        },
+        "ngrok_authtoken": {
+          "type": "string",
+          "description": "Optional ngrok account authtoken. If set (along with ngrok_domain), run_morning_mcp.sh starts a persistent ngrok tunnel exposing this server publicly (used by tests/expensive - the OpenAI remote-MCP E2E test - which needs a URL OpenAI can reach). If unset, no tunnel is started; the server just runs locally as before. Never commit a real value."
+        },
+        "ngrok_domain": {
+          "type": "string",
+          "description": "Optional ngrok reserved/static domain (requires a paid ngrok plan) to give the tunnel a stable hostname across restarts, e.g. 'your-app.ngrok-free.app' or a custom reserved domain. Only used if ngrok_authtoken is also set."
         }
       }
     },
