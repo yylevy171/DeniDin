@@ -87,31 +87,46 @@ def test_ngrok_tunnel_routes_real_internet_traffic_to_local_server(config, runni
 
     auth_token = running_server
 
+    def _post_once_tunnel_is_live(headers: dict, attempts: int = 8, delay: float = 1.0):
+        """Retry briefly on 404 — ngrok's local agent can report a tunnel as
+        active before the request actually reaches our app (confirmed live:
+        a 404 came back from ngrok's own edge, not our BearerTokenMiddleware,
+        which never returns 404 — global edge propagation lags the local
+        agent's "active" status by a second or so). A persistent 404 past
+        the retry budget is a real failure, not propagation lag.
+        """
+        last_response = None
+        for _ in range(attempts):
+            last_response = requests.post(
+                f"{public_url}/mcp",
+                json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+                headers=headers,
+                timeout=15,
+            )
+            if last_response.status_code != 404:
+                return last_response
+            time.sleep(delay)
+        return last_response
+
     try:
         with ngrok_tunnel(port=TEST_PORT, authtoken=config.mcp_ngrok_authtoken) as public_url:
             # Request 1: no auth header -> the LOCAL server's own middleware
             # should reject it. If this succeeds, the public URL is truly
             # reaching our process (not some other server / a cached page).
-            unauthenticated = requests.post(
-                f"{public_url}/mcp",
-                json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
-                headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
-                timeout=15,
+            unauthenticated = _post_once_tunnel_is_live(
+                {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
             )
             assert unauthenticated.status_code == 401
 
             # Request 2: correct token -> should NOT be rejected as
             # unauthorized (proves the tunnel carries headers through
             # correctly, not just that *some* response comes back).
-            authenticated = requests.post(
-                f"{public_url}/mcp",
-                json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
-                headers={
+            authenticated = _post_once_tunnel_is_live(
+                {
                     "Content-Type": "application/json",
                     "Accept": "application/json, text/event-stream",
                     "Authorization": f"Bearer {auth_token}",
-                },
-                timeout=15,
+                }
             )
             assert authenticated.status_code != 401
     except NgrokError as exc:

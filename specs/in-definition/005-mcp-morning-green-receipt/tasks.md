@@ -367,9 +367,15 @@ Mirror denidin-app's own patterns exactly (inspected live from
     `tests/integration/test_ngrok_tunnel.py` starts the real local server + a real ngrok
     tunnel, then hits the **public** ngrok URL directly with `requests` to prove real
     internet traffic reaches the local process (checked via the bearer-auth boundary: no
-    token → 401, correct token → not 401). Currently **skips** (no `ngrok_authtoken`
-    configured yet — user is signing up for a free account); ready to run for real once
-    provided.
+    token → 401, correct token → not 401). **Verified for real** (2026-07-09) once the user
+    provided a free ngrok authtoken (registered via `ngrok config add-authtoken` and stored
+    in `config/config.json`'s `mcp.ngrok_authtoken`) — passed on the first run in isolation.
+    **Real finding + fix**: failed once inside a full-suite run with a `404` — not from our
+    own `BearerTokenMiddleware` (which never returns 404), but from ngrok's own edge: the
+    local agent reports a tunnel "active" slightly before the public edge network has fully
+    propagated the route. Added a short bounded retry (`_post_once_tunnel_is_live`, up to
+    8×1s) that only tolerates `404` specifically, not any other failure. Verified stable
+    across two consecutive full-suite runs (100/100 both times).
   - **OpenAI API key**: copied from `apps/denidin-app/config/config.json`'s `ai_api_key`
     into this app's own `config/config.json` as `openai_api_key` (per user decision — own
     config, not shared/read from denidin-app). New schema field (both `config.schema.json`
@@ -397,12 +403,12 @@ Mirror denidin-app's own patterns exactly (inspected live from
     against that config, a successful `create_invoice` call creates a **real invoice in the
     real production Morning account** — this is not a test-only side effect. Whoever
     approves running T021 should confirm which `api_url` they intend to hit first.
-  - **Before running**: (1) provide a free ngrok authtoken (no payment needed) so
-    `test_ngrok_tunnel.py` can be verified for real and `mcp.ngrok_authtoken` populated; (2)
-    confirm the `OPENAI_MODEL` constant (currently `"gpt-4.1"`) is still a valid/available
-    model; (3) explicit human approval per CONSTITUTION §VII/CLAUDE.md — human approval
-    required before every single run, run alone (never batched), read `logs/test_logs/`
-    before re-running, only re-run after a confident fix.
+  - **Before running**: ~~(1) provide a free ngrok authtoken~~ — **done** 2026-07-09, tunnel
+    verified for real (see above); (2) confirm the `OPENAI_MODEL` constant (currently
+    `"gpt-4.1"`) is still a valid/available model; (3) explicit human approval per
+    CONSTITUTION §VII/CLAUDE.md — human approval required before every single run, run alone
+    (never batched), read `logs/test_logs/` before re-running, only re-run after a confident
+    fix.
 
 ---
 
