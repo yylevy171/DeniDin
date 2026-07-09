@@ -264,30 +264,41 @@ Mirror denidin-app's own patterns exactly (inspected live from
 `apps/denidin-app/` — `conftest.py`, `src/utils/logger.py`, `run_denidin.sh`,
 `stop_denidin.sh`, `restart_denidin.sh`, `pytest.ini`, `tests/expensive/`).
 
-- [ ] **T019** [LOGGING] Application + per-test logging, mirroring denidin-app:
-  - `src/denidin_mcp_morning/utils/logger.py` — `setup_logger()`/`get_logger()`
-    with a `RotatingFileHandler` (10MB, 5 backups) writing to
-    `logs/morning-mcp.log` by default; console handler too; `propagate=False`
-    in production. Wire into `server.py` so all logging (tool calls, morning
-    API errors) lands there.
-  - `conftest.py` — add a `pytest_runtest_setup` hook identical in spirit to
-    denidin-app's: before each test, clear all existing logger handlers and
-    attach a fresh `FileHandler` to the root logger pointed at
-    `logs/test_logs/{test_file}.log`, so **every test file gets its own
-    dedicated log** (not just the sandbox-specific `log_cli` currently in
-    `pytest.ini`). Add a session-scoped autouse fixture that creates
-    `logs/test_logs/` up front.
-  - Confirm `logs/` is gitignored (check root `.gitignore` — likely already
-    covered, but verify for this app specifically).
-- [ ] **T020** [SCRIPTS] `run_morning_mcp.sh` / `stop_morning_mcp.sh` /
-  `restart_morning_mcp.sh` at `apps/morning-mcp-app/`, mirroring
-  denidin-app's PID-file pattern exactly: `run_*` refuses to start if already
-  running (PID file + orphan-process check via `ps aux | grep`), backgrounds
-  via `nohup ... &`, verifies startup, points at `logs/morning-mcp.log`;
-  `stop_*` sends `SIGTERM`, waits up to 10s, force-`SIGKILL`s if needed;
-  `restart_*` just calls stop then start. Note: `server.main()` already
-  refuses to start when `feature_flags.enable_mcp_server` is `false` — the
-  scripts wrap that, they don't duplicate the check.
+- [x] **T019** [LOGGING] Application + per-test logging, mirroring denidin-app (verified,
+  not just adapted):
+  - `src/denidin_mcp_morning/utils/logger.py` — `setup_logger()`/`get_logger()`, ported
+    line-for-line from denidin-app's `src/utils/logger.py` (only the default filename
+    changed: `morning-mcp.log`). `RotatingFileHandler` (10MB, 5 backups) + console handler;
+    `propagate=False` in production. 8 new unit tests in `tests/unit/test_logger.py`
+    (adapted from denidin-app's own logger tests) — all pass.
+  - Wired into `tools.py`, `errors.py`, `server.py` (previously used bare
+    `logging.getLogger(__name__)`, which has no handler in production and silently drops
+    everything) via `get_logger(__name__)`. **Verified live**: started the server with
+    `feature_flags.enable_mcp_server=true` and confirmed a real line appeared in
+    `logs/morning-mcp.log`.
+  - `conftest.py` — added the `pytest_runtest_setup` hook, ported line-for-line from
+    denidin-app's `conftest.py`. **Verified**: a full suite run produces one dedicated
+    `logs/test_logs/{test_file}.log` per test file (14 files), each containing that file's
+    own log lines (confirmed `denidin_mcp_morning.errors`/`.tools` correlation-id log lines
+    appear correctly in `test_mcp_server_e2e.log`).
+  - `logs/` already gitignored (was from the start); added `.morning_mcp.pid` to
+    `.gitignore` (see T020) since it wasn't covered yet.
+- [x] **T020** [SCRIPTS] `run_morning_mcp.sh` / `stop_morning_mcp.sh` /
+  `restart_morning_mcp.sh` at `apps/morning-mcp-app/`, ported from denidin-app's PID-file
+  scripts (same structure: PID-file + orphan-process guard, `nohup` background start,
+  graceful `SIGTERM`→10s-wait→`SIGKILL` stop, `restart` = stop then start).
+  **Real bug found and fixed during live testing**: the first draft called bare `python3`,
+  which in a fresh shell (no venv activated) resolved to system Python 3.9 lacking the
+  `mcp` package — the background process crashed immediately, **silently**, because
+  `nohup ... >/dev/null 2>&1` swallowed the import error before any of our own logging
+  even initialized. Fixed by having the script prefer `$SCRIPT_DIR/venv/bin/python3`
+  explicitly (falling back to ambient `python3` with a warning if no local venv exists) —
+  this is the deeper reason this class of bug matters: a script that "usually works" only
+  because the operator happened to have the venv active is not actually robust. **Verified
+  live end-to-end** (start → confirm PID/log → double-start correctly rejected → stop →
+  confirm clean shutdown → restart → stop again), all against a temporarily-flag-enabled
+  copy of the real `config.json` (restored to original afterward; no tool calls made during
+  the test, since that config's `api_url` points at production, not sandbox).
 - [ ] **T021** [E2E-EXPENSIVE] Real end-to-end test where an **external
   OpenAI call** actually drives the running MCP server as a remote-MCP tool
   source (not just our own MCP client, per T014): start the real FastMCP

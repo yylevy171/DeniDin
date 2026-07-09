@@ -9,11 +9,11 @@ logs at ERROR/DEBUG, tagged with a correlation id for tracing.
 """
 from __future__ import annotations
 
-import logging
-
 import requests
 
-logger = logging.getLogger(__name__)
+from .utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 _AUTH_FAILED = "❌ האימות מול Morning נכשל. בדקו את פרטי ה-API."
 _RATE_LIMITED = "❌ יותר מדי בקשות. נסו שוב בעוד דקה."

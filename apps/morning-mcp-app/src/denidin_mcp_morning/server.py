@@ -24,8 +24,11 @@ from . import tools
 from .config import MorningMCPConfig, load_config
 from .errors import friendly_error_message
 from .morning_client import MorningClient
+from .utils.logger import get_logger
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.json"
+
+logger = get_logger(__name__)
 
 
 def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> str:
@@ -142,12 +145,20 @@ def main() -> None:
     config = load_config(DEFAULT_CONFIG_PATH)
 
     if not config.enable_mcp_server:
+        logger.info("MCP server disabled (feature_flags.enable_mcp_server=false); exiting.")
         raise SystemExit(
             "MCP server disabled (feature_flags.enable_mcp_server=false in "
             "config/config.json). Set it to true to start the server."
         )
 
     server = create_server(config)
+    logger.info(
+        "Starting %s on %s:%s (%s)",
+        config.mcp_server_name,
+        config.mcp_host,
+        config.mcp_port,
+        config.mcp_transport,
+    )
     server.run(transport=config.mcp_transport)
 
 

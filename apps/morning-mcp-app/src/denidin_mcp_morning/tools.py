@@ -8,7 +8,6 @@ human-readable, Hebrew-formatted string.
 """
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -22,8 +21,9 @@ from .formatters import (
 )
 from .models import FinancialSummary, Invoice
 from .morning_client import MorningClient
+from .utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _TAX_INVOICE_DOCUMENT_TYPE = 305
 _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE = 320
