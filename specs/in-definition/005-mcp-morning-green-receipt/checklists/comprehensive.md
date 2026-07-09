@@ -54,11 +54,21 @@ MCP framework = FastMCP/streamable-HTTP; flat config), items fall into three buc
 - Fuzzy client-name matching/thresholds — CHK017, CHK018, CHK115 → client (model) drives
   disambiguation via `add_client`/`list_invoices`; richer server-side resolution is a later
   enhancement.
-- Observability depth — CHK106, CHK107, CHK108 → basic structured logging in T015.
+- Observability depth — CHK106, CHK107, CHK108 → error-boundary logging (correlation ids,
+  friendly-message mapping) done in T015; full app-wide log-file infrastructure (dedicated
+  log file + per-test log files, mirroring denidin-app) queued as Phase 5 T019.
 
-**Readiness verdict**: all *blocking* Completeness/Clarity/Consistency items for the 8-tool
-scope are RESOLVED; remaining items are DEFERRED (out of scope) or OPEN (non-blocking). The
-spec is Ready for Implementation.
+**Readiness verdict**: all *blocking* Completeness/Clarity/Consistency items for the 7-tool
+scope are RESOLVED; remaining items are DEFERRED (out of scope) or OPEN (non-blocking).
+
+## Implementation Status (2026-07-09)
+
+Feature 005 is **implemented**, not just spec'd: Phases 1–3 of `tasks.md` are complete
+(config/models/formatters, all 7 tools TDD'd against the real Morning sandbox, FastMCP
+server verified end-to-end with a real MCP client), and Phase 4 (T015/T016 error mapping +
+i18n, T017 Dockerfile + quickstart) is complete. 77/77 tests pass (unit + real-sandbox
+integration, no mocks). Only `checklists` upkeep (this file) and Phase 5's queued
+logging-infrastructure/start-stop-scripts/expensive-E2E-OpenAI-test follow-up remain.
 
 ---
 

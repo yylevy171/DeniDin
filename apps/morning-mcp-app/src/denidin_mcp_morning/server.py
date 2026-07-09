@@ -14,16 +14,34 @@ globals, no monkey-patching).
 """
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from mcp.server.fastmcp import FastMCP
 
 from . import tools
 from .config import MorningMCPConfig, load_config
+from .errors import friendly_error_message
 from .morning_client import MorningClient
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.json"
+
+
+def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> str:
+    """Run a tools.* function, mapping any exception to a friendly message.
+
+    This is the MCP boundary (CONSTITUTION §X/§XVI): a tool must never
+    surface a raw exception/stack trace to the caller, and a single failing
+    tool call must never take down the server process. Each call gets its
+    own correlation id so the friendly message can be traced back to the
+    full technical detail in the logs.
+    """
+    correlation_id = str(uuid.uuid4())
+    try:
+        return func(*args)
+    except Exception as exc:  # noqa: BLE001 - deliberate MCP-boundary catch-all
+        return friendly_error_message(exc, correlation_id)
 
 
 def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = None) -> FastMCP:
@@ -57,7 +75,9 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         vat_included: bool = True,
     ) -> str:
         """Create a new invoice/document in Morning."""
-        return tools.create_invoice(morning_client, client_name, amount, description, due_date, vat_included)
+        return _call_with_error_boundary(
+            tools.create_invoice, morning_client, client_name, amount, description, due_date, vat_included
+        )
 
     @mcp.tool()
     def list_invoices(
@@ -67,12 +87,14 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: Optional[str] = None,
     ) -> str:
         """List/search invoices with optional filters (status/date range/client name)."""
-        return tools.list_invoices(morning_client, status, from_date, to_date, client_name)
+        return _call_with_error_boundary(
+            tools.list_invoices, morning_client, status, from_date, to_date, client_name
+        )
 
     @mcp.tool()
     def get_invoice_details(invoice_id: str) -> str:
         """Fetch full details (status, dates, payments) for one invoice."""
-        return tools.get_invoice_details(morning_client, invoice_id)
+        return _call_with_error_boundary(tools.get_invoice_details, morning_client, invoice_id)
 
     @mcp.tool()
     def update_invoice_status(
@@ -81,7 +103,9 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         payment_date: Optional[str] = None,
     ) -> str:
         """Update an invoice's payment status: "paid", "unpaid", or "cancelled"."""
-        return tools.update_invoice_status(morning_client, invoice_id, status, payment_date)
+        return _call_with_error_boundary(
+            tools.update_invoice_status, morning_client, invoice_id, status, payment_date
+        )
 
     @mcp.tool()
     def add_client(
@@ -92,7 +116,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         address: Optional[str] = None,
     ) -> str:
         """Add a new client to Morning."""
-        return tools.add_client(morning_client, name, email, phone, tax_id, address)
+        return _call_with_error_boundary(tools.add_client, morning_client, name, email, phone, tax_id, address)
 
     @mcp.tool()
     def get_financial_summary(
@@ -101,12 +125,14 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         to_date: Optional[str] = None,
     ) -> str:
         """Aggregate totals/counts for a period: "month", "quarter", "year", or "custom"."""
-        return tools.get_financial_summary(morning_client, period, from_date, to_date)
+        return _call_with_error_boundary(
+            tools.get_financial_summary, morning_client, period, from_date, to_date
+        )
 
     @mcp.tool()
     def download_invoice_pdf(invoice_id: str) -> str:
         """Return a PDF download link for an invoice."""
-        return tools.download_invoice_pdf(morning_client, invoice_id)
+        return _call_with_error_boundary(tools.download_invoice_pdf, morning_client, invoice_id)
 
     return mcp
 

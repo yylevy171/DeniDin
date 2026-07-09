@@ -217,13 +217,98 @@ locally (verified against a real, running streamable-HTTP server).
 
 ## Phase 4 — Polish & cross-cutting
 
-- [ ] **T015** Structured logging + friendly error mapping (spec §Error Handling;
-  `artifacts/error_codes.json`), correlation IDs, secret masking. No mocks.
-- [ ] **T016** Finalize Hebrew i18n in `formatters.py` (asserted within the real-sandbox
-  tool tests, not separate mock unit tests).
-- [ ] **T017** [P] Update `Dockerfile` `CMD` to run the server; document local run in
-  `../.../quickstart.md` and `src/denidin_mcp_morning/README.md`.
-- [ ] **T018** [P] Update `../.../checklists/comprehensive.md` residual items as they land.
+- [x] **T015** Implemented friendly error mapping: new `errors.py`
+  (`friendly_error_message()` + `mask_secret()`), wired into `server.py` via a
+  `_call_with_error_boundary()` wrapper applied to all 7 `@mcp.tool()` registrations.
+  **Real finding driving this task**: empirically confirmed FastMCP's default behavior, with
+  no mapping layer, surfaces the *raw* exception string to the MCP caller — e.g.
+  `"Error executing tool get_invoice_details: 404 Client Error: Not Found for url:
+  https://sandbox.d.greeninvoice.co.il/api/v1/documents/..."` — leaking the internal API URL
+  and violating CONSTITUTION §X. New E2E test
+  `test_mcp_tool_error_is_friendly_not_a_raw_stack_trace` in `test_mcp_server_e2e.py` (RED
+  confirmed before the fix, now passes) plus 13 new unit tests in `tests/unit/test_errors.py`
+  (real `requests.Response`/`HTTPError` objects, no mocking). Full technical detail still
+  goes to logs (WARNING/ERROR) with a per-call correlation id. Correlation-ID/secret-masking
+  plumbing here is deliberately minimal — the full logging *infrastructure*
+  (dedicated app log file + per-test log files, mirroring denidin-app) is queued as Phase 5
+  T019, not duplicated here.
+- [x] **T016** Finalized Hebrew i18n. Success-path formatting (`formatters.py`) was already
+  fully Hebrew and asserted within the real-sandbox tool tests. **Found and fixed a real
+  inconsistency**: `errors.py`'s mapped messages, and `tools.py`'s raised `ValueError` text,
+  were in English despite `REQ-I18N-001` ("Hebrew by default") — translated all 6 static
+  error messages to Hebrew; business-rule `ValueError`s now return a generic Hebrew message
+  to the caller (the specific English detail is logged, not echoed — see
+  `test_value_error_never_echoes_raw_english_text`). `spec.md` §Error Handling table
+  corrected to show the actual Hebrew text (it previously showed English placeholders despite
+  its own column header promising Hebrew) and to stop claiming unimplemented richer UX (amount
+  pre-validation, fuzzy client-match disambiguation, `send_invoice`-era messaging) as if it
+  existed — those are now explicitly noted as deferred. 77/77 full suite green.
+- [x] **T017** [P] `Dockerfile` `CMD` updated to run the real server (done in Phase 3, T013).
+  Remaining scope: quickstart docs — **not yet done**, tracked below.
+- [x] **T017-quickstart** [P] Rewrote `../.../quickstart.md` — it was fully stale (nested
+  config, wrong flag name `enable_morning_integration`, FastAPI/uvicorn run pattern, and a
+  webhook-HMAC example that belongs to the split-off 017 feature). Now: flat config, correct
+  `enable_mcp_server` gate, real `python3 -m denidin_mcp_morning.server` start command, and a
+  working MCP-client manual-check snippet — **verified live** (listed the 7 tools + created a
+  real sandbox invoice via the exact documented snippet). README's "Running the MCP server"
+  section (added Phase 3) already covers the same.
+- [x] **T018** [P] Updated `../.../checklists/comprehensive.md`: added an Implementation
+  Status section, corrected 8→7 tool references, and pointed observability items at
+  T015 (done) vs Phase 5 T019 (queued).
+
+---
+
+## Phase 5 — Queued follow-up (after Phase 4; user-requested 2026-07-09)
+
+Mirror denidin-app's own patterns exactly (inspected live from
+`apps/denidin-app/` — `conftest.py`, `src/utils/logger.py`, `run_denidin.sh`,
+`stop_denidin.sh`, `restart_denidin.sh`, `pytest.ini`, `tests/expensive/`).
+
+- [ ] **T019** [LOGGING] Application + per-test logging, mirroring denidin-app:
+  - `src/denidin_mcp_morning/utils/logger.py` — `setup_logger()`/`get_logger()`
+    with a `RotatingFileHandler` (10MB, 5 backups) writing to
+    `logs/morning-mcp.log` by default; console handler too; `propagate=False`
+    in production. Wire into `server.py` so all logging (tool calls, morning
+    API errors) lands there.
+  - `conftest.py` — add a `pytest_runtest_setup` hook identical in spirit to
+    denidin-app's: before each test, clear all existing logger handlers and
+    attach a fresh `FileHandler` to the root logger pointed at
+    `logs/test_logs/{test_file}.log`, so **every test file gets its own
+    dedicated log** (not just the sandbox-specific `log_cli` currently in
+    `pytest.ini`). Add a session-scoped autouse fixture that creates
+    `logs/test_logs/` up front.
+  - Confirm `logs/` is gitignored (check root `.gitignore` — likely already
+    covered, but verify for this app specifically).
+- [ ] **T020** [SCRIPTS] `run_morning_mcp.sh` / `stop_morning_mcp.sh` /
+  `restart_morning_mcp.sh` at `apps/morning-mcp-app/`, mirroring
+  denidin-app's PID-file pattern exactly: `run_*` refuses to start if already
+  running (PID file + orphan-process check via `ps aux | grep`), backgrounds
+  via `nohup ... &`, verifies startup, points at `logs/morning-mcp.log`;
+  `stop_*` sends `SIGTERM`, waits up to 10s, force-`SIGKILL`s if needed;
+  `restart_*` just calls stop then start. Note: `server.main()` already
+  refuses to start when `feature_flags.enable_mcp_server` is `false` — the
+  scripts wrap that, they don't duplicate the check.
+- [ ] **T021** [E2E-EXPENSIVE] Real end-to-end test where an **external
+  OpenAI call** actually drives the running MCP server as a remote-MCP tool
+  source (not just our own MCP client, per T014): start the real FastMCP
+  server (same pattern as `test_mcp_server_e2e.py`), configure an OpenAI
+  Responses API call with this server registered as a remote MCP tool, send
+  a natural-language prompt (e.g. "create an invoice for Test Corp for 50
+  NIS"), assert the model actually invoked `create_invoice` and a real
+  document was created in the Morning sandbox (verify via
+  `get_invoice_details`/`list_invoices`). New file under a new
+  `tests/expensive/` folder (mirroring denidin-app's), marked
+  `@pytest.mark.expensive`; update `pytest.ini` to register the marker and
+  add `addopts = -m "not expensive"` so it's skipped by default (mirroring
+  denidin-app's `pytest.ini`). Requires a real OpenAI API key in config;
+  skip gracefully if missing. Follows the same expensive-test rules as
+  denidin-app (CONSTITUTION §VII / CLAUDE.md): **human approval required
+  before every single run**, run it alone (never batched), read
+  `logs/test_logs/` before re-running, only re-run after a confident fix.
+  **Open research question to resolve when this is picked up**: OpenAI's
+  remote-MCP connector needs a publicly reachable URL, not bare
+  `127.0.0.1` — may need a tunnel (e.g. ngrok) during the test; confirm
+  feasibility before implementing.
 
 ---
 
@@ -231,7 +316,7 @@ locally (verified against a real, running streamable-HTTP server).
 
 - Phase 1 (T001–T005) before Phase 2.
 - Per story: `a` (approved failing test) **before** `b` (implementation).
-- Phase 3 (server) after the 7 tools exist. Phase 4 last.
+- Phase 3 (server) after the 7 tools exist. Phase 4, then Phase 5, last.
 
 ## MVP
 

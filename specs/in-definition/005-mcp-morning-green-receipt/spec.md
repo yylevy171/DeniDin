@@ -365,17 +365,26 @@ API responses; persistence is not required for this feature. All datetimes are U
 
 ## Error Handling
 
-| Condition | User-facing message (Hebrew in production) |
-|-----------|--------------------------------------------|
-| Auth failed (401/403) | "❌ Morning authentication failed. Check API credentials." |
-| Client not found | "❌ Client 'X' not found. Add them first with add_client." |
-| Multiple clients match | "❓ Multiple clients match 'X': 1) … (ID 123) 2) … (ID 456). Pick a number/ID." |
-| Client missing phone (send) | "❌ Client has no contact on file. Provide a phone/email to send to." |
-| Invalid amount | "❌ Invalid amount. Use e.g. 1000 or 1000.50." |
-| Rate limit (429) | "❌ Too many requests. Try again in a minute." |
-| Network / 5xx | "❌ Couldn't reach Morning right now. Please try again." |
+Implemented in `errors.py`, applied at the MCP tool-call boundary in `server.py`
+(`_call_with_error_boundary`) — without this, FastMCP's default behavior surfaces the raw
+exception string (including the internal Morning API URL) directly to the caller, confirmed
+live. Technical detail (status, body, stack) always goes to logs at WARNING/ERROR, tagged
+with a correlation id; the caller only ever sees one of these:
 
-Technical detail (status, body, stack) goes to logs at DEBUG/ERROR only.
+| Condition | User-facing message (Hebrew) |
+|-----------|-------------------------------|
+| Auth failed (401/403) | "❌ האימות מול Morning נכשל. בדקו את פרטי ה-API." |
+| Not found (404) | "❌ לא נמצא. בדקו את מספר החשבונית/הלקוח." |
+| Rate limit (429) | "❌ יותר מדי בקשות. נסו שוב בעוד דקה." |
+| Network / 5xx | "❌ לא ניתן להתחבר ל-Morning כרגע. נסו שוב מאוחר יותר." |
+| Other 4xx (Morning rejected the request) | "❌ הבקשה נדחתה על ידי Morning. בדקו את הפרטים ונסו שוב." |
+| Business-rule violation (e.g. reopening an already-paid invoice, unsupported status/period) | "❌ הבקשה אינה תקינה. בדקו את הפרטים שסיפקתם." (the specific English detail is logged, not echoed to the caller — REQ-I18N-001: Hebrew by default) |
+| Unexpected error | "❌ משהו השתבש. נסו שוב." |
+
+**Not implemented (deferred; see §Future Work "Client resolution UX")**: client-side
+pre-flight amount validation, fuzzy client-name matching with a disambiguation prompt ("❓
+Multiple clients match…"), and any messaging tied to the dropped `send_invoice` tool. These
+richer UX flows would need real design work, not just an error-mapping entry.
 
 ---
 

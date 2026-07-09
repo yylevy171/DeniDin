@@ -112,3 +112,28 @@ def test_mcp_client_can_invoke_create_invoice_tool_end_to_end(server_url):
     text = "".join(block.text for block in result.content if hasattr(block, "text"))
     assert client_name in text
     assert "₪33.00" in text
+
+
+def test_mcp_tool_error_is_friendly_not_a_raw_stack_trace(server_url):
+    """CONSTITUTION §X: user-facing errors must be friendly, never raw technical
+    detail. Without a mapping layer, FastMCP's default behavior surfaces the raw
+    exception string (confirmed live: 'Error executing tool ...: 404 Client
+    Error: Not Found for url: https://sandbox.d.greeninvoice.co.il/...'),
+    leaking the internal API URL to the caller."""
+
+    async def _run():
+        async with streamable_http_client(server_url) as (read, write, _get_session_id):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                return await session.call_tool(
+                    "get_invoice_details",
+                    {"invoice_id": "00000000-0000-0000-0000-000000000000"},
+                )
+
+    result = asyncio.run(_run())
+
+    text = "".join(block.text for block in result.content if hasattr(block, "text"))
+    assert "greeninvoice.co.il" not in text
+    assert "Traceback" not in text
+    assert "Client Error" not in text
+    assert "❌" in text
