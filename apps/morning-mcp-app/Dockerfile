@@ -13,10 +13,9 @@ ENV PYTHONPATH=/app/src
 
 VOLUME ["/app/config"]
 
-# server.py (FastMCP over streamable-HTTP) is being built incrementally per
-# specs/in-definition/005-mcp-morning-green-receipt/tasks.md (Phase 3, T013).
-# Until it lands, this placeholder keeps the container running so it can be
-# exec'd into / used as a base for local iteration, without implying
-# functionality that doesn't exist. Once server.py exists, replace with:
-#   CMD ["python3", "-m", "denidin_mcp_morning.server"]
-CMD ["tail", "-f", "/dev/null"]
+# Starts the FastMCP server (streamable-HTTP). Startup is gated behind
+# feature_flags.enable_mcp_server in the mounted config/config.json (default
+# false, per CONSTITUTION §I/§VI) — with the flag off, the process exits
+# immediately with a clear message rather than serving nothing silently.
+EXPOSE 8000
+CMD ["python3", "-m", "denidin_mcp_morning.server"]

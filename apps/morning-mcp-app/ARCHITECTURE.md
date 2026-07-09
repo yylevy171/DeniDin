@@ -1,8 +1,9 @@
 # morning-mcp-app Architecture
 
-**Status**: Feature 005 in progress (Phase 2 of 4 — see
+**Status**: Feature 005 — Phases 1 & 2 complete, Phase 3 (server) complete;
+Phase 4 (polish) remaining (see
 `specs/in-definition/005-mcp-morning-green-receipt/tasks.md`)
-**Last Updated**: July 8, 2026
+**Last Updated**: July 9, 2026
 
 ## Boundary
 
@@ -10,26 +11,27 @@
 `venv`, `requirements.txt`, `config/`, `Dockerfile`, `tests/`. It does **not**
 import from or call into `apps/denidin-app/`; the two are siblings, wired
 together only by convention (same repo, same Constitution), never by code.
-This is why `send_invoice` cannot deliver over WhatsApp via denidin-app's
-number today — there is no import path between the two apps. (That's tracked
-as deferred future work with the architecture still TBD; see `spec.md`
-§Future Work.)
+There is no `send_invoice` tool — Morning's public API has no documented
+endpoint to deliver a document at all (investigated and dropped, see `spec.md`
+§Scope); a future delivery feature would assemble info via the existing tools
+and deliver over a channel this app or a caller controls (e.g. WhatsApp via
+denidin-app's number, architecture still TBD).
 
 ## Layers (bottom-up)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  server.py  (Phase 3 — not yet built)                    │
+│  server.py  (Phase 3 — DONE)                              │
 │  FastMCP server, streamable-HTTP transport.               │
-│  Registers 8 @mcp.tool()s. Gated by                        │
+│  Registers 7 @mcp.tool()s. Gated by                        │
 │  feature_flags.enable_mcp_server.                          │
 └───────────────────────┬───────────────────────────────────┘
                          │ calls
 ┌───────────────────────▼───────────────────────────────────┐
-│  tools.py  (Phase 2 — in progress)                          │
+│  tools.py  (Phase 2 — DONE, 7 tools)                        │
 │  One function per MCP tool: create_invoice, list_invoices, │
 │  get_invoice_details, update_invoice_status, add_client,   │
-│  get_financial_summary, send_invoice, download_invoice_pdf │
+│  get_financial_summary, download_invoice_pdf               │
 │  - takes friendly args (client_name, amount, ...)          │
 │  - maps them onto Morning's real payload shape              │
 │  - calls MorningClient                                      │
@@ -125,13 +127,14 @@ accident.
 | Component | Status |
 |---|---|
 | `auth.py` (`MorningAuth` — JWT exchange/cache) | ✅ Done |
-| `morning_client.py` (3 of 8 operations: create/list/get invoice) | ✅ Done (partial) |
+| `morning_client.py` (all needed operations: create/list/get/close/open invoice, add_client) | ✅ Done |
 | `config.py` | ✅ Done (Phase 1) |
 | `models.py` | ✅ Done (Phase 1) |
 | `formatters.py` | ✅ Done (Phase 1) |
-| `tools.py` (8 MCP tools) | 🚧 In progress (Phase 2) — `create_invoice` test written, implementation pending approval |
-| `server.py` (FastMCP, streamable-HTTP) | ⬜ Not started (Phase 3) |
-| Docker `CMD` swap, quickstart docs | ⬜ Not started (Phase 4) |
+| `tools.py` (7 MCP tools) | ✅ Done (Phase 2) — `send_invoice` investigated and dropped, see §Boundary |
+| `server.py` (FastMCP, streamable-HTTP) | ✅ Done (Phase 3) — E2E dispatch test passes against the live sandbox |
+| Docker `CMD` swap | ✅ Done |
+| Quickstart docs | ⬜ Not started (Phase 4) |
 
 See `specs/in-definition/005-mcp-morning-green-receipt/tasks.md` for the full
 task-by-task checklist.

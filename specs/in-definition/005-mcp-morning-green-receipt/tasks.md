@@ -192,15 +192,26 @@ test was RED before its implementation.
 
 ## Phase 3 — FastMCP server + E2E dispatch
 
-- [ ] **T013** Implement `src/denidin_mcp_morning/server.py`: FastMCP server registering all
-  7 tools via `@mcp.tool()`, served over **streamable-HTTP** on configured host/port;
-  `MorningClient` injected; startup gated by `feature_flags.enable_mcp_server`.
-- [ ] **T014a** E2E test `tests/integration/test_mcp_server_e2e.py`: start the FastMCP
-  server, connect an MCP client, list tools (assert all 8 present) and invoke one against
-  the sandbox — proves registration/dispatch (CONSTITUTION §V routing). Real, no mocks.
-- [ ] **T014b** Make T014a pass (wire server ↔ tools ↔ client).
+- [x] **T013** Implemented `src/denidin_mcp_morning/server.py`: FastMCP server registering
+  all 7 tools via `@mcp.tool()`, served over **streamable-HTTP** on configured host/port;
+  `MorningClient` injected via `create_server(config, client=...)` (no globals). Startup
+  gated by `feature_flags.enable_mcp_server` — confirmed the process exits immediately with
+  a clear message when the flag is `false` (default), and builds correctly when `true`.
+  Each `@mcp.tool()` wrapper takes only caller-facing args (no `client` param) so FastMCP's
+  auto-generated inputSchema matches the real tool contracts.
+- [x] **T014a** Wrote E2E test `tests/integration/test_mcp_server_e2e.py`: starts the actual
+  FastMCP server (via `uvicorn.Server` in a background thread, using
+  `mcp.streamable_http_app()`), connects a real MCP client
+  (`mcp.client.streamable_http.streamable_http_client` + `ClientSession`), lists tools, and
+  invokes `create_invoice` against the live sandbox.
+- [x] **T014b** Passed on first run: `list_tools()` returns exactly the 7 expected tool
+  names, and the `create_invoice` call reaches the real sandbox end-to-end (client name +
+  formatted amount confirmed in the tool's response) — proves registration/dispatch
+  (CONSTITUTION §V routing), not just that `tools.py` functions work in isolation.
+  63/63 full suite green (32 unit + 31 integration).
 
-**Checkpoint**: an OpenAI-style remote MCP client can discover + call the tools locally.
+**Checkpoint**: ✅ met — an OpenAI-style remote MCP client can discover + call the tools
+locally (verified against a real, running streamable-HTTP server).
 
 ---
 

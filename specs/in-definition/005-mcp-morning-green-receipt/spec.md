@@ -2,9 +2,9 @@
 
 **Feature ID**: 005-mcp-morning-green-receipt
 **Priority**: P2 (Medium)
-**Status**: Ready for Implementation
+**Status**: Implemented (Phases 1–3 of `tasks.md`; Phase 4 polish remaining)
 **Created**: January 17, 2026
-**Last Updated**: July 8, 2026
+**Last Updated**: July 9, 2026
 **App**: `apps/morning-mcp-app/` (standalone, does not import from or depend on `apps/denidin-app/`)
 
 ---
@@ -80,25 +80,28 @@ tools** (see §MCP Tools). Backed by the Morning REST API. Responses formatted f
 
 ## Current Implementation Status (ground truth)
 
-This feature is **partially built**; the spec reflects reality (not "greenfield"):
+This feature is **fully implemented** (Phases 1–3 of `tasks.md`); only Phase 4 polish
+(quickstart docs) remains:
 
-**Already implemented** in `apps/morning-mcp-app/src/denidin_mcp_morning/`:
+**Implemented** in `apps/morning-mcp-app/src/denidin_mcp_morning/`:
 - `auth.py` — `MorningAuth`: JWT exchange via `POST /account/token`, token caching with
   refresh-before-expiry, thread-safe.
-- `morning_client.py` — `MorningClient`:
-  - `create_invoice(payload)` → `POST /documents`
-  - `list_invoices(params)` → `POST /documents/search`
-  - `get_invoice(invoice_id)` → `GET /documents/{id}`
-  - urllib3 retry on 429/500/502/503/504.
-- Real-sandbox integration tests: `tests/integration/test_morning_sandbox_*.py` (no mocks).
-
-**To build** (this feature):
-- `config.py` — load & validate flat `config/config.json` against `artifacts/config.schema.json`.
-- `models.py` — Pydantic models (`Invoice`, `Client`, `Payment`, `FinancialSummary`) mapping the real Morning document shape.
+- `morning_client.py` — `MorningClient`: `create_invoice`, `list_invoices`, `get_invoice`,
+  `close_invoice`/`open_invoice`, `add_client`; urllib3 retry on 429/500/502/503/504.
+- `config.py` — loads & validates flat `config/config.json` against a self-contained
+  `config/config.schema.json`.
+- `models.py` — Pydantic models (`Invoice`, `Client`, `Payment`, `FinancialSummary`) mapping
+  the real Morning document shape, including several live-discovered normalizations (`number`
+  as int, numeric `status` codes).
 - `formatters.py` — Hebrew/₪/VAT/date formatting of tool responses.
-- Extend `MorningClient` with the remaining operations: `update_invoice_status`, `add_client`, `get_financial_summary`, `download_invoice_pdf`.
-- `tools.py` — the 7 MCP tools (thin wrappers over the client + formatters + validation).
-- `server.py` — FastMCP server registering the 7 tools over streamable-HTTP.
+- `tools.py` — all 7 MCP tools (thin wrappers over the client + formatters).
+- `server.py` — FastMCP server registering all 7 tools over streamable-HTTP, gated by
+  `feature_flags.enable_mcp_server`.
+- Real-sandbox integration tests for every tool plus an E2E test that starts the actual
+  server and drives a tool call through a real MCP client: `tests/integration/*.py` (no mocks).
+
+See `tasks.md` for the full history of real-sandbox discoveries that shaped each tool
+(several endpoints/mechanisms turned out different from what this spec originally assumed).
 
 ---
 

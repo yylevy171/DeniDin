@@ -4,12 +4,13 @@ Standalone client for the Morning (Green Invoice) API — Israeli invoicing/rece
 
 ## Status
 
-This app currently ships the `MorningClient`/`MorningAuth` library
-(`src/denidin_mcp_morning/`) and its sandbox-backed integration test suite, plus
-work in progress on the MCP server itself (FastMCP over streamable-HTTP, 8 tools:
-`create_invoice`, `list_invoices`, `get_invoice_details`, `update_invoice_status`,
-`add_client`, `get_financial_summary`, `send_invoice`, `download_invoice_pdf`) per
-`specs/in-definition/005-mcp-morning-green-receipt/plan.md` and `tasks.md`.
+This app ships a working FastMCP server (`src/denidin_mcp_morning/server.py`,
+streamable-HTTP) exposing 7 invoice-management tools — `create_invoice`,
+`list_invoices`, `get_invoice_details`, `update_invoice_status`, `add_client`,
+`get_financial_summary`, `download_invoice_pdf` — backed by the real Morning
+sandbox API, per `specs/in-definition/005-mcp-morning-green-receipt/plan.md`
+and `tasks.md`. (`send_invoice` was investigated and dropped — Morning's
+public API has no documented delivery endpoint; see `spec.md` §Scope.)
 
 This app was split out of the main `denidin-app` monorepo so that the MCP server
 has its own independently runnable, testable, and deployable home.
@@ -53,13 +54,23 @@ Integration tests hit the real Morning **sandbox** API (no mocking, per this
 repo's constitution) — they skip gracefully if `config/config.test.json` lacks
 real credentials or contains placeholder-looking values.
 
+## Running the MCP server
+
+```bash
+python3 -m denidin_mcp_morning.server
+```
+Starts the FastMCP server over streamable-HTTP (host/port/transport configurable
+under `mcp{}` in `config/config.json`). Startup is gated behind
+`feature_flags.enable_mcp_server` (default `false`) — with it off, the process
+exits immediately with a clear message rather than silently serving nothing.
+
 ## Docker
 
 ```bash
 docker build -t morning-mcp-app .
-docker run --rm -v "$(pwd)/config:/app/config:ro" morning-mcp-app
+docker run --rm -p 8000:8000 -v "$(pwd)/config:/app/config:ro" morning-mcp-app
 ```
-No server exists yet, so the container's default command is a placeholder that
-keeps it running (see `Dockerfile` for the exact command and the note on what to
-swap in once the MCP server lands). Can also be run via the root
+Runs the MCP server (same feature-flag gate as above — set
+`feature_flags.enable_mcp_server: true` in the mounted `config/config.json` or
+the container exits immediately). Can also be run via the root
 `docker-compose.yml` (`docker compose up morning-mcp-app`).
