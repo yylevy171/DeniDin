@@ -55,6 +55,10 @@
           "type": "string",
           "enum": ["DEBUG", "INFO", "WARN", "ERROR"],
           "default": "INFO"
+        },
+        "auth_token": {
+          "type": "string",
+          "description": "Optional shared bearer-token secret. If set, the MCP server rejects any request without a matching 'Authorization: Bearer <token>' header (401). If unset (default), no auth is enforced - appropriate for pure local/dev use. Set once the server is exposed via a tunnel/public URL."
         }
       }
     },

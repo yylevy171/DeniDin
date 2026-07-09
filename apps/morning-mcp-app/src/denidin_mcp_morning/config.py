@@ -5,7 +5,7 @@ environment variables are read anywhere in this module, per CONSTITUTION.md §I.
 """
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import json
 import jsonschema
@@ -34,6 +34,7 @@ class MorningMCPConfig:
     mcp_port: int
     mcp_transport: str
     mcp_log_level: str
+    mcp_auth_token: Optional[str]
     enable_mcp_server: bool
 
 
@@ -89,5 +90,6 @@ def load_config(path: Path) -> MorningMCPConfig:
         mcp_port=mcp_section.get("port", 8000),
         mcp_transport=mcp_section.get("transport", "streamable-http"),
         mcp_log_level=mcp_section.get("log_level", "INFO"),
+        mcp_auth_token=mcp_section.get("auth_token"),
         enable_mcp_server=feature_flags.get("enable_mcp_server", False),
     )

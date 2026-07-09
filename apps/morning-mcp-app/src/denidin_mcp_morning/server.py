@@ -19,6 +19,10 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from mcp.server.fastmcp import FastMCP
+from starlette.applications import Starlette
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from . import tools
 from .config import MorningMCPConfig, load_config
@@ -29,6 +33,44 @@ from .utils.logger import get_logger
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.json"
 
 logger = get_logger(__name__)
+
+
+class BearerTokenMiddleware(BaseHTTPMiddleware):
+    """Reject requests missing a matching `Authorization: Bearer <token>` header.
+
+    No-op if `token` is falsy — appropriate for pure local/dev use (this
+    server's own test suite, manual local testing). This server has one
+    expected main consumer (denidin-app) plus ad hoc manual tests, so a
+    single shared secret is the right model here, not a multi-tenant OAuth
+    system (see spec.md — FastMCP's built-in `auth`/`token_verifier` is full
+    OAuth 2.1 resource-server machinery, overkill for this use case).
+    """
+
+    def __init__(self, app, token: Optional[str]) -> None:
+        super().__init__(app)
+        self._expected_header = f"Bearer {token}" if token else None
+
+    async def dispatch(self, request: Request, call_next):
+        if self._expected_header is None:
+            return await call_next(request)
+
+        if request.headers.get("Authorization") != self._expected_header:
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+        return await call_next(request)
+
+
+def build_asgi_app(mcp: FastMCP, auth_token: Optional[str] = None) -> Starlette:
+    """Build the MCP server's ASGI app, optionally wrapped with bearer-token auth.
+
+    Bypasses `FastMCP.run()`'s built-in uvicorn runner so the app can be
+    wrapped with `BearerTokenMiddleware` before serving (same pattern already
+    proven in tests/integration/test_mcp_server_e2e.py).
+    """
+    app = mcp.streamable_http_app()
+    if auth_token:
+        app.add_middleware(BearerTokenMiddleware, token=auth_token)
+    return app
 
 
 def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> str:
@@ -153,13 +195,26 @@ def main() -> None:
 
     server = create_server(config)
     logger.info(
-        "Starting %s on %s:%s (%s)",
+        "Starting %s on %s:%s (%s)%s",
         config.mcp_server_name,
         config.mcp_host,
         config.mcp_port,
         config.mcp_transport,
+        " [bearer-token auth enabled]" if config.mcp_auth_token else " [no auth configured]",
     )
-    server.run(transport=config.mcp_transport)
+
+    if config.mcp_transport == "streamable-http":
+        # Bypass FastMCP.run()'s built-in uvicorn runner so the app can be
+        # wrapped with BearerTokenMiddleware before serving.
+        import uvicorn
+
+        app = build_asgi_app(server, auth_token=config.mcp_auth_token)
+        uvicorn.run(app, host=config.mcp_host, port=config.mcp_port, log_level=config.mcp_log_level.lower())
+    else:
+        # stdio/sse aren't network-exposed the same way; no HTTP-level
+        # bearer check applies (and none was requested by this project's
+        # single-consumer streamable-http use case).
+        server.run(transport=config.mcp_transport)
 
 
 if __name__ == "__main__":

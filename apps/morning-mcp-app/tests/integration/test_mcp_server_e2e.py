@@ -14,13 +14,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+import requests
 import uvicorn
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
-from denidin_mcp_morning.server import create_server
+from denidin_mcp_morning.server import build_asgi_app, create_server
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
@@ -137,3 +138,93 @@ def test_mcp_tool_error_is_friendly_not_a_raw_stack_trace(server_url):
     assert "Traceback" not in text
     assert "Client Error" not in text
     assert "❌" in text
+
+
+AUTH_TEST_PORT = 8798
+AUTH_TEST_TOKEN = "test-shared-secret-token"
+
+
+@pytest.fixture(scope="module")
+def server_url_with_auth():
+    """Same real-server pattern as `server_url`, but with BearerTokenMiddleware
+    enabled (Phase 5, T021-auth) — proves auth is enforced against the actual
+    running server, not just the isolated middleware unit tests."""
+    config = load_config(CONFIG_PATH)
+    if not (config.api_key_id and config.api_key_secret):
+        pytest.skip("No api_key_id/api_key_secret in config.test.json")
+
+    client = MorningClient(
+        api_key_id=config.api_key_id,
+        api_key_secret=config.api_key_secret,
+        base_url=config.api_url,
+    )
+    mcp = create_server(config, client=client)
+    mcp.settings.host = TEST_HOST
+    mcp.settings.port = AUTH_TEST_PORT
+
+    app = build_asgi_app(mcp, auth_token=AUTH_TEST_TOKEN)
+    uv_config = uvicorn.Config(app, host=TEST_HOST, port=AUTH_TEST_PORT, log_level="warning")
+    uv_server = uvicorn.Server(uv_config)
+
+    thread = threading.Thread(target=uv_server.run, daemon=True)
+    thread.start()
+
+    for _ in range(50):
+        if uv_server.started:
+            break
+        time.sleep(0.1)
+    else:
+        pytest.fail("FastMCP server (with auth) did not start in time")
+
+    yield f"http://{TEST_HOST}:{AUTH_TEST_PORT}{mcp.settings.streamable_http_path}"
+
+    uv_server.should_exit = True
+    thread.join(timeout=5)
+
+
+def test_real_server_with_auth_rejects_request_without_token(server_url_with_auth):
+    response = requests.post(
+        server_url_with_auth,
+        json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+        headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
+        timeout=5,
+    )
+
+    assert response.status_code == 401
+
+
+def test_real_server_with_auth_rejects_wrong_token(server_url_with_auth):
+    response = requests.post(
+        server_url_with_auth,
+        json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "Authorization": "Bearer wrong-token",
+        },
+        timeout=5,
+    )
+
+    assert response.status_code == 401
+
+
+def test_real_server_with_auth_accepts_correct_token_and_serves_mcp_protocol(server_url_with_auth):
+    """With the correct token, requests reach the real MCP server (proven by
+    a full tool-listing round trip through the actual auth-wrapped app)."""
+    import httpx
+
+    async def _run():
+        async with httpx.AsyncClient(headers={"Authorization": f"Bearer {AUTH_TEST_TOKEN}"}) as http_client:
+            async with streamable_http_client(server_url_with_auth, http_client=http_client) as (
+                read,
+                write,
+                _get_session_id,
+            ):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    result = await session.list_tools()
+                    return {tool.name for tool in result.tools}
+
+    tool_names = asyncio.run(_run())
+
+    assert tool_names == EXPECTED_TOOL_NAMES

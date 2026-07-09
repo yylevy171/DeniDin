@@ -89,3 +89,30 @@ def test_load_config_never_reads_environment_variables(monkeypatch):
     config = load_config(TEST_CONFIG_PATH)
 
     assert config.api_key_id != "SHOULD_NOT_BE_USED"
+
+
+def test_load_config_defaults_mcp_auth_token_to_none():
+    """No auth_token configured -> the MCP server's bearer-check is a no-op
+    (appropriate for pure local/test use; see server.py's BearerTokenMiddleware)."""
+    config = load_config(TEST_CONFIG_PATH)
+
+    assert config.mcp_auth_token is None
+
+
+def test_load_config_reads_mcp_auth_token_when_present(tmp_path):
+    config_with_token = tmp_path / "config.json"
+    config_with_token.write_text(
+        json.dumps(
+            {
+                "api_key_id": "x",
+                "api_key_secret": "y",
+                "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+                "mcp": {"auth_token": "super-secret-token"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_with_token)
+
+    assert config.mcp_auth_token == "super-secret-token"

@@ -55,6 +55,10 @@
           "type": "string",
           "enum": ["DEBUG", "INFO", "WARN", "ERROR"],
           "default": "INFO"
+        },
+        "auth_token": {
+          "type": "string",
+          "description": "Optional shared bearer-token secret. If set, the MCP server rejects any request without a matching 'Authorization: Bearer <token>' header (401) - see server.py's BearerTokenMiddleware. If unset (default), no auth is enforced - appropriate for pure local/dev use (this server has one expected main consumer, denidin-app, plus ad hoc manual tests; set this once the server is exposed via a tunnel/public URL). Never commit a real value - keep it in config/config.json only."
         }
       }
     },

@@ -299,11 +299,38 @@ Mirror denidin-app's own patterns exactly (inspected live from
   confirm clean shutdown → restart → stop again), all against a temporarily-flag-enabled
   copy of the real `config.json` (restored to original afterward; no tool calls made during
   the test, since that config's `api_url` points at production, not sandbox).
+- [x] **T021-auth** [SECURITY, prerequisite for T021] Bearer-token auth for the MCP server.
+  **Why this became necessary**: T021 requires exposing the local server publicly (via a
+  tunnel) for OpenAI's remote-MCP connector to reach it; the server had zero authentication,
+  and its tools include state-changing operations (`create_invoice`, `update_invoice_status`
+  which can cancel an invoice via a real credit note, `add_client`) — a permanently or even
+  transiently public unauthenticated endpoint could be used by anyone who finds the URL.
+  **Design decision**: FastMCP's built-in `auth`/`token_verifier` is full OAuth 2.1
+  resource-server machinery (`AuthSettings` requires an `issuer_url` — a real external OAuth
+  authorization server) — overkill for this server's actual usage model (one expected main
+  consumer, denidin-app, plus ad hoc manual tests). Implemented a much simpler, opt-in
+  shared bearer-token check instead:
+  - New `mcp.auth_token` config field (`config.py`, both `config.schema.json` copies) —
+    optional, defaults to unset/no-op (zero friction for local dev/tests, which is why this
+    app's entire existing test suite needed no changes).
+  - New `server.BearerTokenMiddleware` (Starlette `BaseHTTPMiddleware`): no-op if no token
+    configured; otherwise rejects any request without a matching
+    `Authorization: Bearer <token>` header (401). New `server.build_asgi_app()` wraps
+    `mcp.streamable_http_app()` with it.
+  - `main()` now bypasses `FastMCP.run()`'s built-in uvicorn runner for the streamable-http
+    transport (the only one this project uses) so the middleware can actually be applied;
+    falls back to `server.run()` unchanged for stdio/sse.
+  - 5 new unit tests (`tests/unit/test_auth_middleware.py`, real Starlette `TestClient`, no
+    mocking) + 3 new real-server E2E tests in `test_mcp_server_e2e.py` (raw HTTP 401 checks
+    via `requests`, then a full real MCP tool-listing round trip with the correct token via
+    `httpx.AsyncClient` + `streamable_http_client`). 2 new config tests. 95/95 full suite
+    green.
 - [ ] **T021** [E2E-EXPENSIVE] Real end-to-end test where an **external
   OpenAI call** actually drives the running MCP server as a remote-MCP tool
   source (not just our own MCP client, per T014): start the real FastMCP
-  server (same pattern as `test_mcp_server_e2e.py`), configure an OpenAI
-  Responses API call with this server registered as a remote MCP tool, send
+  server (same pattern as `test_mcp_server_e2e.py`) with `mcp.auth_token` set
+  (T021-auth), tunnel it publicly, configure an OpenAI Responses API call
+  with this server (+ bearer header) registered as a remote MCP tool, send
   a natural-language prompt (e.g. "create an invoice for Test Corp for 50
   NIS"), assert the model actually invoked `create_invoice` and a real
   document was created in the Morning sandbox (verify via
@@ -311,15 +338,17 @@ Mirror denidin-app's own patterns exactly (inspected live from
   `tests/expensive/` folder (mirroring denidin-app's), marked
   `@pytest.mark.expensive`; update `pytest.ini` to register the marker and
   add `addopts = -m "not expensive"` so it's skipped by default (mirroring
-  denidin-app's `pytest.ini`). Requires a real OpenAI API key in config;
-  skip gracefully if missing. Follows the same expensive-test rules as
-  denidin-app (CONSTITUTION §VII / CLAUDE.md): **human approval required
-  before every single run**, run it alone (never batched), read
-  `logs/test_logs/` before re-running, only re-run after a confident fix.
-  **Open research question to resolve when this is picked up**: OpenAI's
-  remote-MCP connector needs a publicly reachable URL, not bare
-  `127.0.0.1` — may need a tunnel (e.g. ngrok) during the test; confirm
-  feasibility before implementing.
+  denidin-app's `pytest.ini`). Requires a real OpenAI API key
+  (`config/config.json`'s own new field, per user decision 2026-07-09) and an
+  ngrok reserved/static domain (persistent tunnel, per user decision
+  2026-07-09 — the ephemeral-per-test-run alternative was also considered and
+  rejected in favor of a stable URL). Skip gracefully if credentials/tunnel
+  aren't configured. Follows the same expensive-test rules as denidin-app
+  (CONSTITUTION §VII / CLAUDE.md): **human approval required before every
+  single run**, run it alone (never batched), read `logs/test_logs/` before
+  re-running, only re-run after a confident fix.
+  **Still needed from the user before this can be built**: an ngrok account
+  authtoken + reserved/static domain (paid plan), and the OpenAI API key.
 
 ---
 
