@@ -99,9 +99,28 @@ def test_load_config_defaults_mcp_auth_token_to_none():
     assert config.mcp_auth_token is None
 
 
-def test_load_config_defaults_ngrok_fields_to_none():
-    """No ngrok config -> run_morning_mcp.sh skips tunnel setup entirely (see T021-tunnel)."""
-    config = load_config(TEST_CONFIG_PATH)
+def test_load_config_defaults_ngrok_fields_to_none(tmp_path):
+    """No ngrok config -> run_morning_mcp.sh skips tunnel setup entirely (see T021-tunnel).
+
+    Uses an isolated minimal config rather than TEST_CONFIG_PATH: since T021
+    added real openai_api_key/mcp.ngrok_authtoken to config.test.json (per
+    user decision 2026-07-09 — real secrets moved out of the git-tracked
+    config.json into the now-gitignored config.test.json), that file no
+    longer represents the "nothing configured" case this test checks.
+    """
+    minimal_config = tmp_path / "config.json"
+    minimal_config.write_text(
+        json.dumps(
+            {
+                "api_key_id": "x",
+                "api_key_secret": "y",
+                "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(minimal_config)
 
     assert config.mcp_ngrok_authtoken is None
     assert config.mcp_ngrok_domain is None
@@ -149,9 +168,26 @@ def test_load_config_reads_mcp_auth_token_when_present(tmp_path):
     assert config.mcp_auth_token == "super-secret-token"
 
 
-def test_load_config_defaults_openai_api_key_to_none():
-    """No openai_api_key configured -> tests/expensive (T021) must skip gracefully."""
-    config = load_config(TEST_CONFIG_PATH)
+def test_load_config_defaults_openai_api_key_to_none(tmp_path):
+    """No openai_api_key configured -> tests/expensive (T021) must skip gracefully.
+
+    Uses an isolated minimal config, not TEST_CONFIG_PATH — see the
+    ngrok-fields-default test above for why (config.test.json now
+    intentionally carries a real openai_api_key).
+    """
+    minimal_config = tmp_path / "config.json"
+    minimal_config.write_text(
+        json.dumps(
+            {
+                "api_key_id": "x",
+                "api_key_secret": "y",
+                "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(minimal_config)
 
     assert config.openai_api_key is None
 

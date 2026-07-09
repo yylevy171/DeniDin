@@ -20,7 +20,12 @@ import requests
 import uvicorn
 
 APP_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = APP_ROOT / "config" / "config.json"
+# Uses config.test.json (sandbox), not config.json — per user decision
+# 2026-07-09 ("we are not yet in production for this app, so until further
+# notice use config.test.json"). config.test.json is gitignored (real
+# secrets, incl. openai_api_key/mcp.ngrok_authtoken added for this purpose)
+# but its Morning creds already point at the sandbox.
+CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
 sys.path.insert(0, str(APP_ROOT))
 
 from tests.expensive.e2e_helpers import NgrokError, ngrok_tunnel  # noqa: E402
@@ -36,7 +41,7 @@ TEST_PORT = 8793
 @pytest.fixture(scope="module")
 def config():
     if not CONFIG_PATH.exists():
-        pytest.skip("config/config.json not found")
+        pytest.skip("config/config.test.json not found")
     return load_config(CONFIG_PATH)
 
 
@@ -45,7 +50,7 @@ def running_server(config):
     """Start the real MCP server locally (auth-protected, matching how it
     would actually be exposed) for the tunnel to point at."""
     if not (config.api_key_id and config.api_key_secret):
-        pytest.skip("No Morning credentials in config/config.json")
+        pytest.skip("No Morning credentials in config/config.test.json")
 
     client = MorningClient(
         api_key_id=config.api_key_id,
@@ -83,7 +88,7 @@ def test_ngrok_tunnel_routes_real_internet_traffic_to_local_server(config, runni
     wrong/missing token -> 401, correct token -> not 401 — since a live
     Morning tool call isn't needed just to prove routing works)."""
     if not config.mcp_ngrok_authtoken:
-        pytest.skip("No mcp.ngrok_authtoken configured in config/config.json")
+        pytest.skip("No mcp.ngrok_authtoken configured in config/config.test.json")
 
     auth_token = running_server
 

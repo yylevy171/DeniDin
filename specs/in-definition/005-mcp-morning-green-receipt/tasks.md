@@ -398,14 +398,36 @@ Mirror denidin-app's own patterns exactly (inspected live from
     default suite run collects 100/101 (1 correctly deselected), the expensive test collects
     fine under `-m expensive --collect-only` (imports/syntax valid), and has **not been
     executed** — no OpenAI billing has occurred.
-  - **⚠️ Flagged, not fixed (explicit user instruction: "dont")**: `config/config.json`'s
-    `api_url` points at Green Invoice **production**, not sandbox. If this test is ever run
-    against that config, a successful `create_invoice` call creates a **real invoice in the
-    real production Morning account** — this is not a test-only side effect. Whoever
-    approves running T021 should confirm which `api_url` they intend to hit first.
+  - **Resolved 2026-07-09 (was flagged above as a concern)**: per user decision — "we are
+    not yet in production for this app, so until further notice use config.test.json and
+    not config.json" — both `test_ngrok_tunnel.py` and `test_openai_invokes_mcp_e2e.py` now
+    load `config/config.test.json` (sandbox `api_url`, confirmed unchanged), not
+    `config/config.json` (which still points at production and was intentionally left
+    untouched — out of scope for this app right now). A real `create_invoice` call from
+    T021 therefore lands in the **sandbox**, not production.
+  - **Secret-handling change 2026-07-09**: `openai_api_key` and `mcp.ngrok_authtoken` were
+    added to `config/config.test.json` for this purpose. Since that file was previously
+    **git-tracked** (holding real, if sandbox-tier, Morning credentials since the app's
+    initial scaffold), adding a real billable OpenAI key / ngrok authtoken to it would have
+    committed them to the repo. Instead: `config/config.test.json` was removed from git
+    tracking (`git rm --cached`) and added to `.gitignore`, matching `config/config.json`'s
+    existing treatment. The file's real content on disk is unchanged (existing Morning sandbox
+    creds untouched); only its git status changed. (Prior git history still contains the one
+    commit that originally added it — not purged, since that's a more drastic, separate
+    action not requested.) Existing sandbox integration tests are unaffected since they read
+    the same file by path, just no longer via git. Two Phase-1 unit tests
+    (`test_load_config_defaults_ngrok_fields_to_none`,
+    `test_load_config_defaults_openai_api_key_to_none`) asserted "these fields are absent in
+    config.test.json" and broke as a direct, expected consequence — fixed by switching them
+    to an isolated `tmp_path` config (matching their "reads X when present" sibling tests'
+    existing pattern) instead of depending on `config.test.json`'s now-populated state.
+  - **Model corrected 2026-07-09**: `OPENAI_MODEL` changed from the placeholder `"gpt-4.1"`
+    to `"gpt-4o-mini"` — the same text model denidin-app itself uses
+    (`apps/denidin-app/config/config.json`'s `ai_model`), per user decision.
   - **Before running**: ~~(1) provide a free ngrok authtoken~~ — **done** 2026-07-09, tunnel
-    verified for real (see above); (2) confirm the `OPENAI_MODEL` constant (currently
-    `"gpt-4.1"`) is still a valid/available model; (3) explicit human approval per
+    verified for real (see above); ~~(2) confirm/fix the OpenAI model~~ — **done**,
+    `gpt-4o-mini`; ~~confirm sandbox vs production~~ — **done**, now reads
+    `config.test.json`/sandbox; (3) explicit human approval per
     CONSTITUTION §VII/CLAUDE.md — human approval required before every single run, run alone
     (never batched), read `logs/test_logs/` before re-running, only re-run after a confident
     fix.

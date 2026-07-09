@@ -41,9 +41,13 @@ cp config/config.example.json config/config.json  # then fill in real credential
   "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/"
 }
 ```
-`config/config.test.json` (committed) is read by the integration tests under
-`tests/integration/` — it must contain real sandbox credentials for those tests to
-run; without them, the tests skip automatically.
+`config/config.test.json` (**gitignored**, not committed — changed 2026-07-09; it
+previously was, but real secrets in a git-tracked file is a liability even for
+sandbox-tier credentials) is read by the integration tests under `tests/integration/`
+and `tests/expensive/` — it must contain real sandbox credentials (and, for the
+ngrok/OpenAI-driven tests, `openai_api_key`/`mcp.ngrok_authtoken` too) for those
+tests to run; without them, the tests skip automatically. See
+`config/config.example.json` for the full shape to copy.
 
 ## Testing
 

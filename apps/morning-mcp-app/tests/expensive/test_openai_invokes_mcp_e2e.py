@@ -31,7 +31,13 @@ import pytest
 import uvicorn
 
 APP_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = APP_ROOT / "config" / "config.json"
+# Uses config.test.json (sandbox), not config.json — per user decision
+# 2026-07-09 ("we are not yet in production for this app, so until further
+# notice use config.test.json"). config.test.json is gitignored (real
+# secrets, incl. openai_api_key/mcp.ngrok_authtoken added for this purpose)
+# but its Morning creds already point at the sandbox — so a successful
+# create_invoice call here lands in the sandbox, not production.
+CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
 sys.path.insert(0, str(APP_ROOT))
 
 from tests.expensive.e2e_helpers import NgrokError, ngrok_tunnel  # noqa: E402
@@ -43,22 +49,23 @@ from denidin_mcp_morning.server import build_asgi_app, create_server  # noqa: E4
 TEST_HOST = "127.0.0.1"
 TEST_PORT = 8792
 
-# NOTE: verify this is still a current, available OpenAI model before running.
-OPENAI_MODEL = "gpt-4.1"
+# Same text model denidin-app uses (apps/denidin-app/config/config.json's
+# `ai_model`), per user decision 2026-07-09.
+OPENAI_MODEL = "gpt-4o-mini"
 
 
 @pytest.fixture(scope="module")
 def config():
     if not CONFIG_PATH.exists():
-        pytest.skip("config/config.json not found")
+        pytest.skip("config/config.test.json not found")
 
     cfg = load_config(CONFIG_PATH)
     if not cfg.openai_api_key:
-        pytest.skip("No openai_api_key configured in config/config.json")
+        pytest.skip("No openai_api_key configured in config/config.test.json")
     if not cfg.mcp_ngrok_authtoken:
-        pytest.skip("No mcp.ngrok_authtoken configured in config/config.json")
+        pytest.skip("No mcp.ngrok_authtoken configured in config/config.test.json")
     if not (cfg.api_key_id and cfg.api_key_secret):
-        pytest.skip("No Morning credentials in config/config.json")
+        pytest.skip("No Morning credentials in config/config.test.json")
     return cfg
 
 
