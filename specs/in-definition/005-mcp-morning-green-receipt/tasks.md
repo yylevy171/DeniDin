@@ -484,9 +484,15 @@ Mirror denidin-app's own patterns exactly (inspected live from
     the remote MCP tool via the real ngrok tunnel with no error, and the test independently
     confirmed the resulting invoice landed in the Morning sandbox. **T021 is now verified
     working end-to-end for real** (first successful run). Real OpenAI/Morning billing was
-    incurred by this run (as expected/approved). The negative-case test
-    (`test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt`) has **not** been run yet —
-    still requires its own fresh explicit approval per CONSTITUTION §VII.
+    incurred by this run (as expected/approved).
+  - **Second real run (2026-07-12), separately approved —
+    `test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt`**: **passed** on its first
+    attempt (the transport_security fix above applies to both tests, since both go through
+    the same `create_server()`/`running_server` fixture). Given a haiku prompt with nothing
+    to do with invoicing, OpenAI answered normally with zero `type == "mcp_call"` output
+    items — confirming `OPENAI_ASSISTANT_INSTRUCTIONS`' scoping guidance actually holds in
+    practice, not just in the prompt text. **Both expensive tests in this module have now
+    been run for real and both pass.**
 
 ---
 
