@@ -18,6 +18,15 @@ MCP output-item schema used below (`type == "mcp_call"`, `.name`,
 installed `openai` SDK's `openai.types.responses.response_output_item.McpCall`
 class — not guessed from documentation, which is thinner on this than the
 SDK's own type definitions.
+
+Every test in this module passes the same `instructions` (OpenAI's
+system-prompt-level parameter on `responses.create()` — confirmed as a real,
+distinct top-level SDK parameter) via
+`tests.expensive.e2e_helpers.OPENAI_ASSISTANT_INSTRUCTIONS`, so all of them
+exercise the model under identical guidance about when these tools apply.
+`test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt` is the negative
+counterpart: it asserts that guidance actually holds — no Morning tool call
+happens for a prompt with nothing to do with invoicing.
 """
 from __future__ import annotations
 
@@ -40,7 +49,11 @@ APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
 sys.path.insert(0, str(APP_ROOT))
 
-from tests.expensive.e2e_helpers import NgrokError, ngrok_tunnel  # noqa: E402
+from tests.expensive.e2e_helpers import (  # noqa: E402
+    OPENAI_ASSISTANT_INSTRUCTIONS,
+    NgrokError,
+    ngrok_tunnel,
+)
 
 from denidin_mcp_morning.config import load_config  # noqa: E402
 from denidin_mcp_morning.morning_client import MorningClient  # noqa: E402
@@ -123,6 +136,7 @@ def test_openai_invokes_create_invoice_via_remote_mcp(config, running_server):
 
             response = openai_client.responses.create(
                 model=OPENAI_MODEL,
+                instructions=OPENAI_ASSISTANT_INSTRUCTIONS,
                 input=(
                     f"Create an invoice for a client named '{client_name}' for 50 NIS, "
                     f"description 'Consulting services {unique_marker}'."
@@ -176,4 +190,46 @@ def test_openai_invokes_create_invoice_via_remote_mcp(config, running_server):
     assert found, (
         f"No invoice for {client_name!r} found in Morning after the OpenAI-driven call; "
         f"last search results: {last_items}"
+    )
+
+
+@pytest.mark.expensive
+def test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt(config, running_server):
+    """A prompt with nothing to do with invoicing must NOT trigger any Morning
+    MCP tool call, even though the tools are registered and available. This is
+    the negative-case counterpart to
+    test_openai_invokes_create_invoice_via_remote_mcp: it proves the model
+    respects OPENAI_ASSISTANT_INSTRUCTIONS' scoping guidance rather than
+    reaching for these tools indiscriminately.
+    """
+    from openai import OpenAI
+
+    auth_token = running_server
+
+    try:
+        with ngrok_tunnel(port=TEST_PORT, authtoken=config.mcp_ngrok_authtoken) as public_url:
+            openai_client = OpenAI(api_key=config.openai_api_key)
+
+            response = openai_client.responses.create(
+                model=OPENAI_MODEL,
+                instructions=OPENAI_ASSISTANT_INSTRUCTIONS,
+                input="Write a short haiku about the changing seasons.",
+                tools=[
+                    {
+                        "type": "mcp",
+                        "server_label": "morning-invoices",
+                        "server_url": f"{public_url}/mcp",
+                        "require_approval": "never",
+                        "headers": {"Authorization": f"Bearer {auth_token}"},
+                    }
+                ],
+            )
+    except NgrokError as exc:
+        pytest.skip(f"ngrok tunnel unavailable: {exc}")
+
+    mcp_calls = [item for item in response.output if getattr(item, "type", None) == "mcp_call"]
+
+    assert not mcp_calls, (
+        f"Model invoked Morning MCP tool(s) for an unrelated prompt: "
+        f"{[c.name for c in mcp_calls]!r}. Full output: {response.output!r}"
     )

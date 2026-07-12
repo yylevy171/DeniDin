@@ -424,6 +424,30 @@ Mirror denidin-app's own patterns exactly (inspected live from
   - **Model corrected 2026-07-09**: `OPENAI_MODEL` changed from the placeholder `"gpt-4.1"`
     to `"gpt-4o-mini"` — the same text model denidin-app itself uses
     (`apps/denidin-app/config/config.json`'s `ai_model`), per user decision.
+  - **Shared `instructions` + negative-case test added 2026-07-12** (per explicit user
+    instruction: "implement #2 for the expensive tests. use the same instructions for all
+    expensive tests. add a new expensive test that calls openai with some prompt that is
+    not related to morning at all, assert it does NOT do any morning mcp calls."). "#2"
+    refers to OpenAI's own `instructions` parameter on `client.responses.create()`
+    (confirmed as a real, distinct top-level SDK parameter — separate from the MCP
+    server's own optional `instructions` field surfaced in `InitializeResult`).
+    - New `OPENAI_ASSISTANT_INSTRUCTIONS` constant in `tests/expensive/e2e_helpers.py`:
+      names all 7 Morning tools and explicitly scopes them to invoicing/client/financial
+      requests only, telling the model to answer unrelated requests normally without
+      calling any tool. Both tests in `test_openai_invokes_mcp_e2e.py` now pass this via
+      `instructions=OPENAI_ASSISTANT_INSTRUCTIONS`, so every expensive OpenAI-driven test
+      in this module runs under identical guidance.
+    - New `test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt` (same `config`/
+      `running_server` fixtures, its own ephemeral ngrok tunnel, same `tools=[{"type":
+      "mcp", ...}]` registration) sends an unrelated prompt (a haiku request) and asserts
+      `response.output` contains **no** `type == "mcp_call"` items at all — the negative
+      counterpart to T021's existing `create_invoice`-invocation assertion, proving the
+      model doesn't reach for these tools indiscriminately just because they're available.
+    - **Confirmed**: `pytest --collect-only -m expensive` collects both tests cleanly
+      (2 selected, 100 deselected); full default-suite run still **100 passed, 2
+      deselected** (up from 1, as expected) — nothing executed, no OpenAI billing.
+      **Neither expensive test has been run** — still requires fresh explicit human
+      approval per CONSTITUTION §VII before every single run.
   - **Before running**: ~~(1) provide a free ngrok authtoken~~ — **done** 2026-07-09, tunnel
     verified for real (see above); ~~(2) confirm/fix the OpenAI model~~ — **done**,
     `gpt-4o-mini`; ~~confirm sandbox vs production~~ — **done**, now reads
