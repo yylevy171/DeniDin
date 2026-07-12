@@ -446,8 +446,6 @@ Mirror denidin-app's own patterns exactly (inspected live from
     - **Confirmed**: `pytest --collect-only -m expensive` collects both tests cleanly
       (2 selected, 100 deselected); full default-suite run still **100 passed, 2
       deselected** (up from 1, as expected) — nothing executed, no OpenAI billing.
-      **Neither expensive test has been run** — still requires fresh explicit human
-      approval per CONSTITUTION §VII before every single run.
   - **Before running**: ~~(1) provide a free ngrok authtoken~~ — **done** 2026-07-09, tunnel
     verified for real (see above); ~~(2) confirm/fix the OpenAI model~~ — **done**,
     `gpt-4o-mini`; ~~confirm sandbox vs production~~ — **done**, now reads
@@ -455,6 +453,40 @@ Mirror denidin-app's own patterns exactly (inspected live from
     CONSTITUTION §VII/CLAUDE.md — human approval required before every single run, run alone
     (never batched), read `logs/test_logs/` before re-running, only re-run after a confident
     fix.
+  - **First real run (2026-07-12) — `test_openai_invokes_create_invoice_via_remote_mcp`,
+    approved individually**: failed on first attempt with `openai.APIStatusError: 424 -
+    "Error retrieving tool list from MCP server ... Failed Dependency"`. Root cause found
+    directly in the captured debug log, not guessed: `mcp.server.transport_security:
+    Invalid Host header: <ngrok-hostname>`. FastMCP silently enables Host-header
+    DNS-rebinding protection (allow-listing only `127.0.0.1`/`localhost`/`::1`) whenever
+    `host` is loopback and no `transport_security` is explicitly given — this rejects
+    *every* request forwarded through the ngrok tunnel (whose `Host` header is the tunnel's
+    own public hostname), independent of and prior to `BearerTokenMiddleware` ever running.
+    Confirmed against the MCP Python SDK's own published guidance (GitHub
+    modelcontextprotocol/python-sdk issue #1798, "Resolving 421 Invalid Host Header", and
+    security advisory GHSA-9h52-p55h-vw2f / CVE-2025-66416): the SDK's own docs call
+    disabling this check acceptable "for local development or if you are managing security
+    at a different layer" — which applies here, since `BearerTokenMiddleware`'s shared
+    bearer token is this server's actual access boundary, not Host-header matching. The
+    SDK-recommended alternative (allow-listing the exact tunnel host) doesn't fit this
+    project's free-tier ephemeral tunnel: the SDK only supports exact-host + port-wildcard
+    matching (`host:*`), not subdomain wildcards, and the ephemeral hostname is only known
+    *after* the server is already constructed — properly allow-listing it would require
+    reordering startup (tunnel first, then server), out of scope for this fix. **Fix**:
+    `create_server()` in `src/denidin_mcp_morning/server.py` now passes
+    `transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False)`
+    explicitly to `FastMCP(...)`. This affects every ngrok-exposed use of the server (this
+    test, `run_morning_mcp.sh`, `docker-entrypoint.sh`), not just this one test — flagged to
+    and approved by the user before applying (a real security-control change, not a routine
+    bug fix). Verified: full default-suite run still 100 passed/2 deselected after the fix;
+    re-ran the same expensive test once (per the "only re-run after a confident fix" rule)
+    and it **passed** — OpenAI's Responses API discovered and invoked `create_invoice` over
+    the remote MCP tool via the real ngrok tunnel with no error, and the test independently
+    confirmed the resulting invoice landed in the Morning sandbox. **T021 is now verified
+    working end-to-end for real** (first successful run). Real OpenAI/Morning billing was
+    incurred by this run (as expected/approved). The negative-case test
+    (`test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt`) has **not** been run yet —
+    still requires its own fresh explicit approval per CONSTITUTION §VII.
 
 ---
 

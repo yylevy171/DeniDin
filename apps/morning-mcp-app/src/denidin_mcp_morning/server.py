@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -109,7 +110,21 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         refresh_before_seconds=config.refresh_before_seconds,
     )
 
-    mcp = FastMCP(name=config.mcp_server_name, host=config.mcp_host, port=config.mcp_port)
+    # FastMCP auto-enables Host-header DNS-rebinding protection restricted to
+    # 127.0.0.1/localhost whenever `host` is loopback and no transport_security
+    # is given — that silently 424s every request forwarded through a public
+    # tunnel (ngrok's Host header is never 127.0.0.1/localhost), breaking the
+    # documented ngrok-exposure path (tests/expensive, run_morning_mcp.sh,
+    # docker-entrypoint.sh) for both random and reserved domains alike.
+    # BearerTokenMiddleware (below) is this server's real access boundary, not
+    # Host-header matching, so DNS-rebinding protection is explicitly disabled
+    # rather than chasing per-run tunnel hostnames.
+    mcp = FastMCP(
+        name=config.mcp_server_name,
+        host=config.mcp_host,
+        port=config.mcp_port,
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
 
     @mcp.tool()
     def create_invoice(

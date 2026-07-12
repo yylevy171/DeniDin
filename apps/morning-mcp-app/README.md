@@ -84,6 +84,15 @@ tunnel alongside the server and prints its public URL;
 `ARCHITECTURE.md` for why (the server has no auth by default, and its tools
 include state-changing operations).
 
+**Note**: `create_server()` explicitly disables FastMCP's Host-header
+DNS-rebinding protection (`TransportSecuritySettings(enable_dns_rebinding_protection=False)`),
+which otherwise only allows `Host: 127.0.0.1/localhost` and 424s every request
+forwarded through a tunnel (confirmed live 2026-07-12 — see
+`specs/in-definition/005-mcp-morning-green-receipt/tasks.md`, T021). This is
+safe here because `mcp.auth_token`'s bearer check, not Host-header matching, is
+this server's real access boundary — set it whenever exposing the server
+publicly.
+
 ## Docker
 
 ```bash
