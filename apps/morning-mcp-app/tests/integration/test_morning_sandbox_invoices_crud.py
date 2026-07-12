@@ -111,9 +111,14 @@ def test_search_invoice_by_fields(morning_client, created_invoice):
     params = {"clientName": created_invoice["client_name"]}
 
     # The sandbox may take a short time to index the new document; poll briefly.
+    # Widened from an earlier 6x/1s window (up to 6s) after observed flakes
+    # under full-suite runs creating many sandbox documents in quick
+    # succession — the search index can lag further behind under that load
+    # than in isolation (see test_morning_sandbox_list_invoices_tool.py for
+    # the same class of fix). 12x/1.5s (up to 18s) gives realistic headroom.
     found = False
     last_items = None
-    for _ in range(6):
+    for _ in range(12):
         resp = morning_client.list_invoices(params=params)
         items = []
         if isinstance(resp, dict):
@@ -129,7 +134,7 @@ def test_search_invoice_by_fields(morning_client, created_invoice):
                 break
         if found:
             break
-        time.sleep(1)
+        time.sleep(1.5)
 
     assert found, f"Created invoice not found in search results; items: {last_items[:5] if last_items else None}"
 
@@ -152,7 +157,7 @@ def test_search_invoice_by_phone(morning_client, created_invoice):
 
     found = False
     last_items = None
-    for _ in range(6):
+    for _ in range(12):
         resp = morning_client.list_invoices(params=params)
         items = []
         if isinstance(resp, dict):
@@ -169,7 +174,7 @@ def test_search_invoice_by_phone(morning_client, created_invoice):
                 break
         if found:
             break
-        time.sleep(1)
+        time.sleep(1.5)
 
     assert found, f"Created invoice not found by phone search; last items: {last_items[:5] if last_items else None}"
 
@@ -184,7 +189,7 @@ def test_search_invoice_by_amount(morning_client, created_invoice):
 
     found = False
     last_items = None
-    for _ in range(6):
+    for _ in range(12):
         resp = morning_client.list_invoices(params=params)
         items = []
         if isinstance(resp, dict):
@@ -205,7 +210,7 @@ def test_search_invoice_by_amount(morning_client, created_invoice):
                 break
         if found:
             break
-        time.sleep(1)
+        time.sleep(1.5)
 
     assert found, f"Created invoice not found by amount search; last items: {last_items[:5] if last_items else None}"
 

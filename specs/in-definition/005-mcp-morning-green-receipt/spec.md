@@ -2,9 +2,9 @@
 
 **Feature ID**: 005-mcp-morning-green-receipt
 **Priority**: P2 (Medium)
-**Status**: Ready for Implementation
+**Status**: Implemented (Phases 1–3 of `tasks.md`; Phase 4 polish remaining)
 **Created**: January 17, 2026
-**Last Updated**: July 8, 2026
+**Last Updated**: July 9, 2026
 **App**: `apps/morning-mcp-app/` (standalone, does not import from or depend on `apps/denidin-app/`)
 
 ---
@@ -39,15 +39,25 @@ invoice PDFs — all backed by the real Morning REST API.
 
 ## Scope
 
-**In scope** — one MCP server (`apps/morning-mcp-app/`) exposing **8 invoice-management
+**In scope** — one MCP server (`apps/morning-mcp-app/`) exposing **7 invoice-management
 tools** (see §MCP Tools). Backed by the Morning REST API. Responses formatted for humans
 (Hebrew by default; ₪; Israeli date format).
 
 **Out of scope (this feature):**
 - **Receipt parsing / file upload / webhook flow** — split into a separate future feature,
   `specs/in-definition/017-mcp-morning-receipt-parsing/`.
-- **WhatsApp delivery** — `send_invoice` here uses **Morning's own send endpoint** and
-  returns data to the caller; it does **not** call into `denidin-app`. See §Future Work.
+- **`send_invoice` (dropped, not a tool)** — Morning's public API has **no documented
+  endpoint to email/deliver a document to a client** (confirmed by diffing the full official
+  API reference against the community Postman collection: every endpoint this app uses
+  appears in the official docs, but the `/documents/{id}/distribute` endpoint the Postman
+  collection includes does not — it consistently returns `errorCode 3003` "unsupported
+  operation type" regardless of document type or account settings, because it's an
+  internal/browser-session-only endpoint powering Morning's own web UI "Send" button, not a
+  supported partner/API-key integration point). A dedicated `send_invoice` tool would only
+  have recombined `get_invoice_details` + `download_invoice_pdf` with no real delivery
+  capability behind it — the calling MCP client (e.g. the model) can already compose those
+  two tools itself, so a redundant wrapper tool adds no value. See §Future Work for what a
+  real delivery channel (e.g. via denidin-app/WhatsApp) would require.
 - **Multi-tenant / high-scale / SLA guarantees** — single sandbox tenant for the initial
   rollout; revisit in a later phase.
 
@@ -70,25 +80,28 @@ tools** (see §MCP Tools). Backed by the Morning REST API. Responses formatted f
 
 ## Current Implementation Status (ground truth)
 
-This feature is **partially built**; the spec reflects reality (not "greenfield"):
+This feature is **fully implemented** (Phases 1–3 of `tasks.md`); only Phase 4 polish
+(quickstart docs) remains:
 
-**Already implemented** in `apps/morning-mcp-app/src/denidin_mcp_morning/`:
+**Implemented** in `apps/morning-mcp-app/src/denidin_mcp_morning/`:
 - `auth.py` — `MorningAuth`: JWT exchange via `POST /account/token`, token caching with
   refresh-before-expiry, thread-safe.
-- `morning_client.py` — `MorningClient`:
-  - `create_invoice(payload)` → `POST /documents`
-  - `list_invoices(params)` → `POST /documents/search`
-  - `get_invoice(invoice_id)` → `GET /documents/{id}`
-  - urllib3 retry on 429/500/502/503/504.
-- Real-sandbox integration tests: `tests/integration/test_morning_sandbox_*.py` (no mocks).
-
-**To build** (this feature):
-- `config.py` — load & validate flat `config/config.json` against `artifacts/config.schema.json`.
-- `models.py` — Pydantic models (`Invoice`, `Client`, `Payment`, `FinancialSummary`) mapping the real Morning document shape.
+- `morning_client.py` — `MorningClient`: `create_invoice`, `list_invoices`, `get_invoice`,
+  `close_invoice`/`open_invoice`, `add_client`; urllib3 retry on 429/500/502/503/504.
+- `config.py` — loads & validates flat `config/config.json` against a self-contained
+  `config/config.schema.json`.
+- `models.py` — Pydantic models (`Invoice`, `Client`, `Payment`, `FinancialSummary`) mapping
+  the real Morning document shape, including several live-discovered normalizations (`number`
+  as int, numeric `status` codes).
 - `formatters.py` — Hebrew/₪/VAT/date formatting of tool responses.
-- Extend `MorningClient` with the remaining operations: `update_invoice_status`, `add_client`, `get_financial_summary`, `send_invoice`, `download_invoice_pdf`.
-- `tools.py` — the 8 MCP tools (thin wrappers over the client + formatters + validation).
-- `server.py` — FastMCP server registering the 8 tools over streamable-HTTP.
+- `tools.py` — all 7 MCP tools (thin wrappers over the client + formatters).
+- `server.py` — FastMCP server registering all 7 tools over streamable-HTTP, gated by
+  `feature_flags.enable_mcp_server`.
+- Real-sandbox integration tests for every tool plus an E2E test that starts the actual
+  server and drives a tool call through a real MCP client: `tests/integration/*.py` (no mocks).
+
+See `tasks.md` for the full history of real-sandbox discoveries that shaped each tool
+(several endpoints/mechanisms turned out different from what this spec originally assumed).
 
 ---
 
@@ -154,21 +167,26 @@ tests are unaffected.
 
 ---
 
-## MCP Tools (8)
+## MCP Tools (7)
 
 Each tool has a JSON contract under `contracts/`. Inputs are validated against the contract
-(and Pydantic models) before any Morning call. Tool → Morning endpoint mapping:
+(and Pydantic models) before any Morning call. Tool → Morning endpoint mapping (endpoints
+below are the ones actually verified live — see `tasks.md` for the discoveries that
+corrected several of these from the original draft):
 
 | # | Tool | Morning endpoint | Contract |
 |---|------|------------------|----------|
 | 1 | `create_invoice` | `POST /documents` | `contracts/create_invoice.json` |
 | 2 | `list_invoices` | `POST /documents/search` | `contracts/list_invoices.json` |
 | 3 | `get_invoice_details` | `GET /documents/{id}` | `contracts/get_invoice_details.json` |
-| 4 | `update_invoice_status` | `PUT /documents/{id}` (open/close) | `contracts/update_invoice_status.json` |
+| 4 | `update_invoice_status` | "paid" → linked Receipt (type 400) via `POST /documents`; "cancelled" → linked Credit Invoice (type 330) via `POST /documents`; "unpaid" → idempotent/rejected (no reversal exists) | `contracts/update_invoice_status.json` |
 | 5 | `add_client` | `POST /clients` | `contracts/add_client.json` |
-| 6 | `get_financial_summary` | `POST /documents/search` (aggregate) | `contracts/get_financial_summary.json` |
-| 7 | `send_invoice` | `POST /documents/{id}/send` (Morning-native email/SMS) | `contracts/send_invoice.json` |
-| 8 | `download_invoice_pdf` | `GET /documents/{id}` → PDF/preview URL or Base64 | `contracts/download_invoice_pdf.json` |
+| 6 | `get_financial_summary` | `POST /documents/search` (aggregated client-side — no dedicated summary endpoint exists) | `contracts/get_financial_summary.json` |
+| 7 | `download_invoice_pdf` | `GET /documents/{id}` → PDF/preview URL or Base64 | `contracts/download_invoice_pdf.json` |
+
+**`send_invoice` was dropped** — see §Scope for why (no documented delivery endpoint exists;
+a wrapper tool wouldn't add anything the calling MCP client can't already compose from
+`get_invoice_details` + `download_invoice_pdf`).
 
 Auth is not a tool — `POST /account/token` is handled internally by `MorningAuth`
 (`contracts/morning_token_exchange.json`).
@@ -280,26 +298,7 @@ Response returns at most 10 items plus a continuation token when more exist.
 }
 ```
 
-#### 7. `send_invoice`
-Uses **Morning's native send** endpoint (email/SMS via the client's stored contact). Does
-**not** call `denidin-app`.
-```json
-{
-  "name": "send_invoice",
-  "description": "Send an invoice to the client via Morning's own delivery (email/SMS)",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "invoice_id": {"type": "string"},
-      "phone_number": {"type": "string", "description": "Optional override; else uses the client's stored contact"},
-      "message": {"type": "string"}
-    },
-    "required": ["invoice_id"]
-  }
-}
-```
-
-#### 8. `download_invoice_pdf`
+#### 7. `download_invoice_pdf`
 ```json
 {
   "name": "download_invoice_pdf",
@@ -316,32 +315,14 @@ Uses **Morning's native send** endpoint (email/SMS via the client's stored conta
 
 ## Morning API Client (canonical shape)
 
-`MorningClient` already uses `MorningAuth` for JWT and posts to `/documents/search` for
-listing. The remaining methods follow the same pattern (token via `self._auth_headers()`,
-timeouts, urllib3 retry). Illustrative (not a re-spec of the existing code):
-
-```python
-# apps/morning-mcp-app/src/denidin_mcp_morning/morning_client.py (existing + to extend)
-
-class MorningClient:
-    """Client for the Morning API. Exchanges api_key_id+secret for a JWT via MorningAuth."""
-
-    def _auth_headers(self) -> dict:
-        token = self.auth.get_token()  # cached JWT, auto-refreshed
-        return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
-    # Implemented today:
-    def create_invoice(self, payload: dict) -> dict: ...        # POST /documents
-    def list_invoices(self, params: dict = None) -> dict: ...   # POST /documents/search
-    def get_invoice(self, invoice_id: str) -> dict: ...         # GET  /documents/{id}
-
-    # To add (this feature):
-    def update_invoice_status(self, invoice_id: str, status: str, payment_date: str = None) -> dict: ...  # PUT /documents/{id}
-    def add_client(self, payload: dict) -> dict: ...            # POST /clients
-    def get_financial_summary(self, filters: dict) -> dict: ... # POST /documents/search (aggregate)
-    def send_invoice(self, invoice_id: str, payload: dict) -> dict: ...  # POST /documents/{id}/send
-    def get_invoice_pdf(self, invoice_id: str) -> dict: ...     # GET /documents/{id} -> pdf url / base64
-```
+`MorningClient` (`apps/morning-mcp-app/src/denidin_mcp_morning/morning_client.py`) uses
+`MorningAuth` for JWT and follows one pattern throughout: token via `self._auth_headers()`,
+explicit timeouts, urllib3 retry on 429/5xx. Rather than duplicate its method list here
+(which has already drifted from reality once — the original draft assumed a `PUT
+/documents/{id}` status endpoint and a `/documents/{id}/send` delivery endpoint, neither of
+which exist), **read the source file directly** for the current, authoritative set of
+client methods; `tasks.md` documents the real-sandbox discoveries behind each one as they
+were made.
 
 ## Data Models
 
@@ -359,13 +340,13 @@ API responses; persistence is not required for this feature. All datetimes are U
   `refresh_before_seconds` of expiry. Tokens are in-memory only (never persisted/logged).
 - **REQ-RATE-001**: Stay under ~3 req/s; retry 429/5xx once-plus-backoff (existing urllib3
   `Retry`); never retry 4xx other than 429.
-- **REQ-TOOL-001..008**: Each of the 8 tools validates input against its `contracts/*.json`
+- **REQ-TOOL-001..007**: Each of the 7 tools validates input against its `contracts/*.json`
   before any Morning call and returns a human-readable (Hebrew-by-default) result.
 - **REQ-ERR-001**: Map Morning/API errors to friendly user messages (see §Error Handling);
   full technical detail to logs only (CONSTITUTION §X).
 - **REQ-I18N-001**: Responses in Hebrew by default — ₪ currency, DD/MM/YYYY dates, Hebrew
   status terms (שולם / לא שולם / פג תוקף / בוטל).
-- **REQ-MCP-001**: All 8 tools registered on the FastMCP server and discoverable/dispatchable
+- **REQ-MCP-001**: All 7 tools registered on the FastMCP server and discoverable/dispatchable
   over streamable-HTTP; server startup gated by `feature_flags.enable_mcp_server`.
 
 ---
@@ -384,17 +365,26 @@ API responses; persistence is not required for this feature. All datetimes are U
 
 ## Error Handling
 
-| Condition | User-facing message (Hebrew in production) |
-|-----------|--------------------------------------------|
-| Auth failed (401/403) | "❌ Morning authentication failed. Check API credentials." |
-| Client not found | "❌ Client 'X' not found. Add them first with add_client." |
-| Multiple clients match | "❓ Multiple clients match 'X': 1) … (ID 123) 2) … (ID 456). Pick a number/ID." |
-| Client missing phone (send) | "❌ Client has no contact on file. Provide a phone/email to send to." |
-| Invalid amount | "❌ Invalid amount. Use e.g. 1000 or 1000.50." |
-| Rate limit (429) | "❌ Too many requests. Try again in a minute." |
-| Network / 5xx | "❌ Couldn't reach Morning right now. Please try again." |
+Implemented in `errors.py`, applied at the MCP tool-call boundary in `server.py`
+(`_call_with_error_boundary`) — without this, FastMCP's default behavior surfaces the raw
+exception string (including the internal Morning API URL) directly to the caller, confirmed
+live. Technical detail (status, body, stack) always goes to logs at WARNING/ERROR, tagged
+with a correlation id; the caller only ever sees one of these:
 
-Technical detail (status, body, stack) goes to logs at DEBUG/ERROR only.
+| Condition | User-facing message (Hebrew) |
+|-----------|-------------------------------|
+| Auth failed (401/403) | "❌ האימות מול Morning נכשל. בדקו את פרטי ה-API." |
+| Not found (404) | "❌ לא נמצא. בדקו את מספר החשבונית/הלקוח." |
+| Rate limit (429) | "❌ יותר מדי בקשות. נסו שוב בעוד דקה." |
+| Network / 5xx | "❌ לא ניתן להתחבר ל-Morning כרגע. נסו שוב מאוחר יותר." |
+| Other 4xx (Morning rejected the request) | "❌ הבקשה נדחתה על ידי Morning. בדקו את הפרטים ונסו שוב." |
+| Business-rule violation (e.g. reopening an already-paid invoice, unsupported status/period) | "❌ הבקשה אינה תקינה. בדקו את הפרטים שסיפקתם." (the specific English detail is logged, not echoed to the caller — REQ-I18N-001: Hebrew by default) |
+| Unexpected error | "❌ משהו השתבש. נסו שוב." |
+
+**Not implemented (deferred; see §Future Work "Client resolution UX")**: client-side
+pre-flight amount validation, fuzzy client-name matching with a disambiguation prompt ("❓
+Multiple clients match…"), and any messaging tied to the dropped `send_invoice` tool. These
+richer UX flows would need real design work, not just an error-mapping entry.
 
 ---
 
@@ -420,7 +410,7 @@ tested with **real Morning-sandbox integration tests only** — no `unittest.moc
 
 ## Success Metrics
 
-- All 8 tools create/manage invoices against the sandbox successfully.
+- All 7 tools create/manage invoices against the sandbox successfully.
 - Accurate VAT/total math and Hebrew/₪ formatting.
 - Friendly error handling for the conditions above.
 - Tools discoverable and callable by an OpenAI model over remote MCP.
@@ -429,10 +419,13 @@ tested with **real Morning-sandbox integration tests only** — no `unittest.moc
 
 ## Future Work (explicitly deferred)
 
-- **WhatsApp delivery of invoices from denidin-app's number** — architecture **TBD**. The
-  two apps do not currently share code; a future feature will define the correct boundary
-  (e.g., denidin-app calling this MCP server, or a shared outbound service). No design in
-  this feature. `send_invoice` here stays within Morning's native send.
+- **Invoice delivery (email/WhatsApp)** — dropped from this feature entirely (no
+  `send_invoice` tool exists; see §Scope). Morning's public API has no documented delivery
+  endpoint at all, so a real delivery feature would need its own mechanism: assemble the
+  invoice + PDF link via the existing `get_invoice_details`/`download_invoice_pdf` tools,
+  then deliver over a channel this app or a caller controls — e.g. WhatsApp from
+  denidin-app's number (architecture **TBD**; the two apps do not currently share code) or a
+  direct email service. No design in this feature.
 - **Receipt parsing / file-upload / webhook product** — `specs/in-definition/017-mcp-morning-receipt-parsing/`.
 - **Client resolution UX** (fuzzy match + disambiguation, Chroma-assisted) — the model/MCP
   client drives disambiguation via `add_client` + `list_invoices`; a richer server-side

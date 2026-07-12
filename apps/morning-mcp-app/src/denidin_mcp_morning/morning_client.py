@@ -74,3 +74,27 @@ class MorningClient:
         resp = self.session.get(url, headers=headers, timeout=15)
         resp.raise_for_status()
         return resp.json()
+
+    def close_invoice(self, invoice_id: str) -> dict:
+        """Mark a document as closed/paid (POST /documents/{id}/close, empty body)."""
+        url = f"{self.base_url}/documents/{invoice_id}/close"
+        headers = self._auth_headers()
+        resp = self.session.post(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        return resp.json() if resp.content else {}
+
+    def open_invoice(self, invoice_id: str) -> dict:
+        """Reopen a document/mark unpaid (POST /documents/{id}/open, empty body)."""
+        url = f"{self.base_url}/documents/{invoice_id}/open"
+        headers = self._auth_headers()
+        resp = self.session.post(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        return resp.json() if resp.content else {}
+
+    def add_client(self, payload: dict) -> dict:
+        """Create a new client (POST /clients)."""
+        url = f"{self.base_url}/clients"
+        headers = self._auth_headers()
+        resp = self.session.post(url, json=payload, headers=headers, timeout=15)
+        resp.raise_for_status()
+        return resp.json()

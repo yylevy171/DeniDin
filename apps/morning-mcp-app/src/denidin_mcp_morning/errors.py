@@ -1,0 +1,78 @@
+"""Friendly error mapping for MCP tool responses.
+
+CONSTITUTION §X: user-facing errors must be friendly and actionable, never a
+raw stack trace or technical detail (status codes, response bodies, internal
+URLs). Without this mapping, FastMCP's default behavior surfaces the raw
+exception string verbatim to the caller (confirmed live) — this module is
+the boundary that prevents that leak. Full technical detail always goes to
+logs at ERROR/DEBUG, tagged with a correlation id for tracing.
+"""
+from __future__ import annotations
+
+import requests
+
+from .utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+_AUTH_FAILED = "❌ האימות מול Morning נכשל. בדקו את פרטי ה-API."
+_RATE_LIMITED = "❌ יותר מדי בקשות. נסו שוב בעוד דקה."
+_NOT_FOUND = "❌ לא נמצא. בדקו את מספר החשבונית/הלקוח."
+_NETWORK_ERROR = "❌ לא ניתן להתחבר ל-Morning כרגע. נסו שוב מאוחר יותר."
+_REQUEST_REJECTED = "❌ הבקשה נדחתה על ידי Morning. בדקו את הפרטים ונסו שוב."
+_UNEXPECTED = "❌ משהו השתבש. נסו שוב."
+_INVALID_REQUEST = "❌ הבקשה אינה תקינה. בדקו את הפרטים שסיפקתם."
+
+
+def mask_secret(value: str, keep: int = 4) -> str:
+    """Mask a secret for logging, keeping only the first/last `keep` chars (CONSTITUTION §IX)."""
+    if not value or len(value) <= keep * 2:
+        return "***"
+    return f"{value[:keep]}...{value[-keep:]}"
+
+
+def friendly_error_message(exc: Exception, correlation_id: str) -> str:
+    """Map an exception raised by a tool onto a short, friendly message.
+
+    Args:
+        exc: The exception raised by a `tools.*` function.
+        correlation_id: Per-call id for tracing this error in the logs.
+
+    Returns:
+        A short, user-facing message (spec.md §Error Handling). The full
+        technical detail (status, body, stack) is logged separately, never
+        returned to the caller.
+    """
+    if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
+        status = exc.response.status_code
+        logger.error(
+            "[corr_id=%s] Morning API error %s: %s",
+            correlation_id,
+            status,
+            exc.response.text,
+            exc_info=True,
+        )
+        if status in (401, 403):
+            return _AUTH_FAILED
+        if status == 429:
+            return _RATE_LIMITED
+        if status == 404:
+            return _NOT_FOUND
+        if 500 <= status < 600:
+            return _NETWORK_ERROR
+        return _REQUEST_REJECTED
+
+    if isinstance(exc, requests.exceptions.RequestException):
+        logger.error("[corr_id=%s] Network error contacting Morning", correlation_id, exc_info=True)
+        return _NETWORK_ERROR
+
+    if isinstance(exc, ValueError):
+        # The English exception text is developer-facing detail (business-rule
+        # messages raised in tools.py); log it, but return a generic Hebrew
+        # message to the caller rather than echoing English text verbatim
+        # (REQ-I18N-001: Hebrew by default).
+        logger.warning("[corr_id=%s] Validation/business-rule error: %s", correlation_id, exc)
+        return _INVALID_REQUEST
+
+    logger.error("[corr_id=%s] Unexpected error", correlation_id, exc_info=True)
+    return _UNEXPECTED

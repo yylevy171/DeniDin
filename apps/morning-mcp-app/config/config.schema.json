@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "denidin-morning config schema",
-  "description": "Canonical config schema for apps/morning-mcp-app/config/config.json. FLAT shape: the three required credential keys are top-level (matching the real config.example.json / config.test.json and the existing sandbox integration tests, which read them flat). All runtime config comes from this file per CONSTITUTION §I (no environment variables).",
+  "description": "Canonical, runtime-loaded schema for apps/morning-mcp-app/config/config.json. FLAT shape: the three required credential keys are top-level (matching config.example.json / config.test.json and the existing sandbox integration tests, which read them flat). All runtime config comes from this file per CONSTITUTION §I (no environment variables). Mirrored for documentation at specs/in-definition/005-mcp-morning-green-receipt/artifacts/config.schema.json — keep both in sync; this copy is what config.py actually loads at runtime (self-contained for Docker, which does not copy the specs/ tree).",
   "type": "object",
   "properties": {
     "api_key_id": {
@@ -41,7 +41,7 @@
     },
     "openai_api_key": {
       "type": "string",
-      "description": "OpenAI API key used only by tests/expensive/test_openai_invokes_mcp_e2e.py (T021) to drive this server as a remote MCP tool. Not read by the server itself."
+      "description": "OpenAI API key used only by tests/expensive/test_openai_invokes_mcp_e2e.py (Phase 5, T021) to drive this server as a remote MCP tool via the real OpenAI Responses API. Not read by the server itself. Never commit a real value - keep it in config/config.json only."
     },
     "mcp": {
       "type": "object",
@@ -51,7 +51,7 @@
         "host": {
           "type": "string",
           "default": "127.0.0.1",
-          "description": "Bind address. Default (loopback-only) is correct for local dev but NOT reachable through Docker port mapping or a tunnel targeting the container - Docker deployments MUST set this to '0.0.0.0'."
+          "description": "Bind address. The default (127.0.0.1, loopback-only) is correct and safest for plain local dev, but is NOT reachable through Docker's port mapping (-p) or an ngrok tunnel targeting the container - a process bound only to the container's own loopback cannot be reached from outside its network namespace (confirmed live: curl from the host got a connection failure until this was changed). Docker/container deployments MUST set this to '0.0.0.0' in the mounted config.json."
         },
         "port": { "type": "integer", "default": 8000 },
         "transport": {
@@ -66,15 +66,15 @@
         },
         "auth_token": {
           "type": "string",
-          "description": "Optional shared bearer-token secret. If set, the MCP server rejects any request without a matching 'Authorization: Bearer <token>' header (401). If unset (default), no auth is enforced - appropriate for pure local/dev use. Set once the server is exposed via a tunnel/public URL."
+          "description": "Optional shared bearer-token secret. If set, the MCP server rejects any request without a matching 'Authorization: Bearer <token>' header (401) - see server.py's BearerTokenMiddleware. If unset (default), no auth is enforced - appropriate for pure local/dev use (this server has one expected main consumer, denidin-app, plus ad hoc manual tests; set this once the server is exposed via a tunnel/public URL). Never commit a real value - keep it in config/config.json only."
         },
         "ngrok_authtoken": {
           "type": "string",
-          "description": "Optional ngrok account authtoken. If set (with ngrok_domain), run_morning_mcp.sh starts a persistent ngrok tunnel exposing this server publicly (used by the expensive OpenAI remote-MCP E2E test). If unset, no tunnel is started."
+          "description": "Optional ngrok account authtoken. If set (along with ngrok_domain), run_morning_mcp.sh starts a persistent ngrok tunnel exposing this server publicly (used by tests/expensive - the OpenAI remote-MCP E2E test - which needs a URL OpenAI can reach). If unset, no tunnel is started; the server just runs locally as before. Never commit a real value."
         },
         "ngrok_domain": {
           "type": "string",
-          "description": "Optional ngrok reserved/static domain (requires a paid ngrok plan) for a stable hostname. Only used if ngrok_authtoken is also set."
+          "description": "Optional ngrok reserved/static domain (requires a paid ngrok plan) to give the tunnel a stable hostname across restarts, e.g. 'your-app.ngrok-free.app' or a custom reserved domain. Only used if ngrok_authtoken is also set."
         }
       }
     },

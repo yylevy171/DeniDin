@@ -4,13 +4,13 @@
   "type": "object",
   "x-http": {
     "method": "POST",
-    "path": "/api/v1/documents/{id}/status",
-    "notes": "Update status for a document/invoice (provider supports status changes via document endpoints)."
+    "path": "/api/v1/documents",
+    "notes": "There is no generic `PUT /documents/{id}/status` endpoint (confirmed against the real Postman collection and live sandbox testing). Real mechanisms, verified live 2026-07-08: \"paid\" -> issue a linked Receipt (type 400, linkedDocumentIds=[invoice_id]) via POST /documents; Morning then flips the original's status automatically. \"unpaid\" -> idempotent no-op if not yet paid; otherwise rejected (POST /documents/{id}/open returns 400 errorCode 2401 \"לא ניתן לפתוח מסמך שאינו סגור ידנית\" for documents closed via a linked receipt rather than /close itself — no supported reversal). \"cancelled\" -> issue a linked Credit Invoice (type 330, linkedDocumentIds=[invoice_id]) via POST /documents; Israeli law forbids voiding an issued tax invoice outright. POST /documents/{id}/close and /open exist and work for other document lifecycles (e.g. orders/proformas) but return 400 errorCode 3000 for tax invoices (type 305) — not used by this tool."
   },
   "properties": {
     "invoice_id": {"type": "string"},
     "status": {"type": "string", "enum": ["paid", "unpaid", "cancelled"]},
-    "payment_date": {"type": "string", "format": "date"}
+    "payment_date": {"type": "string", "format": "date", "description": "Currently unused — reserved for backdating the receipt/credit-invoice date."}
   },
   "required": ["invoice_id", "status"]
 }
