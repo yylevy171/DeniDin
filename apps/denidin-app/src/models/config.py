@@ -32,6 +32,9 @@ class AppConfiguration:
     constitution_config: Dict = field(default_factory=dict)
     user_roles: Dict = field(default_factory=dict)
 
+    # Morning MCP integration (Feature 018)
+    mcp: Dict = field(default_factory=dict)
+
     @classmethod
     def from_file(cls, file_path: str) -> 'AppConfiguration':
         """
@@ -84,7 +87,8 @@ class AppConfiguration:
             'feature_flags': {},
             'memory': {},
             'constitution_config': {},
-            'user_roles': {}
+            'user_roles': {},
+            'mcp': {}
         }
 
         # Merge with defaults
@@ -136,6 +140,18 @@ class AppConfiguration:
                     # Combine data_root with relative storage_dir
                     config_data['memory'][section]['storage_dir'] = f'{data_root}/{storage_dir}'
 
+        # Set mcp sub-field defaults (Feature 018: Morning MCP integration)
+        if 'mcp' in config_data and config_data['mcp']:
+            mcp_defaults = {
+                'morning_auth_token': '',
+                'morning_status_file': 'data/morning_mcp_status.json',
+                'morning_server_label': 'morning-invoices',
+                'url_max_age_seconds': 0
+            }
+            for key, value in mcp_defaults.items():
+                if key not in config_data['mcp']:
+                    config_data['mcp'][key] = value
+
         # Filter out unknown keys (backward compatibility for removed config fields)
         valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
         filtered_config = {k: v for k, v in config_data.items() if k in valid_fields}
@@ -170,3 +186,9 @@ class AppConfiguration:
             value = getattr(self, field_name)
             if not value or not value.strip():
                 raise ValueError(f"{field_name} must not be empty")
+
+        # Validate mcp.url_max_age_seconds is non-negative, if configured
+        if self.mcp:
+            max_age = self.mcp.get('url_max_age_seconds', 0)
+            if not isinstance(max_age, (int, float)) or max_age < 0:
+                raise ValueError(f"mcp.url_max_age_seconds must be a non-negative number, got {max_age!r}")

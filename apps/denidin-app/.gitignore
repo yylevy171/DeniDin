@@ -13,6 +13,12 @@ __pycache__/
 # Configuration secrets (CRITICAL: never commit credentials)
 config/config.json
 config/config.yaml
+# Feature 018: config.test.json now holds real secrets for real-API E2E tests
+# (ai_api_key, mcp.morning_auth_token, and a duplicated copy of Morning sandbox
+# credentials for independent test verification - never read cross-app at
+# runtime). Untracked to avoid committing them, mirroring apps/morning-mcp-app's
+# treatment of its own config.test.json (see that app's tasks.md T021 history).
+config/config.test.json
 
 # Application logs
 logs/

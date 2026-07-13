@@ -20,8 +20,13 @@ from src.utils.logger import get_logger
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_manager import MemoryManager
 from src.managers.user_manager import UserManager
+from src.models.user import Role
+from src.handlers.morning_mcp_locator import MorningMcpLocator
 
 logger = get_logger(__name__)
+
+# Roles authorized to have the Morning MCP invoicing tools attached (Feature 018)
+MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 
 # Maximum message length to prevent excessive API costs
 MAX_MESSAGE_LENGTH = 10000
@@ -114,6 +119,13 @@ class AIHandler:
                 logger.info("Long-term memory disabled in config")
         else:
             logger.info("Memory system disabled by feature flag")
+
+        # Morning MCP integration (Feature 018): locate the current tunnel URL via
+        # the shared status file the morning-mcp-app publishes. No cross-app import.
+        self.morning_mcp_locator = MorningMcpLocator(getattr(config, 'mcp', {}) or {})
+
+        # Most recent successful AIResponse, for observability/E2E test verification.
+        self.last_response: Optional[AIResponse] = None
 
         logger.debug(
             f"AIHandler initialized with models: text={config.ai_model}, "
@@ -269,50 +281,96 @@ class AIHandler:
         logger.debug(f"Created AIRequest {request.request_id} for message {message.message_id}")
         return request
 
+    def _build_morning_mcp_tools(self, user_obj) -> Optional[List[Dict]]:
+        """
+        Build the Responses API `tools` entry for the Morning MCP server, if this
+        user's role is authorized and the server is currently reachable.
+
+        Args:
+            user_obj: Resolved User (RBAC), or None if RBAC is disabled
+
+        Returns:
+            A one-item `tools` list registering the Morning MCP server as a remote
+            tool, or None if the tools should not be attached (unauthorized role,
+            RBAC disabled, or the server is currently unavailable).
+        """
+        if user_obj is None or user_obj.role not in MORNING_MCP_AUTHORIZED_ROLES:
+            return None
+
+        server_url = self.morning_mcp_locator.current_server_url()
+        if not server_url:
+            logger.warning("Morning MCP server unavailable - proceeding without invoicing tools")
+            return None
+
+        mcp_config = getattr(self.config, 'mcp', {}) or {}
+        auth_token = mcp_config.get('morning_auth_token')
+        if not auth_token:
+            logger.warning("mcp.morning_auth_token not configured - proceeding without invoicing tools")
+            return None
+
+        masked_token = f"{auth_token[:4]}...{auth_token[-4:]}" if len(auth_token) > 8 else "***"
+        logger.info(
+            f"Attaching Morning MCP tools for role={user_obj.role}, "
+            f"url_host={server_url.split('/')[2] if '//' in server_url else server_url}, "
+            f"token={masked_token}"
+        )
+
+        return [{
+            "type": "mcp",
+            "server_label": mcp_config.get('morning_server_label', 'morning-invoices'),
+            "server_url": server_url,
+            "require_approval": "never",
+            "headers": {"Authorization": f"Bearer {auth_token}"}
+        }]
+
     @retry(
         retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
         stop=stop_after_attempt(2),  # Initial attempt + 1 retry = 2 total
         wait=wait_fixed(1),  # 1 second wait between retries
         reraise=True
     )
-    def _call_openai_api(self, request: AIRequest, conversation_history: Optional[List[Dict]] = None):
+    def _call_openai_api(self, request: AIRequest, conversation_history: Optional[List[Dict]] = None,
+                         tools: Optional[List[Dict]] = None):
         """
-        Make the actual OpenAI API call with retry logic.
+        Make the actual OpenAI Responses API call with retry logic.
         Retries ONCE (max 2 attempts) on transient failures, waits 1 second.
 
         Args:
             request: AI request to send
             conversation_history: Optional conversation history to include
+            tools: Optional Responses API `tools` list (e.g. Morning MCP server)
 
         Returns:
-            OpenAI completion response
+            OpenAI Responses API response
 
         Raises:
             RateLimitError: After 2 attempts (1 retry)
             APITimeoutError: After 2 attempts (1 retry)
             APIError: After 2 attempts (1 retry)
         """
-        logger.debug(f"Calling OpenAI API for request {request.request_id}")
+        logger.debug(f"Calling OpenAI Responses API for request {request.request_id}")
 
-        # Build messages array with optional conversation history
-        messages = [{"role": "system", "content": request.constitution}]
-
-        # Add conversation history if provided
+        # Build input array with optional conversation history (same shape as
+        # conversation_history: list of {"role": ..., "content": ...})
+        input_items = []
         if conversation_history:
-            messages.extend(conversation_history)
+            input_items.extend(conversation_history)
             logger.debug(f"Including {len(conversation_history)} messages from conversation history")
+        input_items.append({"role": "user", "content": request.user_prompt})
 
-        # Add current user prompt
-        messages.append({"role": "user", "content": request.user_prompt})
+        kwargs = {
+            "model": request.model,
+            "instructions": request.constitution,
+            "input": input_items,
+            "max_output_tokens": request.max_tokens,
+            "temperature": request.temperature
+        }
+        if tools:
+            kwargs["tools"] = tools
 
-        completion = self.client.chat.completions.create(
-            model=request.model,
-            messages=messages,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature
-        )
+        response = self.client.responses.create(**kwargs)
 
-        return completion
+        return response
 
     def get_response(self, request: AIRequest, chat_id: Optional[str] = None,
                      user_role: str = 'client', sender: Optional[str] = None,
@@ -370,12 +428,35 @@ class AIHandler:
                 logger.error(f"Failed to retrieve conversation history: {e}", exc_info=True)
 
         try:
-            # Call OpenAI API with retry logic and conversation history
-            completion = self._call_openai_api(request, conversation_history=conversation_history)
+            # Morning MCP tools (Feature 018): attach only for authorized roles when
+            # the server is currently reachable; None for clients/blocked or when down.
+            tools = self._build_morning_mcp_tools(user_obj) if self.rbac_enabled else None
+
+            # Call OpenAI Responses API with retry logic, conversation history, and
+            # (optionally) the Morning MCP server as a remote tool
+            response = self._call_openai_api(request, conversation_history=conversation_history, tools=tools)
 
             # Extract response
-            response_text = completion.choices[0].message.content
-            tokens_used = completion.usage.total_tokens
+            response_text = response.output_text
+            tokens_used = response.usage.total_tokens
+
+            # Extract Morning MCP tool calls, if any (REQ-SEC-002 audit logging;
+            # also lets E2E tests verify tool usage without a second AI call).
+            # Includes arguments/output for diagnosability (e.g. confirming
+            # which invoice_id the model actually passed to a follow-up tool
+            # call) - never logged/returned with secrets, just tool I/O.
+            mcp_calls = [
+                {
+                    "name": item.name,
+                    "error": item.error,
+                    "arguments": item.arguments,
+                    "output": item.output
+                }
+                for item in (response.output or [])
+                if getattr(item, "type", None) == "mcp_call"
+            ]
+            if mcp_calls:
+                logger.info(f"MCP calls for request {request.request_id}: {mcp_calls}")
 
             logger.info(
                 f"AI response generated for request {request.request_id}: "
@@ -437,25 +518,37 @@ class AIHandler:
                 except Exception as e:
                     logger.error(f"Failed to store messages in session: {e}", exc_info=True)
 
-            # Create response object
-            response = AIResponse(
+            # Create response object.
+            # Responses API has no per-choice finish_reason; derive from
+            # incomplete_details when present, else "stop".
+            finish_reason = "stop"
+            if getattr(response, "incomplete_details", None) is not None:
+                finish_reason = response.incomplete_details.reason or "incomplete"
+
+            ai_response = AIResponse(
                 request_id=request.request_id,
                 response_text=response_text,
                 tokens_used=tokens_used,
-                prompt_tokens=completion.usage.prompt_tokens,
-                completion_tokens=completion.usage.completion_tokens,
-                model=completion.model,
-                finish_reason=completion.choices[0].finish_reason,
+                prompt_tokens=response.usage.input_tokens,
+                completion_tokens=response.usage.output_tokens,
+                model=response.model,
+                finish_reason=finish_reason,
                 timestamp=int(time.time()),
-                is_truncated=False
+                is_truncated=False,
+                mcp_calls=mcp_calls
             )
 
             # Check if response needs truncation for WhatsApp
             if len(response_text) > 4000:
-                response = response.truncate_for_whatsapp()
+                ai_response = ai_response.truncate_for_whatsapp()
                 logger.warning("Response truncated to 4000 chars for WhatsApp")
 
-            return response
+            # Retain the most recent response for observability (audit logging,
+            # E2E test verification of mcp_calls) - purely additive, read-only
+            # for callers; does not change get_response's behavior or return value.
+            self.last_response = ai_response
+
+            return ai_response
 
         except APITimeoutError as e:
             logger.error(
@@ -557,19 +650,23 @@ class AIHandler:
             try:
                 # Build summarization prompt
                 conv_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation])
-                summary_prompt = [
-                    {"role": "system", "content": "You are a conversation summarizer that extracts both explicit and implicit information. Start your summary by listing key facts as bullet points (e.g., names, preferences, decisions, entities mentioned). Then provide context, relationships, and logical deductions. Make information easily retrievable for future questions. Keep summaries under 500 words."},
-                    {"role": "user", "content": f"Summarize this conversation, leading with facts then inferences:\n\n{conv_text}"}
-                ]
+                summarizer_instructions = (
+                    "You are a conversation summarizer that extracts both explicit and implicit "
+                    "information. Start your summary by listing key facts as bullet points (e.g., "
+                    "names, preferences, decisions, entities mentioned). Then provide context, "
+                    "relationships, and logical deductions. Make information easily retrievable "
+                    "for future questions. Keep summaries under 500 words."
+                )
 
-                completion = self.client.chat.completions.create(
+                summary_response = self.client.responses.create(
                     model=self.config.ai_model,
-                    messages=summary_prompt,
-                    max_tokens=1000,
+                    instructions=summarizer_instructions,
+                    input=f"Summarize this conversation, leading with facts then inferences:\n\n{conv_text}",
+                    max_output_tokens=1000,
                     temperature=0.3
                 )
 
-                summary_text = completion.choices[0].message.content
+                summary_text = summary_response.output_text
                 logger.info(f"AI summarized session {session.session_id}: {len(summary_text)} chars")
 
             except Exception as e:

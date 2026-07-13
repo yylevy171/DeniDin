@@ -105,16 +105,16 @@ class TestAIHandlerGetResponseWithMemory:
         """Verify user and AI messages are stored in session."""
         # Mock OpenAI client
         client = MagicMock()
-        mock_completion = MagicMock()
-        mock_completion.choices = [MagicMock()]
-        mock_completion.choices[0].message.content = "Hello! How can I help you?"
-        mock_completion.choices[0].finish_reason = "stop"
-        mock_completion.usage.total_tokens = 50
-        mock_completion.usage.prompt_tokens = 20
-        mock_completion.usage.completion_tokens = 30
-        mock_completion.model = "gpt-4o-mini"
-        client.chat.completions.create.return_value = mock_completion
-        
+        mock_response = MagicMock()
+        mock_response.output_text = "Hello! How can I help you?"
+        mock_response.output = []
+        mock_response.incomplete_details = None
+        mock_response.usage.total_tokens = 50
+        mock_response.usage.input_tokens = 20
+        mock_response.usage.output_tokens = 30
+        mock_response.model = "gpt-4o-mini"
+        client.responses.create.return_value = mock_response
+
         handler = AIHandler(client, memory_enabled_config)
         
         # Mock session manager
@@ -168,18 +168,18 @@ class TestAIHandlerConversationHistory:
     def test_api_call_includes_conversation_history(self, memory_enabled_config):
         """Verify conversation history is included in OpenAI API calls."""
         client = MagicMock()
-        mock_completion = MagicMock()
-        mock_completion.choices = [MagicMock()]
-        mock_completion.choices[0].message.content = "Response"
-        mock_completion.choices[0].finish_reason = "stop"
-        mock_completion.usage.total_tokens = 50
-        mock_completion.usage.prompt_tokens = 20
-        mock_completion.usage.completion_tokens = 30
-        mock_completion.model = "gpt-4o-mini"
-        client.chat.completions.create.return_value = mock_completion
-        
+        mock_response = MagicMock()
+        mock_response.output_text = "Response"
+        mock_response.output = []
+        mock_response.incomplete_details = None
+        mock_response.usage.total_tokens = 50
+        mock_response.usage.input_tokens = 20
+        mock_response.usage.output_tokens = 30
+        mock_response.model = "gpt-4o-mini"
+        client.responses.create.return_value = mock_response
+
         handler = AIHandler(client, memory_enabled_config)
-        
+
         # Mock conversation history
         mock_history = [
             {"role": "user", "content": "Previous question"},
@@ -187,7 +187,7 @@ class TestAIHandlerConversationHistory:
         ]
         handler.session_manager.get_conversation_history = Mock(return_value=mock_history)
         handler.session_manager.add_message = Mock()
-        
+
         from src.models.message import AIRequest
         request = AIRequest(
             user_prompt="Current question",
@@ -198,7 +198,7 @@ class TestAIHandlerConversationHistory:
             chat_id="chat_123",
             message_id="msg_456"
         )
-        
+
         # Call get_response with user_role to trigger history fetching
         response = handler.get_response(
             request,
@@ -207,25 +207,26 @@ class TestAIHandlerConversationHistory:
             sender="user_123",
             recipient="bot_456"
         )
-        
+
         # Verify conversation history was retrieved
         handler.session_manager.get_conversation_history.assert_called_once_with(
             whatsapp_chat="chat_123",
             max_tokens=4000  # client role default
         )
-        
+
         # Verify API was called with conversation history
-        client.chat.completions.create.assert_called_once()
-        call_args = client.chat.completions.create.call_args[1]
-        messages = call_args["messages"]
-        
-        # Should have: system + history (2 msgs) + current user msg = 4 messages
-        assert len(messages) == 4
-        assert messages[0] == {"role": "system", "content": "Test system"}
-        assert messages[1] == {"role": "user", "content": "Previous question"}
-        assert messages[2] == {"role": "assistant", "content": "Previous answer"}
-        assert messages[3] == {"role": "user", "content": "Current question"}
-        
+        client.responses.create.assert_called_once()
+        call_args = client.responses.create.call_args[1]
+
+        # System/constitution now goes via `instructions`; history + current
+        # user message go via `input` (no system role entry)
+        assert call_args["instructions"] == "Test system"
+        input_items = call_args["input"]
+        assert len(input_items) == 3
+        assert input_items[0] == {"role": "user", "content": "Previous question"}
+        assert input_items[1] == {"role": "assistant", "content": "Previous answer"}
+        assert input_items[2] == {"role": "user", "content": "Current question"}
+
         # Verify response was returned
         assert response.response_text == "Response"
         assert response.tokens_used == 50
@@ -245,16 +246,16 @@ class TestAIHandlerHybridMemory:
         The AI should have access to BOTH the conversation and the stored fact.
         """
         client = MagicMock()
-        mock_completion = MagicMock()
-        mock_completion.choices = [MagicMock()]
-        mock_completion.choices[0].message.content = "Based on our earlier discussion and your stored info, I can help."
-        mock_completion.choices[0].finish_reason = "stop"
-        mock_completion.usage.total_tokens = 100
-        mock_completion.usage.prompt_tokens = 60
-        mock_completion.usage.completion_tokens = 40
-        mock_completion.model = "gpt-4o-mini"
-        client.chat.completions.create.return_value = mock_completion
-        
+        mock_response = MagicMock()
+        mock_response.output_text = "Based on our earlier discussion and your stored info, I can help."
+        mock_response.output = []
+        mock_response.incomplete_details = None
+        mock_response.usage.total_tokens = 100
+        mock_response.usage.input_tokens = 60
+        mock_response.usage.output_tokens = 40
+        mock_response.model = "gpt-4o-mini"
+        client.responses.create.return_value = mock_response
+
         handler = AIHandler(client, memory_enabled_config)
         
         # Mock conversation history (recent session messages)
@@ -302,18 +303,18 @@ class TestAIHandlerHybridMemory:
         assert "TestCorp contact: john@testcorp.com" in request.constitution
         
         # VERIFY CONVERSATION HISTORY: API call includes recent messages
-        client.chat.completions.create.assert_called_once()
-        api_call_args = client.chat.completions.create.call_args[1]
-        api_messages = api_call_args["messages"]
-        
-        # Should have: system (with recalled memories) + 3 history msgs + current msg = 5 total
-        assert len(api_messages) == 5
-        assert api_messages[0]["role"] == "system"
-        assert "RECALLED MEMORIES" in api_messages[0]["content"]  # Long-term memory
-        assert api_messages[1] == {"role": "user", "content": "I need to create an invoice"}  # History
-        assert api_messages[2] == {"role": "assistant", "content": "Sure, for which client?"}  # History
-        assert api_messages[3] == {"role": "user", "content": "For TestCorp"}  # History
-        assert api_messages[4] == {"role": "user", "content": "What are their payment terms?"}  # Current
+        client.responses.create.assert_called_once()
+        api_call_args = client.responses.create.call_args[1]
+
+        # Recalled memories live in `instructions` (the constitution/system
+        # content); history + current message live in `input` (no system entry)
+        assert "RECALLED MEMORIES" in api_call_args["instructions"]  # Long-term memory
+        api_input = api_call_args["input"]
+        assert len(api_input) == 4
+        assert api_input[0] == {"role": "user", "content": "I need to create an invoice"}  # History
+        assert api_input[1] == {"role": "assistant", "content": "Sure, for which client?"}  # History
+        assert api_input[2] == {"role": "user", "content": "For TestCorp"}  # History
+        assert api_input[3] == {"role": "user", "content": "What are their payment terms?"}  # Current
         
         # VERIFY BOTH MEMORIES WERE QUERIED
         handler.memory_manager.recall.assert_called_once()  # Long-term lookup
@@ -340,24 +341,24 @@ class TestAIHandlerSessionToLongTermMemory:
         This enables future conversations to benefit from past discussions.
         """
         client = MagicMock()
-        
+
         # Mock OpenAI for summarization
-        mock_summary_completion = MagicMock()
-        mock_summary_completion.choices = [MagicMock()]
-        mock_summary_completion.choices[0].message.content = (
+        mock_summary_response = MagicMock()
+        mock_summary_response.output_text = (
             "Key facts from conversation:\n"
             "- TestCorp needs invoice for Q4 consulting work\n"
             "- Amount: $50,000 USD\n"
             "- Payment terms: NET30\n"
             "- Due date: January 31, 2026"
         )
-        mock_summary_completion.choices[0].finish_reason = "stop"
-        mock_summary_completion.usage.total_tokens = 150
-        mock_summary_completion.usage.prompt_tokens = 100
-        mock_summary_completion.usage.completion_tokens = 50
-        mock_summary_completion.model = "gpt-4o-mini"
-        client.chat.completions.create.return_value = mock_summary_completion
-        
+        mock_summary_response.output = []
+        mock_summary_response.incomplete_details = None
+        mock_summary_response.usage.total_tokens = 150
+        mock_summary_response.usage.input_tokens = 100
+        mock_summary_response.usage.output_tokens = 50
+        mock_summary_response.model = "gpt-4o-mini"
+        client.responses.create.return_value = mock_summary_response
+
         handler = AIHandler(client, memory_enabled_config)
         
         # Mock session manager with conversation history
@@ -390,13 +391,13 @@ class TestAIHandlerSessionToLongTermMemory:
         
         # VERIFY CONVERSATION WAS SUMMARIZED
         # Should call OpenAI to create summary
-        client.chat.completions.create.assert_called_once()
-        api_call = client.chat.completions.create.call_args[1]
-        messages = api_call["messages"]
-        
-        # Should have system prompt + conversation history for summarization
-        assert len(messages) >= 2  # At least system + conversation
-        assert any("summarize" in msg.get("content", "").lower() for msg in messages if msg["role"] == "system")
+        client.responses.create.assert_called_once()
+        api_call = client.responses.create.call_args[1]
+
+        # Summarization uses `instructions` for the summarizer system prompt and
+        # `input` (a plain string) for the conversation text
+        assert "summarize" in api_call["instructions"].lower()
+        assert "TestCorp" in api_call["input"]
         
         # VERIFY SUMMARY STORED IN LONG-TERM MEMORY
         handler.memory_manager.remember.assert_called_once()
@@ -432,9 +433,9 @@ class TestAIHandlerSessionToLongTermMemory:
         No data loss, ever.
         """
         client = MagicMock()
-        
+
         # Mock OpenAI failure
-        client.chat.completions.create.side_effect = Exception("API timeout")
+        client.responses.create.side_effect = Exception("API timeout")
         
         handler = AIHandler(client, memory_enabled_config)
         

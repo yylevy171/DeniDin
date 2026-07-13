@@ -61,7 +61,7 @@ class TestAIHandlerTimeoutHandling:
     ):
         """Test that get_response catches APITimeoutError after retries"""
         # Simulate persistent timeout
-        mock_openai_client.chat.completions.create.side_effect = APITimeoutError(
+        mock_openai_client.responses.create.side_effect = APITimeoutError(
             request=Mock()
         )
         
@@ -78,7 +78,7 @@ class TestAIHandlerTimeoutHandling:
         self, mock_logger, ai_handler, mock_openai_client, sample_whatsapp_message
     ):
         """Test timeout logged with timestamp and error details"""
-        mock_openai_client.chat.completions.create.side_effect = APITimeoutError(
+        mock_openai_client.responses.create.side_effect = APITimeoutError(
             request=Mock()
         )
         
@@ -96,7 +96,7 @@ class TestAIHandlerTimeoutHandling:
         self, mock_logger, ai_handler, mock_openai_client, sample_whatsapp_message
     ):
         """Test fallback AIResponse has correct structure"""
-        mock_openai_client.chat.completions.create.side_effect = APITimeoutError(
+        mock_openai_client.responses.create.side_effect = APITimeoutError(
             request=Mock()
         )
         
@@ -120,7 +120,7 @@ class TestAIHandlerRateLimitHandling:
     ):
         """Test that get_response catches RateLimitError after retries"""
         # Simulate persistent rate limit
-        mock_openai_client.chat.completions.create.side_effect = RateLimitError(
+        mock_openai_client.responses.create.side_effect = RateLimitError(
             "Rate limit exceeded", response=Mock(), body={}
         )
         
@@ -136,7 +136,7 @@ class TestAIHandlerRateLimitHandling:
         self, mock_logger, ai_handler, mock_openai_client, sample_whatsapp_message
     ):
         """Test rate limit logged with timestamp"""
-        mock_openai_client.chat.completions.create.side_effect = RateLimitError(
+        mock_openai_client.responses.create.side_effect = RateLimitError(
             "Rate limit exceeded", response=Mock(), body={}
         )
         
@@ -153,7 +153,7 @@ class TestAIHandlerRateLimitHandling:
         self, mock_logger, ai_handler, mock_openai_client, sample_whatsapp_message
     ):
         """Test fallback message is user-friendly for rate limits"""
-        mock_openai_client.chat.completions.create.side_effect = RateLimitError(
+        mock_openai_client.responses.create.side_effect = RateLimitError(
             "Rate limit exceeded", response=Mock(), body={}
         )
         

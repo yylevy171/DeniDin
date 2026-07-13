@@ -36,6 +36,12 @@
   "constitution_config": {
     "file": "runtime_constitution.md"
   },
+  "mcp": {
+    "morning_auth_token": "MUST_MATCH_MORNING_APP_MCP_AUTH_TOKEN",
+    "morning_status_file": "data/morning_mcp_status.json",
+    "morning_server_label": "morning-invoices",
+    "url_max_age_seconds": 0
+  },
   "user_roles": {
     "godfather": {
       "max_tokens": 100000,

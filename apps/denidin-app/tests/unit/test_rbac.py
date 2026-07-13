@@ -58,19 +58,18 @@ def mock_ai_client():
     mock_embedding.embedding = [0.1] * 1536  # Mock embedding vector
     client.embeddings.create.return_value = Mock(data=[mock_embedding])
     
-    # Mock chat completion
-    mock_completion = Mock()
-    mock_completion.choices = [Mock(
-        message=Mock(content="Test AI response"),
-        finish_reason="stop"
-    )]
-    mock_completion.usage = Mock(
+    # Mock Responses API call
+    mock_response = Mock()
+    mock_response.output_text = "Test AI response"
+    mock_response.output = []
+    mock_response.incomplete_details = None
+    mock_response.usage = Mock(
         total_tokens=150,
-        prompt_tokens=100,
-        completion_tokens=50
+        input_tokens=100,
+        output_tokens=50
     )
-    mock_completion.model = "gpt-4o-mini"
-    client.chat.completions.create.return_value = mock_completion
+    mock_response.model = "gpt-4o-mini"
+    client.responses.create.return_value = mock_response
     
     return client
 

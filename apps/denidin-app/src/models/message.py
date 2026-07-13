@@ -2,9 +2,9 @@
 Message models for WhatsApp and AI interactions.
 Includes WhatsAppMessage, AIRequest, and AIResponse.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import uuid
 
 
@@ -138,6 +138,11 @@ class AIResponse:
     finish_reason: str
     timestamp: int
     is_truncated: bool = False
+    # Feature 018: Morning MCP tool calls made during this response, if any -
+    # e.g. [{"name": "create_invoice", "error": None}]. Populated only when the
+    # Responses API call had the Morning MCP server attached as a remote tool.
+    # Serves both audit logging (REQ-SEC-002) and E2E test verification.
+    mcp_calls: List[Dict] = field(default_factory=list)
 
     @classmethod
     def from_openai_response(cls, response, request_id: str = None) -> 'AIResponse':
@@ -195,6 +200,7 @@ class AIResponse:
                 model=self.model,
                 finish_reason=self.finish_reason,
                 timestamp=self.timestamp,
-                is_truncated=True
+                is_truncated=True,
+                mcp_calls=self.mcp_calls
             )
         return self

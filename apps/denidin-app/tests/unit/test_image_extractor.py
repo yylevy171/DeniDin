@@ -47,11 +47,10 @@ class TestImageExtractor:
         """
         # Mock OpenAI Vision API response
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
+        mock_response.output_text = (
             "TEXT:\nשלום עולם\nזה מסמך בעברית\nCONFIDENCE: high\nNOTES: Clear Hebrew text"
         )
-        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
+        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
@@ -66,11 +65,10 @@ class TestImageExtractor:
         CHK010: Layout/structure preservation.
         """
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
+        mock_response.output_text = (
             "TEXT:\nLine 1\n\nLine 2\n\nLine 3\nCONFIDENCE: high"
         )
-        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
+        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
@@ -85,11 +83,10 @@ class TestImageExtractor:
         CHK078: Empty document handling.
         """
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
+        mock_response.output_text = (
             "TEXT:\n\nCONFIDENCE: low\nNOTES: No visible text"
         )
-        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
+        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
@@ -119,20 +116,19 @@ class TestImageExtractor:
         CHK027: Specific prompt (not just example).
         """
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "TEXT:\ntest\nCONFIDENCE: high"
-        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
+        mock_response.output_text = "TEXT:\ntest\nCONFIDENCE: high"
+        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         extractor.analyze_media(test_media)
         
         # Verify vision API was called
-        assert mock_denidin.ai_handler.client.chat.completions.create.called
-        call_args = mock_denidin.ai_handler.client.chat.completions.create.call_args
-        
+        assert mock_denidin.ai_handler.client.responses.create.called
+        call_args = mock_denidin.ai_handler.client.responses.create.call_args
+
         # Check that prompt includes Hebrew/RTL requirements
-        messages = call_args[1]["messages"]
-        user_content = messages[0]["content"]
-        text_part = next((item["text"] for item in user_content if item.get("type") == "text"), "")
+        input_items = call_args[1]["input"]
+        user_content = input_items[0]["content"]
+        text_part = next((item["text"] for item in user_content if item.get("type") == "input_text"), "")
         assert "hebrew" in text_part.lower() or "rtl" in text_part.lower()
     
     def test_assess_quality_high(self, extractor, test_media, mock_denidin):
@@ -141,11 +137,10 @@ class TestImageExtractor:
         Quality: high when AI reports high confidence.
         """
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
+        mock_response.output_text = (
             "TEXT:\nThis is clear, readable text.\nCONFIDENCE: high\nNOTES: Image quality excellent"
         )
-        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
+        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
@@ -157,11 +152,10 @@ class TestImageExtractor:
         We just pass through the AI response.
         """
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
+        mock_response.output_text = (
             "TEXT:\nSomewhat blurry text\nCONFIDENCE: medium\nNOTES: Some characters unclear"
         )
-        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
+        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
@@ -176,15 +170,14 @@ class TestImageExtractor:
         The AI response is passed through unchanged - no parsing.
         """
         mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "AI analysis response"
-        mock_denidin.ai_handler.client.chat.completions.create.return_value = mock_response
+        mock_response.output_text = "AI analysis response"
+        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
         # Verify raw_response contains the AI response
         assert result["raw_response"] == "AI analysis response"
-        
+
         # Verify the API was called
-        assert mock_denidin.ai_handler.client.chat.completions.create.called
+        assert mock_denidin.ai_handler.client.responses.create.called
 

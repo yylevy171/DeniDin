@@ -118,14 +118,30 @@ class Invoice(BaseModel):
             emails = client.get("emails") or []
             mapped.setdefault("client_email", emails[0] if emails else None)
 
-        if "issue_date" not in mapped and "date" in data:
-            mapped["issue_date"] = data["date"]
+        # Real /documents(/search) responses use `documentDate` (confirmed
+        # live); some earlier fixtures/callers use a plain `date` key - prefer
+        # documentDate when both are present, but keep the `date` fallback so
+        # existing callers/tests using that shape keep working.
+        if "issue_date" not in mapped and ("documentDate" in data or "date" in data):
+            mapped["issue_date"] = data.get("documentDate") or data.get("date")
         if "due_date" not in mapped and "dueDate" in data:
             mapped["due_date"] = data["dueDate"]
         if "total_amount" not in mapped and "total" in data:
             mapped["total_amount"] = data["total"]
         if "vat_amount" not in mapped and "vatAmount" in data:
             mapped["vat_amount"] = data["vatAmount"]
+
+        # Real /documents(/search) responses include a `url: {he, origin}`
+        # object with ready-to-use, pre-signed PDF download links (confirmed
+        # live - same shape download_invoice_pdf reads from the single-GET
+        # response). Map it here too so any tool returning an Invoice (list,
+        # details, create) can surface the link, not just download_invoice_pdf.
+        if "pdf_url" not in mapped:
+            urls = data.get("url") or {}
+            if isinstance(urls, dict):
+                pdf_url = urls.get("he") or urls.get("origin")
+                if pdf_url:
+                    mapped["pdf_url"] = pdf_url
 
         return mapped
 

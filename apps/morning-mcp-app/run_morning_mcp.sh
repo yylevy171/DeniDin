@@ -134,12 +134,55 @@ try:
     print(f'NGROK_AUTHTOKEN={config.mcp_ngrok_authtoken or \"\"}')
     print(f'NGROK_DOMAIN={config.mcp_ngrok_domain or \"\"}')
     print(f'MCP_PORT={config.mcp_port}')
+    print(f'STATUS_FILE={config.mcp_status_file or \"\"}')
 except Exception:
     print('NGROK_AUTHTOKEN=')
     print('NGROK_DOMAIN=')
     print('MCP_PORT=8000')
+    print('STATUS_FILE=')
 " 2>/dev/null) || NGROK_CONFIG=""
 eval "$NGROK_CONFIG"
+
+# Resolve STATUS_FILE to an absolute path (it may be configured as either
+# absolute or relative-to-this-app's-directory).
+resolve_status_path() {
+    case "$STATUS_FILE" in
+        /*) echo "$STATUS_FILE" ;;
+        *)  echo "$SCRIPT_DIR/$STATUS_FILE" ;;
+    esac
+}
+
+# Publish "not running" (Feature 018: denidin-app's MorningMcpLocator treats
+# anything other than status=="running" as unavailable and gracefully
+# degrades). Called as the default/safe state before attempting any tunnel
+# setup, so every failure path (no authtoken, ngrok missing, tunnel failed to
+# start) leaves an accurate, explicit "not running" status - not just a stale
+# or missing file.
+write_status_not_running() {
+    if [ -z "$STATUS_FILE" ]; then
+        return 0
+    fi
+    STATUS_PATH=$(resolve_status_path)
+    mkdir -p "$(dirname "$STATUS_PATH")"
+    UPDATED_AT=$("$PYTHON_BIN" -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())")
+    printf '{"status": "not running", "server_url": null, "updated_at": "%s"}\n' "$UPDATED_AT" > "$STATUS_PATH"
+}
+
+write_status_running() {
+    local public_url="$1"
+    if [ -z "$STATUS_FILE" ]; then
+        return 0
+    fi
+    STATUS_PATH=$(resolve_status_path)
+    mkdir -p "$(dirname "$STATUS_PATH")"
+    UPDATED_AT=$("$PYTHON_BIN" -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())")
+    printf '{"status": "running", "server_url": "%s/mcp", "updated_at": "%s"}\n' "$public_url" "$UPDATED_AT" > "$STATUS_PATH"
+    echo "  status file: $STATUS_PATH"
+}
+
+# Default to "not running" before attempting anything - overwritten to
+# "running" only once the tunnel is confirmed live below.
+write_status_not_running
 
 # NOTE: ngrok's free tier only requires an authtoken (free account, no
 # payment) - a reserved/static domain is a PAID feature. mcp.ngrok_domain is
@@ -156,6 +199,20 @@ if [ -n "$NGROK_AUTHTOKEN" ]; then
     elif [ -f "$NGROK_PIDFILE" ] && is_ngrok_running "$(cat "$NGROK_PIDFILE")"; then
         echo ""
         echo "ngrok tunnel already running (PID $(cat "$NGROK_PIDFILE")) - not starting a second one."
+        # Refresh status to "running" (the default write above set "not
+        # running" unconditionally; this tunnel is in fact already live).
+        EXISTING_URL=$("$PYTHON_BIN" -c "
+import json, urllib.request
+try:
+    with urllib.request.urlopen('http://127.0.0.1:4040/api/tunnels', timeout=5) as resp:
+        data = json.load(resp)
+    print(data['tunnels'][0]['public_url'])
+except Exception:
+    print('')
+" 2>/dev/null)
+        if [[ "$EXISTING_URL" == https://* ]]; then
+            write_status_running "$EXISTING_URL"
+        fi
     else
         echo ""
         ngrok config add-authtoken "$NGROK_AUTHTOKEN" >/dev/null 2>&1 || true
@@ -174,22 +231,42 @@ if [ -n "$NGROK_AUTHTOKEN" ]; then
             if [ -n "$NGROK_DOMAIN" ]; then
                 PUBLIC_URL="https://$NGROK_DOMAIN"
             else
+                # Poll (up to ~10s) rather than a single fixed-delay attempt -
+                # ngrok's local inspector API can take a couple seconds longer
+                # than the sleep above to report the tunnel, especially under
+                # load (observed live: a bare 2s sleep was not always enough).
                 PUBLIC_URL=$("$PYTHON_BIN" -c "
-import json, urllib.request
-try:
-    with urllib.request.urlopen('http://127.0.0.1:4040/api/tunnels', timeout=5) as resp:
-        data = json.load(resp)
-    print(data['tunnels'][0]['public_url'])
-except Exception:
-    print('(check http://127.0.0.1:4040 for the assigned URL)')
+import json, time, urllib.request
+public_url = ''
+for _ in range(20):
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:4040/api/tunnels', timeout=2) as resp:
+            data = json.load(resp)
+        tunnels = data.get('tunnels') or []
+        https_tunnels = [t for t in tunnels if t.get('public_url', '').startswith('https://')]
+        if https_tunnels:
+            public_url = https_tunnels[0]['public_url']
+            break
+    except Exception:
+        pass
+    time.sleep(0.5)
+print(public_url or '(check http://127.0.0.1:4040 for the assigned URL)')
 " 2>/dev/null)
             fi
             echo "✓ ngrok tunnel started (PID $NGROK_PID) -> $PUBLIC_URL"
             echo "  ngrok logs: $NGROK_LOGFILE"
             echo "  ngrok local inspector: http://127.0.0.1:4040"
+
+            # Publish the status file (Feature 018: DeniDin discovers this
+            # server's current tunnel URL from here, since free-tier ngrok
+            # URLs rotate on every restart). No-op if mcp.status_file unset.
+            if [[ "$PUBLIC_URL" == https://* ]]; then
+                write_status_running "$PUBLIC_URL"
+            fi
         else
             echo "✗ ngrok tunnel failed to start. Check $NGROK_LOGFILE"
             rm -f "$NGROK_PIDFILE"
+            # write_status_not_running already ran above (default state) - left as-is
         fi
     fi
 fi

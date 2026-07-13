@@ -42,8 +42,20 @@ def format_invoice_confirmation(invoice: Invoice) -> str:
     ]
     if invoice.status:
         lines.append(f"סטטוס: {translate_status(invoice.status)}")
+    if invoice.issue_date:
+        lines.append(f"תאריך הפקה: {format_date_il(invoice.issue_date)}")
     if invoice.due_date:
         lines.append(f"תאריך יעד: {format_date_il(invoice.due_date)}")
+    if invoice.pdf_url:
+        lines.append(f"קישור: {invoice.pdf_url}")
+
+    # Internal Morning documentId (GUID) - distinct from the human-readable
+    # invoice number above. Without this, an MCP client (e.g. an LLM) that
+    # just created/looked up an invoice has no legitimate way to pass the
+    # right id to invoice_id-keyed tools (download_invoice_pdf,
+    # update_invoice_status, get_invoice_details) later in the same
+    # conversation - it would otherwise only ever see the friendly number.
+    lines.append(f"מזהה פנימי (invoice_id): {invoice.id}")
 
     return "\n".join(lines)
 

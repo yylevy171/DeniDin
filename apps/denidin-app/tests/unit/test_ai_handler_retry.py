@@ -59,14 +59,16 @@ class TestAIHandlerRetryLogic:
     ):
         """Test that get_response retries once on RateLimitError"""
         # Simulate RateLimitError on first call, success on 2nd
-        mock_ai_client.chat.completions.create.side_effect = [
+        mock_ai_client.responses.create.side_effect = [
             RateLimitError("Rate limit exceeded", response=Mock(), body={}),
             Mock(
-                choices=[Mock(message=Mock(content="Success response"))],
-                usage=Mock(total_tokens=50, prompt_tokens=10, completion_tokens=40),
+                output_text="Success response",
+                usage=Mock(total_tokens=50, input_tokens=10, output_tokens=40),
                 id="chatcmpl_123",
                 model="gpt-4o-mini",
-                created=1234567890
+                created=1234567890,
+                incomplete_details=None,
+                output=[]
             )
         ]
         
@@ -77,7 +79,7 @@ class TestAIHandlerRetryLogic:
         response = ai_handler.get_response(request)
         
         # Verify 2 attempts were made (1 initial + 1 retry)
-        assert mock_ai_client.chat.completions.create.call_count == 2
+        assert mock_ai_client.responses.create.call_count == 2
         assert response.response_text == "Success response"
         assert response.tokens_used == 50
     
@@ -86,21 +88,23 @@ class TestAIHandlerRetryLogic:
     ):
         """Test that get_response retries on APITimeoutError"""
         # Simulate timeout on first call, success on 2nd
-        mock_ai_client.chat.completions.create.side_effect = [
+        mock_ai_client.responses.create.side_effect = [
             APITimeoutError(request=Mock()),
             Mock(
-                choices=[Mock(message=Mock(content="Success after timeout"))],
-                usage=Mock(total_tokens=45, prompt_tokens=10, completion_tokens=35),
+                output_text="Success after timeout",
+                usage=Mock(total_tokens=45, input_tokens=10, output_tokens=35),
                 id="chatcmpl_124",
                 model="gpt-4o-mini",
-                created=1234567891
+                created=1234567891,
+                incomplete_details=None,
+                output=[]
             )
         ]
         
         request = ai_handler.create_request(sample_whatsapp_message)
         response = ai_handler.get_response(request)
         
-        assert mock_ai_client.chat.completions.create.call_count == 2
+        assert mock_ai_client.responses.create.call_count == 2
         assert response.response_text == "Success after timeout"
     
     def test_get_response_retries_on_api_error(
@@ -108,21 +112,23 @@ class TestAIHandlerRetryLogic:
     ):
         """Test that get_response retries on generic APIError"""
         # Simulate APIError on first call, success on 2nd
-        mock_ai_client.chat.completions.create.side_effect = [
+        mock_ai_client.responses.create.side_effect = [
             APIError("API Error", request=Mock(), body={}),
             Mock(
-                choices=[Mock(message=Mock(content="Success after error"))],
-                usage=Mock(total_tokens=40, prompt_tokens=10, completion_tokens=30),
+                output_text="Success after error",
+                usage=Mock(total_tokens=40, input_tokens=10, output_tokens=30),
                 id="chatcmpl_125",
                 model="gpt-4o-mini",
-                created=1234567892
+                created=1234567892,
+                incomplete_details=None,
+                output=[]
             )
         ]
         
         request = ai_handler.create_request(sample_whatsapp_message)
         response = ai_handler.get_response(request)
         
-        assert mock_ai_client.chat.completions.create.call_count == 2
+        assert mock_ai_client.responses.create.call_count == 2
         assert response.response_text == "Success after error"
     
     def test_get_response_fails_after_max_retries(
@@ -130,7 +136,7 @@ class TestAIHandlerRetryLogic:
     ):
         """Test that get_response fails after 3 retry attempts"""
         # Simulate persistent RateLimitError
-        mock_ai_client.chat.completions.create.side_effect = RateLimitError(
+        mock_ai_client.responses.create.side_effect = RateLimitError(
             "Rate limit exceeded", response=Mock(), body={}
         )
         
@@ -140,7 +146,7 @@ class TestAIHandlerRetryLogic:
         response = ai_handler.get_response(request)
         
         # Verify it tried 2 times (initial + 1 retry)
-        assert mock_ai_client.chat.completions.create.call_count == 2
+        assert mock_ai_client.responses.create.call_count == 2
         
         # Should return fallback instead of raising
         assert "trouble connecting" in response.response_text.lower() or "capacity" in response.response_text.lower()
@@ -151,15 +157,17 @@ class TestAIHandlerRetryLogic:
     ):
         """Test exponential backoff timing (1s, 2s, 4s)"""
         # Simulate failures requiring retries
-        mock_ai_client.chat.completions.create.side_effect = [
+        mock_ai_client.responses.create.side_effect = [
             RateLimitError("Rate limit", response=Mock(), body={}),
             RateLimitError("Rate limit", response=Mock(), body={}),
             Mock(
-                choices=[Mock(message=Mock(content="Success"))],
-                usage=Mock(total_tokens=50, prompt_tokens=10, completion_tokens=40),
+                output_text="Success",
+                usage=Mock(total_tokens=50, input_tokens=10, output_tokens=40),
                 id="chatcmpl_126",
                 model="gpt-4o-mini",
-                created=1234567893
+                created=1234567893,
+                incomplete_details=None,
+                output=[]
             )
         ]
         

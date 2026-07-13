@@ -483,7 +483,8 @@ if __name__ == "__main__":
         'godfather_phone': config.godfather_phone,
         'memory': config.memory,
         'constitution_config': config.constitution_config,
-        'user_roles': config.user_roles
+        'user_roles': config.user_roles,
+        'mcp': config.mcp
     }
     
     # Initialize app (handles memory system, cleanup thread, recovery)

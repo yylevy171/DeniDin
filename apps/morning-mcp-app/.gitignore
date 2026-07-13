@@ -9,3 +9,4 @@ logs/
 .DS_Store
 .morning_mcp.pid
 .ngrok.pid
+running_status.json
