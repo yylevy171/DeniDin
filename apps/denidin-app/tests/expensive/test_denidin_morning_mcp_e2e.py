@@ -324,3 +324,85 @@ def test_godfather_lists_invoices_via_whatsapp(denidin_app):
         f"Bot reply missing invoice id field. Full reply: {response!r}"
     )
     assert "שולם" in response, f"Bot reply missing status field. Full reply: {response!r}"
+
+
+# One fully-known invoice from the fixed 2026-02-07 set (verified free, no
+# billing, before this test was written) - a single, unambiguous target with
+# no pagination/date-range concerns, unlike list_invoices.
+KNOWN_INVOICE_ID = "fae5ccdb-08b2-40fb-a0cc-475a941e8a33"
+KNOWN_INVOICE_NUMBER = "60006"
+KNOWN_INVOICE_CLIENT = "Test Client DENIDIN_TEST_1770474207"
+KNOWN_INVOICE_AMOUNT_IL = "123.45"
+KNOWN_INVOICE_DATE_IL = "07/02/2026"
+KNOWN_INVOICE_STATUS_HE = "שולם"  # paid
+
+
+@pytest.mark.expensive
+def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
+    """Godfather asks for full details of one specific, fully-known invoice by
+    its real Morning documentId (GUID); the bot must invoke
+    get_invoice_details via the remote Morning MCP tool and reply with the
+    exact known ground-truth fields for that invoice.
+    """
+    from denidin import handle_text_message
+
+    notification = create_real_notification(build_text_webhook(
+        chat_id=GODFATHER_CHAT_ID,
+        sender_name="E2E Godfather",
+        text=(
+            f"תן לי את הפרטים המלאים של חשבונית עם מזהה {KNOWN_INVOICE_ID} - "
+            f"כולל לקוח, סכום, תאריך וסטטוס."
+        ),
+        message_id=f"E2E_DETAILS_{int(datetime.now(timezone.utc).timestamp())}"
+    ))
+
+    logger.info("=" * 80)
+    logger.info(f"E2E TEST: godfather get_invoice_details via WhatsApp - id {KNOWN_INVOICE_ID}")
+    logger.info("=" * 80)
+
+    handle_text_message(notification)
+    response = get_response(notification)
+
+    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert len(response) > 0
+    logger.info(f"Bot response: {response}")
+
+    ai_response = denidin_app.ai_handler.last_response
+    assert ai_response is not None, "AIHandler.last_response was not set"
+
+    for call in ai_response.mcp_calls:
+        logger.info(
+            f"mcp_call: name={call['name']} error={call['error']!r} "
+            f"arguments={call['arguments']!r} output={call['output']!r}"
+        )
+
+    details_calls = [c for c in ai_response.mcp_calls if c["name"] == "get_invoice_details"]
+    assert details_calls, (
+        f"Model did not invoke get_invoice_details via the remote MCP server. "
+        f"mcp_calls: {ai_response.mcp_calls!r}. Bot reply: {response!r}"
+    )
+    assert all(c["error"] is None for c in details_calls), (
+        f"get_invoice_details call(s) reported an error: {details_calls}"
+    )
+    assert any(KNOWN_INVOICE_ID in (c["arguments"] or "") for c in details_calls), (
+        f"get_invoice_details was not called with the requested invoice_id "
+        f"({KNOWN_INVOICE_ID}): {details_calls!r}"
+    )
+
+    # Exact-match verification against the one fully-known invoice - the
+    # tightest test in this suite (no pagination/date-range ambiguity).
+    assert KNOWN_INVOICE_NUMBER in response, (
+        f"Bot reply missing invoice number {KNOWN_INVOICE_NUMBER}. Full reply: {response!r}"
+    )
+    assert KNOWN_INVOICE_CLIENT in response, (
+        f"Bot reply missing client name {KNOWN_INVOICE_CLIENT!r}. Full reply: {response!r}"
+    )
+    assert KNOWN_INVOICE_AMOUNT_IL in response, (
+        f"Bot reply missing amount {KNOWN_INVOICE_AMOUNT_IL}. Full reply: {response!r}"
+    )
+    assert KNOWN_INVOICE_DATE_IL in response, (
+        f"Bot reply missing date {KNOWN_INVOICE_DATE_IL}. Full reply: {response!r}"
+    )
+    assert KNOWN_INVOICE_STATUS_HE in response, (
+        f"Bot reply missing status {KNOWN_INVOICE_STATUS_HE!r}. Full reply: {response!r}"
+    )
