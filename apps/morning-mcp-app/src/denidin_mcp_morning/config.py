@@ -37,6 +37,7 @@ class MorningMCPConfig:
     mcp_auth_token: Optional[str]
     mcp_ngrok_authtoken: Optional[str]
     mcp_ngrok_domain: Optional[str]
+    mcp_status_file: Optional[str]
     openai_api_key: Optional[str]
     enable_mcp_server: bool
 
@@ -96,6 +97,7 @@ def load_config(path: Path) -> MorningMCPConfig:
         mcp_auth_token=mcp_section.get("auth_token") or None,
         mcp_ngrok_authtoken=mcp_section.get("ngrok_authtoken") or None,
         mcp_ngrok_domain=mcp_section.get("ngrok_domain") or None,
+        mcp_status_file=mcp_section.get("status_file") or None,
         openai_api_key=raw.get("openai_api_key") or None,
         enable_mcp_server=feature_flags.get("enable_mcp_server", False),
     )

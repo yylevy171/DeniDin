@@ -136,31 +136,26 @@ class ImageExtractor(MediaExtractor):
         logger.info(f"[ImageExtractor._vision_extract] Media data URL preview: {data_url[:100]}...")
         logger.info(f"[ImageExtractor._vision_extract] Media file size: {media.size} bytes, MIME type: {media.mime_type}")
         
-        # Call OpenAI Vision API with in-memory data URL
+        # Call OpenAI Vision via the Responses API with in-memory data URL
         logger.info(f"[ImageExtractor._vision_extract] Sending request to OpenAI Vision API")
-        response = self.ai_handler.client.chat.completions.create(
+        response = self.ai_handler.client.responses.create(
             model=self.vision_model,
-            messages=[
+            input=[
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": full_prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": data_url
-                            }
-                        }
+                        {"type": "input_text", "text": full_prompt},
+                        {"type": "input_image", "image_url": data_url}
                     ]
                 }
             ],
-            max_tokens=self.config.ai_reply_max_tokens
+            max_output_tokens=self.config.ai_reply_max_tokens
         )
-        
-        raw_response = response.choices[0].message.content
+
+        raw_response = response.output_text
         logger.info(f"[ImageExtractor._vision_extract] Raw OpenAI response ({len(raw_response)} chars):")
         logger.info(f"[ImageExtractor._vision_extract] {raw_response}")
-        
+
         return {"text": raw_response}
     
 

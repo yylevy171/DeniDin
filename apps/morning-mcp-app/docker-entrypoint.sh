@@ -22,14 +22,50 @@ try:
     print(f'NGROK_AUTHTOKEN={config.mcp_ngrok_authtoken or \"\"}')
     print(f'NGROK_DOMAIN={config.mcp_ngrok_domain or \"\"}')
     print(f'MCP_PORT={config.mcp_port}')
+    print(f'STATUS_FILE={config.mcp_status_file or \"\"}')
 except Exception:
     print('NGROK_AUTHTOKEN=')
     print('NGROK_DOMAIN=')
     print('MCP_PORT=8000')
+    print('STATUS_FILE=')
 " 2>/dev/null) || NGROK_CONFIG=""
 eval "$NGROK_CONFIG"
 
 mkdir -p /app/logs
+
+resolve_status_path() {
+    case "$STATUS_FILE" in
+        /*) echo "$STATUS_FILE" ;;
+        *)  echo "/app/$STATUS_FILE" ;;
+    esac
+}
+
+write_status_not_running() {
+    if [ -z "$STATUS_FILE" ]; then
+        return 0
+    fi
+    STATUS_PATH=$(resolve_status_path)
+    mkdir -p "$(dirname "$STATUS_PATH")"
+    UPDATED_AT=$(python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())")
+    printf '{"status": "not running", "server_url": null, "updated_at": "%s"}\n' "$UPDATED_AT" > "$STATUS_PATH"
+}
+
+write_status_running() {
+    local public_url="$1"
+    if [ -z "$STATUS_FILE" ]; then
+        return 0
+    fi
+    STATUS_PATH=$(resolve_status_path)
+    mkdir -p "$(dirname "$STATUS_PATH")"
+    UPDATED_AT=$(python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())")
+    printf '{"status": "running", "server_url": "%s/mcp", "updated_at": "%s"}\n' "$public_url" "$UPDATED_AT" > "$STATUS_PATH"
+    echo "status file: $STATUS_PATH"
+}
+
+# Default to "not running" before attempting anything (Feature 018) - matches
+# run_morning_mcp.sh's behavior so denidin-app sees an accurate state in every
+# failure path, not just a stale or missing file.
+write_status_not_running
 
 if [ -n "$NGROK_AUTHTOKEN" ]; then
     if ! command -v ngrok >/dev/null 2>&1; then
@@ -48,15 +84,26 @@ if [ -n "$NGROK_AUTHTOKEN" ]; then
         # assigned public URL for operator convenience (best-effort; if it
         # fails, the server still starts normally below).
         sleep 2
-        python3 -c "
+        PUBLIC_URL=$(python3 -c "
 import json, urllib.request
 try:
     with urllib.request.urlopen('http://127.0.0.1:4040/api/tunnels', timeout=5) as resp:
         data = json.load(resp)
-    print('ngrok public URL:', data['tunnels'][0]['public_url'])
-except Exception as exc:
-    print('Could not fetch ngrok public URL yet (check /app/logs/ngrok.log):', exc)
-" || true
+    print(data['tunnels'][0]['public_url'])
+except Exception:
+    print('')
+" 2>/dev/null) || PUBLIC_URL=""
+        if [ -n "$PUBLIC_URL" ]; then
+            echo "ngrok public URL: $PUBLIC_URL"
+        else
+            echo "Could not fetch ngrok public URL yet (check /app/logs/ngrok.log)"
+        fi
+
+        # Publish the status file (Feature 018) so denidin-app can discover
+        # this container's current tunnel URL. No-op if mcp.status_file unset.
+        if [[ "$PUBLIC_URL" == https://* ]]; then
+            write_status_running "$PUBLIC_URL"
+        fi
     fi
 else
     echo "No mcp.ngrok_authtoken configured - server only reachable within the container network/port mapping."

@@ -25,40 +25,41 @@ class TestConstitutionUsage:
         mock_denidin.config.ai_reply_max_tokens = 4000
         mock_denidin.ai_handler._load_constitution = Mock(return_value="I am DeniDin, a helpful assistant.")
         
-        # Mock OpenAI client response
+        # Mock OpenAI Responses API response
         mock_response = Mock()
-        mock_response.choices = [Mock(message=Mock(content="TEXT:\nSample text\n\nDOCUMENT_TYPE: receipt\nSUMMARY: Test\nKEY_POINTS:\n- Point 1\n\nCONFIDENCE: high\n"))]
-        mock_denidin.ai_handler.client.chat.completions.create = Mock(return_value=mock_response)
-        
+        mock_response.output_text = "TEXT:\nSample text\n\nDOCUMENT_TYPE: receipt\nSUMMARY: Test\nKEY_POINTS:\n- Point 1\n\nCONFIDENCE: high\n"
+        mock_denidin.ai_handler.client.responses.create = Mock(return_value=mock_response)
+
         extractor = ImageExtractor(mock_denidin)
         media = Media(data=b"fake_image", mime_type="image/jpeg", filename="test.jpg")
-        
+
         # Mock prompt file
         mock_prompt = "Analyze this image\n{user_context}\n{addressing_note}\n{focusing_note}"
-        
+
         def mock_read_text(self, encoding='utf-8'):
             """Only mock the prompt file."""
             if 'prompts/image_analysis.txt' in str(self):
                 return mock_prompt
             raise FileNotFoundError(f"Test: unexpected path read: {self}")
-        
+
         with patch('pathlib.Path.read_text', mock_read_text):
             # Extract
             extractor.analyze_media(media)
-        
+
         # Verify constitution was loaded
         mock_denidin.ai_handler._load_constitution.assert_called_once()
-        
-        # Verify client.chat.completions.create was called
-        call_args = mock_denidin.ai_handler.client.chat.completions.create.call_args
-        messages = call_args[1]["messages"]
-        
-        # Should have exactly 1 user message (NO system message)
-        assert len(messages) == 1
-        assert messages[0]["role"] == "user"
-        
+
+        # Verify client.responses.create was called
+        call_args = mock_denidin.ai_handler.client.responses.create.call_args
+        input_items = call_args[1]["input"]
+
+        # Should have exactly 1 user message (NO system message - constitution
+        # goes via the prepended user prompt, not a separate `instructions` role)
+        assert len(input_items) == 1
+        assert input_items[0]["role"] == "user"
+
         # Constitution should be prepended to user prompt
-        text_content = next(c for c in messages[0]["content"] if c["type"] == "text")
+        text_content = next(c for c in input_items[0]["content"] if c["type"] == "input_text")
         assert "I am DeniDin" in text_content["text"]
         assert "Analyze this image" in text_content["text"]
     
@@ -117,11 +118,11 @@ class TestConstitutionUsage:
         mock_denidin.ai_handler._load_constitution = Mock(return_value="")
         
         mock_response = Mock()
-        mock_response.choices = [Mock(message=Mock(content="TEXT:\nPage text\n\nDOCUMENT_TYPE: invoice\nSUMMARY: Test\nKEY_POINTS:\n- Item\n\nCONFIDENCE: high\n"))]
-        mock_denidin.ai_handler.client.chat.completions.create = Mock(return_value=mock_response)
-        
+        mock_response.output_text = "TEXT:\nPage text\n\nDOCUMENT_TYPE: invoice\nSUMMARY: Test\nKEY_POINTS:\n- Item\n\nCONFIDENCE: high\n"
+        mock_denidin.ai_handler.client.responses.create = Mock(return_value=mock_response)
+
         extractor = PDFExtractor(mock_denidin)
-        
+
         with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
             mock_pdf = MagicMock()
             mock_page = MagicMock()
@@ -131,15 +132,15 @@ class TestConstitutionUsage:
             mock_pdf.__iter__.return_value = [mock_page]
             mock_pdf.__len__.return_value = 1
             mock_fitz.open.return_value = mock_pdf
-            
+
             media = Media(data=b"fake_pdf", mime_type="application/pdf")
             extractor.analyze_media(media, caption="What's the total amount?")
-        
+
         # Verify caption in prompt
-        call_args = mock_denidin.ai_handler.client.chat.completions.create.call_args
-        messages = call_args[1]["messages"]
-        text_content = next(c for c in messages[0]["content"] if c["type"] == "text")
-        
+        call_args = mock_denidin.ai_handler.client.responses.create.call_args
+        input_items = call_args[1]["input"]
+        text_content = next(c for c in input_items[0]["content"] if c["type"] == "input_text")
+
         assert "What's the total amount?" in text_content["text"]
 
 
@@ -154,27 +155,27 @@ class TestCaptionContext:
         mock_denidin.ai_handler._load_constitution = Mock(return_value="")
         
         mock_response = Mock()
-        mock_response.choices = [Mock(message=Mock(content="TEXT:\nContract text\n\nDOCUMENT_TYPE: contract\nSUMMARY: Service agreement\nKEY_POINTS:\n- Amount: $5000\n\nCONFIDENCE: high\n"))]
-        mock_denidin.ai_handler.client.chat.completions.create = Mock(return_value=mock_response)
-        
+        mock_response.output_text = "TEXT:\nContract text\n\nDOCUMENT_TYPE: contract\nSUMMARY: Service agreement\nKEY_POINTS:\n- Amount: $5000\n\nCONFIDENCE: high\n"
+        mock_denidin.ai_handler.client.responses.create = Mock(return_value=mock_response)
+
         extractor = ImageExtractor(mock_denidin)
         media = Media(data=b"image", mime_type="image/jpeg")
-        
+
         # Mock prompt file
         mock_prompt = "Analyze this image\n{user_context}\n{addressing_note}\n{focusing_note}"
-        
+
         def mock_read_text(self, encoding='utf-8'):
             if 'prompts/image_analysis.txt' in str(self):
                 return mock_prompt
             raise FileNotFoundError(f"Test: unexpected path read: {self}")
-        
+
         with patch('pathlib.Path.read_text', mock_read_text):
             extractor.analyze_media(media, caption="Who is the client in this contract?")
-        
-        call_args = mock_denidin.ai_handler.client.chat.completions.create.call_args
-        messages = call_args[1]["messages"]
-        text_content = next(c for c in messages[0]["content"] if c["type"] == "text")
-        
+
+        call_args = mock_denidin.ai_handler.client.responses.create.call_args
+        input_items = call_args[1]["input"]
+        text_content = next(c for c in input_items[0]["content"] if c["type"] == "input_text")
+
         assert "Who is the client in this contract?" in text_content["text"]
         assert "User's question/message:" in text_content["text"]
     
@@ -187,21 +188,20 @@ class TestCaptionContext:
         mock_denidin.ai_handler = Mock()
         mock_denidin.ai_handler._load_constitution = Mock(return_value="")
         
-        # Mock the OpenAI client response
+        # Mock the OpenAI Responses API client
         mock_response = Mock()
-        mock_response.choices = [Mock(message=Mock(content="TEXT:\nText\n\nDOCUMENT_TYPE: generic\nSUMMARY: Test\nKEY_POINTS:\n- Point\n\nCONFIDENCE: high\n"))]
+        mock_response.output_text = "TEXT:\nText\n\nDOCUMENT_TYPE: generic\nSUMMARY: Test\nKEY_POINTS:\n- Point\n\nCONFIDENCE: high\n"
         mock_denidin.ai_handler.client = Mock()
-        mock_denidin.ai_handler.client.chat = Mock()
-        mock_denidin.ai_handler.client.chat.completions = Mock()
-        mock_denidin.ai_handler.client.chat.completions.create = Mock(return_value=mock_response)
-        
+        mock_denidin.ai_handler.client.responses = Mock()
+        mock_denidin.ai_handler.client.responses.create = Mock(return_value=mock_response)
+
         extractor = ImageExtractor(mock_denidin)
         media = Media(data=b"image", mime_type="image/jpeg")
-        
+
         result = extractor.analyze_media(media)
-        
+
         # Should succeed - check that client was called
-        assert mock_denidin.ai_handler.client.chat.completions.create.call_count == 1
+        assert mock_denidin.ai_handler.client.responses.create.call_count == 1
         assert result["extraction_quality"] in ["high", "medium", "low", "failed"]
         assert "raw_response" in result
     
@@ -296,10 +296,10 @@ class TestCaptionContext:
         def mock_create(**kwargs):
             call_count[0] += 1
             mock_resp = Mock()
-            mock_resp.choices = [Mock(message=Mock(content="TEXT:\nPage\n\nDOCUMENT_TYPE: invoice\nSUMMARY: Test\nKEY_POINTS:\n- Item\n\nCONFIDENCE: high\n"))]
+            mock_resp.output_text = "TEXT:\nPage\n\nDOCUMENT_TYPE: invoice\nSUMMARY: Test\nKEY_POINTS:\n- Item\n\nCONFIDENCE: high\n"
             return mock_resp
-        
-        mock_denidin.ai_handler.client.chat.completions.create = mock_create
+
+        mock_denidin.ai_handler.client.responses.create = mock_create
         
         extractor = PDFExtractor(mock_denidin)
         

@@ -75,6 +75,10 @@
         "ngrok_domain": {
           "type": "string",
           "description": "Optional ngrok reserved/static domain (requires a paid ngrok plan) to give the tunnel a stable hostname across restarts, e.g. 'your-app.ngrok-free.app' or a custom reserved domain. Only used if ngrok_authtoken is also set."
+        },
+        "status_file": {
+          "type": "string",
+          "description": "Feature 018 (DeniDin integration): optional path to a JSON status file this app publishes when its tunnel comes up (`{\"server_url\": \"<https>/mcp\", \"updated_at\": \"<UTC ISO>\"}`), and clears on shutdown. run_morning_mcp.sh/docker-entrypoint.sh write it; denidin-app's MorningMcpLocator reads it to discover the current (rotating, free-tier) tunnel URL without either app importing the other's code. If unset, no status file is written (no-op, unaffected behavior)."
         }
       }
     },

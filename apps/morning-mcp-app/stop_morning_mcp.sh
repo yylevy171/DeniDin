@@ -7,10 +7,43 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIDFILE="$SCRIPT_DIR/.morning_mcp.pid"
 NGROK_PIDFILE="$SCRIPT_DIR/.ngrok.pid"
+CONFIG_FILE="$SCRIPT_DIR/config/config.json"
+
+if [ -x "$SCRIPT_DIR/venv/bin/python3" ]; then
+    PYTHON_BIN="$SCRIPT_DIR/venv/bin/python3"
+else
+    PYTHON_BIN="python3"
+fi
+
+# Mark the status file "not running" (Feature 018) so denidin-app's
+# MorningMcpLocator sees an explicit, accurate state after this server stops
+# - not just a stale or missing file. No-op if mcp.status_file unset.
+write_status_not_running() {
+    STATUS_FILE=$(PYTHONPATH="$SCRIPT_DIR/src" "$PYTHON_BIN" -c "
+from pathlib import Path
+from denidin_mcp_morning.config import load_config
+try:
+    config = load_config(Path('$CONFIG_FILE'))
+    print(config.mcp_status_file or '')
+except Exception:
+    print('')
+" 2>/dev/null) || STATUS_FILE=""
+    if [ -z "$STATUS_FILE" ]; then
+        return 0
+    fi
+    case "$STATUS_FILE" in
+        /*) STATUS_PATH="$STATUS_FILE" ;;
+        *)  STATUS_PATH="$SCRIPT_DIR/$STATUS_FILE" ;;
+    esac
+    mkdir -p "$(dirname "$STATUS_PATH")"
+    UPDATED_AT=$("$PYTHON_BIN" -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())" 2>/dev/null)
+    printf '{"status": "not running", "server_url": null, "updated_at": "%s"}\n' "$UPDATED_AT" > "$STATUS_PATH"
+}
 
 # Stop the ngrok tunnel (if one was started by run_morning_mcp.sh) whenever
 # this script exits, regardless of which path/exit code below was taken.
 stop_ngrok_if_running() {
+    write_status_not_running
     if [ ! -f "$NGROK_PIDFILE" ]; then
         return 0
     fi
