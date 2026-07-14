@@ -1015,6 +1015,49 @@ except Exception as e:
 
 ---
 
+## XVIII. Handler Wiring — Single Parent Context, No Peer References
+
+**Principle**: Handlers and managers MUST NOT hold direct references to sibling handlers/managers. Each component holds at most ONE reference — to the shared `DeniDin` singleton context (its "parent") — and the singleton owns references to all handlers/managers. All cross-component access goes THROUGH the parent.
+
+**The object graph is a star, not a web**: the `DeniDin` singleton is the single composition root (holds `config`, `ai_handler`, `whatsapp_handler`, `media_handler`, `cleanup_thread`, ...). Every other component points only back to it.
+
+**Rules**:
+- **One parent ref, no peer refs**: A component MUST NOT store another handler/manager directly (e.g. `WhatsAppHandler` must not take/keep an `ai_handler` or `session_manager`), and MUST NOT reach a sibling through a third component (e.g. `self.media_handler.denidin...`). Instead reach siblings via the parent: `self.denidin.ai_handler.session_manager`.
+- **How the parent ref is set**:
+  - **Preferred**: constructor injection of the context — `def __init__(self, denidin_context): self.denidin = denidin_context` (as `MediaHandler` does).
+  - **When the component is constructed before the context exists** (e.g. `WhatsAppHandler` is built before the `DeniDin` instance): declare the attribute in `__init__` (`self.denidin = None`) and set it immediately after construction in the single wiring point `initialize_app` (`whatsapp_handler.denidin = denidin`). This is NOT monkey-patching (§XVII) because the attribute is declared on the class; dynamic injection of *undeclared* attributes remains forbidden.
+- **Single wiring point**: All handler/manager wiring happens in `denidin.py::initialize_app` (the composition root). No component wires another at runtime.
+- **No circular constructor dependencies**: routing everything through the parent breaks the `A needs B, B needs A` cycle that peer references create.
+
+**Example**:
+```python
+# ✅ CORRECT — parent ref only, reach siblings through it
+class WhatsAppHandler:
+    def __init__(self, media_handler=None):
+        self.media_handler = media_handler
+        self.denidin = None  # DeniDin singleton, set in initialize_app
+
+    def _persist_media_message(self, ...):
+        session_manager = self.denidin.ai_handler.session_manager  # via parent
+        ...
+
+# in initialize_app (single wiring point):
+denidin = DeniDin(ai_handler, config, whatsapp_handler, ...)
+whatsapp_handler.denidin = denidin
+
+# ❌ WRONG — peer reference injected into the constructor
+class WhatsAppHandler:
+    def __init__(self, ai_handler):     # holds a sibling directly
+        self.ai_handler = ai_handler
+
+# ❌ WRONG — reaching a sibling THROUGH another handler
+session_manager = self.media_handler.denidin.ai_handler.session_manager
+```
+
+**Rationale**: A single parent hub keeps the dependency topology a star (easy to reason about, no cycles), centralizes wiring in one place (`initialize_app`), lets components be constructed in any order, and avoids the tangle of peer references that make refactoring and testing brittle.
+
+---
+
 ## Enforcement
 
 All contributors must:
@@ -1030,9 +1073,10 @@ All contributors must:
 
 ---
 
-**Version**: 2.3.0 | **Effective Date**: July 7, 2026
+**Version**: 2.4.0 | **Effective Date**: July 8, 2026
 
 **Changelog**:
+- v2.4.0 (2026-07-08): Added **XVIII. Handler Wiring — Single Parent Context, No Peer References** - handlers/managers hold only a parent ref to the `DeniDin` singleton (star topology), reach siblings through it, and are wired in `initialize_app`; no peer references, no reaching siblings through a third handler
 - v2.3.0 (2026-07-07): Repo split into `apps/denidin-app/` and `apps/morning-mcp-app/` (each independently runnable/testable/dockerized) - updated test logs location path accordingly; added expensive-test approval rules (§VII)
 - v2.2.0 (2026-01-22): Added **XVII. NO Monkey-Patching** - absolute prohibition with correct design pattern alternatives (dependency injection, strategy, template method, observer)
 - v2.1.0 (2026-01-21): Added 8 technical standards from existing practice: Logging Standards (IX), Error Response Format (X), Retry Logic Details (XI), API Response Handling (XII), Data Validation (XIII), File Path Handling (XIV), JSON/File Format Standards (XV), Exit Code Standards (XVI)

@@ -253,6 +253,7 @@ else:
 ❌ Stack traces to users - Use friendly errors  
 ❌ Retrying 4xx errors - Only retry 5xx  
 ❌ Direct client calls in testable code - Use abstraction layers  
+❌ Peer handler refs (`WhatsAppHandler(ai_handler=...)`) - Hold only a parent `self.denidin` ref; reach siblings via `self.denidin.ai_handler...` (§XVIII)  
 
 ---
 
