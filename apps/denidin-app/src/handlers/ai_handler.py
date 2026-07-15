@@ -54,71 +54,64 @@ class AIHandler:
         self._constitution_content: Optional[str] = None
         self._constitution_mtime: Optional[float] = None
 
-        # Initialize memory managers if feature enabled
-        # Handle configs without feature_flags (backward compatibility)
-        self.memory_enabled = getattr(config, 'feature_flags', {}).get('enable_memory_system', False)
+        # Memory system and RBAC are always on (2026-07-14 decision: both
+        # graduated from feature flags to permanent behavior).
+        self.memory_enabled = True
         self.session_manager = None
         self.memory_manager = None
 
-        # Initialize RBAC if feature enabled
-        self.rbac_enabled = getattr(config, 'feature_flags', {}).get('enable_rbac', False)
+        self.rbac_enabled = True
         self.user_manager = None
 
-        if self.rbac_enabled:
-            logger.info("RBAC enabled - initializing UserManager")
-            godfather_phone = getattr(config, 'godfather_phone', None)
-            user_roles = getattr(config, 'user_roles', {})
-            admin_phones = user_roles.get('admin_phones', [])
-            blocked_phones = user_roles.get('blocked_phones', [])
+        logger.info("RBAC enabled - initializing UserManager")
+        godfather_phone = getattr(config, 'godfather_phone', None)
+        user_roles = getattr(config, 'user_roles', {})
+        admin_phones = user_roles.get('admin_phones', [])
+        blocked_phones = user_roles.get('blocked_phones', [])
 
-            self.user_manager = UserManager(
-                godfather_phone=godfather_phone,
-                admin_phones=admin_phones,
-                blocked_phones=blocked_phones
+        self.user_manager = UserManager(
+            godfather_phone=godfather_phone,
+            admin_phones=admin_phones,
+            blocked_phones=blocked_phones
+        )
+        logger.info(f"UserManager initialized with godfather: {godfather_phone}, admins: {len(admin_phones)}, blocked: {len(blocked_phones)}")
+
+        logger.info("Initializing SessionManager and MemoryManager")
+
+        # Initialize SessionManager
+        session_config = config.memory.get('session', {})
+
+        # Note: cleanup_interval_seconds moved to app-level background thread
+        # SessionManager no longer runs its own cleanup thread
+
+        self.session_manager = SessionManager(
+            storage_dir=session_config.get('storage_dir', 'data/sessions'),
+            session_timeout_hours=session_config.get('session_timeout_hours', 24)
+        )
+
+        # Store token limits for later use in conversation retrieval
+        self.max_tokens_by_role = session_config.get('max_tokens_by_role', {
+            'client': 4000,
+            'godfather': 100000
+        })
+
+        # Initialize MemoryManager
+        longterm_config = config.memory.get('longterm', {})
+        if longterm_config.get('enabled', True):
+            self.memory_manager = MemoryManager(
+                storage_dir=longterm_config.get('storage_dir', 'data/memory'),
+                embedding_model=config.ai_embedding_model,
+                ai_client=self.client
             )
-            logger.info(f"UserManager initialized with godfather: {godfather_phone}, admins: {len(admin_phones)}, blocked: {len(blocked_phones)}")
+
+            # Store collection name and query params for later use
+            self.memory_collection_name = longterm_config.get('collection_name', 'godfather_memory')
+            self.memory_top_k = longterm_config.get('top_k_results', 5)
+            self.memory_min_similarity = longterm_config.get('min_similarity', 0.7)
+
+            logger.info(f"MemoryManager initialized with collection: {self.memory_collection_name}")
         else:
-            logger.info("RBAC disabled by feature flag")
-
-        if self.memory_enabled:
-            logger.info("Memory system enabled - initializing SessionManager and MemoryManager")
-
-            # Initialize SessionManager
-            session_config = config.memory.get('session', {})
-
-            # Note: cleanup_interval_seconds moved to app-level background thread
-            # SessionManager no longer runs its own cleanup thread
-
-            self.session_manager = SessionManager(
-                storage_dir=session_config.get('storage_dir', 'data/sessions'),
-                session_timeout_hours=session_config.get('session_timeout_hours', 24)
-            )
-
-            # Store token limits for later use in conversation retrieval
-            self.max_tokens_by_role = session_config.get('max_tokens_by_role', {
-                'client': 4000,
-                'godfather': 100000
-            })
-
-            # Initialize MemoryManager
-            longterm_config = config.memory.get('longterm', {})
-            if longterm_config.get('enabled', True):
-                self.memory_manager = MemoryManager(
-                    storage_dir=longterm_config.get('storage_dir', 'data/memory'),
-                    embedding_model=config.ai_embedding_model,
-                    ai_client=self.client
-                )
-
-                # Store collection name and query params for later use
-                self.memory_collection_name = longterm_config.get('collection_name', 'godfather_memory')
-                self.memory_top_k = longterm_config.get('top_k_results', 5)
-                self.memory_min_similarity = longterm_config.get('min_similarity', 0.7)
-
-                logger.info(f"MemoryManager initialized with collection: {self.memory_collection_name}")
-            else:
-                logger.info("Long-term memory disabled in config")
-        else:
-            logger.info("Memory system disabled by feature flag")
+            logger.info("Long-term memory disabled in config")
 
         # Morning MCP integration (Feature 018): locate the current tunnel URL via
         # the shared status file the morning-mcp-app publishes. No cross-app import.
@@ -457,6 +450,21 @@ class AIHandler:
             ]
             if mcp_calls:
                 logger.info(f"MCP calls for request {request.request_id}: {mcp_calls}")
+            elif tools and any(
+                phrase in response_text
+                for phrase in ("הוצאה בהצלחה", "סומנה כשולמה", "בוטלה בהצלחה", "נוסף בהצלחה")
+            ):
+                # Invoicing tools were offered this turn and the reply reads like
+                # a state-changing confirmation, but no mcp_call was made - the
+                # model may have pattern-completed a fabricated success from
+                # earlier turns instead of actually calling the tool. Log only;
+                # this is a detection safety net, not a behavior change.
+                logger.warning(
+                    f"Possible hallucinated invoicing confirmation for request "
+                    f"{request.request_id}: reply text suggests a state-changing "
+                    f"action succeeded, but no MCP tool was called. "
+                    f"Reply: {response_text!r}"
+                )
 
             logger.info(
                 f"AI response generated for request {request.request_id}: "

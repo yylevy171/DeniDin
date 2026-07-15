@@ -19,7 +19,7 @@ from .formatters import (
     format_invoice_details,
     format_invoice_list,
 )
-from .models import FinancialSummary, Invoice
+from .models import _MORNING_STATUS_CODES, FinancialSummary, Invoice
 from .morning_client import MorningClient
 from .utils.logger import get_logger
 
@@ -174,11 +174,27 @@ def _extract_items(response: Any) -> List[dict]:
 def _matches_status(item: dict, status: Optional[str]) -> bool:
     """Client-side status filter — Morning's server-side filter param name for
     status is not confirmed in the available API docs/Postman collection, so
-    we filter locally rather than guess and risk silently-wrong results."""
+    we filter locally rather than guess and risk silently-wrong results.
+
+    `item["status"]` here is Morning's raw /documents(/search) value: an int
+    status code (see models._MORNING_STATUS_CODES), or None for a freshly
+    created, not-yet-paid document (confirmed live: a brand-new tax invoice
+    has no status code at all until it's closed - see
+    _build_payment_receipt_payload's docstring). Both must be normalized onto
+    this app's canonical vocabulary (paid/unpaid/cancelled) before comparing
+    against `_STATUS_ALIASES` - comparing the raw code/None directly against
+    those string aliases can never match anything.
+    """
     if not status or status == "all":
         return True
 
-    item_status = str(item.get("status", "")).lower()
+    raw = item.get("status")
+    if raw is None:
+        item_status = "unpaid"  # no status code yet == not yet closed/paid
+    elif isinstance(raw, int):
+        item_status = _MORNING_STATUS_CODES.get(raw, str(raw)).lower()
+    else:
+        item_status = str(raw).lower()
     return item_status in _STATUS_ALIASES.get(status, {status})
 
 
