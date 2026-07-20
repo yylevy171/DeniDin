@@ -111,9 +111,9 @@ tool output, rather than declining.
       and that it must never claim to lack access when a tool that can supply
       the underlying data is actually available.
 - [x] The test passes after the fix (verified once, single explicit-approval run).
-- [ ] No regression in the existing `test_denidin_morning_mcp_e2e.py` suite
-      (create/list/details/mark-paid/cancel flows) — not yet re-run; requires
-      separate explicit approval per test (never as a batch).
+- [x] No regression in the existing `test_denidin_morning_mcp_e2e.py` suite —
+      re-ran all 5 existing tests individually (create/list/details/mark-paid/
+      cancel), each with separate explicit approval, none as a batch: all pass.
 - [ ] Re-verified live in the dev environment against a real WhatsApp message
       with the same phrasing that originally triggered the bug.
 
