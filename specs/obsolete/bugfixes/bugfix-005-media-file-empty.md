@@ -7,7 +7,7 @@ bugfix-005-media-file-empty
 Media Flow Integration: File Empty Error in Real Life Test
 
 ## Status
-Obsolete (2026-07-21) — moved to `specs/bugfixes/obsolete/` per user instruction; not independently re-verified against current code. This spec itself notes "the previous bugfix attempt did not resolve the problem," referring to `bugfix-006-media-file-empty.md` (README lists 006 as resolved 2026-01-29, same date as this spec). Whether 005 is a stale duplicate of 006 or a genuine unresolved follow-up was not determined before archiving — flag for a fresh live check of the media flow if file-empty errors resurface.
+Obsolete (2026-07-21) — moved to `specs/obsolete/bugfixes/` per user instruction; not independently re-verified against current code. This spec itself notes "the previous bugfix attempt did not resolve the problem," referring to `bugfix-006-media-file-empty.md` (README lists 006 as resolved 2026-01-29, same date as this spec). Whether 005 is a stale duplicate of 006 or a genuine unresolved follow-up was not determined before archiving — flag for a fresh live check of the media flow if file-empty errors resurface.
 
 ## Date Opened
 2026-01-29

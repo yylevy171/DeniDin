@@ -79,7 +79,7 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 | 013 | Client Name Garbling and Unrequested Date Narrowing | - | Open (documentation only) | - |
 | 014 | list_invoices Only Returns One of Many | - | Open (documentation only) | - |
 
-## Obsolete Bugfixes (`specs/bugfixes/obsolete/`)
+## Obsolete Bugfixes (`specs/obsolete/bugfixes/`)
 
 | # | Title | Marked Obsolete | Reason |
 |---|-------|-----------|--------|
