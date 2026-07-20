@@ -552,7 +552,7 @@ See `apps/denidin-app/DEPLOYMENT.md` for the full systemd setup guide.
 
 ## Future Enhancements
 
-See `specs/in-definition/`, `specs/P0/`, `specs/P1/`, `specs/P2/` for planned features:
+See `specs/in-definition/` and `specs/backlog/` for planned features:
 
 - **003**: Media & document processing
   - ✅ Phase 1-3: Media Model, Text Extractors (Complete)
