@@ -1,7 +1,7 @@
 # Bugfix 004: data_root Config Value Not Respected
 
 **Created**: January 23, 2026  
-**Status**: Not Started  
+**Status**: Obsolete (2026-07-21) — `AppConfiguration.from_dict`/`from_file` (`apps/denidin-app/src/models/config.py` ~lines 100-141) already combines `data_root` with relative `storage_dir` values, strips a duplicated `data_root` prefix for backward compatibility, and passes through absolute paths unchanged. `config.dev.example.json`/`config.prod.example.json` already use relative `storage_dir` values as this spec's "Fix Option A" proposed. The described bug no longer reproduces against current code.  
 **Priority**: P2 (Medium - Path management inconsistency)  
 **Component**: Configuration, File Storage  
 **Branch**: `bugfix/004-data-root-ignored`  

@@ -76,10 +76,15 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 
 | # | Title | Priority | Status | Branch |
 |---|-------|----------|--------|--------|
-| 004 | data_root Config Value Not Respected | P2 | Not Started | `bugfix/004-data-root-ignored` |
-| 005 | Media Flow Integration - File Empty Issue | - | Open | - |
 | 013 | Client Name Garbling and Unrequested Date Narrowing | - | Open (documentation only) | - |
 | 014 | list_invoices Only Returns One of Many | - | Open (documentation only) | - |
+
+## Obsolete Bugfixes (`specs/bugfixes/obsolete/`)
+
+| # | Title | Marked Obsolete | Reason |
+|---|-------|-----------|--------|
+| 004 | data_root Config Value Not Respected | 2026-07-21 | Already fixed by current `config.py`/example-config behavior — see spec for details |
+| 005 | Media Flow Integration - File Empty Issue | 2026-07-21 | Possible duplicate of resolved bugfix-006 — not independently re-verified, see spec for caveat |
 
 ## Completed Bugfixes
 
