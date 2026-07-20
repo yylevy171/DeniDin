@@ -1,90 +1,32 @@
 #!/bin/bash
-# Script to run DeniDin application with single-instance enforcement
-# Checks for existing application processes and prevents duplicates
+# Starts denidin-app for a given environment as a Docker Compose service.
+# Containers only (019-env-separation) - never starts a local, non-containerized
+# process, and no PID-file logic: Docker itself prevents/no-ops a duplicate
+# start of an already-running service. See
+# specs/019-env-separation/contracts/run-stop-script-contract.md.
+#
+# Usage: ./run_denidin.sh dev|prod
 
-set -e  # Exit on error
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_SCRIPT="denidin.py"
-PIDFILE="$SCRIPT_DIR/.denidin.pid"
-LOGFILE="$SCRIPT_DIR/logs/denidin.log"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Ensure logs directory exists
-mkdir -p "$SCRIPT_DIR/logs"
-
-# Function to check if process is running
-is_running() {
-    local pid=$1
-    if [ -z "$pid" ]; then
-        return 1
-    fi
-    
-    # Check if PID exists and is a python process running denidin.py
-    if ps -p "$pid" > /dev/null 2>&1; then
-        # Verify it's actually our application (case-insensitive match)
-        if ps -p "$pid" -o command= | grep -iq "python.*denidin\.py"; then
-            return 0
-        fi
-    fi
-    return 1
-}
-
-# Check for existing PID file
-if [ -f "$PIDFILE" ]; then
-    OLD_PID=$(cat "$PIDFILE")
-    if is_running "$OLD_PID"; then
-        echo "ERROR: Application is already running with PID $OLD_PID"
-        echo "To stop it, run: kill $OLD_PID"
-        echo "Or use: ./stop_denidin.sh"
-        echo ""
-        echo "Running process:"
-        ps -p "$OLD_PID" -o pid,etime,command
-        exit 1
-    else
-        echo "Cleaning up stale PID file (process $OLD_PID not running)"
-        rm -f "$PIDFILE"
-    fi
-fi
-
-# Double-check for any orphaned application processes (in case PID file was deleted)
-ORPHANED_PIDS=$(ps aux | grep "[p]ython.*denidin.py" | awk '{print $2}')
-if [ -n "$ORPHANED_PIDS" ]; then
-    echo "ERROR: Found orphaned application process(es): $ORPHANED_PIDS"
-    echo "Please stop them manually first:"
-    echo "  kill $ORPHANED_PIDS"
+ENV="$1"
+if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
+    echo "Usage: $0 dev|prod" >&2
     exit 1
 fi
 
-# Start the application
-cd "$SCRIPT_DIR"
-echo "Starting DeniDin application..."
-echo "Logs: $LOGFILE"
-
-# Run application in background with proper redirection
-# Redirect only stdin to /dev/null - let Python logger handle file output
-# This prevents duplicate logs (shell redirection + Python file handler)
-nohup python3 "$APP_SCRIPT" </dev/null >/dev/null 2>&1 &
-APP_PID=$!
-
-# Give the shell a moment to fork the process
-sleep 0.5
-
-# Save PID to file
-echo "$APP_PID" > "$PIDFILE"
-
-# Wait a moment and verify it started
-# Application takes time to initialize (connect to WhatsApp API, load memory, etc.)
-sleep 5
-if is_running "$APP_PID"; then
-    echo "✓ Application started successfully"
+if [ "$ENV" = "dev" ]; then
+    echo "NOTE: denidin-app-dev shares one real Green API instance with denidin-app-prod (FR-014)."
+    echo "      Only one of denidin-app-dev/denidin-app-prod should be actively running at a time"
+    echo "      whenever real WhatsApp traffic could arrive. See quickstart.md's hand-off procedure."
     echo ""
-    echo "Process info:"
-    ps -p "$APP_PID" -o pid,etime,command
-    echo ""
-    echo "To view logs: tail -f $LOGFILE"
-    echo "To stop application: ./stop_denidin.sh"
-else
-    echo "✗ Application failed to start. Check logs at: $LOGFILE"
-    rm -f "$PIDFILE"
-    exit 1
 fi
+
+COMPOSE_FILE="$REPO_ROOT/docker-compose.$ENV.yml"
+SERVICE="denidin-app-$ENV"
+
+docker compose -f "$COMPOSE_FILE" up -d "$SERVICE"
+docker compose -f "$COMPOSE_FILE" ps "$SERVICE"

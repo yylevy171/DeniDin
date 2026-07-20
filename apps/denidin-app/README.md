@@ -62,13 +62,14 @@ pip install -r requirements.txt
 
 ### 4. Configure Credentials
 
-Copy the example configuration file:
+Copy the example configuration files (one per environment — see "Environments (dev/prod)" in the repo-root `CLAUDE.md`):
 
 ```bash
-cp config/config.example.json config/config.json
+cp config/config.dev.example.json config/config.dev.json
+cp config/config.prod.example.json config/config.prod.json
 ```
 
-Edit `config/config.json` and replace the placeholder values:
+Edit `config/config.dev.json`/`config/config.prod.json` and replace the placeholder values:
 
 ```json
 {
@@ -134,49 +135,39 @@ Memory system is **disabled by default** (`enable_memory_system: false`). To ena
 
 See [Memory System Usage](#memory-system-usage) section below for details.
 
-**⚠️ IMPORTANT:** Never commit `config/config.json` to version control! It's already in `.gitignore`.
+**⚠️ IMPORTANT:** Never commit `config/config.dev.json`/`config/config.prod.json` to version control! They're already in `.gitignore`.
 
 ### 5. Run the Bot
 
+Both apps run **only as Docker containers**, one environment at a time selected explicitly:
+
 ```bash
-./run_denidin.sh
+./run_denidin.sh dev    # or: prod
 ```
 
 The bot will:
-1. Load configuration from `config/config.json`
-2. Check for existing bot instances (prevents duplicates)
+1. Build (if needed) and start the `denidin-app-<env>` container via `docker compose`
+2. Load configuration from that environment's `config/config.<env>.json`
 3. Start polling Green API for incoming WhatsApp messages
 4. Forward messages to ChatGPT
 5. Send AI responses back to WhatsApp
-6. Log all activity to `logs/application.log`
+6. Log all activity to `logs/<env>/denidin.log`
 
-**Alternative (manual start):**
-```bash
-python3 denidin.py
-```
+**⚠️ dev and prod share one real Green API instance** (one paid WhatsApp number, no sandbox tier) — only one of `denidin-app-dev`/`denidin-app-prod` should be actively running at a time whenever real WhatsApp traffic could arrive. See `specs/019-env-separation/quickstart.md` for the hand-off procedure.
 
 ### 6. Stop the Bot
 
 ```bash
-./stop_denidin.sh
+./stop_denidin.sh dev    # or: prod
 ```
 
-This will gracefully shut down the application (sends SIGTERM, waits for cleanup).
+This stops only that environment's container (`docker compose stop`) — the other environment, if running, is unaffected.
 
-**Alternative:**
-Press `Ctrl+C` if running manually, or use `kill -TERM <PID>`.
-
-### Docker
+### Docker (what the scripts above wrap)
 
 ```bash
-docker build -t denidin-app .
-docker run --rm \
-  -v "$(pwd)/config:/app/config" \
-  -v "$(pwd)/data:/app/data" \
-  -v "$(pwd)/logs:/app/logs" \
-  denidin-app
+docker compose -f ../../docker-compose.dev.yml up -d denidin-app-dev    # or docker-compose.prod.yml / denidin-app-prod
 ```
-Or via the repo-root `docker-compose.yml`: `docker compose up denidin-app`.
 
 ## Architecture
 
@@ -253,8 +244,8 @@ apps/denidin-app/
 ├── .pylintrc                  # Linter configuration
 ├── mypy.ini                   # Type checker configuration
 ├── config/
-│   ├── config.example.json    # Example configuration (template)
-│   └── config.json            # Actual credentials (gitignored)
+│   ├── config.dev.example.json / config.prod.example.json   # Example configuration (templates)
+│   └── config.dev.json / config.prod.json                   # Actual per-environment credentials (gitignored)
 ├── src/                       # Source code (500+ statements, 89% coverage)
 │   ├── handlers/
 │   │   ├── ai_handler.py      # OpenAI API + memory integration

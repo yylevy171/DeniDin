@@ -10,28 +10,32 @@ This repo is split into two independently deployable apps under `apps/`, plus Sp
 - **`apps/morning-mcp-app/`** — a standalone app for the Morning/Green Invoice API (Israeli invoicing): a client library (`MorningClient`, `MorningAuth` under its own `src/denidin_mcp_morning/`), a FastMCP server (`server.py`, 7 invoice-management tools, streamable-HTTP, bearer-auth, `/health` endpoint) exposed to `apps/denidin-app` over a real ngrok tunnel, plus its sandbox-backed integration test suite. It has its own `requirements.txt`, `pytest.ini`, `Makefile`, `Dockerfile`, and config files — fully independent of `apps/denidin-app/` (`denidin-app` reaches it only over HTTP via the tunnel, never by importing its code). Remaining polish work (audit logging, run-both-apps docs) tracked under `specs/in-definition/018-denidin-morning-mcp-integration/`.
 - **`specs/`** — SpecKit-style feature specifications, organized by status: `in-definition/`, `P1/`, `P2/`, `done/`, `not-doing/`, `bugfixes/`, `checklists/`. See "Spec-Driven Workflow" below.
 - **`.github/`** — the project's constitution/methodology docs (see "Governance Docs" below) — these are binding rules for how work is done here, not just background reading.
-- **`docker-compose.yml`** (repo root) — local-dev convenience for running both apps together; each app also builds/runs standalone via its own `Dockerfile` (`docker build`/`docker run` from within the app's own directory, no dependency on the other app or on compose).
+- **`docker-compose.dev.yml`** / **`docker-compose.prod.yml`** (repo root) — one compose file per environment (019-env-separation), each with a `denidin-app-<env>` + `morning-mcp-app-<env>` service pair; each app also builds/runs standalone via its own `Dockerfile` (`docker build`/`docker run` from within the app's own directory, no dependency on the other app or on compose). Containers are the *only* supported way to run either app now — see "Environments (dev/prod)" below.
 
 **Almost all day-to-day commands below assume `cd apps/denidin-app` first**, unless working on the morning app (`cd apps/morning-mcp-app`).
+
+## Environments (dev/prod)
+
+Both apps run **exclusively as Docker containers**, in one of two environments — `dev` or `prod` — never as a local host process (019-env-separation). Each environment has its own config file (`config.dev.json`/`config.prod.json`), data root (`dev_data/` vs `data/` for denidin-app), log path (`logs/dev/` vs `logs/prod/`), and — for morning-mcp-app — its own ngrok account/tunnel running *inside* the container.
+
+**Important asymmetry**: there is one paid WhatsApp Business number and one Green API instance (no sandbox tier exists), so `denidin-app-dev` and `denidin-app-prod` share the same real Green API credentials. `GreenAPIBot` polls for notifications rather than receiving pushed webhooks, so **only one of `denidin-app-dev`/`denidin-app-prod` should be actively running at a time** whenever real WhatsApp traffic could arrive — switching is a manual hand-off (`stop` one, `run` the other), not a concurrent-safe operation. `morning-mcp-app-dev`/`morning-mcp-app-prod` have no such restriction and can always run together. See `specs/019-env-separation/quickstart.md` for the full hand-off procedure, and role-mapping details (dev's godfather/admin assignment is operator-switchable by editing `config.dev.json` and restarting, since there's only one real tester).
 
 ## Commands
 
 ### Setup
 ```bash
 cd apps/denidin-app
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-cp config/config.example.json config/config.json  # then fill in real credentials
+cp config/config.dev.example.json config/config.dev.json    # then fill in real credentials
+cp config/config.prod.example.json config/config.prod.json  # then fill in real credentials
 ```
 
 ### Run
 ```bash
 cd apps/denidin-app
-./run_denidin.sh      # start (enforces single instance via PID file)
-./stop_denidin.sh      # graceful SIGTERM shutdown
-python3 denidin.py     # run directly (foreground)
-docker build -t denidin-app . && docker run --rm -v "$(pwd)/config:/app/config" -v "$(pwd)/data:/app/data" -v "$(pwd)/logs:/app/logs" denidin-app   # containerized
+./run_denidin.sh dev|prod       # start that environment's container (docker compose wrapper)
+./stop_denidin.sh dev|prod      # stop it (docker compose stop — never affects the other environment)
 ```
+No local/foreground run mode exists anymore — see the environments note above for why (containers-only, per 019-env-separation).
 
 ### Test
 ```bash
@@ -52,7 +56,7 @@ Expensive tests (`tests/expensive/`, marked `@pytest.mark.expensive`) hit real O
 - **Read existing logs in `logs/test_logs/` before re-running anything.** A prior run's log may already answer the question.
 - **Only re-run a previously-failed expensive test once you're confident a fix addresses the failure** — don't re-run speculatively to "see what happens."
 - **Never re-run an expensive test yourself once it has been billed** (i.e. it actually reached OpenAI, whether it passed or failed) — that always requires a fresh, explicit approval from the user for that specific run, no exceptions, including "just to double-check" or "just to read the output." Re-running an *unbilled* failure (one that errored before reaching OpenAI) is fine without re-asking.
-- **`apps/morning-mcp-app` runs as a separate long-lived process for these cross-app tests** (`./run_morning_mcp.sh` / `./stop_morning_mcp.sh`), not something pytest starts. Python does not hot-reload: any code or config change in `apps/morning-mcp-app` (tools, formatters, server, config.json) has **no effect on a running process**. Whenever you edit anything in `apps/morning-mcp-app` for the sake of a denidin-app E2E test, you **must** `./stop_morning_mcp.sh` then `./run_morning_mcp.sh` (verify the new tunnel URL lands in `running_status.json` with `"status": "running"`) **before** retrying the test — otherwise the test silently exercises stale code and any observed failure/pass is not meaningful.
+- **`apps/morning-mcp-app` runs as a separate long-lived container for these cross-app tests** (`./run_morning_mcp.sh dev` / `./stop_morning_mcp.sh dev`), not something pytest starts. Rebuilding is not automatic: any code or config change in `apps/morning-mcp-app` (tools, formatters, server, `config.dev.json`) has **no effect on an already-running container**. Whenever you edit anything in `apps/morning-mcp-app` for the sake of a denidin-app E2E test, you **must** `./stop_morning_mcp.sh dev` then `./run_morning_mcp.sh dev` (which rebuilds the image; verify the new tunnel URL lands in that environment's status file with `"status": "running"`) **before** retrying the test — otherwise the test silently exercises stale code and any observed failure/pass is not meaningful.
 
 **Never redirect test output to `/tmp` or other ad-hoc log files.** Each app's `conftest.py` already writes per-test-file logs to `logs/test_logs/{test_file}.log` automatically (see `pytest_runtest_setup` in `apps/denidin-app/conftest.py`); read from there instead of teeing to a custom path. This applies to both apps under `apps/`.
 
@@ -67,10 +71,12 @@ python3 -m mypy src/ --config-file=mypy.ini
 ```bash
 cd apps/morning-mcp-app
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-cp config/config.example.json config/config.json  # then fill in real Morning API credentials
+pip install -r requirements.txt   # for local test-running only — the server itself runs containerized, see below
+cp config/config.dev.example.json config/config.dev.json    # then fill in real Morning sandbox credentials + dev ngrok authtoken
+cp config/config.prod.example.json config/config.prod.json  # then fill in real Morning production credentials + prod ngrok authtoken
 make test            # or: python3 -m pytest tests/ -v --tb=short
-make docker-build && make docker-run
+./run_morning_mcp.sh dev|prod    # start that environment's container (ngrok runs inside it)
+./stop_morning_mcp.sh dev|prod   # stop it
 ```
 
 ## Governance Docs — Read Before Non-Trivial Work
@@ -129,15 +135,15 @@ Non-text messages (`imageMessage`, `documentMessage`, `videoMessage`, `audioMess
 - **`constants/error_messages.py`** — centralized user-facing error strings (friendly, no stack traces).
 
 ### Data & config
-- `config/config.json` (gitignored, real secrets) vs `config/config.example.json` (safe placeholders, committed) vs `config/config.test.json` (used by tests, loaded via `AppConfiguration.from_file`, no env vars).
+- `config/config.dev.json` / `config/config.prod.json` (gitignored, real per-environment secrets) vs `config/config.dev.example.json` / `config/config.prod.example.json` (safe placeholders, committed) vs `config/config.test.json` (used by pytest, its own ephemeral `test_data/` root — decoupled from the persistent `dev_data/` environment, per 019-env-separation) — all loaded via `AppConfiguration.from_file`, no env vars.
 - `data/sessions/`, `data/memory/` (ChromaDB), `data/constitution/` — all gitignored runtime state, isolated from test data via the `data_root` config field.
 - `logs/denidin.log` (production) and `logs/test_logs/{test_file}.log` (per-test-file, auto-configured by `conftest.py`) — check these logs instead of re-running expensive tests to get more diagnostic detail.
 
 ### Morning MCP integration (`apps/denidin-app` ↔ `apps/morning-mcp-app`)
-Godfather/admin users manage invoices in natural Hebrew: `AIHandler` calls OpenAI's **Responses API** with the Morning server attached as a **remote MCP tool** (`type: "mcp"`, bearer-auth header), reached over a real ngrok tunnel — no local import of `denidin_mcp_morning` code, no mocking of the MCP round-trip. The tunnel URL is discovered via a shared status file (`apps/morning-mcp-app/running_status.json`, must show `"status": "running"`); `apps/denidin-app`'s own `config.mcp.morning_status_file` points at it. RBAC-gated: only godfather/admin roles get the tool attached. Current date is injected into `instructions` at reply time (UTC, computed per call — not templated into the constitution file) so the model resolves relative dates correctly instead of guessing a wrong year.
+Godfather/admin users manage invoices in natural Hebrew: `AIHandler` calls OpenAI's **Responses API** with the Morning server attached as a **remote MCP tool** (`type: "mcp"`, bearer-auth header), reached over a real ngrok tunnel — no local import of `denidin_mcp_morning` code, no mocking of the MCP round-trip. The tunnel URL is discovered via a per-environment shared status file (`shared/mcp-status-dev/`, `shared/mcp-status-prod/` — see "Environments (dev/prod)" above; must show `"status": "running"`); `apps/denidin-app`'s own `config.mcp.morning_status_file` points at its own environment's copy, never the other's. RBAC-gated: only godfather/admin roles get the tool attached. Current date is injected into `instructions` at reply time (UTC, computed per call — not templated into the constitution file) so the model resolves relative dates correctly instead of guessing a wrong year.
 
 ### `apps/morning-mcp-app/` (separate app, own package/tests/config/Docker)
-Standalone `MorningClient`/`MorningAuth` for the Morning (Green Invoice) sandbox API — token-managed HTTP client with retry/backoff (`requests` + urllib3 `Retry`). Own package at `apps/morning-mcp-app/src/denidin_mcp_morning/`, imported as `from denidin_mcp_morning.morning_client import MorningClient` (its `conftest.py` puts its own `src/` on `sys.path` — no cross-app imports, no `sys.path` reach-through into `apps/denidin-app/`). `server.py` builds a FastMCP server exposing 7 tools (`create_invoice`, `list_invoices`, `get_invoice_details`, `update_invoice_status`, `add_client`, `get_financial_summary`, `download_invoice_pdf`) over streamable-HTTP, wrapped in `BearerTokenMiddleware` (single shared secret, not OAuth) plus an unauthenticated `/health` liveness route. `./run_morning_mcp.sh` / `./stop_morning_mcp.sh` run it as a standalone long-lived process (single-instance PID-file enforced) with an ngrok tunnel, writing `running_status.json` for `apps/denidin-app` (and its own expensive tests, via `discover_running_server()` in `tests/expensive/e2e_helpers.py`) to discover the live URL — reusing an already-warm tunnel instead of spinning up a fresh one avoids an ngrok cold-start flake (`424 Failed Dependency` on the first request). Exercised by `apps/morning-mcp-app/tests/integration/test_morning_sandbox_*.py`, which hit the real Morning sandbox (constitution: no mocking). Config lives in its own `config/{config.example.json,config.test.json,config.json}` (flat shape: `api_key_id`/`api_key_secret`/`api_url`, plus an `mcp` block: `auth_token`/`ngrok_authtoken`/`status_file`) — no longer shares config files with `apps/denidin-app/`. `config.test.json` holds real sandbox secrets (plus `openai_api_key`/`mcp.ngrok_authtoken` for the OpenAI/ngrok-driven tests) and, like `config.json`, is gitignored rather than committed (changed 2026-07-09 — only `config.example.json` is tracked).
+Standalone `MorningClient`/`MorningAuth` for the Morning (Green Invoice) sandbox API — token-managed HTTP client with retry/backoff (`requests` + urllib3 `Retry`). Own package at `apps/morning-mcp-app/src/denidin_mcp_morning/`, imported as `from denidin_mcp_morning.morning_client import MorningClient` (its `conftest.py` puts its own `src/` on `sys.path` — no cross-app imports, no `sys.path` reach-through into `apps/denidin-app/`). `server.py` builds a FastMCP server exposing 7 tools (`create_invoice`, `list_invoices`, `get_invoice_details`, `update_invoice_status`, `add_client`, `get_financial_summary`, `download_invoice_pdf`) over streamable-HTTP, wrapped in `BearerTokenMiddleware` (single shared secret, not OAuth) plus an unauthenticated `/health` liveness route. `./run_morning_mcp.sh dev|prod` / `./stop_morning_mcp.sh dev|prod` run it as a Docker container per environment (019-env-separation — no host-level PID-file process anymore; Docker itself prevents duplicate starts), with ngrok running *inside* the container, writing that environment's status file (`shared/mcp-status-<env>/`) for `apps/denidin-app` (and its own expensive tests, via `discover_running_server()` in `tests/expensive/e2e_helpers.py`) to discover the live URL — reusing an already-warm tunnel instead of spinning up a fresh one avoids an ngrok cold-start flake (`424 Failed Dependency` on the first request). Exercised by `apps/morning-mcp-app/tests/integration/test_morning_sandbox_*.py`, which hit the real Morning sandbox (constitution: no mocking). Config lives in its own `config/{config.dev.example.json,config.prod.example.json,config.test.json,config.dev.json,config.prod.json}` (flat shape: `api_key_id`/`api_key_secret`/`api_url`, plus an `mcp` block: `auth_token`/`ngrok_authtoken`/`status_file`) — no longer shares config files with `apps/denidin-app/`. `config.test.json` holds real sandbox secrets (plus `openai_api_key`/`mcp.ngrok_authtoken` for the OpenAI/ngrok-driven tests) and, like `config.dev.json`/`config.prod.json`, is gitignored rather than committed (only the `.example.json` files are tracked).
 
 ## Spec-Driven Workflow
 

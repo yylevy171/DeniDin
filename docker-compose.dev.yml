@@ -1,0 +1,42 @@
+# Dev environment only (019-env-separation). Fully independent of
+# docker-compose.prod.yml - `docker compose -f docker-compose.dev.yml up`
+# never builds, starts, or otherwise touches any prod container.
+#
+# denidin-app-dev and morning-mcp-app-dev do not share a network namespace or
+# import each other's code - denidin-app-dev reaches morning-mcp-app-dev only
+# as a remote MCP tool, over a real (dev-only) ngrok tunnel that OpenAI's
+# Responses API calls out to. The mcp-status-dev bind mount is the one thing
+# they DO need to share: morning-mcp-app-dev writes its live tunnel URL there,
+# and denidin-app-dev polls it to discover that URL. This directory is never
+# mounted into any prod container (see docker-compose.prod.yml), which is
+# what makes cross-environment MCP resolution structurally impossible (FR-010).
+#
+# IMPORTANT (FR-014): denidin-app-dev and denidin-app-prod share one real
+# Green API instance (one paid WhatsApp number, no sandbox tier exists).
+# GreenAPIBot polls for notifications rather than receiving pushed webhooks,
+# so only one of denidin-app-dev/denidin-app-prod should be actively running
+# whenever real WhatsApp traffic could arrive - see quickstart.md's hand-off
+# procedure. morning-mcp-app-dev has no such restriction and can always run
+# alongside morning-mcp-app-prod.
+name: denidin-dev
+services:
+  denidin-app-dev:
+    build:
+      context: ./apps/denidin-app
+    volumes:
+      - ./apps/denidin-app/config/config.dev.json:/app/config/config.json:ro
+      - ./apps/denidin-app/dev_data:/app/dev_data
+      - ./apps/denidin-app/logs/dev:/app/logs
+      - ./shared/mcp-status-dev:/app/mcp-status
+    restart: unless-stopped
+
+  morning-mcp-app-dev:
+    build:
+      context: ./apps/morning-mcp-app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/morning-mcp-app/config/config.dev.json:/app/config/config.json:ro
+      - ./apps/morning-mcp-app/logs/dev:/app/logs
+      - ./shared/mcp-status-dev:/app/mcp-status
+    restart: unless-stopped

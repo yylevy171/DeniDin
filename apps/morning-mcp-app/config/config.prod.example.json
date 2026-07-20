@@ -1,0 +1,24 @@
+{
+  "api_key_id": "PASTE_YOUR_MORNING_PRODUCTION_API_KEY_ID_HERE",
+  "api_key_secret": "PASTE_YOUR_MORNING_PRODUCTION_API_KEY_SECRET_HERE",
+  "api_url": "https://api.greeninvoice.co.il/api/v1/",
+  "default_currency": "ILS",
+  "default_vat_rate": 0.17,
+  "token_ttl_seconds": 3600,
+  "refresh_before_seconds": 300,
+  "rate_limit_per_second": 3,
+  "mcp": {
+    "server_name": "denidin-morning-prod",
+    "host": "0.0.0.0",
+    "port": 8000,
+    "transport": "streamable-http",
+    "log_level": "INFO",
+    "auth_token": "MUST_MATCH_DENIDIN_APP_PROD_MCP_MORNING_AUTH_TOKEN",
+    "ngrok_authtoken": "PASTE_YOUR_PROD_NGROK_AUTHTOKEN_HERE",
+    "ngrok_domain": "",
+    "status_file": "/app/mcp-status/morning_mcp_status.prod.json"
+  },
+  "feature_flags": {
+    "enable_mcp_server": true
+  }
+}
