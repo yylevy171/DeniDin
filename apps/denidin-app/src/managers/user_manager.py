@@ -1,7 +1,23 @@
 """UserManager for role assignment and permission checking."""
 
+import re
 from typing import Optional
 from src.models.user import User, Role, MemoryScope
+
+
+def _normalize_phone(phone: str) -> str:
+    """Normalize a phone number for role comparison.
+
+    Real Green API webhooks populate the sender as a WhatsApp JID (e.g.
+    "972522968679@c.us" or "...@g.us"), while godfather_phone/admin_phones/
+    blocked_phones are configured as bare digit strings. Stripping the JID
+    suffix and any non-digit characters (e.g. a leading "+") lets both sides
+    compare equal regardless of which format either one uses.
+    """
+    if not phone:
+        return phone
+    local_part = phone.split('@', 1)[0]
+    return re.sub(r'\D', '', local_part)
 
 
 class UserManager:
@@ -23,6 +39,9 @@ class UserManager:
         self.godfather_phone = godfather_phone
         self.admin_phones = admin_phones if admin_phones is not None else []
         self.blocked_phones = blocked_phones if blocked_phones is not None else []
+        self._godfather_phone_normalized = _normalize_phone(godfather_phone) if godfather_phone else None
+        self._admin_phones_normalized = {_normalize_phone(p) for p in self.admin_phones}
+        self._blocked_phones_normalized = {_normalize_phone(p) for p in self.blocked_phones}
         self._user_cache: dict[str, User] = {}
 
     def get_user(self, phone: str) -> User:
@@ -46,12 +65,15 @@ class UserManager:
         if phone in self._user_cache:
             return self._user_cache[phone]
 
-        # Determine role based on precedence
-        if phone in self.admin_phones:
+        # Determine role based on precedence (normalized: strips WhatsApp JID
+        # suffix and non-digit characters so "972522968679@c.us" and
+        # "972522968679" compare equal - see _normalize_phone)
+        normalized = _normalize_phone(phone)
+        if normalized in self._admin_phones_normalized:
             role = Role.ADMIN
-        elif phone == self.godfather_phone:
+        elif normalized == self._godfather_phone_normalized:
             role = Role.GODFATHER
-        elif phone in self.blocked_phones:
+        elif normalized in self._blocked_phones_normalized:
             role = Role.BLOCKED
         else:
             role = Role.CLIENT
