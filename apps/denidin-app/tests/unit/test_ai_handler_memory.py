@@ -223,8 +223,11 @@ class TestAIHandlerConversationHistory:
         call_args = client.responses.create.call_args[1]
 
         # System/constitution now goes via `instructions`; history + current
-        # user message go via `input` (no system role entry)
-        assert call_args["instructions"] == "Test system"
+        # user message go via `input` (no system role entry). The current date
+        # is appended to `instructions` at reply time (so the model has a
+        # clock), so this is a prefix + date suffix, not an exact match.
+        assert call_args["instructions"].startswith("Test system")
+        assert "THE CURRENT DATE IS" in call_args["instructions"]
         input_items = call_args["input"]
         assert len(input_items) == 3
         assert input_items[0] == {"role": "user", "content": "Previous question"}

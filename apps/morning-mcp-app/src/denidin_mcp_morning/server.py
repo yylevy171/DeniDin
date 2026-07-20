@@ -23,7 +23,10 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.routing import Route
+
+HEALTH_PATH = "/health"
 
 from . import tools
 from .config import MorningMCPConfig, load_config
@@ -52,6 +55,9 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         self._expected_header = f"Bearer {token}" if token else None
 
     async def dispatch(self, request: Request, call_next):
+        if request.url.path == HEALTH_PATH:
+            return await call_next(request)
+
         if self._expected_header is None:
             return await call_next(request)
 
@@ -59,6 +65,13 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
         return await call_next(request)
+
+
+async def _health(_request: Request) -> PlainTextResponse:
+    """Unauthenticated liveness probe — used by callers (e.g. the ngrok-tunnel
+    health check in tests/expensive/e2e_helpers.py) to confirm the server is
+    reachable end-to-end without needing the bearer token."""
+    return PlainTextResponse("ok")
 
 
 def build_asgi_app(mcp: FastMCP, auth_token: Optional[str] = None) -> Starlette:
@@ -69,6 +82,7 @@ def build_asgi_app(mcp: FastMCP, auth_token: Optional[str] = None) -> Starlette:
     proven in tests/integration/test_mcp_server_e2e.py).
     """
     app = mcp.streamable_http_app()
+    app.router.routes.append(Route(HEALTH_PATH, _health, methods=["GET"]))
     if auth_token:
         app.add_middleware(BearerTokenMiddleware, token=auth_token)
     return app

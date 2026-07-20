@@ -52,6 +52,7 @@ sys.path.insert(0, str(APP_ROOT))
 from tests.expensive.e2e_helpers import (  # noqa: E402
     OPENAI_ASSISTANT_INSTRUCTIONS,
     NgrokError,
+    discover_running_server,
     ngrok_tunnel,
 )
 
@@ -82,10 +83,26 @@ def config():
     return cfg
 
 
+PRODUCTION_CONFIG_PATH = APP_ROOT / "config" / "config.json"
+
+
 @pytest.fixture(scope="module")
-def running_server(config):
-    """Start the real MCP server locally, bearer-auth protected, for the
-    tunnel to expose."""
+def mcp_endpoint(config):
+    """Yield (server_url, auth_token) for a real, reachable MCP server.
+
+    Prefers an already-running standalone `./run_morning_mcp.sh` server (see
+    `discover_running_server`) — its ngrok tunnel is already warm, avoiding
+    the cold-start window where a brand-new tunnel is registered locally but
+    not yet reachable from the public internet (observed as OpenAI returning
+    HTTP 424 Failed Dependency on the very first request). Falls back to
+    starting our own local server + ephemeral tunnel only if no standalone
+    server is live.
+    """
+    discovered = discover_running_server(PRODUCTION_CONFIG_PATH)
+    if discovered is not None:
+        yield discovered
+        return
+
     client = MorningClient(
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
@@ -110,14 +127,18 @@ def running_server(config):
     else:
         pytest.fail("Local MCP server did not start in time")
 
-    yield auth_token
-
-    server.should_exit = True
-    thread.join(timeout=5)
+    try:
+        with ngrok_tunnel(port=TEST_PORT, authtoken=config.mcp_ngrok_authtoken) as public_url:
+            yield f"{public_url}/mcp", auth_token
+    except NgrokError as exc:
+        pytest.skip(f"ngrok tunnel unavailable: {exc}")
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
 
 
 @pytest.mark.expensive
-def test_openai_invokes_create_invoice_via_remote_mcp(config, running_server):
+def test_openai_invokes_create_invoice_via_remote_mcp(config, mcp_endpoint):
     """A real OpenAI Responses API call, given a natural-language prompt and
     this server registered as a remote MCP tool (over a real public ngrok
     tunnel), must actually invoke create_invoice and produce a real document
@@ -126,33 +147,29 @@ def test_openai_invokes_create_invoice_via_remote_mcp(config, running_server):
     """
     from openai import OpenAI
 
-    auth_token = running_server
+    server_url, auth_token = mcp_endpoint
     unique_marker = f"DENIDIN_OPENAI_E2E_{int(datetime.now(timezone.utc).timestamp())}"
     client_name = f"Test Corp {unique_marker}"
 
-    try:
-        with ngrok_tunnel(port=TEST_PORT, authtoken=config.mcp_ngrok_authtoken) as public_url:
-            openai_client = OpenAI(api_key=config.openai_api_key)
+    openai_client = OpenAI(api_key=config.openai_api_key)
 
-            response = openai_client.responses.create(
-                model=OPENAI_MODEL,
-                instructions=OPENAI_ASSISTANT_INSTRUCTIONS,
-                input=(
-                    f"Create an invoice for a client named '{client_name}' for 50 NIS, "
-                    f"description 'Consulting services {unique_marker}'."
-                ),
-                tools=[
-                    {
-                        "type": "mcp",
-                        "server_label": "morning-invoices",
-                        "server_url": f"{public_url}/mcp",
-                        "require_approval": "never",
-                        "headers": {"Authorization": f"Bearer {auth_token}"},
-                    }
-                ],
-            )
-    except NgrokError as exc:
-        pytest.skip(f"ngrok tunnel unavailable: {exc}")
+    response = openai_client.responses.create(
+        model=OPENAI_MODEL,
+        instructions=OPENAI_ASSISTANT_INSTRUCTIONS,
+        input=(
+            f"Create an invoice for a client named '{client_name}' for 50 NIS, "
+            f"description 'Consulting services {unique_marker}'."
+        ),
+        tools=[
+            {
+                "type": "mcp",
+                "server_label": "morning-invoices",
+                "server_url": server_url,
+                "require_approval": "never",
+                "headers": {"Authorization": f"Bearer {auth_token}"},
+            }
+        ],
+    )
 
     mcp_calls = [item for item in response.output if getattr(item, "type", None) == "mcp_call"]
     create_invoice_calls = [call for call in mcp_calls if call.name == "create_invoice"]
@@ -194,7 +211,7 @@ def test_openai_invokes_create_invoice_via_remote_mcp(config, running_server):
 
 
 @pytest.mark.expensive
-def test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt(config, running_server):
+def test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt(config, mcp_endpoint):
     """A prompt with nothing to do with invoicing must NOT trigger any Morning
     MCP tool call, even though the tools are registered and available. This is
     the negative-case counterpart to
@@ -204,28 +221,24 @@ def test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt(config, running_s
     """
     from openai import OpenAI
 
-    auth_token = running_server
+    server_url, auth_token = mcp_endpoint
 
-    try:
-        with ngrok_tunnel(port=TEST_PORT, authtoken=config.mcp_ngrok_authtoken) as public_url:
-            openai_client = OpenAI(api_key=config.openai_api_key)
+    openai_client = OpenAI(api_key=config.openai_api_key)
 
-            response = openai_client.responses.create(
-                model=OPENAI_MODEL,
-                instructions=OPENAI_ASSISTANT_INSTRUCTIONS,
-                input="Write a short haiku about the changing seasons.",
-                tools=[
-                    {
-                        "type": "mcp",
-                        "server_label": "morning-invoices",
-                        "server_url": f"{public_url}/mcp",
-                        "require_approval": "never",
-                        "headers": {"Authorization": f"Bearer {auth_token}"},
-                    }
-                ],
-            )
-    except NgrokError as exc:
-        pytest.skip(f"ngrok tunnel unavailable: {exc}")
+    response = openai_client.responses.create(
+        model=OPENAI_MODEL,
+        instructions=OPENAI_ASSISTANT_INSTRUCTIONS,
+        input="Write a short haiku about the changing seasons.",
+        tools=[
+            {
+                "type": "mcp",
+                "server_label": "morning-invoices",
+                "server_url": server_url,
+                "require_approval": "never",
+                "headers": {"Authorization": f"Bearer {auth_token}"},
+            }
+        ],
+    )
 
     mcp_calls = [item for item in response.output if getattr(item, "type", None) == "mcp_call"]
 

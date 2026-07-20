@@ -5,6 +5,7 @@ Phase 5 (002+007): Memory system integration
 Phase 6: RBAC (Role-Based Access Control)
 """
 import time
+from datetime import datetime, timezone
 from typing import Optional, List, Dict
 
 from openai import OpenAI, APITimeoutError, RateLimitError, APIError
@@ -351,9 +352,23 @@ class AIHandler:
             logger.debug(f"Including {len(conversation_history)} messages from conversation history")
         input_items.append({"role": "user", "content": request.user_prompt})
 
+        # Give the model the actual current date. It has no clock of its own —
+        # its training cutoff makes it default to a stale "current year", which
+        # produced real wrong-year invoice lookups (e.g. resolving "7 בפברואר"
+        # to 2023). This is appended at reply time, computed per call in UTC
+        # (CONSTITUTION §II) — NOT templated into the constitution file.
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        instructions = (
+            f"{request.constitution}\n\n---\n"
+            f"THE CURRENT DATE IS {today} (UTC). Treat this as the authoritative "
+            f"\"today\" when resolving any relative or partial date the user gives "
+            f"(a day/month with no year, \"היום\", \"אתמול\", etc.) — never fall "
+            f"back on a year from your training data."
+        )
+
         kwargs = {
             "model": request.model,
-            "instructions": request.constitution,
+            "instructions": instructions,
             "input": input_items,
             "max_output_tokens": request.max_tokens,
             "temperature": request.temperature

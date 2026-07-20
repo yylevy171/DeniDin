@@ -99,6 +99,33 @@ logger = logging.getLogger(__name__)
 
 _DESCRIPTIONS = ("ייעוץ", "עיצוב", "פיתוח", "תחזוקה", "הדרכה", "ליווי עסקי")
 _CLIENT_STEMS = ("אלפא", "בטא", "גמא", "דלתא", "אומגא", "סיגמא", "נובה", "אוריון")
+# Hebrew-word qualifiers (never hex/digits) combined with _CLIENT_STEMS for a
+# unique-enough client name each run. A hex/random-number suffix was tried
+# before and caused a real, billed failure: the model mistook the hex token
+# for the invoice's actual id and called update_invoice_status with it
+# instead of the real UUID from the preceding create_invoice output.
+_CLIENT_QUALIFIERS = (
+    "צפון", "דרום", "מזרח", "מערב", "ראשי", "משני", "חדש", "ותיק",
+    "כחול", "ירוק", "זהב", "כסף", "ראשון", "שני", "שלישי", "רביעי",
+)
+
+
+def _unique_client_name() -> str:
+    """A unique-enough, operation-NEUTRAL client name for a freshly-seeded
+    invoice - built entirely from Hebrew words, never hex/digits/operation
+    words.
+
+    Two real, billed failures shaped this:
+    - Embedding the operation word in the name (e.g. "...CANCEL...") leaked
+      intent into a plain *create* request, so the model called
+      update_invoice_status(status="cancelled") on it (constitution maps
+      "בטל"/cancel-words to that status) - stems/qualifiers here are neutral.
+    - A hex/random-number suffix got mistaken by the model for the invoice's
+      actual id, causing it to call update_invoice_status with the wrong id
+      instead of the real UUID from the preceding create_invoice output -
+      `_CLIENT_QUALIFIERS` is Hebrew words only, no hex/digits.
+    """
+    return f"חברת {random.choice(_CLIENT_STEMS)} {random.choice(_CLIENT_QUALIFIERS)}"
 
 
 def _random_amount() -> int:
@@ -111,22 +138,6 @@ def _random_amount() -> int:
 
 def _random_description() -> str:
     return random.choice(_DESCRIPTIONS)
-
-
-def _unique_client_name() -> str:
-    """A unique, operation-NEUTRAL client name for a freshly-seeded invoice.
-
-    Critical (2026-07-15): earlier markers embedded the operation word into
-    the client name/description (e.g. "Test Corp DENIDIN_E2E_CANCEL_...").
-    The model reads that data and the literal "CANCEL"/"PAID" leaked intent
-    into it - a real, billed failure had the model call
-    update_invoice_status(status="cancelled") in response to a plain *create*
-    request, purely because "CANCEL" appeared in the client name (the
-    constitution maps "בטל"/cancel-words to status="cancelled"). Real client
-    names never encode the operation, so neither do these: just a neutral
-    stem + a short random hex token for uniqueness/traceability.
-    """
-    return f"חברת {random.choice(_CLIENT_STEMS)} {random.randbytes(3).hex()}"
 
 GODFATHER_CHAT_ID = "972500000018@c.us"  # Feature 018 E2E test godfather identity
 

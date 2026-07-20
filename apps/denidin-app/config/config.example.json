@@ -5,7 +5,7 @@
   "ai_model": "gpt-4o-mini",
   "ai_vision_model": "gpt-4o-mini",
   "ai_embedding_model": "text-embedding-3-large",
-  "ai_reply_max_tokens": 1000,
+  "ai_reply_max_tokens": 2500,
   "temperature": 0.7,
   "log_level": "INFO",
   "poll_interval_seconds": 5,
