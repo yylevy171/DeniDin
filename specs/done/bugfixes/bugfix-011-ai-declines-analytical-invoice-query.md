@@ -7,7 +7,7 @@ bugfix-011-ai-declines-analytical-invoice-query
 Godfather asks an analytical invoicing question ("who owes me the most?") and the model falsely claims it lacks access, instead of calling `list_invoices` and computing the answer itself
 
 ## Status
-Fixed - pending merge
+Fixed - merged to master (PR #109)
 
 ## Date Opened
 2026-07-20

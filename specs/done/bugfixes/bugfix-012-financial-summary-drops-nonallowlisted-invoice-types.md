@@ -7,7 +7,7 @@ bugfix-012-financial-summary-drops-nonallowlisted-invoice-types
 `get_financial_summary` omits real, genuinely-unpaid invoices from its totals whenever their Morning `type` isn't 305 or 320 — while `list_invoices` (no such filter) reports them correctly
 
 ## Status
-Fixed — re-approved and re-applied 2026-07-21. Root cause and fix strategy revisited: an explicit allowlist (`{300, 305, 320}`) was chosen over both "delete the check entirely" (would double-count receipts/quotes/orders) and a `300-399` range (would risk absorbing 330/credit-invoice semantics into the wrong bucket). See Root Cause and Fix sections below for the final reasoning.
+Fixed - merged to master (PR #111). Re-approved and re-applied 2026-07-21. Root cause and fix strategy revisited: an explicit allowlist (`{300, 305, 320}`) was chosen over both "delete the check entirely" (would double-count receipts/quotes/orders) and a `300-399` range (would risk absorbing 330/credit-invoice semantics into the wrong bucket). See Root Cause and Fix sections below for the final reasoning.
 
 ## Date Opened
 2026-07-20
