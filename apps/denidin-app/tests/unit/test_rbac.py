@@ -110,32 +110,45 @@ class TestEndToEndRBACEnforcement:
         assert handler.user_manager.get_user(client_phone).token_limit == 4000
     
     def test_godfather_user_flow(self, rbac_config, mock_ai_client):
-        """GODFATHER user: sees all private memories, 100K token limit."""
+        """GODFATHER user: sees all private memories, 100K token limit.
+
+        Reality check (bugfix/010): a real Green API webhook's sender is a
+        WhatsApp JID like "+972501234567@c.us" (see WhatsAppMessage.from_notification
+        and its pinned test in test_message.py), not the bare phone number
+        config.test.json's godfather_phone is expressed as. This test previously
+        hardcoded sender_id as the bare phone AND passed an explicit user_phone=
+        override to create_request()/get_response() - a test-only convenience
+        parameter denidin.py's real webhook handler never passes (it only ever
+        passes sender=message.sender_id). That combination let this test pass
+        while production silently resolved real godfather messages to CLIENT.
+        """
         # Arrange
         handler = AIHandler(mock_ai_client, rbac_config)
         godfather_phone = "+972501234567"
-        
+        godfather_whatsapp_id = f"{godfather_phone}@c.us"
+
         # Act
         message = WhatsAppMessage(
             message_id="msg-2",
             chat_id="godfather@c.us",
             sender_name="Godfather",
-            sender_id=godfather_phone,
+            sender_id=godfather_whatsapp_id,
             text_content="Show me everything",
             timestamp=1234567890,
             message_type="text"
         )
-        
-        request = handler.create_request(message, user_phone=godfather_phone)
+
+        # No user_phone= override - matches denidin.py's real call shape exactly
+        # (get_response(ai_request, sender=message.sender_id, recipient="AI")).
+        request = handler.create_request(message)
         response = handler.get_response(
             request,
-            user_phone=godfather_phone,
-            sender=godfather_phone,
+            sender=godfather_whatsapp_id,
             recipient="AI"
         )
-        
+
         # Assert
-        user = handler.user_manager.get_user(godfather_phone)
+        user = handler.user_manager.get_user(godfather_whatsapp_id)
         assert user.role == Role.GODFATHER
         assert user.token_limit == 100000
         assert user.can_see_all_memories is True
