@@ -562,19 +562,22 @@ See `specs/in-definition/`, `specs/P0/`, `specs/P1/`, `specs/P2/` for planned fe
 - **013**: Proactive WhatsApp messaging
 - **014**: Entity extraction from group messages
 - **015**: Topic-based access control
-- **005**: MCP morning green receipt integration - client library extracted to `apps/morning-mcp-app/` (structural split only); the actual MCP server (FastAPI, 8 tools) described in `specs/in-definition/005-mcp-morning-green-receipt/plan.md` is not yet built - see "Sibling App: morning-mcp-app" below
+- **✅ 018**: DeniDin ↔ Morning MCP integration - godfather/admin invoicing via natural Hebrew, real remote MCP tool over the Responses API (Complete - MVP merged; audit logging + run-both-apps docs remain open in `specs/in-definition/018-denidin-morning-mcp-integration/tasks.md`)
+- **005**: MCP morning green receipt integration (receipt *parsing*, not invoicing) - client library extracted to `apps/morning-mcp-app/`; still tracked in `specs/in-definition/005-mcp-morning-green-receipt/` - see "Sibling App: morning-mcp-app" below for the invoicing MCP server 018 already built
 - **008**: Scheduled proactive chats
 - **009**: Agentic workflow builder
 
 ## Sibling App: morning-mcp-app
 
-`apps/morning-mcp-app/` is a separate, independently deployable app in this same monorepo (own `src/`, `tests/`, `config/`, `requirements.txt`, `Dockerfile`, `Makefile`) - it does **not** import from or share code with `apps/denidin-app/`, and the two are not currently wired to talk to each other.
+`apps/morning-mcp-app/` is a separate, independently deployable app in this same monorepo (own `src/`, `tests/`, `config/`, `requirements.txt`, `Dockerfile`, `Makefile`) - it does **not** import from or share code with `apps/denidin-app/`. The two apps talk to each other only over HTTP: `apps/denidin-app` reaches this app's MCP server as a **remote MCP tool** via OpenAI's Responses API, over a real ngrok tunnel (never a direct import).
 
-**Current state**: a thin, real REST client for the Morning (Green Invoice) API -
+**Current state** (as of Feature 018):
 - `src/denidin_mcp_morning/morning_client.py` - `MorningClient` (create/list/get invoices, `requests` + urllib3 retry/backoff)
 - `src/denidin_mcp_morning/auth.py` - `MorningAuth` (API key ID/secret → JWT exchange, token refresh)
-- No MCP server, no FastAPI, no tool registration yet - the intended design (8 MCP tools: `create_invoice`, `list_invoices`, `get_invoice_details`, `update_invoice_status`, `add_client`, `get_financial_summary`, `send_invoice`, `download_invoice_pdf`) is documented but unbuilt in `specs/in-definition/005-mcp-morning-green-receipt/`.
+- `src/denidin_mcp_morning/server.py` - a FastMCP server (streamable-HTTP) registering 7 tools bound to one `MorningClient`: `create_invoice`, `list_invoices`, `get_invoice_details`, `update_invoice_status`, `add_client`, `get_financial_summary`, `download_invoice_pdf` (`send_invoice` from the original 8-tool design was dropped from scope). `build_asgi_app()` wraps it in `BearerTokenMiddleware` (single shared secret) plus an unauthenticated `/health` route used for tunnel-liveness checks.
+- `./run_morning_mcp.sh` / `./stop_morning_mcp.sh` run the server as a standalone long-lived process (PID-file, single-instance enforced) alongside an ngrok tunnel, writing the live URL to `running_status.json` for `apps/denidin-app` (and this app's own expensive E2E tests) to discover.
+- Remaining polish (audit logging, run-both-apps docs) tracked in `specs/in-definition/018-denidin-morning-mcp-integration/tasks.md` Phase 4; the separate receipt-*parsing* feature (005) is still unbuilt.
 
-**Testing**: `apps/morning-mcp-app/tests/integration/` hits the real Morning **sandbox** API (no mocking, per constitution) - config in its own `config/{config.example.json,config.test.json,config.json}` (flat shape: `api_key_id`/`api_key_secret`/`api_url`).
+**Testing**: `apps/morning-mcp-app/tests/integration/` hits the real Morning **sandbox** API (no mocking, per constitution) - config in its own `config/{config.example.json,config.test.json,config.json}` (flat shape: `api_key_id`/`api_key_secret`/`api_url`, plus an `mcp` block: `auth_token`/`ngrok_authtoken`/`status_file`). `tests/expensive/test_openai_invokes_mcp_e2e.py` drives the server through a real OpenAI Responses API call, reusing an already-running standalone server's tunnel when one is live (see `discover_running_server()` in `tests/expensive/e2e_helpers.py`) rather than always spinning up a fresh tunnel, to avoid an ngrok cold-start flake.
 
-**Deployment**: `apps/morning-mcp-app/Dockerfile` builds a lightweight `python:3.9-slim` image (`ENV PYTHONPATH=/app/src` so the package is importable); since no server exists yet, its default `CMD` is a placeholder (`tail -f /dev/null`) rather than implying functionality that doesn't exist - see the Dockerfile's comment for the exact command to swap in once `server.py` lands. Runnable standalone or via the repo-root `docker-compose.yml`.
+**Deployment**: `apps/morning-mcp-app/Dockerfile` builds a lightweight `python:3.9-slim` image (`ENV PYTHONPATH=/app/src` so the package is importable). Runnable standalone or via the repo-root `docker-compose.yml`.
