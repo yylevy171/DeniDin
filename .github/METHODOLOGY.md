@@ -541,6 +541,10 @@ speckit.analyze (validates against METHODOLOGY.md + CONSTITUTION.md)
 speckit.implement → Incremental code delivery by user story
 ```
 
+### Finish-Feature Trigger Phrase ("Haleluya")
+
+Saying **"haleluya"** (or any reasonable spelling variant — "halleluja", "halelluia", etc.) to the AI agent at any point is shorthand for: **commit, push, open a PR, merge it, update docs, move the spec to its correct `specs/` folder per the Folder Movement Rules above, and clean up branches** (local + remote delete after merge). Also available as the `/haleluya` slash command. This does not skip any gate elsewhere in this doc (tests still must pass, CONSTITUTION checks still apply) — it's purely a shorthand for the finish-up mechanics once the actual work is already done and approved.
+
 ### Quality Gates
 
 - **Specification complete**: All `[NEEDS CLARIFICATION]` resolved
