@@ -26,8 +26,13 @@ from .utils.logger import get_logger
 logger = get_logger(__name__)
 
 _TAX_INVOICE_DOCUMENT_TYPE = 305
+_TRANSACTION_ACCOUNT_DOCUMENT_TYPE = 300  # "חשבון עסקה" — confirmed live via GET /documents/types
 _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE = 320
-_PRIMARY_INVOICE_DOCUMENT_TYPES = {_TAX_INVOICE_DOCUMENT_TYPE, _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE}
+_PRIMARY_INVOICE_DOCUMENT_TYPES = {
+    _TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
+    _TAX_INVOICE_DOCUMENT_TYPE,
+    _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
+}
 _CREDIT_INVOICE_DOCUMENT_TYPE = 330  # "חשבונית זיכוי" — confirmed live via GET /documents/types
 _LIST_INVOICES_MAX_ITEMS = 10
 _STATUS_ALIASES = {
@@ -550,8 +555,9 @@ def get_financial_summary(
     excluded from the paid/unpaid tally without this app persisting that
     mapping itself, which it deliberately does not do (plan.md: stateless).
     As a defensible accounting approximation, this aggregates counts and
-    paid/unpaid classification only over primary sale document types (305
-    tax invoice, 320 invoice+receipt), and nets Credit Invoice (330) amounts
+    paid/unpaid classification only over primary sale document types (300
+    transaction account, 305 tax invoice, 320 invoice+receipt), and nets
+    Credit Invoice (330) amounts
     out of `total_invoiced` so a cancelled invoice's face value doesn't
     inflate reported revenue — but its count still appears in
     invoice_count/unpaid_invoice_count since its own status is unchanged.
