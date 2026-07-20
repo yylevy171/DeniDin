@@ -2,7 +2,7 @@
 
 **Feature Branch**: `019-env-separation`
 **Created**: 2026-07-20
-**Status**: Draft
+**Status**: Done - Merged to master (PR #105, 2026-07-20)
 **Input**: User description: "Separate dev and prod environments for denidin-app and morning-mcp-app, running all four instances simultaneously on one machine with fully isolated config, data, ngrok tunnels, and MCP wiring, while sharing a single production OpenAI API key across both envs and using Morning sandbox for dev / Morning production for prod."
 
 ---
