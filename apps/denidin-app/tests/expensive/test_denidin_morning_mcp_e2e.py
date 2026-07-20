@@ -405,6 +405,60 @@ def test_godfather_lists_invoices_via_whatsapp(denidin_app):
 
 
 # ============================================================================
+# Analytical/aggregate questions (bugfix-011)
+# ============================================================================
+
+# Real, unprompted decline phrases observed live in dev (2026-07-20) when the
+# model had the tool available but didn't call it - if the fix regresses,
+# a reply matching any of these (with zero list_invoices/get_financial_summary
+# calls) means the model is declining again instead of composing an answer.
+_DECLINE_PHRASES_HE = ("זקוק לגישה", "אין לי גישה", "אין לי אפשרות לגשת", "לא ניתן לי גישה")
+
+
+@pytest.mark.expensive
+def test_godfather_asks_analytical_debtor_question_via_whatsapp(denidin_app):
+    """Godfather asks an analytical/aggregate question that no single Morning
+    tool answers directly ("who owes me the most, and how much") - the model
+    must recognize it has list_invoices available, call it (filtered to
+    unpaid), and compute the ranking/answer itself from the raw results,
+    rather than declining as if it lacks access (bugfix-011: this exact
+    scenario, reproduced live in dev on 2026-07-20 - the model declined with
+    "I need access to your invoice management system" despite the tool being
+    attached and working, then correctly answered one turn later only after
+    an explicit user nudge to "fetch the list and filter yourself").
+
+    Verification (independent of the model's own claim):
+    1. mcp_calls shows at least one list_invoices (or get_financial_summary)
+       call with no error - proof it actually reached for the data.
+    2. The final reply does not read like an access-decline (none of the
+       real, previously-observed decline phrases appear).
+    """
+    response, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text="תן לי שמות של ה-3 שחייבים לי הכי הרבה, וכמה כל אחד חייב",
+        id_prefix="E2E_ANALYTICAL",
+    )
+    relevant_calls = _calls_for(ai_response, "list_invoices") + _calls_for(ai_response, "get_financial_summary")
+
+    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert len(response) > 0
+
+    assert relevant_calls, (
+        f"Model never invoked list_invoices or get_financial_summary to answer "
+        f"an analytical question - it should fetch the raw data and compute the "
+        f"answer itself rather than declining. mcp_calls: {ai_response.mcp_calls!r}. "
+        f"Final reply: {response!r}"
+    )
+    assert all(c["error"] is None for c in relevant_calls), (
+        f"Tool call(s) reported an error: {relevant_calls}"
+    )
+    assert not any(phrase in response for phrase in _DECLINE_PHRASES_HE), (
+        f"Bot replied with an access-decline phrase despite having called a "
+        f"tool - reply: {response!r}, mcp_calls: {ai_response.mcp_calls!r}"
+    )
+
+
+# ============================================================================
 # get_invoice_details
 # ============================================================================
 
