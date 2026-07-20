@@ -1,33 +1,28 @@
 #!/bin/bash
-# Script to restart the morning-mcp-app MCP server gracefully
-# Mirrors apps/denidin-app/restart_denidin.sh
+# Script to restart the morning-mcp-app MCP server gracefully (Docker Compose,
+# per environment - 019-env-separation).
+#
+# Usage: ./restart_morning_mcp.sh dev|prod
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Restarting morning-mcp-app MCP server..."
-echo "================================================"
-
-# Stop the application if running
-if [ -f "$SCRIPT_DIR/stop_morning_mcp.sh" ]; then
-    "$SCRIPT_DIR/stop_morning_mcp.sh"
-else
-    echo "✗ stop_morning_mcp.sh not found"
+ENV="$1"
+if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
+    echo "Usage: $0 dev|prod" >&2
     exit 1
 fi
 
-# Wait a moment for cleanup
+echo "Restarting morning-mcp-app-$ENV..."
+echo "================================================"
+
+"$SCRIPT_DIR/stop_morning_mcp.sh" "$ENV"
+
 echo "Waiting for cleanup..."
 sleep 2
 
-# Start the application
-if [ -f "$SCRIPT_DIR/run_morning_mcp.sh" ]; then
-    "$SCRIPT_DIR/run_morning_mcp.sh"
-else
-    echo "✗ run_morning_mcp.sh not found"
-    exit 1
-fi
+"$SCRIPT_DIR/run_morning_mcp.sh" "$ENV"
 
 echo "================================================"
 echo "✓ Restart complete"

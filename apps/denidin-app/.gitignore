@@ -13,6 +13,10 @@ __pycache__/
 # Configuration secrets (CRITICAL: never commit credentials)
 config/config.json
 config/config.yaml
+# 019-env-separation: per-environment real config files (only the .example.json
+# templates are committed)
+config/config.dev.json
+config/config.prod.json
 # Feature 018: config.test.json now holds real secrets for real-API E2E tests
 # (ai_api_key, mcp.morning_auth_token, and a duplicated copy of Morning sandbox
 # credentials for independent test verification - never read cross-app at
@@ -35,6 +39,9 @@ data/media/
 
 # Test data (generated during tests)
 test_data/
+
+# Dev environment persistent data (019-env-separation; renamed from test_data/)
+dev_data/
 
 # IDE
 .vscode/

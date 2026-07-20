@@ -1,5 +1,9 @@
 config/config.json
 config/config.test.json
+# 019-env-separation: per-environment real config files (only the .example.json
+# templates are committed)
+config/config.dev.json
+config/config.prod.json
 __pycache__/
 *.pyc
 .pytest_cache/

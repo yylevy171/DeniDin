@@ -1,0 +1,31 @@
+# Prod environment only (019-env-separation). Fully independent of
+# docker-compose.dev.yml - `docker compose -f docker-compose.prod.yml up`
+# never builds, starts, or otherwise touches any dev container.
+#
+# See docker-compose.dev.yml for the shared-status-volume rationale and the
+# FR-014 one-denidin-at-a-time-for-real-traffic constraint (denidin-app-dev
+# and denidin-app-prod share one real Green API instance/WhatsApp number).
+# morning-mcp-app-prod has no such restriction and can always run alongside
+# morning-mcp-app-dev.
+name: denidin-prod
+services:
+  denidin-app-prod:
+    build:
+      context: ./apps/denidin-app
+    volumes:
+      - ./apps/denidin-app/config/config.prod.json:/app/config/config.json:ro
+      - ./apps/denidin-app/data:/app/data
+      - ./apps/denidin-app/logs/prod:/app/logs
+      - ./shared/mcp-status-prod:/app/mcp-status
+    restart: unless-stopped
+
+  morning-mcp-app-prod:
+    build:
+      context: ./apps/morning-mcp-app
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./apps/morning-mcp-app/config/config.prod.json:/app/config/config.json:ro
+      - ./apps/morning-mcp-app/logs/prod:/app/logs
+      - ./shared/mcp-status-prod:/app/mcp-status
+    restart: unless-stopped

@@ -27,13 +27,14 @@ current implementation status per layer.
 ```bash
 cd apps/morning-mcp-app
 python3.11 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-cp config/config.example.json config/config.json  # then fill in real credentials
+pip install -r requirements.txt   # for local test-running only - the server itself runs containerized
+cp config/config.dev.example.json config/config.dev.json    # then fill in real Morning sandbox credentials + dev ngrok authtoken
+cp config/config.prod.example.json config/config.prod.json  # then fill in real Morning production credentials + prod ngrok authtoken
 ```
 
 ## Configuration
 
-`config/config.json` (gitignored, real credentials) — flat shape:
+One config file per environment (019-env-separation), both gitignored, real credentials — flat shape:
 ```json
 {
   "api_key_id": "YOUR_MORNING_API_KEY_ID",
@@ -41,13 +42,12 @@ cp config/config.example.json config/config.json  # then fill in real credential
   "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/"
 }
 ```
-`config/config.test.json` (**gitignored**, not committed — changed 2026-07-09; it
-previously was, but real secrets in a git-tracked file is a liability even for
-sandbox-tier credentials) is read by the integration tests under `tests/integration/`
+`config/config.dev.json` points at the Morning **sandbox** host; `config/config.prod.json` points at Morning **production** — see `config/config.dev.example.json`/`config/config.prod.example.json` for the full shape to copy, including each environment's own `mcp.ngrok_authtoken` (two separate ngrok accounts, one per environment).
+
+`config/config.test.json` (**gitignored**, not committed) is read by the integration tests under `tests/integration/`
 and `tests/expensive/` — it must contain real sandbox credentials (and, for the
 ngrok/OpenAI-driven tests, `openai_api_key`/`mcp.ngrok_authtoken` too) for those
-tests to run; without them, the tests skip automatically. See
-`config/config.example.json` for the full shape to copy.
+tests to run; without them, the tests skip automatically.
 
 ## Testing
 
@@ -60,26 +60,24 @@ real credentials or contains placeholder-looking values.
 
 ## Running the MCP server
 
+The server runs **only as a Docker container**, one environment at a time (019-env-separation — no local/foreground process anymore; `run_morning_mcp.sh`/`stop_morning_mcp.sh` are thin `docker compose` wrappers, and Docker itself prevents a duplicate start of an already-running service):
+
 ```bash
-./run_morning_mcp.sh      # start (PID-file enforced single instance)
-./stop_morning_mcp.sh     # graceful stop
-./restart_morning_mcp.sh  # stop + start
-python3 -m denidin_mcp_morning.server   # or run directly (foreground)
+./run_morning_mcp.sh dev|prod       # start that environment's container (builds if needed)
+./stop_morning_mcp.sh dev|prod      # stop it
+./restart_morning_mcp.sh dev|prod   # stop + start
 ```
-Starts the FastMCP server over streamable-HTTP (host/port/transport configurable
-under `mcp{}` in `config/config.json`). Startup is gated behind
+Starts the FastMCP server over streamable-HTTP inside the container (host/port/transport configurable
+under `mcp{}` in that environment's `config/config.<env>.json` — must be `"host": "0.0.0.0"` for Docker, see below). Startup is gated behind
 `feature_flags.enable_mcp_server` (default `false`) — with it off, the process
 exits immediately with a clear message rather than silently serving nothing.
-Logs go to `logs/morning-mcp.log` (production) or `logs/test_logs/{test_file}.log`
+Logs go to `logs/dev/morning-mcp.log` / `logs/prod/morning-mcp.log` (per environment) or `logs/test_logs/{test_file}.log`
 (tests), mirroring `denidin-app`'s logging.
 
 ### Exposing the server publicly (optional — needed for OpenAI's remote-MCP connector)
 
-Set `mcp.ngrok_authtoken` in `config/config.json` (a **free** ngrok account is
-enough — no paid plan needed; `mcp.ngrok_domain` is optional and only relevant
-if you have a paid reserved/static domain). `run_morning_mcp.sh` then starts a
-tunnel alongside the server and prints its public URL;
-`stop_morning_mcp.sh` tears the tunnel down too. Protect the server with
+Set `mcp.ngrok_authtoken` in each environment's `config/config.<env>.json` — **two separate ngrok accounts** (one per environment; the free tier only supports one online tunnel per account, so dev and prod each need their own). `run_morning_mcp.sh <env>` then starts ngrok *inside* that environment's container alongside the server and prints its public URL;
+`stop_morning_mcp.sh <env>` tears that environment's tunnel down too. Protect the server with
 `mcp.auth_token` (a shared bearer secret) before exposing it — see
 `ARCHITECTURE.md` for why (the server has no auth by default, and its tools
 include state-changing operations).
@@ -93,22 +91,23 @@ safe here because `mcp.auth_token`'s bearer check, not Host-header matching, is
 this server's real access boundary — set it whenever exposing the server
 publicly.
 
-## Docker
+## Docker (what the scripts above wrap)
 
 ```bash
-docker build -t morning-mcp-app .
-docker run --rm -p 8000:8000 -v "$(pwd)/config:/app/config:ro" morning-mcp-app
+docker compose -f ../../docker-compose.dev.yml up -d morning-mcp-app-dev     # or docker-compose.prod.yml / morning-mcp-app-prod
 ```
 Runs the MCP server (same feature-flag gate as above — set
-`feature_flags.enable_mcp_server: true` in the mounted `config/config.json` or
+`feature_flags.enable_mcp_server: true` in the mounted `config/config.<env>.json` or
 the container exits immediately). The image includes `ngrok`; if
 `mcp.ngrok_authtoken` is set in the mounted config, `docker-entrypoint.sh`
 starts a tunnel automatically before starting the server and prints the
-public URL to container logs (`docker logs`). Can also be run via the root
-`docker-compose.yml` (`docker compose up morning-mcp-app`).
+public URL to container logs (`docker logs`), and writes that environment's
+shared status file (`shared/mcp-status-<env>/`) for the paired `denidin-app-<env>`
+to discover.
 
-**⚠️ Required for Docker**: set `"mcp": {"host": "0.0.0.0"}` in the mounted
-`config/config.json`. The default `127.0.0.1` (correct for plain local dev)
+**⚠️ Required for Docker**: set `"mcp": {"host": "0.0.0.0"}` in each environment's
+`config/config.<env>.json` (already set this way in `config.dev.example.json`/`config.prod.example.json`).
+The default `127.0.0.1` (correct for plain local dev)
 binds to the container's own loopback only — confirmed live that `-p`
 port-mapped traffic (and an ngrok tunnel targeting the container) cannot
 reach the process at all until this is changed to `0.0.0.0`.

@@ -40,14 +40,19 @@ resolve_status_path() {
     esac
 }
 
+# Delegates to denidin_mcp_morning.status_writer (019-env-separation, T009b)
+# so the JSON shape/UTC-timestamp logic has one implementation, tested in
+# tests/unit/test_status_writer.py, instead of being duplicated here in bash.
 write_status_not_running() {
     if [ -z "$STATUS_FILE" ]; then
         return 0
     fi
     STATUS_PATH=$(resolve_status_path)
-    mkdir -p "$(dirname "$STATUS_PATH")"
-    UPDATED_AT=$(python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())")
-    printf '{"status": "not running", "server_url": null, "updated_at": "%s"}\n' "$UPDATED_AT" > "$STATUS_PATH"
+    python3 -c "
+from pathlib import Path
+from denidin_mcp_morning.status_writer import write_status_not_running
+write_status_not_running(Path('$STATUS_PATH'))
+"
 }
 
 write_status_running() {
@@ -56,9 +61,11 @@ write_status_running() {
         return 0
     fi
     STATUS_PATH=$(resolve_status_path)
-    mkdir -p "$(dirname "$STATUS_PATH")"
-    UPDATED_AT=$(python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())")
-    printf '{"status": "running", "server_url": "%s/mcp", "updated_at": "%s"}\n' "$public_url" "$UPDATED_AT" > "$STATUS_PATH"
+    python3 -c "
+from pathlib import Path
+from denidin_mcp_morning.status_writer import write_status_running
+write_status_running(Path('$STATUS_PATH'), '$public_url')
+"
     echo "status file: $STATUS_PATH"
 }
 
