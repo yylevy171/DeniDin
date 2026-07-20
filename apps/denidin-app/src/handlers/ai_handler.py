@@ -275,13 +275,15 @@ class AIHandler:
         logger.debug(f"Created AIRequest {request.request_id} for message {message.message_id}")
         return request
 
-    def _build_morning_mcp_tools(self, user_obj) -> Optional[List[Dict]]:
+    def _build_morning_mcp_tools(self, user_obj, correlation_id: str) -> Optional[List[Dict]]:
         """
         Build the Responses API `tools` entry for the Morning MCP server, if this
         user's role is authorized and the server is currently reachable.
 
         Args:
             user_obj: Resolved User (RBAC), or None if RBAC is disabled
+            correlation_id: The AIRequest's request_id, for REQ-SEC-002 audit
+                logging (ties this attachment to the request's other log lines).
 
         Returns:
             A one-item `tools` list registering the Morning MCP server as a remote
@@ -304,7 +306,7 @@ class AIHandler:
 
         masked_token = f"{auth_token[:4]}...{auth_token[-4:]}" if len(auth_token) > 8 else "***"
         logger.info(
-            f"Attaching Morning MCP tools for role={user_obj.role}, "
+            f"Attaching Morning MCP tools for request={correlation_id}, role={user_obj.role}, "
             f"url_host={server_url.split('/')[2] if '//' in server_url else server_url}, "
             f"token={masked_token}"
         )
@@ -438,7 +440,7 @@ class AIHandler:
         try:
             # Morning MCP tools (Feature 018): attach only for authorized roles when
             # the server is currently reachable; None for clients/blocked or when down.
-            tools = self._build_morning_mcp_tools(user_obj) if self.rbac_enabled else None
+            tools = self._build_morning_mcp_tools(user_obj, request.request_id) if self.rbac_enabled else None
 
             # Call OpenAI Responses API with retry logic, conversation history, and
             # (optionally) the Morning MCP server as a remote tool

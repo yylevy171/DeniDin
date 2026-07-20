@@ -138,6 +138,74 @@ DeniDin/
 
 Each app under `apps/` is independently runnable, testable, and dockerized — see `apps/denidin-app/README.md` and `apps/morning-mcp-app/README.md` for app-specific setup. Root-level `CLAUDE.md` has the full architecture/commands reference for AI-assisted development.
 
+## Running Both Apps Together (Morning Invoicing Integration)
+
+Godfather/admin users can manage Morning (Green Invoice) invoices in natural Hebrew directly
+from WhatsApp. `denidin-app` never imports `morning-mcp-app`'s code — it attaches the Morning
+MCP server as a **remote MCP tool** on the OpenAI Responses API call, and OpenAI itself calls
+out to that server over a real, public **ngrok tunnel**. Both apps discover each other purely
+through config + a shared status file — there's no direct network link between them.
+
+### 1. Shared bearer token
+
+Both apps' `config.json` must agree on one shared secret:
+- `apps/morning-mcp-app/config.json` → `mcp.auth_token`
+- `apps/denidin-app/config.json` → `mcp.morning_auth_token`
+
+This is a single shared-secret model (see `BearerTokenMiddleware` in
+`apps/morning-mcp-app/src/denidin_mcp_morning/server.py`), not OAuth — appropriate since
+`denidin-app` is this server's only real consumer.
+
+### 2. Status file (tunnel URL discovery)
+
+`morning-mcp-app` writes `{"status": "running", "server_url": "<https tunnel>/mcp", "updated_at": "<UTC ISO>"}`
+to `mcp.status_file` on startup (and clears it on stop). `denidin-app` polls the same file via
+`mcp.morning_status_file` (`MorningMcpLocator`, `src/handlers/morning_mcp_locator.py`) — never
+raises, just logs a WARNING and proceeds without invoicing tools if the file is absent, stale
+(past `mcp.url_max_age_seconds`, if set), or not `"status": "running"`. **Both config values
+must point at the same file.**
+
+### 3. Tunnel
+
+An unauthenticated `/health` endpoint on the MCP server lets both the standalone scripts and the
+expensive test suite verify a tunnel is actually reachable end-to-end (not just registered
+locally) before trusting it.
+
+### Running standalone (no Docker)
+
+```bash
+# 1. Start the Morning MCP server + its ngrok tunnel (writes the status file)
+cd apps/morning-mcp-app && ./run_morning_mcp.sh
+cat running_status.json   # confirm "status": "running" and a live https:// URL
+
+# 2. Start denidin-app - its config.json must point mcp.morning_status_file at
+#    the same path morning-mcp-app's mcp.status_file uses (defaults to the
+#    same relative "data/morning_mcp_status.json" in each app's own directory
+#    - override one of them if you need a single shared path)
+cd apps/denidin-app && ./run_denidin.sh
+```
+
+**Python does not hot-reload**: any code/config change under `apps/morning-mcp-app/` requires
+`./stop_morning_mcp.sh` then `./run_morning_mcp.sh` again before a denidin-app change relying on
+it is meaningful.
+
+### Running via docker-compose
+
+`docker-compose.yml` mounts a shared bind mount, `./shared/mcp-status`, into both containers at
+`/app/mcp-status` — this is the one thing the two containers need to share (they otherwise
+don't network with each other; OpenAI reaches `morning-mcp-app` over the public tunnel, not via
+Docker's internal network). Set, in each app's own `config/config.json`:
+- `morning-mcp-app`: `"mcp": {"status_file": "/app/mcp-status/morning_mcp_status.json", "ngrok_authtoken": "<your token>", "auth_token": "<shared secret>", ...}`
+- `denidin-app`: `"mcp": {"morning_status_file": "/app/mcp-status/morning_mcp_status.json", "morning_auth_token": "<same shared secret>", ...}`
+
+```bash
+docker compose up --build
+```
+
+An ngrok tunnel is still required even under docker-compose — OpenAI's Responses API calls the
+MCP server over the public internet, not through Docker's internal network, so
+`mcp.ngrok_authtoken` must be set in `morning-mcp-app`'s config either way.
+
 ## License
 
 [Add license information]
