@@ -126,9 +126,9 @@ WhatsApp webhook router; RBAC, scope, degrade, and multi-turn scenarios pass.
 
 ## Phase 4 — Polish
 
-- [ ] **T024** Audit logging (REQ-SEC-002): every reply attaching MCP tools logs role,
+- [x] **T024** Audit logging (REQ-SEC-002): every reply attaching MCP tools logs role,
   correlation id, masked token, URL host.
-- [ ] **T025** [P] Docs: README/quickstart for running both apps together (docker-compose:
+- [x] **T025** [P] Docs: README/quickstart for running both apps together (docker-compose:
   shared bearer token + status file + tunnel); note the config `mcp` block.
 
 ---

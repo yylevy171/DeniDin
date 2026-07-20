@@ -3,6 +3,14 @@
 #   cd apps/denidin-app && docker build -t denidin-app . && docker run ...
 #   cd apps/morning-mcp-app && docker build -t morning-mcp-app . && docker run ...
 
+# The two services do not share a network namespace or import each other's
+# code - denidin-app reaches morning-mcp-app only as a remote MCP tool, over
+# a real ngrok tunnel that OpenAI's Responses API calls out to (see README.md
+# "Running Both Apps Together"). The `mcp-status` bind mount below is the one
+# thing they DO need to share: morning-mcp-app writes the live tunnel URL
+# there on startup, and denidin-app polls it to discover that URL - both
+# services' own config.json `mcp.status_file` / `mcp.morning_status_file`
+# must point at the same path inside this shared mount.
 services:
   denidin-app:
     build:
@@ -11,6 +19,7 @@ services:
       - ./apps/denidin-app/config:/app/config
       - ./apps/denidin-app/data:/app/data
       - ./apps/denidin-app/logs:/app/logs
+      - ./shared/mcp-status:/app/mcp-status
     restart: unless-stopped
 
   morning-mcp-app:
@@ -18,3 +27,4 @@ services:
       context: ./apps/morning-mcp-app
     volumes:
       - ./apps/morning-mcp-app/config:/app/config
+      - ./shared/mcp-status:/app/mcp-status

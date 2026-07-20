@@ -67,3 +67,6 @@ logs/
 specs/in-definition/005-mcp-morning-green-receipt/third_party/green-invoice/
 specs/in-definition/005-mcp-morning-green-receipt/third_party/python-greeninvoice-client/
 apps/denidin-app/.denidin.pid
+
+# docker-compose runtime state shared between denidin-app and morning-mcp-app
+/shared/
