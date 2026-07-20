@@ -1,5 +1,5 @@
 ---
-description: Finish off the current work - commit, push, PR, merge, docs update, spec cleanup, branch cleanup
+description: Finish off the current work - commit, push, PR, merge, deploy, docs update, spec cleanup, branch cleanup
 ---
 
 The user has invoked the finish-feature shorthand ("haleluya" or a spelling variant, or this `/haleluya` command). See `.github/METHODOLOGY.md`'s "Finish-Feature Trigger Phrase" section and `CLAUDE.md`'s Spec-Driven Workflow section for the authoritative definition.
@@ -13,9 +13,15 @@ Do the following, in order:
 3. **Push**: push the current branch to `origin` with `-u` if not already tracking.
 4. **Open a PR**: `gh pr create` with a concise title and a body covering Summary + Test plan, per this repo's PR conventions.
 5. **Merge**: `gh pr merge --merge` (regular merge commit, never squash, per CONSTITUTION.md §III).
-6. **Docs update**: if the change affects `CLAUDE.md`, `README.md` files, or other docs and they weren't already updated as part of the feature work, update them now.
-7. **Spec cleanup**: move the feature/bugfix spec to its correct `specs/` folder per METHODOLOGY.md §XI's Folder Movement Rules (typically `specs/done/` for a merged feature), and update its `Status` line to reflect the merge (e.g. "Done - Merged to master (PR #N)").
-8. **Cleanup**: after confirming the merge succeeded, sync local `master` (`git checkout master && git pull`), then delete the feature branch both locally (`git branch -d`) and remotely (`git push origin --delete`).
-9. **Report**: a brief summary of what was merged (PR number/link) and confirmation that branches are cleaned up.
+6. **Deploy**: merging to `master` does NOT redeploy anything by itself — Docker Compose does not auto-rebuild on `up -d`/`restart` when source code changed on disk (config-file changes ARE picked up live, since configs are bind-mounted, not baked into the image; code changes are not). For every environment container currently running (`docker ps`) whose app source this change touched:
+   - `docker compose -f docker-compose.<env>.yml build <service>` to rebuild the image with the new code
+   - Then `docker compose -f docker-compose.<env>.yml up -d <service>` (or the app's `run_*.sh <env>` script) to recreate the container from the fresh image
+   - Verify: tail that environment's log for a clean startup, and if the change is behaviorally observable (e.g. a log line that only appears with the fix), confirm it shows up on the next real interaction
+   - If a change only touched a mounted data file (e.g. `runtime_constitution.md`, which `AIHandler` hot-reloads via mtime check) or an example/config template, no rebuild is needed — restart is enough, or sometimes nothing at all
+   - Skip this step only if no environment is currently running the affected app, or the user explicitly says not to deploy yet
+7. **Docs update**: if the change affects `CLAUDE.md`, `README.md` files, or other docs and they weren't already updated as part of the feature work, update them now.
+8. **Spec cleanup**: move the feature/bugfix spec to its correct `specs/` folder per METHODOLOGY.md §XI's Folder Movement Rules (typically `specs/done/` for a merged feature), and update its `Status` line to reflect the merge (e.g. "Done - Merged to master (PR #N)").
+9. **Cleanup**: after confirming the merge succeeded, sync local `master` (`git checkout master && git pull`), then delete the feature branch both locally (`git branch -d`) and remotely (`git push origin --delete`).
+10. **Report**: a brief summary of what was merged (PR number/link), what was redeployed where, and confirmation that branches are cleaned up.
 
 If any step requires a permission this environment doesn't grant automatically (e.g. push blocked by a classifier), stop and ask the user rather than working around it.

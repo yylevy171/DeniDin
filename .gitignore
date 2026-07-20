@@ -70,3 +70,7 @@ apps/denidin-app/.denidin.pid
 
 # docker-compose runtime state shared between denidin-app and morning-mcp-app
 /shared/
+
+# Morning production API credentials (real secrets, never commit)
+/Morning API Key.txt.txt
+Morning API Key*.txt
