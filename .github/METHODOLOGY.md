@@ -452,11 +452,10 @@ All feature specifications MUST be organized by status and priority in standardi
 specs/
 ├── in-definition/     # Features with open CLARIFICATIONS, not yet ready for planning
 ├── in-progress/       # Features currently being implemented (active work)
-├── P0/                # Priority 0 - Critical features (blocking production)
-├── P1/                # Priority 1 - High priority features (next sprint)
-├── P2/                # Priority 2 - Medium priority features (backlog)
-├── done/              # Completed features (implemented, tested, merged)
-├── not-doing/         # Cancelled/deprecated features (not pursuing)
+├── backlog/           # Fully-specified features not yet started, any priority (merged P0/P1/P2, 2026-07-21)
+├── done/              # Completed features (implemented, tested, merged) + done/bugfixes/
+├── obsolete/          # Cancelled/deprecated features and bugfixes, or specs no longer accurate (merged with not-doing, 2026-07-21) + obsolete/bugfixes/
+├── bugfixes/          # Open bugfix specs (bugfix-###-description.md)
 ├── CONSTITUTION.md    # Coding standards and constraints
 ├── METHODOLOGY.md     # Development process and workflow (this file)
 └── ROADMAP.md         # Feature priorities and status tracking
@@ -465,41 +464,34 @@ specs/
 **Requirements:**
 - **in-definition/**: Features with unresolved CLARIFICATIONS in spec.md
   - Status: "Draft - Needs Clarification"
-  - Action: Move to priority folder (P0/P1/P2) once clarifications resolved
-  
+  - Action: Move to `backlog/` once clarifications resolved
+
 - **in-progress/**: Features actively being developed
   - Status: "Implementation in Progress" or "Testing"
   - Action: Move to `done/` once merged to master
-  
-- **P0/**: Critical priority - blocking production issues, security fixes
-  - Must be addressed before new feature work
-  - Example: Critical bugs, production outages
-  
-- **P1/**: High priority - next planned features
-  - Ready for planning and implementation
+
+- **backlog/**: Fully specified, not yet started — priority tracked via each spec's own `Priority` field (P0/P1/P2), not by folder
   - All clarifications resolved
-  
-- **P2/**: Medium priority - backlog features
-  - Fully specified but deferred
-  - Can be promoted to P1 as capacity allows
-- **done/**: Completed and merged features
+  - Ready for planning and implementation whenever capacity allows
+
+- **done/**: Completed and merged features (and `done/bugfixes/` for merged bugfixes)
   - Serves as reference and documentation archive
   - Never deleted (historical record)
-  
-- **not-doing/**: Cancelled, deprecated, or rejected features
-  - Features decided not to pursue
-  - Superseded by alternative approaches
-  - Serves as historical record of what was considered and why rejected
-  - Never deleted (prevents re-proposing rejected ideas)
+
+- **obsolete/**: Cancelled, deprecated, rejected, or no-longer-accurate features and bugfixes (and `obsolete/bugfixes/` for bugfixes specifically)
+  - Includes both "decided not to pursue" specs (formerly `not-doing/`) and specs whose described issue no longer applies against current code
+  - Superseded by alternative approaches, or the underlying problem was already fixed by unrelated work
+  - Serves as historical record of what was considered/reported and why archived
+  - Never deleted (prevents re-proposing rejected ideas or re-investigating already-resolved reports)
+  - Each archived spec MUST carry a brief status note explaining why it was archived and when
 
 **Folder Movement Rules:**
 1. New feature starts in `in-definition/` until clarifications resolved
-2. Once clarifications answered → Move to `P0/`, `P1/`, or `P2/` based on priority
+2. Once clarifications answered → Move to `backlog/`
 3. When implementation begins → Move to `in-progress/`
 4. When feature merged to master → Move to `done/`
-5. When feature cancelled/rejected → Move to `not-doing/` (with rationale documented in spec)
+5. When feature cancelled/rejected/found obsolete → Move to `obsolete/` (with rationale documented in spec)
 6. Feature folders MUST NOT exist in multiple locations simultaneously
-5. Feature folders MUST NOT exist in multiple locations simultaneously
 
 **Rationale**: Organized folder structure provides instant visibility into feature status, prevents stale specs from cluttering active work, enables priority-based planning, and maintains historical archive of completed features.
 
@@ -524,7 +516,7 @@ speckit.specify → spec.md in specs/in-definition/
     ↓
 Resolve CLARIFICATIONS (USER APPROVAL GATE)
     ↓
-Move to specs/P0/, specs/P1/, or specs/P2/ based on priority
+Move to specs/backlog/ (priority tracked in the spec's own Priority field)
     ↓
 speckit.plan → plan.md (USER APPROVAL GATE)
     ↓
