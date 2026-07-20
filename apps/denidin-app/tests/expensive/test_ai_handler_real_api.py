@@ -61,7 +61,7 @@ class TestBotExceptionHandlingWithRealAPI:
             chat_id='test@c.us',
             sender_id='test@c.us',
             sender_name='Test User',
-            text_content='Trigger an error',
+            text_content='תגרום לשגיאה',
             timestamp=1234567890,
             message_type='textMessage',
             is_group=False,
@@ -119,7 +119,7 @@ class TestMessageLengthValidation:
     def test_short_messages_pass_through(self, real_ai_handler):
         """Test short messages (<10000) pass through unchanged"""
         from datetime import datetime, timezone
-        short_text = "Hello, this is a normal message."
+        short_text = "שלום, זו הודעה רגילה."
         short_message = WhatsAppMessage(
             message_id="msg_123",
             chat_id="123@c.us",

@@ -102,7 +102,7 @@ def test_session_transfer_and_recall_after_expiration(test_config):
         
         # ==================== PHASE 2: User introduces themselves ====================
         print("\n[PHASE 2] User introduces themselves...")
-        response1 = denidin_app.handle_message(chat_id, "Hello, my name is Mike")
+        response1 = denidin_app.handle_message(chat_id, "שלום, קוראים לי מייק")
         print(f"✓ Message sent, got response: {response1['response_text'][:100]}...")
         print(f"  Session ID: {response1['session_id']}")
         session_id = response1['session_id']
@@ -191,20 +191,23 @@ def test_session_transfer_and_recall_after_expiration(test_config):
         )
         print(f"✓ Recalled memory metadata records embedding_model: {recalled[0]['metadata'].get('embedding_model')}")
 
-        response2 = denidin_app.handle_message(chat_id, "What's my name?")
+        response2 = denidin_app.handle_message(chat_id, "איך קוראים לי?")
         print(f"✓ Got response: {response2['response_text'][:200]}...")
         
         # ==================== PHASE 7: Verify memory recall ====================
         print("\n[PHASE 7] Verifying system remembers 'Mike'...")
         
-        # Response should mention Mike (AI retrieved from long-term memory)
+        # Response must mention the recalled name (מייק). This is a Hebrew-only
+        # system: the user introduced themselves in Hebrew ("קוראים לי מייק")
+        # and the bot replies in Hebrew, so the recalled name comes back as
+        # "מייק". (.lower() is a no-op on Hebrew, harmless.)
         response_text = response2['response_text'].lower()
-        assert 'mike' in response_text, (
-            f"MEMORY RECALL FAILED! System should remember user's name 'Mike' from expired session. "
-            f"Response: {response2['response_text']}"
+        assert 'מייק' in response_text, (
+            f"MEMORY RECALL FAILED! System should remember the user's name 'מייק' "
+            f"from the expired session. Response: {response2['response_text']}"
         )
-        
-        print(f"✓ System successfully recalled 'Mike' from long-term memory")
+
+        print(f"✓ System successfully recalled the user's name 'מייק' from long-term memory")
         print("\n[SUCCESS] All assertions passed - session transfer and recall working correctly!")
         
     finally:

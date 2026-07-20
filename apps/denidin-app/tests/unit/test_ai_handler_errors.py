@@ -13,7 +13,7 @@ from src.models.message import WhatsAppMessage, AIRequest
 
 
 @pytest.fixture
-def mock_config():
+def mock_config(tmp_path):
     """Create a mock AppConfiguration for testing"""
     config = Mock(spec=AppConfiguration)
     config.ai_model = "gpt-4o-mini"
@@ -21,6 +21,14 @@ def mock_config():
     config.temperature = 0.7
     config.constitution_config = {}
     config.data_root = str(Path(__file__).parent.parent.parent / "test_data")
+    # Memory/RBAC are always on now (no feature flags) - AIHandler.__init__
+    # unconditionally constructs SessionManager/MemoryManager/UserManager.
+    config.memory = {
+        'session': {'storage_dir': str(tmp_path / 'sessions')},
+        'longterm': {'enabled': False}
+    }
+    config.user_roles = {}
+    config.godfather_phone = None
     return config
 
 

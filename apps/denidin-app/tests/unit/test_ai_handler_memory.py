@@ -64,13 +64,14 @@ class TestAIHandlerCreateRequestWithMemory:
         client = MagicMock()
         handler = AIHandler(client, memory_enabled_config)
         
-        # Mock memory manager recall
+        # Mock memory manager recall. RBAC is always on now, so create_request
+        # calls recall_with_rbac_filter (not the plain recall).
         mock_memories = [
             {"content": "User prefers Python", "similarity": 0.85},
             {"content": "User works at TechCorp", "similarity": 0.78}
         ]
-        handler.memory_manager.recall = Mock(return_value=mock_memories)
-        
+        handler.memory_manager.recall_with_rbac_filter = Mock(return_value=mock_memories)
+
         message = WhatsAppMessage(
             message_id="msg_123",
             chat_id="chat_456",
@@ -80,18 +81,18 @@ class TestAIHandlerCreateRequestWithMemory:
             timestamp=1234567890,
             message_type="text"
         )
-        
+
         request = handler.create_request(message, chat_id="chat_456", user_role="client")
-        
+
         # Should include recalled memories in system message
         assert "RECALLED MEMORIES" in request.constitution
         assert "User prefers Python" in request.constitution
         assert "User works at TechCorp" in request.constitution
         assert "0.85" in request.constitution
-        
+
         # Verify recall was called with correct parameters
-        handler.memory_manager.recall.assert_called_once()
-        call_args = handler.memory_manager.recall.call_args[1]
+        handler.memory_manager.recall_with_rbac_filter.assert_called_once()
+        call_args = handler.memory_manager.recall_with_rbac_filter.call_args[1]
         assert call_args["query"] == "What do you know about me?"
         assert "memory_chat_456" in call_args["collection_names"]
         assert call_args["top_k"] == 5
@@ -116,11 +117,14 @@ class TestAIHandlerGetResponseWithMemory:
         client.responses.create.return_value = mock_response
 
         handler = AIHandler(client, memory_enabled_config)
-        
-        # Mock session manager
-        handler.session_manager.add_message = Mock()
+
+        # Mock session manager. RBAC is always on now, so AIHandler calls
+        # add_message_with_token_limit (not the plain add_message) - mock the
+        # method AIHandler actually calls, not an internal implementation
+        # detail several layers below it.
+        handler.session_manager.add_message_with_token_limit = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
-        
+
         # Create request
         from src.models.message import AIRequest
         request = AIRequest(
@@ -132,7 +136,7 @@ class TestAIHandlerGetResponseWithMemory:
             chat_id="chat_123",
             message_id="msg_456"
         )
-        
+
         # Get response
         response = handler.get_response(
             request,
@@ -141,21 +145,21 @@ class TestAIHandlerGetResponseWithMemory:
             sender="whatsapp_tester1",
             recipient="AI_test"
         )
-        
+
         # Verify both messages were stored
-        assert handler.session_manager.add_message.call_count == 2
-        
+        assert handler.session_manager.add_message_with_token_limit.call_count == 2
+
         # First call: user message
-        first_call = handler.session_manager.add_message.call_args_list[0]
+        first_call = handler.session_manager.add_message_with_token_limit.call_args_list[0]
         assert first_call[1]["chat_id"] == "chat_123"
         assert first_call[1]["role"] == "user"
         assert first_call[1]["content"] == "Hello"
         assert first_call[1]["sender"] == "whatsapp_tester1"
         assert first_call[1]["recipient"] == "AI_test"
-        
+
         # Second call: assistant message
         # AI messages have sender=recipient (AI_test) and recipient=original sender (whatsapp_tester1)
-        second_call = handler.session_manager.add_message.call_args_list[1]
+        second_call = handler.session_manager.add_message_with_token_limit.call_args_list[1]
         assert second_call[1]["role"] == "assistant"
         assert second_call[1]["content"] == "Hello! How can I help you?"
         assert second_call[1]["sender"] == "AI_test"  # recipient becomes sender for AI
@@ -219,8 +223,11 @@ class TestAIHandlerConversationHistory:
         call_args = client.responses.create.call_args[1]
 
         # System/constitution now goes via `instructions`; history + current
-        # user message go via `input` (no system role entry)
-        assert call_args["instructions"] == "Test system"
+        # user message go via `input` (no system role entry). The current date
+        # is appended to `instructions` at reply time (so the model has a
+        # clock), so this is a prefix + date suffix, not an exact match.
+        assert call_args["instructions"].startswith("Test system")
+        assert "THE CURRENT DATE IS" in call_args["instructions"]
         input_items = call_args["input"]
         assert len(input_items) == 3
         assert input_items[0] == {"role": "user", "content": "Previous question"}
@@ -265,14 +272,15 @@ class TestAIHandlerHybridMemory:
             {"role": "user", "content": "For TestCorp"}
         ]
         handler.session_manager.get_conversation_history = Mock(return_value=mock_conversation_history)
-        handler.session_manager.add_message = Mock()
-        
-        # Mock long-term memory recall (facts stored in ChromaDB)
+        handler.session_manager.add_message_with_token_limit = Mock()
+
+        # Mock long-term memory recall (facts stored in ChromaDB). RBAC is
+        # always on now, so create_request calls recall_with_rbac_filter.
         mock_recalled_memories = [
             {"content": "TestCorp payment terms: NET30", "similarity": 0.82},
             {"content": "TestCorp contact: john@testcorp.com", "similarity": 0.75}
         ]
-        handler.memory_manager.recall = Mock(return_value=mock_recalled_memories)
+        handler.memory_manager.recall_with_rbac_filter = Mock(return_value=mock_recalled_memories)
         
         # User asks a follow-up question
         message = WhatsAppMessage(
@@ -317,11 +325,11 @@ class TestAIHandlerHybridMemory:
         assert api_input[3] == {"role": "user", "content": "What are their payment terms?"}  # Current
         
         # VERIFY BOTH MEMORIES WERE QUERIED
-        handler.memory_manager.recall.assert_called_once()  # Long-term lookup
+        handler.memory_manager.recall_with_rbac_filter.assert_called_once()  # Long-term lookup
         handler.session_manager.get_conversation_history.assert_called_once()  # Session lookup
-        
+
         # VERIFY NEW MESSAGES STORED (conversation continues)
-        assert handler.session_manager.add_message.call_count == 2  # User msg + AI response
+        assert handler.session_manager.add_message_with_token_limit.call_count == 2  # User msg + AI response
 
 
 class TestAIHandlerSessionToLongTermMemory:

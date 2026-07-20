@@ -238,6 +238,9 @@ class TestMessageFlow:
         # Verify the call arguments
         call_args = mock_responses.create.call_args
         assert call_args.kwargs['model'] == config.ai_model
+        # This test hand-rolls the responses.create call directly (it does not
+        # go through AIHandler._call_openai_api), so no current-date suffix is
+        # injected here — the instructions are exactly what step 2 passed.
         assert call_args.kwargs['instructions'] == "You are a helpful assistant."
         assert call_args.kwargs['input'][0]['role'] == 'user'
         assert call_args.kwargs['input'][0]['content'] == message_text

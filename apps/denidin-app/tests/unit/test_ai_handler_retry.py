@@ -12,7 +12,7 @@ from src.models.message import WhatsAppMessage, AIResponse
 
 
 @pytest.fixture
-def mock_config():
+def mock_config(tmp_path):
     """Create a mock AppConfiguration for testing"""
     config = Mock(spec=AppConfiguration)
     config.ai_model = "gpt-4o-mini"
@@ -20,6 +20,17 @@ def mock_config():
     config.temperature = 0.7
     config.constitution_config = {}
     config.data_root = "data"
+    # Memory/RBAC are always on now (no feature flags) - AIHandler.__init__
+    # unconditionally constructs SessionManager/MemoryManager/UserManager, so
+    # these must be real, isolated (tmp_path) values, not left to the code's
+    # own literal 'data/sessions' fallback default (would pollute the real
+    # data dir). Long-term memory disabled - these tests don't need ChromaDB.
+    config.memory = {
+        'session': {'storage_dir': str(tmp_path / 'sessions')},
+        'longterm': {'enabled': False}
+    }
+    config.user_roles = {}
+    config.godfather_phone = None
     return config
 
 
