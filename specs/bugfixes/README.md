@@ -78,6 +78,8 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 |---|-------|----------|--------|--------|
 | 004 | data_root Config Value Not Respected | P2 | Not Started | `bugfix/004-data-root-ignored` |
 | 005 | Media Flow Integration - File Empty Issue | - | Open | - |
+| 013 | Client Name Garbling and Unrequested Date Narrowing | - | Open (documentation only) | - |
+| 014 | list_invoices Only Returns One of Many | - | Open (documentation only) | - |
 
 ## Completed Bugfixes
 
@@ -90,6 +92,9 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 | 007 | Media Response Missing ChatId / Notification Data Validation | P0 | 2026-01-29 | #75-78 |
 | 008 | Forwarded Text Messages (extendedTextMessage) Not Routed/Extracted | P1 | 2026-07-07 | #90 |
 | 010 | Active Session Context Lost on Restart | - | 2026-07-08 (NOT REPRODUCIBLE) | - |
+| 010 | RBAC Phone/JID Mismatch | - | 2026-07-20 | #107 |
+| 011 | AI Declines Analytical Invoice Query | - | 2026-07-20 | #109 |
+| 012 | Financial Summary Drops Non-Allowlisted Invoice Types | - | 2026-07-21 | #111 |
 
 ---
 
