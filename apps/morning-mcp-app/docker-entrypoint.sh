@@ -116,4 +116,11 @@ else
     echo "No mcp.ngrok_authtoken configured - server only reachable within the container network/port mapping."
 fi
 
-exec python3 -m denidin_mcp_morning.server
+# watchdog.py runs as PID 1 from here on (2026-07-21, env-mismatch incident
+# response): it spawns the actual server as a child process, forwards
+# SIGINT/SIGTERM to it, and periodically confirms this container's own
+# declared environment still matches shared/active_env.json - both via an
+# internal localhost /health check and an external check through this same
+# ngrok tunnel just started above - tearing the server subprocess down
+# (without exiting the container itself) on any mismatch.
+exec python3 watchdog.py

@@ -50,31 +50,26 @@ class NgrokError(Exception):
     """Raised when the ngrok CLI is missing, fails to start, or never reports a tunnel."""
 
 
-def discover_running_server(production_config_path: Path) -> Optional[Tuple[str, str]]:
+def discover_running_server(status_file_path: Path, auth_token: Optional[str]) -> Optional[Tuple[str, str]]:
     """Return (server_url, auth_token) for an already-running standalone
-    `./run_morning_mcp.sh` server, or None if none is live.
+    `./run_morning_mcp.sh dev` server, or None if none is live.
 
-    Reads `config/config.json` (the standalone server's own config — separate
-    from the sandbox `config.test.json` these tests otherwise use) purely to
-    learn its `mcp.status_file` path and `mcp.auth_token`; no Morning/OpenAI
-    credentials from it are used. Confirms the server is actually reachable
-    (not just that the status file claims "running") with a real HTTP probe.
+    Reads the shared per-environment status file (`shared/mcp-status-dev/`,
+    same file `apps/denidin-app`'s own tests use to discover the live tunnel
+    - see `docker-compose.dev.yml`'s volume mount) purely to learn the
+    server's current URL; no Morning/OpenAI credentials are read from it.
+    `auth_token` is passed in directly (from the caller's own already-loaded
+    config) rather than read from a second config file - status_file paths
+    inside `config.dev.json`/`config.prod.json` are container-internal
+    (`/app/mcp-status/...`), not valid from this host-side test process, so
+    there is no config file this helper could read both pieces from at once.
+    Confirms the server is actually reachable (not just that the status file
+    claims "running") with a real HTTP probe.
     """
-    if not production_config_path.exists():
+    if not auth_token:
         return None
 
-    try:
-        raw = json.loads(production_config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-
-    mcp_section = raw.get("mcp") or {}
-    auth_token = mcp_section.get("auth_token")
-    status_file = mcp_section.get("status_file")
-    if not auth_token or not status_file:
-        return None
-
-    status_path = Path(status_file)
+    status_path = status_file_path
     if not status_path.exists():
         return None
 

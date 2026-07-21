@@ -170,6 +170,11 @@ correct invoice like this:
    gives you.** Filter by client name; add a `from_date`/`to_date`/`status`
    only if this request itself states one. Never carry a date or status over
    from an earlier, unrelated lookup — an ungrounded filter is worse than none.
+   **If no date is mentioned at all — "everything", "all", or simply no date
+   in the request — omit `from_date`/`to_date` entirely. Do not default to
+   the current month, this week, or any other unstated range.** For example:
+   "לקוחה בשם X, תן לי הכל" (give me everything) mentions no date at all —
+   call `list_invoices` with no `from_date`/`to_date`, not the current month.
 3. **If that still doesn't resolve to exactly one invoice** (nothing found,
    or several) — stop. Don't guess or fall back to an older invoice. Tell the
    user what you found and ask what identifies the right one (date, amount,

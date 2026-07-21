@@ -63,7 +63,7 @@ from denidin_mcp_morning.server import build_asgi_app, create_server  # noqa: E4
 TEST_HOST = "127.0.0.1"
 TEST_PORT = 8792
 
-# Same text model denidin-app uses (apps/denidin-app/config/config.json's
+# Same text model denidin-app uses (apps/denidin-app/config/config.dev.json's
 # `ai_model`), per user decision 2026-07-09.
 OPENAI_MODEL = "gpt-4o-mini"
 
@@ -83,22 +83,26 @@ def config():
     return cfg
 
 
-PRODUCTION_CONFIG_PATH = APP_ROOT / "config" / "config.json"
+# Shared per-environment status file (019-env-separation) - the same file
+# `./run_morning_mcp.sh dev` writes and `apps/denidin-app`'s own tests read
+# to discover the live dev tunnel. APP_ROOT is apps/morning-mcp-app/; the
+# repo root is two levels up.
+DEV_STATUS_FILE_PATH = APP_ROOT.parent.parent / "shared" / "mcp-status-dev" / "morning_mcp_status.dev.json"
 
 
 @pytest.fixture(scope="module")
 def mcp_endpoint(config):
     """Yield (server_url, auth_token) for a real, reachable MCP server.
 
-    Prefers an already-running standalone `./run_morning_mcp.sh` server (see
-    `discover_running_server`) — its ngrok tunnel is already warm, avoiding
-    the cold-start window where a brand-new tunnel is registered locally but
-    not yet reachable from the public internet (observed as OpenAI returning
-    HTTP 424 Failed Dependency on the very first request). Falls back to
-    starting our own local server + ephemeral tunnel only if no standalone
-    server is live.
+    Prefers an already-running standalone `./run_morning_mcp.sh dev` server
+    (see `discover_running_server`) — its ngrok tunnel is already warm,
+    avoiding the cold-start window where a brand-new tunnel is registered
+    locally but not yet reachable from the public internet (observed as
+    OpenAI returning HTTP 424 Failed Dependency on the very first request).
+    Falls back to starting our own local server + ephemeral tunnel only if no
+    standalone server is live.
     """
-    discovered = discover_running_server(PRODUCTION_CONFIG_PATH)
+    discovered = discover_running_server(DEV_STATUS_FILE_PATH, config.mcp_auth_token)
     if discovered is not None:
         yield discovered
         return

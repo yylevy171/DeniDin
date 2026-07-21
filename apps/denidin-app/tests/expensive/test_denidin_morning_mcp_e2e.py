@@ -75,6 +75,7 @@ explicit approval - see CLAUDE.md.
 """
 from __future__ import annotations
 
+import json
 import logging
 import random
 import shutil
@@ -371,7 +372,7 @@ def test_godfather_lists_invoices_via_whatsapp(denidin_app):
     """
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text="תראה לי את כל החשבוניות מיום 7 בפברואר",
+        text="תראה לי את כל החשבוניות ביום 7 בפברואר",
         id_prefix="E2E_LIST",
     )
     list_calls = _calls_for(ai_response, "list_invoices")
@@ -456,6 +457,112 @@ def test_godfather_asks_analytical_debtor_question_via_whatsapp(denidin_app):
         f"Bot replied with an access-decline phrase despite having called a "
         f"tool - reply: {response!r}, mcp_calls: {ai_response.mcp_calls!r}"
     )
+
+
+# ============================================================================
+# bugfix-013: client-name garbling and unrequested date-range narrowing
+# ============================================================================
+
+# The exact real message from the live prod incident (logs/prod/denidin.log,
+# 2026-07-20 20:11:34). The model transcribed the client name incorrectly
+# ("זבית", missing ה) and silently added from_date/to_date=2026-07 despite no
+# date being requested. Reused verbatim here rather than a paraphrase, per
+# instruction, to reproduce with the exact input that misfired in production.
+_ZEHAVIT_MESSAGE = "לקוחה בשם זהבית - בדוק לי כמה שילמה ומתי, תן לי הכל"
+_ZEHAVIT_NAME = "זהבית"
+
+
+@pytest.mark.expensive
+def test_zehavit_client_name_transcribed_exactly(denidin_app):
+    """Reproduction test for bugfix-013's client-name-garbling finding.
+
+    Root-cause investigation (read-only, 2026-07-21) found no app-level
+    transformation of the client name anywhere between WhatsApp receipt and
+    the MCP tool call - whatever the model generates as `client_name` is sent
+    verbatim. There is nothing in this repo's code to fix for this specific
+    finding, so this test does not guard a code fix; it is a standing,
+    probabilistic reproduction check using the EXACT real message and name
+    from the live incident log. It is expected to usually PASS (the garbling
+    was not observed to be 100% reproducible - a later client name in the
+    same live session transcribed correctly) - a passing result here does not
+    mean the bug is fixed, only that it didn't reproduce this run. A FAILURE
+    is the useful signal: it proves the garbling still happens with today's
+    model/config, and is the trigger to reopen this finding.
+    """
+    response, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=_ZEHAVIT_MESSAGE,
+        id_prefix="E2E_BUGFIX013_NAME",
+    )
+    list_calls = _calls_for(ai_response, "list_invoices")
+
+    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert list_calls, (
+        f"Model never invoked list_invoices for the Zehavit request. "
+        f"mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
+    )
+
+    transcribed_names = []
+    for call in list_calls:
+        try:
+            args = json.loads(call["arguments"] or "{}")
+        except json.JSONDecodeError:
+            args = {}
+        transcribed_names.append(args.get("client_name"))
+
+    assert any(name == _ZEHAVIT_NAME for name in transcribed_names), (
+        f"Client name garbled: expected {_ZEHAVIT_NAME!r} to appear exactly "
+        f"in at least one list_invoices call, got {transcribed_names!r} "
+        f"(mcp_calls: {ai_response.mcp_calls!r})"
+    )
+
+
+@pytest.mark.expensive
+def test_no_date_mentioned_omits_date_range(denidin_app):
+    """BDD failing test for bugfix-013's date-narrowing finding.
+
+    Root cause (approved 2026-07-21): runtime_constitution.md already
+    instructs 'add a from_date/to_date/status only if this request itself
+    states one' - the model violated this existing rule live in prod,
+    silently narrowing an unqualified 'give me everything' request to the
+    current month. Test-gap analysis: the only existing list_invoices test
+    (test_godfather_lists_invoices_via_whatsapp) always supplies an explicit
+    date, so no existing test covers the 'no date mentioned at all' case -
+    that gap is why this wasn't caught before reaching prod.
+
+    Uses the exact real message from the incident (no date reference of any
+    kind - only "תן לי הכל", give me everything). Expected to FAIL against
+    the current constitution wording, and to pass once the wording is
+    strengthened per the approved fix direction.
+    """
+    response, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=_ZEHAVIT_MESSAGE,
+        id_prefix="E2E_BUGFIX013_DATE",
+    )
+    list_calls = _calls_for(ai_response, "list_invoices")
+
+    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert list_calls, (
+        f"Model never invoked list_invoices for the Zehavit request. "
+        f"mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
+    )
+
+    for call in list_calls:
+        try:
+            args = json.loads(call["arguments"] or "{}")
+        except json.JSONDecodeError:
+            args = {}
+        # The MCP tool schema always includes from_date/to_date keys in the
+        # arguments JSON (null when unset), so absence-of-key is not a valid
+        # check - the API supports the model either omitting the key entirely
+        # or including it with a null value; both are acceptable, only a real
+        # (non-null) date value indicates the unrequested-narrowing bug.
+        assert args.get("from_date") is None and args.get("to_date") is None, (
+            f"list_invoices was called with an unrequested date range despite "
+            f"no date being mentioned in the request: {args!r} "
+            f"(mcp_calls: {ai_response.mcp_calls!r})"
+        )
 
 
 # ============================================================================

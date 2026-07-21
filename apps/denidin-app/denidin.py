@@ -39,7 +39,7 @@ except ValueError as e:
     sys.exit(2)  # Exit code 2 = configuration error (CONSTITUTION XVI)
 except FileNotFoundError:
     print(f"ERROR: Configuration file not found: {CONFIG_PATH}", file=sys.stderr)
-    print("Please create config/config.json from config/config.dev.example.json or config/config.prod.example.json", file=sys.stderr)
+    print("Please create config/config.json from config/config.example.json", file=sys.stderr)
     sys.exit(2)  # Exit code 2 = configuration error (CONSTITUTION XVI)
 except Exception as e:
     print(f"ERROR: Failed to load configuration: {e}", file=sys.stderr)

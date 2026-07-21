@@ -20,14 +20,14 @@ class TestEndToEndFlow:
     def config(self):
         """Load actual configuration for testing."""
         config_path = os.path.join(
-            os.path.dirname(__file__), 
-            '..', '..', 
-            'config', 
-            'config.json'
+            os.path.dirname(__file__),
+            '..', '..',
+            'config',
+            'config.test.json'
         )
-        
+
         if not os.path.exists(config_path):
-            pytest.skip("config.json not found - skipping E2E test")
+            pytest.skip("config.test.json not found - skipping E2E test")
         
         config = AppConfiguration.from_file(config_path)
         config.validate()
@@ -219,8 +219,8 @@ class TestEndToEndFlow:
         print(f"[E2E Test] API key prefix: {api_key[:8]}...")
 
     @pytest.mark.skipif(
-        not os.path.exists('config/config.json'),
-        reason="Requires actual config.json with credentials"
+        not os.path.exists('config/config.test.json'),
+        reason="Requires actual config.test.json with credentials"
     )
     def test_configuration_allows_bot_startup(self, config):
         """

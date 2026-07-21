@@ -28,5 +28,19 @@ fi
 COMPOSE_FILE="$REPO_ROOT/docker-compose.$ENV.yml"
 SERVICE="denidin-app-$ENV"
 
+# Declare intent in the single shared active-env file BEFORE starting -
+# watchdog.py in every container (this app and morning-mcp-app, dev and
+# prod) checks against this file and tears its own app down on a mismatch.
+# If you're switching from a different environment, run
+# ./killall_containers.sh FIRST (see CLAUDE.md's "ONE ENVIRONMENT SET AT A
+# TIME" rule) - this script does not do that for you.
+python3 -c "
+import json
+from datetime import datetime, timezone
+with open('$REPO_ROOT/shared/active_env.json', 'w', encoding='utf-8') as f:
+    json.dump({'active_env': '$ENV', 'updated_at': datetime.now(timezone.utc).isoformat()}, f, indent=2)
+    f.write('\n')
+"
+
 docker compose -f "$COMPOSE_FILE" up -d "$SERVICE"
 docker compose -f "$COMPOSE_FILE" ps "$SERVICE"

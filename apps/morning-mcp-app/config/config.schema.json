@@ -22,6 +22,11 @@
       "format": "uri",
       "description": "Optional: Morning file-upload gateway base URL (separate domain). Reserved for the future receipt-parsing feature (017); not used by the 8 invoice tools."
     },
+    "environment": {
+      "type": "string",
+      "enum": ["dev", "prod", "test"],
+      "description": "Which environment this container/process IS - read by watchdog.py against shared/active_env.json to detect a stale/mismatched container (2026-07-21 incident: a container for one environment stayed silently reachable while only the other was supposed to be active)."
+    },
     "default_currency": { "type": "string", "default": "ILS" },
     "default_vat_rate": { "type": "number", "default": 0.17 },
     "token_ttl_seconds": {

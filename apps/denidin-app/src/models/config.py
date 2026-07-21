@@ -15,6 +15,12 @@ class AppConfiguration:
     green_api_instance_id: str
     green_api_token: str
     ai_api_key: str
+    # Which environment this container/process IS (not a switch - declares
+    # identity). Read by watchdog.py against shared/active_env.json to
+    # detect a stale/mismatched container (2026-07-21 incident: a container
+    # for one environment was silently reachable while the other was
+    # supposed to be exclusively active). 'dev', 'prod', or 'test'.
+    environment: Optional[str] = None
     ai_model: str = 'gpt-4o-mini'
     ai_vision_model: str = 'gpt-4o-mini'  # Vision model for image/document processing
     ai_embedding_model: str = 'text-embedding-3-large'  # Embedding model for long-term memory (ChromaDB)
@@ -76,6 +82,7 @@ class AppConfiguration:
 
         # Set defaults for optional fields
         defaults = {
+            'environment': None,
             'ai_model': 'gpt-4o-mini',
             'ai_vision_model': 'gpt-4o-mini',
             'ai_embedding_model': 'text-embedding-3-large',

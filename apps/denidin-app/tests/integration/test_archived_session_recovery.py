@@ -103,7 +103,7 @@ def test_archived_untransferred_session_transferred_on_startup(tmp_path):
     print(f"  - 1 message in messages/")
     
     # ARRANGE: Load real config for API key
-    config_path = Path(__file__).parent.parent.parent / "config" / "config.json"
+    config_path = Path(__file__).parent.parent.parent / "config" / "config.test.json"
     with open(config_path) as f:
         real_config = json.load(f)
     

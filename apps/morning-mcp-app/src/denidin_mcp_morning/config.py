@@ -24,6 +24,10 @@ class MorningMCPConfig:
     api_key_id: str
     api_key_secret: str
     api_url: str
+    # Which environment this container/process IS. Read by watchdog.py
+    # against shared/active_env.json to detect a stale/mismatched container
+    # (2026-07-21 incident). 'dev', 'prod', or 'test'.
+    environment: Optional[str]
     default_currency: str
     default_vat_rate: float
     token_ttl_seconds: int
@@ -84,6 +88,7 @@ def load_config(path: Path) -> MorningMCPConfig:
         api_key_id=raw["api_key_id"],
         api_key_secret=raw["api_key_secret"],
         api_url=raw["api_url"],
+        environment=raw.get("environment") or None,
         default_currency=raw.get("default_currency", "ILS"),
         default_vat_rate=raw.get("default_vat_rate", 0.17),
         token_ttl_seconds=raw.get("token_ttl_seconds", 3600),

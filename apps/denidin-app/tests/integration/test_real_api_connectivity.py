@@ -30,11 +30,11 @@ class TestRealGreenAPIConnectivity:
             os.path.dirname(__file__), 
             '..', '..', 
             'config', 
-            'config.json'
+            'config.test.json'
         )
         
         if not os.path.exists(config_path):
-            pytest.skip("config.json not found - skipping real API test")
+            pytest.skip("config.test.json not found - skipping real API test")
         
         config = AppConfiguration.from_file(config_path)
         config.validate()
@@ -128,11 +128,11 @@ class TestRealOpenAPIConnectivity:
             os.path.dirname(__file__), 
             '..', '..', 
             'config', 
-            'config.json'
+            'config.test.json'
         )
         
         if not os.path.exists(config_path):
-            pytest.skip("config.json not found - skipping real API test")
+            pytest.skip("config.test.json not found - skipping real API test")
         
         config = AppConfiguration.from_file(config_path)
         config.validate()
@@ -244,11 +244,11 @@ class TestRealEndToEndFlow:
             os.path.dirname(__file__), 
             '..', '..', 
             'config', 
-            'config.json'
+            'config.test.json'
         )
         
         if not os.path.exists(config_path):
-            pytest.skip("config.json not found - skipping real E2E test")
+            pytest.skip("config.test.json not found - skipping real E2E test")
         
         config = AppConfiguration.from_file(config_path)
         config.validate()
