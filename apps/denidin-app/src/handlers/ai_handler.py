@@ -32,6 +32,11 @@ MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # Maximum message length to prevent excessive API costs
 MAX_MESSAGE_LENGTH = 10000
 
+# Models confirmed (real API 400 response) to reject a custom `temperature`
+# parameter entirely - not a guess/generalization to the wider 5.6 family,
+# only models actually observed to fail this way.
+MODELS_WITHOUT_TEMPERATURE_SUPPORT = {"gpt-5.6-luna"}
+
 
 class AIHandler:
     """
@@ -373,8 +378,9 @@ class AIHandler:
             "instructions": instructions,
             "input": input_items,
             "max_output_tokens": request.max_tokens,
-            "temperature": request.temperature
         }
+        if request.model not in MODELS_WITHOUT_TEMPERATURE_SUPPORT:
+            kwargs["temperature"] = request.temperature
         if tools:
             kwargs["tools"] = tools
 

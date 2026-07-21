@@ -12,9 +12,13 @@ COPY . .
 # are mutable runtime state, neither belongs baked into the image.
 VOLUME ["/app/config", "/app/data", "/app/logs"]
 
-# denidin.py handles SIGINT/SIGTERM directly, so it runs as the container's
-# PID 1 without needing run_denidin.sh/stop_denidin.sh (those scripts exist
-# for PID-file single-instance enforcement on bare metal, a concern Docker
-# already handles by construction; their `nohup ... &` backgrounding pattern
-# would break Docker's signal delivery to PID 1).
-CMD ["python3", "denidin.py"]
+# watchdog.py runs as the container's PID 1 (2026-07-21, env-mismatch
+# incident response): it spawns denidin.py as a child process, forwards
+# SIGINT/SIGTERM to it for graceful shutdown, and periodically confirms this
+# container's own declared environment still matches shared/active_env.json
+# - tearing the app subprocess down (without exiting the container itself,
+# so Docker's restart policy can't silently recreate it) on a mismatch. No
+# PID-file logic needed (run_denidin.sh/stop_denidin.sh exist for bare-metal
+# single-instance enforcement, a concern Docker already handles by
+# construction).
+CMD ["python3", "watchdog.py"]

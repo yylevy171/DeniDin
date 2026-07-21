@@ -20,7 +20,7 @@ from src.models.message import WhatsAppMessage
 @pytest.fixture
 def real_config():
     """Load real configuration for testing"""
-    config_path = Path(__file__).parent.parent.parent / "config" / "config.json"
+    config_path = Path(__file__).parent.parent.parent / "config" / "config.test.json"
     config = AppConfiguration.from_file(str(config_path))
     config.validate()
     # Isolate session/memory storage from production data (data/) so these

@@ -2,11 +2,12 @@
 # docker-compose.dev.yml - `docker compose -f docker-compose.prod.yml up`
 # never builds, starts, or otherwise touches any dev container.
 #
-# See docker-compose.dev.yml for the shared-status-volume rationale and the
-# FR-014 one-denidin-at-a-time-for-real-traffic constraint (denidin-app-dev
-# and denidin-app-prod share one real Green API instance/WhatsApp number).
-# morning-mcp-app-prod has no such restriction and can always run alongside
-# morning-mcp-app-dev.
+# See docker-compose.dev.yml for the shared-status-volume rationale, the
+# FR-014 one-denidin-at-a-time-for-real-traffic constraint, and the
+# 2026-07-21 correction: NEITHER app is exempt from CLAUDE.md's "ONE
+# ENVIRONMENT SET AT A TIME" rule - morning-mcp-app-prod does NOT get to run
+# alongside morning-mcp-app-dev (an earlier version of this comment wrongly
+# claimed it could; that assumption caused a real incident).
 name: denidin-prod
 services:
   denidin-app-prod:
@@ -17,7 +18,8 @@ services:
       - ./apps/denidin-app/data:/app/data
       - ./apps/denidin-app/logs/prod:/app/logs
       - ./shared/mcp-status-prod:/app/mcp-status
-    restart: unless-stopped
+      - ./shared/active_env.json:/app/active-env/active_env.json:ro
+    restart: "no"
 
   morning-mcp-app-prod:
     build:
@@ -28,4 +30,5 @@ services:
       - ./apps/morning-mcp-app/config/config.prod.json:/app/config/config.json:ro
       - ./apps/morning-mcp-app/logs/prod:/app/logs
       - ./shared/mcp-status-prod:/app/mcp-status
-    restart: unless-stopped
+      - ./shared/active_env.json:/app/active-env/active_env.json:ro
+    restart: "no"

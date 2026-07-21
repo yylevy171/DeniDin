@@ -12,9 +12,7 @@ from denidin_mcp_morning.config import ConfigError, MorningMCPConfig, load_confi
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 TEST_CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
-# 019-env-separation: config.example.json was split into per-environment
-# config.dev.example.json/config.prod.example.json.
-EXAMPLE_CONFIG_PATH = APP_ROOT / "config" / "config.dev.example.json"
+EXAMPLE_CONFIG_PATH = APP_ROOT / "config" / "config.example.json"
 
 
 def test_load_config_from_real_test_file():
@@ -40,7 +38,7 @@ def test_load_config_applies_defaults_when_optional_fields_missing():
 
 
 def test_load_config_from_example_file_with_full_flat_shape():
-    """config.dev.example.json (extended, flat) loads and reflects its explicit values."""
+    """config.example.json (extended, flat) loads and reflects its explicit values."""
     config = load_config(EXAMPLE_CONFIG_PATH)
 
     assert config.mcp_transport == "streamable-http"

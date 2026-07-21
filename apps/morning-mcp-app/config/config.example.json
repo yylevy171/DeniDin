@@ -1,0 +1,26 @@
+{
+  "api_key_id": "PASTE_YOUR_MORNING_API_KEY_ID_HERE",
+  "api_key_secret": "PASTE_YOUR_MORNING_API_KEY_SECRET_HERE",
+  "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+  "environment": "dev",
+  "default_currency": "ILS",
+  "default_vat_rate": 0.17,
+  "token_ttl_seconds": 3600,
+  "refresh_before_seconds": 300,
+  "rate_limit_per_second": 3,
+  "openai_api_key": "YOUR_OPENAI_API_KEY",
+  "mcp": {
+    "server_name": "denidin-morning-dev_or_prod",
+    "host": "0.0.0.0",
+    "port": 8000,
+    "transport": "streamable-http",
+    "log_level": "DEBUG",
+    "auth_token": "MUST_MATCH_DENIDIN_APP_MCP_MORNING_AUTH_TOKEN_FOR_THIS_ENV",
+    "ngrok_authtoken": "PASTE_YOUR_NGROK_AUTHTOKEN_FOR_THIS_ENV_HERE",
+    "ngrok_domain": "",
+    "status_file": "/app/mcp-status/morning_mcp_status.dev_or_prod.json"
+  },
+  "feature_flags": {
+    "enable_mcp_server": true
+  }
+}

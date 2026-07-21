@@ -88,10 +88,10 @@ class TestWhatsAppE2E:
     @pytest.fixture
     def config(self):
         """Load production configuration."""
-        config_path = Path(__file__).parent.parent.parent / "config" / "config.json"
-        
+        config_path = Path(__file__).parent.parent.parent / "config" / "config.test.json"
+
         if not config_path.exists():
-            pytest.skip("config.json not found")
+            pytest.skip("config.test.json not found")
         
         config = AppConfiguration.from_file(str(config_path))
         config.validate()

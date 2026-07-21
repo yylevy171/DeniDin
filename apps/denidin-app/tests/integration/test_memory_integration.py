@@ -18,7 +18,7 @@ from src.managers.memory_manager import MemoryManager
 @pytest.fixture(scope="module")
 def test_config():
     """Load real config for integration tests."""
-    config_path = Path(__file__).parent.parent.parent / "config" / "config.json"
+    config_path = Path(__file__).parent.parent.parent / "config" / "config.test.json"
     with open(config_path) as f:
         return json.load(f)
 

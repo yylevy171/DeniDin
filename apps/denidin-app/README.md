@@ -62,11 +62,11 @@ pip install -r requirements.txt
 
 ### 4. Configure Credentials
 
-Copy the example configuration files (one per environment — see "Environments (dev/prod)" in the repo-root `CLAUDE.md`):
+Copy the single example configuration template once per environment (see "Environments (dev/prod)" in the repo-root `CLAUDE.md`):
 
 ```bash
-cp config/config.dev.example.json config/config.dev.json
-cp config/config.prod.example.json config/config.prod.json
+cp config/config.example.json config/config.dev.json
+cp config/config.example.json config/config.prod.json
 ```
 
 Edit `config/config.dev.json`/`config/config.prod.json` and replace the placeholder values:
@@ -244,7 +244,7 @@ apps/denidin-app/
 ├── .pylintrc                  # Linter configuration
 ├── mypy.ini                   # Type checker configuration
 ├── config/
-│   ├── config.dev.example.json / config.prod.example.json   # Example configuration (templates)
+│   ├── config.example.json                                  # Example configuration (single template, both envs)
 │   └── config.dev.json / config.prod.json                   # Actual per-environment credentials (gitignored)
 ├── src/                       # Source code (500+ statements, 89% coverage)
 │   ├── handlers/

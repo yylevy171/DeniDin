@@ -2,19 +2,20 @@
   "green_api_instance_id": "YOUR_GREEN_API_INSTANCE_ID",
   "green_api_token": "YOUR_GREEN_API_TOKEN",
   "ai_api_key": "YOUR_OPENAI_API_KEY",
+  "environment": "dev",
   "ai_model": "gpt-4o-mini",
   "ai_vision_model": "gpt-4o-mini",
   "ai_embedding_model": "text-embedding-3-large",
   "ai_reply_max_tokens": 2500,
   "temperature": 0.7,
-  "log_level": "DEBUG",
+  "log_level": "DEBUG_for_dev_or_INFO_for_prod",
   "poll_interval_seconds": 5,
   "max_retries": 3,
-  "data_root": "dev_data",
-  "godfather_phone": "972522968679",
+  "data_root": "dev_data_for_dev_or_data_for_prod",
+  "godfather_phone": "YOUR_GODFATHER_PHONE_NUMBER",
   "memory": {
     "session": {
-      "storage_dir": "dev_data/sessions",
+      "storage_dir": "MUST_MATCH_data_root_ABOVE/sessions",
       "max_tokens_by_role": {
         "client": 4000,
         "godfather": 100000
@@ -23,7 +24,7 @@
     },
     "longterm": {
       "enabled": true,
-      "storage_dir": "dev_data/memory",
+      "storage_dir": "MUST_MATCH_data_root_ABOVE/memory",
       "collection_name": "godfather_memory",
       "top_k_results": 5,
       "min_similarity": 0.15
@@ -33,8 +34,8 @@
     "file": "runtime_constitution.md"
   },
   "mcp": {
-    "morning_auth_token": "MUST_MATCH_MORNING_APP_MCP_AUTH_TOKEN_DEV",
-    "morning_status_file": "/app/mcp-status/morning_mcp_status.dev.json",
+    "morning_auth_token": "MUST_MATCH_MORNING_APP_MCP_AUTH_TOKEN_FOR_THIS_ENV",
+    "morning_status_file": "/app/mcp-status/morning_mcp_status.dev_or_prod.json",
     "morning_server_label": "morning-invoices",
     "url_max_age_seconds": 0
   },

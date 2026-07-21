@@ -67,14 +67,24 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-async def _health(_request: Request) -> PlainTextResponse:
-    """Unauthenticated liveness probe — used by callers (e.g. the ngrok-tunnel
-    health check in tests/expensive/e2e_helpers.py) to confirm the server is
-    reachable end-to-end without needing the bearer token."""
-    return PlainTextResponse("ok")
+def _make_health_handler(environment: Optional[str]) -> Callable[[Request], Any]:
+    """Build the /health handler, closing over this process's own declared
+    `environment` (2026-07-21 incident: watchdog.py needs a caller-visible,
+    at-rest AND external-tunnel way to confirm which environment a server
+    is actually serving as, not just what its mounted config claims)."""
+
+    async def _health(_request: Request) -> JSONResponse:
+        """Unauthenticated liveness probe - used by callers (e.g. the
+        ngrok-tunnel health check in tests/expensive/e2e_helpers.py, and each
+        environment's watchdog.py) to confirm the server is reachable
+        end-to-end without needing the bearer token, and which environment
+        it's actually running as."""
+        return JSONResponse({"status": "ok", "environment": environment})
+
+    return _health
 
 
-def build_asgi_app(mcp: FastMCP, auth_token: Optional[str] = None) -> Starlette:
+def build_asgi_app(mcp: FastMCP, auth_token: Optional[str] = None, environment: Optional[str] = None) -> Starlette:
     """Build the MCP server's ASGI app, optionally wrapped with bearer-token auth.
 
     Bypasses `FastMCP.run()`'s built-in uvicorn runner so the app can be
@@ -82,7 +92,7 @@ def build_asgi_app(mcp: FastMCP, auth_token: Optional[str] = None) -> Starlette:
     proven in tests/integration/test_mcp_server_e2e.py).
     """
     app = mcp.streamable_http_app()
-    app.router.routes.append(Route(HEALTH_PATH, _health, methods=["GET"]))
+    app.router.routes.append(Route(HEALTH_PATH, _make_health_handler(environment), methods=["GET"]))
     if auth_token:
         app.add_middleware(BearerTokenMiddleware, token=auth_token)
     return app
@@ -237,7 +247,7 @@ def main() -> None:
         # wrapped with BearerTokenMiddleware before serving.
         import uvicorn
 
-        app = build_asgi_app(server, auth_token=config.mcp_auth_token)
+        app = build_asgi_app(server, auth_token=config.mcp_auth_token, environment=config.environment)
         uvicorn.run(app, host=config.mcp_host, port=config.mcp_port, log_level=config.mcp_log_level.lower())
     else:
         # stdio/sse aren't network-exposed the same way; no HTTP-level

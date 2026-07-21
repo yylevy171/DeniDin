@@ -31,7 +31,7 @@ def remove_readonly(func, path, excinfo):
 @pytest.fixture(scope="module")
 def test_config():
     """Load real config for integration tests."""
-    config_path = Path(__file__).parent.parent.parent / "config" / "config.json"
+    config_path = Path(__file__).parent.parent.parent / "config" / "config.test.json"
     with open(config_path) as f:
         config = json.load(f)
     

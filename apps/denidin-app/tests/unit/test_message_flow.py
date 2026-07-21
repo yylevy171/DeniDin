@@ -18,14 +18,14 @@ class TestMessageFlow:
     def config(self):
         """Load actual configuration for testing."""
         config_path = os.path.join(
-            os.path.dirname(__file__), 
-            '..', '..', 
-            'config', 
-            'config.json'
+            os.path.dirname(__file__),
+            '..', '..',
+            'config',
+            'config.test.json'
         )
-        
+
         if not os.path.exists(config_path):
-            pytest.skip("config.json not found - skipping integration test")
+            pytest.skip("config.test.json not found - skipping integration test")
         
         config = AppConfiguration.from_file(config_path)
         config.validate()

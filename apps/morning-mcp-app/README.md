@@ -28,8 +28,8 @@ current implementation status per layer.
 cd apps/morning-mcp-app
 python3.11 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt   # for local test-running only - the server itself runs containerized
-cp config/config.dev.example.json config/config.dev.json    # then fill in real Morning sandbox credentials + dev ngrok authtoken
-cp config/config.prod.example.json config/config.prod.json  # then fill in real Morning production credentials + prod ngrok authtoken
+cp config/config.example.json config/config.dev.json    # then fill in real Morning sandbox credentials + dev ngrok authtoken
+cp config/config.example.json config/config.prod.json   # then fill in real Morning production credentials + prod ngrok authtoken
 ```
 
 ## Configuration
@@ -42,7 +42,7 @@ One config file per environment (019-env-separation), both gitignored, real cred
   "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/"
 }
 ```
-`config/config.dev.json` points at the Morning **sandbox** host; `config/config.prod.json` points at Morning **production** — see `config/config.dev.example.json`/`config/config.prod.example.json` for the full shape to copy, including each environment's own `mcp.ngrok_authtoken` (two separate ngrok accounts, one per environment).
+`config/config.dev.json` points at the Morning **sandbox** host; `config/config.prod.json` points at Morning **production** — see `config/config.example.json` for the full shape to copy (used for both envs), including each environment's own `mcp.ngrok_authtoken` (two separate ngrok accounts, one per environment).
 
 `config/config.test.json` (**gitignored**, not committed) is read by the integration tests under `tests/integration/`
 and `tests/expensive/` — it must contain real sandbox credentials (and, for the
@@ -106,7 +106,7 @@ shared status file (`shared/mcp-status-<env>/`) for the paired `denidin-app-<env
 to discover.
 
 **⚠️ Required for Docker**: set `"mcp": {"host": "0.0.0.0"}` in each environment's
-`config/config.<env>.json` (already set this way in `config.dev.example.json`/`config.prod.example.json`).
+`config/config.<env>.json` (already set this way in `config.example.json`).
 The default `127.0.0.1` (correct for plain local dev)
 binds to the container's own loopback only — confirmed live that `-p`
 port-mapped traffic (and an ngrok tunnel targeting the container) cannot
