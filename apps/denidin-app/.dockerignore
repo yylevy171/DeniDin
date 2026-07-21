@@ -1,0 +1,21 @@
+# Secrets: real per-environment config files must never be baked into image
+# layers (VOLUME ["/app/config"] overrides them at runtime anyway — only
+# config.example.json, the safe placeholder template, should ship in the image).
+config/config.dev.json
+config/config.prod.json
+config/config.test.json
+
+# Runtime data/logs — also volume-mounted, never needed in the image itself.
+dev_data/
+data/
+logs/
+
+# Local dev/VCS cruft.
+.git/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+htmlcov/
+.coverage
