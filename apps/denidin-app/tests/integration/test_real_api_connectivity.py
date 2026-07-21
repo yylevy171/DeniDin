@@ -18,6 +18,7 @@ from whatsapp_api_client_python.API import GreenAPI
 from openai import OpenAI
 
 from src.models.config import AppConfiguration
+from src.handlers.ai_handler import MODELS_WITHOUT_TEMPERATURE_SUPPORT
 
 
 class TestRealGreenAPIConnectivity:
@@ -159,35 +160,31 @@ class TestRealOpenAPIConnectivity:
         test_message = "Please respond with exactly: 'API test successful'"
         
         try:
-            # REAL API call to OpenAI
-            response = openai_client.chat.completions.create(
-                model=config.ai_model,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant. Follow instructions exactly."},
-                    {"role": "user", "content": test_message}
-                ],
-                temperature=0.3,  # Low temperature for consistent response
-                max_tokens=50
-            )
-            
+            # REAL API call to OpenAI (Responses API — matches AIHandler's production call shape)
+            kwargs = {
+                "model": config.ai_model,
+                "instructions": "You are a helpful assistant. Follow instructions exactly.",
+                "input": [{"role": "user", "content": test_message}],
+                "max_output_tokens": 50,
+            }
+            if config.ai_model not in MODELS_WITHOUT_TEMPERATURE_SUPPORT:
+                kwargs["temperature"] = 0.3  # Low temperature for consistent response
+            response = openai_client.responses.create(**kwargs)
+
             assert response is not None, "OpenAI returned None response"
-            assert len(response.choices) > 0, "OpenAI returned no choices"
-            
-            ai_response = response.choices[0].message.content
+
+            ai_response = response.output_text
             tokens_used = response.usage.total_tokens
-            finish_reason = response.choices[0].finish_reason
-            
+
             print(f"[Real API Test] ✓ OpenAI connection successful")
             print(f"[Real API Test]   Model: {config.ai_model}")
             print(f"[Real API Test]   Response: {ai_response}")
             print(f"[Real API Test]   Tokens used: {tokens_used}")
-            print(f"[Real API Test]   Finish reason: {finish_reason}")
-            
+
             # Verify response structure
             assert ai_response is not None and len(ai_response) > 0, "Empty AI response"
             assert tokens_used > 0, "Token count should be positive"
-            assert finish_reason in ['stop', 'length'], f"Unexpected finish reason: {finish_reason}"
-            
+
         except Exception as e:
             pytest.fail(f"OpenAI API call failed: {e}")
     
@@ -202,34 +199,30 @@ class TestRealOpenAPIConnectivity:
         print(f"[Real API Test] This is a REAL API call (will consume quota)")
         
         try:
-            # REAL API call with a question
-            response = openai_client.chat.completions.create(
-                model=config.ai_model,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": "What is 2+2? Answer with just the number."}
-                ],
-                temperature=config.temperature,
-                max_tokens=config.ai_reply_max_tokens
-            )
-            
+            # REAL API call with a question (Responses API — matches AIHandler's production call shape)
+            kwargs = {
+                "model": config.ai_model,
+                "instructions": "You are a helpful assistant.",
+                "input": [{"role": "user", "content": "What is 2+2? Answer with just the number."}],
+                "max_output_tokens": config.ai_reply_max_tokens,
+            }
+            if config.ai_model not in MODELS_WITHOUT_TEMPERATURE_SUPPORT:
+                kwargs["temperature"] = config.temperature
+            response = openai_client.responses.create(**kwargs)
+
             # Verify we can access all necessary fields
-            assert hasattr(response, 'choices'), "Response missing 'choices'"
-            assert len(response.choices) > 0, "Response has no choices"
-            assert hasattr(response.choices[0], 'message'), "Choice missing 'message'"
-            assert hasattr(response.choices[0].message, 'content'), "Message missing 'content'"
-            assert hasattr(response.choices[0], 'finish_reason'), "Choice missing 'finish_reason'"
+            assert hasattr(response, 'output_text'), "Response missing 'output_text'"
             assert hasattr(response, 'usage'), "Response missing 'usage'"
             assert hasattr(response.usage, 'total_tokens'), "Usage missing 'total_tokens'"
-            
-            content = response.choices[0].message.content
+
+            content = response.output_text
             tokens = response.usage.total_tokens
-            
+
             print(f"[Real API Test] ✓ Response parsed successfully")
             print(f"[Real API Test]   Content: {content}")
             print(f"[Real API Test]   Tokens: {tokens}")
             print(f"[Real API Test]   All required fields present")
-            
+
         except Exception as e:
             pytest.fail(f"OpenAI response parsing failed: {e}")
 
@@ -304,21 +297,21 @@ class TestRealEndToEndFlow:
             print(f"\n[Real E2E Test] Step 2: Send message to OpenAI")
             print(f"[Real E2E Test]   Question: {test_question}")
             
-            openai_response = openai_client.chat.completions.create(
-                model=config.ai_model,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": test_question}
-                ],
-                temperature=config.temperature,
-                max_tokens=config.ai_reply_max_tokens
-            )
-            
+            kwargs = {
+                "model": config.ai_model,
+                "instructions": "You are a helpful assistant.",
+                "input": [{"role": "user", "content": test_question}],
+                "max_output_tokens": config.ai_reply_max_tokens,
+            }
+            if config.ai_model not in MODELS_WITHOUT_TEMPERATURE_SUPPORT:
+                kwargs["temperature"] = config.temperature
+            openai_response = openai_client.responses.create(**kwargs)
+
             print(f"[Real E2E Test]   ✓ Request sent to OpenAI")
-            
+
             # Step 3: Receive and parse OpenAI response
             print(f"\n[Real E2E Test] Step 3: Receive OpenAI response")
-            ai_answer = openai_response.choices[0].message.content
+            ai_answer = openai_response.output_text
             tokens_used = openai_response.usage.total_tokens
             
             print(f"[Real E2E Test]   ✓ Response received from OpenAI")

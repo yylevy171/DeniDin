@@ -691,7 +691,13 @@ def test_godfather_marks_invoice_paid_via_whatsapp(denidin_app):
     assert any("שולם" in (c["output"] or "") for c in status_calls), (
         f"update_invoice_status output did not reflect paid status: {status_calls!r}"
     )
-    assert "שולם" in response, f"Bot reply did not reflect paid status. Full reply: {response!r}"
+    # Accept either the masculine "שולם" or feminine "שולמה" — the model may
+    # correctly conjugate to agree with a feminine noun (e.g. "החשבונית...
+    # שולמה"), which is not a substring of "שולם" (different final letter:
+    # sofit-mem ם vs regular מ before the ה).
+    assert "שולם" in response or "שולמה" in response, (
+        f"Bot reply did not reflect paid status. Full reply: {response!r}"
+    )
 
 
 @pytest.mark.expensive
