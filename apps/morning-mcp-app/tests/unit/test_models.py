@@ -10,7 +10,7 @@ from datetime import date, datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from denidin_mcp_morning.models import Client, FinancialSummary, Invoice, Payment
+from denidin_mcp_morning.models import Client, FinancialSummary, Invoice, LinkedDocument, Payment
 
 REAL_DOCUMENT_RESPONSE_SAMPLE = {
     "id": "5f2c1a2b-0000-4c11-9a1a-abcdef123456",
@@ -154,3 +154,60 @@ def test_models_use_utc_for_any_generated_timestamps():
 
     if client.created_at is not None:
         assert client.created_at.tzinfo == timezone.utc
+
+
+# ============================================================================
+# bugfix-014: linkedDocuments exposure (receipts/credits linked to invoices)
+# ============================================================================
+
+REAL_LINKED_RECEIPT_SAMPLE = {
+    "id": "800e89f0-342f-401b-ad03-62b4baf450eb",
+    "type": 305,
+    "number": 50500,
+    "documentDate": "2026-07-15",
+    "amount": 88,
+    "currency": "ILS",
+    "currencyRate": 1,
+    "reverseCharge": False,
+}
+
+
+def test_linked_document_model_parses_real_shape():
+    """Real shape confirmed live, 2026-07-21/22, via GET /documents/{id} on a
+    receipt linked to an invoice (see bugfix-014's Investigation Findings) -
+    this is the field that never appears on /documents/search (list_invoices'
+    endpoint), only on the single-document GET."""
+    linked = LinkedDocument.model_validate(REAL_LINKED_RECEIPT_SAMPLE)
+
+    assert linked.id == "800e89f0-342f-401b-ad03-62b4baf450eb"
+    assert linked.type == 305
+    assert linked.number == "50500"
+    assert linked.document_date == date(2026, 7, 15)
+    assert linked.amount == 88
+    assert linked.currency == "ILS"
+
+
+def test_linked_document_model_coerces_integer_number_to_string():
+    linked = LinkedDocument.model_validate(dict(REAL_LINKED_RECEIPT_SAMPLE, number=80109))
+
+    assert linked.number == "80109"
+
+
+def test_invoice_model_maps_linked_documents_from_real_response():
+    """Regression for bugfix-014: without this, an invoice/receipt/credit's
+    linkedDocuments (the real, structured, bidirectional link Morning provides)
+    was silently dropped - the model had no way to tell a receipt/credit apart
+    from an independent invoice, causing double-counted totals."""
+    with_links = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, linkedDocuments=[REAL_LINKED_RECEIPT_SAMPLE])
+
+    invoice = Invoice.model_validate(with_links)
+
+    assert len(invoice.linked_documents) == 1
+    assert invoice.linked_documents[0].number == "50500"
+    assert invoice.linked_documents[0].amount == 88
+
+
+def test_invoice_model_defaults_linked_documents_to_empty_list():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    assert invoice.linked_documents == []
