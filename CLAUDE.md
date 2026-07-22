@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Personality dispatch
+Read and follow @.claude/personalities/<basename of current working directory>.md
+If no matching file exists, use @.claude/personalities/default.md
+
 ## 🚨 ONE ENVIRONMENT SET AT A TIME — NO EXCEPTIONS 🚨
 
 **At most ONE full set of containers may run at any given moment: either the

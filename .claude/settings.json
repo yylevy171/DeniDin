@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "name=$(basename \"$PWD\"); f=\".claude/personalities/$name.md\"; [ -f \"$f\" ] || f=\".claude/personalities/default.md\"; if [ -f \"$f\" ]; then jq -Rs --arg src \"$f\" '{hookSpecificOutput:{hookEventName:\"SessionStart\",additionalContext:(\"Personality file (\\($src)):\\n\\n\" + .)}}' < \"$f\"; fi"
+          },
+          {
+            "type": "command",
+            "command": "for f in .github/CONSTITUTION.md .github/METHODOLOGY.md .github/ARCHITECTURE.md .github/BUG_DRIVEN_DEVELOPMENT.md .github/TDD-ENFORCEMENT.md; do [ -f \"$f\" ] && { echo \"=== $f ===\"; cat \"$f\"; echo; }; done | jq -Rs '{hookSpecificOutput:{hookEventName:\"SessionStart\",additionalContext:.}}'"
+          }
+        ]
+      }
+    ]
+  }
+}
