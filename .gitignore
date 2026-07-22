@@ -1,3 +1,7 @@
+# Git worktrees (personality-dispatch coders), nested under this clone
+/coder1/
+/coder2/
+
 # Process ID file
 denidin.pid
 
