@@ -7,7 +7,7 @@ bugfix-014-list-invoices-only-returns-one-of-many
 Asking for all invoices/payments from a named customer returns only a single result, even when more exist
 
 ## Status
-Double-counting root cause fixed, tested, and verified live (2026-07-22) — deployed to `morning-mcp-app-dev`. Session 1's `status="paid"`-over-triggering theory did not independently reproduce and is left as a standing probabilistic check; pagination gap and `clientName` matching semantics remain confirmed-but-unaddressed, still open. See "Investigation Findings" and "Implementation Summary" below. Not yet moved to `specs/done/bugfixes/` pending prod deploy/close-out decision.
+Done — merged to `master` (PR #119, 2026-07-22). Double-counting root cause fixed, tested, and verified live end-to-end against `morning-mcp-app-dev`. Session 1's `status="paid"`-over-triggering theory did not independently reproduce and is left as a standing probabilistic check (`test_yossi_all_payments_gets_the_complete_picture`/`test_yossi_explicit_everything_request_gets_the_complete_picture` in `test_denidin_morning_mcp_e2e.py`); the pagination gap and `clientName` matching semantics remain confirmed-but-unaddressed — real, still-open risks, but no follow-up bugfix spec opened yet (revisit if either causes a future report). See "Investigation Findings" and "Implementation Summary" below.
 
 ## Date Opened
 2026-07-20
