@@ -4,9 +4,9 @@ Responses are Hebrew by default (spec.md §REQ-I18N-001): ₪ currency,
 DD/MM/YYYY dates, Hebrew status terms.
 """
 from datetime import date
-from typing import List
+from typing import List, Optional
 
-from .models import FinancialSummary, Invoice
+from .models import _DOCUMENT_TYPE_NAMES, _PAYMENT_TYPE_NAMES, FinancialSummary, Invoice
 
 _STATUS_HE = {
     "paid": "שולם",
@@ -31,6 +31,32 @@ def translate_status(status: str) -> str:
     return _STATUS_HE.get(status, status)
 
 
+def translate_document_type(type_code: Optional[int]) -> str:
+    """Translate a Morning document-type code to its real Hebrew name.
+
+    Table confirmed live against GET /documents/types (2026-07-21/22,
+    bugfix-014) - deterministic 1:1 label lookup, not interpretation. Lets
+    the model tell a receipt/credit apart from a real invoice in
+    list_invoices' own text output, and reason about Morning's document
+    flows itself (per runtime_constitution.md) instead of the tool guessing.
+    Unknown codes fall back to the raw code as a string; None to "".
+    """
+    if type_code is None:
+        return ""
+    return _DOCUMENT_TYPE_NAMES.get(type_code, str(type_code))
+
+
+def translate_payment_type(payment_type_code: Optional[int]) -> str:
+    """Translate a Morning payment-method code to its real Hebrew name.
+
+    Table confirmed live against GET /payments/types (2026-07-22, bugfix-014).
+    Unknown codes fall back to the raw code as a string; None to "".
+    """
+    if payment_type_code is None:
+        return ""
+    return _PAYMENT_TYPE_NAMES.get(payment_type_code, str(payment_type_code))
+
+
 def format_invoice_confirmation(invoice: Invoice) -> str:
     """Build a Hebrew, human-readable confirmation message for an invoice."""
     display_amount = invoice.total_amount if invoice.total_amount is not None else invoice.amount
@@ -40,6 +66,8 @@ def format_invoice_confirmation(invoice: Invoice) -> str:
         f"לקוח: {invoice.client_name}",
         f"סכום: {format_currency_ils(display_amount)}",
     ]
+    if invoice.type is not None:
+        lines.append(f"סוג מסמך: {translate_document_type(invoice.type)}")
     if invoice.status:
         lines.append(f"סטטוס: {translate_status(invoice.status)}")
     if invoice.issue_date:
@@ -72,6 +100,18 @@ def format_invoice_details(invoice: Invoice) -> str:
         lines.append("תשלומים:")
         for payment in invoice.payments:
             lines.append(f"  - {format_currency_ils(payment.amount)} ({format_date_il(payment.payment_date)})")
+
+    if invoice.linked_documents:
+        # Real, structured, bidirectional linkage (bugfix-014) - a receipt or
+        # credit invoice linked to this document. Exposed so the model can
+        # net paid/owed itself per runtime_constitution.md's flow guidance,
+        # rather than treating each linked document as an independent charge
+        # (the exact double-counting mistake this bugfix addresses).
+        lines.append("מסמכים מקושרים:")
+        for linked in invoice.linked_documents:
+            label = translate_document_type(linked.type)
+            date_str = f" ({format_date_il(linked.document_date)})" if linked.document_date else ""
+            lines.append(f"  - {label} #{linked.number or linked.id}: {format_currency_ils(linked.amount)}{date_str}")
 
     return "\n".join(lines)
 

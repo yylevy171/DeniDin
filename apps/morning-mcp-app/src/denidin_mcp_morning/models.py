@@ -26,6 +26,34 @@ _MORNING_STATUS_CODES = {
     4: "cancelled",
 }
 
+# Morning's real document type codes, confirmed live against GET
+# /documents/types (2026-07-21/22, bugfix-014) - display-only labels, not
+# used for any filtering/business-logic decision (that stays on the
+# canonical status vocabulary above). Only the types actually relevant to
+# this app's real usage are included; GET /documents/types returns more
+# (quotes, orders, delivery notes, deposits, etc.) that aren't needed here.
+_DOCUMENT_TYPE_NAMES = {
+    300: "חשבון עסקה",
+    305: "חשבונית מס",
+    320: "חשבונית מס / קבלה",
+    330: "חשבונית זיכוי",
+    400: "קבלה",
+}
+
+# Morning's real payment method codes, confirmed live against GET
+# /payments/types (2026-07-22, bugfix-014) - display-only labels for a
+# receipt's payment[].type field.
+_PAYMENT_TYPE_NAMES = {
+    0: "ניכוי במקור",
+    1: "מזומן",
+    2: "צ'ק",
+    3: "כרטיס אשראי",
+    4: "העברה בנקאית",
+    5: "פייפאל",
+    10: "אפליקציית תשלום",
+    11: "אחר",
+}
+
 
 class Client(BaseModel):
     """A Morning client (customer) record."""
@@ -60,6 +88,41 @@ class Payment(BaseModel):
     method: Optional[str] = None
 
 
+class LinkedDocument(BaseModel):
+    """A Morning document linked to another (e.g. a receipt linked to the
+    invoice it pays, or a credit invoice linked to the invoice it cancels).
+
+    Real shape confirmed live (2026-07-21/22, bugfix-014): this field
+    (`linkedDocuments`) only appears on the single-document GET
+    (`MorningClient.get_invoice` / `GET /documents/{id}`) response - it is
+    completely absent from `/documents/search` (what `list_invoices` uses).
+    It is structured and bidirectional (appears on both the original
+    document and the thing linked to it), unlike the free-text `remarks`/
+    `description` fields these documents also carry, which are user-editable
+    and not trusted as a linkage mechanism.
+    """
+
+    id: str
+    type: Optional[int] = None
+    number: Optional[str] = None
+    document_date: Optional[date] = None
+    amount: float = Field(ge=0)
+    currency: str = "ILS"
+
+    @field_validator("number", mode="before")
+    @classmethod
+    def _coerce_number_to_str(cls, value: Any) -> Optional[str]:
+        return str(value) if value is not None else None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _map_document_date(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "document_date" not in data and "documentDate" in data:
+            data = dict(data)
+            data["document_date"] = data["documentDate"]
+        return data
+
+
 class Invoice(BaseModel):
     """A Morning document (invoice/receipt), mapped from the real API response."""
 
@@ -78,6 +141,7 @@ class Invoice(BaseModel):
     due_date: Optional[date] = None
     status: Optional[str] = None
     payments: List[Payment] = Field(default_factory=list)
+    linked_documents: List[LinkedDocument] = Field(default_factory=list)
     pdf_url: Optional[str] = None
 
     @field_validator("number", mode="before")
@@ -130,6 +194,13 @@ class Invoice(BaseModel):
             mapped["total_amount"] = data["total"]
         if "vat_amount" not in mapped and "vatAmount" in data:
             mapped["vat_amount"] = data["vatAmount"]
+
+        # Real GET /documents/{id} responses include a `linkedDocuments` array
+        # (confirmed live, bugfix-014) - completely absent from
+        # /documents/search. Map it here so any Invoice built from a
+        # single-document GET (get_invoice_details) surfaces it.
+        if "linked_documents" not in mapped and "linkedDocuments" in data:
+            mapped["linked_documents"] = data["linkedDocuments"]
 
         # Real /documents(/search) responses include a `url: {he, origin}`
         # object with ready-to-use, pre-signed PDF download links (confirmed

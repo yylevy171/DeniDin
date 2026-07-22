@@ -566,6 +566,140 @@ def test_no_date_mentioned_omits_date_range(denidin_app):
 
 
 # ============================================================================
+# bugfix-014: "all payments" silently narrowed to status="paid"
+# ============================================================================
+
+# Real sandbox ground truth (verified live, 2026-07-21, read-only
+# list_invoices call against config.dev.json's sandbox credentials - see
+# specs/bugfixes/bugfix-014-list-invoices-only-returns-one-of-many.md): the
+# same "יוסי שמואלי" client used by test_godfather_creates_invoice_via_whatsapp
+# above already had 6 real tax-invoice documents (type 305) across 4 distinct
+# dates, all unpaid. Two were then deliberately marked paid via a real
+# Morning receipt (type 400, linked document) to build a mixed paid/unpaid
+# set that mirrors the shape of the real Arian Regev incident (a request for
+# "all payments" silently narrowed to a status="paid" filter, which would
+# have dropped every unpaid invoice from the reply). The 2 receipt documents
+# themselves (80109, 80110) are NOT counted as invoices here - they're a
+# separate, unrelated latent gap (list_invoices, unlike get_financial_summary,
+# has no document-type filter and will return receipts alongside invoices;
+# out of scope for this bugfix).
+_YOSSI_CLIENT_NAME = "יוסי שמואלי"
+_YOSSI_UNPAID_INVOICE_NUMBERS = ("50499", "50552", "50571", "50607")  # status=0
+_YOSSI_PAID_INVOICE_NUMBERS = ("50500", "50604")  # status=1, closed via a linked receipt
+
+_YOSSI_ALL_INVOICE_NUMBERS = _YOSSI_UNPAID_INVOICE_NUMBERS + _YOSSI_PAID_INVOICE_NUMBERS
+
+# Ground truth for the double-counting regression (bugfix-014, Session 2):
+# Yossi's true amount paid is 88 + 147 = 235 (invoices 50500 and 50604's own
+# amounts). The receipts that closed them (80109=88, 80110=147) are the SAME
+# money, not additional payments - a model that treats each receipt as an
+# independent charge on top of its invoice arrives at 235 + 235 = 470
+# instead, exactly the real, observed mistake from this session's first test
+# run (see bugfix-014's Investigation Findings).
+_YOSSI_CORRECT_TOTAL_PAID = "235"
+_YOSSI_DOUBLE_COUNTED_TOTAL_PAID = "470"
+
+_YOSSI_FIRST_MESSAGE = f"תבדוק כל התשלומים מלקוח בשם {_YOSSI_CLIENT_NAME}"
+_YOSSI_EXPLICIT_ALL_MESSAGE = f"תן לי את כל התשלומים שביצע {_YOSSI_CLIENT_NAME}"
+
+
+def _assert_full_picture(response, ai_response, id_prefix: str) -> None:
+    """Shared ground-truth completeness check: a correct answer must reflect
+    ALL 6 real invoices (4 unpaid + 2 paid via a linked receipt) - not a
+    subset. This is the direct, data-level signature of the suspected bug
+    (an unrequested status="paid" filter would silently drop the 4 unpaid
+    invoices, leaving only the 2 paid ones)."""
+    list_calls = _calls_for(ai_response, "list_invoices")
+
+    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert list_calls, (
+        f"[{id_prefix}] Model never invoked list_invoices for the Yossi Shmueli "
+        f"request. mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
+    )
+
+    combined_output = "\n".join(c["output"] or "" for c in list_calls)
+    found = [n for n in _YOSSI_ALL_INVOICE_NUMBERS if n in combined_output]
+    missing = [n for n in _YOSSI_ALL_INVOICE_NUMBERS if n not in found]
+    assert not missing, (
+        f"[{id_prefix}] list_invoices did not return the complete picture: "
+        f"expected all 6 known invoices {_YOSSI_ALL_INVOICE_NUMBERS} "
+        f"(4 unpaid: {_YOSSI_UNPAID_INVOICE_NUMBERS}, 2 paid: "
+        f"{_YOSSI_PAID_INVOICE_NUMBERS}), missing {missing} - consistent with "
+        f"an unrequested status filter silently dropping invoices. "
+        f"Tool output: {combined_output!r}"
+    )
+
+    # Ground-truth correctness check for bugfix-014's double-counting bug:
+    # the reply itself (what the user actually sees) must state the TRUE
+    # total paid (235), never the double-counted figure (470) that results
+    # from treating a receipt as a separate charge from the invoice it closes.
+    assert _YOSSI_DOUBLE_COUNTED_TOTAL_PAID not in response, (
+        f"[{id_prefix}] Bot reply states the double-counted total paid "
+        f"({_YOSSI_DOUBLE_COUNTED_TOTAL_PAID}) instead of the true total "
+        f"({_YOSSI_CORRECT_TOTAL_PAID}) - a receipt was counted as a separate "
+        f"charge on top of the invoice it closes. Full reply: {response!r}"
+    )
+    assert _YOSSI_CORRECT_TOTAL_PAID in response, (
+        f"[{id_prefix}] Bot reply does not state the true total paid "
+        f"({_YOSSI_CORRECT_TOTAL_PAID}) anywhere - expected it to summarize "
+        f"the correct, netted total. Full reply: {response!r}"
+    )
+
+
+@pytest.mark.expensive
+def test_yossi_all_payments_gets_the_complete_picture(denidin_app):
+    """Reproduction test for bugfix-014's strongest root-cause candidate:
+    runtime_constitution.md's payment-word -> status="paid" rule
+    over-generalizing from the noun "תשלומים" (payments, a request for scope)
+    to a hard status filter.
+
+    Root-cause investigation (read-only, 2026-07-21) is unconfirmed/not yet
+    human-approved - this test exists to REPRODUCE the reported behavior
+    against today's constitution wording, per BDD's "reproduce first" step,
+    not to guard a fix. A correct answer to "check all payments from this
+    client" is ALL 6 real invoices - 4 unpaid, 2 paid via a linked receipt -
+    not just the paid ones. Expected to FAIL currently if the bug still
+    reproduces (the unpaid invoices go missing from the result).
+
+    Uses the real, mixed-status "יוסי שמואלי" sandbox client (see ground
+    truth above) so the bug's effect on the data itself is directly
+    observable, rather than only inspecting the tool call's raw arguments.
+    """
+    response, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=_YOSSI_FIRST_MESSAGE,
+        id_prefix="E2E_BUGFIX014_ASK",
+    )
+    _assert_full_picture(response, ai_response, "initial ask")
+
+
+@pytest.mark.expensive
+def test_yossi_explicit_everything_request_gets_the_complete_picture(denidin_app):
+    """Separate, standalone reproduction test for the "give me everything,
+    no filtering" phrasing - sent as its own single-turn request, not
+    programmatically chained after test_yossi_all_payments_gets_the_complete_picture's
+    turn (each test function here sends exactly one message and asserts on
+    it independently). Note: like every test in this module, the underlying
+    WhatsApp session for GODFATHER_CHAT_ID is module-scoped, so this turn may
+    still carry prior conversation history from earlier tests in the same
+    pytest invocation - same as every other test in this file.
+
+    Mirrors the real incident's second message (the user explicitly
+    reiterating "I asked for ALL the payments" after feeling the first reply
+    was incomplete), but as its own standalone request rather than a scripted
+    follow-up - the model is expected to get the complete picture right on
+    this phrasing alone, same ground truth and same assertion as the test
+    above.
+    """
+    response, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=_YOSSI_EXPLICIT_ALL_MESSAGE,
+        id_prefix="E2E_BUGFIX014_EXPLICIT_ALL",
+    )
+    _assert_full_picture(response, ai_response, "explicit 'all, no filter' request")
+
+
+# ============================================================================
 # get_invoice_details
 # ============================================================================
 

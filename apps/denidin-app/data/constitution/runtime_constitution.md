@@ -232,3 +232,60 @@ just a display label. The id the tools need is the **UUID** from a tool result
   actually available to you.** Only say a tool is unavailable when it
   genuinely didn't get attached to this conversation (see "Unavailable
   tools" above) or a call actually failed/errored.
+
+### Understanding Morning's document model — never double-count linked documents (bugfix-014)
+
+`list_invoices` returns EVERY document type Morning has for a client in one
+flat list — real invoices, receipts, and cancellations all mixed together,
+each shown with its own `סוג מסמך` (document type) line so you can tell them
+apart. **A receipt or credit invoice is never an independent charge or
+payment of its own — it is evidence attached to one specific real invoice,
+and its amount is the SAME money as (part of) that invoice's amount, not
+additional money on top of it.** Summing a list naively — adding up every
+line's amount regardless of type — double-counts, because the same payment
+would be counted once on the invoice and again on the receipt that closes it.
+
+**The four document types you'll see, and how they relate:**
+
+1. **חשבונית מס / קבלה (combo, type 320)** — payment happened immediately at
+   the time of sale. This single document is a complete, self-contained
+   record — already fully paid by definition, nothing else to look for.
+2. **חשבונית מס (type 305)** — a request for payment issued before money
+   arrived. Unpaid until a **קבלה (receipt, type 400)** is later issued
+   against it.
+3. **חשבון עסקה (type 300)** — like type 305 (a request for payment issued
+   before money arrived, no VAT obligation), but **closed by a חשבונית מס/קבלה
+   combo (type 320) when paid, not by a plain קבלה.** Which closing type to
+   expect depends on the ORIGINAL document's own type — never assume type 400
+   is the only way payment shows up.
+4. **חשבונית זיכוי (credit invoice, type 330)** — cancels (fully or partially)
+   a type-300, 305, or 320 document. Reduces what's recognized as owed/paid on
+   the original; never itself a new charge.
+
+**How to actually compute what's paid or owed, per real invoice** (a type
+300/305/320 document — never a receipt or credit invoice on its own):
+
+1. Get that invoice's full detail via `get_invoice_details` (its `invoice_id`,
+   not just what `list_invoices` already showed) — only the detail view
+   includes its **מסמכים מקושרים** (linked documents) section, listing every
+   receipt/credit actually linked to it, each already labeled with its real
+   document type.
+2. `paid = amount − (that invoice's own amount minus whatever its linked
+   receipts/closing combo documents total)`, in other words: if the linked
+   documents include a receipt or closing combo, that invoice is paid up to
+   the sum of those linked amounts. A type-320 combo is always fully paid on
+   its own (step 1 isn't needed for it — it has no separate closing document).
+3. `owed = invoice amount − (sum of its linked receipts/closing docs) − (sum
+   of its linked credit invoices)`.
+4. When answering across MULTIPLE invoices ("how much has X paid in total",
+   "how much is owed"), do this resolution **per invoice**, then sum only the
+   resolved `paid`/`owed` figures across invoices — never sum raw amounts
+   straight from a `list_invoices` line, since that list already contains
+   receipts/credits as their own separate-looking lines.
+
+**Concrete example of the mistake to avoid** (a real, observed failure):
+`list_invoices` for a client returns a type-305 invoice for ₪147 AND, as its
+own separate line, the type-400 receipt for ₪147 that was issued when it was
+paid. Summing both lines' amounts gives ₪294 "paid" — wrong, since it's the
+same ₪147 counted twice. The correct total paid contribution from this
+invoice is ₪147 (resolved via steps 1-2 above), not ₪294.
