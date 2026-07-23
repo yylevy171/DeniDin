@@ -20,7 +20,18 @@ if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
 fi
 
 COMPOSE_FILE="$REPO_ROOT/docker-compose.$ENV.yml"
+LOCAL_OVERRIDE="$REPO_ROOT/docker-compose.$ENV.local.yml"
 SERVICE="morning-mcp-app-$ENV"
+
+# Optional per-clone override (plain relative paths, no env vars/symlinks -
+# see CLAUDE.md's "Multi-clone lock" section) for dev/prod log volume
+# paths, so it doesn't matter which clone last started dev/prod. Gitignored,
+# created once per clone by hand; may be empty/absent if this clone's own
+# paths are already the canonical ones (e.g. the root clone).
+COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+if [ -f "$LOCAL_OVERRIDE" ]; then
+    COMPOSE_ARGS+=(-f "$LOCAL_OVERRIDE")
+fi
 
 # Declare intent in the single shared active-env file BEFORE starting -
 # watchdog.py in every container (this app and denidin-app, dev and prod)
@@ -35,8 +46,8 @@ SERVICE="morning-mcp-app-$ENV"
 source "$REPO_ROOT/env_lock.sh"
 env_lock_acquire "$ENV"
 
-docker compose -f "$COMPOSE_FILE" up -d "$SERVICE"
-docker compose -f "$COMPOSE_FILE" ps "$SERVICE"
+docker compose "${COMPOSE_ARGS[@]}" up -d "$SERVICE"
+docker compose "${COMPOSE_ARGS[@]}" ps "$SERVICE"
 
 echo ""
 echo "Tunnel status: ./shared/mcp-status-$ENV/morning_mcp_status.$ENV.json (may take a few seconds to show \"running\")"

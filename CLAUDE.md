@@ -72,6 +72,49 @@ Creds.txt` — not committed, created once per clone by hand):
 All clones on the same machine must point at the *same* canonical path, or
 the lock isn't actually shared and the whole mechanism silently no-ops.
 
+**dev/prod data is also a singleton across clones (2026-07-23)**: real
+session/memory data (`apps/denidin-app/data`, `dev_data`) and container logs
+(`apps/denidin-app/logs/{dev,prod}`, `apps/morning-mcp-app/logs/{dev,prod}`)
+must not fragment depending on which clone last started dev/prod.
+`docker-compose.dev.yml`/`docker-compose.prod.yml` themselves are untouched
+(plain relative paths, identical across clones, as always). Instead, every
+clone gets its own gitignored **`docker-compose.dev.local.yml`** /
+**`docker-compose.prod.local.yml`** at repo root (same idea as
+`shared_state.local.json`/`DeniDin Dev/Prod Creds.txt` — plain files, not
+committed, created once per clone by hand), layered in automatically by
+`run_denidin.sh`/`run_morning_mcp.sh`/`stop_denidin.sh`/`stop_morning_mcp.sh`/
+`killall_containers.sh` via a second `-f` flag *if the file exists* (no
+error if it's absent). These are plain Docker Compose override files — no
+environment variables, no symlinks — containing only the volume lines that
+need to differ from the base file, as literal relative paths. The root
+clone's copy is a no-op (`services: {}`) since its own paths in the base
+file are already canonical. Every `coderN` clone's copy should instead
+override the data/log volumes to point one level up at the root clone's
+paths, e.g. (`docker-compose.dev.local.yml`):
+```yaml
+services:
+  denidin-app-dev:
+    volumes:
+      - ../apps/denidin-app/dev_data:/app/dev_data
+      - ../apps/denidin-app/logs/dev:/app/logs
+  morning-mcp-app-dev:
+    volumes:
+      - ../apps/morning-mcp-app/logs/dev:/app/logs
+```
+(and the equivalent `docker-compose.prod.local.yml` for `data`/`logs/prod`).
+Compose merges each service's `volumes:` list by matching *target* mount
+point across files, so only the lines that actually change need to be
+listed — the config-file mount and anything else not mentioned here is
+inherited from the base file untouched (verified via `docker compose
+config`, not assumed). Relative paths in the override resolve against the
+directory containing the *base* compose file being combined with it — i.e.
+each clone's own directory — so `../apps/denidin-app/dev_data` correctly
+means "one level up from this clone" in every clone, not "one level up from
+wherever `docker compose` happened to be invoked." `test_data`/
+`logs/test_logs` are NOT part of this — tests run via host `pytest`, never
+through Docker, so they're already naturally isolated per clone and should
+stay that way.
+
 ## 🚨 AI AGENTS: NEVER START AN ENVIRONMENT OR EDIT CONFIG WITHOUT EXPLICIT APPROVAL 🚨
 
 Two hard rules for any AI coding agent (Claude Code or otherwise) working in this repo, added 2026-07-21 after both were violated in the same session:
@@ -110,9 +153,14 @@ cp config/config.example.json config/config.prod.json   # then fill in real prod
 
 ### Run
 ```bash
+./run_all.sh dev|prod            # (repo root) starts BOTH denidin-app and morning-mcp-app for that env
+./stop_all.sh dev|prod [-force]  # stops both - use this pair by default
+```
+`denidin-app` and `morning-mcp-app` are bundled — neither app's container may run alone (see the "ONE ENVIRONMENT SET AT A TIME" rule above) — so `run_all.sh`/`stop_all.sh` are the default way to start/stop an environment. Only use the per-app scripts below if specifically asked to start/stop just one app:
+```bash
 cd apps/denidin-app
 ./run_denidin.sh dev|prod       # start that environment's container (docker compose wrapper)
-./stop_denidin.sh dev|prod      # stop it (docker compose stop — never affects the other environment)
+./stop_denidin.sh dev|prod [-force]  # stop it (docker compose stop — never affects the other environment)
 ```
 No local/foreground run mode exists anymore — see the environments note above for why (containers-only, per 019-env-separation).
 
