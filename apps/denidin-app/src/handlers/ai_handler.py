@@ -130,6 +130,12 @@ class AIHandler:
         user_roles = getattr(config, 'user_roles', {})
         admin_phones = user_roles.get('admin_phones', [])
         blocked_phones = user_roles.get('blocked_phones', [])
+        logger.debug(
+            "UserManager config: godfather_phone_set=%s, admin_phones=%d, blocked_phones=%d",
+            bool(godfather_phone),
+            len(admin_phones),
+            len(blocked_phones)
+        )
 
         self.user_manager = UserManager(
             godfather_phone=godfather_phone,

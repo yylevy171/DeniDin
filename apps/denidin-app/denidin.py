@@ -4,6 +4,7 @@ DeniDin WhatsApp AI Application - Main Entry Point
 Integrates Green API for WhatsApp messaging with OpenAI ChatGPT.
 Phase 6: US4 - Configuration & Deployment
 """
+import logging
 import os
 import sys
 import signal
@@ -46,6 +47,12 @@ except Exception as e:
     sys.exit(2)  # Exit code 2 = configuration error (CONSTITUTION XVI)
 
 # Setup logging
+# Every other module's logger is created via get_logger(__name__) with no
+# explicit log_level, so it defaults to NOTSET and inherits its effective
+# level from the root logger. The root logger must therefore have a real
+# level set here, or those modules would silently fall back to Python's
+# built-in root default (WARNING) instead of honoring config.log_level.
+logging.getLogger().setLevel(getattr(logging, config.log_level))
 logger = get_logger(__name__, log_level=config.log_level)
 
 

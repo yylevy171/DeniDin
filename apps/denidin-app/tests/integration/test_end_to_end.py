@@ -93,7 +93,7 @@ class TestEndToEndFlow:
             
             print(f"[E2E Test] Step 1/3: Starting bot process...")
             bot_process = subprocess.Popen(
-                ['python3', bot_path],
+                [sys.executable, bot_path],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=os.path.dirname(bot_path)
