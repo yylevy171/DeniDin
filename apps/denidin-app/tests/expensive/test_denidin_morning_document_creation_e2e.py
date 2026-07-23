@@ -135,26 +135,48 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
 @pytest.mark.expensive
 def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     """Godfather reports payment already received and asks for the combo
-    invoice+receipt document in one immediate-payment message - the natural
-    phrasing a real person uses right after a cash sale, not a request for
-    payment later.
-
-    Two-turn (Feature 022): the ASK turn must NOT execute
-    create_combo_document yet.
+    invoice+receipt document - the natural phrasing a real person uses right
+    after a cash sale, not a request for payment later. Deliberately omits
+    the description on the first turn (create_combo_document requires one),
+    so this is genuinely three-turn: ASK (missing description, must not
+    execute) -> DESCRIBE (now complete, triggers the pending approval, must
+    still not execute - Feature 022) -> APPROVE (executes).
     """
     client_name = _unique_client_name()
     amount = _small_random_amount()
+    description = random.choice(_SEED_DESCRIPTIONS)
 
-    (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
+    # Turn 1: no description given - create_combo_document requires one, so
+    # the model is expected to ask for it (constitution's "ask for missing
+    # required information" rule) rather than attempt the call.
+    ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
         text=f"{client_name} שילם {amount} שח. תפיק חשבונית מס קבלה",
-        id_prefix="E2E_COMBO",
+        id_prefix="E2E_COMBO_ASK",
     )
     assert not _calls_for(ask_ai_response, "create_combo_document"), (
-        f"create_combo_document executed on the ASK turn before approval was "
-        f"given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+        f"create_combo_document executed on the ASK turn before the "
+        f"description was even given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
+    # Turn 2: description supplied - now everything's present, so this turn
+    # should trigger the pending approval (not execute yet - Feature 022).
+    description_response, description_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"עבור {description}",
+        id_prefix="E2E_COMBO_DESCRIBE",
+    )
+    assert not _calls_for(description_ai_response, "create_combo_document"), (
+        f"create_combo_document executed before approval was given: "
+        f"{description_ai_response.mcp_calls if description_ai_response else None!r}"
+    )
+
+    # Turn 3: approve.
+    response, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text="כן",
+        id_prefix="E2E_COMBO_APPROVE",
+    )
     create_calls = _calls_for(ai_response, "create_combo_document")
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"

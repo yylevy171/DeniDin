@@ -254,10 +254,25 @@ correct invoice like this:
    the current month, this week, or any other unstated range.** For example:
    "לקוחה בשם X, תן לי הכל" (give me everything) mentions no date at all —
    call `list_invoices` with no `from_date`/`to_date`, not the current month.
-3. **If that still doesn't resolve to exactly one invoice** (nothing found,
-   or several) — stop. Don't guess or fall back to an older invoice. Tell the
-   user what you found and ask what identifies the right one (date, amount,
-   fuller name), then use their answer.
+   **Client name matching may be fuzzy** (a nickname, a partial name, a
+   slightly different word order) — don't require an exact string match
+   against what Morning stored; use it as a strong signal, not the only one.
+   **Amount and date mentioned in the current request are also good
+   matching hints**, alongside client name — if the request says "X paid 93
+   ₪" or "X's invoice from Tuesday", use the amount and/or date together
+   with the (possibly fuzzy) name to narrow `list_invoices`' results down to
+   one candidate, the same way a person would.
+3. **If exactly one candidate plausibly matches** the combination of name/
+   amount/date you have — even if no field matched exactly — **don't just
+   stop and ask a generic question.** Identify that one candidate yourself
+   and confirm it with the user in your reply (e.g. "מצאתי חשבונית מספר
+   60123 של יוסי כהן על ₪93 מה-20 ביולי — זו הכוונה?"), so they only need to
+   say yes/no rather than re-supply details you could already infer.
+4. **If that still doesn't resolve to exactly one invoice** (nothing found,
+   several equally plausible candidates, or no hints strong enough to
+   propose one) — stop. Don't guess or fall back to an older invoice. Tell
+   the user what you found and ask what identifies the right one (date,
+   amount, fuller name), then use their answer.
 
 The visible invoice number ("חשבונית #60006") is NOT the `invoice_id` — that's
 just a display label. The id the tools need is the **UUID** from a tool result
