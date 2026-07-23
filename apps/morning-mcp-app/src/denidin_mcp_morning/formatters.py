@@ -63,7 +63,7 @@ def format_invoice_confirmation(invoice: Invoice) -> str:
 
     lines = [
         f"חשבונית #{invoice.number or invoice.id}",
-        f"לקוח: {invoice.client_name}",
+        f'לקוח: "{invoice.client_name}"',
         f"סכום: {format_currency_ils(display_amount)}",
     ]
     if invoice.type is not None:

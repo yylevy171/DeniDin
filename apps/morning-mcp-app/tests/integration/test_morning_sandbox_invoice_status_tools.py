@@ -105,3 +105,84 @@ def test_update_invoice_status_rejects_unknown_status(morning_client, seeded_inv
 
     with pytest.raises(ValueError):
         update_invoice_status(morning_client, invoice_id=seeded_invoice_id, status="not_a_real_status")
+
+
+@pytest.fixture()
+def seeded_transaction_account_id(morning_client):
+    """Create one real sandbox type-300 ('חשבון עסקה') document directly via
+    client.create_invoice — this app's own create_invoice tool hardcodes
+    type 305 (_build_create_invoice_payload), so this bypasses it purely to
+    seed test data for spec 020 (the 300->320 closing-document branch)."""
+    unique_marker = f"DENIDIN_TX_ACCOUNT_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    today = datetime.now(timezone.utc).date().isoformat()
+    payload = {
+        "type": 300,
+        "date": today,
+        "lang": "he",
+        "vatType": 1,
+        "currency": "ILS",
+        "rounding": False,
+        "signed": False,
+        "description": f"Transaction account test {unique_marker}",
+        "client": {"self": False, "name": f"Test Client {unique_marker}"},
+        "income": [
+            {
+                "catalogNum": "",
+                "description": f"Transaction account test {unique_marker}",
+                "quantity": 1,
+                "price": 120.0,
+                "currency": "ILS",
+                "currencyRate": 1,
+                "vatRate": 0,
+                "vatType": 1,
+            }
+        ],
+    }
+    response = morning_client.create_invoice(payload)
+    invoice_id = str(response.get("id") or response.get("documentId") or "")
+    assert invoice_id, f"Could not determine created type-300 document id from response: {response}"
+    return invoice_id
+
+
+def test_update_invoice_status_to_paid_on_type_300_issues_a_type_320_combo_document(
+    morning_client, seeded_transaction_account_id
+):
+    """Spec 020 / bugfix-014 Flow 4: a type-300 original must be closed by a
+    linked type-320 combo document, not the type-400 receipt used for
+    type-305 — confirms the real payload shape Morning actually accepts,
+    which is otherwise unverified anywhere in this codebase."""
+    from denidin_mcp_morning.tools import get_invoice_details, update_invoice_status
+
+    update_result = update_invoice_status(
+        morning_client, invoice_id=seeded_transaction_account_id, status="paid"
+    )
+    assert "שולם" in update_result
+
+    details = get_invoice_details(morning_client, invoice_id=seeded_transaction_account_id)
+    assert "לא שולם" not in details
+    assert "שולם" in details
+
+    raw = morning_client.get_invoice(seeded_transaction_account_id)
+    linked = raw.get("linkedDocuments") or []
+    assert any(doc.get("type") == 320 for doc in linked), (
+        f"Expected a linked type-320 combo document, got linkedDocuments: {linked!r}"
+    )
+    assert not any(doc.get("type") == 400 for doc in linked), (
+        f"Type-300 original must not be closed by a type-400 receipt: {linked!r}"
+    )
+
+
+def test_update_invoice_status_to_paid_on_type_300_is_idempotent(
+    morning_client, seeded_transaction_account_id
+):
+    """Marking an already-paid type-300 document paid again must not create a
+    second linked closing document (same idempotency guarantee as type-305)."""
+    from denidin_mcp_morning.tools import update_invoice_status
+
+    update_invoice_status(morning_client, invoice_id=seeded_transaction_account_id, status="paid")
+    update_invoice_status(morning_client, invoice_id=seeded_transaction_account_id, status="paid")
+
+    raw = morning_client.get_invoice(seeded_transaction_account_id)
+    linked = raw.get("linkedDocuments") or []
+    combo_docs = [doc for doc in linked if doc.get("type") == 320]
+    assert len(combo_docs) == 1, f"Expected exactly one linked type-320 document, got: {linked!r}"

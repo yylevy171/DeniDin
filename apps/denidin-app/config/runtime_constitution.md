@@ -181,9 +181,20 @@ incorrect payment or cancellation. When a request names an invoice only
 loosely ("the invoice for X", "mark it paid", "cancel it"), find the ONE
 correct invoice like this:
 
-1. **Reuse an id you already have.** If a tool result earlier in THIS
-   conversation already gave you the real `invoice_id` for the exact client
-   named now, use it directly — don't search again.
+1. **Reuse an id AND name you already have.** If a tool result earlier in
+   THIS conversation already showed the real `invoice_id` and/or the exact
+   client name Morning stored (e.g. a `create_invoice`/`list_invoices`/
+   `get_invoice_details` confirmation — client names there are always shown
+   in `"quotes"` precisely so you can spot and copy them as one atomic
+   token) for the client named now, reuse both **verbatim** — copy the exact
+   string, do not retype, paraphrase, shorten, reorder, or drop any word
+   from a name that already appeared in this conversation's own tool output
+   (e.g. never drop a business-entity word like "חברת"/"בע\"מ" that was part
+   of it). A real, billed failure (2026-07-23): a client was created as
+   "חברת אוריון זהב", then a later turn searched for "אוריון זהב" — the
+   model silently stripped a word instead of reusing the stored string
+   verbatim — and the search found nothing, even though the exact name was
+   sitting right there in the earlier tool output.
 2. **Otherwise call `list_invoices`, using only what the CURRENT request
    gives you.** Filter by client name; add a `from_date`/`to_date`/`status`
    only if this request itself states one. Never carry a date or status over
