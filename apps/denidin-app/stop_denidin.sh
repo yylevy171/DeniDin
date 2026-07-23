@@ -28,4 +28,4 @@ env_lock_release "$ENV" "$FORCE"
 COMPOSE_FILE="$REPO_ROOT/docker-compose.$ENV.yml"
 SERVICE="denidin-app-$ENV"
 
-docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env.local" stop "$SERVICE"
+docker compose -f "$COMPOSE_FILE" stop "$SERVICE"

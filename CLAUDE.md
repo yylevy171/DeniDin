@@ -72,33 +72,6 @@ Creds.txt` — not committed, created once per clone by hand):
 All clones on the same machine must point at the *same* canonical path, or
 the lock isn't actually shared and the whole mechanism silently no-ops.
 
-**dev/prod data is also a singleton across clones (2026-07-23)**: real
-session/memory data (`apps/denidin-app/data`, `dev_data`) and container logs
-(`apps/denidin-app/logs/{dev,prod}`, `apps/morning-mcp-app/logs/{dev,prod}`)
-must not fragment depending on which clone last started dev/prod —
-`docker-compose.dev.yml`/`docker-compose.prod.yml` resolve these volume
-paths through `${VAR:-./this-clone's-own-path}` placeholders, overridable
-per clone via a gitignored **`.env.local`** at repo root (same idea as
-`shared_state.local.json` — created once per clone by hand, never
-committed). The root clone's `.env.local` points at its own paths (the
-canonical copy); every `coderN` clone's `.env.local` should instead point
-one level up at the root clone's paths, e.g.:
-```
-DENIDIN_DEV_DATA_DIR=../apps/denidin-app/dev_data
-DENIDIN_DEV_LOGS_DIR=../apps/denidin-app/logs/dev
-MORNING_DEV_LOGS_DIR=../apps/morning-mcp-app/logs/dev
-DENIDIN_PROD_DATA_DIR=../apps/denidin-app/data
-DENIDIN_PROD_LOGS_DIR=../apps/denidin-app/logs/prod
-MORNING_PROD_LOGS_DIR=../apps/morning-mcp-app/logs/prod
-```
-`run_denidin.sh`/`run_morning_mcp.sh`/`stop_*.sh`/`killall_containers.sh`
-all pass `--env-file .env.local` explicitly — a missing `.env.local` in a
-new clone will error loudly on the next `docker compose` call rather than
-silently falling back to a fragmented per-clone copy. `test_data` and
-`logs/test_logs` are NOT part of this — tests run via host `pytest`, never
-through Docker, so they're already naturally isolated per clone and should
-stay that way.
-
 ## 🚨 AI AGENTS: NEVER START AN ENVIRONMENT OR EDIT CONFIG WITHOUT EXPLICIT APPROVAL 🚨
 
 Two hard rules for any AI coding agent (Claude Code or otherwise) working in this repo, added 2026-07-21 after both were violated in the same session:
