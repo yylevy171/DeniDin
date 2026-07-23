@@ -28,13 +28,12 @@ SERVICE="morning-mcp-app-$ENV"
 # you're switching from a different environment, run
 # ./killall_containers.sh FIRST (see CLAUDE.md's "ONE ENVIRONMENT SET AT A
 # TIME" rule) - this script does not do that for you.
-python3 -c "
-import json
-from datetime import datetime, timezone
-with open('$REPO_ROOT/shared/active_env.json', 'w', encoding='utf-8') as f:
-    json.dump({'active_env': '$ENV', 'updated_at': datetime.now(timezone.utc).isoformat()}, f, indent=2)
-    f.write('\n')
-"
+#
+# The lock is shared across all clones (this one, coder1, coder2, ...) via
+# ./shared, and "dev" is additionally locked to whichever clone acquires it
+# - see env_lock.sh.
+source "$REPO_ROOT/env_lock.sh"
+env_lock_acquire "$ENV"
 
 docker compose -f "$COMPOSE_FILE" up -d "$SERVICE"
 docker compose -f "$COMPOSE_FILE" ps "$SERVICE"

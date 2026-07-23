@@ -73,7 +73,11 @@ specs/in-definition/005-mcp-morning-green-receipt/third_party/python-greeninvoic
 apps/denidin-app/.denidin.pid
 
 # docker-compose runtime state shared between denidin-app and morning-mcp-app
+# (a symlink to a canonical per-machine dir as of the multi-clone lock setup,
+# not a real directory in this clone anymore - match both forms)
+/shared
 /shared/
+/shared_state.local.json
 
 # DeniDin credentials (real secrets, never commit)
 /DeniDin Prod Creds.txt
