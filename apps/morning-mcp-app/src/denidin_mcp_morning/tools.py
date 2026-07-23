@@ -99,6 +99,204 @@ def _build_create_invoice_payload(
     return payload
 
 
+def _build_transaction_account_payload(
+    client_name: str,
+    amount: float,
+    description: str,
+    due_date: Optional[str] = None,
+    currency: str = "ILS",
+) -> dict:
+    """Map create_transaction_account inputs onto a real Morning /documents
+    payload for a type 300 ("חשבון עסקה") document.
+
+    Per bugfix-014 Flow 4 (confirmed live): unlike a type 305 tax invoice,
+    this document type carries NO VAT obligation - no vatType/vatRate field
+    anywhere in the payload, not even a "no VAT" value, since the field's
+    mere presence implies a tax document.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    payload = {
+        "type": _TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
+        "date": today,
+        "lang": "he",
+        "currency": currency,
+        "rounding": False,
+        "signed": False,
+        "description": description,
+        "client": {
+            "self": False,
+            "name": client_name,
+        },
+        "income": [
+            {
+                "catalogNum": "",
+                "description": description,
+                "quantity": 1,
+                "price": amount,
+                "currency": currency,
+                "currencyRate": 1,
+            }
+        ],
+        "payment": [
+            {
+                "type": 1,
+                "price": amount,
+                "date": today,
+            }
+        ],
+    }
+    if due_date:
+        payload["dueDate"] = due_date
+    return payload
+
+
+def create_transaction_account(
+    client: MorningClient,
+    client_name: str,
+    amount: float,
+    description: str,
+    due_date: Optional[str] = None,
+) -> str:
+    """Create a non-tax transaction account ("חשבון עסקה", type 300) in
+    Morning and return a Hebrew confirmation message.
+
+    MCP tool: create_transaction_account (feature 021).
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        client_name: Client name (Morning resolves/creates the client record).
+        amount: Amount in NIS - carries no VAT (see _build_transaction_account_payload).
+        description: Service/product description.
+        due_date: Optional due date, ISO format YYYY-MM-DD.
+
+    Returns:
+        A Hebrew confirmation string with the document number and amount.
+    """
+    payload = _build_transaction_account_payload(client_name, amount, description, due_date)
+    response = client.create_invoice(payload)
+
+    doc_id = str(
+        response.get("id")
+        or response.get("documentId")
+        or response.get("document_id")
+        or (response.get("document") or {}).get("id")
+        or ""
+    )
+
+    invoice = Invoice(
+        id=doc_id,
+        number=response.get("number"),
+        client_name=client_name,
+        amount=amount,
+        total_amount=response.get("total", amount),
+        currency=response.get("currency", "ILS"),
+        due_date=due_date,
+        status=response.get("status"),
+        type=_TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
+    )
+    return format_invoice_confirmation(invoice)
+
+
+def _build_combo_document_payload(
+    client_name: str,
+    amount: float,
+    description: str,
+    vat_included: bool = True,
+    currency: str = "ILS",
+) -> dict:
+    """Map create_combo_document inputs onto a real Morning /documents
+    payload for a type 320 ("חשבונית מס/קבלה") combo invoice+receipt.
+
+    Per bugfix-014 Flow 1: this document is issued when payment is immediate
+    (cash/card/instant transfer at time of sale) - self-contained, always
+    already "paid", no due date (unlike a type 305 tax invoice, which is a
+    request for later payment).
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    vat_type = 1 if vat_included else 0
+
+    return {
+        "type": _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
+        "date": today,
+        "lang": "he",
+        "vatType": vat_type,
+        "currency": currency,
+        "rounding": False,
+        "signed": False,
+        "description": description,
+        "client": {
+            "self": False,
+            "name": client_name,
+        },
+        "income": [
+            {
+                "catalogNum": "",
+                "description": description,
+                "quantity": 1,
+                "price": amount,
+                "currency": currency,
+                "currencyRate": 1,
+                "vatRate": 0,
+                "vatType": vat_type,
+            }
+        ],
+        "payment": [
+            {
+                "type": 1,
+                "price": amount,
+                "date": today,
+            }
+        ],
+    }
+
+
+def create_combo_document(
+    client: MorningClient,
+    client_name: str,
+    amount: float,
+    description: str,
+    vat_included: bool = True,
+) -> str:
+    """Create an immediate-payment combo invoice+receipt ("חשבונית מס/קבלה",
+    type 320) in Morning and return a Hebrew confirmation message.
+
+    MCP tool: create_combo_document (feature 021).
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        client_name: Client name (Morning resolves/creates the client record).
+        amount: Amount in NIS, already received.
+        description: Service/product description.
+        vat_included: Whether VAT is included in the amount (default True).
+
+    Returns:
+        A Hebrew confirmation string with the document number and amount.
+    """
+    payload = _build_combo_document_payload(client_name, amount, description, vat_included)
+    response = client.create_invoice(payload)
+
+    doc_id = str(
+        response.get("id")
+        or response.get("documentId")
+        or response.get("document_id")
+        or (response.get("document") or {}).get("id")
+        or ""
+    )
+
+    invoice = Invoice(
+        id=doc_id,
+        number=response.get("number"),
+        client_name=client_name,
+        amount=amount,
+        total_amount=response.get("total", amount),
+        currency=response.get("currency", "ILS"),
+        status=response.get("status"),
+        type=_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
+    )
+    return format_invoice_confirmation(invoice)
+
+
 def create_invoice(
     client: MorningClient,
     client_name: str,
@@ -262,14 +460,22 @@ def get_invoice_details(client: MorningClient, invoice_id: str) -> str:
     return format_invoice_details(invoice)
 
 
-def _build_cancellation_payload(original: dict) -> dict:
-    """Build a Morning credit-invoice (type 330) payload that cancels `original`.
+def _build_cancellation_payload(
+    original: dict,
+    amount: Optional[float] = None,
+    description: Optional[str] = None,
+) -> dict:
+    """Build a Morning credit-invoice (type 330) payload that cancels/credits
+    `original`, either in full (defaults) or partially (`amount` override).
 
     Israeli law does not allow deleting/voiding an issued tax invoice — the
     correct mechanism (confirmed live via GET /documents/types: 330 =
     "חשבונית זיכוי") is to issue a linked credit invoice that offsets it.
     Mirrors the original's client and line items rather than guessing, since
-    this produces a real financial document.
+    this produces a real financial document. `amount`/`description` let a
+    caller override the mirrored defaults (feature 021: standalone,
+    partial credit notes are a real Morning capability, not just a full
+    cancellation side effect of update_invoice_status).
     """
     today = datetime.now(timezone.utc).date().isoformat()
     client_info = original.get("client") or {}
@@ -281,6 +487,8 @@ def _build_cancellation_payload(original: dict) -> dict:
         total_amount = sum(
             float(item.get("price", 0)) * float(item.get("quantity", 1)) for item in income_items
         )
+    credit_amount = amount if amount is not None else total_amount
+    credit_description = description or f"ביטול חשבונית מספר {original_number or original_id}"
 
     return {
         "type": _CREDIT_INVOICE_DOCUMENT_TYPE,
@@ -290,26 +498,25 @@ def _build_cancellation_payload(original: dict) -> dict:
         "currency": original.get("currency", "ILS"),
         "rounding": False,
         "signed": False,
-        "description": f"ביטול חשבונית מספר {original_number or original_id}",
+        "description": credit_description,
         "linkedDocumentIds": [original_id] if original_id else [],
         "client": {
             "self": False,
             "name": client_info.get("name"),
         },
-        "income": income_items
-        or [
+        "income": [
             {
                 "catalogNum": "",
-                "description": f"ביטול חשבונית מספר {original_number or original_id}",
+                "description": credit_description,
                 "quantity": 1,
-                "price": total_amount,
+                "price": credit_amount,
                 "currency": original.get("currency", "ILS"),
                 "currencyRate": 1,
                 "vatRate": 0,
                 "vatType": original.get("vatType", 1),
             }
         ],
-        "payment": [{"type": 1, "price": total_amount, "date": today}],
+        "payment": [{"type": 1, "price": credit_amount, "date": today}],
     }
 
 
@@ -332,11 +539,51 @@ def _cancel_invoice(client: MorningClient, invoice_id: str) -> str:
     )
 
 
+def create_credit_note(
+    client: MorningClient,
+    original_invoice_id: str,
+    amount: Optional[float] = None,
+    description: Optional[str] = None,
+) -> str:
+    """Create a standalone credit note ("חשבונית זיכוי", type 330) linked to
+    an existing document, and return a Hebrew confirmation.
+
+    MCP tool: create_credit_note (feature 021). Unlike _cancel_invoice (only
+    reachable internally via update_invoice_status(status="cancelled") for a
+    full cancellation), this is directly user-invocable and supports partial
+    credit notes via `amount`.
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        original_invoice_id: Morning document id of the invoice being credited.
+        amount: Optional override — defaults to the original's full total.
+        description: Optional override — defaults to a generated cancellation note.
+
+    Returns:
+        A Hebrew confirmation string with the new credit note's number.
+
+    Raises:
+        Any exception raised by `client.get_invoice` if `original_invoice_id`
+        does not resolve to a real document (propagated, not swallowed).
+    """
+    original = client.get_invoice(original_invoice_id)
+    payload = _build_cancellation_payload(original, amount=amount, description=description)
+    credit_response = client.create_invoice(payload)
+
+    original_number = original.get("number", original_invoice_id)
+    credit_number = credit_response.get("number", credit_response.get("id", ""))
+
+    return (
+        f"הופקה חשבונית זיכוי מספר {credit_number} עבור חשבונית מספר {original_number}."
+    )
+
+
 _CLOSED_STATUS_CODES = {1, 2}  # closed (via payment) / manually closed — see models._MORNING_STATUS_CODES
 
 
-def _build_payment_receipt_payload(original: dict) -> dict:
-    """Build a Morning receipt (type 400) payload that marks `original` paid.
+def _build_payment_receipt_payload(original: dict, amount: Optional[float] = None) -> dict:
+    """Build a Morning receipt (type 400) payload that marks `original` paid
+    (fully by default, or partially via `amount`).
 
     Real mechanism (confirmed live): POST /documents/{id}/close returns 400
     (errorCode 3000) for tax invoices — close/open only apply to documents
@@ -345,6 +592,8 @@ def _build_payment_receipt_payload(original: dict) -> dict:
     wasn't manually closed"). A tax invoice is instead marked paid by issuing
     a linked Receipt (type 400) referencing it via linkedDocumentIds; Morning
     then flips the original's status automatically (verified live: None -> 1).
+    `amount` lets a caller issue a partial-payment receipt (feature 021:
+    standalone create_receipt) instead of always closing the full amount.
     """
     today = datetime.now(timezone.utc).date().isoformat()
     client_info = original.get("client") or {}
@@ -353,6 +602,7 @@ def _build_payment_receipt_payload(original: dict) -> dict:
     total_amount = original.get("total")
     if total_amount is None:
         total_amount = original.get("amount")
+    receipt_amount = amount if amount is not None else total_amount
 
     return {
         "type": 400,
@@ -364,7 +614,7 @@ def _build_payment_receipt_payload(original: dict) -> dict:
         "description": f"תשלום עבור חשבונית מספר {original_number or original_id}",
         "linkedDocumentIds": [original_id] if original_id else [],
         "client": {"self": False, "name": client_info.get("name")},
-        "payment": [{"type": 1, "price": total_amount, "date": today}],
+        "payment": [{"type": 1, "price": receipt_amount, "date": today}],
     }
 
 
@@ -380,6 +630,45 @@ def _mark_invoice_paid(client: MorningClient, invoice_id: str) -> str:
 
     updated = client.get_invoice(invoice_id)
     return format_invoice_confirmation(Invoice.model_validate(updated))
+
+
+def create_receipt(
+    client: MorningClient,
+    original_invoice_id: str,
+    amount: Optional[float] = None,
+    payment_date: Optional[str] = None,
+) -> str:
+    """Create a standalone receipt ("קבלה", type 400) linked to an existing
+    document, and return a Hebrew confirmation.
+
+    MCP tool: create_receipt (feature 021). Unlike _mark_invoice_paid (only
+    reachable internally via update_invoice_status(status="paid"), which is
+    idempotent and always closes the FULL amount), this is directly
+    user-invocable and supports partial-amount receipts.
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        original_invoice_id: Morning document id of the invoice being paid.
+        amount: Optional override — defaults to the original's full total.
+        payment_date: Currently unused — payload uses today's date; reserved
+            for backdating support (matches update_invoice_status's own
+            reserved parameter).
+
+    Returns:
+        A Hebrew confirmation string with the new receipt's number.
+
+    Raises:
+        Any exception raised by `client.get_invoice` if `original_invoice_id`
+        does not resolve to a real document (propagated, not swallowed).
+    """
+    original = client.get_invoice(original_invoice_id)
+    payload = _build_payment_receipt_payload(original, amount=amount)
+    receipt_response = client.create_invoice(payload)
+
+    original_number = original.get("number", original_invoice_id)
+    receipt_number = receipt_response.get("number", receipt_response.get("id", ""))
+
+    return f"הופקה קבלה מספר {receipt_number} עבור חשבונית מספר {original_number}."
 
 
 def _mark_invoice_unpaid(client: MorningClient, invoice_id: str) -> str:
