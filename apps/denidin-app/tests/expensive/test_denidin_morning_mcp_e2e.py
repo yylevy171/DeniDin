@@ -1125,39 +1125,27 @@ _RECEIPT_DOCUMENT_LABEL_HE = "קבלה"  # type 400 - deliberately NOT a substri
 
 def _seed_transaction_account_invoice(client_name: str, amount: int, description: str) -> None:
     """Seed a fresh "חשבון עסקה" (type-300) document via a real, two-turn
-    approved WhatsApp exchange (create_invoice requires approval - Feature
-    022). Known current limitation (2026-07-23): create_invoice still
-    hardcodes type 305 regardless of phrasing (creating a type-300 document
-    by request is spec 021's scope, not yet implemented) - tests using this
-    helper are written now assuming that support lands imminently, using the
-    real Hebrew terminology a user would say ("חשבון עסקה" / "חשבונית עסקה" /
-    "חשבון עיסקה" are all real variants). Until spec 021 ships, this will
-    actually seed a type-305 document, and callers' type-320 assertions are
-    expected to fail - that failure is the correct signal that 300-creation
-    isn't wired up yet, not a regression in spec 020's own 300->320
-    closing-document fix (already verified directly against the Morning
-    sandbox in apps/morning-mcp-app/tests/integration/test_morning_sandbox_invoice_status_tools.py).
+    approved WhatsApp exchange (create_transaction_account requires approval
+    - Feature 022). Spec 021 added create_transaction_account as its own
+    dedicated MCP tool (not a document_type param on create_invoice, which
+    stays permanently locked to type 305) - the model is expected to route
+    this phrasing to that tool, using the real Hebrew terminology a user
+    would say ("חשבון עסקה" / "חשבונית עסקה" / "חשבון עיסקה" are all real
+    variants).
     """
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפתח חשבון עסקה עבור {client_name} על סך {amount} שח עבור {description}",
         id_prefix="E2E_020_SEED_300",
     )
-    create_calls = _calls_for(ai_response, "create_invoice")
+    create_calls = _calls_for(ai_response, "create_transaction_account")
     assert create_calls and create_calls[0]["error"] is None, (
-        f"Seed create_invoice (חשבון עסקה) failed or was not called: {ai_response.mcp_calls!r}"
+        f"Seed create_transaction_account (חשבון עסקה) failed or was not called: {ai_response.mcp_calls!r}"
     )
     logger.info(f"Seeded fresh חשבון עסקה for client {client_name!r}")
 
 
 @pytest.mark.expensive
-@pytest.mark.xfail(
-    reason="Blocked on spec 021: create_invoice can't create type-300 documents yet, "
-    "so the seed step actually creates a type-305 document and the type-320 "
-    "assertion fails. Remove this mark once spec 021 ships create_invoice "
-    "support for type-300 (see _seed_transaction_account_invoice's docstring).",
-    strict=False,
-)
 def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_app):
     """Spec 020 / bugfix-014 Flow 4: a "חשבון עסקה" (type-300 transaction
     account document) must be closed by a linked type-320 combo document when

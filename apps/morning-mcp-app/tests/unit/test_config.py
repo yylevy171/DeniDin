@@ -91,10 +91,29 @@ def test_load_config_never_reads_environment_variables(monkeypatch):
     assert config.api_key_id != "SHOULD_NOT_BE_USED"
 
 
-def test_load_config_defaults_mcp_auth_token_to_none():
+def test_load_config_defaults_mcp_auth_token_to_none(tmp_path):
     """No auth_token configured -> the MCP server's bearer-check is a no-op
-    (appropriate for pure local/test use; see server.py's BearerTokenMiddleware)."""
-    config = load_config(TEST_CONFIG_PATH)
+    (appropriate for pure local/test use; see server.py's BearerTokenMiddleware).
+
+    Uses an isolated minimal config, not TEST_CONFIG_PATH — see the
+    ngrok-fields-default test above for why (config.test.json now
+    intentionally carries a real mcp_auth_token, needed by the E2E/
+    approval-gate tests, so it no longer represents the "nothing
+    configured" case this test checks).
+    """
+    minimal_config = tmp_path / "config.json"
+    minimal_config.write_text(
+        json.dumps(
+            {
+                "api_key_id": "x",
+                "api_key_secret": "y",
+                "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(minimal_config)
 
     assert config.mcp_auth_token is None
 

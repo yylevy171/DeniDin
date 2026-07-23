@@ -164,6 +164,66 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         )
 
     @mcp.tool()
+    def create_transaction_account(
+        client_name: str,
+        amount: float,
+        description: str,
+        due_date: Optional[str] = None,
+    ) -> str:
+        """Create a non-tax transaction account ("חשבון עסקה", document type 300) -
+        like an invoice, but carries no VAT. Use when the user explicitly asks for
+        a חשבון עסקה rather than an ordinary tax invoice."""
+        return _call_with_error_boundary(
+            tools.create_transaction_account, morning_client, client_name, amount, description, due_date
+        )
+
+    @mcp.tool()
+    def create_combo_document(
+        client_name: str,
+        amount: float,
+        description: str,
+        vat_included: bool = True,
+    ) -> str:
+        """Create a combo tax invoice + receipt ("חשבונית מס/קבלה", document type 320)
+        for a sale where payment was already received immediately (cash/card/instant
+        transfer at time of sale) - a single self-contained, already-paid document,
+        never a request for later payment."""
+        return _call_with_error_boundary(
+            tools.create_combo_document, morning_client, client_name, amount, description, vat_included
+        )
+
+    @mcp.tool()
+    def create_credit_note(
+        original_invoice_id: str,
+        amount: Optional[float] = None,
+        description: Optional[str] = None,
+    ) -> str:
+        """Create a standalone credit note ("חשבונית זיכוי", document type 330)
+        linked to an existing document, identified by original_invoice_id (the
+        Morning document id of the invoice being credited - resolve this first,
+        e.g. via list_invoices, if the user only gave a client name or invoice
+        number). Defaults to a full credit against the original's total; pass
+        amount for a partial credit note."""
+        return _call_with_error_boundary(
+            tools.create_credit_note, morning_client, original_invoice_id, amount, description
+        )
+
+    @mcp.tool()
+    def create_receipt(
+        original_invoice_id: str,
+        amount: Optional[float] = None,
+        payment_date: Optional[str] = None,
+    ) -> str:
+        """Create a standalone receipt ("קבלה", document type 400) linked to an
+        existing document, identified by original_invoice_id (the Morning document
+        id of the invoice being paid - resolve this first, e.g. via list_invoices,
+        if the user only gave a client name or invoice number). Defaults to the
+        original's full total; pass amount for a partial-payment receipt."""
+        return _call_with_error_boundary(
+            tools.create_receipt, morning_client, original_invoice_id, amount, payment_date
+        )
+
+    @mcp.tool()
     def list_invoices(
         status: Optional[str] = None,
         from_date: Optional[str] = None,

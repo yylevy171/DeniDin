@@ -36,7 +36,17 @@ MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # branch creates nothing - OpenAI's require_approval filters by tool name
 # only, not argument value, and "unpaid" is a pure idempotent no-op/error
 # with no real reversal mechanism, so gating it too has no real downside.
-DOCUMENT_CREATING_MCP_TOOLS = ("create_invoice", "update_invoice_status")
+# Feature 021's create_transaction_account/create_combo_document/
+# create_credit_note/create_receipt all create a real Morning document too,
+# same as create_invoice - gated for the same reason.
+DOCUMENT_CREATING_MCP_TOOLS = (
+    "create_invoice",
+    "create_transaction_account",
+    "create_combo_document",
+    "create_credit_note",
+    "create_receipt",
+    "update_invoice_status",
+)
 
 # The remaining Morning MCP tools (reads + add_client) - explicitly listed as
 # "never" require approval. Confirmed empirically (2026-07-23, real E2E run)
