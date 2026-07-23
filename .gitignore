@@ -79,6 +79,11 @@ apps/denidin-app/.denidin.pid
 /shared/
 /shared_state.local.json
 
+# Per-clone dev/prod data+log volume path override (plain relative paths,
+# no env vars, no symlinks) - see CLAUDE.md's "Multi-clone lock" section.
+/docker-compose.dev.local.yml
+/docker-compose.prod.local.yml
+
 # DeniDin credentials (real secrets, never commit)
 /DeniDin Prod Creds.txt
 DeniDin Prod Creds*.txt

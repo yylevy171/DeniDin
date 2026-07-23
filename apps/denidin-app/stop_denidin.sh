@@ -26,6 +26,12 @@ source "$REPO_ROOT/env_lock.sh"
 env_lock_release "$ENV" "$FORCE"
 
 COMPOSE_FILE="$REPO_ROOT/docker-compose.$ENV.yml"
+LOCAL_OVERRIDE="$REPO_ROOT/docker-compose.$ENV.local.yml"
 SERVICE="denidin-app-$ENV"
 
-docker compose -f "$COMPOSE_FILE" stop "$SERVICE"
+COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+if [ -f "$LOCAL_OVERRIDE" ]; then
+    COMPOSE_ARGS+=(-f "$LOCAL_OVERRIDE")
+fi
+
+docker compose "${COMPOSE_ARGS[@]}" stop "$SERVICE"
