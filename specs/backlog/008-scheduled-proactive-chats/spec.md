@@ -1,7 +1,7 @@
 # Feature Spec: Scheduled Proactive Chat Initiations
 
 **Feature ID**: 008-scheduled-proactive-chats  
-**Priority**: P1 (High)  
+**Priority**: P2 (Medium)  
 **Status**: Planning  
 **Created**: January 17, 2026
 
