@@ -2,7 +2,7 @@
 
 **Feature ID**: 021-flexible-document-creation
 **Priority**: P1
-**Status**: Ready for Implementation
+**Status**: Done - Merged to master (PR #137)
 **Created**: July 22, 2026
 
 ---
