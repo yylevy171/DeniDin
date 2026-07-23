@@ -7,7 +7,7 @@ bugfix-016-logger-level-defaults-ignore-config
 `src/utils/logger.py`'s `get_logger()`/`setup_logger()` hardcode a per-logger `log_level` default of `'INFO'` — every module that calls `get_logger(__name__)` without an explicit level (i.e. every module except `denidin.py` itself) is permanently pinned to `INFO`, both in production (ignoring `config.json`'s `log_level`) and in tests (ignoring `conftest.py`'s attempt to run the whole suite at `DEBUG`)
 
 ## Status
-Open - root cause confirmed, fix not yet applied
+Done - Merged to master (PR #134)
 
 ## Date Opened
 2026-07-23
