@@ -4,6 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Personality dispatch
 Read and follow @.claude/personalities/<basename of current working directory>.md
+The original/top-level clone (directory name `DeniDin`) maps to `root` instead of `DeniDin`.
 If no matching file exists, use @.claude/personalities/default.md
 
 ## 🚨 ONE ENVIRONMENT SET AT A TIME — NO EXCEPTIONS 🚨
@@ -49,6 +50,27 @@ Do not leave a `-prod` container "just running" for convenience,
 verification, or because nothing seems to be using it right now — and don't
 rely on memory/habit to track what's live; `killall_containers.sh` + the
 watchdogs exist specifically so a slip here fails loudly instead of silently.
+
+**Multi-clone lock (2026-07-23)**: this repo may be checked out in more than
+one place at once — this original/`root` clone plus sibling dev clones
+(`coder1`, `coder2`, ...), each with its own [Personality dispatch](#personality-dispatch)
+identity. `env_lock.sh` (repo root, sourced by `run_denidin.sh`,
+`run_morning_mcp.sh`, `stop_denidin.sh`, `stop_morning_mcp.sh`, and
+`killall_containers.sh`) extends the one-environment-at-a-time rule across
+all of them: `dev` is additionally locked to whichever clone's personality
+(by name — e.g. `Ruth`, `Avi`, `Bina`) acquired it, until that same
+personality releases it via `stop_*.sh dev`; `prod` is never owner-locked.
+A non-owner can override with `-force` on any `stop_*.sh`/`killall_containers.sh`
+call. This only works because `./shared` is a symlink (not a real directory)
+to one canonical path shared by every clone on the machine — **every clone,
+including any new one you set up, needs its own gitignored
+`shared_state.local.json` at repo root** (same idea as `DeniDin Dev/Prod
+Creds.txt` — not committed, created once per clone by hand):
+```json
+{"shared_state_dir": "/absolute/path/to/one/canonical/shared-state/dir"}
+```
+All clones on the same machine must point at the *same* canonical path, or
+the lock isn't actually shared and the whole mechanism silently no-ops.
 
 ## 🚨 AI AGENTS: NEVER START AN ENVIRONMENT OR EDIT CONFIG WITHOUT EXPLICIT APPROVAL 🚨
 

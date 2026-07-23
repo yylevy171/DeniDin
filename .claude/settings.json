@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "name=$(basename \"$PWD\"); f=\".claude/personalities/$name.md\"; [ -f \"$f\" ] || f=\".claude/personalities/default.md\"; if [ -f \"$f\" ]; then jq -Rs --arg src \"$f\" '{hookSpecificOutput:{hookEventName:\"SessionStart\",additionalContext:(\"Personality file (\\($src)):\\n\\n\" + .)}}' < \"$f\"; fi"
+            "command": "name=$(basename \"$PWD\"); [ \"$name\" = \"DeniDin\" ] && name=\"root\"; f=\".claude/personalities/$name.md\"; [ -f \"$f\" ] || f=\".claude/personalities/default.md\"; if [ -f \"$f\" ]; then jq -Rs --arg src \"$f\" '{hookSpecificOutput:{hookEventName:\"SessionStart\",additionalContext:(\"Personality file (\\($src)):\\n\\n\" + .)}}' < \"$f\"; fi"
           },
           {
             "type": "command",
