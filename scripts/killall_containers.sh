@@ -13,7 +13,7 @@
 # app) - this script is what actually removes those now-app-less zombie
 # containers, same as any other cleanup.
 #
-# Usage: ./killall_containers.sh [-force]
+# Usage: ./scripts/killall_containers.sh [-force]
 #
 # If "dev" is currently locked to a DIFFERENT clone (coder) than the one
 # running this script, this refuses to tear anything down unless -force is
@@ -22,11 +22,11 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
-REPO_ROOT="$SCRIPT_DIR"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
 
 FORCE="$1"
-source "$REPO_ROOT/env_lock.sh"
+source "$SCRIPT_DIR/env_lock.sh"
 
 ME="$(env_lock_identity)"
 env_lock_ensure_shared_symlink
@@ -38,10 +38,10 @@ if [ "$LOCK_ACTIVE_ENV" = "dev" ] && [ "$LOCK_OWNER" != "null" ] && [ "$LOCK_OWN
     exit 1
 fi
 
-DEV_ARGS=(-f docker-compose.dev.yml)
-[ -f docker-compose.dev.local.yml ] && DEV_ARGS+=(-f docker-compose.dev.local.yml)
-PROD_ARGS=(-f docker-compose.prod.yml)
-[ -f docker-compose.prod.local.yml ] && PROD_ARGS+=(-f docker-compose.prod.local.yml)
+DEV_ARGS=(--project-directory "$REPO_ROOT" -f docker/docker-compose.dev.yml)
+[ -f docker/docker-compose.dev.local.yml ] && DEV_ARGS+=(-f docker/docker-compose.dev.local.yml)
+PROD_ARGS=(--project-directory "$REPO_ROOT" -f docker/docker-compose.prod.yml)
+[ -f docker/docker-compose.prod.local.yml ] && PROD_ARGS+=(-f docker/docker-compose.prod.local.yml)
 
 echo "Stopping and removing ALL dev containers..."
 docker compose "${DEV_ARGS[@]}" down --remove-orphans || true

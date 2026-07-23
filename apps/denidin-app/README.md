@@ -166,7 +166,7 @@ This stops only that environment's container (`docker compose stop`) — the oth
 ### Docker (what the scripts above wrap)
 
 ```bash
-docker compose -f ../../docker-compose.dev.yml up -d denidin-app-dev    # or docker-compose.prod.yml / denidin-app-prod
+docker compose --project-directory ../.. -f ../../docker/docker-compose.dev.yml up -d denidin-app-dev    # or docker-compose.prod.yml / denidin-app-prod
 ```
 
 ## Architecture

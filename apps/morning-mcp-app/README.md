@@ -94,7 +94,7 @@ publicly.
 ## Docker (what the scripts above wrap)
 
 ```bash
-docker compose -f ../../docker-compose.dev.yml up -d morning-mcp-app-dev     # or docker-compose.prod.yml / morning-mcp-app-prod
+docker compose --project-directory ../.. -f ../../docker/docker-compose.dev.yml up -d morning-mcp-app-dev     # or docker-compose.prod.yml / morning-mcp-app-prod
 ```
 Runs the MCP server (same feature-flag gate as above — set
 `feature_flags.enable_mcp_server: true` in the mounted `config/config.<env>.json` or
