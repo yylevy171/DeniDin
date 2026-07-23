@@ -1,3 +1,7 @@
+# Git worktrees (personality-dispatch coders), nested under this clone
+/coder1/
+/coder2/
+
 # Process ID file
 denidin.pid
 
@@ -69,7 +73,16 @@ specs/in-definition/005-mcp-morning-green-receipt/third_party/python-greeninvoic
 apps/denidin-app/.denidin.pid
 
 # docker-compose runtime state shared between denidin-app and morning-mcp-app
+# (a symlink to a canonical per-machine dir as of the multi-clone lock setup,
+# not a real directory in this clone anymore - match both forms)
+/shared
 /shared/
+/shared_state.local.json
+
+# Per-clone dev/prod data+log volume path override (plain relative paths,
+# no env vars, no symlinks) - see CLAUDE.md's "Multi-clone lock" section.
+/docker-compose.dev.local.yml
+/docker-compose.prod.local.yml
 
 # DeniDin credentials (real secrets, never commit)
 /DeniDin Prod Creds.txt

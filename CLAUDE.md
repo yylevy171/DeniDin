@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Personality dispatch
+Read and follow @.claude/personalities/<basename of current working directory>.md
+The original/top-level clone (directory name `DeniDin`) maps to `root` instead of `DeniDin`.
+If no matching file exists, use @.claude/personalities/default.md
+
 ## 🚨 ONE ENVIRONMENT SET AT A TIME — NO EXCEPTIONS 🚨
 
 **At most ONE full set of containers may run at any given moment: either the
@@ -46,6 +51,70 @@ verification, or because nothing seems to be using it right now — and don't
 rely on memory/habit to track what's live; `killall_containers.sh` + the
 watchdogs exist specifically so a slip here fails loudly instead of silently.
 
+**Multi-clone lock (2026-07-23)**: this repo may be checked out in more than
+one place at once — this original/`root` clone plus sibling dev clones
+(`coder1`, `coder2`, ...), each with its own [Personality dispatch](#personality-dispatch)
+identity. `env_lock.sh` (repo root, sourced by `run_denidin.sh`,
+`run_morning_mcp.sh`, `stop_denidin.sh`, `stop_morning_mcp.sh`, and
+`killall_containers.sh`) extends the one-environment-at-a-time rule across
+all of them: `dev` is additionally locked to whichever clone's personality
+(by name — e.g. `Ruth`, `Avi`, `Bina`) acquired it, until that same
+personality releases it via `stop_*.sh dev`; `prod` is never owner-locked.
+A non-owner can override with `-force` on any `stop_*.sh`/`killall_containers.sh`
+call. This only works because `./shared` is a symlink (not a real directory)
+to one canonical path shared by every clone on the machine — **every clone,
+including any new one you set up, needs its own gitignored
+`shared_state.local.json` at repo root** (same idea as `DeniDin Dev/Prod
+Creds.txt` — not committed, created once per clone by hand):
+```json
+{"shared_state_dir": "/absolute/path/to/one/canonical/shared-state/dir"}
+```
+All clones on the same machine must point at the *same* canonical path, or
+the lock isn't actually shared and the whole mechanism silently no-ops.
+
+**dev/prod data is also a singleton across clones (2026-07-23)**: real
+session/memory data (`apps/denidin-app/data`, `dev_data`) and container logs
+(`apps/denidin-app/logs/{dev,prod}`, `apps/morning-mcp-app/logs/{dev,prod}`)
+must not fragment depending on which clone last started dev/prod.
+`docker-compose.dev.yml`/`docker-compose.prod.yml` themselves are untouched
+(plain relative paths, identical across clones, as always). Instead, every
+clone gets its own gitignored **`docker-compose.dev.local.yml`** /
+**`docker-compose.prod.local.yml`** at repo root (same idea as
+`shared_state.local.json`/`DeniDin Dev/Prod Creds.txt` — plain files, not
+committed, created once per clone by hand), layered in automatically by
+`run_denidin.sh`/`run_morning_mcp.sh`/`stop_denidin.sh`/`stop_morning_mcp.sh`/
+`killall_containers.sh` via a second `-f` flag *if the file exists* (no
+error if it's absent). These are plain Docker Compose override files — no
+environment variables, no symlinks — containing only the volume lines that
+need to differ from the base file, as literal relative paths. The root
+clone's copy is a no-op (`services: {}`) since its own paths in the base
+file are already canonical. Every `coderN` clone's copy should instead
+override the data/log volumes to point one level up at the root clone's
+paths, e.g. (`docker-compose.dev.local.yml`):
+```yaml
+services:
+  denidin-app-dev:
+    volumes:
+      - ../apps/denidin-app/dev_data:/app/dev_data
+      - ../apps/denidin-app/logs/dev:/app/logs
+  morning-mcp-app-dev:
+    volumes:
+      - ../apps/morning-mcp-app/logs/dev:/app/logs
+```
+(and the equivalent `docker-compose.prod.local.yml` for `data`/`logs/prod`).
+Compose merges each service's `volumes:` list by matching *target* mount
+point across files, so only the lines that actually change need to be
+listed — the config-file mount and anything else not mentioned here is
+inherited from the base file untouched (verified via `docker compose
+config`, not assumed). Relative paths in the override resolve against the
+directory containing the *base* compose file being combined with it — i.e.
+each clone's own directory — so `../apps/denidin-app/dev_data` correctly
+means "one level up from this clone" in every clone, not "one level up from
+wherever `docker compose` happened to be invoked." `test_data`/
+`logs/test_logs` are NOT part of this — tests run via host `pytest`, never
+through Docker, so they're already naturally isolated per clone and should
+stay that way.
+
 ## 🚨 AI AGENTS: NEVER START AN ENVIRONMENT OR EDIT CONFIG WITHOUT EXPLICIT APPROVAL 🚨
 
 Two hard rules for any AI coding agent (Claude Code or otherwise) working in this repo, added 2026-07-21 after both were violated in the same session:
@@ -84,9 +153,14 @@ cp config/config.example.json config/config.prod.json   # then fill in real prod
 
 ### Run
 ```bash
+./run_all.sh dev|prod            # (repo root) starts BOTH denidin-app and morning-mcp-app for that env
+./stop_all.sh dev|prod [-force]  # stops both - use this pair by default
+```
+`denidin-app` and `morning-mcp-app` are bundled — neither app's container may run alone (see the "ONE ENVIRONMENT SET AT A TIME" rule above) — so `run_all.sh`/`stop_all.sh` are the default way to start/stop an environment. Only use the per-app scripts below if specifically asked to start/stop just one app:
+```bash
 cd apps/denidin-app
 ./run_denidin.sh dev|prod       # start that environment's container (docker compose wrapper)
-./stop_denidin.sh dev|prod      # stop it (docker compose stop — never affects the other environment)
+./stop_denidin.sh dev|prod [-force]  # stop it (docker compose stop — never affects the other environment)
 ```
 No local/foreground run mode exists anymore — see the environments note above for why (containers-only, per 019-env-separation).
 
@@ -176,7 +250,7 @@ Non-text messages (`imageMessage`, `documentMessage`, `videoMessage`, `audioMess
 ### Key components (`apps/denidin-app/src/`)
 - **`denidin.py`** (repo root of the app, not under `src/`) — entry point; owns the global `bot` (GreenAPIBot) and `denidin_app` (a `DeniDin` instance holding `ai_handler`, `config`, `whatsapp_handler`, `cleanup_thread`); registers all `@bot.router.message(...)` handlers; `initialize_app(config_dict)` is the shared bootstrap used by both `__main__` and integration tests (constructs `AIHandler` → `WhatsAppHandler` → `MediaHandler`, wires memory startup recovery + cleanup thread if `enable_memory_system`).
 - **`handlers/whatsapp_handler.py`** — Green API integration, message-type validation, group-mention detection, response sending/truncation.
-- **`handlers/ai_handler.py`** — OpenAI integration via the Responses API, system-prompt construction, memory recall integration, session-to-long-term-memory transfer, RBAC-aware token limits, current-date injection into `instructions`, and Morning MCP remote-tool attachment for godfather/admin roles (see "Morning MCP integration" below). `instructions` is assembled in a fixed order — constitution text, then recalled memory context (appended to the constitution string), then a `---` separator, then today's UTC date computed fresh per call (`ai_handler.py:363-368`) — never templated into the constitution file itself. This ordering is also what makes the constitution (`data/constitution/runtime_constitution.md`, ~3.1K tokens as of 2026-07-21, measured via `tiktoken`'s `o200k_base`) eligible for OpenAI's automatic prompt caching: it's the stable, byte-identical prefix of every call (everything that varies — memories, date — comes after it), and OpenAI caches on the longest identical prefix for prompts ≥1024 tokens at a 50% discount on the cached portion, with no code changes required. Keeping any per-call-dynamic content appended *after* the constitution (not prepended or interleaved) preserves this.
+- **`handlers/ai_handler.py`** — OpenAI integration via the Responses API, system-prompt construction, memory recall integration, session-to-long-term-memory transfer, RBAC-aware token limits, current-date injection into `instructions`, and Morning MCP remote-tool attachment for godfather/admin roles (see "Morning MCP integration" below). `instructions` is assembled in a fixed order — constitution text, then recalled memory context (appended to the constitution string), then a `---` separator, then today's UTC date computed fresh per call (`ai_handler.py:363-368`) — never templated into the constitution file itself. This ordering is also what makes the constitution (`config/runtime_constitution.md` — a single file shared identically by dev/prod/test as of 2026-07-23, not per-environment data; ~4.0K tokens as of 2026-07-23, measured via `tiktoken`'s `o200k_base`) eligible for OpenAI's automatic prompt caching: it's the stable, byte-identical prefix of every call (everything that varies — memories, date — comes after it), and OpenAI caches on the longest identical prefix for prompts ≥1024 tokens at a 50% discount on the cached portion, with no code changes required. Keeping any per-call-dynamic content appended *after* the constitution (not prepended or interleaved) preserves this.
 - **`handlers/media_handler.py`** + **`handlers/extractors/`** — `MediaExtractor` abstract base with `ImageExtractor` (vision model per `config.ai_vision_model`, default `gpt-4o-mini`, single call for text+analysis), `PDFExtractor` (PyMuPDF page-to-image, delegates to `ImageExtractor`, aggregates per-page analysis, max 10 pages), `DOCXExtractor` (python-docx + optional AI analysis via `config.ai_model`). All extractors return a common contract: `extracted_text`, `document_analysis` (`document_type`/`summary`/`key_points`), `extraction_quality`, `warnings`, `model_used`.
 - **`managers/session_manager.py`** — Tier-1 (short-term) memory: UUID sessions, JSON persistence under `data/sessions/`, per-role token limits, 24h expiration, archival to `data/sessions/expired/YYYY-MM-DD/`.
 - **`managers/memory_manager.py`** — Tier-2 (long-term) memory: ChromaDB collections (`memory_{entity_id}`, `_public`, `_private`, `memory_system_context`), OpenAI embeddings per `config.ai_embedding_model` (default `text-embedding-3-large`), scope-filtered semantic recall.
@@ -189,7 +263,7 @@ Non-text messages (`imageMessage`, `documentMessage`, `videoMessage`, `audioMess
 
 ### Data & config
 - `config/config.dev.json` / `config/config.prod.json` (gitignored, real per-environment secrets) vs `config/config.example.json` (single safe-placeholder template shared by both envs, committed — copy it to `config.dev.json`/`config.prod.json` and fill in the env-specific values) vs `config/config.test.json` (used by pytest, its own ephemeral `test_data/` root — decoupled from the persistent `dev_data/` environment, per 019-env-separation) — all loaded via `AppConfiguration.from_file`, no env vars. Real secrets for a given environment live in `DeniDin Dev Creds.txt` / `DeniDin Prod Creds.txt` (repo root, gitignored) — the single source of truth to paste from when (re)populating a config file, rather than any config file itself.
-- `data/sessions/`, `data/memory/` (ChromaDB), `data/constitution/` — all gitignored runtime state, isolated from test data via the `data_root` config field.
+- `data/sessions/`, `data/memory/` (ChromaDB) — gitignored runtime state, isolated from test data via the `data_root` config field. `config/runtime_constitution.md` is NOT part of this (2026-07-23) — it's shared, git-tracked config content, identical for dev/prod/test, resolved via `constitution_config.base_dir` (default `'config'`, overridable — e.g. tests pointing at a tmp dir) rather than `data_root`. Previously lived under `{data_root}/constitution/`, duplicated per environment; that let dev's and prod's copies silently drift out of sync (a real incident, 2026-07-23 — dev's copy was missing bugfix-014's guidance for weeks).
 - `logs/denidin.log` (production) and `logs/test_logs/{test_file}.log` (per-test-file, auto-configured by `conftest.py`) — check these logs instead of re-running expensive tests to get more diagnostic detail.
 
 ### Morning MCP integration (`apps/denidin-app` ↔ `apps/morning-mcp-app`)

@@ -15,6 +15,7 @@ services:
       context: ./apps/denidin-app
     volumes:
       - ./apps/denidin-app/config/config.prod.json:/app/config/config.json:ro
+      - ./apps/denidin-app/config/runtime_constitution.md:/app/config/runtime_constitution.md:ro
       - ./apps/denidin-app/data:/app/data
       - ./apps/denidin-app/logs/prod:/app/logs
       - ./shared/mcp-status-prod:/app/mcp-status

@@ -1,7 +1,7 @@
 # Feature Spec: Entity Extraction from Group Messages
 
 **Feature ID**: 014-entity-extraction-group-messages  
-**Priority**: P1 (High)  
+**Priority**: P2 (Medium)  
 **Status**: Draft - Needs Clarification  
 **Created**: January 22, 2026
 

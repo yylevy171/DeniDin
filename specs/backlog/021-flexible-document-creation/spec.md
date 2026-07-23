@@ -1,7 +1,7 @@
 # Feature Spec: Flexible Morning Document Creation
 
 **Feature ID**: 021-flexible-document-creation
-**Priority**: P2
+**Priority**: P1
 **Status**: Draft - Needs Clarification
 **Created**: July 22, 2026
 

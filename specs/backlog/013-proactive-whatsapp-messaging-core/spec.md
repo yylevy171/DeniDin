@@ -1,7 +1,7 @@
 # Feature Spec: Proactive WhatsApp Messaging Core
 
 **Feature ID**: 013-proactive-whatsapp-messaging-core  
-**Priority**: P1 (High)  
+**Priority**: P2 (Medium)  
 **Status**: Draft - Needs Clarification  
 **Created**: January 22, 2026
 

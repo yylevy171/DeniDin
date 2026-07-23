@@ -26,7 +26,18 @@ if [ "$ENV" = "dev" ]; then
 fi
 
 COMPOSE_FILE="$REPO_ROOT/docker-compose.$ENV.yml"
+LOCAL_OVERRIDE="$REPO_ROOT/docker-compose.$ENV.local.yml"
 SERVICE="denidin-app-$ENV"
+
+# Optional per-clone override (plain relative paths, no env vars/symlinks -
+# see CLAUDE.md's "Multi-clone lock" section) for dev/prod data+log volume
+# paths, so it doesn't matter which clone last started dev/prod. Gitignored,
+# created once per clone by hand; may be empty/absent if this clone's own
+# paths are already the canonical ones (e.g. the root clone).
+COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+if [ -f "$LOCAL_OVERRIDE" ]; then
+    COMPOSE_ARGS+=(-f "$LOCAL_OVERRIDE")
+fi
 
 # Declare intent in the single shared active-env file BEFORE starting -
 # watchdog.py in every container (this app and morning-mcp-app, dev and
@@ -34,13 +45,12 @@ SERVICE="denidin-app-$ENV"
 # If you're switching from a different environment, run
 # ./killall_containers.sh FIRST (see CLAUDE.md's "ONE ENVIRONMENT SET AT A
 # TIME" rule) - this script does not do that for you.
-python3 -c "
-import json
-from datetime import datetime, timezone
-with open('$REPO_ROOT/shared/active_env.json', 'w', encoding='utf-8') as f:
-    json.dump({'active_env': '$ENV', 'updated_at': datetime.now(timezone.utc).isoformat()}, f, indent=2)
-    f.write('\n')
-"
+#
+# The lock is shared across all clones (this one, coder1, coder2, ...) via
+# ./shared, and "dev" is additionally locked to whichever clone acquires it
+# - see env_lock.sh.
+source "$REPO_ROOT/env_lock.sh"
+env_lock_acquire "$ENV"
 
-docker compose -f "$COMPOSE_FILE" up -d "$SERVICE"
-docker compose -f "$COMPOSE_FILE" ps "$SERVICE"
+docker compose "${COMPOSE_ARGS[@]}" up -d "$SERVICE"
+docker compose "${COMPOSE_ARGS[@]}" ps "$SERVICE"
