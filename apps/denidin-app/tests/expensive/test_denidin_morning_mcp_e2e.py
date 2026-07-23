@@ -128,7 +128,7 @@ def _unique_client_name() -> str:
     invoice - built entirely from Hebrew words, never hex/digits/operation
     words.
 
-    Two real, billed failures shaped this:
+    Three real, billed failures shaped this:
     - Embedding the operation word in the name (e.g. "...CANCEL...") leaked
       intent into a plain *create* request, so the model called
       update_invoice_status(status="cancelled") on it (constitution maps
@@ -137,8 +137,15 @@ def _unique_client_name() -> str:
       actual id, causing it to call update_invoice_status with the wrong id
       instead of the real UUID from the preceding create_invoice output -
       `_CLIENT_QUALIFIERS` is Hebrew words only, no hex/digits.
+    - A "חברת" (company) business-entity prefix (spec 020 test run,
+      2026-07-23) caused the model to strip it when re-referencing the same
+      client by name a few turns later ("חברת אוריון זהב" -> "אוריון זהב" in
+      the list_invoices call), which then failed to match in Morning's
+      search - real client names in this app's actual usage never carry a
+      generic "חברת"/"בע\"מ" business-entity prefix anyway, so the name
+      generated here shouldn't either.
     """
-    return f"חברת {random.choice(_CLIENT_STEMS)} {random.choice(_CLIENT_QUALIFIERS)}"
+    return f"{random.choice(_CLIENT_STEMS)} {random.choice(_CLIENT_QUALIFIERS)}"
 
 
 def _random_amount() -> int:
@@ -1144,6 +1151,13 @@ def _seed_transaction_account_invoice(client_name: str, amount: int, description
 
 
 @pytest.mark.expensive
+@pytest.mark.xfail(
+    reason="Blocked on spec 021: create_invoice can't create type-300 documents yet, "
+    "so the seed step actually creates a type-305 document and the type-320 "
+    "assertion fails. Remove this mark once spec 021 ships create_invoice "
+    "support for type-300 (see _seed_transaction_account_invoice's docstring).",
+    strict=False,
+)
 def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_app):
     """Spec 020 / bugfix-014 Flow 4: a "חשבון עסקה" (type-300 transaction
     account document) must be closed by a linked type-320 combo document when
