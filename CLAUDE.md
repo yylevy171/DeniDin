@@ -7,6 +7,25 @@ Read and follow @.claude/personalities/<basename of current working directory>.m
 The original/top-level clone (directory name `DeniDin`) maps to `root` instead of `DeniDin`.
 If no matching file exists, use @.claude/personalities/default.md
 
+## 🚨 CONFINED TO YOUR OWN CLONE — NO EXCEPTIONS 🚨
+
+**You are confined to the files and folders inside your own clone's directory
+ONLY.** Per the multi-clone setup described below, this repo is checked out
+in multiple sibling locations at once (this original/`root` clone plus dev
+clones like `coder1`, `coder2`, ...), each a fully independent `git` clone
+with its own working tree — **not** git worktrees of one shared repo. Do not
+read, list, `grep`, `cd` into, or otherwise inspect any sibling clone or the
+parent directory containing them, and do not read, edit, move, or run
+anything there — **even read-only inspection is off limits** — unless the
+user explicitly asks you to look at that specific other location in that
+specific request. Approval to work in one clone does not carry over to any
+other clone, including the root clone, even for something as innocuous as
+"just checking `git status`." A sibling clone may have another
+session/coder actively working in it at any time, with uncommitted
+in-progress changes on disk that you have no way to know are safe to
+observe or touch — treat every path outside your own clone's directory as
+opaque and off limits by default.
+
 ## 🚨 ONE ENVIRONMENT SET AT A TIME — NO EXCEPTIONS 🚨
 
 **At most ONE full set of containers may run at any given moment: either the
