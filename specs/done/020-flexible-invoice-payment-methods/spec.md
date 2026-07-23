@@ -2,7 +2,7 @@
 
 **Feature ID**: 020-flexible-invoice-payment-methods
 **Priority**: P1
-**Status**: Clarified
+**Status**: Done - Merged to master (PR #131)
 **Created**: July 22, 2026
 
 ---
@@ -37,4 +37,12 @@ This was found to be incomplete/incorrect while investigating `bugfix-014-list-i
 ## References
 
 - `specs/bugfixes/bugfix-014-list-invoices-only-returns-one-of-many.md` (Flow 4, and the related-latent-bug note under Investigation Findings)
-- `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py` (`_mark_invoice_paid`, `_build_payment_receipt_payload`, `update_invoice_status`)
+- `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py` (`_mark_invoice_paid`, `_build_payment_receipt_payload`, `_build_combo_closing_payload`, `update_invoice_status`)
+
+## Implementation Summary (2026-07-23, merged PR #131)
+
+- `_mark_invoice_paid` now branches on the original document's `type`: 300 → new `_build_combo_closing_payload` (type-320 combo document), 305 → existing `_build_payment_receipt_payload` (type-400 receipt, unchanged), else → `ValueError`. Verified live against the real Morning sandbox — the first-draft type-320 payload shape was correct on the first try.
+- Tests: 5 new unit tests (`tests/unit/test_mark_invoice_paid.py`), 2 new sandbox integration tests, both full app regression suites green (143/143 morning-mcp-app, 491/491 denidin-app).
+- **Real, separate bug found and fixed along the way**: while writing the type-300 E2E test, discovered the model was silently stripping a business-entity word ("חברת") from a client name when re-referencing it a few turns later in the same conversation, even though the exact name was already visible in an earlier tool result — Morning's search then found nothing. Fixed via `runtime_constitution.md` (mandate verbatim reuse of any client name/id already shown in this conversation's own tool output), `formatters.py` (client names in tool output now wrapped in `"quotes"` as a visual atomic-token hint), and the E2E test's own client-name generator (dropped the unrealistic "חברת" prefix). Re-verified live after the fix — name resolution now works correctly.
+- The type-300→320 E2E happy-path test (`test_godfather_marks_transaction_account_invoice_paid_via_whatsapp`) is `xfail`-marked: it depends on `create_invoice` being able to create a type-300 document by request, which is `specs/backlog/021-flexible-document-creation/`'s scope, not yet implemented. Remove the mark once 021 ships. The decline variant and the unsupported-original-type negative case both pass today (don't depend on 021).
+- Merged mid-feature with Feature 022 (explicit approval before Morning document creation) landing on master — spec 020's new E2E tests were adapted to the two-turn approve/decline pattern feature 022 introduced.
