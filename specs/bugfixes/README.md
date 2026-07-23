@@ -105,9 +105,11 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 
 ## Priority Levels
 
+**Required as of 2026-07-24**: every bugfix spec MUST declare a `Priority` field, using the same P0/P1/P2 scheme as feature specs (METHODOLOGY.md §VII/§XI) — no more untracked/`-` priority bugfixes going forward.
+
+- **P0 (Critical)**: Bugs causing data loss, security exposure, or breaking core functionality for all/most users
 - **P1 (High)**: Critical bugs affecting core functionality or user experience
-- **P2 (Medium)**: Important bugs causing inconsistencies or confusion
-- **P3 (Low)**: Minor bugs, dead code, or cleanup tasks
+- **P2 (Medium)**: Important bugs causing inconsistencies, confusion, or cleanup-level issues
 
 ---
 

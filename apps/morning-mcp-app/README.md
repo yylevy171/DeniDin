@@ -10,7 +10,7 @@ streamable-HTTP) exposing 11 invoice-management tools — `create_invoice`,
 `create_receipt`, `list_invoices`, `get_invoice_details`,
 `update_invoice_status`, `add_client`, `get_financial_summary`,
 `download_invoice_pdf` — backed by the real Morning sandbox API, per
-`specs/in-definition/005-mcp-morning-green-receipt/plan.md` and `tasks.md`,
+`specs/done/005-mcp-morning-green-receipt/plan.md` and `tasks.md`,
 plus `specs/done/021-flexible-document-creation/spec.md` for the 4
 document-type-specific `create_*` tools. (`send_invoice` was investigated
 and dropped — Morning's public API has no documented delivery endpoint; see
@@ -90,7 +90,7 @@ include state-changing operations).
 DNS-rebinding protection (`TransportSecuritySettings(enable_dns_rebinding_protection=False)`),
 which otherwise only allows `Host: 127.0.0.1/localhost` and 424s every request
 forwarded through a tunnel (confirmed live 2026-07-12 — see
-`specs/in-definition/005-mcp-morning-green-receipt/tasks.md`, T021). This is
+`specs/done/005-mcp-morning-green-receipt/tasks.md`, T021). This is
 safe here because `mcp.auth_token`'s bearer check, not Host-header matching, is
 this server's real access boundary — set it whenever exposing the server
 publicly.
