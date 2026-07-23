@@ -2,7 +2,7 @@
 
 **Feature ID**: 022-explicit-approval-for-document-creation
 **Priority**: P1
-**Status**: Draft - Clarified
+**Status**: Done - merged PR #129, 2026-07-23 (8 expensive E2E tests passing against real OpenAI + Morning sandbox)
 **Created**: July 22, 2026
 
 ---
