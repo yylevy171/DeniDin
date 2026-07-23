@@ -78,7 +78,6 @@ apps/denidin-app/.denidin.pid
 /shared
 /shared/
 /shared_state.local.json
-/.env.local
 
 # DeniDin credentials (real secrets, never commit)
 /DeniDin Prod Creds.txt
