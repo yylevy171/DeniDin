@@ -77,7 +77,7 @@ apps/denidin-app/.denidin.pid
 # not a real directory in this clone anymore - match both forms)
 /shared
 /shared/
-/shared_state.local.json
+/config/shared_state.local.json
 
 # Per-clone dev/prod data+log volume path override (plain relative paths,
 # no env vars, no symlinks) - see CLAUDE.md's "Multi-clone lock" section.

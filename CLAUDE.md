@@ -83,7 +83,7 @@ A non-owner can override with `-force` on any `stop_*.sh`/`scripts/killall_conta
 call. This only works because `./shared` is a symlink (not a real directory)
 to one canonical path shared by every clone on the machine — **every clone,
 including any new one you set up, needs its own gitignored
-`shared_state.local.json` at repo root** (same idea as `creds/DeniDin Dev/Prod
+`config/shared_state.local.json`** (same idea as `creds/DeniDin Dev/Prod
 Creds.txt` — not committed, created once per clone by hand):
 ```json
 {"shared_state_dir": "/absolute/path/to/one/canonical/shared-state/dir"}
@@ -99,7 +99,7 @@ must not fragment depending on which clone last started dev/prod.
 (plain relative paths, identical across clones, as always). Instead, every
 clone gets its own gitignored **`docker/docker-compose.dev.local.yml`** /
 **`docker/docker-compose.prod.local.yml`** (same idea as
-`shared_state.local.json`/`creds/DeniDin Dev/Prod Creds.txt` — plain files, not
+`config/shared_state.local.json`/`creds/DeniDin Dev/Prod Creds.txt` — plain files, not
 committed, created once per clone by hand), layered in automatically by
 `run_denidin.sh`/`run_morning_mcp.sh`/`stop_denidin.sh`/`stop_morning_mcp.sh`/
 `scripts/killall_containers.sh` via a second `-f` flag *if the file exists* (no
