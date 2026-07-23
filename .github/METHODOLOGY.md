@@ -110,9 +110,9 @@ All feature context MUST reside in structured markdown documents; code comments 
 **Requirements:**
 - `specs/[###-feature]/` directory MUST contain all feature artifacts
  - `specs/[###-feature]/` directory MUST contain all feature artifacts
- - STORAGE LOCATION POLICY (NEW): All new and updated feature specs, bugfix specs, and any other specification documents MUST be authored and stored under the `specs/in-definition/` hierarchy (for features) or `specs/bugfixes/` (for bugfix specs). The parent `specs/` folder (top-level `specs/` entries such as `specs/005-mcp-morning-green-receipt/`) is deprecated for active authoring and MUST NOT be used to store authoritative specs going forward.
+ - STORAGE LOCATION POLICY (NEW): All new and updated feature specs, bugfix specs, and any other specification documents MUST be authored and stored under the `specs/in-progress/` hierarchy (for features) or `specs/bugfixes/` (for bugfix specs). The parent `specs/` folder (top-level `specs/` entries such as `specs/005-mcp-morning-green-receipt/`) is deprecated for active authoring and MUST NOT be used to store authoritative specs going forward.
    - Rationale: this eliminates duplication and ensures automation and reviewers always find canonical artifacts in a single location.
-   - Enforcement: CI and tooling SHOULD prefer `specs/in-definition/` as the canonical source; reviewers MUST flag PRs that add or modify authoritative spec files outside `specs/in-definition/` or `specs/bugfixes/` and request relocation into the correct folder before merging.
+   - Enforcement: CI and tooling SHOULD prefer `specs/in-progress/` as the canonical source; reviewers MUST flag PRs that add or modify authoritative spec files outside `specs/in-progress/` or `specs/bugfixes/` and request relocation into the correct folder before merging.
 - `plan.md` is the technical authority for implementation decisions
 - `spec.md` is the functional authority for requirements and acceptance criteria
 - `tasks.md` is the execution authority for implementation sequence
@@ -190,6 +190,7 @@ All bug fixes MUST follow a disciplined root-cause analysis and test-first workf
 - Prefix: Always start with `bugfix-` to distinguish from features
 - Sequential numbering: 001, 002, 003, etc.
 - Never store bugfix specs in `specs/in-progress/` or other feature directories
+- **Priority (2026-07-24)**: Every bugfix spec MUST declare a `Priority` field (`P0`/`P1`/`P2`), the same scheme used by feature specs (see §XI) — set at spec creation, before the root-cause approval gate, and revisited if severity is reassessed during investigation
 
 **Branch Naming:**
 - Format: `bugfix/###-issue-description`
@@ -447,11 +448,12 @@ All requirements MUST have unique, traceable identifiers.
 
 All feature specifications MUST be organized by status and priority in standardized folders.
 
-**Folder Structure:**
+**Folder Structure (merged 2026-07-24 — `in-definition/` and the old separate `in-progress/`
+concept are now ONE folder, `in-progress/`; there is no longer a distinct
+"clarifications-only, not yet started" stage as its own folder)**:
 ```
 specs/
-├── in-definition/     # Features with open CLARIFICATIONS, not yet ready for planning
-├── in-progress/       # Features currently being implemented (active work)
+├── in-progress/       # Features with open CLARIFICATIONS and/or currently being implemented (active work)
 ├── backlog/           # Fully-specified features not yet started, any priority (merged P0/P1/P2, 2026-07-21)
 ├── done/              # Completed features (implemented, tested, merged) + done/bugfixes/
 ├── obsolete/          # Cancelled/deprecated features and bugfixes, or specs no longer accurate (merged with not-doing, 2026-07-21) + obsolete/bugfixes/
@@ -462,17 +464,23 @@ specs/
 ```
 
 **Requirements:**
-- **in-definition/**: Features with unresolved CLARIFICATIONS in spec.md
-  - Status: "Draft - Needs Clarification"
-  - Action: Move to `backlog/` once clarifications resolved
+- **in-progress/**: A feature lives here for its entire active-work lifespan — from initial
+  drafting (while it may still have unresolved CLARIFICATIONS in spec.md) through planning,
+  implementation, and testing. Covers what used to be two separate folders/stages.
+  - Status: "Draft - Needs Clarification", "Implementation in Progress", or "Testing"
+  - A brand-new feature starts here directly (not first in some other folder)
+  - A feature resumed from `backlog/` also moves back here, right after branch creation,
+    before any further planning/implementation work begins
+  - Action: Move to `done/` once merged to master (or to `backlog/` if paused before
+    completion — see below)
 
-- **in-progress/**: Features actively being developed
-  - Status: "Implementation in Progress" or "Testing"
-  - Action: Move to `done/` once merged to master
-
-- **backlog/**: Fully specified, not yet started — priority tracked via each spec's own `Priority` field (P0/P1/P2), not by folder
+- **backlog/**: Fully specified, clarified, not currently being worked — priority tracked via
+  each spec's own `Priority` field (P0/P1/P2), not by folder
   - All clarifications resolved
-  - Ready for planning and implementation whenever capacity allows
+  - Ready for planning/implementation whenever capacity allows, but no active branch/work
+    right now
+  - A feature only lands here either fresh out of clarification (never yet started) or when
+    active work on it is paused and moved out of `in-progress/`
 
 - **done/**: Completed and merged features (and `done/bugfixes/` for merged bugfixes)
   - Serves as reference and documentation archive
@@ -486,9 +494,11 @@ specs/
   - Each archived spec MUST carry a brief status note explaining why it was archived and when
 
 **Folder Movement Rules:**
-1. New feature starts in `in-definition/` until clarifications resolved
-2. Once clarifications answered → Move to `backlog/`
-3. When implementation begins → Move to `in-progress/`
+1. New feature starts in `in-progress/` (drafting, may have open clarifications)
+2. Once clarifications answered and the feature is not being actively worked further right
+   now → Move to `backlog/`
+3. **When a backlog feature is picked up to start/resume work → Move back to `in-progress/`**
+   — right after branch creation, before any further planning/implementation work begins
 4. When feature merged to master → Move to `done/`
 5. When feature cancelled/rejected/found obsolete → Move to `obsolete/` (with rationale documented in spec)
 6. Feature folders MUST NOT exist in multiple locations simultaneously
@@ -505,14 +515,14 @@ specs/
 2. Feature directories MUST follow naming: `specs/###-feature-name/`
 3. Branch names MUST follow: `###-feature-name` (matching directory)
 4. Spec MUST be created via `speckit.specify` agent with user input validation
-5. New feature starts in `specs/in-definition/` folder until clarifications resolved
+5. New feature starts in `specs/in-progress/` folder (drafting stage, may still have open clarifications)
 
 ### Workflow Progression
 
 ```text
 User Request
     ↓
-speckit.specify → spec.md in specs/in-definition/
+speckit.specify → spec.md in specs/in-progress/
     ↓
 Resolve CLARIFICATIONS (USER APPROVAL GATE)
     ↓

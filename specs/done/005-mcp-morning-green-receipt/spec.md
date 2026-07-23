@@ -2,9 +2,9 @@
 
 **Feature ID**: 005-mcp-morning-green-receipt
 **Priority**: P2 (Medium)
-**Status**: Implemented (Phases 1–3 of `tasks.md`; Phase 4 polish remaining)
+**Status**: Done — all phases (1–5) of `tasks.md` complete, including both expensive E2E tests verified passing for real
 **Created**: January 17, 2026
-**Last Updated**: July 9, 2026
+**Last Updated**: July 24, 2026
 **App**: `apps/morning-mcp-app/` (standalone, does not import from or depend on `apps/denidin-app/`)
 
 ---
