@@ -156,8 +156,13 @@ class AIHandler:
         if not filename:
             return ""
         
-        # Build constitution file path
-        filepath = Path(self.config.data_root) / 'constitution' / filename
+        # Build constitution file path. Defaults to config/ (same base as
+        # CONFIG_PATH='config/config.json' in denidin.py), not data_root -
+        # the constitution isn't per-environment data, it's shared config
+        # content, identical for dev/prod/test alike. Overridable via
+        # constitution_config.base_dir (e.g. tests pointing at a tmp_path).
+        base_dir = constitution_config.get('base_dir', 'config')
+        filepath = Path(base_dir) / filename
         
         # Check if file exists
         if not filepath.exists():

@@ -183,18 +183,14 @@ def denidin_config():
     if sessions_dir.exists():
         shutil.rmtree(sessions_dir)
 
-    # AIHandler._load_constitution() reads from <data_root>/constitution/<file>,
-    # so overriding data_root above means it would otherwise find nothing here
-    # (empty constitution -> no Morning-tool scope/confirmation guidance, no
-    # role-context sections). Mirror the real constitution into test_data so
-    # this test exercises the actual guidance, kept in sync automatically.
-    real_constitution_dir = DENIDIN_APP_DIR / "data" / "constitution"
-    test_constitution_dir = test_data_root / "constitution"
-    constitution_filename = config.constitution_config.get('file', 'runtime_constitution.md')
-    real_constitution_file = real_constitution_dir / constitution_filename
-    if real_constitution_file.exists():
-        test_constitution_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(real_constitution_file, test_constitution_dir / constitution_filename)
+    # AIHandler._load_constitution() now resolves against
+    # constitution_config.base_dir (default 'config'), not data_root - the
+    # constitution is shared config content, not per-environment data, so
+    # config.test.json's un-overridden default already points straight at
+    # the real apps/denidin-app/config/runtime_constitution.md. No mirroring
+    # into test_data needed anymore (previously required because the old
+    # data_root-relative resolution meant overriding data_root above would
+    # otherwise find nothing here).
 
     config.godfather_phone = GODFATHER_CHAT_ID
     config.user_roles = {'admin_phones': [], 'blocked_phones': []}
