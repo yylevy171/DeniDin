@@ -15,7 +15,7 @@ def setup_logger(
     name: str,
     logs_dir: str = 'logs',
     log_filename: str = 'denidin.log',
-    log_level: str = 'INFO',
+    log_level: str = 'NOTSET',
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5
 ) -> logging.Logger:
@@ -27,7 +27,10 @@ def setup_logger(
         logs_dir: Directory to store log files (default: 'logs')
         log_filename: Name of the log file (default: 'denidin.log')
                      Tests should use 'test_logs/{test_name}.log'
-        log_level: Logging level ('INFO' or 'DEBUG')
+        log_level: Logging level ('NOTSET', 'DEBUG', 'INFO', etc.). 'NOTSET'
+                   (the default) makes the logger inherit its effective level
+                   from the root logger instead of pinning its own level at
+                   creation time.
         max_bytes: Maximum size of log file before rotation
         backup_count: Number of backup files to keep
 
@@ -80,7 +83,7 @@ def get_logger(
     name: str,
     logs_dir: str = 'logs',
     log_filename: str = 'denidin.log',
-    log_level: str = 'INFO'
+    log_level: str = 'NOTSET'
 ) -> logging.Logger:
     """
     Get or create a configured logger.
@@ -92,7 +95,10 @@ def get_logger(
         name: Name of the logger
         logs_dir: Directory to store log files (default: 'logs')
         log_filename: Name of the log file (default: 'denidin.log')
-        log_level: Logging level ('INFO' or 'DEBUG')
+        log_level: Logging level ('NOTSET', 'DEBUG', 'INFO', etc.). 'NOTSET'
+                   (the default) makes the logger inherit its effective level
+                   from the root logger instead of pinning its own level at
+                   creation time.
 
     Returns:
         Configured logger instance

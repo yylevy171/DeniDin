@@ -26,6 +26,20 @@ in-progress changes on disk that you have no way to know are safe to
 observe or touch — treat every path outside your own clone's directory as
 opaque and off limits by default.
 
+**NO CROSSING OF CLONES. YOU WORK ONLY ON YOUR CLONE!** — this extends past
+file access to shell *state*: never run, activate, or invoke another
+clone's virtualenv/interpreter/binaries, and never trust a bare command
+(`python3`, `pytest`, etc.) without first confirming what your shell's
+`PATH`/active venv actually resolves it to. A stale or leaked `PATH` from
+a prior command in the same session can silently point a "plain" command
+at a sibling clone's venv (e.g. `coder1`'s or `coder2`'s) — running
+anything through it, even a read-only test run, is the same violation as
+`cd`-ing into that clone directly. Always resolve/activate your own
+clone's own venv explicitly before running project commands, and verify
+(`which python3`, etc.) rather than assume. Same "unless the user
+explicitly asks" exception as above — no exception carries over from a
+prior request.
+
 ## 🚨 ONE ENVIRONMENT SET AT A TIME — NO EXCEPTIONS 🚨
 
 **At most ONE full set of containers may run at any given moment: either the
