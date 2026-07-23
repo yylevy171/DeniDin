@@ -27,6 +27,12 @@
 # was believed to be isolated). `restart: "no"` below + watchdog.py inside
 # each container + killall_containers.sh are the mechanisms that now enforce
 # this - see CLAUDE.md's top-of-file rule for the full policy.
+# dev is a singleton across clones (root/coder1/coder2, ... - see
+# env_lock.sh): DENIDIN_DEV_DATA_DIR / *_LOGS_DIR default to this clone's
+# own paths but are overridable per clone (via a gitignored .env.local, see
+# CLAUDE.md) to point at one canonical directory instead, so it doesn't
+# matter which clone last held the dev lock - the same session data/logs
+# are always used.
 name: denidin-dev
 services:
   denidin-app-dev:
@@ -34,8 +40,8 @@ services:
       context: ./apps/denidin-app
     volumes:
       - ./apps/denidin-app/config/config.dev.json:/app/config/config.json:ro
-      - ./apps/denidin-app/dev_data:/app/dev_data
-      - ./apps/denidin-app/logs/dev:/app/logs
+      - ${DENIDIN_DEV_DATA_DIR:-./apps/denidin-app/dev_data}:/app/dev_data
+      - ${DENIDIN_DEV_LOGS_DIR:-./apps/denidin-app/logs/dev}:/app/logs
       - ./shared/mcp-status-dev:/app/mcp-status
       - ./shared/active_env.json:/app/active-env/active_env.json:ro
     restart: "no"
@@ -47,7 +53,7 @@ services:
       - "8000:8000"
     volumes:
       - ./apps/morning-mcp-app/config/config.dev.json:/app/config/config.json:ro
-      - ./apps/morning-mcp-app/logs/dev:/app/logs
+      - ${MORNING_DEV_LOGS_DIR:-./apps/morning-mcp-app/logs/dev}:/app/logs
       - ./shared/mcp-status-dev:/app/mcp-status
       - ./shared/active_env.json:/app/active-env/active_env.json:ro
     restart: "no"

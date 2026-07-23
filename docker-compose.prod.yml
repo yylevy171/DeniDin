@@ -8,6 +8,11 @@
 # ENVIRONMENT SET AT A TIME" rule - morning-mcp-app-prod does NOT get to run
 # alongside morning-mcp-app-dev (an earlier version of this comment wrongly
 # claimed it could; that assumption caused a real incident).
+# prod is a singleton across clones (root/coder1/coder2, ...):
+# DENIDIN_PROD_DATA_DIR / *_LOGS_DIR default to this clone's own paths but
+# are overridable per clone (via a gitignored .env.local, see CLAUDE.md) to
+# point at one canonical directory instead, so real production data/logs
+# never fragment depending on which clone started prod.
 name: denidin-prod
 services:
   denidin-app-prod:
@@ -15,8 +20,8 @@ services:
       context: ./apps/denidin-app
     volumes:
       - ./apps/denidin-app/config/config.prod.json:/app/config/config.json:ro
-      - ./apps/denidin-app/data:/app/data
-      - ./apps/denidin-app/logs/prod:/app/logs
+      - ${DENIDIN_PROD_DATA_DIR:-./apps/denidin-app/data}:/app/data
+      - ${DENIDIN_PROD_LOGS_DIR:-./apps/denidin-app/logs/prod}:/app/logs
       - ./shared/mcp-status-prod:/app/mcp-status
       - ./shared/active_env.json:/app/active-env/active_env.json:ro
     restart: "no"
@@ -28,7 +33,7 @@ services:
       - "8001:8000"
     volumes:
       - ./apps/morning-mcp-app/config/config.prod.json:/app/config/config.json:ro
-      - ./apps/morning-mcp-app/logs/prod:/app/logs
+      - ${MORNING_PROD_LOGS_DIR:-./apps/morning-mcp-app/logs/prod}:/app/logs
       - ./shared/mcp-status-prod:/app/mcp-status
       - ./shared/active_env.json:/app/active-env/active_env.json:ro
     restart: "no"
