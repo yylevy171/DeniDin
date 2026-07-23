@@ -78,6 +78,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -882,3 +883,146 @@ def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
         f"update_invoice_status output did not reflect cancelled status: {status_calls!r}"
     )
     assert "בוטל" in response, f"Bot reply did not reflect cancelled status. Full reply: {response!r}"
+
+
+# ============================================================================
+# spec 020: flexible invoice payment-marking methods (bugfix-014 Flow 4)
+# ============================================================================
+
+# Document-type Hebrew labels this app already translates (bugfix-014's
+# translate_document_type, models.py _DOCUMENT_TYPE_NAMES) - used here to
+# distinguish which closing document type actually got linked, since these
+# are the exact strings a get_invoice_details reply/tool-output surfaces.
+_COMBO_DOCUMENT_LABEL_HE = "חשבונית מס / קבלה"  # type 320
+_RECEIPT_DOCUMENT_LABEL_HE = "קבלה"  # type 400 - deliberately NOT a substring of the 320 label above
+
+
+@pytest.mark.expensive
+def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_app):
+    """Spec 020 / bugfix-014 Flow 4: a "חשבון עסקה" (type-300 transaction
+    account document) must be closed by a linked type-320 combo document when
+    marked paid, never the type-400 receipt used for a regular tax invoice.
+
+    Known current limitation (2026-07-23): this app's create_invoice tool
+    still hardcodes type 305 regardless of phrasing (creating a type-300
+    document by request is spec 021's scope, not yet implemented) - this
+    test is written now, assuming that support lands imminently, using the
+    real Hebrew terminology a user would say ("חשבון עסקה" / "חשבונית עסקה" /
+    "חשבון עיסקה" are all real variants for the same document type). Until
+    spec 021 ships, the seed step will actually create a type-305 document
+    and this test is expected to fail at the type-320 assertion below -
+    that failure is the correct signal that 300-creation isn't wired up yet,
+    not a regression in this feature's own 300->320 closing-document fix
+    (already verified directly against the Morning sandbox in
+    apps/morning-mcp-app/tests/integration/test_morning_sandbox_invoice_status_tools.py).
+
+    Deliberately does NOT import MorningClient or call Morning's raw REST API
+    (this file's app-wall) - verification is entirely through a second,
+    natural WhatsApp turn asking for the invoice's details, the same way a
+    real user would confirm it themselves.
+    """
+    client_name = _unique_client_name()
+    amount = _random_amount()
+    description = _random_description()
+
+    response, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"תפתח חשבון עסקה עבור {client_name} על סך {amount} שח עבור {description}",
+        id_prefix="E2E_020_SEED_300",
+    )
+    create_calls = _calls_for(ai_response, "create_invoice")
+    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert create_calls and create_calls[0]["error"] is None, (
+        f"Seed create_invoice (חשבון עסקה) failed or was not called: {ai_response.mcp_calls!r}"
+    )
+
+    paid_response, paid_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"סמן את חשבון העסקה של {client_name} כשולם",
+        id_prefix="E2E_020_PAID_300",
+    )
+    status_calls = _calls_for(paid_ai_response, "update_invoice_status")
+    assert paid_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert status_calls, (
+        f"Model never invoked update_invoice_status via the remote MCP server. "
+        f"mcp_calls: {paid_ai_response.mcp_calls!r}. Final reply: {paid_response!r}"
+    )
+    assert all(c["error"] is None for c in status_calls), (
+        f"update_invoice_status call(s) reported an error: {status_calls}"
+    )
+
+    details_response, details_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"תראה לי את כל הפרטים והמסמכים המקושרים של חשבון העסקה של {client_name}",
+        id_prefix="E2E_020_DETAILS_300",
+    )
+    details_calls = _calls_for(details_ai_response, "get_invoice_details")
+    combined_output = "\n".join(c["output"] or "" for c in details_calls)
+
+    assert "מסמכים מקושרים" in combined_output, (
+        f"Expected a linked-documents section in the invoice details reply, "
+        f"got tool output: {combined_output!r}"
+    )
+    assert _COMBO_DOCUMENT_LABEL_HE in combined_output, (
+        f"Expected a linked type-320 combo document ({_COMBO_DOCUMENT_LABEL_HE!r}) "
+        f"for a חשבון עסקה marked paid, got tool output: {combined_output!r}"
+    )
+    # The bare receipt label ("קבלה") is a substring of the combo label
+    # ("חשבונית מס / קבלה"), so strip every combo-label occurrence out first -
+    # what remains must not still contain a standalone receipt label.
+    without_combo_labels = combined_output.replace(_COMBO_DOCUMENT_LABEL_HE, "")
+    assert _RECEIPT_DOCUMENT_LABEL_HE not in without_combo_labels, (
+        f"A type-300 document must not be closed by a bare type-400 receipt: {combined_output!r}"
+    )
+
+
+@pytest.mark.expensive
+def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin_app):
+    """Negative case for spec 020: a document type this feature does not
+    support as an "original" (only 300/305 are supported per the
+    clarification) must surface a friendly refusal, not silently create a
+    wrong document. Uses a real, achievable-today setup: create an invoice,
+    cancel it (issues a real linked type-330 credit invoice - see
+    test_godfather_cancels_invoice_via_whatsapp above), then ask to mark
+    THAT credit invoice's own number as paid - type 330 is not one of the
+    two supported original types.
+    """
+    client_name = _unique_client_name()
+    _seed_fresh_invoice(client_name, _random_amount(), _random_description())
+
+    cancel_response, cancel_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"בטל את החשבונית של {client_name}",
+        id_prefix="E2E_020_CANCEL_SETUP",
+    )
+    cancel_calls = _calls_for(cancel_ai_response, "update_invoice_status")
+    assert cancel_calls and cancel_calls[0]["error"] is None, (
+        f"Setup cancellation failed or was not called: {cancel_ai_response.mcp_calls!r}"
+    )
+    credit_output = cancel_calls[0]["output"] or ""
+    match = re.search(r"חשבונית זיכוי מספר (\S+)", credit_output)
+    assert match, f"Could not find the credit invoice number in cancel output: {credit_output!r}"
+    credit_number = match.group(1)
+
+    response, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"סמן את מסמך מספר {credit_number} כשולם",
+        id_prefix="E2E_020_UNSUPPORTED_TYPE",
+    )
+    status_calls = _calls_for(ai_response, "update_invoice_status")
+
+    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    if status_calls:
+        # The tool itself must reject it (raises ValueError -> surfaced as a
+        # friendly error, not a fabricated success) - never a mcp_call showing
+        # success for an unsupported original type.
+        assert not any(c["error"] is None for c in status_calls), (
+            f"update_invoice_status unexpectedly succeeded for an unsupported "
+            f"(type-330) original document: {status_calls!r}"
+        )
+    # Either way (tool refused, or the model declined to call it at all), the
+    # user-facing reply must not claim success.
+    assert "שולם" not in response or "לא" in response or "לא ניתן" in response, (
+        f"Bot reply appears to falsely confirm payment for an unsupported "
+        f"document type. Full reply: {response!r}"
+    )
