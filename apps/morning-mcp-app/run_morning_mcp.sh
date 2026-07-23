@@ -35,8 +35,8 @@ SERVICE="morning-mcp-app-$ENV"
 source "$REPO_ROOT/env_lock.sh"
 env_lock_acquire "$ENV"
 
-docker compose -f "$COMPOSE_FILE" up -d "$SERVICE"
-docker compose -f "$COMPOSE_FILE" ps "$SERVICE"
+docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env.local" up -d "$SERVICE"
+docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env.local" ps "$SERVICE"
 
 echo ""
 echo "Tunnel status: ./shared/mcp-status-$ENV/morning_mcp_status.$ENV.json (may take a few seconds to show \"running\")"

@@ -39,10 +39,10 @@ if [ "$LOCK_ACTIVE_ENV" = "dev" ] && [ "$LOCK_OWNER" != "null" ] && [ "$LOCK_OWN
 fi
 
 echo "Stopping and removing ALL dev containers..."
-docker compose -f docker-compose.dev.yml down --remove-orphans || true
+docker compose -f docker-compose.dev.yml --env-file "$REPO_ROOT/.env.local" down --remove-orphans || true
 
 echo "Stopping and removing ALL prod containers..."
-docker compose -f docker-compose.prod.yml down --remove-orphans || true
+docker compose -f docker-compose.prod.yml --env-file "$REPO_ROOT/.env.local" down --remove-orphans || true
 
 python3 -c "
 import json
