@@ -1,7 +1,7 @@
 # Feature Spec: Flexible Invoice Payment-Marking Methods
 
 **Feature ID**: 020-flexible-invoice-payment-methods
-**Priority**: P2
+**Priority**: P1
 **Status**: Draft - Needs Clarification
 **Created**: July 22, 2026
 

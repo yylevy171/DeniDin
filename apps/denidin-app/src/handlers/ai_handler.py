@@ -21,6 +21,7 @@ from src.utils.logger import get_logger
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_manager import MemoryManager
 from src.managers.user_manager import UserManager
+from src.managers.pending_approval_manager import PendingApprovalManager, PendingApproval
 from src.models.user import Role
 from src.handlers.morning_mcp_locator import MorningMcpLocator
 
@@ -28,6 +29,51 @@ logger = get_logger(__name__)
 
 # Roles authorized to have the Morning MCP invoicing tools attached (Feature 018)
 MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
+
+# MCP tool names whose execution creates a document in Morning (Feature 022):
+# these require explicit human approval before they actually execute.
+# `update_invoice_status` is gated as a whole tool even though its "unpaid"
+# branch creates nothing - OpenAI's require_approval filters by tool name
+# only, not argument value, and "unpaid" is a pure idempotent no-op/error
+# with no real reversal mechanism, so gating it too has no real downside.
+DOCUMENT_CREATING_MCP_TOOLS = ("create_invoice", "update_invoice_status")
+
+# The remaining Morning MCP tools (reads + add_client) - explicitly listed as
+# "never" require approval. Confirmed empirically (2026-07-23, real E2E run)
+# that a `require_approval` filter with ONLY an "always" key does NOT leave
+# unlisted tools defaulting to no-approval as assumed from docs/smoke-testing
+# - `download_invoice_pdf` (not in DOCUMENT_CREATING_MCP_TOOLS) still came
+# back as a pending mcp_approval_request. Being fully explicit about both
+# sides of the filter avoids relying on that unconfirmed default.
+NON_DOCUMENT_CREATING_MCP_TOOLS = (
+    "list_invoices", "get_invoice_details", "get_financial_summary",
+    "download_invoice_pdf", "add_client",
+)
+
+# Free-form affirmative replies recognized as approval of a pending MCP
+# document-creation request (Feature 022) - matched against the trimmed,
+# casefolded message (or its leading token), not as a substring-anywhere
+# check, to avoid false positives on unrelated longer sentences.
+_AFFIRMATIVE_REPLIES = {
+    "yes", "yep", "yeah", "sure", "ok", "okay", "go ahead",
+    "כן", "אישור", "בסדר", "אוקיי", "אוקי",
+}
+
+
+def _is_affirmative_reply(text: str) -> bool:
+    """Whether `text` reads as a free-form yes/no approval of a pending
+    document-creation request (Feature 022) - matched as the whole trimmed
+    message or its leading token, not a substring-anywhere check, to avoid
+    false positives on longer unrelated sentences (e.g. one that happens to
+    contain "כן" as a substring of another word).
+    """
+    normalized = text.strip().casefold()
+    if not normalized:
+        return False
+    if normalized in _AFFIRMATIVE_REPLIES:
+        return True
+    leading_token = normalized.split()[0].strip(".,!?")
+    return leading_token in _AFFIRMATIVE_REPLIES
 
 # Maximum message length to prevent excessive API costs
 MAX_MESSAGE_LENGTH = 10000
@@ -122,6 +168,11 @@ class AIHandler:
         # Morning MCP integration (Feature 018): locate the current tunnel URL via
         # the shared status file the morning-mcp-app publishes. No cross-app import.
         self.morning_mcp_locator = MorningMcpLocator(getattr(config, 'mcp', {}) or {})
+
+        # Feature 022: tracks, per chat_id, an MCP document-creation call
+        # currently held pending the user's explicit approval. In-memory only
+        # (see PendingApprovalManager docstring for why).
+        self.pending_approval_manager = PendingApprovalManager()
 
         # Most recent successful AIResponse, for observability/E2E test verification.
         self.last_response: Optional[AIResponse] = None
@@ -325,9 +376,41 @@ class AIHandler:
             "type": "mcp",
             "server_label": mcp_config.get('morning_server_label', 'morning-invoices'),
             "server_url": server_url,
-            "require_approval": "never",
+            # Feature 022: any tool that creates a Morning document requires
+            # explicit human approval before it executes; everything else
+            # (reads, add_client) proceeds immediately as before. Both sides
+            # of the filter are listed explicitly - see
+            # NON_DOCUMENT_CREATING_MCP_TOOLS's comment for why.
+            "require_approval": {
+                "always": {"tool_names": list(DOCUMENT_CREATING_MCP_TOOLS)},
+                "never": {"tool_names": list(NON_DOCUMENT_CREATING_MCP_TOOLS)},
+            },
             "headers": {"Authorization": f"Bearer {auth_token}"}
         }]
+
+    def _build_instructions(self, request: AIRequest) -> str:
+        """
+        Build the `instructions` string (constitution + current-date suffix)
+        for a Responses API call. Used by both a normal turn's call and the
+        Feature 022 approval-resolution follow-up call — `previous_response_id`
+        chains the prior conversation's input/output, but NOT the `instructions`
+        parameter itself (confirmed empirically, same as `tools` needing to be
+        re-passed - see `_call_openai_approval_api`), so every call needs its
+        own full instructions to keep following the constitution's guidance.
+        """
+        # Give the model the actual current date. It has no clock of its own —
+        # its training cutoff makes it default to a stale "current year", which
+        # produced real wrong-year invoice lookups (e.g. resolving "7 בפברואר"
+        # to 2023). This is appended at reply time, computed per call in UTC
+        # (CONSTITUTION §II) — NOT templated into the constitution file.
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return (
+            f"{request.constitution}\n\n---\n"
+            f"THE CURRENT DATE IS {today} (UTC). Treat this as the authoritative "
+            f"\"today\" when resolving any relative or partial date the user gives "
+            f"(a day/month with no year, \"היום\", \"אתמול\", etc.) — never fall "
+            f"back on a year from your training data."
+        )
 
     @retry(
         retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
@@ -364,23 +447,9 @@ class AIHandler:
             logger.debug(f"Including {len(conversation_history)} messages from conversation history")
         input_items.append({"role": "user", "content": request.user_prompt})
 
-        # Give the model the actual current date. It has no clock of its own —
-        # its training cutoff makes it default to a stale "current year", which
-        # produced real wrong-year invoice lookups (e.g. resolving "7 בפברואר"
-        # to 2023). This is appended at reply time, computed per call in UTC
-        # (CONSTITUTION §II) — NOT templated into the constitution file.
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        instructions = (
-            f"{request.constitution}\n\n---\n"
-            f"THE CURRENT DATE IS {today} (UTC). Treat this as the authoritative "
-            f"\"today\" when resolving any relative or partial date the user gives "
-            f"(a day/month with no year, \"היום\", \"אתמול\", etc.) — never fall "
-            f"back on a year from your training data."
-        )
-
         kwargs = {
             "model": request.model,
-            "instructions": instructions,
+            "instructions": self._build_instructions(request),
             "input": input_items,
             "max_output_tokens": request.max_tokens,
         }
@@ -428,6 +497,34 @@ class AIHandler:
                     logger.warning(f"Blocked user attempted to get response: {effective_user_phone}")
                     raise PermissionError(f"User is blocked: {effective_user_phone}")
 
+        # Feature 022: if a document-creation MCP call is pending approval for
+        # this chat, this turn resolves it (approve/decline) instead of being
+        # processed as a normal new request. Returns None only for the decline
+        # case, meaning: fall through and process this message as a fresh turn.
+        logger.info(
+            f"[022] get_response: effective_chat_id={effective_chat_id!r}, "
+            f"user_obj={'present' if user_obj else None}, "
+            f"user_prompt={request.user_prompt!r}"
+        )
+        pending = self.pending_approval_manager.get(effective_chat_id) if user_obj else None
+        logger.info(f"[022] pending_approval_manager.get({effective_chat_id!r}) -> {pending!r}")
+        if pending is not None:
+            logger.info(
+                f"[022] Pending approval FOUND for chat={effective_chat_id!r} - "
+                f"routing to _resolve_pending_approval instead of a normal turn"
+            )
+            resolved = self._resolve_pending_approval(
+                pending, request, effective_chat_id, user_obj, user_role, sender, recipient
+            )
+            logger.info(
+                f"[022] _resolve_pending_approval returned "
+                f"{'an AIResponse (approved)' if resolved is not None else 'None (declined - falling through to a normal turn)'}"
+            )
+            if resolved is not None:
+                return resolved
+        else:
+            logger.info(f"[022] No pending approval for chat={effective_chat_id!r} - normal turn processing")
+
         # Retrieve conversation history if memory enabled
         conversation_history = None
         if self.memory_enabled and self.session_manager and effective_chat_id:
@@ -457,134 +554,9 @@ class AIHandler:
             # (optionally) the Morning MCP server as a remote tool
             response = self._call_openai_api(request, conversation_history=conversation_history, tools=tools)
 
-            # Extract response
-            response_text = response.output_text
-            tokens_used = response.usage.total_tokens
-
-            # Extract Morning MCP tool calls, if any (REQ-SEC-002 audit logging;
-            # also lets E2E tests verify tool usage without a second AI call).
-            # Includes arguments/output for diagnosability (e.g. confirming
-            # which invoice_id the model actually passed to a follow-up tool
-            # call) - never logged/returned with secrets, just tool I/O.
-            mcp_calls = [
-                {
-                    "name": item.name,
-                    "error": item.error,
-                    "arguments": item.arguments,
-                    "output": item.output
-                }
-                for item in (response.output or [])
-                if getattr(item, "type", None) == "mcp_call"
-            ]
-            if mcp_calls:
-                logger.info(f"MCP calls for request {request.request_id}: {mcp_calls}")
-            elif tools and any(
-                phrase in response_text
-                for phrase in ("הוצאה בהצלחה", "סומנה כשולמה", "בוטלה בהצלחה", "נוסף בהצלחה")
-            ):
-                # Invoicing tools were offered this turn and the reply reads like
-                # a state-changing confirmation, but no mcp_call was made - the
-                # model may have pattern-completed a fabricated success from
-                # earlier turns instead of actually calling the tool. Log only;
-                # this is a detection safety net, not a behavior change.
-                logger.warning(
-                    f"Possible hallucinated invoicing confirmation for request "
-                    f"{request.request_id}: reply text suggests a state-changing "
-                    f"action succeeded, but no MCP tool was called. "
-                    f"Reply: {response_text!r}"
-                )
-
-            logger.info(
-                f"AI response generated for request {request.request_id}: "
-                f"{tokens_used} tokens, {len(response_text)} chars"
+            return self._finalize_response(
+                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools
             )
-            logger.debug(f"Full response: {response_text[:200]}...")
-
-            # Store messages in session if memory enabled
-            if self.memory_enabled and self.session_manager and effective_chat_id:
-                try:
-                    # RBAC: Use token limit enforcement if enabled
-                    if self.rbac_enabled and user_obj:
-                        # Store user message with token limit
-                        self.session_manager.add_message_with_token_limit(
-                            chat_id=effective_chat_id,
-                            role="user",
-                            content=request.user_prompt,
-                            user_role=user_obj.role,
-                            token_limit=user_obj.token_limit,
-                            sender=sender or effective_chat_id,
-                            recipient=recipient or "AI"
-                        )
-
-                        # Store AI response with token limit
-                        self.session_manager.add_message_with_token_limit(
-                            chat_id=effective_chat_id,
-                            role="assistant",
-                            content=response_text,
-                            user_role=user_obj.role,
-                            token_limit=user_obj.token_limit,
-                            sender=recipient or "AI",
-                            recipient=sender or effective_chat_id
-                        )
-                    else:
-                        # Existing behavior: regular add_message without token limits
-                        # Store user message
-                        # sender should be WhatsApp ID (or test identifier), recipient is always 'AI' (or 'AI_test')
-                        self.session_manager.add_message(
-                            chat_id=effective_chat_id,
-                            role="user",
-                            content=request.user_prompt,
-                            user_role=user_role or "client",
-                            sender=sender or effective_chat_id,
-                            recipient=recipient or "AI"
-                        )
-
-                        # Store AI response
-                        # sender is always 'AI' (or 'AI_test'), recipient is WhatsApp ID (or test identifier)
-                        self.session_manager.add_message(
-                            chat_id=effective_chat_id,
-                            role="assistant",
-                            content=response_text,
-                            user_role=user_role or "client",
-                            sender=recipient or "AI",  # AI is the sender
-                            recipient=sender or effective_chat_id  # Reply goes to original sender
-                        )
-
-                    logger.debug(f"Stored user + assistant messages in session {effective_chat_id}")
-                except Exception as e:
-                    logger.error(f"Failed to store messages in session: {e}", exc_info=True)
-
-            # Create response object.
-            # Responses API has no per-choice finish_reason; derive from
-            # incomplete_details when present, else "stop".
-            finish_reason = "stop"
-            if getattr(response, "incomplete_details", None) is not None:
-                finish_reason = response.incomplete_details.reason or "incomplete"
-
-            ai_response = AIResponse(
-                request_id=request.request_id,
-                response_text=response_text,
-                tokens_used=tokens_used,
-                prompt_tokens=response.usage.input_tokens,
-                completion_tokens=response.usage.output_tokens,
-                model=response.model,
-                finish_reason=finish_reason,
-                timestamp=int(time.time()),
-                is_truncated=False,
-                mcp_calls=mcp_calls
-            )
-
-            # Check if response needs truncation for WhatsApp
-            if len(response_text) > 4000:
-                ai_response = ai_response.truncate_for_whatsapp()
-                logger.warning("Response truncated to 4000 chars for WhatsApp")
-
-            # Retain the most recent response for observability (audit logging,
-            # E2E test verification of mcp_calls) - purely additive, read-only
-            # for callers; does not change get_response's behavior or return value.
-            self.last_response = ai_response
-
-            return ai_response
 
         except APITimeoutError as e:
             logger.error(
@@ -625,6 +597,295 @@ class AIHandler:
                 request.request_id,
                 "Sorry, I encountered an unexpected error. Please try again."
             )
+
+    def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
+                           user_obj, user_role: str, sender: Optional[str],
+                           recipient: Optional[str], tools: Optional[List[Dict]]) -> AIResponse:
+        """
+        Shared post-API-call logic: extract mcp_calls, detect a new pending
+        approval (Feature 022), store messages in session, build the final
+        AIResponse. Used by both the normal turn path and the pending-approval
+        resolution path in `get_response`/`_resolve_pending_approval`.
+        """
+        # Extract response
+        response_text = response.output_text
+        tokens_used = response.usage.total_tokens
+
+        logger.info(
+            f"[022] _finalize_response: response.id={getattr(response, 'id', None)!r}, "
+            f"effective_chat_id={effective_chat_id!r}, "
+            f"output item types={[getattr(i, 'type', None) for i in (response.output or [])]!r}, "
+            f"output_text={response_text!r}"
+        )
+
+        # Extract Morning MCP tool calls, if any (REQ-SEC-002 audit logging;
+        # also lets E2E tests verify tool usage without a second AI call).
+        # Includes arguments/output for diagnosability (e.g. confirming
+        # which invoice_id the model actually passed to a follow-up tool
+        # call) - never logged/returned with secrets, just tool I/O.
+        mcp_calls = [
+            {
+                "name": item.name,
+                "error": item.error,
+                "arguments": item.arguments,
+                "output": item.output
+            }
+            for item in (response.output or [])
+            if getattr(item, "type", None) == "mcp_call"
+        ]
+        if mcp_calls:
+            logger.info(f"MCP calls for request {request.request_id}: {mcp_calls}")
+        elif tools and any(
+            phrase in response_text
+            for phrase in ("הוצאה בהצלחה", "סומנה כשולמה", "בוטלה בהצלחה", "נוסף בהצלחה")
+        ):
+            # Invoicing tools were offered this turn and the reply reads like
+            # a state-changing confirmation, but no mcp_call was made - the
+            # model may have pattern-completed a fabricated success from
+            # earlier turns instead of actually calling the tool. Log only;
+            # this is a detection safety net, not a behavior change.
+            logger.warning(
+                f"Possible hallucinated invoicing confirmation for request "
+                f"{request.request_id}: reply text suggests a state-changing "
+                f"action succeeded, but no MCP tool was called. "
+                f"Reply: {response_text!r}"
+            )
+
+        # Feature 022: a document-creation tool call may come back as an
+        # mcp_approval_request instead of an mcp_call - nothing executed on
+        # the Morning side yet. Track it so the next turn can resolve it.
+        approval_requests = [
+            item for item in (response.output or [])
+            if getattr(item, "type", None) == "mcp_approval_request"
+        ]
+        logger.info(
+            f"[022] approval_requests found in response.output: {len(approval_requests)} "
+            f"(effective_chat_id={effective_chat_id!r})"
+        )
+        if approval_requests and effective_chat_id:
+            ar = approval_requests[0]
+            new_pending = PendingApproval(
+                response_id=response.id,
+                approval_request_id=ar.id,
+                tool_name=ar.name,
+                arguments=ar.arguments,
+                server_label=ar.server_label,
+                created_at=datetime.now(timezone.utc).isoformat(),
+            )
+            self.pending_approval_manager.set(effective_chat_id, new_pending)
+            logger.info(
+                f"[022] pending_approval_manager.set({effective_chat_id!r}, {new_pending!r}) - "
+                f"store id now: {id(self.pending_approval_manager)}"
+            )
+            logger.info(
+                f"Pending MCP approval created for chat={effective_chat_id}, "
+                f"tool={ar.name}, request={request.request_id}"
+            )
+            if not response_text.strip():
+                # Observed live (smoke test, 2026-07-23): a turn that produces
+                # an mcp_approval_request can come back with NO message output
+                # item at all (response.output_text == "") - the constitution
+                # tells the model to narrate before asking, but that's prompt
+                # guidance, not a guarantee. Without this fallback, the user
+                # would get a silent/empty WhatsApp reply while the action
+                # sits pending - never leave them with no signal at all.
+                response_text = (
+                    "יש פעולה הממתינה לאישורך לפני שהיא מתבצעת. "
+                    "השב/י \"כן\" כדי לאשר, או כל תשובה אחרת כדי לבטל."
+                )
+                logger.warning(
+                    f"Model produced no narrating text alongside a pending "
+                    f"approval for request {request.request_id} - using "
+                    f"fallback confirmation prompt."
+                )
+        elif approval_requests and not effective_chat_id:
+            logger.warning(
+                f"[022] mcp_approval_request found but effective_chat_id is falsy "
+                f"({effective_chat_id!r}) - pending approval NOT stored, this request will be lost!"
+            )
+
+        logger.info(
+            f"AI response generated for request {request.request_id}: "
+            f"{tokens_used} tokens, {len(response_text)} chars"
+        )
+        logger.debug(f"Full response: {response_text[:200]}...")
+
+        # Store messages in session if memory enabled
+        if self.memory_enabled and self.session_manager and effective_chat_id:
+            try:
+                # RBAC: Use token limit enforcement if enabled
+                if self.rbac_enabled and user_obj:
+                    # Store user message with token limit
+                    self.session_manager.add_message_with_token_limit(
+                        chat_id=effective_chat_id,
+                        role="user",
+                        content=request.user_prompt,
+                        user_role=user_obj.role,
+                        token_limit=user_obj.token_limit,
+                        sender=sender or effective_chat_id,
+                        recipient=recipient or "AI"
+                    )
+
+                    # Store AI response with token limit
+                    self.session_manager.add_message_with_token_limit(
+                        chat_id=effective_chat_id,
+                        role="assistant",
+                        content=response_text,
+                        user_role=user_obj.role,
+                        token_limit=user_obj.token_limit,
+                        sender=recipient or "AI",
+                        recipient=sender or effective_chat_id
+                    )
+                else:
+                    # Existing behavior: regular add_message without token limits
+                    # Store user message
+                    # sender should be WhatsApp ID (or test identifier), recipient is always 'AI' (or 'AI_test')
+                    self.session_manager.add_message(
+                        chat_id=effective_chat_id,
+                        role="user",
+                        content=request.user_prompt,
+                        user_role=user_role or "client",
+                        sender=sender or effective_chat_id,
+                        recipient=recipient or "AI"
+                    )
+
+                    # Store AI response
+                    # sender is always 'AI' (or 'AI_test'), recipient is WhatsApp ID (or test identifier)
+                    self.session_manager.add_message(
+                        chat_id=effective_chat_id,
+                        role="assistant",
+                        content=response_text,
+                        user_role=user_role or "client",
+                        sender=recipient or "AI",  # AI is the sender
+                        recipient=sender or effective_chat_id  # Reply goes to original sender
+                    )
+
+                logger.debug(f"Stored user + assistant messages in session {effective_chat_id}")
+            except Exception as e:
+                logger.error(f"Failed to store messages in session: {e}", exc_info=True)
+
+        # Create response object.
+        # Responses API has no per-choice finish_reason; derive from
+        # incomplete_details when present, else "stop".
+        finish_reason = "stop"
+        if getattr(response, "incomplete_details", None) is not None:
+            finish_reason = response.incomplete_details.reason or "incomplete"
+
+        ai_response = AIResponse(
+            request_id=request.request_id,
+            response_text=response_text,
+            tokens_used=tokens_used,
+            prompt_tokens=response.usage.input_tokens,
+            completion_tokens=response.usage.output_tokens,
+            model=response.model,
+            finish_reason=finish_reason,
+            timestamp=int(time.time()),
+            is_truncated=False,
+            mcp_calls=mcp_calls
+        )
+
+        # Check if response needs truncation for WhatsApp
+        if len(response_text) > 4000:
+            ai_response = ai_response.truncate_for_whatsapp()
+            logger.warning("Response truncated to 4000 chars for WhatsApp")
+
+        # Retain the most recent response for observability (audit logging,
+        # E2E test verification of mcp_calls) - purely additive, read-only
+        # for callers; does not change get_response's behavior or return value.
+        self.last_response = ai_response
+
+        return ai_response
+
+    @retry(
+        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
+        stop=stop_after_attempt(2),
+        wait=wait_fixed(1),
+        reraise=True
+    )
+    def _call_openai_approval_api(self, request: AIRequest, pending: PendingApproval,
+                                  approve: bool, tools: Optional[List[Dict]] = None):
+        """
+        Resolve a pending MCP approval request (Feature 022) via a follow-up
+        Responses API call chained to the original call via `previous_response_id`,
+        so OpenAI resolves the approval against its own server-side state
+        rather than requiring the full prior input/output to be replayed.
+        """
+        approval_item = {
+            "type": "mcp_approval_response",
+            "approval_request_id": pending.approval_request_id,
+            "approve": approve,
+        }
+        kwargs = {
+            "model": request.model,
+            "instructions": self._build_instructions(request),
+            "input": [approval_item],
+            "previous_response_id": pending.response_id,
+            "max_output_tokens": request.max_tokens,
+        }
+        if request.model not in MODELS_WITHOUT_TEMPERATURE_SUPPORT:
+            kwargs["temperature"] = request.temperature
+        if tools:
+            kwargs["tools"] = tools
+
+        logger.info(f"[022] _call_openai_approval_api: approve={approve}, kwargs={kwargs!r}")
+        response = self.client.responses.create(**kwargs)
+        logger.info(
+            f"[022] _call_openai_approval_api response: id={getattr(response, 'id', None)!r}, "
+            f"output item types={[getattr(i, 'type', None) for i in (response.output or [])]!r}, "
+            f"output_text={response.output_text!r}"
+        )
+        return response
+
+    def _resolve_pending_approval(self, pending: PendingApproval, request: AIRequest,
+                                  effective_chat_id: str, user_obj, user_role: str,
+                                  sender: Optional[str], recipient: Optional[str]) -> Optional[AIResponse]:
+        """
+        Resolve a pending document-creation MCP approval (Feature 022) using
+        this turn's message as the yes/no reply.
+
+        Returns:
+            The final AIResponse if the user approved (the gated tool actually
+            executes now). None if declined or unrecognized - the caller
+            should then process this same message as a normal fresh turn
+            (the decline itself is still explicitly reported to OpenAI so its
+            server-side state for that response is closed out cleanly).
+        """
+        tools = self._build_morning_mcp_tools(user_obj, request.request_id) if self.rbac_enabled else None
+        is_affirmative = _is_affirmative_reply(request.user_prompt)
+        logger.info(
+            f"[022] _resolve_pending_approval: chat={effective_chat_id!r}, "
+            f"pending={pending!r}, user_prompt={request.user_prompt!r}, "
+            f"is_affirmative={is_affirmative}, tools_attached={bool(tools)}"
+        )
+
+        if is_affirmative:
+            response = self._call_openai_approval_api(request, pending, approve=True, tools=tools)
+            self.pending_approval_manager.clear(effective_chat_id)
+            logger.info(f"[022] Approved and cleared pending for chat={effective_chat_id!r}")
+            return self._finalize_response(
+                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools
+            )
+
+        # Not a recognized affirmative: decline, close out OpenAI's
+        # server-side state, then let the caller process this message as a
+        # normal fresh turn (it may itself be a new, unrelated request).
+        logger.info(
+            f"[022] '{request.user_prompt}' not recognized as affirmative - "
+            f"declining pending approval for chat={effective_chat_id!r}"
+        )
+        try:
+            self._call_openai_approval_api(request, pending, approve=False, tools=tools)
+        except Exception as e:
+            logger.error(
+                f"Failed to submit decline for pending approval (chat={effective_chat_id}, "
+                f"tool={pending.tool_name}): {e}", exc_info=True
+            )
+        self.pending_approval_manager.clear(effective_chat_id)
+        logger.info(
+            f"Pending MCP approval declined for chat={effective_chat_id}, "
+            f"tool={pending.tool_name} - falling through to a fresh turn"
+        )
+        return None
 
     def _create_fallback_response(self, request_id: str, message: str) -> AIResponse:
         """
