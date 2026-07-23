@@ -99,6 +99,14 @@ def pytest_runtest_setup(item):
         logger_obj = logging.getLogger(name)
         if isinstance(logger_obj, logging.Logger):
             logger_obj.propagate = True  # Ensure propagation to root logger
+            # Reset each logger's OWN level too, not just propagate: modules
+            # like ai_handler.py create their logger via get_logger(__name__)
+            # at import time with an explicit level (default INFO), and a
+            # logger's own explicit level short-circuits isEnabledFor() before
+            # propagation is even considered - setting propagate=True alone
+            # does NOT make logger.debug() calls appear just because the root
+            # logger is DEBUG. NOTSET makes it defer to the root's level.
+            logger_obj.setLevel(logging.NOTSET)
 
 
 @pytest.fixture(scope="module")

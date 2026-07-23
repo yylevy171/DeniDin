@@ -618,15 +618,78 @@ def _build_payment_receipt_payload(original: dict, amount: Optional[float] = Non
     }
 
 
+def _build_combo_closing_payload(original: dict) -> dict:
+    """Build a Morning invoice/receipt combo (type 320) payload that closes a
+    type-300 ("חשבון עסקה") `original` as paid.
+
+    Per bugfix-014's Flow 4 finding: a type-300 document is closed by a
+    type-320 combo document, not the type-400 receipt used for type-305.
+    A 320 document is self-contained and invoice-shaped (carries its own
+    line items/VAT), unlike a bare receipt — mirrors _build_cancellation_payload's
+    income/vatType/client/payment shape rather than _build_payment_receipt_payload's.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    client_info = original.get("client") or {}
+    income_items = original.get("income") or []
+    original_id = str(original.get("id") or original.get("documentId") or "")
+    original_number = original.get("number")
+    total_amount = original.get("total")
+    if total_amount is None:
+        total_amount = sum(
+            float(item.get("price", 0)) * float(item.get("quantity", 1)) for item in income_items
+        )
+        if not income_items:
+            total_amount = original.get("amount")
+
+    return {
+        "type": _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
+        "date": today,
+        "lang": original.get("lang", "he"),
+        "vatType": original.get("vatType", 1),
+        "currency": original.get("currency", "ILS"),
+        "rounding": False,
+        "signed": False,
+        "description": f"תשלום עבור חשבון עסקה מספר {original_number or original_id}",
+        "linkedDocumentIds": [original_id] if original_id else [],
+        "client": {
+            "self": False,
+            "name": client_info.get("name"),
+        },
+        "income": income_items
+        or [
+            {
+                "catalogNum": "",
+                "description": f"תשלום עבור חשבון עסקה מספר {original_number or original_id}",
+                "quantity": 1,
+                "price": total_amount,
+                "currency": original.get("currency", "ILS"),
+                "currencyRate": 1,
+                "vatRate": 0,
+                "vatType": original.get("vatType", 1),
+            }
+        ],
+        "payment": [{"type": 1, "price": total_amount, "date": today}],
+    }
+
+
 def _mark_invoice_paid(client: MorningClient, invoice_id: str) -> str:
     original = client.get_invoice(invoice_id)
 
     if original.get("status") in _CLOSED_STATUS_CODES:
-        # Already paid — idempotent no-op, avoid creating a duplicate receipt.
+        # Already paid — idempotent no-op, avoid creating a duplicate closing document.
         return format_invoice_confirmation(Invoice.model_validate(original))
 
-    payload = _build_payment_receipt_payload(original)
-    client.create_invoice(payload)  # generic POST /documents; type=400 makes it a receipt
+    original_type = original.get("type")
+    if original_type == _TRANSACTION_ACCOUNT_DOCUMENT_TYPE:
+        payload = _build_combo_closing_payload(original)
+    elif original_type == _TAX_INVOICE_DOCUMENT_TYPE:
+        payload = _build_payment_receipt_payload(original)
+    else:
+        raise ValueError(
+            f"Cannot mark invoice paid: unsupported document type {original_type} "
+            f"(only {_TRANSACTION_ACCOUNT_DOCUMENT_TYPE} and {_TAX_INVOICE_DOCUMENT_TYPE} are supported)"
+        )
+    client.create_invoice(payload)  # generic POST /documents; payload["type"] determines the document kind
 
     updated = client.get_invoice(invoice_id)
     return format_invoice_confirmation(Invoice.model_validate(updated))
@@ -702,7 +765,12 @@ def update_invoice_status(
     `PUT /documents/{id}/status`, and this tool's original `/close`+`/open`
     design, both turned out not to apply to tax invoices — see
     _build_payment_receipt_payload and _mark_invoice_unpaid docstrings):
-    - "paid" -> issue a linked Receipt (type 400); idempotent if already paid.
+    - "paid" -> the closing document depends on the original's own type
+      (spec 020, bugfix-014 Flow 4): a type-305 tax invoice gets a linked
+      Receipt (type 400); a type-300 transaction account gets a linked
+      invoice/receipt combo (type 320); any other original type raises
+      ValueError. Idempotent if already paid, regardless of type. See
+      _build_payment_receipt_payload / _build_combo_closing_payload.
     - "unpaid" -> idempotent no-op if not yet paid; raises ValueError if
       already paid (no supported reversal).
     - "cancelled" -> issue a linked Credit Invoice (type 330); see

@@ -12,7 +12,7 @@
 #
 # Lock state lives in $SHARED_STATE_DIR/active_env.json (a directory shared
 # across clones via a symlink at each clone's ./shared, resolved from each
-# clone's own gitignored ./shared_state.local.json - see CLAUDE.md).
+# clone's own gitignored ./config/shared_state.local.json - see CLAUDE.md).
 #
 # Schema: {"active_env": "dev"|"prod"|null, "owner": "<coder-id>"|null, "updated_at": "..."}
 # "owner" is only meaningful when active_env == "dev"; always null otherwise.
@@ -48,12 +48,12 @@ env_lock_identity() {
 }
 
 # Ensure ./shared resolves to the canonical per-machine shared-state dir
-# declared in ./shared_state.local.json. Self-healing: creates the symlink
-# (and the canonical dir, if genuinely missing) if not already set up.
+# declared in ./config/shared_state.local.json. Self-healing: creates the
+# symlink (and the canonical dir, if genuinely missing) if not already set up.
 env_lock_ensure_shared_symlink() {
     local repo_root config_file shared_link canon
     repo_root="$(_env_lock_repo_root)"
-    config_file="$repo_root/shared_state.local.json"
+    config_file="$repo_root/config/shared_state.local.json"
     shared_link="$repo_root/shared"
 
     if [ ! -f "$config_file" ]; then

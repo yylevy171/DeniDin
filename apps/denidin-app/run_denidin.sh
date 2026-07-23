@@ -25,8 +25,8 @@ if [ "$ENV" = "dev" ]; then
     echo ""
 fi
 
-COMPOSE_FILE="$REPO_ROOT/docker-compose.$ENV.yml"
-LOCAL_OVERRIDE="$REPO_ROOT/docker-compose.$ENV.local.yml"
+COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.$ENV.yml"
+LOCAL_OVERRIDE="$REPO_ROOT/docker/docker-compose.$ENV.local.yml"
 SERVICE="denidin-app-$ENV"
 
 # Optional per-clone override (plain relative paths, no env vars/symlinks -
@@ -34,7 +34,10 @@ SERVICE="denidin-app-$ENV"
 # paths, so it doesn't matter which clone last started dev/prod. Gitignored,
 # created once per clone by hand; may be empty/absent if this clone's own
 # paths are already the canonical ones (e.g. the root clone).
-COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+#
+# --project-directory pins relative volume paths inside these compose files
+# to REPO_ROOT regardless of which folder (docker/) actually holds them.
+COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE")
 if [ -f "$LOCAL_OVERRIDE" ]; then
     COMPOSE_ARGS+=(-f "$LOCAL_OVERRIDE")
 fi
@@ -43,13 +46,13 @@ fi
 # watchdog.py in every container (this app and morning-mcp-app, dev and
 # prod) checks against this file and tears its own app down on a mismatch.
 # If you're switching from a different environment, run
-# ./killall_containers.sh FIRST (see CLAUDE.md's "ONE ENVIRONMENT SET AT A
-# TIME" rule) - this script does not do that for you.
+# ./scripts/killall_containers.sh FIRST (see CLAUDE.md's "ONE ENVIRONMENT SET
+# AT A TIME" rule) - this script does not do that for you.
 #
 # The lock is shared across all clones (this one, coder1, coder2, ...) via
 # ./shared, and "dev" is additionally locked to whichever clone acquires it
-# - see env_lock.sh.
-source "$REPO_ROOT/env_lock.sh"
+# - see scripts/env_lock.sh.
+source "$REPO_ROOT/scripts/env_lock.sh"
 env_lock_acquire "$ENV"
 
 docker compose "${COMPOSE_ARGS[@]}" up -d "$SERVICE"

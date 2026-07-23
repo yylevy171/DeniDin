@@ -4,11 +4,12 @@
 # stop_denidin.sh/stop_morning_mcp.sh individually, unless specifically
 # asked to stop only one.
 #
-# Usage: ./stop_all.sh dev|prod [-force]
+# Usage: ./scripts/stop_all.sh dev|prod [-force]
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 ENV="$1"
 FORCE="$2"
@@ -17,5 +18,5 @@ if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
     exit 1
 fi
 
-"$SCRIPT_DIR/apps/denidin-app/stop_denidin.sh" "$ENV" "$FORCE"
-"$SCRIPT_DIR/apps/morning-mcp-app/stop_morning_mcp.sh" "$ENV" "$FORCE"
+"$REPO_ROOT/apps/denidin-app/stop_denidin.sh" "$ENV" "$FORCE"
+"$REPO_ROOT/apps/morning-mcp-app/stop_morning_mcp.sh" "$ENV" "$FORCE"

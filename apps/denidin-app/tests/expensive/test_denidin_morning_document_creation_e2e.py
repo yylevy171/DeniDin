@@ -5,9 +5,20 @@ real Morning MCP server, real Morning sandbox.
 Same entry point, fixtures, and non-technical-user conventions as
 test_denidin_morning_mcp_e2e.py (feature 018) - reuses that module's
 fixtures/helpers rather than duplicating them (denidin_app, _send_turn,
-_calls_for, _unique_client_name, GODFATHER_CHAT_ID). See that module's
-docstring for the full rationale behind single-turn-only prompts and no
-test-only confirmation carve-out.
+_send_turn_and_approve, _send_turn_and_decline, _calls_for,
+_unique_client_name, GODFATHER_CHAT_ID). See that module's docstring for the
+full rationale behind single-turn-only prompts for non-document-creating
+tools and no test-only confirmation carve-out.
+
+**Two-turn approval (Feature 022, merged after this file was first written)**:
+create_transaction_account, create_combo_document, create_credit_note, and
+create_receipt all create a real Morning document, exactly like
+create_invoice/update_invoice_status - so all of them are in
+ai_handler.DOCUMENT_CREATING_MCP_TOOLS and require an explicit approval turn
+before they execute. Every test below is genuinely two-turn (or more, when
+it also needs to seed a document first): the ASK turn must NOT produce a
+real mcp_call, and the APPROVE turn is where the actual creation happens -
+see _send_turn_and_approve/_send_turn_and_decline in the 018 test module.
 
 Amounts in this file are randomized 10-100 (smaller/rounder than the 018
 suite's 40-950 range) - plausible for the short, cash-style phrasings used
@@ -31,6 +42,8 @@ from tests.expensive.test_denidin_morning_mcp_e2e import (  # noqa: F401
     GODFATHER_CHAT_ID,
     _calls_for,
     _send_turn,
+    _send_turn_and_approve,
+    _send_turn_and_decline,
     _unique_client_name,
     denidin_app,
     denidin_config,
@@ -44,11 +57,12 @@ def _small_random_amount() -> int:
 
 
 def _seed_fresh_invoice_and_get_number(client_name: str, amount: int, description: str) -> str:
-    """Seed a fresh invoice via a real WhatsApp turn and return its real,
+    """Seed a fresh invoice via a real, two-turn approved WhatsApp exchange
+    (create_invoice requires approval - Feature 022) and return its real,
     human-visible Morning invoice number (parsed from create_invoice's own
     Hebrew confirmation output, e.g. "חשבונית #60123") - so later turns in
     the same test can reference a specific, unambiguous real document."""
-    response, ai_response = _send_turn(
+    _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"צור חשבונית ל-{client_name} על {amount} ₪ עבור {description}",
         id_prefix="E2E_021_SEED",
@@ -78,18 +92,24 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
     user would actually know/say to distinguish this from an ordinary tax
     invoice).
 
-    Verification: mcp_calls shows a create_transaction_account call with no
-    error, and the reply confirms the document was created.
+    Two-turn (Feature 022): the ASK turn must NOT execute
+    create_transaction_account yet; the APPROVE turn is where it actually
+    runs, with no error and the right client name in its arguments.
     """
     client_name = _unique_client_name()
     amount = _small_random_amount()
     description = random.choice(_SEED_DESCRIPTIONS)
 
-    response, ai_response = _send_turn(
+    (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפיק חשבון עסקה עבור {client_name} על סך {amount} שח עבור {description}",
         id_prefix="E2E_TXN_ACCT",
     )
+    assert not _calls_for(ask_ai_response, "create_transaction_account"), (
+        f"create_transaction_account executed on the ASK turn before approval "
+        f"was given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+    )
+
     create_calls = _calls_for(ai_response, "create_transaction_account")
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
@@ -115,18 +135,26 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
 @pytest.mark.expensive
 def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     """Godfather reports payment already received and asks for the combo
-    invoice+receipt document in one immediate-payment turn - the natural
+    invoice+receipt document in one immediate-payment message - the natural
     phrasing a real person uses right after a cash sale, not a request for
     payment later.
+
+    Two-turn (Feature 022): the ASK turn must NOT execute
+    create_combo_document yet.
     """
     client_name = _unique_client_name()
     amount = _small_random_amount()
 
-    response, ai_response = _send_turn(
+    (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"{client_name} שילם {amount} שח. תפיק חשבונית מס קבלה",
         id_prefix="E2E_COMBO",
     )
+    assert not _calls_for(ask_ai_response, "create_combo_document"), (
+        f"create_combo_document executed on the ASK turn before approval was "
+        f"given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+    )
+
     create_calls = _calls_for(ai_response, "create_combo_document")
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
@@ -153,16 +181,23 @@ def test_godfather_creates_credit_note_against_real_invoice(denidin_app):
     Direct request for the document itself (not the "cancel" wording that
     routes to update_invoice_status), per feature 021's resolved scope that
     documents are creatable directly.
+
+    Two-turn (Feature 022): the ASK turn must NOT execute create_credit_note yet.
     """
     client_name = _unique_client_name()
     amount = _small_random_amount()
     invoice_number = _seed_fresh_invoice_and_get_number(client_name, amount, random.choice(_SEED_DESCRIPTIONS))
 
-    response, ai_response = _send_turn(
+    (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפיק חשבונית זיכוי לחשבונית מספר {invoice_number}",
         id_prefix="E2E_CREDIT_NOTE",
     )
+    assert not _calls_for(ask_ai_response, "create_credit_note"), (
+        f"create_credit_note executed on the ASK turn before approval was "
+        f"given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+    )
+
     create_calls = _calls_for(ai_response, "create_credit_note")
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
@@ -185,15 +220,19 @@ def test_credit_note_request_with_invalid_invoice_number_fails_gracefully(denidi
     rather than an arbitrary constant, so it has a realistic shape while
     still being guaranteed not to collide with any real document.
 
-    The model must surface a friendly failure, never a fabricated success or
-    a raw stack trace/technical error.
+    Uses _send_turn_and_approve unconditionally (mirroring the equivalent
+    "unsupported type" negative case in test_denidin_morning_mcp_e2e.py):
+    if the model attempts the call at all, it comes back as a pending
+    approval first: the tool must reject it once approved (never a
+    fabricated success), and the model must never surface a raw stack
+    trace/technical error either way.
     """
     client_name = _unique_client_name()
     amount = _small_random_amount()
     real_number = _seed_fresh_invoice_and_get_number(client_name, amount, random.choice(_SEED_DESCRIPTIONS))
     invalid_number = str(int(real_number) + 8_746_321)
 
-    response, ai_response = _send_turn(
+    _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפיק חשבונית זיכוי לחשבונית מספר {invalid_number}",
         id_prefix="E2E_CREDIT_NOTE_BAD_ID",
@@ -225,16 +264,24 @@ def test_godfather_creates_receipt_against_unpaid_invoice(denidin_app):
     existing unpaid invoice, referenced by its real invoice number (exactly
     one such invoice exists, freshly seeded) - a direct request for the
     document itself (distinct from "mark it as paid" wording, which routes
-    to update_invoice_status)."""
+    to update_invoice_status).
+
+    Two-turn (Feature 022): the ASK turn must NOT execute create_receipt yet.
+    """
     client_name = _unique_client_name()
     amount = _small_random_amount()
     invoice_number = _seed_fresh_invoice_and_get_number(client_name, amount, random.choice(_SEED_DESCRIPTIONS))
 
-    response, ai_response = _send_turn(
+    (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפיק קבלה עבור חשבונית מספר {invoice_number}",
         id_prefix="E2E_RECEIPT",
     )
+    assert not _calls_for(ask_ai_response, "create_receipt"), (
+        f"create_receipt executed on the ASK turn before approval was given: "
+        f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+    )
+
     create_calls = _calls_for(ai_response, "create_receipt")
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
@@ -260,7 +307,7 @@ def test_receipt_request_with_exact_invoice_amount_resolves_correctly(denidin_ap
     amount = _small_random_amount()
     _seed_fresh_invoice_and_get_number(client_name, amount, random.choice(_SEED_DESCRIPTIONS))
 
-    response, ai_response = _send_turn(
+    _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"{client_name} שילם {amount} שח. תפיק קבלה",
         id_prefix="E2E_RECEIPT_EXACT_AMOUNT",
@@ -283,15 +330,15 @@ def test_receipt_request_with_exact_invoice_amount_resolves_correctly(denidin_ap
 def test_receipt_request_for_already_paid_invoice_handled_sensibly(denidin_app):
     """Godfather asks for a receipt (by real invoice number) against an
     invoice that was already fully paid (via update_invoice_status in a
-    prior turn) - edge case verifying the model/tool surfaces whatever
-    Morning's real behavior is (duplicate receipt, rejection, etc.) rather
-    than crashing or fabricating a result.
+    prior, approved turn) - edge case verifying the model/tool surfaces
+    whatever Morning's real behavior is (duplicate receipt, rejection, etc.)
+    rather than crashing or fabricating a result.
     """
     client_name = _unique_client_name()
     amount = _small_random_amount()
     invoice_number = _seed_fresh_invoice_and_get_number(client_name, amount, random.choice(_SEED_DESCRIPTIONS))
 
-    paid_response, paid_ai_response = _send_turn(
+    _, (paid_response, paid_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"סמן את חשבונית מספר {invoice_number} כשולמה",
         id_prefix="E2E_RECEIPT_PREPAY",
@@ -302,7 +349,7 @@ def test_receipt_request_for_already_paid_invoice_handled_sensibly(denidin_app):
         f"Setup step (marking invoice paid) failed: {paid_ai_response.mcp_calls!r}"
     )
 
-    response, ai_response = _send_turn(
+    _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפיק קבלה נוספת עבור חשבונית מספר {invoice_number}",
         id_prefix="E2E_RECEIPT_DUPLICATE",

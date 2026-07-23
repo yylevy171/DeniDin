@@ -8,7 +8,7 @@
 # Usage: ./stop_denidin.sh dev|prod [-force]
 #
 # If "dev" is locked to a different clone (coder), this refuses to stop it
-# and release the lock unless -force is passed - see env_lock.sh.
+# and release the lock unless -force is passed - see scripts/env_lock.sh.
 
 set -e
 
@@ -22,14 +22,14 @@ if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
     exit 1
 fi
 
-source "$REPO_ROOT/env_lock.sh"
+source "$REPO_ROOT/scripts/env_lock.sh"
 env_lock_release "$ENV" "$FORCE"
 
-COMPOSE_FILE="$REPO_ROOT/docker-compose.$ENV.yml"
-LOCAL_OVERRIDE="$REPO_ROOT/docker-compose.$ENV.local.yml"
+COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.$ENV.yml"
+LOCAL_OVERRIDE="$REPO_ROOT/docker/docker-compose.$ENV.local.yml"
 SERVICE="denidin-app-$ENV"
 
-COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE")
 if [ -f "$LOCAL_OVERRIDE" ]; then
     COMPOSE_ARGS+=(-f "$LOCAL_OVERRIDE")
 fi

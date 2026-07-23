@@ -156,7 +156,7 @@ def main() -> None:
             logger.error(
                 f"ENVIRONMENT MISMATCH (active_env={active_env!r}): {'; '.join(mismatches)} - "
                 f"tearing down the server subprocess (pid={process.pid}). "
-                f"Container stays up (no auto-restart); run killall_containers.sh "
+                f"Container stays up (no auto-restart); run scripts/killall_containers.sh "
                 f"and start the correct environment explicitly."
             )
             process.terminate()

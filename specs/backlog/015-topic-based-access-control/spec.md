@@ -1,7 +1,7 @@
 # Feature Spec: Topic-Based Access Control
 
 **Feature ID**: 015-topic-based-access-control  
-**Priority**: P1 (High)  
+**Priority**: P2 (Medium)  
 **Status**: Draft - Needs Clarification  
 **Created**: January 22, 2026
 
