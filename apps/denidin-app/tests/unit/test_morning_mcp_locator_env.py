@@ -4,7 +4,7 @@ Confirms MorningMcpLocator resolves purely from its injected config path
 (mcp_config['morning_status_file']) with no hardcoded fallback to any other
 path - the property that makes cross-environment MCP resolution structurally
 impossible when dev/prod point at different status-file paths (per the
-per-environment shared-volume mounts in docker-compose.dev.yml/prod.yml).
+per-environment shared-volume mounts in docker/docker-compose.dev.yml/prod.yml).
 """
 import json
 from datetime import datetime, timezone

@@ -56,7 +56,7 @@ def discover_running_server(status_file_path: Path, auth_token: Optional[str]) -
 
     Reads the shared per-environment status file (`shared/mcp-status-dev/`,
     same file `apps/denidin-app`'s own tests use to discover the live tunnel
-    - see `docker-compose.dev.yml`'s volume mount) purely to learn the
+    - see `docker/docker-compose.dev.yml`'s volume mount) purely to learn the
     server's current URL; no Morning/OpenAI credentials are read from it.
     `auth_token` is passed in directly (from the caller's own already-loaded
     config) rather than read from a second config file - status_file paths

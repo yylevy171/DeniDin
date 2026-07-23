@@ -96,7 +96,7 @@ def main() -> None:
                 f"ENVIRONMENT MISMATCH: this container is '{own_env}' but "
                 f"shared/active_env.json declares '{active_env}' active - "
                 f"tearing down the app subprocess (pid={process.pid}). "
-                f"Container stays up (no auto-restart); run killall_containers.sh "
+                f"Container stays up (no auto-restart); run scripts/killall_containers.sh "
                 f"and start the correct environment explicitly."
             )
             process.terminate()

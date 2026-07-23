@@ -23,7 +23,7 @@
 
 ### Bot Operations & Infrastructure (January 20-21, 2026) - PR #21, #22 Merged
 - ✅ **Bot Management Scripts**: run_denidin.sh, stop_denidin.sh with single-instance enforcement (PR #21)
-- ✅ **Enhancements Backlog**: ENHANCEMENTS.md tracking known issues and improvements (PR #21)
+- ✅ **Enhancements Backlog**: ENHANCEMENTS.md tracking known issues and improvements (PR #21) — file removed 2026-07-23, superseded by the specs/ SpecKit pipeline
 - ✅ **Data Root Configuration**: Flexible test/prod data separation with data_root field (PR #22)
 - ✅ **Sender/Recipient Tracking**: Proper message attribution for AI vs WhatsApp users (PR #22)
 - ✅ **Test Suite Expansion**: 212 tests passing (up from 196)

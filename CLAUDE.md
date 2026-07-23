@@ -43,7 +43,7 @@ with real production Green Invoice credentials, and a stale test-config path
 create real invoices in production instead of the sandbox).
 
 **Enforcement mechanism (2026-07-21, post-incident)**:
-- **`./killall_containers.sh`** (repo root) — tears down every container in
+- **`./scripts/killall_containers.sh`** — tears down every container in
   every environment, both apps, unconditionally, and resets
   `shared/active_env.json` (the single shared source of truth for "which
   environment is currently allowed to be active") to `null`. Run this first,
@@ -62,28 +62,28 @@ create real invoices in production instead of the sandbox).
   subprocess and does **not** respawn it — the container stays "Up" (so
   Docker's restart policy, now `restart: "no"` on every service, can't
   silently recreate it) but does nothing further until a human runs
-  `killall_containers.sh` and starts the correct environment explicitly.
+  `scripts/killall_containers.sh` and starts the correct environment explicitly.
   No automatic retry, by design.
 
 Do not leave a `-prod` container "just running" for convenience,
 verification, or because nothing seems to be using it right now — and don't
-rely on memory/habit to track what's live; `killall_containers.sh` + the
+rely on memory/habit to track what's live; `scripts/killall_containers.sh` + the
 watchdogs exist specifically so a slip here fails loudly instead of silently.
 
 **Multi-clone lock (2026-07-23)**: this repo may be checked out in more than
 one place at once — this original/`root` clone plus sibling dev clones
 (`coder1`, `coder2`, ...), each with its own [Personality dispatch](#personality-dispatch)
-identity. `env_lock.sh` (repo root, sourced by `run_denidin.sh`,
+identity. `scripts/env_lock.sh` (sourced by `run_denidin.sh`,
 `run_morning_mcp.sh`, `stop_denidin.sh`, `stop_morning_mcp.sh`, and
-`killall_containers.sh`) extends the one-environment-at-a-time rule across
+`scripts/killall_containers.sh`) extends the one-environment-at-a-time rule across
 all of them: `dev` is additionally locked to whichever clone's personality
 (by name — e.g. `Ruth`, `Avi`, `Bina`) acquired it, until that same
 personality releases it via `stop_*.sh dev`; `prod` is never owner-locked.
-A non-owner can override with `-force` on any `stop_*.sh`/`killall_containers.sh`
+A non-owner can override with `-force` on any `stop_*.sh`/`scripts/killall_containers.sh`
 call. This only works because `./shared` is a symlink (not a real directory)
 to one canonical path shared by every clone on the machine — **every clone,
 including any new one you set up, needs its own gitignored
-`shared_state.local.json` at repo root** (same idea as `DeniDin Dev/Prod
+`shared_state.local.json` at repo root** (same idea as `creds/DeniDin Dev/Prod
 Creds.txt` — not committed, created once per clone by hand):
 ```json
 {"shared_state_dir": "/absolute/path/to/one/canonical/shared-state/dir"}
@@ -95,21 +95,21 @@ the lock isn't actually shared and the whole mechanism silently no-ops.
 session/memory data (`apps/denidin-app/data`, `dev_data`) and container logs
 (`apps/denidin-app/logs/{dev,prod}`, `apps/morning-mcp-app/logs/{dev,prod}`)
 must not fragment depending on which clone last started dev/prod.
-`docker-compose.dev.yml`/`docker-compose.prod.yml` themselves are untouched
+`docker/docker-compose.dev.yml`/`docker/docker-compose.prod.yml` themselves are untouched
 (plain relative paths, identical across clones, as always). Instead, every
-clone gets its own gitignored **`docker-compose.dev.local.yml`** /
-**`docker-compose.prod.local.yml`** at repo root (same idea as
-`shared_state.local.json`/`DeniDin Dev/Prod Creds.txt` — plain files, not
+clone gets its own gitignored **`docker/docker-compose.dev.local.yml`** /
+**`docker/docker-compose.prod.local.yml`** (same idea as
+`shared_state.local.json`/`creds/DeniDin Dev/Prod Creds.txt` — plain files, not
 committed, created once per clone by hand), layered in automatically by
 `run_denidin.sh`/`run_morning_mcp.sh`/`stop_denidin.sh`/`stop_morning_mcp.sh`/
-`killall_containers.sh` via a second `-f` flag *if the file exists* (no
+`scripts/killall_containers.sh` via a second `-f` flag *if the file exists* (no
 error if it's absent). These are plain Docker Compose override files — no
 environment variables, no symlinks — containing only the volume lines that
 need to differ from the base file, as literal relative paths. The root
 clone's copy is a no-op (`services: {}`) since its own paths in the base
 file are already canonical. Every `coderN` clone's copy should instead
 override the data/log volumes to point one level up at the root clone's
-paths, e.g. (`docker-compose.dev.local.yml`):
+paths, e.g. (`docker/docker-compose.dev.local.yml`):
 ```yaml
 services:
   denidin-app-dev:
@@ -120,16 +120,18 @@ services:
     volumes:
       - ../apps/morning-mcp-app/logs/dev:/app/logs
 ```
-(and the equivalent `docker-compose.prod.local.yml` for `data`/`logs/prod`).
+(and the equivalent `docker/docker-compose.prod.local.yml` for `data`/`logs/prod`).
 Compose merges each service's `volumes:` list by matching *target* mount
 point across files, so only the lines that actually change need to be
 listed — the config-file mount and anything else not mentioned here is
 inherited from the base file untouched (verified via `docker compose
-config`, not assumed). Relative paths in the override resolve against the
-directory containing the *base* compose file being combined with it — i.e.
-each clone's own directory — so `../apps/denidin-app/dev_data` correctly
-means "one level up from this clone" in every clone, not "one level up from
-wherever `docker compose` happened to be invoked." `test_data`/
+config`, not assumed). All `run_*.sh`/`stop_*.sh`/`scripts/killall_containers.sh`
+invocations pass `--project-directory` (the repo root) explicitly, so
+relative paths in every compose file — base and override alike — always
+resolve against the repo root, never against `docker/` (where the files
+themselves now live) or wherever `docker compose` happened to be invoked
+from. So `../apps/denidin-app/dev_data` in a `coderN` clone's override
+still correctly means "one level up from this clone." `test_data`/
 `logs/test_logs` are NOT part of this — tests run via host `pytest`, never
 through Docker, so they're already naturally isolated per clone and should
 stay that way.
@@ -149,7 +151,7 @@ This repo is split into two independently deployable apps under `apps/`, plus Sp
 - **`apps/morning-mcp-app/`** — a standalone app for the Morning/Green Invoice API (Israeli invoicing): a client library (`MorningClient`, `MorningAuth` under its own `src/denidin_mcp_morning/`), a FastMCP server (`server.py`, 7 invoice-management tools, streamable-HTTP, bearer-auth, `/health` endpoint) exposed to `apps/denidin-app` over a real ngrok tunnel, plus its sandbox-backed integration test suite. It has its own `requirements.txt`, `pytest.ini`, `Makefile`, `Dockerfile`, and config files — fully independent of `apps/denidin-app/` (`denidin-app` reaches it only over HTTP via the tunnel, never by importing its code). Remaining polish work (audit logging, run-both-apps docs) tracked under `specs/in-definition/018-denidin-morning-mcp-integration/`.
 - **`specs/`** — SpecKit-style feature specifications, organized by status: `in-definition/`, `P1/`, `P2/`, `done/`, `not-doing/`, `bugfixes/`, `checklists/`. See "Spec-Driven Workflow" below.
 - **`.github/`** — the project's constitution/methodology docs (see "Governance Docs" below) — these are binding rules for how work is done here, not just background reading.
-- **`docker-compose.dev.yml`** / **`docker-compose.prod.yml`** (repo root) — one compose file per environment (019-env-separation), each with a `denidin-app-<env>` + `morning-mcp-app-<env>` service pair; each app also builds/runs standalone via its own `Dockerfile` (`docker build`/`docker run` from within the app's own directory, no dependency on the other app or on compose). Containers are the *only* supported way to run either app now — see "Environments (dev/prod)" below.
+- **`docker/docker-compose.dev.yml`** / **`docker/docker-compose.prod.yml`** — one compose file per environment (019-env-separation), each with a `denidin-app-<env>` + `morning-mcp-app-<env>` service pair; each app also builds/runs standalone via its own `Dockerfile` (`docker build`/`docker run` from within the app's own directory, no dependency on the other app or on compose). Containers are the *only* supported way to run either app now — see "Environments (dev/prod)" below.
 
 **Almost all day-to-day commands below assume `cd apps/denidin-app` first**, unless working on the morning app (`cd apps/morning-mcp-app`).
 
@@ -159,7 +161,7 @@ Both apps run **exclusively as Docker containers**, in one of two environments �
 
 **Important asymmetry**: there is one paid WhatsApp Business number and one Green API instance (no sandbox tier exists), so `denidin-app-dev` and `denidin-app-prod` share the same real Green API credentials. `GreenAPIBot` polls for notifications rather than receiving pushed webhooks, so **only one of `denidin-app-dev`/`denidin-app-prod` should be actively running at a time** whenever real WhatsApp traffic could arrive — switching is a manual hand-off (`stop` one, `run` the other), not a concurrent-safe operation. **`morning-mcp-app-dev`/`morning-mcp-app-prod` are NOT exempt from this** — see the "ONE ENVIRONMENT SET AT A TIME" rule at the top of this document; an earlier version of this line claimed they had no such restriction and could always run together, which is exactly the assumption that caused the 2026-07-21 incident referenced there. See `specs/019-env-separation/quickstart.md` for the full hand-off procedure, and role-mapping details (dev's godfather/admin assignment is operator-switchable by editing `config.dev.json` and restarting, since there's only one real tester).
 
-**Merging a code fix to `master` does not redeploy it.** `docker compose up -d`/`restart` does not rebuild on its own when source changed on disk — a running container keeps executing whatever image it was last built from. After merging any code change (not a config/mounted-data change — those *are* picked up live, e.g. `runtime_constitution.md`'s mtime-based hot-reload), rebuild and recreate every environment container currently running that app: `docker compose -f docker-compose.<env>.yml build <service> && ... up -d <service>` (or the `run_*.sh <env>` script, but note it does not rebuild by itself either — build first). A merged RBAC fix once had zero effect on a running prod container for hours because of exactly this (2026-07-20) — see the `/haleluya` command's Deploy step.
+**Merging a code fix to `master` does not redeploy it.** `docker compose up -d`/`restart` does not rebuild on its own when source changed on disk — a running container keeps executing whatever image it was last built from. After merging any code change (not a config/mounted-data change — those *are* picked up live, e.g. `runtime_constitution.md`'s mtime-based hot-reload), rebuild and recreate every environment container currently running that app: `docker compose --project-directory . -f docker/docker-compose.<env>.yml build <service> && ... up -d <service>` (or the `run_*.sh <env>` script, but note it does not rebuild by itself either — build first). A merged RBAC fix once had zero effect on a running prod container for hours because of exactly this (2026-07-20) — see the `/haleluya` command's Deploy step.
 
 ## Commands
 
@@ -172,10 +174,10 @@ cp config/config.example.json config/config.prod.json   # then fill in real prod
 
 ### Run
 ```bash
-./run_all.sh dev|prod            # (repo root) starts BOTH denidin-app and morning-mcp-app for that env
-./stop_all.sh dev|prod [-force]  # stops both - use this pair by default
+./scripts/run_all.sh dev|prod            # (repo root) starts BOTH denidin-app and morning-mcp-app for that env
+./scripts/stop_all.sh dev|prod [-force]  # stops both - use this pair by default
 ```
-`denidin-app` and `morning-mcp-app` are bundled — neither app's container may run alone (see the "ONE ENVIRONMENT SET AT A TIME" rule above) — so `run_all.sh`/`stop_all.sh` are the default way to start/stop an environment. Only use the per-app scripts below if specifically asked to start/stop just one app:
+`denidin-app` and `morning-mcp-app` are bundled — neither app's container may run alone (see the "ONE ENVIRONMENT SET AT A TIME" rule above) — so `scripts/run_all.sh`/`scripts/stop_all.sh` are the default way to start/stop an environment. Only use the per-app scripts below if specifically asked to start/stop just one app:
 ```bash
 cd apps/denidin-app
 ./run_denidin.sh dev|prod       # start that environment's container (docker compose wrapper)
@@ -281,7 +283,7 @@ Non-text messages (`imageMessage`, `documentMessage`, `videoMessage`, `audioMess
 - **`constants/error_messages.py`** — centralized user-facing error strings (friendly, no stack traces).
 
 ### Data & config
-- `config/config.dev.json` / `config/config.prod.json` (gitignored, real per-environment secrets) vs `config/config.example.json` (single safe-placeholder template shared by both envs, committed — copy it to `config.dev.json`/`config.prod.json` and fill in the env-specific values) vs `config/config.test.json` (used by pytest, its own ephemeral `test_data/` root — decoupled from the persistent `dev_data/` environment, per 019-env-separation) — all loaded via `AppConfiguration.from_file`, no env vars. Real secrets for a given environment live in `DeniDin Dev Creds.txt` / `DeniDin Prod Creds.txt` (repo root, gitignored) — the single source of truth to paste from when (re)populating a config file, rather than any config file itself.
+- `config/config.dev.json` / `config/config.prod.json` (gitignored, real per-environment secrets) vs `config/config.example.json` (single safe-placeholder template shared by both envs, committed — copy it to `config.dev.json`/`config.prod.json` and fill in the env-specific values) vs `config/config.test.json` (used by pytest, its own ephemeral `test_data/` root — decoupled from the persistent `dev_data/` environment, per 019-env-separation) — all loaded via `AppConfiguration.from_file`, no env vars. Real secrets for a given environment live in `creds/DeniDin Dev Creds.txt` / `creds/DeniDin Prod Creds.txt` (gitignored) — the single source of truth to paste from when (re)populating a config file, rather than any config file itself.
 - `data/sessions/`, `data/memory/` (ChromaDB) — gitignored runtime state, isolated from test data via the `data_root` config field. `config/runtime_constitution.md` is NOT part of this (2026-07-23) — it's shared, git-tracked config content, identical for dev/prod/test, resolved via `constitution_config.base_dir` (default `'config'`, overridable — e.g. tests pointing at a tmp dir) rather than `data_root`. Previously lived under `{data_root}/constitution/`, duplicated per environment; that let dev's and prod's copies silently drift out of sync (a real incident, 2026-07-23 — dev's copy was missing bugfix-014's guidance for weeks).
 - `logs/denidin.log` (production) and `logs/test_logs/{test_file}.log` (per-test-file, auto-configured by `conftest.py`) — check these logs instead of re-running expensive tests to get more diagnostic detail.
 
