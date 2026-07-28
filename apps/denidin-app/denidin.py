@@ -148,7 +148,7 @@ class DeniDin:
         session = None
         if self.ai_handler.memory_enabled:
             session = self.ai_handler.session_manager.get_session(chat_id)
-        
+
         return {
             'response_text': ai_response.response_text,
             'tokens_used': ai_response.tokens_used,
@@ -283,7 +283,6 @@ logger.info(f"  Green API Instance: {config.green_api_instance_id}")
 logger.info(f"  Green API Token: {mask_api_key(config.green_api_token)}")
 logger.info(f"  AI API Key: {mask_api_key(config.ai_api_key)}")
 logger.info(f"  AI Model: {config.ai_model}")
-logger.info(f"  Temperature: {config.temperature}")
 logger.info(f"  Max Tokens: {config.ai_reply_max_tokens}")
 logger.info(f"  Log Level: {config.log_level}")
 logger.info("Handlers initialized: AIHandler, WhatsAppHandler")
@@ -483,7 +482,6 @@ if __name__ == "__main__":
         'ai_vision_model': config.ai_vision_model,
         'ai_embedding_model': config.ai_embedding_model,
         'ai_reply_max_tokens': config.ai_reply_max_tokens,
-        'temperature': config.temperature,
         'log_level': config.log_level,
         'data_root': config.data_root,
         'feature_flags': config.feature_flags,

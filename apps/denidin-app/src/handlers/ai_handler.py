@@ -4,6 +4,7 @@ Phase 5: US3 - Error Handling & Resilience
 Phase 5 (002+007): Memory system integration
 Phase 6: RBAC (Role-Based Access Control)
 """
+import json
 import time
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
@@ -85,13 +86,150 @@ def _is_affirmative_reply(text: str) -> bool:
     leading_token = normalized.split()[0].strip(".,!?")
     return leading_token in _AFFIRMATIVE_REPLIES
 
+# Ledger Event Recognition (runtime_constitution.md) - a local OpenAI function tool,
+# NOT a remote MCP server: nothing is executed anywhere when the model "calls" it. The
+# API just returns structured, schema-validated arguments as a `function_call` output
+# item alongside (never instead of) the normal reply - see `extract_function_call`.
+# Used by both the text path (AIHandler) and the image path (ImageExtractor).
+LEDGER_EVENT_TOOL = {
+    "type": "function",
+    "name": "capture_ledger_event",
+    "description": (
+        "Capture a fee-agreement or bank-deposit event mentioned in the user's message "
+        "or image, for later review and merging into the bookkeeping ledger. Call this "
+        "in addition to your normal reply - never instead of it. Only call it when the "
+        "content genuinely states, changes, or cancels a fee arrangement, or shows a "
+        "bank-transfer/deposit confirmation. Do not call it for ordinary conversation, "
+        "questions, or content unrelated to money/engagement terms."
+    ),
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "source_type": {
+                "type": "string",
+                "enum": ["הסכם", "בנק"],
+                "description": "הסכם for a fee-agreement event, בנק for a bank deposit/transfer.",
+            },
+            "event_subtype": {
+                "type": "string",
+                "enum": ["יצירה", "עדכון", "ביטול", "אישור-מימוש", "הפקדה"],
+                "description": (
+                    "For source_type=הסכם: יצירה (new)/עדכון (correction)/ביטול "
+                    "(cancellation)/אישור-מימוש (payment/milestone confirmed). "
+                    "For source_type=בנק: always הפקדה."
+                ),
+            },
+            "client_name": {"type": ["string", "null"], "description": "The client's name, verbatim."},
+            "payer_name": {
+                "type": ["string", "null"],
+                "description": "The paying entity, ONLY if different from client_name (e.g. an insurer/union routing payment).",
+            },
+            "description": {"type": ["string", "null"], "description": "The matter/engagement, verbatim or closely paraphrased."},
+            "amount": {"type": ["string", "null"], "description": "The stated amount, verbatim (no currency conversion, no math)."},
+            "percent": {"type": ["string", "null"], "description": "A stated percentage figure, if any (e.g. success-fee percentage)."},
+            "percent_base": {"type": ["string", "null"], "description": "What the percent applies to, if stated."},
+            "hours": {"type": ["string", "null"], "description": "Stated hours, for an hourly work-log entry."},
+            "hourly_rate": {"type": ["string", "null"], "description": "Stated hourly rate, if any."},
+            "vat_status": {
+                "type": "string",
+                "enum": ["כולל", "לא כולל", "לא צוין"],
+                "description": "VAT-inclusive, VAT-exclusive, or not stated - never assumed.",
+            },
+            "replaces_hint": {
+                "type": ["string", "null"],
+                "description": "Free-text description of a prior arrangement this corrects/cancels, ONLY if identifiable from this conversation - never a guess.",
+            },
+            "reference_hint": {
+                "type": ["string", "null"],
+                "description": "Free-text loose reference to a related (not replaced) prior matter, if any.",
+            },
+            "notes": {"type": ["string", "null"], "description": "Any ambiguity or uncertainty worth flagging for the human reviewer."},
+            "raw_message_excerpt": {
+                "type": "string",
+                "description": "Verbatim source text (or a precise description of the image) this capture is based on - the hard pointer for later verification.",
+            },
+        },
+        "required": [
+            "source_type", "event_subtype", "client_name", "payer_name", "description",
+            "amount", "percent", "percent_base", "hours", "hourly_rate", "vat_status",
+            "replaces_hint", "reference_hint", "notes", "raw_message_excerpt",
+        ],
+        "additionalProperties": False,
+    },
+}
+
+
+def extract_function_call(response, tool_name: str) -> Optional[Dict]:
+    """Find a `function_call` item named `tool_name` in a Responses API `response.output`
+    and return its parsed arguments, or None if absent.
+
+    Never raises - malformed `arguments` JSON is logged and treated as "not called",
+    the same as if the model hadn't called the tool at all. Shared by the text path
+    (AIHandler._finalize_response) and the image path (ImageExtractor._vision_extract) -
+    the extraction logic itself doesn't care which one is calling it.
+    """
+    for item in (getattr(response, "output", None) or []):
+        if getattr(item, "type", None) != "function_call" or getattr(item, "name", None) != tool_name:
+            continue
+        try:
+            return json.loads(item.arguments)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Malformed {tool_name!r} function_call arguments discarded: {e}")
+            return None
+    return None
+
+
+def extract_function_call_id(response, tool_name: str) -> Optional[str]:
+    """Find a `function_call` item named `tool_name` in a Responses API `response.output`
+    and return its `call_id`, or None if absent.
+
+    Companion to `extract_function_call` - needed only when a real second round-trip
+    must report a result back for this specific call (see AIHandler._finalize_response's
+    ledger-event follow-up: reasoning models emit a `function_call` OR a final `message`
+    in one turn, never both, so `output_text` is empty until the call's result is
+    reported back via `previous_response_id` + `function_call_output`).
+    """
+    for item in (getattr(response, "output", None) or []):
+        if getattr(item, "type", None) != "function_call" or getattr(item, "name", None) != tool_name:
+            continue
+        return getattr(item, "call_id", None)
+    return None
+
+
+def extract_all_function_calls(response, tool_name: str) -> List[Dict]:
+    """Find EVERY `function_call` item named `tool_name` in a Responses API
+    `response.output`, returning each as {"arguments": dict, "call_id": str}.
+
+    A single turn can legitimately contain more than one call to the same tool -
+    e.g. runtime_constitution.md's Ledger Event Recognition explicitly wants one
+    capture per hourly work-log entry, never aggregated, so a message describing
+    several entries produces several `capture_ledger_event` calls in one turn.
+    OpenAI requires a `function_call_output` for EVERY pending function call
+    before it will continue a conversation (confirmed empirically, 2026-07-28: a
+    follow-up round-trip that only resolved the first of two calls was rejected
+    with "No tool output found for function call ..."), so any follow-up must
+    account for all of them, not just the first (unlike `extract_function_call`/
+    `extract_function_call_id`, which only ever return the first match).
+
+    Never raises - malformed `arguments` JSON on any individual item is logged
+    and that item is skipped, same as if the model hadn't called it.
+    """
+    results = []
+    for item in (getattr(response, "output", None) or []):
+        if getattr(item, "type", None) != "function_call" or getattr(item, "name", None) != tool_name:
+            continue
+        try:
+            arguments = json.loads(item.arguments)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Malformed {tool_name!r} function_call arguments discarded: {e}")
+            continue
+        results.append({"arguments": arguments, "call_id": getattr(item, "call_id", None)})
+    return results
+
+
 # Maximum message length to prevent excessive API costs
 MAX_MESSAGE_LENGTH = 10000
-
-# Models confirmed (real API 400 response) to reject a custom `temperature`
-# parameter entirely - not a guess/generalization to the wider 5.6 family,
-# only models actually observed to fail this way.
-MODELS_WITHOUT_TEMPERATURE_SUPPORT = {"gpt-5.6-luna"}
 
 
 class AIHandler:
@@ -343,10 +481,18 @@ class AIHandler:
             user_prompt=user_prompt,
             constitution=constitution,
             max_tokens=self.config.ai_reply_max_tokens,
-            temperature=self.config.temperature,
             model=self.config.ai_model,
             chat_id=message.chat_id,
-            message_id=message.message_id
+            message_id=message.message_id,
+            # Feature 024: the real Green API notification timestamp - without this,
+            # AIRequest.__post_init__ silently falls back to datetime.now(), so a
+            # captured ledger event's message_timestamp (the constitution's "hard
+            # pointer") reflected processing time, not when the user actually sent
+            # the message. Same class of bug as the image path's (found and fixed
+            # 2026-07-28), just one level upstream - exposed by strengthening this
+            # feature's E2E persistence assertions to check the exact value, not
+            # just truthiness.
+            timestamp=message.timestamp
         )
 
         logger.debug(f"Created AIRequest {request.request_id} for message {message.message_id}")
@@ -404,15 +550,37 @@ class AIHandler:
             "headers": {"Authorization": f"Bearer {auth_token}"}
         }]
 
-    def _build_instructions(self, request: AIRequest) -> str:
+    @staticmethod
+    def _build_ledger_event_tool() -> List[Dict]:
+        """The Ledger Event Recognition tool (runtime_constitution.md) - a local
+        function tool, always attached in the text path (no RBAC/role restriction,
+        unlike the Morning MCP tools; no remote server, unlike them either)."""
+        return [LEDGER_EVENT_TOOL]
+
+    def _assemble_tools(self, user_obj, correlation_id: str) -> Optional[List[Dict]]:
+        """Merge the (RBAC-gated) Morning MCP tools with the (always-on) ledger-event
+        tool into one `tools` list - both can be attached in the same turn. Returns
+        None (not an empty list) when nothing applies, matching the Responses API's
+        own convention for "no tools this call"."""
+        morning_tools = self._build_morning_mcp_tools(user_obj, correlation_id) if self.rbac_enabled else None
+        combined = (morning_tools or []) + self._build_ledger_event_tool()
+        return combined or None
+
+    def _build_instructions(self, constitution: str) -> str:
         """
         Build the `instructions` string (constitution + current-date suffix)
-        for a Responses API call. Used by both a normal turn's call and the
-        Feature 022 approval-resolution follow-up call — `previous_response_id`
-        chains the prior conversation's input/output, but NOT the `instructions`
+        for a Responses API call. Used by a normal turn's call, the Feature 022
+        approval-resolution follow-up call, the Feature 024 ledger follow-up
+        call, and the Feature 024 image-path ledger classification call
+        (ImageExtractor._classify_ledger_event) — `previous_response_id` chains
+        the prior conversation's input/output, but NOT the `instructions`
         parameter itself (confirmed empirically, same as `tools` needing to be
         re-passed - see `_call_openai_approval_api`), so every call needs its
         own full instructions to keep following the constitution's guidance.
+
+        Takes the constitution text directly (not a full AIRequest) so any
+        caller with just a constitution string - not necessarily a full
+        request object - can build the same instructions.
         """
         # Give the model the actual current date. It has no clock of its own —
         # its training cutoff makes it default to a stale "current year", which
@@ -421,7 +589,7 @@ class AIHandler:
         # (CONSTITUTION §II) — NOT templated into the constitution file.
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         return (
-            f"{request.constitution}\n\n---\n"
+            f"{constitution}\n\n---\n"
             f"THE CURRENT DATE IS {today} (UTC). Treat this as the authoritative "
             f"\"today\" when resolving any relative or partial date the user gives "
             f"(a day/month with no year, \"היום\", \"אתמול\", etc.) — never fall "
@@ -465,12 +633,10 @@ class AIHandler:
 
         kwargs = {
             "model": request.model,
-            "instructions": self._build_instructions(request),
+            "instructions": self._build_instructions(request.constitution),
             "input": input_items,
             "max_output_tokens": request.max_tokens,
         }
-        if request.model not in MODELS_WITHOUT_TEMPERATURE_SUPPORT:
-            kwargs["temperature"] = request.temperature
         if tools:
             kwargs["tools"] = tools
 
@@ -562,12 +728,12 @@ class AIHandler:
                 logger.error(f"Failed to retrieve conversation history: {e}", exc_info=True)
 
         try:
-            # Morning MCP tools (Feature 018): attach only for authorized roles when
-            # the server is currently reachable; None for clients/blocked or when down.
-            tools = self._build_morning_mcp_tools(user_obj, request.request_id) if self.rbac_enabled else None
+            # Morning MCP tools (Feature 018, RBAC-gated) + the ledger-event tool
+            # (Feature 024, always attached) merged into one tools list.
+            tools = self._assemble_tools(user_obj, request.request_id)
 
             # Call OpenAI Responses API with retry logic, conversation history, and
-            # (optionally) the Morning MCP server as a remote tool
+            # whichever tools apply this turn
             response = self._call_openai_api(request, conversation_history=conversation_history, tools=tools)
 
             return self._finalize_response(
@@ -614,6 +780,99 @@ class AIHandler:
                 "Sorry, I encountered an unexpected error. Please try again."
             )
 
+    def _handle_ledger_event_capture(self, request: AIRequest, response, effective_chat_id: Optional[str],
+                                     sender: Optional[str], tools: Optional[List[Dict]]):
+        """
+        Ledger Event Recognition (runtime_constitution.md) - a real OpenAI function call.
+        Reasoning models emit `function_call`(s) OR a final `message` in one turn, never
+        both, so response_text is always empty on the turn that calls this tool - a real
+        second round-trip (previous_response_id + function_call_output, same pattern as
+        `_call_openai_approval_api`) is required to get the model's actual reply, which
+        also lets it confirm the captured fields back to the user (Feature 024).
+
+        A single turn can contain MORE THAN ONE `capture_ledger_event` call (e.g. several
+        hourly work-log entries in one message - the constitution says never aggregate
+        them). OpenAI requires a `function_call_output` for every pending function call
+        in a turn before it will continue - resolving only the first and leaving others
+        unresolved gets the whole follow-up rejected with "No tool output found for
+        function call ..." (confirmed empirically, 2026-07-28, a real godfather/Morning-MCP
+        conversation with two capture_ledger_event calls in one turn). So every call found
+        is resolved together in one follow-up request, not just the first.
+
+        Persists every captured event regardless of the follow-up's outcome - the
+        structured captures must never be lost even if the confirmation reply fails.
+
+        Returns the follow-up response (whose output_text/usage should replace the
+        original response's) if at least one ledger event was captured and the
+        round-trip succeeded, else None (nothing to capture, or the round-trip failed).
+
+        Suppressed when Morning MCP was the data source this turn (2026-07-28): a
+        real godfather "list all my invoices" turn had the model reading its own
+        list_invoices tool output back and mistaking existing Morning documents for
+        new fee-agreement text, calling capture_ledger_event on data that already
+        lives in Morning - then losing its own final reply entirely when the
+        follow-up round-trip called the tool again instead of answering (it still
+        had capture_ledger_event available). Morning-sourced documents ARE a real,
+        distinct ledger-event source in principle (list_invoices/get_invoice_details
+        can surface documents created outside DeniDin entirely) but capturing them
+        properly is a separate, not-yet-built feature - see
+        specs/backlog/025-morning-sourced-ledger-events. Until then: don't persist,
+        and don't let the follow-up call capture_ledger_event again either (strip it
+        from that round's tools) so the model is forced to finally produce its text
+        reply instead of repeating the same mistake.
+        """
+        ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
+        if not ledger_calls:
+            return None
+
+        morning_mcp_used_this_turn = any(
+            getattr(item, "type", None) == "mcp_call" for item in (getattr(response, "output", None) or [])
+        )
+
+        followup = None
+        resolvable_calls = [c for c in ledger_calls if c["call_id"] is not None]
+        if resolvable_calls:
+            followup_tools = tools
+            if morning_mcp_used_this_turn:
+                followup_tools = [
+                    t for t in (tools or []) if t.get("name") != LEDGER_EVENT_TOOL["name"]
+                ] or None
+            try:
+                followup = self._call_openai_ledger_followup_api(
+                    request, response.id, resolvable_calls, followup_tools,
+                    suppressed=morning_mcp_used_this_turn,
+                )
+            except Exception as e:
+                logger.error(
+                    f"Ledger-event follow-up call failed for request {request.request_id}: {e}",
+                    exc_info=True
+                )
+        if len(resolvable_calls) < len(ledger_calls):
+            logger.warning(
+                f"{len(ledger_calls) - len(resolvable_calls)} ledger-event function_call(s) "
+                f"had no call_id for request {request.request_id} - skipped in follow-up round-trip"
+            )
+
+        if morning_mcp_used_this_turn:
+            logger.info(
+                f"[024] Suppressing {len(ledger_calls)} ledger-event capture(s) for request "
+                f"{request.request_id} - Morning MCP was this turn's data source, not yet a "
+                f"supported ledger-event source (specs/backlog/025-morning-sourced-ledger-events)"
+            )
+        elif self.session_manager and effective_chat_id:
+            for call in ledger_calls:
+                try:
+                    self.session_manager.add_pending_ledger_event(
+                        chat_id=effective_chat_id,
+                        event=call["arguments"],
+                        message_timestamp=request.timestamp,
+                        sender=sender or effective_chat_id,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to store pending ledger event: {e}", exc_info=True)
+
+        return followup
+
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
                            user_obj, user_role: str, sender: Optional[str],
                            recipient: Optional[str], tools: Optional[List[Dict]]) -> AIResponse:
@@ -626,6 +885,17 @@ class AIHandler:
         # Extract response
         response_text = response.output_text
         tokens_used = response.usage.total_tokens
+        prompt_tokens = response.usage.input_tokens
+        completion_tokens = response.usage.output_tokens
+        usage_response = response  # tracks whichever call's usage/finish_reason is authoritative
+
+        followup = self._handle_ledger_event_capture(request, response, effective_chat_id, sender, tools)
+        if followup is not None:
+            response_text = followup.output_text
+            tokens_used += followup.usage.total_tokens
+            prompt_tokens += followup.usage.input_tokens
+            completion_tokens += followup.usage.output_tokens
+            usage_response = followup
 
         logger.info(
             f"[022] _finalize_response: response.id={getattr(response, 'id', None)!r}, "
@@ -782,18 +1052,21 @@ class AIHandler:
 
         # Create response object.
         # Responses API has no per-choice finish_reason; derive from
-        # incomplete_details when present, else "stop".
+        # incomplete_details when present, else "stop". Uses usage_response
+        # (the ledger follow-up call when one happened, else the original
+        # call) so finish_reason/model reflect whichever turn actually
+        # produced response_text.
         finish_reason = "stop"
-        if getattr(response, "incomplete_details", None) is not None:
-            finish_reason = response.incomplete_details.reason or "incomplete"
+        if getattr(usage_response, "incomplete_details", None) is not None:
+            finish_reason = usage_response.incomplete_details.reason or "incomplete"
 
         ai_response = AIResponse(
             request_id=request.request_id,
             response_text=response_text,
             tokens_used=tokens_used,
-            prompt_tokens=response.usage.input_tokens,
-            completion_tokens=response.usage.output_tokens,
-            model=response.model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            model=usage_response.model,
             finish_reason=finish_reason,
             timestamp=int(time.time()),
             is_truncated=False,
@@ -818,6 +1091,118 @@ class AIHandler:
         wait=wait_fixed(1),
         reraise=True
     )
+    def _call_openai_ledger_followup_api(self, request: AIRequest, previous_response_id: str,
+                                         ledger_calls: List[Dict],
+                                         tools: Optional[List[Dict]] = None,
+                                         suppressed: bool = False):
+        """
+        Report EVERY captured ledger event's fields back as its own `capture_ledger_event`
+        function's result, via a follow-up Responses API call chained to the original
+        call with `previous_response_id` (same pattern as `_call_openai_approval_api`).
+
+        Reasoning models emit `function_call`(s) OR a final `message` in one turn, never
+        both (confirmed against OpenAI's own reasoning + function-calling guidance) - so
+        the turn that calls `capture_ledger_event` always leaves `output_text` empty.
+        This second turn is what actually produces the user-facing reply, and is told
+        the captured fields so it can confirm what it recorded (Feature 024).
+
+        ledger_calls: list of {"arguments": dict, "call_id": str} - ALL capture_ledger_event
+        calls from the previous turn, not just one. OpenAI rejects the follow-up outright
+        if any pending function call from that turn is left without a resolved output, so
+        this must supply one `function_call_output` item per call, in the same request.
+
+        suppressed: True when Morning MCP was this turn's data source (see
+        _handle_ledger_event_capture's docstring) - reports "not_captured" instead of
+        "captured" so the model doesn't believe something was recorded, and `tools`
+        should already have capture_ledger_event stripped out by the caller so it
+        can't just call it again instead of finally answering.
+        """
+        output_items = [
+            {
+                "type": "function_call_output",
+                "call_id": call["call_id"],
+                "output": json.dumps(
+                    {
+                        "status": "not_captured",
+                        "reason": "This data comes from Morning (already tracked there), not a new ledger event.",
+                    } if suppressed else {"status": "captured", **call["arguments"]},
+                    ensure_ascii=False,
+                ),
+            }
+            for call in ledger_calls
+        ]
+        kwargs = {
+            "model": request.model,
+            "instructions": self._build_instructions(request.constitution),
+            "input": output_items,
+            "previous_response_id": previous_response_id,
+            "max_output_tokens": request.max_tokens,
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        call_ids = [call["call_id"] for call in ledger_calls]
+        logger.info(f"[024] _call_openai_ledger_followup_api: call_ids={call_ids!r}")
+        response = self.client.responses.create(**kwargs)
+        logger.info(
+            f"[024] _call_openai_ledger_followup_api response: id={getattr(response, 'id', None)!r}, "
+            f"output item types={[getattr(i, 'type', None) for i in (response.output or [])]!r}, "
+            f"output_text={response.output_text!r}"
+        )
+        return response
+
+    @retry(
+        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
+        stop=stop_after_attempt(2),
+        wait=wait_fixed(1),
+        reraise=True
+    )
+    def capture_ledger_event_from_text(self, text: str) -> Optional[Dict]:
+        """
+        Ledger Event Recognition (Feature 024) for the image path: a separate, internal
+        text-only classification call over already-extracted document text, using the
+        same tool/constitution as the text path.
+
+        Needed because attaching the ledger tool directly to the vision call makes it
+        one-action-per-turn - confirmed empirically (real E2E run, 2026-07-28): both
+        gpt-4o and gpt-4o-mini, when they called the tool, produced ZERO extraction
+        text in that same turn, which broke the user-facing document summary entirely
+        (MediaHandler treats an empty summary as an extraction failure). This call's
+        own `output_text` is never shown to the user - ImageExtractor's vision call
+        already produced the real reply - only whether it called the tool matters, so
+        no further round-trip (unlike `_call_openai_ledger_followup_api`) is needed.
+
+        Returns the parsed `capture_ledger_event` arguments, or None if not called
+        (including when `text` is empty - nothing to classify).
+        """
+        if not text:
+            return None
+
+        constitution = self._load_constitution()
+        kwargs = {
+            "model": self.config.ai_model,
+            "instructions": self._build_instructions(constitution),
+            "input": [{"role": "user", "content": text}],
+            "tools": [LEDGER_EVENT_TOOL],
+            "max_output_tokens": self.config.ai_reply_max_tokens,
+        }
+
+        logger.info("[024] capture_ledger_event_from_text: classifying extracted image text")
+        response = self.client.responses.create(**kwargs)
+        ledger_event = extract_function_call(response, LEDGER_EVENT_TOOL["name"])
+        logger.info(
+            f"[024] capture_ledger_event_from_text response: id={getattr(response, 'id', None)!r}, "
+            f"output item types={[getattr(i, 'type', None) for i in (response.output or [])]!r}, "
+            f"ledger_event={'captured' if ledger_event is not None else None!r}"
+        )
+        return ledger_event
+
+    @retry(
+        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
+        stop=stop_after_attempt(2),
+        wait=wait_fixed(1),
+        reraise=True
+    )
     def _call_openai_approval_api(self, request: AIRequest, pending: PendingApproval,
                                   approve: bool, tools: Optional[List[Dict]] = None):
         """
@@ -833,13 +1218,11 @@ class AIHandler:
         }
         kwargs = {
             "model": request.model,
-            "instructions": self._build_instructions(request),
+            "instructions": self._build_instructions(request.constitution),
             "input": [approval_item],
             "previous_response_id": pending.response_id,
             "max_output_tokens": request.max_tokens,
         }
-        if request.model not in MODELS_WITHOUT_TEMPERATURE_SUPPORT:
-            kwargs["temperature"] = request.temperature
         if tools:
             kwargs["tools"] = tools
 
@@ -866,7 +1249,7 @@ class AIHandler:
             (the decline itself is still explicitly reported to OpenAI so its
             server-side state for that response is closed out cleanly).
         """
-        tools = self._build_morning_mcp_tools(user_obj, request.request_id) if self.rbac_enabled else None
+        tools = self._assemble_tools(user_obj, request.request_id)
         is_affirmative = _is_affirmative_reply(request.user_prompt)
         logger.info(
             f"[022] _resolve_pending_approval: chat={effective_chat_id!r}, "
@@ -975,8 +1358,7 @@ class AIHandler:
                     model=self.config.ai_model,
                     instructions=summarizer_instructions,
                     input=f"Summarize this conversation, leading with facts then inferences:\n\n{conv_text}",
-                    max_output_tokens=1000,
-                    temperature=0.3
+                    max_output_tokens=1000
                 )
 
                 summary_text = summary_response.output_text

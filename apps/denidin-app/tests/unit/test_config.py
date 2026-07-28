@@ -19,7 +19,6 @@ class TestAppConfiguration:
             "green_api_token": "abcdef123456",
             "ai_api_key": "sk-test123",
             "ai_model": "gpt-4",
-            "temperature": 0.7,
             "log_level": "INFO"
         }
 
@@ -50,18 +49,16 @@ class TestAppConfiguration:
         assert config.green_api_token == "abcdef123456"
         assert config.ai_api_key == "sk-test123"
         assert config.ai_model == "gpt-4"
-        assert config.temperature == 0.7
         assert config.log_level == "INFO"
 
     def test_from_file_loads_yaml_correctly(self, temp_yaml_config):
         """Test that from_file() loads YAML config correctly."""
         config = AppConfiguration.from_file(temp_yaml_config)
-        
+
         assert config.green_api_instance_id == "1234567890"
         assert config.green_api_token == "abcdef123456"
         assert config.ai_api_key == "sk-test123"
         assert config.ai_model == "gpt-4"
-        assert config.temperature == 0.7
         assert config.log_level == "INFO"
 
     def test_from_file_missing_required_field_raises_error(self):
@@ -192,24 +189,6 @@ class TestAppConfiguration:
         # Should not raise any exception
         config.validate()
 
-    def test_validate_fails_with_invalid_temperature_low(self, valid_config_data):
-        """Test that validate() fails when temperature < 0.0."""
-        valid_config_data['temperature'] = -0.1
-        config = AppConfiguration(**valid_config_data)
-        
-        with pytest.raises(ValueError) as exc_info:
-            config.validate()
-        assert "temperature" in str(exc_info.value).lower()
-
-    def test_validate_fails_with_invalid_temperature_high(self, valid_config_data):
-        """Test that validate() fails when temperature > 1.0."""
-        valid_config_data['temperature'] = 1.5
-        config = AppConfiguration(**valid_config_data)
-        
-        with pytest.raises(ValueError) as exc_info:
-            config.validate()
-        assert "temperature" in str(exc_info.value).lower()
-
     def test_validate_fails_with_invalid_max_tokens(self, valid_config_data):
         """Test that validate() fails when ai_reply_max_tokens < 1."""
         valid_config_data['ai_reply_max_tokens'] = 0
@@ -243,7 +222,6 @@ class TestAppConfiguration:
         assert hasattr(config, 'green_api_token')
         assert hasattr(config, 'ai_api_key')
         assert hasattr(config, 'ai_model')
-        assert hasattr(config, 'temperature')
         assert hasattr(config, 'log_level')
         assert hasattr(config, 'data_root')
 

@@ -7,7 +7,7 @@ Supports UUID-based architecture with separate file storage for messages.
 
 import json
 import uuid
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional, Dict
@@ -48,6 +48,11 @@ class Session:
     total_tokens: int = 0
     transferred_to_longterm: bool = False
     storage_path: Optional[str] = None
+    # Ledger Event Recognition (see runtime_constitution.md). Each entry is the parsed
+    # `capture_ledger_event` function-call arguments the model emitted, plus its message
+    # pointer - never written to any ledger file by this app; an external script reads
+    # and merges it.
+    pending_ledger_events: List[Dict] = field(default_factory=list)
 
 
 class SessionManager:
@@ -187,6 +192,45 @@ class SessionManager:
 
         logger.debug(f"Added message {message_id} to session {session.session_id}")
         return message_id
+
+    def add_pending_ledger_event(
+        self,
+        chat_id: str,
+        event: Dict,
+        message_timestamp: Optional[int],
+        sender: Optional[str],
+    ) -> None:
+        """
+        Append a candidate ledger event (see runtime_constitution.md, "Ledger Event
+        Recognition") to the session for later offline review. Never writes to any
+        ledger file itself - purely a holding area an external script later reads.
+
+        Args:
+            chat_id: WhatsApp chat ID
+            event: The parsed `capture_ledger_event` function-call arguments from the model
+            message_timestamp: Unix epoch of the source message (the hard pointer)
+            sender: WhatsApp sender of the source message
+        """
+        session = self.get_session(chat_id)
+
+        pointer_ts = None
+        if message_timestamp is not None:
+            pointer_ts = datetime.fromtimestamp(message_timestamp, tz=timezone.utc).isoformat()
+
+        record = dict(event)
+        record['message_timestamp'] = pointer_ts
+        record['sender'] = sender
+        record['captured_at'] = datetime.now(timezone.utc).isoformat()
+
+        session.pending_ledger_events.append(record)
+        session.last_active = datetime.now(timezone.utc).isoformat()
+        self._save_session(session)
+
+        logger.info(
+            f"Captured pending ledger event for session {session.session_id} "
+            f"(source_type={event.get('source_type')!r}, "
+            f"event_subtype={event.get('event_subtype')!r})"
+        )
 
     def get_conversation_history(self, whatsapp_chat: str, max_tokens: int = None) -> List[Dict]:
         """

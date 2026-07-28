@@ -200,7 +200,6 @@ class TestAIRequest:
             user_prompt='What is the weather today?',
             constitution='You are a helpful assistant.',
             max_tokens=1000,
-            temperature=0.7,
             model='gpt-4o-mini',
             chat_id='1234567890@c.us',
             message_id='msg_12345'
@@ -210,7 +209,6 @@ class TestAIRequest:
         assert ai_request.user_prompt == 'What is the weather today?'
         assert ai_request.constitution == 'You are a helpful assistant.'
         assert ai_request.max_tokens == 1000
-        assert ai_request.temperature == 0.7
         assert ai_request.timestamp is not None
 
     def test_to_openai_payload_returns_correct_format(self):
@@ -219,7 +217,6 @@ class TestAIRequest:
             user_prompt='Hello AI',
             constitution='You are helpful.',
             max_tokens=500,
-            temperature=0.5,
             model='gpt-4o-mini',
             chat_id='123@c.us',
             message_id='msg_123'
@@ -229,10 +226,8 @@ class TestAIRequest:
         
         assert 'messages' in payload
         assert 'max_tokens' in payload
-        assert 'temperature' in payload
         assert 'model' in payload
         assert payload['max_tokens'] == 500
-        assert payload['temperature'] == 0.5
         assert payload['model'] == 'gpt-4o-mini'
         assert len(payload['messages']) == 2
         assert payload['messages'][0]['role'] == 'system'
@@ -249,7 +244,6 @@ class TestAIRequest:
             user_prompt='Test',
             constitution='System',
             max_tokens=100,
-            temperature=0.7,
             model='gpt-4o-mini',
             chat_id='123@c.us',
             message_id='msg_123'
@@ -265,7 +259,6 @@ class TestAIRequest:
             user_prompt='Test',
             constitution='System',
             max_tokens=100,
-            temperature=0.7,
             model='gpt-4o-mini',
             chat_id='123@c.us',
             message_id='msg_123'
@@ -274,21 +267,19 @@ class TestAIRequest:
         assert ai_request.timestamp is not None
         assert isinstance(ai_request.timestamp, int)
 
-    def test_constitution_max_tokens_temperature_passthrough(self):
-        """Test that constitution, max_tokens, and temperature pass through correctly."""
+    def test_constitution_max_tokens_passthrough(self):
+        """Test that constitution and max_tokens pass through correctly."""
         ai_request = AIRequest(
             user_prompt='User msg',
             constitution='Custom system message',
             max_tokens=2000,
-            temperature=0.9,
             model='gpt-4o-mini',
             chat_id='123@c.us',
             message_id='msg_123'
         )
-        
+
         assert ai_request.constitution == 'Custom system message'
         assert ai_request.max_tokens == 2000
-        assert ai_request.temperature == 0.9
 
 
 class TestAIResponse:

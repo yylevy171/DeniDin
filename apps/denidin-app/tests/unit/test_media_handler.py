@@ -59,6 +59,7 @@ class TestMediaHandlerHappyPaths:
             mime_type="image/jpeg",
             file_size=500000,
             sender_phone="972501234567",
+            chat_id="972501234567@c.us",
             caption="Can you summarize this?"
         )
         
@@ -116,8 +117,9 @@ class TestMediaHandlerHappyPaths:
             filename="invoice.pdf",
             mime_type="application/pdf",
             file_size=800000,
-            sender_phone="972509876543"
-        )
+            sender_phone="972509876543",
+            chat_id="972509876543@c.us"
+            )
         
         assert result["success"] is True
         assert "Page" in result["summary"]
@@ -157,8 +159,9 @@ class TestMediaHandlerHappyPaths:
             filename="document.docx",
             mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             file_size=300000,
-            sender_phone="972501234567"
-        )
+            sender_phone="972501234567",
+            chat_id="972501234567@c.us"
+            )
         
         assert result["success"] is True
         assert "Document" in result["summary"]
@@ -209,8 +212,9 @@ class TestMediaHandlerHappyPaths:
             filename="receipt.pdf",
             mime_type="application/pdf",
             file_size=50000,
-            sender_phone="972501234567"
-        )
+            sender_phone="972501234567",
+            chat_id="972501234567@c.us"
+            )
         
         # Verify the AI's formatted response is preserved
         assert result["success"] is True
@@ -266,6 +270,7 @@ class TestMediaHandlerHappyPaths:
             mime_type="image/jpeg",
             file_size=400000,
             sender_phone="972501234567",
+            chat_id="972501234567@c.us",
             caption="Can you summarize this contract?"
         )
         
@@ -312,8 +317,9 @@ class TestMediaHandlerHappyPaths:
             filename="image.jpg",
             mime_type="image/jpeg",
             file_size=400000,
-            sender_phone="972501234567"
-        )
+            sender_phone="972501234567",
+            chat_id="972501234567@c.us"
+            )
         
         assert result["success"] is True
         assert result["media_attachment"].caption == ""
@@ -349,8 +355,9 @@ class TestMediaHandlerErrorHandling:
             filename="huge.jpg",
             mime_type="image/jpeg",
             file_size=0,  # Green API doesn't provide fileSize - validate after download
-            sender_phone="972501234567"
-        )
+            sender_phone="972501234567",
+            chat_id="972501234567@c.us"
+            )
         
         assert result["success"] is False
         # ValueError message is propagated directly to user
@@ -391,8 +398,9 @@ class TestMediaHandlerErrorHandling:
             filename="big_document.pdf",
             mime_type="application/pdf",
             file_size=2000000,
-            sender_phone="972501234567"
-        )
+            sender_phone="972501234567",
+            chat_id="972501234567@c.us"
+            )
         
         assert result["success"] is False
         assert "PDF has 15 pages" in result["error_message"]
@@ -419,8 +427,9 @@ class TestMediaHandlerErrorHandling:
             filename="animation.gif",
             mime_type="image/gif",
             file_size=500000,
-            sender_phone="972501234567"
-        )
+            sender_phone="972501234567",
+            chat_id="972501234567@c.us"
+            )
         
         assert result["success"] is False
         assert "Unsupported format" in result["error_message"]
@@ -447,8 +456,9 @@ class TestMediaHandlerErrorHandling:
             filename="broken.jpg",
             mime_type="image/jpeg",
             file_size=500000,
-            sender_phone="972501234567"
-        )
+            sender_phone="972501234567",
+            chat_id="972501234567@c.us"
+            )
         
         assert result["success"] is False
         assert "Unable to download" in result["error_message"]
@@ -489,8 +499,9 @@ class TestMediaHandlerErrorHandling:
             filename="corrupted.jpg",
             mime_type="image/jpeg",
             file_size=500000,
-            sender_phone="972501234567"
-        )
+            sender_phone="972501234567",
+            chat_id="972501234567@c.us"
+            )
         
         assert result["success"] is False
         assert "Unable to analyze this file" in result["error_message"]
@@ -530,8 +541,9 @@ class TestMediaHandlerErrorHandling:
             filename="empty.docx",
             mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             file_size=5000,
-            sender_phone="972501234567"
-        )
+            sender_phone="972501234567",
+            chat_id="972501234567@c.us"
+            )
         
         assert result["success"] is False
         assert "unable to analyze" in result["error_message"].lower()
@@ -557,8 +569,9 @@ class TestMediaHandlerErrorHandling:
             filename="zero.jpg",
             mime_type="image/jpeg",
             file_size=0,
-            sender_phone="972501234567"
-        )
+            sender_phone="972501234567",
+            chat_id="972501234567@c.us"
+            )
         
         assert result["success"] is False
         # Generic error message returned when validation fails
@@ -605,17 +618,17 @@ class TestMediaHandlerErrorHandling:
         
         # Test image routing
         handler.media_file_manager.validate_format = Mock(return_value="image")
-        handler.process_media_message("url", "file.jpg", "image/jpeg", 1000, "972501234567")
+        handler.process_media_message("url", "file.jpg", "image/jpeg", 1000, "972501234567", "972501234567@c.us")
         handler.image_extractor.analyze_media.assert_called_once()
-        
+
         # Test PDF routing
         handler.image_extractor.analyze_media.reset_mock()
         handler.media_file_manager.validate_format = Mock(return_value="pdf")
-        handler.process_media_message("url", "file.pdf", "application/pdf", 1000, "972501234567")
+        handler.process_media_message("url", "file.pdf", "application/pdf", 1000, "972501234567", "972501234567@c.us")
         handler.pdf_extractor.analyze_media.assert_called_once()
-        
+
         # Test DOCX routing
         handler.pdf_extractor.analyze_media.reset_mock()
         handler.media_file_manager.validate_format = Mock(return_value="docx")
-        handler.process_media_message("url", "file.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 1000, "972501234567")
+        handler.process_media_message("url", "file.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 1000, "972501234567", "972501234567@c.us")
         handler.docx_extractor.analyze_media.assert_called_once()

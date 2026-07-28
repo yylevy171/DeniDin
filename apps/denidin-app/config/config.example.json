@@ -7,7 +7,6 @@
   "ai_vision_model": "gpt-4o",
   "ai_embedding_model": "text-embedding-3-large",
   "ai_reply_max_tokens": 2500,
-  "temperature": 0.7,
   "log_level": "DEBUG_for_dev_or_INFO_for_prod",
   "poll_interval_seconds": 5,
   "max_retries": 3,

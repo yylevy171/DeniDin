@@ -31,7 +31,6 @@ def constitution_config():
         ai_api_key="test-key",
         ai_model="gpt-4o-mini",
         ai_reply_max_tokens=1000,
-        temperature=0.7,
         log_level="INFO",
         data_root="test_data",
         constitution_config={

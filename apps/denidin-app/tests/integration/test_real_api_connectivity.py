@@ -18,7 +18,6 @@ from whatsapp_api_client_python.API import GreenAPI
 from openai import OpenAI
 
 from src.models.config import AppConfiguration
-from src.handlers.ai_handler import MODELS_WITHOUT_TEMPERATURE_SUPPORT
 
 
 class TestRealGreenAPIConnectivity:
@@ -167,8 +166,6 @@ class TestRealOpenAPIConnectivity:
                 "input": [{"role": "user", "content": test_message}],
                 "max_output_tokens": 50,
             }
-            if config.ai_model not in MODELS_WITHOUT_TEMPERATURE_SUPPORT:
-                kwargs["temperature"] = 0.3  # Low temperature for consistent response
             response = openai_client.responses.create(**kwargs)
 
             assert response is not None, "OpenAI returned None response"
@@ -206,8 +203,6 @@ class TestRealOpenAPIConnectivity:
                 "input": [{"role": "user", "content": "What is 2+2? Answer with just the number."}],
                 "max_output_tokens": config.ai_reply_max_tokens,
             }
-            if config.ai_model not in MODELS_WITHOUT_TEMPERATURE_SUPPORT:
-                kwargs["temperature"] = config.temperature
             response = openai_client.responses.create(**kwargs)
 
             # Verify we can access all necessary fields
@@ -303,8 +298,6 @@ class TestRealEndToEndFlow:
                 "input": [{"role": "user", "content": test_question}],
                 "max_output_tokens": config.ai_reply_max_tokens,
             }
-            if config.ai_model not in MODELS_WITHOUT_TEMPERATURE_SUPPORT:
-                kwargs["temperature"] = config.temperature
             openai_response = openai_client.responses.create(**kwargs)
 
             print(f"[Real E2E Test]   ✓ Request sent to OpenAI")

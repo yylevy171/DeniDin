@@ -108,7 +108,7 @@ class TestMessageFlow:
     def test_openai_send_request(self, mock_openai_class, config, mock_notification):
         """
         Tests that the bot correctly sends a Responses API request to OpenAI with the user's message,
-        system prompt (instructions), and configured parameters (model, temperature, max_output_tokens).
+        system prompt (instructions), and configured parameters (model, max_output_tokens).
         """
         # Setup mock
         mock_client = Mock()
@@ -134,7 +134,6 @@ class TestMessageFlow:
         print(f"[Flow Test]   Model: {config.ai_model}")
         print(f"[Flow Test]   Instructions: {instructions[:50]}...")
         print(f"[Flow Test]   User message: {message_text}")
-        print(f"[Flow Test]   Temperature: {config.temperature}")
         print(f"[Flow Test]   Max tokens: {config.ai_reply_max_tokens}")
     
     def test_openai_receive_response(self, mock_openai_response):
@@ -211,7 +210,6 @@ class TestMessageFlow:
             model=config.ai_model,
             instructions="You are a helpful assistant.",
             input=[{"role": "user", "content": message_text}],
-            temperature=config.temperature,
             max_output_tokens=config.ai_reply_max_tokens
         )
         print(f"[Flow Test]   ✓ Request sent to OpenAI ({config.ai_model})")
@@ -244,5 +242,4 @@ class TestMessageFlow:
         assert call_args.kwargs['instructions'] == "You are a helpful assistant."
         assert call_args.kwargs['input'][0]['role'] == 'user'
         assert call_args.kwargs['input'][0]['content'] == message_text
-        assert call_args.kwargs['temperature'] == config.temperature
         assert call_args.kwargs['max_output_tokens'] == config.ai_reply_max_tokens

@@ -193,7 +193,6 @@ class TestEndToEndRBACEnforcement:
             user_prompt="Test",
             constitution="Test",
             max_tokens=500,
-            temperature=0.7,
             model="gpt-4o-mini",
             chat_id="blocked@c.us",
             message_id="msg-3"
@@ -584,7 +583,6 @@ class TestErrorHandling:
             user_prompt="Test",
             constitution="Test",
             max_tokens=500,
-            temperature=0.7,
             model="gpt-4o-mini",
             chat_id="blocked@c.us",
             message_id="msg-blocked"

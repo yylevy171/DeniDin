@@ -31,7 +31,6 @@ class TestAIHandlerRBACInitialization:
             green_api_instance_id="test-instance",
             green_api_token="test-token",
             ai_api_key="test-key",
-            temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={
                 "admin_phones": ["+972509999999"],
@@ -72,7 +71,6 @@ class TestAIHandlerRBACMemoryRecall:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": []},
             feature_flags={'enable_memory_system': True, 'enable_rbac': True},
@@ -148,7 +146,6 @@ class TestAIHandlerRBACMemoryRecall:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": []},
             feature_flags={'enable_memory_system': True, 'enable_rbac': True},
@@ -214,7 +211,6 @@ class TestAIHandlerRBACTokenLimits:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": []},
             feature_flags={'enable_memory_system': True, 'enable_rbac': True},
@@ -255,7 +251,6 @@ class TestAIHandlerRBACTokenLimits:
             user_prompt="Test prompt",
             constitution="Test system",
             max_tokens=500,
-            temperature=0.7,
             model="gpt-4o-mini",
             chat_id="1234567890@c.us",
             message_id="test-msg-1"
@@ -291,7 +286,6 @@ class TestAIHandlerRBACTokenLimits:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": []},
             feature_flags={'enable_memory_system': True, 'enable_rbac': True},
@@ -332,7 +326,6 @@ class TestAIHandlerRBACTokenLimits:
             user_prompt="Test prompt",
             constitution="Test system",
             max_tokens=500,
-            temperature=0.7,
             model="gpt-4o-mini",
             chat_id="1234567890@c.us",
             message_id="test-msg-1"
@@ -369,7 +362,6 @@ class TestAIHandlerRBACBlockedUsers:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": ["+972505555555"]},
             feature_flags={'enable_memory_system': True, 'enable_rbac': True},
@@ -414,7 +406,6 @@ class TestAIHandlerRBACBlockedUsers:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": ["+972505555555"]},
             feature_flags={'enable_memory_system': True, 'enable_rbac': True},
@@ -439,7 +430,6 @@ class TestAIHandlerRBACBlockedUsers:
             user_prompt="Test prompt",
             constitution="Test system",
             max_tokens=500,
-            temperature=0.7,
             model="gpt-4o-mini",
             chat_id="5555555555@c.us",
             message_id="test-msg-1"
@@ -473,7 +463,6 @@ class TestAIHandlerRBACLongTermMemory:
             
             green_api_instance_id="test-instance",
             green_api_token="test-token",
-            temperature=0.7,
             godfather_phone="+972501234567",
             user_roles={"admin_phones": [], "blocked_phones": []},
             feature_flags={'enable_memory_system': True, 'enable_rbac': True},

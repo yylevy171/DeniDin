@@ -390,5 +390,104 @@ class TestImagePathStorage:
         message_file = session_dir / "messages" / f"{message_id}.json"
         with open(message_file) as f:
             message_data = json.load(f)
-        
+
         assert message_data["image_path"] is None
+
+
+class TestPendingLedgerEvents:
+    """Test SessionManager.add_pending_ledger_event (Ledger Event Recognition,
+    see runtime_constitution.md)."""
+
+    def test_new_session_has_empty_pending_ledger_events(self, session_manager):
+        """A freshly created session starts with an empty pending_ledger_events list."""
+        session = session_manager.get_session("1234567890@c.us")
+        assert session.pending_ledger_events == []
+
+    def test_add_pending_ledger_event_appends_with_pointer(self, session_manager):
+        """The stored record carries the original event fields plus the hard
+        pointer (message_timestamp resolved to ISO8601, sender) and a capture time."""
+        chat_id = "1234567890@c.us"
+        event = {
+            "source_type": "הסכם",
+            "event_subtype": "יצירה",
+            "client_name": "ישראל ישראלי",
+            "amount": "5000",
+        }
+        epoch = 1770000000  # fixed, arbitrary real epoch
+
+        session_manager.add_pending_ledger_event(
+            chat_id=chat_id,
+            event=event,
+            message_timestamp=epoch,
+            sender="972500000000@c.us",
+        )
+
+        session = session_manager.get_session(chat_id)
+        assert len(session.pending_ledger_events) == 1
+        record = session.pending_ledger_events[0]
+
+        assert record["source_type"] == "הסכם"
+        assert record["client_name"] == "ישראל ישראלי"
+        assert record["sender"] == "972500000000@c.us"
+        assert record["message_timestamp"] == datetime.fromtimestamp(
+            epoch, tz=timezone.utc
+        ).isoformat()
+        assert "captured_at" in record
+
+    def test_add_pending_ledger_event_does_not_mutate_input_dict(self, session_manager):
+        """The caller's event dict must not be mutated (it's reused/logged elsewhere)."""
+        event = {"source_type": "בנק", "event_subtype": "הפקדה"}
+        original = dict(event)
+
+        session_manager.add_pending_ledger_event(
+            chat_id="1234567890@c.us",
+            event=event,
+            message_timestamp=1770000000,
+            sender="972500000000@c.us",
+        )
+
+        assert event == original
+
+    def test_add_pending_ledger_event_persists_across_reload(self, session_manager, temp_session_dir):
+        """A second SessionManager instance pointed at the same storage dir must see
+        the pending event - it's saved to disk, not just held in memory."""
+        chat_id = "1234567890@c.us"
+        session_manager.add_pending_ledger_event(
+            chat_id=chat_id,
+            event={"source_type": "הסכם", "event_subtype": "עדכון"},
+            message_timestamp=1770000000,
+            sender="972500000000@c.us",
+        )
+
+        reloaded_manager = SessionManager(storage_dir=str(temp_session_dir), session_timeout_hours=24)
+        session = reloaded_manager.get_session(chat_id)
+        assert len(session.pending_ledger_events) == 1
+        assert session.pending_ledger_events[0]["event_subtype"] == "עדכון"
+
+    def test_add_pending_ledger_event_appends_multiple(self, session_manager):
+        """Multiple captured events in the same session accumulate, not overwrite."""
+        chat_id = "1234567890@c.us"
+        for i in range(3):
+            session_manager.add_pending_ledger_event(
+                chat_id=chat_id,
+                event={"source_type": "הסכם", "amount": str(i)},
+                message_timestamp=1770000000 + i,
+                sender="972500000000@c.us",
+            )
+
+        session = session_manager.get_session(chat_id)
+        assert [r["amount"] for r in session.pending_ledger_events] == ["0", "1", "2"]
+
+    def test_add_pending_ledger_event_missing_timestamp(self, session_manager):
+        """A None message_timestamp (should never happen in practice - AIRequest
+        always auto-fills one - but must not crash) stores a None pointer rather
+        than raising."""
+        session_manager.add_pending_ledger_event(
+            chat_id="1234567890@c.us",
+            event={"source_type": "בנק"},
+            message_timestamp=None,
+            sender="972500000000@c.us",
+        )
+
+        session = session_manager.get_session("1234567890@c.us")
+        assert session.pending_ledger_events[0]["message_timestamp"] is None

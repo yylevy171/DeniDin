@@ -121,7 +121,6 @@ class TestWhatsAppE2E:
                 'ai_api_key': config.ai_api_key,
                 'ai_model': config.ai_model,
                 'ai_reply_max_tokens': config.ai_reply_max_tokens,
-                'temperature': config.temperature,
                 'log_level': config.log_level,
                 'data_root': config.data_root,
                 'feature_flags': config.feature_flags,

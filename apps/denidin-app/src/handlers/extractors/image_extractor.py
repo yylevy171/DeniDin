@@ -12,7 +12,7 @@ CHK Requirements:
 - CHK027: Specific prompt (not just example)
 - CHK078: Empty document handling
 """
-from typing import Dict, List
+from typing import Dict
 from pathlib import Path
 import logging
 from src.models.media import Media
@@ -60,83 +60,97 @@ class ImageExtractor(MediaExtractor):
                 "raw_response": str,  # Full unmodified AI response
                 "extraction_quality": str,  # "high", "medium", "low", "failed"
                 "warnings": List[str],
-                "model_used": str  # e.g. "gpt-4o"
+                "model_used": str,  # e.g. "gpt-4o"
+                "ledger_event": Optional[Dict]  # Ledger Event Recognition capture, if any
             }
         """
         try:
             # Load prompt template from external file
             prompt_path = Path(__file__).parent.parent.parent.parent / "prompts" / "image_analysis.txt"
             prompt_template = prompt_path.read_text(encoding='utf-8')
-            
+
             # CHK027: Enhanced prompt for document analysis
             # Include user's caption/question for context (only if provided)
             user_context = f"\n\nUser's question/message: {caption}" if caption else ""
             addressing_note = " addressing the user's question" if caption else ""
             focusing_note = ", focusing on what the user asked about" if caption else ""
-            
+
             # Format the prompt with context
             prompt = prompt_template.format(
                 user_context=user_context,
                 addressing_note=addressing_note,
                 focusing_note=focusing_note
             )
-            
+
             logger.info(f"[ImageExtractor.analyze_media] Exact prompt being sent ({len(prompt)} chars):")
             logger.info(f"[ImageExtractor.analyze_media] {prompt}")
-            
-            # Call Vision API with in-memory media (constitution prepended in _vision_extract)
-            response = self._vision_extract(media, prompt)
-            
-            # Get raw response from AI - no parsing, pass it through as-is
-            response_text = response.get("text", "")
-            
+
+            # Call Vision API with in-memory media (constitution prepended in _vision_extract).
+            # Pure extraction only - no tool attached (Feature 024's ledger classification
+            # happens as a separate call below, see _classify_ledger_event).
+            response_text = self._vision_extract(media, prompt)
+
             logger.info(f"[ImageExtractor.extract] Raw AI response ({len(response_text)} chars):")
             logger.info(f"[ImageExtractor.extract] {response_text}")
-            
+
+            # Ledger Event Recognition (runtime_constitution.md, Feature 024): a separate,
+            # internal text-only classification call over the extracted text - NOT attached
+            # to the vision call above. Confirmed empirically (real E2E run, 2026-07-28)
+            # that attaching the tool directly to the vision call makes it one-action-per-
+            # turn (gpt-4o and gpt-4o-mini both produced ZERO extraction text whenever they
+            # called the tool), which broke the user-facing document summary. This call's
+            # own text is never shown to the user - only whether it called the tool matters.
+            ledger_event = self.ai_handler.capture_ledger_event_from_text(response_text)
+
             return {
                 "raw_response": response_text,
                 "extraction_quality": "high",
                 "warnings": [],
-                "model_used": self.vision_model
+                "model_used": self.vision_model,
+                "ledger_event": ledger_event,
             }
-            
+
         except Exception as e:
             # CHK007: Fail gracefully
             return {
                 "raw_response": "",
                 "extraction_quality": "failed",
                 "warnings": [f"Analysis failed: {str(e)}"],
-                "model_used": self.vision_model
+                "model_used": self.vision_model,
+                "ledger_event": None,
             }
-    
-    def _vision_extract(self, media: Media, prompt: str) -> dict:
+
+    def _vision_extract(self, media: Media, prompt: str) -> str:
         """
         Extract text from image using GPT-4o Vision with constitution context.
-        
+
+        Pure extraction only - no tool attached (see analyze_media for why Ledger
+        Event Recognition happens as a separate call instead of here).
+
         Args:
             media: Media object containing image data
             prompt: Extraction prompt (will be prepended with constitution)
-            
+
         Returns:
-            {"text": str} - Extracted text response from vision model
+            The vision model's extracted text response.
         """
         # Load constitution for context
         constitution = self.ai_handler._load_constitution()
-        
+
         # Prepend constitution to user prompt (NO system message!)
         full_prompt = f"{constitution}\n\n{prompt}" if constitution else prompt
-        
+
         logger.debug(f"[ImageExtractor._vision_extract] Full prompt length: {len(full_prompt)} chars")
         logger.debug(f"[ImageExtractor._vision_extract] Constitution loaded: {bool(constitution)}")
         logger.debug(f"[ImageExtractor._vision_extract] Constitution preview: {constitution[:200] if constitution else 'NONE'}")
-        
+
         # Get the data URL
         data_url = media.get_data_url()
         logger.info(f"[ImageExtractor._vision_extract] Media data URL length: {len(data_url)} chars")
         logger.info(f"[ImageExtractor._vision_extract] Media data URL preview: {data_url[:100]}...")
         logger.info(f"[ImageExtractor._vision_extract] Media file size: {media.size} bytes, MIME type: {media.mime_type}")
-        
-        # Call OpenAI Vision via the Responses API with in-memory data URL
+
+        # Call OpenAI Vision via the Responses API with in-memory data URL.
         logger.info(f"[ImageExtractor._vision_extract] Sending request to OpenAI Vision API")
         response = self.ai_handler.client.responses.create(
             model=self.vision_model,
@@ -156,6 +170,4 @@ class ImageExtractor(MediaExtractor):
         logger.info(f"[ImageExtractor._vision_extract] Raw OpenAI response ({len(raw_response)} chars):")
         logger.info(f"[ImageExtractor._vision_extract] {raw_response}")
 
-        return {"text": raw_response}
-    
-
+        return raw_response

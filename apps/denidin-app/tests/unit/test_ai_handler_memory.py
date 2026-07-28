@@ -24,7 +24,6 @@ def memory_enabled_config():
         ai_api_key="test-key",
         ai_model="gpt-4o-mini",        
         ai_reply_max_tokens=100,
-        temperature=0.7,
         log_level="INFO",
         feature_flags={"enable_memory_system": True},
         memory={
@@ -131,7 +130,6 @@ class TestAIHandlerGetResponseWithMemory:
             user_prompt="Hello",
             constitution="Test assistant",
             max_tokens=100,
-            temperature=0.7,
             model="gpt-4o-mini",
             chat_id="chat_123",
             message_id="msg_456"
@@ -197,7 +195,6 @@ class TestAIHandlerConversationHistory:
             user_prompt="Current question",
             constitution="Test system",
             max_tokens=100,
-            temperature=0.7,
             model="gpt-4o-mini",
             chat_id="chat_123",
             message_id="msg_456"

@@ -76,12 +76,11 @@ Edit `config/config.dev.json`/`config/config.prod.json` and replace the placehol
   "green_api_instance_id": "YOUR_GREEN_API_INSTANCE_ID",
   "green_api_token": "YOUR_GREEN_API_TOKEN",
   "openai_api_key": "YOUR_OPENAI_API_KEY",
-  "ai_model": "gpt-4o-mini",
-  "ai_vision_model": "gpt-4o-mini",
+  "ai_model": "gpt-5.6-luna",
+  "ai_vision_model": "gpt-4o",
   "ai_embedding_model": "text-embedding-3-large",
   "system_message": "You are a helpful AI assistant named DeniDin.",
   "max_tokens": 1000,
-  "temperature": 0.7,
   "log_level": "INFO"
 }
 ```
@@ -91,12 +90,11 @@ Edit `config/config.dev.json`/`config/config.prod.json` and replace the placehol
 - `green_api_instance_id`: Your Green API instance ID (from Green API dashboard)
 - `green_api_token`: Your Green API token
 - `openai_api_key`: Your OpenAI API key
-- `ai_model`: OpenAI model for text conversations (e.g., "gpt-3.5-turbo", "gpt-4o-mini") — default "gpt-4o-mini"
-- `ai_vision_model`: OpenAI model for image/PDF extraction (e.g., "gpt-4o-mini", "gpt-4o") — default "gpt-4o-mini"
+- `ai_model`: OpenAI model for text conversations (e.g., "gpt-3.5-turbo", "gpt-4o-mini") — default "gpt-5.6-luna", not "gpt-4o-mini" or any other variant
+- `ai_vision_model`: OpenAI model for image/PDF extraction (e.g., "gpt-4o-mini", "gpt-4o") — default "gpt-4o" (not mini: gpt-4o-mini was found to silently skip calling the ledger-event tool alongside extraction, Feature 024)
 - `ai_embedding_model`: OpenAI embedding model for long-term memory search (e.g., "text-embedding-3-small", "text-embedding-3-large") — default "text-embedding-3-large"
 - `system_message`: System prompt for the AI assistant
 - `max_tokens`: Maximum tokens in AI response
-- `temperature`: AI creativity level (0.0-1.0)
 - `log_level`: Logging verbosity ("INFO" or "DEBUG")
 - `data_root`: Root directory for data storage (default: "data")
 - `godfather_phone`: WhatsApp ID of godfather user (format: "PHONE@c.us")
@@ -553,10 +551,10 @@ Change `log_level` in `config/config.json` to switch between levels.
 **Q: How much does it cost to run DeniDin?**  
 A: Costs depend on message volume and OpenAI models used:
 - Green API: ~$10-20/month for WhatsApp Business API access
-- OpenAI text (`ai_model`, default `gpt-4o-mini`): ~$0.15/$0.60 per 1M input/output tokens
-- OpenAI vision (`ai_vision_model`, default `gpt-4o-mini`): same pricing as text, used for image/PDF extraction
+- OpenAI text (`ai_model`, default `gpt-5.6-luna`): see OpenAI's current pricing page for this model — not `gpt-4o-mini` or any other variant
+- OpenAI vision (`ai_vision_model`, default `gpt-4o`): ~$2.50/$10.00 per 1M input/output tokens, used for image/PDF extraction — not `gpt-4o-mini` (Feature 024: `gpt-4o-mini` was found to silently skip calling the ledger-event tool alongside extraction, so vision defaults to the stronger model despite the cost)
 - OpenAI embeddings (`ai_embedding_model`, default `text-embedding-3-large`): ~$0.13 per 1M tokens, used for long-term memory search
-- For 100 messages/day with avg 500 tokens each: a few dollars/month at these defaults; using `gpt-4o` instead of `gpt-4o-mini` for text/vision costs roughly 15-17x more
+- Actual monthly cost depends on message/image volume and current per-token pricing for the configured models — check OpenAI's pricing page for `gpt-5.6-luna` and `gpt-4o`
 
 **Q: Can I change the AI models?**  
 A: Yes! Three independently configurable models in `config/config.json`: `ai_model` (text), `ai_vision_model` (image/PDF extraction), `ai_embedding_model` (long-term memory embeddings). Restart bot after changing.

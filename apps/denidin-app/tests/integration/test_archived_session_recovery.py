@@ -114,7 +114,6 @@ def test_archived_untransferred_session_transferred_on_startup(tmp_path):
         "ai_api_key": real_config['ai_api_key'],
         "ai_model": "gpt-4o-mini",
         "ai_reply_max_tokens": 1000,
-        "temperature": 0.7,
         "log_level": "INFO",
         "data_root": str(test_data_root),
         "feature_flags": {

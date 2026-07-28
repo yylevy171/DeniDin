@@ -31,6 +31,8 @@ def mock_notification_image():
     notification.answer = MagicMock()
     notification.event = {
         'typeWebhook': 'incomingMessageReceived',
+        'timestamp': 1769000000,  # Feature 024: fixed, deterministic real-looking value -
+        # the ledger event's "hard pointer" must come from this, not wall-clock time
         'messageData': {
             'typeMessage': 'imageMessage',
             'fileMessageData': {
@@ -180,7 +182,10 @@ class TestMediaHandlerIntegration:
             mime_type='image/jpeg',
             file_size=0,  # Green API doesn't provide fileSize - set to 0
             caption='What is in this photo?',  # CHK111: WhatsApp message text
-            sender_phone='972501234567@c.us'
+            sender_phone='972501234567@c.us',
+            chat_id='972501234567@c.us',  # bugfix-017: needed to link this turn to a session
+            timestamp=1769000000  # Feature 024: real notification timestamp, the
+            # ledger event's "hard pointer" - not processing time
         )
         
         # Verify summary was sent back to user

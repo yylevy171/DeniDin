@@ -21,11 +21,10 @@ class AppConfiguration:
     # for one environment was silently reachable while the other was
     # supposed to be exclusively active). 'dev', 'prod', or 'test'.
     environment: Optional[str] = None
-    ai_model: str = 'gpt-4o-mini'
-    ai_vision_model: str = 'gpt-4o-mini'  # Vision model for image/document processing
+    ai_model: str = 'gpt-5.6-luna'
+    ai_vision_model: str = 'gpt-4o'  # Vision model for image/document processing - not mini (Feature 024: gpt-4o-mini silently declined to call the ledger-event tool alongside extraction)
     ai_embedding_model: str = 'text-embedding-3-large'  # Embedding model for long-term memory (ChromaDB)
     ai_reply_max_tokens: int = 1000
-    temperature: float = 0.7
     log_level: str = 'INFO'
 
     # Data storage configuration
@@ -83,11 +82,10 @@ class AppConfiguration:
         # Set defaults for optional fields
         defaults = {
             'environment': None,
-            'ai_model': 'gpt-4o-mini',
-            'ai_vision_model': 'gpt-4o-mini',
+            'ai_model': 'gpt-5.6-luna',
+            'ai_vision_model': 'gpt-4o',
             'ai_embedding_model': 'text-embedding-3-large',
             'ai_reply_max_tokens': 1000,
-            'temperature': 0.7,
             'log_level': 'INFO',
             'data_root': 'data',
             'godfather_phone': None,
@@ -172,10 +170,6 @@ class AppConfiguration:
         Raises:
             ValueError: If any configuration value is invalid
         """
-        # Validate temperature range (0.0 - 1.0)
-        if not 0.0 <= self.temperature <= 1.0:
-            raise ValueError(f"temperature must be between 0.0 and 1.0, got {self.temperature}")
-
         # Validate ai_reply_max_tokens is positive
         if self.ai_reply_max_tokens < 1:
             raise ValueError(f"ai_reply_max_tokens must be >= 1, got {self.ai_reply_max_tokens}")

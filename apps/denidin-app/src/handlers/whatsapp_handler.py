@@ -2,6 +2,7 @@
 WhatsAppHandler - Handles WhatsApp message processing with retry logic
 Phase 5: US3 - Error Handling & Resilience
 """
+from datetime import datetime, timezone
 import requests
 from tenacity import (
     retry,
@@ -271,13 +272,24 @@ class WhatsAppHandler:
         mime_type = file_message_data.get('mimeType', '')
         caption = file_message_data.get('caption', '')  # CHK111: WhatsApp message text
         sender = sender_data.get('sender', '')
-        
+        # bugfix-017: chat_id (distinct from sender for group chats), same field
+        # WhatsAppMessage.from_webhook uses for text messages - needed so media
+        # turns can be linked to a session at all.
+        chat_id = sender_data.get('chatId', '')
+
+        # Feature 024: the real Green API notification timestamp - same top-level
+        # 'timestamp' field and same now()-fallback WhatsAppMessage.from_webhook uses
+        # for text messages (src/models/message.py). Needed so a captured ledger
+        # event's message_timestamp (the constitution's "hard pointer") reflects when
+        # the user actually sent the image, not whenever processing happened to finish.
+        timestamp = notification.event.get('timestamp', int(datetime.now(timezone.utc).timestamp()))
+
         # Note: Green API does NOT provide fileSize in webhook
         # File size will be determined after download by MediaFileManager
         file_size = 0  # Placeholder - actual size determined after download
-        
+
         logger.info(f"Processing media message: {filename} ({mime_type}) from {sender}")
-        
+
         # Process media through MediaHandler
         result = self.media_handler.process_media_message(
             file_url=file_url,
@@ -285,7 +297,9 @@ class WhatsAppHandler:
             mime_type=mime_type,
             file_size=file_size,
             caption=caption,  # CHK111: User's message text
-            sender_phone=sender
+            sender_phone=sender,
+            chat_id=chat_id,
+            timestamp=timestamp
         )
         
         if not result.get("success", False):
