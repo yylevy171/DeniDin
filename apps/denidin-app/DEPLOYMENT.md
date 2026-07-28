@@ -99,10 +99,9 @@ chmod 600 config/config.json  # Restrict permissions
   "green_api_instance_id": "YOUR_INSTANCE_ID",
   "green_api_token": "YOUR_API_TOKEN",
   "openai_api_key": "YOUR_OPENAI_API_KEY",
-  "ai_model": "gpt-4o-mini",
+  "ai_model": "gpt-5.6-luna",
   "system_message": "You are a helpful assistant.",
   "max_tokens": 1000,
-  "temperature": 0.7,
   "log_level": "INFO"
 }
 ```
@@ -395,7 +394,6 @@ python3 -c "from src.models.config import BotConfiguration; BotConfiguration.fro
 
 **Common errors:**
 - `ValueError: Missing required field` → Add required field to config.json
-- `ValueError: temperature must be between 0.0 and 1.0` → Fix temperature value
 
 ### No Messages Received
 

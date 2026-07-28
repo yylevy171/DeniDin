@@ -18,7 +18,6 @@ def mock_config(tmp_path):
     config = Mock(spec=AppConfiguration)
     config.ai_model = "gpt-4o-mini"
     config.ai_reply_max_tokens = 500
-    config.temperature = 0.7
     config.constitution_config = {}
     config.data_root = str(Path(__file__).parent.parent.parent / "test_data")
     # Memory/RBAC are always on now (no feature flags) - AIHandler.__init__

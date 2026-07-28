@@ -25,7 +25,6 @@ def mock_denidin_context():
     context.config = Mock()
     context.config.ai_model = "gpt-4o"
     context.config.ai_reply_max_tokens = 4096
-    context.config.temperature = 0.7
     context.config.constitution_config = {}
     context.ai_handler = Mock()
     # Mock _load_constitution to return empty string

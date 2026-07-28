@@ -86,7 +86,6 @@ class AIRequest:
     user_prompt: str  # Changed from user_message for consistency
     constitution: str  # Constitution content loaded from file
     max_tokens: int
-    temperature: float
     model: str
     chat_id: str
     message_id: str
@@ -120,8 +119,7 @@ class AIRequest:
                     'content': self.user_prompt  # Changed from user_message
                 }
             ],
-            'max_tokens': self.max_tokens,
-            'temperature': self.temperature
+            'max_tokens': self.max_tokens
         }
 
 

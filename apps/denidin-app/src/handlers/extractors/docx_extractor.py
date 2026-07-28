@@ -173,7 +173,6 @@ class DOCXExtractor(MediaExtractor):
                 user_prompt=full_prompt,
                 constitution=constitution,
                 max_tokens=self.config.ai_reply_max_tokens,
-                temperature=self.config.temperature,
                 model=self.config.ai_model,
                 chat_id="docx-analysis",
                 message_id="docx-analysis"

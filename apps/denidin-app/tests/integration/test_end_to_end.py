@@ -224,24 +224,22 @@ class TestEndToEndFlow:
     )
     def test_configuration_allows_bot_startup(self, config):
         """
-        Checks all required configuration fields are present and within valid ranges (temperature 0-1, 
-        max_tokens ≥ 1, poll_interval ≥ 1, log_level INFO/DEBUG), preventing runtime errors.
+        Checks all required configuration fields are present and within valid ranges
+        (max_tokens ≥ 1, poll_interval ≥ 1, log_level INFO/DEBUG), preventing runtime errors.
         """
         # Verify all required fields are present
         assert config.green_api_instance_id, "Missing green_api_instance_id"
         assert config.green_api_token, "Missing green_api_token"
         assert config.ai_api_key, "Missing ai_api_key"
         assert config.ai_model, "Missing ai_model"
-        
+
         # Verify valid ranges
-        assert 0.0 <= config.temperature <= 1.0, "Invalid temperature"
         assert config.ai_reply_max_tokens >= 1, "Invalid ai_reply_max_tokens"
         assert config.log_level in ['INFO', 'DEBUG'], "Invalid log_level"
-        
+
         print("\n[E2E Test] ✓ All configuration fields validated")
         print(f"[E2E Test] ✓ Bot is ready to start with:")
         print(f"  - Model: {config.ai_model}")
-        print(f"  - Temperature: {config.temperature}")
         print(f"  - AI Reply Max tokens: {config.ai_reply_max_tokens}")
 
 

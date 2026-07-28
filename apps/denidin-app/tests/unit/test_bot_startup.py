@@ -75,58 +75,58 @@ class TestConfigValidationIntegration:
     @patch('sys.exit')
     def test_invalid_config_causes_exit(self, mock_exit):
         """Test ValueError from invalid config is caught and causes sys.exit(1)."""
-        # Create invalid config (temperature out of range)
+        # Create invalid config (ai_reply_max_tokens out of range)
         invalid_config = {
             "green_api_instance_id": "test123",
             "green_api_token": "token123",
             "ai_api_key": "sk-test",
-            "temperature": 2.0  # Invalid: > 1.0
+            "ai_reply_max_tokens": 0  # Invalid: must be >= 1
         }
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             json.dump(invalid_config, f)
             temp_path = f.name
-        
+
         try:
             from src.models.config import AppConfiguration
-            
+
             config = AppConfiguration.from_file(temp_path)
-            
+
             # Try to validate - should raise ValueError
             try:
                 config.validate()
-                assert False, "Should have raised ValueError for invalid temperature"
+                assert False, "Should have raised ValueError for invalid ai_reply_max_tokens"
             except ValueError as e:
                 # This is expected - bot.py should catch this and exit
-                assert "temperature" in str(e).lower()
-                
+                assert "ai_reply_max_tokens" in str(e).lower()
+
         finally:
             os.unlink(temp_path)
 
     def test_bot_doesnt_start_with_invalid_config(self):
         """Test bot doesn't start when config validation fails."""
-        # Create config with invalid temperature
+        # Create config with invalid ai_reply_max_tokens
         invalid_config = {
             "green_api_instance_id": "test123",
             "green_api_token": "token123",
             "ai_api_key": "sk-test",
-            "temperature": 2.0  # Invalid: must be between 0.0 and 1.0
+            "ai_reply_max_tokens": -1  # Invalid: must be >= 1
         }
-        
+
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             json.dump(invalid_config, f)
             temp_path = f.name
-        
+
         try:
             from src.models.config import AppConfiguration
-            
+
             config = AppConfiguration.from_file(temp_path)
-            
+
             with pytest.raises(ValueError) as exc_info:
                 config.validate()
-            
-            assert "temperature" in str(exc_info.value).lower()
-            
+
+            assert "ai_reply_max_tokens" in str(exc_info.value).lower()
+
         finally:
             os.unlink(temp_path)
 
@@ -160,8 +160,7 @@ class TestConfigLogging:
             # Simulate startup logging (will be implemented in T043b)
             # For now, verify config has the expected values
             assert config.green_api_instance_id == "test_instance_123"
-            assert config.ai_model == "gpt-4o-mini"  # default
-            assert config.temperature == 0.7  # default
+            assert config.ai_model == "gpt-5.6-luna"  # default
             assert config.ai_reply_max_tokens == 1000  # default
             
         finally:
@@ -249,37 +248,6 @@ class TestConfigLogging:
             os.unlink(temp_path)
 
     @patch('sys.exit')
-    def test_temperature_logged(self, mock_exit, caplog):
-        """Test temperature is logged on startup."""
-        import logging
-        caplog.set_level(logging.INFO)
-        
-        config_data = {
-            "green_api_instance_id": "test123",
-            "green_api_token": "token123",
-            "ai_api_key": "sk-test",
-            "temperature": 0.9
-        }
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(config_data, f)
-            temp_path = f.name
-        
-        try:
-            from src.models.config import AppConfiguration
-            from src.utils.logger import get_logger
-            
-            config = AppConfiguration.from_file(temp_path)
-            logger = get_logger(__name__, log_level="INFO")
-            
-            logger.info(f"Temperature: {config.temperature}")
-            
-            assert "Temperature: 0.9" in caplog.text
-            
-        finally:
-            os.unlink(temp_path)
-
-    @patch('sys.exit')
     def test_max_tokens_logged(self, mock_exit, caplog):
         """Test ai_reply_max_tokens is logged on startup."""
         import logging
@@ -343,7 +311,7 @@ class TestConfigLogging:
             caplog.set_level(logging.DEBUG)
             caplog.clear()
             logger_debug = get_logger(__name__, log_level="DEBUG")
-            logger_debug.debug(f"Config details: {config.temperature}")
+            logger_debug.debug(f"Config details: {config.ai_reply_max_tokens}")
             assert len(caplog.records) > 0
             assert caplog.records[0].levelname == "DEBUG"
             

@@ -118,7 +118,7 @@ _CLIENT_STEMS = ("אלפא", "בטא", "גמא", "דלתא", "אומגא", "סי
 # for the invoice's actual id and called update_invoice_status with it
 # instead of the real UUID from the preceding create_invoice output.
 _CLIENT_QUALIFIERS = (
-    "צפון", "דרום", "מזרח", "מערב", "ראשי", "משני", "חדש", "ותיק",
+    "צפון", "דרום", "מזרח", "מערב",
     "כחול", "ירוק", "זהב", "כסף", "ראשון", "שני", "שלישי", "רביעי",
 )
 
@@ -128,7 +128,7 @@ def _unique_client_name() -> str:
     invoice - built entirely from Hebrew words, never hex/digits/operation
     words.
 
-    Three real, billed failures shaped this:
+    Four real, billed failures shaped this:
     - Embedding the operation word in the name (e.g. "...CANCEL...") leaked
       intent into a plain *create* request, so the model called
       update_invoice_status(status="cancelled") on it (constitution maps
@@ -144,6 +144,14 @@ def _unique_client_name() -> str:
       search - real client names in this app's actual usage never carry a
       generic "חברת"/"בע\"מ" business-entity prefix anyway, so the name
       generated here shouldn't either.
+    - Same failure mode again (2026-07-28), this time from a qualifier word
+      itself rather than a prefix: "ותיק" (veteran/long-standing) read as
+      descriptive rather than part of the proper name, so the model dropped
+      it when confirming the created document ("אומגא ותיק" -> "אומגא"), and
+      a later lookup by the full generated name then found nothing.
+      `_CLIENT_QUALIFIERS` was pruned down to words with no plausible
+      adjective reading (directions, colors, ordinals) - no "new"/"main"/
+      "secondary"/"veteran"-type words.
     """
     return f"{random.choice(_CLIENT_STEMS)} {random.choice(_CLIENT_QUALIFIERS)}"
 
@@ -152,8 +160,9 @@ def _random_amount() -> int:
     """A varied, non-round amount - avoids the exact repeated shape
     (same amount every call) that has been observed to trigger the model
     fabricating a plausible-looking success reply instead of actually
-    calling create_invoice."""
-    return random.randint(40, 950)
+    calling create_invoice. Kept to 10-100 NIS - a deliberately small,
+    consistent range for sandbox test documents."""
+    return random.randint(10, 100)
 
 
 def _random_description() -> str:
@@ -242,7 +251,6 @@ def denidin_app(denidin_config, live_morning_tunnel):
         'ai_vision_model': denidin_config.ai_vision_model,
         'ai_embedding_model': denidin_config.ai_embedding_model,
         'ai_reply_max_tokens': denidin_config.ai_reply_max_tokens,
-        'temperature': denidin_config.temperature,
         'log_level': denidin_config.log_level,
         'data_root': denidin_config.data_root,
         'feature_flags': denidin_config.feature_flags,
@@ -354,8 +362,15 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
     3. The final reply contains an invoice link - the runtime constitution
        says create_invoice confirmations must always include one, unprompted,
        so this isn't a special ask in the test prompt.
+
+    Uses a fresh unique client per run (2026-07-28) - this test used to
+    create a new real invoice under the fixed "יוסי שמואלי" ground-truth
+    client (see bugfix-014 tests below) on every single run, which is
+    exactly what caused that client to organically grow from 6 to 14
+    documents over time and break those other tests' pagination
+    assumptions. Never hardcode a shared ground-truth client name here.
     """
-    client_name = "יוסי שמואלי"
+    client_name = _unique_client_name()
     amount = _random_amount()
     description = _random_description()
 
@@ -740,38 +755,41 @@ def test_no_date_mentioned_omits_date_range(denidin_app):
 # bugfix-014: "all payments" silently narrowed to status="paid"
 # ============================================================================
 
-# Real sandbox ground truth (verified live, 2026-07-21, read-only
-# list_invoices call against config.dev.json's sandbox credentials - see
-# specs/bugfixes/bugfix-014-list-invoices-only-returns-one-of-many.md): the
-# same "יוסי שמואלי" client used by test_godfather_creates_invoice_via_whatsapp
-# above already had 6 real tax-invoice documents (type 305) across 4 distinct
-# dates, all unpaid. Two were then deliberately marked paid via a real
-# Morning receipt (type 400, linked document) to build a mixed paid/unpaid
-# set that mirrors the shape of the real Arian Regev incident (a request for
-# "all payments" silently narrowed to a status="paid" filter, which would
-# have dropped every unpaid invoice from the reply). The 2 receipt documents
-# themselves (80109, 80110) are NOT counted as invoices here - they're a
-# separate, unrelated latent gap (list_invoices, unlike get_financial_summary,
-# has no document-type filter and will return receipts alongside invoices;
-# out of scope for this bugfix).
-_YOSSI_CLIENT_NAME = "יוסי שמואלי"
-_YOSSI_UNPAID_INVOICE_NUMBERS = ("50499", "50552", "50571", "50607")  # status=0
-_YOSSI_PAID_INVOICE_NUMBERS = ("50500", "50604")  # status=1, closed via a linked receipt
+# Real sandbox ground truth for this regression check. Originally used a
+# fixed client "יוסי שמואלי" (verified live 2026-07-21, see
+# specs/bugfixes/bugfix-014-list-invoices-only-returns-one-of-many.md), but
+# that client organically grew from 6 to 14 real documents over time because
+# test_godfather_creates_invoice_via_whatsapp (above) kept creating new
+# invoices under that same hardcoded name on every run - eventually pushing
+# 4 of the 6 known invoices past list_invoices' 10-item page cap and making
+# this test fail for a reason unrelated to bugfix-014 (2026-07-28).
+# Replaced with a dedicated client, "דורית אשכנזי", never referenced by any
+# other test/random-name generator (_CLIENT_STEMS/_CLIENT_QUALIFIERS can
+# never produce this name), seeded once (2026-07-28) with exactly 6 tax
+# invoices (type 305) - 4 left unpaid, 2 marked paid via a real linked
+# Morning receipt (type 400) - mirroring the shape of the real Arian Regev
+# incident (a request for "all payments" silently narrowed to a
+# status="paid" filter, which would have dropped every unpaid invoice from
+# the reply). The 2 receipt documents are NOT counted as invoices here -
+# that's a separate, unrelated latent gap (list_invoices, unlike
+# get_financial_summary, has no document-type filter and will return
+# receipts alongside invoices; out of scope for this bugfix).
+_GROUND_TRUTH_CLIENT_NAME = "דורית אשכנזי"
+_GROUND_TRUTH_UNPAID_INVOICE_NUMBERS = ("50856", "50857", "50858", "50859")  # status=0
+_GROUND_TRUTH_PAID_INVOICE_NUMBERS = ("50854", "50855")  # status=1, closed via a linked receipt
 
-_YOSSI_ALL_INVOICE_NUMBERS = _YOSSI_UNPAID_INVOICE_NUMBERS + _YOSSI_PAID_INVOICE_NUMBERS
+_GROUND_TRUTH_ALL_INVOICE_NUMBERS = _GROUND_TRUTH_UNPAID_INVOICE_NUMBERS + _GROUND_TRUTH_PAID_INVOICE_NUMBERS
 
 # Ground truth for the double-counting regression (bugfix-014, Session 2):
-# Yossi's true amount paid is 88 + 147 = 235 (invoices 50500 and 50604's own
-# amounts). The receipts that closed them (80109=88, 80110=147) are the SAME
-# money, not additional payments - a model that treats each receipt as an
-# independent charge on top of its invoice arrives at 235 + 235 = 470
-# instead, exactly the real, observed mistake from this session's first test
-# run (see bugfix-014's Investigation Findings).
-_YOSSI_CORRECT_TOTAL_PAID = "235"
-_YOSSI_DOUBLE_COUNTED_TOTAL_PAID = "470"
+# the true amount paid is 52 + 38 = 90 (invoices 50854 and 50855's own
+# amounts). The receipts that closed them are the SAME money, not
+# additional payments - a model that treats each receipt as an independent
+# charge on top of its invoice arrives at 90 + 90 = 180 instead.
+_GROUND_TRUTH_CORRECT_TOTAL_PAID = "90"
+_GROUND_TRUTH_DOUBLE_COUNTED_TOTAL_PAID = "180"
 
-_YOSSI_FIRST_MESSAGE = f"תבדוק כל התשלומים מלקוח בשם {_YOSSI_CLIENT_NAME}"
-_YOSSI_EXPLICIT_ALL_MESSAGE = f"תן לי את כל התשלומים שביצע {_YOSSI_CLIENT_NAME}"
+_GROUND_TRUTH_FIRST_MESSAGE = f"תבדוק כל התשלומים מלקוח בשם {_GROUND_TRUTH_CLIENT_NAME}"
+_GROUND_TRUTH_EXPLICIT_ALL_MESSAGE = f"תן לי את כל התשלומים שביצע {_GROUND_TRUTH_CLIENT_NAME}"
 
 
 def _assert_full_picture(response, ai_response, id_prefix: str) -> None:
@@ -784,41 +802,41 @@ def _assert_full_picture(response, ai_response, id_prefix: str) -> None:
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
     assert list_calls, (
-        f"[{id_prefix}] Model never invoked list_invoices for the Yossi Shmueli "
+        f"[{id_prefix}] Model never invoked list_invoices for the {_GROUND_TRUTH_CLIENT_NAME} "
         f"request. mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
     )
 
     combined_output = "\n".join(c["output"] or "" for c in list_calls)
-    found = [n for n in _YOSSI_ALL_INVOICE_NUMBERS if n in combined_output]
-    missing = [n for n in _YOSSI_ALL_INVOICE_NUMBERS if n not in found]
+    found = [n for n in _GROUND_TRUTH_ALL_INVOICE_NUMBERS if n in combined_output]
+    missing = [n for n in _GROUND_TRUTH_ALL_INVOICE_NUMBERS if n not in found]
     assert not missing, (
         f"[{id_prefix}] list_invoices did not return the complete picture: "
-        f"expected all 6 known invoices {_YOSSI_ALL_INVOICE_NUMBERS} "
-        f"(4 unpaid: {_YOSSI_UNPAID_INVOICE_NUMBERS}, 2 paid: "
-        f"{_YOSSI_PAID_INVOICE_NUMBERS}), missing {missing} - consistent with "
+        f"expected all 6 known invoices {_GROUND_TRUTH_ALL_INVOICE_NUMBERS} "
+        f"(4 unpaid: {_GROUND_TRUTH_UNPAID_INVOICE_NUMBERS}, 2 paid: "
+        f"{_GROUND_TRUTH_PAID_INVOICE_NUMBERS}), missing {missing} - consistent with "
         f"an unrequested status filter silently dropping invoices. "
         f"Tool output: {combined_output!r}"
     )
 
     # Ground-truth correctness check for bugfix-014's double-counting bug:
     # the reply itself (what the user actually sees) must state the TRUE
-    # total paid (235), never the double-counted figure (470) that results
-    # from treating a receipt as a separate charge from the invoice it closes.
-    assert _YOSSI_DOUBLE_COUNTED_TOTAL_PAID not in response, (
+    # total paid, never the double-counted figure that results from treating
+    # a receipt as a separate charge from the invoice it closes.
+    assert _GROUND_TRUTH_DOUBLE_COUNTED_TOTAL_PAID not in response, (
         f"[{id_prefix}] Bot reply states the double-counted total paid "
-        f"({_YOSSI_DOUBLE_COUNTED_TOTAL_PAID}) instead of the true total "
-        f"({_YOSSI_CORRECT_TOTAL_PAID}) - a receipt was counted as a separate "
+        f"({_GROUND_TRUTH_DOUBLE_COUNTED_TOTAL_PAID}) instead of the true total "
+        f"({_GROUND_TRUTH_CORRECT_TOTAL_PAID}) - a receipt was counted as a separate "
         f"charge on top of the invoice it closes. Full reply: {response!r}"
     )
-    assert _YOSSI_CORRECT_TOTAL_PAID in response, (
+    assert _GROUND_TRUTH_CORRECT_TOTAL_PAID in response, (
         f"[{id_prefix}] Bot reply does not state the true total paid "
-        f"({_YOSSI_CORRECT_TOTAL_PAID}) anywhere - expected it to summarize "
+        f"({_GROUND_TRUTH_CORRECT_TOTAL_PAID}) anywhere - expected it to summarize "
         f"the correct, netted total. Full reply: {response!r}"
     )
 
 
 @pytest.mark.expensive
-def test_yossi_all_payments_gets_the_complete_picture(denidin_app):
+def test_client_all_payments_gets_the_complete_picture(denidin_app):
     """Reproduction test for bugfix-014's strongest root-cause candidate:
     runtime_constitution.md's payment-word -> status="paid" rule
     over-generalizing from the noun "תשלומים" (payments, a request for scope)
@@ -832,23 +850,23 @@ def test_yossi_all_payments_gets_the_complete_picture(denidin_app):
     not just the paid ones. Expected to FAIL currently if the bug still
     reproduces (the unpaid invoices go missing from the result).
 
-    Uses the real, mixed-status "יוסי שמואלי" sandbox client (see ground
+    Uses the real, mixed-status "דורית אשכנזי" sandbox client (see ground
     truth above) so the bug's effect on the data itself is directly
     observable, rather than only inspecting the tool call's raw arguments.
     """
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=_YOSSI_FIRST_MESSAGE,
+        text=_GROUND_TRUTH_FIRST_MESSAGE,
         id_prefix="E2E_BUGFIX014_ASK",
     )
     _assert_full_picture(response, ai_response, "initial ask")
 
 
 @pytest.mark.expensive
-def test_yossi_explicit_everything_request_gets_the_complete_picture(denidin_app):
+def test_client_explicit_everything_request_gets_the_complete_picture(denidin_app):
     """Separate, standalone reproduction test for the "give me everything,
     no filtering" phrasing - sent as its own single-turn request, not
-    programmatically chained after test_yossi_all_payments_gets_the_complete_picture's
+    programmatically chained after test_client_all_payments_gets_the_complete_picture's
     turn (each test function here sends exactly one message and asserts on
     it independently). Note: like every test in this module, the underlying
     WhatsApp session for GODFATHER_CHAT_ID is module-scoped, so this turn may
@@ -864,7 +882,7 @@ def test_yossi_explicit_everything_request_gets_the_complete_picture(denidin_app
     """
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=_YOSSI_EXPLICIT_ALL_MESSAGE,
+        text=_GROUND_TRUTH_EXPLICIT_ALL_MESSAGE,
         id_prefix="E2E_BUGFIX014_EXPLICIT_ALL",
     )
     _assert_full_picture(response, ai_response, "explicit 'all, no filter' request")
@@ -1291,8 +1309,12 @@ def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin
             f"(type-330) original document: {status_calls!r}"
         )
     # Either way (tool refused, or the model declined to call it at all), the
-    # user-facing reply must not claim success.
-    assert "שולם" not in response or "לא" in response or "לא ניתן" in response, (
+    # user-facing reply must not claim success. Hebrew can express this refusal
+    # via several negation forms - "לא"/"לא ניתן", or "אינה"/"אינו"/"אין" (e.g.
+    # "חשבונית זיכוי אינה מסמך שמסמנים כשולם") - so check for any of them
+    # rather than assuming one specific phrasing.
+    negation_markers = ("לא", "אינה", "אינו", "אין")
+    assert "שולם" not in response or any(marker in response for marker in negation_markers), (
         f"Bot reply appears to falsely confirm payment for an unsupported "
         f"document type. Full reply: {response!r}"
     )

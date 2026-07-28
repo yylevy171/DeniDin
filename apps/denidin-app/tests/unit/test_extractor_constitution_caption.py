@@ -68,7 +68,6 @@ class TestConstitutionUsage:
         mock_denidin = Mock()
         mock_denidin.config.ai_model = "gpt-4o-mini"
         mock_denidin.config.ai_reply_max_tokens = 4096
-        mock_denidin.config.temperature = 0.7
         mock_denidin.config.constitution_config = {}
         mock_denidin.ai_handler = Mock()
         mock_denidin.ai_handler._load_constitution = Mock(return_value="I am DeniDin, a helpful assistant.")
@@ -210,7 +209,6 @@ class TestCaptionContext:
         mock_denidin = Mock()
         mock_denidin.config.ai_model = "gpt-4o-mini"
         mock_denidin.config.ai_reply_max_tokens = 4096
-        mock_denidin.config.temperature = 0.7
         mock_denidin.config.constitution_config = {}
         mock_denidin.ai_handler = Mock()
         mock_denidin.ai_handler._load_constitution = Mock(return_value="")
@@ -251,7 +249,6 @@ class TestCaptionContext:
         mock_denidin = Mock()
         mock_denidin.config.ai_model = "gpt-4o-mini"
         mock_denidin.config.ai_reply_max_tokens = 4096
-        mock_denidin.config.temperature = 0.7
         mock_denidin.config.constitution_config = {}
         mock_denidin.ai_handler = Mock()
         mock_denidin.ai_handler._load_constitution = Mock(return_value="")

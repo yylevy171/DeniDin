@@ -25,6 +25,11 @@ class TestImageExtractor:
         denidin = Mock()
         denidin.ai_handler = Mock()
         denidin.ai_handler._load_constitution.return_value = ""
+        # Feature 024: ledger classification is a separate AIHandler call now
+        # (capture_ledger_event_from_text), not extracted from the vision
+        # response - default to "nothing captured" so these pre-024 extraction
+        # tests reflect realistic behavior rather than an unconfigured Mock.
+        denidin.ai_handler.capture_ledger_event_from_text.return_value = None
         denidin.config = Mock()
         denidin.config.ai_vision_model = "gpt-4o"
         denidin.config.ai_reply_max_tokens = 1000
@@ -50,6 +55,7 @@ class TestImageExtractor:
         mock_response.output_text = (
             "TEXT:\nשלום עולם\nזה מסמך בעברית\nCONFIDENCE: high\nNOTES: Clear Hebrew text"
         )
+        mock_response.output = []  # no function_call items - real API responses always have a list here
         mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
@@ -68,6 +74,7 @@ class TestImageExtractor:
         mock_response.output_text = (
             "TEXT:\nLine 1\n\nLine 2\n\nLine 3\nCONFIDENCE: high"
         )
+        mock_response.output = []  # no function_call items - real API responses always have a list here
         mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
@@ -86,6 +93,7 @@ class TestImageExtractor:
         mock_response.output_text = (
             "TEXT:\n\nCONFIDENCE: low\nNOTES: No visible text"
         )
+        mock_response.output = []  # no function_call items - real API responses always have a list here
         mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
@@ -117,6 +125,7 @@ class TestImageExtractor:
         """
         mock_response = Mock()
         mock_response.output_text = "TEXT:\ntest\nCONFIDENCE: high"
+        mock_response.output = []  # no function_call items - real API responses always have a list here
         mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         extractor.analyze_media(test_media)
@@ -140,6 +149,7 @@ class TestImageExtractor:
         mock_response.output_text = (
             "TEXT:\nThis is clear, readable text.\nCONFIDENCE: high\nNOTES: Image quality excellent"
         )
+        mock_response.output = []  # no function_call items - real API responses always have a list here
         mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
@@ -155,6 +165,7 @@ class TestImageExtractor:
         mock_response.output_text = (
             "TEXT:\nSomewhat blurry text\nCONFIDENCE: medium\nNOTES: Some characters unclear"
         )
+        mock_response.output = []  # no function_call items - real API responses always have a list here
         mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
@@ -171,6 +182,7 @@ class TestImageExtractor:
         """
         mock_response = Mock()
         mock_response.output_text = "AI analysis response"
+        mock_response.output = []  # no function_call items - real API responses always have a list here
         mock_denidin.ai_handler.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
