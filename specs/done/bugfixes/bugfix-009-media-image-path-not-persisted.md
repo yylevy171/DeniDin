@@ -8,9 +8,9 @@ Image/media messages leave no `image_path` pointer in the session, so the persis
 conversation can't be traced back to the saved media file on disk
 
 ## Status
-**Fix applied and fully verified 2026-07-30** (see "Acceptance Criteria" below — all
-four real-image E2E tests reconfirmed GREEN live, each individually approved and run).
-Originally fixed 2026-07-08 (see
+**Done — merged to master (PR #143), 2026-07-30.** Fix applied and fully verified (see
+"Acceptance Criteria" below — all four real-image E2E tests reconfirmed GREEN live,
+each individually approved and run). Originally fixed 2026-07-08 (see
 "Original Fix (2026-07-08)" below), verified GREEN, and moved to `specs/done/bugfixes/`.
 The fix regressed at some point after `bugfix-017` (session-linkage for media turns)
 replaced the original call site with a new one that never re-threaded `image_path`.
