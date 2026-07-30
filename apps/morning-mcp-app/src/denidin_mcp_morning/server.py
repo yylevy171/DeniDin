@@ -115,7 +115,7 @@ def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> str:
 
 
 def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = None) -> FastMCP:
-    """Build a FastMCP server with all 7 tools registered, bound to one MorningClient.
+    """Build a FastMCP server with all 11 tools registered, bound to one MorningClient.
 
     Args:
         config: Validated app config (see config.load_config).
@@ -203,7 +203,9 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         Morning document id of the invoice being credited - resolve this first,
         e.g. via list_invoices, if the user only gave a client name or invoice
         number). Defaults to a full credit against the original's total; pass
-        amount for a partial credit note."""
+        amount for a partial credit note. Also the correct target for "cancel
+        this invoice" phrasing (there is no separate status-update tool) -
+        call this directly with the full amount in that case."""
         return _call_with_error_boundary(
             tools.create_credit_note, morning_client, original_invoice_id, amount, description
         )
@@ -218,9 +220,37 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         existing document, identified by original_invoice_id (the Morning document
         id of the invoice being paid - resolve this first, e.g. via list_invoices,
         if the user only gave a client name or invoice number). Defaults to the
-        original's full total; pass amount for a partial-payment receipt."""
+        original's full total; pass amount for a partial-payment receipt. Also
+        the correct target for "mark as paid" phrasing once the referenced
+        document's type is resolved to 305, not 300 (there is no separate
+        status-update tool) - only supports type-305 originals, raises a clear
+        error for a type-300 original (use close_transaction_account instead)."""
         return _call_with_error_boundary(
             tools.create_receipt, morning_client, original_invoice_id, amount, payment_date
+        )
+
+    @mcp.tool()
+    def close_transaction_account(
+        original_invoice_id: str,
+        amount: Optional[float] = None,
+        description: Optional[str] = None,
+        vat_included: bool = True,
+    ) -> str:
+        """Create a combo document ("חשבונית מס/קבלה", document type 320) that
+        closes an existing transaction account ("חשבון עסקה", document type 300),
+        identified by original_invoice_id (the Morning document id of the
+        transaction account being closed - resolve this first, e.g. via
+        list_invoices, if the user only gave a client name or document number).
+        Defaults to closing the full amount; pass amount for a partial close.
+        Only supports type-300 originals - raises a clear error for any other
+        original document type. A transaction account itself carries no VAT
+        field to infer vat_included from - if it isn't clear from the
+        conversation whether VAT should be included, ask the user rather than
+        guessing. Also the correct target for "mark as paid" phrasing once
+        the referenced document's type is resolved to 300 (there is no
+        separate status-update tool)."""
+        return _call_with_error_boundary(
+            tools.close_transaction_account, morning_client, original_invoice_id, amount, description, vat_included
         )
 
     @mcp.tool()
@@ -237,19 +267,12 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
 
     @mcp.tool()
     def get_invoice_details(invoice_id: str) -> str:
-        """Fetch full details (status, dates, payments) for one invoice."""
+        """Fetch full details (status, dates, payments) for one invoice - use
+        this to resolve a document's real type/current status before deciding
+        which create_*/close_* tool to call for a status-change request
+        ("mark as paid", "cancel it") - there is no separate status-update
+        tool; only document creation."""
         return _call_with_error_boundary(tools.get_invoice_details, morning_client, invoice_id)
-
-    @mcp.tool()
-    def update_invoice_status(
-        invoice_id: str,
-        status: str,
-        payment_date: Optional[str] = None,
-    ) -> str:
-        """Update an invoice's payment status: "paid", "unpaid", or "cancelled"."""
-        return _call_with_error_boundary(
-            tools.update_invoice_status, morning_client, invoice_id, status, payment_date
-        )
 
     @mcp.tool()
     def add_client(

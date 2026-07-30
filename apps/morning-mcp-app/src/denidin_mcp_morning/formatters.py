@@ -81,8 +81,9 @@ def format_invoice_confirmation(invoice: Invoice) -> str:
     # invoice number above. Without this, an MCP client (e.g. an LLM) that
     # just created/looked up an invoice has no legitimate way to pass the
     # right id to invoice_id-keyed tools (download_invoice_pdf,
-    # update_invoice_status, get_invoice_details) later in the same
-    # conversation - it would otherwise only ever see the friendly number.
+    # get_invoice_details, create_receipt, create_credit_note,
+    # close_transaction_account) later in the same conversation - it would
+    # otherwise only ever see the friendly number.
     lines.append(f"מזהה פנימי (invoice_id): {invoice.id}")
 
     return "\n".join(lines)

@@ -42,7 +42,7 @@ def seeded_invoice(morning_client):
     create_invoice(
         morning_client,
         client_name=client_name,
-        amount=175.0,
+        amount=75.0,
         description=f"List-invoices seed {unique_marker}",
     )
     return {"client_name": client_name}

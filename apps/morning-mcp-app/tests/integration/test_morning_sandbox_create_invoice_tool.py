@@ -38,7 +38,7 @@ def test_create_invoice_tool_creates_real_sandbox_document(morning_client):
         confirmation = create_invoice(
             morning_client,
             client_name=client_name,
-            amount=250.0,
+            amount=45.0,
             description=f"Consulting services {unique_marker}",
         )
     except requests.exceptions.HTTPError as exc:
@@ -47,7 +47,7 @@ def test_create_invoice_tool_creates_real_sandbox_document(morning_client):
 
     assert isinstance(confirmation, str)
     assert client_name in confirmation
-    assert "₪250.00" in confirmation
+    assert "₪45.00" in confirmation
 
 
 def test_create_invoice_tool_defaults_vat_included_to_true(morning_client):
@@ -59,7 +59,7 @@ def test_create_invoice_tool_defaults_vat_included_to_true(morning_client):
     confirmation = create_invoice(
         morning_client,
         client_name=client_name,
-        amount=100.0,
+        amount=35.0,
         description=f"VAT default check {unique_marker}",
     )
 

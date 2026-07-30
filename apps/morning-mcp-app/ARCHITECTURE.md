@@ -30,8 +30,11 @@ denidin-app's number, architecture still TBD).
 ┌───────────────────────▼───────────────────────────────────┐
 │  tools.py  (Phase 2 — DONE, 7 tools)                        │
 │  One function per MCP tool: create_invoice, list_invoices, │
-│  get_invoice_details, update_invoice_status, add_client,   │
-│  get_financial_summary, download_invoice_pdf               │
+│  get_invoice_details, create_receipt, create_credit_note,  │
+│  close_transaction_account, add_client,                    │
+│  get_financial_summary, download_invoice_pdf (+ more,      │
+│  see README.md for the full current list - this diagram   │
+│  predates features 020/021/022/023)                        │
 │  - takes friendly args (client_name, amount, ...)          │
 │  - maps them onto Morning's real payload shape              │
 │  - calls MorningClient                                      │

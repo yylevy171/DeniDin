@@ -37,7 +37,7 @@ def morning_client():
 def paid_invoice(morning_client):
     """Seed a real sandbox invoice and mark it paid (issuing a real, linked
     receipt) - returns (invoice_id, client_name) for the tests below."""
-    from denidin_mcp_morning.tools import _build_create_invoice_payload, update_invoice_status
+    from denidin_mcp_morning.tools import _build_create_invoice_payload, create_receipt
 
     unique_marker = f"DENIDIN_LINKEDDOCS_TEST_{int(datetime.now(timezone.utc).timestamp())}"
     client_name = f"Test Client {unique_marker}"
@@ -50,7 +50,7 @@ def paid_invoice(morning_client):
     invoice_id = str(response.get("id") or response.get("documentId") or "")
     assert invoice_id, f"Could not determine created invoice id from response: {response}"
 
-    update_invoice_status(morning_client, invoice_id=invoice_id, status="paid")
+    create_receipt(morning_client, invoice_id)
 
     return invoice_id, client_name
 
