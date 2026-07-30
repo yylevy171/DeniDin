@@ -1,5 +1,5 @@
 ---
-description: Finish off the current work - commit, push, PR, merge, deploy, docs update, spec cleanup, branch cleanup
+description: Finish off the current work - commit, push, PR, merge, deploy, docs update, spec cleanup
 ---
 
 The user has invoked the finish-feature shorthand ("haleluya" or a spelling variant, or this `/haleluya` command). See `.github/METHODOLOGY.md`'s "Finish-Feature Trigger Phrase" section and `CLAUDE.md`'s Spec-Driven Workflow section for the authoritative definition.
@@ -22,7 +22,7 @@ Do the following, in order:
 7. **Release the dev lock, if you're holding it (and tear down what step 6 brought up)**: read `shared/active_env.json` (via `scripts/env_lock.sh`'s `env_lock_identity`/`env_lock_read`). If `active_env` is `dev` and `owner` matches this clone's personality, the feature work (and its test deploy) is done, so release it: run `scripts/stop_all.sh dev` to stop the container(s) and clear the lock. Only release a lock this clone actually owns — never `-force` someone else's dev lock as part of this flow. Skip silently if `active_env` isn't `dev`, or the owner isn't this clone's personality.
 8. **Docs update**: if the change affects `CLAUDE.md`, `README.md` files, or other docs and they weren't already updated as part of the feature work, update them now.
 9. **Spec cleanup**: move the feature/bugfix spec to its correct `specs/` folder per METHODOLOGY.md §XI's Folder Movement Rules (typically `specs/done/` for a merged feature), and update its `Status` line to reflect the merge (e.g. "Done - Merged to master (PR #N)").
-10. **Cleanup**: after confirming the merge succeeded, sync local `master` (`git checkout master && git pull`), then delete the feature branch both locally (`git branch -d`) and remotely (`git push origin --delete`).
-11. **Report**: a brief summary of what was merged (PR number/link), what was test-deployed and torn down, whether the dev lock was released, and confirmation that branches are cleaned up.
+10. **Sync**: after confirming the merge succeeded, sync local `master` (`git checkout master && git pull`). **NEVER delete git branches** — not the just-merged branch, not any other branch, locally or remotely, `-d` or `-D`, as part of this flow or any other step above. Leave the merged branch in place; if the user wants it deleted, they'll say so explicitly.
+11. **Report**: a brief summary of what was merged (PR number/link), what was test-deployed and torn down, and whether the dev lock was released.
 
 If any step requires a permission this environment doesn't grant automatically (e.g. push blocked by a classifier), stop and ask the user rather than working around it.
