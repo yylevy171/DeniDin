@@ -5,19 +5,29 @@ Standalone client for the Morning (Green Invoice) API — Israeli invoicing/rece
 ## Status
 
 This app ships a working FastMCP server (`src/denidin_mcp_morning/server.py`,
-streamable-HTTP) exposing 11 invoice-management tools — `create_invoice`,
-`create_transaction_account`, `create_combo_document`, `create_credit_note`,
-`create_receipt`, `close_transaction_account`, `list_invoices`,
-`get_invoice_details`, `add_client`, `get_financial_summary`,
-`download_invoice_pdf` — backed by the real Morning sandbox API, per
-`specs/done/005-mcp-morning-green-receipt/plan.md` and `tasks.md`,
-plus `specs/done/021-flexible-document-creation/spec.md` for the 4
-document-type-specific `create_*` tools and
-`specs/backlog/023-reference-linked-document-creation/spec.md` for
-`close_transaction_account` (which, alongside removing the separate
-`update_invoice_status` tool entirely, replaced it). (`send_invoice` was
-investigated and dropped — Morning's public API has no documented delivery
-endpoint; see `spec.md` §Scope.)
+streamable-HTTP) exposing 14 tools — 11 invoice-management tools
+(`create_invoice`, `create_transaction_account`, `create_combo_document`,
+`create_credit_note`, `create_receipt`, `close_transaction_account`,
+`list_invoices`, `get_invoice_details`, `add_client`, `get_financial_summary`,
+`download_invoice_pdf`) plus 3 client-management tools added by Feature 026
+(`list_clients`, `get_client_details`, `update_client`) — backed by the real
+Morning sandbox API, per `specs/done/005-mcp-morning-green-receipt/plan.md`
+and `tasks.md`, `specs/done/021-flexible-document-creation/spec.md` for the 4
+document-type-specific `create_*` tools, `specs/done/023-reference-linked-document-creation/spec.md`
+for `close_transaction_account` (which, alongside removing the separate
+`update_invoice_status` tool entirely, replaced it), and
+`specs/in-progress/026-client-management/spec.md` for client management.
+(`send_invoice` was investigated and dropped — Morning's public API has no
+documented delivery endpoint; see `spec.md` §Scope.)
+
+**`add_client`'s contract changed with Feature 026**: `name`/`email`/`phone`
+are now all required (previously only `name` was), `address` is no longer a
+parameter at all (out of scope), email is validated and phone normalized to
+Israeli local dashed format before any network call, and the tool is now
+approval-gated at the denidin-app layer (previously executed immediately,
+single-turn) — same explicit-approval flow as invoice/document creation.
+`update_client` is approval-gated too, resolves its target by name (never a
+caller-supplied internal id), and accepts a partial set of fields to change.
 
 This app was split out of the main `denidin-app` monorepo so that the MCP server
 has its own independently runnable, testable, and deployable home.

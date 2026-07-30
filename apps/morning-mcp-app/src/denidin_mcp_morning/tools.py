@@ -8,18 +8,25 @@ human-readable, Hebrew-formatted string.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
+from email_validator import EmailNotValidError, validate_email
 from pydantic import ValidationError
 
 from .formatters import (
+    format_ambiguous_clients_message,
+    format_client_details,
+    format_client_list,
+    format_client_not_found,
     format_financial_summary,
     format_invoice_confirmation,
     format_invoice_details,
     format_invoice_list,
+    format_too_many_clients_message,
 )
-from .models import _MORNING_STATUS_CODES, FinancialSummary, Invoice
+from .models import _MORNING_STATUS_CODES, Client, FinancialSummary, Invoice
 from .morning_client import MorningClient
 from .utils.logger import get_logger
 
@@ -834,60 +841,276 @@ def create_receipt(
     return f"הופקה קבלה מספר {receipt_number} עבור חשבונית מספר {original_number}."
 
 
+_ISRAELI_PHONE_MOBILE_LENGTH = 10  # 0 + 3-digit prefix + 7 digits, e.g. 050-1234567
+_ISRAELI_PHONE_LANDLINE_LENGTH = 9  # 0 + 1-digit area code + 7 digits, e.g. 02-1234567
+
+
+def _resolve_client_by_name(client: MorningClient, name: str) -> Tuple[Optional[Client], List[Client]]:
+    """Resolve a client by name via Search Clients (REQ-CLIENT-003/007).
+
+    Returns (resolved_client, all_candidates):
+    - 0 matches: (None, [])
+    - 1 match: (client, [client])
+    - >1 matches: (None, [client1, client2, ...]) - caller must disambiguate, never guess.
+    """
+    response = client.search_clients({"name": name})
+    items = response.get("items") or []
+    candidates = [Client.model_validate(item) for item in items]
+    if len(candidates) == 1:
+        return candidates[0], candidates
+    return None, candidates
+
+
+def _is_exact_name_match(resolved_name: str, queried_name: str) -> bool:
+    """Whether a resolved client's stored name is identical (case-
+    insensitive, whitespace-trimmed) to what was searched for. Morning's
+    real search is a token-prefix match (confirmed live, research.md
+    Decision 12) - a single non-ambiguous match can still be a partial/
+    prefix reference, not the literal stored name, so callers must
+    distinguish the two before deciding whether to explicitly disclose
+    which client was found."""
+    return resolved_name.strip().casefold() == queried_name.strip().casefold()
+
+
+def _validate_email(email: str) -> str:
+    """Validate email format client-side (REQ-CLIENT-015), mirroring Morning's
+    own documented server-side rule (errorCode 1102/1120). Uses email-validator
+    (already a project dependency, already the pattern used by models.Client)."""
+    try:
+        result = validate_email(email, check_deliverability=False)
+    except EmailNotValidError as exc:
+        raise ValueError(f"Invalid email address: {email!r}") from exc
+    return result.normalized
+
+
+def _normalize_israeli_phone(phone: str) -> str:
+    """Normalize a phone number to Israeli local dashed format (REQ-CLIENT-016).
+
+    No Morning-side format rule exists to mirror (confirmed via the full
+    error-code catalog) - this is an app-level policy choice. Accepts
+    +972/972-prefixed, local, dashed, or undashed input; rejects anything
+    that doesn't resolve to a plausible Israeli number (9 or 10 digits
+    starting with 0).
+    """
+    digits = re.sub(r"\D", "", phone)
+    if digits.startswith("972"):
+        digits = "0" + digits[3:]
+    if not digits.startswith("0") or len(digits) not in (
+        _ISRAELI_PHONE_LANDLINE_LENGTH,
+        _ISRAELI_PHONE_MOBILE_LENGTH,
+    ):
+        raise ValueError(f"Phone number does not resolve to a plausible Israeli number: {phone!r}")
+    if len(digits) == _ISRAELI_PHONE_MOBILE_LENGTH:
+        return f"{digits[:3]}-{digits[3:]}"
+    return f"{digits[:2]}-{digits[2:]}"
+
+
+_LIST_CLIENTS_MAX_ITEMS = 30  # beyond this, report the real total and ask to
+                              # narrow rather than fetch further pages/dump
+                              # an unusably long WhatsApp reply.
+
+
+def list_clients(client: MorningClient, name: Optional[str] = None) -> str:
+    """List existing Morning clients and return a Hebrew, human-readable list.
+
+    MCP tool: list_clients (contracts/list_clients.json, user-stories.md US1).
+    Read-only - no approval wait (REQ-CLIENT-008).
+
+    Production accounts can have hundreds of clients (confirmed live: 278 in
+    this app's own real sandbox, research.md Decision 11/12) - Morning's
+    search is genuinely paginated (`total`/`pages` in every response), so
+    this reads the real total from page 1 first and decides what to do
+    before fetching anything further:
+    - `total <= _LIST_CLIENTS_MAX_ITEMS`: fetch every remaining page
+      internally and return the complete, accurate list - "pagination" is
+      purely an internal mechanism here, never something the user pages
+      through themselves.
+    - `total > _LIST_CLIENTS_MAX_ITEMS`: fetch nothing further - report the
+      real total and ask for a narrower search (e.g. by name) instead of
+      silently truncating or dumping an unusable wall of text.
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        name: Optional name filter, passed straight through to Morning's
+            real search (token-prefix match) to narrow results server-side.
+
+    Returns:
+        A Hebrew string listing matching clients, a friendly "no clients"
+        message if none, or a "too many, narrow your search" message with
+        the real total if the count exceeds the display cap.
+    """
+    payload: Dict[str, Any] = {"name": name} if name else {}
+    first_page = client.search_clients(payload)
+    total = first_page.get("total", 0) or 0
+
+    if total > _LIST_CLIENTS_MAX_ITEMS:
+        return format_too_many_clients_message(total)
+
+    items = list(first_page.get("items") or [])
+    page_num = first_page.get("page", 1) or 1
+    total_pages = first_page.get("pages", 1) or 1
+    while len(items) < total and page_num < total_pages:
+        page_num += 1
+        next_page = client.search_clients({**payload, "page": page_num})
+        items.extend(next_page.get("items") or [])
+
+    clients = [Client.model_validate(item) for item in items]
+    return format_client_list(clients)
+
+
+def get_client_details(client: MorningClient, name: str) -> str:
+    """Retrieve a single client's full detail record by name.
+
+    MCP tool: get_client_details (contracts/get_client_details.json,
+    user-stories.md US2). Read-only - no approval wait (REQ-CLIENT-008).
+    Name-only lookup (REQ-CLIENT-002, analysis 2026-07-29: tax-ID lookup was
+    considered and dropped). Never guesses on ambiguous matches
+    (REQ-CLIENT-003/007) and never includes the internal client_id
+    (REQ-CLIENT-018). When resolved via a non-exact (partial/prefix) match,
+    explicitly discloses which client was found rather than silently
+    presenting details as if the reference were certain.
+    """
+    resolved, candidates = _resolve_client_by_name(client, name)
+    if resolved is not None:
+        return format_client_details(resolved, is_exact_match=_is_exact_name_match(resolved.name, name))
+    if candidates:
+        return format_ambiguous_clients_message(candidates)
+    return format_client_not_found()
+
+
 def _build_add_client_payload(
     name: str,
-    email: Optional[str] = None,
-    phone: Optional[str] = None,
+    email: str,
+    phone: str,
     tax_id: Optional[str] = None,
-    address: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Map friendly add_client inputs onto the real Morning /clients payload.
 
     Real field names (confirmed via the Postman collection's "Add Client"
-    example): `emails` is a list, `taxId` is camelCase. `phone` does not
-    appear anywhere in the Postman collection's client schemas/examples —
-    it's sent optimistically; Morning may silently ignore it (see the
-    real-sandbox test for what's actually observed).
+    example): `emails` is a list, `taxId` is camelCase, `phone` is its own
+    top-level field (confirmed via the Search Clients example, distinct from
+    `mobile` — REQ-CLIENT-014). name/email/phone are all required
+    (REQ-CLIENT-012); email/phone are validated and normalized by the caller
+    before this is built.
     """
-    payload: Dict[str, Any] = {"name": name}
-    if email:
-        payload["emails"] = [email]
-    if phone:
-        payload["phone"] = phone
+    payload: Dict[str, Any] = {"name": name, "emails": [email], "phone": phone}
     if tax_id:
         payload["taxId"] = tax_id
-    if address:
-        payload["address"] = address
     return payload
 
 
 def add_client(
     client: MorningClient,
     name: str,
-    email: Optional[str] = None,
-    phone: Optional[str] = None,
+    email: str,
+    phone: str,
     tax_id: Optional[str] = None,
-    address: Optional[str] = None,
 ) -> str:
     """Add a new client to Morning and return a Hebrew confirmation.
 
-    MCP tool: add_client (contracts/add_client.json, user-stories.md US4).
+    MCP tool: add_client (contracts/add_client.json, user-stories.md US3).
+    Reworked by Feature 026: name/email/phone are all required (no default -
+    omitting one is a Python-level TypeError, REQ-CLIENT-012); no `address`
+    parameter (REQ-CLIENT-013, out of scope); email is validated and phone
+    normalized to Israeli local dashed format before any network call
+    (REQ-CLIENT-015/016). Approval-gated at the denidin-app layer
+    (ai_handler.APPROVAL_REQUIRED_MCP_TOOLS).
 
     Args:
         client: An authenticated MorningClient (injected).
         name: Client/company name (required).
-        email: Optional client email.
-        phone: Optional client phone number.
+        email: Client email (required, validated).
+        phone: Client phone number (required, normalized to Israeli format).
         tax_id: Optional Israeli business tax ID (ע"מ).
-        address: Optional client address.
 
     Returns:
-        A Hebrew confirmation string with the created client's name and id.
+        A Hebrew confirmation string with the created client's name. Never
+        includes the internal Morning client_id (REQ-CLIENT-018).
+
+    Raises:
+        ValueError: if email or phone fails validation/normalization.
     """
-    payload = _build_add_client_payload(name, email, phone, tax_id, address)
-    response = client.add_client(payload)
-    client_id = response.get("id", "")
-    return f"נוצר לקוח חדש: {name} (מזהה: {client_id})"
+    validated_email = _validate_email(email)
+    normalized_phone = _normalize_israeli_phone(phone)
+    payload = _build_add_client_payload(name, validated_email, normalized_phone, tax_id)
+    client.add_client(payload)
+    return f"נוצר לקוח חדש: {name}"
+
+
+def _build_update_client_payload(
+    new_name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    tax_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build a partial Morning /clients/{id} PUT payload containing only the
+    fields actually being changed (research.md Decision 3 - confirmed
+    empirically via test_update_client_partial_payload_preserves_other_fields:
+    a partial PUT does not clobber untouched fields)."""
+    payload: Dict[str, Any] = {}
+    if new_name:
+        payload["name"] = new_name
+    if email:
+        payload["emails"] = [email]
+    if phone:
+        payload["phone"] = phone
+    if tax_id:
+        payload["taxId"] = tax_id
+    return payload
+
+
+def update_client(
+    client: MorningClient,
+    name: str,
+    new_name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    tax_id: Optional[str] = None,
+) -> str:
+    """Update an existing client's fields and return a Hebrew confirmation.
+
+    MCP tool: update_client (contracts/update_client.json, user-stories.md
+    US4). `name` identifies WHICH client to update (resolved via
+    `_resolve_client_by_name` - never guesses on an ambiguous match,
+    REQ-CLIENT-003/007); `new_name`/`email`/`phone`/`tax_id` are the optional
+    fields being changed - at least one is required. Approval-gated at the
+    denidin-app layer (ai_handler.APPROVAL_REQUIRED_MCP_TOOLS).
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        name: Current name of the client to update (required, resolves the target).
+        new_name: Optional new name value.
+        email: Optional new email (validated).
+        phone: Optional new phone (normalized to Israeli format).
+        tax_id: Optional new Israeli business tax ID (ע"מ).
+
+    Returns:
+        A Hebrew confirmation string. Never includes the internal Morning
+        client_id (REQ-CLIENT-018).
+
+    Raises:
+        ValueError: if none of new_name/email/phone/tax_id is given, or if
+            email/phone fails validation/normalization.
+    """
+    if not any([new_name, email, phone, tax_id]):
+        raise ValueError("update_client requires at least one of new_name/email/phone/tax_id to change.")
+
+    resolved, candidates = _resolve_client_by_name(client, name)
+    if resolved is None:
+        if candidates:
+            return format_ambiguous_clients_message(candidates)
+        return format_client_not_found()
+
+    is_exact_match = _is_exact_name_match(resolved.name, name)
+    validated_email = _validate_email(email) if email else None
+    normalized_phone = _normalize_israeli_phone(phone) if phone else None
+    payload = _build_update_client_payload(new_name, validated_email, normalized_phone, tax_id)
+    client.update_client(resolved.id, payload)
+
+    display_name = new_name or resolved.name
+    if is_exact_match:
+        return f"עודכנו פרטי הלקוח: {display_name}"
+    return f"מצאתי ועדכנתי את הלקוח הבא: {resolved.name}\nהפרטים שעודכנו: {display_name}"
 
 
 def _resolve_period_dates(

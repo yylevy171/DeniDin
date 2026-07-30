@@ -1,9 +1,9 @@
 """PendingApprovalManager for Feature 022's explicit document-creation approval gate.
 
 Tracks, per WhatsApp chat, a single OpenAI Responses API MCP tool call that is
-currently held pending approval (`mcp_approval_request`) — i.e. a document the
-model wants to create in Morning (any tool in
-ai_handler.DOCUMENT_CREATING_MCP_TOOLS) but has not yet been authorized to
+currently held pending approval (`mcp_approval_request`) — i.e. an action the
+model wants to take in Morning (any tool in
+ai_handler.APPROVAL_REQUIRED_MCP_TOOLS) but has not yet been authorized to
 execute. In-memory only (see class
 docstring for why): losing a pending approval on process restart just means
 the user re-issues the original request, since nothing was ever created.
@@ -47,12 +47,12 @@ class PendingApproval:
 class PendingApprovalManager:
     """In-memory store of at-most-one pending MCP approval per chat_id.
 
-    At most one pending approval is tracked per chat: only the document-
-    creating tools are gated (Feature 022; see ai_handler.DOCUMENT_CREATING_MCP_TOOLS
-    for the current list), and a single WhatsApp turn requesting two
-    document-creating actions at once is an edge case where only the most
-    recent pending request survives — not a silent-danger case, since
-    nothing executes without approval either way.
+    At most one pending approval is tracked per chat: only certain tools are
+    gated (Feature 022, extended by Feature 026; see
+    ai_handler.APPROVAL_REQUIRED_MCP_TOOLS for the current list), and a single
+    WhatsApp turn requesting two gated actions at once is an edge case where
+    only the most recent pending request survives — not a silent-danger case,
+    since nothing executes without approval either way.
     """
 
     def __init__(self) -> None:

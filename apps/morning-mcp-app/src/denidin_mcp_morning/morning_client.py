@@ -98,3 +98,21 @@ class MorningClient:
         resp = self.session.post(url, json=payload, headers=headers, timeout=15)
         resp.raise_for_status()
         return resp.json()
+
+    def search_clients(self, payload: dict) -> dict:
+        """Search/list clients (POST /clients/search). Response items are already
+        full records - no separate GET-by-id call is needed anywhere."""
+        url = f"{self.base_url}/clients/search"
+        headers = self._auth_headers()
+        resp = self.session.post(url, json=payload, headers=headers, timeout=15)
+        resp.raise_for_status()
+        return resp.json()
+
+    def update_client(self, client_id: str, payload: dict) -> dict:
+        """Update a client (PUT /clients/{id}). Payload is partial - only the
+        fields being changed."""
+        url = f"{self.base_url}/clients/{client_id}"
+        headers = self._auth_headers()
+        resp = self.session.put(url, json=payload, headers=headers, timeout=15)
+        resp.raise_for_status()
+        return resp.json()

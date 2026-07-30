@@ -23,18 +23,20 @@ denidin-app's number, architecture still TBD).
 ┌─────────────────────────────────────────────────────────┐
 │  server.py  (Phase 3 — DONE)                              │
 │  FastMCP server, streamable-HTTP transport.               │
-│  Registers 7 @mcp.tool()s. Gated by                        │
+│  Registers 14 @mcp.tool()s (11 invoice + 3 client mgmt,    │
+│  the latter added by Feature 026). Gated by                │
 │  feature_flags.enable_mcp_server.                          │
 └───────────────────────┬───────────────────────────────────┘
                          │ calls
 ┌───────────────────────▼───────────────────────────────────┐
-│  tools.py  (Phase 2 — DONE, 7 tools)                        │
+│  tools.py  (Phase 2 — DONE, 14 tools)                       │
 │  One function per MCP tool: create_invoice, list_invoices, │
 │  get_invoice_details, create_receipt, create_credit_note,  │
-│  close_transaction_account, add_client,                    │
+│  close_transaction_account, add_client, update_client,     │
+│  list_clients, get_client_details,                         │
 │  get_financial_summary, download_invoice_pdf (+ more,      │
 │  see README.md for the full current list - this diagram   │
-│  predates features 020/021/022/023)                        │
+│  predates features 020/021/022/023/026)                    │
 │  - takes friendly args (client_name, amount, ...)          │
 │  - maps them onto Morning's real payload shape              │
 │  - calls MorningClient                                      │

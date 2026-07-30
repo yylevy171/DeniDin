@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "get_client_details",
+  "type": "object",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/clients/search",
+    "notes": "Resolves by name via Search Clients (data-model.md Client Resolution), then returns the matched record's full detail. 0 matches -> friendly not-found; >1 matches -> friendly disambiguation list, no GET performed. Output MUST NOT include the internal client_id (REQ-CLIENT-018)."
+  },
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "description": "Client name (or substring) to resolve."}
+  },
+  "required": ["name"],
+  "x-approval": "never"
+}
