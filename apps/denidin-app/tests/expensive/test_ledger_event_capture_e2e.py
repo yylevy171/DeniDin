@@ -36,7 +36,12 @@ from urllib.parse import unquote
 import pytest
 
 from src.models.config import AppConfiguration
-from .e2e_helpers import create_real_notification, get_response, assert_response_exists
+from .e2e_helpers import (
+    create_real_notification,
+    get_response,
+    assert_response_exists,
+    assert_image_path_persisted,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -315,6 +320,11 @@ class TestLedgerEventCaptureE2E:
         session = denidin_app.ai_handler.session_manager.get_session(chat_id)
         assert len(session.message_ids) >= 2, "bugfix-017: media turn was not stored in the session"
 
+        # bugfix-009 (reopened 2026-07-30): the media turn's user message must also
+        # carry a real image_path, not just exist.
+        image_path = assert_image_path_persisted(denidin_app, chat_id)
+        logger.info(f"THEN image_path persisted and resolves to real file: {image_path}")
+
     def test_given_real_bank_deposit_screenshot_when_processed_then_captured_as_bank_deposit(
         self, denidin_app, http_server
     ):
@@ -360,6 +370,11 @@ class TestLedgerEventCaptureE2E:
         assert "9,440" in (captured.get("amount") or "") or "9440" in (captured.get("amount") or "")
         assert captured.get("raw_message_excerpt")
 
+        # bugfix-009 (reopened 2026-07-30): the media turn's user message must also
+        # carry a real image_path, not just exist.
+        image_path = assert_image_path_persisted(denidin_app, chat_id)
+        logger.info(f"THEN image_path persisted and resolves to real file: {image_path}")
+
     def test_given_non_agreement_image_when_processed_then_no_ledger_event_captured(
         self, denidin_app, http_server
     ):
@@ -402,3 +417,8 @@ class TestLedgerEventCaptureE2E:
         after = len(self._pending_events(denidin_app, chat_id))
         logger.info(f"THEN pending_ledger_events count before={before}, after={after}")
         assert after == before, "capture_ledger_event should NOT have been called for a non-agreement image"
+
+        # bugfix-009 (reopened 2026-07-30): even when no ledger event is captured,
+        # the media turn itself must still carry a real image_path.
+        image_path = assert_image_path_persisted(denidin_app, chat_id)
+        logger.info(f"THEN image_path persisted and resolves to real file: {image_path}")

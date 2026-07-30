@@ -157,7 +157,14 @@ class MediaHandler:
             # AIHandler._finalize_response's user+assistant storage for text turns -
             # media messages must not be invisible to conversation history/memory
             # transfer just because they went through a different pipeline.
-            self._store_media_turn(chat_id, sender_phone, media_type, caption, summary)
+            # bugfix-009 (reopened 2026-07-30): image_path is stored relative to
+            # data_root (matching the original bugfix-009 convention), so it survives
+            # data_root moving/being mounted at a different absolute path.
+            try:
+                relative_image_path = str(file_path.relative_to(Path(self.config.data_root)))
+            except ValueError:
+                relative_image_path = str(file_path)
+            self._store_media_turn(chat_id, sender_phone, media_type, caption, summary, relative_image_path)
 
             # Ledger Event Recognition (runtime_constitution.md): the image path can
             # capture a fee-agreement/bank-deposit event the same way the text path
@@ -202,17 +209,24 @@ class MediaHandler:
             )
 
     def _store_media_turn(
-        self, chat_id: str, sender_phone: str, media_type: str, caption: str, summary: str
+        self, chat_id: str, sender_phone: str, media_type: str, caption: str, summary: str,
+        image_path: Optional[str] = None
     ) -> None:
         """bugfix-017: store both sides of a media turn in the session, mirroring
         AIHandler._finalize_response's user+assistant storage for text turns.
         Never lets a storage failure fail the whole media-processing turn - the
-        user still gets their summary reply even if this logging step errors."""
+        user still gets their summary reply even if this logging step errors.
+
+        bugfix-009 (reopened 2026-07-30): image_path (relative to data_root, resolved
+        by the caller) is attached to the user message only, so the session can be
+        traced back to the saved media file on disk - this parameter regressed to
+        always-omitted when this method replaced bugfix-009's original call site."""
         try:
             user_content = caption or f"[{media_type} sent]"
             self.session_manager.add_message(
                 chat_id=chat_id, role="user", content=user_content,
                 user_role="client", sender=sender_phone, recipient="AI",
+                image_path=image_path,
             )
             self.session_manager.add_message(
                 chat_id=chat_id, role="assistant", content=summary,

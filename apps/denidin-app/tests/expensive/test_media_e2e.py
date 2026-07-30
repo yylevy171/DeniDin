@@ -29,6 +29,7 @@ from .e2e_helpers import (
     assert_metadata_bullets,
     assert_no_followups,
     validate_response_full,
+    assert_image_path_persisted,
 )
 
 # Configure logging for tests
@@ -185,7 +186,12 @@ class TestWhatsAppE2E:
         
         hebrew_ratio = validate_response_full(response)
         logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}")
-    
+
+        # bugfix-009 (reopened 2026-07-30): the persisted session message for this
+        # image turn must carry a real image_path pointing at the saved media file.
+        image_path = assert_image_path_persisted(denidin_app, '972522968679@c.us')
+        logger.info(f"✅ image_path persisted and resolves to real file: {image_path}")
+
     @pytest.mark.expensive
     def test_e2e_docx_no_caption(self, denidin_app, http_server):
         """
