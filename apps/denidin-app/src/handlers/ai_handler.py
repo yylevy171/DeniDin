@@ -31,36 +31,103 @@ logger = get_logger(__name__)
 # Roles authorized to have the Morning MCP invoicing tools attached (Feature 018)
 MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 
-# MCP tool names whose execution creates a document in Morning (Feature 022):
-# these require explicit human approval before they actually execute.
+# MCP tool names that require explicit human approval before they actually
+# execute (Feature 022; renamed from DOCUMENT_CREATING_MCP_TOOLS by Feature
+# 026, which extended coverage to client-mutating tools, not just
+# document-creating ones).
 # Feature 021's create_transaction_account/create_combo_document/
 # create_credit_note/create_receipt all create a real Morning document too,
 # same as create_invoice - gated for the same reason. `update_invoice_status`
 # (removed, feature 023) used to be gated here too; its status-word phrasing
 # now dispatches directly to create_receipt/close_transaction_account/
-# create_credit_note instead, which are already covered below.
+# create_credit_note instead, which are already covered here.
 # close_transaction_account (feature 023) creates a real Morning document
-# the same way - gated for the same reason.
-DOCUMENT_CREATING_MCP_TOOLS = (
+# the same way - gated for the same reason. add_client/update_client
+# (feature 026) are real, persisted client-record writes - same category.
+APPROVAL_REQUIRED_MCP_TOOLS = (
     "create_invoice",
     "create_transaction_account",
     "create_combo_document",
     "create_credit_note",
     "create_receipt",
     "close_transaction_account",
+    "add_client",
+    "update_client",
 )
 
-# The remaining Morning MCP tools (reads + add_client) - explicitly listed as
-# "never" require approval. Confirmed empirically (2026-07-23, real E2E run)
-# that a `require_approval` filter with ONLY an "always" key does NOT leave
-# unlisted tools defaulting to no-approval as assumed from docs/smoke-testing
-# - `download_invoice_pdf` (not in DOCUMENT_CREATING_MCP_TOOLS) still came
-# back as a pending mcp_approval_request. Being fully explicit about both
-# sides of the filter avoids relying on that unconfirmed default.
-NON_DOCUMENT_CREATING_MCP_TOOLS = (
+# The remaining Morning MCP tools (read-only client/invoice lookups) -
+# explicitly listed as "never" require approval. Confirmed empirically
+# (2026-07-23, real E2E run) that a `require_approval` filter with ONLY an
+# "always" key does NOT leave unlisted tools defaulting to no-approval as
+# assumed from docs/smoke-testing - `download_invoice_pdf` (not in
+# APPROVAL_REQUIRED_MCP_TOOLS) still came back as a pending
+# mcp_approval_request. Being fully explicit about both sides of the filter
+# avoids relying on that unconfirmed default.
+NO_APPROVAL_MCP_TOOLS = (
     "list_invoices", "get_invoice_details", "get_financial_summary",
-    "download_invoice_pdf", "add_client",
+    "download_invoice_pdf", "list_clients", "get_client_details",
 )
+
+
+def _build_pending_approval_fallback_text(tool_name: str, arguments_json: str) -> str:
+    """Build a specific fallback message for a pending MCP approval, used
+    only when the model itself produced no narrating text alongside the
+    tool call (see the call site below - the constitution instructs the
+    model to always narrate, but that's prompt guidance, not a guarantee).
+
+    The pending approval's own `arguments` already carry everything needed
+    to name the specific pending action (confirmed live, 2026-07-30: a
+    resolved client name, an amount, etc.) - this builds a per-tool message
+    from them instead of a fully generic "there's a pending action" string,
+    so the user can still tell what they're approving even when the model
+    stayed silent.
+
+    Never includes `original_invoice_id` (a raw internal UUID) - the
+    constitution's "never ask for or mention invoice_id" rule applies here
+    too, so create_credit_note/create_receipt/close_transaction_account
+    fall back to naming the ACTION only, plus any safe (non-id) fields
+    present (amount/description), never the id itself.
+
+    Falls back to the fully generic text on any parsing issue - this must
+    never raise, since it runs on the response-handling hot path.
+    """
+    generic = (
+        "יש פעולה הממתינה לאישורך לפני שהיא מתבצעת. "
+        "השב/י \"כן\" כדי לאשר, או כל תשובה אחרת כדי לבטל."
+    )
+    try:
+        args = json.loads(arguments_json) if arguments_json else {}
+    except (json.JSONDecodeError, TypeError):
+        return generic
+    if not isinstance(args, dict):
+        return generic
+
+    def _amount_suffix() -> str:
+        amount = args.get("amount")
+        return f" על סך {amount} ₪" if amount is not None else ""
+
+    try:
+        if tool_name == "create_invoice":
+            return f"ליצור חשבונית ל{args['client_name']}{_amount_suffix()} עבור {args['description']} — לאשר?"
+        if tool_name == "create_transaction_account":
+            return f"להפיק חשבון עסקה ל{args['client_name']}{_amount_suffix()} — לאשר?"
+        if tool_name == "create_combo_document":
+            return f"להפיק חשבונית מס/קבלה ל{args['client_name']}{_amount_suffix()} — לאשר?"
+        if tool_name == "create_credit_note":
+            return f"להפיק חשבונית זיכוי לחשבונית שזוהתה בשיחה{_amount_suffix()} — לאשר?"
+        if tool_name == "create_receipt":
+            return f"להפיק קבלה עבור החשבונית שזוהתה בשיחה{_amount_suffix()} — לאשר?"
+        if tool_name == "close_transaction_account":
+            return f"לסגור את חשבון העסקה שזוהה בשיחה{_amount_suffix()} — לאשר?"
+        if tool_name == "add_client":
+            return f"ליצור לקוח חדש: {args['name']}, {args['email']}, {args['phone']} — לאשר?"
+        if tool_name == "update_client":
+            display_name = args.get("new_name") or args["name"]
+            return f"לעדכן את פרטי הלקוח {display_name} — לאשר?"
+    except KeyError:
+        return generic
+    return generic
+
 
 # Free-form affirmative replies recognized as approval of a pending MCP
 # document-creation request (Feature 022) - matched against the trimmed,
@@ -539,14 +606,14 @@ class AIHandler:
             "type": "mcp",
             "server_label": mcp_config.get('morning_server_label', 'morning-invoices'),
             "server_url": server_url,
-            # Feature 022: any tool that creates a Morning document requires
-            # explicit human approval before it executes; everything else
-            # (reads, add_client) proceeds immediately as before. Both sides
-            # of the filter are listed explicitly - see
-            # NON_DOCUMENT_CREATING_MCP_TOOLS's comment for why.
+            # Feature 022 (extended by Feature 026): any tool in
+            # APPROVAL_REQUIRED_MCP_TOOLS requires explicit human approval
+            # before it executes; everything in NO_APPROVAL_MCP_TOOLS proceeds
+            # immediately. Both sides of the filter are listed explicitly -
+            # see NO_APPROVAL_MCP_TOOLS's comment for why.
             "require_approval": {
-                "always": {"tool_names": list(DOCUMENT_CREATING_MCP_TOOLS)},
-                "never": {"tool_names": list(NON_DOCUMENT_CREATING_MCP_TOOLS)},
+                "always": {"tool_names": list(APPROVAL_REQUIRED_MCP_TOOLS)},
+                "never": {"tool_names": list(NO_APPROVAL_MCP_TOOLS)},
             },
             "headers": {"Authorization": f"Bearer {auth_token}"}
         }]
@@ -976,10 +1043,11 @@ class AIHandler:
                 # guidance, not a guarantee. Without this fallback, the user
                 # would get a silent/empty WhatsApp reply while the action
                 # sits pending - never leave them with no signal at all.
-                response_text = (
-                    "יש פעולה הממתינה לאישורך לפני שהיא מתבצעת. "
-                    "השב/י \"כן\" כדי לאשר, או כל תשובה אחרת כדי לבטל."
-                )
+                # Build a specific message from the pending approval's own
+                # arguments (2026-07-30 finding: a fully generic fallback left
+                # the user unable to tell WHICH client/invoice was pending,
+                # even though that info was already sitting right there).
+                response_text = _build_pending_approval_fallback_text(ar.name, ar.arguments)
                 logger.warning(
                     f"Model produced no narrating text alongside a pending "
                     f"approval for request {request.request_id} - using "

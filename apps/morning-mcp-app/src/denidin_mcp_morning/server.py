@@ -277,13 +277,41 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
     @mcp.tool()
     def add_client(
         name: str,
+        email: str,
+        phone: str,
+        tax_id: Optional[str] = None,
+    ) -> str:
+        """Add a new client to Morning. name/email/phone are all required -
+        ask the user for any that are missing rather than guessing."""
+        return _call_with_error_boundary(tools.add_client, morning_client, name, email, phone, tax_id)
+
+    @mcp.tool()
+    def list_clients(name: Optional[str] = None) -> str:
+        """List existing Morning clients. Pass name to narrow server-side
+        (token-prefix match) - useful when a bare list would match too many
+        clients to display (the tool itself reports the real total and asks
+        to narrow when that happens)."""
+        return _call_with_error_boundary(tools.list_clients, morning_client, name)
+
+    @mcp.tool()
+    def get_client_details(name: str) -> str:
+        """Get a single client's full details by name."""
+        return _call_with_error_boundary(tools.get_client_details, morning_client, name)
+
+    @mcp.tool()
+    def update_client(
+        name: str,
+        new_name: Optional[str] = None,
         email: Optional[str] = None,
         phone: Optional[str] = None,
         tax_id: Optional[str] = None,
-        address: Optional[str] = None,
     ) -> str:
-        """Add a new client to Morning."""
-        return _call_with_error_boundary(tools.add_client, morning_client, name, email, phone, tax_id, address)
+        """Update an existing client's fields. `name` identifies which client
+        (never guess on an ambiguous match - resolve first); at least one of
+        new_name/email/phone/tax_id must be given."""
+        return _call_with_error_boundary(
+            tools.update_client, morning_client, name, new_name, email, phone, tax_id
+        )
 
     @mcp.tool()
     def get_financial_summary(

@@ -3,6 +3,8 @@
 ## Bug ID
 bugfix-015-image-extraction-vision-refusal
 
+## Priority: P1
+
 ## Title
 `ImageExtractor` gets a content-policy refusal from the vision model ("אני לא יכול לעזור עם זה" / "I can't help with that") on an image that was previously extracted successfully, with no code or fixture change to explain the regression
 

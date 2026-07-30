@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "list_clients",
+  "type": "object",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/clients/search",
+    "notes": "Green Invoice exposes no bare list-all endpoint - listing is an unfiltered/name-filtered Search Clients call (research.md Decision 1)."
+  },
+  "properties": {
+    "name": {"type": "string", "description": "Optional substring filter. Omit to list all clients."}
+  },
+  "required": [],
+  "x-approval": "never"
+}

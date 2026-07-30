@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "add_client",
+  "type": "object",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/clients",
+    "notes": "Create a client in Green Invoice (Postman collection mapping). Feature 026: name/email/phone now all required, address removed, and this tool now requires explicit approval (require_approval.always) instead of executing immediately (reverses Feature 022's exemption). No proactive duplicate-name/tax_id check ('try and fail' - analysis 2026-07-29); any real-API rejection propagates via the existing friendly-error mapping. Output MUST NOT include the internal client_id (REQ-CLIENT-018) - corrects the existing confirmation string which currently leaks it."
+  },
+  "properties": {
+    "name": {"type": "string", "minLength": 1},
+    "email": {"type": "string", "format": "email", "description": "Validated via EmailStr/email-validator before any network call."},
+    "phone": {"type": "string", "description": "Normalized to Israeli local dashed format (0XX-XXXXXXX) before being sent to Morning."},
+    "tax_id": {"type": "string", "description": "Optional. Validated server-side by Morning (checksum, errorCode 1111) - not duplicated client-side."}
+  },
+  "required": ["name", "email", "phone"],
+  "x-approval": "always"
+}

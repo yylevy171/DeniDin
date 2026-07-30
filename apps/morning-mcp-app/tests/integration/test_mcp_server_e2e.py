@@ -39,6 +39,9 @@ EXPECTED_TOOL_NAMES = {
     "list_invoices",
     "get_invoice_details",
     "add_client",
+    "list_clients",
+    "get_client_details",
+    "update_client",
     "get_financial_summary",
     "download_invoice_pdf",
 }
@@ -79,7 +82,7 @@ def server_url():
     thread.join(timeout=5)
 
 
-def test_mcp_server_registers_all_11_tools(server_url):
+def test_mcp_server_registers_all_expected_tools(server_url):
     async def _run():
         async with streamable_http_client(server_url) as (read, write, _get_session_id):
             async with ClientSession(read, write) as session:

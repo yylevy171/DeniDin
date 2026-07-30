@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "update_client",
+  "type": "object",
+  "x-http": {
+    "method": "PUT",
+    "path": "/api/v1/clients/{id}",
+    "notes": "Target resolved by name via Search Clients first (data-model.md Client Resolution) - client_id is never a caller-supplied parameter. Sends a partial payload containing only the fields being changed (research.md Decision 3 - assumption to confirm in Phase 1 RED). Requires explicit approval (require_approval.always) - Feature 022's mechanism extended, not new. Output MUST NOT include the internal client_id (REQ-CLIENT-018)."
+  },
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "description": "Current name used to resolve the target client (required, identifies WHICH client - not necessarily what's being changed)."},
+    "new_name": {"type": "string", "description": "Optional: new name value."},
+    "email": {"type": "string", "format": "email", "description": "Optional: new email. Validated via EmailStr/email-validator before any network call."},
+    "phone": {"type": "string", "description": "Optional: new phone. Normalized to Israeli local dashed format (0XX-XXXXXXX) before being sent to Morning."},
+    "tax_id": {"type": "string", "description": "Optional: new tax_id. No client-side format check (Morning validates server-side)."}
+  },
+  "required": ["name"],
+  "x-validation": "At least one of new_name/email/phone/tax_id MUST be present - a call changing nothing is rejected as invalid.",
+  "x-approval": "always"
+}

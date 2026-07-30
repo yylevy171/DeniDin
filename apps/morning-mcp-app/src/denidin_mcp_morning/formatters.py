@@ -6,7 +6,7 @@ DD/MM/YYYY dates, Hebrew status terms.
 from datetime import date
 from typing import List, Optional
 
-from .models import _DOCUMENT_TYPE_NAMES, _PAYMENT_TYPE_NAMES, FinancialSummary, Invoice
+from .models import _DOCUMENT_TYPE_NAMES, _PAYMENT_TYPE_NAMES, Client, FinancialSummary, Invoice
 
 _STATUS_HE = {
     "paid": "שולם",
@@ -152,3 +152,79 @@ def format_invoice_list(invoices: List[Invoice], has_more: bool = False) -> str:
         message += "\n\nיש תוצאות נוספות שלא הוצגו."
 
     return message
+
+
+def _format_client_summary_line(client: Client) -> str:
+    """One-line summary for format_client_list: name + identifying detail.
+
+    Never includes the internal client_id (REQ-CLIENT-018) - unlike invoices,
+    client tools resolve by name, so there's no legitimate reason to surface it.
+    """
+    details = []
+    if client.tax_id:
+        details.append(f"ח.פ {client.tax_id}")
+    if client.phone:
+        details.append(f"טלפון {client.phone}")
+    if details:
+        return f"{client.name} ({', '.join(details)})"
+    return client.name
+
+
+def format_client_list(clients: List[Client]) -> str:
+    """Build a Hebrew, human-readable list of clients (user-stories.md US1)."""
+    if not clients:
+        return "אין לך לקוחות רשומים כרגע."
+
+    return "\n".join(_format_client_summary_line(c) for c in clients)
+
+
+def format_client_details(client: Client, is_exact_match: bool = True) -> str:
+    """Build a full Hebrew details view for a single client (user-stories.md US2).
+
+    Never includes the internal client_id (REQ-CLIENT-018).
+
+    Args:
+        client: The resolved client to display.
+        is_exact_match: Whether the search query was an exact (case-
+            insensitive) match of the stored name. When False, the client
+            was resolved via a partial/prefix reference - the opening line
+            explicitly discloses which client was found, rather than
+            silently presenting details as if the reference were certain.
+    """
+    if is_exact_match:
+        lines = [f"לקוח: {client.name}"]
+    else:
+        lines = [f"מצאתי את הלקוח הבא: {client.name}"]
+    if client.email:
+        lines.append(f"מייל: {client.email}")
+    if client.phone:
+        lines.append(f"טלפון: {client.phone}")
+    if client.tax_id:
+        lines.append(f"ח.פ: {client.tax_id}")
+    return "\n".join(lines)
+
+
+def format_client_not_found() -> str:
+    """Friendly Hebrew message when a name lookup matches zero clients."""
+    return "לא נמצא לקוח בשם הזה."
+
+
+def format_too_many_clients_message(total: int) -> str:
+    """Hebrew message when a client search/list matches more results than
+    can reasonably be displayed - states the real total (never silently
+    truncated) and asks for a narrower search rather than dumping a huge,
+    unusable reply."""
+    return (
+        f"נמצאו {total} לקוחות התואמים את החיפוש - יותר מדי להצגה כרשימה אחת. "
+        f"אנא צמצם/י את החיפוש (למשל לפי חלק מהשם)."
+    )
+
+
+def format_ambiguous_clients_message(candidates: List[Client]) -> str:
+    """Build a Hebrew disambiguation message when a name lookup matches more
+    than one client (REQ-CLIENT-003/007) - lists each candidate's
+    name/tax_id/phone (never the internal client_id, REQ-CLIENT-018) and asks
+    the user to be more specific, without disclosing full details for either."""
+    lines = ["נמצאו כמה לקוחות בשם דומה, אנא ציין/י באופן מדויק יותר:"]
+    lines.extend(f"- {_format_client_summary_line(c)}" for c in candidates)
+    return "\n".join(lines)

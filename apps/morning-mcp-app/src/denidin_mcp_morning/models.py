@@ -69,11 +69,21 @@ class Client(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _map_morning_client_shape(cls, data: Any) -> Any:
-        """Map Morning's `emails: [str]` list onto the single `email` field."""
-        if isinstance(data, dict) and "email" not in data and "emails" in data:
+        """Map Morning's real client shape onto this model's fields: `emails`
+        (list) -> `email` (single), `taxId` (camelCase) -> `tax_id`. This gap
+        (this model was defined in Feature 005 but never actually exercised
+        against a real Morning response until Feature 026's
+        _resolve_client_by_name/list_clients started calling
+        Client.model_validate() - confirmed live 2026-07-29: tax_id silently
+        came back None despite Morning returning taxId)."""
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        if "email" not in data and "emails" in data:
             emails = data.get("emails") or []
-            data = dict(data)
             data["email"] = emails[0] if emails else None
+        if "tax_id" not in data and "taxId" in data:
+            data["tax_id"] = data["taxId"]
         return data
 
 

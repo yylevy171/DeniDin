@@ -11,16 +11,18 @@ full rationale behind single-turn-only prompts for non-document-creating
 tools and no test-only confirmation carve-out.
 
 **Two-turn approval (Feature 022, merged after this file was first written;
-tool list updated for feature 023)**: create_transaction_account,
+tool list updated for features 023/026)**: create_transaction_account,
 create_combo_document, create_credit_note, create_receipt, and
 close_transaction_account all create a real Morning document, exactly like
-create_invoice - so all of them are in ai_handler.DOCUMENT_CREATING_MCP_TOOLS
-and require an explicit approval turn before they execute. (update_invoice_status,
-which used to be one more tool in this list, was removed entirely by feature
-023.) Every test below is genuinely two-turn (or more, when it also needs to
-seed a document first): the ASK turn must NOT produce a real mcp_call, and
-the APPROVE turn is where the actual creation happens - see
-_send_turn_and_approve/_send_turn_and_decline in the 018 test module.
+create_invoice - so all of them are in ai_handler.APPROVAL_REQUIRED_MCP_TOOLS
+(renamed from DOCUMENT_CREATING_MCP_TOOLS by Feature 026, which extended it
+to also cover client-mutating tools) and require an explicit approval turn
+before they execute. (update_invoice_status, which used to be one more tool
+in this list, was removed entirely by feature 023.) Every test below is
+genuinely two-turn (or more, when it also needs to seed a document first):
+the ASK turn must NOT produce a real mcp_call, and the APPROVE turn is where
+the actual creation happens - see _send_turn_and_approve/_send_turn_and_decline
+in the 018 test module.
 
 Amounts in this file are randomized 10-99 (all sandbox test amounts across
 this app's E2E suites are kept strictly under 100) - plausible for the
