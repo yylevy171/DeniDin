@@ -11,8 +11,10 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from src.managers.session_manager import SessionManager, Session, Message
+from src.handlers.media_handler import MediaHandler
 
 
 @pytest.fixture
@@ -349,30 +351,49 @@ class TestSessionManagement:
 
 
 class TestImagePathStorage:
-    """Test image path field for future media support."""
-    
-    def test_image_path_storage(self, session_manager):
-        """Test image_path field stored in message."""
+    """Test image path field for media persistence."""
+
+    def test_image_path_storage(self, session_manager, tmp_path):
+        """bugfix-009 (reopened 2026-07-30): asserting SessionManager.add_message
+        stores image_path when GIVEN one (the old version of this test) proves
+        nothing about whether the real caller, MediaHandler, actually provides
+        one - that's exactly how the original bugfix-009 fix regressed silently
+        when bugfix-017 rewrote the call site (MediaHandler._store_media_turn)
+        without carrying image_path forward. This exercises the real call site
+        instead of SessionManager directly."""
         chat_id = "1234567890@c.us"
-        image_path = "data/images/abc123.jpg"  # Global images folder
-        
-        message_id = session_manager.add_message(
-            chat_id=chat_id,
-            role="user",
-            content="Check out this image!",
-            user_role="client",
-            image_path=image_path
+        sender_phone = "1234567890"
+        saved_file_path = tmp_path / "media" / "DD-1234567890-abc123.jpg"
+
+        denidin_context = SimpleNamespace(
+            config=SimpleNamespace(
+                data_root=str(tmp_path),
+                ai_vision_model="gpt-4o-mini",
+                ai_model="gpt-4o-mini",
+            ),
+            ai_handler=SimpleNamespace(session_manager=session_manager),
         )
-        
+        media_handler = MediaHandler(denidin_context)
+
+        media_handler._store_media_turn(
+            chat_id=chat_id,
+            sender_phone=sender_phone,
+            media_type="image",
+            caption="Check out this image!",
+            summary="AI analysis of the image",
+            image_path=str(saved_file_path.relative_to(tmp_path)),
+        )
+
         session = session_manager.get_session(chat_id)
-        
-        # Verify image_path stored (references global images folder)
+        user_message_id = session.message_ids[0]
+
         session_dir = Path(session_manager.storage_dir) / session.session_id
-        message_file = session_dir / "messages" / f"{message_id}.json"
+        message_file = session_dir / "messages" / f"{user_message_id}.json"
         with open(message_file) as f:
             message_data = json.load(f)
-        
-        assert message_data["image_path"] == image_path
+
+        assert message_data["role"] == "user"
+        assert message_data["image_path"] == "media/DD-1234567890-abc123.jpg"
     
     def test_image_path_optional(self, session_manager):
         """Test image_path is optional (defaults to None)."""

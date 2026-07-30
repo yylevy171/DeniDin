@@ -8,7 +8,9 @@ Provides common utilities for WhatsApp E2E testing:
 """
 
 import re
+import json
 import logging
+from pathlib import Path
 from whatsapp_chatbot_python import Notification
 
 logger = logging.getLogger(__name__)
@@ -146,3 +148,54 @@ def validate_response_full(response):
     assert_metadata_bullets(response)
     assert_no_followups(response)
     return hebrew_ratio
+
+
+def assert_image_path_persisted(denidin_app, chat_id):
+    """bugfix-009 (reopened 2026-07-30): assert the real, persisted-to-disk session
+    for chat_id has, as its MOST RECENT `user` message, an `image_path` that's set
+    and resolves to a real file under data_root - not just that a session/summary
+    exists (bugfix-017's own coverage), which said nothing about image_path
+    specifically and is exactly how this regressed silently.
+
+    Checks only the most recent user message rather than "any user message in this
+    chat_id's whole history", since several tests in the same class-scoped session
+    share one chat_id/session across many turns - a stale image_path from an earlier
+    turn would otherwise mask a real regression on the turn this call actually cares
+    about. Call this immediately after the turn under test completes.
+
+    Reads session.json/message files directly off disk (not the in-memory Session
+    object) so this proves genuine persistence, matching the pattern used for ledger
+    event assertions in test_ledger_event_capture_e2e.py.
+
+    Returns the resolved absolute Path to the image file, for further assertions
+    (e.g. checking it's non-empty) if a caller wants them.
+    """
+    session_manager = denidin_app.ai_handler.session_manager
+    session_id = session_manager.chat_to_session[chat_id]
+    messages_dir = Path(session_manager.storage_dir) / session_id / "messages"
+
+    with open(Path(session_manager.storage_dir) / session_id / "session.json", encoding='utf-8') as f:
+        session_data = json.load(f)
+
+    last_user_message = None
+    for message_id in session_data["message_ids"]:
+        with open(messages_dir / f"{message_id}.json", encoding='utf-8') as f:
+            message_data = json.load(f)
+        if message_data["role"] == "user":
+            last_user_message = message_data
+
+    assert last_user_message is not None, (
+        f"No user session message found at all for chat_id={chat_id!r}"
+    )
+    assert last_user_message.get("image_path"), (
+        f"Most recent user session message for chat_id={chat_id!r} has no image_path "
+        f"(bugfix-009 regression: media turns are stored, but without image_path). "
+        f"Message: {last_user_message}"
+    )
+
+    resolved = Path(denidin_app.config.data_root) / last_user_message["image_path"]
+    assert resolved.is_file(), (
+        f"Persisted image_path {last_user_message['image_path']!r} does not resolve "
+        f"to a real file on disk (resolved: {resolved})"
+    )
+    return resolved
