@@ -2,7 +2,7 @@
 
 **Feature ID**: 031-fuzzy-client-lookup-by-name
 **Priority**: P2
-**Status**: Clarified
+**Status**: Planned
 **Created**: July 30, 2026
 
 ---
@@ -77,16 +77,15 @@ before building a redundant client-side layer.
   `add_client`?~~ **Resolved** — see Clarifications above: `list_invoices`
   only; write paths out of scope.
 
-## Open Questions (still open)
+## Open Questions — resolved (2026-07-30, live sandbox investigation)
 
 - **What does Morning's `/documents/search` `clientName` param actually do
-  server-side?** Still genuinely unconfirmed — existing sandbox tests
-  (`tests/integration/test_morning_sandbox_list_invoices_tool.py`) only
-  cover an exact-name match and a total-miss, never a partial/substring
-  name. Needs a real sandbox test with a partial name before deciding
-  whether `list_invoices` needs any code change at all (per Clarifications
-  above, this is now the spec's first implementation step, not an
-  open-ended investigation).
+  server-side?** **Resolved**: case-insensitive full-text substring
+  matching across the whole client name (not prefix-only, not exact-only) —
+  confirmed live against the real sandbox; see `research.md` Decision 1 for
+  the probe methodology and results. This means **no code change to
+  `list_invoices` is needed** — the only remaining work is a permanent
+  regression test locking in this confirmed behavior. See `plan.md`.
 
 ## References
 
