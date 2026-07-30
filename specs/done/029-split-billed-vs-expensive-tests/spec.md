@@ -2,7 +2,7 @@
 
 **Feature ID**: 029-split-billed-vs-expensive-tests
 **Priority**: P2
-**Status**: Clarified
+**Status**: Done - Merged to master (PR #150)
 **Created**: July 30, 2026
 **Clarified**: July 30, 2026
 
