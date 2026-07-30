@@ -27,7 +27,7 @@ behavior godfathers rely on when asking about a client by a partial/shortened na
 `apps/morning-mcp-app/tests/integration/test_morning_sandbox_list_invoices_tool.py` against the
 real Morning sandbox — the new test passes on its own, independent of any other test in the file.
 
-- [ ] T001 [US1] Add
+- [x] T001 [US1] Add
   `test_list_invoices_tool_finds_seeded_invoice_by_non_prefix_substring` to
   `apps/morning-mcp-app/tests/integration/test_morning_sandbox_list_invoices_tool.py`: reuse the
   existing `morning_client` fixture (module-scoped, already in this file); seed one real invoice

@@ -70,6 +70,44 @@ def test_list_invoices_tool_finds_seeded_invoice_by_client_name(morning_client, 
     assert found, f"Seeded invoice for {client_name!r} not found in list_invoices result: {result!r}"
 
 
+def test_list_invoices_tool_finds_seeded_invoice_by_non_prefix_substring(morning_client):
+    """Morning's real /documents/search `clientName` param does full-text
+    substring matching, not prefix-only (confirmed live 2026-07-30, see
+    specs/in-progress/031-fuzzy-client-lookup-by-name/research.md Decision 1
+    - Feature 031). Regression-locks that finding: a query matching a
+    *middle* word of the stored name (not a prefix of the whole name) still
+    finds the invoice.
+    """
+    from denidin_mcp_morning.tools import create_invoice, list_invoices
+
+    unique_marker = f"DENIDIN_SUBSTRING_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    client_name = f"Yossi Cohen {unique_marker} Ltd"
+
+    create_invoice(
+        morning_client,
+        client_name=client_name,
+        amount=42.0,
+        description=f"Substring-match seed {unique_marker}",
+    )
+
+    # Middle word of client_name - not a prefix of the whole stored name.
+    substring_query = "Cohen"
+
+    found = False
+    result = None
+    for _ in range(12):
+        result = list_invoices(morning_client, client_name=substring_query)
+        if unique_marker in result:
+            found = True
+            break
+        time.sleep(1.5)
+
+    assert found, (
+        f"Substring query {substring_query!r} did not find invoice for "
+        f"{client_name!r} in list_invoices result: {result!r}"
+    )
+
+
 def test_list_invoices_tool_returns_readable_string_for_no_matches(morning_client):
     from denidin_mcp_morning.tools import list_invoices
 
