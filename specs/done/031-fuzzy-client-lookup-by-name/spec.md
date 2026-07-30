@@ -2,7 +2,7 @@
 
 **Feature ID**: 031-fuzzy-client-lookup-by-name
 **Priority**: P2
-**Status**: Planned
+**Status**: Done - Merged to master (PR #148)
 **Created**: July 30, 2026
 
 ---
