@@ -7,7 +7,37 @@ bugfix-015-image-extraction-vision-refusal
 `ImageExtractor` gets a content-policy refusal from the vision model ("אני לא יכול לעזור עם זה" / "I can't help with that") on an image that was previously extracted successfully, with no code or fixture change to explain the regression
 
 ## Status
-Open - root cause not yet confirmed
+**Obsolete — closed 2026-07-30, human decision.** Investigated in a follow-up session
+(2026-07-30) without needing a repeat billed run for most of it:
+
+1. The leading hypothesis (shared `dev_data` memory contamination across multi-clone
+   dev sessions) was **refuted on two independent grounds**: (a) `config.test.json`
+   isolates all test runs to their own `test_data/` root, structurally unreachable from
+   `dev_data/`; (b) more fundamentally, `ImageExtractor._vision_extract` never calls
+   memory recall at all — it only prepends the constitution text, so even shared memory
+   data could never have reached the vision prompt in the first place.
+2. A second candidate (the 2026-07-23 constitution-unification commit `42cc4cd`, which
+   switched `config.test.json` from a stale untracked per-env constitution copy to the
+   single shared, larger `config/runtime_constitution.md`, same-day as the regression)
+   was **refuted empirically**: one fresh, approved, billed re-run of
+   `test_e2e_image_no_caption` passed cleanly with the *current*, even-larger
+   constitution (35,414 chars, now including Feature 024's Ledger Event Recognition
+   section added 07-28 — more content than was present at the time of the original
+   failure), no refusal.
+3. With both concrete hypotheses refuted, the remaining explanation is the bug spec's
+   own fallback: **inherent model non-determinism** — a one-off OpenAI content-policy
+   false-positive on a borderline-content image (a lawyer's fee-demand/collection
+   letter), unrelated to any code or config change in this repo. This mirrors
+   `specs/not_reproducible/bugfixes/bugfix-013-...` (client-name-garbling half), which
+   was closed the same way. Filed under `obsolete/` rather than `not_reproducible/`
+   per explicit human decision (2026-07-30) rather than a fix being applied.
+
+**Unrelated regression found during this investigation**: while inspecting a real test
+run's persisted session data to check this bug, a genuine, separate bug was found — media
+session messages' `image_path` field is always `null` (a regression of
+`bugfix-009`). Tracked and fixed under the reopened
+`specs/bugfixes/bugfix-009-media-image-path-not-persisted.md`, not here — it has no
+causal relationship to this bug's vision-refusal question.
 
 ## Date Opened
 2026-07-23
