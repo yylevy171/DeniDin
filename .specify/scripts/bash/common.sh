@@ -83,8 +83,22 @@ check_feature_branch() {
 
 get_feature_dir() { echo "$1/specs/$2"; }
 
-# Find feature directory by numeric prefix instead of exact branch match
-# This allows multiple branches to work on the same spec (e.g., 004-fix-bug, 004-add-feature)
+# Status subfolders a feature spec directory can currently live under (see
+# .github/METHODOLOGY.md "Folder Structure", merged 2026-07-24 - the old
+# `in-definition/` folder no longer exists, its content and role were folded
+# into `in-progress/`). Order doubles as search priority when reporting
+# ambiguity, though normally a feature lives under exactly one of these at
+# a time. The bare `specs/` root itself is deprecated for authoring
+# (METHODOLOGY.md STORAGE LOCATION POLICY) but is still searched for
+# backward compatibility with older feature dirs that predate the
+# status-folder split.
+SPEC_STATUS_SUBDIRS=(in-progress backlog done obsolete not_reproducible)
+
+# Find feature directory by numeric prefix instead of exact branch match.
+# This allows multiple branches to work on the same spec (e.g., 004-fix-bug,
+# 004-add-feature), and searches every status subfolder a feature spec could
+# currently live in (not just the flat specs/ root), since specs move
+# between in-progress/backlog/done/obsolete over their lifecycle.
 find_feature_dir_by_prefix() {
     local repo_root="$1"
     local branch_name="$2"
@@ -99,47 +113,31 @@ find_feature_dir_by_prefix() {
 
     local prefix="${BASH_REMATCH[1]}"
 
-    # Search for directories in specs/ that start with this prefix
+    # Search the flat specs/ root plus every status subfolder; collect full
+    # paths (not just basenames) since two different status folders could in
+    # principle both hold a same-named leftover directory.
     local matches=()
     if [[ -d "$specs_dir" ]]; then
         for dir in "$specs_dir"/"$prefix"-*; do
-            if [[ -d "$dir" ]]; then
-                matches+=("$(basename "$dir")")
-            fi
+            [[ -d "$dir" ]] && matches+=("$dir")
         done
     fi
+    for subdir in "${SPEC_STATUS_SUBDIRS[@]}"; do
+        local status_dir="$specs_dir/$subdir"
+        [[ -d "$status_dir" ]] || continue
+        for dir in "$status_dir"/"$prefix"-*; do
+            [[ -d "$dir" ]] && matches+=("$dir")
+        done
+    done
 
     # Handle results
     if [[ ${#matches[@]} -eq 0 ]]; then
-        # No match found in `specs/` - attempt fallback to `specs/in-definition/`
-        local in_def_dir="$repo_root/specs/in-definition"
-        if [[ -d "$in_def_dir" ]]; then
-            for dir in "$in_def_dir"/"$prefix"-*; do
-                if [[ -d "$dir" ]]; then
-                    matches+=("$(basename "$dir")")
-                fi
-            done
-        fi
-
-        if [[ ${#matches[@]} -eq 1 ]]; then
-            # If the single match came from in-definition, prefer that absolute path
-            if [[ -d "$specs_dir/${matches[0]}" ]]; then
-                echo "$specs_dir/${matches[0]}"
-            else
-                echo "$in_def_dir/${matches[0]}"
-            fi
-            return
-        elif [[ ${#matches[@]} -gt 1 ]]; then
-            echo "ERROR: Multiple spec directories found with prefix '$prefix' across specs/ and specs/in-definition/: ${matches[*]}" >&2
-            echo "$specs_dir/$branch_name"
-            return
-        fi
-
-        # No match found - return the branch name path (will fail later with clear error)
+        # No match anywhere - return the flat specs/<branch> path (will fail
+        # later with a clear "run /speckit.specify first" error)
         echo "$specs_dir/$branch_name"
     elif [[ ${#matches[@]} -eq 1 ]]; then
         # Exactly one match - perfect!
-        echo "$specs_dir/${matches[0]}"
+        echo "${matches[0]}"
     else
         # Multiple matches - this shouldn't happen with proper naming convention
         echo "ERROR: Multiple spec directories found with prefix '$prefix': ${matches[*]}" >&2
