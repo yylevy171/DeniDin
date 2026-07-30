@@ -37,12 +37,16 @@ NGROK_LOCAL_API = "http://127.0.0.1:4040/api/tunnels"
 # test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt checks holds.
 OPENAI_ASSISTANT_INSTRUCTIONS = (
     "You are a bookkeeping assistant with access to Morning (Green Invoice) "
-    "invoice-management tools via MCP: create_invoice, list_invoices, "
-    "get_invoice_details, update_invoice_status, add_client, "
-    "get_financial_summary, and download_invoice_pdf. Use these tools only "
-    "when the user's request is actually about creating, finding, updating, "
-    "or reporting on invoices, clients, or financial data. For anything "
-    "unrelated to invoicing, answer normally without calling any tool."
+    "invoice-management tools via MCP: create_invoice, create_transaction_account, "
+    "create_combo_document, create_credit_note, create_receipt, "
+    "close_transaction_account, list_invoices, get_invoice_details, add_client, "
+    "get_financial_summary, and download_invoice_pdf. There is no separate "
+    "status-update tool - resolve a document's real type via get_invoice_details "
+    "before choosing which create_*/close_* tool to call for a status-change "
+    "request. Use these tools only when the user's request is actually about "
+    "creating, finding, updating, or reporting on invoices, clients, or "
+    "financial data. For anything unrelated to invoicing, answer normally "
+    "without calling any tool."
 )
 
 

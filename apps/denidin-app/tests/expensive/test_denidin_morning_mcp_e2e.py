@@ -26,11 +26,16 @@ data/constitution/runtime_constitution.md's "Understanding invoicing requests"
 section.
 
 **Two-tier turn behavior (Feature 022, 2026-07-23 - supersedes the prior
-2026-07-15 "tests do not retry across turns" decision)**: `create_invoice`
-and `update_invoice_status` now require explicit human approval before they
-actually execute - there is no "status change" independent of a document
-(marking paid issues a linked Receipt, cancelling issues a linked Credit
-Invoice; both are document creation). Tests exercising either tool are
+2026-07-15 "tests do not retry across turns" decision)**: every
+document-creating tool (`create_invoice`, `create_transaction_account`,
+`create_combo_document`, `create_credit_note`, `create_receipt`,
+`close_transaction_account`) now requires explicit human approval before it
+actually executes - there is no "status change" independent of a document
+(marking paid issues a linked Receipt or combo document, cancelling issues a
+linked Credit Invoice; both are document creation - feature 023 removed the
+separate `update_invoice_status` tool entirely, so "mark as paid"/"cancel"
+phrasing now dispatches directly to one of these same tools). Tests exercising
+any of these tools are
 genuinely two-turn: the first turn triggers a pending approval (an
 `mcp_approval_request`, not yet executed), and a second turn sends an
 explicit Hebrew affirmative ("כן"/"אישור"/"בסדר") to approve it before
@@ -91,6 +96,7 @@ import logging
 import random
 import re
 import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -117,6 +123,8 @@ _CLIENT_STEMS = ("אלפא", "בטא", "גמא", "דלתא", "אומגא", "סי
 # before and caused a real, billed failure: the model mistook the hex token
 # for the invoice's actual id and called update_invoice_status with it
 # instead of the real UUID from the preceding create_invoice output.
+# (update_invoice_status has since been removed, feature 023 - the
+# equivalent risk today is the model passing a wrong id to create_receipt.)
 _CLIENT_QUALIFIERS = (
     "צפון", "דרום", "מזרח", "מערב",
     "כחול", "ירוק", "זהב", "כסף", "ראשון", "שני", "שלישי", "רביעי",
@@ -130,9 +138,12 @@ def _unique_client_name() -> str:
 
     Four real, billed failures shaped this:
     - Embedding the operation word in the name (e.g. "...CANCEL...") leaked
-      intent into a plain *create* request, so the model called
-      update_invoice_status(status="cancelled") on it (constitution maps
+      intent into a plain *create* request, so the model called what was then
+      update_invoice_status(status="cancelled") on it (constitution mapped
       "בטל"/cancel-words to that status) - stems/qualifiers here are neutral.
+      (update_invoice_status has since been removed, feature 023; the
+      equivalent risk today is leaked intent causing an unwanted
+      create_credit_note call.)
     - A hex/random-number suffix got mistaken by the model for the invoice's
       actual id, causing it to call update_invoice_status with the wrong id
       instead of the real UUID from the preceding create_invoice output -
@@ -160,9 +171,9 @@ def _random_amount() -> int:
     """A varied, non-round amount - avoids the exact repeated shape
     (same amount every call) that has been observed to trigger the model
     fabricating a plausible-looking success reply instead of actually
-    calling create_invoice. Kept to 10-100 NIS - a deliberately small,
-    consistent range for sandbox test documents."""
-    return random.randint(10, 100)
+    calling create_invoice. Kept strictly under 100 NIS - a deliberately
+    small, consistent range for sandbox test documents."""
+    return random.randint(10, 99)
 
 
 def _random_description() -> str:
@@ -306,8 +317,10 @@ def _send_turn_and_approve(
     chat_id: str, text: str, id_prefix: str, approval_text: str = "כן"
 ) -> Tuple[Tuple[Optional[str], Optional[AIResponse]], Tuple[Optional[str], Optional[AIResponse]]]:
     """Send a turn expected to trigger a pending MCP document-creation
-    approval (create_invoice or update_invoice_status - Feature 022), then
-    send a second turn with a Hebrew affirmative to approve it.
+    approval (any of create_invoice/create_transaction_account/
+    create_combo_document/create_credit_note/create_receipt/
+    close_transaction_account - Feature 022), then send a second turn with a
+    Hebrew affirmative to approve it.
 
     Returns ((ask_response, ask_ai_response), (approve_response, approve_ai_response))
     - callers typically assert on the ASK turn that nothing executed yet, and
@@ -335,11 +348,15 @@ def _send_turn_and_decline(
 # across turns (date year) is instead resolved by the runtime constitution's
 # own date-anchor guidance - not by scripting a follow-up turn here.
 #
-# EXCEPTION (Feature 022, 2026-07-23): create_invoice and update_invoice_status
-# both create a Morning document when they execute (an invoice, a linked
-# Receipt, or a linked Credit Invoice - there is no "status change" that isn't
-# also document creation), so both now require an explicit approval turn
-# before they execute. Tests exercising either tool use
+# EXCEPTION (Feature 022, 2026-07-23; tool list updated for feature 023):
+# every document-creating tool (create_invoice, create_transaction_account,
+# create_combo_document, create_credit_note, create_receipt,
+# close_transaction_account) creates a Morning document when it executes (an
+# invoice, a linked Receipt, a linked combo document, or a linked Credit
+# Invoice - there is no "status change" that isn't also document creation;
+# update_invoice_status, which used to be one more tool in this list, was
+# removed entirely by feature 023), so all of them require an explicit
+# approval turn before they execute. Tests exercising any of these tools use
 # `_send_turn_and_approve`/`_send_turn_and_decline` instead of a bare
 # `_send_turn`, and are genuinely two-turn.
 
@@ -947,7 +964,8 @@ def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
 
 
 # ============================================================================
-# update_invoice_status - paid / cancelled flows
+# Direct document-creation dispatch for status-change phrasing (feature 023)
+# - "mark as paid"/"cancel" flows, formerly update_invoice_status (removed)
 # ============================================================================
 
 def _seed_fresh_invoice(client_name: str, amount: int, description: str) -> None:
@@ -973,18 +991,21 @@ def test_godfather_marks_invoice_paid_via_whatsapp(denidin_app):
     """Full invoice_paid flow: godfather creates a fresh invoice, then - in a
     separate, later turn - asks to mark IT as paid by client name only (never
     an id). The model must resolve the invoice itself (via list_invoices
-    and/or session memory) before calling update_invoice_status.
+    and/or session memory), determine its real type is 305, and call
+    create_receipt directly (feature 023 - there is no update_invoice_status
+    tool anymore; "mark as paid" phrasing dispatches straight to the same
+    tool a direct "תפיק לי קבלה" request would use).
 
     Verifies the resulting status - not just that the tool call didn't error
-    - via update_invoice_status's own returned confirmation (which re-fetches
-    the invoice after marking it paid) showing status=שולם.
+    - via create_receipt's own returned confirmation (which references the
+    original by number) plus a follow-up on the invoice's real status.
 
     Uses a freshly-created invoice (not the reusable 2026-02-07 fixed set)
     since marking paid is a real, effectively irreversible state change in
     the sandbox (Morning has no supported reversal for a receipt-closed
     invoice).
 
-    Marking paid issues a linked Receipt document, so it now requires
+    Issuing a receipt is a document-creating call, so it now requires
     explicit approval (Feature 022): the ASK turn must NOT execute it yet.
     """
     client_name = _unique_client_name()
@@ -996,32 +1017,32 @@ def test_godfather_marks_invoice_paid_via_whatsapp(denidin_app):
         id_prefix="E2E_PAID",
     )
 
-    assert not _calls_for(ask_ai_response, "update_invoice_status"), (
-        f"update_invoice_status executed on the ASK turn before approval was "
+    assert not _calls_for(ask_ai_response, "create_receipt"), (
+        f"create_receipt executed on the ASK turn before approval was "
         f"given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
-    status_calls = _calls_for(ai_response, "update_invoice_status")
+    receipt_calls = _calls_for(ai_response, "create_receipt")
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
     assert len(response) > 0
 
-    assert status_calls, (
-        f"Model never invoked update_invoice_status via the remote MCP server. "
-        f"mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
+    assert receipt_calls, (
+        f"Model never invoked create_receipt via the remote MCP server for "
+        f"'mark as paid' phrasing. mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
     )
-    assert all(c["error"] is None for c in status_calls), (
-        f"update_invoice_status call(s) reported an error: {status_calls}"
+    assert all(c["error"] is None for c in receipt_calls), (
+        f"create_receipt call(s) reported an error: {receipt_calls}"
     )
-    assert any('"status":"paid"' in (c["arguments"] or "") for c in status_calls), (
-        f"update_invoice_status was not called with status=paid: {status_calls!r}"
+    assert any('"original_invoice_id"' in (c["arguments"] or "") for c in receipt_calls), (
+        f"create_receipt was not called with a resolved original_invoice_id: {receipt_calls!r}"
     )
 
     # The resulting status, not just call success, is what this flow proves:
-    # update_invoice_status re-fetches the invoice after marking it paid and
-    # returns the standard confirmation - it must now say שולם (paid).
-    assert any("שולם" in (c["output"] or "") for c in status_calls), (
-        f"update_invoice_status output did not reflect paid status: {status_calls!r}"
+    # create_receipt's confirmation names the new receipt against the
+    # original invoice - a follow-up status check confirms it actually paid.
+    assert any("קבלה" in (c["output"] or "") for c in receipt_calls), (
+        f"create_receipt output did not reflect a new receipt: {receipt_calls!r}"
     )
     # Accept either the masculine "שולם" or feminine "שולמה" — the model may
     # correctly conjugate to agree with a feminine noun (e.g. "החשבונית...
@@ -1036,11 +1057,13 @@ def test_godfather_marks_invoice_paid_via_whatsapp(denidin_app):
 def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
     """Full cancel_invoice flow: godfather creates a fresh invoice, then - in a
     separate, later turn - asks to cancel it by client name only (never an
-    id, never the word "update_invoice_status", never the English status
-    value). The model must resolve the invoice itself before acting.
+    id). The model must resolve the invoice itself before calling
+    create_credit_note directly (feature 023 - there is no
+    update_invoice_status tool anymore; "cancel" phrasing dispatches to the
+    same tool a direct "תפיק לי חשבונית זיכוי" request would use).
 
-    Verifies the resulting status via update_invoice_status's own returned
-    confirmation ("חשבונית מספר X בוטלה... הופקה חשבונית זיכוי...") - Israeli
+    Verifies the resulting status via create_credit_note's own returned
+    confirmation ("הופקה חשבונית זיכוי מספר X עבור חשבונית מספר Y") - Israeli
     law forbids voiding a tax invoice outright, so Morning's real mechanism is
     a linked Credit Invoice, not a status flag flip. The runtime constitution
     now states explicitly that this is a fully legitimate, ordinary action.
@@ -1049,7 +1072,7 @@ def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
     since cancelling is a real, permanent action (issues a real linked credit
     invoice in the sandbox).
 
-    Cancelling issues a linked Credit Invoice document, so it now requires
+    Issuing a credit note is a document-creating call, so it now requires
     explicit approval (Feature 022): the ASK turn must NOT execute it yet.
     """
     client_name = _unique_client_name()
@@ -1061,40 +1084,41 @@ def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
         id_prefix="E2E_CANCEL",
     )
 
-    assert not _calls_for(ask_ai_response, "update_invoice_status"), (
-        f"update_invoice_status executed on the ASK turn before approval was "
+    assert not _calls_for(ask_ai_response, "create_credit_note"), (
+        f"create_credit_note executed on the ASK turn before approval was "
         f"given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
-    status_calls = _calls_for(ai_response, "update_invoice_status")
+    credit_calls = _calls_for(ai_response, "create_credit_note")
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
     assert len(response) > 0
 
-    assert status_calls, (
-        f"Model never invoked update_invoice_status via the remote MCP server. "
-        f"mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
+    assert credit_calls, (
+        f"Model never invoked create_credit_note via the remote MCP server for "
+        f"'cancel' phrasing. mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
     )
-    assert all(c["error"] is None for c in status_calls), (
-        f"update_invoice_status call(s) reported an error: {status_calls}"
+    assert all(c["error"] is None for c in credit_calls), (
+        f"create_credit_note call(s) reported an error: {credit_calls}"
     )
-    assert any('"status":"cancelled"' in (c["arguments"] or "") for c in status_calls), (
-        f"update_invoice_status was not called with status=cancelled: {status_calls!r}"
+    assert any('"original_invoice_id"' in (c["arguments"] or "") for c in credit_calls), (
+        f"create_credit_note was not called with a resolved original_invoice_id: {credit_calls!r}"
     )
 
-    # The resulting status, not just call success: the cancellation message
-    # explicitly says "בוטלה" (cancelled) and mentions the linked credit
-    # invoice issued to offset the amount.
-    assert any("בוטל" in (c["output"] or "") for c in status_calls), (
-        f"update_invoice_status output did not reflect cancelled status: {status_calls!r}"
+    # The resulting status, not just call success: the confirmation message
+    # explicitly names the new credit invoice issued to offset the amount.
+    assert any("זיכוי" in (c["output"] or "") for c in credit_calls), (
+        f"create_credit_note output did not reflect a new credit note: {credit_calls!r}"
     )
-    assert "בוטל" in response, f"Bot reply did not reflect cancelled status. Full reply: {response!r}"
+    assert "בוטל" in response or "זיכוי" in response, (
+        f"Bot reply did not reflect cancelled status. Full reply: {response!r}"
+    )
 
 
 @pytest.mark.expensive
 def test_godfather_declines_invoice_cancellation(denidin_app):
     """Godfather creates a fresh invoice, asks to cancel it, then explicitly
-    declines the pending approval (Feature 022) - update_invoice_status must
+    declines the pending approval (Feature 022) - create_credit_note must
     never fire, and the original invoice is unaffected (spot-checked via a
     3rd turn's get_invoice_details, still showing an open/unpaid status, not
     cancelled)."""
@@ -1108,8 +1132,8 @@ def test_godfather_declines_invoice_cancellation(denidin_app):
     )
 
     assert decline_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert not _calls_for(decline_ai_response, "update_invoice_status"), (
-        f"update_invoice_status executed despite an explicit decline: "
+    assert not _calls_for(decline_ai_response, "create_credit_note"), (
+        f"create_credit_note executed despite an explicit decline: "
         f"{decline_ai_response.mcp_calls if decline_ai_response else None!r}"
     )
 
@@ -1161,6 +1185,14 @@ def _seed_transaction_account_invoice(client_name: str, amount: int, description
         f"Seed create_transaction_account (חשבון עסקה) failed or was not called: {ai_response.mcp_calls!r}"
     )
     logger.info(f"Seeded fresh חשבון עסקה for client {client_name!r}")
+    # Morning's own search index can lag a few seconds behind a just-created
+    # document (confirmed live, 2026-07-30: a follow-up list_invoices call 7s
+    # after this same seed call returned "no invoices found" for a document
+    # that demonstrably existed) - same class of lag test_morning_sandbox_
+    # list_invoices_tool.py already retries around on the morning-mcp-app
+    # side. This test can't retry the model's own tool call, so it gives
+    # Morning's index a fixed head start instead.
+    time.sleep(5)
 
 
 @pytest.mark.expensive
@@ -1168,9 +1200,12 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
     """Spec 020 / bugfix-014 Flow 4: a "חשבון עסקה" (type-300 transaction
     account document) must be closed by a linked type-320 combo document when
     marked paid, never the type-400 receipt used for a regular tax invoice.
+    Feature 023 removed update_invoice_status - the model must resolve the
+    target's real type as 300 and call close_transaction_account directly
+    (the same tool a direct "תסגור לי את חשבון העסקה" request would use).
 
-    Marking paid issues a linked document, so it now requires explicit
-    approval (Feature 022): the ASK turn must NOT execute it yet.
+    Issuing a combo document is a document-creating call, so it now requires
+    explicit approval (Feature 022): the ASK turn must NOT execute it yet.
 
     Deliberately does NOT import MorningClient or call Morning's raw REST API
     (this file's app-wall) - verification is entirely through a further,
@@ -1182,22 +1217,29 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
 
     (ask_response, ask_ai_response), (paid_response, paid_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"סמן את חשבון העסקה של {client_name} כשולם",
+        # States VAT-inclusion explicitly (feature 023's constitution rule
+        # otherwise has the model ask "כולל מע״מ?" before calling
+        # close_transaction_account, confirmed live 2026-07-30) - this test
+        # is about the mark-as-paid dispatch itself, not the VAT-ambiguity
+        # question, so the prompt removes that ambiguity up front rather than
+        # adding a third conversational turn to answer it.
+        text=f"סמן את חשבון העסקה של {client_name} כשולם, כולל מע״מ",
         id_prefix="E2E_020_PAID_300",
     )
-    assert not _calls_for(ask_ai_response, "update_invoice_status"), (
-        f"update_invoice_status executed on the ASK turn before approval was "
+    assert not _calls_for(ask_ai_response, "close_transaction_account"), (
+        f"close_transaction_account executed on the ASK turn before approval was "
         f"given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
-    status_calls = _calls_for(paid_ai_response, "update_invoice_status")
+    close_calls = _calls_for(paid_ai_response, "close_transaction_account")
     assert paid_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert status_calls, (
-        f"Model never invoked update_invoice_status via the remote MCP server. "
-        f"mcp_calls: {paid_ai_response.mcp_calls!r}. Final reply: {paid_response!r}"
+    assert close_calls, (
+        f"Model never invoked close_transaction_account via the remote MCP server for "
+        f"'mark as paid' phrasing on a חשבון עסקה. mcp_calls: {paid_ai_response.mcp_calls!r}. "
+        f"Final reply: {paid_response!r}"
     )
-    assert all(c["error"] is None for c in status_calls), (
-        f"update_invoice_status call(s) reported an error: {status_calls}"
+    assert all(c["error"] is None for c in close_calls), (
+        f"close_transaction_account call(s) reported an error: {close_calls}"
     )
 
     details_response, details_ai_response = _send_turn(
@@ -1227,22 +1269,26 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
 
 @pytest.mark.expensive
 def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app):
-    """Decline variant for the 300->320 path (Feature 022 x spec 020): godfather
-    asks to mark a חשבון עסקה paid, then explicitly declines the pending
-    approval - update_invoice_status must never fire, and no closing document
-    (type 320 or otherwise) gets created."""
+    """Decline variant for the 300->320 path (Feature 022 x spec 020, dispatch
+    updated per feature 023): godfather asks to mark a חשבון עסקה paid, then
+    explicitly declines the pending approval - close_transaction_account must
+    never fire, and no closing document (type 320 or otherwise) gets created."""
     client_name = _unique_client_name()
     _seed_transaction_account_invoice(client_name, _random_amount(), _random_description())
 
     decline_response, decline_ai_response = _send_turn_and_decline(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"סמן את חשבון העסקה של {client_name} כשולם",
+        # See test_godfather_marks_transaction_account_invoice_paid_via_whatsapp's
+        # comment above - states VAT-inclusion explicitly so there's a real
+        # close_transaction_account pending approval to decline, rather than
+        # the model asking a VAT-clarifying question with nothing yet pending.
+        text=f"סמן את חשבון העסקה של {client_name} כשולם, כולל מע״מ",
         id_prefix="E2E_020_PAID_300_DECLINE",
     )
 
     assert decline_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert not _calls_for(decline_ai_response, "update_invoice_status"), (
-        f"update_invoice_status executed despite an explicit decline: "
+    assert not _calls_for(decline_ai_response, "close_transaction_account"), (
+        f"close_transaction_account executed despite an explicit decline: "
         f"{decline_ai_response.mcp_calls if decline_ai_response else None!r}"
     )
 
@@ -1263,18 +1309,19 @@ def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app
 
 @pytest.mark.expensive
 def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin_app):
-    """Negative case for spec 020: a document type this feature does not
-    support as an "original" (only 300/305 are supported per the
-    clarification) must surface a friendly refusal, not silently create a
-    wrong document. Uses a real, achievable-today setup: create an invoice,
-    cancel it (issues a real linked type-330 credit invoice - see
-    test_godfather_cancels_invoice_via_whatsapp above), then ask to mark
-    THAT credit invoice's own number as paid - type 330 is not one of the
-    two supported original types. Both the cancellation and the (rejected)
-    paid attempt are document-creating calls, so both go through the
-    approve flow (Feature 022) even though the paid attempt is expected to
-    fail once it actually executes.
-    """
+    """Negative case for spec 020/023: a document type neither create_receipt
+    (only 305) nor close_transaction_account (only 300) supports as an
+    "original" must surface a friendly refusal, not silently create a wrong
+    document. Uses a real, achievable-today setup: create an invoice, cancel
+    it (issues a real linked type-330 credit invoice - see
+    test_godfather_cancels_invoice_via_whatsapp above), then ask to mark THAT
+    credit invoice's own number as paid - type 330 is not a valid original
+    for either tool. Both the cancellation and the (rejected) paid attempt
+    are document-creating calls, so both go through the approve flow
+    (Feature 022) even though the paid attempt is expected to fail once it
+    actually executes (or be declined by the model outright, without any
+    tool call at all, per feature 023's "ask/refuse rather than guess"
+    guidance)."""
     client_name = _unique_client_name()
     _seed_fresh_invoice(client_name, _random_amount(), _random_description())
 
@@ -1283,7 +1330,7 @@ def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin
         text=f"בטל את החשבונית של {client_name}",
         id_prefix="E2E_020_CANCEL_SETUP",
     )
-    cancel_calls = _calls_for(cancel_ai_response, "update_invoice_status")
+    cancel_calls = _calls_for(cancel_ai_response, "create_credit_note")
     assert cancel_calls and cancel_calls[0]["error"] is None, (
         f"Setup cancellation failed or was not called: {cancel_ai_response.mcp_calls!r}"
     )
@@ -1297,22 +1344,27 @@ def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin
         text=f"סמן את מסמך מספר {credit_number} כשולם",
         id_prefix="E2E_020_UNSUPPORTED_TYPE",
     )
-    status_calls = _calls_for(ai_response, "update_invoice_status")
+    # Either tool could plausibly be attempted by the model for "mark as
+    # paid" phrasing before it discovers the real type - both must reject a
+    # type-330 original if called.
+    attempted_calls = _calls_for(ai_response, "create_receipt") + _calls_for(
+        ai_response, "close_transaction_account"
+    )
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    if status_calls:
+    if attempted_calls:
         # The tool itself must reject it (raises ValueError -> surfaced as a
         # friendly error, not a fabricated success) - never a mcp_call showing
         # success for an unsupported original type.
-        assert not any(c["error"] is None for c in status_calls), (
-            f"update_invoice_status unexpectedly succeeded for an unsupported "
-            f"(type-330) original document: {status_calls!r}"
+        assert not any(c["error"] is None for c in attempted_calls), (
+            f"A document-creation tool unexpectedly succeeded for an unsupported "
+            f"(type-330) original document: {attempted_calls!r}"
         )
-    # Either way (tool refused, or the model declined to call it at all), the
-    # user-facing reply must not claim success. Hebrew can express this refusal
-    # via several negation forms - "לא"/"לא ניתן", or "אינה"/"אינו"/"אין" (e.g.
-    # "חשבונית זיכוי אינה מסמך שמסמנים כשולם") - so check for any of them
-    # rather than assuming one specific phrasing.
+    # Either way (a tool refused, or the model declined to call anything at
+    # all), the user-facing reply must not claim success. Hebrew can express
+    # this refusal via several negation forms - "לא"/"לא ניתן", or
+    # "אינה"/"אינו"/"אין" (e.g. "חשבונית זיכוי אינה מסמך שמסמנים כשולם") - so
+    # check for any of them rather than assuming one specific phrasing.
     negation_markers = ("לא", "אינה", "אינו", "אין")
     assert "שולם" not in response or any(marker in response for marker in negation_markers), (
         f"Bot reply appears to falsely confirm payment for an unsupported "

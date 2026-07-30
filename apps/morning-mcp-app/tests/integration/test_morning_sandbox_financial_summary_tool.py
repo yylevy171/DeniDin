@@ -38,7 +38,7 @@ def seeded_invoice(morning_client):
     create_invoice(
         morning_client,
         client_name=f"Test Client {unique_marker}",
-        amount=200.0,
+        amount=55.0,
         description=f"Summary seed {unique_marker}",
     )
     # Give the sandbox's search index a moment (see the widened-retry fix in

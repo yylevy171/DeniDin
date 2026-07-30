@@ -520,25 +520,6 @@ def _build_cancellation_payload(
     }
 
 
-def _cancel_invoice(client: MorningClient, invoice_id: str) -> str:
-    """Cancel an invoice by issuing a linked credit invoice against it.
-
-    Use case: the user made a mistake creating the original invoice (wrong
-    amount, typo, etc.) and wants it voided so a corrected one can be created.
-    """
-    original = client.get_invoice(invoice_id)
-    payload = _build_cancellation_payload(original)
-    credit_response = client.create_invoice(payload)
-
-    original_number = original.get("number", invoice_id)
-    credit_number = credit_response.get("number", credit_response.get("id", ""))
-
-    return (
-        f"חשבונית מספר {original_number} בוטלה.\n"
-        f"הופקה חשבונית זיכוי מספר {credit_number} לקיזוז הסכום."
-    )
-
-
 def create_credit_note(
     client: MorningClient,
     original_invoice_id: str,
@@ -548,10 +529,12 @@ def create_credit_note(
     """Create a standalone credit note ("חשבונית זיכוי", type 330) linked to
     an existing document, and return a Hebrew confirmation.
 
-    MCP tool: create_credit_note (feature 021). Unlike _cancel_invoice (only
-    reachable internally via update_invoice_status(status="cancelled") for a
-    full cancellation), this is directly user-invocable and supports partial
-    credit notes via `amount`.
+    MCP tool: create_credit_note (feature 021). Directly user-invocable and
+    supports partial credit notes via `amount`. Feature 023 removed the
+    separate update_invoice_status tool and its internal _cancel_invoice
+    helper (which this function already fully subsumed for the full-amount
+    case) - "cancel" phrasing now dispatches straight here, decided by the
+    model, not a status-word-matching code path.
 
     Args:
         client: An authenticated MorningClient (injected).
@@ -618,81 +601,162 @@ def _build_payment_receipt_payload(original: dict, amount: Optional[float] = Non
     }
 
 
-def _build_combo_closing_payload(original: dict) -> dict:
+def _build_combo_closing_payload(
+    original: dict,
+    amount: Optional[float] = None,
+    description: Optional[str] = None,
+    vat_included: bool = True,
+) -> dict:
     """Build a Morning invoice/receipt combo (type 320) payload that closes a
-    type-300 ("חשבון עסקה") `original` as paid.
+    type-300 ("חשבון עסקה") `original` as paid, either in full (defaults) or
+    partially (`amount` override).
 
     Per bugfix-014's Flow 4 finding: a type-300 document is closed by a
     type-320 combo document, not the type-400 receipt used for type-305.
     A 320 document is self-contained and invoice-shaped (carries its own
-    line items/VAT), unlike a bare receipt — mirrors _build_cancellation_payload's
-    income/vatType/client/payment shape rather than _build_payment_receipt_payload's.
+    line items/VAT), unlike a bare receipt.
+
+    `vat_included` controls the new document's own top-level `vatType`
+    (1/0) - it must NOT be inferred from the original's own `vatType`
+    (confirmed live, feature 023): a real type-300 document created via
+    create_transaction_account carries no VAT concept and Morning reports it
+    back as `vatType: 0`.
+
+    Always builds a single clean income line from the resolved close amount
+    (never mirrors the original's raw `income` items - confirmed live,
+    feature 023: those items carry `vatRate`/`vatType` computed under the
+    ORIGINAL's own vatType context, e.g. a no-vatRate item still gets
+    Morning's default ~18% applied despite the account's exempt vatType;
+    resubmitting them verbatim under this document's own, possibly
+    different, `vat_included` creates an internally inconsistent payload -
+    Morning then correctly refuses to reconcile income against payment, or
+    reconciles them at a different total than intended and never flips the
+    original's status). The resolved amount instead comes from Morning's own
+    authoritative computed total (`total`, falling back to `amount`) rather
+    than re-summing raw item prices, since that sum would miss any VAT
+    Morning silently applied - confirmed live: a 40.0 item with no vatRate
+    became a real 47.2 "amount" owed; closing for 40.0 instead of 47.2 left
+    the original genuinely underpaid and its status correctly never flipped.
     """
     today = datetime.now(timezone.utc).date().isoformat()
     client_info = original.get("client") or {}
-    income_items = original.get("income") or []
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
     total_amount = original.get("total")
     if total_amount is None:
+        total_amount = original.get("amount")
+    if total_amount is None:
+        income_items = original.get("income") or []
         total_amount = sum(
             float(item.get("price", 0)) * float(item.get("quantity", 1)) for item in income_items
         )
-        if not income_items:
-            total_amount = original.get("amount")
+
+    vat_type = 1 if vat_included else 0
+    close_amount = amount if amount is not None else total_amount
+    close_description = description or f"תשלום עבור חשבון עסקה מספר {original_number or original_id}"
 
     return {
         "type": _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
         "date": today,
         "lang": original.get("lang", "he"),
-        "vatType": original.get("vatType", 1),
+        "vatType": vat_type,
         "currency": original.get("currency", "ILS"),
         "rounding": False,
         "signed": False,
-        "description": f"תשלום עבור חשבון עסקה מספר {original_number or original_id}",
+        "description": close_description,
         "linkedDocumentIds": [original_id] if original_id else [],
         "client": {
             "self": False,
             "name": client_info.get("name"),
         },
-        "income": income_items
-        or [
+        "income": [
             {
                 "catalogNum": "",
-                "description": f"תשלום עבור חשבון עסקה מספר {original_number or original_id}",
+                "description": close_description,
                 "quantity": 1,
-                "price": total_amount,
+                "price": close_amount,
                 "currency": original.get("currency", "ILS"),
                 "currencyRate": 1,
                 "vatRate": 0,
-                "vatType": original.get("vatType", 1),
+                "vatType": vat_type,
             }
         ],
-        "payment": [{"type": 1, "price": total_amount, "date": today}],
+        "payment": [{"type": 1, "price": close_amount, "date": today}],
     }
 
 
-def _mark_invoice_paid(client: MorningClient, invoice_id: str) -> str:
-    original = client.get_invoice(invoice_id)
+def close_transaction_account(
+    client: MorningClient,
+    original_invoice_id: str,
+    amount: Optional[float] = None,
+    description: Optional[str] = None,
+    vat_included: bool = True,
+) -> str:
+    """Create a standalone combo document ("חשבונית מס/קבלה", type 320) that
+    closes an existing transaction account ("חשבון עסקה", type 300), linked
+    via `linkedDocumentIds`, and return a Hebrew confirmation.
 
-    if original.get("status") in _CLOSED_STATUS_CODES:
-        # Already paid — idempotent no-op, avoid creating a duplicate closing document.
+    MCP tool: close_transaction_account (feature 023). Mirrors
+    create_credit_note/create_receipt's existing standalone-with-reference
+    pattern (021), extended to the type-300->320 closing flow (bugfix-014
+    Flow 4, originally 020). Feature 023 removed the separate
+    update_invoice_status tool - "mark as paid" phrasing for a type-300
+    original now dispatches straight here, decided by the model, not a
+    status-word-matching code path.
+
+    Idempotency (feature 023): unlike Morning itself, which does NOT reject a
+    duplicate closing document (confirmed live), a full-amount call
+    (`amount=None`) against an already-closed original is a no-op returning
+    the current state, so repeated "mark as paid"-style requests can't create
+    duplicate combo documents. An explicit partial `amount` always creates a
+    new document regardless of current status - partial closes are a
+    deliberate, repeatable real Morning capability.
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        original_invoice_id: Morning document id of the transaction account
+            being closed.
+        amount: Optional override — defaults to the original's full total.
+        description: Optional override — defaults to a generated closing note.
+        vat_included: Whether the new combo document should include VAT
+            (default True). Must be decided explicitly by the caller - never
+            inferred from the type-300 original's own (VAT-less) shape;
+            asking the user when unstated is the model's responsibility
+            (runtime_constitution.md), not this function's.
+
+    Returns:
+        A Hebrew confirmation string with the new combo document's number.
+
+    Raises:
+        ValueError: If the original document's type is not 300 (transaction
+            account) — the combo-closing flow only applies to type-300
+            originals; other types are not guessed at.
+        Any exception raised by `client.get_invoice` if `original_invoice_id`
+        does not resolve to a real document (propagated, not swallowed).
+    """
+    original = client.get_invoice(original_invoice_id)
+    original_type = original.get("type")
+    if original_type != _TRANSACTION_ACCOUNT_DOCUMENT_TYPE:
+        raise ValueError(
+            f"Cannot close as a transaction account: unsupported document type {original_type} "
+            f"(only {_TRANSACTION_ACCOUNT_DOCUMENT_TYPE} is supported)"
+        )
+
+    if amount is None and original.get("status") in _CLOSED_STATUS_CODES:
+        # Already closed — idempotent no-op, avoid creating a duplicate closing document.
         return format_invoice_confirmation(Invoice.model_validate(original))
 
-    original_type = original.get("type")
-    if original_type == _TRANSACTION_ACCOUNT_DOCUMENT_TYPE:
-        payload = _build_combo_closing_payload(original)
-    elif original_type == _TAX_INVOICE_DOCUMENT_TYPE:
-        payload = _build_payment_receipt_payload(original)
-    else:
-        raise ValueError(
-            f"Cannot mark invoice paid: unsupported document type {original_type} "
-            f"(only {_TRANSACTION_ACCOUNT_DOCUMENT_TYPE} and {_TAX_INVOICE_DOCUMENT_TYPE} are supported)"
-        )
-    client.create_invoice(payload)  # generic POST /documents; payload["type"] determines the document kind
+    payload = _build_combo_closing_payload(
+        original, amount=amount, description=description, vat_included=vat_included
+    )
+    combo_response = client.create_invoice(payload)
 
-    updated = client.get_invoice(invoice_id)
-    return format_invoice_confirmation(Invoice.model_validate(updated))
+    original_number = original.get("number", original_invoice_id)
+    combo_number = combo_response.get("number", combo_response.get("id", ""))
+
+    return (
+        f"הופקה חשבונית מס/קבלה מספר {combo_number} לסגירת חשבון עסקה מספר {original_number}."
+    )
 
 
 def create_receipt(
@@ -704,27 +768,63 @@ def create_receipt(
     """Create a standalone receipt ("קבלה", type 400) linked to an existing
     document, and return a Hebrew confirmation.
 
-    MCP tool: create_receipt (feature 021). Unlike _mark_invoice_paid (only
-    reachable internally via update_invoice_status(status="paid"), which is
-    idempotent and always closes the FULL amount), this is directly
-    user-invocable and supports partial-amount receipts.
+    MCP tool: create_receipt (feature 021). Directly user-invocable and
+    supports partial-amount receipts. Feature 023 removed the separate
+    update_invoice_status tool - "mark as paid" phrasing for a type-305
+    original now dispatches straight here, decided by the model (which must
+    resolve the original's real type itself via get_invoice_details first),
+    not a status-word-matching code path.
+
+    Only accepts a type-305 original (feature 023) - any other type (300,
+    a transaction account closed by close_transaction_account instead; 320,
+    already self-closed; 330/400, not themselves payable) is rejected. This
+    is a deterministic backstop for when the caller picked the wrong tool,
+    not the primary defense (the model is expected to resolve the type
+    correctly before calling any create_*/close_* tool).
+
+    Idempotency (feature 023): unlike Morning itself, which does NOT reject a
+    duplicate receipt (confirmed live - two full receipts were both created
+    against the same already-paid invoice with no rejection), a full-amount
+    call (`amount=None`) against an already-closed original is a no-op
+    returning the current state. An explicit partial `amount` always creates
+    a new receipt regardless of current status - partial payments are a
+    deliberate, repeatable real Morning capability.
 
     Args:
         client: An authenticated MorningClient (injected).
         original_invoice_id: Morning document id of the invoice being paid.
         amount: Optional override — defaults to the original's full total.
         payment_date: Currently unused — payload uses today's date; reserved
-            for backdating support (matches update_invoice_status's own
-            reserved parameter).
+            for backdating support.
 
     Returns:
         A Hebrew confirmation string with the new receipt's number.
 
     Raises:
+        ValueError: If the original document's type is not 305 (tax
+            invoice) — e.g. 300 (transaction account, use
+            close_transaction_account instead), 320 (combo, already
+            self-closed), 330/400 (a credit note/receipt is not itself
+            something to pay). Strict positive check (only 305 allowed),
+            matching close_transaction_account's own guard and the
+            unsupported-type rejection the removed update_invoice_status
+            used to provide for any non-300/305 original.
         Any exception raised by `client.get_invoice` if `original_invoice_id`
         does not resolve to a real document (propagated, not swallowed).
     """
     original = client.get_invoice(original_invoice_id)
+    original_type = original.get("type")
+    if original_type != _TAX_INVOICE_DOCUMENT_TYPE:
+        raise ValueError(
+            f"Cannot create a receipt for document type {original_type} "
+            f"(only {_TAX_INVOICE_DOCUMENT_TYPE} is supported - use close_transaction_account "
+            f"for a {_TRANSACTION_ACCOUNT_DOCUMENT_TYPE} original)"
+        )
+
+    if amount is None and original.get("status") in _CLOSED_STATUS_CODES:
+        # Already paid — idempotent no-op, avoid creating a duplicate receipt.
+        return format_invoice_confirmation(Invoice.model_validate(original))
+
     payload = _build_payment_receipt_payload(original, amount=amount)
     receipt_response = client.create_invoice(payload)
 
@@ -732,75 +832,6 @@ def create_receipt(
     receipt_number = receipt_response.get("number", receipt_response.get("id", ""))
 
     return f"הופקה קבלה מספר {receipt_number} עבור חשבונית מספר {original_number}."
-
-
-def _mark_invoice_unpaid(client: MorningClient, invoice_id: str) -> str:
-    original = client.get_invoice(invoice_id)
-
-    if original.get("status") not in _CLOSED_STATUS_CODES:
-        # Already unpaid — idempotent no-op.
-        return format_invoice_confirmation(Invoice.model_validate(original))
-
-    raise ValueError(
-        "Cannot reopen an already-paid invoice: Morning has no reversal for a "
-        "payment recorded via a linked receipt (confirmed live — /documents/"
-        "{id}/open only works on documents manually closed via /close, which "
-        "does not apply to tax invoices). Issue a credit invoice instead if "
-        "the payment needs to be undone."
-    )
-
-
-def update_invoice_status(
-    client: MorningClient,
-    invoice_id: str,
-    status: str,
-    payment_date: Optional[str] = None,
-) -> str:
-    """Update an invoice's payment status and return a Hebrew confirmation.
-
-    MCP tool: update_invoice_status (contracts/update_invoice_status.json,
-    user-stories.md US3/US8).
-
-    Real mechanisms (the contract's original assumption of a generic
-    `PUT /documents/{id}/status`, and this tool's original `/close`+`/open`
-    design, both turned out not to apply to tax invoices — see
-    _build_payment_receipt_payload and _mark_invoice_unpaid docstrings):
-    - "paid" -> the closing document depends on the original's own type
-      (spec 020, bugfix-014 Flow 4): a type-305 tax invoice gets a linked
-      Receipt (type 400); a type-300 transaction account gets a linked
-      invoice/receipt combo (type 320); any other original type raises
-      ValueError. Idempotent if already paid, regardless of type. See
-      _build_payment_receipt_payload / _build_combo_closing_payload.
-    - "unpaid" -> idempotent no-op if not yet paid; raises ValueError if
-      already paid (no supported reversal).
-    - "cancelled" -> issue a linked Credit Invoice (type 330); see
-      _cancel_invoice. Real use case: the user made a mistake creating the
-      invoice (wrong amount, typo) and needs it voided so a corrected one can
-      be created instead — Israeli law forbids deleting/voiding a tax invoice
-      outright, so a credit invoice is the correct mechanism.
-
-    Args:
-        client: An authenticated MorningClient (injected).
-        invoice_id: Morning document id.
-        status: One of "paid", "unpaid", "cancelled".
-        payment_date: Currently unused — Morning's receipt/credit-invoice
-            payloads use today's date; reserved for backdating support.
-
-    Returns:
-        A Hebrew confirmation string.
-
-    Raises:
-        ValueError: if `status` is not one of the supported values, or if
-            "unpaid" is requested for an already-paid invoice.
-    """
-    if status == "paid":
-        return _mark_invoice_paid(client, invoice_id)
-    elif status == "unpaid":
-        return _mark_invoice_unpaid(client, invoice_id)
-    elif status == "cancelled":
-        return _cancel_invoice(client, invoice_id)
-    else:
-        raise ValueError(f"Unsupported status: {status!r}. Expected 'paid', 'unpaid', or 'cancelled'.")
 
 
 def _build_add_client_payload(
@@ -905,7 +936,7 @@ def get_financial_summary(
     `/documents/search` results for the resolved date range.
 
     Known limitation (documented, not silently papered over): cancelling an
-    invoice (see update_invoice_status status="cancelled") issues a linked
+    invoice (see create_credit_note) issues a linked
     Credit Invoice but does NOT change the original invoice's own `status`
     field (confirmed live), and Morning does not return `linkedDocumentIds`
     on read for either document — so a specific cancelled invoice cannot be

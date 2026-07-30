@@ -10,19 +10,21 @@ _unique_client_name, GODFATHER_CHAT_ID). See that module's docstring for the
 full rationale behind single-turn-only prompts for non-document-creating
 tools and no test-only confirmation carve-out.
 
-**Two-turn approval (Feature 022, merged after this file was first written)**:
-create_transaction_account, create_combo_document, create_credit_note, and
-create_receipt all create a real Morning document, exactly like
-create_invoice/update_invoice_status - so all of them are in
-ai_handler.DOCUMENT_CREATING_MCP_TOOLS and require an explicit approval turn
-before they execute. Every test below is genuinely two-turn (or more, when
-it also needs to seed a document first): the ASK turn must NOT produce a
-real mcp_call, and the APPROVE turn is where the actual creation happens -
-see _send_turn_and_approve/_send_turn_and_decline in the 018 test module.
+**Two-turn approval (Feature 022, merged after this file was first written;
+tool list updated for feature 023)**: create_transaction_account,
+create_combo_document, create_credit_note, create_receipt, and
+close_transaction_account all create a real Morning document, exactly like
+create_invoice - so all of them are in ai_handler.DOCUMENT_CREATING_MCP_TOOLS
+and require an explicit approval turn before they execute. (update_invoice_status,
+which used to be one more tool in this list, was removed entirely by feature
+023.) Every test below is genuinely two-turn (or more, when it also needs to
+seed a document first): the ASK turn must NOT produce a real mcp_call, and
+the APPROVE turn is where the actual creation happens - see
+_send_turn_and_approve/_send_turn_and_decline in the 018 test module.
 
-Amounts in this file are randomized 10-100 (smaller/rounder than the 018
-suite's 40-950 range) - plausible for the short, cash-style phrasings used
-here ("X שילם 50 שח").
+Amounts in this file are randomized 10-99 (all sandbox test amounts across
+this app's E2E suites are kept strictly under 100) - plausible for the
+short, cash-style phrasings used here ("X שילם 50 שח").
 
 Credit-note/receipt requests reference the real, seeded invoice NUMBER
 (Morning's human-visible document number, not the internal documentId GUID -
@@ -52,8 +54,9 @@ from tests.expensive.test_denidin_morning_mcp_e2e import (  # noqa: F401
 
 
 def _small_random_amount() -> int:
-    """Amount range for this file's short, cash-style phrasings - see module docstring."""
-    return random.randint(10, 100)
+    """Amount range for this file's short, cash-style phrasings - see module
+    docstring. Kept strictly under 100."""
+    return random.randint(10, 99)
 
 
 def _seed_fresh_invoice_and_get_number(client_name: str, amount: int, description: str) -> str:
@@ -200,9 +203,12 @@ def test_godfather_creates_credit_note_against_real_invoice(denidin_app):
     """Godfather explicitly asks for a credit note against a real, existing
     invoice by its real invoice number - exactly one such invoice exists
     (seeded fresh, this test's own number), so the request is unambiguous.
-    Direct request for the document itself (not the "cancel" wording that
-    routes to update_invoice_status), per feature 021's resolved scope that
-    documents are creatable directly.
+    Direct request for the document itself, per feature 021's resolved scope
+    that documents are creatable directly. (Feature 023 removed
+    update_invoice_status - "cancel" wording now routes to this same tool
+    too, see test_denidin_morning_mcp_e2e.py's
+    test_godfather_cancels_invoice_via_whatsapp, so this test's direct
+    phrasing and that one's indirect phrasing now converge on one tool.)
 
     Two-turn (Feature 022): the ASK turn must NOT execute create_credit_note yet.
     """
@@ -285,8 +291,11 @@ def test_godfather_creates_receipt_against_unpaid_invoice(denidin_app):
     """Godfather explicitly asks for a receipt document against a real,
     existing unpaid invoice, referenced by its real invoice number (exactly
     one such invoice exists, freshly seeded) - a direct request for the
-    document itself (distinct from "mark it as paid" wording, which routes
-    to update_invoice_status).
+    document itself. (Feature 023 removed update_invoice_status - "mark it
+    as paid" wording now routes to this same tool too, see
+    test_denidin_morning_mcp_e2e.py's test_godfather_marks_invoice_paid_via_whatsapp,
+    so this test's direct phrasing and that one's indirect phrasing now
+    converge on one tool.)
 
     Two-turn (Feature 022): the ASK turn must NOT execute create_receipt yet.
     """
@@ -351,10 +360,17 @@ def test_receipt_request_with_exact_invoice_amount_resolves_correctly(denidin_ap
 @pytest.mark.expensive
 def test_receipt_request_for_already_paid_invoice_handled_sensibly(denidin_app):
     """Godfather asks for a receipt (by real invoice number) against an
-    invoice that was already fully paid (via update_invoice_status in a
-    prior, approved turn) - edge case verifying the model/tool surfaces
-    whatever Morning's real behavior is (duplicate receipt, rejection, etc.)
-    rather than crashing or fabricating a result.
+    invoice that was already fully paid (via create_receipt in a prior,
+    approved turn - feature 023 removed update_invoice_status, so "mark as
+    paid" phrasing now dispatches directly to create_receipt itself) - edge
+    case verifying the model/tool handles a second request sensibly. Since
+    feature 023, create_receipt's own idempotency guard makes a repeated
+    full-amount call against an already-paid invoice a deterministic no-op
+    (not "whatever Morning does" - Morning itself does not reject a
+    duplicate, confirmed live, so this guard is what actually prevents one)
+    - this test mainly guards against crashing or fabricating a result if
+    the model instead expresses this second request with an explicit amount
+    (bypassing the no-op) or some other unanticipated phrasing.
     """
     client_name = _unique_client_name()
     amount = _small_random_amount()
@@ -366,7 +382,7 @@ def test_receipt_request_for_already_paid_invoice_handled_sensibly(denidin_app):
         id_prefix="E2E_RECEIPT_PREPAY",
     )
     assert paid_response is not None
-    status_calls = _calls_for(paid_ai_response, "update_invoice_status")
+    status_calls = _calls_for(paid_ai_response, "create_receipt")
     assert status_calls and all(c["error"] is None for c in status_calls), (
         f"Setup step (marking invoice paid) failed: {paid_ai_response.mcp_calls!r}"
     )

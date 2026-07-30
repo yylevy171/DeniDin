@@ -33,20 +33,21 @@ MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 
 # MCP tool names whose execution creates a document in Morning (Feature 022):
 # these require explicit human approval before they actually execute.
-# `update_invoice_status` is gated as a whole tool even though its "unpaid"
-# branch creates nothing - OpenAI's require_approval filters by tool name
-# only, not argument value, and "unpaid" is a pure idempotent no-op/error
-# with no real reversal mechanism, so gating it too has no real downside.
 # Feature 021's create_transaction_account/create_combo_document/
 # create_credit_note/create_receipt all create a real Morning document too,
-# same as create_invoice - gated for the same reason.
+# same as create_invoice - gated for the same reason. `update_invoice_status`
+# (removed, feature 023) used to be gated here too; its status-word phrasing
+# now dispatches directly to create_receipt/close_transaction_account/
+# create_credit_note instead, which are already covered below.
+# close_transaction_account (feature 023) creates a real Morning document
+# the same way - gated for the same reason.
 DOCUMENT_CREATING_MCP_TOOLS = (
     "create_invoice",
     "create_transaction_account",
     "create_combo_document",
     "create_credit_note",
     "create_receipt",
-    "update_invoice_status",
+    "close_transaction_account",
 )
 
 # The remaining Morning MCP tools (reads + add_client) - explicitly listed as

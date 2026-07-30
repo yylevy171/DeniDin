@@ -54,7 +54,7 @@ def unpaid_invoice(morning_client):
 def paid_invoice(morning_client):
     """A freshly created invoice, immediately marked paid via a real linked
     receipt (Morning's raw status code afterwards: 1)."""
-    from denidin_mcp_morning.tools import create_invoice, update_invoice_status
+    from denidin_mcp_morning.tools import create_invoice, create_receipt
 
     marker = f"DENIDIN_STATUSFILTER_PAID_{int(datetime.now(timezone.utc).timestamp())}"
     client_name = f"Test Client {marker}"
@@ -74,7 +74,7 @@ def paid_invoice(morning_client):
         time.sleep(1.5)
     assert invoice_id, f"Could not resolve invoice_id for {client_name!r} to mark it paid: {response!r}"
 
-    update_invoice_status(morning_client, invoice_id=invoice_id, status="paid")
+    create_receipt(morning_client, invoice_id)
     return {"client_name": client_name}
 
 

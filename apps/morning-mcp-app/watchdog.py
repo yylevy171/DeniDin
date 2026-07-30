@@ -83,26 +83,45 @@ def _resolve_status_path(raw_status_file: Optional[str]) -> Optional[Path]:
     return path if path.is_absolute() else Path("/app") / raw_status_file
 
 
-def _external_tunnel_health_environment(status_path: Optional[Path]) -> Optional[str]:
+def _external_tunnel_health_environment(status_path: Optional[Path]) -> tuple[bool, Optional[str]]:
     """Reads the current public tunnel URL from the status file this same
     container's docker-entrypoint.sh writes, then health-checks THROUGH it
     (real ngrok round trip, not just localhost) - this is the check that
-    would have caught 2026-07-21's stale/wrong-tunnel incident. Returns None
-    (no-op, not a mismatch) if no tunnel is configured or the status file
-    doesn't yet report "running" - that's a normal startup/no-ngrok state,
-    not evidence of anything wrong."""
+    would have caught 2026-07-21's stale/wrong-tunnel incident.
+
+    Returns (attempted, environment):
+    - (False, None): nothing to check yet - no tunnel configured, or the
+      status file doesn't yet report "running". A normal startup/no-ngrok
+      state, not evidence of anything wrong.
+    - (True, None): a check WAS made (status says "running", a server_url is
+      present) but it failed - a genuinely different, non-benign situation
+      from the above that the caller must not silently treat as "no news is
+      good news" (bugfix 2026-07-30: this exact conflation is why a URL-path
+      bug in this check went undetected for 9 days - both cases produced
+      `None`, so a persistently-failing check looked identical to "nothing
+      to check yet" and neither logged louder than a routine WARNING).
+    - (True, "<env>"): check succeeded, this is what the server reported.
+    """
     if status_path is None or not status_path.exists():
-        return None
+        return False, None
     try:
         status = json.loads(status_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return None
+        return False, None
     if status.get("status") != "running":
-        return None
+        return False, None
     server_url = status.get("server_url")
     if not server_url:
-        return None
-    return _fetch_health_environment(f"{server_url}/health")
+        return False, None
+    # server_url is the MCP endpoint (status_writer.py always writes
+    # f"{public_url}/mcp"), but /health is a global server route registered
+    # at the ASGI app root (server.py's HEALTH_PATH), not nested under /mcp -
+    # strip that suffix so the health check hits the real route instead of
+    # /mcp/health, which BearerTokenMiddleware doesn't exempt and always
+    # rejects with 401 (silently disabling this exact check, ever since
+    # server_url started including the /mcp suffix).
+    base_url = server_url[: -len("/mcp")] if server_url.endswith("/mcp") else server_url
+    return True, _fetch_health_environment(f"{base_url}/health")
 
 
 def main() -> None:
@@ -142,14 +161,34 @@ def main() -> None:
             continue
 
         internal_env = _fetch_health_environment(internal_health_url)
-        external_env = _external_tunnel_health_environment(status_path)
+        external_attempted, external_env = _external_tunnel_health_environment(status_path)
+
+        # A check that was attempted but failed is not the same as "nothing
+        # to check" - it means this watchdog currently CANNOT confirm the
+        # running environment via that path at all, which is itself worth
+        # knowing loudly (ERROR, not the routine WARNING _fetch_health_environment
+        # already logs) rather than silently doing nothing, same as a real
+        # mismatch would be (bugfix 2026-07-30).
+        if internal_env is None:
+            logger.error(
+                f"internal /health check FAILED ({internal_health_url}) - the app subprocess "
+                f"may be unreachable; this watchdog cannot confirm the running environment "
+                f"internally right now."
+            )
+        if external_attempted and external_env is None:
+            logger.error(
+                "external tunnel /health check FAILED even though the status file reports "
+                "'running' with a server_url - the tunnel/server is not actually reachable "
+                "end-to-end; this watchdog cannot confirm the running environment externally "
+                "right now."
+            )
 
         mismatches = []
         if own_env != active_env:
             mismatches.append(f"own config.environment={own_env!r}")
         if internal_env is not None and internal_env != active_env:
             mismatches.append(f"internal /health reported environment={internal_env!r}")
-        if external_env is not None and external_env != active_env:
+        if external_attempted and external_env is not None and external_env != active_env:
             mismatches.append(f"external tunnel /health reported environment={external_env!r}")
 
         if mismatches:
