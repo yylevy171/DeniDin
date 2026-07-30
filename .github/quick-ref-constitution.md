@@ -73,7 +73,7 @@
 ### Pytest Commands
 Run from inside the app you're working on: `cd apps/denidin-app` or `cd apps/morning-mcp-app`.
 ```bash
-# All tests (expensive tests skipped by default)
+# All tests (billed + expensive tests skipped by default)
 pytest tests/ -v
 
 # Unit tests only
@@ -82,6 +82,10 @@ pytest tests/unit/ -v
 # Single test
 pytest tests/unit/test_module.py::test_function -xvs
 ```
+
+### Billed Tests (both apps, real text-only OpenAI calls - `tests/billed/`, `@pytest.mark.billed`)
+- Cheap per run - **can run freely**, no per-run approval or one-at-a-time restriction
+- **Never stop to ask before running one** - the approval gate below is `expensive`-only
 
 ### Expensive Tests (real, paid API calls - `tests/expensive/`, `@pytest.mark.expensive`)
 - **Human approval required before every single run** - no exceptions, even one test, even mid-task

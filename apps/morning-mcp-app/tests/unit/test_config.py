@@ -188,7 +188,7 @@ def test_load_config_reads_mcp_auth_token_when_present(tmp_path):
 
 
 def test_load_config_defaults_openai_api_key_to_none(tmp_path):
-    """No openai_api_key configured -> tests/expensive (T021) must skip gracefully.
+    """No openai_api_key configured -> tests/billed (T021) must skip gracefully.
 
     Uses an isolated minimal config, not TEST_CONFIG_PATH — see the
     ngrok-fields-default test above for why (config.test.json now

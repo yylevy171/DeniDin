@@ -7,7 +7,8 @@ the text path (AIHandler._finalize_response) and the image path (ImageExtractor)
 
 Real classification/extraction accuracy (does the model call the tool at the right time,
 with the right fields) is NOT unit-testable - that needs the real OpenAI API and is covered
-by tests/expensive/test_ledger_event_capture_e2e.py instead.
+by tests/billed/test_ledger_event_capture_billed.py (text flow) and
+tests/expensive/test_ledger_event_capture_e2e.py (image flow) instead.
 """
 import json
 from types import SimpleNamespace

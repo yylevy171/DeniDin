@@ -3,7 +3,7 @@ Integration tests for WhatsAppHandler message-type validation (Phase 5: US3).
 NO API calls, NO MOCKING - pure local validation logic.
 
 Real-API-call tests (exception handling, message-length validation via
-create_request()) moved to tests/expensive/test_ai_handler_real_api.py.
+create_request()) moved to tests/billed/test_ai_handler_real_api.py.
 """
 import pytest
 from src.handlers.whatsapp_handler import WhatsAppHandler

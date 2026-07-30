@@ -136,12 +136,30 @@ All implementation MUST follow strict test-first methodology with human approval
 - Test coverage MUST include: happy path, edge cases, error scenarios, boundary conditions
 - Manual test checkpoints (acceptance testing) serve as user story approval gates
 - No implementation code may be written until its corresponding tests exist and are approved
+- **Test tier classification (2026-07-30, Feature 029) MUST be explicit for every test written**,
+  in every app in this monorepo (each app registers these markers independently in its own
+  `pytest.ini`/`conftest.py`):
+  - **unit**: mocked/isolated, fast, no external network calls
+  - **integration**: real internal components exercised from a real external entry point
+    (webhook, HTTP request) — no mocking of internal classes/handlers/managers (§V)
+  - **billed** (`@pytest.mark.billed`): real, text-only paid OpenAI API calls — cheap per
+    run; excluded from the default run but may be run freely, with NO per-run approval
+    gate and NO one-at-a-time restriction (see CONSTITUTION.md §VII)
+  - **expensive** (`@pytest.mark.expensive`): real vision/image/PDF/DOCX paid OpenAI API
+    calls — costlier per run; excluded from the default run AND requires explicit human
+    approval before every single run, one at a time (see CONSTITUTION.md §VII)
+  - The **EXPLAIN Test Plan** step (Step 1 below) MUST state which tier(s) each new test
+    belongs to, so the human approval gate can weigh cost/approval implications before any
+    test is written — a test plan that omits tier classification is incomplete
 
 **TDD Workflow (6 Steps with Human Gates):**
 
 1. **EXPLAIN Test Plan** (NEW MANDATORY STEP)
    - Describe in plain language WHAT will be tested and WHY
    - List all test cases with their purpose
+   - **Classify each test's tier**: unit / integration / billed / expensive (see
+     tier definitions above) — flag any billed/expensive tests explicitly so the
+     human can weigh cost/approval implications up front
    - Identify CHK requirements each test validates
    - Explain expected behavior and edge cases
    - **Output**: Human-readable test plan explanation
@@ -753,9 +771,10 @@ VIOLATION:
 
 ---
 
-**Version**: 2.2.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-01-21
+**Version**: 2.3.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-07-30
 
 **Changelog**:
+- v2.3.0 (2026-07-30): Feature 029 - TDD (§VI) now requires explicit test-tier classification (unit/integration/billed/expensive) as part of the EXPLAIN Test Plan step, in every app
 - v2.2.0 (2026-01-21): Added "AI Agent TDD Self-Check Protocol" (XVII) to prevent methodology violations during autonomous work
 - v2.1.0 (2026-01-21): Added 10 methodology requirements from existing practice: Integration Contracts (VII), Terminology Glossary (VIII), Technology Choice Documentation (IX), Requirement Identifiers (X), Phase Validation Checkpoints, Clarifications Tracking, Estimated Duration, expanded Template Requirements
 - v2.0.0 (2026-01-21): Split from constitution - extracted SpecKit workflow principles into dedicated methodology file

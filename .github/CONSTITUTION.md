@@ -513,7 +513,8 @@ if config.feature_flags.get("enable_memory_system", False):
   - When reviewing test results, check this directory for detailed logs
   - Logs persist across test runs for debugging and analysis
   - Never redirect test output to `/tmp` or other ad-hoc log files — use only the app's own `logs/test_logs/` location
-- **Expensive tests** (`@pytest.mark.expensive`, real paid API calls): require explicit human approval before every single run, run one at a time (never a bare `-m expensive` sweep), read existing logs before re-running, and only re-run a previously-failed one once confident a fix addresses it
+- **Billed tests** (`@pytest.mark.billed`, real but text-only/cheap paid API calls, `tests/billed/` in every app in this monorepo, split out of the marker formerly named `expensive` by Feature 029, 2026-07-30): can run freely. **These are NOT gated by the approval rule below — do not stop to ask before running a billed test, ever.** No per-run approval, no one-at-a-time restriction, no log-reading requirement. The approval gate below applies ONLY to `expensive`.
+- **Expensive tests** (`@pytest.mark.expensive`, real vision/image/PDF/DOCX paid API calls, costlier per run): require explicit human approval before every single run, run one at a time (never a bare `-m expensive` sweep), read existing logs before re-running, and only re-run a previously-failed one once confident a fix addresses it
 - All code-modifying operations must use CLI tools
 
 **Test Execution Efficiency**:
@@ -1030,9 +1031,11 @@ All contributors must:
 
 ---
 
-**Version**: 2.3.0 | **Effective Date**: July 7, 2026
+**Version**: 2.5.0 | **Effective Date**: July 30, 2026
 
 **Changelog**:
+- v2.5.0 (2026-07-30): Feature 029 scope correction - the billed/expensive split applies to BOTH `apps/denidin-app` and `apps/morning-mcp-app` (each app's own independent marker registration), not denidin-app alone; also made explicit that billed tests are never subject to the expensive-only approval gate (§VII)
+- v2.4.0 (2026-07-30): Feature 029 split the single `@pytest.mark.expensive` marker into `billed` (real, text-only, cheap OpenAI calls - can run freely) and `expensive` (real vision/image/PDF/DOCX calls - keeps the full approval/one-at-a-time discipline) (§VII)
 - v2.3.0 (2026-07-07): Repo split into `apps/denidin-app/` and `apps/morning-mcp-app/` (each independently runnable/testable/dockerized) - updated test logs location path accordingly; added expensive-test approval rules (§VII)
 - v2.2.0 (2026-01-22): Added **XVII. NO Monkey-Patching** - absolute prohibition with correct design pattern alternatives (dependency injection, strategy, template method, observer)
 - v2.1.0 (2026-01-21): Added 8 technical standards from existing practice: Logging Standards (IX), Error Response Format (X), Retry Logic Details (XI), API Response Handling (XII), Data Validation (XIII), File Path Handling (XIV), JSON/File Format Standards (XV), Exit Code Standards (XVI)

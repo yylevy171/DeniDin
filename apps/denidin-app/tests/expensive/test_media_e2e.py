@@ -20,7 +20,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import unquote
 
 from src.models.config import AppConfiguration
-from .e2e_helpers import (
+from tests.e2e_helpers import (
     create_real_notification,
     get_response,
     assert_response_exists,

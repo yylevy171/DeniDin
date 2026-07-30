@@ -25,8 +25,12 @@ _current_test_file = None
 def pytest_configure(config):
     """Register custom markers and filter warnings."""
     config.addinivalue_line(
-        "markers", 
-        "expensive: Tests that use real OpenAI APIs and incur costs (skip by default)"
+        "markers",
+        "billed: Tests that make real, text-only OpenAI API calls (cheap; skip by default)"
+    )
+    config.addinivalue_line(
+        "markers",
+        "expensive: Tests that make real vision/image/PDF/DOCX OpenAI API calls (costlier; skip by default)"
     )
     
     # Suppress harmless SWIG deprecation warnings from ChromaDB
