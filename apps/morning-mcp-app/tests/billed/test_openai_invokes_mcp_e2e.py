@@ -1,9 +1,11 @@
 """Real E2E test: an external OpenAI call drives the running MCP server (Phase 5, T021).
 
-@pytest.mark.expensive — uses real, billed OpenAI API calls. Per this repo's
-expensive-test rules (CONSTITUTION §VII / CLAUDE.md): human approval is
-required before every single run, run alone (never as part of a batch), read
-logs/test_logs/ before re-running, only re-run after a confident fix.
+@pytest.mark.billed — uses real, text-only OpenAI API calls (Feature 029,
+2026-07-30, split the single `expensive` marker into `billed` and
+`expensive`). Per CONSTITUTION §VII / CLAUDE.md: billed tests are cheap and
+can be run freely — no per-run approval, no one-at-a-time restriction (unlike
+`expensive`, which stays gated behind those rules for real vision/media
+calls).
 
 No mocks anywhere: real FastMCP server (streamable-HTTP), real ngrok tunnel,
 real OpenAI Responses API call with this server registered as a remote MCP
@@ -22,7 +24,7 @@ SDK's own type definitions.
 Every test in this module passes the same `instructions` (OpenAI's
 system-prompt-level parameter on `responses.create()` — confirmed as a real,
 distinct top-level SDK parameter) via
-`tests.expensive.e2e_helpers.OPENAI_ASSISTANT_INSTRUCTIONS`, so all of them
+`tests.e2e_helpers.OPENAI_ASSISTANT_INSTRUCTIONS`, so all of them
 exercise the model under identical guidance about when these tools apply.
 `test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt` is the negative
 counterpart: it asserts that guidance actually holds — no Morning tool call
@@ -49,7 +51,7 @@ APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
 sys.path.insert(0, str(APP_ROOT))
 
-from tests.expensive.e2e_helpers import (  # noqa: E402
+from tests.e2e_helpers import (  # noqa: E402
     OPENAI_ASSISTANT_INSTRUCTIONS,
     NgrokError,
     discover_running_server,
@@ -141,7 +143,7 @@ def mcp_endpoint(config):
         thread.join(timeout=5)
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_openai_invokes_create_invoice_via_remote_mcp(config, mcp_endpoint):
     """A real OpenAI Responses API call, given a natural-language prompt and
     this server registered as a remote MCP tool (over a real public ngrok
@@ -214,7 +216,7 @@ def test_openai_invokes_create_invoice_via_remote_mcp(config, mcp_endpoint):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt(config, mcp_endpoint):
     """A prompt with nothing to do with invoicing must NOT trigger any Morning
     MCP tool call, even though the tools are registered and available. This is

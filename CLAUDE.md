@@ -202,7 +202,7 @@ No local/foreground run mode exists anymore — see the environments note above 
 ### Test
 ```bash
 cd apps/denidin-app
-python3 -m pytest tests/ -v --tb=short          # full suite (expensive tests skipped by default)
+python3 -m pytest tests/ -v --tb=short          # full suite (billed + expensive tests skipped by default)
 python3 -m pytest tests/unit/ -v                # unit only
 python3 -m pytest tests/integration/ -v         # integration only
 python3 -m pytest tests/unit/test_session_manager.py::test_function -xvs   # single test
@@ -210,14 +210,17 @@ python3 -m pytest tests/ --cov=src --cov-report=html   # coverage (htmlcov/index
 ```
 Also runnable from repo root via `make test` (wraps the same pytest invocation from `apps/denidin-app/`).
 
-Expensive tests (`tests/expensive/`, marked `@pytest.mark.expensive`) hit real OpenAI APIs and cost money — they are excluded by default (`pytest.ini` sets `addopts = -m "not expensive"`). Don't run them repeatedly — read `logs/test_logs/` for a prior run's output before re-running, and only re-run after a code change you're confident fixes the issue.
+Two real-OpenAI-call test tiers exist (split by Feature 029, 2026-07-30, from one overloaded `expensive` marker), **in both apps** — `apps/denidin-app` AND `apps/morning-mcp-app` each register these markers independently in their own `pytest.ini`/`conftest.py` (morning-mcp-app currently has 2 `billed` tests and 0 `expensive` — the tier is still registered there for if/when it ever adds a vision-based tool). Both tiers are excluded by default (`addopts = -m "not billed and not expensive"`) but with very different run rules:
 
-**Expensive test rules (strict):**
+- **`billed` tests** (`tests/billed/`, marked `@pytest.mark.billed`) make real, **text-only** OpenAI calls (chat completions, MCP tool-call turns) — cheap per run. **They can be run freely: no per-run approval needed, no one-at-a-time restriction, no log-reading requirement.** 🚨 **Do NOT stop to ask before running a `billed` test — the approval gate below is `expensive`-only and does not apply to `billed` at all.** Run with `pytest tests/billed/ -m billed -v` (or target a single file/test the same way).
+- **Expensive tests** (`tests/expensive/`, marked `@pytest.mark.expensive`) make real **vision/image/PDF/DOCX** OpenAI calls — meaningfully costlier (multiple sequential calls per test, e.g. `PDFExtractor` delegating to `ImageExtractor` per page) — and keep the full strict discipline below, unchanged. Don't run them repeatedly — read `logs/test_logs/` for a prior run's output before re-running, and only re-run after a code change you're confident fixes the issue.
+
+**Expensive test rules (strict — `billed` is fully exempt from every rule below; never apply these to a `billed` test):**
 - **User approval is required before running any expensive test, every single time** — no exceptions, even for a single test, even as part of a larger approved task.
 - **Never run expensive tests all together.** Go one at a time (`pytest tests/expensive/test_X.py::test_name -v -m expensive`), never a bare `-m expensive` sweep.
 - **Read existing logs in `logs/test_logs/` before re-running anything.** A prior run's log may already answer the question.
 - **Only re-run a previously-failed expensive test once you're confident a fix addresses the failure** — don't re-run speculatively to "see what happens."
-- **Never re-run an expensive test yourself once it has been billed** (i.e. it actually reached OpenAI, whether it passed or failed) — that always requires a fresh, explicit approval from the user for that specific run, no exceptions, including "just to double-check" or "just to read the output." Re-running an *unbilled* failure (one that errored before reaching OpenAI) is fine without re-asking.
+- **Never re-run an expensive test yourself once it has actually reached OpenAI** (whether it passed or failed) — that always requires a fresh, explicit approval from the user for that specific run, no exceptions, including "just to double-check" or "just to read the output." Re-running a failure that errored *before* reaching OpenAI is fine without re-asking.
 - **`apps/morning-mcp-app` runs as a separate long-lived container for these cross-app tests** (`./run_morning_mcp.sh dev` / `./stop_morning_mcp.sh dev`), not something pytest starts. Rebuilding is not automatic: any code or config change in `apps/morning-mcp-app` (tools, formatters, server, `config.dev.json`) has **no effect on an already-running container**. Whenever you edit anything in `apps/morning-mcp-app` for the sake of a denidin-app E2E test, you **must** `./stop_morning_mcp.sh dev` then `./run_morning_mcp.sh dev` (which rebuilds the image; verify the new tunnel URL lands in that environment's status file with `"status": "running"`) **before** retrying the test — otherwise the test silently exercises stale code and any observed failure/pass is not meaningful.
 
 **Never redirect test output to `/tmp` or other ad-hoc log files.** Each app's `conftest.py` already writes per-test-file logs to `logs/test_logs/{test_file}.log` automatically (see `pytest_runtest_setup` in `apps/denidin-app/conftest.py`); read from there instead of teeing to a custom path. This applies to both apps under `apps/`.

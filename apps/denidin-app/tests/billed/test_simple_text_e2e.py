@@ -8,7 +8,7 @@ Tests simple Hebrew text message handling:
 
 NO MOCKING - Tests exactly what happens in production.
 
-Run with: pytest tests/expensive/test_simple_text_e2e.py -m expensive -v
+Run with: pytest tests/billed/test_simple_text_e2e.py -m billed -v
 """
 
 import pytest
@@ -16,7 +16,7 @@ import logging
 from pathlib import Path
 
 from src.models.config import AppConfiguration
-from .e2e_helpers import (
+from tests.e2e_helpers import (
     create_real_notification,
     get_response,
     assert_response_exists,
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 class TestSimpleTextE2E:
     """
     End-to-end tests for simple text message handling.
@@ -87,7 +87,7 @@ class TestSimpleTextE2E:
         
         return denidin.denidin_app
     
-    @pytest.mark.expensive
+    @pytest.mark.billed
     def test_e2e_simple_text_message_hebrew(self, denidin_app):
         """
         **E2E TEST**: Simple Hebrew text message - AI understanding and Hebrew response.

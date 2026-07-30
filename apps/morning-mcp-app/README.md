@@ -61,8 +61,8 @@ One config file per environment (019-env-separation), both gitignored, real cred
 ```
 `config/config.dev.json` points at the Morning **sandbox** host; `config/config.prod.json` points at Morning **production** — see `config/config.example.json` for the full shape to copy (used for both envs), including each environment's own `mcp.ngrok_authtoken` (two separate ngrok accounts, one per environment).
 
-`config/config.test.json` (**gitignored**, not committed) is read by the integration tests under `tests/integration/`
-and `tests/expensive/` — it must contain real sandbox credentials (and, for the
+`config/config.test.json` (**gitignored**, not committed) is read by the integration tests under `tests/integration/`,
+`tests/billed/`, and `tests/expensive/` — it must contain real sandbox credentials (and, for the
 ngrok/OpenAI-driven tests, `openai_api_key`/`mcp.ngrok_authtoken` too) for those
 tests to run; without them, the tests skip automatically.
 
@@ -74,6 +74,14 @@ python3 -m pytest tests/ -v --tb=short
 Integration tests hit the real Morning **sandbox** API (no mocking, per this
 repo's constitution) — they skip gracefully if `config/config.test.json` lacks
 real credentials or contains placeholder-looking values.
+
+Real-OpenAI-call tests are split into two tiers (mirroring `apps/denidin-app`,
+Feature 029): `tests/billed/` (real, text-only OpenAI calls — cheap, can be run
+freely, no approval needed) and `tests/expensive/` (real vision/image calls —
+none currently exist in this app, but the marker/folder are kept registered
+for when they do; would require the same approval-per-run, one-at-a-time
+discipline as `apps/denidin-app`'s). Both are excluded by default
+(`pytest.ini`'s `addopts`); run with `-m billed` or `-m expensive`.
 
 ## Running the MCP server
 

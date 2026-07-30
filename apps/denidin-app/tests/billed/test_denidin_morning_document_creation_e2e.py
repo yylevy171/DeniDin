@@ -35,14 +35,14 @@ WhatsApp message, not an implementation detail) rather than "the invoice of
 X" - this keeps each request unambiguous even though nothing here stops two
 invoices existing for the same client name in the same sandbox.
 
-NO MOCKING anywhere. @pytest.mark.expensive: real OpenAI billing on every run.
+NO MOCKING anywhere. @pytest.mark.billed: real OpenAI billing on every run.
 """
 import random
 import re
 
 import pytest
 
-from tests.expensive.test_denidin_morning_mcp_e2e import (  # noqa: F401
+from tests.billed.test_denidin_morning_mcp_e2e import (  # noqa: F401
     GODFATHER_CHAT_ID,
     _calls_for,
     _send_turn,
@@ -89,7 +89,7 @@ _SEED_DESCRIPTIONS = ("ייעוץ", "עיצוב לוגו", "תחזוקת אתר"
 # create_transaction_account (type 300, "חשבון עסקה")
 # ============================================================================
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
     """Godfather asks for a non-tax transaction account ("חשבון עסקה") the
     way a real, non-technical person would - client name, amount, what it's
@@ -137,7 +137,7 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
 # create_combo_document (type 320, "חשבונית מס / קבלה")
 # ============================================================================
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     """Godfather reports payment already received and asks for the combo
     invoice+receipt document - the natural phrasing a real person uses right
@@ -200,7 +200,7 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
 # create_credit_note (type 330, "חשבונית זיכוי") - standalone
 # ============================================================================
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_creates_credit_note_against_real_invoice(denidin_app):
     """Godfather explicitly asks for a credit note against a real, existing
     invoice by its real invoice number - exactly one such invoice exists
@@ -242,7 +242,7 @@ def test_godfather_creates_credit_note_against_real_invoice(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_credit_note_request_with_invalid_invoice_number_fails_gracefully(denidin_app):
     """Godfather asks for a credit note against an invoice number that does
     not exist. The invalid number is derived from a real, freshly seeded
@@ -288,7 +288,7 @@ def test_credit_note_request_with_invalid_invoice_number_fails_gracefully(denidi
 # create_receipt (type 400, "קבלה") - standalone
 # ============================================================================
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_creates_receipt_against_unpaid_invoice(denidin_app):
     """Godfather explicitly asks for a receipt document against a real,
     existing unpaid invoice, referenced by its real invoice number (exactly
@@ -329,7 +329,7 @@ def test_godfather_creates_receipt_against_unpaid_invoice(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_receipt_request_with_exact_invoice_amount_resolves_correctly(denidin_app):
     """Godfather references the invoice by client name + the EXACT amount
     that was seeded on it (no invoice number mentioned at all) - a realistic
@@ -359,7 +359,7 @@ def test_receipt_request_with_exact_invoice_amount_resolves_correctly(denidin_ap
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_receipt_request_for_already_paid_invoice_handled_sensibly(denidin_app):
     """Godfather asks for a receipt (by real invoice number) against an
     invoice that was already fully paid (via create_receipt in a prior,

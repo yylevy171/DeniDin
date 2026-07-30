@@ -62,7 +62,7 @@ def test_config():
 
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_session_transfer_and_recall_after_expiration(test_config):
     """
     E2E TEST - Reproduces production bug where expired sessions are archived but NOT transferred to ChromaDB.
