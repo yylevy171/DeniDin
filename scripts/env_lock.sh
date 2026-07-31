@@ -128,6 +128,48 @@ with open('$lock_file', 'w', encoding='utf-8') as f:
 "
 }
 
+# Call before building compose args, before env_lock_acquire. Exits loudly
+# if this clone's mandatory per-clone compose override file
+# (docker/docker-compose.$env.local.yml) is missing. EVERY clone - the
+# root/canonical one included - MUST have this file created by hand; the
+# root clone's own copy is an intentional no-op stub ("services: {}"), since
+# its paths are already canonical, but the file itself must still exist so
+# this check can't silently skip it.
+#
+# Real incident this check exists to prevent (2026-07-30, coder2/Bina): this
+# file was missing in a coderN clone, so docker-compose.<env>.yml's own
+# plain relative volume paths resolved against THAT clone's own directory
+# instead of being overridden to point at the shared root-clone paths - the
+# dev container silently started writing session/memory/log data into the
+# clone's own apps/denidin-app/dev_data instead of the real, shared history,
+# with no error or warning of any kind. This must never happen silently
+# again - refusing to start at all (not a warning) is deliberate.
+#
+# Usage: env_lock_require_local_override dev|prod
+env_lock_require_local_override() {
+    local env="$1" repo_root override_file
+    repo_root="$(_env_lock_repo_root)"
+    override_file="$repo_root/docker/docker-compose.$env.local.yml"
+
+    if [ ! -f "$override_file" ]; then
+        echo "ERROR: $override_file not found." >&2
+        echo "" >&2
+        echo "Every clone (root, coder1, coder2, ...) MUST have this file, created by hand -" >&2
+        echo "see CLAUDE.md's 'Multi-clone lock' / 'dev/prod data is also a singleton across" >&2
+        echo "clones' sections. Without it, this clone's dev/prod data+log volumes silently" >&2
+        echo "fall back to THIS clone's own directory instead of the shared canonical" >&2
+        echo "location (real incident, 2026-07-30 - a coderN clone's dev container wrote" >&2
+        echo "session/log data into its own apps/denidin-app/dev_data instead of the real" >&2
+        echo "shared history, with zero warning)." >&2
+        echo "" >&2
+        echo "Fix: create $override_file. Copy an existing coderN clone's file (e.g." >&2
+        echo "coder1's docker/docker-compose.dev.local.yml) and adjust if needed; if this IS" >&2
+        echo "the root/canonical clone, use a no-op stub: 'services: {}'." >&2
+        echo "Refusing to start until this file exists - this is deliberate, not a bug." >&2
+        exit 1
+    fi
+}
+
 # Call before starting dev/prod containers. Exits with an error message if
 # the requested env is not startable right now. On success, acquires/
 # refreshes the lock.

@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Green API webhook: contactMessage (single shared contact)",
+  "type": "object",
+  "x-source": "https://green-api.com/en/docs/api/receiving/notifications-format/incoming-message/ContactMessage/ (fetched 2026-07-30)",
+  "x-notes": "New router in denidin.py: @bot.router.message(type_message='contactMessage'). Flows into the same conversational AIHandler pipeline as textMessage - see data-model.md's text_content framing.",
+  "properties": {
+    "messageData": {
+      "type": "object",
+      "properties": {
+        "typeMessage": {"const": "contactMessage"},
+        "contactMessageData": {
+          "type": "object",
+          "properties": {
+            "displayName": {"type": "string"},
+            "vcard": {"type": "string", "description": "Raw vCard 3.0 text, e.g. 'BEGIN:VCARD\\nVERSION:3.0\\nN:...\\nFN:...\\nTEL;...\\nEND:VCARD'. May have no EMAIL line at all - confirmed common via the real fixture apps/denidin-app/tests/fixtures/contacts/00005372-גיל ברטל .vcf."},
+            "forwardingScore": {"type": "integer"},
+            "isForwarded": {"type": "boolean"}
+          },
+          "required": ["displayName", "vcard"]
+        }
+      },
+      "required": ["typeMessage", "contactMessageData"]
+    }
+  },
+  "required": ["messageData"]
+}

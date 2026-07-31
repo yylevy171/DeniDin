@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Green API webhook: contactsArrayMessage (multiple shared contacts)",
+  "type": "object",
+  "x-source": "https://green-api.com/en/docs/api/receiving/notifications-format/incoming-message/ContactsArrayMessage/ (fetched 2026-07-30)",
+  "x-notes": "New router in denidin.py: @bot.router.message(type_message='contactsArrayMessage'). Per spec.md Clarifications (2026-07-30), this router replies directly with a friendly 'one at a time' message - no AIHandler call, no vcard/contacts parsing at all, regardless of array length. Note the doubled 'messageData' nesting below - confirmed from Green API's own example, not a typo.",
+  "properties": {
+    "messageData": {
+      "type": "object",
+      "properties": {
+        "typeMessage": {"const": "contactsArrayMessage"},
+        "messageData": {
+          "type": "object",
+          "properties": {
+            "contacts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "displayName": {"type": "string"},
+                  "vcard": {"type": "string"}
+                },
+                "required": ["displayName", "vcard"]
+              }
+            },
+            "forwardingScore": {"type": "integer"},
+            "isForwarded": {"type": "boolean"}
+          },
+          "required": ["contacts"]
+        }
+      },
+      "required": ["typeMessage", "messageData"]
+    }
+  },
+  "required": ["messageData"]
+}

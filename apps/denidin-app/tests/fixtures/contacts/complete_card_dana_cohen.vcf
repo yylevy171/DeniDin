@@ -1,0 +1,7 @@
+BEGIN:VCARD
+VERSION:3.0
+N:;Dana Cohen;;;
+FN:Dana Cohen
+TEL;type=CELL;type=VOICE;waid=972501234567:+972 50-123-4567
+EMAIL:dana.cohen.qs@example.com
+END:VCARD
