@@ -80,7 +80,7 @@ waits for explicit approval (inherited Feature 026 gate), then creates a real Mo
 - [ ] **T007** [US1] 👤 **MANUAL APPROVAL GATE**: run `quickstart.md`'s US1 scenario for real (a
   live WhatsApp contact share) — needs explicit approval to start the relevant dev environment
   first (`scripts/run_all.sh dev`, per CLAUDE.md's "never start an environment without approval"
-  rule).
+  rule). **Waived by user decision, 2026-07-31 — not going to be run; automated verification (unit + integration + billed E2E) judged sufficient.**
 
 ---
 
@@ -100,7 +100,7 @@ email and that no `add_client`/approval state was created.
   send a follow-up supplying an email and assert the flow proceeds exactly as US1 (confirmation →
   approve → creation). **RED**.
 - [x] **T008b** [US2] Run T008a (no approval needed, `billed` tier); fix forward until **GREEN**.
-- [ ] **T009** [US2] 👤 **MANUAL APPROVAL GATE**: `quickstart.md`'s US2 scenario, live.
+- [ ] **T009** [US2] 👤 **MANUAL APPROVAL GATE**: `quickstart.md`'s US2 scenario, live. **Waived by user decision, 2026-07-31 — not going to be run; automated verification (unit + integration + billed E2E) judged sufficient.**
 
 ---
 
@@ -129,7 +129,7 @@ that no OpenAI/Morning call happened — fully testable without external service
   `notification.answer(...)` — no `WhatsAppMessage`/`AIRequest` construction, no `AIHandler` call.
   **GREEN**.
 - [ ] **T011** [US3] 👤 **MANUAL APPROVAL GATE**: `quickstart.md`'s US3 scenario, live (share 2+
-  contacts at once from a real device).
+  contacts at once from a real device). **Waived by user decision, 2026-07-31 — not going to be run; automated verification (unit + integration + billed E2E) judged sufficient.**
 
 ---
 
