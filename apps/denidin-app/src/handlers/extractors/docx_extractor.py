@@ -34,7 +34,7 @@ class DOCXExtractor(MediaExtractor):
         """
         super().__init__(denidin_context)
     
-    def analyze_media(self, media: Media, analyze: bool = True, caption: str = "") -> Dict:
+    def analyze_media(self, media: Media, caption: str = "", analyze: bool = True) -> Dict:
         """
         Analyze DOCX using AI (Phase 4).
         

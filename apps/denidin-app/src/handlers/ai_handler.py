@@ -7,7 +7,7 @@ Phase 6: RBAC (Role-Based Access Control)
 import json
 import time
 from datetime import datetime, timezone
-from typing import Optional, List, Dict
+from typing import Any, cast, Optional, List, Dict
 
 from openai import OpenAI, APITimeoutError, RateLimitError, APIError
 from tenacity import (
@@ -159,7 +159,7 @@ def _is_affirmative_reply(text: str) -> bool:
 # API just returns structured, schema-validated arguments as a `function_call` output
 # item alongside (never instead of) the normal reply - see `extract_function_call`.
 # Used by both the text path (AIHandler) and the image path (ImageExtractor).
-LEDGER_EVENT_TOOL = {
+LEDGER_EVENT_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "capture_ledger_event",
     "description": (
@@ -241,7 +241,7 @@ def extract_function_call(response, tool_name: str) -> Optional[Dict]:
         if getattr(item, "type", None) != "function_call" or getattr(item, "name", None) != tool_name:
             continue
         try:
-            return json.loads(item.arguments)
+            return cast(Dict, json.loads(item.arguments))
         except json.JSONDecodeError as e:
             logger.warning(f"Malformed {tool_name!r} function_call arguments discarded: {e}")
             return None
@@ -325,7 +325,6 @@ class AIHandler:
         # Memory system and RBAC are always on (2026-07-14 decision: both
         # graduated from feature flags to permanent behavior).
         self.memory_enabled = True
-        self.session_manager = None
         self.memory_manager = None
 
         self.rbac_enabled = True
@@ -708,7 +707,11 @@ class AIHandler:
         if tools:
             kwargs["tools"] = tools
 
-        response = self.client.responses.create(**kwargs)
+        # kwargs is built dynamically (tools conditionally added) so its inferred
+        # type (dict[str, object]) never lines up with any single overload of the
+        # SDK's heavily-overloaded create() - safe to ignore, the actual value
+        # types are correct for the Responses API.
+        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
 
         return response
 
@@ -1212,7 +1215,9 @@ class AIHandler:
 
         call_ids = [call["call_id"] for call in ledger_calls]
         logger.info(f"[024] _call_openai_ledger_followup_api: call_ids={call_ids!r}")
-        response = self.client.responses.create(**kwargs)
+        # See _call_openai_api's comment: dynamically-built kwargs never match a
+        # single create() overload.
+        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
         logger.info(
             f"[024] _call_openai_ledger_followup_api response: id={getattr(response, 'id', None)!r}, "
             f"output item types={[getattr(i, 'type', None) for i in (response.output or [])]!r}, "
@@ -1257,7 +1262,9 @@ class AIHandler:
         }
 
         logger.info("[024] capture_ledger_event_from_text: classifying extracted image text")
-        response = self.client.responses.create(**kwargs)
+        # See _call_openai_api's comment: dynamically-built kwargs never match a
+        # single create() overload.
+        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
         ledger_event = extract_function_call(response, LEDGER_EVENT_TOOL["name"])
         logger.info(
             f"[024] capture_ledger_event_from_text response: id={getattr(response, 'id', None)!r}, "
@@ -1296,7 +1303,9 @@ class AIHandler:
             kwargs["tools"] = tools
 
         logger.info(f"[022] _call_openai_approval_api: approve={approve}, kwargs={kwargs!r}")
-        response = self.client.responses.create(**kwargs)
+        # See _call_openai_api's comment: dynamically-built kwargs never match a
+        # single create() overload.
+        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
         logger.info(
             f"[022] _call_openai_approval_api response: id={getattr(response, 'id', None)!r}, "
             f"output item types={[getattr(i, 'type', None) for i in (response.output or [])]!r}, "

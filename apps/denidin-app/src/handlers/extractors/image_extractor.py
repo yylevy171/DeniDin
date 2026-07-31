@@ -12,7 +12,7 @@ CHK Requirements:
 - CHK027: Specific prompt (not just example)
 - CHK078: Empty document handling
 """
-from typing import Dict
+from typing import cast, Dict
 from pathlib import Path
 import logging
 from src.models.media import Media
@@ -166,7 +166,7 @@ class ImageExtractor(MediaExtractor):
             max_output_tokens=self.config.ai_reply_max_tokens
         )
 
-        raw_response = response.output_text
+        raw_response = cast(str, response.output_text)
         logger.info(f"[ImageExtractor._vision_extract] Raw OpenAI response ({len(raw_response)} chars):")
         logger.info(f"[ImageExtractor._vision_extract] {raw_response}")
 

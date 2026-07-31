@@ -105,7 +105,7 @@ class PDFExtractor(MediaExtractor):
             raw_responses = []  # Collect raw_response from each page
             extraction_qualities = []
             warnings_list = []
-            page_analyses = []  # Collect analyses from each page
+            page_analyses: List[Dict] = []  # Collect analyses from each page
             
             for page_num, page in enumerate(pdf_document):
                 try:

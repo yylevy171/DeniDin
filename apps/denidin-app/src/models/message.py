@@ -108,7 +108,7 @@ class AIRequest:
     model: str
     chat_id: str
     message_id: str
-    request_id: str = None
+    request_id: str = field(default="")
     timestamp: Optional[int] = None
 
     def __post_init__(self):
@@ -162,7 +162,7 @@ class AIResponse:
     mcp_calls: List[Dict] = field(default_factory=list)
 
     @classmethod
-    def from_openai_response(cls, response, request_id: str = None) -> 'AIResponse':
+    def from_openai_response(cls, response, request_id: Optional[str] = None) -> 'AIResponse':
         """
         Parse an OpenAI API response into an AIResponse.
 
