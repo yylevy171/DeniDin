@@ -4,7 +4,8 @@
 **Priority**: P2
 **Status**: Done - Merged to master (PR #154, 2026-07-31) — implemented and verified (unit +
 integration + billed E2E tests all passing, no regressions). Manual live-WhatsApp walkthroughs
-(`quickstart.md` US1/US2/US3) not yet run — left as open follow-up for the user.
+(`quickstart.md` US1/US2/US3, `tasks.md` T007/T009/T011) explicitly waived by user decision
+(2026-07-31) — automated verification judged sufficient; not planned to be run.
 **Created**: July 30, 2026
 
 ---
