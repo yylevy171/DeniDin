@@ -2,7 +2,9 @@
 
 **Feature ID**: 030-vcf-contact-card-client-creation
 **Priority**: P2
-**Status**: Draft
+**Status**: Done - Merged to master (PR #154, 2026-07-31) — implemented and verified (unit +
+integration + billed E2E tests all passing, no regressions). Manual live-WhatsApp walkthroughs
+(`quickstart.md` US1/US2/US3) not yet run — left as open follow-up for the user.
 **Created**: July 30, 2026
 
 ---
