@@ -12,3 +12,6 @@ UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES = "סוג הודעה זה אינו נת
 # Message processing errors
 ERROR_PROCESSING_MESSAGE_TRY_AGAIN = "אני נתקלתי בשגיאה בעיבוד הודעתך. אנא נסה שוב."
 FAILED_TO_PROCESS_FILE_DEFAULT = "לא הצלחתי לעבד את הקובץ הזה."
+
+# Contact card (vCard) errors - Feature 030
+CONTACT_CARD_ONE_AT_A_TIME = "אני יכול לטפל באיש קשר אחד בכל פעם. אנא שתף אותם אחד אחד."

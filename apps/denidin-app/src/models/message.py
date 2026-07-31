@@ -8,6 +8,23 @@ from typing import Optional, Dict, Any, List
 import uuid
 
 
+def _frame_contact_message_text(contact_message_data: Dict[str, Any]) -> str:
+    """Frame a shared WhatsApp contact card's displayName/vcard into readable
+    text_content (Feature 030). No dedicated vCard parser - the raw vCard text is
+    forwarded verbatim and the model reads its N/FN/TEL/EMAIL lines directly, same
+    as it already does for typed add_client requests (research.md Decision 2).
+    Confirmed field shape via Green API's official docs
+    (contactMessageData.displayName/.vcard)."""
+    display_name = contact_message_data.get('displayName', '')
+    vcard = contact_message_data.get('vcard', '')
+    return (
+        "[שותף כרטיס איש קשר בוואטסאפ]\n"
+        f"שם תצוגה: {display_name}\n"
+        "תוכן vCard:\n"
+        f"{vcard}"
+    )
+
+
 @dataclass
 class WhatsAppMessage:
     """Model representing a WhatsApp message."""
@@ -48,6 +65,8 @@ class WhatsAppMessage:
         # textMessageData.textMessage.
         if message_type == 'extendedTextMessage':
             text_content = message_data.get('extendedTextMessageData', {}).get('text', '')
+        elif message_type == 'contactMessage':
+            text_content = _frame_contact_message_text(message_data.get('contactMessageData', {}))
         else:
             text_content = message_data.get('textMessageData', {}).get('textMessage', '')
 

@@ -11,7 +11,8 @@
 
 Godfather/admin users manage Morning clients today only by describing them in
 natural language to the model, which then calls the `add_client` MCP tool
-(`name`/`email`/`phone`/`tax_id`/`address`, see
+(`name`/`email`/`phone` required, `tax_id` optional — `address` is out of
+scope per Feature 026, see
 `apps/morning-mcp-app/src/denidin_mcp_morning/server.py:278-286`). WhatsApp
 lets a user share a device contact directly as a **contact card message**
 (vCard/.vcf) instead of typing the details — Green API surfaces this as its
@@ -29,42 +30,64 @@ offer to create (or route to) an `add_client` call using the card's
 name/phone (and email if present), instead of requiring the details to be
 typed out by hand.
 
-## Open Questions (not yet clarified)
+---
 
-- **What does Green API's webhook actually send for a shared contact?**
-  Needs live/sandbox investigation — likely a `contactMessage`
-  (`typeMessage: "contactMessage"`) notification with vCard-formatted text
-  (`displayName`, `vcard` fields per Green API's docs) rather than a
-  downloadable file the way `documentMessage` works. Confirm the exact
-  notification shape before deciding whether this reuses
-  `MediaHandler`'s extractor pipeline (`handlers/media_handler.py` +
-  `handlers/extractors/`) or needs its own lightweight parser (no file
-  download involved, just inline vCard text — likely closer to the
-  `textMessage` router than the media one).
-- **RBAC scope.** Should mirror the existing Morning-tool gating (godfather/
-  admin only, per `AIHandler`'s remote-tool attachment) — a client (non-
-  godfather) sharing a contact card should presumably get the same "no
-  Morning access" friendly response as any other Morning-related ask, not a
-  silent no-op or an error.
-- **Multi-contact cards.** WhatsApp allows sharing multiple contacts in one
-  message; decide whether v1 handles only single-contact cards and gives a
-  friendly "one at a time" message for multi-contact shares, or handles the
-  full list.
-- **Confirmation flow.** Should DeniDin auto-create the client from the vCard
-  immediately, or (more consistent with how conversational `add_client` calls
-  already work — the model proposes, then calls the tool as part of a natural
-  reply) surface the parsed name/phone/email back to the godfather for
-  confirmation before calling `add_client`? Needs a decision, ideally
-  consistent with whatever confirmation pattern (if any) existing
-  conversational client-creation already uses.
-- **Missing/malformed vCard fields.** A shared contact card may have no email,
-  multiple phone numbers, or no name — needs friendly fallback behavior
-  (matching the project's user-facing-error style) rather than a raw
-  `add_client` validation failure surfaced to the user.
+**CRITICAL - MANDATORY REQUIREMENT**:
+🚨 **This feature MUST have a separate `user-stories.md` file** before spec approval:
+- Spec approval is BLOCKED if `user-stories.md` does not exist
+- See `user-stories.md` in this directory and `.github/METHODOLOGY.md §I`
+
+---
+
+## Clarifications
+
+### Session 2026-07-30
+
+- Q: What does Green API's webhook actually send for a shared contact? → A: **Fully confirmed
+  against Green API's official docs (2026-07-30), no assumption remains.** Single contact:
+  `typeMessage: "contactMessage"`, fields under `messageData.contactMessageData`: `displayName`,
+  `vcard` (raw vCard text), `forwardingScore`, `isForwarded`. Multiple contacts shared in one
+  message: a **different `typeMessage` entirely**, `"contactsArrayMessage"`, with
+  `messageData.messageData.contacts` — an array of `{displayName, vcard}` (note the doubled
+  `messageData` nesting, confirmed from the docs' own example, not a typo). This means
+  multi-contact detection (see next bullet) is simply "is `typeMessage` `contactsArrayMessage`?" —
+  no vCard-counting/parsing needed to detect it. The raw *vCard* shape itself is additionally
+  backed by a real fixture: `apps/denidin-app/tests/fixtures/contacts/00005372-גיל ברטל .vcf`, a
+  genuine WhatsApp-exported vCard 3.0 with `N`/`FN`/`TEL` (with `waid=<E.164-no-plus>` param) but
+  **no `EMAIL` field at all** and a WhatsApp-specific `X-WA-LID` extension. This means the
+  "missing mandatory field" path (US2) is likely the **common** case for real contact shares, not
+  an edge case — email is frequently absent from device contacts entirely.
+- Q: RBAC scope? → A: **Same godfather/admin gating as existing Morning tools, inherited
+  automatically** — no new RBAC logic. A client/blocked-role sender gets the same friendly
+  "no Morning access" behavior any other Morning-related ask already gets from that role (see
+  `user-stories.md` US4).
+- Q: Should v1 handle multi-contact card shares? → A: **No — single-contact only for v1.** A
+  multi-contact share (`typeMessage: "contactsArrayMessage"`, a distinct type from single-contact
+  `contactMessage`) gets a friendly "please share one contact at a time" message; no vCard
+  parsing, no AI/tool call at all (see `user-stories.md` US3). Batch/multi-contact handling is
+  explicitly deferred.
+- Q: Confirmation flow — auto-create immediately, or confirm first? → A: **Confirm first, and
+  also ask for any missing mandatory fields before proceeding.** This is not a new mechanism to
+  build: `add_client` is already in `AIHandler.APPROVAL_REQUIRED_MCP_TOOLS` (Feature 026) with an
+  existing "ask for missing name/email/phone" behavior (REQ-CLIENT-012) — this feature only needs
+  to feed parsed vCard fields into that same existing pipeline (see `user-stories.md` US1/US2).
+- Q: Missing/malformed vCard fields? → A: Missing mandatory fields (name/email/phone) are handled
+  by the existing Feature 026 "ask for what's missing" behavior (US2) — no new validation logic.
+  Malformed/unparseable vCard text beyond that falls back to the project's standard friendly-error
+  style (no stack trace); no bespoke vCard-repair logic is in scope.
 
 ## References
 
-- `apps/denidin-app/denidin.py:292-450` — existing `@bot.router.message(type_message=...)` registrations and catch-all; a new `contactMessage` (name TBD after confirming Green API's actual type) router would be added here.
+- `apps/denidin-app/denidin.py:292-450` — existing `@bot.router.message(type_message=...)` registrations and catch-all; a new `@bot.router.message(type_message='contactMessage')` router would be added here.
 - `apps/denidin-app/src/handlers/whatsapp_handler.py`, `handlers/media_handler.py` — existing message-type validation/dispatch pattern to follow for consistency.
+- `apps/denidin-app/src/handlers/ai_handler.py` (`APPROVAL_REQUIRED_MCP_TOOLS`, `PendingApprovalManager`) — the existing Feature 026 approval-gate/missing-field mechanism this feature reuses unchanged.
 - `apps/morning-mcp-app/src/denidin_mcp_morning/server.py:278-286` (`add_client` tool) and `tools.py`'s `add_client` implementation — the eventual call target.
+- `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py:886` (`_normalize_israeli_phone`) — already
+  runs inside `add_client`/`update_client`; verified against the vCard fixture's phone value
+  (both the `TEL` value and the `waid` param normalize to the same `050-7951824`) — this feature
+  needs no new phone-normalization code, see `user-stories.md`'s "Phone Normalization Note".
+- `specs/done/026-client-management/` (`spec.md`, `user-stories.md`) — the approval-gate and missing-mandatory-field behavior this feature depends on and must not duplicate.
 - CLAUDE.md's "Morning MCP integration" section — RBAC-gating precedent (godfather/admin only) this feature should follow.
+- `apps/denidin-app/tests/fixtures/contacts/00005372-גיל ברטל .vcf` (+ its `README.md`) — real
+  WhatsApp-exported vCard fixture used by US1/US2's tests; confirms the vCard field shape
+  (no `EMAIL`, `X-WA-LID` extension present).

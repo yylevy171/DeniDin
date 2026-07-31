@@ -105,7 +105,8 @@ Creds.txt` — not committed, created once per clone by hand):
 All clones on the same machine must point at the *same* canonical path, or
 the lock isn't actually shared and the whole mechanism silently no-ops.
 
-**dev/prod data is also a singleton across clones (2026-07-23)**: real
+**dev/prod data is also a singleton across clones (2026-07-23; made MANDATORY and
+enforced 2026-07-30 after a real incident — see below)**: real
 session/memory data (`apps/denidin-app/data`, `dev_data`) and container logs
 (`apps/denidin-app/logs/{dev,prod}`, `apps/morning-mcp-app/logs/{dev,prod}`)
 must not fragment depending on which clone last started dev/prod.
@@ -116,10 +117,9 @@ clone gets its own gitignored **`docker/docker-compose.dev.local.yml`** /
 `config/shared_state.local.json`/`creds/DeniDin Dev/Prod Creds.txt` — plain files, not
 committed, created once per clone by hand), layered in automatically by
 `run_denidin.sh`/`run_morning_mcp.sh`/`stop_denidin.sh`/`stop_morning_mcp.sh`/
-`scripts/killall_containers.sh` via a second `-f` flag *if the file exists* (no
-error if it's absent). These are plain Docker Compose override files — no
-environment variables, no symlinks — containing only the volume lines that
-need to differ from the base file, as literal relative paths. The root
+`scripts/killall_containers.sh` via a second `-f` flag. These are plain Docker Compose
+override files — no environment variables, no symlinks — containing only the volume
+lines that need to differ from the base file, as literal relative paths. The root
 clone's copy is a no-op (`services: {}`) since its own paths in the base
 file are already canonical. Every `coderN` clone's copy should instead
 override the data/log volumes to point one level up at the root clone's
@@ -149,6 +149,25 @@ still correctly means "one level up from this clone." `test_data`/
 `logs/test_logs` are NOT part of this — tests run via host `pytest`, never
 through Docker, so they're already naturally isolated per clone and should
 stay that way.
+
+🚨 **These two files are MANDATORY, not optional, and must NEVER be deleted** 🚨
+(2026-07-30 incident: a `coderN` clone was missing `docker-compose.dev.local.yml`
+entirely — no error, no warning — so `docker-compose.dev.yml`'s own plain relative
+volume paths silently resolved against that clone's own directory instead of being
+overridden to the shared root-clone paths; the dev container ran for a while
+writing session/log data into the clone's own `apps/denidin-app/dev_data` instead of
+the real, shared history, completely unnoticed until manually inspected).
+**Enforcement (2026-07-30)**: `scripts/env_lock.sh`'s `env_lock_require_local_override`
+is now called by `run_denidin.sh`/`run_morning_mcp.sh` *before* building compose args —
+if `docker/docker-compose.<env>.local.yml` doesn't exist for the current clone, the
+script refuses to start at all (loud `ERROR`, exit 1), rather than silently falling
+back to this clone's own paths. `stop_*.sh`/`scripts/killall_containers.sh` do NOT
+enforce this (stopping doesn't touch volume config, and requiring the file just to
+*stop* a misconfigured environment would be backwards). If you ever see this error,
+the fix is to create the missing file (copy another clone's and adjust, or use a
+no-op `services: {}` stub if this is the root clone) — **never** to delete or bypass
+the check, and never to delete an existing one of these files for any reason (there
+is no scenario where removing it is the correct fix to anything).
 
 ## 🚨 AI AGENTS: NEVER START AN ENVIRONMENT OR EDIT CONFIG WITHOUT EXPLICIT APPROVAL 🚨
 
@@ -283,7 +302,7 @@ Green API webhook → denidin.py @bot.router.message(type_message=...) handlers
   → SessionManager (store response, update token count)
   → WhatsAppHandler.send_response() (truncates >4000 chars)
 ```
-Non-text messages (`imageMessage`, `documentMessage`, `videoMessage`, `audioMessage`) route through the same dispatcher pattern in `denidin.py` to `WhatsAppHandler.handle_media_message()` → `MediaHandler` → the extractor pipeline below. There is also a catch-all `@bot.router.message()` handler so no message type is silently dropped.
+Non-text messages (`imageMessage`, `documentMessage`, `videoMessage`, `audioMessage`) route through the same dispatcher pattern in `denidin.py` to `WhatsAppHandler.handle_media_message()` → `MediaHandler` → the extractor pipeline below. A shared WhatsApp contact card (`contactMessage`, Feature 030) instead routes into the same *conversational* pipeline `textMessage` uses (`_process_conversational_message`, shared by both) — its vCard content is framed into `text_content` and the model reads it directly, so a godfather/admin sharing a contact proposes an `add_client` call exactly as typed text would, inheriting the existing approval gate and missing-field behavior unchanged. Sharing **multiple** contacts at once arrives as a distinct type (`contactsArrayMessage`) and is declined outright with a friendly message, no AI call at all. There is also a catch-all `@bot.router.message()` handler so no message type is silently dropped.
 
 ### Key components (`apps/denidin-app/src/`)
 - **`denidin.py`** (repo root of the app, not under `src/`) — entry point; owns the global `bot` (GreenAPIBot) and `denidin_app` (a `DeniDin` instance holding `ai_handler`, `config`, `whatsapp_handler`, `cleanup_thread`); registers all `@bot.router.message(...)` handlers; `initialize_app(config_dict)` is the shared bootstrap used by both `__main__` and integration tests (constructs `AIHandler` → `WhatsAppHandler` → `MediaHandler`, wires memory startup recovery + cleanup thread if `enable_memory_system`).

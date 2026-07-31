@@ -29,18 +29,23 @@ COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.$ENV.yml"
 LOCAL_OVERRIDE="$REPO_ROOT/docker/docker-compose.$ENV.local.yml"
 SERVICE="denidin-app-$ENV"
 
-# Optional per-clone override (plain relative paths, no env vars/symlinks -
+# The lock is shared across all clones (this one, coder1, coder2, ...) via
+# ./shared, and "dev" is additionally locked to whichever clone acquires it
+# - see scripts/env_lock.sh.
+source "$REPO_ROOT/scripts/env_lock.sh"
+
+# MANDATORY per-clone override (plain relative paths, no env vars/symlinks -
 # see CLAUDE.md's "Multi-clone lock" section) for dev/prod data+log volume
 # paths, so it doesn't matter which clone last started dev/prod. Gitignored,
-# created once per clone by hand; may be empty/absent if this clone's own
-# paths are already the canonical ones (e.g. the root clone).
+# created once per clone by hand - EVERY clone must have this file, including
+# the root clone (a no-op stub there). Checked BEFORE building compose args -
+# refuses to start rather than silently falling back to this clone's own
+# paths (real incident, 2026-07-30 - see env_lock_require_local_override).
+env_lock_require_local_override "$ENV"
 #
 # --project-directory pins relative volume paths inside these compose files
 # to REPO_ROOT regardless of which folder (docker/) actually holds them.
-COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE")
-if [ -f "$LOCAL_OVERRIDE" ]; then
-    COMPOSE_ARGS+=(-f "$LOCAL_OVERRIDE")
-fi
+COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE" -f "$LOCAL_OVERRIDE")
 
 # Declare intent in the single shared active-env file BEFORE starting -
 # watchdog.py in every container (this app and morning-mcp-app, dev and
@@ -48,11 +53,6 @@ fi
 # If you're switching from a different environment, run
 # ./scripts/killall_containers.sh FIRST (see CLAUDE.md's "ONE ENVIRONMENT SET
 # AT A TIME" rule) - this script does not do that for you.
-#
-# The lock is shared across all clones (this one, coder1, coder2, ...) via
-# ./shared, and "dev" is additionally locked to whichever clone acquires it
-# - see scripts/env_lock.sh.
-source "$REPO_ROOT/scripts/env_lock.sh"
 env_lock_acquire "$ENV"
 
 docker compose "${COMPOSE_ARGS[@]}" up -d "$SERVICE"
