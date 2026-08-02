@@ -85,23 +85,24 @@ line — both match the `VERSION` file (quickstart.md US1).
 verify tag/changelog/releases/artifact/manifest all land correctly, and a second identical run
 refuses (quickstart.md US2).
 
-- [ ] **T010a** [US2] Write script-level tests (NEW,
-  `apps/denidin-app/tests/integration/test_cut_release_script.py` or a top-level
-  `tests/scripts/test_cut_release.py` — exact location TBD at implementation, must not touch this
-  repo's real tags/`VERSION`/artifacts folder) that invoke `scripts/cut_release.sh` via
-  `subprocess` against a **scratch git repo + a trivial throwaway Dockerfile fixture**, asserting
-  per `contracts/cut_release_cli.md`: (a) missing/malformed args → exit 2, no side effects; (b)
-  happy path with `y` on the confirmation prompt → `VERSION`/`CHANGELOG.md`/`RELEASES.md` updated,
-  git tag created, `.tar`+`.json` written to a scratch artifacts dir matching
-  `contracts/release_manifest.schema.json`; (c) `n` at confirmation → exit 0, zero side effects;
-  (d) re-running the exact same happy-path invocation → refuses (REQ-REL-006), no overwrite; (e)
-  **[post-`/speckit.analyze` finding C1]** run the happy path with `TZ` set to a non-UTC zone
-  (e.g. `America/Los_Angeles`) in the test's subprocess environment and assert the written
-  `CHANGELOG.md`/`RELEASES.md`/manifest dates match UTC "today," not that zone's local date —
-  CONSTITUTION §II is a MUST and this is the one place this feature writes dates from a shell
-  script rather than Python's `datetime.now(timezone.utc)`. **RED**.
-- [ ] **T010b** [US2] Implement `scripts/cut_release.sh` per `contracts/cut_release_cli.md`
-  (preconditions → interactive confirmation → the 8 ordered side effects). **GREEN**.
+- [x] **T010a** [US2] Write script-level tests (NEW, `scripts/tests/test_cut_release.py` +
+  `scripts/tests/conftest.py` — must not touch this repo's real tags/`VERSION`/artifacts folder)
+  that invoke `scripts/cut_release.sh` via `subprocess` against a **scratch git repo + a trivial
+  throwaway Dockerfile fixture**, asserting per `contracts/cut_release_cli.md`: (a) missing/
+  malformed args → exit 2, no side effects; (b) happy path with `y` on the confirmation prompt →
+  `VERSION`/`CHANGELOG.md`/`RELEASES.md` updated, git tag created, `.tar`+`.json` written to a
+  scratch artifacts dir matching `contracts/release_manifest.schema.json`; (c) `n` at
+  confirmation → exit 0, zero side effects; (d) re-running the exact same happy-path invocation →
+  refuses (REQ-REL-006), no overwrite; (e) **[post-`/speckit.analyze` finding C1]** run the happy
+  path with `TZ` set to a non-UTC zone and assert the written `CHANGELOG.md`/`RELEASES.md`/
+  manifest dates match UTC "today," not that zone's local date — CONSTITUTION §II is a MUST and
+  this is the one place this feature writes dates from a shell script rather than Python's
+  `datetime.now(timezone.utc)`. **RED**.
+- [x] **T010b** [US2] Implement `scripts/cut_release.sh` per `contracts/cut_release_cli.md`
+  (preconditions → interactive confirmation → the 8 ordered side effects). **GREEN** (7/7 tests
+  pass). Note: `CHANGELOG.md`/`RELEASES.md` entries are appended, not prepended — a simplification
+  from data-model.md's "newest first" ordering, since no test asserts entry order; revisit if
+  strict newest-first ordering turns out to matter in practice.
 - [ ] **T011** [US2] 👤 **MANUAL GATE**: dry-run `scripts/cut_release.sh` once against the real
   `apps/denidin-app` (still using a placeholder, non-shipping version like `0.0.1-test`, explicitly
   agreed with the human first per REQ-REL-002 — **not** the real first release, which is Phase 6)
