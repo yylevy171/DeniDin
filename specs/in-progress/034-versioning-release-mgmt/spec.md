@@ -2,7 +2,7 @@
 
 **Feature ID**: 034-versioning-release-mgmt
 **Priority**: P2 (assumed default — not blocking other work; revisit if the user wants this elevated)
-**Status**: Planned (spec + user-stories + plan/research/data-model/contracts/quickstart complete 2026-08-02; ready for `/speckit.tasks`)
+**Status**: Tasks Generated (spec + user-stories + plan/research/data-model/contracts/quickstart + tasks.md complete 2026-08-02; ready for `/speckit.analyze`)
 **Created**: July 30, 2026
 **Updated**: August 2, 2026
 

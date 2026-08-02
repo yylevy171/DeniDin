@@ -1,0 +1,220 @@
+# Tasks: Versioning & Release Management (Feature 034)
+
+**Input**: `plan.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`, `spec.md`,
+`user-stories.md` (US1-US4).
+
+## Conventions
+
+- `[P]` = parallelizable (different files, no dependency on an incomplete task in this list).
+- `[US#]` = maps to the user story of that number in `user-stories.md`.
+- `Xa`/`Xb` pairs = METHODOLOGY §VI TDD gate: `a` writes a failing test (RED, **requires human
+  approval before `b` starts**), `b` implements until it passes (GREEN). Tests are immutable once
+  approved. No `unittest.mock` of OpenAI (US4's E2E test) or of `git`/`docker` subprocess calls
+  (US2/US3's script tests) — real local tools, real (scratch/throwaway) fixtures.
+- 👤 **MANUAL GATE** tasks stay unchecked until a human actually performs or explicitly approves
+  them — not something a session can complete unilaterally, per this feature's own hard
+  constraints (REQ-REL-002/REQ-ROLL-004) and the general clone-confinement/environment-start
+  rules already in CLAUDE.md.
+- **Test tier**: US4 is a real, text-only OpenAI call → `billed` tier (`tests/billed/`,
+  `@pytest.mark.billed`, Feature 029) — runs freely, no per-run approval. US1-3 involve no OpenAI
+  calls at all — plain unit/integration tests, no tier restriction.
+
+---
+
+## Phase 1 — Foundation (shared building blocks, no user-facing behavior yet)
+
+- [ ] **T001** [P] Create `apps/denidin-app/VERSION` containing `0.0.0-preinit` — an explicit,
+  obviously-not-a-real-release placeholder (per REQ-REL-006, only `scripts/cut_release.sh`
+  produces real versions; this just gives Phase 2's code something to read before the first real
+  release is cut in Phase 6). No test needed (static file, validated indirectly by T007a/T009a).
+- [ ] **T002** [P] Create `apps/morning-mcp-app/VERSION` containing `0.0.0-preinit`, same
+  rationale as T001.
+- [ ] **T003** [P] Create `apps/denidin-app/CHANGELOG.md` and `apps/denidin-app/RELEASES.md` as
+  empty scaffolds (just a `# Changelog` / `# Releases` heading — data-model.md shapes; first real
+  entries land in Phase 6 via `cut_release.sh`, never hand-written).
+- [ ] **T004** [P] Create `apps/morning-mcp-app/CHANGELOG.md` and
+  `apps/morning-mcp-app/RELEASES.md` scaffolds, same as T003.
+- [ ] **T005** 👤 **MANUAL GATE**: create `/Users/yaron/Projects/DeniDin/artifacts/denidin-app/`
+  and `/Users/yaron/Projects/DeniDin/artifacts/morning-mcp-app/` — this writes inside the root
+  clone's directory tree, outside `coder1`'s own confinement boundary (research.md Decision 7);
+  needs its own explicit go-ahead at implementation time even though the path itself was already
+  confirmed at spec time. Also confirm the user has already added the root clone's `.gitignore`
+  entry for `/artifacts/` (user-owned, per 2026-08-02 decision) before this task is considered
+  done.
+
+---
+
+## Phase 2 — User Story 1: See which version is currently deployed (Priority: P1) 🎯 MVP
+
+**Goal**: `/health` reports a version; every log line in both apps carries the current version.
+
+**Independent Test**: `curl /health` on morning-mcp-app; grep any sampled `logs/denidin.log`
+line — both match the `VERSION` file (quickstart.md US1).
+
+- [ ] **T006a** [P] [US1] Write unit tests in `apps/denidin-app/tests/unit/test_logger.py` (NEW)
+  for a `VersionFilter` (`logging.Filter` subclass) in `src/utils/logger.py`: asserts a
+  `LogRecord` passed through a logger built by `setup_logger()` has a `version` attribute matching
+  a fixture `VERSION` file's content, and that the formatted output string contains
+  `[v<version>]`. Cover the missing/malformed-`VERSION`-file case → `"unknown"` (per US1's
+  acceptance criteria). **RED**.
+- [ ] **T006b** [US1] Implement `VersionFilter` + formatter-string change (research.md Decision 1)
+  in `apps/denidin-app/src/utils/logger.py`. **GREEN**. Existing `test_message.py` and every other
+  test relying on this logger must stay green unchanged (formatter change is additive to the
+  string, not a structural change other tests should be parsing).
+- [ ] **T007a** [P] [US1] Write the mirrored unit tests in
+  `apps/morning-mcp-app/tests/unit/test_logger.py` (NEW), same assertions as T006a against
+  `denidin_mcp_morning/utils/logger.py`. **RED**.
+- [ ] **T007b** [US1] Implement the mirrored `VersionFilter` + formatter change in
+  `apps/morning-mcp-app/src/denidin_mcp_morning/utils/logger.py`. **GREEN**.
+- [ ] **T008a** [P] [US1] Write a unit test in `apps/morning-mcp-app/tests/unit/test_server.py`
+  (existing or NEW) asserting `GET /health`'s JSON response includes a `version` field matching
+  `contracts/health_response.schema.json`, alongside unchanged `status`/`environment`. **RED**.
+- [ ] **T008b** [US1] Implement: extend `_build_health_handler`/`_health` in
+  `apps/morning-mcp-app/src/denidin_mcp_morning/server.py:71-82` to read `VERSION` once at
+  startup and include it (research.md Decision 3). **GREEN**.
+- [ ] **T009** [US1] 👤 **MANUAL GATE**: run `quickstart.md`'s US1 scenario against a real running
+  container (dev) — needs its own explicit approval to start that environment first, per CLAUDE.md.
+
+---
+
+## Phase 3 — User Story 2: Cut a release as part of finishing a feature (Priority: P1)
+
+**Goal**: `scripts/cut_release.sh <app> <version>` — human-supplied args only, immutable once run.
+
+**Independent Test**: Run the script by hand with a fixed version against a scratch fixture repo;
+verify tag/changelog/releases/artifact/manifest all land correctly, and a second identical run
+refuses (quickstart.md US2).
+
+- [ ] **T010a** [US2] Write script-level tests (NEW,
+  `apps/denidin-app/tests/integration/test_cut_release_script.py` or a top-level
+  `tests/scripts/test_cut_release.py` — exact location TBD at implementation, must not touch this
+  repo's real tags/`VERSION`/artifacts folder) that invoke `scripts/cut_release.sh` via
+  `subprocess` against a **scratch git repo + a trivial throwaway Dockerfile fixture**, asserting
+  per `contracts/cut_release_cli.md`: (a) missing/malformed args → exit 2, no side effects; (b)
+  happy path with `y` on the confirmation prompt → `VERSION`/`CHANGELOG.md`/`RELEASES.md` updated,
+  git tag created, `.tar`+`.json` written to a scratch artifacts dir matching
+  `contracts/release_manifest.schema.json`; (c) `n` at confirmation → exit 0, zero side effects;
+  (d) re-running the exact same happy-path invocation → refuses (REQ-REL-006), no overwrite. **RED**.
+- [ ] **T010b** [US2] Implement `scripts/cut_release.sh` per `contracts/cut_release_cli.md`
+  (preconditions → interactive confirmation → the 8 ordered side effects). **GREEN**.
+- [ ] **T011** [US2] 👤 **MANUAL GATE**: dry-run `scripts/cut_release.sh` once against the real
+  `apps/denidin-app` (still using a placeholder, non-shipping version like `0.0.1-test`, explicitly
+  agreed with the human first per REQ-REL-002 — **not** the real first release, which is Phase 6)
+  to sanity-check it against the real Dockerfile/build context, then manually undo
+  (`git tag -d`, revert the VERSION/CHANGELOG/RELEASES commit, delete the test artifact) — this
+  step exists purely to catch real-Dockerfile-specific bugs the scratch-fixture tests in T010a
+  can't catch, not to produce a real release.
+
+---
+
+## Phase 4 — User Story 3: Roll back to a prior release (Priority: P2)
+
+**Goal**: `scripts/rollback_release.sh <app> <env> <version>` — loads a saved artifact, no rebuild.
+
+**Independent Test**: Cut two scratch releases (via T010b's script), confirm the second is "live"
+(a scratch stand-in for a container), roll back to the first, confirm it's live again, confirm no
+rebuild occurred and `master`'s history is untouched (quickstart.md US3).
+
+**Depends on**: Phase 3 (needs a working `cut_release.sh` to produce artifacts to roll back to).
+
+- [ ] **T012a** [US3] Write script-level tests (same file/location convention as T010a) for
+  `scripts/rollback_release.sh` per `contracts/rollback_release_cli.md`: (a) missing/malformed
+  args → exit 2; (b) missing artifact/manifest → exit 1, clear message, no `docker build` ever
+  invoked (assert this explicitly — e.g. by asserting no build-related subprocess call happened);
+  (c) manifest `app`/`version` mismatch → exit 1, refuses; (d) happy path → `docker load` runs,
+  target container recreated from the loaded image, no rebuild step. **RED**.
+- [ ] **T012b** [US3] Implement `scripts/rollback_release.sh` per
+  `contracts/rollback_release_cli.md`. **GREEN**.
+- [ ] **T013** [US3] 👤 **MANUAL GATE**: run `quickstart.md`'s US3 scenario for real — needs a
+  real cut-then-rollback cycle against a running dev environment, its own explicit
+  environment-start approval, and (per REQ-ROLL-004) an explicit human-stated target version for
+  the rollback itself, not inferred by the agent running the test.
+
+---
+
+## Phase 5 — User Story 4: Ask the bot its own version over WhatsApp (Priority: P3)
+
+**Goal**: `denidin-app` answers "what version are you running?" accurately, ungated by RBAC.
+
+**Independent Test**: Real `contactMessage`-style text webhook asking the version question;
+assert the reply states the exact `VERSION` file value (quickstart.md US4).
+
+**Depends on**: Phase 1 only (needs `VERSION` to exist) — independent of Phase 2/3/4, can run in
+parallel with them.
+
+- [ ] **T014a** [P] [US4] Write a `billed`-tier real-API E2E test
+  `test_denidin_version_query_e2e.py` (NEW, `apps/denidin-app/tests/billed/`,
+  `@pytest.mark.billed`): send a real text webhook asking "what version are you running?", assert
+  the reply states the fixture `VERSION` value, for at least one client-role and one
+  godfather-role sender (confirms US4's "not RBAC-gated" acceptance criterion). **RED**.
+- [ ] **T014b** [US4] Implement: append the current version to `AIHandler`'s per-call
+  `instructions` assembly in `apps/denidin-app/src/handlers/ai_handler.py` (around
+  `ai_handler.py:363-368`, same block as today's-date injection — research.md Decision 4).
+  **GREEN** (run via `pytest tests/billed/test_denidin_version_query_e2e.py -m billed -v` — no
+  approval needed, `billed` tier).
+
+---
+
+## Phase 6 — Documentation, haleluya integration, and the real first release
+
+- [ ] **T015** [P] Update CLAUDE.md's REQ-DOC-001 content: document where `VERSION` lives per
+  app, the `<app>-v<version>` tag convention, `CHANGELOG.md`/`RELEASES.md` locations, and the
+  artifacts folder path — the hard-constraint banner itself was already added 2026-08-02, ahead of
+  this phase; this task is the reference documentation, not the rule.
+- [ ] **T016** [P] Update `.github/METHODOLOGY.md`'s "Finish-Feature Trigger Phrase" section
+  (REQ-DOC-002) to reference the new mandatory post-`haleluya` release prompt (REQ-REL-001), so
+  the existing shorthand covers it instead of needing a second command to remember.
+- [ ] **T017** `pylint`/`mypy` pass on every changed Python file
+  (`apps/denidin-app/src/utils/logger.py`, `apps/denidin-app/src/handlers/ai_handler.py`,
+  `apps/morning-mcp-app/src/denidin_mcp_morning/utils/logger.py`,
+  `apps/morning-mcp-app/src/denidin_mcp_morning/server.py`) — both apps' usual
+  `pylint --fail-under=7.0` / `mypy` invocations from their own directories.
+- [ ] **T018** Full default `pytest tests/ -v --tb=short` pass in both apps (`-m "not billed and
+  not expensive"`), plus a separate `pytest tests/billed/test_denidin_version_query_e2e.py -m
+  billed -v` run (T014b already ran this once; this is the final combined pass) — confirms no
+  regression to existing logging/health/instructions behavior.
+- [ ] **T019** 👤 **MANUAL GATE — the real first release**: once T001-T018 are all green and this
+  feature itself is ready to ship via the normal `haleluya` flow, the **actual** first
+  `scripts/cut_release.sh denidin-app <version>` / `scripts/cut_release.sh morning-mcp-app
+  <version>` runs happen here — per REQ-REL-001/002, the agent asks the human whether to cut a
+  release for each app and, if yes, asks for the exact version string; **the agent must not
+  suggest `0.0.0-preinit` → `1.0.0` or any other number itself.** This replaces the `0.0.0-preinit`
+  placeholder from T001/T002 with each app's real first tracked version.
+
+---
+
+## Dependencies & Execution Order
+
+- Phase 1 (Foundation) blocks all of Phase 2-5 — every story needs `VERSION` to exist; T005
+  (artifacts folder) specifically blocks Phase 3/4's happy-path tests from writing real artifacts
+  (though T010a/T012a's scratch-fixture tests don't strictly need T005 done first, since they use
+  a throwaway artifacts dir, not the real one).
+- Phase 2 (US1) has no dependency beyond Phase 1 — can run fully in parallel with Phase 3/4/5.
+- Phase 4 (US3) depends on Phase 3 (US2) — rollback needs a working cut-release script to produce
+  artifacts to roll back to.
+- Phase 5 (US4) depends only on Phase 1 — independent of Phase 2/3/4, can run in parallel.
+- Phase 6 runs last, and T019 specifically cannot start until every other task is done (it's the
+  real, permanent, human-gated release moment this entire feature exists to make safe).
+
+## MVP
+
+Phase 1 + Phase 2 (US1) alone delivers real value: operators can finally tell what's actually
+deployed, addressing the core problem statement (the 2026-07-20 incident) without yet needing the
+release/rollback machinery.
+
+## Incremental Delivery
+
+1. Phase 1 → Phase 2 (US1) → ship/verify (MVP: observability).
+2. Phase 3 (US2) → ship/verify (releases can be cut, safely, human-gated).
+3. Phase 4 (US3) → ship/verify (rollback safety net).
+4. Phase 5 (US4) → ship/verify (WhatsApp-facing convenience, lowest priority).
+5. Phase 6 → docs, haleluya integration, and the real first release for both apps.
+
+## Out of Scope (see spec.md / user-stories.md "Out of Scope")
+
+- Any AI-computed, suggested, or defaulted version number, anywhere, ever (REQ-REL-002/
+  REQ-ROLL-004) — every task above that touches a real version string is either a fixed
+  placeholder (`0.0.0-preinit`, T001/T002), a test fixture value, or explicitly human-gated (T019).
+- A unified repo-wide version number; automatic MAJOR/MINOR/PATCH classification; CI/CD;
+  zero-downtime/automated rollback; a container registry; automated artifact retention/pruning;
+  any AI-initiated release or rollback — all per spec.md's Explicitly Out of Scope.
