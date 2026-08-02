@@ -175,16 +175,18 @@ assert the reply states the exact `VERSION` file value (quickstart.md US4).
 **Depends on**: Phase 1 only (needs `VERSION` to exist) — independent of Phase 2/3/4, can run in
 parallel with them.
 
-- [ ] **T014a** [P] [US4] Write a `billed`-tier real-API E2E test
+- [x] **T014a** [P] [US4] Write a `billed`-tier real-API E2E test
   `test_denidin_version_query_e2e.py` (NEW, `apps/denidin-app/tests/billed/`,
   `@pytest.mark.billed`): send a real text webhook asking "what version are you running?", assert
   the reply states the fixture `VERSION` value, for at least one client-role and one
-  godfather-role sender (confirms US4's "not RBAC-gated" acceptance criterion). **RED**.
-- [ ] **T014b** [US4] Implement: append the current version to `AIHandler`'s per-call
-  `instructions` assembly in `apps/denidin-app/src/handlers/ai_handler.py` (around
-  `ai_handler.py:363-368`, same block as today's-date injection — research.md Decision 4).
-  **GREEN** (run via `pytest tests/billed/test_denidin_version_query_e2e.py -m billed -v` — no
-  approval needed, `billed` tier).
+  godfather-role sender (confirms US4's "not RBAC-gated" acceptance criterion). **RED** (both
+  tests failed against a real OpenAI call, confirming the model didn't know the version yet).
+- [x] **T014b** [US4] Implement: append the current version to `AIHandler`'s per-call
+  `instructions` assembly in `apps/denidin-app/src/handlers/ai_handler.py` (read once at
+  `__init__` into `self._app_version`, appended in `_build_instructions` right after the
+  existing date block — research.md Decision 4). **GREEN** — 2/2 pass; full 536-test unit suite
+  still green; pylint unchanged at 9.29/10, mypy shows only 2 pre-existing unrelated missing-stub
+  errors.
 
 ---
 

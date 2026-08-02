@@ -18,7 +18,7 @@ from tenacity import (
 )
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage, AIRequest, AIResponse
-from src.utils.logger import get_logger
+from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_manager import MemoryManager
 from src.managers.user_manager import UserManager
@@ -317,7 +317,11 @@ class AIHandler:
         """
         self.client = ai_client
         self.config = config
-        
+
+        # Feature 034 (REQ-VER-005): read once at construction, not per-call - a version
+        # can't change mid-process (research.md Decision 4), unlike today's date below.
+        self._app_version = read_version(DEFAULT_VERSION_FILE)
+
         # Constitution loading state (mtime-based caching)
         self._constitution_content: Optional[str] = None
         self._constitution_mtime: Optional[float] = None
@@ -660,7 +664,9 @@ class AIHandler:
             f"THE CURRENT DATE IS {today} (UTC). Treat this as the authoritative "
             f"\"today\" when resolving any relative or partial date the user gives "
             f"(a day/month with no year, \"היום\", \"אתמול\", etc.) — never fall "
-            f"back on a year from your training data."
+            f"back on a year from your training data.\n"
+            f"YOUR CURRENT VERSION IS {self._app_version}. If asked what version you are "
+            f"running (in any language), state this exact value."
         )
 
     @retry(
