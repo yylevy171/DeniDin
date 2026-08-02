@@ -23,18 +23,18 @@
 
 ## Phase 1 — Foundation (shared building blocks, no user-facing behavior yet)
 
-- [ ] **T001** [P] Create `apps/denidin-app/VERSION` containing `0.0.0-preinit` — an explicit,
+- [x] **T001** [P] Create `apps/denidin-app/VERSION` containing `0.0.0-preinit` — an explicit,
   obviously-not-a-real-release placeholder (per REQ-REL-006, only `scripts/cut_release.sh`
   produces real versions; this just gives Phase 2's code something to read before the first real
   release is cut in Phase 6). No test needed (static file, validated indirectly by T007a/T009a).
-- [ ] **T002** [P] Create `apps/morning-mcp-app/VERSION` containing `0.0.0-preinit`, same
+- [x] **T002** [P] Create `apps/morning-mcp-app/VERSION` containing `0.0.0-preinit`, same
   rationale as T001.
-- [ ] **T003** [P] Create `apps/denidin-app/CHANGELOG.md` and `apps/denidin-app/RELEASES.md` as
+- [x] **T003** [P] Create `apps/denidin-app/CHANGELOG.md` and `apps/denidin-app/RELEASES.md` as
   empty scaffolds (just a `# Changelog` / `# Releases` heading — data-model.md shapes; first real
   entries land in Phase 6 via `cut_release.sh`, never hand-written).
-- [ ] **T004** [P] Create `apps/morning-mcp-app/CHANGELOG.md` and
+- [x] **T004** [P] Create `apps/morning-mcp-app/CHANGELOG.md` and
   `apps/morning-mcp-app/RELEASES.md` scaffolds, same as T003.
-- [ ] **T005** 👤 **MANUAL GATE**: create `/Users/yaron/Projects/DeniDin/artifacts/denidin-app/`
+- [x] **T005** 👤 **MANUAL GATE**: create `/Users/yaron/Projects/DeniDin/artifacts/denidin-app/`
   and `/Users/yaron/Projects/DeniDin/artifacts/morning-mcp-app/` — this writes inside the root
   clone's directory tree, outside `coder1`'s own confinement boundary (research.md Decision 7);
   needs its own explicit go-ahead at implementation time even though the path itself was already
