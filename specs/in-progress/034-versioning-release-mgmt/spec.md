@@ -2,7 +2,7 @@
 
 **Feature ID**: 034-versioning-release-mgmt
 **Priority**: P2 (assumed default — not blocking other work; revisit if the user wants this elevated)
-**Status**: Draft - Clarified (scope + open questions resolved 2026-08-02; ready for `/speckit.plan`)
+**Status**: Planned (spec + user-stories + plan/research/data-model/contracts/quickstart complete 2026-08-02; ready for `/speckit.tasks`)
 **Created**: July 30, 2026
 **Updated**: August 2, 2026
 
@@ -228,9 +228,9 @@ Reasonable defaults applied where no explicit user direction was given, document
 - **`apps/denidin-app`'s version-query answer (REQ-VER-005) is not RBAC-gated.** Assumed since
   it's non-sensitive operational info, unlike Morning-tool access — flag if this should actually
   be restricted to godfather/admin instead.
-- **The artifacts folder's exact path** is assumed to be `/Users/yaron/Projects/DeniDin/artifacts/`
-  (sibling to the `DeniDin`/`coder1`/`coder2` clones, matching the existing shared-state
-  precedent) — confirm this exact path, or provide the correct one, before `/speckit.plan`.
+- **The artifacts folder's exact path is `/Users/yaron/Projects/DeniDin/artifacts/`** (sibling to
+  the `DeniDin`/`coder1`/`coder2` clones, matching the existing shared-state precedent) —
+  confirmed by the user 2026-08-02.
 
 ## Key Entities
 
@@ -332,6 +332,11 @@ resolve real ambiguity the same way a clarify-loop answer would:
   storing exported image tarballs + manifests (REQ-ART-002), superseding the earlier "retained in
   the local Docker image cache" language from the prior session's REQ-REL-005/REQ-ROLL-002, which
   is now built on top of this artifacts-folder mechanism instead.
+
+### Session 2026-08-02 (final confirmation)
+
+- Q: Is `/Users/yaron/Projects/DeniDin/artifacts/` the correct artifacts folder path? → A:
+  **Confirmed correct as-is.**
 
 No open `[NEEDS CLARIFICATION]` markers remain.
 
