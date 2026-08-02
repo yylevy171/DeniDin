@@ -3,6 +3,7 @@ WhatsAppHandler - Handles WhatsApp message processing with retry logic
 Phase 5: US3 - Error Handling & Resilience
 """
 from datetime import datetime, timezone
+from typing import cast
 import requests
 from tenacity import (
     retry,
@@ -232,7 +233,7 @@ class WhatsAppHandler:
         Returns:
             Media type string (e.g., 'imageMessage', 'documentMessage')
         """
-        return notification.event.get('messageData', {}).get('typeMessage', '')
+        return cast(str, notification.event.get('messageData', {}).get('typeMessage', ''))
     
     def is_supported_media_message(self, notification: Notification) -> bool:
         """

@@ -5,7 +5,7 @@ Supports loading from JSON/YAML files and validation.
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Optional, Dict
+from typing import Any, Optional, Dict
 
 
 @dataclass
@@ -80,7 +80,7 @@ class AppConfiguration:
             raise ValueError(f"Missing required configuration fields: {', '.join(missing_fields)}")
 
         # Set defaults for optional fields
-        defaults = {
+        defaults: Dict[str, Any] = {
             'environment': None,
             'ai_model': 'gpt-5.6-luna',
             'ai_vision_model': 'gpt-4o',

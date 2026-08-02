@@ -9,7 +9,7 @@ the current (rotating, free-tier ngrok) tunnel URL for each Responses API call.
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import cast, Optional
 
 from src.utils.logger import get_logger
 
@@ -82,4 +82,4 @@ class MorningMcpLocator:
                 )
                 return None
 
-        return server_url
+        return cast(str, server_url)

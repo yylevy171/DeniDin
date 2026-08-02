@@ -7,6 +7,7 @@ Ensures atomic transfer + archival operations.
 
 import threading
 import time
+from typing import Optional
 from src.utils.logger import get_logger
 from src.managers.session_manager import Session
 
@@ -35,7 +36,7 @@ class SessionCleanupThread:
         self.global_context = global_context
         self.cleanup_interval_seconds = cleanup_interval_seconds
         self._running = False
-        self._thread = None
+        self._thread: Optional[threading.Thread] = None
 
         logger.info(f"SessionCleanupThread initialized: interval={cleanup_interval_seconds}s")
 
