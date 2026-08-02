@@ -84,10 +84,21 @@ apps/<app>/` directly (not via `docker compose`), independent of whatever image 
 `docker save <app>:<version> -o <artifacts-root>/<app>/<app>-v<version>.tar` and writes the
 manifest (REQ-ART-002) alongside it — and stops there, deploying nothing (Decision 9).
 `scripts/deploy_release.sh <app> <env> <version>` reverses the save step: `docker load -i
-<artifacts-root>/<app>/<app>-v<version>.tar`, then retags/recreates the named environment's
-running container from that loaded image (exact `docker compose` invocation TBD at
-task-implementation time — needs to override the running container to use the loaded image tag
-instead of triggering its own `build:` step), then verifies (Decision 10).
+<artifacts-root>/<app>/<app>-v<version>.tar`, then **retags** the loaded `<app>:<version>` image
+to `<compose-project-name>-<service-name>:latest` (e.g. `denidin-dev-denidin-app-dev:latest` in
+the real repo — verified 2026-08-02 against the real compose files' `name:` field and service
+keys) and runs `docker compose -f docker/docker-compose.<env>.yml --project-directory <repo-root>
+up -d --no-build <service-name>`, so compose recreates the container using the loaded image while
+keeping its existing volume mounts (config/logs/data — both apps declare these as `VOLUME`, not
+baked into the image) instead of rebuilding from source. Then verifies (Decision 10).
+
+**Safety-critical detail**: the project name is read from the compose file's own `name:` field
+(`grep -m1 '^name:' <compose-file>`), never hardcoded as `denidin-<env>` — hardcoding it would
+mean a scratch/test compose file using the same project name could collide with (and potentially
+disrupt) a real running `dev`/`prod` environment on the same machine, since Compose's container
+namespace is keyed by project name. Deriving it from the file in front of the script keeps
+scratch tests trivially collision-proof (they just use a different `name:`), with no special-casing
+needed in the script itself.
 
 **Rationale**: Keeps the release/rollback mechanism fully decoupled from `docker compose`'s own
 build/naming (which is oriented around ordinary forward dev iteration, not durable named
@@ -183,10 +194,16 @@ reporting done, per app:
 - `morning-mcp-app`: poll `GET /health` (already exposes `version` per REQ-VER-002) every ~2s for
   up to a bounded timeout (e.g. 30s), succeeding as soon as the response's `version` field matches
   the target version.
-- `denidin-app` (no HTTP surface): tail the last N lines of `logs/denidin.log` (or that
-  environment's log path) every ~2s for up to the same bounded timeout, succeeding as soon as a
-  line carrying the target version's marker (REQ-VER-003's `[v<version>]` format, Decision 1)
-  appears.
+- `denidin-app` (no HTTP surface): `docker logs <container-name> --tail 20` every ~2s for up to
+  the same bounded timeout, succeeding as soon as a line carries the target version's marker
+  (REQ-VER-003's `[v<version>]` format, Decision 1). This works because both apps' loggers
+  attach a `StreamHandler` to stderr (`logger.py`, unchanged by Feature 034) in addition to the
+  file handler, and `watchdog.py` (the container's PID 1) spawns the app as a child process
+  without redirecting its stdout/stderr — so the child's stderr output flows through to the
+  container's own stdout/stderr, which `docker logs` captures. No new logging surface needed;
+  this is the same log line REQ-VER-003 already guarantees carries the version, just read via
+  `docker logs` instead of the mounted file (host-mounted `logs/dev/denidin.log` would work too,
+  but `docker logs` needs no assumption about *which* environment's log path is mounted where).
 
 A timeout without a match is a **failed** deploy — the script reports failure with the container's
 actual last-observed state, not a silent/ambiguous "started but who knows."

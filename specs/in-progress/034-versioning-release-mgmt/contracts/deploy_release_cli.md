@@ -49,16 +49,23 @@ fall back to rebuilding.
 ## Side effects (in order)
 
 1. `docker load -i <artifacts-root>/<app>/<app>-v<version>.tar` (no rebuild — REQ-DEPLOY-001, no
-   exception for any of the three cases).
-2. Recreate the `<app>-<env>` container from the loaded image (exact `docker compose`/`docker run`
-   invocation TBD at task-implementation time — must override the running container to use the
-   loaded, version-tagged image rather than triggering that environment's normal `build:` step).
+   exception for any of the three cases). Produces a local image tagged `<app>:<version>`.
+2. **Retag** that image to whatever name `docker-compose.<env>.yml` expects for this service —
+   `<compose-project-name>-<service-name>:latest` (e.g. `denidin-dev-denidin-app-dev:latest`,
+   verified 2026-08-02 against the real compose files' `name:`/service-key fields), then
+   `docker compose -f docker/docker-compose.<env>.yml --project-directory <repo-root> up -d
+   --no-build <service-name>`. This is the mechanism that preserves the environment's existing
+   volume mounts (config/logs/data — both apps' Dockerfiles declare these as `VOLUME`, not baked
+   into the image) while forcing compose to use the just-loaded image instead of rebuilding from
+   source — a bare `docker run` of the loaded image would be missing those mounts entirely and
+   silently break on a real deploy (no config → crash).
 3. **Automatically verify** (REQ-DEPLOY-002, research.md Decision 10) — block until confirmed or
    timeout:
    - `morning-mcp-app`: poll `GET /health` every ~2s (bounded timeout, e.g. 30s) until its
      `version` field matches `<version>`.
-   - `denidin-app`: tail recent log lines every ~2s (same timeout) until one carries the
-     `[v<version>]` marker.
+   - `denidin-app`: `docker logs <container-name> --tail 20` every ~2s (same timeout) until one
+     line carries the `[v<version>]` marker (research.md Decision 10 — works because the app's
+     stderr output flows through to the container's own stdout/stderr).
    - Timeout without a match → **deploy reported as FAILED** (exit 1), even though the container
      did start — the container's actual last-observed version/state is included in the failure
      message. A started-but-unverified container is not a success.
