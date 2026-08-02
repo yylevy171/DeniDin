@@ -2,7 +2,12 @@
 
 **Feature ID**: 034-versioning-release-mgmt
 **Priority**: P2 (assumed default — not blocking other work; revisit if the user wants this elevated)
-**Status**: Corrected post-analyze (deploy/rollback unified into REQ-DEPLOY-*, `scripts/deploy_release.sh` replaces `scripts/rollback_release.sh`, REQ-REL-001 cut-before-deploy ordering fixed, REQ-DEPLOY-002 automatic verification added — 2026-08-02); plan.md/research.md/data-model.md/contracts/quickstart.md/tasks.md/checklists all updated to match; C1/H1 findings from `/speckit.analyze` closed in tasks.md T010a/T012a; ready for `/speckit.implement`
+**Status**: Implemented (T001-T019 all complete, 2026-08-02). Real first releases cut for both
+apps (`denidin-app-v0.0.1`, `morning-mcp-app-v0.0.1`, exact versions stated by the human). T009/
+T013 (live quickstart verification against a running `dev` environment) remain open manual gates,
+deferred pending a separate environment-start approval. Deploying either cut release anywhere is
+also still a separate, open, separately-approved decision — cutting does not imply deploying.
+Ready for `/haleluya` once the human decides on those remaining steps.
 **Created**: July 30, 2026
 **Updated**: August 2, 2026
 
