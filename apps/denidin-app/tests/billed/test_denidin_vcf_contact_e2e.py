@@ -230,7 +230,11 @@ def test_godfather_shares_contact_card_missing_email_is_asked_for(denidin_app):
         f"add_client executed despite a missing email on the shared contact card: "
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
-    assert "מייל" in ask_response or "אימייל" in ask_response, (
+    # "דוא"ל" (the formal Hebrew abbreviation for "דואר אלקטרוני") is an equally
+    # correct answer the model gave for real (2026-08-02) that "מייל"/"אימייל"
+    # alone didn't catch - "דוא" as a substring covers "דוא״ל"/"דואל"/"דוא'ל"
+    # regardless of which quote-character renders the geresh.
+    assert "מייל" in ask_response or "אימייל" in ask_response or "דוא" in ask_response, (
         f"Expected the bot to ask for the missing email, got: {ask_response!r}"
     )
     assert _ledger_event_count_for_chat(denidin_app, GODFATHER_CHAT_ID) == ledger_count_before, (

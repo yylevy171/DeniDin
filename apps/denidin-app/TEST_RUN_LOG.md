@@ -54,14 +54,14 @@ run since this file started, or invalidated by a later code change).
 | 33 | test_denidin_morning_mcp_e2e.py::test_no_date_mentioned_omits_date_range | 2026-08-02 | PASS | e2f39ec | |
 | 34 | test_denidin_morning_mcp_e2e.py::test_client_all_payments_gets_the_complete_picture | 2026-08-02 | PASS | e2f39ec | |
 | 35 | test_denidin_morning_mcp_e2e.py::test_client_explicit_everything_request_gets_the_complete_picture | 2026-08-02 | PASS | e2f39ec | |
-| 36 | test_denidin_morning_mcp_e2e.py::test_godfather_gets_invoice_details_via_whatsapp | - | UNVERIFIED | - | |
-| 37 | test_denidin_morning_mcp_e2e.py::test_godfather_marks_invoice_paid_via_whatsapp | - | UNVERIFIED | - | |
-| 38 | test_denidin_morning_mcp_e2e.py::test_godfather_cancels_invoice_via_whatsapp | - | UNVERIFIED | - | |
-| 39 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_invoice_cancellation | - | UNVERIFIED | - | |
-| 40 | test_denidin_morning_mcp_e2e.py::test_godfather_marks_transaction_account_invoice_paid_via_whatsapp | - | UNVERIFIED | - | |
-| 41 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_marking_transaction_account_invoice_paid | - | UNVERIFIED | - | |
-| 42 | test_denidin_morning_mcp_e2e.py::test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected | - | UNVERIFIED | - | |
-| 43 | test_denidin_vcf_contact_e2e.py::test_godfather_shares_contact_card_complete_requires_approval | - | UNVERIFIED | - | Ledger false-positive guard added 2026-08-02 (f285de7), never run. |
+| 36 | test_denidin_morning_mcp_e2e.py::test_godfather_gets_invoice_details_via_whatsapp | 2026-08-02 | PASS | e2f39ec | |
+| 37 | test_denidin_morning_mcp_e2e.py::test_godfather_marks_invoice_paid_via_whatsapp | 2026-08-02 | PASS | e2f39ec | |
+| 38 | test_denidin_morning_mcp_e2e.py::test_godfather_cancels_invoice_via_whatsapp | 2026-08-02 | PASS | e2f39ec | |
+| 39 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_invoice_cancellation | 2026-08-02 | PASS | e2f39ec | |
+| 40 | test_denidin_morning_mcp_e2e.py::test_godfather_marks_transaction_account_invoice_paid_via_whatsapp | 2026-08-02 | PASS | e2f39ec | |
+| 41 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_marking_transaction_account_invoice_paid | 2026-08-02 | PASS | e2f39ec | |
+| 42 | test_denidin_morning_mcp_e2e.py::test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected | 2026-08-02 | PASS | e2f39ec | |
+| 43 | test_denidin_vcf_contact_e2e.py::test_godfather_shares_contact_card_complete_requires_approval | 2026-08-02 | PASS | e2f39ec | Ledger false-positive guard (added f285de7) confirmed passing for real - also confirms the mcp_approval_request suppression fix (52d6f8e) holds for add_client's approval flow. |
 | 44 | test_denidin_vcf_contact_e2e.py::test_godfather_shares_contact_card_missing_email_is_asked_for | - | UNVERIFIED | - | Ledger false-positive guard added 2026-08-02 (f285de7), never run. |
 | 45 | test_ledger_event_capture_billed.py::TestLedgerEventCaptureBilled::test_given_clear_fee_agreement_text_when_processed_then_ledger_event_captured | - | UNVERIFIED | - | File fully rewritten 2026-08-02 (f285de7) from the broken pending_ledger_events version - never run since. |
 | 46 | test_ledger_event_capture_billed.py::TestLedgerEventCaptureBilled::test_given_ordinary_chatter_when_processed_then_no_ledger_event_captured | - | UNVERIFIED | - | Same rewrite as above - never run since. |
