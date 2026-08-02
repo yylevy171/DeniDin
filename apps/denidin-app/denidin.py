@@ -16,7 +16,8 @@ from src.constants.error_messages import (
     APP_NOT_READY_RETRY_LATER,
     UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
     ERROR_PROCESSING_MESSAGE_TRY_AGAIN,
-    FAILED_TO_PROCESS_FILE_DEFAULT
+    FAILED_TO_PROCESS_FILE_DEFAULT,
+    CONTACT_CARD_ONE_AT_A_TIME
 )
 from src.handlers.ai_handler import AIHandler
 from src.handlers.whatsapp_handler import WhatsAppHandler
@@ -289,20 +290,20 @@ logger.info("Handlers initialized: AIHandler, WhatsAppHandler")
 logger.info("=" * 60)
 
 
-@bot.router.message(type_message=["textMessage", "extendedTextMessage"])
-def handle_text_message(notification: Notification) -> None:
+def _process_conversational_message(notification: Notification) -> None:
     """
-    Handle incoming text messages from WhatsApp with comprehensive error handling.
-    Phase 6: Memory System Integration
+    Shared turn-processing logic for any message type that flows into the conversational
+    AIHandler pipeline: validate -> parse -> group-mention check -> AIHandler -> send response,
+    with the same global error handling/fallback-message behavior.
+
+    Extracted (Feature 030) from what was previously handle_text_message's own body, so the new
+    contactMessage router (a shared WhatsApp contact card - see handle_contact_message) can reuse
+    it verbatim instead of duplicating this ~90-line try/except block. Callers MUST have already
+    confirmed denidin_app is initialized.
 
     Args:
         notification: Green API notification object containing message data
     """
-    # Ensure denidin_app is initialized
-    if denidin_app is None:
-        _handle_not_initialized_error(notification, "text")
-        return
-    
     try:
         # Validate message type
         if not denidin_app.whatsapp_handler.validate_message_type(notification):
@@ -381,6 +382,64 @@ def handle_text_message(notification: Notification) -> None:
                     f"Failed to send fallback message (no tracking available): {fallback_error}",
                     exc_info=True
                 )
+
+
+@bot.router.message(type_message=["textMessage", "extendedTextMessage"])
+def handle_text_message(notification: Notification) -> None:
+    """
+    Handle incoming text messages from WhatsApp with comprehensive error handling.
+    Phase 6: Memory System Integration
+
+    Args:
+        notification: Green API notification object containing message data
+    """
+    if denidin_app is None:
+        _handle_not_initialized_error(notification, "text")
+        return
+
+    _process_conversational_message(notification)
+
+
+@bot.router.message(type_message="contactMessage")
+def handle_contact_message(notification: Notification) -> None:
+    """
+    Handle a single shared WhatsApp contact card (Feature 030).
+
+    The vCard's displayName/vcard text is framed into text_content by
+    WhatsAppMessage.from_notification and flows into the exact same conversational AIHandler
+    pipeline textMessage already uses - the model reads the raw vCard lines itself and, for
+    godfather/admin senders, proposes an add_client call exactly as it would from typed text,
+    inheriting Feature 026's approval gate and missing-field behavior unchanged.
+
+    Args:
+        notification: Green API notification object containing message data
+    """
+    if denidin_app is None:
+        _handle_not_initialized_error(notification, "contact")
+        return
+
+    _process_conversational_message(notification)
+
+
+@bot.router.message(type_message="contactsArrayMessage")
+def handle_contacts_array_message(notification: Notification) -> None:
+    """
+    Handle multiple WhatsApp contacts shared at once (Feature 030).
+
+    A genuinely distinct Green API notification type from a single contactMessage (confirmed
+    via Green API's official docs), not multiple vCards inside one contactMessage. Per spec.md
+    Clarifications (2026-07-30), v1 declines this outright with a friendly "one at a time"
+    message - no vCard parsing, no AIHandler/OpenAI call at all, regardless of how many contacts
+    the array actually contains.
+
+    Args:
+        notification: Green API notification object containing message data
+    """
+    if denidin_app is None:
+        _handle_not_initialized_error(notification, "contacts array")
+        return
+
+    notification.answer(CONTACT_CARD_ONE_AT_A_TIME)
 
 
 @bot.router.message(type_message="imageMessage")

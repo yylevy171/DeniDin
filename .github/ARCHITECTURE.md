@@ -484,10 +484,11 @@ Removed (deleted from active index)
 - Background Threads (66%) - cleanup logic
 
 ### Test Categories
-As of 2026-07-07: **508 total tests** (`pytest tests/ --collect-only -q -m expensive`) - **491 run by default**, **17 marked `@pytest.mark.expensive`** (real, billed OpenAI API calls; require explicit human approval, run one at a time - see CONSTITUTION.md §VII and CLAUDE.md).
+As of 2026-07-30 (Feature 029 split the single `expensive` marker into `billed` + `expensive`): **618 total tests** (`pytest tests/ --collect-only -q`) - **563 run by default**, **46 marked `@pytest.mark.billed`** (real, text-only OpenAI API calls; cheap, can run freely - no approval/one-at-a-time restriction) and **9 marked `@pytest.mark.expensive`** (real vision/image/PDF/DOCX OpenAI API calls; costlier, require explicit human approval, run one at a time - see CONSTITUTION.md §VII and CLAUDE.md).
 - Unit tests: `tests/unit/`
 - Integration tests (E2E from external entry point, no mocking): `tests/integration/`
-- Expensive tests (real API calls): `tests/expensive/`
+- Billed tests (real, text-only API calls): `tests/billed/`
+- Expensive tests (real vision/image/PDF/DOCX API calls): `tests/expensive/`
 
 ## Deployment
 
@@ -575,9 +576,9 @@ See `specs/in-progress/` and `specs/backlog/` for planned features:
 - `src/denidin_mcp_morning/morning_client.py` - `MorningClient` (create/list/get invoices, `requests` + urllib3 retry/backoff)
 - `src/denidin_mcp_morning/auth.py` - `MorningAuth` (API key ID/secret → JWT exchange, token refresh)
 - `src/denidin_mcp_morning/server.py` - a FastMCP server (streamable-HTTP) registering 7 tools bound to one `MorningClient`: `create_invoice`, `list_invoices`, `get_invoice_details`, `update_invoice_status`, `add_client`, `get_financial_summary`, `download_invoice_pdf` (`send_invoice` from the original 8-tool design was dropped from scope). `build_asgi_app()` wraps it in `BearerTokenMiddleware` (single shared secret) plus an unauthenticated `/health` route used for tunnel-liveness checks.
-- `./run_morning_mcp.sh` / `./stop_morning_mcp.sh` run the server as a standalone long-lived process (PID-file, single-instance enforced) alongside an ngrok tunnel, writing the live URL to `running_status.json` for `apps/denidin-app` (and this app's own expensive E2E tests) to discover.
+- `./run_morning_mcp.sh` / `./stop_morning_mcp.sh` run the server as a standalone long-lived process (PID-file, single-instance enforced) alongside an ngrok tunnel, writing the live URL to `running_status.json` for `apps/denidin-app` (and this app's own billed E2E tests) to discover.
 - Remaining polish (audit logging, run-both-apps docs) tracked in `specs/done/018-denidin-morning-mcp-integration/tasks.md` Phase 4; the separate receipt-*parsing* feature (005) is still unbuilt.
 
-**Testing**: `apps/morning-mcp-app/tests/integration/` hits the real Morning **sandbox** API (no mocking, per constitution) - config in its own `config/{config.example.json,config.test.json,config.json}` (flat shape: `api_key_id`/`api_key_secret`/`api_url`, plus an `mcp` block: `auth_token`/`ngrok_authtoken`/`status_file`). `tests/expensive/test_openai_invokes_mcp_e2e.py` drives the server through a real OpenAI Responses API call, reusing an already-running standalone server's tunnel when one is live (see `discover_running_server()` in `tests/expensive/e2e_helpers.py`) rather than always spinning up a fresh tunnel, to avoid an ngrok cold-start flake.
+**Testing**: `apps/morning-mcp-app/tests/integration/` hits the real Morning **sandbox** API (no mocking, per constitution) - config in its own `config/{config.example.json,config.test.json,config.json}` (flat shape: `api_key_id`/`api_key_secret`/`api_url`, plus an `mcp` block: `auth_token`/`ngrok_authtoken`/`status_file`). `tests/billed/test_openai_invokes_mcp_e2e.py` (real, text-only OpenAI calls - `@pytest.mark.billed` since Feature 029; `tests/expensive/` exists but currently has zero tests in this app) drives the server through a real OpenAI Responses API call, reusing an already-running standalone server's tunnel when one is live (see `discover_running_server()` in `tests/e2e_helpers.py`) rather than always spinning up a fresh tunnel, to avoid an ngrok cold-start flake.
 
 **Deployment**: `apps/morning-mcp-app/Dockerfile` builds a lightweight `python:3.9-slim` image (`ENV PYTHONPATH=/app/src` so the package is importable). Runnable standalone or via the repo-root `docker-compose.yml`.

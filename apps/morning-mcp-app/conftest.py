@@ -27,7 +27,11 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "expensive: Tests that use real OpenAI APIs and incur costs (skip by default)"
+        "billed: Tests that make real, text-only OpenAI API calls (cheap; skip by default)"
+    )
+    config.addinivalue_line(
+        "markers",
+        "expensive: Tests that make real vision/image/PDF/DOCX OpenAI API calls (costlier; skip by default)"
     )
 
 

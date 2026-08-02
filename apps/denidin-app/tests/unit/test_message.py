@@ -4,6 +4,7 @@ Tests message parsing, transformation, and handling.
 """
 import pytest
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import Mock
 from src.models.message import WhatsAppMessage, AIRequest, AIResponse
 
@@ -87,6 +88,80 @@ class TestWhatsAppMessage:
 
         assert message.text_content == 'This is a forwarded message'
         assert message.message_type == 'extendedTextMessage'
+
+    def test_from_notification_extracts_contact_message_vcard(self):
+        """
+        Feature 030: a shared WhatsApp contact card (typeMessage=contactMessage) has its
+        displayName/vcard framed into text_content verbatim - no dedicated vCard field
+        parser, the model reads the raw vCard lines itself (research.md Decision 2).
+        """
+        notification = Mock()
+        vcard = (
+            "BEGIN:VCARD\nVERSION:3.0\nN:;Dana Cohen;;;\nFN:Dana Cohen\n"
+            "TEL;type=CELL;type=VOICE;waid=972501234567:+972 50-123-4567\nEND:VCARD"
+        )
+        notification.event = {
+            'typeWebhook': 'incomingMessageReceived',
+            'messageData': {
+                'typeMessage': 'contactMessage',
+                'contactMessageData': {
+                    'displayName': 'Dana Cohen',
+                    'vcard': vcard,
+                    'forwardingScore': 0,
+                    'isForwarded': False,
+                }
+            },
+            'senderData': {
+                'chatId': '1234567890@c.us',
+                'sender': '1234567890@c.us',
+                'senderName': 'John Doe'
+            },
+            'timestamp': 1234567890
+        }
+
+        message = WhatsAppMessage.from_notification(notification)
+
+        assert message.message_type == 'contactMessage'
+        assert 'Dana Cohen' in message.text_content
+        assert vcard in message.text_content
+
+    def test_from_notification_contact_message_real_fixture_has_no_email(self):
+        """
+        Real WhatsApp-exported vCard fixture (tests/fixtures/contacts/00005372-גיל ברטל .vcf)
+        has no EMAIL field at all - confirms the framing passes through such a card without
+        crashing or fabricating a missing field (US2's "common case", per spec.md).
+        """
+        fixture_path = (
+            Path(__file__).parent.parent / "fixtures" / "contacts" / "00005372-גיל ברטל .vcf"
+        )
+        vcard = fixture_path.read_text(encoding="utf-8")
+        assert "EMAIL" not in vcard
+
+        notification = Mock()
+        notification.event = {
+            'typeWebhook': 'incomingMessageReceived',
+            'messageData': {
+                'typeMessage': 'contactMessage',
+                'contactMessageData': {
+                    'displayName': 'גיל ברטל',
+                    'vcard': vcard,
+                    'forwardingScore': 0,
+                    'isForwarded': False,
+                }
+            },
+            'senderData': {
+                'chatId': '1234567890@c.us',
+                'sender': '1234567890@c.us',
+                'senderName': 'John Doe'
+            },
+            'timestamp': 1234567890
+        }
+
+        message = WhatsAppMessage.from_notification(notification)
+
+        assert message.message_type == 'contactMessage'
+        assert 'גיל ברטל' in message.text_content
+        assert vcard in message.text_content
 
     def test_from_notification_extracts_sender_info(self, sample_text_notification):
         """Test that from_notification() extracts sender information."""

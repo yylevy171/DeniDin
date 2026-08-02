@@ -205,7 +205,7 @@ class SessionManager:
         logger.debug(f"Added message {message_id} to session {session.session_id}")
         return message_id
 
-    def get_conversation_history(self, whatsapp_chat: str, max_tokens: int = None) -> List[Dict]:
+    def get_conversation_history(self, whatsapp_chat: str, max_tokens: Optional[int] = None) -> List[Dict]:
         """
         Get conversation history in AI format.
 
@@ -219,7 +219,7 @@ class SessionManager:
         session = self.get_session(whatsapp_chat)
         return self.get_conversation_history_for_session(session, max_tokens)
 
-    def get_conversation_history_for_session(self, session: Session, max_tokens: int = None) -> List[Dict]:
+    def get_conversation_history_for_session(self, session: Session, max_tokens: Optional[int] = None) -> List[Dict]:
         """
         Get conversation history for a specific session in AI format.
 
@@ -378,7 +378,7 @@ class SessionManager:
         Returns:
             List of Session objects in expired/ with transferred_to_longterm=False
         """
-        untransferred = []
+        untransferred: List[Session] = []
         expired_base = self.storage_dir / "expired"
 
         if not expired_base.exists():

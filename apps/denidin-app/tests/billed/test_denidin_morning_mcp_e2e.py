@@ -88,7 +88,7 @@ OpenAI Responses API's own `mcp_call` output, exposed on
 `AIHandler.last_response.mcp_calls` (see src/handlers/ai_handler.py) - not
 Morning's raw REST API, and not Morning's credentials.
 
-NO MOCKING anywhere. @pytest.mark.expensive: real OpenAI billing on every run.
+NO MOCKING anywhere. @pytest.mark.billed: real OpenAI billing on every run.
 Per CLAUDE.md/CONSTITUTION §VII: human approval is required before every single
 run of this test, run alone (never as part of a batch), read logs/test_logs/
 before re-running, and only re-run after a confident fix. Never re-run a test
@@ -319,7 +319,7 @@ def denidin_app(denidin_config, live_morning_tunnel):
     }
     # handle_text_message (the real @bot.router.message-decorated handler)
     # checks the module-level denidin.denidin_app global, not a local variable
-    # - must assign it here, matching tests/expensive/test_simple_text_e2e.py's
+    # - must assign it here, matching tests/billed/test_simple_text_e2e.py's
     # existing pattern, or the router handler treats the app as uninitialized.
     denidin.denidin_app = denidin.initialize_app(config_dict)
     return denidin.denidin_app
@@ -411,7 +411,7 @@ def _send_turn_and_decline(
 # create_invoice
 # ============================================================================
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_creates_invoice_via_whatsapp(denidin_app):
     """Godfather asks for a new invoice the way a real, non-technical person
     would - client name, amount, and what it's for, all in one message.
@@ -471,7 +471,7 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_declines_invoice_creation(denidin_app):
     """Godfather asks for a new invoice, then explicitly declines the pending
     approval (Feature 022) - create_invoice must never fire, and the bot's
@@ -498,7 +498,7 @@ def test_godfather_declines_invoice_creation(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_ignores_pending_approval_with_unrelated_message(denidin_app):
     """Godfather triggers a pending create_invoice approval, then sends an
     unrelated message instead of yes/no (Feature 022). This must be treated
@@ -527,7 +527,7 @@ def test_godfather_ignores_pending_approval_with_unrelated_message(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_approval_survives_intervening_small_talk(denidin_app):
     """An implicitly-declined pending approval (Feature 022) must not leave
     the app stuck: after unrelated small talk clears the pending request,
@@ -564,7 +564,7 @@ def test_godfather_approval_survives_intervening_small_talk(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_add_client_requires_approval(denidin_app):
     """🚨 CONSTITUTION §VIII flagged exception (spec.md Clarifications round 1,
     explicitly human-approved): replaces test_godfather_add_client_still_
@@ -625,7 +625,7 @@ def test_godfather_add_client_requires_approval(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_add_client_missing_field_is_asked_for(denidin_app):
     """Omitting email or phone must make the model ask for it, never call
     add_client with a guessed/blank value (runtime_constitution.md's
@@ -647,7 +647,7 @@ def test_godfather_add_client_missing_field_is_asked_for(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_add_client_rejects_malformed_email(denidin_app):
     """A malformed email must never result in a fabricated success. Two
     acceptable outcomes (asserted on whichever actually happens, not assumed
@@ -693,7 +693,7 @@ def test_godfather_add_client_rejects_malformed_email(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_declines_add_client(denidin_app):
     """Godfather asks to add a client, then explicitly declines the pending
     approval - add_client must never fire, and the bot's reply should read
@@ -720,7 +720,7 @@ def test_godfather_declines_add_client(denidin_app):
 # ============================================================================
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_lists_clients_via_whatsapp(denidin_app):
     """Godfather asks who their clients are - read-only, no approval wait
     (list_clients is in NO_APPROVAL_MCP_TOOLS, same bucket as add_client was
@@ -787,7 +787,7 @@ def test_godfather_lists_clients_via_whatsapp(denidin_app):
 # ============================================================================
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_gets_client_details_via_whatsapp(denidin_app):
     """Godfather asks for a specific client's details by name - read-only,
     no approval wait (get_client_details is in NO_APPROVAL_MCP_TOOLS)."""
@@ -829,7 +829,7 @@ def test_godfather_gets_client_details_via_whatsapp(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_gets_client_details_not_found_via_whatsapp(denidin_app):
     """Asking about a client that doesn't exist gets a friendly reply, not a
     crash or a fabricated answer."""
@@ -857,7 +857,7 @@ def test_godfather_gets_client_details_not_found_via_whatsapp(denidin_app):
 # ============================================================================
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_updates_client_via_whatsapp(denidin_app):
     """update_client is approval-gated (T020), same as add_client. Verifies:
     1. ASK turn: update_client must NOT execute yet.
@@ -922,7 +922,7 @@ def test_godfather_updates_client_via_whatsapp(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_declines_client_update(denidin_app):
     """Godfather asks to update a client's phone, then explicitly declines -
     update_client must never fire, and a follow-up get_client_details call
@@ -970,7 +970,7 @@ def test_godfather_declines_client_update(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_update_client_ambiguous_name_creates_no_pending_approval(denidin_app):
     """When the name resolves to more than one candidate, the bot must list
     them and ask the user to disambiguate BEFORE any approval prompt is ever
@@ -1035,7 +1035,7 @@ def test_godfather_update_client_ambiguous_name_creates_no_pending_approval(deni
 # ============================================================================
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_finds_client_via_hebrew_vowel_variant(denidin_app):
     """Morning's real name search is a strict token-prefix match with ZERO
     typo/fuzzy tolerance (confirmed live, research.md Decision 12) - it
@@ -1073,7 +1073,7 @@ def test_godfather_finds_client_via_hebrew_vowel_variant(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_get_client_details_discloses_first_name_prefix_match(denidin_app):
     """When get_client_details resolves to exactly one client via a
     partial/prefix reference (not the literal stored name), the reply must
@@ -1114,7 +1114,7 @@ def test_godfather_get_client_details_discloses_first_name_prefix_match(denidin_
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_update_client_discloses_family_name_prefix_match_before_approval(denidin_app):
     """Same disclosure requirement, but for update_client via a truncated
     FAMILY name reference (standalone, confirmed live to match) - and since
@@ -1162,7 +1162,7 @@ def test_godfather_update_client_discloses_family_name_prefix_match_before_appro
 # ============================================================================
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_client_role_gets_no_client_management_tools(denidin_app):
     """A client-role sender (any phone not godfather/admin/blocked) asking
     about clients gets a normal reply with zero mcp_calls for any
@@ -1185,7 +1185,7 @@ def test_client_role_gets_no_client_management_tools(denidin_app):
         )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_blocked_role_gets_no_client_management_tools(denidin_app):
     """A blocked-role sender asking about clients never even reaches
     AIHandler.get_response (create_request raises PermissionError first,
@@ -1222,7 +1222,7 @@ KNOWN_FIXED_DATE = "2026-02-07"
 KNOWN_INVOICE_NUMBERS_ON_FIXED_DATE = ("60001", "60006")  # first and last of the 6
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_lists_invoices_via_whatsapp(denidin_app):
     """Godfather asks to see invoices from a specific day, the way a real
     person would - no year given (a real user rarely bothers), no format or
@@ -1288,7 +1288,7 @@ def test_godfather_lists_invoices_via_whatsapp(denidin_app):
 _DECLINE_PHRASES_HE = ("זקוק לגישה", "אין לי גישה", "אין לי אפשרות לגשת", "לא ניתן לי גישה")
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_asks_analytical_debtor_question_via_whatsapp(denidin_app):
     """Godfather asks an analytical/aggregate question that no single Morning
     tool answers directly ("who owes me the most, and how much") - the model
@@ -1344,7 +1344,7 @@ _ZEHAVIT_MESSAGE = "לקוחה בשם זהבית - בדוק לי כמה שילמ
 _ZEHAVIT_NAME = "זהבית"
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_zehavit_client_name_transcribed_exactly(denidin_app):
     """Reproduction test for bugfix-013's client-name-garbling finding.
 
@@ -1389,7 +1389,7 @@ def test_zehavit_client_name_transcribed_exactly(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_no_date_mentioned_omits_date_range(denidin_app):
     """BDD failing test for bugfix-013's date-narrowing finding.
 
@@ -1521,7 +1521,7 @@ def _assert_full_picture(response, ai_response, id_prefix: str) -> None:
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_client_all_payments_gets_the_complete_picture(denidin_app):
     """Reproduction test for bugfix-014's strongest root-cause candidate:
     runtime_constitution.md's payment-word -> status="paid" rule
@@ -1548,7 +1548,7 @@ def test_client_all_payments_gets_the_complete_picture(denidin_app):
     _assert_full_picture(response, ai_response, "initial ask")
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_client_explicit_everything_request_gets_the_complete_picture(denidin_app):
     """Separate, standalone reproduction test for the "give me everything,
     no filtering" phrasing - sent as its own single-turn request, not
@@ -1587,7 +1587,7 @@ KNOWN_INVOICE_AMOUNT_IL = "123.45"
 KNOWN_INVOICE_STATUS_HE = "שולם"  # paid
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
     """Godfather asks about a specific invoice by client name and date only -
     never an id. The model must resolve which invoice this is itself (via
@@ -1655,7 +1655,7 @@ def _seed_fresh_invoice(client_name: str, amount: int, description: str) -> None
     logger.info(f"Seeded fresh invoice for client {client_name!r}")
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_marks_invoice_paid_via_whatsapp(denidin_app):
     """Full invoice_paid flow: godfather creates a fresh invoice, then - in a
     separate, later turn - asks to mark IT as paid by client name only (never
@@ -1722,7 +1722,7 @@ def test_godfather_marks_invoice_paid_via_whatsapp(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
     """Full cancel_invoice flow: godfather creates a fresh invoice, then - in a
     separate, later turn - asks to cancel it by client name only (never an
@@ -1784,7 +1784,7 @@ def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_declines_invoice_cancellation(denidin_app):
     """Godfather creates a fresh invoice, asks to cancel it, then explicitly
     declines the pending approval (Feature 022) - create_credit_note must
@@ -1864,7 +1864,7 @@ def _seed_transaction_account_invoice(client_name: str, amount: int, description
     time.sleep(5)
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_app):
     """Spec 020 / bugfix-014 Flow 4: a "חשבון עסקה" (type-300 transaction
     account document) must be closed by a linked type-320 combo document when
@@ -1936,7 +1936,7 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app):
     """Decline variant for the 300->320 path (Feature 022 x spec 020, dispatch
     updated per feature 023): godfather asks to mark a חשבון עסקה paid, then
@@ -1976,7 +1976,7 @@ def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app
     )
 
 
-@pytest.mark.expensive
+@pytest.mark.billed
 def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin_app):
     """Negative case for spec 020/023: a document type neither create_receipt
     (only 305) nor close_transaction_account (only 300) supports as an

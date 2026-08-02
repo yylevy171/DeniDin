@@ -1,10 +1,10 @@
 """
-End-to-End Integration Test: Ledger Event Recognition (runtime_constitution.md)
+End-to-End Integration Test: Ledger Event Recognition (runtime_constitution.md) - image flow
 
 Tests the real OpenAI function-calling mechanism end-to-end - NOT unit-testable, since
 what's actually under test is whether the real model (a) classifies correctly (calls
 `capture_ledger_event` only when the content genuinely warrants it) and (b) extracts
-fields correctly - both text and real-image flows.
+fields correctly via the real vision/image pipeline.
 
 Feature 033 (Ledger Event Persistence): events now persist as their own files under
 `{data_root}/events/{event_id}.json` via LedgerEventManager, not in session.json's
@@ -30,6 +30,9 @@ should produce):
 - Bank-test-image.jpg (T024b) = a real bank-transfer confirmation (12/07/2026, ₪1,500.00,
   עטיה רועי מאיר, "יעוץ משפטי (הערת לקוח)") - same, ground truth read directly from the image.
 
+Text-flow counterpart split out to tests/billed/test_ledger_event_capture_billed.py per
+Feature 029 - these image-flow tests stay `expensive` since they make real vision calls.
+
 NO MOCKING - real OpenAI API calls, real image pipeline, real session storage.
 
 Run ONE test at a time, with fresh explicit approval each time:
@@ -49,7 +52,7 @@ from urllib.parse import unquote
 import pytest
 
 from src.models.config import AppConfiguration
-from .e2e_helpers import (
+from tests.e2e_helpers import (
     create_real_notification,
     get_response,
     assert_response_exists,
@@ -63,11 +66,11 @@ logger.setLevel(logging.DEBUG)
 @pytest.mark.expensive
 class TestLedgerEventCaptureE2E:
     """
-    Given/When/Then E2E coverage for Ledger Event Recognition:
-    - Given a message that genuinely warrants capture, When processed, Then
+    Given/When/Then E2E coverage for Ledger Event Recognition's image flow:
+    - Given an image that genuinely warrants capture, When processed, Then
       `capture_ledger_event` is called and the result lands in its own file under
       `data/events/`, correctly shaped per data-model.md.
-    - Given a message that doesn't, When processed, Then it is NOT called - the
+    - Given an image that doesn't, When processed, Then it is NOT called - the
       false-positive guard matters as much as the capture itself.
     """
 
@@ -239,92 +242,6 @@ class TestLedgerEventCaptureE2E:
             f"event {event['event_id']} not found in source message {message_id}'s "
             f"ledger_event_ids={message_data.get('ledger_event_ids')!r}"
         )
-
-    # ------------------------------------------------------------------
-    # TEXT FLOW
-    # ------------------------------------------------------------------
-
-    def test_given_clear_fee_agreement_text_when_processed_then_ledger_event_captured(self, denidin_app):
-        """Given a WhatsApp message stating a new fee agreement in the same shorthand
-        style the real AHLedger source chat uses, When DeniDin processes it, Then
-        capture_ledger_event is called with source_type=הסכם and the right client/amount,
-        persisted under data/events/ (T017a)."""
-        from denidin import handle_text_message
-
-        chat_id = self._fresh_chat_id("text_agreement")
-        notification = create_real_notification({
-            'typeWebhook': 'incomingMessageReceived',
-            'timestamp': 1770000000,
-            'idMessage': 'LEDGER_E2E_TEXT_AGREEMENT_001',
-            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
-            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
-            'messageData': {
-                'typeMessage': 'textMessage',
-                'textMessageData': {
-                    'textMessage': 'רונית כהן - הצעת שכר טרחה לכתב הגנה: 9,000 ₪ כולל מעמ'
-                }
-            }
-        })
-
-        logger.info("GIVEN a clear fee-agreement text message")
-        handle_text_message(notification)
-        logger.info("WHEN DeniDin processes it")
-
-        response = get_response(notification)
-        assert_response_exists(response)
-
-        # THEN: verify against the real persisted data/events/{event_id}.json file
-        # (Feature 033 - not session.json anymore), including the bookkeeping fields
-        # LedgerEventManager.add_ledger_event adds - message_timestamp must be the
-        # real notification timestamp (1770000000), never processing time.
-        events = self._assert_ledger_events_persisted(
-            denidin_app, chat_id, expected_count=1, expected_event_timestamp=1770000000
-        )
-        captured = events[0]
-        logger.info(f"THEN captured event (persisted): {captured}")
-
-        assert captured["source_type"] == "הסכם"
-        assert captured["event_subtype"] == "יצירה"
-        assert "רונית" in (captured.get("client_name") or "") or "כהן" in (captured.get("client_name") or "")
-        assert captured.get("amount") == 9000, (
-            f"expected amount normalized to int 9000, got {captured.get('amount')!r}"
-        )
-        assert captured.get("vat_status") == "כולל"
-        assert captured.get("raw_message_excerpt")
-        assert captured["event_id"].startswith("A")
-        self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
-
-    def test_given_ordinary_chatter_when_processed_then_no_ledger_event_captured(self, denidin_app):
-        """Given an ordinary conversational message with no money/engagement content,
-        When processed, Then capture_ledger_event is NOT called - no file created
-        under data/events/ (T017b)."""
-        from denidin import handle_text_message
-
-        chat_id = self._fresh_chat_id("text_chatter")
-        before = len(self._events_for_chat(denidin_app, chat_id))
-
-        notification = create_real_notification({
-            'typeWebhook': 'incomingMessageReceived',
-            'timestamp': 1770000100,
-            'idMessage': 'LEDGER_E2E_TEXT_CHATTER_001',
-            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
-            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
-            'messageData': {
-                'typeMessage': 'textMessage',
-                'textMessageData': {'textMessage': 'מה קורה? מוכנה לפגישה של מחר?'}
-            }
-        })
-
-        logger.info("GIVEN ordinary chatter with no engagement/money content")
-        handle_text_message(notification)
-        logger.info("WHEN DeniDin processes it")
-
-        response = get_response(notification)
-        assert_response_exists(response)
-
-        after = len(self._events_for_chat(denidin_app, chat_id))
-        logger.info(f"THEN persisted-event count before={before}, after={after}")
-        assert after == before, "capture_ledger_event should NOT have been called for ordinary chatter"
 
     # ------------------------------------------------------------------
     # IMAGE FLOW (also exercises bugfix-017's session-linkage fix)

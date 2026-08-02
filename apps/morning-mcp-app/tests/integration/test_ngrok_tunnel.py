@@ -1,8 +1,8 @@
 """Real test that the ngrok tunnel mechanism actually works (Phase 5, T021).
 
-No mocks, and NOT an OpenAI-billing test (that's tests/expensive/
+No mocks, and NOT an OpenAI-billing test (that's tests/billed/
 test_openai_invokes_mcp_e2e.py) — this only proves that a real ngrok tunnel
-started via tests/expensive/e2e_helpers.ngrok_tunnel() actually routes real
+started via tests/e2e_helpers.ngrok_tunnel() actually routes real
 internet traffic to our locally-running MCP server, by hitting the tunnel's
 public HTTPS URL from this same machine (any HTTP client works to prove
 this — it doesn't have to be OpenAI).
@@ -28,7 +28,7 @@ APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
 sys.path.insert(0, str(APP_ROOT))
 
-from tests.expensive.e2e_helpers import NgrokError, ngrok_tunnel  # noqa: E402
+from tests.e2e_helpers import NgrokError, ngrok_tunnel  # noqa: E402
 
 from denidin_mcp_morning.config import load_config  # noqa: E402
 from denidin_mcp_morning.morning_client import MorningClient  # noqa: E402

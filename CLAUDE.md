@@ -105,7 +105,8 @@ Creds.txt` — not committed, created once per clone by hand):
 All clones on the same machine must point at the *same* canonical path, or
 the lock isn't actually shared and the whole mechanism silently no-ops.
 
-**dev/prod data is also a singleton across clones (2026-07-23)**: real
+**dev/prod data is also a singleton across clones (2026-07-23; made MANDATORY and
+enforced 2026-07-30 after a real incident — see below)**: real
 session/memory data (`apps/denidin-app/data`, `dev_data`) and container logs
 (`apps/denidin-app/logs/{dev,prod}`, `apps/morning-mcp-app/logs/{dev,prod}`)
 must not fragment depending on which clone last started dev/prod.
@@ -116,10 +117,9 @@ clone gets its own gitignored **`docker/docker-compose.dev.local.yml`** /
 `config/shared_state.local.json`/`creds/DeniDin Dev/Prod Creds.txt` — plain files, not
 committed, created once per clone by hand), layered in automatically by
 `run_denidin.sh`/`run_morning_mcp.sh`/`stop_denidin.sh`/`stop_morning_mcp.sh`/
-`scripts/killall_containers.sh` via a second `-f` flag *if the file exists* (no
-error if it's absent). These are plain Docker Compose override files — no
-environment variables, no symlinks — containing only the volume lines that
-need to differ from the base file, as literal relative paths. The root
+`scripts/killall_containers.sh` via a second `-f` flag. These are plain Docker Compose
+override files — no environment variables, no symlinks — containing only the volume
+lines that need to differ from the base file, as literal relative paths. The root
 clone's copy is a no-op (`services: {}`) since its own paths in the base
 file are already canonical. Every `coderN` clone's copy should instead
 override the data/log volumes to point one level up at the root clone's
@@ -149,6 +149,25 @@ still correctly means "one level up from this clone." `test_data`/
 `logs/test_logs` are NOT part of this — tests run via host `pytest`, never
 through Docker, so they're already naturally isolated per clone and should
 stay that way.
+
+🚨 **These two files are MANDATORY, not optional, and must NEVER be deleted** 🚨
+(2026-07-30 incident: a `coderN` clone was missing `docker-compose.dev.local.yml`
+entirely — no error, no warning — so `docker-compose.dev.yml`'s own plain relative
+volume paths silently resolved against that clone's own directory instead of being
+overridden to the shared root-clone paths; the dev container ran for a while
+writing session/log data into the clone's own `apps/denidin-app/dev_data` instead of
+the real, shared history, completely unnoticed until manually inspected).
+**Enforcement (2026-07-30)**: `scripts/env_lock.sh`'s `env_lock_require_local_override`
+is now called by `run_denidin.sh`/`run_morning_mcp.sh` *before* building compose args —
+if `docker/docker-compose.<env>.local.yml` doesn't exist for the current clone, the
+script refuses to start at all (loud `ERROR`, exit 1), rather than silently falling
+back to this clone's own paths. `stop_*.sh`/`scripts/killall_containers.sh` do NOT
+enforce this (stopping doesn't touch volume config, and requiring the file just to
+*stop* a misconfigured environment would be backwards). If you ever see this error,
+the fix is to create the missing file (copy another clone's and adjust, or use a
+no-op `services: {}` stub if this is the root clone) — **never** to delete or bypass
+the check, and never to delete an existing one of these files for any reason (there
+is no scenario where removing it is the correct fix to anything).
 
 ## 🚨 AI AGENTS: NEVER START AN ENVIRONMENT OR EDIT CONFIG WITHOUT EXPLICIT APPROVAL 🚨
 
@@ -202,7 +221,7 @@ No local/foreground run mode exists anymore — see the environments note above 
 ### Test
 ```bash
 cd apps/denidin-app
-python3 -m pytest tests/ -v --tb=short          # full suite (expensive tests skipped by default)
+python3 -m pytest tests/ -v --tb=short          # full suite (billed + expensive tests skipped by default)
 python3 -m pytest tests/unit/ -v                # unit only
 python3 -m pytest tests/integration/ -v         # integration only
 python3 -m pytest tests/unit/test_session_manager.py::test_function -xvs   # single test
@@ -210,14 +229,17 @@ python3 -m pytest tests/ --cov=src --cov-report=html   # coverage (htmlcov/index
 ```
 Also runnable from repo root via `make test` (wraps the same pytest invocation from `apps/denidin-app/`).
 
-Expensive tests (`tests/expensive/`, marked `@pytest.mark.expensive`) hit real OpenAI APIs and cost money — they are excluded by default (`pytest.ini` sets `addopts = -m "not expensive"`). Don't run them repeatedly — read `logs/test_logs/` for a prior run's output before re-running, and only re-run after a code change you're confident fixes the issue.
+Two real-OpenAI-call test tiers exist (split by Feature 029, 2026-07-30, from one overloaded `expensive` marker), **in both apps** — `apps/denidin-app` AND `apps/morning-mcp-app` each register these markers independently in their own `pytest.ini`/`conftest.py` (morning-mcp-app currently has 2 `billed` tests and 0 `expensive` — the tier is still registered there for if/when it ever adds a vision-based tool). Both tiers are excluded by default (`addopts = -m "not billed and not expensive"`) but with very different run rules:
 
-**Expensive test rules (strict):**
+- **`billed` tests** (`tests/billed/`, marked `@pytest.mark.billed`) make real, **text-only** OpenAI calls (chat completions, MCP tool-call turns) — cheap per run. **They can be run freely: no per-run approval needed, no one-at-a-time restriction, no log-reading requirement.** 🚨 **Do NOT stop to ask before running a `billed` test — the approval gate below is `expensive`-only and does not apply to `billed` at all.** Run with `pytest tests/billed/ -m billed -v` (or target a single file/test the same way).
+- **Expensive tests** (`tests/expensive/`, marked `@pytest.mark.expensive`) make real **vision/image/PDF/DOCX** OpenAI calls — meaningfully costlier (multiple sequential calls per test, e.g. `PDFExtractor` delegating to `ImageExtractor` per page) — and keep the full strict discipline below, unchanged. Don't run them repeatedly — read `logs/test_logs/` for a prior run's output before re-running, and only re-run after a code change you're confident fixes the issue.
+
+**Expensive test rules (strict — `billed` is fully exempt from every rule below; never apply these to a `billed` test):**
 - **User approval is required before running any expensive test, every single time** — no exceptions, even for a single test, even as part of a larger approved task.
 - **Never run expensive tests all together.** Go one at a time (`pytest tests/expensive/test_X.py::test_name -v -m expensive`), never a bare `-m expensive` sweep.
 - **Read existing logs in `logs/test_logs/` before re-running anything.** A prior run's log may already answer the question.
 - **Only re-run a previously-failed expensive test once you're confident a fix addresses the failure** — don't re-run speculatively to "see what happens."
-- **Never re-run an expensive test yourself once it has been billed** (i.e. it actually reached OpenAI, whether it passed or failed) — that always requires a fresh, explicit approval from the user for that specific run, no exceptions, including "just to double-check" or "just to read the output." Re-running an *unbilled* failure (one that errored before reaching OpenAI) is fine without re-asking.
+- **Never re-run an expensive test yourself once it has actually reached OpenAI** (whether it passed or failed) — that always requires a fresh, explicit approval from the user for that specific run, no exceptions, including "just to double-check" or "just to read the output." Re-running a failure that errored *before* reaching OpenAI is fine without re-asking.
 - **`apps/morning-mcp-app` runs as a separate long-lived container for these cross-app tests** (`./run_morning_mcp.sh dev` / `./stop_morning_mcp.sh dev`), not something pytest starts. Rebuilding is not automatic: any code or config change in `apps/morning-mcp-app` (tools, formatters, server, `config.dev.json`) has **no effect on an already-running container**. Whenever you edit anything in `apps/morning-mcp-app` for the sake of a denidin-app E2E test, you **must** `./stop_morning_mcp.sh dev` then `./run_morning_mcp.sh dev` (which rebuilds the image; verify the new tunnel URL lands in that environment's status file with `"status": "running"`) **before** retrying the test — otherwise the test silently exercises stale code and any observed failure/pass is not meaningful.
 
 **Never redirect test output to `/tmp` or other ad-hoc log files.** Each app's `conftest.py` already writes per-test-file logs to `logs/test_logs/{test_file}.log` automatically (see `pytest_runtest_setup` in `apps/denidin-app/conftest.py`); read from there instead of teeing to a custom path. This applies to both apps under `apps/`.
@@ -280,7 +302,7 @@ Green API webhook → denidin.py @bot.router.message(type_message=...) handlers
   → SessionManager (store response, update token count)
   → WhatsAppHandler.send_response() (truncates >4000 chars)
 ```
-Non-text messages (`imageMessage`, `documentMessage`, `videoMessage`, `audioMessage`) route through the same dispatcher pattern in `denidin.py` to `WhatsAppHandler.handle_media_message()` → `MediaHandler` → the extractor pipeline below. There is also a catch-all `@bot.router.message()` handler so no message type is silently dropped.
+Non-text messages (`imageMessage`, `documentMessage`, `videoMessage`, `audioMessage`) route through the same dispatcher pattern in `denidin.py` to `WhatsAppHandler.handle_media_message()` → `MediaHandler` → the extractor pipeline below. A shared WhatsApp contact card (`contactMessage`, Feature 030) instead routes into the same *conversational* pipeline `textMessage` uses (`_process_conversational_message`, shared by both) — its vCard content is framed into `text_content` and the model reads it directly, so a godfather/admin sharing a contact proposes an `add_client` call exactly as typed text would, inheriting the existing approval gate and missing-field behavior unchanged. Sharing **multiple** contacts at once arrives as a distinct type (`contactsArrayMessage`) and is declined outright with a friendly message, no AI call at all. There is also a catch-all `@bot.router.message()` handler so no message type is silently dropped.
 
 ### Key components (`apps/denidin-app/src/`)
 - **`denidin.py`** (repo root of the app, not under `src/`) — entry point; owns the global `bot` (GreenAPIBot) and `denidin_app` (a `DeniDin` instance holding `ai_handler`, `config`, `whatsapp_handler`, `cleanup_thread`); registers all `@bot.router.message(...)` handlers; `initialize_app(config_dict)` is the shared bootstrap used by both `__main__` and integration tests (constructs `AIHandler` → `WhatsAppHandler` → `MediaHandler`, wires memory startup recovery + cleanup thread if `enable_memory_system`).
@@ -321,4 +343,5 @@ speckit.specify → spec.md (+ MANDATORY user-stories.md, Given-When-Then, BLOCK
 - New/updated specs belong under `specs/in-progress/` (drafting/pre-clarification through active implementation) or `specs/backlog/` (post-clarification, not currently being worked — replaces the old `specs/P0/`/`P1/`/`P2/` split as of 2026-07-21; priority is now tracked via each spec's own `Priority` field, not by folder); `specs/done/` and `specs/obsolete/` are historical archives — never delete from them (`specs/obsolete/` also replaces the old `specs/not-doing/`, and now covers specs whose described issue no longer applies against current code, not just cancelled features). Bugfix specs go in `specs/bugfixes/bugfix-###-description.md` while open, and move to `specs/done/bugfixes/` or `specs/obsolete/bugfixes/` once resolved or found stale. `specs/not_reproducible/bugfixes/` (added 2026-07-21) is a fourth closure destination, distinct from both: use it for a bug where a root cause was investigated and a human decision was made to close it, but nothing was actually fixed — e.g. the behavior is accepted as inherent/non-deterministic model risk rather than an app-level bug (see `bugfix-013` for the first example). Don't conflate with `done/` (implies a fix landed) or `obsolete/` (implies the issue no longer applies or was rejected outright).
 - Bug fixes follow Bug-Driven Development instead: root cause → human approval → test-gap analysis → failing test → human approval → minimal fix → verify. See `.github/METHODOLOGY.md` §VII.
 - Branch naming: `feature/###-description`, `bugfix/###-description`, or `docs/`/`chore/` prefixes.
+- 🚨 **NEVER RUN HALELUYA ON YOUR OWN.** 🚨
 - **"haleluya"** (or any spelling variant — "halleluja", "halelluia", etc.), said any time the actual work is already done and approved, is shorthand for: **first verify a spec file for the current feature/bugfix is actually committed under `specs/`** (feature 024 was fully merged with no spec ever committed at all — confirmed via full git history search, 2026-07-30 — so this check now runs before anything else, and haleluya stops and asks rather than proceeding if no spec is found), then commit, push, open a PR, merge it, **deploy it** (rebuild + recreate any running environment container the change affects — merging to `master` does NOT redeploy by itself, see "Environments (dev/prod)" above), update docs, and move the spec to its correct `specs/` folder. Also available as `/haleluya`. **Branches are never deleted as part of this flow** — the merged branch is left in place; only the user deleting one explicitly is a deletion. See `.github/METHODOLOGY.md`'s "Finish-Feature Trigger Phrase" for the full definition — it doesn't skip any gate, it's just shorthand for the finish-up mechanics.

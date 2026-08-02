@@ -4,10 +4,10 @@ Tests exception handling and message-length validation - NO MOCKING.
 
 Moved out of tests/integration/test_bot_exception_handling.py: these all
 make real OpenAI API calls (chat completion or embeddings via memory
-recall), so they belong under tests/expensive/ with the other
-@pytest.mark.expensive tests, not tests/integration/.
+recall), so they belong under tests/billed/ with the other
+@pytest.mark.billed tests, not tests/integration/.
 
-Run with: pytest tests/expensive/test_ai_handler_real_api.py -m expensive -v
+Run with: pytest tests/billed/test_ai_handler_real_api.py -m billed -v
 """
 import pytest
 from pathlib import Path
@@ -51,7 +51,7 @@ def real_ai_handler(real_openai_client, real_config):
 class TestBotExceptionHandlingWithRealAPI:
     """Test exception handling with 1 REAL API call to prove end-to-end functionality"""
 
-    @pytest.mark.expensive
+    @pytest.mark.billed
     def test_openai_error_handling_real_api(self, real_ai_handler):
         """Test AIHandler catches REAL OpenAI API error - 1 REAL API CALL"""
         # Create a real message
@@ -93,10 +93,10 @@ class TestMessageLengthValidation:
     NOTE: create_request() triggers a real OpenAI embeddings API call via
     memory recall (real_config's production config.json has
     enable_memory_system=True), so these are NOT free despite only
-    asserting on truncation logic. Marked expensive accordingly.
+    asserting on truncation logic. Marked billed accordingly.
     """
 
-    @pytest.mark.expensive
+    @pytest.mark.billed
     def test_long_prompt_truncated_to_10000(self, real_ai_handler):
         """Test long prompt truncated to 10000 chars"""
         from datetime import datetime, timezone
@@ -115,7 +115,7 @@ class TestMessageLengthValidation:
         request = real_ai_handler.create_request(long_message)
         assert len(request.user_prompt) <= 10000
 
-    @pytest.mark.expensive
+    @pytest.mark.billed
     def test_short_messages_pass_through(self, real_ai_handler):
         """Test short messages (<10000) pass through unchanged"""
         from datetime import datetime, timezone

@@ -2,6 +2,7 @@
 WhatsAppHandler - Handles WhatsApp message processing with retry logic
 Phase 5: US3 - Error Handling & Resilience
 """
+from typing import cast
 import requests
 from tenacity import (
     retry,
@@ -69,8 +70,10 @@ class WhatsAppHandler:
         """
         message_type = notification.event.get('messageData', {}).get('typeMessage', '')
         logger.debug(f"received whatsapp notification: {notification}")
-        
-        if message_type != 'extendedTextMessage' and message_type != "textMessage":
+
+        # contactMessage (Feature 030 - shared WhatsApp contact card) flows through the
+        # same conversational pipeline as text messages, see _process_conversational_message.
+        if message_type not in ('extendedTextMessage', 'textMessage', 'contactMessage'):
             logger.warning(f"Unsupported message type received: {message_type}")
             return False
 
@@ -229,7 +232,7 @@ class WhatsAppHandler:
         Returns:
             Media type string (e.g., 'imageMessage', 'documentMessage')
         """
-        return notification.event.get('messageData', {}).get('typeMessage', '')
+        return cast(str, notification.event.get('messageData', {}).get('typeMessage', ''))
     
     def is_supported_media_message(self, notification: Notification) -> bool:
         """

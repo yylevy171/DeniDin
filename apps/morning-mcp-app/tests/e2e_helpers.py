@@ -1,4 +1,5 @@
-"""Helpers for tests/expensive/ — real OpenAI-driven E2E tests (Phase 5, T021).
+"""Helpers for tests/billed/ (and tests/integration/test_ngrok_tunnel.py) —
+real OpenAI-driven E2E tests (Phase 5, T021).
 
 `ngrok_tunnel()` manages a real, ephemeral ngrok tunnel (free tier: an
 authtoken is required, but no paid plan — a reserved/static domain is only
@@ -31,7 +32,7 @@ NGROK_LOCAL_API = "http://127.0.0.1:4040/api/tunnels"
 # Shared `instructions` (OpenAI's system-prompt-level parameter on
 # responses.create() — confirmed as a real top-level SDK parameter, distinct
 # from the MCP server's own optional `instructions` field) used by every
-# expensive OpenAI-driven test, so all of them exercise the model under the
+# billed OpenAI-driven test, so all of them exercise the model under the
 # same guidance. Explicitly tells the model to stay out of these tools for
 # anything unrelated to invoicing — this is what
 # test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt checks holds.

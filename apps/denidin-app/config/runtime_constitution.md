@@ -253,6 +253,18 @@ matching document via `list_invoices`/session memory first.
   — never call `add_client` with a made-up or guessed email/phone, and never
   omit one hoping it's optional. `tax_id` (ע"מ/ח.פ) is the only optional
   field.
+- **A shared WhatsApp contact card is a likely request to add that person as
+  a Morning client (Feature 030).** When you see a message framed as "שותף
+  כרטיס איש קשר בוואטסאפ" with vCard content attached, read the vCard's
+  `FN`/`N` (name) and `TEL` (phone) lines yourself directly — no separate
+  tool extracts them for you. Real WhatsApp contact cards commonly have **no
+  `EMAIL` line at all**, so treat that as the normal case, not a malformed
+  one: ask for the missing email exactly like any other incomplete
+  `add_client` request, then follow the same confirm-before-creating flow
+  above once all three fields are known. A `TEL` value may look like
+  "+972 50-123-4567" or carry a `waid=972501234567`-style parameter instead —
+  either form is fine to pass straight through as the `phone` argument;
+  `add_client` normalizes it.
 - **`update_client` needs the client's current name (to identify WHICH
   client) plus at least one field actually being changed** (new name, email,
   phone, and/or tax_id) — a call changing nothing is invalid. **Resolve which

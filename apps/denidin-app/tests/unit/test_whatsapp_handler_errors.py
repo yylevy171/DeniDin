@@ -183,9 +183,20 @@ class TestUnsupportedMessageTypes:
     ):
         """Test validate_message_type accepts textMessage"""
         mock_notification.event['messageData']['typeMessage'] = 'textMessage'
-        
+
         is_valid = whatsapp_handler.validate_message_type(mock_notification)
-        
+
+        assert is_valid is True
+
+    def test_validate_message_type_accepts_contact_message(
+        self, whatsapp_handler, mock_notification
+    ):
+        """Feature 030: validate_message_type accepts contactMessage (shared vCard contact
+        card), reused by _process_conversational_message alongside textMessage."""
+        mock_notification.event['messageData']['typeMessage'] = 'contactMessage'
+
+        is_valid = whatsapp_handler.validate_message_type(mock_notification)
+
         assert is_valid is True
     
     @patch('src.handlers.whatsapp_handler.logger')

@@ -62,7 +62,7 @@ class MemoryManager:
         """
         self.storage_dir = Path(storage_dir)
         self.embedding_model = embedding_model
-        self._collection_cache = {}  # Cache collection objects for test mocking compatibility
+        self._collection_cache: Dict[str, CollectionWrapper] = {}  # Cache collection objects for test mocking compatibility
 
         # Initialize ChromaDB persistent client
         try:
@@ -86,7 +86,7 @@ class MemoryManager:
         self._ai_client = ai_client
 
     @property
-    def ai_client(self):
+    def ai_client(self) -> OpenAI:
         """Access AI client (must be initialized in __init__)."""
         if self._ai_client is None:
             raise RuntimeError(

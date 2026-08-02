@@ -75,7 +75,7 @@ def _make_health_handler(environment: Optional[str]) -> Callable[[Request], Any]
 
     async def _health(_request: Request) -> JSONResponse:
         """Unauthenticated liveness probe - used by callers (e.g. the
-        ngrok-tunnel health check in tests/expensive/e2e_helpers.py, and each
+        ngrok-tunnel health check in tests/e2e_helpers.py, and each
         environment's watchdog.py) to confirm the server is reachable
         end-to-end without needing the bearer token, and which environment
         it's actually running as."""
@@ -138,7 +138,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
     # 127.0.0.1/localhost whenever `host` is loopback and no transport_security
     # is given — that silently 424s every request forwarded through a public
     # tunnel (ngrok's Host header is never 127.0.0.1/localhost), breaking the
-    # documented ngrok-exposure path (tests/expensive, run_morning_mcp.sh,
+    # documented ngrok-exposure path (tests/billed, run_morning_mcp.sh,
     # docker-entrypoint.sh) for both random and reserved domains alike.
     # BearerTokenMiddleware (below) is this server's real access boundary, not
     # Host-header matching, so DNS-rebinding protection is explicitly disabled

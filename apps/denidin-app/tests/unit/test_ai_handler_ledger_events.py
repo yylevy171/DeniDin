@@ -5,11 +5,13 @@ _finalize_response.
 
 Real classification/extraction accuracy (does the model call the tool at the right time,
 with the right fields) is NOT unit-testable - that needs the real OpenAI API and is covered
-by tests/expensive/test_ledger_event_capture_e2e.py instead. What IS covered here: given a
-response that already contains capture_ledger_event call(s) (constructed directly, no real
-API), does AIHandler correctly persist them via a REAL LedgerEventManager and thread the
-resulting event_id(s) into the stored message - only the OpenAI client itself is a stand-in
-(external service, per CONSTITUTION SS I's testing guidance), never any internal component.
+by tests/billed/test_ledger_event_capture_billed.py (text flow) and
+tests/expensive/test_ledger_event_capture_e2e.py (image flow) instead. What IS covered here:
+given a response that already contains capture_ledger_event call(s) (constructed directly,
+no real API), does AIHandler correctly persist them via a REAL LedgerEventManager and thread
+the resulting event_id(s) into the stored message - only the OpenAI client itself is a
+stand-in (external service, per CONSTITUTION SS I's testing guidance), never any internal
+component.
 """
 import json
 from pathlib import Path
