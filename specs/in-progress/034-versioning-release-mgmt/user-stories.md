@@ -15,22 +15,23 @@ tooling for whoever runs `haleluya`/deploys, not a WhatsApp-facing behavior).
 
 **Given** `morning-mcp-app-dev` (or `-prod`) is running as a container, and `denidin-app-dev` (or
 `-prod`) is running as a container
-**When** a human calls `GET /health` on the morning-mcp-app container, and separately reads the
-startup lines of `logs/denidin.log` (or `logs/dev/`/`logs/prod/` per that container) for the
-denidin-app container
+**When** a human calls `GET /health` on the morning-mcp-app container, and separately reads
+**any** line of `logs/denidin.log` (or `logs/dev/`/`logs/prod/` per that container) for the
+denidin-app container — not just a startup line
 **Then** the `/health` response includes a `version` field with the app's current semantic
-version, and the denidin-app startup log includes a line stating its current semantic version —
-both sourced from that app's own `VERSION` file (REQ-VER-001/002/003).
+version, and **every** denidin-app log line includes its current semantic version — both sourced
+from that app's own `VERSION` file (REQ-VER-001/002/003).
 
 **Independent Test**: Fully testable standalone — read each app's `VERSION` file, start (or use an
-already-running) container of each, `curl` morning-mcp-app's `/health` and grep denidin-app's
-startup log, assert both match the `VERSION` file's contents.
+already-running) container of each, `curl` morning-mcp-app's `/health`, and grep an arbitrary
+sample of denidin-app log lines (not just the first one) — assert all match the `VERSION` file's
+contents.
 
 Acceptance criteria:
 - `/health`'s existing `status`/`environment` fields are unchanged — `version` is additive, not a
   replacement (no consumer of `/health` should break).
-- The denidin-app startup log line appears exactly once per process start, in the same log file
-  existing startup logging already uses (no new log file/path introduced).
+- Every denidin-app log line carries the version, not just a one-time startup line — a log line
+  sampled at any point during a long-running process still shows the correct current version.
 - If a `VERSION` file is missing or malformed for either app, the app MUST still start normally
   (this is observability, not a startup precondition) — the version surfaces as `"unknown"` rather
   than blocking startup or crashing.
@@ -41,75 +42,120 @@ Acceptance criteria:
 
 **Given** a feature branch has just been merged and deployed via the existing `haleluya`/
 `/haleluya` flow (CLAUDE.md's "Finish-Feature Trigger Phrase")
-**When** the human doing the release decides this merge warrants a version bump (not every merge
-does — REQ-REL-001) and picks MAJOR/MINOR/PATCH (REQ-REL-002)
-**Then** the affected app's `VERSION` file is updated, a git tag `<app>-v<new-version>` is created
-on the deployed commit, a new entry is appended to that app's `CHANGELOG.md` (version, date,
-one-line summary — REQ-REL-003), and a corresponding section is appended to that app's
-`RELEASES.md` with fuller release notes (REQ-REL-004).
+**When** the flow reaches its final step, the AI agent MUST ask the human, for each app touched,
+whether to cut a release — never silently skip this, never decide the answer itself (REQ-REL-001)
+**Then**, if the human says yes for a given app, the agent asks for the **exact target version
+string** and waits — it MUST NOT propose, compute, or default one, even as a "recommended, say
+yes to accept" suggestion (REQ-REL-002, hard constraint)
+**When** the human states the exact version (e.g. "1.4.2")
+**Then** the agent runs `scripts/cut_release.sh <app> 1.4.2` (REQ-SCR-001) with that verbatim
+value: the `VERSION` file is updated, the Docker image is built and exported as a tarball into the
+artifacts folder (REQ-REL-005/REQ-ART-001/002), a `CHANGELOG.md` entry and a `RELEASES.md` section
+are appended (REQ-REL-003/004), and the `<app>-v1.4.2` git tag is applied — after one final
+interactive confirmation showing exactly what's about to happen, since this action is permanent
+(REQ-REL-006).
 
-**Independent Test**: Fully testable standalone — pick a fixed `VERSION`/bump/summary, run the
-documented release steps by hand, then verify: `git tag` shows the new `<app>-v<version>` tag on
-the right commit, `CHANGELOG.md` has the new one-line entry, and `RELEASES.md` has the new
-detailed section.
+**Independent Test**: Fully testable standalone — pick a fixed version/summary, run
+`scripts/cut_release.sh` by hand with that exact version, then verify: `git tag` shows the new
+`<app>-v<version>` tag on the right commit, `CHANGELOG.md`/`RELEASES.md` have the new entries, and
+the artifacts folder has the new tarball + manifest.
 
 Acceptance criteria:
-- Skipping the release step for a given merge (e.g. a docs-only change) is a valid, explicit
-  choice — not an error state — but the decision itself must be visible (e.g. noted in the PR or
-  release discussion), not silently defaulted either way.
+- Skipping the release step for a given app (e.g. a docs-only change touched it) is a valid,
+  explicit "no" answer to the mandatory question — not an error state — but the question itself is
+  always asked, never silently defaulted either way.
+- At no point does the agent state a version number before the human does — not as a suggestion,
+  not as a "did you mean," nothing. If the human's answer is ambiguous, the agent asks again rather
+  than guessing.
 - The git tag is applied to the commit that was actually deployed (per CLAUDE.md's rebuild/
   recreate deploy step), not merely the merge commit on `master` if those differ in timing.
 - `CHANGELOG.md`'s new entry is human-written prose summarizing the change (from the merged
   spec/PR), not a raw `git log` dump.
+- Running `scripts/cut_release.sh` again for a version that already exists refuses instead of
+  overwriting anything (REQ-REL-006).
 
 ---
 
 ## US3 — Roll back a deployed environment to a prior release (Priority: P2)
 
 **Given** a release (`<app>-v<version>`) has been deployed to `dev` or `prod` and is later found to
-need reverting, and at least one older `<app>-v<older-version>` release image still exists locally
-(built and retained at that earlier release's cut time, per REQ-REL-005)
-**When** a human follows the documented rollback procedure (REQ-ROLL-002): redeploys that older
-release's pre-built, version-tagged image directly to the affected environment's container — no
-rebuild from git source
+need reverting, and at least one older `<app>-v<older-version>` release tarball still exists in
+the artifacts folder (built and exported at that earlier release's cut time, per REQ-REL-005)
+**When** a human explicitly asks, in that specific request, to roll back a named app/environment
+to a named version — the agent MUST NOT decide on its own that a rollback is warranted, and MUST
+NOT infer/guess the target version even if "the previous one" seems obvious (REQ-ROLL-004, hard
+constraint)
+**Then** the agent runs `scripts/rollback_release.sh <app> <env> <older-version>` (REQ-SCR-002),
+which loads that version's tarball from the artifacts folder (`docker load`) and redeploys it
+directly to the affected environment's container — no rebuild from git source
 **Then** the environment now serves the older version — verifiable the same way as US1 (`/health`
-field or startup log) — and no `master` git history was reverted/rewritten to get there
+field or any log line) — and no `master` git history was reverted/rewritten to get there
 (REQ-ROLL-003), and the redeployed bytes are guaranteed identical to what actually ran before
 (no dependency-resolution drift, since nothing was rebuilt).
 
-**Independent Test**: Fully testable standalone — cut release A (per US2, producing release image
-A), cut release B (producing release image B), confirm B is live (per US1), run the documented
-rollback procedure redeploying release image A, confirm A is live again via the same US1 check,
-and confirm `master`'s commit history is unchanged (`git log master` before/after matches).
+**Independent Test**: Fully testable standalone — cut release A (per US2, producing a tarball in
+the artifacts folder), cut release B (producing another tarball), confirm B is live (per US1), run
+`scripts/rollback_release.sh` with A's exact version, confirm A is live again via the same US1
+check, and confirm `master`'s commit history is unchanged (`git log master` before/after matches).
 
 Acceptance criteria:
 - The rollback procedure is discoverable in documentation (REQ-DOC-001) without needing to ask
   the person who last deployed.
-- No `docker ... build` (or equivalent rebuild step) runs as part of rollback — only redeploying
-  the already-built, version-tagged release image (REQ-REL-005).
+- No `docker ... build` (or equivalent rebuild step) runs as part of rollback — only
+  `docker load` of the already-exported tarball (REQ-REL-005) plus redeploying it.
+- The agent never states or suggests a version to roll back to; it only acts once the human has
+  stated one explicitly, in that request.
 - Rolling back one app/environment (e.g. `denidin-app-prod`) does not require touching the other
   app or the other environment — matches the existing per-app, per-environment deploy granularity
   documented under "Environments (dev/prod)."
 - The rollback leaves a discoverable record of what happened equivalent to the outgoing deploy
   (i.e. it's not a silent, undocumented revert — same expectation as any other deploy).
-- If the needed release image is no longer retained locally (e.g. manually pruned — REQ-REL-005
-  intentionally leaves retention/cleanup as a manual decision), rollback to that specific version
-  is not possible until it's rebuilt by hand; this is an accepted tradeoff of "no container
-  registry" (see spec.md's Explicitly Out of Scope), not a bug.
+- If the needed release tarball is no longer present in the artifacts folder (e.g. manually
+  deleted — REQ-REL-005/REQ-ART-001 intentionally leave retention/cleanup as a manual decision),
+  `scripts/rollback_release.sh` fails clearly rather than silently falling back to a rebuild; this
+  is an accepted tradeoff of "no container registry" (see spec.md's Explicitly Out of Scope), not
+  a bug.
+
+---
+
+## US4 — Ask the bot its own version over WhatsApp (Priority: P3)
+
+**Given** `denidin-app` is running with some current version (any role able to get a reply from
+the bot at all — see spec.md's Assumptions on REQ-VER-005)
+**When** a user asks a natural-language question like "what version are you running?" or "אתה
+בגרסה מה?"
+**Then** the model answers accurately with the current `denidin-app` version, sourced from the
+same per-call injection mechanism already used for today's date (`ai_handler.py:363-368`) — no
+guessing, no stale cached value from earlier in a long conversation.
+
+**Independent Test**: Fully testable standalone — set a known `VERSION` file value, send a real
+"what version are you" webhook message, assert the reply states that exact version.
+
+Acceptance criteria:
+- Works the same regardless of role (client/godfather/admin) — this is not gated behind Morning
+  MCP tool attachment or any existing RBAC boundary.
+- The answer reflects the version at reply time, not whatever version was current when the
+  session/conversation started (relevant if a release happens mid-conversation, however unlikely).
+- Does not require a new MCP tool or Morning integration — this is purely a prompt-injection
+  addition, the same pattern as current-date, not a callable tool the model invokes.
 
 ---
 
 ## Out of Scope for This Feature
 
-- **Automatic MAJOR/MINOR/PATCH classification** — the bump type in US2 is always a human
-  decision; no commit-message or PR-title parsing is introduced.
+- **Any AI-computed version number, including bump-type classification** (MAJOR/MINOR/PATCH
+  parsed from commit messages/PR titles) — US2's exact version string is always human-stated
+  verbatim; the agent never even offers a bump-type shortcut to compute from.
 - **A single shared version number across both apps** — resolved via clarification; independent
   per-app versioning is confirmed (`spec.md`'s Clarifications section).
 - **Automated/zero-downtime rollback** — US3's rollback is a manual, human-triggered redeploy of a
   pre-built release image (REQ-REL-005/REQ-ROLL-002), not an automated mechanism that decides for
   itself when to roll back.
-- **A dedicated RBAC story** — this feature has no WhatsApp-facing or godfather/admin-facing
-  surface; nothing here changes who can talk to the bot or what tools they can call.
+- **A dedicated RBAC story** — US4 is deliberately ungated rather than restricted; nothing here
+  changes who can talk to the bot or what Morning tools they can call.
 - **Versioning any change that doesn't ship to a real environment** (e.g. work still on a feature
   branch, not yet merged/deployed) — release/version bumps happen at `haleluya` time, not per
   commit.
+- **Any story where the AI agent picks a version number or decides to release/roll back on its
+  own** — deliberately not a story, permanently, per REQ-REL-002/REQ-ROLL-004. Every US2/US3 flow
+  above requires the human to state the app/version/environment first, in that specific request.

@@ -22,9 +22,13 @@
 
 ## Requirement Completeness
 
-- [x] No [NEEDS CLARIFICATION] markers remain (3 clarifying questions asked and resolved
+- [x] No [NEEDS CLARIFICATION] markers remain (3 agent-prompted clarifying questions resolved
       2026-08-02: independent per-app versioning, `RELEASES.md` over GitHub Releases, rollback
-      redeploys a pre-saved image rather than rebuilding)
+      redeploys a pre-saved image rather than rebuilding; plus 6 further user-raised requirements
+      the agent's first pass missed — see spec.md's "Session 2026-08-02 (continued)" — per-line
+      version logging, release immutability, human-only version/release-and-rollback authority as
+      a hard constraint, WhatsApp version query, dedicated cut/rollback scripts, and a shared
+      cross-clone artifacts folder)
 - [x] Requirements are testable and unambiguous (REQ-VER-*/REQ-REL-*/REQ-ROLL-*/REQ-DOC-*, each a
       single verifiable MUST statement)
 - [x] Success criteria are measurable (SC-001–SC-004, each has a concrete verification action)
