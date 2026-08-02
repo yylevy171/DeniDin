@@ -67,26 +67,35 @@ Acceptance criteria:
 ## US3 — Roll back a deployed environment to a prior release (Priority: P2)
 
 **Given** a release (`<app>-v<version>`) has been deployed to `dev` or `prod` and is later found to
-need reverting, and at least one older `<app>-v<older-version>` tag exists
-**When** a human follows the documented rollback procedure (REQ-ROLL-002): checks out the older
-tag, rebuilds that app's image, and recreates the running container for the affected environment
+need reverting, and at least one older `<app>-v<older-version>` release image still exists locally
+(built and retained at that earlier release's cut time, per REQ-REL-005)
+**When** a human follows the documented rollback procedure (REQ-ROLL-002): redeploys that older
+release's pre-built, version-tagged image directly to the affected environment's container — no
+rebuild from git source
 **Then** the environment now serves the older version — verifiable the same way as US1 (`/health`
 field or startup log) — and no `master` git history was reverted/rewritten to get there
-(REQ-ROLL-003).
+(REQ-ROLL-003), and the redeployed bytes are guaranteed identical to what actually ran before
+(no dependency-resolution drift, since nothing was rebuilt).
 
-**Independent Test**: Fully testable standalone — deploy version A, "release" version B (per US2),
-confirm B is live (per US1), run the documented rollback procedure back to A, confirm A is live
-again via the same US1 check, and confirm `master`'s commit history is unchanged (`git log
-master` before/after matches).
+**Independent Test**: Fully testable standalone — cut release A (per US2, producing release image
+A), cut release B (producing release image B), confirm B is live (per US1), run the documented
+rollback procedure redeploying release image A, confirm A is live again via the same US1 check,
+and confirm `master`'s commit history is unchanged (`git log master` before/after matches).
 
 Acceptance criteria:
 - The rollback procedure is discoverable in documentation (REQ-DOC-001) without needing to ask
   the person who last deployed.
+- No `docker ... build` (or equivalent rebuild step) runs as part of rollback — only redeploying
+  the already-built, version-tagged release image (REQ-REL-005).
 - Rolling back one app/environment (e.g. `denidin-app-prod`) does not require touching the other
   app or the other environment — matches the existing per-app, per-environment deploy granularity
   documented under "Environments (dev/prod)."
 - The rollback leaves a discoverable record of what happened equivalent to the outgoing deploy
   (i.e. it's not a silent, undocumented revert — same expectation as any other deploy).
+- If the needed release image is no longer retained locally (e.g. manually pruned — REQ-REL-005
+  intentionally leaves retention/cleanup as a manual decision), rollback to that specific version
+  is not possible until it's rebuilt by hand; this is an accepted tradeoff of "no container
+  registry" (see spec.md's Explicitly Out of Scope), not a bug.
 
 ---
 
@@ -94,10 +103,11 @@ Acceptance criteria:
 
 - **Automatic MAJOR/MINOR/PATCH classification** — the bump type in US2 is always a human
   decision; no commit-message or PR-title parsing is introduced.
-- **A single shared version number across both apps** — pending the `[NEEDS CLARIFICATION]` in
-  `spec.md`; these stories assume independent per-app versioning is confirmed.
-- **Automated/zero-downtime rollback** — US3's rollback is the same manual rebuild/recreate
-  mechanics the project already uses for forward deploys, not a new automated mechanism.
+- **A single shared version number across both apps** — resolved via clarification; independent
+  per-app versioning is confirmed (`spec.md`'s Clarifications section).
+- **Automated/zero-downtime rollback** — US3's rollback is a manual, human-triggered redeploy of a
+  pre-built release image (REQ-REL-005/REQ-ROLL-002), not an automated mechanism that decides for
+  itself when to roll back.
 - **A dedicated RBAC story** — this feature has no WhatsApp-facing or godfather/admin-facing
   surface; nothing here changes who can talk to the bot or what tools they can call.
 - **Versioning any change that doesn't ship to a real environment** (e.g. work still on a feature
