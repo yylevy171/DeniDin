@@ -26,10 +26,12 @@ class TestImageExtractor:
         denidin.ai_handler = Mock()
         denidin.ai_handler._load_constitution.return_value = ""
         # Feature 024: ledger classification is a separate AIHandler call now
-        # (capture_ledger_event_from_text), not extracted from the vision
-        # response - default to "nothing captured" so these pre-024 extraction
-        # tests reflect realistic behavior rather than an unconfigured Mock.
-        denidin.ai_handler.capture_ledger_event_from_text.return_value = None
+        # (capture_ledger_events_from_text, plural since 2026-07-30 - a single
+        # document can genuinely warrant more than one capture), not extracted
+        # from the vision response - default to "nothing captured" so these
+        # pre-024 extraction tests reflect realistic behavior rather than an
+        # unconfigured Mock.
+        denidin.ai_handler.capture_ledger_events_from_text.return_value = []
         denidin.config = Mock()
         denidin.config.ai_vision_model = "gpt-4o"
         denidin.config.ai_reply_max_tokens = 1000
@@ -65,6 +67,30 @@ class TestImageExtractor:
         assert result["model_used"] == "gpt-4o"
         assert result["extraction_quality"] in ["high", "medium", "low", "failed"]
     
+    def test_multiple_ledger_events_from_one_image_all_returned(self, extractor, test_media, mock_denidin):
+        """Regression guard (found 2026-07-30): analyze_media used to call the
+        single-result capture_ledger_event_from_text, silently dropping every
+        ledger-event component after the first whenever a document image
+        genuinely warranted more than one (e.g. a multi-stage/conditional fee
+        agreement). Asserts analyze_media's ledger_events key is a list
+        carrying ALL of what the classification call returned, not just the
+        first."""
+        mock_response = Mock()
+        mock_response.output_text = "TEXT:\nMulti-tier agreement\nCONFIDENCE: high"
+        mock_response.output = []
+        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
+
+        component_1 = {"source_type": "הסכם", "amount": "2,000₪"}
+        component_2 = {"source_type": "הסכם", "amount": "4,000₪"}
+        component_3 = {"source_type": "הסכם", "amount": "8,000₪"}
+        mock_denidin.ai_handler.capture_ledger_events_from_text.return_value = [
+            component_1, component_2, component_3
+        ]
+
+        result = extractor.analyze_media(test_media)
+
+        assert result["ledger_events"] == [component_1, component_2, component_3]
+
     def test_extract_with_layout_preservation(self, extractor, test_media, mock_denidin):
         """
         Test that line breaks and paragraph structure are preserved.

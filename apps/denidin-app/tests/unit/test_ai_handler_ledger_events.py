@@ -1,20 +1,29 @@
 """
-Unit tests for Ledger Event Recognition's function-call extraction (runtime_constitution.md).
-
-Tests the pure `extract_function_call` helper in src.handlers.ai_handler - it operates
-purely on a Responses API `response.output` list, no OpenAI/filesystem access. Shared by
-the text path (AIHandler._finalize_response) and the image path (ImageExtractor).
+Unit tests for Ledger Event Recognition's function-call extraction (runtime_constitution.md)
+and, since Feature 033, LedgerEventManager wiring in AIHandler._handle_ledger_event_capture/
+_finalize_response.
 
 Real classification/extraction accuracy (does the model call the tool at the right time,
 with the right fields) is NOT unit-testable - that needs the real OpenAI API and is covered
-by tests/expensive/test_ledger_event_capture_e2e.py instead.
+by tests/expensive/test_ledger_event_capture_e2e.py instead. What IS covered here: given a
+response that already contains capture_ledger_event call(s) (constructed directly, no real
+API), does AIHandler correctly persist them via a REAL LedgerEventManager and thread the
+resulting event_id(s) into the stored message - only the OpenAI client itself is a stand-in
+(external service, per CONSTITUTION SS I's testing guidance), never any internal component.
 """
 import json
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock, MagicMock
+
+import pytest
 
 from src.handlers.ai_handler import (
-    extract_function_call, extract_function_call_id, extract_all_function_calls, LEDGER_EVENT_TOOL
+    AIHandler, extract_function_call, extract_function_call_id, extract_all_function_calls,
+    LEDGER_EVENT_TOOL
 )
+from src.models.config import AppConfiguration
+from src.models.message import AIRequest
 
 
 def _function_call_item(name, arguments, call_id=None):
@@ -176,3 +185,431 @@ class TestExtractAllFunctionCalls:
         result = extract_all_function_calls(response, "capture_ledger_event")
 
         assert result == [{"arguments": args, "call_id": "call_good"}]
+
+
+# 2026-07-30 (REQ-DATA-004's components-array redesign): agreement-level fields stay
+# top-level, per-component fields (description/amount/percent/.../component_label)
+# move into a `components` list - one call now normally carries ALL of one
+# agreement's components, instead of the model making N separate calls.
+SAMPLE_EVENT = {
+    "source_type": "הסכם",
+    "event_subtype": "יצירה",
+    "client_name": "ישראל ישראלי",
+    "payer_name": None,
+    "agreement_label": "תיק בדיקה",
+    "replaces_hint": None,
+    "reference_hint": None,
+    "raw_message_excerpt": "ישראל ישראלי 5,000₪ כתב הגנה",
+    "component_count": 1,
+    "components": [
+        {
+            "component_label": "בסיס",
+            "description": "כתב הגנה",
+            "amount": "5,000₪",
+            "percent": None,
+            "percent_base": None,
+            "hours": None,
+            "hourly_rate": None,
+            "txn_date": None,
+            "vat_status": "לא צוין",
+            "notes": None,
+        },
+    ],
+}
+
+
+def _with_component_override(event, **component_overrides):
+    """Returns a copy of `event` with its single component's fields overridden -
+    convenience for tests that used to override top-level fields like `amount`
+    before the components-array redesign."""
+    new_event = dict(event)
+    new_event["components"] = [dict(event["components"][0], **component_overrides)]
+    return new_event
+
+
+def _ledger_call_response(events, resp_id="resp_original_1"):
+    """A response whose .output contains one function_call item per event dict."""
+    items = [
+        _function_call_item("capture_ledger_event", json.dumps(event), call_id=f"call_{i}")
+        for i, event in enumerate(events)
+    ]
+    return SimpleNamespace(
+        id=resp_id, output=items, output_text="", model="gpt-5.6-luna",
+        usage=SimpleNamespace(total_tokens=8, input_tokens=6, output_tokens=2),
+    )
+
+
+def _followup_response(text="הרשומה נקלטה", input_tokens=10, output_tokens=5, resp_id="resp_followup_1"):
+    return SimpleNamespace(
+        id=resp_id,
+        output_text=text,
+        output=[],
+        model="gpt-5.6-luna",
+        usage=SimpleNamespace(
+            total_tokens=input_tokens + output_tokens,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        ),
+    )
+
+
+@pytest.fixture
+def mock_config(tmp_path):
+    """Mirrors the established Mock(spec=AppConfiguration) pattern used by
+    test_ai_handler_retry.py - config itself and the AI client are the only
+    stand-ins (external-service/data-holder), LedgerEventManager/SessionManager
+    stay real, isolated to tmp_path."""
+    config = Mock(spec=AppConfiguration)
+    config.ai_model = "gpt-5.6-luna"
+    config.ai_reply_max_tokens = 500
+    config.constitution_config = {}
+    config.data_root = str(tmp_path / "data")
+    config.memory = {
+        'session': {'storage_dir': str(tmp_path / "data" / "sessions")},
+        'longterm': {'enabled': False}
+    }
+    config.user_roles = {}
+    config.godfather_phone = None
+    return config
+
+
+@pytest.fixture
+def mock_ai_client():
+    return MagicMock()
+
+
+@pytest.fixture
+def ai_handler(mock_config, mock_ai_client):
+    return AIHandler(mock_ai_client, mock_config)
+
+
+class TestCaptureLedgerEventsFromText:
+    """Regression guard (found 2026-07-30): capture_ledger_event_from_text (the
+    image path's classification call) used to call the single-result
+    extract_function_call, silently dropping every ledger-event component
+    after the first whenever a document image genuinely warranted more than
+    one (e.g. a multi-stage/conditional fee agreement). Renamed to the plural
+    capture_ledger_events_from_text, using extract_all_function_calls - same
+    fix already proven correct for the text path (TestExtractAllFunctionCalls
+    above)."""
+
+    def test_empty_text_returns_empty_list(self, ai_handler):
+        assert ai_handler.capture_ledger_events_from_text("") == []
+
+    def test_single_call_returns_list_of_one(self, ai_handler, mock_ai_client):
+        mock_ai_client.responses.create.return_value = _ledger_call_response([SAMPLE_EVENT])
+
+        result = ai_handler.capture_ledger_events_from_text("some extracted document text")
+
+        assert result == [SAMPLE_EVENT]
+
+    def test_multiple_calls_all_returned_not_just_the_first(self, ai_handler, mock_ai_client):
+        event2 = _with_component_override(SAMPLE_EVENT, amount="4,000₪")
+        event3 = _with_component_override(SAMPLE_EVENT, amount="8,000₪")
+        mock_ai_client.responses.create.return_value = _ledger_call_response(
+            [SAMPLE_EVENT, event2, event3]
+        )
+
+        result = ai_handler.capture_ledger_events_from_text("a multi-stage fee agreement")
+
+        assert result == [SAMPLE_EVENT, event2, event3]
+
+    def test_no_call_returns_empty_list(self, ai_handler, mock_ai_client):
+        mock_ai_client.responses.create.return_value = _followup_response()
+
+        result = ai_handler.capture_ledger_events_from_text("ordinary document text")
+
+        assert result == []
+
+
+class TestCaptureLedgerEventsFromTextRetry:
+    """REQ-DATA-008 (added 2026-08-02, real billed incident 2026-07-31): a call
+    that reports source_type/etc. but an empty components array (or a
+    component_count mismatch) is invalid - capture_ledger_events_from_text must
+    retry once with corrective feedback before giving up. See spec.md's fifth
+    addendum for the real failure this guards against (Mor ben-Shaya 6-component
+    test: ledger_events_captured=1, components=[], 0 persisted, 0 errors)."""
+
+    def test_complete_first_response_does_not_retry(self, ai_handler, mock_ai_client):
+        mock_ai_client.responses.create.return_value = _ledger_call_response([SAMPLE_EVENT])
+
+        result = ai_handler.capture_ledger_events_from_text("a clean single-component agreement")
+
+        assert result == [SAMPLE_EVENT]
+        assert mock_ai_client.responses.create.call_count == 1
+
+    def test_empty_components_triggers_one_retry_and_uses_retry_result(
+        self, ai_handler, mock_ai_client
+    ):
+        incomplete = dict(SAMPLE_EVENT, component_count=0, components=[])
+        mock_ai_client.responses.create.side_effect = [
+            _ledger_call_response([incomplete], resp_id="resp_incomplete"),
+            _ledger_call_response([SAMPLE_EVENT], resp_id="resp_retry_complete"),
+        ]
+
+        result = ai_handler.capture_ledger_events_from_text("a 6-component agreement image text")
+
+        assert result == [SAMPLE_EVENT]
+        assert mock_ai_client.responses.create.call_count == 2
+        retry_call_kwargs = mock_ai_client.responses.create.call_args_list[1].kwargs
+        retry_messages = [m["content"] for m in retry_call_kwargs["input"]]
+        assert any("zero components" in m or "component_count" in m for m in retry_messages), (
+            "the retry call must include an explicit corrective message naming the defect"
+        )
+
+    def test_component_count_mismatch_triggers_retry(self, ai_handler, mock_ai_client):
+        partial = dict(SAMPLE_EVENT, component_count=6)  # components still has only 1
+        mock_ai_client.responses.create.side_effect = [
+            _ledger_call_response([partial], resp_id="resp_partial"),
+            _ledger_call_response([SAMPLE_EVENT], resp_id="resp_retry_complete"),
+        ]
+
+        result = ai_handler.capture_ledger_events_from_text("a 6-component agreement image text")
+
+        assert result == [SAMPLE_EVENT]
+        assert mock_ai_client.responses.create.call_count == 2
+
+    def test_still_incomplete_after_retry_returns_retry_result_without_a_third_call(
+        self, ai_handler, mock_ai_client
+    ):
+        incomplete = dict(SAMPLE_EVENT, component_count=0, components=[])
+        mock_ai_client.responses.create.side_effect = [
+            _ledger_call_response([incomplete], resp_id="resp_incomplete_1"),
+            _ledger_call_response([incomplete], resp_id="resp_incomplete_2"),
+        ]
+
+        result = ai_handler.capture_ledger_events_from_text("a genuinely ambiguous document")
+
+        assert result == [incomplete], (
+            "no third call - LedgerEventManager.add_ledger_events_from_call owns the "
+            "final never-silently-drop fallback, this method just returns what it got"
+        )
+        assert mock_ai_client.responses.create.call_count == 2
+
+
+class TestHandleLedgerEventCaptureWiring:
+    """T008a/T012a: AIHandler._handle_ledger_event_capture -> LedgerEventManager
+    (Feature 033), replacing the removed SessionManager.add_pending_ledger_event."""
+
+    def test_single_call_persisted_via_ledger_event_manager(self, ai_handler, mock_ai_client):
+        mock_ai_client.responses.create.return_value = _followup_response()
+        response = _ledger_call_response([SAMPLE_EVENT])
+        request = AIRequest(
+            user_prompt="ישראל ישראלי 5,000₪ כתב הגנה", constitution="", max_tokens=500,
+            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-abc",
+            timestamp=1770000000,
+        )
+
+        followup = ai_handler._handle_ledger_event_capture(
+            request, response, effective_chat_id="972500000000@c.us",
+            sender="972500000000@c.us", tools=None
+        )
+
+        assert followup is not None
+        events_dir = ai_handler.ledger_event_manager.storage_dir
+        files = list(events_dir.glob("*.json"))
+        assert len(files) == 1
+        with files[0].open(encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["source_type"] == "הסכם"
+        assert data["message_id"] == "msg-abc"
+        assert data["amount"] == 5000
+
+    def test_two_calls_in_one_turn_each_persisted_as_separate_files(self, ai_handler, mock_ai_client):
+        """Two genuinely SEPARATE capture_ledger_event calls in one turn (e.g. two
+        unrelated clients mentioned in the same message - the now-rare edge case,
+        since one agreement's own multi-stage components go through ONE call's
+        `components` array instead - REQ-DATA-004) must still produce 2 separate
+        persisted files, one per call, not one combined write."""
+        mock_ai_client.responses.create.return_value = _followup_response()
+        event2 = _with_component_override(
+            dict(SAMPLE_EVENT, client_name="דנה כהן"), amount="2,000₪"
+        )
+        response = _ledger_call_response([SAMPLE_EVENT, event2])
+        request = AIRequest(
+            user_prompt="two components", constitution="", max_tokens=500,
+            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-multi",
+            timestamp=1770000000,
+        )
+
+        ai_handler._handle_ledger_event_capture(
+            request, response, effective_chat_id="972500000000@c.us",
+            sender="972500000000@c.us", tools=None
+        )
+
+        events_dir = ai_handler.ledger_event_manager.storage_dir
+        files = sorted(events_dir.glob("*.json"))
+        assert len(files) == 2
+        amounts = set()
+        for f in files:
+            with f.open(encoding="utf-8") as fh:
+                amounts.add(json.load(fh)["amount"])
+        assert amounts == {5000, 2000}
+
+    def test_multiple_components_in_one_call_share_identical_agreement_id(
+        self, ai_handler, mock_ai_client
+    ):
+        """REQ-DATA-004 (2026-07-30 components-array redesign): the PRIMARY way to
+        get multiple components of one agreement is now a single capture_ledger_event
+        call whose `components` array has multiple entries - not the model making N
+        separate calls (proven unreliable even with a materially stronger model - see
+        spec.md). All components from that ONE call must share byte-for-byte the same
+        agreement_id, computed once by add_ledger_events_from_call, with distinct
+        component_ids."""
+        mock_ai_client.responses.create.return_value = _followup_response()
+        multi_component_event = dict(SAMPLE_EVENT, component_count=2)
+        multi_component_event["components"] = [
+            dict(SAMPLE_EVENT["components"][0]),
+            dict(SAMPLE_EVENT["components"][0], description="שלב שני", amount="2,000₪", component_label="שלב שני"),
+        ]
+        response = _ledger_call_response([multi_component_event])
+        request = AIRequest(
+            user_prompt="one agreement, two components", constitution="", max_tokens=500,
+            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-batch",
+            timestamp=1770000000,
+        )
+
+        ai_handler._handle_ledger_event_capture(
+            request, response, effective_chat_id="972500000000@c.us",
+            sender="972500000000@c.us", tools=None
+        )
+
+        events_dir = ai_handler.ledger_event_manager.storage_dir
+        files = sorted(events_dir.glob("*.json"))
+        assert len(files) == 2
+        agreement_ids = set()
+        component_ids = set()
+        for f in files:
+            with f.open(encoding="utf-8") as fh:
+                data = json.load(fh)
+            agreement_ids.add(data["agreement_id"])
+            component_ids.add(data["component_id"])
+        assert None not in agreement_ids
+        assert len(agreement_ids) == 1, "both components must share one identical agreement_id"
+        assert len(component_ids) == 2, "component_id must still differ per component"
+
+    def test_two_separate_calls_in_one_turn_get_independent_agreement_ids(
+        self, ai_handler, mock_ai_client
+    ):
+        """Two genuinely SEPARATE capture_ledger_event calls (e.g. two unrelated
+        clients in one message) must NOT share an agreement_id - each call is its
+        own agreement now, unlike the pre-2026-07-30 design where a shared batch id
+        was computed across all calls in a turn."""
+        mock_ai_client.responses.create.return_value = _followup_response()
+        event2 = dict(SAMPLE_EVENT, client_name="דנה כהן")
+        response = _ledger_call_response([SAMPLE_EVENT, event2])
+        request = AIRequest(
+            user_prompt="two unrelated clients", constitution="", max_tokens=500,
+            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-separate",
+            timestamp=1770000000,
+        )
+
+        ai_handler._handle_ledger_event_capture(
+            request, response, effective_chat_id="972500000000@c.us",
+            sender="972500000000@c.us", tools=None
+        )
+
+        events_dir = ai_handler.ledger_event_manager.storage_dir
+        files = sorted(events_dir.glob("*.json"))
+        assert len(files) == 2
+        agreement_ids = [json.load(f.open(encoding="utf-8"))["agreement_id"] for f in files]
+        assert None not in agreement_ids
+        assert len(set(agreement_ids)) == 2, "separate calls must get independent agreement_ids"
+
+    def test_morning_mcp_sourced_turn_suppressed_not_persisted(self, ai_handler, mock_ai_client):
+        """Feature 024/025 suppression must still hold after the storage-layer
+        swap: when the same turn's response.output contains a real mcp_call
+        item, nothing is persisted."""
+        mock_ai_client.responses.create.return_value = _followup_response()
+        items = [
+            SimpleNamespace(type="mcp_call", name="list_invoices", arguments="{}", output="{}", error=None),
+            _function_call_item("capture_ledger_event", json.dumps(SAMPLE_EVENT), call_id="call_0"),
+        ]
+        response = SimpleNamespace(id="resp_mcp", output=items, output_text="")
+        request = AIRequest(
+            user_prompt="show me invoices", constitution="", max_tokens=500,
+            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-mcp",
+            timestamp=1770000000,
+        )
+
+        ai_handler._handle_ledger_event_capture(
+            request, response, effective_chat_id="972500000000@c.us",
+            sender="972500000000@c.us", tools=None
+        )
+
+        events_dir = ai_handler.ledger_event_manager.storage_dir
+        assert list(events_dir.glob("*.json")) == []
+
+
+class TestFinalizeResponseThreadsLedgerEventIds:
+    """T008a: the stored user message must carry ledger_event_ids at creation
+    time (Feature 033's Message.ledger_event_ids, REQ-TRACE-003)."""
+
+    def test_captured_event_id_threaded_into_stored_user_message(self, ai_handler, mock_ai_client):
+        mock_ai_client.responses.create.return_value = _followup_response()
+        response = _ledger_call_response([SAMPLE_EVENT])
+        request = AIRequest(
+            user_prompt="ישראל ישראלי 5,000₪ כתב הגנה", constitution="", max_tokens=500,
+            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-thread",
+            timestamp=1770000000,
+        )
+
+        ai_response = ai_handler._finalize_response(
+            request, response, effective_chat_id="972500000000@c.us",
+            user_obj=None, user_role="client", sender="972500000000@c.us",
+            recipient="AI", tools=None
+        )
+
+        assert ai_response is not None
+        events_dir = ai_handler.ledger_event_manager.storage_dir
+        event_files = list(events_dir.glob("*.json"))
+        assert len(event_files) == 1
+        with event_files[0].open(encoding="utf-8") as f:
+            event_record = json.load(f)
+        event_id = event_record["event_id"]
+
+        session = ai_handler.session_manager.get_session("972500000000@c.us")
+        session_dir = ai_handler.session_manager.storage_dir / session.session_id
+        user_messages = []
+        for message_id in session.message_ids:
+            with (session_dir / "messages" / f"{message_id}.json").open(encoding="utf-8") as f:
+                msg = json.load(f)
+            if msg["role"] == "user":
+                user_messages.append(msg)
+
+        assert len(user_messages) == 1
+        assert user_messages[0]["ledger_event_ids"] == [event_id]
+
+        # Confirmed design (2026-07-30): the id decided at message-arrival time
+        # (AIRequest.message_id, from WhatsAppMessage.from_notification) MUST be
+        # identical across the persisted message's own message_id field, its
+        # filename, the session's message_ids entry, AND LedgerEvent.message_id -
+        # never independently regenerated at storage time.
+        assert user_messages[0]["message_id"] == "msg-thread"
+        assert "msg-thread" in session.message_ids
+        assert (session_dir / "messages" / "msg-thread.json").exists()
+        assert event_record["message_id"] == "msg-thread"
+
+    def test_no_capture_leaves_ledger_event_ids_empty(self, ai_handler, mock_ai_client):
+        response = SimpleNamespace(
+            id="resp_no_capture", output=[], output_text="שלום, איך אפשר לעזור?",
+            model="gpt-5.6-luna",
+            usage=SimpleNamespace(total_tokens=10, input_tokens=5, output_tokens=5),
+        )
+        request = AIRequest(
+            user_prompt="מה קורה?", constitution="", max_tokens=500,
+            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-none",
+            timestamp=1770000000,
+        )
+
+        ai_handler._finalize_response(
+            request, response, effective_chat_id="972500000000@c.us",
+            user_obj=None, user_role="client", sender="972500000000@c.us",
+            recipient="AI", tools=None
+        )
+
+        session = ai_handler.session_manager.get_session("972500000000@c.us")
+        session_dir = ai_handler.session_manager.storage_dir / session.session_id
+        with (session_dir / "messages" / f"{session.message_ids[0]}.json").open(encoding="utf-8") as f:
+            msg = json.load(f)
+        assert msg["ledger_event_ids"] == []

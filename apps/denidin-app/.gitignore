@@ -36,6 +36,7 @@ denidin.pid
 data/sessions/
 data/memory/
 data/media/
+data/events/
 
 # Test data (generated during tests)
 test_data/

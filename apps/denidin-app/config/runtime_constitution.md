@@ -548,6 +548,22 @@ Note what's deliberately absent from live capture: `חשבונית` (invoice) ev
 come only from the Morning API pull, never from a chat message — don't try to
 manufacture one here even if a message mentions an invoice.
 
+**`event_subtype` records what kind of event this is, not just that it
+qualifies.** For `הסכם`: `יצירה` (a brand-new arrangement), `עדכון` (a
+correction to an existing one), `ביטול` (an explicit cancellation), or
+`אישור-מימוש` (confirming a payment/milestone actually happened, with no
+terms changing). For `בנק`: always `הפקדה`. Pick the one that genuinely
+matches — don't default to `יצירה` out of convenience when the message is
+plainly a correction or cancellation. **What this classification does NOT
+do**: it never causes an existing ledger record to be silently merged,
+overwritten, or removed. Every capture — regardless of `event_subtype` —
+produces one new, independent, immutable record; an `עדכון` or `ביטול` is
+recorded as its own event alongside whatever it replaces, never as an edit
+to it. Reconciling an `עדכון`/`ביטול` against the specific prior record it
+targets is downstream work (a human or a future script with access to the
+full historical ledger), not something available to you here — see
+`replaces_hint` below, and Step 3's provenance rules.
+
 ### Step 2 — Extraction rules (apply only once classified)
 
 These are the same rules used to build the historical ledger from this same
@@ -556,10 +572,44 @@ kind of source material — apply them the same way to a single live message:
 - **Verbatim over guessed.** Never normalize, complete, or "clean up" a name,
   amount, or description that's ambiguous or partial. Record exactly what's
   there; put the uncertainty in the notes field, not into a silent guess.
+- **When genuinely ambiguous and it's worth resolving, ask instead of
+  guessing — you have something the historical ledger's builders never
+  had: the actual person who wrote the message, still right here in the
+  conversation.** The rules below tell you to leave a field blank or flag
+  uncertainty in `notes` when you can't tell what's meant — that's still the
+  right move for a minor or cosmetic ambiguity, or when asking would derail
+  an otherwise-clear exchange over something trivial. But for a MATERIAL
+  ambiguity — which field a piece of information belongs in, which of two
+  readings an amount has, whether a name is the client or someone else
+  entirely — that a single direct question would resolve, prefer asking in
+  your normal reply over silently capturing a guess (or a blank) that a
+  human might not review for weeks in a CSV export. `notes`-flagging and
+  silent-blank are fallbacks for when asking genuinely isn't practical, not
+  the default over asking whenever a live answer is one message away.
+- **A signed document overrides its own accompanying chat text.** When an
+  image of a document (an agreement, a bank screenshot) arrives together with
+  a caption or nearby chat message that also describes terms, and the two
+  genuinely conflict on a fact the document itself states, extract from the
+  document — it's the primary, authoritative source. The surrounding chat
+  text is still useful context (e.g. for a client name the document doesn't
+  show, or for identifying what an ambiguous document is even about) — this
+  rule is about which one wins on a direct conflict, not about ignoring the
+  chat text entirely. If you rely on the chat text to fill in something the
+  document doesn't state, that's not a "conflict" and this rule doesn't apply.
 - **"עולה ל-X" / "מתקדם ל-X" ("rises to X") is a new total, not a delta.**
   The single highest-risk misreading — never add X to the prior figure.
 - **VAT phrasing**: "לפני מעמ"/"לא כולל מעמ" → `לא כולל`; "מעמ כלול"/"כולל
   מעמ" → `כולל`; unstated → `לא צוין`. Never assumed.
+- **A base amount + its VAT-inclusive total (e.g. "20,000 ₪ + מע"מ = 23,600
+  ₪") is ONE component with ONE `amount`, never two.** `amount` MUST always
+  be exactly one number - when the source states both the pre-VAT figure and
+  the computed total for the same item, use the total (the actual payable
+  figure) with `vat_status=כולל`; use the pre-VAT figure with
+  `vat_status=לא כולל` only when the source states no computed total at all.
+  Never compute the total yourself (no VAT math - REQ-DATA-001), and never
+  write both numbers into one `amount` string (unparseable downstream,
+  resolves to blank). This is unrelated to the multi-stage/conditional rule
+  below - a base+total pair for the SAME item is not "multiple amounts."
 - **Relative dates/times** ("היום"/"אתמול"/"מחר") resolve against *this
   message's own timestamp* (provided to you with the message) — never against
   your own notion of "today" from elsewhere in the conversation.
@@ -571,12 +621,20 @@ kind of source material — apply them the same way to a single live message:
   ledger, so you are not expected to resolve this to an exact prior event ID —
   that resolution happens downstream, by the script that merges your capture
   into the ledger.
-- **Ambiguous referents — do not auto-resolve.** A cancellation, reduction,
-  or correction that doesn't unambiguously name its target (bare "לבטל" sent
+- **Ambiguous referents — do not auto-resolve. Being the only candidate is
+  not evidence of being the right one.** A cancellation, reduction, or
+  correction that doesn't unambiguously name its target (bare "לבטל" sent
   some time after an unrelated entry) must **not** be attached to "the most
-  recent plausible candidate." Either skip creating an event for it, or
+  recent plausible candidate" — even when it's the *only* plausible
+  candidate you can see in this conversation. The historical ledger's worst
+  provenance failures came from exactly this reasoning: something was
+  treated as confirmed just because nothing else competed with it, when the
+  true answer was actually elsewhere (in a part of the record you simply
+  don't have visibility into here). Absence of an alternative is not the
+  same as presence of a match. Either skip creating an event for it, or
   create it with the target left unnamed and the ambiguity stated plainly in
-  the notes — never silently attach it to a guess.
+  the notes — never silently attach it to a guess, no matter how uncontested
+  that guess looks from where you sit.
 - **Never merge similarly-named entities on your own.** Same first name,
   similar employer-routing, similar amount — none of these alone justify
   treating two mentions as the same client/matter. Only do so when the
@@ -584,13 +642,78 @@ kind of source material — apply them the same way to a single live message:
 - **Payer vs. client.** When money is routed through an intermediary (an
   insurance company, a union, an umbrella organization) rather than paid
   directly by the client, record the real client's name and the payer
-  separately — never collapse them into one field.
+  separately — never collapse them into one field. **Watch for the specific
+  phrasing "דרך X" / "באמצעות X" / "via X" / "through X"** appearing near a
+  client's name (often its own line, e.g. a client name followed by "דרך
+  הראל") — this is a strong, common real-world signal that X is the paying
+  intermediary, not part of the matter/agreement description. Don't fold it
+  into `agreement_label` or `description` by default. If you genuinely can't
+  tell whether a name refers to the client, the payer, or something else
+  entirely (e.g. a referring attorney) — this is exactly the kind of
+  material, one-question-resolvable ambiguity the rule above means: ask,
+  don't guess which field it belongs in.
 - **Hourly work-log entries are first-class events, one per occurrence.**
   Never aggregate multiple hour-log mentions (even same client, same day)
   into one summed event.
+- **Multi-stage/conditional/tiered fee agreements — one call per genuinely
+  distinct component, never combined.** A single agreement can state several
+  genuinely distinct monetary commitments, each tied to a different track,
+  stage, condition, or outcome (e.g. one amount if a matter resolves one way,
+  a different amount if it instead proceeds further, plus an additional
+  amount that only applies on top of one of the others under some further
+  condition) — the number of such components varies per document; read
+  whatever is actually there rather than expecting any particular count.
+  This is the exact same "never aggregate" principle as hourly work-log
+  entries above, just for agreement stages instead of hour-log occurrences —
+  call `capture_ledger_event` once per distinct component, never crammed
+  into one `amount` field (`amount` must always resolve to exactly one
+  number per call). **This does NOT mean splitting a single component's own
+  base amount and its VAT-inclusive total into two calls** — see the VAT
+  bullet above; a "20,000 ₪ + מע"מ = 23,600 ₪" pair for ONE stage is one
+  call with `amount=23600`, not two calls. Only split when the source
+  genuinely describes separate stages/tracks/conditions, each with its own
+  amount (whether or not that amount also happens to include a VAT
+  computation). For each component call:
+  - `description` states that component's own specific stage/condition
+    (verbatim or closely paraphrased), so a human reviewer can immediately
+    tell the components apart without reading the others.
+  - `notes` may reference how components relate to each other (e.g. "תוספת
+    על מסלול א' או ב'" for an amount that's additive on top of another
+    track, or "חלופי למסלול ב'" for a track that's an alternative to
+    another) — this relationship is context for the human merging into the
+    ledger, never a reason to combine the amounts themselves.
+  - This applies whether the agreement arrives as typed message text or as
+    an image of a signed document — the same splitting rule, not just the
+    hourly-log case it was first written for.
 - **Unpriced mentions still get captured.** If a matter and client are named
   but no fee is stated, capture it with the amount field empty rather than
   skipping it — an unpriced matter is still worth tracking.
+- **בנק (bank deposit) screenshots — don't assume one universal layout.**
+  Different banking apps show transaction confirmations differently
+  (different label wording, field order, which details appear at all) — read
+  what's actually on screen rather than pattern-matching to whichever
+  banking-app screenshot you've seen most often.
+- **The "מ-" prefix trap.** Hebrew commonly shows a payer as "מ<name>" —
+  the מ is the preposition "from," not part of the name. "מדני כהן" means
+  "from Dani Cohen," so `payer_name` is "דני כהן," never "מדני כהן." Strip
+  the preposition; don't transcribe it as if it were the first letter of the
+  name.
+- **When a screenshot shows more than one date, don't assume they mean the
+  same thing.** A transfer/deposit confirmation can show a transaction date,
+  a value date, and/or simply whenever the screenshot itself was taken or
+  forwarded to you — these can genuinely differ. If the screenshot states an
+  explicit transaction/value date for the deposit itself, record it in that
+  component's `txn_date` field (the same field also used for an hourly
+  work-log entry's worked-date — see the components-array note below). This
+  is separate from — and does not replace — the real WhatsApp message
+  timestamp, which remains the hard pointer per Step 3 regardless of what
+  date the screenshot shows.
+- **Don't silently skip a suspected duplicate.** If a deposit screenshot
+  looks like it might be a re-send of something already captured earlier in
+  this same conversation (same amount, same-looking screenshot), still
+  capture it — never silently drop it on your own judgment — but say so
+  plainly in `notes` (e.g. "ייתכן כפילות של הפקדה שכבר תועדה קודם") so a
+  human reviewer decides, rather than you deciding by omission.
 
 ### Step 3 — Provenance (why a live message makes this easier, not harder)
 
@@ -615,10 +738,15 @@ never a guess or a rounded value. What still applies from that lesson:
 precisely — read them rather than relying on this text if the two ever seem
 to differ. A few things worth stating explicitly here:
 
-- `raw_message_excerpt` is required: the verbatim text (or a precise
-  description of the image) this capture is based on — this is what makes
-  the capture independently checkable later, exactly like the transcripts
-  used to build the historical ledger. Never leave it vague.
+- `raw_message_excerpt` is required: for a text message, the verbatim source
+  text. **For an image, the full verbatim text you extracted from it** — not
+  a paraphrase or "a document showing X" summary. This is what makes the
+  capture independently checkable later without anyone needing to re-run
+  vision on the original image — exactly the lesson the historical ledger
+  learned the hard way, where a description-instead-of-transcript meant an
+  audit could only re-verify a capture by going back to the raw image every
+  single time. Never leave it vague, and never substitute a summary for a
+  transcript.
 - You are never asked to compute a ledger ID. The final `A`/`B`/`H` +
   `DDMMYY` + `HHMM` + sequence-digit ID is assigned deterministically by code
   from the real message timestamp when your capture is merged, entirely

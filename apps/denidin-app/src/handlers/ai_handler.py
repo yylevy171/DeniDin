@@ -7,6 +7,7 @@ Phase 6: RBAC (Role-Based Access Control)
 import json
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional, List, Dict
 
 from openai import OpenAI, APITimeoutError, RateLimitError, APIError
@@ -21,6 +22,7 @@ from src.models.message import WhatsAppMessage, AIRequest, AIResponse
 from src.utils.logger import get_logger
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_manager import MemoryManager
+from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
 from src.managers.user_manager import UserManager
 from src.managers.pending_approval_manager import PendingApprovalManager, PendingApproval
 from src.models.user import Role
@@ -159,6 +161,18 @@ def _is_affirmative_reply(text: str) -> bool:
 # API just returns structured, schema-validated arguments as a `function_call` output
 # item alongside (never instead of) the normal reply - see `extract_function_call`.
 # Used by both the text path (AIHandler) and the image path (ImageExtractor).
+#
+# `components` array (2026-07-30, REQ-DATA-004 redesign): replaces relying on the
+# model choosing to invoke this tool N times for a multi-stage/conditional agreement -
+# proven unreliable even with a materially stronger model (real evidence: two separate
+# real documents, both correctly comprehended in full by the extraction step, both still
+# only produced ONE tool call each, with every component after the first dumped into
+# free-text `notes` instead of split out - see spec.md's Clarifications for the full
+# investigation). A single call with a `components` array is a fundamentally more
+# reliable capability (structured output) than depending on autonomous repeated tool
+# invocation, and was validated externally (real API calls, real images, this exact
+# schema) before being wired into the app - both real test documents correctly produced
+# 3 and 6 components respectively in ONE call each.
 LEDGER_EVENT_TOOL = {
     "type": "function",
     "name": "capture_ledger_event",
@@ -168,7 +182,11 @@ LEDGER_EVENT_TOOL = {
         "in addition to your normal reply - never instead of it. Only call it when the "
         "content genuinely states, changes, or cancels a fee arrangement, or shows a "
         "bank-transfer/deposit confirmation. Do not call it for ordinary conversation, "
-        "questions, or content unrelated to money/engagement terms."
+        "questions, or content unrelated to money/engagement terms. If the agreement "
+        "states multiple distinct fee components (different tracks/stages/conditions), "
+        "list ALL of them in the components array in this ONE call - never omit any, "
+        "never merge them into one component, and never make a second separate call for "
+        "the same agreement."
     ),
     "strict": True,
     "parameters": {
@@ -185,24 +203,28 @@ LEDGER_EVENT_TOOL = {
                 "description": (
                     "For source_type=הסכם: יצירה (new)/עדכון (correction)/ביטול "
                     "(cancellation)/אישור-מימוש (payment/milestone confirmed). "
-                    "For source_type=בנק: always הפקדה."
+                    "For source_type=בנק: always הפקדה. Applies to the whole call - "
+                    "every component shares the same subtype."
                 ),
             },
             "client_name": {"type": ["string", "null"], "description": "The client's name, verbatim."},
             "payer_name": {
                 "type": ["string", "null"],
-                "description": "The paying entity, ONLY if different from client_name (e.g. an insurer/union routing payment).",
+                "description": (
+                    "The paying entity, ONLY if different from client_name (e.g. an "
+                    "insurer/union routing payment). Watch specifically for 'דרך X' / "
+                    "'באמצעות X' / 'via X' / 'through X' near a client's name (often its "
+                    "own line right after the client name) - a strong, common signal "
+                    "that X is the payer, not part of agreement_label/description."
+                ),
             },
-            "description": {"type": ["string", "null"], "description": "The matter/engagement, verbatim or closely paraphrased."},
-            "amount": {"type": ["string", "null"], "description": "The stated amount, verbatim (no currency conversion, no math)."},
-            "percent": {"type": ["string", "null"], "description": "A stated percentage figure, if any (e.g. success-fee percentage)."},
-            "percent_base": {"type": ["string", "null"], "description": "What the percent applies to, if stated."},
-            "hours": {"type": ["string", "null"], "description": "Stated hours, for an hourly work-log entry."},
-            "hourly_rate": {"type": ["string", "null"], "description": "Stated hourly rate, if any."},
-            "vat_status": {
-                "type": "string",
-                "enum": ["כולל", "לא כולל", "לא צוין"],
-                "description": "VAT-inclusive, VAT-exclusive, or not stated - never assumed.",
+            "agreement_label": {
+                "type": ["string", "null"],
+                "description": (
+                    "Short human-readable Hebrew label for the matter/agreement as a whole "
+                    "(e.g. 'ערעור לארצי', 'תביעת נזיקין נגד מדינה') - a few words, not a full "
+                    "sentence. Required (non-null) for source_type=הסכם; always null for בנק."
+                ),
             },
             "replaces_hint": {
                 "type": ["string", "null"],
@@ -212,16 +234,96 @@ LEDGER_EVENT_TOOL = {
                 "type": ["string", "null"],
                 "description": "Free-text loose reference to a related (not replaced) prior matter, if any.",
             },
-            "notes": {"type": ["string", "null"], "description": "Any ambiguity or uncertainty worth flagging for the human reviewer."},
             "raw_message_excerpt": {
                 "type": "string",
                 "description": "Verbatim source text (or a precise description of the image) this capture is based on - the hard pointer for later verification.",
             },
+            "component_count": {
+                "type": "integer",
+                "description": (
+                    "State this FIRST, before the components array below: the exact number "
+                    "of entries you are about to list in components. Every genuinely-"
+                    "qualifying event has at least one component - this must never be 0. "
+                    "components MUST end up containing EXACTLY this many entries - if you "
+                    "find yourself wanting to list a different number of components than "
+                    "you stated here, go back and make them match before responding."
+                ),
+            },
+            "components": {
+                "type": "array",
+                "description": (
+                    "One entry per genuinely distinct fee component/track/stage/condition "
+                    "stated in the document or message - even if there's only one. A base "
+                    "amount and its own VAT-inclusive total for the SAME component (e.g. "
+                    "'20,000 + VAT = 23,600') is ONE entry, not two - only split when the "
+                    "source genuinely describes separate stages/tracks/conditions, each with "
+                    "its own amount. MUST contain exactly component_count entries."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "component_label": {
+                            "type": ["string", "null"],
+                            "description": (
+                                "Short human-readable Hebrew label for just THIS component "
+                                "(e.g. 'בסיס', 'שעות עבודה', 'בונוס אם מגיעים לפיצויים') - a "
+                                "few words, not a full sentence, distinct from other "
+                                "components of the same agreement. Required (non-null) for "
+                                "source_type=הסכם; always null for בנק."
+                            ),
+                        },
+                        "description": {"type": ["string", "null"], "description": "The matter/engagement for this component, verbatim or closely paraphrased."},
+                        "amount": {
+                            "type": ["string", "null"],
+                            "description": (
+                                "The stated amount for THIS component, verbatim (no currency "
+                                "conversion, no math). MUST resolve to exactly one number - "
+                                "when both a pre-VAT base and a computed VAT-inclusive total "
+                                "are stated for this same component, use the total."
+                            ),
+                        },
+                        "percent": {"type": ["string", "null"], "description": "A stated percentage figure for this component, if any (e.g. success-fee percentage)."},
+                        "percent_base": {"type": ["string", "null"], "description": "What this component's percent applies to, if stated."},
+                        "hours": {"type": ["string", "null"], "description": "Stated hours, for an hourly work-log component."},
+                        "hourly_rate": {"type": ["string", "null"], "description": "Stated hourly rate for this component, if any."},
+                        "txn_date": {
+                            "type": ["string", "null"],
+                            "description": (
+                                "The actual calendar date this component's own content "
+                                "refers to, as ISO-8601 (YYYY-MM-DD), when that's distinct "
+                                "from the message's own timestamp. Two cases: (1) for an "
+                                "hourly work-log component (this component's 'hours' is "
+                                "non-null) - REQUIRED (non-null) - the actual date the hours "
+                                "were worked; resolve relative phrases like 'אתמול'/'היום' "
+                                "yourself using the current date given to you in your "
+                                "instructions. (2) for a source_type=בנק component - OPTIONAL "
+                                "- the transaction/value date the screenshot itself states, "
+                                "ONLY when the screenshot shows an explicit date distinct from "
+                                "other dates that might also appear on screen (e.g. when it "
+                                "was forwarded). Null in every other case. Never a substitute "
+                                "for the real message timestamp - that stays whatever it "
+                                "actually is, independent of this field."
+                            ),
+                        },
+                        "vat_status": {
+                            "type": "string",
+                            "enum": ["כולל", "לא כולל", "לא צוין"],
+                            "description": "VAT-inclusive, VAT-exclusive, or not stated for THIS component - never assumed.",
+                        },
+                        "notes": {"type": ["string", "null"], "description": "Any ambiguity or uncertainty about THIS component worth flagging for the human reviewer, including how it relates to other components (e.g. additive vs. alternative)."},
+                    },
+                    "required": [
+                        "component_label", "description", "amount", "percent", "percent_base",
+                        "hours", "hourly_rate", "txn_date", "vat_status", "notes",
+                    ],
+                    "additionalProperties": False,
+                },
+            },
         },
         "required": [
-            "source_type", "event_subtype", "client_name", "payer_name", "description",
-            "amount", "percent", "percent_base", "hours", "hourly_rate", "vat_status",
-            "replaces_hint", "reference_hint", "notes", "raw_message_excerpt",
+            "source_type", "event_subtype", "client_name", "payer_name", "agreement_label",
+            "replaces_hint", "reference_hint", "raw_message_excerpt", "component_count",
+            "components",
         ],
         "additionalProperties": False,
     },
@@ -363,6 +465,15 @@ class AIHandler:
             session_timeout_hours=session_config.get('session_timeout_hours', 24)
         )
 
+        # LedgerEventManager (Feature 033): sibling to MemoryManager, own permanent
+        # storage under {data_root}/events/ - composed from config.data_root at
+        # construction time (REQ-STORE-001), matching MediaFileManager's pattern,
+        # never the config.memory pre-baked-dict pattern SessionManager/MemoryManager
+        # use (events aren't session-scoped data).
+        self.ledger_event_manager = LedgerEventManager(
+            storage_dir=str(Path(config.data_root) / "events")
+        )
+
         # Store token limits for later use in conversation retrieval
         self.max_tokens_by_role = session_config.get('max_tokens_by_role', {
             'client': 4000,
@@ -410,11 +521,9 @@ class AIHandler:
         Reads constitution file only when modified (checks mtime).
         
         Returns:
-            Constitution content if file exists and is configured, 
+            Constitution content if file exists and is configured,
             otherwise fallback to config.system_message
         """
-        from pathlib import Path
-        
         # Get constitution file from config (support both 'file' and legacy 'files' keys)
         constitution_config = self.config.constitution_config
         filename = constitution_config.get('file')
@@ -858,21 +967,26 @@ class AIHandler:
         `_call_openai_approval_api`) is required to get the model's actual reply, which
         also lets it confirm the captured fields back to the user (Feature 024).
 
-        A single turn can contain MORE THAN ONE `capture_ledger_event` call (e.g. several
-        hourly work-log entries in one message - the constitution says never aggregate
-        them). OpenAI requires a `function_call_output` for every pending function call
-        in a turn before it will continue - resolving only the first and leaving others
-        unresolved gets the whole follow-up rejected with "No tool output found for
-        function call ..." (confirmed empirically, 2026-07-28, a real godfather/Morning-MCP
-        conversation with two capture_ledger_event calls in one turn). So every call found
-        is resolved together in one follow-up request, not just the first.
+        A single turn CAN still contain more than one `capture_ledger_event` call (e.g.
+        two genuinely unrelated clients mentioned in one message) - OpenAI requires a
+        `function_call_output` for every pending function call in a turn before it will
+        continue, so every call found is resolved together in one follow-up request, not
+        just the first (confirmed empirically, 2026-07-28, a real godfather/Morning-MCP
+        conversation with two calls in one turn). But a single AGREEMENT with multiple
+        fee components is no longer expected to produce multiple separate calls at all
+        (2026-07-30) - each call's own `components` array carries all of that
+        agreement's components; see `LedgerEventManager.add_ledger_events_from_call`.
 
         Persists every captured event regardless of the follow-up's outcome - the
         structured captures must never be lost even if the confirmation reply fails.
 
-        Returns the follow-up response (whose output_text/usage should replace the
-        original response's) if at least one ledger event was captured and the
-        round-trip succeeded, else None (nothing to capture, or the round-trip failed).
+        Returns (followup, event_ids): followup is the follow-up response (whose
+        output_text/usage should replace the original response's) if at least one
+        ledger event was captured and the round-trip succeeded, else None (nothing
+        to capture, or the round-trip failed). event_ids is the list of new
+        LedgerEvent ids actually persisted this turn (Feature 033), in call order -
+        empty when suppressed or nothing captured - for the caller to thread into
+        the source message's Message.ledger_event_ids (REQ-TRACE-003).
 
         Suppressed when Morning MCP was the data source this turn (2026-07-28): a
         real godfather "list all my invoices" turn had the model reading its own
@@ -891,7 +1005,7 @@ class AIHandler:
         """
         ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
         if not ledger_calls:
-            return None
+            return None, []
 
         morning_mcp_used_this_turn = any(
             getattr(item, "type", None) == "mcp_call" for item in (getattr(response, "output", None) or [])
@@ -921,25 +1035,38 @@ class AIHandler:
                 f"had no call_id for request {request.request_id} - skipped in follow-up round-trip"
             )
 
+        event_ids: List[str] = []
         if morning_mcp_used_this_turn:
             logger.info(
                 f"[024] Suppressing {len(ledger_calls)} ledger-event capture(s) for request "
                 f"{request.request_id} - Morning MCP was this turn's data source, not yet a "
                 f"supported ledger-event source (specs/backlog/025-morning-sourced-ledger-events)"
             )
-        elif self.session_manager and effective_chat_id:
+        elif self.ledger_event_manager and effective_chat_id:
+            session = self.session_manager.get_session(effective_chat_id)
+            # 2026-07-30 (REQ-DATA-004's components-array redesign): each call now
+            # normally carries a `components` array internally (one agreement, N fee
+            # components, in ONE call) rather than the model making N separate calls -
+            # add_ledger_events_from_call owns the flatten + batch-agreement_id +
+            # persist-each-component logic for a single call. The outer loop over
+            # ledger_calls here just handles the now-rare case of genuinely multiple
+            # SEPARATE capture_ledger_event calls in one turn (e.g. unrelated clients
+            # mentioned in the same message) - each gets its own independent batch.
             for call in ledger_calls:
                 try:
-                    self.session_manager.add_pending_ledger_event(
-                        chat_id=effective_chat_id,
-                        event=call["arguments"],
+                    new_event_ids = self.ledger_event_manager.add_ledger_events_from_call(
+                        session_id=session.session_id,
+                        whatsapp_chat=effective_chat_id,
+                        call_arguments=call["arguments"],
+                        message_id=request.message_id,
                         message_timestamp=request.timestamp,
                         sender=sender or effective_chat_id,
                     )
+                    event_ids.extend(new_event_ids)
                 except Exception as e:
-                    logger.error(f"Failed to store pending ledger event: {e}", exc_info=True)
+                    logger.error(f"Failed to persist ledger event(s): {e}", exc_info=True)
 
-        return followup
+        return followup, event_ids
 
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
                            user_obj, user_role: str, sender: Optional[str],
@@ -957,7 +1084,9 @@ class AIHandler:
         completion_tokens = response.usage.output_tokens
         usage_response = response  # tracks whichever call's usage/finish_reason is authoritative
 
-        followup = self._handle_ledger_event_capture(request, response, effective_chat_id, sender, tools)
+        followup, ledger_event_ids = self._handle_ledger_event_capture(
+            request, response, effective_chat_id, sender, tools
+        )
         if followup is not None:
             response_text = followup.output_text
             tokens_used += followup.usage.total_tokens
@@ -1078,7 +1207,9 @@ class AIHandler:
                         user_role=user_obj.role,
                         token_limit=user_obj.token_limit,
                         sender=sender or effective_chat_id,
-                        recipient=recipient or "AI"
+                        recipient=recipient or "AI",
+                        ledger_event_ids=ledger_event_ids,
+                        message_id=request.message_id
                     )
 
                     # Store AI response with token limit
@@ -1101,7 +1232,9 @@ class AIHandler:
                         content=request.user_prompt,
                         user_role=user_role or "client",
                         sender=sender or effective_chat_id,
-                        recipient=recipient or "AI"
+                        recipient=recipient or "AI",
+                        ledger_event_ids=ledger_event_ids,
+                        message_id=request.message_id
                     )
 
                     # Store AI response
@@ -1226,7 +1359,7 @@ class AIHandler:
         wait=wait_fixed(1),
         reraise=True
     )
-    def capture_ledger_event_from_text(self, text: str) -> Optional[Dict]:
+    def capture_ledger_events_from_text(self, text: str) -> List[Dict]:
         """
         Ledger Event Recognition (Feature 024) for the image path: a separate, internal
         text-only classification call over already-extracted document text, using the
@@ -1241,11 +1374,26 @@ class AIHandler:
         already produced the real reply - only whether it called the tool matters, so
         no further round-trip (unlike `_call_openai_ledger_followup_api`) is needed.
 
-        Returns the parsed `capture_ledger_event` arguments, or None if not called
-        (including when `text` is empty - nothing to classify).
+        Returns a list of parsed `capture_ledger_event` arguments dicts - one per call
+        the model made this turn (REQ-CAPTURE-003: a single document/message can
+        genuinely warrant more than one, e.g. a multi-stage/conditional fee agreement -
+        found 2026-07-30 that this previously used the single-call
+        `extract_function_call`, silently dropping every component after the first).
+        Empty list if none were called (including when `text` is empty - nothing to
+        classify).
+
+        (Added 2026-08-02, REQ-DATA-008): if any returned call `is_incomplete_capture`
+        (empty `components` despite calling the tool, or a `component_count` mismatch -
+        a real, observed billed failure: 2026-07-31, the Mor ben-Shaya 6-component
+        agreement image produced exactly this, silently persisting nothing with no
+        error logged anywhere), retry ONCE with an explicit corrective message naming
+        the defect. If it's still incomplete after that, this method still returns
+        whatever it got - add_ledger_events_from_call owns the final never-silently-drop
+        fallback, since it's the one path both the text and image routes persist
+        through.
         """
         if not text:
-            return None
+            return []
 
         constitution = self._load_constitution()
         kwargs = {
@@ -1256,15 +1404,46 @@ class AIHandler:
             "max_output_tokens": self.config.ai_reply_max_tokens,
         }
 
-        logger.info("[024] capture_ledger_event_from_text: classifying extracted image text")
+        logger.info("[024] capture_ledger_events_from_text: classifying extracted image text")
         response = self.client.responses.create(**kwargs)
-        ledger_event = extract_function_call(response, LEDGER_EVENT_TOOL["name"])
+        ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
+        ledger_events = [c["arguments"] for c in ledger_calls]
         logger.info(
-            f"[024] capture_ledger_event_from_text response: id={getattr(response, 'id', None)!r}, "
+            f"[024] capture_ledger_events_from_text response: id={getattr(response, 'id', None)!r}, "
             f"output item types={[getattr(i, 'type', None) for i in (response.output or [])]!r}, "
-            f"ledger_event={'captured' if ledger_event is not None else None!r}"
+            f"ledger_events_captured={len(ledger_events)}, ledger_events={ledger_events!r}"
         )
-        return ledger_event
+
+        if any(is_incomplete_capture(e) for e in ledger_events):
+            logger.warning(
+                f"[024] capture_ledger_events_from_text: detected an incomplete capture "
+                f"(empty components, or component_count/components length mismatch) - "
+                f"retrying once with corrective feedback: {ledger_events!r}"
+            )
+            retry_kwargs = dict(kwargs)
+            retry_kwargs["input"] = kwargs["input"] + [{
+                "role": "user",
+                "content": (
+                    "Your previous capture_ledger_event call indicated a real "
+                    "fee-agreement/bank-deposit event but either listed zero "
+                    "components, or its component_count did not match the number of "
+                    "components actually listed. That is invalid - every genuinely-"
+                    "qualifying event needs at least one component, and "
+                    "component_count must equal the number of items in components. "
+                    "Re-examine the source text above and call capture_ledger_event "
+                    "again with every component actually included."
+                ),
+            }]
+            response = self.client.responses.create(**retry_kwargs)
+            ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
+            ledger_events = [c["arguments"] for c in ledger_calls]
+            logger.info(
+                f"[024] capture_ledger_events_from_text retry response: "
+                f"id={getattr(response, 'id', None)!r}, "
+                f"ledger_events_captured={len(ledger_events)}, ledger_events={ledger_events!r}"
+            )
+
+        return ledger_events
 
     @retry(
         retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),

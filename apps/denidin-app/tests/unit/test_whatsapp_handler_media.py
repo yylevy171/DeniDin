@@ -4,7 +4,7 @@ Tests media message detection, routing to MediaHandler, and summary sending
 CHK111: Caption is WhatsApp message text from webhook
 """
 import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, MagicMock, patch, ANY
 from src.handlers.whatsapp_handler import WhatsAppHandler
 from src.constants.error_messages import FAILED_TO_PROCESS_FILE_DEFAULT
 from whatsapp_chatbot_python import Notification
@@ -176,6 +176,9 @@ class TestMediaHandlerIntegration:
         whatsapp_handler.handle_media_message(mock_notification_image)
         
         # Verify MediaHandler was called with correct parameters (CHK111: caption from webhook)
+        # message_id=ANY (Feature 033): a fresh UUID generated per-call, matching
+        # WhatsAppMessage.from_notification's convention for text messages - not
+        # deterministic, so only presence/shape matters here, not the exact value.
         mock_media_handler.process_media_message.assert_called_once_with(
             file_url='https://api.green-api.com/file/abc123',
             filename='IMG_001.jpg',
@@ -184,8 +187,9 @@ class TestMediaHandlerIntegration:
             caption='What is in this photo?',  # CHK111: WhatsApp message text
             sender_phone='972501234567@c.us',
             chat_id='972501234567@c.us',  # bugfix-017: needed to link this turn to a session
-            timestamp=1769000000  # Feature 024: real notification timestamp, the
+            timestamp=1769000000,  # Feature 024: real notification timestamp, the
             # ledger event's "hard pointer" - not processing time
+            message_id=ANY
         )
         
         # Verify summary was sent back to user

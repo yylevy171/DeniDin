@@ -39,6 +39,7 @@ NO MOCKING anywhere. @pytest.mark.expensive: real OpenAI billing on every run.
 """
 import random
 import re
+import time
 
 import pytest
 
@@ -79,6 +80,11 @@ def _seed_fresh_invoice_and_get_number(client_name: str, amount: int, descriptio
     output = create_calls[0]["output"] or ""
     match = re.search(r"#(\d+)", output)
     assert match, f"Could not extract invoice number from create_invoice output: {output!r}"
+    time.sleep(3)  # search-index lag (research.md Decision 8) - a caller that immediately
+    # list_invoices/get_invoice_details's for this just-seeded invoice would otherwise race
+    # the sandbox's own indexing (a real, billed failure: 2026-07-31,
+    # test_receipt_request_for_already_paid_invoice_handled_sensibly - the freshly-created
+    # invoice was missing from list_invoices' results for the first ~10s after creation)
     return match.group(1)
 
 

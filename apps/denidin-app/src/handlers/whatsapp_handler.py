@@ -2,7 +2,6 @@
 WhatsAppHandler - Handles WhatsApp message processing with retry logic
 Phase 5: US3 - Error Handling & Resilience
 """
-from datetime import datetime, timezone
 import requests
 from tenacity import (
     retry,
@@ -261,28 +260,28 @@ class WhatsAppHandler:
             return
         
         message_data = notification.event.get('messageData', {})
-        sender_data = notification.event.get('senderData', {})
-        
+
+        # Feature 033: parse through the SAME WhatsAppMessage.from_notification
+        # mechanism text messages use, rather than a separate bespoke field
+        # extraction - message_id/chat_id/sender_id/timestamp are decided exactly
+        # once, at "this message has arrived" time, by one shared code path (never
+        # regenerated downstream). text_content comes back empty for media
+        # notifications (irrelevant here - the caption below comes from
+        # fileMessageData.caption, not text_content).
+        message = WhatsAppMessage.from_notification(notification)
+        chat_id = message.chat_id
+        sender = message.sender_id
+        timestamp = message.timestamp
+        message_id = message.message_id
+
         # Extract media information from Green API webhook
         # Green API nests file metadata inside fileMessageData object
         file_message_data = message_data.get('fileMessageData', {})
-        
+
         file_url = file_message_data.get('downloadUrl', '')
         filename = file_message_data.get('fileName', 'unknown')
         mime_type = file_message_data.get('mimeType', '')
         caption = file_message_data.get('caption', '')  # CHK111: WhatsApp message text
-        sender = sender_data.get('sender', '')
-        # bugfix-017: chat_id (distinct from sender for group chats), same field
-        # WhatsAppMessage.from_webhook uses for text messages - needed so media
-        # turns can be linked to a session at all.
-        chat_id = sender_data.get('chatId', '')
-
-        # Feature 024: the real Green API notification timestamp - same top-level
-        # 'timestamp' field and same now()-fallback WhatsAppMessage.from_webhook uses
-        # for text messages (src/models/message.py). Needed so a captured ledger
-        # event's message_timestamp (the constitution's "hard pointer") reflects when
-        # the user actually sent the image, not whenever processing happened to finish.
-        timestamp = notification.event.get('timestamp', int(datetime.now(timezone.utc).timestamp()))
 
         # Note: Green API does NOT provide fileSize in webhook
         # File size will be determined after download by MediaFileManager
@@ -299,7 +298,8 @@ class WhatsAppHandler:
             caption=caption,  # CHK111: User's message text
             sender_phone=sender,
             chat_id=chat_id,
-            timestamp=timestamp
+            timestamp=timestamp,
+            message_id=message_id
         )
         
         if not result.get("success", False):
