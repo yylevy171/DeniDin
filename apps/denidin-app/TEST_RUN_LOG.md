@@ -39,21 +39,21 @@ run since this file started, or invalidated by a later code change).
 | 18 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_add_client | 2026-08-02 | PASS | cbfb093 | |
 | 19 | test_denidin_morning_mcp_e2e.py::test_godfather_lists_clients_via_whatsapp | 2026-08-02 | PASS | cbfb093 | |
 | 20 | test_denidin_morning_mcp_e2e.py::test_godfather_gets_client_details_via_whatsapp | 2026-08-02 | PASS | cbfb093 | |
-| 21 | test_denidin_morning_mcp_e2e.py::test_godfather_gets_client_details_not_found_via_whatsapp | 2026-08-02 | FAIL | cbfb093 | Fixture generates client name "לקוח לא קיים {random}" (literally "client doesn't exist" + a number) - model asked for clarification (name vs number) instead of calling get_client_details directly. Under investigation - likely a fixture-naming issue, not related to this session's ledger-event work. |
-| 22 | test_denidin_morning_mcp_e2e.py::test_godfather_updates_client_via_whatsapp | - | UNVERIFIED | - | |
-| 23 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_client_update | - | UNVERIFIED | - | |
-| 24 | test_denidin_morning_mcp_e2e.py::test_godfather_update_client_ambiguous_name_creates_no_pending_approval | - | UNVERIFIED | - | |
-| 25 | test_denidin_morning_mcp_e2e.py::test_godfather_finds_client_via_hebrew_vowel_variant | - | UNVERIFIED | - | |
-| 26 | test_denidin_morning_mcp_e2e.py::test_godfather_get_client_details_discloses_first_name_prefix_match | - | UNVERIFIED | - | |
-| 27 | test_denidin_morning_mcp_e2e.py::test_godfather_update_client_discloses_family_name_prefix_match_before_approval | - | UNVERIFIED | - | |
-| 28 | test_denidin_morning_mcp_e2e.py::test_client_role_gets_no_client_management_tools | - | UNVERIFIED | - | |
-| 29 | test_denidin_morning_mcp_e2e.py::test_blocked_role_gets_no_client_management_tools | - | UNVERIFIED | - | |
-| 30 | test_denidin_morning_mcp_e2e.py::test_godfather_lists_invoices_via_whatsapp | - | UNVERIFIED | - | |
-| 31 | test_denidin_morning_mcp_e2e.py::test_godfather_asks_analytical_debtor_question_via_whatsapp | - | UNVERIFIED | - | |
-| 32 | test_denidin_morning_mcp_e2e.py::test_zehavit_client_name_transcribed_exactly | - | UNVERIFIED | - | |
-| 33 | test_denidin_morning_mcp_e2e.py::test_no_date_mentioned_omits_date_range | - | UNVERIFIED | - | |
-| 34 | test_denidin_morning_mcp_e2e.py::test_client_all_payments_gets_the_complete_picture | - | UNVERIFIED | - | |
-| 35 | test_denidin_morning_mcp_e2e.py::test_client_explicit_everything_request_gets_the_complete_picture | - | UNVERIFIED | - | |
+| 21 | test_denidin_morning_mcp_e2e.py::test_godfather_gets_client_details_not_found_via_whatsapp | 2026-08-02 | PASS | e2f39ec | Was FAIL at cbfb093 - confusing fixture name ("לקוח לא קיים {random}" reads as a sentence, not a name) fixed to fixed nonsense name "לילילי לאלאלא" in e2f39ec, re-run confirms fix. |
+| 22 | test_denidin_morning_mcp_e2e.py::test_godfather_updates_client_via_whatsapp | 2026-08-02 | PASS | e2f39ec | |
+| 23 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_client_update | 2026-08-02 | PASS | e2f39ec | |
+| 24 | test_denidin_morning_mcp_e2e.py::test_godfather_update_client_ambiguous_name_creates_no_pending_approval | 2026-08-02 | PASS | e2f39ec | |
+| 25 | test_denidin_morning_mcp_e2e.py::test_godfather_finds_client_via_hebrew_vowel_variant | 2026-08-02 | PASS | e2f39ec | |
+| 26 | test_denidin_morning_mcp_e2e.py::test_godfather_get_client_details_discloses_first_name_prefix_match | 2026-08-02 | PASS | e2f39ec | |
+| 27 | test_denidin_morning_mcp_e2e.py::test_godfather_update_client_discloses_family_name_prefix_match_before_approval | 2026-08-02 | PASS | e2f39ec | |
+| 28 | test_denidin_morning_mcp_e2e.py::test_client_role_gets_no_client_management_tools | 2026-08-02 | PASS | e2f39ec | |
+| 29 | test_denidin_morning_mcp_e2e.py::test_blocked_role_gets_no_client_management_tools | 2026-08-02 | PASS | e2f39ec | |
+| 30 | test_denidin_morning_mcp_e2e.py::test_godfather_lists_invoices_via_whatsapp | 2026-08-02 | PASS | e2f39ec | |
+| 31 | test_denidin_morning_mcp_e2e.py::test_godfather_asks_analytical_debtor_question_via_whatsapp | 2026-08-02 | PASS | e2f39ec | |
+| 32 | test_denidin_morning_mcp_e2e.py::test_zehavit_client_name_transcribed_exactly | 2026-08-02 | PASS | e2f39ec | |
+| 33 | test_denidin_morning_mcp_e2e.py::test_no_date_mentioned_omits_date_range | 2026-08-02 | PASS | e2f39ec | |
+| 34 | test_denidin_morning_mcp_e2e.py::test_client_all_payments_gets_the_complete_picture | 2026-08-02 | PASS | e2f39ec | |
+| 35 | test_denidin_morning_mcp_e2e.py::test_client_explicit_everything_request_gets_the_complete_picture | 2026-08-02 | PASS | e2f39ec | |
 | 36 | test_denidin_morning_mcp_e2e.py::test_godfather_gets_invoice_details_via_whatsapp | - | UNVERIFIED | - | |
 | 37 | test_denidin_morning_mcp_e2e.py::test_godfather_marks_invoice_paid_via_whatsapp | - | UNVERIFIED | - | |
 | 38 | test_denidin_morning_mcp_e2e.py::test_godfather_cancels_invoice_via_whatsapp | - | UNVERIFIED | - | |
