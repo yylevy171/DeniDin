@@ -12,8 +12,8 @@
     },
     "version": {
       "type": "string",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "description": "Matches the VERSION file content and git tag suffix at cut time."
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.]+)?$",
+      "description": "Matches the VERSION file content and git tag suffix at cut time. Optional -suffix allowed (e.g. 0.0.1-test, 0.0.0-preinit) for placeholder/dry-run use, 2026-08-02 decision."
     },
     "date": {
       "type": "string",

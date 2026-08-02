@@ -16,9 +16,13 @@ app's root — REQ-VER-001).
 1.4.2
 ```
 
-**Validation rule**: Must match `^\d+\.\d+\.\d+$` (semantic version, no `v` prefix, no
-pre-release/build metadata in v1). If missing or malformed, consuming code treats it as
-`"unknown"` (REQ-VER-001's own acceptance criteria in user-stories.md US1) rather than erroring.
+**Validation rule**: `scripts/cut_release.sh` accepts `^\d+\.\d+\.\d+(-[A-Za-z0-9.]+)?$` (semantic
+version, no `v` prefix, optional `-suffix` for placeholder/dry-run use — e.g. `0.0.1-test`,
+`0.0.0-preinit` — decided 2026-08-02 when a real dry-run needed an obviously-non-shipping
+version). Consuming code (loggers, `/health`, `AIHandler`) is more lenient still — anything
+starting with `\d+\.\d+\.\d+` displays verbatim; only a missing file or content that doesn't even
+start with that shape falls back to `"unknown"` (REQ-VER-001's own acceptance criteria in
+user-stories.md US1).
 
 **Lifecycle**: Written only by `scripts/cut_release.sh` (REQ-SCR-001), read by: each app's own
 logger setup (Decision 1/2), `apps/morning-mcp-app`'s `/health` handler (Decision 3),

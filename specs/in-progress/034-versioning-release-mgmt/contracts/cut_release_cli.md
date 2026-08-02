@@ -12,9 +12,10 @@ scripts/cut_release.sh <app> <version>
 
 - `<app>`: literal `denidin-app` or `morning-mcp-app`. Any other value → usage error, exit 2, no
   side effects.
-- `<version>`: exact semantic version string, e.g. `1.4.2`. Must match `^\d+\.\d+\.\d+$`. Any other
-  shape (including a leading `v`, pre-release suffixes, or empty) → usage error, exit 2, no side
-  effects.
+- `<version>`: exact semantic version string, e.g. `1.4.2`, optionally with a `-suffix` (e.g.
+  `0.0.1-test`, for placeholder/dry-run use — 2026-08-02 decision). Must match
+  `^\d+\.\d+\.\d+(-[A-Za-z0-9.]+)?$`. Any other shape (including a leading `v`, or empty) → usage
+  error, exit 2, no side effects.
 - **Both arguments are required, positional, with no defaults.** 🚨 Per REQ-REL-002/CLAUDE.md's
   hard-constraint banner: whoever/whatever invokes this script (including an AI agent) must have
   obtained the exact `<version>` value directly from a human in that specific request — the script

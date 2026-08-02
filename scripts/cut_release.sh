@@ -62,8 +62,8 @@ if [ "$APP" != "denidin-app" ] && [ "$APP" != "morning-mcp-app" ]; then
     exit 2
 fi
 
-if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "Error: <version> must be exact semantic version MAJOR.MINOR.PATCH (got: '${VERSION}')." >&2
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+    echo "Error: <version> must be MAJOR.MINOR.PATCH with an optional -suffix (got: '${VERSION}')." >&2
     usage
     exit 2
 fi

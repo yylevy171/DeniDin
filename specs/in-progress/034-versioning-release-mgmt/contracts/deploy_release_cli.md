@@ -15,8 +15,9 @@ scripts/deploy_release.sh <app> <env> <version>
 
 - `<app>`: literal `denidin-app` or `morning-mcp-app`. Any other value → usage error, exit 2.
 - `<env>`: literal `dev` or `prod`. Any other value → usage error, exit 2.
-- `<version>`: exact semantic version string to deploy, e.g. `1.4.0` or `1.4.6`. Must match
-  `^\d+\.\d+\.\d+$`. Any other shape → usage error, exit 2.
+- `<version>`: exact semantic version string to deploy, e.g. `1.4.0` or `1.4.6`, optionally with a
+  `-suffix` (matches `cut_release.sh`'s format, e.g. `0.0.0-preinit`). Must match
+  `^\d+\.\d+\.\d+(-[A-Za-z0-9.]+)?$`. Any other shape → usage error, exit 2.
 - **All three arguments are required, positional, with no defaults, no "previous version" or
   "latest" shorthand.** 🚨 Per REQ-DEPLOY-005/CLAUDE.md's hard-constraint banner: the exact
   `<version>` must come directly from a human in that specific request — an AI agent must never

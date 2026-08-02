@@ -407,6 +407,17 @@ run — this corrected two real mistakes in the plan/tasks already committed, no
   running," making this part of the deploy operation's own success/failure determination, not an
   optional follow-up (new REQ-DEPLOY-002).
 
+### Session 2026-08-02 (T011 dry-run, version format loosened)
+
+- Q: What version to use for T011's real dry-run of `cut_release.sh` against the actual
+  `apps/denidin-app`? → A: Initially proposed `0.0.1-test`, which doesn't match the strict
+  `MAJOR.MINOR.PATCH`-only format REQ-VER-001/`cut_release.sh` originally enforced. User chose to
+  **loosen validation to allow an optional `-suffix`** rather than switch to a bare `0.0.1` —
+  `cut_release.sh`'s version regex is now `^\d+\.\d+\.\d+(-[A-Za-z0-9.]+)?$`, matching the
+  `0.0.0-preinit` bootstrap placeholder's shape. Propagated to `contracts/cut_release_cli.md`,
+  `contracts/deploy_release_cli.md`, `contracts/release_manifest.schema.json`, and
+  `data-model.md`'s `VERSION` file validation rule.
+
 ### Session 2026-08-02 (final confirmation)
 
 - Q: Is `/Users/yaron/Projects/DeniDin/artifacts/` the correct artifacts folder path? → A:
