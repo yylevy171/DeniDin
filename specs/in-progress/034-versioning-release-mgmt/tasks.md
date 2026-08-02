@@ -209,16 +209,20 @@ parallel with them.
   not expensive"`): denidin-app 572 passed / 59 deselected; morning-mcp-app 277 passed / 2
   deselected. Plus `pytest tests/billed/test_denidin_version_query_e2e.py -m billed -v`: 2 passed.
   Plus `scripts/tests/`: 15 passed (7 cut_release + 8 deploy_release). No regressions anywhere.
-- [ ] **T019** 👤 **MANUAL GATE — the real first release**: once T001-T018 are all green and this
-  feature itself is ready to ship via the normal `haleluya` flow, the **actual** first
-  `scripts/cut_release.sh denidin-app <version>` / `scripts/cut_release.sh morning-mcp-app
-  <version>` runs happen here — per REQ-REL-001/002, the agent asks the human whether to cut a
-  release for each app and, if yes, asks for the exact version string; **the agent must not
-  suggest `0.0.0-preinit` → `1.0.0` or any other number itself.** This replaces the `0.0.0-preinit`
-  placeholder from T001/T002 with each app's real first tracked version. Cutting alone deploys
-  nothing (REQ-REL-005) — separately, with its own explicit approval, follow with
-  `scripts/deploy_release.sh <app> dev <version>` for each app to actually put the first real
-  release into `dev` (REQ-DEPLOY-005/CLAUDE.md's environment-start rule both apply to that call).
+- [x] **T019** 👤 **MANUAL GATE — the real first release**: human confirmed 2026-08-02: "yes, do
+  it for both. both are v0.0.1" (exact version stated by the human, never suggested by the
+  agent). `scripts/cut_release.sh denidin-app 0.0.1` and `scripts/cut_release.sh morning-mcp-app
+  0.0.1` both run for real — `denidin-app-v0.0.1` (commit `87e343d`), `morning-mcp-app-v0.0.1`
+  (commit `64bc9bc`), both tags/artifacts/manifests verified clean, `git status` clean.
+  **A real bug was found and fixed during this step**: the first `denidin-app` attempt hit a
+  transient Docker-daemon-down failure *after* the release commit had already landed (bad
+  ordering), and a naive retry appended a duplicate `CHANGELOG.md`/`RELEASES.md` entry on top of
+  it instead of detecting the partial state. Cleaned up by hand (`git reset --hard`, tag/artifact/
+  image removed — nothing pushed, so purely local), then `scripts/cut_release.sh` was fixed to
+  build+save *before* committing (see the dedicated fix commit + new regression test), and both
+  releases were then cut cleanly with the fixed script. Cutting alone deploys nothing
+  (REQ-REL-005) — deploying either release to `dev`/`prod` remains a separate, still-open,
+  separately-approved decision (REQ-DEPLOY-005/CLAUDE.md's environment-start rule both apply).
 
 ---
 
