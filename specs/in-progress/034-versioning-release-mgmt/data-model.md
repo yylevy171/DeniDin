@@ -93,18 +93,21 @@ tarball below.
 
 **Fields**:
 - `app` — `"denidin-app"` or `"morning-mcp-app"` (matches the `<app>` argument
-  `scripts/cut_release.sh`/`scripts/rollback_release.sh` were invoked with).
+  `scripts/cut_release.sh`/`scripts/deploy_release.sh` were invoked with).
 - `version` — matches the `VERSION` file content at cut time (and the tag/filename).
 - `date` — UTC `YYYY-MM-DD`, the date the release was cut (CONSTITUTION §II).
-- `git_commit` — full SHA of the commit the image was built from (the deployed commit, per
-  REQ-REL-005 — `git rev-parse HEAD` at cut time, after that commit has already been deployed).
+- `git_commit` — full SHA of the commit the image was built from (`git rev-parse HEAD` at cut
+  time — cutting always happens **before** any deploy, per REQ-REL-001's corrected ordering
+  2026-08-02, so this is the merged commit about to be deployed, not one already running anywhere
+  yet).
 - `image_id` — the built image's Docker ID/digest (`docker images --no-trunc --format
   '{{.ID}}'` for the just-built `<app>:<version>` tag), so a human can verify a loaded image
   matches what the manifest claims without trusting the tarball's filename alone.
 
-**Validation rule**: `scripts/rollback_release.sh` MUST refuse to proceed if the manifest is
-missing or its `app`/`version` fields don't match the requested rollback target — a corrupted or
-mismatched manifest should fail loudly, not silently load the wrong image.
+**Validation rule**: `scripts/deploy_release.sh` MUST refuse to proceed if the manifest is
+missing or its `app`/`version` fields don't match the requested deploy target — a corrupted or
+mismatched manifest should fail loudly, not silently load the wrong image. Applies identically
+whether the call is an initial deploy, a promotion, or a rollback.
 
 ---
 
@@ -124,8 +127,8 @@ mismatched manifest should fail loudly, not silently load the wrong image.
 
 One subdirectory per app (REQ-ART-001); flat within each app's subdirectory, one `.tar` +
 `.json` pair per cut release, filenames matching `<app>-v<version>`. Confirmed real cross-clone
-path (2026-08-02) — see research.md Decision 7 for the unresolved root-clone `.gitignore`
-coordination point.
+path (2026-08-02) — see research.md Decision 7 (root-clone `.gitignore` entry is user-owned, not
+part of this feature's task list).
 
 ---
 
@@ -139,7 +142,14 @@ scripts/cut_release.sh --(produces, atomically)--> VERSION update + git tag + re
                                                      + release tarball + manifest + CHANGELOG entry
                                                      + RELEASES section
 
-release tarball + manifest  --(consumed by)-->  scripts/rollback_release.sh
+release tarball + manifest  --(consumed by)-->  scripts/deploy_release.sh
+                                                 (initial dev deploy, dev->prod promotion,
+                                                  or rollback - same operation, see research.md
+                                                  Decision 9)
+
+scripts/deploy_release.sh --(on success, blocks on)--> automatic /health poll (morning-mcp-app)
+                                                         or log-tail (denidin-app) verification
+                                                         (research.md Decision 10)
 
 git tag <app>-v<version>  --(1:1 with)-->  CHANGELOG.md entry  --(1:1 with)-->  RELEASES.md section
                                             --(1:1 with)-->  artifacts/<app>/<app>-v<version>.{tar,json}

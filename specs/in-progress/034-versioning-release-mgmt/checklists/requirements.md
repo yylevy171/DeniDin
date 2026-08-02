@@ -29,8 +29,9 @@
       version logging, release immutability, human-only version/release-and-rollback authority as
       a hard constraint, WhatsApp version query, dedicated cut/rollback scripts, and a shared
       cross-clone artifacts folder)
-- [x] Requirements are testable and unambiguous (REQ-VER-*/REQ-REL-*/REQ-ROLL-*/REQ-DOC-*, each a
-      single verifiable MUST statement)
+- [x] Requirements are testable and unambiguous (REQ-VER-*/REQ-REL-*/REQ-DEPLOY-*/REQ-SCR-*/
+      REQ-ART-*/REQ-DOC-*, each a single verifiable MUST statement — REQ-ROLL-* renamed/merged
+      into REQ-DEPLOY-* 2026-08-02, see spec.md Clarifications)
 - [x] Success criteria are measurable (SC-001–SC-004, each has a concrete verification action)
 - [ ] Success criteria are technology-agnostic — **partial pass, by design**: SC-001/SC-004
       reference `curl /health` and `git tag -l`, which are technical, but the feature's own

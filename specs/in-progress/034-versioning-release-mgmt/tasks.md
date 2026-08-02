@@ -13,7 +13,7 @@
   (US2/US3's script tests) — real local tools, real (scratch/throwaway) fixtures.
 - 👤 **MANUAL GATE** tasks stay unchecked until a human actually performs or explicitly approves
   them — not something a session can complete unilaterally, per this feature's own hard
-  constraints (REQ-REL-002/REQ-ROLL-004) and the general clone-confinement/environment-start
+  constraints (REQ-REL-002/REQ-DEPLOY-005) and the general clone-confinement/environment-start
   rules already in CLAUDE.md.
 - **Test tier**: US4 is a real, text-only OpenAI call → `billed` tier (`tests/billed/`,
   `@pytest.mark.billed`, Feature 029) — runs freely, no per-run approval. US1-3 involve no OpenAI
@@ -94,7 +94,12 @@ refuses (quickstart.md US2).
   happy path with `y` on the confirmation prompt → `VERSION`/`CHANGELOG.md`/`RELEASES.md` updated,
   git tag created, `.tar`+`.json` written to a scratch artifacts dir matching
   `contracts/release_manifest.schema.json`; (c) `n` at confirmation → exit 0, zero side effects;
-  (d) re-running the exact same happy-path invocation → refuses (REQ-REL-006), no overwrite. **RED**.
+  (d) re-running the exact same happy-path invocation → refuses (REQ-REL-006), no overwrite; (e)
+  **[post-`/speckit.analyze` finding C1]** run the happy path with `TZ` set to a non-UTC zone
+  (e.g. `America/Los_Angeles`) in the test's subprocess environment and assert the written
+  `CHANGELOG.md`/`RELEASES.md`/manifest dates match UTC "today," not that zone's local date —
+  CONSTITUTION §II is a MUST and this is the one place this feature writes dates from a shell
+  script rather than Python's `datetime.now(timezone.utc)`. **RED**.
 - [ ] **T010b** [US2] Implement `scripts/cut_release.sh` per `contracts/cut_release_cli.md`
   (preconditions → interactive confirmation → the 8 ordered side effects). **GREEN**.
 - [ ] **T011** [US2] 👤 **MANUAL GATE**: dry-run `scripts/cut_release.sh` once against the real
@@ -107,28 +112,49 @@ refuses (quickstart.md US2).
 
 ---
 
-## Phase 4 — User Story 3: Roll back to a prior release (Priority: P2)
+## Phase 4 — User Story 3: Deploy a cut release — initial deploy, promotion, or rollback (Priority: P1)
 
-**Goal**: `scripts/rollback_release.sh <app> <env> <version>` — loads a saved artifact, no rebuild.
+**Re-prioritized P2 → P1, 2026-08-02**: without this story, US2's cut artifacts can never actually
+run anywhere — the release capability is incomplete without it, not just "nice to have for the
+rollback edge case."
 
-**Independent Test**: Cut two scratch releases (via T010b's script), confirm the second is "live"
-(a scratch stand-in for a container), roll back to the first, confirm it's live again, confirm no
-rebuild occurred and `master`'s history is untouched (quickstart.md US3).
+**Goal**: `scripts/deploy_release.sh <app> <env> <version>` — one script, three call shapes
+(initial `dev` deploy, `dev`→`prod` promotion, rollback to any older version), all loading a saved
+artifact with no rebuild, all automatically self-verifying before reporting success
+(REQ-DEPLOY-002).
 
-**Depends on**: Phase 3 (needs a working `cut_release.sh` to produce artifacts to roll back to).
+**Independent Test**: Cut two scratch releases (via T010b's script), deploy the first to a scratch
+stand-in "dev," promote it to a scratch stand-in "prod," then deploy the second (newer) to "dev,"
+then roll "dev" back to the first again — confirming at each step: no rebuild occurred, automatic
+verification gated the reported success, and `master`'s history is untouched throughout
+(quickstart.md US3).
+
+**Depends on**: Phase 3 (needs a working `cut_release.sh` to produce artifacts to deploy).
 
 - [ ] **T012a** [US3] Write script-level tests (same file/location convention as T010a) for
-  `scripts/rollback_release.sh` per `contracts/rollback_release_cli.md`: (a) missing/malformed
-  args → exit 2; (b) missing artifact/manifest → exit 1, clear message, no `docker build` ever
-  invoked (assert this explicitly — e.g. by asserting no build-related subprocess call happened);
-  (c) manifest `app`/`version` mismatch → exit 1, refuses; (d) happy path → `docker load` runs,
-  target container recreated from the loaded image, no rebuild step. **RED**.
-- [ ] **T012b** [US3] Implement `scripts/rollback_release.sh` per
-  `contracts/rollback_release_cli.md`. **GREEN**.
-- [ ] **T013** [US3] 👤 **MANUAL GATE**: run `quickstart.md`'s US3 scenario for real — needs a
-  real cut-then-rollback cycle against a running dev environment, its own explicit
-  environment-start approval, and (per REQ-ROLL-004) an explicit human-stated target version for
-  the rollback itself, not inferred by the agent running the test.
+  `scripts/deploy_release.sh` per `contracts/deploy_release_cli.md`: (a) missing/malformed args →
+  exit 2; (b) missing artifact/manifest → exit 1, clear message, no `docker build` ever invoked
+  (assert this explicitly — e.g. by asserting no build-related subprocess call happened) — true
+  for all three call shapes, not just what would traditionally be called "rollback"; (c) manifest
+  `app`/`version` mismatch → exit 1, refuses; (d) happy path (exercise with a version *newer* than
+  what the scratch container is running, to cover the initial-deploy/promotion shape, **and**
+  separately with an *older* version, to cover the rollback shape) → `docker load` runs, target
+  container recreated from the loaded image, no rebuild step, success only reported after the
+  automatic verification step (REQ-DEPLOY-002) passes against a scratch health/log stand-in; (e)
+  verification-timeout case (scratch stand-in never shows the expected version) → exit 1, reported
+  as failed even though the container "started"; (f) **[post-`/speckit.analyze` finding H1]**
+  explicitly assert `git log <scratch-repo>` is byte-identical before/after every one of the above
+  invocations, and that no `git commit`/`git tag`/`git push` subprocess call occurs during any
+  deploy — this closes the gap where the prior task list only asserted "no rebuild," not "no git
+  writes at all" (REQ-DEPLOY-004). **RED**.
+- [ ] **T012b** [US3] Implement `scripts/deploy_release.sh` per `contracts/deploy_release_cli.md`
+  (preconditions → load → recreate container → automatic verification per research.md
+  Decision 10 → report). **GREEN**.
+- [ ] **T013** [US3] 👤 **MANUAL GATE**: run `quickstart.md`'s US3 scenarios for real (all three:
+  initial deploy, promotion, rollback) — each needs its own explicit environment-start approval
+  (CLAUDE.md's pre-existing rule) *and* (per REQ-DEPLOY-005) its own explicit human-stated
+  app/env/version, not inferred by the agent running the test, not carried over from a previous
+  scenario in the same session.
 
 ---
 
@@ -170,16 +196,20 @@ parallel with them.
   `apps/morning-mcp-app/src/denidin_mcp_morning/server.py`) — both apps' usual
   `pylint --fail-under=7.0` / `mypy` invocations from their own directories.
 - [ ] **T018** Full default `pytest tests/ -v --tb=short` pass in both apps (`-m "not billed and
-  not expensive"`), plus a separate `pytest tests/billed/test_denidin_version_query_e2e.py -m
-  billed -v` run (T014b already ran this once; this is the final combined pass) — confirms no
-  regression to existing logging/health/instructions behavior.
+  not expensive"`, including T010a/T012a's script-level tests), plus a separate `pytest
+  tests/billed/test_denidin_version_query_e2e.py -m billed -v` run (T014b already ran this once;
+  this is the final combined pass) — confirms no regression to existing
+  logging/health/instructions behavior.
 - [ ] **T019** 👤 **MANUAL GATE — the real first release**: once T001-T018 are all green and this
   feature itself is ready to ship via the normal `haleluya` flow, the **actual** first
   `scripts/cut_release.sh denidin-app <version>` / `scripts/cut_release.sh morning-mcp-app
   <version>` runs happen here — per REQ-REL-001/002, the agent asks the human whether to cut a
   release for each app and, if yes, asks for the exact version string; **the agent must not
   suggest `0.0.0-preinit` → `1.0.0` or any other number itself.** This replaces the `0.0.0-preinit`
-  placeholder from T001/T002 with each app's real first tracked version.
+  placeholder from T001/T002 with each app's real first tracked version. Cutting alone deploys
+  nothing (REQ-REL-005) — separately, with its own explicit approval, follow with
+  `scripts/deploy_release.sh <app> dev <version>` for each app to actually put the first real
+  release into `dev` (REQ-DEPLOY-005/CLAUDE.md's environment-start rule both apply to that call).
 
 ---
 
@@ -190,31 +220,39 @@ parallel with them.
   (though T010a/T012a's scratch-fixture tests don't strictly need T005 done first, since they use
   a throwaway artifacts dir, not the real one).
 - Phase 2 (US1) has no dependency beyond Phase 1 — can run fully in parallel with Phase 3/4/5.
-- Phase 4 (US3) depends on Phase 3 (US2) — rollback needs a working cut-release script to produce
-  artifacts to roll back to.
+- Phase 4 (US3) depends on Phase 3 (US2) — deploying needs a working cut-release script to
+  produce artifacts to deploy (whether that's an initial deploy, a promotion, or a rollback).
 - Phase 5 (US4) depends only on Phase 1 — independent of Phase 2/3/4, can run in parallel.
 - Phase 6 runs last, and T019 specifically cannot start until every other task is done (it's the
-  real, permanent, human-gated release moment this entire feature exists to make safe).
+  real, permanent, human-gated release moment this entire feature exists to make safe) — and
+  within T019, the deploy-to-dev half cannot start until the cut half completes for that app,
+  matching REQ-REL-001's corrected cut-before-deploy ordering.
 
 ## MVP
 
 Phase 1 + Phase 2 (US1) alone delivers real value: operators can finally tell what's actually
 deployed, addressing the core problem statement (the 2026-07-20 incident) without yet needing the
-release/rollback machinery.
+release/deploy/rollback machinery. Note Phase 3 (US2) and Phase 4 (US3) are **both P1** — together
+they're the next-most-important increment after US1, since a cut release with no way to deploy it
+(or vice versa) is an incomplete capability; "MVP" here means the smallest *useful* slice, not
+"every P1."
 
 ## Incremental Delivery
 
 1. Phase 1 → Phase 2 (US1) → ship/verify (MVP: observability).
-2. Phase 3 (US2) → ship/verify (releases can be cut, safely, human-gated).
-3. Phase 4 (US3) → ship/verify (rollback safety net).
-4. Phase 5 (US4) → ship/verify (WhatsApp-facing convenience, lowest priority).
-5. Phase 6 → docs, haleluya integration, and the real first release for both apps.
+2. Phase 3 (US2) → Phase 4 (US3) → ship/verify together (releases can be cut *and* actually
+   deployed/promoted/rolled back, safely, human-gated end to end — this pair is the next
+   increment after the MVP, not two separate increments, since neither is useful alone).
+3. Phase 5 (US4) → ship/verify (WhatsApp-facing convenience, lowest priority).
+4. Phase 6 → docs, haleluya integration, and the real first release for both apps.
 
 ## Out of Scope (see spec.md / user-stories.md "Out of Scope")
 
-- Any AI-computed, suggested, or defaulted version number, anywhere, ever (REQ-REL-002/
-  REQ-ROLL-004) — every task above that touches a real version string is either a fixed
-  placeholder (`0.0.0-preinit`, T001/T002), a test fixture value, or explicitly human-gated (T019).
+- Any AI-computed, suggested, or defaulted version number or environment, anywhere, ever
+  (REQ-REL-002/REQ-DEPLOY-005) — every task above that touches a real version string is either a
+  fixed placeholder (`0.0.0-preinit`, T001/T002), a test fixture value, or explicitly human-gated
+  (T019).
 - A unified repo-wide version number; automatic MAJOR/MINOR/PATCH classification; CI/CD;
-  zero-downtime/automated rollback; a container registry; automated artifact retention/pruning;
-  any AI-initiated release or rollback — all per spec.md's Explicitly Out of Scope.
+  zero-downtime/automated deploy or rollback; a container registry; automated artifact
+  retention/pruning; any AI-initiated release, deploy, or rollback; a separate "rollback script"
+  (merged into `deploy_release.sh`, 2026-08-02) — all per spec.md's Explicitly Out of Scope.

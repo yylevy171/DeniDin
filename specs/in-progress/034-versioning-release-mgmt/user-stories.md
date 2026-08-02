@@ -40,8 +40,9 @@ Acceptance criteria:
 
 ## US2 — Cut a release as part of finishing a feature (Priority: P1)
 
-**Given** a feature branch has just been merged and deployed via the existing `haleluya`/
-`/haleluya` flow (CLAUDE.md's "Finish-Feature Trigger Phrase")
+**Given** a feature branch has just been merged via the existing `haleluya`/`/haleluya` flow
+(CLAUDE.md's "Finish-Feature Trigger Phrase") — **before any deploy happens** (REQ-REL-001's
+corrected ordering, 2026-08-02: cut comes first, deploy is a separate later step, see US3)
 **When** the flow reaches its final step, the AI agent MUST ask the human, for each app touched,
 whether to cut a release — never silently skip this, never decide the answer itself (REQ-REL-001)
 **Then**, if the human says yes for a given app, the agent asks for the **exact target version
@@ -53,7 +54,8 @@ value: the `VERSION` file is updated, the Docker image is built and exported as 
 artifacts folder (REQ-REL-005/REQ-ART-001/002), a `CHANGELOG.md` entry and a `RELEASES.md` section
 are appended (REQ-REL-003/004), and the `<app>-v1.4.2` git tag is applied — after one final
 interactive confirmation showing exactly what's about to happen, since this action is permanent
-(REQ-REL-006).
+(REQ-REL-006). **Cutting itself deploys nothing anywhere** — the artifact just now exists,
+ready for US3 to deploy it wherever/whenever separately approved.
 
 **Independent Test**: Fully testable standalone — pick a fixed version/summary, run
 `scripts/cut_release.sh` by hand with that exact version, then verify: `git tag` shows the new
@@ -76,43 +78,66 @@ Acceptance criteria:
 
 ---
 
-## US3 — Roll back a deployed environment to a prior release (Priority: P2)
+## US3 — Deploy a cut release to an environment (initial deploy, promotion, or rollback) (Priority: P1)
 
-**Given** a release (`<app>-v<version>`) has been deployed to `dev` or `prod` and is later found to
-need reverting, and at least one older `<app>-v<older-version>` release tarball still exists in
-the artifacts folder (built and exported at that earlier release's cut time, per REQ-REL-005)
-**When** a human explicitly asks, in that specific request, to roll back a named app/environment
-to a named version — the agent MUST NOT decide on its own that a rollback is warranted, and MUST
-NOT infer/guess the target version even if "the previous one" seems obvious (REQ-ROLL-004, hard
-constraint)
-**Then** the agent runs `scripts/rollback_release.sh <app> <env> <older-version>` (REQ-SCR-002),
-which loads that version's tarball from the artifacts folder (`docker load`) and redeploys it
-directly to the affected environment's container — no rebuild from git source
-**Then** the environment now serves the older version — verifiable the same way as US1 (`/health`
-field or any log line) — and no `master` git history was reverted/rewritten to get there
-(REQ-ROLL-003), and the redeployed bytes are guaranteed identical to what actually ran before
-(no dependency-resolution drift, since nothing was rebuilt).
+**Corrected 2026-08-02**: this story was originally scoped as "roll back a deployed environment"
+only. The user's actual operator flow revealed that deploying a freshly cut version to `dev`,
+promoting a validated version from `dev` to `prod`, and rolling back to an older version are **the
+same operation** — load a pre-built artifact, redeploy it, verify it — differing only in which
+version is named. Re-prioritized to **P1** (it was implicitly always needed just to get a cut
+version running at all, not just for the rollback edge case).
 
-**Independent Test**: Fully testable standalone — cut release A (per US2, producing a tarball in
-the artifacts folder), cut release B (producing another tarball), confirm B is live (per US1), run
-`scripts/rollback_release.sh` with A's exact version, confirm A is live again via the same US1
-check, and confirm `master`'s commit history is unchanged (`git log master` before/after matches).
+**Given** a version has been cut for an app (US2 — a tarball exists in the artifacts folder for
+some `<version>`, whether that's the newest one just cut, or an older one being returned to)
+**When** a human explicitly asks, in that specific request, to deploy a named app/version to a
+named environment — the agent MUST NOT decide on its own that a deploy/promotion/rollback is
+warranted, and MUST NOT infer/guess the target version even if "the one just cut" or "the previous
+one" seems obvious (REQ-DEPLOY-005, hard constraint) — **and** this is a separate approval from
+"start an environment," per the existing CLAUDE.md rule: cutting a version never implies
+authorization to deploy it anywhere
+**Then** the agent runs `scripts/deploy_release.sh <app> <env> <version>` (REQ-SCR-002), which
+loads that version's tarball from the artifacts folder (`docker load`) and redeploys it directly
+to the named environment's container — no rebuild from git source, regardless of whether
+`<version>` is newer or older than what's currently running there
+**Then** the script automatically verifies success (REQ-DEPLOY-002) — polling `/health` until its
+`version` matches (morning-mcp-app) or tailing recent logs until the version marker appears
+(denidin-app) — and only reports the deploy as done once that check passes, reporting failure
+(with the container's actual observed state) if it doesn't
+**Then** the environment now serves the deployed version — independently verifiable the same way
+as US1 (`/health` field or any log line) — and no `master` git history was reverted/rewritten to
+get there (REQ-DEPLOY-004), and the redeployed bytes are guaranteed identical to what was
+originally cut (no dependency-resolution drift, since nothing was rebuilt).
+
+**Independent Test**: Fully testable standalone, covering all three shapes of this one story:
+1. **Initial deploy**: cut release A (US2), deploy A to `dev`, confirm A is live (US1 check +
+   the deploy's own automatic verification).
+2. **Promotion**: with A live on `dev`, deploy A to `prod`, confirm A is live on `prod` too, while
+   `dev` is untouched (still A, or whatever it's since moved to — dev/prod versions are
+   independent, REQ-VER-004).
+3. **Rollback**: cut release B, deploy B to `dev` (dev now ahead of prod, the normal case per
+   REQ-VER-004), then deploy **A** back to `dev`, confirm A is live again, confirm `master`'s
+   commit history is unchanged (`git log master` before/after matches) throughout all three.
 
 Acceptance criteria:
-- The rollback procedure is discoverable in documentation (REQ-DOC-001) without needing to ask
-  the person who last deployed.
-- No `docker ... build` (or equivalent rebuild step) runs as part of rollback — only
-  `docker load` of the already-exported tarball (REQ-REL-005) plus redeploying it.
-- The agent never states or suggests a version to roll back to; it only acts once the human has
-  stated one explicitly, in that request.
-- Rolling back one app/environment (e.g. `denidin-app-prod`) does not require touching the other
+- The deploy/rollback procedure is discoverable in documentation (REQ-DOC-001) without needing to
+  ask the person who last deployed.
+- No `docker ... build` (or equivalent rebuild step) runs as part of any deploy, promotion, or
+  rollback — only `docker load` of the already-exported tarball (REQ-REL-005) plus redeploying it.
+- The agent never states or suggests a version, environment, or "should we deploy this" before the
+  human has said so explicitly, in that request — applies identically whether it's an initial
+  `dev` deploy, a `prod` promotion, or a rollback.
+- The deploy is only reported successful once its own automatic health/version check passes
+  (REQ-DEPLOY-002) — a container that merely started, without the check passing, is a **failed**
+  deploy, reported as such.
+- Deploying to one app/environment (e.g. `denidin-app-prod`) does not require touching the other
   app or the other environment — matches the existing per-app, per-environment deploy granularity
-  documented under "Environments (dev/prod)."
-- The rollback leaves a discoverable record of what happened equivalent to the outgoing deploy
-  (i.e. it's not a silent, undocumented revert — same expectation as any other deploy).
+  documented under "Environments (dev/prod)" — and `dev`/`prod` are expected to often be on
+  different versions at any given time (REQ-VER-004), not treated as a drift/inconsistency to fix.
+- The deploy leaves a discoverable record of what happened equivalent to any other deploy (i.e.
+  it's not a silent, undocumented change).
 - If the needed release tarball is no longer present in the artifacts folder (e.g. manually
   deleted — REQ-REL-005/REQ-ART-001 intentionally leave retention/cleanup as a manual decision),
-  `scripts/rollback_release.sh` fails clearly rather than silently falling back to a rebuild; this
+  `scripts/deploy_release.sh` fails clearly rather than silently falling back to a rebuild; this
   is an accepted tradeoff of "no container registry" (see spec.md's Explicitly Out of Scope), not
   a bug.
 
@@ -148,14 +173,17 @@ Acceptance criteria:
   verbatim; the agent never even offers a bump-type shortcut to compute from.
 - **A single shared version number across both apps** — resolved via clarification; independent
   per-app versioning is confirmed (`spec.md`'s Clarifications section).
-- **Automated/zero-downtime rollback** — US3's rollback is a manual, human-triggered redeploy of a
-  pre-built release image (REQ-REL-005/REQ-ROLL-002), not an automated mechanism that decides for
-  itself when to roll back.
+- **Automated/zero-downtime deploy or rollback** — US3's deploy/promotion/rollback is a manual,
+  human-triggered redeploy of a pre-built release image (REQ-REL-005/REQ-DEPLOY-001), not an
+  automated mechanism that decides for itself when to deploy or roll back.
 - **A dedicated RBAC story** — US4 is deliberately ungated rather than restricted; nothing here
   changes who can talk to the bot or what Morning tools they can call.
 - **Versioning any change that doesn't ship to a real environment** (e.g. work still on a feature
   branch, not yet merged/deployed) — release/version bumps happen at `haleluya` time, not per
   commit.
-- **Any story where the AI agent picks a version number or decides to release/roll back on its
-  own** — deliberately not a story, permanently, per REQ-REL-002/REQ-ROLL-004. Every US2/US3 flow
-  above requires the human to state the app/version/environment first, in that specific request.
+- **Any story where the AI agent picks a version/environment or decides to release/deploy/roll
+  back on its own** — deliberately not a story, permanently, per REQ-REL-002/REQ-DEPLOY-005. Every
+  US2/US3 flow above requires the human to state the app/version/environment first, in that
+  specific request.
+- **A separate "rollback script"** — merged into US3/`scripts/deploy_release.sh` 2026-08-02 once
+  it became clear rollback is mechanically identical to an ordinary forward deploy/promotion.

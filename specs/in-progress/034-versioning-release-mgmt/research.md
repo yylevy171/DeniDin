@@ -76,17 +76,18 @@ cached constitution prefix).
   require a new MCP tool (same reasoning that ruled out per-call file re-reads applies here too,
   plus unlike Morning tools this needs no external API round-trip).
 
-## Decision 5: How do the release/rollback scripts build, tag, and store images?
+## Decision 5: How do the release/deploy scripts build, tag, and store images?
 
 **Decision**: `scripts/cut_release.sh <app> <version>` runs `docker build -t <app>:<version>
 apps/<app>/` directly (not via `docker compose`), independent of whatever image name/tag
 `docker-compose.dev.yml`/`.prod.yml`'s `build:` context produces at ordinary deploy time. It then
 `docker save <app>:<version> -o <artifacts-root>/<app>/<app>-v<version>.tar` and writes the
-manifest (REQ-ART-002) alongside it. `scripts/rollback_release.sh <app> <env> <version>` reverses
-this: `docker load -i <artifacts-root>/<app>/<app>-v<version>.tar`, then retags/recreates the named
-environment's running container from that loaded image (exact `docker compose` invocation TBD at
+manifest (REQ-ART-002) alongside it — and stops there, deploying nothing (Decision 9).
+`scripts/deploy_release.sh <app> <env> <version>` reverses the save step: `docker load -i
+<artifacts-root>/<app>/<app>-v<version>.tar`, then retags/recreates the named environment's
+running container from that loaded image (exact `docker compose` invocation TBD at
 task-implementation time — needs to override the running container to use the loaded image tag
-instead of triggering its own `build:` step).
+instead of triggering its own `build:` step), then verifies (Decision 10).
 
 **Rationale**: Keeps the release/rollback mechanism fully decoupled from `docker compose`'s own
 build/naming (which is oriented around ordinary forward dev iteration, not durable named
@@ -152,3 +153,51 @@ over generated/templated artifacts.
 **Alternatives considered**: A structured YAML/JSON changelog — rejected: over-engineered for a
 human-read, human-written file; the release **manifest** (REQ-ART-002) already covers the
 machine-readable case.
+
+## Decision 9: Is rollback a separate script from ordinary forward deploy/promotion?
+
+**Decision (2026-08-02, user-clarified)**: No — one script, `scripts/deploy_release.sh <app> <env>
+<version>`, covers the initial deploy of a freshly cut version to `dev`, later promotion of the
+same version to `prod`, and rollback to any older version in either environment. All three are the
+same operation (load a pre-built artifact from the artifacts folder, redeploy it, verify it) —
+they differ only in whether `<version>` happens to be newer, equal, or older than what's currently
+running. Supersedes the earlier `scripts/rollback_release.sh` design from the prior planning
+session.
+
+**Rationale**: The user's own described operator flow makes no mechanical distinction between
+these cases — "deploy 1.4.6 to prod" and "roll back prod to 1.4.5" are literally the same command
+shape with a different version argument. Building two scripts would mean duplicating the load/
+retag/verify logic for no behavioral difference, and would invite drift between them over time.
+
+**Alternatives considered**: Keep `rollback_release.sh` as a thin wrapper around a shared
+`deploy_release.sh` for operator-vocabulary clarity ("rollback" is meaningful terminology) —
+rejected for v1 as unnecessary indirection; `deploy_release.sh <app> <env> <older-version>` reads
+clearly enough as "this is a rollback" from its arguments alone, and `contracts/deploy_release_cli.md`
+documents the equivalence explicitly. Can be revisited if the single name proves confusing in
+practice.
+
+## Decision 10: How does a deploy automatically verify its own success?
+
+**Decision (2026-08-02, user-clarified)**: `deploy_release.sh` blocks on verification before
+reporting done, per app:
+- `morning-mcp-app`: poll `GET /health` (already exposes `version` per REQ-VER-002) every ~2s for
+  up to a bounded timeout (e.g. 30s), succeeding as soon as the response's `version` field matches
+  the target version.
+- `denidin-app` (no HTTP surface): tail the last N lines of `logs/denidin.log` (or that
+  environment's log path) every ~2s for up to the same bounded timeout, succeeding as soon as a
+  line carrying the target version's marker (REQ-VER-003's `[v<version>]` format, Decision 1)
+  appears.
+
+A timeout without a match is a **failed** deploy — the script reports failure with the container's
+actual last-observed state, not a silent/ambiguous "started but who knows."
+
+**Rationale**: The user's own description makes this a blocking part of the deploy operation
+("deployment is successful when health and version checks show..."), not an optional follow-up a
+human might separately run — REQ-DEPLOY-002 codifies this. Reusing REQ-VER-002/003's existing
+surfaces (rather than inventing a third "deploy-specific" health mechanism) keeps this consistent
+with US1 and avoids new observability surface area.
+
+**Alternatives considered**: A fixed sleep-then-assume-success — rejected: doesn't actually verify
+anything, defeats the purpose of REQ-DEPLOY-002. A dedicated `/deploy-status` endpoint — rejected
+as over-engineered; the existing `/health` version field and log lines are already sufficient
+verification signals.

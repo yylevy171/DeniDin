@@ -2,7 +2,7 @@
 
 **Feature ID**: 034-versioning-release-mgmt
 **Priority**: P2 (assumed default — not blocking other work; revisit if the user wants this elevated)
-**Status**: Tasks Generated (spec + user-stories + plan/research/data-model/contracts/quickstart + tasks.md complete 2026-08-02; ready for `/speckit.analyze`)
+**Status**: Corrected post-analyze (deploy/rollback unified into REQ-DEPLOY-*, `scripts/deploy_release.sh` replaces `scripts/rollback_release.sh`, REQ-REL-001 cut-before-deploy ordering fixed, REQ-DEPLOY-002 automatic verification added — 2026-08-02); plan.md/research.md/data-model.md/contracts/quickstart.md/tasks.md/checklists all updated to match; C1/H1 findings from `/speckit.analyze` closed in tasks.md T010a/T012a; ready for `/speckit.implement`
 **Created**: July 30, 2026
 **Updated**: August 2, 2026
 
@@ -57,24 +57,25 @@ variables (CONSTITUTION §I), consistent with the existing dev/prod container mo
   are the manual rebuild-and-recreate steps documented under "Environments (dev/prod)" in
   CLAUDE.md); this feature does not introduce one. Release automation here means scripting/
   documenting the manual steps, not standing up CI.
-- **Zero-downtime or automated rollback.** Rollback stays a manual, documented procedure (redeploy
-  a prior release's pre-built, version-tagged image — see REQ-ROLL-002), not an automated
-  blue-green mechanism or a script that triggers itself.
+- **Zero-downtime or automated rollback.** Deploy/rollback stays a manual, human-triggered
+  procedure (redeploy a prior release's pre-built, version-tagged image — see REQ-DEPLOY-001), not
+  an automated blue-green mechanism or a script that triggers itself.
 - **Versioning `apps/morning-mcp-app`'s Morning/Green Invoice API integration itself** (that's a
   third-party API DeniDin doesn't control) — only this repo's own two apps are in scope.
 - **Automated retention/pruning policy for old release images.** REQ-REL-005 requires retaining
-  version-tagged images so rollback (REQ-ROLL-002) can always redeploy without rebuilding, but
+  version-tagged images so any deploy (REQ-DEPLOY-001) can always redeploy without rebuilding, but
   disk-space cleanup of old release images stays a manual, human-judgment decision (consistent
   with this project's existing manual container-lifecycle operations, e.g.
   `scripts/killall_containers.sh`) — no automatic garbage collection is introduced.
 - **A container registry.** Release images (REQ-REL-005) are exported as tarballs into the shared
   artifacts folder (REQ-ART-001) instead, matching how this project already builds/runs everything
   locally — no push to a remote registry (Docker Hub, ECR, etc.) is in scope.
-- **Any AI-initiated release or rollback.** Both `scripts/cut_release.sh` and
-  `scripts/rollback_release.sh` may only ever be run with human-supplied app/version/environment
-  arguments in that specific request (REQ-REL-002, REQ-ROLL-004) — an AI agent deciding on its own
-  that "this seems like a good time to cut a release" or "this looks like it needs a rollback" is
-  explicitly out of scope, permanently, not just for this feature's v1.
+- **Any AI-initiated release, deploy, or rollback.** Both `scripts/cut_release.sh` and
+  `scripts/deploy_release.sh` may only ever be run with human-supplied app/version(/environment)
+  arguments in that specific request (REQ-REL-002, REQ-DEPLOY-005) — an AI agent deciding on its
+  own that "this seems like a good time to cut a release," "this should go to prod now," or "this
+  looks like it needs a rollback" is explicitly out of scope, permanently, not just for this
+  feature's v1.
 
 ## Functional Requirements
 
@@ -90,9 +91,11 @@ variables (CONSTITUTION §I), consistent with the existing dev/prod container mo
   app's current version — e.g. as a prefix/field on each line, consistent with each app's existing
   log line format. Applies to `apps/denidin-app`'s `logs/denidin.log` and
   `apps/morning-mcp-app`'s equivalent log output alike.
-- **REQ-VER-004**: The version is a per-app fact, not per-environment — `dev` and `prod` for the
-  same app may run *different* versions at different times (that's normal during a dev→prod
-  promotion), but there is exactly one version concept per app, not one per environment.
+- **REQ-VER-004**: The version is a per-app fact, not per-environment — there is exactly one
+  version concept per app, not one per environment. `dev` and `prod` for the same app **routinely
+  and expectedly run different versions**, not as an edge case: the normal cycle is dev running
+  ahead of prod (e.g. prod on `1.4.5` while dev is already on `1.4.6` during development/UAT of
+  the next release) until prod is explicitly promoted to catch up (REQ-DEPLOY-001).
 - **REQ-VER-005**: `apps/denidin-app` MUST be able to answer a user's question about its own
   running version over WhatsApp (e.g. "what version are you running?") in normal conversation —
   implemented the same way current-date is already injected into `AIHandler`'s `instructions` per
@@ -104,9 +107,18 @@ variables (CONSTITUTION §I), consistent with the existing dev/prod container mo
 ### Release process automation
 
 - **REQ-REL-001**: The existing `haleluya`/`/haleluya` finish-feature flow (CLAUDE.md, "Spec-Driven
-  Workflow") MUST gain a mandatory release prompt as its final step: after merge + deploy, for
-  each app touched by that work, **always ask the human** whether to cut a release for that app —
-  never silently skip this question, and never decide the answer.
+  Workflow") MUST gain a mandatory release prompt as its final step, **after merge, before any
+  deploy**: for each app touched by that work, **always ask the human** whether to cut a release
+  for that app — never silently skip this question, and never decide the answer. The full
+  operator flow this feeds into (confirmed by the user 2026-08-02): merge → cut (REQ-REL-002,
+  producing the artifact — REQ-REL-005) → deploy that exact artifact to `dev` (REQ-DEPLOY-001,
+  its own separately-approved action) → some period of user-acceptance testing on `dev` → **later,
+  separately, on its own explicit request** (not part of `haleluya` at all — can happen minutes or
+  days afterward) → promote the same artifact to `prod` (REQ-DEPLOY-001 again, same mechanism,
+  different environment). Deploying (to either environment) is always its own explicit,
+  separately-approved action under the existing CLAUDE.md "AI AGENTS: NEVER START AN ENVIRONMENT...
+  WITHOUT EXPLICIT APPROVAL" rule — cutting a version does not implicitly authorize deploying it
+  anywhere.
 - **REQ-REL-002** 🚨 **HUMAN-ONLY, HARD CONSTRAINT**: If the human says yes to cutting a release
   for an app, the AI agent MUST then ask the human for the **exact target version string**
   (e.g. "1.4.2") — it MUST NOT compute, suggest, default, or recommend a version number itself,
@@ -125,10 +137,12 @@ variables (CONSTITUTION §I), consistent with the existing dev/prod container mo
   version (e.g. `denidin-app:<version>`, `morning-mcp-app:<version>`), export it with `docker save`
   into the shared artifacts folder (REQ-ART-001) as `<app>-v<version>.tar`, and write an
   accompanying manifest (REQ-ART-002) — this tarball, not just the local Docker image cache, is
-  the durable artifact future rollbacks load from (REQ-ROLL-002). Ordinary forward deploys during
-  normal dev iteration are unaffected and keep using the existing rebuild-and-recreate flow
-  (CLAUDE.md, "Environments (dev/prod)") — REQ-REL-005 only adds a durable, exported artifact *in
-  addition to* that, at release time specifically.
+  the durable artifact every later deploy of this exact version (to `dev`, to `prod`, or a
+  rollback in either — REQ-DEPLOY-001) loads from. Cutting itself never deploys anywhere (see
+  REQ-REL-001's flow) — it only produces this artifact. Ordinary forward deploys during normal dev
+  iteration *before* a version is cut are unaffected and keep using the existing
+  rebuild-and-recreate flow (CLAUDE.md, "Environments (dev/prod)") — REQ-REL-005 only changes how
+  a specific *named, cut* version gets deployed, not iterative pre-release dev work.
 - **REQ-REL-006** 🚨 **IMMUTABILITY, HARD CONSTRAINT**: Once a version is cut (REQ-SCR-001 has run
   successfully for it), it is permanently frozen — its release image tarball, git tag, `CHANGELOG.md`
   entry, and `RELEASES.md` entry MUST NOT be modified, overwritten, or re-generated afterward, and
@@ -137,28 +151,51 @@ variables (CONSTITUTION §I), consistent with the existing dev/prod container mo
   A bug found in a cut version is fixed by cutting a **new** version, never by mutating the old one
   — consistent with this project's existing git safety rules (no force-push, no history rewriting).
 
-### Rollback / release history
+### Deploy & Rollback
 
-- **REQ-ROLL-001**: For each environment (`dev`/`prod`) of each app, the currently-deployed
+Deploying a specific already-cut version to an environment, promoting a version from `dev` to
+`prod`, and rolling back to an older version are **the same underlying operation** — load a
+pre-built artifact and put it into a running container — confirmed by the user 2026-08-02 (a
+"rollback" is simply this operation invoked with a version older than what's currently running; a
+first-time deploy or a `dev`→`prod` promotion is the same operation invoked with a newer or
+equal one). One script (`scripts/deploy_release.sh`, REQ-SCR-002) and one requirements cluster
+cover all three cases — there is no separate "rollback script."
+
+- **REQ-DEPLOY-001**: `scripts/deploy_release.sh <app> <env> <version>` (REQ-SCR-002) implements
+  every deploy of a cut version — initial deploy to `dev`, later promotion to `prod`, or rollback
+  to any older version in either environment — identically: load that version's tarball
+  (`docker load`) from the shared artifacts folder (REQ-ART-001) and redeploy that exact image to
+  the named environment's container. **MUST NOT rebuild from git source, ever**, regardless of
+  whether the target version is newer or older than what's currently running. This guarantees
+  every deploy — not just rollback — reproduces the exact bytes verified at cut time, immune to
+  dependency-resolution drift (neither app pins exact dependency versions today).
+- **REQ-DEPLOY-002**: A deploy MUST automatically verify success before reporting done — it is
+  not sufficient that the container merely started. Verification: for `morning-mcp-app`, poll
+  `/health` until its `version` field matches the target version or a bounded timeout elapses;
+  for `denidin-app` (no HTTP surface), tail recent log lines until one shows the target version
+  marker (REQ-VER-003) or the same timeout elapses. A deploy that starts a container but fails
+  verification MUST be reported as **failed**, with the container's actual observed state, never
+  silently reported as successful.
+- **REQ-DEPLOY-003**: For each environment (`dev`/`prod`) of each app, the currently-deployed
   version MUST be discoverable after the fact — via REQ-VER-002/003 (live `/health` or logs), via
   the git tag history (REQ-REL-001), and via which release tarballs are still present in the
   artifacts folder (REQ-REL-005/REQ-ART-001) — without needing tribal knowledge of "what we last
   deployed."
-- **REQ-ROLL-002**: `scripts/rollback_release.sh` (REQ-SCR-002) implements rollback by loading the
-  version's tarball (`docker load`) from the shared artifacts folder (REQ-ART-001) and redeploying
-  that exact image to the affected environment's container — rollback MUST NOT rebuild from git
-  source. This is a deliberate departure from the ordinary forward-deploy flow (which does rebuild,
-  per CLAUDE.md's "Environments (dev/prod)") specifically so a rollback is guaranteed to reproduce
-  the exact bytes that were previously running, immune to dependency-resolution drift over time.
-- **REQ-ROLL-003**: Rollback MUST NOT require reverting or rewriting git history on `master` —
-  it operates by redeploying an older tagged image into a running container, leaving `master`'s
-  own history untouched (consistent with this project's git safety rules: no force-push, no
-  history rewriting).
-- **REQ-ROLL-004** 🚨 **HUMAN-ONLY, HARD CONSTRAINT**: `scripts/rollback_release.sh` MUST only be
+- **REQ-DEPLOY-004**: No deploy (forward, promotion, or rollback) requires reverting or rewriting
+  git history on `master` — it operates purely by redeploying a tagged image into a running
+  container, leaving `master`'s own history untouched (consistent with this project's git safety
+  rules: no force-push, no history rewriting).
+- **REQ-DEPLOY-005** 🚨 **HUMAN-ONLY, HARD CONSTRAINT**: `scripts/deploy_release.sh` MUST only be
   invoked with an app, environment, and target version **explicitly supplied by the human in that
-  specific request** — the AI agent MUST NOT decide on its own initiative to roll back, and MUST
-  NOT infer/guess/default the target version (e.g. "the previous one") even if that seems obvious
-  from context. Approval to roll back once does not carry over to a later rollback.
+  specific request** — the AI agent MUST NOT decide on its own initiative to deploy, promote, or
+  roll back, and MUST NOT infer/guess/default the target version (e.g. "the previous one," "the
+  one just cut") even if that seems obvious from context. Approval for one deploy never carries
+  over to the next — this is **in addition to**, not instead of, the existing CLAUDE.md
+  "AI AGENTS: NEVER START AN ENVIRONMENT... WITHOUT EXPLICIT APPROVAL" rule, since every
+  `deploy_release.sh` call starts/recreates a container in `dev` or `prod`: both gates apply to
+  every call, and neither substitutes for the other. Cutting a version (REQ-REL-002) does **not**
+  implicitly authorize deploying it anywhere — deploying to `dev` right after a cut, and later
+  promoting to `prod`, are each their own separate approval, even on the same version.
 
 ### Scripts
 
@@ -171,12 +208,16 @@ variables (CONSTITUTION §I), consistent with the existing dev/prod container mo
   the `<app>-v<version>` git tag. Refuses to run if that exact version already exists
   (REQ-REL-006). Prompts for an interactive final confirmation before doing anything irreversible
   (the git tag / artifact export), so a typo'd version string can still be caught.
-- **REQ-SCR-002**: A `scripts/rollback_release.sh <app> <env> <version>` script MUST exist,
+- **REQ-SCR-002**: A `scripts/deploy_release.sh <app> <env> <version>` script MUST exist,
   callable only with an app, environment (`dev`/`prod`), and explicit target version all required
   as arguments. It loads that version's tarball from the artifacts folder (`docker load`) and
   redeploys it to the named environment's running container for that app — no rebuild, no
-  guessing the target version. Fails clearly (not silently) if the requested version's tarball
-  isn't found in the artifacts folder.
+  guessing the target version — then automatically verifies success per REQ-DEPLOY-002 before
+  reporting done. This single script is used for the initial deploy of a freshly cut version to
+  `dev`, later promotion to `prod`, and rollback to any older version in either environment — all
+  three are the same call shape, differing only in which version is named (research.md
+  Decision 9). Fails clearly (not silently) if the requested version's tarball isn't found in the
+  artifacts folder, or if post-deploy verification doesn't pass within its timeout.
 
 ### Artifacts Storage
 
@@ -190,7 +231,7 @@ variables (CONSTITUTION §I), consistent with the existing dev/prod container mo
 - **REQ-ART-002**: Each release's tarball MUST be accompanied by a small JSON manifest
   (`<app>-v<version>.json` alongside the `.tar`) recording at minimum: `app`, `version`, `date`,
   `git_commit` (the deployed commit the release was cut from), and the Docker image ID/digest —
-  enough for a human (or `scripts/rollback_release.sh`) to identify and verify an artifact without
+  enough for a human (or `scripts/deploy_release.sh`) to identify and verify an artifact without
   needing to inspect the tarball's contents.
 
 ### Internal documentation
@@ -200,7 +241,7 @@ variables (CONSTITUTION §I), consistent with the existing dev/prod container mo
   discoverable the same way every other cross-cutting convention in this repo is.
 - **REQ-DOC-002** 🚨: CLAUDE.md MUST carry a dedicated, prominent hard-constraint banner (matching
   the style of its existing "AI AGENTS: NEVER START AN ENVIRONMENT..." section) stating the
-  human-only release-authority rule (REQ-REL-002, REQ-ROLL-004) and immutability rule
+  human-only release-authority rule (REQ-REL-002, REQ-DEPLOY-005) and immutability rule
   (REQ-REL-006) as binding on any AI agent working in this repo — **added immediately, 2026-08-02,
   ahead of the rest of this feature's implementation**, since it governs agent behavior starting
   now, not only once the full feature ships. The `haleluya` finish-feature definition (CLAUDE.md +
@@ -247,8 +288,8 @@ Reasonable defaults applied where no explicit user direction was given, document
   startup log).
 - **release image**: The Docker image built and tagged with a release's `semantic_version` at
   release time (REQ-REL-005), exported as a `.tar` into the artifacts folder as the exact artifact
-  rollback (REQ-ROLL-002) loads and redeploys — distinct from the untagged/`latest`-style images
-  produced by ordinary forward rebuild-and-recreate deploys.
+  every later deploy (REQ-DEPLOY-001) loads and redeploys — distinct from the untagged/
+  `latest`-style images produced by ordinary pre-release rebuild-and-recreate dev iteration.
 - **artifacts folder**: The single, hardcoded-path, cross-clone-shared directory (REQ-ART-001)
   holding every cut release's tarball + manifest, for every app.
 - **release manifest**: The small JSON file (REQ-ART-002) accompanying each release tarball,
@@ -262,16 +303,18 @@ Reasonable defaults applied where no explicit user direction was given, document
 - **SC-002**: Given `logs/denidin.log` for a running `denidin-app` container, a human can determine
   its exact deployed version by reading any single log line (not just at startup), without needing
   the source tree.
-- **SC-003**: Given a need to roll back either app in either environment, a human can find the
-  documented procedure (REQ-ROLL-002) and the specific prior version to roll back to (via git tags
-  + changelog) without asking anyone else, and the rollback completes by redeploying a pre-built
-  image — no rebuild step, no risk of a dependency-resolution drift changing the result.
+- **SC-003**: Given a need to deploy, promote, or roll back either app in either environment, a
+  human can find the documented procedure (REQ-DEPLOY-001) and the specific version to deploy
+  (via git tags + changelog, or a version they already know) without asking anyone else; the
+  deploy completes by redeploying a pre-built image — no rebuild step, no risk of a
+  dependency-resolution drift changing the result — and its own automatic health/version check
+  (REQ-DEPLOY-002) confirms success before it's reported done.
 - **SC-004**: Every release since this feature ships has a corresponding changelog entry and a
   git tag — verifiable by `git tag -l '<app>-v*'` matching `CHANGELOG.md` entries 1:1 per app.
-- **SC-005**: Every past AI-agent transcript that cut a release or rolled back shows the agent
-  asking for (never stating first) the app, version, and (for rollback) environment — verifiable
-  by inspecting the conversation that preceded any `scripts/cut_release.sh`/
-  `scripts/rollback_release.sh` invocation.
+- **SC-005**: Every past AI-agent transcript that cut a release or deployed/promoted/rolled back
+  shows the agent asking for (never stating first) the app, version, and environment (where
+  applicable) — verifiable by inspecting the conversation that preceded any
+  `scripts/cut_release.sh`/`scripts/deploy_release.sh` invocation.
 - **SC-006**: Attempting to re-cut an already-existing `<app>-v<version>` fails loudly (REQ-REL-006)
   rather than silently overwriting it — verifiable by running `scripts/cut_release.sh` twice with
   the same arguments and confirming the second call refuses.
@@ -333,6 +376,37 @@ resolve real ambiguity the same way a clarify-loop answer would:
   the local Docker image cache" language from the prior session's REQ-REL-005/REQ-ROLL-002, which
   is now built on top of this artifacts-folder mechanism instead.
 
+### Session 2026-08-02 (deploy/rollback unification, after `/speckit.plan`+`/speckit.tasks`+`/speckit.analyze`)
+
+The user walked through the exact operator flow in detail after `/speckit.analyze` had already
+run — this corrected two real mistakes in the plan/tasks already committed, not just an addition:
+
+- Q: What's the actual cut → deploy → promote sequence? → A: **Cut happens before any deploy, not
+  after** (corrects REQ-REL-001, which previously said "after merge + deploy" — backwards). Real
+  sequence: merge → `haleluya` asks whether to cut → cut (artifact built, nothing deployed yet) →
+  separately-approved deploy of that artifact to `dev` → UAT → separately-and-later-requested
+  promotion of the same artifact to `prod`.
+- Q: Are `dev` and `prod` running different versions a rare edge case? → A: **No — the normal,
+  expected case.** Dev routinely runs ahead of prod (e.g. prod on `1.4.5` while dev is already on
+  `1.4.6`) until prod is explicitly promoted. Corrects REQ-VER-004's prior "may run different
+  versions" framing to "routinely and expectedly."
+- Q: Is rollback mechanically different from an ordinary forward deploy/promotion? → A: **No —
+  they're the same operation.** Redeploying an older artifact (rollback) and redeploying a newer
+  one (initial `dev` deploy, or `dev`→`prod` promotion) both just load a pre-built artifact and
+  put it into a container. **This merges what was two requirements clusters (REQ-REL's deploy
+  framing + the old "Rollback / release history" section, REQ-ROLL-001..004) into one "Deploy &
+  Rollback" section (REQ-DEPLOY-001..005), and renames `scripts/rollback_release.sh` to
+  `scripts/deploy_release.sh`** — one script for cut→dev, dev→prod promotion, and rollback alike,
+  differing only in which version is named. (Historical note: earlier Clarifications entries in
+  this file below still say `REQ-ROLL-*`/`rollback_release.sh` — left unedited as a record of what
+  was decided in that earlier session, superseded by this entry, not retroactively rewritten.)
+- Q (agent-raised, not asked separately — stated as a design decision the user's flow made
+  necessary): should a deploy verify its own success automatically, or just start the container
+  and let a human check separately? → A: **Automatically** — the user's own flow explicitly says
+  "deployment is successful when health and version checks show the [...] version is now
+  running," making this part of the deploy operation's own success/failure determination, not an
+  optional follow-up (new REQ-DEPLOY-002).
+
 ### Session 2026-08-02 (final confirmation)
 
 - Q: Is `/Users/yaron/Projects/DeniDin/artifacts/` the correct artifacts folder path? → A:
@@ -364,8 +438,8 @@ cap). No Outstanding or Deferred high-impact categories remain — ready for `/s
 ## References
 
 - CLAUDE.md, "Environments (dev/prod)" — existing manual rebuild/recreate deploy mechanics this
-  feature's rollback procedure (REQ-ROLL-002) reuses rather than replaces; also documents the
-  2026-07-20 incident motivating REQ-VER-002/003.
+  feature's deploy/rollback procedure (REQ-DEPLOY-001) reuses rather than replaces for
+  already-cut versions; also documents the 2026-07-20 incident motivating REQ-VER-002/003.
 - CLAUDE.md, "Spec-Driven Workflow" / `.github/METHODOLOGY.md` "Finish-Feature Trigger Phrase" —
   the existing `haleluya` flow this feature's release step (REQ-REL-001) extends.
 - `apps/morning-mcp-app/src/denidin_mcp_morning/server.py:71-82` — existing `/health` endpoint
@@ -376,7 +450,7 @@ cap). No Outstanding or Deferred high-impact categories remain — ready for `/s
 - `.github/CONSTITUTION.md` §I — no environment variables; version storage (REQ-VER-001) must be a
   git-tracked file, not config injected via env var.
 - `apps/denidin-app/requirements.txt`, `apps/morning-mcp-app/requirements.txt` — neither pins
-  exact dependency versions today; the reason REQ-ROLL-002 requires rollback to redeploy a
+  exact dependency versions today; the reason REQ-DEPLOY-001 requires every deploy to redeploy a
   pre-built image (REQ-REL-005) rather than rebuild from an old git tag.
 - `apps/denidin-app/src/handlers/ai_handler.py:363-368` — existing current-date injection into
   `instructions`, the precedent REQ-VER-005's version-query capability follows.

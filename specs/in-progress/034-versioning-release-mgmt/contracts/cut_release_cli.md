@@ -2,7 +2,7 @@
 
 Implements REQ-SCR-001. This is a "contract" in the same sense webhook JSON shapes are contracts
 for message-routing features (METHODOLOGY §VII) — the interface other things (the human, the
-`haleluya` flow, `scripts/rollback_release.sh` downstream) depend on.
+`haleluya` flow, `scripts/deploy_release.sh` downstream) depend on.
 
 ## Invocation
 
