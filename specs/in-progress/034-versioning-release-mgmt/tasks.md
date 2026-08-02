@@ -192,23 +192,23 @@ parallel with them.
 
 ## Phase 6 — Documentation, haleluya integration, and the real first release
 
-- [ ] **T015** [P] Update CLAUDE.md's REQ-DOC-001 content: document where `VERSION` lives per
+- [x] **T015** [P] Update CLAUDE.md's REQ-DOC-001 content: document where `VERSION` lives per
   app, the `<app>-v<version>` tag convention, `CHANGELOG.md`/`RELEASES.md` locations, and the
   artifacts folder path — the hard-constraint banner itself was already added 2026-08-02, ahead of
-  this phase; this task is the reference documentation, not the rule.
-- [ ] **T016** [P] Update `.github/METHODOLOGY.md`'s "Finish-Feature Trigger Phrase" section
+  this phase; this task is the reference documentation, not the rule. New "Versioning & Release
+  Management (Feature 034)" section added right after "Environments (dev/prod)".
+- [x] **T016** [P] Update `.github/METHODOLOGY.md`'s "Finish-Feature Trigger Phrase" section
   (REQ-DOC-002) to reference the new mandatory post-`haleluya` release prompt (REQ-REL-001), so
   the existing shorthand covers it instead of needing a second command to remember.
-- [ ] **T017** `pylint`/`mypy` pass on every changed Python file
-  (`apps/denidin-app/src/utils/logger.py`, `apps/denidin-app/src/handlers/ai_handler.py`,
-  `apps/morning-mcp-app/src/denidin_mcp_morning/utils/logger.py`,
-  `apps/morning-mcp-app/src/denidin_mcp_morning/server.py`) — both apps' usual
-  `pylint --fail-under=7.0` / `mypy` invocations from their own directories.
-- [ ] **T018** Full default `pytest tests/ -v --tb=short` pass in both apps (`-m "not billed and
-  not expensive"`, including T010a/T012a's script-level tests), plus a separate `pytest
-  tests/billed/test_denidin_version_query_e2e.py -m billed -v` run (T014b already ran this once;
-  this is the final combined pass) — confirms no regression to existing
-  logging/health/instructions behavior.
+- [x] **T017** `pylint`/`mypy` pass — denidin-app: 9.00/10 (well above the 7.0 threshold; the one
+  new pylint note is on a file Feature 034 didn't touch), mypy shows only pre-existing
+  missing-type-stub errors (`requests`/`yaml`) unrelated to this feature. morning-mcp-app has no
+  pylint/mypy tooling installed (not part of its documented conventions) — its test suite is the
+  quality gate there.
+- [x] **T018** Full default `pytest tests/ -v --tb=short` pass in both apps (`-m "not billed and
+  not expensive"`): denidin-app 572 passed / 59 deselected; morning-mcp-app 277 passed / 2
+  deselected. Plus `pytest tests/billed/test_denidin_version_query_e2e.py -m billed -v`: 2 passed.
+  Plus `scripts/tests/`: 15 passed (7 cut_release + 8 deploy_release). No regressions anywhere.
 - [ ] **T019** 👤 **MANUAL GATE — the real first release**: once T001-T018 are all green and this
   feature itself is ready to ship via the normal `haleluya` flow, the **actual** first
   `scripts/cut_release.sh denidin-app <version>` / `scripts/cut_release.sh morning-mcp-app

@@ -204,6 +204,18 @@ Both apps run **exclusively as Docker containers**, in one of two environments �
 
 **Merging a code fix to `master` does not redeploy it.** `docker compose up -d`/`restart` does not rebuild on its own when source changed on disk — a running container keeps executing whatever image it was last built from. After merging any code change (not a config/mounted-data change — those *are* picked up live, e.g. `runtime_constitution.md`'s mtime-based hot-reload), rebuild and recreate every environment container currently running that app: `docker compose --project-directory . -f docker/docker-compose.<env>.yml build <service> && ... up -d <service>` (or the `run_*.sh <env>` script, but note it does not rebuild by itself either — build first). A merged RBAC fix once had zero effect on a running prod container for hours because of exactly this (2026-07-20) — see the `/haleluya` command's Deploy step.
 
+## Versioning & Release Management (Feature 034)
+
+Each app (`denidin-app`, `morning-mcp-app`) has its own independent semantic version — `dev` and `prod` routinely run *different* versions at any given time (e.g. prod on `1.4.5` while dev is already on `1.4.6` during the next release's UAT); this is the normal, expected state, not drift to fix. See the "VERSION AND RELEASE DECISIONS ARE HUMAN-ONLY" banner above for the binding agent-behavior rule — this section is the reference for where things live and how the mechanics work.
+
+- **`apps/<app>/VERSION`** — plain-text current version (git-tracked, one source of truth per app). Surfaced via `apps/morning-mcp-app`'s `/health` endpoint (`version` field) and every log line in both apps (`[v<version>]` prefix). `apps/denidin-app` can also answer "what version are you running?" directly over WhatsApp (ungated by RBAC).
+- **`apps/<app>/CHANGELOG.md`** — terse, one line per release. **`apps/<app>/RELEASES.md`** — fuller prose notes per release. Both append-only, written only by `scripts/cut_release.sh`, never hand-edited.
+- **Git tags**: `<app>-v<version>` (e.g. `denidin-app-v1.4.2`) — one per app, since the two apps version independently.
+- **Artifacts folder**: `/Users/yaron/Projects/DeniDin/artifacts/<app>/<app>-v<version>.{tar,json}` — a shared, hardcoded-path directory outside any single clone's exclusive ownership (same idea as `shared/`), holding every cut release's exported Docker image (`docker save`) plus a JSON manifest (version/date/git commit/image ID). Not a container registry.
+- **`scripts/cut_release.sh <app> <version>`** — builds, tags, and exports the release artifact; updates `VERSION`/`CHANGELOG.md`/`RELEASES.md`; applies the git tag. Deploys nothing. Refuses to re-cut an already-existing version (immutable once cut).
+- **`scripts/deploy_release.sh <app> <env> <version>`** — the one script for initial deploy to `dev`, promotion to `prod`, and rollback alike (all mechanically identical: load the artifact, redeploy it, verify it — never rebuild). Retags the loaded image to `<compose-project-name>-<service-name>:latest` and runs `docker compose up -d --no-build`, so the environment's existing config/logs/data volume mounts are preserved. Blocks on automatic verification (`/health` poll for morning-mcp-app, `docker logs` grep for denidin-app) before reporting success — a container that merely started is not a success.
+- Full spec: `specs/in-progress/034-versioning-release-mgmt/` (`spec.md`, `plan.md`, `contracts/` for the exact CLI contracts).
+
 ## Commands
 
 ### Setup
