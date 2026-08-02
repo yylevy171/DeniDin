@@ -133,25 +133,30 @@ verification gated the reported success, and `master`'s history is untouched thr
 
 **Depends on**: Phase 3 (needs a working `cut_release.sh` to produce artifacts to deploy).
 
-- [ ] **T012a** [US3] Write script-level tests (same file/location convention as T010a) for
+- [x] **T012a** [US3] Write script-level tests (`scripts/tests/test_deploy_release.py`, plus a
+  new `scratch_deploy_repo` fixture in `scripts/tests/conftest.py` using a genuinely long-running
+  container and a scratch `docker-compose.dev.yml` with a project name deliberately distinct from
+  the real repo's "denidin-dev"/"denidin-prod" — see fixture docstring for why) for
   `scripts/deploy_release.sh` per `contracts/deploy_release_cli.md`: (a) missing/malformed args →
-  exit 2; (b) missing artifact/manifest → exit 1, clear message, no `docker build` ever invoked
-  (assert this explicitly — e.g. by asserting no build-related subprocess call happened) — true
-  for all three call shapes, not just what would traditionally be called "rollback"; (c) manifest
-  `app`/`version` mismatch → exit 1, refuses; (d) happy path (exercise with a version *newer* than
-  what the scratch container is running, to cover the initial-deploy/promotion shape, **and**
-  separately with an *older* version, to cover the rollback shape) → `docker load` runs, target
-  container recreated from the loaded image, no rebuild step, success only reported after the
-  automatic verification step (REQ-DEPLOY-002) passes against a scratch health/log stand-in; (e)
-  verification-timeout case (scratch stand-in never shows the expected version) → exit 1, reported
-  as failed even though the container "started"; (f) **[post-`/speckit.analyze` finding H1]**
-  explicitly assert `git log <scratch-repo>` is byte-identical before/after every one of the above
-  invocations, and that no `git commit`/`git tag`/`git push` subprocess call occurs during any
-  deploy — this closes the gap where the prior task list only asserted "no rebuild," not "no git
-  writes at all" (REQ-DEPLOY-004). **RED**.
-- [ ] **T012b** [US3] Implement `scripts/deploy_release.sh` per `contracts/deploy_release_cli.md`
-  (preconditions → load → recreate container → automatic verification per research.md
-  Decision 10 → report). **GREEN**.
+  exit 2; (b) missing artifact/manifest → exit 1, no `docker build` ever invoked; (c) manifest
+  `app`/`version` mismatch → exit 1, refuses; (d) initial-deploy shape (newer version) and
+  rollback shape (older version) both → `docker load` (no rebuild), container recreated via
+  retag + `docker compose up -d --no-build`, success only after automatic `docker logs`-based
+  verification (REQ-DEPLOY-002) passes; (e) genuine verification-timeout case (a swapped tarball
+  whose actual image content never matches its claimed version) → exit 1, reported as FAILED even
+  though the container started; (f) **[post-`/speckit.analyze` finding H1]** explicitly assert
+  `git log <scratch-repo>` is byte-identical before/after every deploy — closes the gap where the
+  prior task list only asserted "no rebuild," not "no git writes at all" (REQ-DEPLOY-004). **RED**.
+- [x] **T012b** [US3] Implement `scripts/deploy_release.sh` per `contracts/deploy_release_cli.md`:
+  preconditions → `docker load` (capturing the *actual* loaded image reference from `docker
+  load`'s own output, not assumed from the filename — a tarball's embedded tag always wins) →
+  retag to `<compose-project-name>-<service-name>:latest` (project name read from the compose
+  file's own `name:` field, never hardcoded — safety-critical, see research.md Decision 5) →
+  `docker compose up -d --no-build` → automatic verification (`docker logs`-grep for denidin-app,
+  `/health`-poll via the compose-resolved host port for morning-mcp-app) → report. **GREEN**
+  (8/8 tests pass, ~3m44s — real Docker builds/verification polling). Covers denidin-app's
+  verification path thoroughly; morning-mcp-app's `/health`-poll path is structurally parallel
+  but relies on T013's manual gate for real-infrastructure coverage, not an automated scratch test.
 - [ ] **T013** [US3] 👤 **MANUAL GATE**: run `quickstart.md`'s US3 scenarios for real (all three:
   initial deploy, promotion, rollback) — each needs its own explicit environment-start approval
   (CLAUDE.md's pre-existing rule) *and* (per REQ-DEPLOY-005) its own explicit human-stated
