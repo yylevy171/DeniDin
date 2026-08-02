@@ -208,12 +208,10 @@ convention. No new top-level app, no new container, no new port. The artifacts f
 
 ### Phase 0 — Research (this plan's Phase 0, see research.md)
 Resolved: logging/filter mechanism, VERSION path resolution, `/health` extension, AIHandler
-injection point, script build/tag/artifact mechanics, changelog/release-notes format.
-**Not fully resolved, flagged for tasks**: whether/how the root clone's `.gitignore` needs a new
-`/artifacts/` entry (research.md Decision 7) — a cross-clone coordination point, not something
-`/speckit.plan` can decide unilaterally from within `coder1`.
-**Checkpoint**: no unknown blocks implementation; Decision 7 is a task-breakdown/coordination
-item, not a design unknown.
+injection point, script build/tag/artifact mechanics, changelog/release-notes format. The root
+clone's `.gitignore` coordination point (Decision 7) is resolved as **user-owned, out of this
+feature's task list** — the user will add that entry themselves.
+**Checkpoint**: no unknown blocks implementation.
 
 ### Phase 1 — VERSION + observability (US1), TDD
 `VERSION` files, `VersionFilter`/formatter change in both apps' `logger.py`, `/health` extension,
@@ -221,9 +219,10 @@ each preceded by a failing unit test per CONSTITUTION §V/METHODOLOGY §VI.
 
 ### Phase 2 — Release/rollback scripts (US2/US3) + artifacts folder
 `scripts/cut_release.sh`/`scripts/rollback_release.sh` per their CLI contracts, script-level
-tests against scratch fixtures (not this repo's real releases). Resolve the Decision 7
-`.gitignore` coordination point before this phase's tests actually populate the real shared
-artifacts folder.
+tests against scratch fixtures (not this repo's real releases). Assumes the user has already
+added the root clone's `.gitignore` entry (Decision 7, user-owned) before this phase's tests
+populate the real shared artifacts folder — worth a quick check at Phase 2 kickoff, not a task
+this feature implements itself.
 
 ### Phase 3 — WhatsApp version query (US4)
 `AIHandler` instructions-injection change, the `billed`-tier real E2E test.

@@ -132,8 +132,9 @@ containing `coder1/`/`coder2/` as nested subdirectories — confirmed via `ls`, 
   user authorization for that specific edit, or should be done by the user directly / from a
   session actually running in the root clone.
 
-**Not resolved here** — this is a coordination point to surface explicitly at task-breakdown time
-(`/speckit.tasks`), not something Phase 0 research can silently decide.
+**Resolved (2026-08-02)**: the user will add the root clone's `.gitignore` entry themselves,
+outside this feature's implementation tasks — `/speckit.tasks` should not generate a task for it,
+and no `coder1` session should attempt this edit.
 
 ## Decision 8: `RELEASES.md`/`CHANGELOG.md` entry format
 
