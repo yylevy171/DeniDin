@@ -33,6 +33,7 @@ NO MOCKING anywhere.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 from datetime import datetime, timezone
@@ -140,6 +141,23 @@ def _load_vcard(filename: str) -> str:
     return (_CONTACTS_FIXTURES_DIR / filename).read_text(encoding="utf-8")
 
 
+def _ledger_event_count_for_chat(denidin_app, chat_id: str) -> int:
+    """Counts real persisted LedgerEvent files (data/events/*.json, Feature 033) for this
+    chat_id - used as a before/after false-positive guard: a shared vCard's raw text goes
+    through the exact same conversational AIHandler pipeline (and the same always-attached
+    LEDGER_EVENT_TOOL) as any text message, so nothing structurally prevents the model from
+    misreading contact-card fields as fee-agreement/bank-deposit content. Same
+    before/after-count pattern as test_ledger_event_capture_e2e.py's ordinary-chatter guard."""
+    storage_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
+    count = 0
+    for f in storage_dir.glob("*.json"):
+        with open(f, encoding="utf-8") as fh:
+            data = json.load(fh)
+        if data.get("whatsapp_chat") == chat_id:
+            count += 1
+    return count
+
+
 @pytest.mark.billed
 def test_godfather_shares_contact_card_complete_requires_approval(denidin_app):
     """US1: a shared contact card with name+phone+email all present proposes add_client
@@ -151,6 +169,7 @@ def test_godfather_shares_contact_card_complete_requires_approval(denidin_app):
     no email - see US2 below for that case).
     """
     vcard = _load_vcard("complete_card_dana_cohen.vcf")
+    ledger_count_before = _ledger_event_count_for_chat(denidin_app, GODFATHER_CHAT_ID)
 
     ask_response, ask_ai_response = _send_contact_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -163,6 +182,10 @@ def test_godfather_shares_contact_card_complete_requires_approval(denidin_app):
     assert not _calls_for(ask_ai_response, "add_client"), (
         f"add_client executed on the ASK turn (from a shared contact card) before approval "
         f"was given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+    )
+    assert _ledger_event_count_for_chat(denidin_app, GODFATHER_CHAT_ID) == ledger_count_before, (
+        "capture_ledger_event was called on a raw vCard - contact-card fields "
+        "(name/phone/email) must never be misread as fee-agreement/bank-deposit content"
     )
 
     response, ai_response = _send_text_turn(
@@ -193,6 +216,7 @@ def test_godfather_shares_contact_card_missing_email_is_asked_for(denidin_app):
     """
     vcard = _load_vcard("00005372-גיל ברטל .vcf")
     assert "EMAIL" not in vcard  # sanity: this fixture genuinely has no email
+    ledger_count_before = _ledger_event_count_for_chat(denidin_app, GODFATHER_CHAT_ID)
 
     ask_response, ask_ai_response = _send_contact_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -208,6 +232,10 @@ def test_godfather_shares_contact_card_missing_email_is_asked_for(denidin_app):
     )
     assert "מייל" in ask_response or "אימייל" in ask_response, (
         f"Expected the bot to ask for the missing email, got: {ask_response!r}"
+    )
+    assert _ledger_event_count_for_chat(denidin_app, GODFATHER_CHAT_ID) == ledger_count_before, (
+        "capture_ledger_event was called on a raw vCard - contact-card fields "
+        "(name/phone/email) must never be misread as fee-agreement/bank-deposit content"
     )
 
     supply_response, supply_ai_response = _send_text_turn(

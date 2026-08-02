@@ -1428,7 +1428,7 @@ class AIHandler:
                 f"retrying once with corrective feedback: {ledger_events!r}"
             )
             retry_kwargs = dict(kwargs)
-            retry_kwargs["input"] = kwargs["input"] + [{
+            retry_kwargs["input"] = cast(List[Dict], kwargs["input"]) + [{
                 "role": "user",
                 "content": (
                     "Your previous capture_ledger_event call indicated a real "

@@ -10,6 +10,14 @@ Text-only counterpart to tests/expensive/test_ledger_event_capture_e2e.py (the i
 flow, which stays `expensive` since it makes real vision calls). Split out per Feature
 029 - these text-flow tests are billed (cheap, text-only), not expensive.
 
+Feature 033 (Ledger Event Persistence): events persist as their own files under
+`{data_root}/events/{event_id}.json` via LedgerEventManager, not in session.json's
+(long since removed) `pending_ledger_events` - this file was rewritten 2026-08-02
+after a merge from master revealed it still referenced that removed mechanism (it was
+split off from test_ledger_event_capture_e2e.py, per Feature 029, on a master line of
+history that predated Feature 033's redesign there). See
+specs/in-progress/033-ledger-event-persistence/ for the full design.
+
 NO MOCKING - real OpenAI API calls, real session storage.
 """
 
@@ -37,8 +45,8 @@ class TestLedgerEventCaptureBilled:
     """
     Given/When/Then E2E coverage for Ledger Event Recognition's text flow:
     - Given a message that genuinely warrants capture, When processed, Then
-      `capture_ledger_event` is called and the result lands in
-      session.pending_ledger_events with plausible fields.
+      `capture_ledger_event` is called and the result lands in its own file under
+      `data/events/`, correctly shaped per data-model.md.
     - Given a message that doesn't, When processed, Then it is NOT called - the
       false-positive guard matters as much as the capture itself.
     """
@@ -82,69 +90,95 @@ class TestLedgerEventCaptureBilled:
                 'mcp': config.mcp,
             }
             denidin.denidin_app = denidin.initialize_app(config_dict)
+
+        # Safety guard, every call (not just first-init): LedgerEventManager.storage_dir
+        # MUST resolve under this test's isolated data_root (test_data/), never the real
+        # production/dev data root - a wiring mistake here would write test noise into
+        # the real financial ledger. Fails loud and immediately rather than silently
+        # polluting data/events/ or dev_data/events/.
+        actual_events_dir = Path(denidin.denidin_app.ai_handler.ledger_event_manager.storage_dir).resolve()
+        expected_root = Path(config.data_root).resolve()
+        assert actual_events_dir.is_relative_to(expected_root), (
+            f"LedgerEventManager.storage_dir={actual_events_dir} is NOT under this "
+            f"test's isolated data_root={expected_root} - refusing to proceed, this "
+            f"would write into production/dev ledger data"
+        )
         return denidin.denidin_app
 
     @staticmethod
     def _fresh_chat_id(label: str) -> str:
         """A unique-per-run chat_id, so re-running a single test doesn't accumulate
-        unbounded pending_ledger_events on a shared chat and confuse assertions."""
+        unbounded ledger events for a shared chat and confuse assertions."""
         return f"97250{uuid.uuid4().hex[:7]}_{label}@c.us"
 
     @staticmethod
-    def _pending_events(denidin_app, chat_id):
-        session = denidin_app.ai_handler.session_manager.get_session(chat_id)
-        return session.pending_ledger_events
+    def _events_for_chat(denidin_app, chat_id):
+        """All persisted LedgerEvent files (data/events/*.json) for this chat_id,
+        sorted by captured_at - reads the real files off disk, not an in-memory
+        proxy, so assertions prove the event genuinely landed in permanent storage
+        (Feature 033's whole point)."""
+        events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
+        results = []
+        for f in events_dir.glob("*.json"):
+            with open(f, encoding='utf-8') as fh:
+                data = json.load(fh)
+            if data.get("whatsapp_chat") == chat_id:
+                results.append(data)
+        results.sort(key=lambda d: d["captured_at"])
+        return results
 
     @staticmethod
-    def _read_persisted_session(denidin_app, chat_id):
-        """Read session.json directly off disk - bypassing SessionManager.get_session
-        entirely - so assertions prove the ledger event genuinely landed in the
-        persisted file, not just in a process-local Session object that happens to
-        agree with it. real persistence, not an in-memory proxy for it."""
-        session_manager = denidin_app.ai_handler.session_manager
-        session_id = session_manager.chat_to_session[chat_id]
-        session_file = session_manager.storage_dir / session_id / "session.json"
-        with open(session_file, encoding='utf-8') as f:
-            return json.load(f)
-
-    @staticmethod
-    def _assert_ledger_event_persisted(denidin_app, chat_id, expected_event_timestamp):
-        """Cross-checks the in-memory Session (via get_session) against the raw
-        session.json file on disk, and verifies the bookkeeping fields
-        add_pending_ledger_event adds (message_timestamp, sender, captured_at) are
-        present and correct - not just the model-extracted fields. Returns the
-        last persisted event record for further field-specific assertions.
+    def _assert_ledger_events_persisted(denidin_app, chat_id, expected_count, expected_event_timestamp):
+        """Asserts events were persisted for this chat, each with the bookkeeping
+        fields LedgerEventManager.add_ledger_event adds (message_timestamp = the
+        real hard pointer, sender, captured_at, message_id) present and correct.
+        Returns the events in capture order for further field-specific assertions.
 
         expected_event_timestamp: the real Green API notification timestamp (unix
-        epoch seconds) this event should be pointed at - the constitution's "hard
+        epoch seconds) these events should be pointed at - the constitution's "hard
         pointer" requirement (never processing time, never a guess).
         """
-        in_memory_events = TestLedgerEventCaptureBilled._pending_events(denidin_app, chat_id)
-        assert len(in_memory_events) >= 1, "Expected capture_ledger_event to be called - none captured"
-
-        persisted = TestLedgerEventCaptureBilled._read_persisted_session(denidin_app, chat_id)
-        persisted_events = persisted["pending_ledger_events"]
-        assert persisted_events == in_memory_events, (
-            "In-memory Session.pending_ledger_events diverges from the real "
-            "session.json file on disk - persistence did not actually happen "
-            "as expected"
+        events = TestLedgerEventCaptureBilled._events_for_chat(denidin_app, chat_id)
+        assert len(events) == expected_count, (
+            f"Expected {expected_count} persisted ledger event(s) for {chat_id}, "
+            f"found {len(events)}: {events}"
         )
 
-        record = persisted_events[-1]
         expected_ts_iso = datetime.fromtimestamp(expected_event_timestamp, tz=timezone.utc).isoformat()
-        assert record.get("message_timestamp") == expected_ts_iso, (
-            f"message_timestamp={record.get('message_timestamp')!r} does not match the "
-            f"real notification timestamp {expected_ts_iso!r} - the constitution's 'hard "
-            f"pointer' requirement (never processing time, never a guess)"
+        for record in events:
+            assert record.get("message_timestamp") == expected_ts_iso, (
+                f"message_timestamp={record.get('message_timestamp')!r} does not match the "
+                f"real notification timestamp {expected_ts_iso!r} - the constitution's 'hard "
+                f"pointer' requirement (never processing time, never a guess)"
+            )
+            assert record.get("sender"), "sender was not persisted"
+            assert record.get("captured_at"), "captured_at was not persisted"
+            assert record.get("message_id"), (
+                "message_id must be non-null for events captured after Feature 033 - "
+                "closes the traceability gap that motivated this feature"
+            )
+        return events
+
+    @staticmethod
+    def _assert_message_links_back_to_event(denidin_app, chat_id, event):
+        """Cross-checks the reverse link: the source message's ledger_event_ids
+        (Feature 033) must include this event's event_id."""
+        session_manager = denidin_app.ai_handler.session_manager
+        session_id = session_manager.chat_to_session[chat_id]
+        message_id = event["message_id"]
+        message_file = session_manager.storage_dir / session_id / "messages" / f"{message_id}.json"
+        with open(message_file, encoding='utf-8') as f:
+            message_data = json.load(f)
+        assert event["event_id"] in message_data["ledger_event_ids"], (
+            f"event {event['event_id']} not found in source message {message_id}'s "
+            f"ledger_event_ids={message_data.get('ledger_event_ids')!r}"
         )
-        assert record.get("sender"), "sender was not persisted"
-        assert record.get("captured_at"), "captured_at was not persisted"
-        return record
 
     def test_given_clear_fee_agreement_text_when_processed_then_ledger_event_captured(self, denidin_app):
         """Given a WhatsApp message stating a new fee agreement in the same shorthand
         style the real AHLedger source chat uses, When DeniDin processes it, Then
-        capture_ledger_event is called with source_type=הסכם and the right client/amount."""
+        capture_ledger_event is called with source_type=הסכם and the right client/amount,
+        persisted under data/events/."""
         from denidin import handle_text_message
 
         chat_id = self._fresh_chat_id("text_agreement")
@@ -169,28 +203,35 @@ class TestLedgerEventCaptureBilled:
         response = get_response(notification)
         assert_response_exists(response)
 
-        # THEN: verify against the real persisted session.json on disk (not just the
-        # in-memory Session object), including the bookkeeping fields
-        # add_pending_ledger_event adds - message_timestamp must be the real
-        # notification timestamp (1770000000), never processing time.
-        captured = self._assert_ledger_event_persisted(denidin_app, chat_id, expected_event_timestamp=1770000000)
+        # THEN: verify against the real persisted data/events/{event_id}.json file
+        # (Feature 033 - not session.json anymore), including the bookkeeping fields
+        # LedgerEventManager.add_ledger_event adds - message_timestamp must be the
+        # real notification timestamp (1770000000), never processing time.
+        events = self._assert_ledger_events_persisted(
+            denidin_app, chat_id, expected_count=1, expected_event_timestamp=1770000000
+        )
+        captured = events[0]
         logger.info(f"THEN captured event (persisted): {captured}")
 
         assert captured["source_type"] == "הסכם"
         assert captured["event_subtype"] == "יצירה"
         assert "רונית" in (captured.get("client_name") or "") or "כהן" in (captured.get("client_name") or "")
-        assert "9" in (captured.get("amount") or "")
+        assert captured.get("amount") == 9000, (
+            f"expected amount normalized to int 9000, got {captured.get('amount')!r}"
+        )
         assert captured.get("vat_status") == "כולל"
         assert captured.get("raw_message_excerpt")
+        assert captured["event_id"].startswith("A")
+        self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
 
     def test_given_ordinary_chatter_when_processed_then_no_ledger_event_captured(self, denidin_app):
         """Given an ordinary conversational message with no money/engagement content,
-        When processed, Then capture_ledger_event is NOT called - the false-positive
-        guard matters as much as capturing real events does."""
+        When processed, Then capture_ledger_event is NOT called - no file created
+        under data/events/."""
         from denidin import handle_text_message
 
         chat_id = self._fresh_chat_id("text_chatter")
-        before = len(self._pending_events(denidin_app, chat_id))
+        before = len(self._events_for_chat(denidin_app, chat_id))
 
         notification = create_real_notification({
             'typeWebhook': 'incomingMessageReceived',
@@ -211,6 +252,6 @@ class TestLedgerEventCaptureBilled:
         response = get_response(notification)
         assert_response_exists(response)
 
-        after = len(self._pending_events(denidin_app, chat_id))
-        logger.info(f"THEN pending_ledger_events count before={before}, after={after}")
+        after = len(self._events_for_chat(denidin_app, chat_id))
+        logger.info(f"THEN persisted-event count before={before}, after={after}")
         assert after == before, "capture_ledger_event should NOT have been called for ordinary chatter"
