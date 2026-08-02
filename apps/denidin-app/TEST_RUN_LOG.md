@@ -23,23 +23,23 @@ run since this file started, or invalidated by a later code change).
 | 2 | test_ai_handler_real_api.py::TestMessageLengthValidation::test_long_prompt_truncated_to_10000 | 2026-08-02 | PASS | 5bec668 | |
 | 3 | test_ai_handler_real_api.py::TestMessageLengthValidation::test_short_messages_pass_through | 2026-08-02 | PASS | 5bec668 | |
 | 4 | test_denidin_morning_document_creation_e2e.py::test_godfather_creates_transaction_account_via_whatsapp | 2026-08-02 | PASS | 5bec668 | |
-| 5 | test_denidin_morning_document_creation_e2e.py::test_godfather_creates_combo_document_via_whatsapp | 2026-08-02 | FAIL | 5bec668 | Root cause found + fixed (52d6f8e): Morning-suppression missed `mcp_approval_request`, ledger tool misfired 2 spurious events mid-approval-flow. UNVERIFIED since fix - needs re-run. |
-| 6 | test_denidin_morning_document_creation_e2e.py::test_godfather_creates_credit_note_against_real_invoice | - | UNVERIFIED | - | |
-| 7 | test_denidin_morning_document_creation_e2e.py::test_credit_note_request_with_invalid_invoice_number_fails_gracefully | - | UNVERIFIED | - | |
-| 8 | test_denidin_morning_document_creation_e2e.py::test_godfather_creates_receipt_against_unpaid_invoice | - | UNVERIFIED | - | |
-| 9 | test_denidin_morning_document_creation_e2e.py::test_receipt_request_with_exact_invoice_amount_resolves_correctly | - | UNVERIFIED | - | |
-| 10 | test_denidin_morning_document_creation_e2e.py::test_receipt_request_for_already_paid_invoice_handled_sensibly | - | UNVERIFIED | - | Previously fixed (sandbox indexing-lag sleep) and passed pre-merge (2026-08-02, commit 402bd1e) - unverified since merge. |
-| 11 | test_denidin_morning_mcp_e2e.py::test_godfather_creates_invoice_via_whatsapp | - | UNVERIFIED | - | |
-| 12 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_invoice_creation | - | UNVERIFIED | - | |
-| 13 | test_denidin_morning_mcp_e2e.py::test_godfather_ignores_pending_approval_with_unrelated_message | - | UNVERIFIED | - | |
-| 14 | test_denidin_morning_mcp_e2e.py::test_godfather_approval_survives_intervening_small_talk | - | UNVERIFIED | - | |
-| 15 | test_denidin_morning_mcp_e2e.py::test_godfather_add_client_requires_approval | - | UNVERIFIED | - | |
-| 16 | test_denidin_morning_mcp_e2e.py::test_godfather_add_client_missing_field_is_asked_for | - | UNVERIFIED | - | |
-| 17 | test_denidin_morning_mcp_e2e.py::test_godfather_add_client_rejects_malformed_email | - | UNVERIFIED | - | |
-| 18 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_add_client | - | UNVERIFIED | - | |
-| 19 | test_denidin_morning_mcp_e2e.py::test_godfather_lists_clients_via_whatsapp | - | UNVERIFIED | - | |
-| 20 | test_denidin_morning_mcp_e2e.py::test_godfather_gets_client_details_via_whatsapp | - | UNVERIFIED | - | |
-| 21 | test_denidin_morning_mcp_e2e.py::test_godfather_gets_client_details_not_found_via_whatsapp | - | UNVERIFIED | - | |
+| 5 | test_denidin_morning_document_creation_e2e.py::test_godfather_creates_combo_document_via_whatsapp | 2026-08-02 | PASS | cbfb093 | Was FAIL at 5bec668 - root cause (Morning-suppression missed `mcp_approval_request`) fixed in 52d6f8e, re-run confirms fix works for real. |
+| 6 | test_denidin_morning_document_creation_e2e.py::test_godfather_creates_credit_note_against_real_invoice | 2026-08-02 | PASS | cbfb093 | |
+| 7 | test_denidin_morning_document_creation_e2e.py::test_credit_note_request_with_invalid_invoice_number_fails_gracefully | 2026-08-02 | PASS | cbfb093 | |
+| 8 | test_denidin_morning_document_creation_e2e.py::test_godfather_creates_receipt_against_unpaid_invoice | 2026-08-02 | PASS | cbfb093 | |
+| 9 | test_denidin_morning_document_creation_e2e.py::test_receipt_request_with_exact_invoice_amount_resolves_correctly | 2026-08-02 | PASS | cbfb093 | |
+| 10 | test_denidin_morning_document_creation_e2e.py::test_receipt_request_for_already_paid_invoice_handled_sensibly | 2026-08-02 | PASS | cbfb093 | |
+| 11 | test_denidin_morning_mcp_e2e.py::test_godfather_creates_invoice_via_whatsapp | 2026-08-02 | PASS | cbfb093 | |
+| 12 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_invoice_creation | 2026-08-02 | PASS | cbfb093 | |
+| 13 | test_denidin_morning_mcp_e2e.py::test_godfather_ignores_pending_approval_with_unrelated_message | 2026-08-02 | PASS | cbfb093 | |
+| 14 | test_denidin_morning_mcp_e2e.py::test_godfather_approval_survives_intervening_small_talk | 2026-08-02 | PASS | cbfb093 | |
+| 15 | test_denidin_morning_mcp_e2e.py::test_godfather_add_client_requires_approval | 2026-08-02 | PASS | cbfb093 | |
+| 16 | test_denidin_morning_mcp_e2e.py::test_godfather_add_client_missing_field_is_asked_for | 2026-08-02 | PASS | cbfb093 | |
+| 17 | test_denidin_morning_mcp_e2e.py::test_godfather_add_client_rejects_malformed_email | 2026-08-02 | PASS | cbfb093 | |
+| 18 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_add_client | 2026-08-02 | PASS | cbfb093 | |
+| 19 | test_denidin_morning_mcp_e2e.py::test_godfather_lists_clients_via_whatsapp | 2026-08-02 | PASS | cbfb093 | |
+| 20 | test_denidin_morning_mcp_e2e.py::test_godfather_gets_client_details_via_whatsapp | 2026-08-02 | PASS | cbfb093 | |
+| 21 | test_denidin_morning_mcp_e2e.py::test_godfather_gets_client_details_not_found_via_whatsapp | 2026-08-02 | FAIL | cbfb093 | Fixture generates client name "לקוח לא קיים {random}" (literally "client doesn't exist" + a number) - model asked for clarification (name vs number) instead of calling get_client_details directly. Under investigation - likely a fixture-naming issue, not related to this session's ledger-event work. |
 | 22 | test_denidin_morning_mcp_e2e.py::test_godfather_updates_client_via_whatsapp | - | UNVERIFIED | - | |
 | 23 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_client_update | - | UNVERIFIED | - | |
 | 24 | test_denidin_morning_mcp_e2e.py::test_godfather_update_client_ambiguous_name_creates_no_pending_approval | - | UNVERIFIED | - | |
