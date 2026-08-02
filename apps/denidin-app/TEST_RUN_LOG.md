@@ -62,11 +62,11 @@ run since this file started, or invalidated by a later code change).
 | 41 | test_denidin_morning_mcp_e2e.py::test_godfather_declines_marking_transaction_account_invoice_paid | 2026-08-02 | PASS | e2f39ec | |
 | 42 | test_denidin_morning_mcp_e2e.py::test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected | 2026-08-02 | PASS | e2f39ec | |
 | 43 | test_denidin_vcf_contact_e2e.py::test_godfather_shares_contact_card_complete_requires_approval | 2026-08-02 | PASS | e2f39ec | Ledger false-positive guard (added f285de7) confirmed passing for real - also confirms the mcp_approval_request suppression fix (52d6f8e) holds for add_client's approval flow. |
-| 44 | test_denidin_vcf_contact_e2e.py::test_godfather_shares_contact_card_missing_email_is_asked_for | - | UNVERIFIED | - | Ledger false-positive guard added 2026-08-02 (f285de7), never run. |
-| 45 | test_ledger_event_capture_billed.py::TestLedgerEventCaptureBilled::test_given_clear_fee_agreement_text_when_processed_then_ledger_event_captured | - | UNVERIFIED | - | File fully rewritten 2026-08-02 (f285de7) from the broken pending_ledger_events version - never run since. |
-| 46 | test_ledger_event_capture_billed.py::TestLedgerEventCaptureBilled::test_given_ordinary_chatter_when_processed_then_no_ledger_event_captured | - | UNVERIFIED | - | Same rewrite as above - never run since. |
-| 47 | test_session_transfer.py::test_session_transfer_and_recall_after_expiration | 2026-07-31 | PASS | (pre-merge) | Passed pre-merge under the old `expensive` marker, before the file moved to billed/. Unverified in its new location. |
-| 48 | test_simple_text_e2e.py::TestSimpleTextE2E::test_e2e_simple_text_message_hebrew | 2026-07-31 | PASS | (pre-merge) | Same as above - unverified in its new billed/ location. |
+| 44 | test_denidin_vcf_contact_e2e.py::test_godfather_shares_contact_card_missing_email_is_asked_for | 2026-08-02 | PASS | 571f260 | Was FAIL at e2f39ec - model correctly said "דוא"ל" (formal Hebrew), assertion only checked "מייל"/"אימייל". Broadened assertion in 571f260, confirmed passing. |
+| 45 | test_ledger_event_capture_billed.py::TestLedgerEventCaptureBilled::test_given_clear_fee_agreement_text_when_processed_then_ledger_event_captured | 2026-08-02 | PASS | 571f260 | Confirms the full rewrite from pending_ledger_events to LedgerEventManager (f285de7) works for real. |
+| 46 | test_ledger_event_capture_billed.py::TestLedgerEventCaptureBilled::test_given_ordinary_chatter_when_processed_then_no_ledger_event_captured | 2026-08-02 | PASS | 571f260 | |
+| 47 | test_session_transfer.py::test_session_transfer_and_recall_after_expiration | 2026-08-02 | PASS | 571f260 | Confirmed in its new billed/ location post-merge. |
+| 48 | test_simple_text_e2e.py::TestSimpleTextE2E::test_e2e_simple_text_message_hebrew | 2026-08-02 | PASS | 571f260 | Confirmed in its new billed/ location post-merge. |
 
 ## expensive (21 tests)
 
@@ -96,5 +96,11 @@ run since this file started, or invalidated by a later code change).
 
 ## Current sweep status (this session)
 
-Resuming the `billed` sweep at **#5** (combo document - fix just applied, needs re-run),
-sequential, stop on first failure, per standing instruction.
+**`billed`: 48/48 PASS as of commit 571f260 (2026-08-02).** Full sequential sweep
+complete - 2 real failures found and fixed along the way (test 5: Morning-suppression
+`mcp_approval_request` gap, 52d6f8e; test 21: confusing fixture name, e2f39ec; test 44:
+overly-narrow email-assertion, 571f260).
+
+`expensive`: not yet re-swept since the master merge (5bec668) - all 20 non-skipped
+rows above are UNVERIFIED-since-merge or from before it. Next: sequential `expensive`
+sweep, same protocol.
