@@ -832,8 +832,17 @@ def test_godfather_gets_client_details_via_whatsapp(denidin_app):
 @pytest.mark.billed
 def test_godfather_gets_client_details_not_found_via_whatsapp(denidin_app):
     """Asking about a client that doesn't exist gets a friendly reply, not a
-    crash or a fabricated answer."""
-    nonexistent_name = f"לקוח לא קיים {random.randint(100000, 999999)}"
+    crash or a fabricated answer.
+
+    Real failure (2026-08-02): the fixture name used to be an f-string reading
+    "לקוח לא קיים {random}" - literally "client doesn't exist" in Hebrew, a
+    natural-language STATEMENT, not obviously a proper name, plus a trailing
+    number of ambiguous role (part of the name vs. a separate client id). The
+    model asked for clarification instead of calling get_client_details -
+    a reasonable reaction to a genuinely confusing fixture, not a real bug.
+    Fixed to a fixed, clearly name-shaped nonsense string that will never
+    exist as a real client and reads unambiguously as a name."""
+    nonexistent_name = "לילילי לאלאלא"
 
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
