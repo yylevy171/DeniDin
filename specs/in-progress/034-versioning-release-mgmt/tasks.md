@@ -51,25 +51,25 @@
 **Independent Test**: `curl /health` on morning-mcp-app; grep any sampled `logs/denidin.log`
 line — both match the `VERSION` file (quickstart.md US1).
 
-- [ ] **T006a** [P] [US1] Write unit tests in `apps/denidin-app/tests/unit/test_logger.py` (NEW)
+- [x] **T006a** [P] [US1] Write unit tests in `apps/denidin-app/tests/unit/test_logger.py` (NEW)
   for a `VersionFilter` (`logging.Filter` subclass) in `src/utils/logger.py`: asserts a
   `LogRecord` passed through a logger built by `setup_logger()` has a `version` attribute matching
   a fixture `VERSION` file's content, and that the formatted output string contains
   `[v<version>]`. Cover the missing/malformed-`VERSION`-file case → `"unknown"` (per US1's
   acceptance criteria). **RED**.
-- [ ] **T006b** [US1] Implement `VersionFilter` + formatter-string change (research.md Decision 1)
+- [x] **T006b** [US1] Implement `VersionFilter` + formatter-string change (research.md Decision 1)
   in `apps/denidin-app/src/utils/logger.py`. **GREEN**. Existing `test_message.py` and every other
   test relying on this logger must stay green unchanged (formatter change is additive to the
   string, not a structural change other tests should be parsing).
-- [ ] **T007a** [P] [US1] Write the mirrored unit tests in
+- [x] **T007a** [P] [US1] Write the mirrored unit tests in
   `apps/morning-mcp-app/tests/unit/test_logger.py` (NEW), same assertions as T006a against
   `denidin_mcp_morning/utils/logger.py`. **RED**.
-- [ ] **T007b** [US1] Implement the mirrored `VersionFilter` + formatter change in
+- [x] **T007b** [US1] Implement the mirrored `VersionFilter` + formatter change in
   `apps/morning-mcp-app/src/denidin_mcp_morning/utils/logger.py`. **GREEN**.
-- [ ] **T008a** [P] [US1] Write a unit test in `apps/morning-mcp-app/tests/unit/test_server.py`
+- [x] **T008a** [P] [US1] Write a unit test in `apps/morning-mcp-app/tests/unit/test_server.py`
   (existing or NEW) asserting `GET /health`'s JSON response includes a `version` field matching
   `contracts/health_response.schema.json`, alongside unchanged `status`/`environment`. **RED**.
-- [ ] **T008b** [US1] Implement: extend `_build_health_handler`/`_health` in
+- [x] **T008b** [US1] Implement: extend `_build_health_handler`/`_health` in
   `apps/morning-mcp-app/src/denidin_mcp_morning/server.py:71-82` to read `VERSION` once at
   startup and include it (research.md Decision 3). **GREEN**.
 - [ ] **T009** [US1] 👤 **MANUAL GATE**: run `quickstart.md`'s US1 scenario against a real running
