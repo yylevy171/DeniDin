@@ -113,13 +113,26 @@ if ! [[ "$CONFIRM" =~ ^[Yy]([Ee][Ss])?$ ]]; then
 fi
 
 # --- Side effects (in order) ---
+#
+# IMPORTANT (2026-08-02, real-world bug found cutting the actual first release): the build step
+# is the one most likely to fail (Docker daemon down, network, etc.), so it MUST happen BEFORE
+# any git commit - otherwise a failed build leaves a dangling "release:" commit with no matching
+# tag/artifact, and a naive re-run appends a SECOND duplicate CHANGELOG.md/RELEASES.md entry on
+# top of it (exactly what happened; caught and cleaned up by hand before this fix landed).
+# VERSION/CHANGELOG/RELEASES are updated on disk first (the build needs the bumped VERSION baked
+# in), but nothing is committed until the build AND save both succeed - a failure at either point
+# reverts those working-tree changes and exits, leaving zero trace.
 
 RELEASE_DATE="$(date -u +%Y-%m-%d)"
 
-# 1. Update VERSION
+_revert_uncommitted_release_files() {
+    git checkout -- "${APP_DIR}/VERSION" "${APP_DIR}/CHANGELOG.md" "${APP_DIR}/RELEASES.md"
+}
+
+# 1. Update VERSION (uncommitted)
 echo "$VERSION" > "${APP_DIR}/VERSION"
 
-# 2. Prepend/append CHANGELOG.md entry (terse index)
+# 2. Prepend/append CHANGELOG.md entry (terse index, uncommitted)
 {
     echo ""
     echo "## [${VERSION}] - ${RELEASE_DATE}"
@@ -127,7 +140,7 @@ echo "$VERSION" > "${APP_DIR}/VERSION"
     echo "$SUMMARY"
 } >> "${APP_DIR}/CHANGELOG.md"
 
-# 3. Append RELEASES.md section (fuller notes)
+# 3. Append RELEASES.md section (fuller notes, uncommitted)
 {
     echo ""
     echo "## ${APP} v${VERSION} — ${RELEASE_DATE}"
@@ -135,17 +148,35 @@ echo "$VERSION" > "${APP_DIR}/VERSION"
     echo "$SUMMARY"
 } >> "${APP_DIR}/RELEASES.md"
 
-# 4. Commit the version/changelog/releases changes
+# 4. Build the image - BEFORE any commit (see note above)
+set +e
+docker build -t "${APP}:${VERSION}" "${APP_DIR}" -q >/dev/null
+BUILD_STATUS=$?
+set -e
+if [ "$BUILD_STATUS" -ne 0 ]; then
+    echo "Error: docker build failed - reverting VERSION/CHANGELOG.md/RELEASES.md, no commit made." >&2
+    _revert_uncommitted_release_files
+    exit 1
+fi
+
+# 5. Export it as the durable artifact - also before any commit
+mkdir -p "${ARTIFACTS_ROOT}/${APP}"
+set +e
+docker save "${APP}:${VERSION}" -o "$TAR_PATH"
+SAVE_STATUS=$?
+set -e
+if [ "$SAVE_STATUS" -ne 0 ]; then
+    echo "Error: docker save failed - reverting VERSION/CHANGELOG.md/RELEASES.md, no commit made." >&2
+    rm -f "$TAR_PATH"
+    _revert_uncommitted_release_files
+    exit 1
+fi
+
+# 6. NOW commit - both docker steps already succeeded, so this commit will always have a
+#    matching artifact/tag.
 git add "${APP_DIR}/VERSION" "${APP_DIR}/CHANGELOG.md" "${APP_DIR}/RELEASES.md"
 git commit -q -m "release: ${APP} v${VERSION}"
 COMMIT_SHA="$(git rev-parse HEAD)"
-
-# 5. Build the image
-docker build -t "${APP}:${VERSION}" "${APP_DIR}" -q >/dev/null
-
-# 6. Export it as the durable artifact
-mkdir -p "${ARTIFACTS_ROOT}/${APP}"
-docker save "${APP}:${VERSION}" -o "$TAR_PATH"
 
 # 7. Write the manifest
 IMAGE_ID="$(docker inspect --format '{{.Id}}' "${APP}:${VERSION}")"

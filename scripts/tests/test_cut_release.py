@@ -124,3 +124,34 @@ def test_dates_are_utc_not_local_timezone(scratch_repo):
 
     changelog = scratch_repo["app_dir"].joinpath("CHANGELOG.md").read_text()
     assert utc_today in changelog
+
+
+def test_build_failure_leaves_zero_trace_no_partial_commit(scratch_repo):
+    """Regression test for a real bug found cutting the actual first release (2026-08-02): a
+    Docker build failure used to happen AFTER the VERSION/CHANGELOG/RELEASES commit, so a failed
+    build left a dangling "release:" commit with no matching tag/artifact - and a naive re-run
+    then appended a SECOND duplicate changelog/releases entry on top of it. The build (and save)
+    must now happen BEFORE any commit, so a failure here leaves the working tree and git history
+    completely untouched."""
+    before_log = git_log(scratch_repo["repo"])
+    before_version = scratch_repo["app_dir"].joinpath("VERSION").read_text()
+    before_changelog = scratch_repo["app_dir"].joinpath("CHANGELOG.md").read_text()
+
+    # Sabotage the build so it deterministically fails.
+    dockerfile = scratch_repo["app_dir"] / "Dockerfile"
+    dockerfile.write_text("FROM this-image-does-not-exist-anywhere:latest\n")
+
+    result = _cut(scratch_repo, version="1.1.0", summary="Should never land")
+
+    assert result.returncode == 1
+    assert git_log(scratch_repo["repo"]) == before_log
+    assert scratch_repo["app_dir"].joinpath("VERSION").read_text() == before_version
+    assert scratch_repo["app_dir"].joinpath("CHANGELOG.md").read_text() == before_changelog
+    assert not list(scratch_repo["artifacts_root"].glob("**/*.tar"))
+
+    # A retry after fixing the Dockerfile must produce exactly ONE clean commit/entry, not two.
+    dockerfile.write_text("FROM scratch\nCOPY . /\n")
+    retry = _cut(scratch_repo, version="1.1.0", summary="Real release this time")
+    assert retry.returncode == 0, retry.stderr
+    changelog_after = scratch_repo["app_dir"].joinpath("CHANGELOG.md").read_text()
+    assert changelog_after.count("## [1.1.0]") == 1
