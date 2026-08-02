@@ -1005,13 +1005,26 @@ class AIHandler:
         and don't let the follow-up call capture_ledger_event again either (strip it
         from that round's tools) so the model is forced to finally produce its text
         reply instead of repeating the same mistake.
+
+        (Revised 2026-08-02, real billed incident - user directive: "Morning events
+        should NOT trigger ledger events at all") The detection MUST also catch
+        `mcp_approval_request` items, not just `mcp_call` - an approval-required
+        Morning tool (create_combo_document, add_client, etc., Feature 022's
+        APPROVAL_REQUIRED_MCP_TOOLS) shows up as `mcp_approval_request` on the turn
+        that proposes it, never `mcp_call`, since nothing has executed yet. Checking
+        `mcp_call` alone missed this entirely: a real run had a two-word field-filling
+        reply ("עבור ייעוץ") sent mid-approval-flow for create_combo_document
+        misclassified as TWO spurious `capture_ledger_event` calls, entangled with
+        (and breaking) the pending-approval round-trip itself (empty bot reply, the
+        next "כן" no longer resolved as an approval).
         """
         ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
         if not ledger_calls:
             return None, []
 
         morning_mcp_used_this_turn = any(
-            getattr(item, "type", None) == "mcp_call" for item in (getattr(response, "output", None) or [])
+            getattr(item, "type", None) in ("mcp_call", "mcp_approval_request")
+            for item in (getattr(response, "output", None) or [])
         )
 
         followup = None

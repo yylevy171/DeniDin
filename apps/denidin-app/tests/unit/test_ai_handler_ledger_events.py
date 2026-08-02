@@ -542,6 +542,38 @@ class TestHandleLedgerEventCaptureWiring:
         events_dir = ai_handler.ledger_event_manager.storage_dir
         assert list(events_dir.glob("*.json")) == []
 
+    def test_morning_mcp_pending_approval_turn_suppressed_not_persisted(self, ai_handler, mock_ai_client):
+        """Real billed incident (2026-08-02): an approval-required Morning tool
+        (create_combo_document, add_client, etc.) shows up as mcp_approval_request
+        on the turn that proposes it - NOT mcp_call, since nothing has executed
+        yet. The mcp_call-only check missed this: a real run had a two-word
+        field-filling reply ("עבור ייעוץ") sent mid-approval-flow misclassified as
+        two spurious capture_ledger_event calls, entangled with (and breaking) the
+        pending-approval round-trip itself. User directive: Morning-involved turns
+        must never produce a ledger event, full stop."""
+        mock_ai_client.responses.create.return_value = _followup_response()
+        items = [
+            SimpleNamespace(
+                type="mcp_approval_request", name="create_combo_document",
+                arguments='{"client_name":"בטא צפון","amount":34,"description":"ייעוץ"}',
+            ),
+            _function_call_item("capture_ledger_event", json.dumps(SAMPLE_EVENT), call_id="call_0"),
+        ]
+        response = SimpleNamespace(id="resp_mcp_approval", output=items, output_text="")
+        request = AIRequest(
+            user_prompt="עבור ייעוץ", constitution="", max_tokens=500,
+            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-mcp-approval",
+            timestamp=1770000000,
+        )
+
+        ai_handler._handle_ledger_event_capture(
+            request, response, effective_chat_id="972500000000@c.us",
+            sender="972500000000@c.us", tools=None
+        )
+
+        events_dir = ai_handler.ledger_event_manager.storage_dir
+        assert list(events_dir.glob("*.json")) == []
+
 
 class TestFinalizeResponseThreadsLedgerEventIds:
     """T008a: the stored user message must carry ledger_event_ids at creation
