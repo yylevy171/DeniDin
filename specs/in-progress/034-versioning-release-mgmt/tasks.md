@@ -103,13 +103,14 @@ refuses (quickstart.md US2).
   pass). Note: `CHANGELOG.md`/`RELEASES.md` entries are appended, not prepended — a simplification
   from data-model.md's "newest first" ordering, since no test asserts entry order; revisit if
   strict newest-first ordering turns out to matter in practice.
-- [ ] **T011** [US2] 👤 **MANUAL GATE**: dry-run `scripts/cut_release.sh` once against the real
-  `apps/denidin-app` (still using a placeholder, non-shipping version like `0.0.1-test`, explicitly
-  agreed with the human first per REQ-REL-002 — **not** the real first release, which is Phase 6)
-  to sanity-check it against the real Dockerfile/build context, then manually undo
-  (`git tag -d`, revert the VERSION/CHANGELOG/RELEASES commit, delete the test artifact) — this
-  step exists purely to catch real-Dockerfile-specific bugs the scratch-fixture tests in T010a
-  can't catch, not to produce a real release.
+- [x] **T011** [US2] 👤 **MANUAL GATE**: dry-run `scripts/cut_release.sh` once against the real
+  `apps/denidin-app` (version `0.0.1-test`, explicitly agreed with the human first per REQ-REL-002
+  — **not** the real first release, which is Phase 6). Succeeded against the real Dockerfile/build
+  context (real ~235MB image, correct manifest/tag/commit) on the first try. Cleaned up
+  afterward: `git tag -d denidin-app-v0.0.1-test`, `git reset --hard` to the pre-dry-run commit,
+  deleted the test artifact/manifest and the local `denidin-app:0.0.1-test` Docker image. Verified
+  clean (`git status`, `git log`, `VERSION` back to `0.0.0-preinit`, artifacts folder empty)
+  before proceeding.
 
 ---
 
