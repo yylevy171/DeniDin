@@ -9,10 +9,10 @@ bugfix-019-mypy-errors-across-denidin-app-src
 `python3 -m mypy src/ --config-file=mypy.ini` reports 30 pre-existing type errors across 13 files — none block `pytest`/`pylint`, but the project's own command list documents mypy as a standard check and it currently never passes clean
 
 ## Status
-Resolved - all 7 categories fixed, `mypy src/ --config-file=mypy.ini` exits 0 errors. Not a real bug
-(pure tech debt / type-annotation cleanup, per user direction), so the BDD approval gate was waived
-for this bugfix - no separate test-gap-analysis phase, straight to the minimal fix since root cause
-was already fully documented below.
+Done - Merged to master (PR #157). All 7 categories fixed, `mypy src/ --config-file=mypy.ini` exits
+0 errors. Not a real bug (pure tech debt / type-annotation cleanup, per user direction), so the BDD
+approval gate was waived for this bugfix - no separate test-gap-analysis phase, straight to the
+minimal fix since root cause was already fully documented below.
 
 ## Date Opened
 2026-07-30
