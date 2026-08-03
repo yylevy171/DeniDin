@@ -121,9 +121,9 @@ deploy directory that actually has compose files/images in it.
 
 **Independent Test**: From the Mac, `ssh denidin-winprod './denidin-prod/scripts/stop_all.sh prod && ./scripts/run_all.sh prod'`, confirm both containers report `Up`.
 
-- [ ] T017 [US1] SSH in and run `./scripts/stop_all.sh prod` then `./scripts/run_all.sh prod` directly on the box, independent of Phase 2a's deploy (`quickstart.md` day-to-day section)
-- [ ] T018 [US1] 👤 **MANUAL APPROVAL GATE**: confirm `docker compose ps` (over the same SSH session) shows both `denidin-app-prod` and `morning-mcp-app-prod` as `Up` — satisfies T3.1 in `acceptance-tests.md`
-- [ ] T019 [US1] 👤 Confirm `./scripts/stop_all.sh prod` over SSH cleanly stops both containers, then restart via `run_all.sh prod` again to leave the box running — satisfies T3.2
+- [x] T017 [US1] SSH in and run `./scripts/stop_all.sh prod` then `./scripts/run_all.sh prod` directly on the box, independent of Phase 2a's deploy (`quickstart.md` day-to-day section) — confirmed 2026-08-03, twice: this uncovered and led to fixing a real blocker (bugfix-021 — `shared/` wasn't the symlink `env_lock.sh` requires, and `config/shared_state.local.json` was self-referential), then ran clean end-to-end after the fix, both times.
+- [x] T018 [US1] 👤 **MANUAL APPROVAL GATE**: confirm `docker compose ps` (over the same SSH session) shows both `denidin-app-prod` and `morning-mcp-app-prod` as `Up` — satisfies T3.1 in `acceptance-tests.md` — confirmed 2026-08-03, both `Up` after `run_all.sh prod`, twice.
+- [x] T019 [US1] 👤 Confirm `./scripts/stop_all.sh prod` over SSH cleanly stops both containers, then restart via `run_all.sh prod` again to leave the box running — satisfies T3.2 — confirmed 2026-08-03: clean stop (both containers `Stopped`) then clean restart (both `Up`), repeated a second time from a clean state with identical results.
 
 **Checkpoint**: US1 fully functional — start/stop works entirely from the Mac.
 
