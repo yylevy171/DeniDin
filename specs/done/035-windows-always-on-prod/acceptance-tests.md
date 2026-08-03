@@ -13,27 +13,25 @@ at the repo root (promoted there from this directory per `plan.md`'s
 Project Structure decision); run them from the Mac once the Windows box
 exists per `quickstart.md` (they don't exist to run against yet).
 
-Three automated scripts, split by risk:
+**🚨 Retirement note (2026-08-03)**: `build_and_package.sh` and `deploy_and_verify.sh`, described
+below as they existed at the time, are now deleted — retired in favor of
+`scripts/cut_release.sh`/`scripts/deploy_release.sh` (Feature 034), which deploy the same
+build-once artifact to `dev` (local) or `prod` (this box, over SSH) without ever rebuilding from
+source. T-D.0–T-D.3 below are now satisfied by that pair instead; see `quickstart.md` §9.
 
-- **`scripts/windows_prod/build_and_package.sh`** (new, 2026-08-02) —
-  Mac-only, builds both prod images (`linux/amd64`, regardless of the
-  Mac's own architecture) and packages them plus non-secret runtime files
-  into `artifacts/*.tar.gz`. Never touches the Windows box itself — pure
-  local build step, safe to run anytime, doesn't change what's running in
-  production until `deploy_and_verify.sh` (below) actually ships it.
+Automated scripts, split by risk:
+
 - **`scripts/windows_prod/verify_windows_prod.sh`** — read-only, non-disruptive. Safe to
   run anytime; checks connectivity, deploy-directory contents, power/reboot-recovery
   configuration, Docker remote context, logs, container uptime, the sshfs
   data mount, and morning-mcp-app's `/health` endpoint.
-- **`scripts/windows_prod/deploy_and_verify.sh`** — deploys a new version (FR3a),
-  **rewritten 2026-08-02**: calls `build_and_package.sh`, `scp`s the
-  resulting artifact to the Windows box, then SSHes in to extract +
-  `docker load` + `docker compose up -d`, followed by an automated log
-  smoke-check. No `git pull`/`docker compose build` ever runs on the box
-  itself anymore. Changes what's running in production, so run it
-  deliberately (i.e. when you actually mean to deploy), not as a routine
-  check — but this is the feature's whole point, so "deliberately" here
-  just means "when you're deploying," not a special approval ceremony.
+- **`scripts/cut_release.sh` / `scripts/deploy_release.sh`** (Feature 034, superseding the
+  retired scripts above) — cut a versioned artifact once (`cut_release.sh`, `linux/amd64`, human
+  supplies the exact version every time), then deploy that exact artifact to `dev` (local Docker)
+  or `prod` (this box, over SSH — `docker load` + `docker compose up -d --no-build`, no rebuild).
+  Changes what's running, so run it deliberately (i.e. when you actually mean to deploy), not as
+  a routine check — but this is the feature's whole point, so "deliberately" here just means
+  "when you're deploying," not a special approval ceremony.
 - **`scripts/windows_prod/verify_reboot_recovery.sh`** — **disruptive**: actually
   reboots the real production Windows box to prove FR2a/FR2b/SC5.
   Requires an explicit confirmation flag and must only be run deliberately

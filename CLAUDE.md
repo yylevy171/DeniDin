@@ -200,9 +200,31 @@ This repo is split into two independently deployable apps under `apps/`, plus Sp
 
 Both apps run **exclusively as Docker containers**, in one of two environments — `dev` or `prod` — never as a local host process (019-env-separation). Each environment has its own config file (`config.dev.json`/`config.prod.json`), data root (`dev_data/` vs `data/` for denidin-app), log path (`logs/dev/` vs `logs/prod/`), and — for morning-mcp-app — its own ngrok account/tunnel running *inside* the container.
 
-**Important asymmetry**: there is one paid WhatsApp Business number and one Green API instance (no sandbox tier exists), so `denidin-app-dev` and `denidin-app-prod` share the same real Green API credentials. `GreenAPIBot` polls for notifications rather than receiving pushed webhooks, so **only one of `denidin-app-dev`/`denidin-app-prod` should be actively running at a time** whenever real WhatsApp traffic could arrive — switching is a manual hand-off (`stop` one, `run` the other), not a concurrent-safe operation. **`morning-mcp-app-dev`/`morning-mcp-app-prod` are NOT exempt from this** — see the "ONE ENVIRONMENT SET AT A TIME" rule at the top of this document; an earlier version of this line claimed they had no such restriction and could always run together, which is exactly the assumption that caused the 2026-07-21 incident referenced there. See `specs/019-env-separation/quickstart.md` for the full hand-off procedure, and role-mapping details (dev's godfather/admin assignment is operator-switchable by editing `config.dev.json` and restarting, since there's only one real tester).
+**Asymmetry update (2026-08-03): dev and prod now have fully separate WhatsApp/Green API/Green
+Invoice infrastructure.** There are now **two** paid WhatsApp Business numbers, **two** Green API
+instances, **two** ngrok tunnels (one per `morning-mcp-app-<env>`), and **two** Green Invoice
+accounts (dev uses the Morning **sandbox**, prod uses the **real production** Green Invoice
+account) — one full set per environment, no longer shared. **OpenAI is the only credential/service
+still shared between `dev` and `prod`**, and that's fine: OpenAI calls are stateless per-request,
+so both environments hitting the same account concurrently causes no cross-environment
+interference.
+
+This resolves the *original* reason `denidin-app-dev`/`denidin-app-prod` couldn't safely run
+concurrently (`GreenAPIBot` polling the same Green API instance/WhatsApp number from two
+containers at once risked duplicate-reply bugs) — that specific conflict no longer exists, since
+each environment now polls its own number/instance. **This does NOT by itself lift the "ONE
+ENVIRONMENT SET AT A TIME" rule at the top of this document** — that rule's enforcement mechanism
+(`env_lock.sh`, `watchdog.py`, `scripts/killall_containers.sh`, `shared/active_env.json`) and its
+other motivating incidents (e.g. the 2026-07-21 stale-test-config-path incident, which was about
+credential/config isolation, not instance sharing) haven't been reviewed against this new
+topology yet. Treat concurrent dev+prod as still forbidden until that review happens explicitly.
+See `specs/019-env-separation/quickstart.md` for the (still-current) manual hand-off procedure,
+and role-mapping details (dev's godfather/admin assignment is operator-switchable by editing
+`config.dev.json` and restarting, since there's only one real tester).
 
 **Merging a code fix to `master` does not redeploy it.** `docker compose up -d`/`restart` does not rebuild on its own when source changed on disk — a running container keeps executing whatever image it was last built from. After merging any code change (not a config/mounted-data change — those *are* picked up live, e.g. `runtime_constitution.md`'s mtime-based hot-reload), rebuild and recreate every environment container currently running that app: `docker compose --project-directory . -f docker/docker-compose.<env>.yml build <service> && ... up -d <service>` (or the `run_*.sh <env>` script, but note it does not rebuild by itself either — build first). A merged RBAC fix once had zero effect on a running prod container for hours because of exactly this (2026-07-20) — see the `/haleluya` command's Deploy step.
+
+**`prod` for both apps runs on a dedicated, always-on Windows laptop (Feature 035)**, reachable from the Mac over Tailscale/SSH — never a local host process and never the machine this session is running on. Day-to-day operation (start/stop, read logs, browse the read-only `data` mount) is done entirely from the Mac; see `specs/done/035-windows-always-on-prod/quickstart.md` for the full runbook and `scripts/windows_prod/*.sh` for the read-only/disruptive-check operational scripts (`verify_windows_prod.sh` for read-only connectivity/health checks, `verify_reboot_recovery.sh` for the one deliberately disruptive reboot-recovery check). **Deploying** to this box (or to `dev`, locally) is `scripts/cut_release.sh` + `scripts/deploy_release.sh` (Feature 034) — see "Versioning & Release Management" below; `scripts/windows_prod/build_and_package.sh`/`deploy_and_verify.sh` were retired 2026-08-03, fully superseded by that pair (they rebuilt from source on every deploy, which conflicts with the "build once, deploy anywhere" principle `cut_release.sh`/`deploy_release.sh` now implement). Every start/stop/deploy against this box is still subject to the same per-action approval rule as any other environment start (see "NEVER START AN ENVIRONMENT... WITHOUT EXPLICIT APPROVAL" above).
 
 ## Versioning & Release Management (Feature 034)
 

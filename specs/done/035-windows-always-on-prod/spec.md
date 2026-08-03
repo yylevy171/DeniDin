@@ -2,7 +2,7 @@
 
 **Feature ID**: 035-windows-always-on-prod
 **Priority**: P1
-**Status**: Clarified - Ready for Planning
+**Status**: Done - Merged to master (PRs #159-160, #165-172)
 **Created**: August 2, 2026
 **Updated**: August 2, 2026
 

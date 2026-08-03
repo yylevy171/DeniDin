@@ -7,6 +7,14 @@ description: "Task list for 035-windows-always-on-prod"
 **Input**: Design documents from `specs/035-windows-always-on-prod/`
 **Prerequisites**: plan.md, spec.md, research.md, quickstart.md, acceptance-tests.md (all present; `data-model.md`/`contracts/` N/A per plan.md)
 
+**🚨 Retirement note (2026-08-03)**: `scripts/windows_prod/build_and_package.sh` and
+`deploy_and_verify.sh`, authored in Phase 1 below (T003a/T003b) and referenced throughout this
+file, are **retired** — deleted, superseded by `scripts/cut_release.sh`/`scripts/deploy_release.sh`
+(Feature 034), which now support deploying to this box remotely over SSH without ever rebuilding
+from source (see `quickstart.md` §9 for the current flow). Completed tasks below that reference
+the old scripts are left as an accurate historical record of what was actually done at the time;
+only the still-open task referencing them (T029) has been updated to the current mechanism.
+
 ---
 
 **How this deviates from the generic TDD (Task-a/Task-b) template, and why**:
@@ -113,9 +121,9 @@ deploy directory that actually has compose files/images in it.
 
 **Independent Test**: From the Mac, `ssh denidin-winprod './denidin-prod/scripts/stop_all.sh prod && ./scripts/run_all.sh prod'`, confirm both containers report `Up`.
 
-- [ ] T017 [US1] SSH in and run `./scripts/stop_all.sh prod` then `./scripts/run_all.sh prod` directly on the box, independent of Phase 2a's deploy (`quickstart.md` day-to-day section)
-- [ ] T018 [US1] 👤 **MANUAL APPROVAL GATE**: confirm `docker compose ps` (over the same SSH session) shows both `denidin-app-prod` and `morning-mcp-app-prod` as `Up` — satisfies T3.1 in `acceptance-tests.md`
-- [ ] T019 [US1] 👤 Confirm `./scripts/stop_all.sh prod` over SSH cleanly stops both containers, then restart via `run_all.sh prod` again to leave the box running — satisfies T3.2
+- [x] T017 [US1] SSH in and run `./scripts/stop_all.sh prod` then `./scripts/run_all.sh prod` directly on the box, independent of Phase 2a's deploy (`quickstart.md` day-to-day section) — confirmed 2026-08-03, twice: this uncovered and led to fixing a real blocker (bugfix-021 — `shared/` wasn't the symlink `env_lock.sh` requires, and `config/shared_state.local.json` was self-referential), then ran clean end-to-end after the fix, both times.
+- [x] T018 [US1] 👤 **MANUAL APPROVAL GATE**: confirm `docker compose ps` (over the same SSH session) shows both `denidin-app-prod` and `morning-mcp-app-prod` as `Up` — satisfies T3.1 in `acceptance-tests.md` — confirmed 2026-08-03, both `Up` after `run_all.sh prod`, twice.
+- [x] T019 [US1] 👤 Confirm `./scripts/stop_all.sh prod` over SSH cleanly stops both containers, then restart via `run_all.sh prod` again to leave the box running — satisfies T3.2 — confirmed 2026-08-03: clean stop (both containers `Stopped`) then clean restart (both `Up`), repeated a second time from a clean state with identical results.
 
 **Checkpoint**: US1 fully functional — start/stop works entirely from the Mac.
 
@@ -129,7 +137,7 @@ deploy directory that actually has compose files/images in it.
 
 - [x] T020 [US2] Create the Docker remote context on the Mac (`quickstart.md` §8) — **first attempt failed**: a spelled-out `user@host` URL is rejected by Docker's SSH parser since the Windows username has a space ("yaron levi" — "remote username contains invalid characters"), even percent-encoded; fixed by pointing the context at the `~/.ssh/config` alias itself (`host=ssh://denidin-winprod`), which lets plain `ssh` resolve User/HostName. `docker --context denidin-winprod ps` confirmed reachable (empty list — no deploy yet).
 - [x] T021 [US2] 👤 **MANUAL APPROVAL GATE**: confirm `docker --context denidin-winprod compose -f docker/docker-compose.prod.yml ps` and `logs --tail 20` both work from the Mac — satisfies T4.1–T4.3. Confirmed 2026-08-03: `verify_windows_prod.sh`'s T4 group ("Docker remote context, logs, health & uptime") all PASS — context reachable, `compose ps` reachable, both containers `Up`, log output readable.
-- [~] T022 [US2] 👤 Confirm `morning-mcp-app-prod`'s internal `/health` responds via the same path (`scripts/windows_prod/verify_windows_prod.sh`'s T4.4 check) and that switching `docker context use default` cleanly restores local Docker on the Mac (T4.5) — **T4.4 confirmed 2026-08-03** (`/health` responds via the remote context); the T4.5 context-switch-back half not exercised by this run, still open.
+- [x] T022 [US2] 👤 Confirm `morning-mcp-app-prod`'s internal `/health` responds via the same path (`scripts/windows_prod/verify_windows_prod.sh`'s T4.4 check) and that switching away from the remote context cleanly restores local Docker on the Mac (T4.5) — T4.4 confirmed via the verify script. **T4.5 correction (2026-08-03, this clone)**: `docker context use default` is NOT this machine's working local context — this Mac runs **Colima**, not Docker Desktop, so `default` points at a socket with no daemon behind it (`dial unix /var/run/docker.sock: connect: no such file or directory`). Confirmed the real local context is `colima` (`docker ps` against it correctly lists the running `denidin-dev-*` containers) — switched back to `colima`, not `default`.
 
 **Checkpoint**: US2 fully functional — logs, status, and health all readable from the Mac.
 
@@ -145,7 +153,7 @@ deploy directory that actually has compose files/images in it.
 - [x] T024 [US5] 👤 Manually reboot the box and confirm it boots straight to desktop with no login prompt (satisfies T2.7) — **confirmed across two real reboots** (`explorer.exe` running in the Console session both times, no login prompt)
 - [x] T025 [US5] ~~Create the `DeniDinProdAutostart` Scheduled Task~~ — **abandoned 2026-08-03 after two real reboots both showed it never fired** (neither an "At startup" nor an "At logon" trigger — `schtasks /query` showed the never-ran placeholder both times, even with auto-logon confirmed working and other logon-triggered system tasks firing correctly for the same user in the same window; root cause not pinned down despite real investigation via the Task Scheduler event log). **Replaced with a plain Startup-folder script** (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\DeniDinProdAutostart.cmd`) instead — see `quickstart.md` §7 (rewritten) for the mechanism and why.
 - [x] T026 [US5] 👤 Confirm via `verify_windows_prod.sh`'s T2.6 check that the Startup-folder script exists and targets the right command — confirmed
-- [ ] T027 [US5] 👤 **MANUAL APPROVAL GATE — disruptive, explicit approval required for this specific run**: run `scripts/windows_prod/verify_reboot_recovery.sh denidin-winprod --i-understand-this-reboots-production` and confirm both containers come back `Up` with no manual intervention (T2.8/SC5) — not yet done with the Startup-folder mechanism in place (the two reboots so far predate this fix, or predate a real deploy existing for it to bring up)
+- [x] T027 [US5] 👤 **MANUAL APPROVAL GATE — disruptive, explicit approval required for this specific run**: run `scripts/windows_prod/verify_reboot_recovery.sh denidin-winprod --i-understand-this-reboots-production` and confirm both containers come back `Up` with no manual intervention (T2.8/SC5) — **confirmed 2026-08-04**: box rebooted, back up over Tailscale in ~60s, both containers auto-started via the Startup-folder mechanism with zero manual intervention, watchdog clean on both apps post-reboot (no `active_env.json` errors — bugfix-021's fix survives a real reboot too).
 
 **Checkpoint**: US5 fully functional — reboot recovery proven end-to-end, at least once, deliberately.
 
@@ -163,10 +171,10 @@ spec.md FR3a.
 on the Mac, run `deploy_and_verify.sh`, then send a WhatsApp message
 exercising it.
 
-- [ ] T028 [US6] 👤 Merge a small, observable test change to `master` (or use the next real change when one lands), then `git pull` it on the Mac
-- [ ] T029 [US6] Run `scripts/windows_prod/deploy_and_verify.sh denidin-winprod` from the Mac
-- [ ] T030 [US6] 👤 Confirm the script's automated steps (T-D.0–T-D.3: Mac build + package, `scp`, remote extract + `docker load` + `up -d`, clean log smoke-check) all passed, and that `data`/`logs`/`shared/active_env.json` on the box are unchanged from before the deploy
-- [ ] T031 [US6] 👤 **MANUAL APPROVAL GATE**: send a real WhatsApp message to the bot, confirm a DeniDin response reflecting the new code arrives (T-D.4/SC6 — intentionally manual, see `acceptance-tests.md`)
+- [x] T028 [US6] ~~Merge a small, observable test change to `master`...~~ — **skipped, operator decision (2026-08-04)**
+- [x] T029 [US6] ~~Run `scripts/cut_release.sh`/`scripts/deploy_release.sh`...~~ — **skipped, operator decision (2026-08-04)**. Note: the underlying mechanism was already exercised for real multiple times this session (`0.0.2-test` deployed to prod twice via `deploy_release.sh` during bugfix-021's verification) — just not paired with a distinct second observable code change as this task originally specified.
+- [x] T030 [US6] ~~Confirm the script's automated steps...~~ — **skipped, operator decision (2026-08-04)**
+- [x] T031 [US6] ~~Send a real WhatsApp message...~~ — **skipped, operator decision (2026-08-04)**. Note: a real WhatsApp round-trip against a `0.0.2-test` deploy was already confirmed earlier this session, just not paired with a distinct second code change per above.
 
 **Checkpoint**: US6 fully functional — deploy-from-Mac proven with a real end-to-end message round-trip.
 
@@ -178,7 +186,7 @@ exercising it.
 
 **Independent Test**: `build_and_package.sh`'s artifact never contains `config.prod.json` (T-D.0, Mac-side check — corrected 2026-08-02, no `git check-ignore` on the box anymore since there's no git repo there); the app itself loads the box's own hand-created copy successfully at runtime (already implied by Phase 2a's containers coming up `Up`).
 
-- [ ] T032 [US3] 👤 **MANUAL APPROVAL GATE**: eyeball that `config/config.prod.json`'s values genuinely match `creds/DeniDin Prod Creds.txt` (not stale/placeholder) — T1.8, the one check that can't be scripted
+- [x] T032 [US3] 👤 **MANUAL APPROVAL GATE**: eyeball that `config/config.prod.json`'s values genuinely match `creds/DeniDin Prod Creds.txt` (not stale/placeholder) — T1.8, the one check that can't be scripted — **confirmed by operator, 2026-08-04**
 
 **Checkpoint**: US3 confirmed — no new task, no new tooling, exactly as spec'd.
 
@@ -195,7 +203,7 @@ exercising it.
 - [x] T035 [P] [US4] ~~Disable power management on the network adapter(s)~~ — **not achievable on this hardware** (verified 2026-08-03: absent from both Device Manager's Power Management tab and the `MSPower_DeviceEnable` WMI class for the WiFi/Ethernet devices specifically). Accepted as residual risk per operator decision — see acceptance-tests.md T2.3, research.md.
 - [x] T036 [US4] 👤 Confirm T2.2 in `verify_windows_prod.sh` passes (T2.1/T2.3 are manual-only/accepted-risk, not scripted — see above)
 - [x] T037 [US4] 👤 **MANUAL APPROVAL GATE**: physically close the laptop lid for 10+ minutes, confirm continuous Tailscale reachability and unbroken container uptime (T2.4) — done 2026-08-03: lid closed 10+ min, `tailscale ping` and `ssh` both succeeded afterward (pong in 94ms, SSH command executed normally); container-uptime half of this check deferred until a real deploy exists (T014 still blocked on prod creds) — nothing running yet to observe for uptime
-- [ ] T038 [US4] 👤 **MANUAL APPROVAL GATE**: put the Mac to sleep for 10+ minutes, wake it, confirm Tailscale reconnects automatically (T2.5 — note: production itself is never at risk during this one, see `acceptance-tests.md`'s note on T2.5)
+- [x] T038 [US4] ~~Put the Mac to sleep for 10+ minutes, wake it, confirm Tailscale reconnects automatically~~ — **skipped, operator decision (2026-08-04)**
 
 **Checkpoint**: US4 fully functional — box survives both machines' normal interruptions.
 
@@ -226,7 +234,7 @@ research.md's sshfs decision entry for the full story.
 
 - [x] T039 Once the laptop's Windows edition is confirmed (Settings → About), apply the matching Windows-Update mitigation per `quickstart.md` §6 / `research.md`'s deferred decision — done 2026-08-03: confirmed Windows 11 Home (SKU 101) via `Get-CimInstance Win32_OperatingSystem`; applied active-hours widening (06:00-23:00) and feature/quality-update deferral (365/4 days) via registry over SSH, no GUI needed; both confirmed applied via read-back
 - [x] T040 👤 **MANUAL APPROVAL GATE — one-time cutover, not repeatable**: on the *previous* production host (a different machine/clone this session cannot and must not touch — see spec.md FR7), confirm `scripts/killall_containers.sh` has been run and `prod` is stopped there, before or immediately after first starting `prod` on the Windows box — confirmed by operator 2026-08-03: no prod running on this (previous host) laptop. Note: this closes the "old host is stopped" half of the cutover; the "new host has prod running" half still depends on T014 (blocked on real creds)
-- [ ] T041 Update `CLAUDE.md` with a short pointer to this feature's `quickstart.md` as the Windows-hosted production runbook (deferred to the `/haleluya` "update docs" step per `plan.md`'s Phase 1 note — not done now)
+- [x] T041 Update `CLAUDE.md` with a short pointer to this feature's `quickstart.md` as the Windows-hosted production runbook — added 2026-08-03 in the "Environments (dev/prod)" section, right after the redeploy-on-merge note.
 
 **Checkpoint**: Feature complete. All of spec.md's Success Criteria (SC1–SC7) verified.
 

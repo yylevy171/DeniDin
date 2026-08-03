@@ -144,9 +144,9 @@ for why.
    at all (`the 'docker' command could not be found in this WSL 2 distro`).
 3. Create an empty directory under your **WSL home** (`~`, i.e.
    `/home/<wsl-username>` — not a Windows path) to receive deploys — e.g.
-   `mkdir ~/denidin-prod` (any name; pass it as `deploy_and_verify.sh`'s
-   optional third argument if not `denidin-prod`, matching its existing
-   default).
+   `mkdir ~/denidin-prod` (any name; pass it as `deploy_release.sh`'s
+   optional `--remote-deploy-dir` flag if not `denidin-prod`, matching its
+   existing default).
 4. Directly inside that directory, create two machine-specific files by
    hand — these are excluded from every deploy artifact (see step 9), so
    redeploys never clobber them:
@@ -171,10 +171,16 @@ for why.
      (Replace `<name>` with your actual Windows username — check via
      `whoami` or the folder that already exists under `/mnt/c/Users/`.)
 
-   Everything else (`config/shared_state.local.json`, the wrapper
-   scripts, compose files) is generated fresh into every deploy artifact
-   by `build_and_package.sh` on the Mac — nothing else to create by hand
-   here.
+   `config/shared_state.local.json` is generated once, by hand, the same
+   way — it only depends on this deploy directory's own path, which
+   doesn't change between deploys, so (2026-08-03 correction) it no
+   longer needs regenerating on every deploy the way it used to under the
+   retired `build_and_package.sh`/`deploy_and_verify.sh` flow:
+   `printf '{"shared_state_dir": "%s/shared"}' "$(pwd)/shared" >
+   config/shared_state.local.json` run from inside this deploy directory.
+   The wrapper scripts and compose files (`docker/docker-compose.prod.yml`)
+   need to exist here too — a one-time `scp` from the Mac (see the
+   bootstrap note in step 9), not something any deploy script generates.
 
 **Verify**: `scripts/windows_prod/verify_windows_prod.sh denidin-winprod`
 run from the **repo root** on the Mac — the T1.1–T1.3 connectivity checks
@@ -298,27 +304,40 @@ automatically on first use if it's missing.)
 is fine before any deploy exists); once a deploy exists,
 `docker --context denidin-winprod compose -f docker/docker-compose.prod.yml ps`.
 
-## 9. Mac: build, package, and ship the first deploy — then first start
+## 9. Mac: cut a release and deploy it — then first start
 
-**Corrected 2026-08-02**: this replaces the original "clone + build on the
-box" flow entirely. Everything below runs **on the Mac**, against its own
-already-up-to-date `master` checkout:
+**Retired 2026-08-03**: `scripts/windows_prod/build_and_package.sh` and
+`deploy_and_verify.sh` are gone — they rebuilt from source on every
+single deploy, which conflicts with the "build once, deploy anywhere"
+principle Feature 034's release tooling now implements. Deploying to this
+box (or to `dev`, locally) is now always the same two-script flow:
 
 ```bash
-# From the repo root, on the Mac:
-./scripts/windows_prod/deploy_and_verify.sh denidin-winprod
+# From the repo root, on the Mac — cut once (human supplies the exact version, every time):
+./scripts/cut_release.sh denidin-app <version> --summary "<text>"
+./scripts/cut_release.sh morning-mcp-app <version> --summary "<text>"
+
+# Deploy that same artifact to prod on the Windows box (no rebuild):
+./scripts/deploy_release.sh denidin-app prod <version>
+./scripts/deploy_release.sh morning-mcp-app prod <version>
 ```
 
-This one command does the whole thing: builds both prod images locally
-(`docker buildx build --platform linux/amd64`, so the result runs on the
-Windows box's x86_64 regardless of the Mac's own chip), packages them plus
-the compose files/wrapper scripts/`runtime_constitution.md` into a
-`.tar.gz` under the repo's gitignored `artifacts/` folder, `scp`s it to
-the Windows box's deploy directory (step 3), extracts it there, `docker
-load`s both images, and runs `docker compose up -d`. It does **not**
-overwrite `apps/*/config/config.prod.json` (deliberately excluded from
-the artifact) or any of `data`/`logs`/`shared/` (never included, so a
-plain `tar xzf` simply never touches those paths).
+`cut_release.sh` builds `--platform linux/amd64` (so the result runs
+natively on the Windows box's x86_64 regardless of the Mac's own chip)
+and saves the image as a durable artifact under
+`/Users/yaron/Projects/DeniDin/artifacts/<app>/`. `deploy_release.sh`'s
+`prod` path ships that exact artifact to the box over SSH, `docker
+load`s it, retags it, and runs `docker compose up -d --no-build` there —
+never a rebuild. It does **not** touch `apps/*/config/config.prod.json`
+(never part of the artifact) or any of `data`/`logs`/`shared/` on the box.
+
+**One-time bootstrap note**: this flow assumes the box already has
+`docker/docker-compose.prod.yml` and the deploy-directory structure from
+step 3/4 above (already true for this box as of 2026-08-03). If setting
+up a brand-new box from scratch, `scp` `docker/docker-compose.prod.yml`
+into the deploy directory by hand once before the first `deploy_release.sh`
+call — there's no dedicated bootstrap script for this now; it's a rare,
+one-time provisioning action, not part of the ordinary deploy path.
 
 **Verify**: `scripts/windows_prod/verify_windows_prod.sh denidin-winprod`
 from the Mac — all checks should now pass, including the deploy-directory
@@ -386,9 +405,9 @@ The two hosts must never both run `prod` at once (spec.md Edge Cases).
 ssh denidin-winprod './denidin-prod/scripts/run_all.sh prod'
 ssh denidin-winprod './denidin-prod/scripts/stop_all.sh prod'
 
-# Deploy a new version — builds on the Mac, ships, loads, and starts on the box.
-# `git pull` on the Mac first, same as any other clone's normal workflow.
-scripts/windows_prod/deploy_and_verify.sh denidin-winprod
+# Deploy a new version — cut once, ship the exact same artifact, load, and start on the box.
+./scripts/cut_release.sh <app> <version> --summary "<text>"
+./scripts/deploy_release.sh <app> prod <version>
 # ...then send a real WhatsApp message and confirm a DeniDin response (T-D.4, manual by design)
 
 # Tail logs (creates the Docker remote context automatically on first use)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Read-only, non-disruptive acceptance checks for
-# specs/035-windows-always-on-prod. Run from the Mac once the Windows box
+# specs/done/035-windows-always-on-prod. Run from the Mac once the Windows box
 # has been set up per quickstart.md. Never starts, stops, or reboots
 # anything on the box — see verify_reboot_recovery.sh for the one
 # disruptive check (T2.8), which is intentionally a separate script.
