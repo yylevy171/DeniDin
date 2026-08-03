@@ -30,12 +30,13 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_wsl_ssh.sh"
 
 SSH_HOST="${1:?Usage: $0 <ssh-host-alias> [deploy-dir-name]}"
 DEPLOY_DIR="${2:-denidin-prod}"
 
 ssh_run() {
-  ssh -o BatchMode=yes -o ConnectTimeout=10 "$SSH_HOST" "$@"
+  wsl_ssh_run "$SSH_HOST" "$@"
 }
 
 echo "== Building and packaging on the Mac =="
@@ -49,6 +50,15 @@ echo "Artifact: $ARTIFACT_PATH"
 
 echo
 echo "== Shipping the artifact to the box =="
+# scp/sftp's own "~" resolves to the Windows-side home (SFTP runs as a
+# native Windows process, e.g. C:\Users\<name>) - a DIFFERENT directory
+# than bash's "~" (the WSL-side home, /home/<wsl-user>), even though both
+# refer to "the same account" conceptually. Verified against the real box,
+# 2026-08-03. So the artifact lands in the Windows home via scp, then the
+# WSL-side extraction step below locates it there via /mnt/c/... (found
+# dynamically with wslpath, not hardcoded - the Windows display name can
+# contain characters, like a space, that don't have to match the WSL
+# username at all).
 if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$ARTIFACT_PATH" "$SSH_HOST:~/$ARTIFACT_NAME"; then
   echo "FAIL: scp" >&2
   exit 1
@@ -56,7 +66,7 @@ fi
 
 echo
 echo "== Extracting on the box (data/, logs/, shared/, config.prod.json are never in the archive — left untouched) =="
-if ! ssh_run "mkdir -p ~/$DEPLOY_DIR && tar xzf ~/$ARTIFACT_NAME -C ~/$DEPLOY_DIR && rm ~/$ARTIFACT_NAME"; then
+if ! ssh_run "WIN_HOME=\$(wslpath -u \"\$(cmd.exe /c echo %USERPROFILE% | tr -d '\\r')\") && mkdir -p ~/$DEPLOY_DIR && tar xzf \"\$WIN_HOME/$ARTIFACT_NAME\" -C ~/$DEPLOY_DIR && rm \"\$WIN_HOME/$ARTIFACT_NAME\""; then
   echo "FAIL: remote extraction" >&2
   exit 1
 fi

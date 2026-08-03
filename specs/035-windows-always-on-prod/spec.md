@@ -216,26 +216,37 @@ change — no request-handling code path in `apps/denidin-app` or
   practice for the laptop this feature targets), this platform string
   would need to change — noted as an assumption, not re-verified against
   real Windows-box hardware yet.
-- Q: Should the persistent prod data folder (`apps/denidin-app/data` —
-  sessions, ChromaDB long-term memory) be reachable from the Mac, not just
-  the Windows box itself? → A: **Yes.** It's a singleton that lives only
-  on the Windows box (never duplicated, never part of the deploy artifact
-  per the point above), but the Mac mounts it locally over SSH via
-  **sshfs + macFUSE** (`brew install --cask macfuse` — requires a one-time
-  manual macOS security approval + reboot for the kernel extension, then
-  `brew install gromgit/fuse/sshfs-mac`, then `sshfs
-  <user>@<tailscale-hostname>:<deploy-dir>/apps/denidin-app/data
-  ~/denidin-winprod-data -o reconnect,volname=denidin-winprod-data`) so
-  the operator can inspect or back up live production data as an ordinary
-  local folder, without SSHing in or writing any new sync/backup tooling.
-  **Status: setup was in progress (macFUSE/sshfs installation) when the
-  session that originally drafted this decision was interrupted — treat
-  as not yet completed; resume from the macFUSE install step.** No
-  particular read-only/read-write stance was settled before the
-  interruption — default to mounting read-only (`sshfs ... -o ro`) unless
-  a concrete need for write access from the Mac side surfaces, since
-  nothing in this feature actually requires writing to that folder from
-  the Mac.
+- Q: Should the persistent prod data folder (session/ChromaDB long-term
+  memory) be reachable from the Mac, not just the Windows box itself? →
+  A: **Yes.** It's a singleton that lives only on the Windows box (never
+  duplicated, never part of the deploy artifact per the point above), and
+  the Mac mounts it locally via **sshfs + macFUSE**
+  (`brew install --cask macfuse` — requires a one-time manual macOS
+  security approval + reboot for the kernel extension, then
+  `brew install gromgit/fuse/sshfs-mac` — note: this formula needs a
+  workaround on some Homebrew installs, since its `MacfuseRequirement`
+  references a pkgconfig directory that doesn't exist in every Homebrew
+  Library version; see quickstart.md §9a) so the operator can inspect or
+  back up live production data as an ordinary local folder, without
+  SSHing in or writing any new sync/backup tooling. Mounted **read-only**
+  (`-o ro`) — nothing in this feature's own scope needs to write to it
+  from the Mac.
+
+  **Corrected 2026-08-03, verified end-to-end against the real box**: the
+  data folder cannot be mounted directly from the WSL-side deploy
+  directory — confirmed Windows' native OpenSSH SFTP server (which sshfs
+  rides) cannot traverse into the WSL2 filesystem at all, not via a
+  direct UNC path (`\\wsl.localhost\...`) nor an NTFS symlink pointing at
+  one (both tested directly against the real box; both failed with
+  "not found" even though the target genuinely existed and was readable
+  from WSL bash itself). Resolved by relocating the data volume's actual
+  storage to a native Windows-side path (e.g.
+  `C:\Users\<name>\denidin-prod-data`) via a machine-specific
+  `docker-compose.prod.local.yml` override — see FR6a and the Integration
+  Contracts section in plan.md for the mechanism. Confirmed working:
+  content written on the Windows side is visible through the Mac's
+  mount, and a write attempt through the mount correctly fails
+  (read-only enforced).
 
 ## Functional Requirements
 
@@ -321,15 +332,22 @@ change — no request-handling code path in `apps/denidin-app` or
   deliberately outside the FR3a deploy artifact (see Clarifications). No
   new secrets-management tooling (OS credential store, vault, password
   manager CLI) is introduced by this feature.
-- **FR6a**: The persistent production data folder
-  (`apps/denidin-app/data` on the Windows box — session/ChromaDB
-  long-term-memory state) is a singleton that lives only on the Windows
-  box, is never included in a deploy artifact (FR3a), and survives every
-  redeploy untouched. It is additionally reachable from the Mac as an
-  ordinary local folder via **sshfs + macFUSE**
-  (`~/denidin-winprod-data`, mounted read-only by default) for inspection
-  and backup, without SSHing in or writing new sync/backup tooling — see
-  Clarifications for the exact setup and its in-progress status.
+- **FR6a**: The persistent production data folder (session/ChromaDB
+  long-term-memory state, container-mounted at `/app/data`) is a
+  singleton that lives only on the Windows box, is never included in a
+  deploy artifact (FR3a), and survives every redeploy untouched. It is
+  additionally reachable from the Mac as an ordinary local folder via
+  **sshfs + macFUSE** (`~/denidin-winprod-data`, mounted read-only by
+  default) for inspection and backup, without SSHing in or writing new
+  sync/backup tooling. **Corrected 2026-08-03, verified end-to-end
+  against the real box**: the data folder's actual storage lives at a
+  native Windows-side path (e.g. `C:\Users\<name>\denidin-prod-data`), NOT
+  under the WSL-side deploy directory — confirmed Windows' native
+  OpenSSH SFTP server (which sshfs rides) cannot traverse into the WSL2
+  filesystem at all, so the volume was relocated via a one-time,
+  hand-created `docker-compose.prod.local.yml` override (see
+  Clarifications) rather than the generated no-op stub every other file
+  in that role gets.
 - **FR7**: The runbook includes a migration/cutover checklist: verify
   `scripts/killall_containers.sh` has been run on the *previous* production
   host and `prod` is confirmed stopped there, before `scripts/run_all.sh

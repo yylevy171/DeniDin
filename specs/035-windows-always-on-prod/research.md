@@ -67,12 +67,12 @@ third-party secrets manager (1Password CLI/Vault) — both rejected as new
 external dependencies this project doesn't have today, for a problem the
 existing pattern already solves.
 
-### Decision: Reboot recovery — Scheduled Task re-invoking `run_all.sh`, not a `restart:` policy change
+### Decision: Reboot recovery — re-invoking `run_all.sh` at logon, not a `restart:` policy change
 
 **Rationale**: Every compose service is deliberately pinned to `restart:
 "no"` (CLAUDE.md, 2026-07-21 incident hardening) so a container
 `watchdog.py` kills for a real mismatch stays dead instead of Docker
-silently reviving it. A Scheduled Task that reruns the full wrapper script
+silently reviving it. Re-running the full wrapper script at every logon
 gets the same practical outcome (production self-recovers after a reboot)
 through the exact code path a human would use over SSH, without touching
 that safety property.
@@ -80,6 +80,64 @@ that safety property.
 **Alternatives considered**: Changing `restart:` to `unless-stopped`
 (rejected — directly undoes the 2026-07-21 hardening, not just for the
 reboot case).
+
+**Mechanism corrected 2026-08-03, after real reboot testing**: originally
+a `DeniDinProdAutostart` Scheduled Task, first with an "At startup"
+trigger, then "At logon" after the first attempt never fired. **Both
+failed identically across two separate real reboots** —
+`schtasks /query` showed `Last Run Time: 30-Nov-99 00:00:00` (Task
+Scheduler's own "never ran" placeholder) both times, not even a
+failed-and-logged attempt. This was investigated for real, not just
+assumed: confirmed auto-logon itself was genuinely working both times
+(`explorer.exe` running in the Console session, not stuck at a login
+screen); confirmed *other* built-in Windows logon-triggered tasks (e.g.
+"Synchronize Language Settings") fired correctly for the exact same user
+in the exact same boot window, via the
+`Microsoft-Windows-TaskScheduler/Operational` event log (disabled by
+default — enabled it for this investigation); found zero log entries for
+`DeniDinProdAutostart` at all, in either attempt, ruling out a permissions
+or timing edge case that would at least show a failed/skipped attempt.
+Root cause not pinned down beyond that — continuing to guess at Task
+Scheduler internals after two real, differently-configured failures
+wasn't a good use of further effort.
+
+**Final mechanism**: a plain script in the Windows Startup folder
+(`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\DeniDinProdAutostart.cmd`),
+which Windows runs automatically on every interactive logon — a much
+older, simpler, decades-proven mechanism than Task Scheduler, with no
+trigger-timing behavior to get wrong. Not yet proven end-to-end (both
+real reboots so far predate this fix, or predate a real deploy existing
+for it to actually bring up) — `verify_reboot_recovery.sh` still needs a
+run with this in place, once a deploy exists.
+
+**Related, separately-discovered findings from the same two reboots**
+(both real, both fixed, neither Task-Scheduler-related):
+- **Docker Desktop's own `AutoStart` setting was `false`** in
+  `%APPDATA%\Docker\settings-store.json` — meaning even a perfectly
+  working auto-logon would never have started Docker Desktop on its own.
+  Flipped to `true` directly in that file. Confirmed working on the
+  second real reboot (Docker Desktop processes came up in the correct
+  interactive **Console** session this time, not Session 0 — see below).
+- **A process I started manually over SSH (to work around the above,
+  before realizing the AutoStart fix needed a real reboot to prove
+  itself) launched into Session 0** (Windows' isolated services session),
+  not the interactive desktop session — meaning it ran and was
+  functionally reachable via `docker ps`, but had no visible tray icon or
+  window, because Session-0 processes are structurally forbidden from
+  showing UI on the real desktop. This was a red herring specific to
+  *how* I started it over SSH, not a sign anything was broken — resolved
+  itself on the next real reboot once Docker Desktop's own Run-key
+  autostart launched it normally.
+- **The Windows box's screen going unresponsive mid-session (unrelated to
+  any reboot) was very likely just the separate "turn off display after"
+  timer** (`SUB_VIDEO`/`VIDEOIDLE`, found set to 1800s/30min on AC power)
+  — a different setting than full system sleep (`SUB_SLEEP`/`STANDBYIDLE`,
+  which was already correctly disabled). Disabled via
+  `powercfg /change monitor-timeout-ac 0`. Plausible given the symptoms
+  matched exactly (network/SSH kept working throughout, only the display
+  was affected) — not proven with certainty, since the display didn't
+  respond to input either, but this was fixed regardless as clearly
+  correct for an always-on box either way.
 
 ### Decision: Windows auto-logon under the operator's own existing account
 
@@ -125,9 +183,38 @@ for uncertain benefit — see acceptance-tests.md T2.3.
 
 ### Deferred (not a blocking unknown): Windows Update forced-reboot mitigation
 
-**Status**: Intentionally left open per the operator's explicit direction
-during `/speckit.clarify` ("not sure, leave it open for now until we
-actually start working on the windows machine").
+**Status**: Resolved 2026-08-03 (T039). The laptop is confirmed **Windows
+11 Home** (`(Get-CimInstance Win32_OperatingSystem).Caption`, SKU 101) —
+no `gpedit.msc`, so the Pro/Enterprise notify-only policy path is
+unavailable. Applied the Home-compatible mitigation entirely via registry,
+over the existing SSH channel (no GUI/interactive session needed — these
+are plain registry writes, not Settings-app clicks):
+- `HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings`:
+  `ActiveHoursStart=6`, `ActiveHoursEnd=23`, `IsActiveHoursEnabled=1` —
+  widens the no-forced-reboot window to 17 hours (near the 18-hour max
+  Windows allows), covering the box's actual usage pattern.
+- `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate`:
+  `DeferFeatureUpdatesPeriodInDays=365`, `DeferQualityUpdatesPeriodInDays=4`
+  — these policy-branch registry keys are enforced by the Windows Update
+  Agent directly regardless of edition (`gpedit.msc` is only a GUI editor
+  for the same keys, removed from Home, not a separate enforcement path),
+  so they take effect even without the GPO editor being present. Feature
+  updates deferred a full year (rarely needed on a prod host); quality
+  (security) updates deferred only 4 days, short enough to still get
+  timely security patches while dodging same-day forced-reboot windows.
+  Both confirmed applied via `Get-ItemProperty` read-back.
+
+**Residual risk, unchanged from the original analysis below**: none of
+this is a *guarantee* for an unattended Home machine — Microsoft can still
+force an update outside these settings in rare cases. FR2's reboot-recovery
+mechanism (Startup-folder script, `specs/.../quickstart.md` §7) is the
+actual safety net for that residual risk, not this mitigation — this is
+just frequency-reduction on top of it.
+
+**Original status note (superseded above, kept for history)**: Intentionally
+left open per the operator's explicit direction during `/speckit.clarify`
+("not sure, leave it open for now until we actually start working on the
+windows machine").
 
 **Why this doesn't block Phase 1/2**: FR2's reboot-recovery mechanism
 (FR2a/FR2b) already handles *any* reboot, planned or Windows-Update-forced,
@@ -225,17 +312,46 @@ present a remote filesystem as a local mount point.
 **Mechanism**: `brew install --cask macfuse` (one-time manual macOS
 security approval + reboot for the kernel extension — a GUI step, not
 scriptable), `brew install gromgit/fuse/sshfs-mac`, then `sshfs
-<user>@<tailscale-hostname>:<deploy-dir>/apps/denidin-app/data
-~/denidin-winprod-data -o reconnect,ro,volname=denidin-winprod-data`.
-Mounted **read-only** by default — nothing in this feature's own scope
-needs to write to that folder from the Mac side, and read-only removes
-any risk of an accidental Mac-side edit corrupting live session/memory
-state.
+<ssh-alias>:<remote-data-dir> ~/denidin-winprod-data -o
+reconnect,ro,volname=denidin-winprod-data`. Mounted **read-only** by
+default — nothing in this feature's own scope needs to write to that
+folder from the Mac side, and read-only removes any risk of an
+accidental Mac-side edit corrupting live session/memory state.
 
-**Status**: this decision's actual *installation* (macFUSE + `sshfs`) was
-in progress when the session that originally made this decision was
-interrupted (2026-08-02) — treat it as designed but not yet installed;
-`tasks.md` tracks it as a resume-from-here item, not a completed step.
+**Status: fully installed, mounted, and verified end-to-end against the
+real box (2026-08-03)** — resuming from the interrupted-install state
+this decision was left in surfaced a real, non-obvious blocker along the
+way (below), now resolved.
+
+**Real blocker found and fixed while finishing this**: the data volume
+cannot be mounted from its originally-planned location
+(`<deploy-dir>/apps/denidin-app/data`, on the WSL-side filesystem) at
+all. Windows' native OpenSSH SFTP server (which `sshfs` rides) cannot
+traverse into the WSL2 filesystem — confirmed two ways against the real
+box: a direct UNC path (`\\wsl.localhost\Ubuntu\home\...`) failed with
+"not found" via `sftp`, and an NTFS symlink created specifically to
+bridge the gap (`mklink /D` pointing at that same UNC path) *also* failed
+with "not found" even though the target genuinely existed and was
+readable from WSL bash the whole time — meaning this isn't a path-syntax
+issue, `sftp-server.exe` structurally cannot resolve into that
+filesystem, symlink or not. **Fix**: relocated the data volume's actual
+storage to a native Windows-side path
+(`C:\Users\<name>\denidin-prod-data`, reachable from WSL bash via
+`/mnt/c/...` for Docker's bind mount, and directly reachable from SFTP
+since it's genuinely on the Windows filesystem) via a
+`docker-compose.prod.local.yml` override. This is why that file can no
+longer be a `build_and_package.sh`-generated no-op stub regenerated on
+every deploy (as originally designed, see the build-once-on-Mac decision
+above) — it now holds a real, machine-specific override, so it became a
+one-time, hand-created file on the box instead, the same role
+`config.prod.json` already had. Separately installing `sshfs-mac` itself
+also needed a one-time workaround: this Homebrew tap's
+`MacfuseRequirement` references
+`$(brew --repository)/Library/Homebrew/os/mac/pkgconfig/fuse`, which
+didn't exist in this Homebrew Library version at all (only macOS-SDK-
+numbered pkgconfig subdirs existed) — fixed by manually creating that
+directory and copying the already-present `/usr/local/lib/pkgconfig/
+{fuse,fuse3}.pc` files into it once.
 
 **Alternatives considered**: A scheduled rsync/backup job (rejected — new
 tooling and a second copy, exactly what FR6a/Out-of-Scope explicitly
@@ -245,4 +361,7 @@ established rather than introducing a second, separately-configured
 Tailscale feature for the same underlying need); read-write mount
 (rejected as the default — no current requirement needs write access from
 the Mac, and read-only is strictly safer for a singleton holding live
-production state).
+production state); relocating the *entire* deploy directory to a
+Windows-side path instead of just the data volume (rejected — bigger
+blast radius for no added benefit, and would put all of Docker's bind
+mounts, not just this one, on the slower `/mnt/c` I/O path).

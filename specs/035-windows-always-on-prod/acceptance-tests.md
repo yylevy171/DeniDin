@@ -67,9 +67,9 @@ Three automated scripts, split by risk:
 | T2.3 | Network-adapter power management disabled | **Accepted residual risk, not achievable (verified 2026-08-03)** — this Windows box's WiFi/Ethernet adapters don't expose the standard power-management interface at all (absent from Device Manager's Power Management tab *and* from the `MSPower_DeviceEnable` WMI class), on the drivers currently installed. A vendor-driver reinstall might expose it but wasn't pursued (uncertain payoff vs. effort/risk, and Windows Update could just revert it) — operator decision 2026-08-03. Mitigated by AC-power sleep already being disabled (T2.2) and Tailscale/SSH/sshfs's own reconnect logic; not eliminated. |
 | T2.4 | Laptop lid physically closed for 10+ minutes: box stays reachable over Tailscale, container uptime unbroken | [Manual] — requires physically closing/reopening the lid, no software equivalent |
 | T2.5 | Mac put to sleep for 10+ minutes, then woken: Tailscale reconnects automatically, Windows-side container uptime unaffected | [Manual] — see note below |
-| T2.6 | Scheduled Task exists, enabled, configured to run at startup/logon, targets `scripts/run_all.sh prod` | [Automated] (config check) |
+| T2.6 | Startup-folder script exists, targets `scripts/run_all.sh prod` | [Automated] (config check) — **rewritten 2026-08-03**: originally checked for a `DeniDinProdAutostart` Scheduled Task; abandoned after two real reboots showed neither an "At startup" nor an "At logon" trigger ever fired (root cause not pinned down — see research.md). Replaced with a plain Startup-folder `.cmd` script, a much simpler mechanism with no trigger-timing behavior to get wrong. |
 | T2.7 | Windows auto-logon configured for the operator's own account | [Automated] (config check) |
-| T2.8 | **End-to-end**: reboot the box for real, confirm it comes back logged-in, Docker Desktop starts, the Scheduled Task fires, and both containers are `Up` again — with no operator action | [Automated, disruptive] via `verify_reboot_recovery.sh` — gated, run deliberately only |
+| T2.8 | **End-to-end**: reboot the box for real, confirm it comes back logged-in, Docker Desktop starts, the Startup-folder script fires, and both containers are `Up` again — with no operator action | [Automated, disruptive] via `verify_reboot_recovery.sh` — gated, run deliberately only |
 
 > **On T2.5, answering "is production down during this test?"**: **No.**
 > Production runs entirely on the Windows box; the Mac is only ever the
@@ -121,14 +121,20 @@ Covered by T1.6–T1.8 and T-D.0 above; no separate test.
 | ID | Check | Type |
 |----|-------|------|
 | T-M.1 | macFUSE + `sshfs` installed on the Mac, mount succeeds | [Manual] — macFUSE's security approval + reboot is an unavoidable GUI step, not scriptable |
-| T-M.2 | `ls ~/denidin-winprod-data` from the Mac matches `ssh denidin-winprod 'ls ~/denidin-prod/apps/denidin-app/data'` | [Automated] |
+| T-M.2 | `ls ~/denidin-winprod-data` from the Mac matches the box's own data folder listing (a native Windows-side path — see FR6a Clarifications, not the WSL-side deploy directory) | [Automated] |
 | T-M.3 | Writing into the mount fails (read-only) | [Automated] |
 | T-M.4 | Mount survives a Mac sleep/wake cycle without manual re-mounting (`-o reconnect`) | [Manual] — same physical-action caveat as T2.5 |
-| T-M.5 | `apps/denidin-app/data` is absent from every `build_and_package.sh` artifact (covered by T-D.0) and untouched by every deploy (covered by T-D.1) | Covered by T-D.0/T-D.1 above |
+| T-M.5 | The data volume is absent from every `build_and_package.sh` artifact (covered by T-D.0) and untouched by every deploy (covered by T-D.1) | Covered by T-D.0/T-D.1 above |
 
-**Status note**: this feature's own sshfs/macFUSE installation was in
-progress when an earlier session was interrupted (2026-08-02) — T-M.1–T-M.4
-are not yet run against the real box.
+**Status note**: **done, verified end-to-end against the real box
+(2026-08-03)** — T-M.1–T-M.3 confirmed working (content written on the
+Windows side is visible through the mount; a write through the mount
+correctly fails). T-M.4 (sleep/wake survival) not yet separately
+confirmed. A real blocker was found and fixed along the way — Windows'
+native SFTP server cannot reach the WSL-side filesystem at all, so the
+data volume was relocated to a native Windows-side path; see FR6a
+Clarifications in spec.md and research.md's sshfs decision entry for
+the full story.
 
 ## FR7 — migration/cutover checklist
 

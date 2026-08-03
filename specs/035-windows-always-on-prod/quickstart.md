@@ -4,7 +4,9 @@ One-time setup runbook for moving production onto a dedicated Windows
 laptop, reachable and fully operable from the Mac afterward. Do these
 steps in order — later steps assume earlier ones are done. See `spec.md`
 for the reasoning behind each decision, `acceptance-tests.md` for how to
-verify each step actually worked.
+verify each step actually worked, and **`WINDOWS_GOTCHAS.md` for a
+quick-scan reference of every non-obvious Windows/WSL/SSH/Docker quirk
+found while building this — check there first if something breaks.**
 
 ## Prerequisites
 
@@ -145,19 +147,33 @@ for why.
    `mkdir ~/denidin-prod` (any name; pass it as `deploy_and_verify.sh`'s
    optional third argument if not `denidin-prod`, matching its existing
    default).
-4. Directly inside that directory, create the machine's own secret file by
-   hand — this is the **one and only** file the runbook has you create
-   manually on the box itself, since it's deliberately excluded from every
-   deploy artifact (see step 9):
+4. Directly inside that directory, create two machine-specific files by
+   hand — these are excluded from every deploy artifact (see step 9), so
+   redeploys never clobber them:
    - `config/config.prod.json` — copy values from `creds/DeniDin Prod
      Creds.txt`. (`apps/denidin-app/config/config.prod.json` and
      `apps/morning-mcp-app/config/config.prod.json`, to be precise — both
      apps' config files, same source.)
+   - `docker/docker-compose.prod.local.yml` — **corrected 2026-08-03**:
+     this used to be a generated no-op stub, but the data volume needs to
+     be redirected to a native Windows-side path (see step 9a — Windows'
+     SFTP server can't reach the WSL-side filesystem at all, which is
+     what the sshfs mount needs). Create the Windows-side folder first
+     (`mkdir "%USERPROFILE%\denidin-prod-data"` in PowerShell, or
+     `mkdir "/mnt/c/Users/<name>/denidin-prod-data"` from WSL bash — same
+     folder either way), then write:
+     ```yaml
+     services:
+       denidin-app-prod:
+         volumes:
+           - /mnt/c/Users/<name>/denidin-prod-data:/app/data
+     ```
+     (Replace `<name>` with your actual Windows username — check via
+     `whoami` or the folder that already exists under `/mnt/c/Users/`.)
 
-   Everything else (`docker/docker-compose.prod.local.yml`,
-   `config/shared_state.local.json`, the wrapper scripts, compose files)
-   is generated fresh into every deploy artifact by
-   `build_and_package.sh` on the Mac — nothing else to create by hand
+   Everything else (`config/shared_state.local.json`, the wrapper
+   scripts, compose files) is generated fresh into every deploy artifact
+   by `build_and_package.sh` on the Mac — nothing else to create by hand
    here.
 
 **Verify**: `scripts/windows_prod/verify_windows_prod.sh denidin-winprod`
@@ -203,45 +219,66 @@ combined reboot test, below).
 - **If Pro/Enterprise**: `gpedit.msc` → Computer Configuration →
   Administrative Templates → Windows Components → Windows Update →
   configure for notify-before-download-and-install (fully manual).
-- **If Home**: Settings → Windows Update → Advanced options: defer feature
-  updates as long as offered, widen "active hours" as much as allowed. This
-  is a mitigation, not a guarantee — see `research.md`'s deferred decision.
+- **If Home** (this box is confirmed Windows 11 Home, SKU 101 — verified
+  2026-08-03 via `(Get-CimInstance Win32_OperatingSystem).Caption`):
+  apply via registry over SSH, no GUI/interactive session required —
+  ```powershell
+  Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings' -Name 'ActiveHoursStart' -Value 6 -Type DWord
+  Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings' -Name 'ActiveHoursEnd' -Value 23 -Type DWord
+  Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings' -Name 'IsActiveHoursEnabled' -Value 1 -Type DWord
+  Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate' -Name 'DeferFeatureUpdatesPeriodInDays' -Value 365 -Type DWord
+  Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate' -Name 'DeferQualityUpdatesPeriodInDays' -Value 4 -Type DWord
+  ```
+  (create the two key paths with `New-Item -Force` first if they don't
+  already exist). Widens the no-forced-reboot active-hours window to 17
+  hours, defers feature updates a year, defers quality/security updates
+  only 4 days (so security patches still land promptly). This is a
+  mitigation, not a guarantee — see `research.md`'s resolved decision.
 
-## 7. Windows box: Scheduled Task for reboot recovery
+## 7. Windows box: Startup-folder script for reboot recovery
 
-**Corrected 2026-08-03**: the action must invoke `wsl.exe` directly (there's
-no "Start in" concept that reaches into WSL — Task Scheduler's own "Start
-in" field is a Windows path, and the whole point is running a WSL bash
-command; the `cd` happens *inside* the bash invocation instead). Easiest
-done via command line, since the Task Scheduler GUI's "Add arguments"
-field **silently dropped the trailing closing quote** when typed by hand
-(confirmed against the real box — `schtasks /query /xml` showed the
-`Arguments` value missing its final `"`; relying on it "probably still
-working" via an OS quoting quirk wasn't worth the risk). Create it directly
-instead:
+**Corrected 2026-08-03, superseding an earlier Task Scheduler-based
+attempt.** The original design used a `DeniDinProdAutostart` Scheduled
+Task (trigger: at startup, then at logon after the first attempt).
+**Verified against the real box across two separate real reboots: neither
+trigger type ever fired** — `schtasks /query` showed `Last Run Time:
+30-Nov-99 00:00:00` (Task Scheduler's "never ran" placeholder) both times,
+even once auto-logon was confirmed working (`explorer.exe` running,
+Console session) and *other* logon-triggered system tasks fired correctly
+for the same user in the same window (confirmed via the
+`Microsoft-Windows-TaskScheduler/Operational` event log, which is
+disabled by default — enable it with
+`wevtutil.exe set-log Microsoft-Windows-TaskScheduler/Operational
+/enabled:true` if you want to see this for yourself). The root cause
+wasn't pinned down despite real investigation, and continuing to guess at
+Task Scheduler internals wasn't a good use of time given it had already
+failed twice. **Task Scheduler is not used for this at all anymore.**
+
+Instead: a plain script in the Windows Startup folder
+(`shell:startup`, i.e. `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`) —
+a much older, simpler, decades-proven mechanism that Windows runs
+automatically on every interactive logon, with none of Task Scheduler's
+trigger-timing complexity:
 ```powershell
-schtasks.exe /create /tn DeniDinProdAutostart /tr "wsl.exe -e bash -c \"cd ~/denidin-prod && ./scripts/run_all.sh prod\"" /sc onstart /f
+@'
+@echo off
+wsl.exe -e bash -c "cd ~/denidin-prod && ./scripts/run_all.sh prod"
+'@ | Set-Content -Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\DeniDinProdAutostart.cmd" -Encoding ASCII
 ```
 (Adjust `denidin-prod` if you used a different deploy-directory name in
 step 3. This only works once at least one deploy from step 9 has
 populated that directory — running it before that just fails with "script
 not found," which is expected and harmless at this stage.)
 
-This creates the task to run as whichever Windows account runs the
-`schtasks` command (interactive logon, not "whether user is logged on or
-not" — matches the requirement that it needs the same session auto-logon
-creates, since it ultimately needs Docker Desktop's user-session-bound
-daemon already reachable).
-
-**Verify**: `schtasks.exe /query /tn DeniDinProdAutostart /xml` shows the
-`Arguments` value with a properly closed trailing quote, `LogonType`
-`InteractiveToken`, and a `BootTrigger`. The T2.6 check in
-`verify_windows_prod.sh` covers the same thing (T2.7 auto-logon is
-[Manual]-only — see step 5's verify note). The full end-to-end proof is
-`scripts/windows_prod/verify_reboot_recovery.sh` — **run this
-deliberately, with fresh explicit intent each time, never routinely**
-(see that script's own header), and only once a real deploy exists for it
-to actually bring back up.
+**Verify**: the file exists at that path with the exact command above
+(including the closing quote — this approach doesn't have the GUI
+quote-dropping issue the old Scheduled Task had, since it's created by
+direct file write, not through a dialog). `verify_windows_prod.sh`'s T2.6
+check now looks for this file instead of a Scheduled Task. The full
+end-to-end proof is `scripts/windows_prod/verify_reboot_recovery.sh` —
+**run this deliberately, with fresh explicit intent each time, never
+routinely** (see that script's own header), and only once a real deploy
+exists for it to actually bring back up.
 
 ## 8. Mac: set up the Docker remote context
 
@@ -289,10 +326,9 @@ content checks (T1.5+) that couldn't pass in step 3.
 
 ## 9a. Mac: mount the Windows box's data folder via sshfs + macFUSE (FR6a)
 
-**Status**: this step's own installation was in progress when an earlier
-session working on this feature was interrupted (2026-08-02) — pick up
-from wherever that install actually got to, rather than assuming a clean
-start.
+**Status: done, verified end-to-end against the real box (2026-08-03)**
+— content written on the Windows side is visible through the mount, and
+a write attempt through the mount correctly fails.
 
 1. `brew install --cask macfuse` — macOS will refuse to load the kernel
    extension until you explicitly approve it: System Settings → Privacy &
@@ -301,15 +337,29 @@ start.
    Mac** (required for the extension to actually load, not optional).
 2. `brew install gromgit/fuse/sshfs-mac` (the maintained Homebrew tap for
    `sshfs` on macOS — the upstream `osxfuse/sshfs` tap is no longer
-   maintained).
-3. Mount, read-only, over the same Tailscale SSH connection already set
-   up (step 2): `scripts/windows_prod/mount_data.sh denidin-winprod`
-   (idempotent — a no-op if already mounted; pass a different
-   deploy-directory name as a second argument if you didn't use
-   `denidin-prod` in step 3). Equivalent to running by hand:
+   maintained). **If this fails to build** with `Dependency "fuse3" not
+   found`, this tap's `MacfuseRequirement` references a pkgconfig
+   directory that doesn't exist in every Homebrew Library version — fix
+   once with:
+   ```bash
+   mkdir -p "$(brew --repository)/Library/Homebrew/os/mac/pkgconfig/fuse"
+   cp /usr/local/lib/pkgconfig/{fuse,fuse3}.pc \
+     "$(brew --repository)/Library/Homebrew/os/mac/pkgconfig/fuse/"
+   ```
+   then retry the `brew install`.
+3. **Corrected 2026-08-03**: the data folder is mounted from a native
+   Windows-side path (`denidin-prod-data`, directly under the Windows
+   account's home — see step 4), **not** the WSL-side deploy directory —
+   confirmed Windows' native SFTP server (which sshfs rides) cannot
+   traverse into the WSL2 filesystem at all (neither a direct UNC path
+   nor an NTFS symlink pointing at one worked, both tested directly).
+   Mount, read-only: `scripts/windows_prod/mount_data.sh denidin-winprod`
+   (idempotent — a no-op if already mounted; pass a different remote
+   folder name as a second argument if you didn't use
+   `denidin-prod-data` in step 4). Equivalent to running by hand:
    ```bash
    mkdir -p ~/denidin-winprod-data
-   sshfs denidin-winprod:denidin-prod/apps/denidin-app/data \
+   sshfs denidin-winprod:denidin-prod-data \
      ~/denidin-winprod-data \
      -o reconnect,ro,volname=denidin-winprod-data
    ```
@@ -317,7 +367,8 @@ start.
    `umount ~/denidin-winprod-data` — no special sshfs command needed).
 
 **Verify**: `ls ~/denidin-winprod-data` from the Mac shows the same
-contents as `ssh denidin-winprod 'ls ~/denidin-prod/apps/denidin-app/data'`;
+contents as `ssh denidin-winprod 'ls "denidin-prod-data"'` (over a plain
+SFTP-style listing, not `wsl.exe` — see the note in step 4 about why);
 attempting to write a file into the mount fails (read-only, by design).
 
 ## 10. Cutover checklist (one-time, migration only)

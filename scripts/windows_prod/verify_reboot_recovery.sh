@@ -18,6 +18,9 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_wsl_ssh.sh"
+
 SSH_HOST="${1:?Usage: $0 <ssh-host-alias> --i-understand-this-reboots-production [deploy-dir-name]}"
 CONFIRM="${2:-}"
 DEPLOY_DIR="${3:-denidin-prod}"
@@ -29,6 +32,9 @@ if [ "$CONFIRM" != "--i-understand-this-reboots-production" ]; then
 fi
 
 echo "Rebooting $SSH_HOST ..."
+# Native Windows command - OpenSSH's DefaultShell is left at its native
+# default (cmd.exe, see _wsl_ssh.sh's comment for why), so this runs
+# directly, unwrapped - no WSL/bash involved for this one line.
 ssh -o BatchMode=yes "$SSH_HOST" "shutdown /r /t 0"
 
 echo "Waiting for it to actually go down..."
@@ -37,7 +43,11 @@ sleep 15
 echo "Polling for it to come back over Tailscale (up to 10 minutes)..."
 UP=0
 for i in $(seq 1 60); do
-  if ssh -o BatchMode=yes -o ConnectTimeout=5 "$SSH_HOST" true 2>/dev/null; then
+  # "exit 0" (not "true") - a builtin in both cmd.exe and bash, so it
+  # returns 0 regardless of which one DefaultShell happens to be; "true"
+  # isn't a recognized cmd.exe command and would falsely read as "still
+  # down" (this bit us for real, first thing this session).
+  if ssh -o BatchMode=yes -o ConnectTimeout=5 "$SSH_HOST" "exit 0" 2>/dev/null; then
     echo "Back up after ~$((i * 10))s"
     UP=1
     break
@@ -52,5 +62,4 @@ fi
 
 echo "Checking Docker Desktop started and both containers came back up on their own..."
 sleep 30  # give Docker Desktop + the Scheduled Task a moment after login
-ssh -o BatchMode=yes "$SSH_HOST" \
-  "cd ~/$DEPLOY_DIR && docker compose -f docker/docker-compose.prod.yml ps"
+wsl_ssh_run "$SSH_HOST" "cd ~/$DEPLOY_DIR && docker compose -f docker/docker-compose.prod.yml ps"

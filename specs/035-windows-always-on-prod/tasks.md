@@ -77,17 +77,17 @@ phase only prepares an *empty* deploy directory.
 
 **⚠️ CRITICAL**: No user story below can be verified until this phase's checkpoint passes.
 
-- [ ] T004 Install Tailscale on the Windows laptop, sign in, join the tailnet (`quickstart.md` §1)
-- [ ] T005 [P] Install Tailscale on the Mac (if not already present), sign into the same account (`quickstart.md` §1)
-- [ ] T006 Enable Windows' OpenSSH Server optional feature, start + auto-start the `sshd` service (`quickstart.md` §2.1)
-- [ ] T007 Generate an SSH key pair on the Mac (if none exists for this purpose) and install the public key into the Windows box's `authorized_keys` (`quickstart.md` §2.2)
-- [ ] T008 Set `PasswordAuthentication no` in `C:\ProgramData\ssh\sshd_config`, restart `sshd` (`quickstart.md` §2.3)
-- [ ] T009 Scope the "OpenSSH Server (sshd)" Windows Firewall inbound rule to the Tailscale interface only (`quickstart.md` §2.4)
-- [ ] T010 [P] Add the `denidin-winprod` `Host` alias to the Mac's `~/.ssh/config` (`quickstart.md` §2.5)
-- [ ] T011 Install Docker Desktop (WSL2 backend) on the Windows box, as a **runtime only** — no build ever runs there (`quickstart.md` §3.1)
-- [ ] T012 Create an empty deploy directory (e.g. `denidin-prod`) on the Windows box under the account's home directory — **not** a git clone (`quickstart.md` §3.2, corrected 2026-08-02)
-- [ ] T013 [P] Create `apps/denidin-app/config/config.prod.json` **and** `apps/morning-mcp-app/config/config.prod.json` inside that deploy directory, copied from `creds/DeniDin Prod Creds.txt` — the one file created by hand directly on the box, since it's deliberately excluded from every deploy artifact (`quickstart.md` §3.3, spec.md FR6)
-- [ ] T016 👤 **CHECKPOINT**: run `scripts/windows_prod/verify_windows_prod.sh denidin-winprod` from the Mac; confirm the T1.1–T1.3 checks in `acceptance-tests.md` PASS (T1.5–T1.7 can't pass yet — they need Phase 2a's first deploy; T1.8 is the one manual check in this group — eyeball the credential values per that file)
+- [x] T004 Install Tailscale on the Windows laptop, sign in, join the tailnet (`quickstart.md` §1) — confirmed reachable throughout
+- [x] T005 [P] Install Tailscale on the Mac (if not already present), sign into the same account (`quickstart.md` §1)
+- [x] T006 Enable Windows' OpenSSH Server optional feature, start + auto-start the `sshd` service (`quickstart.md` §2.1)
+- [x] T007 Generate an SSH key pair on the Mac (if none exists for this purpose) and install the public key into the Windows box's `authorized_keys` (`quickstart.md` §2.2) — confirmed, key-based auth works, no password prompt
+- [x] T008 Set `PasswordAuthentication no` in `C:\ProgramData\ssh\sshd_config`, restart `sshd` (`quickstart.md` §2.3) — confirmed active
+- [x] T009 Scope the "OpenSSH Server (sshd)" Windows Firewall inbound rule to the Tailscale interface only (`quickstart.md` §2.4) — confirmed scoped to the box's own Tailscale IP specifically
+- [x] T010 [P] Add the `denidin-winprod` `Host` alias to the Mac's `~/.ssh/config` (`quickstart.md` §2.5)
+- [x] T011 Install Docker Desktop (WSL2 backend) on the Windows box, as a **runtime only** — no build ever runs there (`quickstart.md` §3.1) — includes the WSL-shell-routing/default-distro/WSL-integration/AutoStart fixes, see `WINDOWS_GOTCHAS.md`
+- [x] T012 Create an empty deploy directory (e.g. `denidin-prod`) on the Windows box under the account's home directory — **not** a git clone (`quickstart.md` §3.2, corrected 2026-08-02)
+- [~] T013 [P] Create `apps/denidin-app/config/config.prod.json` **and** `apps/morning-mcp-app/config/config.prod.json` inside that deploy directory, copied from `creds/DeniDin Prod Creds.txt` — the one file created by hand directly on the box, since it's deliberately excluded from every deploy artifact (`quickstart.md` §3.3, spec.md FR6) — **files created, real secret values still being filled in by the operator**. Also created `docker/docker-compose.prod.local.yml` by hand here (added 2026-08-03, see step 4's correction) — done, real content in place.
+- [x] T016 👤 **CHECKPOINT**: run `scripts/windows_prod/verify_windows_prod.sh denidin-winprod` from the Mac; confirm the T1.1–T1.3 checks in `acceptance-tests.md` PASS (T1.5–T1.7 can't pass yet — they need Phase 2a's first deploy; T1.8 is the one manual check in this group — eyeball the credential values per that file) — T1.1–T1.4 (connectivity/config presence) all pass now; T1.8 (real secret values) still pending
 
 **Checkpoint**: Box is reachable, key-auth-only, firewall-scoped, Docker Desktop installed, deploy directory + secret config ready for its first deploy.
 
@@ -142,10 +142,10 @@ deploy directory that actually has compose files/images in it.
 **Independent Test**: `scripts/windows_prod/verify_reboot_recovery.sh denidin-winprod --i-understand-this-reboots-production` — run only with fresh, explicit intent (never routinely; see that script's own header and CLAUDE.md's "never start an environment without approval" rule).
 
 - [x] T023 [US5] Configure Windows auto-logon under the operator's own account (`quickstart.md` §5) — **`netplwiz`'s checkbox is absent on this Windows build** (removed in recent builds); set directly via registry instead (`AutoAdminLogon`/`DefaultUserName`/`DefaultDomainName` under `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon`), verified via `reg.exe query` over SSH. No `DefaultPassword` needed (account has none).
-- [ ] T024 [US5] 👤 Manually reboot the box once and confirm it boots straight to desktop with no login prompt (satisfies T2.7) — **deferred**: combining with the Scheduled Task's first real fire (T027) into one reboot, once a first deploy exists for it to actually start
-- [x] T025 [US5] Create the `DeniDinProdAutostart` Scheduled Task (trigger: at startup; action: `wsl.exe -e bash -c "cd ~/denidin-prod && ./scripts/run_all.sh prod"`) (`quickstart.md` §7) — created via Task Scheduler GUI first, but **the GUI silently dropped the closing quote** from the Arguments field (confirmed via `schtasks /query /xml`); deleted and recreated via `schtasks /create` command line instead, verified correct via XML export
-- [x] T026 [US5] 👤 Confirm via `schtasks /query` (or `verify_windows_prod.sh`'s T2.6 check) that the task exists, is enabled, and targets the right script — confirmed (Status: Ready, LogonType: InteractiveToken, correct quoted Arguments)
-- [ ] T027 [US5] 👤 **MANUAL APPROVAL GATE — disruptive, explicit approval required for this specific run**: run `scripts/windows_prod/verify_reboot_recovery.sh denidin-winprod --i-understand-this-reboots-production` and confirm both containers come back `Up` with no manual intervention (T2.8/SC5)
+- [x] T024 [US5] 👤 Manually reboot the box and confirm it boots straight to desktop with no login prompt (satisfies T2.7) — **confirmed across two real reboots** (`explorer.exe` running in the Console session both times, no login prompt)
+- [x] T025 [US5] ~~Create the `DeniDinProdAutostart` Scheduled Task~~ — **abandoned 2026-08-03 after two real reboots both showed it never fired** (neither an "At startup" nor an "At logon" trigger — `schtasks /query` showed the never-ran placeholder both times, even with auto-logon confirmed working and other logon-triggered system tasks firing correctly for the same user in the same window; root cause not pinned down despite real investigation via the Task Scheduler event log). **Replaced with a plain Startup-folder script** (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\DeniDinProdAutostart.cmd`) instead — see `quickstart.md` §7 (rewritten) for the mechanism and why.
+- [x] T026 [US5] 👤 Confirm via `verify_windows_prod.sh`'s T2.6 check that the Startup-folder script exists and targets the right command — confirmed
+- [ ] T027 [US5] 👤 **MANUAL APPROVAL GATE — disruptive, explicit approval required for this specific run**: run `scripts/windows_prod/verify_reboot_recovery.sh denidin-winprod --i-understand-this-reboots-production` and confirm both containers come back `Up` with no manual intervention (T2.8/SC5) — not yet done with the Startup-folder mechanism in place (the two reboots so far predate this fix, or predate a real deploy existing for it to bring up)
 
 **Checkpoint**: US5 fully functional — reboot recovery proven end-to-end, at least once, deliberately.
 
@@ -194,7 +194,7 @@ exercising it.
 - [x] T034 [P] [US4] Set AC-power closed-lid action to "do nothing" (`quickstart.md` §4.2) — set via Settings > Power & battery for Plugged in/On battery (not `powercfg` — see research.md 2026-08-03 note); verification is manual only (T2.1)
 - [x] T035 [P] [US4] ~~Disable power management on the network adapter(s)~~ — **not achievable on this hardware** (verified 2026-08-03: absent from both Device Manager's Power Management tab and the `MSPower_DeviceEnable` WMI class for the WiFi/Ethernet devices specifically). Accepted as residual risk per operator decision — see acceptance-tests.md T2.3, research.md.
 - [x] T036 [US4] 👤 Confirm T2.2 in `verify_windows_prod.sh` passes (T2.1/T2.3 are manual-only/accepted-risk, not scripted — see above)
-- [ ] T037 [US4] 👤 **MANUAL APPROVAL GATE**: physically close the laptop lid for 10+ minutes, confirm continuous Tailscale reachability and unbroken container uptime (T2.4)
+- [x] T037 [US4] 👤 **MANUAL APPROVAL GATE**: physically close the laptop lid for 10+ minutes, confirm continuous Tailscale reachability and unbroken container uptime (T2.4) — done 2026-08-03: lid closed 10+ min, `tailscale ping` and `ssh` both succeeded afterward (pong in 94ms, SSH command executed normally); container-uptime half of this check deferred until a real deploy exists (T014 still blocked on prod creds) — nothing running yet to observe for uptime
 - [ ] T038 [US4] 👤 **MANUAL APPROVAL GATE**: put the Mac to sleep for 10+ minutes, wake it, confirm Tailscale reconnects automatically (T2.5 — note: production itself is never at risk during this one, see `acceptance-tests.md`'s note on T2.5)
 
 **Checkpoint**: US4 fully functional — box survives both machines' normal interruptions.
@@ -205,19 +205,18 @@ exercising it.
 
 **Goal**: The persistent `data` folder is reachable from the Mac as an ordinary local folder, read-only, without SSHing in.
 
-**Independent Test**: `ls ~/denidin-winprod-data` from the Mac matches `ssh denidin-winprod 'ls ~/denidin-prod/apps/denidin-app/data'`; a write into the mount fails.
+**Independent Test**: `ls ~/denidin-winprod-data` from the Mac matches the box's own data folder listing; a write into the mount fails.
 
-**Status**: 👤 **this phase's own setup (macFUSE/`sshfs` installation) was in
-progress when an earlier session working on this feature was
-interrupted — resume from wherever that install actually got to, rather
-than assuming a clean start (see spec.md/research.md Clarifications).**
+**Status**: ✅ **Done, verified end-to-end against the real box (2026-08-03).**
+A real blocker was found and fixed along the way — see below and
+research.md's sshfs decision entry for the full story.
 
-- [ ] T042 [US7] 👤 `brew install --cask macfuse` on the Mac, approve the system extension in Privacy & Security, reboot the Mac (`quickstart.md` §9a.1)
-- [ ] T043 [US7] `brew install gromgit/fuse/sshfs-mac` on the Mac (`quickstart.md` §9a.2)
-- [ ] T044 [US7] Create `~/denidin-winprod-data` and mount read-only via `sshfs denidin-winprod:denidin-prod/apps/denidin-app/data ~/denidin-winprod-data -o reconnect,ro,volname=denidin-winprod-data` (`quickstart.md` §9a.3) — satisfies T-M.1/T-M.2
-- [ ] T045 [US7] 👤 Confirm a write into the mount fails (T-M.3), and that the mount survives a Mac sleep/wake cycle without manual re-mounting (T-M.4)
+- [x] T042 [US7] `brew install --cask macfuse` on the Mac, approve the system extension in Privacy & Security, reboot the Mac (`quickstart.md` §9a.1)
+- [x] T043 [US7] `brew install gromgit/fuse/sshfs-mac` on the Mac (`quickstart.md` §9a.2) — **hit a real build failure** (`Dependency "fuse3" not found`, this tap's `MacfuseRequirement` references a pkgconfig directory absent from this Homebrew Library version); fixed by manually creating that directory and copying the already-present `fuse`/`fuse3` `.pc` files into it
+- [x] T044 [US7] Create `~/denidin-winprod-data` and mount read-only (`quickstart.md` §9a.3) — satisfies T-M.1/T-M.2. **Corrected 2026-08-03**: mounting from the originally-planned WSL-side path (`<deploy-dir>/apps/denidin-app/data`) doesn't work at all — confirmed Windows' native SFTP server can't traverse into the WSL2 filesystem (tested both a direct UNC path and an NTFS symlink bridging to one; both failed). Fixed by relocating the data volume to a native Windows-side path (`denidin-prod-data`, under the Windows home) via a hand-created `docker-compose.prod.local.yml` override, and mounting from there instead — confirmed working (content written via the Windows side is visible through the mount).
+- [x] T045 [US7] 👤 Confirm a write into the mount fails (T-M.3) — confirmed (`Read-only file system`). Mac sleep/wake survival (T-M.4) not yet separately tested.
 
-**Checkpoint**: US7 fully functional — production data browsable from the Mac, read-only, surviving Mac sleep/wake.
+**Checkpoint**: US7 fully functional — production data browsable from the Mac, read-only. Sleep/wake survival still to be confirmed opportunistically (T-M.4).
 
 ---
 
@@ -225,8 +224,8 @@ than assuming a clean start (see spec.md/research.md Clarifications).**
 
 **Purpose**: The two items intentionally left open, plus the one-time migration step — not tied to a single user story.
 
-- [ ] T039 Once the laptop's Windows edition is confirmed (Settings → About), apply the matching Windows-Update mitigation per `quickstart.md` §6 / `research.md`'s deferred decision
-- [ ] T040 👤 **MANUAL APPROVAL GATE — one-time cutover, not repeatable**: on the *previous* production host (a different machine/clone this session cannot and must not touch — see spec.md FR7), confirm `scripts/killall_containers.sh` has been run and `prod` is stopped there, before or immediately after first starting `prod` on the Windows box
+- [x] T039 Once the laptop's Windows edition is confirmed (Settings → About), apply the matching Windows-Update mitigation per `quickstart.md` §6 / `research.md`'s deferred decision — done 2026-08-03: confirmed Windows 11 Home (SKU 101) via `Get-CimInstance Win32_OperatingSystem`; applied active-hours widening (06:00-23:00) and feature/quality-update deferral (365/4 days) via registry over SSH, no GUI needed; both confirmed applied via read-back
+- [x] T040 👤 **MANUAL APPROVAL GATE — one-time cutover, not repeatable**: on the *previous* production host (a different machine/clone this session cannot and must not touch — see spec.md FR7), confirm `scripts/killall_containers.sh` has been run and `prod` is stopped there, before or immediately after first starting `prod` on the Windows box — confirmed by operator 2026-08-03: no prod running on this (previous host) laptop. Note: this closes the "old host is stopped" half of the cutover; the "new host has prod running" half still depends on T014 (blocked on real creds)
 - [ ] T041 Update `CLAUDE.md` with a short pointer to this feature's `quickstart.md` as the Windows-hosted production runbook (deferred to the `/haleluya` "update docs" step per `plan.md`'s Phase 1 note — not done now)
 
 **Checkpoint**: Feature complete. All of spec.md's Success Criteria (SC1–SC7) verified.
