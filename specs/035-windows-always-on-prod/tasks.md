@@ -153,7 +153,7 @@ deploy directory that actually has compose files/images in it.
 - [x] T024 [US5] 👤 Manually reboot the box and confirm it boots straight to desktop with no login prompt (satisfies T2.7) — **confirmed across two real reboots** (`explorer.exe` running in the Console session both times, no login prompt)
 - [x] T025 [US5] ~~Create the `DeniDinProdAutostart` Scheduled Task~~ — **abandoned 2026-08-03 after two real reboots both showed it never fired** (neither an "At startup" nor an "At logon" trigger — `schtasks /query` showed the never-ran placeholder both times, even with auto-logon confirmed working and other logon-triggered system tasks firing correctly for the same user in the same window; root cause not pinned down despite real investigation via the Task Scheduler event log). **Replaced with a plain Startup-folder script** (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\DeniDinProdAutostart.cmd`) instead — see `quickstart.md` §7 (rewritten) for the mechanism and why.
 - [x] T026 [US5] 👤 Confirm via `verify_windows_prod.sh`'s T2.6 check that the Startup-folder script exists and targets the right command — confirmed
-- [ ] T027 [US5] 👤 **MANUAL APPROVAL GATE — disruptive, explicit approval required for this specific run**: run `scripts/windows_prod/verify_reboot_recovery.sh denidin-winprod --i-understand-this-reboots-production` and confirm both containers come back `Up` with no manual intervention (T2.8/SC5) — not yet done with the Startup-folder mechanism in place (the two reboots so far predate this fix, or predate a real deploy existing for it to bring up)
+- [x] T027 [US5] 👤 **MANUAL APPROVAL GATE — disruptive, explicit approval required for this specific run**: run `scripts/windows_prod/verify_reboot_recovery.sh denidin-winprod --i-understand-this-reboots-production` and confirm both containers come back `Up` with no manual intervention (T2.8/SC5) — **confirmed 2026-08-04**: box rebooted, back up over Tailscale in ~60s, both containers auto-started via the Startup-folder mechanism with zero manual intervention, watchdog clean on both apps post-reboot (no `active_env.json` errors — bugfix-021's fix survives a real reboot too).
 
 **Checkpoint**: US5 fully functional — reboot recovery proven end-to-end, at least once, deliberately.
 
@@ -171,10 +171,10 @@ spec.md FR3a.
 on the Mac, run `deploy_and_verify.sh`, then send a WhatsApp message
 exercising it.
 
-- [ ] T028 [US6] 👤 Merge a small, observable test change to `master` (or use the next real change when one lands), then `git pull` it on the Mac
-- [ ] T029 [US6] **2026-08-03 update**: Run `scripts/cut_release.sh <app> <version> --summary "<text>"` then `scripts/deploy_release.sh <app> prod <version>` from the Mac, for each app (retired `deploy_and_verify.sh` no longer exists)
-- [ ] T030 [US6] 👤 Confirm the script's automated steps (T-D.0–T-D.3: Mac build + package, `scp`, remote extract + `docker load` + `up -d`, clean log smoke-check) all passed, and that `data`/`logs`/`shared/active_env.json` on the box are unchanged from before the deploy
-- [ ] T031 [US6] 👤 **MANUAL APPROVAL GATE**: send a real WhatsApp message to the bot, confirm a DeniDin response reflecting the new code arrives (T-D.4/SC6 — intentionally manual, see `acceptance-tests.md`)
+- [x] T028 [US6] ~~Merge a small, observable test change to `master`...~~ — **skipped, operator decision (2026-08-04)**
+- [x] T029 [US6] ~~Run `scripts/cut_release.sh`/`scripts/deploy_release.sh`...~~ — **skipped, operator decision (2026-08-04)**. Note: the underlying mechanism was already exercised for real multiple times this session (`0.0.2-test` deployed to prod twice via `deploy_release.sh` during bugfix-021's verification) — just not paired with a distinct second observable code change as this task originally specified.
+- [x] T030 [US6] ~~Confirm the script's automated steps...~~ — **skipped, operator decision (2026-08-04)**
+- [x] T031 [US6] ~~Send a real WhatsApp message...~~ — **skipped, operator decision (2026-08-04)**. Note: a real WhatsApp round-trip against a `0.0.2-test` deploy was already confirmed earlier this session, just not paired with a distinct second code change per above.
 
 **Checkpoint**: US6 fully functional — deploy-from-Mac proven with a real end-to-end message round-trip.
 
@@ -186,7 +186,7 @@ exercising it.
 
 **Independent Test**: `build_and_package.sh`'s artifact never contains `config.prod.json` (T-D.0, Mac-side check — corrected 2026-08-02, no `git check-ignore` on the box anymore since there's no git repo there); the app itself loads the box's own hand-created copy successfully at runtime (already implied by Phase 2a's containers coming up `Up`).
 
-- [ ] T032 [US3] 👤 **MANUAL APPROVAL GATE**: eyeball that `config/config.prod.json`'s values genuinely match `creds/DeniDin Prod Creds.txt` (not stale/placeholder) — T1.8, the one check that can't be scripted
+- [x] T032 [US3] 👤 **MANUAL APPROVAL GATE**: eyeball that `config/config.prod.json`'s values genuinely match `creds/DeniDin Prod Creds.txt` (not stale/placeholder) — T1.8, the one check that can't be scripted — **confirmed by operator, 2026-08-04**
 
 **Checkpoint**: US3 confirmed — no new task, no new tooling, exactly as spec'd.
 
@@ -203,7 +203,7 @@ exercising it.
 - [x] T035 [P] [US4] ~~Disable power management on the network adapter(s)~~ — **not achievable on this hardware** (verified 2026-08-03: absent from both Device Manager's Power Management tab and the `MSPower_DeviceEnable` WMI class for the WiFi/Ethernet devices specifically). Accepted as residual risk per operator decision — see acceptance-tests.md T2.3, research.md.
 - [x] T036 [US4] 👤 Confirm T2.2 in `verify_windows_prod.sh` passes (T2.1/T2.3 are manual-only/accepted-risk, not scripted — see above)
 - [x] T037 [US4] 👤 **MANUAL APPROVAL GATE**: physically close the laptop lid for 10+ minutes, confirm continuous Tailscale reachability and unbroken container uptime (T2.4) — done 2026-08-03: lid closed 10+ min, `tailscale ping` and `ssh` both succeeded afterward (pong in 94ms, SSH command executed normally); container-uptime half of this check deferred until a real deploy exists (T014 still blocked on prod creds) — nothing running yet to observe for uptime
-- [ ] T038 [US4] 👤 **MANUAL APPROVAL GATE**: put the Mac to sleep for 10+ minutes, wake it, confirm Tailscale reconnects automatically (T2.5 — note: production itself is never at risk during this one, see `acceptance-tests.md`'s note on T2.5)
+- [x] T038 [US4] ~~Put the Mac to sleep for 10+ minutes, wake it, confirm Tailscale reconnects automatically~~ — **skipped, operator decision (2026-08-04)**
 
 **Checkpoint**: US4 fully functional — box survives both machines' normal interruptions.
 
