@@ -7,6 +7,14 @@ description: "Task list for 035-windows-always-on-prod"
 **Input**: Design documents from `specs/035-windows-always-on-prod/`
 **Prerequisites**: plan.md, spec.md, research.md, quickstart.md, acceptance-tests.md (all present; `data-model.md`/`contracts/` N/A per plan.md)
 
+**🚨 Retirement note (2026-08-03)**: `scripts/windows_prod/build_and_package.sh` and
+`deploy_and_verify.sh`, authored in Phase 1 below (T003a/T003b) and referenced throughout this
+file, are **retired** — deleted, superseded by `scripts/cut_release.sh`/`scripts/deploy_release.sh`
+(Feature 034), which now support deploying to this box remotely over SSH without ever rebuilding
+from source (see `quickstart.md` §9 for the current flow). Completed tasks below that reference
+the old scripts are left as an accurate historical record of what was actually done at the time;
+only the still-open task referencing them (T029) has been updated to the current mechanism.
+
 ---
 
 **How this deviates from the generic TDD (Task-a/Task-b) template, and why**:
@@ -129,7 +137,7 @@ deploy directory that actually has compose files/images in it.
 
 - [x] T020 [US2] Create the Docker remote context on the Mac (`quickstart.md` §8) — **first attempt failed**: a spelled-out `user@host` URL is rejected by Docker's SSH parser since the Windows username has a space ("yaron levi" — "remote username contains invalid characters"), even percent-encoded; fixed by pointing the context at the `~/.ssh/config` alias itself (`host=ssh://denidin-winprod`), which lets plain `ssh` resolve User/HostName. `docker --context denidin-winprod ps` confirmed reachable (empty list — no deploy yet).
 - [x] T021 [US2] 👤 **MANUAL APPROVAL GATE**: confirm `docker --context denidin-winprod compose -f docker/docker-compose.prod.yml ps` and `logs --tail 20` both work from the Mac — satisfies T4.1–T4.3. Confirmed 2026-08-03: `verify_windows_prod.sh`'s T4 group ("Docker remote context, logs, health & uptime") all PASS — context reachable, `compose ps` reachable, both containers `Up`, log output readable.
-- [~] T022 [US2] 👤 Confirm `morning-mcp-app-prod`'s internal `/health` responds via the same path (`scripts/windows_prod/verify_windows_prod.sh`'s T4.4 check) and that switching `docker context use default` cleanly restores local Docker on the Mac (T4.5) — **T4.4 confirmed 2026-08-03** (`/health` responds via the remote context); the T4.5 context-switch-back half not exercised by this run, still open.
+- [x] T022 [US2] 👤 Confirm `morning-mcp-app-prod`'s internal `/health` responds via the same path (`scripts/windows_prod/verify_windows_prod.sh`'s T4.4 check) and that switching away from the remote context cleanly restores local Docker on the Mac (T4.5) — T4.4 confirmed via the verify script. **T4.5 correction (2026-08-03, this clone)**: `docker context use default` is NOT this machine's working local context — this Mac runs **Colima**, not Docker Desktop, so `default` points at a socket with no daemon behind it (`dial unix /var/run/docker.sock: connect: no such file or directory`). Confirmed the real local context is `colima` (`docker ps` against it correctly lists the running `denidin-dev-*` containers) — switched back to `colima`, not `default`.
 
 **Checkpoint**: US2 fully functional — logs, status, and health all readable from the Mac.
 
@@ -164,7 +172,7 @@ on the Mac, run `deploy_and_verify.sh`, then send a WhatsApp message
 exercising it.
 
 - [ ] T028 [US6] 👤 Merge a small, observable test change to `master` (or use the next real change when one lands), then `git pull` it on the Mac
-- [ ] T029 [US6] Run `scripts/windows_prod/deploy_and_verify.sh denidin-winprod` from the Mac
+- [ ] T029 [US6] **2026-08-03 update**: Run `scripts/cut_release.sh <app> <version> --summary "<text>"` then `scripts/deploy_release.sh <app> prod <version>` from the Mac, for each app (retired `deploy_and_verify.sh` no longer exists)
 - [ ] T030 [US6] 👤 Confirm the script's automated steps (T-D.0–T-D.3: Mac build + package, `scp`, remote extract + `docker load` + `up -d`, clean log smoke-check) all passed, and that `data`/`logs`/`shared/active_env.json` on the box are unchanged from before the deploy
 - [ ] T031 [US6] 👤 **MANUAL APPROVAL GATE**: send a real WhatsApp message to the bot, confirm a DeniDin response reflecting the new code arrives (T-D.4/SC6 — intentionally manual, see `acceptance-tests.md`)
 
@@ -226,7 +234,7 @@ research.md's sshfs decision entry for the full story.
 
 - [x] T039 Once the laptop's Windows edition is confirmed (Settings → About), apply the matching Windows-Update mitigation per `quickstart.md` §6 / `research.md`'s deferred decision — done 2026-08-03: confirmed Windows 11 Home (SKU 101) via `Get-CimInstance Win32_OperatingSystem`; applied active-hours widening (06:00-23:00) and feature/quality-update deferral (365/4 days) via registry over SSH, no GUI needed; both confirmed applied via read-back
 - [x] T040 👤 **MANUAL APPROVAL GATE — one-time cutover, not repeatable**: on the *previous* production host (a different machine/clone this session cannot and must not touch — see spec.md FR7), confirm `scripts/killall_containers.sh` has been run and `prod` is stopped there, before or immediately after first starting `prod` on the Windows box — confirmed by operator 2026-08-03: no prod running on this (previous host) laptop. Note: this closes the "old host is stopped" half of the cutover; the "new host has prod running" half still depends on T014 (blocked on real creds)
-- [ ] T041 Update `CLAUDE.md` with a short pointer to this feature's `quickstart.md` as the Windows-hosted production runbook (deferred to the `/haleluya` "update docs" step per `plan.md`'s Phase 1 note — not done now)
+- [x] T041 Update `CLAUDE.md` with a short pointer to this feature's `quickstart.md` as the Windows-hosted production runbook — added 2026-08-03 in the "Environments (dev/prod)" section, right after the redeploy-on-merge note.
 
 **Checkpoint**: Feature complete. All of spec.md's Success Criteria (SC1–SC7) verified.
 

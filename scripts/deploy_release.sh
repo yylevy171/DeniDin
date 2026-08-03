@@ -10,13 +10,32 @@
 # CLAUDE.md's pre-existing "never start an environment without approval" rule - both gates apply
 # to every call.
 #
-# Usage: ./scripts/deploy_release.sh <app> <env> <version> [--artifacts-root <path>] [--verify-timeout <seconds>]
+# Usage: ./scripts/deploy_release.sh <app> <env> <version> [--artifacts-root <path>] [--verify-timeout <seconds>] [--remote-host <ssh-alias>] [--remote-deploy-dir <name>] [--local]
 #   <app>     : denidin-app | morning-mcp-app
 #   <env>     : dev | prod
 #   <version> : exact version already cut via scripts/cut_release.sh
-#   --artifacts-root  : optional override of the artifacts folder (test-only seam)
-#   --verify-timeout  : optional override of the verification timeout in seconds (default 30,
-#                       test-only seam)
+#   --artifacts-root    : optional override of the artifacts folder (test-only seam)
+#   --verify-timeout    : optional override of the verification timeout in seconds (default 30,
+#                         test-only seam)
+#   --remote-host       : SSH host alias for a remote `prod` target (Feature 035's Windows box).
+#                         Default: denidin-winprod. Ignored for `dev`.
+#   --remote-deploy-dir : deploy directory name on that box, relative to its own home. Default:
+#                         denidin-prod. Ignored for `dev`.
+#   --local             : force the old local-Docker path even for `env=prod` (test-only seam -
+#                         real `prod` calls should never pass this; see below for why).
+#
+# 2026-08-03 (Feature 035 reconciliation): `prod` for both apps now runs EXCLUSIVELY on a
+# dedicated Windows/WSL2 box, reached over SSH/Tailscale - never as a local host process on
+# whichever Mac clone happens to invoke this script (see CLAUDE.md's "Environments (dev/prod)").
+# So unless `--local` is passed, `env=prod` ships the SAME artifact `cut_release.sh` already
+# built (no rebuild - REQ-DEPLOY-001 still holds) to that box over SSH and runs `docker load`/
+# `docker compose up -d` THERE, not against a Mac-side remote Docker context: the box's own
+# `docker-compose.prod.local.yml` (a hand-created, sshfs-compatible data-volume override that
+# only exists on the box, see specs/035-windows-always-on-prod/) must be the one actually used
+# to resolve bind-mount paths - reusing this repo checkout's own docker-compose.prod.local.yml
+# (which doesn't even exist on most clones, since prod never ran locally on them) against a
+# remote context would resolve relative paths against the WRONG filesystem. `dev` is unaffected -
+# still a plain local deploy, exactly as before.
 #
 # See specs/in-progress/034-versioning-release-mgmt/contracts/deploy_release_cli.md for the full
 # contract (preconditions, side effects, exit codes, why this never rebuilds from source).
@@ -30,9 +49,14 @@ cd "$REPO_ROOT"
 DEFAULT_ARTIFACTS_ROOT="/Users/yaron/Projects/DeniDin/artifacts"
 DEFAULT_VERIFY_TIMEOUT=30
 VERIFY_POLL_INTERVAL=2
+DEFAULT_REMOTE_HOST="denidin-winprod"
+DEFAULT_REMOTE_DEPLOY_DIR="denidin-prod"
 
 ARTIFACTS_ROOT="$DEFAULT_ARTIFACTS_ROOT"
 VERIFY_TIMEOUT="$DEFAULT_VERIFY_TIMEOUT"
+REMOTE_HOST="$DEFAULT_REMOTE_HOST"
+REMOTE_DEPLOY_DIR="$DEFAULT_REMOTE_DEPLOY_DIR"
+FORCE_LOCAL=0
 
 POSITIONAL=()
 while [ $# -gt 0 ]; do
@@ -44,6 +68,18 @@ while [ $# -gt 0 ]; do
         --verify-timeout)
             VERIFY_TIMEOUT="$2"
             shift 2
+            ;;
+        --remote-host)
+            REMOTE_HOST="$2"
+            shift 2
+            ;;
+        --remote-deploy-dir)
+            REMOTE_DEPLOY_DIR="$2"
+            shift 2
+            ;;
+        --local)
+            FORCE_LOCAL=1
+            shift
             ;;
         *)
             POSITIONAL+=("$1")
@@ -118,6 +154,133 @@ if [ -z "$PROJECT_NAME" ]; then
     exit 1
 fi
 
+# --- Remote path: env=prod ships to Feature 035's Windows box over SSH, unless --local forces
+#     the old same-machine behavior (test-only seam - see the big comment at the top of this
+#     file for why prod can't just reuse this repo checkout's local compose files). ---
+REMOTE=0
+if [ "$ENV" == "prod" ] && [ "$FORCE_LOCAL" -ne 1 ]; then
+    REMOTE=1
+fi
+
+if [ "$REMOTE" -eq 1 ]; then
+    WSL_SSH_HELPER="$REPO_ROOT/scripts/windows_prod/_wsl_ssh.sh"
+    if [ ! -f "$WSL_SSH_HELPER" ]; then
+        echo "Error: ${WSL_SSH_HELPER} not found - remote prod deploy needs Feature 035's SSH helper (pass --local to force a same-machine deploy instead)." >&2
+        exit 1
+    fi
+    # shellcheck source=/dev/null
+    source "$WSL_SSH_HELPER"
+    remote_run() { wsl_ssh_run "$REMOTE_HOST" "$@"; }
+
+    ARTIFACT_NAME="$(basename "$TAR_PATH")"
+
+    # Every step below is verified individually and fails LOUDLY, naming exactly which step
+    # failed, on which host, with the actual command output attached - "some step in this SSH
+    # session succeeded" is never good enough (2026-08-03, per-step verification requirement).
+
+    # Step R1: ship the artifact.
+    echo "== [R1/R6] Shipping ${ARTIFACT_NAME} to ${REMOTE_HOST}:~/${REMOTE_DEPLOY_DIR} (prod runs exclusively on the Windows box - Feature 035) =="
+    if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$TAR_PATH" "${REMOTE_HOST}:~/${ARTIFACT_NAME}"; then
+        echo "🚨 DEPLOY FAILED at step R1 (scp artifact -> ${REMOTE_HOST}): scp exited non-zero. Nothing on ${REMOTE_HOST} was touched." >&2
+        exit 1
+    fi
+
+    # Step R2: resolve the Windows-side home directory (SFTP's "~" != WSL bash's "~" - see
+    # header comment). Split from the load step so a wslpath/cmd.exe failure is never
+    # misreported as a docker load failure.
+    echo "== [R2/R6] Resolving Windows-side home directory on ${REMOTE_HOST} =="
+    WIN_HOME_OUTPUT="$(remote_run "wslpath -u \"\$(cmd.exe /c echo %USERPROFILE% | tr -d '\\r')\"" 2>&1)"
+    WIN_HOME="$(echo "$WIN_HOME_OUTPUT" | tail -1)"
+    if [ -z "$WIN_HOME" ]; then
+        echo "🚨 DEPLOY FAILED at step R2 (resolve WIN_HOME on ${REMOTE_HOST}): got empty output. Raw output was:" >&2
+        echo "$WIN_HOME_OUTPUT" >&2
+        exit 1
+    fi
+
+    # Step R3: load the artifact on the box - no rebuild, ever (REQ-DEPLOY-001).
+    echo "== [R3/R6] Loading ${ARTIFACT_NAME} into Docker on ${REMOTE_HOST} =="
+    LOAD_OUTPUT="$(remote_run "docker load -i \"${WIN_HOME}/${ARTIFACT_NAME}\"" 2>&1)"
+    LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
+    if [ -z "$LOADED_REF" ]; then
+        echo "🚨 DEPLOY FAILED at step R3 (docker load on ${REMOTE_HOST}): could not determine the loaded image reference. Raw output was:" >&2
+        echo "$LOAD_OUTPUT" >&2
+        exit 1
+    fi
+
+    # Step R4: clean up the shipped tarball off the box - separately checked so a failure here
+    # (disk full, permissions) is never silently swallowed by the load step's own success.
+    echo "== [R4/R6] Removing the shipped tarball from ${REMOTE_HOST} =="
+    if ! remote_run "rm \"${WIN_HOME}/${ARTIFACT_NAME}\""; then
+        echo "🚨 DEPLOY FAILED at step R4 (rm shipped tarball on ${REMOTE_HOST}): the image loaded fine (step R3), but cleanup failed - investigate disk/permissions on the box before retrying." >&2
+        exit 1
+    fi
+
+    # Step R5: retag + recreate, executed ON the box - never via a Mac-side remote Docker
+    # context against this checkout's local YAML (see top-of-file comment: the box's own
+    # docker-compose.prod.local.yml is the one that must apply).
+    COMPOSE_IMAGE="${PROJECT_NAME}-${SERVICE_NAME}:latest"
+    echo "== [R5/R6] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} on ${REMOTE_HOST} =="
+    if ! remote_run "docker tag ${LOADED_REF} ${COMPOSE_IMAGE}"; then
+        echo "🚨 DEPLOY FAILED at step R5 (docker tag on ${REMOTE_HOST})." >&2
+        exit 1
+    fi
+
+    REMOTE_COMPOSE="cd ~/${REMOTE_DEPLOY_DIR} && docker compose --project-directory . -f docker/docker-compose.prod.yml -f docker/docker-compose.prod.local.yml"
+    echo "== [R6/R6] Recreating ${SERVICE_NAME} on ${REMOTE_HOST} (docker compose up -d --no-build) =="
+    if ! remote_run "${REMOTE_COMPOSE} up -d --no-build ${SERVICE_NAME}"; then
+        echo "🚨 DEPLOY FAILED at step R6 (docker compose up -d on ${REMOTE_HOST})." >&2
+        exit 1
+    fi
+
+    CONTAINER_NAME="${PROJECT_NAME}-${SERVICE_NAME}-1"
+
+    # Step R7: confirm the container is actually running, not just that `up -d` exited 0 -
+    # compose can return success even if the container immediately crashed (restart policy is
+    # "no" repo-wide, so a crash shows as Exited, not a silent respawn-loop).
+    echo "== [R7/R7] Confirming ${CONTAINER_NAME} is running on ${REMOTE_HOST} =="
+    CONTAINER_STATUS="$(remote_run "docker inspect --format '{{.State.Status}}' ${CONTAINER_NAME}" 2>&1)"
+    if [ "$CONTAINER_STATUS" != "running" ]; then
+        echo "🚨 DEPLOY FAILED at step R7 (${CONTAINER_NAME} on ${REMOTE_HOST}): expected status 'running', got '${CONTAINER_STATUS}'." >&2
+        remote_run "docker logs ${CONTAINER_NAME} --tail 20" >&2 2>&1 || true
+        exit 1
+    fi
+
+    # Final verification (REQ-DEPLOY-002): a started-but-unverified container is not a success.
+    # Checked over the same kind of SSH round-trip verify_windows_prod.sh already uses.
+    echo "== Final check: polling ${APP}'s health/version endpoint on ${REMOTE_HOST} until it reports v${VERSION} =="
+    VERIFIED=0
+    ELAPSED=0
+    while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
+        if [ "$APP" == "morning-mcp-app" ]; then
+            HEALTH_JSON="$(remote_run "cd ~/${REMOTE_DEPLOY_DIR} && PORT=\$(docker compose -f docker/docker-compose.prod.yml port ${SERVICE_NAME} 8000 | cut -d: -f2) && curl -sf http://127.0.0.1:\$PORT/health" 2>/dev/null || echo "")"
+            HEALTH_VERSION="$(echo "$HEALTH_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))" 2>/dev/null || echo "")"
+            if [ "$HEALTH_VERSION" == "$VERSION" ]; then
+                VERIFIED=1
+                break
+            fi
+        else
+            if remote_run "docker logs ${CONTAINER_NAME} --tail 20" 2>&1 | grep -q "\[v${VERSION}\]"; then
+                VERIFIED=1
+                break
+            fi
+        fi
+        sleep "$VERIFY_POLL_INTERVAL"
+        ELAPSED=$((ELAPSED + VERIFY_POLL_INTERVAL))
+    done
+
+    if [ "$VERIFIED" -ne 1 ]; then
+        echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} on ${REMOTE_HOST} within ${VERIFY_TIMEOUT}s (container is running - step R7 passed - but never reported the right version)." >&2
+        echo "Last observed container state:" >&2
+        remote_run "docker logs ${CONTAINER_NAME} --tail 20" >&2 2>&1 || true
+        exit 1
+    fi
+
+    echo "✅ Deployed and verified: ${APP} v${VERSION} is live in ${ENV} (${REMOTE_HOST})."
+    exit 0
+fi
+
+# --- Local path (env=dev always; env=prod only with --local) ---
+
 # Cross-clone env lock + mandatory per-clone local-override file (CLAUDE.md's "Multi-clone
 # lock"/"dev/prod data is also a singleton across clones" sections - the same 2026-07-30
 # incident run_denidin.sh guards against). Only applies in a real repo checkout (scratch/test
@@ -133,23 +296,32 @@ if [ -f "$SCRIPT_DIR/env_lock.sh" ]; then
 fi
 
 # --- Side effects (in order) ---
+#
+# Every step below is verified individually and fails LOUDLY, naming exactly which step failed
+# with the actual command output attached (2026-08-03, per-step verification requirement) -
+# matching the same discipline as the remote/prod path above.
 
-# 1. Load the artifact - no rebuild, ever, for any of the 3 shapes (REQ-DEPLOY-001). Capture the
-#    ACTUAL loaded image reference from docker load's own output rather than assuming it matches
-#    <app>:<version> - a tarball's embedded tag always wins over its filename on disk.
-LOAD_OUTPUT="$(docker load -i "$TAR_PATH")"
+# Step L1: load the artifact - no rebuild, ever, for any of the 3 shapes (REQ-DEPLOY-001).
+# Capture the ACTUAL loaded image reference from docker load's own output rather than assuming
+# it matches <app>:<version> - a tarball's embedded tag always wins over its filename on disk.
+echo "== [L1/L4] Loading ${TAR_PATH} into Docker (local) =="
+LOAD_OUTPUT="$(docker load -i "$TAR_PATH" 2>&1)"
 LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
 if [ -z "$LOADED_REF" ]; then
-    echo "Error: could not determine the image docker load just produced. Output was:" >&2
+    echo "🚨 DEPLOY FAILED at step L1 (docker load, local): could not determine the loaded image reference. Raw output was:" >&2
     echo "$LOAD_OUTPUT" >&2
     exit 1
 fi
 
-# 2. Retag it to whatever docker-compose expects for this service, then recreate the container
-#    from it without rebuilding - this is what preserves the environment's existing volume
-#    mounts (config/logs/data) instead of a bare `docker run` silently missing them.
+# Step L2: retag it to whatever docker-compose expects for this service - this is what
+# preserves the environment's existing volume mounts (config/logs/data) instead of a bare
+# `docker run` silently missing them.
 COMPOSE_IMAGE="${PROJECT_NAME}-${SERVICE_NAME}:latest"
-docker tag "$LOADED_REF" "$COMPOSE_IMAGE"
+echo "== [L2/L4] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} (local) =="
+if ! docker tag "$LOADED_REF" "$COMPOSE_IMAGE"; then
+    echo "🚨 DEPLOY FAILED at step L2 (docker tag, local)." >&2
+    exit 1
+fi
 
 # Declare intent in the shared active-env file BEFORE starting, same as run_denidin.sh - only
 # in a real repo checkout (see the env_lock.sh presence check above).
@@ -157,13 +329,28 @@ if [ -f "$SCRIPT_DIR/env_lock.sh" ]; then
     env_lock_acquire "$ENV"
 fi
 
-docker compose "${COMPOSE_ARGS[@]}" up -d --no-build "$SERVICE_NAME"
+echo "== [L3/L4] Recreating ${SERVICE_NAME} (local, docker compose up -d --no-build) =="
+if ! docker compose "${COMPOSE_ARGS[@]}" up -d --no-build "$SERVICE_NAME"; then
+    echo "🚨 DEPLOY FAILED at step L3 (docker compose up -d, local)." >&2
+    exit 1
+fi
 
 CONTAINER_NAME="${PROJECT_NAME}-${SERVICE_NAME}-1"
 
-# 3. Automatically verify (REQ-DEPLOY-002) - block until confirmed or timeout. A container that
-#    merely started, without this passing, is a FAILED deploy, not a success.
-echo "Verifying ${APP} v${VERSION} is live in ${ENV}..."
+# Step L4: confirm the container is actually running, not just that `up -d` exited 0 - compose
+# can return success even if the container immediately crashed (restart policy is "no"
+# repo-wide, so a crash shows as Exited, not a silent respawn-loop).
+echo "== [L4/L4] Confirming ${CONTAINER_NAME} is running (local) =="
+CONTAINER_STATUS="$(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME" 2>&1)"
+if [ "$CONTAINER_STATUS" != "running" ]; then
+    echo "🚨 DEPLOY FAILED at step L4 (${CONTAINER_NAME}, local): expected status 'running', got '${CONTAINER_STATUS}'." >&2
+    docker logs "$CONTAINER_NAME" --tail 20 >&2 2>&1 || true
+    exit 1
+fi
+
+# Final verification (REQ-DEPLOY-002) - block until confirmed or timeout. A container that
+# merely started, without this passing, is a FAILED deploy, not a success.
+echo "== Final check: polling ${APP}'s health/version endpoint (local) until it reports v${VERSION} =="
 VERIFIED=0
 ELAPSED=0
 while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
@@ -189,10 +376,10 @@ while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
 done
 
 if [ "$VERIFIED" -ne 1 ]; then
-    echo "Error: deploy verification FAILED - ${APP} v${VERSION} not confirmed live in ${ENV} within ${VERIFY_TIMEOUT}s." >&2
+    echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} within ${VERIFY_TIMEOUT}s (container is running - step L4 passed - but never reported the right version)." >&2
     echo "Last observed container state:" >&2
     docker logs "$CONTAINER_NAME" --tail 20 >&2 2>&1 || true
     exit 1
 fi
 
-echo "Deployed and verified: ${APP} v${VERSION} is live in ${ENV}."
+echo "✅ Deployed and verified: ${APP} v${VERSION} is live in ${ENV}."
