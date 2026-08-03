@@ -189,12 +189,25 @@ class DeniDin:
     def shutdown(self):
         """
         Gracefully shutdown the app context.
-        Stops cleanup thread if running.
+        Stops cleanup thread if running, and releases the ChromaDB client's
+        reference to its underlying System (refcounted - only actually stops
+        the System, and only then, when this was the last live client for its
+        storage path; safe alongside other still-open clients on the same
+        path). Not releasing this left ChromaDB's per-process System cache
+        (chromadb.api.client.SharedSystemClient) holding a stale, now-invalid
+        connection whenever something deleted and recreated the storage
+        directory on disk without going through this method first - a real,
+        billed-test failure (2026-08-03, "attempt to write a readonly
+        database") traced to exactly that gap.
         """
         if self.cleanup_thread:
             self._logger.info("Stopping session cleanup thread...")
             self.cleanup_thread.stop()
             self._logger.info("Cleanup thread stopped")
+        if self.memory_manager is not None:
+            self._logger.info("Closing ChromaDB client...")
+            self.memory_manager.client.close()
+            self._logger.info("ChromaDB client closed")
 
 def _handle_not_initialized_error(notification: Notification, message_type: str) -> None:
     """

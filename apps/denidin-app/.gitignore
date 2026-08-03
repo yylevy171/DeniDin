@@ -56,6 +56,10 @@ dev_data/
 .coverage
 htmlcov/
 
+# Ephemeral session test-run logs - not project docs, shouldn't be tracked
+TEST_RUN_LOG.md
+UNIT_INTEGRATION_TEST_LOG.md
+
 # OS
 .DS_Store
 Thumbs.db

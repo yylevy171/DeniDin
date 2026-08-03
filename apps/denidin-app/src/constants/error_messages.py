@@ -15,3 +15,10 @@ FAILED_TO_PROCESS_FILE_DEFAULT = "לא הצלחתי לעבד את הקובץ ה�
 
 # Contact card (vCard) errors - Feature 030
 CONTACT_CARD_ONE_AT_A_TIME = "אני יכול לטפל באיש קשר אחד בכל פעם. אנא שתף אותם אחד אחד."
+
+# Approval-resolution safety (2026-08-03) - an approved document-creating
+# action (Feature 022) must execute exactly once. An OpenAI-side 429 retry on
+# the approval-resolution call was observed to re-execute the already-
+# approved MCP tool server-side, creating two invoices for one approval.
+APPROVAL_FAILED_TRY_AGAIN = "לא הצלחתי לבצע את הפעולה כרגע. אנא נסה לאשר שוב בעוד רגע."
+APPROVAL_POSSIBLY_DUPLICATED = "אירעה שגיאה באישור הפעולה וייתכן שהיא בוצעה יותר מפעם אחת. אנא בדוק ידנית במערכת לפני שתנסה שוב, ואל תאשר שוב בינתיים."

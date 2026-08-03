@@ -27,6 +27,7 @@ from src.managers.user_manager import UserManager
 from src.managers.pending_approval_manager import PendingApprovalManager, PendingApproval
 from src.models.user import Role
 from src.handlers.morning_mcp_locator import MorningMcpLocator
+from src.constants.error_messages import APPROVAL_FAILED_TRY_AGAIN, APPROVAL_POSSIBLY_DUPLICATED
 
 logger = get_logger(__name__)
 
@@ -1516,7 +1517,14 @@ class AIHandler:
         logger.info(f"[022] _call_openai_approval_api: approve={approve}, kwargs={kwargs!r}")
         # See _call_openai_api's comment: dynamically-built kwargs never match a
         # single create() overload.
-        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        # max_retries=0: this call resolves an approval that, if approve=True,
+        # executes a real document-creating MCP tool server-side (Feature
+        # 022) - a real, billed incident (2026-08-03) showed the SDK's
+        # default auto-retry-on-429 re-executing that already-approved tool
+        # call a second time (two invoices created from one approval). A
+        # failed attempt here must surface as a clean error to the caller,
+        # never retry itself.
+        response = self.client.with_options(max_retries=0).responses.create(**kwargs)  # type: ignore[call-overload]
         logger.info(
             f"[022] _call_openai_approval_api response: id={getattr(response, 'id', None)!r}, "
             f"output item types={[getattr(i, 'type', None) for i in (response.output or [])]!r}, "
@@ -1547,7 +1555,62 @@ class AIHandler:
         )
 
         if is_affirmative:
-            response = self._call_openai_approval_api(request, pending, approve=True, tools=tools)
+            try:
+                response = self._call_openai_approval_api(request, pending, approve=True, tools=tools)
+            except (APITimeoutError, RateLimitError, APIError) as e:
+                # No auto-retry on this call (see _call_openai_approval_api) -
+                # a failure here means the approved action was NOT retried by
+                # us, so it's a clean single-attempt failure, not a
+                # duplication risk. Leave the pending approval in place so
+                # the user's next "כן" is a fresh, single attempt.
+                logger.error(
+                    f"[022] Approval-resolution call failed for chat={effective_chat_id!r}, "
+                    f"tool={pending.tool_name!r}, approval_request_id={pending.approval_request_id!r}: {e}",
+                    exc_info=True
+                )
+                return self._create_fallback_response(request.request_id, APPROVAL_FAILED_TRY_AGAIN)
+
+            executed_calls = [
+                item for item in (response.output or [])
+                if getattr(item, "type", None) == "mcp_call"
+            ]
+            # Count executions of the APPROVED tool specifically, not the
+            # total mcp_call count - a single approval can legitimately
+            # produce more than one mcp_call in the same response (e.g.
+            # create_invoice followed by a natural download_invoice_pdf
+            # follow-up, since the constitution requires every create_invoice
+            # confirmation to include a download link unprompted). Counting
+            # all mcp_calls as "duplication" wrongly flagged exactly that
+            # legitimate 2-step sequence as a false positive (2026-08-03).
+            # The real risk is the approved tool itself running more than
+            # once - that's what must never happen.
+            approved_tool_executions = [
+                c for c in executed_calls if getattr(c, "name", None) == pending.tool_name
+            ]
+            if len(approved_tool_executions) > 1:
+                # The approved action must never execute more than once.
+                # Real, billed incidents (2026-08-03, at least twice, WITH
+                # client-side retry already disabled the second time - see
+                # _call_openai_approval_api) show this isn't only caused by
+                # our own SDK retrying: something on OpenAI's/the remote MCP
+                # round-trip's side can dispatch the already-approved tool
+                # call more than once. By the time we see this response, any
+                # real-world side effect (e.g. a Morning document) from EVERY
+                # one of these calls has already happened server-side - nothing
+                # here can undo it. This can never be silently treated as a
+                # success, identical arguments or not: a document-creating
+                # action executing twice is a real compliance problem, not
+                # just a reporting inconvenience.
+                logger.error(
+                    f"[022] DUPLICATE EXECUTION DETECTED: approval resolution for "
+                    f"chat={effective_chat_id!r}, tool={pending.tool_name!r}, "
+                    f"approval_request_id={pending.approval_request_id!r} produced "
+                    f"{len(approved_tool_executions)} executions of the approved tool "
+                    f"in one response (expected exactly 1). All mcp_calls: {executed_calls!r}"
+                )
+                self.pending_approval_manager.clear(effective_chat_id)
+                return self._create_fallback_response(request.request_id, APPROVAL_POSSIBLY_DUPLICATED)
+
             self.pending_approval_manager.clear(effective_chat_id)
             logger.info(f"[022] Approved and cleared pending for chat={effective_chat_id!r}")
             return self._finalize_response(

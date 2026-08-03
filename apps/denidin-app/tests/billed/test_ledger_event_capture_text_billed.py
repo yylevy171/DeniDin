@@ -236,35 +236,61 @@ class TestLedgerEventCaptureTextBilled:
             }
         })
 
-        logger.info("GIVEN the real, unmodified גיליאן דוידיאן 3-stage message")
-        handle_text_message(notification)
-        logger.info("WHEN DeniDin processes it")
+        # This test's message_timestamp is fixed (1770000500), not real
+        # wall-clock time - so it always targets the exact same
+        # letter+DDMMYY+HHMM event_id prefix on every run.
+        # LedgerEventManager._next_seq picks the next free seq digit by
+        # scanning REAL FILES already on disk under storage_dir for that
+        # prefix (REQ-ID-002), which is never cleaned between test runs -
+        # without cleanup here, a second run of this exact test continues an
+        # earlier run's sequence (e.g. [3,4,5]) instead of the fresh [0,1,2]
+        # this test asserts (a real, order-independent failure, 2026-08-03 -
+        # surfaced simply by running the billed suite more than once against
+        # the same test_data/, no test reordering needed to trigger it).
+        # Clean before AND after: before, so a leftover run doesn't shift our
+        # own sequence; after, so this test never leaves stale state for its
+        # own next run either.
+        fixed_local_dt = datetime.fromtimestamp(1770000500, tz=timezone.utc).astimezone(ZoneInfo("Asia/Jerusalem"))
+        stale_prefix = f"A{fixed_local_dt.strftime('%d%m%y')}{fixed_local_dt.strftime('%H%M')}"
 
-        response = get_response(notification)
-        assert_response_exists(response)
+        def _clean_stale_events():
+            for stale_file in Path(denidin_app.ai_handler.ledger_event_manager.storage_dir).glob(f"{stale_prefix}*.json"):
+                stale_file.unlink()
 
-        events = self._assert_ledger_events_persisted(
-            denidin_app, chat_id, expected_count=3, expected_event_timestamp=1770000500
-        )
-        logger.info(f"THEN captured {len(events)} events (persisted): {events}")
+        _clean_stale_events()
 
-        amounts = sorted(e.get("amount") for e in events)
-        assert amounts == [8000, 20000, 30000], (
-            f"Expected 3 separate components with amounts 8000/20000/30000, got "
-            f"{amounts} - if this fails, the model did not split the message per "
-            f"component (see spec.md 'Deferred to a follow-on feature')"
-        )
-        for e in events:
-            assert e["source_type"] == "הסכם"
-            assert e["client_name"] and "גיליאן" in e["client_name"]
-            self._assert_message_links_back_to_event(denidin_app, chat_id, e)
+        try:
+            logger.info("GIVEN the real, unmodified גיליאן דוידיאן 3-stage message")
+            handle_text_message(notification)
+            logger.info("WHEN DeniDin processes it")
 
-        # each component's event_id must share the same letter+DDMMYY+HHMM prefix,
-        # with sequential seq (0,1,2), never colliding
-        prefixes = {e["event_id"][:-1] for e in events}
-        assert len(prefixes) == 1, f"expected all 3 to share one letter+minute prefix, got {prefixes}"
-        seqs = sorted(int(e["event_id"][-1]) for e in events)
-        assert seqs == [0, 1, 2]
+            response = get_response(notification)
+            assert_response_exists(response)
+
+            events = self._assert_ledger_events_persisted(
+                denidin_app, chat_id, expected_count=3, expected_event_timestamp=1770000500
+            )
+            logger.info(f"THEN captured {len(events)} events (persisted): {events}")
+
+            amounts = sorted(e.get("amount") for e in events)
+            assert amounts == [8000, 20000, 30000], (
+                f"Expected 3 separate components with amounts 8000/20000/30000, got "
+                f"{amounts} - if this fails, the model did not split the message per "
+                f"component (see spec.md 'Deferred to a follow-on feature')"
+            )
+            for e in events:
+                assert e["source_type"] == "הסכם"
+                assert e["client_name"] and "גיליאן" in e["client_name"]
+                self._assert_message_links_back_to_event(denidin_app, chat_id, e)
+
+            # each component's event_id must share the same letter+DDMMYY+HHMM prefix,
+            # with sequential seq (0,1,2), never colliding
+            prefixes = {e["event_id"][:-1] for e in events}
+            assert len(prefixes) == 1, f"expected all 3 to share one letter+minute prefix, got {prefixes}"
+            seqs = sorted(int(e["event_id"][-1]) for e in events)
+            assert seqs == [0, 1, 2]
+        finally:
+            _clean_stale_events()
 
     # ------------------------------------------------------------------
     # DATA-MODEL CORRECTNESS FOR AGREEMENTS (Feature 033) - one real message per
