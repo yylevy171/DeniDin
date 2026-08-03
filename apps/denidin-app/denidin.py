@@ -8,10 +8,11 @@ import logging
 import os
 import sys
 import signal
-from whatsapp_chatbot_python import GreenAPIBot, Notification
+from whatsapp_chatbot_python import Notification
 from openai import OpenAI
 from src.models.config import AppConfiguration
 from src.utils.logger import get_logger
+from src.utils.green_api_bot import DeniDinGreenAPIBot
 from src.constants.error_messages import (
     APP_NOT_READY_RETRY_LATER,
     UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
@@ -74,7 +75,7 @@ def mask_api_key(key: str) -> str:
 
 
 # Initialize Green API client
-bot = GreenAPIBot(
+bot = DeniDinGreenAPIBot(
     config.green_api_instance_id,
     config.green_api_token
 )
