@@ -78,7 +78,6 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 |---|-------|----------|--------|--------|
 | 013 | Client Name Garbling and Unrequested Date Narrowing | - | Open (documentation only) | - |
 | 014 | list_invoices Only Returns One of Many | - | Open (documentation only) | - |
-| 020 | GreenAPIBot Crashes on Empty Notification Response | P0 | Fixed, verified against real dev instance; awaiting real prod deploy verification | bugfix/020-green-api-empty-notification-response-crash |
 
 ## Obsolete Bugfixes (`specs/obsolete/bugfixes/`)
 
@@ -101,6 +100,7 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 | 010 | RBAC Phone/JID Mismatch | - | 2026-07-20 | #107 |
 | 011 | AI Declines Analytical Invoice Query | - | 2026-07-20 | #109 |
 | 012 | Financial Summary Drops Non-Allowlisted Invoice Types | - | 2026-07-21 | #111 |
+| 020 | GreenAPIBot Crashes on Empty Notification Response | P0 | 2026-08-03 | #163 |
 
 ---
 
