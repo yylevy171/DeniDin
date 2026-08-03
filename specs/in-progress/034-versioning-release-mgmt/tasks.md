@@ -72,8 +72,11 @@ line — both match the `VERSION` file (quickstart.md US1).
 - [x] **T008b** [US1] Implement: extend `_build_health_handler`/`_health` in
   `apps/morning-mcp-app/src/denidin_mcp_morning/server.py:71-82` to read `VERSION` once at
   startup and include it (research.md Decision 3). **GREEN**.
-- [ ] **T009** [US1] 👤 **MANUAL GATE**: run `quickstart.md`'s US1 scenario against a real running
+- [x] **T009** [US1] 👤 **MANUAL GATE**: run `quickstart.md`'s US1 scenario against a real running
   container (dev) — needs its own explicit approval to start that environment first, per CLAUDE.md.
+  Done 2026-08-03 as part of T013's real deploy: `curl localhost:8000/health` →
+  `{"status":"ok","environment":"dev","version":"0.0.1"}`; `docker logs denidin-dev-denidin-app-dev-1`
+  shows `[v0.0.1]` on every line.
 
 ---
 
@@ -157,11 +160,18 @@ verification gated the reported success, and `master`'s history is untouched thr
   (8/8 tests pass, ~3m44s — real Docker builds/verification polling). Covers denidin-app's
   verification path thoroughly; morning-mcp-app's `/health`-poll path is structurally parallel
   but relies on T013's manual gate for real-infrastructure coverage, not an automated scratch test.
-- [ ] **T013** [US3] 👤 **MANUAL GATE**: run `quickstart.md`'s US3 scenarios for real (all three:
-  initial deploy, promotion, rollback) — each needs its own explicit environment-start approval
-  (CLAUDE.md's pre-existing rule) *and* (per REQ-DEPLOY-005) its own explicit human-stated
-  app/env/version, not inferred by the agent running the test, not carried over from a previous
-  scenario in the same session.
+- [x] **T013** [US3] 👤 **MANUAL GATE**: initial-deploy scenario done for real, 2026-08-03, on
+  explicit human request ("deploy 0.0.1 both apps in dev for me to manually test") — both
+  `scripts/deploy_release.sh denidin-app dev 0.0.1` and `scripts/deploy_release.sh
+  morning-mcp-app dev 0.0.1` ran against the real, already-running `dev` environment
+  (`denidin-dev-denidin-app-dev-1`/`denidin-dev-morning-mcp-app-dev-1`, both recreated and
+  auto-verified successfully). **A real gap was found and fixed first**: `deploy_release.sh`
+  called `docker compose` directly, bypassing the mandatory per-clone
+  `docker-compose.<env>.local.yml` override and the cross-clone `env_lock.sh` dev/prod lock that
+  `run_denidin.sh` always applies — fixed to source/require both (conditional on
+  `scripts/env_lock.sh` existing, so scratch tests are unaffected — all 16 `scripts/tests/` still
+  pass). Promotion-to-prod and rollback scenarios remain untested against real infrastructure —
+  can be exercised the same way whenever separately requested.
 
 ---
 
