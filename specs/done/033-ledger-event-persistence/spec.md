@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/033-ledger-event-persistence`
 **Created**: 2026-07-29
-**Status**: Draft
+**Status**: Done - Merged to master (PR #174)
 **Input**: User description: "ledger events need to be persisted in their own folder in
 the data - outside the sessions, next to memory and media storages"
 
