@@ -100,6 +100,7 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 | 010 | RBAC Phone/JID Mismatch | - | 2026-07-20 | #107 |
 | 011 | AI Declines Analytical Invoice Query | - | 2026-07-20 | #109 |
 | 012 | Financial Summary Drops Non-Allowlisted Invoice Types | - | 2026-07-21 | #111 |
+| 020 | GreenAPIBot Crashes on Empty Notification Response | P0 | 2026-08-03 | #163 |
 
 ---
 
