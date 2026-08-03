@@ -31,7 +31,7 @@
 # built (no rebuild - REQ-DEPLOY-001 still holds) to that box over SSH and runs `docker load`/
 # `docker compose up -d` THERE, not against a Mac-side remote Docker context: the box's own
 # `docker-compose.prod.local.yml` (a hand-created, sshfs-compatible data-volume override that
-# only exists on the box, see specs/035-windows-always-on-prod/) must be the one actually used
+# only exists on the box, see specs/done/035-windows-always-on-prod/) must be the one actually used
 # to resolve bind-mount paths - reusing this repo checkout's own docker-compose.prod.local.yml
 # (which doesn't even exist on most clones, since prod never ran locally on them) against a
 # remote context would resolve relative paths against the WRONG filesystem. `dev` is unaffected -
