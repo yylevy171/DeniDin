@@ -7,6 +7,14 @@ description: "Task list for 035-windows-always-on-prod"
 **Input**: Design documents from `specs/035-windows-always-on-prod/`
 **Prerequisites**: plan.md, spec.md, research.md, quickstart.md, acceptance-tests.md (all present; `data-model.md`/`contracts/` N/A per plan.md)
 
+**🚨 Retirement note (2026-08-03)**: `scripts/windows_prod/build_and_package.sh` and
+`deploy_and_verify.sh`, authored in Phase 1 below (T003a/T003b) and referenced throughout this
+file, are **retired** — deleted, superseded by `scripts/cut_release.sh`/`scripts/deploy_release.sh`
+(Feature 034), which now support deploying to this box remotely over SSH without ever rebuilding
+from source (see `quickstart.md` §9 for the current flow). Completed tasks below that reference
+the old scripts are left as an accurate historical record of what was actually done at the time;
+only the still-open task referencing them (T029) has been updated to the current mechanism.
+
 ---
 
 **How this deviates from the generic TDD (Task-a/Task-b) template, and why**:
@@ -164,7 +172,7 @@ on the Mac, run `deploy_and_verify.sh`, then send a WhatsApp message
 exercising it.
 
 - [ ] T028 [US6] 👤 Merge a small, observable test change to `master` (or use the next real change when one lands), then `git pull` it on the Mac
-- [ ] T029 [US6] Run `scripts/windows_prod/deploy_and_verify.sh denidin-winprod` from the Mac
+- [ ] T029 [US6] **2026-08-03 update**: Run `scripts/cut_release.sh <app> <version> --summary "<text>"` then `scripts/deploy_release.sh <app> prod <version>` from the Mac, for each app (retired `deploy_and_verify.sh` no longer exists)
 - [ ] T030 [US6] 👤 Confirm the script's automated steps (T-D.0–T-D.3: Mac build + package, `scp`, remote extract + `docker load` + `up -d`, clean log smoke-check) all passed, and that `data`/`logs`/`shared/active_env.json` on the box are unchanged from before the deploy
 - [ ] T031 [US6] 👤 **MANUAL APPROVAL GATE**: send a real WhatsApp message to the bot, confirm a DeniDin response reflecting the new code arrives (T-D.4/SC6 — intentionally manual, see `acceptance-tests.md`)
 
