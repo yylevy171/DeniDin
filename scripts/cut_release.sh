@@ -149,8 +149,14 @@ echo "$VERSION" > "${APP_DIR}/VERSION"
 } >> "${APP_DIR}/RELEASES.md"
 
 # 4. Build the image - BEFORE any commit (see note above)
+#    Pinned to linux/amd64 (2026-08-03, Feature 035 reconciliation): this is what makes "build
+#    once, deploy anywhere" true - prod runs exclusively on a Windows/WSL2 box (native amd64,
+#    Feature 035) while dev runs locally: on an amd64 Docker host (e.g. this repo's own Colima
+#    setups, several of which run their VM as x86_64) this is a native build; on an arm64 Mac
+#    host it runs under Docker's transparent QEMU emulation. Either way, ONE artifact is correct
+#    for BOTH deploy targets - no per-environment rebuild, ever.
 set +e
-docker build -t "${APP}:${VERSION}" "${APP_DIR}" -q >/dev/null
+docker build --platform linux/amd64 -t "${APP}:${VERSION}" "${APP_DIR}" -q >/dev/null
 BUILD_STATUS=$?
 set -e
 if [ "$BUILD_STATUS" -ne 0 ]; then

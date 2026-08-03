@@ -58,7 +58,10 @@ Anything other than `y`/`yes` → abort, exit 0 (not an error — a deliberate "
 3. Prepend a `RELEASES.md` section (data-model.md shape).
 4. `git add`/`git commit` those three file changes (one commit, message
    `"release: <app> v<version>"`).
-5. `docker build -t <app>:<version> apps/<app>/`.
+5. `docker build --platform linux/amd64 -t <app>:<version> apps/<app>/` — pinned to `linux/amd64`
+   (2026-08-03, Feature 035 reconciliation) so the single artifact this produces is deployable to
+   *either* target: `dev` (local Docker) and `prod` (the Windows/WSL2 box, native `amd64` —
+   `specs/035-windows-always-on-prod/`), with no per-environment rebuild.
 6. `docker save <app>:<version> -o <artifacts-root>/<app>/<app>-v<version>.tar`.
 7. Write `<artifacts-root>/<app>/<app>-v<version>.json` manifest (data-model.md shape).
 8. `git tag <app>-v<version>` on the commit from step 4.

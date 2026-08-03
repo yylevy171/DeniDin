@@ -10,8 +10,20 @@ currently running in `<env>`. There is no separate "rollback script."
 ## Invocation
 
 ```
-scripts/deploy_release.sh <app> <env> <version>
+scripts/deploy_release.sh <app> <env> <version> [--remote-host <ssh-alias>] [--remote-deploy-dir <name>] [--local]
 ```
+
+**2026-08-03 update (Feature 035 reconciliation)**: `prod` for both apps now runs exclusively on
+a dedicated Windows/WSL2 box, reached over SSH (see `specs/035-windows-always-on-prod/`) — never
+as a local host process. So unless `--local` is passed (test-only seam), `env=prod` ships the
+same artifact `cut_release.sh` built (no rebuild, same guarantee as `dev`) to that box over SSH
+and runs `docker load`/`docker compose up -d` *there* — never via a Mac-side remote Docker
+context against this checkout's local compose YAML, since the box's own
+`docker-compose.prod.local.yml` (a hand-created, sshfs-compatible data-volume override that only
+exists on the box) must be the one that actually applies; reusing a local copy would resolve
+relative bind-mount paths against the wrong filesystem. `--remote-host` (default
+`denidin-winprod`) and `--remote-deploy-dir` (default `denidin-prod`) identify the box; `dev` is
+unaffected — still a plain local deploy.
 
 - `<app>`: literal `denidin-app` or `morning-mcp-app`. Any other value → usage error, exit 2.
 - `<env>`: literal `dev` or `prod`. Any other value → usage error, exit 2.
