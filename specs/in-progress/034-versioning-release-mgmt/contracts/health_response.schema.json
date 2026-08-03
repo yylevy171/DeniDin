@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "morning-mcp-app /health response (extended, Feature 034)",
+  "description": "REQ-VER-002: adds `version` to the existing status/environment response (server.py:76-82). Additive only - status/environment fields are unchanged.",
+  "type": "object",
+  "required": ["status", "environment", "version"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "const": "ok",
+      "description": "Unchanged from pre-Feature-034 behavior."
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["dev", "prod"],
+      "description": "Unchanged from pre-Feature-034 behavior."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(\\d+\\.\\d+\\.\\d+|unknown)$",
+      "description": "New in Feature 034. Sourced from apps/morning-mcp-app/VERSION at server startup (read once, not per-request - see research.md Decision 2/3). 'unknown' if VERSION is missing/malformed at startup."
+    }
+  }
+}
