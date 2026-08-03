@@ -89,3 +89,9 @@ apps/denidin-app/.denidin.pid
 creds/DeniDin Prod Creds*.txt
 /creds/DeniDin Dev Creds.txt
 creds/DeniDin Dev Creds*.txt
+
+# Windows always-on prod (035): build_and_package.sh output - built images
+# + non-secret runtime files, packaged for deploy. Never committed (large
+# binary blobs, and shouldn't be treated as source even though it never
+# actually contains secrets - see specs/035-windows-always-on-prod/).
+/artifacts/
