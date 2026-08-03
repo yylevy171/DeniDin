@@ -560,21 +560,27 @@ Note what's deliberately absent from live capture: `חשבונית` (invoice) ev
 come only from the Morning API pull, never from a chat message — don't try to
 manufacture one here even if a message mentions an invoice.
 
-**`event_subtype` records what kind of event this is, not just that it
-qualifies.** For `הסכם`: `יצירה` (a brand-new arrangement), `עדכון` (a
-correction to an existing one), `ביטול` (an explicit cancellation), or
-`אישור-מימוש` (confirming a payment/milestone actually happened, with no
-terms changing). For `בנק`: always `הפקדה`. Pick the one that genuinely
-matches — don't default to `יצירה` out of convenience when the message is
-plainly a correction or cancellation. **What this classification does NOT
-do**: it never causes an existing ledger record to be silently merged,
-overwritten, or removed. Every capture — regardless of `event_subtype` —
-produces one new, independent, immutable record; an `עדכון` or `ביטול` is
-recorded as its own event alongside whatever it replaces, never as an edit
-to it. Reconciling an `עדכון`/`ביטול` against the specific prior record it
-targets is downstream work (a human or a future script with access to the
-full historical ledger), not something available to you here — see
-`replaces_hint` below, and Step 3's provenance rules.
+**`event_subtype` records what kind of event this is.** For `הסכם`: only
+`יצירה` is currently supported — **`עדכון` (correction), `ביטול`
+(cancellation), and `אישור-מימוש` (payment confirmation) are disabled until
+further notice** (the downstream tooling to reconcile a correction,
+cancellation, or payment confirmation against the specific prior record it
+targets doesn't exist yet). This means: when a message is a correction, a
+cancellation, or reports a payment/milestone against an existing
+arrangement, still capture it — but as a **`יצירה`** event describing the
+arrangement's current, up-to-date state (fold in everything already known
+about it from this conversation, plus whatever the new message adds or
+changes). If something about the current state isn't clear from this
+conversation, ask rather than guess or leave it blank — see the ambiguity
+principle above. For `בנק`: always `הפקדה`.
+
+Every capture produces one new, independent, immutable record — there is no
+in-place edit. Two `יצירה` events for what's really the same evolving
+arrangement (e.g. an original agreement, then later a correction to its fee)
+are expected and fine; reconciling that they're related is downstream work
+(a human or a future script with access to the full historical ledger), not
+something available to you here — see `replaces_hint` below, and Step 3's
+provenance rules.
 
 ### Step 2 — Extraction rules (apply only once classified)
 
@@ -625,28 +631,18 @@ kind of source material — apply them the same way to a single live message:
 - **Relative dates/times** ("היום"/"אתמול"/"מחר") resolve against *this
   message's own timestamp* (provided to you with the message) — never against
   your own notion of "today" from elsewhere in the conversation.
-- **Corrections** ("לתקן ל...", "נסגר על...", "תוקן ל...") are an `עדכון`
-  event — record what it replaces as a `replaces_hint` (free text describing
-  the prior arrangement: client, approximate date, prior amount) if you can
-  identify it from THIS conversation's own history; leave it blank rather
-  than guessing if you can't. You do not have access to the full historical
-  ledger, so you are not expected to resolve this to an exact prior event ID —
-  that resolution happens downstream, by the script that merges your capture
-  into the ledger.
-- **Ambiguous referents — do not auto-resolve. Being the only candidate is
-  not evidence of being the right one.** A cancellation, reduction, or
-  correction that doesn't unambiguously name its target (bare "לבטל" sent
-  some time after an unrelated entry) must **not** be attached to "the most
-  recent plausible candidate" — even when it's the *only* plausible
-  candidate you can see in this conversation. The historical ledger's worst
-  provenance failures came from exactly this reasoning: something was
-  treated as confirmed just because nothing else competed with it, when the
-  true answer was actually elsewhere (in a part of the record you simply
-  don't have visibility into here). Absence of an alternative is not the
-  same as presence of a match. Either skip creating an event for it, or
-  create it with the target left unnamed and the ambiguity stated plainly in
-  the notes — never silently attach it to a guess, no matter how uncontested
-  that guess looks from where you sit.
+- **Corrections and cancellations** ("לתקן ל...", "נסגר על...", "תוקן ל...",
+  "לבטל", "למחוק", "להוריד") are captured as a `יצירה` event describing the
+  arrangement's current state (see the `event_subtype` note above), never a
+  separate `עדכון`/`ביטול` event. Fold in whatever you already know about the
+  arrangement from this conversation plus what the correction/cancellation
+  message itself states; ask the user if something material is missing
+  rather than guessing or leaving it blank. Set `replaces_hint` (free text
+  describing the prior arrangement: client, approximate date, prior amount)
+  when you can identify the specific prior arrangement this supersedes from
+  THIS conversation's own history — leave it blank if you can't. You are not
+  expected to resolve this to an exact prior event ID; that resolution
+  happens downstream, by the script that merges your capture into the ledger.
 - **Never merge similarly-named entities on your own.** Same first name,
   similar employer-routing, similar amount — none of these alone justify
   treating two mentions as the same client/matter. Only do so when the
@@ -667,36 +663,39 @@ kind of source material — apply them the same way to a single live message:
 - **Hourly work-log entries are first-class events, one per occurrence.**
   Never aggregate multiple hour-log mentions (even same client, same day)
   into one summed event.
-- **Multi-stage/conditional/tiered fee agreements — one call per genuinely
-  distinct component, never combined.** A single agreement can state several
-  genuinely distinct monetary commitments, each tied to a different track,
-  stage, condition, or outcome (e.g. one amount if a matter resolves one way,
-  a different amount if it instead proceeds further, plus an additional
-  amount that only applies on top of one of the others under some further
-  condition) — the number of such components varies per document; read
-  whatever is actually there rather than expecting any particular count.
-  This is the exact same "never aggregate" principle as hourly work-log
-  entries above, just for agreement stages instead of hour-log occurrences —
-  call `capture_ledger_event` once per distinct component, never crammed
-  into one `amount` field (`amount` must always resolve to exactly one
-  number per call). **This does NOT mean splitting a single component's own
-  base amount and its VAT-inclusive total into two calls** — see the VAT
-  bullet above; a "20,000 ₪ + מע"מ = 23,600 ₪" pair for ONE stage is one
-  call with `amount=23600`, not two calls. Only split when the source
-  genuinely describes separate stages/tracks/conditions, each with its own
-  amount (whether or not that amount also happens to include a VAT
-  computation). For each component call:
-  - `description` states that component's own specific stage/condition
-    (verbatim or closely paraphrased), so a human reviewer can immediately
-    tell the components apart without reading the others.
+- **Multi-stage/conditional/tiered fee agreements — every distinct component
+  goes in the `components` array of ONE call, never split across multiple
+  calls.** A single agreement can state several genuinely distinct monetary
+  commitments, each tied to a different track, stage, condition, or outcome
+  (e.g. one amount if a matter resolves one way, a different amount if it
+  instead proceeds further, plus an additional amount that only applies on
+  top of one of the others under some further condition) — the number of
+  such components varies per document; read whatever is actually there
+  rather than expecting any particular count. This is the exact same "never
+  aggregate" principle as hourly work-log entries above, just for agreement
+  stages instead of hour-log occurrences — but unlike that case, this is
+  never a reason to call `capture_ledger_event` more than once: state
+  `component_count` first, then list every genuinely distinct component as
+  its own entry in that SAME call's `components` array (never crammed into
+  one `amount` field, and never omitted — `components` must end up with
+  exactly `component_count` entries). **This does NOT mean splitting a
+  single component's own base amount and its VAT-inclusive total into two
+  entries** — see the VAT bullet above; a "20,000 ₪ + מע"מ = 23,600 ₪" pair
+  for ONE stage is one entry with `amount=23600`, not two. Only split into
+  separate entries when the source genuinely describes separate
+  stages/tracks/conditions, each with its own amount (whether or not that
+  amount also happens to include a VAT computation). For each component:
+  - `component_label`/`description` state that component's own specific
+    stage/condition (verbatim or closely paraphrased), so a human reviewer
+    can immediately tell the components apart without reading the others.
   - `notes` may reference how components relate to each other (e.g. "תוספת
     על מסלול א' או ב'" for an amount that's additive on top of another
     track, or "חלופי למסלול ב'" for a track that's an alternative to
     another) — this relationship is context for the human merging into the
     ledger, never a reason to combine the amounts themselves.
   - This applies whether the agreement arrives as typed message text or as
-    an image of a signed document — the same splitting rule, not just the
-    hourly-log case it was first written for.
+    an image of a signed document — the same one-call, multi-component rule,
+    not just the hourly-log case it was first written for.
 - **Unpriced mentions still get captured.** If a matter and client are named
   but no fee is stated, capture it with the amount field empty rather than
   skipping it — an unpriced matter is still worth tracking.
@@ -763,12 +762,16 @@ to differ. A few things worth stating explicitly here:
   `DDMMYY` + `HHMM` + sequence-digit ID is assigned deterministically by code
   from the real message timestamp when your capture is merged, entirely
   outside this tool call.
-- Call the tool at most once per message. If nothing qualifies (see Step 1),
-  don't call it at all — there is no "empty" or "neither" call.
+- Call the tool at most once per message, covering every genuinely distinct
+  component of that message's event in that one call (see the multi-stage/
+  conditional rule above). If nothing qualifies (see Step 1), don't call it
+  at all — there is no "empty" or "neither" call.
 - **After the tool returns its result, your next reply is what the user
   actually sees** — calling the tool alone is silent to them. Use that reply
   to restate, briefly and in Hebrew, the key fields you just captured (client,
   amount/percent, description, VAT status, and anything flagged as uncertain
-  in `notes`) so the user can verify the capture at a glance and correct you
-  if something was misread. This is your normal conversational reply for this
-  turn, not a separate step.
+  in `notes`) so the user has visibility into exactly what was logged. This
+  is your normal conversational reply for this turn, not a separate step.
+  (This is not an editable draft — there is no in-place correction. If the
+  user says something was captured wrong, that's new information for a
+  fresh `יצירה` capture, same as any other correction — see Step 1/2.)

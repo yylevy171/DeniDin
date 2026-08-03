@@ -469,7 +469,7 @@ Change `log_level` in `config/config.json` to switch between levels.
 **Solutions**:
 - Verify Green API credentials are correct in `config/config.json`
 - Check Green API instance status in dashboard (must be "authorized")
-- Test Green API connection: `python3 -m pytest tests/integration/test_real_api_connectivity.py -v`
+- Test Green API connection: `python3 -m pytest tests/billed/test_real_api_connectivity.py -m billed -v`
 - Review `logs/denidin.log` for polling errors
 - Check WhatsApp business account is logged in on phone
 
@@ -485,7 +485,7 @@ Change `log_level` in `config/config.json` to switch between levels.
 - Verify OpenAI API key is valid: check https://platform.openai.com/api-keys
 - Check OpenAI account has credits: https://platform.openai.com/account/billing
 - Review error logs for API quota/rate limit issues: `grep "OpenAI" logs/denidin.log`
-- Test OpenAI connection: `python3 -m pytest tests/integration/test_real_api_connectivity.py::TestRealOpenAPIConnectivity -v`
+- Test OpenAI connection: `python3 -m pytest tests/billed/test_real_api_connectivity.py::TestRealOpenAPIConnectivity -m billed -v`
 - Verify `ai_model` in config is available (e.g., "gpt-4o-mini", "gpt-3.5-turbo")
 - Check for network/firewall issues blocking api.openai.com
 

@@ -19,6 +19,15 @@ from openai import OpenAI
 
 from src.models.config import AppConfiguration
 
+# Feature 029 test tier: every test here makes a real, text-only network call
+# (Green API send/getStateInstance, or OpenAI's Responses API with plain-text
+# input - no vision/image/PDF/DOCX involved) -> billed, not expensive. Moved
+# out of tests/integration/ (2026-08-03): this file was unmarked, so it ran
+# unconditionally on every plain `pytest tests/` invocation despite hitting
+# real external APIs - confirmed via logs/test_logs/test_real_api_connectivity.log
+# showing real /v1/responses traffic going back to 2026-07-05.
+pytestmark = pytest.mark.billed
+
 
 class TestRealGreenAPIConnectivity:
     """Test real Green API connectivity - NO MOCKS."""

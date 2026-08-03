@@ -4,7 +4,7 @@
   "ai_api_key": "YOUR_OPENAI_API_KEY",
   "environment": "dev",
   "ai_model": "gpt-5.6-luna",
-  "ai_vision_model": "gpt-4o",
+  "ai_vision_model": "gpt-5.6-luna",
   "ai_embedding_model": "text-embedding-3-large",
   "ai_reply_max_tokens": 2500,
   "log_level": "DEBUG_for_dev_or_INFO_for_prod",

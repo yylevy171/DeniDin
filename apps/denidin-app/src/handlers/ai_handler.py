@@ -199,10 +199,18 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
             },
             "event_subtype": {
                 "type": "string",
-                "enum": ["יצירה", "עדכון", "ביטול", "אישור-מימוש", "הפקדה"],
+                # עדכון/ביטול/אישור-מימוש disabled until further notice (2026-08-03) -
+                # the downstream tooling to reconcile a correction/cancellation/payment-
+                # confirmation against a specific prior record doesn't exist yet. A
+                # correction, cancellation, or payment confirmation for an existing
+                # agreement is captured as a fresh יצירה describing the current state
+                # instead - see runtime_constitution.md's Ledger Event Recognition
+                # section. Restore these enum values here when that capability is built.
+                "enum": ["יצירה", "הפקדה"],
                 "description": (
-                    "For source_type=הסכם: יצירה (new)/עדכון (correction)/ביטול "
-                    "(cancellation)/אישור-מימוש (payment/milestone confirmed). "
+                    "For source_type=הסכם: always יצירה (a correction/cancellation/"
+                    "payment-confirmation for an existing arrangement is still captured "
+                    "as יצירה, describing the current state - see the constitution). "
                     "For source_type=בנק: always הפקדה. Applies to the whole call - "
                     "every component shares the same subtype."
                 ),
@@ -1393,12 +1401,15 @@ class AIHandler:
         no further round-trip (unlike `_call_openai_ledger_followup_api`) is needed.
 
         Returns a list of parsed `capture_ledger_event` arguments dicts - one per call
-        the model made this turn (REQ-CAPTURE-003: a single document/message can
-        genuinely warrant more than one, e.g. a multi-stage/conditional fee agreement -
-        found 2026-07-30 that this previously used the single-call
-        `extract_function_call`, silently dropping every component after the first).
-        Empty list if none were called (including when `text` is empty - nothing to
-        classify).
+        the model made this turn (REQ-CAPTURE-003: uses the plural `extract_all_
+        function_calls`, not the singular `extract_function_call`, as a defensive
+        measure for the now-rare case of genuinely multiple SEPARATE calls in one
+        turn - e.g. two unrelated clients/agreements mentioned in the same document -
+        so nothing after the first is silently dropped. A single agreement's own
+        multiple fee components are NOT split across separate calls like this - see
+        the `components` array on `LEDGER_EVENT_TOOL` itself; each call here is
+        expected to normally be either zero or one). Empty list if none were called
+        (including when `text` is empty - nothing to classify).
 
         (Added 2026-08-02, REQ-DATA-008): if any returned call `is_incomplete_capture`
         (empty `components` despite calling the tool, or a `component_count` mismatch -

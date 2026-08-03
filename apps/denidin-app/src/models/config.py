@@ -22,7 +22,10 @@ class AppConfiguration:
     # supposed to be exclusively active). 'dev', 'prod', or 'test'.
     environment: Optional[str] = None
     ai_model: str = 'gpt-5.6-luna'
-    ai_vision_model: str = 'gpt-4o'  # Vision model for image/document processing - not mini (Feature 024: gpt-4o-mini silently declined to call the ledger-event tool alongside extraction)
+    # Vision model for image/document processing - not a mini/lightweight variant
+    # (Feature 024: gpt-4o-mini silently declined to call the ledger-event tool
+    # alongside extraction).
+    ai_vision_model: str = 'gpt-5.6-luna'
     ai_embedding_model: str = 'text-embedding-3-large'  # Embedding model for long-term memory (ChromaDB)
     ai_reply_max_tokens: int = 1000
     log_level: str = 'INFO'
@@ -83,7 +86,7 @@ class AppConfiguration:
         defaults: Dict[str, Any] = {
             'environment': None,
             'ai_model': 'gpt-5.6-luna',
-            'ai_vision_model': 'gpt-4o',
+            'ai_vision_model': 'gpt-5.6-luna',
             'ai_embedding_model': 'text-embedding-3-large',
             'ai_reply_max_tokens': 1000,
             'log_level': 'INFO',

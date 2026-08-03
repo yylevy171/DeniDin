@@ -15,7 +15,7 @@ version of the code.
 Legend: PASS / FAIL / SKIP (marked `@pytest.mark.skip`, not run) / UNVERIFIED (never
 run since this file started, or invalidated by a later code change).
 
-## billed (48 tests)
+## billed (66 tests)
 
 | # | Test | Last Run | Result | Commit | Notes |
 |---|------|----------|--------|--------|-------|
@@ -67,40 +67,62 @@ run since this file started, or invalidated by a later code change).
 | 46 | test_ledger_event_capture_billed.py::TestLedgerEventCaptureBilled::test_given_ordinary_chatter_when_processed_then_no_ledger_event_captured | 2026-08-02 | PASS | 571f260 | |
 | 47 | test_session_transfer.py::test_session_transfer_and_recall_after_expiration | 2026-08-02 | PASS | 571f260 | Confirmed in its new billed/ location post-merge. |
 | 48 | test_simple_text_e2e.py::TestSimpleTextE2E::test_e2e_simple_text_message_hebrew | 2026-08-02 | PASS | 571f260 | Confirmed in its new billed/ location post-merge. |
+| 49 | test_ledger_event_capture_text_billed.py::TestLedgerEventCaptureTextBilled::test_given_real_gilyan_davidian_agreement_text_when_processed_then_captured_per_component | 2026-08-02 | PASS | 402bd1e | Moved 2026-08-03 from tests/expensive/test_ledger_event_capture_e2e.py (was misclassified `expensive` - plain textMessage, no vision). Content/behavior unchanged, only location/marker changed - unverified in new location, last real result carried over. |
+| 50 | test_ledger_event_capture_text_billed.py::TestLedgerEventCaptureTextBilled::test_given_new_agreement_flat_fee_then_all_fields_correctly_persisted | 2026-08-02 | PASS | 402bd1e | Moved 2026-08-03 from tests/expensive/ (see row 49 note). Unverified in new location. |
+| 51 | test_ledger_event_capture_text_billed.py::TestLedgerEventCaptureTextBilled::test_given_agreement_correction_then_replaced_placeholder_correct | 2026-08-02 | PASS | 402bd1e | Moved 2026-08-03 from tests/expensive/ (see row 49 note). Unverified in new location. |
+| 52 | test_ledger_event_capture_text_billed.py::TestLedgerEventCaptureTextBilled::test_given_agreement_cancellation_then_subtype_and_amount_correct | - | SKIP | - | `@pytest.mark.skip`, blocked on feature/032 (amount-sign decision). Moved 2026-08-03 from tests/expensive/ (see row 49 note). |
+| 53 | test_ledger_event_capture_text_billed.py::TestLedgerEventCaptureTextBilled::test_given_agreement_payment_confirmation_then_subtype_correct | 2026-08-02 | PASS | 402bd1e | Moved 2026-08-03 from tests/expensive/ (see row 49 note). Unverified in new location. |
+| 54 | test_ledger_event_capture_text_billed.py::TestLedgerEventCaptureTextBilled::test_given_agreement_percent_based_fee_then_percent_fields_correct | 2026-08-02 | PASS | 402bd1e | Moved 2026-08-03 from tests/expensive/ (see row 49 note). Unverified in new location. |
+| 55 | test_ledger_event_capture_text_billed.py::TestLedgerEventCaptureTextBilled::test_given_real_single_day_hours_message_then_hours_and_date_correctly_persisted | 2026-08-02 | PASS | 402bd1e | Moved 2026-08-03 from tests/expensive/ (see row 49 note). Unverified in new location. |
+| 56 | test_ledger_event_capture_text_billed.py::TestLedgerEventCaptureTextBilled::test_given_real_two_day_hours_message_then_split_per_day_with_correct_dates | 2026-08-02 | PASS | 402bd1e | Moved 2026-08-03 from tests/expensive/ (see row 49 note). Unverified in new location. |
+| 57 | test_ledger_event_capture_text_billed.py::TestLedgerEventCaptureTextBilled::test_given_real_hours_message_with_payer_reference_then_payer_name_captured | 2026-08-02 | PASS | f285de7 | Moved 2026-08-03 from tests/expensive/ (see row 49 note). Unverified in new location. |
+| 58 | test_real_api_connectivity.py::TestRealGreenAPIConnectivity::test_greenapi_real_connection | - | UNVERIFIED | - | Moved 2026-08-03 from tests/integration/ (was unmarked - ran unconditionally on every plain `pytest tests/`, confirmed via logs going back to 2026-07-05, but never tracked in this log). Never run under `-m billed` specifically. |
+| 59 | test_real_api_connectivity.py::TestRealGreenAPIConnectivity::test_greenapi_can_send_message | - | UNVERIFIED | - | Moved 2026-08-03 from tests/integration/ (see row 58 note). Sends a real WhatsApp message on run. |
+| 60 | test_real_api_connectivity.py::TestRealOpenAPIConnectivity::test_openai_real_connection | - | UNVERIFIED | - | Moved 2026-08-03 from tests/integration/ (see row 58 note). |
+| 61 | test_real_api_connectivity.py::TestRealOpenAPIConnectivity::test_openai_can_receive_and_parse_response | - | UNVERIFIED | - | Moved 2026-08-03 from tests/integration/ (see row 58 note). |
+| 62 | test_real_api_connectivity.py::TestRealEndToEndFlow::test_complete_real_api_flow | - | UNVERIFIED | - | Moved 2026-08-03 from tests/integration/ (see row 58 note). Sends a real WhatsApp message on run. |
+| 63 | test_memory_integration_billed.py::TestMemorySystemIntegrationBilled::test_memory_manager_stores_and_recalls | - | UNVERIFIED | - | Split out 2026-08-03 from tests/integration/test_memory_integration.py (was unmarked in a file mixing real-API and no-API tests - never tracked in this log). |
+| 64 | test_memory_integration_billed.py::TestMemorySystemIntegrationBilled::test_ai_handler_stores_messages_in_session | - | UNVERIFIED | - | Split out 2026-08-03 from tests/integration/ (see row 63 note). |
+| 65 | test_memory_integration_billed.py::TestMemorySystemIntegrationBilled::test_orphaned_session_recovery_active_session | - | UNVERIFIED | - | Split out 2026-08-03 from tests/integration/ (see row 63 note). |
+| 66 | test_memory_integration_billed.py::TestConversationMemoryBilled::test_multi_turn_conversation_maintains_context | - | UNVERIFIED | - | Split out 2026-08-03 from tests/integration/ (see row 63 note). |
 
-## expensive (21 tests)
+## expensive (11 tests)
 
 | # | Test | Last Run | Result | Commit | Notes |
 |---|------|----------|--------|--------|-------|
 | 1 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_agreement_image_when_processed_then_ledger_event_captured_via_image_path | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
 | 2 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_bank_deposit_screenshot_when_processed_then_captured_as_bank_deposit | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
 | 3 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_non_agreement_image_when_processed_then_no_ledger_event_captured | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
-| 4 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_gilyan_davidian_agreement_text_when_processed_then_captured_per_component | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
-| 5 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_new_agreement_flat_fee_then_all_fields_correctly_persisted | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
-| 6 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_agreement_correction_then_replaced_placeholder_correct | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
-| 7 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_agreement_cancellation_then_subtype_and_amount_correct | - | SKIP | - | `@pytest.mark.skip`, blocked on feature/032 (amount-sign decision). |
-| 8 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_agreement_payment_confirmation_then_subtype_correct | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
-| 9 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_agreement_percent_based_fee_then_percent_fields_correct | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
-| 10 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_multi_component_agreement_image_then_components_correctly_persisted | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
-| 11 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_bank_deposit_image_then_full_fields_correctly_persisted | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
-| 12 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_six_component_agreement_image_mor_ben_shaya_then_all_components_correctly_persisted | 2026-08-02 | PASS | 402bd1e | Confirmed twice for real (component_count fix). Unverified since merge. |
-| 13 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_single_day_hours_message_then_hours_and_date_correctly_persisted | 2026-08-02 | PASS | 402bd1e | Unverified since merge. |
-| 14 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_two_day_hours_message_then_split_per_day_with_correct_dates | 2026-08-02 | PASS | 402bd1e | Unverified since merge. |
-| 15 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_hours_message_with_payer_reference_then_payer_name_captured | 2026-08-02 | PASS | f285de7 | Confirmed for real (payer_name + hours fixes). Unverified since merge with subsequent commits. |
-| 16 | test_media_e2e.py::TestWhatsAppE2E::test_e2e_image_no_caption | 2026-08-02 | PASS | (pre-merge) | Unverified since merge. |
-| 17 | test_media_e2e.py::TestWhatsAppE2E::test_e2e_docx_no_caption | 2026-08-02 | PASS | (pre-merge) | Unverified since merge. |
-| 18 | test_media_e2e.py::TestWhatsAppE2E::test_e2e_hebrew_pdf_from_you | 2026-08-02 | PASS | (pre-merge) | Unverified since merge. |
-| 19 | test_media_e2e.py::TestWhatsAppE2E::test_e2e_pdf_with_caption_user_question | 2026-08-02 | PASS | (pre-merge) | Unverified since merge. |
-| 20 | test_media_e2e.py::TestWhatsAppE2E::test_e2e_unsupported_audio_file | 2026-08-02 | PASS | (pre-merge) | Unverified since merge. |
-| 21 | test_media_e2e.py::TestWhatsAppE2E::test_e2e_pdf_multipage_no_caption | 2026-08-02 | PASS | (pre-merge) | Unverified since merge. |
+| 4 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_multi_component_agreement_image_then_components_correctly_persisted | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
+| 5 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_bank_deposit_image_then_full_fields_correctly_persisted | 2026-07-31 | PASS | (pre-merge) | Unverified since merge. |
+| 6 | test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_six_component_agreement_image_mor_ben_shaya_then_all_components_correctly_persisted | 2026-08-02 | PASS | 402bd1e | Confirmed twice for real (component_count fix). Unverified since merge. |
+| 7 | test_media_e2e.py::TestWhatsAppE2E::test_e2e_image_no_caption | 2026-08-02 | PASS | (pre-merge) | Unverified since merge. |
+| 8 | test_media_e2e.py::TestWhatsAppE2E::test_e2e_docx_no_caption | 2026-08-02 | PASS | (pre-merge) | Unverified since merge. |
+| 9 | test_media_e2e.py::TestWhatsAppE2E::test_e2e_hebrew_pdf_from_you | 2026-08-02 | PASS | (pre-merge) | Unverified since merge. |
+| 10 | test_media_e2e.py::TestWhatsAppE2E::test_e2e_pdf_with_caption_user_question | 2026-08-02 | PASS | (pre-merge) | Unverified since merge. |
+| 11 | test_media_e2e.py::TestWhatsAppE2E::test_e2e_pdf_multipage_no_caption | 2026-08-02 | PASS | (pre-merge) | Unverified since merge. |
+
+**Removed from this log (2026-08-03)**: `test_e2e_unsupported_audio_file` (was
+`expensive` row 20) - traced the code path and confirmed it makes ZERO OpenAI API
+calls (`MediaFileManager.validate_format()` rejects `.mp3` before any extractor/AI
+call runs). Consolidated with the pre-existing, functionally-identical
+`test_media_webhook_routing.py::test_audio_message_user_gets_response` (deleted as
+the redundant one) into a single unmarked test now living in
+`tests/integration/test_media_webhook_routing.py` - no longer belongs in either
+paid tier, so it's out of this log entirely.
 
 ## Current sweep status (this session)
 
-**`billed`: 48/48 PASS as of commit 571f260 (2026-08-02).** Full sequential sweep
-complete - 2 real failures found and fixed along the way (test 5: Morning-suppression
-`mcp_approval_request` gap, 52d6f8e; test 21: confusing fixture name, e2f39ec; test 44:
-overly-narrow email-assertion, 571f260).
+**`billed`: 48/48 PASS as of commit 571f260 (2026-08-02)** - that sweep covered
+rows 1-48 above, before this session's 2026-08-03 test-tier audit added rows
+49-66 (9 moved from `expensive`, 9 newly discovered/tracked for the first time).
+Rows 49-57 carry over their last real result from when they lived in
+`expensive/` (content unchanged, only location/marker changed) but are marked
+UNVERIFIED-in-new-location pending a fresh run under `-m billed`. Rows 58-66 have
+never been run under this log's discipline at all.
 
-`expensive`: not yet re-swept since the master merge (5bec668) - all 20 non-skipped
-rows above are UNVERIFIED-since-merge or from before it. Next: sequential `expensive`
-sweep, same protocol.
+`expensive`: not yet re-swept since the master merge (5bec668) - all 11 rows above
+are UNVERIFIED-since-merge or from before it (row counts changed 2026-08-03: 9 rows
+moved to `billed` for being misclassified as vision tests when they were actually
+text-only, 1 row removed entirely as a zero-API-call test consolidated into
+tests/integration/). Next: sequential `expensive` sweep, same protocol.

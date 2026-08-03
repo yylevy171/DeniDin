@@ -278,6 +278,7 @@ ls data/memory/
 # Should show chroma.sqlite3
 
 python3 -m pytest tests/integration/test_memory_integration.py -v
+python3 -m pytest tests/billed/test_memory_integration_billed.py -m billed -v
 ```
 
 **Solutions:**
@@ -504,7 +505,7 @@ After successful memory system deployment:
 
 - **Documentation**: `/Users/yaronl/personal/DeniDin/denidin-bot/docs/MEMORY_API.md`
 - **Specification**: `/Users/yaronl/personal/DeniDin/specs/002-007-memory-system/spec.md`
-- **Tests**: `python3 -m pytest tests/integration/test_memory_integration.py -v`
+- **Tests**: `python3 -m pytest tests/integration/test_memory_integration.py -v` (SessionManager only); `python3 -m pytest tests/billed/test_memory_integration_billed.py -m billed -v` (real OpenAI calls)
 - **Logs**: `tail -f logs/denidin.log`
 
 ---

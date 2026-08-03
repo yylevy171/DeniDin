@@ -350,21 +350,77 @@ class TestMediaWebhookRoutingUserPerspective:
             f"Got: {sent_message}"
         )
     
-    def test_audio_message_user_gets_response(self, config):
+    @pytest.fixture
+    def real_e2e_config(self):
+        """Isolated test config (moved from tests/expensive/test_media_e2e.py's own
+        `config` fixture, kept separate from this class's lighter `config` fixture
+        above so the two don't collide): overrides memory storage_dir explicitly,
+        since SessionManager/MemoryManager read those paths directly, not data_root."""
+        config_path = Path(__file__).parent.parent.parent / "config" / "config.test.json"
+        if not config_path.exists():
+            pytest.skip("config.test.json not found")
+
+        config = AppConfiguration.from_file(str(config_path))
+        config.validate()
+        test_data_root = Path(__file__).parent.parent.parent / "test_data"
+        config.data_root = str(test_data_root)
+        config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
+        config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
+        return config
+
+    @pytest.fixture
+    def real_e2e_denidin_app(self, real_e2e_config):
+        """Initialize the full denidin app - NO MOCKING (moved from
+        tests/expensive/test_media_e2e.py's own `denidin_app` fixture)."""
+        import denidin
+
+        if denidin.denidin_app is None:
+            config_dict = {
+                'green_api_instance_id': real_e2e_config.green_api_instance_id,
+                'green_api_token': real_e2e_config.green_api_token,
+                'ai_api_key': real_e2e_config.ai_api_key,
+                'ai_model': real_e2e_config.ai_model,
+                'ai_reply_max_tokens': real_e2e_config.ai_reply_max_tokens,
+                'log_level': real_e2e_config.log_level,
+                'data_root': real_e2e_config.data_root,
+                'feature_flags': real_e2e_config.feature_flags,
+                'godfather_phone': real_e2e_config.godfather_phone,
+                'memory': real_e2e_config.memory,
+                'constitution_config': real_e2e_config.constitution_config,
+                'user_roles': real_e2e_config.user_roles
+            }
+            denidin.denidin_app = denidin.initialize_app(config_dict)
+
+        return denidin.denidin_app
+
+    def test_audio_message_user_gets_response(self, real_e2e_denidin_app):
         """
         **BDD Scenario**: User sends audio via WhatsApp
-        
+
         Given: User sends audioMessage via WhatsApp
         When: Bot receives the webhook
         Then: User gets a response with EXACT error message
-        
-        **Uses real SDK Notification**: Real Green API webhook structure (nested fileMessageData)
+
+        Moved here from tests/expensive/test_media_e2e.py (2026-08-03), unmarked:
+        traced the actual code path and confirmed it makes ZERO OpenAI API calls -
+        MediaFileManager.validate_format() raises for unsupported extensions (.mp3)
+        before any extractor/AI call ever runs, so this was never actually
+        vision/expensive work, just a real router-dispatch + real MediaHandler
+        rejection path. Uses the real `tests.e2e_helpers` notification helpers
+        (same as every other real E2E test in this codebase, not a bespoke mock).
         """
         from denidin import handle_audio_message
-        
-        # Create REAL SDK Notification for audio
-        notification = self._create_notification({
+        from tests.e2e_helpers import create_real_notification, get_response
+
+        notification = create_real_notification({
             'typeWebhook': 'incomingMessageReceived',
+            'timestamp': 1706601234,
+            'idMessage': 'E2E_TEST_AUDIO_001',
+            'instanceData': {
+                'idInstance': 7103000000,
+                'wid': '972501234567@c.us',
+                'typeInstance': 'whatsapp'
+            },
             'senderData': {
                 'chatId': '972522968679@c.us',
                 'sender': '972522968679@c.us',
@@ -374,19 +430,19 @@ class TestMediaWebhookRoutingUserPerspective:
                 'typeMessage': 'audioMessage',
                 'fileMessageData': {
                     'downloadUrl': 'https://example.com/audio.mp3',
-                    'fileName': 'test.mp3',
+                    'fileName': 'audio.mp3',
                     'mimeType': 'audio/mpeg',
                     'caption': ''
                 }
             }
         })
-        
+
         handle_audio_message(notification)
-        
-        sent_message = self._get_sent_message(notification)
-        assert sent_message == FAILED_TO_PROCESS_FILE_DEFAULT, (
+        response = get_response(notification)
+
+        assert response == FAILED_TO_PROCESS_FILE_DEFAULT, (
             f"Expected: {FAILED_TO_PROCESS_FILE_DEFAULT}\n"
-            f"Got: {sent_message}"
+            f"Got: {response}"
         )
 
 

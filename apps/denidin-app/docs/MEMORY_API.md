@@ -501,8 +501,11 @@ Run memory system tests:
 python3 -m pytest tests/unit/test_memory_unit.py -v
 python3 -m pytest tests/unit/test_session_unit.py -v
 
-# Integration tests
+# Integration tests (SessionManager only, no OpenAI calls)
 python3 -m pytest tests/integration/test_memory_integration.py -v
+
+# Billed tests (real OpenAI calls - MemoryManager/AIHandler)
+python3 -m pytest tests/billed/test_memory_integration_billed.py -m billed -v
 
 # All memory tests
 python3 -m pytest tests/ -k memory -v
