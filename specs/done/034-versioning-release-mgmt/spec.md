@@ -2,12 +2,11 @@
 
 **Feature ID**: 034-versioning-release-mgmt
 **Priority**: P2 (assumed default — not blocking other work; revisit if the user wants this elevated)
-**Status**: Implemented (T001-T019 all complete, 2026-08-02). Real first releases cut for both
-apps (`denidin-app-v0.0.1`, `morning-mcp-app-v0.0.1`, exact versions stated by the human). T009/
-T013 (live quickstart verification against a running `dev` environment) remain open manual gates,
-deferred pending a separate environment-start approval. Deploying either cut release anywhere is
-also still a separate, open, separately-approved decision — cutting does not imply deploying.
-Ready for `/haleluya` once the human decides on those remaining steps.
+**Status**: Done (2026-08-03). All 19 tasks complete. Real first releases cut and deployed:
+`denidin-app-v0.0.1`/`morning-mcp-app-v0.0.1`, both live in the real `dev` environment, verified
+via `/health`/log-line checks and manually confirmed over WhatsApp ("what version are you?" →
+`0.0.1`). Merged to `master` via PR #160. Promotion to `prod` and a live rollback scenario remain
+untested against real infrastructure — exercisable the same way whenever separately requested.
 **Created**: July 30, 2026
 **Updated**: August 2, 2026
 
