@@ -515,6 +515,7 @@ if config.feature_flags.get("enable_memory_system", False):
   - Never redirect test output to `/tmp` or other ad-hoc log files — use only the app's own `logs/test_logs/` location
 - **Billed tests** (`@pytest.mark.billed`, real but text-only/cheap paid API calls, `tests/billed/` in every app in this monorepo, split out of the marker formerly named `expensive` by Feature 029, 2026-07-30): can run freely. **These are NOT gated by the approval rule below — do not stop to ask before running a billed test, ever.** No per-run approval, no one-at-a-time restriction, no log-reading requirement. The approval gate below applies ONLY to `expensive`.
 - **Expensive tests** (`@pytest.mark.expensive`, real vision/image/PDF/DOCX paid API calls, costlier per run): require explicit human approval before every single run, run one at a time (never a bare `-m expensive` sweep), read existing logs before re-running, and only re-run a previously-failed one once confident a fix addresses it
+- **"Stop on failure" means stop on failure, every single time, regardless of tier.** When a human gives an explicit sequential-run instruction ("run all N tests one by one, on pass continue, on fail stop"), EVERY failure is its own stop point requiring a full report and fresh explicit human input before investigating, fixing, re-running, or moving to the next test. Approval to fix-and-continue past one failure does NOT carry over to a later failure in the same sweep, even a structurally identical one. Real incident (2026-08-02, an AI agent): one approved fix got silently generalized into "fix-and-continue is now standing behavior for this sweep," and a later similar failure was fixed and re-run with no pause to report or ask. An accurate test-tracking log does not substitute for actually stopping at the gate.
 - All code-modifying operations must use CLI tools
 
 **Test Execution Efficiency**:
@@ -1031,9 +1032,10 @@ All contributors must:
 
 ---
 
-**Version**: 2.5.0 | **Effective Date**: July 30, 2026
+**Version**: 2.6.0 | **Effective Date**: August 2, 2026
 
 **Changelog**:
+- v2.6.0 (2026-08-02): Added explicit "stop on failure means stop on failure" rule to §VII after a real incident where an AI agent generalized one approved test-fix into standing permission to skip the stop-on-fail gate for later, similarly-shaped failures in the same sequential test sweep
 - v2.5.0 (2026-07-30): Feature 029 scope correction - the billed/expensive split applies to BOTH `apps/denidin-app` and `apps/morning-mcp-app` (each app's own independent marker registration), not denidin-app alone; also made explicit that billed tests are never subject to the expensive-only approval gate (§VII)
 - v2.4.0 (2026-07-30): Feature 029 split the single `@pytest.mark.expensive` marker into `billed` (real, text-only, cheap OpenAI calls - can run freely) and `expensive` (real vision/image/PDF/DOCX calls - keeps the full approval/one-at-a-time discipline) (§VII)
 - v2.3.0 (2026-07-07): Repo split into `apps/denidin-app/` and `apps/morning-mcp-app/` (each independently runnable/testable/dockerized) - updated test logs location path accordingly; added expensive-test approval rules (§VII)

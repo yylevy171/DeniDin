@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from src.managers.session_manager import SessionManager, Session, Message
 from src.handlers.media_handler import MediaHandler
+from src.managers.ledger_event_manager import LedgerEventManager
 
 
 @pytest.fixture
@@ -371,7 +372,14 @@ class TestImagePathStorage:
                 ai_vision_model="gpt-4o-mini",
                 ai_model="gpt-4o-mini",
             ),
-            ai_handler=SimpleNamespace(session_manager=session_manager),
+            ai_handler=SimpleNamespace(
+                session_manager=session_manager,
+                # Feature 033: MediaHandler.__init__ now also wires a
+                # LedgerEventManager - real instance (not a Mock), matching
+                # this suite's real-internal-components convention, even
+                # though this specific test never exercises it directly.
+                ledger_event_manager=LedgerEventManager(storage_dir=str(tmp_path / "events")),
+            ),
         )
         media_handler = MediaHandler(denidin_context)
 
@@ -415,100 +423,114 @@ class TestImagePathStorage:
         assert message_data["image_path"] is None
 
 
-class TestPendingLedgerEvents:
-    """Test SessionManager.add_pending_ledger_event (Ledger Event Recognition,
-    see runtime_constitution.md)."""
+class TestNoPendingLedgerEventsOnSession:
+    """Feature 033: ledger events moved out of session.json entirely, into their own
+    permanent storage (LedgerEventManager, tests/unit/test_ledger_event_manager.py).
+    Session must no longer carry any ledger-event state."""
 
-    def test_new_session_has_empty_pending_ledger_events(self, session_manager):
-        """A freshly created session starts with an empty pending_ledger_events list."""
-        session = session_manager.get_session("1234567890@c.us")
-        assert session.pending_ledger_events == []
+    def test_session_dataclass_has_no_pending_ledger_events_field(self):
+        import dataclasses
+        field_names = {f.name for f in dataclasses.fields(Session)}
+        assert "pending_ledger_events" not in field_names
 
-    def test_add_pending_ledger_event_appends_with_pointer(self, session_manager):
-        """The stored record carries the original event fields plus the hard
-        pointer (message_timestamp resolved to ISO8601, sender) and a capture time."""
+    def test_session_manager_has_no_add_pending_ledger_event_method(self, session_manager):
+        assert not hasattr(session_manager, "add_pending_ledger_event")
+
+
+class TestMessageLedgerEventIds:
+    """Feature 033: Message gains ledger_event_ids, the reverse link to
+    LedgerEvent.message_id - the id(s) of any ledger event(s) captured from this
+    specific message."""
+
+    def test_message_dataclass_has_ledger_event_ids_field(self):
+        import dataclasses
+        field_names = {f.name for f in dataclasses.fields(Message)}
+        assert "ledger_event_ids" in field_names
+
+    def test_new_message_defaults_to_empty_ledger_event_ids(self, session_manager):
         chat_id = "1234567890@c.us"
-        event = {
-            "source_type": "הסכם",
-            "event_subtype": "יצירה",
-            "client_name": "ישראל ישראלי",
-            "amount": "5000",
-        }
-        epoch = 1770000000  # fixed, arbitrary real epoch
-
-        session_manager.add_pending_ledger_event(
-            chat_id=chat_id,
-            event=event,
-            message_timestamp=epoch,
-            sender="972500000000@c.us",
+        message_id = session_manager.add_message(
+            chat_id=chat_id, role="user", content="hello", user_role="client"
         )
-
         session = session_manager.get_session(chat_id)
-        assert len(session.pending_ledger_events) == 1
-        record = session.pending_ledger_events[0]
+        session_dir = session_manager.storage_dir / session.session_id
+        with open(session_dir / "messages" / f"{message_id}.json", encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["ledger_event_ids"] == []
 
-        assert record["source_type"] == "הסכם"
-        assert record["client_name"] == "ישראל ישראלי"
-        assert record["sender"] == "972500000000@c.us"
-        assert record["message_timestamp"] == datetime.fromtimestamp(
-            epoch, tz=timezone.utc
-        ).isoformat()
-        assert "captured_at" in record
-
-    def test_add_pending_ledger_event_does_not_mutate_input_dict(self, session_manager):
-        """The caller's event dict must not be mutated (it's reused/logged elsewhere)."""
-        event = {"source_type": "בנק", "event_subtype": "הפקדה"}
-        original = dict(event)
-
-        session_manager.add_pending_ledger_event(
-            chat_id="1234567890@c.us",
-            event=event,
-            message_timestamp=1770000000,
-            sender="972500000000@c.us",
-        )
-
-        assert event == original
-
-    def test_add_pending_ledger_event_persists_across_reload(self, session_manager, temp_session_dir):
-        """A second SessionManager instance pointed at the same storage dir must see
-        the pending event - it's saved to disk, not just held in memory."""
+    def test_message_with_ledger_event_ids_persists_them(self, session_manager):
         chat_id = "1234567890@c.us"
-        session_manager.add_pending_ledger_event(
-            chat_id=chat_id,
-            event={"source_type": "הסכם", "event_subtype": "עדכון"},
-            message_timestamp=1770000000,
-            sender="972500000000@c.us",
+        message_id = session_manager.add_message(
+            chat_id=chat_id, role="user", content="hello",
+            user_role="client", ledger_event_ids=["A28072614060", "A28072614061"],
         )
+        session = session_manager.get_session(chat_id)
+        session_dir = session_manager.storage_dir / session.session_id
+        with open(session_dir / "messages" / f"{message_id}.json", encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["ledger_event_ids"] == ["A28072614060", "A28072614061"]
+
+    def test_message_ledger_event_ids_persists_across_reload(self, session_manager, temp_session_dir):
+        chat_id = "1234567890@c.us"
+        message_id = session_manager.add_message(
+            chat_id=chat_id, role="user", content="hello",
+            user_role="client", ledger_event_ids=["B28072614260"],
+        )
+        session = session_manager.get_session(chat_id)
+        session_dir = session_manager.storage_dir / session.session_id
 
         reloaded_manager = SessionManager(storage_dir=str(temp_session_dir), session_timeout_hours=24)
-        session = reloaded_manager.get_session(chat_id)
-        assert len(session.pending_ledger_events) == 1
-        assert session.pending_ledger_events[0]["event_subtype"] == "עדכון"
+        with open(session_dir / "messages" / f"{message_id}.json", encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["ledger_event_ids"] == ["B28072614260"]
+        # sanity: the reloaded manager sees the same session/message on disk
+        assert reloaded_manager.get_session(chat_id).session_id == session.session_id
 
-    def test_add_pending_ledger_event_appends_multiple(self, session_manager):
-        """Multiple captured events in the same session accumulate, not overwrite."""
+
+class TestAddMessageIdOverride:
+    """Feature 033 (confirmed design, 2026-07-30): a caller that already decided
+    this message's id at arrival time (e.g. WhatsAppMessage.from_notification)
+    MUST be able to make add_message use that exact id, rather than always
+    getting a silently-different, freshly-generated one - the id must be
+    identical across the persisted message's filename, its own message_id
+    field, and the session's message_ids entry."""
+
+    def test_add_message_uses_supplied_message_id_as_filename(self, session_manager):
         chat_id = "1234567890@c.us"
-        for i in range(3):
-            session_manager.add_pending_ledger_event(
-                chat_id=chat_id,
-                event={"source_type": "הסכם", "amount": str(i)},
-                message_timestamp=1770000000 + i,
-                sender="972500000000@c.us",
-            )
+        returned_id = session_manager.add_message(
+            chat_id=chat_id, role="user", content="hello",
+            user_role="client", message_id="supplied-id-1",
+        )
+        assert returned_id == "supplied-id-1"
 
         session = session_manager.get_session(chat_id)
-        assert [r["amount"] for r in session.pending_ledger_events] == ["0", "1", "2"]
+        session_dir = session_manager.storage_dir / session.session_id
+        assert (session_dir / "messages" / "supplied-id-1.json").exists()
+        with open(session_dir / "messages" / "supplied-id-1.json", encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["message_id"] == "supplied-id-1"
+        assert "supplied-id-1" in session.message_ids
 
-    def test_add_pending_ledger_event_missing_timestamp(self, session_manager):
-        """A None message_timestamp (should never happen in practice - AIRequest
-        always auto-fills one - but must not crash) stores a None pointer rather
-        than raising."""
-        session_manager.add_pending_ledger_event(
-            chat_id="1234567890@c.us",
-            event={"source_type": "בנק"},
-            message_timestamp=None,
-            sender="972500000000@c.us",
+    def test_add_message_without_message_id_still_generates_a_fresh_one(self, session_manager):
+        chat_id = "1234567890@c.us"
+        message_id = session_manager.add_message(
+            chat_id=chat_id, role="assistant", content="hi there", user_role="client",
         )
+        assert message_id  # non-empty
+        assert message_id != "supplied-id-1"
 
-        session = session_manager.get_session("1234567890@c.us")
-        assert session.pending_ledger_events[0]["message_timestamp"] is None
+    def test_add_message_with_tokens_threads_supplied_message_id(self, session_manager):
+        chat_id = "1234567890@c.us"
+        returned_id = session_manager.add_message_with_tokens(
+            chat_id=chat_id, role="user", content="hello",
+            user_role="client", message_id="supplied-id-2",
+        )
+        assert returned_id == "supplied-id-2"
+
+    def test_add_message_with_token_limit_threads_supplied_message_id(self, session_manager):
+        chat_id = "1234567890@c.us"
+        returned_id = session_manager.add_message_with_token_limit(
+            chat_id=chat_id, role="user", content="hello",
+            user_role="client", token_limit=4000, message_id="supplied-id-3",
+        )
+        assert returned_id == "supplied-id-3"

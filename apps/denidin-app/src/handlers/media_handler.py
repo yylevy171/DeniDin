@@ -55,6 +55,9 @@ class MediaHandler:
         # (spec 003's REQ-INT-001), reusing the same SessionManager the text
         # path (AIHandler._finalize_response) already stores through.
         self.session_manager = denidin_context.ai_handler.session_manager
+        # Feature 033: same LedgerEventManager instance AIHandler uses for the text
+        # path - single source of truth, no risk of the two paths diverging.
+        self.ledger_event_manager = denidin_context.ai_handler.ledger_event_manager
 
         # Initialize components
         self.media_file_manager = MediaFileManager(denidin_context)
@@ -71,7 +74,8 @@ class MediaHandler:
         sender_phone: str,
         chat_id: str,
         caption: str = "",
-        timestamp: Optional[int] = None
+        timestamp: Optional[int] = None,
+        message_id: Optional[str] = None
     ) -> Dict:
         """
         Process media message through complete workflow.
@@ -81,7 +85,12 @@ class MediaHandler:
             filename: Original filename
             mime_type: MIME type string
             file_size: File size in bytes
-            sender_phone: WhatsApp phone number (e.g., "972501234567")
+            sender_phone: WhatsApp sender JID, straight from Green API's
+                senderData.sender (e.g. "972501234567@c.us") - always carries the
+                full JID suffix, same convention as Session.whatsapp_chat (verified
+                by reading the real caller, WhatsAppHandler.handle_media_message;
+                an earlier version of this docstring showed a bare-digits example,
+                which never matched actual runtime behavior)
             chat_id: WhatsApp chat ID (bugfix-017: needed to link this turn to a
                 session, same as the text path - group chats differ from sender_phone)
             caption: User's message text with file (optional)
@@ -89,6 +98,9 @@ class MediaHandler:
                 constitution's "hard pointer" for any ledger event captured from this
                 message. Falls back to processing time only if genuinely absent,
                 same as WhatsAppMessage.from_webhook's own fallback.
+            message_id: Real Green API notification message id (Feature 033) - the
+                source-message pointer for any ledger event captured from this
+                message (LedgerEvent.message_id).
 
         Returns:
             {
@@ -153,7 +165,51 @@ class MediaHandler:
                 caption=caption
             )
 
-            # Step 10 (bugfix-017): link this turn to the session, mirroring
+            # Step 10: Ledger Event Recognition (runtime_constitution.md) - the image
+            # path can capture a fee-agreement/bank-deposit event the same way the
+            # text path does. Feature 033: persisted via the same LedgerEventManager
+            # as the text path (never SessionManager), and done BEFORE _store_media_turn
+            # (Step 11 below) so the resulting event_id(s) can be threaded into the
+            # stored message's ledger_event_ids at creation time, matching the text
+            # path's ordering (AIHandler._finalize_response) instead of needing a
+            # separate update-after-the-fact write.
+            # message_timestamp uses the real notification timestamp (the constitution's
+            # "hard pointer") - NOT processing time, which was a real bug: falling back
+            # to datetime.now() here meant a captured event's timestamp reflected when
+            # the vision/classification calls happened to finish, not when the user
+            # actually sent the image (found 2026-07-28 while strengthening this
+            # feature's E2E persistence assertions).
+            # Plural (2026-07-30): a single document image can genuinely warrant
+            # multiple components (e.g. a multi-stage/conditional fee agreement).
+            # ledger_events is normally 0 or 1 calls (each call's own `components`
+            # array now carries all of one agreement's components - REQ-DATA-004's
+            # redesign, see LedgerEventManager.add_ledger_events_from_call, which owns
+            # the flatten + batch-agreement_id + persist-each-component logic); this
+            # loop just handles the now-rare case of multiple SEPARATE calls.
+            ledger_event_ids = []
+            ledger_events = analysis_result.get("ledger_events", [])
+            if ledger_events:
+                try:
+                    if timestamp is not None:
+                        event_timestamp = timestamp
+                    else:
+                        event_timestamp = int(datetime.now(timezone.utc).timestamp())
+                    session = self.session_manager.get_session(chat_id)
+
+                    for call_arguments in ledger_events:
+                        new_event_ids = self.ledger_event_manager.add_ledger_events_from_call(
+                            session_id=session.session_id,
+                            whatsapp_chat=chat_id,
+                            call_arguments=call_arguments,
+                            message_id=message_id,
+                            message_timestamp=event_timestamp,
+                            sender=sender_phone,
+                        )
+                        ledger_event_ids.extend(new_event_ids)
+                except Exception as e:
+                    logger.error(f"Failed to persist ledger event(s) for media message: {e}", exc_info=True)
+
+            # Step 11 (bugfix-017): link this turn to the session, mirroring
             # AIHandler._finalize_response's user+assistant storage for text turns -
             # media messages must not be invisible to conversation history/memory
             # transfer just because they went through a different pipeline.
@@ -164,33 +220,10 @@ class MediaHandler:
                 relative_image_path = str(file_path.relative_to(Path(self.config.data_root)))
             except ValueError:
                 relative_image_path = str(file_path)
-            self._store_media_turn(chat_id, sender_phone, media_type, caption, summary, relative_image_path)
-
-            # Ledger Event Recognition (runtime_constitution.md): the image path can
-            # capture a fee-agreement/bank-deposit event the same way the text path
-            # does - this is the single point where that capture actually gets stored,
-            # now that chat_id/sender are in scope via the session-linkage fix above.
-            # message_timestamp uses the real notification timestamp (the constitution's
-            # "hard pointer") - NOT processing time, which was a real bug: falling back
-            # to datetime.now() here meant a captured event's timestamp reflected when
-            # the vision/classification calls happened to finish, not when the user
-            # actually sent the image (found 2026-07-28 while strengthening this
-            # feature's E2E persistence assertions).
-            ledger_event = analysis_result.get("ledger_event")
-            if ledger_event is not None:
-                try:
-                    if timestamp is not None:
-                        event_timestamp = timestamp
-                    else:
-                        event_timestamp = int(datetime.now(timezone.utc).timestamp())
-                    self.session_manager.add_pending_ledger_event(
-                        chat_id=chat_id,
-                        event=ledger_event,
-                        message_timestamp=event_timestamp,
-                        sender=sender_phone,
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to store pending ledger event for media message: {e}", exc_info=True)
+            self._store_media_turn(
+                chat_id, sender_phone, media_type, caption, summary,
+                ledger_event_ids, message_id, relative_image_path
+            )
 
             return {
                 "success": True,
@@ -210,6 +243,7 @@ class MediaHandler:
 
     def _store_media_turn(
         self, chat_id: str, sender_phone: str, media_type: str, caption: str, summary: str,
+        ledger_event_ids: Optional[list] = None, message_id: Optional[str] = None,
         image_path: Optional[str] = None
     ) -> None:
         """bugfix-017: store both sides of a media turn in the session, mirroring
@@ -217,15 +251,29 @@ class MediaHandler:
         Never lets a storage failure fail the whole media-processing turn - the
         user still gets their summary reply even if this logging step errors.
 
-        bugfix-009 (reopened 2026-07-30): image_path (relative to data_root, resolved
-        by the caller) is attached to the user message only, so the session can be
-        traced back to the saved media file on disk - this parameter regressed to
-        always-omitted when this method replaced bugfix-009's original call site."""
+        ledger_event_ids (Feature 033): id(s) of any LedgerEvent(s) captured from
+        this message, threaded onto the user message only (never the assistant
+        reply) - REQ-TRACE-003.
+
+        message_id (Feature 033, confirmed design): the id decided once at
+        message-arrival time (WhatsAppHandler.handle_media_message, via
+        WhatsAppMessage.from_notification) - MUST be identical across the
+        persisted message's filename, the session's message_ids entry, and
+        LedgerEvent.message_id. Applied to the user message only; the assistant
+        reply gets its own fresh id, same as always.
+
+        image_path (bugfix-009, reopened 2026-07-30): relative to data_root,
+        resolved by the caller - attached to the user message only, so the
+        session can be traced back to the saved media file on disk. This
+        parameter regressed to always-omitted when this method replaced
+        bugfix-009's original call site; restored here alongside the Feature
+        033 traceability fields it was merged with."""
         try:
             user_content = caption or f"[{media_type} sent]"
             self.session_manager.add_message(
                 chat_id=chat_id, role="user", content=user_content,
                 user_role="client", sender=sender_phone, recipient="AI",
+                ledger_event_ids=ledger_event_ids, message_id=message_id,
                 image_path=image_path,
             )
             self.session_manager.add_message(

@@ -776,9 +776,51 @@ VIOLATION:
 
 ---
 
-**Version**: 2.3.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-07-30
+## XVIII. Sequential-Run Stop Gates
+
+When a human gives an explicit per-iteration instruction for a sequential/repeated task
+(most commonly "run all N tests one by one, on pass continue, on fail stop"), each
+individual occurrence of the stop condition is its own gate — it MUST be treated exactly
+like any other human-approval gate in this document (§VI, §XVII), never bundled with or
+inferred from an earlier one.
+
+**Requirements:**
+- On EVERY failure in an explicit stop-on-fail sequence, the AI agent MUST halt, report the
+  failure in full, and wait for fresh explicit human input before doing anything else —
+  investigating, fixing, re-running, or advancing to the next item in the sequence.
+- Approval to fix-and-continue past one failure MUST NOT be generalized into standing
+  permission for later failures in the same sequence, even ones that look structurally
+  identical or trivially fixable.
+- Maintaining an accurate run-log/tracking file (recording what happened) is NOT a
+  substitute for actually stopping at the gate before acting.
+
+**Enforcement:**
+- If an AI agent notices a failure mid-sequence: HALT immediately, report, and wait -
+  never reason "the user already approved a similar fix earlier in this run."
+- If genuinely uncertain whether a new failure is "similar enough" to a previously-approved
+  one to skip the stop: it is not - stop and ask.
+
+**Real incident (2026-08-02)**: during a 48-test sequential billed-test sweep, the human
+approved a specific fix for one test's confusing fixture data. On a later, differently-caused
+but similarly-shaped failure, an AI agent silently generalized that approval into "fix-and-
+continue is now this sweep's standing behavior" - investigating, fixing, re-running, and
+committing the fix with no pause to report or ask, then continued through the remaining
+tests in the sweep without stopping again. The human's correction: *"you must NEVER
+generalize like that. When I say STOP AT FAILURE YOU MUST STOP AT FAILURE."*
+
+**Rationale**: Sequential automated loops create exactly the conditions where approval-gate
+discipline erodes without feeling like a violation in the moment - each individual decision
+("this looks like the same kind of fix, I'll just continue") seems like reasonable efficiency
+rather than a bypassed gate, until the failures compound into a fully unsupervised loop.
+Treating every stop condition as its own gate, with no generalization across occurrences,
+is what actually preserves human oversight in a sequential context.
+
+---
+
+**Version**: 2.4.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-08-02
 
 **Changelog**:
+- v2.4.0 (2026-08-02): Added "Sequential-Run Stop Gates" (XVIII) after a real incident where an AI agent generalized one approved test-fix into standing permission to skip the stop-on-fail gate for later failures in the same sweep
 - v2.3.0 (2026-07-30): Feature 029 - TDD (§VI) now requires explicit test-tier classification (unit/integration/billed/expensive) as part of the EXPLAIN Test Plan step, in every app
 - v2.2.0 (2026-01-21): Added "AI Agent TDD Self-Check Protocol" (XVII) to prevent methodology violations during autonomous work
 - v2.1.0 (2026-01-21): Added 10 methodology requirements from existing practice: Integration Contracts (VII), Terminology Glossary (VIII), Technology Choice Documentation (IX), Requirement Identifiers (X), Phase Validation Checkpoints, Clarifications Tracking, Estimated Duration, expanded Template Requirements

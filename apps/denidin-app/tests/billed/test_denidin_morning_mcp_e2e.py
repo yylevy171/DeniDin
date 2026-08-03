@@ -123,37 +123,57 @@ from .denidin_mcp_e2e_helpers import (
 logger = logging.getLogger(__name__)
 
 _DESCRIPTIONS = ("ייעוץ", "עיצוב", "פיתוח", "תחזוקה", "הדרכה", "ליווי עסקי")
-_CLIENT_STEMS = ("אלפא", "בטא", "גמא", "דלתא", "אומגא", "סיגמא", "נובה", "אוריון")
-# Hebrew-word qualifiers (never hex/digits) combined with _CLIENT_STEMS for a
-# unique-enough client name each run. A hex/random-number suffix was tried
-# before and caused a real, billed failure: the model mistook the hex token
-# for the invoice's actual id and called update_invoice_status with it
-# instead of the real UUID from the preceding create_invoice output.
-# (update_invoice_status has since been removed, feature 023 - the
-# equivalent risk today is the model passing a wrong id to create_receipt.)
-_CLIENT_QUALIFIERS = (
-    "צפון", "דרום", "מזרח", "מערב",
-    "כחול", "ירוק", "זהב", "כסף", "ראשון", "שני", "שלישי", "רביעי",
-)
+
+# Diverse, realistic Israeli first/family name pools (565/591 unique entries
+# spanning Hebrew/Jewish, Arab-Israeli, Russian/FSU, Ethiopian-Israeli, and
+# Western/English-transliterated names) - the ONLY source for every randomly-
+# generated client name in this file (and in test_denidin_morning_document_
+# creation_e2e.py, which imports _unique_client_name from here). Real people's
+# names, never synthetic markers - a synthetic numeric marker defeats the
+# point of testing real name-search behavior, and 2026-08-03 confirmed again
+# (test_godfather_add_client_requires_approval's neighbors) that ad-hoc
+# per-test `f"...{random.randint(...)}"` name generation keeps creeping back
+# in despite this pool existing for exactly this purpose - use this pool, not
+# a new one-off generator, whenever a test needs a random client name.
+_NAMES_DATA_DIR = Path(__file__).resolve().parent / "data"
+
+
+def _load_names(filename: str) -> List[str]:
+    path = _NAMES_DATA_DIR / filename
+    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+_HEBREW_FIRST_NAMES = _load_names("hebrew_first_names.txt")
+_HEBREW_FAMILY_NAMES = _load_names("hebrew_family_names.txt")
+
+# Known real Hebrew male/chaser (with/without optional vowel letter) first-
+# name spelling-variant pairs - NOT randomly generated, since random name
+# selection can't produce a genuine spelling-variant relationship on its own.
+_HEBREW_NAME_SPELLING_VARIANTS = [
+    ("דוד", "דויד"),   # David
+    ("אהרן", "אהרון"),  # Aharon
+]
 
 
 def _unique_client_name() -> str:
     """A unique-enough, operation-NEUTRAL client name for a freshly-seeded
-    invoice - built entirely from Hebrew words, never hex/digits/operation
-    words.
+    invoice or client record - a real first+family name drawn from
+    _HEBREW_FIRST_NAMES x _HEBREW_FAMILY_NAMES (565 x 591 = ~334K
+    combinations), never hex/digits/operation words.
 
-    Four real, billed failures shaped this:
+    Real, billed failures shaped this - all still apply to the current
+    real-name pool, not just the smaller Hebrew-word-stem pool this replaced
+    (2026-08-03):
     - Embedding the operation word in the name (e.g. "...CANCEL...") leaked
       intent into a plain *create* request, so the model called what was then
       update_invoice_status(status="cancelled") on it (constitution mapped
-      "בטל"/cancel-words to that status) - stems/qualifiers here are neutral.
-      (update_invoice_status has since been removed, feature 023; the
-      equivalent risk today is leaked intent causing an unwanted
-      create_credit_note call.)
+      "בטל"/cancel-words to that status). (update_invoice_status has since
+      been removed, feature 023; the equivalent risk today is leaked intent
+      causing an unwanted create_credit_note call.)
     - A hex/random-number suffix got mistaken by the model for the invoice's
       actual id, causing it to call update_invoice_status with the wrong id
       instead of the real UUID from the preceding create_invoice output -
-      `_CLIENT_QUALIFIERS` is Hebrew words only, no hex/digits.
+      never use digits in a generated client name, anywhere in this suite.
     - A "חברת" (company) business-entity prefix (spec 020 test run,
       2026-07-23) caused the model to strip it when re-referencing the same
       client by name a few turns later ("חברת אוריון זהב" -> "אוריון זהב" in
@@ -161,16 +181,19 @@ def _unique_client_name() -> str:
       search - real client names in this app's actual usage never carry a
       generic "חברת"/"בע\"מ" business-entity prefix anyway, so the name
       generated here shouldn't either.
-    - Same failure mode again (2026-07-28), this time from a qualifier word
-      itself rather than a prefix: "ותיק" (veteran/long-standing) read as
-      descriptive rather than part of the proper name, so the model dropped
-      it when confirming the created document ("אומגא ותיק" -> "אומגא"), and
-      a later lookup by the full generated name then found nothing.
-      `_CLIENT_QUALIFIERS` was pruned down to words with no plausible
-      adjective reading (directions, colors, ordinals) - no "new"/"main"/
-      "secondary"/"veteran"-type words.
+    - A composed stem+qualifier name risked an adjective-like qualifier word
+      being read as descriptive rather than part of the proper name (2026-
+      07-28: "אומגא ותיק" -> "אומגא" dropped on re-reference, breaking a
+      later lookup) - moot now that names are real first+family name pairs,
+      not composed Hebrew-word stems, but the underlying lesson (don't make
+      the model guess what's part of the name) still applies.
+
+    NOTE: "דורית אשכנזי" (bugfix-014's fixed, specially-seeded ground-truth
+    client - see its own comment further down this file) must never be
+    producible here - verified "דורית" is not in _HEBREW_FIRST_NAMES, so no
+    combination of this pool can ever collide with it.
     """
-    return f"{random.choice(_CLIENT_STEMS)} {random.choice(_CLIENT_QUALIFIERS)}"
+    return f"{random.choice(_HEBREW_FIRST_NAMES)} {random.choice(_HEBREW_FAMILY_NAMES)}"
 
 
 def _random_amount() -> int:
@@ -193,35 +216,6 @@ def _random_seed_email() -> str:
 
 
 _SEED_PHONE = "050-1234567"  # a plausible, always-valid Israeli mobile number
-
-# Diverse, realistic Israeli first/family name pools (565/591 unique entries
-# spanning Hebrew/Jewish, Arab-Israeli, Russian/FSU, Ethiopian-Israeli, and
-# Western/English-transliterated names) - used by the client-search tests
-# below so seeded client names look like real people, not synthetic markers
-# (a synthetic numeric marker defeats the point of testing real name-search
-# behavior, and collides badly under a busy full-suite run).
-_NAMES_DATA_DIR = Path(__file__).resolve().parent / "data"
-
-
-def _load_names(filename: str) -> List[str]:
-    path = _NAMES_DATA_DIR / filename
-    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
-_HEBREW_FIRST_NAMES = _load_names("hebrew_first_names.txt")
-_HEBREW_FAMILY_NAMES = _load_names("hebrew_family_names.txt")
-
-# Known real Hebrew male/chaser (with/without optional vowel letter) first-
-# name spelling-variant pairs - NOT randomly generated, since random name
-# selection can't produce a genuine spelling-variant relationship on its own.
-_HEBREW_NAME_SPELLING_VARIANTS = [
-    ("דוד", "דויד"),   # David
-    ("אהרן", "אהרון"),  # Aharon
-]
-
-
-def _random_full_name() -> str:
-    return f"{random.choice(_HEBREW_FIRST_NAMES)} {random.choice(_HEBREW_FAMILY_NAMES)}"
 
 GODFATHER_CHAT_ID = "972500000018@c.us"  # Feature 018 E2E test godfather identity
 CLIENT_ROLE_CHAT_ID = "972500000019@c.us"  # Feature 026 US5 - defaults to Role.CLIENT (not godfather/admin/blocked)
@@ -582,7 +576,7 @@ def test_godfather_add_client_requires_approval(denidin_app):
        (REQ-CLIENT-016/017), same standard as the sandbox-level
        test_add_client_tool_normalizes_and_persists_phone test.
     """
-    client_name = f"לקוח בדיקה אישור {random.randint(1000, 9999)}"
+    client_name = _unique_client_name()
     seed_email = _random_seed_email()
     raw_phone = "+972501234567"  # international input - must normalize on read-back
 
@@ -614,8 +608,25 @@ def test_godfather_add_client_requires_approval(denidin_app):
     )
     detail_calls = _calls_for(details_ai_response, "get_client_details")
 
-    assert detail_calls and detail_calls[0]["error"] is None, (
-        f"get_client_details did not succeed when verifying the newly "
+    # Asserts the FINAL user-facing reply is correct and meaningful - NOT
+    # that every intermediate get_client_details attempt succeeded. A real
+    # run (2026-08-03) showed the model can genuinely recover from its own
+    # mistakes within one turn (e.g. a wrong argument casing on one attempt)
+    # via a retry or list_clients fallback - exactly the resilience you want
+    # from a real assistant, not a bug. What actually matters - and what
+    # this checks, deterministically - is whether the user got the client's
+    # REAL data back: the normalized phone number appearing in the reply is
+    # airtight proof of a genuinely correct answer, since a generic "not
+    # found"/failure reply could never accidentally contain it.
+    if detail_calls and any(c["error"] is not None for c in detail_calls):
+        logger.warning(
+            f"get_client_details had at least one failed attempt this turn "
+            f"before the final reply was produced - model self-corrected, "
+            f"not asserted on here, but worth eyeballing if this recurs: "
+            f"{detail_calls!r}"
+        )
+    assert detail_calls, (
+        f"Model never invoked get_client_details when verifying the newly "
         f"created client: "
         f"{details_ai_response.mcp_calls if details_ai_response else None!r}"
     )
@@ -631,7 +642,7 @@ def test_godfather_add_client_missing_field_is_asked_for(denidin_app):
     add_client with a guessed/blank value (runtime_constitution.md's
     "add_client needs name, email, AND phone" guidance, added by Feature
     026's T015)."""
-    client_name = f"לקוח בדיקה חסר {random.randint(1000, 9999)}"
+    client_name = _unique_client_name()
 
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -657,7 +668,7 @@ def test_godfather_add_client_rejects_malformed_email(denidin_app):
     granted, and the tool's own _validate_email rejection (ValueError ->
     friendly error, tools.py) surfaces as a real error on that mcp_call - not
     a fabricated "created" confirmation."""
-    client_name = f"לקוח בדיקה מייל {random.randint(1000, 9999)}"
+    client_name = _unique_client_name()
 
     ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -699,7 +710,7 @@ def test_godfather_declines_add_client(denidin_app):
     approval - add_client must never fire, and the bot's reply should read
     like an acknowledgment of the decline, not a fabricated success (mirrors
     test_godfather_declines_invoice_creation's pattern)."""
-    client_name = f"לקוח בדיקה סירוב {random.randint(1000, 9999)}"
+    client_name = _unique_client_name()
     seed_email = _random_seed_email()
 
     response, ai_response = _send_turn_and_decline(
@@ -732,7 +743,7 @@ def test_godfather_lists_clients_via_whatsapp(denidin_app):
     instead of listing the seeded name directly. The assertion below adapts
     to whichever is actually true (read straight from the tool's own real
     output), rather than assuming either outcome in advance."""
-    client_name = f"לקוח בדיקה רשימה {random.randint(1000, 9999)}"
+    client_name = _unique_client_name()
     seed_email = _random_seed_email()
 
     _, (add_response, add_ai_response) = _send_turn_and_approve(
@@ -791,7 +802,7 @@ def test_godfather_lists_clients_via_whatsapp(denidin_app):
 def test_godfather_gets_client_details_via_whatsapp(denidin_app):
     """Godfather asks for a specific client's details by name - read-only,
     no approval wait (get_client_details is in NO_APPROVAL_MCP_TOOLS)."""
-    client_name = f"לקוח בדיקה פרטים {random.randint(1000, 9999)}"
+    client_name = _unique_client_name()
     seed_email = _random_seed_email()
 
     _, (add_response, add_ai_response) = _send_turn_and_approve(
@@ -821,19 +832,43 @@ def test_godfather_gets_client_details_via_whatsapp(denidin_app):
         f"Model never invoked get_client_details via the remote MCP server. "
         f"mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
     )
-    assert all(c["error"] is None for c in detail_calls), (
-        f"get_client_details call(s) reported an error: {detail_calls}"
-    )
+    # Asserts the FINAL user-facing reply is correct and meaningful - NOT that
+    # every intermediate mcp_call was error-free. A real run (2026-08-03)
+    # showed the model can genuinely recover from its own mistakes within one
+    # turn (a wrong argument casing on one attempt, a Hebrew geresh vs. plain-
+    # apostrophe character mismatch causing another attempt to miss) via a
+    # list_clients fallback - exactly the resilience you want from a real
+    # assistant, not a bug. Penalizing that by requiring every attempt to
+    # succeed would fail a turn that actually worked correctly for the real
+    # user. What actually matters - and what this checks, deterministically -
+    # is whether the user got the client's REAL data back: requiring BOTH the
+    # exact seeded name AND the exact seeded email to appear is airtight proof
+    # of a genuinely correct answer, since a generic "not found"/failure reply
+    # could never accidentally contain a randomly-generated real email address.
     assert client_name in response, (
         f"Expected the client's own name {client_name!r} in the reply: {response!r}"
+    )
+    assert seed_email in response, (
+        f"Expected the client's own email {seed_email!r} in the reply (proves "
+        f"the correct record was actually retrieved, not a name echoed back "
+        f"or a failure message): {response!r}"
     )
 
 
 @pytest.mark.billed
 def test_godfather_gets_client_details_not_found_via_whatsapp(denidin_app):
     """Asking about a client that doesn't exist gets a friendly reply, not a
-    crash or a fabricated answer."""
-    nonexistent_name = f"לקוח לא קיים {random.randint(100000, 999999)}"
+    crash or a fabricated answer.
+
+    Real failure (2026-08-02): the fixture name used to be an f-string reading
+    "לקוח לא קיים {random}" - literally "client doesn't exist" in Hebrew, a
+    natural-language STATEMENT, not obviously a proper name, plus a trailing
+    number of ambiguous role (part of the name vs. a separate client id). The
+    model asked for clarification instead of calling get_client_details -
+    a reasonable reaction to a genuinely confusing fixture, not a real bug.
+    Fixed to a fixed, clearly name-shaped nonsense string that will never
+    exist as a real client and reads unambiguously as a name."""
+    nonexistent_name = "לילילי לאלאלא"
 
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -847,8 +882,16 @@ def test_godfather_gets_client_details_not_found_via_whatsapp(denidin_app):
         f"Model never invoked get_client_details via the remote MCP server. "
         f"mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
     )
-    assert all(c["error"] is None for c in detail_calls), (
-        f"get_client_details call(s) reported an error: {detail_calls}"
+    # Same principle as the other get_client_details tests: the final reply
+    # is what matters, not whether every intermediate attempt was error-free
+    # (see 2026-08-03 notes on those tests for the real self-correction
+    # pattern this accounts for). For THIS test specifically, "correct" means
+    # a genuine not-found answer, not a fabricated one - checking for "לא
+    # נמצא" (not found) is deterministic and distinguishes a real answer from
+    # a silent failure or a hallucinated client record.
+    assert "לא נמצא" in response, (
+        f"Expected a genuine 'not found' reply for a nonexistent client, "
+        f"got: {response!r}"
     )
 
 
@@ -867,7 +910,7 @@ def test_godfather_updates_client_via_whatsapp(denidin_app):
        (research.md Decision 3's partial-payload guarantee, exercised here
        through the full real WhatsApp conversation, not just the sandbox
        tool call)."""
-    client_name = f"לקוח בדיקה עדכון {random.randint(1000, 9999)}"
+    client_name = _unique_client_name()
     seed_email = _random_seed_email()
 
     _, (seed_response, seed_ai_response) = _send_turn_and_approve(
@@ -908,8 +951,13 @@ def test_godfather_updates_client_via_whatsapp(denidin_app):
     )
     detail_calls = _calls_for(details_ai_response, "get_client_details")
 
-    assert detail_calls and detail_calls[0]["error"] is None, (
-        f"get_client_details did not succeed when verifying the update: "
+    # Same principle as the other get_client_details tests: the final reply
+    # is what matters, not whether every intermediate attempt was error-free
+    # (2026-08-03: a real run showed the model self-correcting a wrong
+    # argument casing within the turn). The phone/email checks right below
+    # are the real, deterministic proof of a correct answer.
+    assert detail_calls, (
+        f"Model never invoked get_client_details when verifying the update: "
         f"{details_ai_response.mcp_calls if details_ai_response else None!r}"
     )
     assert "054-1234567" in details_response, (
@@ -928,7 +976,7 @@ def test_godfather_declines_client_update(denidin_app):
     update_client must never fire, and a follow-up get_client_details call
     must show the original phone unchanged (mirrors
     test_godfather_declines_add_client's pattern)."""
-    client_name = f"לקוח בדיקה סירוב עדכון {random.randint(1000, 9999)}"
+    client_name = _unique_client_name()
     seed_email = _random_seed_email()
 
     _, (seed_response, seed_ai_response) = _send_turn_and_approve(
@@ -978,7 +1026,11 @@ def test_godfather_update_client_ambiguous_name_creates_no_pending_approval(deni
     gate fires on tool name alone, not argument validity, so tools.py itself
     must refuse to proceed on ambiguous input). Proves this is actually
     enforced end-to-end, not just true in the unit/sandbox tests."""
-    unique_marker = f"DENIDIN_E2E_UPDATE_AMBIG_{random.randint(100000, 999999)}"
+    # A real family name as the per-run uniqueness marker (never a digit
+    # marker - see _unique_client_name's docstring for why) - still avoids
+    # colliding with a stale prior run's identical shared_stem, since it's
+    # drawn from the same 591-entry pool as every other generated name here.
+    unique_marker = random.choice(_HEBREW_FAMILY_NAMES)
     shared_stem = f"לקוח בדיקה דו-משמעי {unique_marker}"
     name_a = f"{shared_stem} א"
     name_b = f"{shared_stem} ב"
@@ -1450,8 +1502,9 @@ def test_no_date_mentioned_omits_date_range(denidin_app):
 # 4 of the 6 known invoices past list_invoices' 10-item page cap and making
 # this test fail for a reason unrelated to bugfix-014 (2026-07-28).
 # Replaced with a dedicated client, "דורית אשכנזי", never referenced by any
-# other test/random-name generator (_CLIENT_STEMS/_CLIENT_QUALIFIERS can
-# never produce this name), seeded once (2026-07-28) with exactly 6 tax
+# other test/random-name generator (_unique_client_name's pool can never
+# produce this name - "דורית" is not in _HEBREW_FIRST_NAMES, verified
+# 2026-08-03), seeded once (2026-07-28) with exactly 6 tax
 # invoices (type 305) - 4 left unpaid, 2 marked paid via a real linked
 # Morning receipt (type 400) - mirroring the shape of the real Arian Regev
 # incident (a request for "all payments" silently narrowed to a

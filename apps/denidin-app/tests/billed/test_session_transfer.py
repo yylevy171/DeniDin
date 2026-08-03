@@ -34,9 +34,20 @@ def test_config():
     config_path = Path(__file__).parent.parent.parent / "config" / "config.test.json"
     with open(config_path) as f:
         config = json.load(f)
-    
-    # Override paths to use test_data directory
-    test_data_root = Path(__file__).parent.parent.parent / "test_data"
+
+    # This test is the only billed test that destroys its sessions/memory
+    # storage on disk mid-run (see cleanup below) - every other billed test
+    # file points at the shared test_data/{sessions,memory} root and never
+    # deletes it, so they're safe to share. This one is NOT: deleting a
+    # ChromaDB directory another still-open client (from a different test
+    # file, run earlier in the same pytest process) has registered in
+    # ChromaDB's per-process System cache leaves that cached System pointing
+    # at now-invalid files - the next write against the recreated directory
+    # then fails with "attempt to write a readonly database" (a real,
+    # order-dependent billed-test failure, 2026-08-03). Using a private
+    # subdirectory nothing else ever touches sidesteps this entirely,
+    # regardless of test run order.
+    test_data_root = Path(__file__).parent.parent.parent / "test_data" / "_isolated_session_transfer"
     config['data_root'] = str(test_data_root)
     
     # Configure short expiration for testing
@@ -214,6 +225,14 @@ def test_session_transfer_and_recall_after_expiration(test_config):
         # Cleanup
         if denidin_app:
             print("\n[CLEANUP] Shutting down app...")
-            denidin_app.shutdown()
+            denidin_app.shutdown()  # closes the ChromaDB client - see DeniDin.shutdown()
             print("✓ App shutdown complete")
+
+        # Leave nothing behind on disk either - this test's storage_dir is
+        # private to it (see test_config above), so it's always safe to wipe
+        # here regardless of what ran before or will run after.
+        if sessions_dir.exists():
+            shutil.rmtree(sessions_dir, onerror=remove_readonly)
+        if memory_dir.exists():
+            shutil.rmtree(memory_dir, onerror=remove_readonly)
 

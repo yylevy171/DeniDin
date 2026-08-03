@@ -34,6 +34,10 @@ class Message:
     was_received: bool = True
     order_num: int = 0
     image_path: Optional[str] = None
+    # Feature 033: id(s) of any LedgerEvent(s) captured from this specific message -
+    # the reverse link to LedgerEvent.message_id. Empty for the vast majority of
+    # messages (most capture nothing).
+    ledger_event_ids: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -48,11 +52,6 @@ class Session:
     total_tokens: int = 0
     transferred_to_longterm: bool = False
     storage_path: Optional[str] = None
-    # Ledger Event Recognition (see runtime_constitution.md). Each entry is the parsed
-    # `capture_ledger_event` function-call arguments the model emitted, plus its message
-    # pointer - never written to any ledger file by this app; an external script reads
-    # and merges it.
-    pending_ledger_events: List[Dict] = field(default_factory=list)
 
 
 class SessionManager:
@@ -136,7 +135,9 @@ class SessionManager:
         user_role: str,
         sender: Optional[str] = None,
         recipient: Optional[str] = None,
-        image_path: Optional[str] = None
+        image_path: Optional[str] = None,
+        ledger_event_ids: Optional[List[str]] = None,
+        message_id: Optional[str] = None
     ) -> str:
         """
         Add message to session.
@@ -149,6 +150,16 @@ class SessionManager:
             sender: Message sender (optional)
             recipient: Message recipient (optional)
             image_path: Path to image file (optional)
+            ledger_event_ids: id(s) of any LedgerEvent(s) captured from this message
+                (Feature 033, optional - defaults to empty list)
+            message_id: The id decided when this message was first recognized as
+                arriving/being created (WhatsAppMessage.from_notification for
+                inbound messages) - Feature 033, confirmed design: the same id
+                MUST be identical across the persisted message's filename, the
+                session's message_ids entry, and LedgerEvent.message_id, never
+                regenerated at storage time. Defaults to a fresh UUID when not
+                given (correct for a message with no prior identity, e.g. the
+                assistant's reply, which is genuinely created at this point).
 
         Returns:
             Message UUID
@@ -159,7 +170,7 @@ class SessionManager:
         session.message_counter += 1
 
         # Create message
-        message_id = str(uuid.uuid4())
+        message_id = message_id or str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
 
         message = Message(
@@ -173,7 +184,8 @@ class SessionManager:
             received_at=now,
             was_received=True,
             order_num=session.message_counter,
-            image_path=image_path
+            image_path=image_path,
+            ledger_event_ids=list(ledger_event_ids) if ledger_event_ids else []
         )
 
         # Save message to session directory
@@ -192,45 +204,6 @@ class SessionManager:
 
         logger.debug(f"Added message {message_id} to session {session.session_id}")
         return message_id
-
-    def add_pending_ledger_event(
-        self,
-        chat_id: str,
-        event: Dict,
-        message_timestamp: Optional[int],
-        sender: Optional[str],
-    ) -> None:
-        """
-        Append a candidate ledger event (see runtime_constitution.md, "Ledger Event
-        Recognition") to the session for later offline review. Never writes to any
-        ledger file itself - purely a holding area an external script later reads.
-
-        Args:
-            chat_id: WhatsApp chat ID
-            event: The parsed `capture_ledger_event` function-call arguments from the model
-            message_timestamp: Unix epoch of the source message (the hard pointer)
-            sender: WhatsApp sender of the source message
-        """
-        session = self.get_session(chat_id)
-
-        pointer_ts = None
-        if message_timestamp is not None:
-            pointer_ts = datetime.fromtimestamp(message_timestamp, tz=timezone.utc).isoformat()
-
-        record = dict(event)
-        record['message_timestamp'] = pointer_ts
-        record['sender'] = sender
-        record['captured_at'] = datetime.now(timezone.utc).isoformat()
-
-        session.pending_ledger_events.append(record)
-        session.last_active = datetime.now(timezone.utc).isoformat()
-        self._save_session(session)
-
-        logger.info(
-            f"Captured pending ledger event for session {session.session_id} "
-            f"(source_type={event.get('source_type')!r}, "
-            f"event_subtype={event.get('event_subtype')!r})"
-        )
 
     def get_conversation_history(self, whatsapp_chat: str, max_tokens: Optional[int] = None) -> List[Dict]:
         """
@@ -597,7 +570,9 @@ class SessionManager:
         content: str,
         user_role: Role,
         sender: Optional[str] = None,
-        recipient: Optional[str] = None
+        recipient: Optional[str] = None,
+        ledger_event_ids: Optional[List[str]] = None,
+        message_id: Optional[str] = None
     ) -> str:
         """
         Add message and update session token count.
@@ -609,12 +584,19 @@ class SessionManager:
             user_role: User role (for tracking, not enforced here)
             sender: Message sender (optional)
             recipient: Message recipient (optional)
+            ledger_event_ids: id(s) of any LedgerEvent(s) captured from this message
+                (Feature 033, optional)
+            message_id: The id decided at message-arrival time (Feature 033) - see
+                add_message's docstring.
 
         Returns:
             Message UUID
         """
         # Add message normally
-        message_id = self.add_message(chat_id, role, content, user_role, sender, recipient)
+        message_id = self.add_message(
+            chat_id, role, content, user_role, sender, recipient,
+            ledger_event_ids=ledger_event_ids, message_id=message_id
+        )
 
         # Count and add tokens
         tokens = self.count_tokens(content)
@@ -632,7 +614,9 @@ class SessionManager:
         user_role: Role,
         token_limit: int,
         sender: Optional[str] = None,
-        recipient: Optional[str] = None
+        recipient: Optional[str] = None,
+        ledger_event_ids: Optional[List[str]] = None,
+        message_id: Optional[str] = None
     ) -> str:
         """
         Add message with token limit enforcement and auto-pruning.
@@ -645,6 +629,10 @@ class SessionManager:
             token_limit: Maximum tokens allowed for this role
             sender: Message sender (optional)
             recipient: Message recipient (optional)
+            ledger_event_ids: id(s) of any LedgerEvent(s) captured from this message
+                (Feature 033, optional)
+            message_id: The id decided at message-arrival time (Feature 033) - see
+                add_message's docstring.
 
         Returns:
             Message UUID
@@ -669,7 +657,10 @@ class SessionManager:
             self._prune_until_under_limit(chat_id, token_limit, new_tokens)
 
         # Add message with token tracking
-        return self.add_message_with_tokens(chat_id, role, content, user_role, sender, recipient)
+        return self.add_message_with_tokens(
+            chat_id, role, content, user_role, sender, recipient,
+            ledger_event_ids=ledger_event_ids, message_id=message_id
+        )
 
     def calculate_session_tokens(self, chat_id: str) -> int:
         """

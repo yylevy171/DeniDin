@@ -61,7 +61,9 @@ class ImageExtractor(MediaExtractor):
                 "extraction_quality": str,  # "high", "medium", "low", "failed"
                 "warnings": List[str],
                 "model_used": str,  # e.g. "gpt-4o"
-                "ledger_event": Optional[Dict]  # Ledger Event Recognition capture, if any
+                "ledger_events": List[Dict]  # Ledger Event Recognition captures, if any
+                    # (2026-07-30: plural - a single document can genuinely warrant more
+                    # than one, e.g. a multi-stage/conditional fee agreement)
             }
         """
         try:
@@ -100,14 +102,17 @@ class ImageExtractor(MediaExtractor):
             # turn (gpt-4o and gpt-4o-mini both produced ZERO extraction text whenever they
             # called the tool), which broke the user-facing document summary. This call's
             # own text is never shown to the user - only whether it called the tool matters.
-            ledger_event = self.ai_handler.capture_ledger_event_from_text(response_text)
+            # Plural (2026-07-30): a single document can genuinely warrant more than one
+            # capture - see capture_ledger_events_from_text's docstring for the real bug
+            # this replaced (silently dropping every component after the first).
+            ledger_events = self.ai_handler.capture_ledger_events_from_text(response_text)
 
             return {
                 "raw_response": response_text,
                 "extraction_quality": "high",
                 "warnings": [],
                 "model_used": self.vision_model,
-                "ledger_event": ledger_event,
+                "ledger_events": ledger_events,
             }
 
         except Exception as e:
@@ -117,7 +122,7 @@ class ImageExtractor(MediaExtractor):
                 "extraction_quality": "failed",
                 "warnings": [f"Analysis failed: {str(e)}"],
                 "model_used": self.vision_model,
-                "ledger_event": None,
+                "ledger_events": [],
             }
 
     def _vision_extract(self, media: Media, prompt: str) -> str:
@@ -151,6 +156,11 @@ class ImageExtractor(MediaExtractor):
         logger.info(f"[ImageExtractor._vision_extract] Media file size: {media.size} bytes, MIME type: {media.mime_type}")
 
         # Call OpenAI Vision via the Responses API with in-memory data URL.
+        # detail="high" (2026-07-30 finding): omitting this left the API defaulting to
+        # "auto", which can downsample a dense-text document image more aggressively than
+        # the content needs - a real, clean, high-resolution fee-agreement screenshot came
+        # back with garbled text and a dropped fee tier. Forcing "high" processes the image
+        # at full resolution (more tiles), matching what document/text-heavy images need.
         logger.info(f"[ImageExtractor._vision_extract] Sending request to OpenAI Vision API")
         response = self.ai_handler.client.responses.create(
             model=self.vision_model,
@@ -159,7 +169,7 @@ class ImageExtractor(MediaExtractor):
                     "role": "user",
                     "content": [
                         {"type": "input_text", "text": full_prompt},
-                        {"type": "input_image", "image_url": data_url}
+                        {"type": "input_image", "image_url": data_url, "detail": "high"}
                     ]
                 }
             ],

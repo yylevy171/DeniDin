@@ -8,6 +8,7 @@ Since extractors already return document_analysis from Phase 4,
 MediaHandler formats the extractor's analysis into user-friendly summaries.
 """
 
+import json
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
@@ -632,3 +633,132 @@ class TestMediaHandlerErrorHandling:
         handler.media_file_manager.validate_format = Mock(return_value="docx")
         handler.process_media_message("url", "file.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 1000, "972501234567", "972501234567@c.us")
         handler.docx_extractor.analyze_media.assert_called_once()
+
+
+class TestLedgerEventPersistenceViaMediaHandler:
+    """T010a (Feature 033): MediaHandler must persist captured ledger events via the
+    real LedgerEventManager (the same instance AIHandler uses), with message_id
+    threaded, and the resulting event_id(s) linked into the stored media-turn
+    message - capture happening BEFORE _store_media_turn, not patched in after."""
+
+    @pytest.fixture
+    def real_denidin_context(self, tmp_path):
+        """Unlike this file's other tests (mock_denidin = Mock(), where session/
+        ledger managers end up as auto-generated child Mocks), this fixture wires
+        real SessionManager/LedgerEventManager instances, isolated to tmp_path, so
+        assertions can verify genuine on-disk persistence and cross-linking."""
+        from src.managers.session_manager import SessionManager
+        from src.managers.ledger_event_manager import LedgerEventManager
+
+        denidin = Mock()
+        denidin.config.data_root = str(tmp_path)
+        denidin.ai_handler.session_manager = SessionManager(
+            storage_dir=str(tmp_path / "sessions"), session_timeout_hours=24
+        )
+        denidin.ai_handler.ledger_event_manager = LedgerEventManager(
+            storage_dir=str(tmp_path / "events")
+        )
+        return denidin
+
+    def test_captured_ledger_event_persisted_with_message_id_and_linked_to_message(
+        self, real_denidin_context, tmp_path
+    ):
+        handler = MediaHandler(real_denidin_context)
+        handler.image_extractor = Mock()
+        handler.image_extractor.analyze_media = Mock(return_value={
+            "raw_response": "בנק - הפקדה של 9,440 ₪",
+            "ledger_events": [{
+                "source_type": "בנק", "event_subtype": "הפקדה",
+                "client_name": None, "payer_name": None,
+                "agreement_label": None, "replaces_hint": None, "reference_hint": None,
+                "raw_message_excerpt": "9,440 ₪ הפקדה",
+                "component_count": 1,
+                "components": [{
+                    "component_label": None, "description": "הפקדה", "amount": "9,440₪",
+                    "percent": None, "percent_base": None, "hours": None,
+                    "hourly_rate": None, "txn_date": None,
+                    "vat_status": "לא צוין",
+                    "notes": None,
+                }],
+            }],
+        })
+        handler.media_file_manager = Mock()
+        handler.media_file_manager.download_file = Mock(return_value=(b"data", True))
+        handler.media_file_manager.validate_file_size = Mock(return_value=None)
+        handler.media_file_manager.validate_format = Mock(return_value="image")
+        handler.media_file_manager.create_storage_path = Mock(return_value=tmp_path / "media")
+        handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-x.jpg")
+
+        result = handler.process_media_message(
+            file_url="https://example.com/bank.jpg", filename="bank.jpg",
+            mime_type="image/jpeg", file_size=1000,
+            sender_phone="972500000000@c.us", chat_id="972500000000@c.us",
+            timestamp=1770000300, message_id="media-msg-1",
+        )
+
+        assert result["success"] is True
+        events_dir = real_denidin_context.ai_handler.ledger_event_manager.storage_dir
+        files = list(events_dir.glob("*.json"))
+        assert len(files) == 1
+        with files[0].open(encoding="utf-8") as f:
+            event = json.load(f)
+        assert event["message_id"] == "media-msg-1"
+        assert event["source_type"] == "בנק"
+        assert event["event_id"].startswith("B")
+
+        session_manager = real_denidin_context.ai_handler.session_manager
+        session = session_manager.get_session("972500000000@c.us")
+        session_dir = session_manager.storage_dir / session.session_id
+        user_messages = []
+        for mid in session.message_ids:
+            with (session_dir / "messages" / f"{mid}.json").open(encoding="utf-8") as f:
+                msg = json.load(f)
+            if msg["role"] == "user":
+                user_messages.append(msg)
+        assert len(user_messages) == 1
+        assert user_messages[0]["ledger_event_ids"] == [event["event_id"]]
+
+        # Confirmed design (2026-07-30): message_id must be identical across the
+        # persisted message's own field, its filename, the session's
+        # message_ids entry, and LedgerEvent.message_id.
+        assert user_messages[0]["message_id"] == "media-msg-1"
+        assert "media-msg-1" in session.message_ids
+        assert (session_dir / "messages" / "media-msg-1.json").exists()
+
+    def test_no_ledger_event_leaves_message_ledger_event_ids_empty(
+        self, real_denidin_context, tmp_path
+    ):
+        handler = MediaHandler(real_denidin_context)
+        handler.image_extractor = Mock()
+        handler.image_extractor.analyze_media = Mock(return_value={
+            "raw_response": "This is just a personal photo, nothing ledger-worthy.",
+            "ledger_events": [],
+        })
+        handler.media_file_manager = Mock()
+        handler.media_file_manager.download_file = Mock(return_value=(b"data", True))
+        handler.media_file_manager.validate_file_size = Mock(return_value=None)
+        handler.media_file_manager.validate_format = Mock(return_value="image")
+        handler.media_file_manager.create_storage_path = Mock(return_value=tmp_path / "media")
+        handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-y.jpg")
+
+        handler.process_media_message(
+            file_url="https://example.com/photo.jpg", filename="photo.jpg",
+            mime_type="image/jpeg", file_size=1000,
+            sender_phone="972500000001@c.us", chat_id="972500000001@c.us",
+            timestamp=1770000400, message_id="media-msg-2",
+        )
+
+        events_dir = real_denidin_context.ai_handler.ledger_event_manager.storage_dir
+        assert list(events_dir.glob("*.json")) == []
+
+        session_manager = real_denidin_context.ai_handler.session_manager
+        session = session_manager.get_session("972500000001@c.us")
+        session_dir = session_manager.storage_dir / session.session_id
+        user_messages = []
+        for mid in session.message_ids:
+            with (session_dir / "messages" / f"{mid}.json").open(encoding="utf-8") as f:
+                msg = json.load(f)
+            if msg["role"] == "user":
+                user_messages.append(msg)
+        assert len(user_messages) == 1
+        assert user_messages[0]["ledger_event_ids"] == []

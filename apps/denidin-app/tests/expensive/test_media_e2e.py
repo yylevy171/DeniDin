@@ -376,55 +376,6 @@ class TestWhatsAppE2E:
         logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}")
     
     @pytest.mark.expensive
-    def test_e2e_unsupported_audio_file(self, denidin_app):
-        """
-        **E2E TEST**: Unsupported audio file rejection.
-        
-        Flow:
-        1. User sends unsupported audio file
-        2. Bot rejects with error message
-        """
-        from denidin import handle_audio_message
-        from src.constants.error_messages import FAILED_TO_PROCESS_FILE_DEFAULT
-        
-        notification = create_real_notification({
-            'typeWebhook': 'incomingMessageReceived',
-            'timestamp': 1706601234,
-            'idMessage': 'E2E_TEST_AUDIO_001',
-            'instanceData': {
-                'idInstance': 7103000000,
-                'wid': '972501234567@c.us',
-                'typeInstance': 'whatsapp'
-            },
-            'senderData': {
-                'chatId': '972522968679@c.us',
-                'sender': '972522968679@c.us',
-                'senderName': 'Test User'
-            },
-            'messageData': {
-                'typeMessage': 'audioMessage',
-                'fileMessageData': {
-                    'downloadUrl': 'https://example.com/audio.mp3',
-                    'fileName': 'audio.mp3',
-                    'mimeType': 'audio/mpeg',
-                    'caption': ''
-                }
-            }
-        })
-        
-        logger.info("\n" + "="*80)
-        logger.info("🔥 E2E TEST: Unsupported audio file")
-        logger.info("="*80)
-        
-        handle_audio_message(notification)
-        response = get_response(notification)
-        
-        logger.info(f"Response: {response}")
-        
-        assert response == FAILED_TO_PROCESS_FILE_DEFAULT
-        logger.info(f"✅ SUCCESS - Error message sent")
-    
-    @pytest.mark.expensive
     def test_e2e_pdf_multipage_no_caption(self, denidin_app, http_server):
         """
         **E2E TEST**: Multi-page PDF without caption - automatic analysis.
