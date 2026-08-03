@@ -118,6 +118,20 @@ if [ -z "$PROJECT_NAME" ]; then
     exit 1
 fi
 
+# Cross-clone env lock + mandatory per-clone local-override file (CLAUDE.md's "Multi-clone
+# lock"/"dev/prod data is also a singleton across clones" sections - the same 2026-07-30
+# incident run_denidin.sh guards against). Only applies in a real repo checkout (scratch/test
+# fixtures deliberately don't copy env_lock.sh in, since cross-clone locking is meaningless for
+# a throwaway git repo) - presence of scripts/env_lock.sh is exactly that signal.
+COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE")
+if [ -f "$SCRIPT_DIR/env_lock.sh" ]; then
+    # shellcheck source=/dev/null
+    source "$SCRIPT_DIR/env_lock.sh"
+    env_lock_require_local_override "$ENV"
+    LOCAL_OVERRIDE="$REPO_ROOT/docker/docker-compose.${ENV}.local.yml"
+    COMPOSE_ARGS+=(-f "$LOCAL_OVERRIDE")
+fi
+
 # --- Side effects (in order) ---
 
 # 1. Load the artifact - no rebuild, ever, for any of the 3 shapes (REQ-DEPLOY-001). Capture the
@@ -136,7 +150,14 @@ fi
 #    mounts (config/logs/data) instead of a bare `docker run` silently missing them.
 COMPOSE_IMAGE="${PROJECT_NAME}-${SERVICE_NAME}:latest"
 docker tag "$LOADED_REF" "$COMPOSE_IMAGE"
-docker compose -f "$COMPOSE_FILE" --project-directory "$REPO_ROOT" up -d --no-build "$SERVICE_NAME"
+
+# Declare intent in the shared active-env file BEFORE starting, same as run_denidin.sh - only
+# in a real repo checkout (see the env_lock.sh presence check above).
+if [ -f "$SCRIPT_DIR/env_lock.sh" ]; then
+    env_lock_acquire "$ENV"
+fi
+
+docker compose "${COMPOSE_ARGS[@]}" up -d --no-build "$SERVICE_NAME"
 
 CONTAINER_NAME="${PROJECT_NAME}-${SERVICE_NAME}-1"
 
@@ -147,7 +168,7 @@ VERIFIED=0
 ELAPSED=0
 while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
     if [ "$APP" == "morning-mcp-app" ]; then
-        HOST_PORT="$(docker compose -f "$COMPOSE_FILE" --project-directory "$REPO_ROOT" port "$SERVICE_NAME" 8000 2>/dev/null | cut -d: -f2)"
+        HOST_PORT="$(docker compose "${COMPOSE_ARGS[@]}" port "$SERVICE_NAME" 8000 2>/dev/null | cut -d: -f2)"
         HEALTH_JSON=""
         if [ -n "$HOST_PORT" ]; then
             HEALTH_JSON="$(curl -s "http://localhost:${HOST_PORT}/health" 2>/dev/null || echo "")"
