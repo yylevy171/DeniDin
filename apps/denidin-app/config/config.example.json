@@ -9,7 +9,7 @@
   "ai_reply_max_tokens": 2500,
   "log_level": "DEBUG_for_dev_or_INFO_for_prod",
   "poll_interval_seconds": 5,
-  "max_retries": 3,
+  "max_retries": 1,
   "data_root": "dev_data_for_dev_or_data_for_prod",
   "godfather_phone": "YOUR_GODFATHER_PHONE_NUMBER",
   "memory": {

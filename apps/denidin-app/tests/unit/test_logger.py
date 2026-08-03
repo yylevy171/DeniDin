@@ -7,6 +7,7 @@ import tempfile
 import os
 import logging
 import shutil
+import uuid
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from src.utils.logger import setup_logger, get_logger
@@ -345,5 +346,112 @@ class TestLogRotation:
         for i in range(1, 6):
             if os.path.exists(f"{log_file}.{i}"):
                 backup_count += 1
-        
+
         assert backup_count > 0, "No backup files created with large writes"
+
+
+class TestVersionFilter:
+    """Feature 034 (REQ-VER-003): every log line carries the app's current version.
+
+    setup_logger()/get_logger() accept an optional version_file path (defaulting to the real
+    apps/denidin-app/VERSION) so tests can point at a scratch file without touching the real one.
+    """
+
+    @pytest.fixture
+    def temp_logs_dir(self):
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @pytest.fixture
+    def temp_version_file(self):
+        temp_dir = tempfile.mkdtemp()
+        version_path = Path(temp_dir) / 'VERSION'
+        yield version_path
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def _read_log(self, logs_path: str) -> str:
+        log_file = os.path.join(logs_path, 'denidin.log')
+        with open(log_file, 'r') as f:
+            return f.read()
+
+    def test_log_line_includes_version_from_version_file(self, temp_logs_dir, temp_version_file):
+        temp_version_file.write_text('1.4.2\n')
+        logs_path = os.path.join(temp_logs_dir, 'logs')
+        logger_name = f'test_version_{uuid.uuid4().hex[:8]}'
+        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO',
+                               version_file=temp_version_file)
+
+        logger.info('hello')
+        for handler in logger.handlers:
+            handler.flush()
+
+        content = self._read_log(logs_path)
+        assert '[v1.4.2]' in content
+        assert 'hello' in content
+
+    def test_log_line_falls_back_to_unknown_when_version_file_missing(
+        self, temp_logs_dir, temp_version_file
+    ):
+        # temp_version_file's parent dir exists but the file itself was never written.
+        logs_path = os.path.join(temp_logs_dir, 'logs')
+        logger_name = f'test_version_missing_{uuid.uuid4().hex[:8]}'
+        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO',
+                               version_file=temp_version_file)
+
+        logger.info('hello')
+        for handler in logger.handlers:
+            handler.flush()
+
+        content = self._read_log(logs_path)
+        assert '[vunknown]' in content
+
+    def test_log_line_falls_back_to_unknown_when_version_file_malformed(
+        self, temp_logs_dir, temp_version_file
+    ):
+        temp_version_file.write_text('not-a-version-at-all!!\n')
+        logs_path = os.path.join(temp_logs_dir, 'logs')
+        logger_name = f'test_version_malformed_{uuid.uuid4().hex[:8]}'
+        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO',
+                               version_file=temp_version_file)
+
+        logger.info('hello')
+        for handler in logger.handlers:
+            handler.flush()
+
+        content = self._read_log(logs_path)
+        assert '[vunknown]' in content
+
+    def test_log_line_accepts_preinit_placeholder_verbatim(self, temp_logs_dir, temp_version_file):
+        # 0.0.0-preinit (T001's bootstrap placeholder) is not strict MAJOR.MINOR.PATCH but should
+        # still surface verbatim (not "unknown") since it starts with a valid semver prefix - this
+        # keeps pre-first-release logs informative rather than ambiguous.
+        temp_version_file.write_text('0.0.0-preinit\n')
+        logs_path = os.path.join(temp_logs_dir, 'logs')
+        logger_name = f'test_version_preinit_{uuid.uuid4().hex[:8]}'
+        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO',
+                               version_file=temp_version_file)
+
+        logger.info('hello')
+        for handler in logger.handlers:
+            handler.flush()
+
+        content = self._read_log(logs_path)
+        assert '[v0.0.0-preinit]' in content
+
+    def test_get_logger_also_includes_version(self, temp_version_file, caplog):
+        # get_logger() short-circuits to reusing the root logger's own handlers whenever the
+        # root logger already has handlers - which conftest.py always ensures during this test
+        # suite's run. That means asserting on a written log FILE (as the other tests in this
+        # class do) doesn't exercise get_logger()'s own behavior here - the version Filter must
+        # be attached to the Logger object itself (not just a handler) to survive that shortcut,
+        # so we assert directly on the captured LogRecord instead.
+        temp_version_file.write_text('2.0.0\n')
+        logger_name = f'test_get_version_{uuid.uuid4().hex[:8]}'
+        logger = get_logger(logger_name, log_level='INFO', version_file=temp_version_file)
+
+        with caplog.at_level('INFO', logger=logger_name):
+            logger.info('via get_logger')
+
+        assert len(caplog.records) == 1
+        assert caplog.records[0].version == '2.0.0'

@@ -32,7 +32,7 @@ from . import tools
 from .config import MorningMCPConfig, load_config
 from .errors import friendly_error_message
 from .morning_client import MorningClient
-from .utils.logger import get_logger
+from .utils.logger import DEFAULT_VERSION_FILE, read_version, get_logger
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.json"
 
@@ -67,11 +67,13 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def _make_health_handler(environment: Optional[str]) -> Callable[[Request], Any]:
+def _make_health_handler(environment: Optional[str], version: str) -> Callable[[Request], Any]:
     """Build the /health handler, closing over this process's own declared
     `environment` (2026-07-21 incident: watchdog.py needs a caller-visible,
     at-rest AND external-tunnel way to confirm which environment a server
-    is actually serving as, not just what its mounted config claims)."""
+    is actually serving as, not just what its mounted config claims) and its
+    current `version` (Feature 034, REQ-VER-002 - read once at startup, not
+    per-request, since a version can't change mid-process)."""
 
     async def _health(_request: Request) -> JSONResponse:
         """Unauthenticated liveness probe - used by callers (e.g. the
@@ -79,20 +81,31 @@ def _make_health_handler(environment: Optional[str]) -> Callable[[Request], Any]
         environment's watchdog.py) to confirm the server is reachable
         end-to-end without needing the bearer token, and which environment
         it's actually running as."""
-        return JSONResponse({"status": "ok", "environment": environment})
+        return JSONResponse({"status": "ok", "environment": environment, "version": version})
 
     return _health
 
 
-def build_asgi_app(mcp: FastMCP, auth_token: Optional[str] = None, environment: Optional[str] = None) -> Starlette:
+def build_asgi_app(
+    mcp: FastMCP,
+    auth_token: Optional[str] = None,
+    environment: Optional[str] = None,
+    version_file: Path = DEFAULT_VERSION_FILE,
+) -> Starlette:
     """Build the MCP server's ASGI app, optionally wrapped with bearer-token auth.
 
     Bypasses `FastMCP.run()`'s built-in uvicorn runner so the app can be
     wrapped with `BearerTokenMiddleware` before serving (same pattern already
     proven in tests/integration/test_mcp_server_e2e.py).
+
+    `version_file` (Feature 034, REQ-VER-002): defaults to this app's real VERSION file;
+    tests pass a scratch path.
     """
     app = mcp.streamable_http_app()
-    app.router.routes.append(Route(HEALTH_PATH, _make_health_handler(environment), methods=["GET"]))
+    version = read_version(Path(version_file))
+    app.router.routes.append(
+        Route(HEALTH_PATH, _make_health_handler(environment, version), methods=["GET"])
+    )
     if auth_token:
         app.add_middleware(BearerTokenMiddleware, token=auth_token)
     return app
