@@ -78,6 +78,7 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 |---|-------|----------|--------|--------|
 | 013 | Client Name Garbling and Unrequested Date Narrowing | - | Open (documentation only) | - |
 | 014 | list_invoices Only Returns One of Many | - | Open (documentation only) | - |
+| 020 | GreenAPIBot Crashes on Empty Notification Response | P0 | Fixed, verified against real dev instance; awaiting real prod deploy verification | bugfix/020-green-api-empty-notification-response-crash |
 
 ## Obsolete Bugfixes (`specs/obsolete/bugfixes/`)
 
