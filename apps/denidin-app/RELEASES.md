@@ -7,3 +7,7 @@ REQ-REL-006).
 ## denidin-app v0.0.1 — 2026-08-02
 
 Initial versioned release: introduces semantic versioning, cut/deploy tooling, and per-app version observability (Feature 034).
+
+## denidin-app v0.1.0 — 2026-08-03
+
+first alpha version
