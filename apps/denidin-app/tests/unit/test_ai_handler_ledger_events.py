@@ -177,7 +177,15 @@ class TestExtractAllFunctionCalls:
 
         assert result == [{"arguments": {}, "call_id": "call_1"}]
 
-    def test_malformed_arguments_skipped_but_others_kept(self):
+    def test_malformed_arguments_kept_as_none_not_dropped(self):
+        """bugfix-018: a call whose arguments fail to parse (most often a
+        truncated response from hitting max_output_tokens) must NOT be dropped
+        - OpenAI still considers its call_id pending regardless of whether we
+        could parse it, so silently discarding it here left a follow-up
+        submission missing that call_id's output, which OpenAI's real API
+        rejects with 400 ("No tool output found for function call ..."),
+        which in turn left the user with a silently empty reply (the actual
+        2026-07-30 incident, req_0f4656c9bd90)."""
         args = {"source_type": "בנק"}
         response = _response([
             _function_call_item("capture_ledger_event", "{not valid json", call_id="call_bad"),
@@ -186,7 +194,10 @@ class TestExtractAllFunctionCalls:
 
         result = extract_all_function_calls(response, "capture_ledger_event")
 
-        assert result == [{"arguments": args, "call_id": "call_good"}]
+        assert result == [
+            {"arguments": None, "call_id": "call_bad"},
+            {"arguments": args, "call_id": "call_good"},
+        ]
 
 
 # 2026-07-30 (REQ-DATA-004's components-array redesign): agreement-level fields stay
@@ -417,12 +428,19 @@ class TestHandleLedgerEventCaptureWiring:
         assert data["message_id"] == "msg-abc"
         assert data["amount"] == 5000
 
-    def test_two_calls_in_one_turn_each_persisted_as_separate_files(self, ai_handler, mock_ai_client):
-        """Two genuinely SEPARATE capture_ledger_event calls in one turn (e.g. two
-        unrelated clients mentioned in the same message - the now-rare edge case,
-        since one agreement's own multi-stage components go through ONE call's
-        `components` array instead - REQ-DATA-004) must still produce 2 separate
-        persisted files, one per call, not one combined write."""
+    def test_two_calls_in_one_turn_are_rejected_not_persisted(self, ai_handler, mock_ai_client):
+        """bugfix-018: runtime_constitution.md's Ledger Event Recognition (Step 4)
+        instructs the model to call capture_ledger_event AT MOST ONCE per message,
+        covering every genuinely distinct component of that message's event in
+        that one call - there is no legitimate case where more than one call in a
+        single turn is correct. The real 2026-07-30 incident (req_0f4656c9bd90)
+        had the model emit 17 near-identical calls for a message that needed
+        zero; more than one call in a turn is always a protocol violation, not a
+        multi-client edge case, so NONE of the calls are trusted - not even a
+        well-formed one - once more than one appears. Both must be rejected and
+        NOTHING persisted (previously this test asserted the opposite: that two
+        calls were legitimate and both got persisted - that assumption is what
+        let a 17-call protocol violation reach the persistence layer at all)."""
         mock_ai_client.responses.create.return_value = _followup_response()
         event2 = _with_component_override(
             dict(SAMPLE_EVENT, client_name="דנה כהן"), amount="2,000₪"
@@ -441,12 +459,11 @@ class TestHandleLedgerEventCaptureWiring:
 
         events_dir = ai_handler.ledger_event_manager.storage_dir
         files = sorted(events_dir.glob("*.json"))
-        assert len(files) == 2
-        amounts = set()
-        for f in files:
-            with f.open(encoding="utf-8") as fh:
-                amounts.add(json.load(fh)["amount"])
-        assert amounts == {5000, 2000}
+        assert files == [], (
+            "more than one capture_ledger_event call in a turn is always a "
+            "protocol violation (at-most-once rule) - nothing should ever be "
+            "persisted from it, regardless of how well-formed each call looks"
+        )
 
     def test_multiple_components_in_one_call_share_identical_agreement_id(
         self, ai_handler, mock_ai_client
@@ -490,13 +507,17 @@ class TestHandleLedgerEventCaptureWiring:
         assert len(agreement_ids) == 1, "both components must share one identical agreement_id"
         assert len(component_ids) == 2, "component_id must still differ per component"
 
-    def test_two_separate_calls_in_one_turn_get_independent_agreement_ids(
+    def test_two_calls_in_one_turn_both_get_rejected_status_in_followup(
         self, ai_handler, mock_ai_client
     ):
-        """Two genuinely SEPARATE capture_ledger_event calls (e.g. two unrelated
-        clients in one message) must NOT share an agreement_id - each call is its
-        own agreement now, unlike the pre-2026-07-30 design where a shared batch id
-        was computed across all calls in a turn."""
+        """bugfix-018: rejecting a multi-call turn must not just skip persistence
+        (proven above) - the follow-up sent back to OpenAI must still resolve
+        EVERY call_id from the turn (OpenAI requires an output for every pending
+        function call, regardless of whether we intend to honor it), each
+        explicitly marked "rejected" so the model is told plainly it broke the
+        at-most-once rule - never left silently believing its calls succeeded,
+        and never left with an unresolved call_id (the exact mechanism that
+        caused the real 400 in the first place)."""
         mock_ai_client.responses.create.return_value = _followup_response()
         event2 = dict(SAMPLE_EVENT, client_name="דנה כהן")
         response = _ledger_call_response([SAMPLE_EVENT, event2])
@@ -511,12 +532,15 @@ class TestHandleLedgerEventCaptureWiring:
             sender="972500000000@c.us", tools=None
         )
 
-        events_dir = ai_handler.ledger_event_manager.storage_dir
-        files = sorted(events_dir.glob("*.json"))
-        assert len(files) == 2
-        agreement_ids = [json.load(f.open(encoding="utf-8"))["agreement_id"] for f in files]
-        assert None not in agreement_ids
-        assert len(set(agreement_ids)) == 2, "separate calls must get independent agreement_ids"
+        followup_call_kwargs = mock_ai_client.responses.create.call_args.kwargs
+        outputs_by_call_id = {
+            item["call_id"]: json.loads(item["output"]) for item in followup_call_kwargs["input"]
+        }
+        assert set(outputs_by_call_id.keys()) == {"call_0", "call_1"}
+        for call_id, payload in outputs_by_call_id.items():
+            assert payload["status"] == "rejected", (
+                f"{call_id} must be explicitly rejected, not silently treated as captured"
+            )
 
     def test_morning_mcp_sourced_turn_suppressed_not_persisted(self, ai_handler, mock_ai_client):
         """Feature 024/025 suppression must still hold after the storage-layer
@@ -573,6 +597,124 @@ class TestHandleLedgerEventCaptureWiring:
 
         events_dir = ai_handler.ledger_event_manager.storage_dir
         assert list(events_dir.glob("*.json")) == []
+
+
+class TestMaxOutputTokensTruncationCausesEmptyReply:
+    """bugfix-018 root cause (confirmed via logs/test_logs/test_denidin_morning_mcp_e2e.log,
+    req_0f4656c9bd90, 2026-07-30): the model spuriously emitted 17 near-identical
+    parallel capture_ledger_event calls for a plain client-lookup message. That much
+    parallel large-schema output exceeded max_output_tokens mid-generation. OpenAI's
+    Responses API does NOT error in that case - it returns HTTP 200 with
+    response.status="incomplete"/response.incomplete_details.reason="max_output_tokens"
+    (this exact contract is already read elsewhere in this file, see
+    _finalize_response's finish_reason derivation), and `output` includes whatever was
+    mid-generation at the cutoff - including a function_call item whose `arguments`
+    string is truncated (unterminated) JSON, not semantically corrupt, just cut off
+    where the model happened to be. extract_all_function_calls silently drops that
+    unparseable call by design, so the follow-up submission omits a
+    function_call_output for its call_id - which OpenAI's real API rejects with 400
+    ("No tool output found for function call ...") since that call_id is still
+    pending on its side, having actually been emitted (just not finished). Today
+    that follow-up failure is caught, but nothing substitutes fallback text, so the
+    user gets a silently empty WhatsApp reply despite billed tokens. These tests
+    construct exactly that response shape (no real OpenAI call) and prove both the
+    mechanical cause and its user-facing impact against the current code."""
+
+    @staticmethod
+    def _truncated_response():
+        """Two well-formed capture_ledger_event calls, plus a THIRD whose
+        `arguments` string was cut off mid-stream by the token budget -
+        unterminated JSON, the same shape as the real incident's parse error
+        (`Expecting value: line 1 column 124 (char 123)`), not a
+        semantically-malformed payload."""
+        good1 = _function_call_item(
+            "capture_ledger_event",
+            json.dumps({"source_type": "הסכם", "event_subtype": "יצירה", "client_name": "א"}),
+            call_id="call_good_1",
+        )
+        good2 = _function_call_item(
+            "capture_ledger_event",
+            json.dumps({"source_type": "הסכם", "event_subtype": "יצירה", "client_name": "ב"}),
+            call_id="call_good_2",
+        )
+        truncated = _function_call_item(
+            "capture_ledger_event",
+            '{"source_type": "הסכם", "event_subtype": "יצירה", "client_name": "ג", "notes": "חלק מהטקסט שנ',
+            call_id="call_truncated_by_token_limit",
+        )
+        return SimpleNamespace(
+            id="resp_original_truncated",
+            output=[good1, good2, truncated],
+            output_text="",
+            model="gpt-5.6-luna",
+            status="incomplete",
+            incomplete_details=SimpleNamespace(reason="max_output_tokens"),
+            usage=SimpleNamespace(total_tokens=2500, input_tokens=2000, output_tokens=500),
+        )
+
+    def test_truncated_call_is_dropped_leaving_its_call_id_unresolved_in_followup(
+        self, ai_handler, mock_ai_client
+    ):
+        """Proves the mechanical cause of OpenAI's real 400: the follow-up request
+        built from a truncated original response never includes a
+        function_call_output for the truncated call's call_id, even though that
+        call_id is still pending on OpenAI's side (it was emitted, just not fully
+        written) - this is exactly what a real follow-up submission would get
+        rejected for."""
+        mock_ai_client.responses.create.return_value = _followup_response()
+        response = self._truncated_response()
+        request = AIRequest(
+            user_prompt="פרטים על הלקוח דוד גרוזדוביץ'", constitution="", max_tokens=2500,
+            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-trunc",
+            timestamp=1770000000,
+        )
+
+        ai_handler._handle_ledger_event_capture(
+            request, response, effective_chat_id="972500000000@c.us",
+            sender="972500000000@c.us", tools=None
+        )
+
+        followup_call_kwargs = mock_ai_client.responses.create.call_args.kwargs
+        submitted_call_ids = {item["call_id"] for item in followup_call_kwargs["input"]}
+        assert "call_truncated_by_token_limit" in submitted_call_ids, (
+            "the truncated call's call_id must still get a function_call_output - "
+            "OpenAI still considers it pending even though we couldn't parse its "
+            "arguments, so omitting it is exactly what triggers the real 400"
+        )
+
+    def test_followup_rejection_from_truncation_leaves_user_with_empty_reply(
+        self, ai_handler, mock_ai_client
+    ):
+        """End-to-end reproduction of the actual incident: once OpenAI rejects the
+        follow-up (because of the dropped call_id proven above), _finalize_response
+        must not leave the user with a silently empty WhatsApp message - it should
+        fall back to a friendly message, the same pattern already used for the
+        pending-approval gap (_build_pending_approval_fallback_text). Today it
+        doesn't, and response_text stays ''."""
+        mock_ai_client.responses.create.side_effect = Exception(
+            "Error code: 400 - {'error': {'message': 'No tool output found for "
+            "function call call_truncated_by_token_limit.', 'type': "
+            "'invalid_request_error', 'param': 'input', 'code': None}}"
+        )
+        response = self._truncated_response()
+        request = AIRequest(
+            user_prompt="פרטים על הלקוח דוד גרוזדוביץ'", constitution="", max_tokens=2500,
+            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-trunc-2",
+            timestamp=1770000000,
+        )
+
+        ai_response = ai_handler._finalize_response(
+            request, response, effective_chat_id="972500000000@c.us",
+            user_obj=None, user_role="godfather", sender="972500000000@c.us",
+            recipient=None, tools=None,
+        )
+
+        assert ai_response.response_text.strip() != "", (
+            "the follow-up failed (as it does for real, per bugfix-018's root "
+            "cause: a truncated capture_ledger_event call from hitting "
+            "max_output_tokens leaves an unresolved call_id, which OpenAI rejects "
+            "with 400) - the user must never receive a silently empty reply"
+        )
 
 
 class TestFinalizeResponseThreadsLedgerEventIds:

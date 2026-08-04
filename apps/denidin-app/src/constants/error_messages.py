@@ -22,3 +22,10 @@ CONTACT_CARD_ONE_AT_A_TIME = "אני יכול לטפל באיש קשר אחד ב
 # approved MCP tool server-side, creating two invoices for one approval.
 APPROVAL_FAILED_TRY_AGAIN = "לא הצלחתי לבצע את הפעולה כרגע. אנא נסה לאשר שוב בעוד רגע."
 APPROVAL_POSSIBLY_DUPLICATED = "אירעה שגיאה באישור הפעולה וייתכן שהיא בוצעה יותר מפעם אחת. אנא בדוק ידנית במערכת לפני שתנסה שוב, ואל תאשר שוב בינתיים."
+
+# Ledger-event follow-up safety net (bugfix-018, 2026-08-04) - the turn that
+# calls capture_ledger_event always has empty output_text (a real reply only
+# comes from the follow-up round-trip), so if that follow-up call itself
+# fails for any reason, there is no text to fall back to at all - never leave
+# the user with a silently empty WhatsApp message.
+LEDGER_FOLLOWUP_FAILED_TRY_AGAIN = "אני נתקלתי בשגיאה בעיבוד הודעתך. אנא נסה שוב או נסח אותה מחדש."
