@@ -1,18 +1,18 @@
-# User Stories: WhatsApp Reply/Quote Reference Resolution (for Ledger Event Cancellations)
+# User Stories: WhatsApp Reply/Quote Reference Resolution
 
 **Feature**: 032-whatsapp-reply-reference-resolution
 **Format**: Given-When-Then (Gherkin/BDD), per METHODOLOGY.md §I — MANDATORY, blocks spec approval until present.
-**Status**: DRAFT — scaffolded 2026-07-30, pending `speckit.clarify` before `spec.md` can be
-finalized. See spec.md's "Open Questions (blocking clarify)" section — several of this
-document's acceptance scenarios below have unresolved dependencies flagged inline.
+**Status**: DRAFT — rescoped 2026-08-04 to general reply-resolution infrastructure only.
+Agreement-specific cancellation/modification user stories moved to Feature 040 (see that
+feature's `user-stories.md`).
 
 ---
 
 ## Background (why this feature exists)
 
-A real user request (2026-07-30): "למחוק"/"לבטל" ("delete"/"cancel") sent as a WhatsApp
-**reply** (quote) to an earlier message that stated a fee agreement, meaning "cancel THAT
-agreement." Investigated 2026-07-30 and confirmed **not supported today**:
+A real user request (2026-07-30) — replying "לבטל"/"למחוק" to an earlier message that stated
+a fee agreement, meaning "cancel that agreement" — surfaced that WhatsApp reply/quote data is
+discarded entirely today:
 
 - Green API's webhook does carry quote/reply data (`messageData.extendedTextMessageData.quotedMessage`,
   keyed by `stanzaId`) — typed in `src/models/green_api.py` but never read anywhere.
@@ -23,91 +23,81 @@ agreement." Investigated 2026-07-30 and confirmed **not supported today**:
   `message_id` is a freshly-generated UUID, unrelated to Green API's own ID scheme that
   `stanzaId` would reference. Even if `stanzaId` were captured, there's currently no way to
   resolve it back to one of DeniDin's own stored `Message` records.
-- Feature 033 (Ledger Event Persistence) already gives every `LedgerEvent` a real `event_id`/
-  `agreement_id`, and every `Message` a `ledger_event_ids` back-link — so once a WhatsApp
-  reply can be resolved to the internal `Message` it quotes, resolving from there to the real
-  `agreement_id`/`event_id` to cancel is straightforward (existing infrastructure).
-- `capture_ledger_event`'s existing `replaces_hint` → `replaced_event_id` mechanism (Feature
-  033, REQ-DATA-002) always writes the literal placeholder `"צריך למצוא"` ("need to find") —
-  because DeniDin has never been able to resolve a hint to a real prior id. This feature is
-  what would finally let that placeholder become a real resolved id, in the one case where
-  resolution is actually possible: the user directly replying to the original message.
 
-## User Story 1 — Cancelling an agreement by replying "לבטל"/"למחוק" to its original message (Priority: P1)
+That original cancellation use case motivated this work but is **not** this feature's scope —
+this feature only builds the general capability (resolve a reply to the message it quotes);
+what a caller does with a resolved reference (e.g. cancel an agreement) is Feature 040.
 
-A godfather/admin previously sent a message that resulted in a captured fee-agreement event.
-Later, they reply directly to that original WhatsApp message with "לבטל" or "למחוק". DeniDin
-should recognize this as a cancellation of the specific agreement the replied-to message
-created, and persist a cancellation event correctly linked to it — not a vague, unresolvable
-`"צריך למצוא"` placeholder.
+## User Story 1 — Resolve a WhatsApp reply to the internal message it quotes (Priority: P1)
 
-**Why this priority**: This is the concrete, real-life scenario that motivated the feature;
-everything else here exists to make this one flow possible.
+Any user replies (real WhatsApp quote/reply) to any earlier message DeniDin sent or received.
+DeniDin should recognize this as a reply, capture the quoted `stanzaId`, and resolve it back
+to its own internally stored `Message` record for that earlier message — making that message's
+content, sender, and timestamp (and, if present, its `ledger_event_ids`, passed through as-is
+with no interpretation) available as context to whatever consumes the reply next.
 
-**Independent Test**: Capture a fee-agreement event from message A. Reply to message A (using
-Green API's real reply/quote mechanism) with "לבטל". Verify a new `LedgerEvent` is persisted
-with `event_subtype=ביטול` and `replaced_event_id` set to the REAL prior `event_id` (or
-`agreement_id` — **open question, see spec.md**), not the `"צריך למצוא"` placeholder.
+**Why this priority**: This is the foundational capability everything else (Feature 040's
+cancellation/modification flows, and any future reply-aware feature) depends on.
+
+**Independent Test**: Send message A. Reply to message A (using Green API's real reply/quote
+mechanism) with arbitrary new text. Verify the resulting `Message` record for the reply
+carries a resolved reference to message A's stored `Message` (matched via `idMessage`/
+`stanzaId`), independent of whether message A ever produced a ledger event.
 
 **Router/Integration Requirement** (partially known, needs `speckit.plan`):
 - `WhatsAppHandler`/`WhatsAppMessage.from_notification` must capture `quotedMessage.stanzaId`
   from the webhook when present (currently discarded).
-- Every message DeniDin stores (or at minimum, every message capable of being later
-  referenced) must also carry Green API's own `idMessage`, so a future reply's `stanzaId` can
-  be matched against it. **Open question**: does this mean storing `idMessage` on every
-  `Message`, or only on ones that produced a ledger event? See spec.md.
+- Every message DeniDin sends/stores must also carry Green API's own `idMessage`, so a future
+  reply's `stanzaId` can be matched against it (Q1, resolved: every message, not just
+  ledger-event-producing ones).
 - A resolution step, given a `stanzaId`, that finds the corresponding stored `Message` (by its
-  Green API `idMessage`) and, via that `Message.ledger_event_ids`, the real captured
-  `LedgerEvent`(s) to reference.
-- This resolved reference needs to reach `capture_ledger_event`'s classification call somehow
-  — **open question**: is it injected into the AI's prompt/instructions as context ("this
-  message replies to a message that captured agreement X"), or resolved entirely in code
-  after the AI just recognizes "this is a cancellation request" generically? See spec.md.
+  Green API `idMessage`) and surfaces its content/metadata (plus `ledger_event_ids` if
+  present, unconditionally — this feature does not filter or interpret them).
 
 **Acceptance Scenarios**:
 
-1. **Given** message A ("X - הצעת שכר טרחה: 9,000 ₪") was sent and captured a `LedgerEvent`
-   with some `event_id`/`agreement_id`, **When** the user replies to message A (real WhatsApp
-   quote/reply) with "לבטל", **Then** a new `LedgerEvent` is persisted with
-   `event_subtype=ביטול`, `source_type=הסכם`, and a reference back to message A's captured
-   event that is a REAL id, not the `"צריך למצוא"` placeholder.
-2. **Given** the same scenario, **When** the cancellation event is inspected, **Then**
-   `client_name` matches message A's client (resolved from the referenced agreement, not
-   re-guessed from "לבטל" alone, which carries no client information itself).
-3. **Given** a reply to a message that did NOT capture any ledger event (ordinary chatter),
-   **When** the user replies "לבטל" to it, **Then** no cancellation event is captured (there
-   is nothing to cancel) — **open question**: what, if anything, should DeniDin reply to the
-   user in this case? See spec.md.
-4. **Given** "לבטל"/"למחוק" sent WITHOUT being a reply to anything (no quote), **When**
-   processed, **Then** behavior is UNCHANGED from today (out of scope for this feature —
-   resolving a cancellation with no reply-context at all is a separate, harder problem, not
-   addressed here).
+1. **Given** message A was sent/received and stored with its `idMessage`, **When** a later
+   message arrives as a real WhatsApp quote/reply to message A, **Then** the reply's stored
+   `Message` record carries a resolved reference to message A (its content, sender,
+   timestamp).
+2. **Given** message A happens to have `ledger_event_ids` (it captured a ledger event),
+   **When** a reply to message A is resolved, **Then** message A's `ledger_event_ids` are
+   included in the resolved reference as pass-through data — this feature does not act on or
+   interpret them (that's Feature 040's job).
+3. **Given** message A has no `ledger_event_ids` (ordinary conversational message), **When** a
+   reply to message A is resolved, **Then** resolution still succeeds — content/metadata only,
+   no ledger data attached, and no error.
+4. **Given** a reply whose `stanzaId` does not match any stored `Message` (e.g. message A
+   predates this feature, or was never captured), **When** processed, **Then** resolution
+   fails gracefully — no crash, and the reply is treated as an ordinary new message.
 
 ---
 
-## User Story 2 (tentative, may be dropped or merged into US1 at `speckit.clarify`) — Non-ledger replies are unaffected
+## User Story 2 — Non-reply messages are unaffected (regression guard) (Priority: P2)
 
-Capturing `stanzaId`/`idMessage` is new plumbing that touches every message, not just
-cancellation ones — this story exists to make sure ordinary reply usage (replying to a normal
-conversational message, unrelated to any ledger event) doesn't regress.
+Capturing `stanzaId`/`idMessage` is new plumbing that touches every message, not just replies
+— this story exists to make sure ordinary (non-reply) message handling doesn't regress.
 
 **Why this priority**: Regression-prevention for existing behavior, not new capability.
 
-**Independent Test**: Reply to an ordinary conversational message with unrelated new text;
-verify DeniDin responds normally, with no ledger-event side effects.
+**Independent Test**: Send an ordinary message with no quote/reply; verify DeniDin's behavior
+is unchanged from before this feature.
 
 **Acceptance Scenarios**:
 
-1. **Given** an ordinary prior message with no captured ledger event, **When** the user
-   replies to it with unrelated text, **Then** DeniDin's response is unaffected by the new
-   `stanzaId`/`idMessage` plumbing — same behavior as before this feature.
+1. **Given** an ordinary message with no `quotedMessage`, **When** processed, **Then**
+   DeniDin's behavior is identical to before this feature (no resolution attempted, no new
+   side effects).
 
 ---
 
-## Explicitly Out of Scope (per user instruction, 2026-07-30)
+## Moved to Feature 040 (`specs/backlog/040-agreement-cancellation-modification/`)
 
-- **Modification (`לעדכן`)** — "modify can be relaxed for now." Not covered by this feature;
-  a future addition once cancellation is proven out.
-- Resolving a cancellation/reference request that is NOT a direct WhatsApp reply (e.g. "בטל
-  את ההסכם עם X" with no quote) — a fundamentally different, harder resolution problem
-  (name/context matching against history) that this feature does not attempt.
+The following, from this spec's original draft, are now Feature 040's user stories and are no
+longer part of 032:
+
+- Cancelling a fee agreement by replying "לבטל"/"למחוק" to the message that captured it.
+- Modifying ("לעדכן") a previously captured agreement.
+- `replaced_event_id` resolution to a real `event_id` (replacing the `"צריך למצוא"`
+  placeholder).
+- RBAC questions specific to who may cancel/modify an agreement via reply.
