@@ -27,7 +27,9 @@ from src.managers.user_manager import UserManager
 from src.managers.pending_approval_manager import PendingApprovalManager, PendingApproval
 from src.models.user import Role
 from src.handlers.morning_mcp_locator import MorningMcpLocator
-from src.constants.error_messages import APPROVAL_FAILED_TRY_AGAIN, APPROVAL_POSSIBLY_DUPLICATED
+from src.constants.error_messages import (
+    APPROVAL_FAILED_TRY_AGAIN, APPROVAL_POSSIBLY_DUPLICATED, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN
+)
 
 logger = get_logger(__name__)
 
@@ -391,19 +393,26 @@ def extract_all_function_calls(response, tool_name: str) -> List[Dict]:
     account for all of them, not just the first (unlike `extract_function_call`/
     `extract_function_call_id`, which only ever return the first match).
 
-    Never raises - malformed `arguments` JSON on any individual item is logged
-    and that item is skipped, same as if the model hadn't called it.
+    Never raises - malformed `arguments` JSON on any individual item (most often a
+    truncated response - see `arguments=None` below) is logged and kept in the
+    results with `arguments=None`, NOT dropped: OpenAI still considers that
+    call_id pending regardless of whether we could parse it, so any follow-up
+    must still resolve it (bugfix-018 - a dropped call_id here left OpenAI
+    rejecting the whole follow-up with "No tool output found for function call
+    ...", which in turn left the user with a silently empty reply).
     """
     results = []
     for item in (getattr(response, "output", None) or []):
         if getattr(item, "type", None) != "function_call" or getattr(item, "name", None) != tool_name:
             continue
+        call_id = getattr(item, "call_id", None)
         try:
             arguments = json.loads(item.arguments)
         except json.JSONDecodeError as e:
             logger.warning(f"Malformed {tool_name!r} function_call arguments discarded: {e}")
+            results.append({"arguments": None, "call_id": call_id})
             continue
-        results.append({"arguments": arguments, "call_id": getattr(item, "call_id", None)})
+        results.append({"arguments": arguments, "call_id": call_id})
     return results
 
 
@@ -985,18 +994,43 @@ class AIHandler:
         `_call_openai_approval_api`) is required to get the model's actual reply, which
         also lets it confirm the captured fields back to the user (Feature 024).
 
-        A single turn CAN still contain more than one `capture_ledger_event` call (e.g.
-        two genuinely unrelated clients mentioned in one message) - OpenAI requires a
-        `function_call_output` for every pending function call in a turn before it will
-        continue, so every call found is resolved together in one follow-up request, not
-        just the first (confirmed empirically, 2026-07-28, a real godfather/Morning-MCP
-        conversation with two calls in one turn). But a single AGREEMENT with multiple
-        fee components is no longer expected to produce multiple separate calls at all
-        (2026-07-30) - each call's own `components` array carries all of that
-        agreement's components; see `LedgerEventManager.add_ledger_events_from_call`.
+        (Revised bugfix-018, 2026-08-04) runtime_constitution.md's Ledger Event
+        Recognition (Step 4) instructs the model to call capture_ledger_event AT
+        MOST ONCE per message, covering every genuinely distinct component of
+        that message's event in that one call's `components` array (REQ-DATA-004,
+        2026-07-30) - there is no longer a legitimate case where more than one
+        call in a single turn is correct (an earlier version of this docstring
+        claimed "two genuinely unrelated clients" was a valid multi-call case;
+        the constitution never actually carved out that exception, and nothing
+        in the code enforced it, which is exactly what let a real, unrelated
+        model malfunction reach this code unchecked - see below). More than one
+        call in a turn is always treated as a PROTOCOL VIOLATION: none of the
+        calls are trusted, not even a well-formed one, and nothing is persisted.
+        A single call whose `arguments` failed to parse (see
+        `extract_all_function_calls`) is treated the same way - rejected, not
+        salvaged or guessed at.
 
-        Persists every captured event regardless of the follow-up's outcome - the
-        structured captures must never be lost even if the confirmation reply fails.
+        Root cause of the real incident this guards against (2026-07-30,
+        req_0f4656c9bd90): the model emitted 17 near-identical
+        capture_ledger_event calls in one turn for a message that needed zero.
+        That many large-schema parallel calls exceeded max_output_tokens
+        mid-generation - OpenAI's Responses API does not error in that case, it
+        returns HTTP 200 with response.status="incomplete"/
+        incomplete_details.reason="max_output_tokens" and includes whatever was
+        mid-generation at the cutoff, including a function_call whose
+        `arguments` string is simply truncated (unterminated JSON, not
+        semantically corrupt). The old code silently dropped that one
+        unparseable call from the follow-up submission - but OpenAI still
+        considered its call_id pending (it WAS emitted, just not finished), so
+        the follow-up was rejected with 400 ("No tool output found for function
+        call ..."), and with no fallback text, the user got a silently empty
+        WhatsApp reply despite billed tokens. Every call_id from the original
+        turn - rejected or not - must always get a `function_call_output` in
+        the follow-up, or OpenAI rejects the whole thing.
+
+        Every REAL capture (single call, well-formed) is persisted regardless
+        of the follow-up's outcome - a structured capture must never be lost
+        even if the confirmation reply fails.
 
         Returns (followup, event_ids): followup is the follow-up response (whose
         output_text/usage should replace the original response's) if at least one
@@ -1042,6 +1076,16 @@ class AIHandler:
             for item in (getattr(response, "output", None) or [])
         )
 
+        # bugfix-018: more than one call in a turn is always a protocol
+        # violation (runtime_constitution.md Step 4 - "at most once per
+        # message"); a single call whose arguments didn't parse is equally
+        # untrustworthy. Either way, nothing is persisted and every call_id
+        # gets an explicit rejection rather than being silently dropped or
+        # guessed at.
+        protocol_violation = len(ledger_calls) > 1
+        single_call_unparseable = len(ledger_calls) == 1 and ledger_calls[0]["arguments"] is None
+        rejected = protocol_violation or single_call_unparseable
+
         followup = None
         resolvable_calls = [c for c in ledger_calls if c["call_id"] is not None]
         if resolvable_calls:
@@ -1050,10 +1094,26 @@ class AIHandler:
                 followup_tools = [
                     t for t in (tools or []) if t.get("name") != LEDGER_EVENT_TOOL["name"]
                 ] or None
+            rejection_reason = None
+            if protocol_violation:
+                rejection_reason = (
+                    f"You called capture_ledger_event {len(ledger_calls)} times in this "
+                    "turn. The rules require calling it at most once per message, "
+                    "covering every genuinely distinct component of that message's "
+                    "event in that one call. All calls from this turn are discarded - "
+                    "nothing was captured. Do not repeat this."
+                )
+            elif single_call_unparseable:
+                rejection_reason = (
+                    "Your capture_ledger_event call's arguments could not be parsed as "
+                    "valid JSON (most likely truncated mid-generation). This call is "
+                    "discarded - nothing was captured. Do not resubmit it in this form."
+                )
             try:
                 followup = self._call_openai_ledger_followup_api(
                     request, response.id, resolvable_calls, followup_tools,
                     suppressed=morning_mcp_used_this_turn,
+                    rejection_reason=rejection_reason,
                 )
             except Exception as e:
                 logger.error(
@@ -1073,16 +1133,20 @@ class AIHandler:
                 f"{request.request_id} - Morning MCP was this turn's data source, not yet a "
                 f"supported ledger-event source (specs/backlog/025-morning-sourced-ledger-events)"
             )
+        elif rejected:
+            logger.warning(
+                f"[bugfix-018] Rejecting {len(ledger_calls)} capture_ledger_event call(s) "
+                f"for request {request.request_id} - "
+                f"{'more than one call in a single turn' if protocol_violation else 'unparseable arguments (likely truncated)'} "
+                "violates the at-most-once-per-message rule; nothing persisted"
+            )
         elif self.ledger_event_manager and effective_chat_id:
             session = self.session_manager.get_session(effective_chat_id)
-            # 2026-07-30 (REQ-DATA-004's components-array redesign): each call now
-            # normally carries a `components` array internally (one agreement, N fee
-            # components, in ONE call) rather than the model making N separate calls -
-            # add_ledger_events_from_call owns the flatten + batch-agreement_id +
-            # persist-each-component logic for a single call. The outer loop over
-            # ledger_calls here just handles the now-rare case of genuinely multiple
-            # SEPARATE capture_ledger_event calls in one turn (e.g. unrelated clients
-            # mentioned in the same message) - each gets its own independent batch.
+            # Exactly one well-formed call reaches here (protocol_violation/
+            # single_call_unparseable above already filtered out every other
+            # case) - add_ledger_events_from_call owns the flatten +
+            # agreement_id + persist-each-component logic for that one call's
+            # `components` array (REQ-DATA-004, 2026-07-30).
             for call in ledger_calls:
                 try:
                     new_event_ids = self.ledger_event_manager.add_ledger_events_from_call(
@@ -1124,6 +1188,24 @@ class AIHandler:
             prompt_tokens += followup.usage.input_tokens
             completion_tokens += followup.usage.output_tokens
             usage_response = followup
+        elif not response_text.strip() and any(
+            getattr(item, "type", None) == "function_call"
+            and getattr(item, "name", None) == LEDGER_EVENT_TOOL["name"]
+            for item in (response.output or [])
+        ):
+            # bugfix-018 safety net: this turn called capture_ledger_event (so
+            # output_text was always going to be empty - see
+            # _handle_ledger_event_capture's docstring), but the follow-up
+            # round-trip that produces the real reply never came back
+            # (rejected/failed/errored). Never leave the user with a silently
+            # empty WhatsApp message just because that second call didn't
+            # succeed - same pattern as the pending-approval fallback below.
+            response_text = LEDGER_FOLLOWUP_FAILED_TRY_AGAIN
+            logger.warning(
+                f"Ledger-event follow-up did not produce a reply for request "
+                f"{request.request_id} - using generic fallback text so the user "
+                "never receives a silently empty reply."
+            )
 
         logger.info(
             f"[022] _finalize_response: response.id={getattr(response, 'id', None)!r}, "
@@ -1327,7 +1409,8 @@ class AIHandler:
     def _call_openai_ledger_followup_api(self, request: AIRequest, previous_response_id: str,
                                          ledger_calls: List[Dict],
                                          tools: Optional[List[Dict]] = None,
-                                         suppressed: bool = False):
+                                         suppressed: bool = False,
+                                         rejection_reason: Optional[str] = None):
         """
         Report EVERY captured ledger event's fields back as its own `capture_ledger_event`
         function's result, via a follow-up Responses API call chained to the original
@@ -1342,23 +1425,40 @@ class AIHandler:
         ledger_calls: list of {"arguments": dict, "call_id": str} - ALL capture_ledger_event
         calls from the previous turn, not just one. OpenAI rejects the follow-up outright
         if any pending function call from that turn is left without a resolved output, so
-        this must supply one `function_call_output` item per call, in the same request.
+        this must supply one `function_call_output` item per call, in the same request -
+        including any call being rejected below, never just omitted.
 
         suppressed: True when Morning MCP was this turn's data source (see
         _handle_ledger_event_capture's docstring) - reports "not_captured" instead of
         "captured" so the model doesn't believe something was recorded, and `tools`
         should already have capture_ledger_event stripped out by the caller so it
         can't just call it again instead of finally answering.
+
+        rejection_reason: bugfix-018 - set when the whole turn's call(s) are being
+        rejected as a protocol violation (more than one call in a turn, or a single
+        call whose arguments didn't parse - see _handle_ledger_event_capture). Every
+        call_id gets this exact "rejected" status/reason, deliberately blunt: these
+        calls are never partially honored or guessed at, so the model must not
+        believe anything was captured. Mutually exclusive with `suppressed` (the
+        caller never sets both).
         """
+        if rejection_reason is not None:
+            output_payload = {"status": "rejected", "reason": rejection_reason}
+        elif suppressed:
+            output_payload = {
+                "status": "not_captured",
+                "reason": "This data comes from Morning (already tracked there), not a new ledger event.",
+            }
+        else:
+            output_payload = None  # per-call "captured" payload, built below
+
         output_items = [
             {
                 "type": "function_call_output",
                 "call_id": call["call_id"],
                 "output": json.dumps(
-                    {
-                        "status": "not_captured",
-                        "reason": "This data comes from Morning (already tracked there), not a new ledger event.",
-                    } if suppressed else {"status": "captured", **call["arguments"]},
+                    output_payload if output_payload is not None
+                    else {"status": "captured", **call["arguments"]},
                     ensure_ascii=False,
                 ),
             }
