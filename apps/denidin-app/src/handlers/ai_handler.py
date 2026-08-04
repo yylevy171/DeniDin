@@ -1485,12 +1485,6 @@ class AIHandler:
 
         return ledger_events
 
-    @retry(
-        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
-        stop=stop_after_attempt(2),
-        wait=wait_fixed(1),
-        reraise=True
-    )
     def _call_openai_approval_api(self, request: AIRequest, pending: PendingApproval,
                                   approve: bool, tools: Optional[List[Dict]] = None):
         """
@@ -1523,7 +1517,12 @@ class AIHandler:
         # default auto-retry-on-429 re-executing that already-approved tool
         # call a second time (two invoices created from one approval). A
         # failed attempt here must surface as a clean error to the caller,
-        # never retry itself.
+        # never retry itself. This method is also deliberately NOT wrapped in
+        # the @retry(...) tenacity decorator used elsewhere in this file - a
+        # bugfix-022 incident recurred even with max_retries=0 because that
+        # decorator was still transparently retrying this whole method (a
+        # second real API call) on RateLimitError/APITimeoutError/APIError.
+        # No retry of this call is ever safe, at any layer.
         response = self.client.with_options(max_retries=0).responses.create(**kwargs)  # type: ignore[call-overload]
         logger.info(
             f"[022] _call_openai_approval_api response: id={getattr(response, 'id', None)!r}, "
