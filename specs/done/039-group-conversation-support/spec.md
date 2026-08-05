@@ -2,9 +2,7 @@
 
 **Feature ID**: 039-group-conversation-support
 **Priority**: TBD
-**Status**: Tasked (`plan.md`/`research.md`/`data-model.md`/`contracts/`/`quickstart.md`/
-`tasks.md` all written; ready for `speckit.implement`, pending human approval of each
-test task per the TDD gate)
+**Status**: Done - Merged to master (PR #183)
 **Created**: August 4, 2026
 
 ---
