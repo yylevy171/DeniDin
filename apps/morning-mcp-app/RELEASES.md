@@ -15,3 +15,7 @@ first alpha version
 ## morning-mcp-app v0.2.0 — 2026-08-05
 
 Version bump to match denidin-app v0.2.0 - no functional changes in this app
+
+## morning-mcp-app v0.2.1 — 2026-08-05
+
+Fix list_invoices silent truncation beyond 10 items (real pagination + token-budget-aware display truncation); pin mcp<2.0.0 after a breaking upstream API rename (FastMCP -> MCPServer).
