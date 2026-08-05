@@ -11,3 +11,7 @@ Initial versioned release: introduces semantic versioning, cut/deploy tooling, a
 ## denidin-app v0.1.0 — 2026-08-03
 
 first alpha version
+
+## denidin-app v0.2.0 — 2026-08-05
+
+Group conversation support (no-mention-required replies, no-reply etiquette, group RBAC) and a 1:1 RBAC resolution fix for Morning MCP tool attachment
