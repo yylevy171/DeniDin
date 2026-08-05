@@ -67,18 +67,33 @@ class TestMediaPathBypassesGroupEtiquette:
 
         return denidin_module.denidin_app
 
-    def _stub_external_boundaries(self, denidin_app, raw_response: str):
+    def _stub_external_boundaries(self, denidin_app, raw_response: str, monkeypatch):
         """Stand in for the two real external calls a successful media turn makes
         (Green API file download, OpenAI vision analysis) - everything else
-        (SessionManager, WhatsAppHandler, MediaHandler orchestration) stays real."""
+        (SessionManager, WhatsAppHandler, MediaHandler orchestration) stays real.
+
+        Uses pytest's `monkeypatch` (auto-reverted at the end of each test) rather than
+        a raw attribute assignment - `denidin_app`/`media_handler` are process-global
+        singletons reused across test FILES within one pytest session (guarded by
+        `if denidin_module.denidin_app is None`), so a raw assignment here previously
+        leaked into unrelated later tests under random test ordering (found 2026-08-05:
+        it caused tests/integration/test_media_webhook_routing.py's
+        test_image_message_user_gets_response to observe this stub's canned response
+        instead of its own expected download-failure error)."""
         media_handler = denidin_app.whatsapp_handler.media_handler
-        media_handler.media_file_manager.download_file = lambda file_url: (b"fake_image_bytes", True)
-        media_handler.image_extractor.analyze_media = lambda media, caption="": {
-            "raw_response": raw_response,
-            "extraction_quality": "high",
-            "warnings": [],
-            "model_used": "gpt-5.6-luna",
-        }
+        monkeypatch.setattr(
+            media_handler.media_file_manager, 'download_file',
+            lambda file_url: (b"fake_image_bytes", True)
+        )
+        monkeypatch.setattr(
+            media_handler.image_extractor, 'analyze_media',
+            lambda media, caption="": {
+                "raw_response": raw_response,
+                "extraction_quality": "high",
+                "warnings": [],
+                "model_used": "gpt-5.6-luna",
+            }
+        )
 
     def _create_notification(self, chat_id: str, sender: str, sender_name: str, caption: str, msg_id: str):
         from whatsapp_chatbot_python import Notification
@@ -107,14 +122,16 @@ class TestMediaPathBypassesGroupEtiquette:
         notification.answer = lambda message: notification._test_sent_messages.append(message)
         return notification
 
-    def test_group_image_processed_normally_with_resolved_sender_name(self, denidin_app):
+    def test_group_image_processed_normally_with_resolved_sender_name(self, denidin_app, monkeypatch):
         """A real image sent in a group is processed exactly as today (extraction +
         reply), and the resulting stored user-turn message carries the sender's
         resolved display name (Feature 039), never a phone number or the retired
         "AI" sentinel - mirroring T006a's rule for the text path."""
         from denidin import handle_image_message
 
-        self._stub_external_boundaries(denidin_app, raw_response="Photo shows a signed contract page.")
+        self._stub_external_boundaries(
+            denidin_app, raw_response="Photo shows a signed contract page.", monkeypatch=monkeypatch
+        )
 
         notification = self._create_notification(
             chat_id=GROUP_CHAT_ID,
@@ -153,7 +170,7 @@ class TestMediaPathBypassesGroupEtiquette:
         assert latest_assistant["recipient"] == "Admin User"
         assert latest_assistant["sender"] is None
 
-    def test_group_image_with_named_addressee_caption_still_gets_full_reply(self, denidin_app):
+    def test_group_image_with_named_addressee_caption_still_gets_full_reply(self, denidin_app, monkeypatch):
         """A caption that would trigger US5/US7's [[NO_REPLY]] path if it were plain
         text (naming someone other than DeniDin) is NOT etiquette-filtered on the
         media path - proving the scope boundary from research.md Sec 9: media never
@@ -161,7 +178,8 @@ class TestMediaPathBypassesGroupEtiquette:
         from denidin import handle_image_message
 
         self._stub_external_boundaries(
-            denidin_app, raw_response="Full document analysis: invoice for services rendered."
+            denidin_app, raw_response="Full document analysis: invoice for services rendered.",
+            monkeypatch=monkeypatch
         )
 
         notification = self._create_notification(
