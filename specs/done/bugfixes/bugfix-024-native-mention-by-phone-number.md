@@ -16,10 +16,9 @@ no visible signal to the sender that anything went wrong. Found in production-bo
 manual testing immediately after deploying Feature 039 to `dev`.
 
 ## Status
-**Fixed and verified live (2026-08-05)** - all 8 cases in
-`tests/billed/test_group_etiquette_billed.py` pass against the real Green API/OpenAI
-pipeline, including the new case7 reproducing the exact real failure. Ready to move to
-`specs/done/bugfixes/` once merged.
+**Done - Merged to master (PR #186), fixed and verified live (2026-08-05)** - all 8
+cases in `tests/billed/test_group_etiquette_billed.py` pass against the real Green
+API/OpenAI pipeline, including the new case7 reproducing the exact real failure.
 
 ## Date Opened
 2026-08-05
