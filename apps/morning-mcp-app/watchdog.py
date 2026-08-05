@@ -1,14 +1,14 @@
 """Watchdog process for morning-mcp-app containers (2026-07-21, env-mismatch
-incident response).
+incident response; schema updated 2026-08-05 for concurrent dev+prod).
 
 Runs as the container's PID 1, launched by docker-entrypoint.sh in place of
 directly exec'ing the server (ngrok tunnel setup + status-file writing in
 docker-entrypoint.sh happens first, unchanged). Spawns the real MCP server as
 a child subprocess and periodically confirms this container's own declared
-environment (`config.environment`, from the mounted config file) still
-matches `shared/active_env.json` (mounted read-only at
+environment (`config.environment`, from the mounted config file) is still
+listed as active in `shared/active_env.json` (mounted read-only at
 /app/active-env/active_env.json), the single shared source of truth for
-which environment is currently allowed to be active - checked two
+which environment(s) are currently allowed to be active - checked two
 independent ways:
 
 1. INTERNAL: GET http://127.0.0.1:<port>/health inside the container.
@@ -17,13 +17,28 @@ independent ways:
    container reachable over its tunnel while a *different* environment was
    supposed to be the only one active).
 
-Both responses carry `{"environment": "..."}`. If either disagrees with
-shared/active_env.json, the server subprocess is killed and NOT respawned -
-the watchdog itself keeps running (container stays "Up" in `docker ps`
-rather than being silently recreated by Docker's restart policy) but does
-nothing further until a human tears the container down (see
-killall_containers.sh) and starts the correct environment explicitly. No
-automatic retry, by design.
+Both responses carry `{"environment": "..."}`, which must equal this
+container's own `own_env` - a live server claiming to be a DIFFERENT
+environment than its own config says is a real bug (e.g. cross-environment
+contamination) independent of whether dev/prod are concurrently active, so
+that check is unchanged. Separately, `own_env` itself must currently be
+listed as active in shared/active_env.json's `active_envs`
+(schema, 2026-08-05: `{"active_envs": {"dev": {...}, "prod": {...}}, ...}` -
+an environment is active iff its key is present, independent of whether the
+other one is too; dev and prod may both be active at once - see CLAUDE.md's
+"Environments (dev/prod)" section). If either check fails, the server
+subprocess is killed and NOT respawned - the watchdog itself keeps running
+(container stays "Up" in `docker ps` rather than being silently recreated by
+Docker's restart policy) but does nothing further until a human tears the
+container down (see killall_containers.sh) and starts the correct
+environment explicitly. No automatic retry, by design.
+
+(Old pre-2026-08-05 files used a single `active_env` scalar; reading one of
+those under this schema finds no "active_envs" key, which is treated as
+"can't determine right now" and skips the active-set check rather than
+false-triggering - see `_read_active_environments()`. A deliberate, safe
+degradation for any rollout window where the file and the running image are
+briefly out of sync, not a supported steady state.)
 """
 from __future__ import annotations
 
@@ -53,7 +68,12 @@ CHECK_INTERVAL_SECONDS = 30
 HEALTH_TIMEOUT_SECONDS = 5
 
 
-def _read_active_environment() -> Optional[str]:
+def _read_active_environments() -> Optional[set]:
+    """Returns the set of currently-active environment names, or None if
+    that can't be determined right now (file missing, unreadable, or still
+    on the old pre-2026-08-05 schema with no "active_envs" key at all) - the
+    caller must treat None as "skip this check", never as an empty set,
+    since an empty set would mean every environment mismatches."""
     if not ACTIVE_ENV_PATH.exists():
         logger.warning(f"{ACTIVE_ENV_PATH} not found - no environment is declared active")
         return None
@@ -62,7 +82,10 @@ def _read_active_environment() -> Optional[str]:
     except (OSError, json.JSONDecodeError) as exc:
         logger.error(f"Could not read {ACTIVE_ENV_PATH}: {exc}")
         return None
-    return raw.get("active_env")
+    active_envs = raw.get("active_envs")
+    if active_envs is None:
+        return None
+    return set(active_envs.keys())
 
 
 def _fetch_health_environment(url: str) -> Optional[str]:
@@ -156,8 +179,8 @@ def main() -> None:
         if torn_down:
             continue
 
-        active_env = _read_active_environment()
-        if active_env is None or own_env is None:
+        active_envs = _read_active_environments()
+        if active_envs is None or own_env is None:
             continue
 
         internal_env = _fetch_health_environment(internal_health_url)
@@ -184,16 +207,19 @@ def main() -> None:
             )
 
         mismatches = []
-        if own_env != active_env:
-            mismatches.append(f"own config.environment={own_env!r}")
-        if internal_env is not None and internal_env != active_env:
-            mismatches.append(f"internal /health reported environment={internal_env!r}")
-        if external_attempted and external_env is not None and external_env != active_env:
-            mismatches.append(f"external tunnel /health reported environment={external_env!r}")
+        if own_env not in active_envs:
+            mismatches.append(
+                f"own config.environment={own_env!r} is not currently declared active "
+                f"(active_envs={sorted(active_envs)!r})"
+            )
+        if internal_env is not None and internal_env != own_env:
+            mismatches.append(f"internal /health reported environment={internal_env!r}, expected {own_env!r}")
+        if external_attempted and external_env is not None and external_env != own_env:
+            mismatches.append(f"external tunnel /health reported environment={external_env!r}, expected {own_env!r}")
 
         if mismatches:
             logger.error(
-                f"ENVIRONMENT MISMATCH (active_env={active_env!r}): {'; '.join(mismatches)} - "
+                f"ENVIRONMENT MISMATCH: {'; '.join(mismatches)} - "
                 f"tearing down the server subprocess (pid={process.pid}). "
                 f"Container stays up (no auto-restart); run scripts/killall_containers.sh "
                 f"and start the correct environment explicitly."

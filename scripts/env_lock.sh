@@ -4,18 +4,32 @@
 # stop_morning_mcp.sh, and killall_containers.sh in every clone (this
 # original clone, coder1, coder2, ...). Not meant to be run directly.
 #
-# Model: at most one environment (dev OR prod, never both) may be active
-# across ALL clones on this machine at once. "dev" is additionally locked
-# to whichever clone (coder) acquired it, until that same coder releases it
-# (or -force is used). "prod" is never owner-locked - any clone may
-# start/stop it once no dev lock is held.
+# Model (2026-08-05 - dev+prod concurrency ban lifted): dev and prod may now
+# both be active at once, independently - see CLAUDE.md's "Environments
+# (dev/prod)" section, "Asymmetry update (2026-08-03)": each environment now
+# has fully separate WhatsApp/Green API/Green Invoice infrastructure, so the
+# original conflict (two containers polling the same Green API instance)
+# no longer exists. What's still locked: "dev" is locked to whichever clone
+# (coder) acquired it, until that same coder releases it (or -force is
+# used) - this is a separate concern (two clones' dev containers can still
+# collide with each other, e.g. on data volumes) and is unaffected by this
+# change. "prod" is never owner-locked, was never affected by the dev+prod
+# ban, and still isn't.
 #
 # Lock state lives in $SHARED_STATE_DIR/active_env.json (a directory shared
 # across clones via a symlink at each clone's ./shared, resolved from each
 # clone's own gitignored ./config/shared_state.local.json - see CLAUDE.md).
 #
-# Schema: {"active_env": "dev"|"prod"|null, "owner": "<coder-id>"|null, "updated_at": "..."}
-# "owner" is only meaningful when active_env == "dev"; always null otherwise.
+# Schema: {"active_envs": {"dev": {"owner": "<coder-id>"}, "prod": {"owner": null}}, "updated_at": "..."}
+# An environment key is present in "active_envs" iff it's currently active;
+# absence means not active. Either, both, or neither key may be present at
+# once. "owner" is only meaningful under "dev"; always null under "prod".
+#
+# Old schema (pre-2026-08-05): {"active_env": "dev"|"prod"|null, "owner": ...}.
+# watchdog.py in both apps was updated in lockstep (same commit) to read the
+# new schema - see there for why an old-code/new-schema or new-code/old-schema
+# mismatch during a rollout window degrades safely (skips its check) rather
+# than false-triggering.
 
 _env_lock_repo_root() {
     # REPO_ROOT must already be set by the sourcing script.
@@ -87,32 +101,45 @@ env_lock_ensure_shared_symlink() {
     fi
 }
 
-# Reads the lock into $LOCK_ACTIVE_ENV / $LOCK_OWNER ("null" string if unset).
+# Reads the lock into $LOCK_DEV_ACTIVE / $LOCK_DEV_OWNER / $LOCK_PROD_ACTIVE
+# ("true"/"false" for the *_ACTIVE vars, "null" string for an unset owner).
+# Tolerates a missing file (nothing active) and the old pre-2026-08-05
+# single-active_env schema (read as "nothing active" - see this file's
+# header comment on why that's a safe degraded state, not a bug).
 env_lock_read() {
     local repo_root lock_file
     repo_root="$(_env_lock_repo_root)"
     lock_file="$repo_root/shared/active_env.json"
 
     if [ ! -f "$lock_file" ]; then
-        LOCK_ACTIVE_ENV="null"
-        LOCK_OWNER="null"
+        LOCK_DEV_ACTIVE="false"
+        LOCK_DEV_OWNER="null"
+        LOCK_PROD_ACTIVE="false"
         return
     fi
 
-    LOCK_ACTIVE_ENV="$(python3 -c "
+    LOCK_DEV_ACTIVE="$(python3 -c "
 import json
 d = json.load(open('$lock_file'))
-print(d.get('active_env') or 'null')
+print('true' if 'dev' in (d.get('active_envs') or {}) else 'false')
 ")"
-    LOCK_OWNER="$(python3 -c "
+    LOCK_DEV_OWNER="$(python3 -c "
 import json
 d = json.load(open('$lock_file'))
-print(d.get('owner') or 'null')
+dev = (d.get('active_envs') or {}).get('dev') or {}
+print(dev.get('owner') or 'null')
+")"
+    LOCK_PROD_ACTIVE="$(python3 -c "
+import json
+d = json.load(open('$lock_file'))
+print('true' if 'prod' in (d.get('active_envs') or {}) else 'false')
 ")"
 }
 
-_env_lock_write() {
-    local active_env="$1" owner="$2"
+# Sets/clears exactly one environment's entry, leaving the other's untouched.
+# Usage: _env_lock_write_env dev|prod <owner-or-null> | _env_lock_write_env dev|prod REMOVE
+_env_lock_write_env() {
+    local env="$1" owner_or_remove="$2"
     local repo_root lock_file
     repo_root="$(_env_lock_repo_root)"
     lock_file="$repo_root/shared/active_env.json"
@@ -120,10 +147,21 @@ _env_lock_write() {
     python3 -c "
 import json
 from datetime import datetime, timezone
-active_env = $( [ "$active_env" = "null" ] && echo "None" || echo "'$active_env'" )
-owner = $( [ "$owner" = "null" ] && echo "None" || echo "'$owner'" )
+try:
+    with open('$lock_file', encoding='utf-8') as f:
+        d = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    d = {}
+active_envs = d.get('active_envs') or {}
+env = '$env'
+action = '$owner_or_remove'
+if action == 'REMOVE':
+    active_envs.pop(env, None)
+else:
+    owner = None if action == 'null' else action
+    active_envs[env] = {'owner': owner}
 with open('$lock_file', 'w', encoding='utf-8') as f:
-    json.dump({'active_env': active_env, 'owner': owner, 'updated_at': datetime.now(timezone.utc).isoformat()}, f, indent=2)
+    json.dump({'active_envs': active_envs, 'updated_at': datetime.now(timezone.utc).isoformat()}, f, indent=2)
     f.write('\n')
 "
 }
@@ -171,8 +209,10 @@ env_lock_require_local_override() {
 }
 
 # Call before starting dev/prod containers. Exits with an error message if
-# the requested env is not startable right now. On success, acquires/
-# refreshes the lock.
+# the requested env is not startable right now (dev locked by a different
+# clone). On success, acquires/refreshes that env's entry, leaving the
+# other environment's entry (active or not) untouched - dev and prod may
+# both be active at once (2026-08-05 - see this file's header comment).
 #
 # Usage: env_lock_acquire dev|prod
 env_lock_acquire() {
@@ -182,27 +222,20 @@ env_lock_acquire() {
     env_lock_read
 
     if [ "$requested" = "dev" ]; then
-        if [ "$LOCK_ACTIVE_ENV" = "prod" ]; then
-            echo "ERROR: prod is currently active. Stop it first (./killall_containers.sh, or stop_*.sh prod) before starting dev." >&2
+        if [ "$LOCK_DEV_ACTIVE" = "true" ] && [ "$LOCK_DEV_OWNER" != "null" ] && [ "$LOCK_DEV_OWNER" != "$me" ]; then
+            echo "ERROR: dev is locked by '$LOCK_DEV_OWNER'. Ask them to free it (stop_*.sh dev), or use -force to override." >&2
             exit 1
         fi
-        if [ "$LOCK_ACTIVE_ENV" = "dev" ] && [ "$LOCK_OWNER" != "null" ] && [ "$LOCK_OWNER" != "$me" ]; then
-            echo "ERROR: dev is locked by '$LOCK_OWNER'. Ask them to free it (stop_*.sh dev), or use -force to override." >&2
-            exit 1
-        fi
-        _env_lock_write "dev" "$me"
+        _env_lock_write_env "dev" "$me"
     else
-        if [ "$LOCK_ACTIVE_ENV" = "dev" ]; then
-            echo "ERROR: dev is currently active (owner: $LOCK_OWNER). Stop it first before starting prod." >&2
-            exit 1
-        fi
-        _env_lock_write "prod" "null"
+        _env_lock_write_env "prod" "null"
     fi
 }
 
 # Call before stopping/releasing dev/prod containers for THIS clone/service.
 # Exits with an error if a non-owner tries to release a dev lock without
-# -force. On success, clears the lock to null/null.
+# -force. On success, clears that env's entry only - the other environment's
+# entry (active or not) is untouched.
 #
 # Usage: env_lock_release dev|prod [-force]
 env_lock_release() {
@@ -211,13 +244,13 @@ env_lock_release() {
     env_lock_ensure_shared_symlink
     env_lock_read
 
-    if [ "$requested" = "dev" ] && [ "$LOCK_ACTIVE_ENV" = "dev" ]; then
-        if [ "$LOCK_OWNER" != "null" ] && [ "$LOCK_OWNER" != "$me" ] && [ "$force" != "-force" ]; then
-            echo "ERROR: dev is locked by '$LOCK_OWNER', not '$me'. Refusing to stop/release it." >&2
-            echo "       Pass -force to override (only if you're sure), or ask '$LOCK_OWNER' to stop it." >&2
+    if [ "$requested" = "dev" ] && [ "$LOCK_DEV_ACTIVE" = "true" ]; then
+        if [ "$LOCK_DEV_OWNER" != "null" ] && [ "$LOCK_DEV_OWNER" != "$me" ] && [ "$force" != "-force" ]; then
+            echo "ERROR: dev is locked by '$LOCK_DEV_OWNER', not '$me'. Refusing to stop/release it." >&2
+            echo "       Pass -force to override (only if you're sure), or ask '$LOCK_DEV_OWNER' to stop it." >&2
             exit 1
         fi
     fi
 
-    _env_lock_write "null" "null"
+    _env_lock_write_env "$requested" "REMOVE"
 }

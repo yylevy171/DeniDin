@@ -40,59 +40,82 @@ clone's own venv explicitly before running project commands, and verify
 explicitly asks" exception as above — no exception carries over from a
 prior request.
 
-## 🚨 ONE ENVIRONMENT SET AT A TIME — NO EXCEPTIONS 🚨
+## 🚨 ENVIRONMENT ISOLATION & LOCKING 🚨
 
-**At most ONE full set of containers may run at any given moment: either the
-entire `prod` set, or the entire `dev` set, or nothing at all.** `denidin-app`
-and `morning-mcp-app` are bundled at the hip — neither app's container may run
-alone, and **prod and dev must never run simultaneously, for either app,
-under any circumstance.** There is no exception carved out for
-`morning-mcp-app` running independently of this rule — an earlier version of
-this document said `morning-mcp-app-dev`/`-prod` could run together with no
-restriction; that was wrong and has been corrected (2026-07-21 incident: a
-`morning-mcp-app-prod` container was left running unattended after a deploy,
-with real production Green Invoice credentials, and a stale test-config path
-(`config.test.json`'s `morning_status_file`, never updated after the
-019-env-separation migration) caused the expensive E2E test suite to silently
-create real invoices in production instead of the sandbox).
+**Dev and prod may now run concurrently (2026-08-05 — ban lifted; see "Environments
+(dev/prod)" below for the full history).** Each environment now has fully
+separate WhatsApp/Green API/Green Invoice infrastructure (2026-08-03
+asymmetry update), so the original reason they couldn't safely coexist
+(`GreenAPIBot` polling the same Green API instance from two containers at
+once) no longer applies. What's still true, unchanged:
+- **`denidin-app` and `morning-mcp-app` are bundled at the hip within one
+  environment** — neither app's container may run alone. Use
+  `scripts/run_all.sh`/`scripts/stop_all.sh <env>`, not the per-app scripts,
+  unless specifically starting/stopping just one app.
+- **`dev` is locked to whichever clone acquired it**, until that same clone
+  releases it (`stop_*.sh dev`) or someone force-overrides
+  (`-force`) — see "Multi-clone lock" below. This is a *different* concern
+  from the old dev/prod exclusivity (two clones' dev containers colliding
+  with each other, e.g. on data volumes) and was never affected by the
+  dev/prod ban in the first place.
+- **`prod` is never owner-locked** — any clone may start/stop it.
 
-**Enforcement mechanism (2026-07-21, post-incident)**:
+There is no exception carved out for `morning-mcp-app` running independently
+of the *bundling* rule above — an earlier version of this document said
+`morning-mcp-app-dev`/`-prod` could run together with no restriction at all;
+that was wrong and was corrected 2026-07-21 (a `morning-mcp-app-prod`
+container was left running unattended after a deploy, with real production
+Green Invoice credentials, and a stale test-config path (`config.test.json`'s
+`morning_status_file`, never updated after the 019-env-separation migration)
+caused the expensive E2E test suite to silently create real invoices in
+production instead of the sandbox — this incident was about credential/config
+isolation, not dev/prod instance-sharing, and stays fully relevant).
+
+**Enforcement mechanism (2026-07-21, post-incident; schema updated 2026-08-05
+for concurrent dev+prod)**:
 - **`./scripts/killall_containers.sh`** — tears down every container in
   every environment, both apps, unconditionally, and resets
-  `shared/active_env.json` (the single shared source of truth for "which
-  environment is currently allowed to be active") to `null`. Run this first,
-  always, whenever switching environments, ending a session, or any time you
-  are not certain what's currently running.
-- **`shared/active_env.json`** — `run_denidin.sh`/`run_morning_mcp.sh`
-  write `{"active_env": "dev"|"prod"}` here when starting that environment.
-  This file is mounted read-only into every container.
+  `shared/active_env.json` to `{"active_envs": {}}` (nobody active). An
+  unconditional full-reset hammer for whenever you're not sure what's
+  running or want a clean slate — no longer something you must run before
+  switching environments, since there's no longer anything to switch away
+  from.
+- **`shared/active_env.json`** — schema: `{"active_envs": {"dev": {"owner":
+  "<clone>"|null}, "prod": {"owner": null}}, "updated_at": "..."}`. An
+  environment's key is present iff it's currently active — either, both, or
+  neither may be present at once. `run_denidin.sh`/`run_morning_mcp.sh`
+  (via `env_lock.sh`) set/clear only their own environment's key, leaving
+  the other's entry untouched. This file is mounted read-only into every
+  container.
 - **`watchdog.py`** (one per app, runs as the container's PID 1, spawns the
   real app/server as a child process) — periodically checks that its own
-  container's declared `config.environment` still matches
-  `shared/active_env.json`. `morning-mcp-app`'s watchdog checks this two
-  ways: internally (`http://127.0.0.1:<port>/health`) and externally,
-  through its own live ngrok tunnel — the check that would have caught the
-  2026-07-21 incident. On any mismatch, the watchdog kills its own app
-  subprocess and does **not** respawn it — the container stays "Up" (so
-  Docker's restart policy, now `restart: "no"` on every service, can't
-  silently recreate it) but does nothing further until a human runs
-  `scripts/killall_containers.sh` and starts the correct environment explicitly.
-  No automatic retry, by design.
+  container's declared `config.environment` is still listed as active in
+  `shared/active_env.json`'s `active_envs`. `morning-mcp-app`'s watchdog
+  checks this two ways: internally (`http://127.0.0.1:<port>/health`) and
+  externally, through its own live ngrok tunnel — the check that would have
+  caught the 2026-07-21 incident (both also independently verify the live
+  server reports its own declared environment, catching cross-environment
+  contamination regardless of the active-set question). On any mismatch,
+  the watchdog kills its own app subprocess and does **not** respawn it —
+  the container stays "Up" (so Docker's restart policy, `restart: "no"` on
+  every service, can't silently recreate it) but does nothing further until
+  a human runs `scripts/killall_containers.sh` and starts the correct
+  environment explicitly. No automatic retry, by design.
 
-Do not leave a `-prod` container "just running" for convenience,
-verification, or because nothing seems to be using it right now — and don't
-rely on memory/habit to track what's live; `scripts/killall_containers.sh` + the
-watchdogs exist specifically so a slip here fails loudly instead of silently.
+Do not leave a `-prod` container "just running" for convenience or
+verification once you're done with it — and don't rely on memory/habit to
+track what's live; `scripts/killall_containers.sh` + the watchdogs exist
+specifically so a slip here fails loudly instead of silently.
 
 **Multi-clone lock (2026-07-23)**: this repo may be checked out in more than
 one place at once — this original/`root` clone plus sibling dev clones
 (`coder1`, `coder2`, ...), each with its own [Personality dispatch](#personality-dispatch)
 identity. `scripts/env_lock.sh` (sourced by `run_denidin.sh`,
 `run_morning_mcp.sh`, `stop_denidin.sh`, `stop_morning_mcp.sh`, and
-`scripts/killall_containers.sh`) extends the one-environment-at-a-time rule across
-all of them: `dev` is additionally locked to whichever clone's personality
-(by name — e.g. `Ruth`, `Avi`, `Bina`) acquired it, until that same
-personality releases it via `stop_*.sh dev`; `prod` is never owner-locked.
+`scripts/killall_containers.sh`) enforces this across all of them: `dev` is
+locked to whichever clone's personality (by name — e.g. `Ruth`, `Avi`,
+`Bina`) acquired it, until that same personality releases it via
+`stop_*.sh dev`; `prod` is never owner-locked.
 A non-owner can override with `-force` on any `stop_*.sh`/`scripts/killall_containers.sh`
 call. This only works because `./shared` is a symlink (not a real directory)
 to one canonical path shared by every clone on the machine — **every clone,
@@ -212,15 +235,23 @@ interference.
 This resolves the *original* reason `denidin-app-dev`/`denidin-app-prod` couldn't safely run
 concurrently (`GreenAPIBot` polling the same Green API instance/WhatsApp number from two
 containers at once risked duplicate-reply bugs) — that specific conflict no longer exists, since
-each environment now polls its own number/instance. **This does NOT by itself lift the "ONE
-ENVIRONMENT SET AT A TIME" rule at the top of this document** — that rule's enforcement mechanism
-(`env_lock.sh`, `watchdog.py`, `scripts/killall_containers.sh`, `shared/active_env.json`) and its
-other motivating incidents (e.g. the 2026-07-21 stale-test-config-path incident, which was about
-credential/config isolation, not instance sharing) haven't been reviewed against this new
-topology yet. Treat concurrent dev+prod as still forbidden until that review happens explicitly.
-See `specs/019-env-separation/quickstart.md` for the (still-current) manual hand-off procedure,
-and role-mapping details (dev's godfather/admin assignment is operator-switchable by editing
-`config.dev.json` and restarting, since there's only one real tester).
+each environment now polls its own number/instance.
+
+**Review completed, ban lifted (2026-08-05).** The explicit human review this section used to say
+was still pending happened: dev and prod may now run **concurrently**. The other motivating
+incidents behind the old "ONE ENVIRONMENT SET AT A TIME" rule (e.g. 2026-07-21's stale-test-config-path
+incident) were about credential/config isolation, not instance sharing, and remain fully addressed
+by this same per-environment-infra separation — nothing about them depended on dev/prod being
+mutually exclusive in time. See "Environment isolation & locking" below for what's enforced now
+(dev is still locked to whichever clone acquired it; the two apps within one environment are still
+bundled) versus what's no longer true (dev and prod no longer need to be torn down to switch
+between them). `env_lock.sh`, `watchdog.py`, and `killall_containers.sh` were all updated in
+lockstep with this change — `shared/active_env.json`'s schema moved from a single `active_env`
+scalar to an `active_envs` dict keyed by environment, so either, both, or neither environment can
+be recorded as active independently. See `specs/019-env-separation/quickstart.md` for the
+(still-current, if now optional) manual hand-off procedure, and role-mapping details (dev's
+godfather/admin assignment is operator-switchable by editing `config.dev.json` and restarting,
+since there's only one real tester).
 
 **Merging a code fix to `master` does not redeploy it.** `docker compose up -d`/`restart` does not rebuild on its own when source changed on disk — a running container keeps executing whatever image it was last built from. After merging any code change (not a config/mounted-data change — those *are* picked up live, e.g. `runtime_constitution.md`'s mtime-based hot-reload), rebuild and recreate every environment container currently running that app: `docker compose --project-directory . -f docker/docker-compose.<env>.yml build <service> && ... up -d <service>` (or the `run_*.sh <env>` script, but note it does not rebuild by itself either — build first). A merged RBAC fix once had zero effect on a running prod container for hours because of exactly this (2026-07-20) — see the `/haleluya` command's Deploy step.
 
@@ -252,7 +283,7 @@ cp config/config.example.json config/config.prod.json   # then fill in real prod
 ./scripts/run_all.sh dev|prod            # (repo root) starts BOTH denidin-app and morning-mcp-app for that env
 ./scripts/stop_all.sh dev|prod [-force]  # stops both - use this pair by default
 ```
-`denidin-app` and `morning-mcp-app` are bundled — neither app's container may run alone (see the "ONE ENVIRONMENT SET AT A TIME" rule above) — so `scripts/run_all.sh`/`scripts/stop_all.sh` are the default way to start/stop an environment. Only use the per-app scripts below if specifically asked to start/stop just one app:
+`denidin-app` and `morning-mcp-app` are bundled — neither app's container may run alone (see "Environment isolation & locking" above) — so `scripts/run_all.sh`/`scripts/stop_all.sh` are the default way to start/stop an environment. Only use the per-app scripts below if specifically asked to start/stop just one app:
 ```bash
 cd apps/denidin-app
 ./run_denidin.sh dev|prod       # start that environment's container (docker compose wrapper)
