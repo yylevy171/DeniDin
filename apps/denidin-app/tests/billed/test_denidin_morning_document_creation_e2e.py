@@ -2,13 +2,20 @@
 via natural WhatsApp conversation - real webhook, real OpenAI Responses API,
 real Morning MCP server, real Morning sandbox.
 
-Same entry point, fixtures, and non-technical-user conventions as
-test_denidin_morning_mcp_e2e.py (feature 018) - reuses that module's
-fixtures/helpers rather than duplicating them (denidin_app, _send_turn,
-_send_turn_and_approve, _send_turn_and_decline, _calls_for,
-_unique_client_name, GODFATHER_CHAT_ID). See that module's docstring for the
-full rationale behind single-turn-only prompts for non-document-creating
-tools and no test-only confirmation carve-out.
+Same entry point, fixtures, and non-technical-user conventions as this
+directory's other Morning-MCP billed E2E test modules (feature 018 and
+successors) - reuses shared fixtures/helpers rather than duplicating them
+(denidin_app via conftest.py; _send_turn, _send_turn_and_approve,
+_send_turn_and_decline, _calls_for, _unique_client_name, GODFATHER_CHAT_ID
+via denidin_mcp_e2e_helpers.py). See
+test_denidin_morning_invoice_creation_e2e.py's docstring for the full
+rationale behind single-turn-only prompts for non-document-creating tools
+and no test-only confirmation carve-out.
+
+(2026-08-04, Feature 038: this import previously pointed at
+test_denidin_morning_mcp_e2e.py, which was split by topic into 4 files -
+see that feature's task list, T012/T013. Updated to import from the new
+shared locations instead of any one of the resulting files.)
 
 **Two-turn approval (Feature 022, merged after this file was first written;
 tool list updated for features 023/026)**: create_transaction_account,
@@ -43,17 +50,18 @@ import time
 
 import pytest
 
-from tests.billed.test_denidin_morning_mcp_e2e import (  # noqa: F401
+from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     GODFATHER_CHAT_ID,
     _calls_for,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_decline,
     _unique_client_name,
-    denidin_app,
-    denidin_config,
-    live_morning_tunnel,
 )
+
+# `denidin_app`/`denidin_config`/`live_morning_tunnel` are no longer imported
+# explicitly - they're pytest fixtures auto-discovered from this directory's
+# conftest.py (Feature 038 split, T012/T013).
 
 
 def _small_random_amount() -> int:
