@@ -82,6 +82,53 @@ class TestSessionCreation:
         assert session.message_counter == 3
 
 
+class TestSenderRecipientAISentinelRetired:
+    """
+    Feature 039 (US3/US3a): the literal "AI" sender/recipient sentinel is retired -
+    redundant with `role`, which already distinguishes user vs. assistant messages.
+    A user-role message's `recipient` and an assistant-role message's `sender` are always
+    None, regardless of what the caller passes for those arguments.
+    """
+
+    def test_user_message_recipient_is_always_none(self, session_manager):
+        message_id = session_manager.add_message(
+            chat_id="1234567890@c.us",
+            role="user",
+            content="Hi",
+            user_role="client",
+            sender="Godfather",
+            recipient="AI"  # caller still passes the old sentinel - must be dropped
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+
+        assert message_data["sender"] == "Godfather"
+        assert message_data["recipient"] is None
+
+    def test_assistant_message_sender_is_always_none(self, session_manager):
+        message_id = session_manager.add_message(
+            chat_id="1234567890@c.us",
+            role="assistant",
+            content="Reply",
+            user_role="client",
+            sender="AI",  # caller still passes the old sentinel - must be dropped
+            recipient="Godfather"
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+
+        assert message_data["sender"] is None
+        assert message_data["recipient"] == "Godfather"
+
+
 class TestMessageHandling:
     """Test message addition and retrieval."""
     
@@ -132,6 +179,35 @@ class TestMessageHandling:
         assert history[0]["content"] == "Hello"
         assert history[1]["role"] == "assistant"
         assert history[2]["role"] == "user"
+
+    def test_group_session_history_prefixes_user_turns_with_sender(self, session_manager):
+        """
+        Feature 039 (US3): for a group session (chat_id contains @g.us), each user-role
+        history entry's content is prefixed "[<sender>] " so the model can tell members
+        apart in a shared session. Assistant-role entries are unprefixed (unambiguous).
+        """
+        chat_id = "120363012345678901@g.us"
+
+        session_manager.add_message(chat_id, "user", "מה המצב?", "client", sender="Godfather")
+        session_manager.add_message(chat_id, "assistant", "הכל טוב", "client")
+        session_manager.add_message(chat_id, "user", "תודה", "client", sender="Admin")
+
+        history = session_manager.get_conversation_history(chat_id, "client")
+
+        assert history[0]["content"] == "[Godfather] מה המצב?"
+        assert history[1]["content"] == "הכל טוב"  # assistant: unprefixed
+        assert history[2]["content"] == "[Admin] תודה"
+
+    def test_one_on_one_session_history_unprefixed(self, session_manager):
+        """1:1 sessions (no @g.us) keep today's unprefixed output shape - no ambiguity
+        to resolve, since there's only ever one human counterpart."""
+        chat_id = "972501234567@c.us"
+
+        session_manager.add_message(chat_id, "user", "Hello", "client", sender="Godfather")
+
+        history = session_manager.get_conversation_history(chat_id, "client")
+
+        assert history[0]["content"] == "Hello"
 
 
 class TestTokenLimits:
@@ -385,7 +461,7 @@ class TestImagePathStorage:
 
         media_handler._store_media_turn(
             chat_id=chat_id,
-            sender_phone=sender_phone,
+            sender_display=sender_phone,
             media_type="image",
             caption="Check out this image!",
             summary="AI analysis of the image",

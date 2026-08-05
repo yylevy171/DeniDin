@@ -75,7 +75,8 @@ class MediaHandler:
         chat_id: str,
         caption: str = "",
         timestamp: Optional[int] = None,
-        message_id: Optional[str] = None
+        message_id: Optional[str] = None,
+        sender_display_name: Optional[str] = None
     ) -> Dict:
         """
         Process media message through complete workflow.
@@ -101,6 +102,11 @@ class MediaHandler:
             message_id: Real Green API notification message id (Feature 033) - the
                 source-message pointer for any ledger event captured from this
                 message (LedgerEvent.message_id).
+            sender_display_name: Resolved human-readable sender name (Feature 039,
+                WhatsAppMessage.sender_display_name) - used only for the persisted
+                Message.sender/recipient values in _store_media_turn, never for
+                filenames or LedgerEvent.sender (both keep using sender_phone, the
+                raw JID, unchanged). Falls back to sender_phone if not given.
 
         Returns:
             {
@@ -221,7 +227,7 @@ class MediaHandler:
             except ValueError:
                 relative_image_path = str(file_path)
             self._store_media_turn(
-                chat_id, sender_phone, media_type, caption, summary,
+                chat_id, sender_display_name or sender_phone, media_type, caption, summary,
                 ledger_event_ids, message_id, relative_image_path
             )
 
@@ -242,7 +248,7 @@ class MediaHandler:
             )
 
     def _store_media_turn(
-        self, chat_id: str, sender_phone: str, media_type: str, caption: str, summary: str,
+        self, chat_id: str, sender_display: str, media_type: str, caption: str, summary: str,
         ledger_event_ids: Optional[list] = None, message_id: Optional[str] = None,
         image_path: Optional[str] = None
     ) -> None:
@@ -267,18 +273,25 @@ class MediaHandler:
         session can be traced back to the saved media file on disk. This
         parameter regressed to always-omitted when this method replaced
         bugfix-009's original call site; restored here alongside the Feature
-        033 traceability fields it was merged with."""
+        033 traceability fields it was merged with.
+
+        sender_display (Feature 039): the resolved human-readable sender name
+        (falls back to the raw phone if unavailable) - SessionManager.add_message
+        itself now always overrides recipient=None for user messages and
+        sender=None for assistant messages regardless of what's passed here, so
+        this value only ever lands on the user message's sender and the
+        assistant reply's recipient."""
         try:
             user_content = caption or f"[{media_type} sent]"
             self.session_manager.add_message(
                 chat_id=chat_id, role="user", content=user_content,
-                user_role="client", sender=sender_phone, recipient="AI",
+                user_role="client", sender=sender_display,
                 ledger_event_ids=ledger_event_ids, message_id=message_id,
                 image_path=image_path,
             )
             self.session_manager.add_message(
                 chat_id=chat_id, role="assistant", content=summary,
-                user_role="client", sender="AI", recipient=sender_phone,
+                user_role="client", recipient=sender_display,
             )
         except Exception as e:
             logger.error(f"Failed to store media turn in session: {e}", exc_info=True)
