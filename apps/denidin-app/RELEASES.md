@@ -15,3 +15,7 @@ first alpha version
 ## denidin-app v0.2.0 — 2026-08-05
 
 Group conversation support (no-mention-required replies, no-reply etiquette, group RBAC) and a 1:1 RBAC resolution fix for Morning MCP tool attachment
+
+## denidin-app v0.2.1 — 2026-08-05
+
+Fix bugfix-024 (recognize native WhatsApp @-mentions of DeniDin's own number by phone, not display name); reorganize billed Morning-MCP E2E test suite by topic and fix import bugs the split introduced.
