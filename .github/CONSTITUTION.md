@@ -25,6 +25,24 @@ Rationale: The project mandates realistic integration and test behavior; this ab
 
 ---
 
+## NO UNVERIFIED THIRD-PARTY ASSUMPTIONS (ABSOLUTE)
+
+**No assumption about how ANY third-party system behaves — Green API, Morning (Green Invoice), OpenAI, or any other external service — may be treated as confirmed, and no spec/design decision may be built on it, without ACTUAL CONFIRMATION FROM A REAL MESSAGE/CALL AND REVIEWING THE REAL RESULT.**
+
+Reading a vendor's published API documentation, a schema definition, an SDK's type hints, or a client library's source is **not** confirmation. Those describe what a system is *documented* to do — not what it actually does in a real, observed interaction. Only sending or receiving a real message/call through the real system and inspecting the real, raw result counts as confirmed.
+
+**Incident that established this rule (2026-08-05, Feature 039)**: the spec for Feature 039's `"@Name"` mention-recognition design (`specs/done/039-group-conversation-support/spec.md`) stated as a settled Decision that "a real WhatsApp @-mention still inserts visible `"@DisplayName"` text into the message body" — based on reviewing Green API's documented webhook schema fields and confirming no structured mention metadata existed there. That schema review was real and correct as far as it went, but the conclusion drawn from it (what the mention text itself looks like) was never independently verified against an actual live WhatsApp message. It was wrong: a real native `@`-mention (picked via WhatsApp's own mention UI, the primary way users actually mention someone) inserts the mentioned contact's raw phone number/JID into the text, not a display name. The entire `"@Name"` text-pattern recognition mechanism — spec, constitution wording, and the billed tests' hand-typed `"@רותי"`/`"@DeniDin"` fixtures alike — was built on this single unverified assumption, and none of it could ever have caught the gap, because the test fixtures inherited the same wrong assumption instead of being derived from a real captured message. This was found live, by a human, in manual post-deploy testing — not by any part of the spec, implementation, or test process that was supposed to catch exactly this.
+
+Guidelines under this rule:
+- Before a spec/plan/research document states any claim about a third-party system's actual runtime behavior (message format, field contents, response shape, timing, error behavior, etc.) as confirmed, that claim must be backed by an actual real interaction with that system, with the real raw result captured and referenced (not just "per the docs" or "per the SDK").
+- If real verification isn't practical yet at spec-writing time, the claim must be marked explicitly as an **unverified assumption**, not stated as a confirmed fact — and the plan must include verifying it for real before the dependent feature is considered done, not after.
+- Test fixtures exercising third-party-sourced data (webhook payloads, API responses, message text shapes, etc.) must be derived from a real captured interaction, not hand-typed based on what the author expects the shape to be — a hand-typed fixture can only ever prove "the code behaves correctly given this assumed shape," never "the assumed shape is correct."
+- This applies to every third-party system this project integrates with, not just Green API — Morning/Green Invoice, OpenAI, and any future integration.
+
+Rationale: documentation, schemas, and SDKs describe intent, not always actual behavior, and can be incomplete, outdated, or simply wrong about what a real message/response actually contains. A design decision (or a test built to validate it) resting on an unverified reading of documentation is not evidence — it's a guess wearing the clothes of a fact, and this project has now shipped a real feature to production readiness that was undermined by exactly that.
+
+---
+
 ## I. Configuration & Secrets Management
 
 **Principle**: All configuration MUST be in config files. NO environment variables allowed.

@@ -93,6 +93,43 @@ ai_client = OpenAI(
 denidin_app = None
 
 
+def _fetch_own_whatsapp_number() -> str:
+    """bugfix-024: fetch DeniDin's own WhatsApp phone number ONCE, via a real Green
+    API getWaSettings call - confirmed live (2026-08-05) to return {"phone": "<bare
+    digits>", ...}, e.g. "972559723730". Needed because WhatsApp's native @-mention
+    picker inserts the mentioned contact's raw phone number into message text, never
+    a display name (see bugfix-024's spec for the incident this fixes) - the app
+    needs its own number to deterministically recognize a self-mention.
+
+    Reuses the module-level `bot` (never constructs a second GreenAPIBot - its own
+    constructor has a real side effect of draining pending incoming notifications
+    from the live Green API instance, which must only ever happen once, for the one
+    real bot instance).
+
+    Never raises - a failed/unreachable call degrades to "" (self-mention-by-number
+    detection unavailable this run, everything else unaffected), matching this
+    codebase's fail-open convention for non-critical startup data (CONSTITUTION §VI).
+    Called once per `initialize_app()` call, never per message.
+    """
+    try:
+        response = bot.api.account.getWaSettings()
+        if response.code == 200 and isinstance(response.data, dict):
+            phone = response.data.get('phone', '')
+            if phone:
+                logger.info(f"Resolved own WhatsApp number for self-mention detection: {phone}")
+                return phone
+        logger.warning(
+            f"getWaSettings did not return a usable 'phone' field (code={response.code}) - "
+            "self-mention-by-number detection unavailable this run"
+        )
+    except Exception as e:
+        logger.warning(
+            f"Failed to fetch own WhatsApp number via getWaSettings: {e} - "
+            "self-mention-by-number detection unavailable this run"
+        )
+    return ""
+
+
 class DeniDin:
     """
     DeniDin application instance.
@@ -264,6 +301,10 @@ def initialize_app(config_dict: dict) -> DeniDin:
     
     # Initialize AI handler
     ai_handler = AIHandler(ai_client, config)
+
+    # bugfix-024: resolve DeniDin's own WhatsApp number ONCE at startup (real Green
+    # API call, never per-message) - see _fetch_own_whatsapp_number's docstring.
+    ai_handler.own_whatsapp_number = _fetch_own_whatsapp_number()
     
     # Initialize WhatsApp handler (without media_handler initially)
     whatsapp_handler = WhatsAppHandler()

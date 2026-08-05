@@ -49,6 +49,13 @@ Feature 003 (Media Processing) was marked complete but had missing router handle
 
 **Rationale**: Specification-first development prevents scope creep, ensures stakeholder alignment before costly implementation, and enables parallel work streams by clearly defining deliverable increments. User stories trace complete system flows from user perspective, catching routing/integration gaps that component-focused specs miss.
 
+**Third-Party Behavior Claims Require Real Verification (see CONSTITUTION.md "NO UNVERIFIED THIRD-PARTY ASSUMPTIONS")**:
+- Any spec/research/plan claim about how a third-party system (Green API, Morning/Green Invoice, OpenAI, or any future integration) actually behaves at runtime — message/payload shape, field contents, response format, timing, error behavior — MUST be backed by a real, observed interaction with that system, not by reading its documentation, an SDK's types, or a schema definition alone.
+- A `speckit.clarify`/`speckit.research` entry that settles a behavior question MUST state how it was verified. "Confirmed per the docs/SDK" is not a verification method for this purpose — only "sent/received a real message and inspected the real raw result" is.
+- If real verification isn't feasible yet when the spec is written, the claim MUST be flagged explicitly as an **unverified assumption** (not stated as settled fact), and verifying it for real must be an explicit task before the dependent user story can be marked done — not discovered afterward in production.
+- Test fixtures that stand in for third-party-sourced data (webhook payloads, API responses, etc.) MUST be derived from a real captured interaction, not hand-typed from what the author expects the shape to be.
+- **Why this matters**: Feature 039's `"@Name"` WhatsApp-mention recognition design was built on a spec Decision claiming "a real WhatsApp @-mention inserts visible `@DisplayName` text" — verified only by reading Green API's documented webhook schema, never by sending a real mention. It was wrong: a real native `@`-mention (the primary way users actually mention someone) inserts the mentioned contact's raw phone number, not a display name. The spec, the constitution wording, and the billed tests' hand-typed `"@Name"` fixtures all inherited the same unverified assumption, so nothing in the spec/implementation/test pipeline could have caught it — it was found live, by a human, after deployment. See `specs/bugfixes/bugfix-024-*.md` (once opened) for the fix.
+
 ---
 
 ## II. Template-Driven Consistency
