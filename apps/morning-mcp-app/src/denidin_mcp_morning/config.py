@@ -33,6 +33,14 @@ class MorningMCPConfig:
     token_ttl_seconds: int
     refresh_before_seconds: int
     rate_limit_per_second: float
+    # Feature 038: max estimated tiktoken (o200k_base) size of list_invoices'
+    # formatted reply before it's truncated to a best-effort prefix. Default
+    # (2500) matches the observed practical MCP tool-call output limit -
+    # config-driven, not a hardcoded constant, so raising it later (or
+    # lowering it for a specific test - MorningMCPConfig is a plain
+    # dataclass, so test code can construct/replace() its own instance) is a
+    # config change, never a code change.
+    list_invoices_token_budget: int
     mcp_server_name: str
     mcp_host: str
     mcp_port: int
@@ -94,6 +102,7 @@ def load_config(path: Path) -> MorningMCPConfig:
         token_ttl_seconds=raw.get("token_ttl_seconds", 3600),
         refresh_before_seconds=raw.get("refresh_before_seconds", 300),
         rate_limit_per_second=raw.get("rate_limit_per_second", 3),
+        list_invoices_token_budget=raw.get("list_invoices_token_budget", 2500),
         mcp_server_name=mcp_section.get("server_name", "denidin-morning"),
         mcp_host=mcp_section.get("host", "127.0.0.1"),
         mcp_port=mcp_section.get("port", 8000),

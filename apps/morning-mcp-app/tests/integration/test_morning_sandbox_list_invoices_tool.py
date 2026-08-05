@@ -117,11 +117,70 @@ def test_list_invoices_tool_returns_readable_string_for_no_matches(morning_clien
     assert result.strip() != ""
 
 
-def test_list_invoices_tool_caps_results_at_ten_items(morning_client):
-    """Contract requirement (user-stories.md US2): at most 10 items per response."""
+# ============================================================================
+# Feature 038: real-pagination fetch cap (10 -> 100), replacing the old
+# fixed 10-item display cap this file used to test here (that test was
+# deleted, T011 - human-approved - its coverage intent, "a cap exists and
+# is enforced," is superseded by the two tests below, which assert the
+# actual new behavior at each side of the cap instead of the old truncation
+# artifact).
+# ============================================================================
+
+# Real, already-existing sandbox date ranges (no invoices seeded for these
+# two tests) - found via a live probe, research.md Decision 4. Re-probe
+# with the same method if the sandbox's data ever changes enough that these
+# totals drift from what's asserted below.
+_US1_LARGE_IN_CAP_RANGE = {"from_date": "2026-07-19", "to_date": "2026-07-21"}
+_US1_LARGE_IN_CAP_TOTAL = 81
+_US2_OVER_CAP_RANGE = {"from_date": "2026-07-13", "to_date": "2026-07-15"}
+_US2_OVER_CAP_TOTAL = 103
+
+
+def test_list_invoices_tool_fetches_complete_set_within_cap(morning_client):
+    """US1: a query whose real Morning total (81) is more than the old
+    10-item display cap but well within the new 100-item fetch cap must be
+    *fetched* completely internally - the tool must know and disclose the
+    true total, not silently limit itself to Morning's first page. This is
+    the direct regression test for the observed production bug (46 of 62
+    returned, 2026-08-04).
+
+    Asserts on the designed count-line phrase ("מתוך {total}"), not a bare
+    number - a bare `"81" in result` false-positives on the old (buggy)
+    code, since "81" coincidentally appears inside unrelated document GUIDs
+    in the reply (confirmed while writing this test)."""
     from denidin_mcp_morning.tools import list_invoices
 
-    result = list_invoices(morning_client)
+    result = list_invoices(morning_client, **_US1_LARGE_IN_CAP_RANGE)
 
-    # Count invoice-number markers ("חשבונית #") the formatter emits per item.
-    assert result.count("חשבונית #") <= 10
+    expected_phrase = f"מתוך {_US1_LARGE_IN_CAP_TOTAL}"
+    assert expected_phrase in result, (
+        f"Expected {expected_phrase!r} in the reply, proving the fetch loop retrieved "
+        f"the complete set (and disclosed the real total) rather than stopping at one "
+        f"Morning page. Reply: {result!r}"
+    )
+
+
+def test_list_invoices_tool_refuses_when_over_cap(morning_client):
+    """US2: a query whose real Morning total (103) exceeds the 100-item
+    fetch cap must refuse to fetch further pages and clearly state the
+    real total, asking the user to narrow the search - never a silent
+    partial list.
+
+    Asserts on the designed refusal-message phrase ("נמצאו {total}"), not a
+    bare number - see test_list_invoices_tool_fetches_complete_set_within_cap's
+    docstring for why a bare number check is unreliable against real data."""
+    from denidin_mcp_morning.tools import list_invoices
+
+    result = list_invoices(morning_client, **_US2_OVER_CAP_RANGE)
+
+    expected_phrase = f"נמצאו {_US2_OVER_CAP_TOTAL}"
+    assert expected_phrase in result, (
+        f"Expected {expected_phrase!r} in the refusal message. Reply: {result!r}"
+    )
+    assert "חשבונית #" not in result, (
+        f"Over-cap refusal must not include itemized invoice content. Reply: {result!r}"
+    )
+    assert "מתוך" not in result, (
+        f"Over-cap refusal and token-budget partial-truncation wording are mutually "
+        f"exclusive - the over-cap path never reaches formatting. Reply: {result!r}"
+    )

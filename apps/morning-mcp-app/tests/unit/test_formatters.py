@@ -12,6 +12,8 @@ from denidin_mcp_morning.formatters import (
     format_date_il,
     format_invoice_confirmation,
     format_invoice_details,
+    format_invoice_list,
+    format_too_many_invoices_message,
     translate_document_type,
     translate_payment_type,
     translate_status,
@@ -169,3 +171,57 @@ def test_format_invoice_details_omits_linked_documents_section_when_absent():
     message = format_invoice_details(invoice)
 
     assert "מסמכים מקושרים" not in message
+
+
+# ============================================================================
+# Feature 038: format_invoice_list count line + format_too_many_invoices_message
+# ============================================================================
+
+
+def _sample_invoice(number: str) -> Invoice:
+    return Invoice.model_validate(dict(REAL_DOCUMENT_RESPONSE_SAMPLE, number=number))
+
+
+def test_format_invoice_list_untruncated_states_exact_count_no_shown_of_total():
+    # Invoice numbers deliberately avoid the digit "3" (the count under test)
+    # so a false-positive digit match can't hide a missing/wrong count line.
+    invoices = [_sample_invoice("A700"), _sample_invoice("A800"), _sample_invoice("A900")]
+
+    message = format_invoice_list(invoices, total_matched=3)
+
+    assert "נמצאו 3" in message  # designed count-line phrase, not a bare digit check
+    assert message.count("חשבונית #") == 3
+    assert "מתוך" not in message  # no "shown X of Y" language when nothing was omitted
+
+
+def test_format_invoice_list_truncated_states_shown_of_total_and_narrow_note():
+    # Invoice number deliberately avoids the digits "1"/"7" (shown/total
+    # under test) so a false-positive digit match can't hide a missing/wrong
+    # shown/total line.
+    invoices = [_sample_invoice("A900")]
+
+    message = format_invoice_list(invoices, total_matched=7)
+
+    assert message.count("חשבונית #") == 1
+    assert "מתוך 7" in message  # designed "shown X מתוך Y" phrase
+    assert "1" in message.split("\n")[0]  # shown count (1) appears in the opening line
+    assert "צמצם" in message or "לצמצם" in message  # asks to narrow the search
+
+
+def test_format_invoice_list_empty_returns_unchanged_no_results_message():
+    message = format_invoice_list([], total_matched=0)
+
+    assert message == "לא נמצאו חשבוניות התואמות את החיפוש."
+
+
+def test_format_invoice_list_no_longer_accepts_has_more_kwarg():
+    with pytest.raises(TypeError):
+        format_invoice_list([_sample_invoice("INV-001")], has_more=False)  # type: ignore[call-arg]
+
+
+def test_format_too_many_invoices_message_states_total_and_asks_to_narrow():
+    message = format_too_many_invoices_message(103)
+
+    assert "נמצאו 103" in message
+    assert "חשבונית #" not in message
+    assert "צמצם" in message or "לצמצם" in message
