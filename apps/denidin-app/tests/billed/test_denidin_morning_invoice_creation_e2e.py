@@ -47,6 +47,9 @@ CLAUDE.md/CONSTITUTION §VII).
 """
 from __future__ import annotations
 
+import logging
+import time
+
 import pytest
 
 from .denidin_mcp_e2e_helpers import (
@@ -61,6 +64,8 @@ from .denidin_mcp_e2e_helpers import (
     _send_turn_and_decline,
     _unique_client_name,
 )
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # create_invoice

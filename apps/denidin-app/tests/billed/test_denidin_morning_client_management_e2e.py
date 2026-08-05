@@ -19,6 +19,10 @@ CLAUDE.md/CONSTITUTION §VII).
 """
 from __future__ import annotations
 
+import random
+import re
+import time
+
 import pytest
 
 from .denidin_mcp_e2e_helpers import (

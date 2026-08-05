@@ -27,6 +27,8 @@ CLAUDE.md/CONSTITUTION §VII).
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from .denidin_mcp_e2e_helpers import GODFATHER_CHAT_ID, _HEBREW_FIRST_NAMES, _calls_for, _send_turn, _unique_client_name
