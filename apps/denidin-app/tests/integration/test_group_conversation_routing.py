@@ -19,6 +19,7 @@ mocked.
 
 import json
 import pytest
+from contextlib import contextmanager
 from pathlib import Path
 from src.models.config import AppConfiguration
 
@@ -67,11 +68,30 @@ class TestMediaPathBypassesGroupEtiquette:
 
         return denidin_module.denidin_app
 
+    @contextmanager
     def _stub_external_boundaries(self, denidin_app, raw_response: str):
         """Stand in for the two real external calls a successful media turn makes
         (Green API file download, OpenAI vision analysis) - everything else
-        (SessionManager, WhatsAppHandler, MediaHandler orchestration) stays real."""
+        (SessionManager, WhatsAppHandler, MediaHandler orchestration) stays real.
+
+        KNOWN ISSUE (flagged, not fixed here - see HANDOFF.md): this reassigns
+        methods on the live, process-global `denidin_app` singleton
+        (CONSTITUTION SS XVII forbids exactly this - "NO dynamic attribute
+        injection", "NO function reassignment"). Because `denidin_app` here
+        reuses that global singleton across test modules when already
+        initialized, an unrestored patch leaks into whichever test runs next
+        against the same singleton - confirmed live: test_media_webhook_routing.py
+        received this file's own canned "Full document analysis: invoice for
+        services rendered." string instead of its own expected result. The
+        teardown below stops the leak but does not address the underlying
+        monkey-patching violation - the correct fix is dependency injection
+        (construct MediaHandler/ImageExtractor with injected fakes rather than
+        mutating the real instance), not patch-and-restore.
+        """
         media_handler = denidin_app.whatsapp_handler.media_handler
+        original_download_file = media_handler.media_file_manager.download_file
+        original_analyze_media = media_handler.image_extractor.analyze_media
+
         media_handler.media_file_manager.download_file = lambda file_url: (b"fake_image_bytes", True)
         media_handler.image_extractor.analyze_media = lambda media, caption="": {
             "raw_response": raw_response,
@@ -79,6 +99,12 @@ class TestMediaPathBypassesGroupEtiquette:
             "warnings": [],
             "model_used": "gpt-5.6-luna",
         }
+
+        try:
+            yield
+        finally:
+            media_handler.media_file_manager.download_file = original_download_file
+            media_handler.image_extractor.analyze_media = original_analyze_media
 
     def _create_notification(self, chat_id: str, sender: str, sender_name: str, caption: str, msg_id: str):
         from whatsapp_chatbot_python import Notification
@@ -114,8 +140,6 @@ class TestMediaPathBypassesGroupEtiquette:
         "AI" sentinel - mirroring T006a's rule for the text path."""
         from denidin import handle_image_message
 
-        self._stub_external_boundaries(denidin_app, raw_response="Photo shows a signed contract page.")
-
         notification = self._create_notification(
             chat_id=GROUP_CHAT_ID,
             sender=ADMIN_SENDER_ID,
@@ -124,7 +148,8 @@ class TestMediaPathBypassesGroupEtiquette:
             msg_id="G039_MEDIA_001",
         )
 
-        handle_image_message(notification)
+        with self._stub_external_boundaries(denidin_app, raw_response="Photo shows a signed contract page."):
+            handle_image_message(notification)
 
         sent = notification._test_sent_messages[0] if notification._test_sent_messages else None
         assert sent == "Photo shows a signed contract page.", (
@@ -160,10 +185,6 @@ class TestMediaPathBypassesGroupEtiquette:
         reaches AIHandler.get_response / the no-reply sentinel at all."""
         from denidin import handle_image_message
 
-        self._stub_external_boundaries(
-            denidin_app, raw_response="Full document analysis: invoice for services rendered."
-        )
-
         notification = self._create_notification(
             chat_id=GROUP_CHAT_ID,
             sender=ADMIN_SENDER_ID,
@@ -172,7 +193,10 @@ class TestMediaPathBypassesGroupEtiquette:
             msg_id="G039_MEDIA_002",
         )
 
-        handle_image_message(notification)
+        with self._stub_external_boundaries(
+            denidin_app, raw_response="Full document analysis: invoice for services rendered."
+        ):
+            handle_image_message(notification)
 
         sent = notification._test_sent_messages[0] if notification._test_sent_messages else None
         assert sent == "Full document analysis: invoice for services rendered.", (
