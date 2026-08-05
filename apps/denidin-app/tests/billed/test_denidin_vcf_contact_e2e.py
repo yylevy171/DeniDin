@@ -18,16 +18,21 @@ This feature introduces NO new confirmation/approval mechanism: `add_client` is 
 AIHandler.APPROVAL_REQUIRED_MCP_TOOLS (Feature 026) - a shared vCard just becomes a new
 *source* of the same conversational add_client flow typed text already triggers. Tests here
 are genuinely two-turn (ASK then APPROVE), exactly like Feature 026's own add_client tests -
-see `_send_turn_and_approve` (imported from test_denidin_morning_mcp_e2e).
+see `_send_turn_and_approve` (imported from denidin_mcp_e2e_helpers).
 
 **Test tier (Feature 029)**: real, text-only OpenAI calls (a vCard is plain text - no vision/
 image call involved) -> `billed`, NOT `expensive`. Runs freely, no per-run approval needed, no
 one-at-a-time restriction - see CLAUDE.md.
 
 **Assumes the test environment is already up**: apps/morning-mcp-app must already be running
-(./run_morning_mcp.sh) - see test_denidin_morning_mcp_e2e.py's module docstring for the full
-prerequisite list; `denidin_app`/`live_morning_tunnel` (imported below) fail loudly, not
-silently, if it isn't.
+(./run_morning_mcp.sh) - see test_denidin_morning_invoice_creation_e2e.py's module docstring
+for the full prerequisite list; `denidin_app`/`live_morning_tunnel` (this directory's
+conftest.py fixtures, used below via parameter names) fail loudly, not silently, if it isn't.
+
+(2026-08-04, Feature 038: this import previously pointed at
+test_denidin_morning_mcp_e2e.py, which was split by topic into 4 files -
+see that feature's task list, T012/T013. Updated to import from the new
+shared locations instead of any one of the resulting files.)
 
 NO MOCKING anywhere.
 """
@@ -43,14 +48,16 @@ from typing import List, Optional, Tuple
 import pytest
 
 from src.models.message import AIResponse
-from tests.billed.denidin_mcp_e2e_helpers import create_real_notification, get_response
-from tests.billed.test_denidin_morning_mcp_e2e import (  # noqa: F401
+from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     GODFATHER_CHAT_ID,
     _calls_for,
-    denidin_app,
-    denidin_config,
-    live_morning_tunnel,
+    create_real_notification,
+    get_response,
 )
+
+# `denidin_app`/`denidin_config`/`live_morning_tunnel` are no longer imported
+# explicitly - they're pytest fixtures auto-discovered from this directory's
+# conftest.py (Feature 038 split, T012/T013).
 
 logger = logging.getLogger(__name__)
 

@@ -44,6 +44,11 @@
       "default": 3,
       "description": "Client-side rate limit to stay under Morning's ~3 req/s (429) ceiling."
     },
+    "list_invoices_token_budget": {
+      "type": "integer",
+      "default": 2500,
+      "description": "Feature 038: max estimated tiktoken (o200k_base) size of list_invoices' formatted reply before it's truncated to a best-effort prefix (with an honest 'showing X of Y' message) instead of returned in full. Default matches the observed practical MCP tool-call output limit; config-driven so it can be raised later (or lowered for a specific test) without a code change."
+    },
     "openai_api_key": {
       "type": "string",
       "description": "OpenAI API key used only by tests/expensive/test_openai_invokes_mcp_e2e.py (Phase 5, T021) to drive this server as a remote MCP tool via the real OpenAI Responses API. Not read by the server itself. Never commit a real value - keep it in config/config.json only."

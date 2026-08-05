@@ -132,12 +132,20 @@ def format_financial_summary(summary: FinancialSummary) -> str:
     )
 
 
-def format_invoice_list(invoices: List[Invoice], has_more: bool = False) -> str:
-    """Build a Hebrew, human-readable list of invoices (user-stories.md US2).
+def format_invoice_list(invoices: List[Invoice], total_matched: int) -> str:
+    """Build a Hebrew, human-readable list of invoices (user-stories.md US1/US3).
+
+    Feature 038: the caller (`tools.list_invoices`) has already fetched the
+    complete, status-filtered result set (bounded by the fetch cap) and
+    decided how much of it fits within the token budget - `invoices` here
+    is that possibly-token-budget-truncated list, `total_matched` is always
+    the true post-status-filter count (equal to `len(invoices)` when
+    nothing was truncated).
 
     Args:
-        invoices: Already-capped list (caller enforces the max-10 limit).
-        has_more: Whether more results exist beyond this page.
+        invoices: The invoices to display (a prefix of the full match set
+            when token-budget truncation occurred).
+        total_matched: The true total number of matching invoices.
 
     Returns:
         A Hebrew multi-line string; a friendly "no results" message if empty.
@@ -146,12 +154,19 @@ def format_invoice_list(invoices: List[Invoice], has_more: bool = False) -> str:
         return "לא נמצאו חשבוניות התואמות את החיפוש."
 
     blocks = [format_invoice_confirmation(invoice) for invoice in invoices]
-    message = "\n\n".join(blocks)
+    shown = len(invoices)
 
-    if has_more:
-        message += "\n\nיש תוצאות נוספות שלא הוצגו."
+    if shown < total_matched:
+        header = f"מוצגות {shown} מתוך {total_matched} חשבוניות שנמצאו:"
+        message = header + "\n\n" + "\n\n".join(blocks)
+        message += (
+            "\n\nיש תוצאות נוספות שלא הוצגו כי ההודעה ארוכה מדי - "
+            "אנא צמצם/י את החיפוש (למשל לפי טווח תאריכים, לקוח, או סטטוס)."
+        )
+        return message
 
-    return message
+    header = f"נמצאו {shown} חשבוניות:"
+    return header + "\n\n" + "\n\n".join(blocks)
 
 
 def _format_client_summary_line(client: Client) -> str:
@@ -207,6 +222,18 @@ def format_client_details(client: Client, is_exact_match: bool = True) -> str:
 def format_client_not_found() -> str:
     """Friendly Hebrew message when a name lookup matches zero clients."""
     return "לא נמצא לקוח בשם הזה."
+
+
+def format_too_many_invoices_message(total: int) -> str:
+    """Hebrew message when list_invoices' real Morning total exceeds the
+    fetch cap (user-stories.md US2, REQ-INVOICE-003) - states the real
+    total (never silently truncated) and asks for a narrower search rather
+    than fetching further pages or dumping a huge, unusable reply. Mirrors
+    format_too_many_clients_message's structure and tone."""
+    return (
+        f"נמצאו {total} חשבוניות התואמות את החיפוש - יותר מדי להצגה כרשימה אחת. "
+        f"אנא צמצם/י את החיפוש (למשל לפי טווח תאריכים, לקוח, או סטטוס)."
+    )
 
 
 def format_too_many_clients_message(total: int) -> str:

@@ -12,6 +12,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+import tiktoken
 from email_validator import EmailNotValidError, validate_email
 from pydantic import ValidationError
 
@@ -25,6 +26,7 @@ from .formatters import (
     format_invoice_details,
     format_invoice_list,
     format_too_many_clients_message,
+    format_too_many_invoices_message,
 )
 from .models import _MORNING_STATUS_CODES, Client, FinancialSummary, Invoice
 from .morning_client import MorningClient
@@ -41,7 +43,29 @@ _PRIMARY_INVOICE_DOCUMENT_TYPES = {
     _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
 }
 _CREDIT_INVOICE_DOCUMENT_TYPE = 330  # "חשבונית זיכוי" — confirmed live via GET /documents/types
-_LIST_INVOICES_MAX_ITEMS = 10
+
+# Feature 038: max raw items list_invoices will fetch pages for (mirrors
+# _LIST_CLIENTS_MAX_ITEMS's role for list_clients, below) — beyond this,
+# report the real total and ask to narrow rather than fetching further
+# pages/dumping an unusably long WhatsApp reply.
+_LIST_INVOICES_MAX_ITEMS = 100
+
+# Python-level default matching MorningMCPConfig.list_invoices_token_budget's
+# default (config.py) — server.py always passes the real config value
+# explicitly; this default only matters for direct calls (tests, ad hoc
+# scripts) that don't thread a config object through. Real, unmodified
+# practical MCP tool-call output limit (research.md Decision 7) — not a
+# self-imposed margin below it.
+_LIST_INVOICES_TOKEN_BUDGET = 2500
+
+# Reserved out of the token budget for the count line and any truncation
+# note, so the *item-block* budget is budget-minus-reserve, not the full
+# amount (research.md Decision 6/7: any value in this range gives the same
+# outcome for the fixtures this feature's tests use).
+_LIST_INVOICES_TOKEN_BUDGET_RESERVE = 120
+
+_TOKEN_ENCODING = tiktoken.get_encoding("o200k_base")
+
 _STATUS_ALIASES = {
     "unpaid": {"unpaid", "open"},
     "paid": {"paid", "closed"},
@@ -408,16 +432,47 @@ def _matches_status(item: dict, status: Optional[str]) -> bool:
     return item_status in _STATUS_ALIASES.get(status, {status})
 
 
+def _truncate_invoices_to_token_budget(
+    invoices: List[Invoice], token_budget: int
+) -> List[Invoice]:
+    """Return the largest prefix of `invoices` whose formatted blocks fit
+    within `token_budget` (reserving headroom for the count line/closing
+    note - REQ-INVOICE-008, research.md Decision 6/7)."""
+    item_budget = token_budget - _LIST_INVOICES_TOKEN_BUDGET_RESERVE
+    shown: List[Invoice] = []
+    cumulative_tokens = 0
+    for invoice in invoices:
+        block_tokens = len(_TOKEN_ENCODING.encode(format_invoice_confirmation(invoice)))
+        if cumulative_tokens + block_tokens > item_budget:
+            break
+        cumulative_tokens += block_tokens
+        shown.append(invoice)
+    return shown
+
+
 def list_invoices(
     client: MorningClient,
     status: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     client_name: Optional[str] = None,
+    token_budget: int = _LIST_INVOICES_TOKEN_BUDGET,
 ) -> str:
     """List/search invoices and return a Hebrew, human-readable result.
 
-    MCP tool: list_invoices (contracts/list_invoices.json, user-stories.md US2).
+    MCP tool: list_invoices (contracts/list_invoices.json, user-stories.md
+    US1/US2/US3). Real-pagination fetch cap ported from list_clients
+    (Feature 026, research.md Decision 1) - reads the real total from
+    Morning's first page and decides what to do before fetching anything
+    further:
+    - `total > _LIST_INVOICES_MAX_ITEMS`: fetch nothing further - report
+      the real total and ask for a narrower search instead of silently
+      truncating or dumping an unusable wall of text (REQ-INVOICE-003).
+    - `total <= _LIST_INVOICES_MAX_ITEMS`: fetch every remaining page
+      internally, apply the local status filter, and - if the complete
+      formatted reply would exceed `token_budget` - include only the
+      largest prefix that fits, with an honest "showing X of Y" message
+      (REQ-INVOICE-008/009).
 
     Args:
         client: An authenticated MorningClient (injected).
@@ -425,16 +480,36 @@ def list_invoices(
         from_date: Optional start date, ISO format YYYY-MM-DD.
         to_date: Optional end date, ISO format YYYY-MM-DD.
         client_name: Optional client-name filter.
+        token_budget: Max estimated tiktoken size of the formatted reply
+            before truncation (REQ-INVOICE-010: config-driven in
+            production via MorningMCPConfig.list_invoices_token_budget,
+            passed in by server.py - this default is only used by direct
+            calls that don't thread a config value through).
 
     Returns:
-        A Hebrew string listing up to 10 matching invoices, or a friendly
-        "no results" message. Notes when more results exist beyond the cap.
+        A Hebrew string listing matching invoices (a token-budget-limited
+        prefix if the complete set doesn't fit), a friendly "no results"
+        message if none match, or a "too many, narrow your search" message
+        if the real total exceeds the fetch cap.
     """
     params = _map_list_invoices_filters(from_date, to_date, client_name)
-    response = client.list_invoices(params=params)
-    raw_items = _extract_items(response)
+    first_page = client.list_invoices(params=params)
+    raw_items = _extract_items(first_page)
+    page_info = first_page if isinstance(first_page, dict) else {}
+    total = page_info.get("total", len(raw_items)) or 0
 
-    matching_items = [item for item in raw_items if _matches_status(item, status)]
+    if total > _LIST_INVOICES_MAX_ITEMS:
+        return format_too_many_invoices_message(total)
+
+    items = list(raw_items)
+    page_num = page_info.get("page", 1) or 1
+    total_pages = page_info.get("pages", 1) or 1
+    while len(items) < total and page_num < total_pages:
+        page_num += 1
+        next_page = client.list_invoices(params={**params, "page": page_num})
+        items.extend(_extract_items(next_page))
+
+    matching_items = [item for item in items if _matches_status(item, status)]
 
     invoices: List[Invoice] = []
     for item in matching_items:
@@ -443,10 +518,9 @@ def list_invoices(
         except ValidationError as exc:
             logger.warning("Skipping unparseable invoice in list_invoices result: %s", exc)
 
-    has_more = len(invoices) > _LIST_INVOICES_MAX_ITEMS
-    page = invoices[:_LIST_INVOICES_MAX_ITEMS]
+    shown_invoices = _truncate_invoices_to_token_budget(invoices, token_budget)
 
-    return format_invoice_list(page, has_more=has_more)
+    return format_invoice_list(shown_invoices, total_matched=len(invoices))
 
 
 def get_invoice_details(client: MorningClient, invoice_id: str) -> str:
