@@ -4,7 +4,7 @@
 **Feature ID**: 038-morning-long-list-support
 **Priority**: P1
 **Created**: August 4, 2026
-**Status**: Draft
+**Status**: Done - Merged to master (PR #189)
 **Input**: User description: "list_invoices silently truncates results beyond 10 items (single Morning page only); apply the real-pagination pattern list_clients already uses"
 
 ---
