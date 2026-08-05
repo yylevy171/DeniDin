@@ -147,20 +147,24 @@ class TestAIHandlerGetResponseWithMemory:
         # Verify both messages were stored
         assert handler.session_manager.add_message_with_token_limit.call_count == 2
 
-        # First call: user message
+        # First call: user message. Feature 039: "recipient" is no longer passed at
+        # all for user-role persistence - SessionManager forces it to None itself
+        # (redundant with role="user"), so there's nothing meaningful to pass here.
         first_call = handler.session_manager.add_message_with_token_limit.call_args_list[0]
         assert first_call[1]["chat_id"] == "chat_123"
         assert first_call[1]["role"] == "user"
         assert first_call[1]["content"] == "Hello"
         assert first_call[1]["sender"] == "whatsapp_tester1"
-        assert first_call[1]["recipient"] == "AI_test"
+        assert "recipient" not in first_call[1]
 
-        # Second call: assistant message
-        # AI messages have sender=recipient (AI_test) and recipient=original sender (whatsapp_tester1)
+        # Second call: assistant message. Feature 039: "sender" is no longer passed
+        # at all for assistant-role persistence (redundant with role="assistant",
+        # the old "AI"/"AI_test" sentinel is retired) - recipient is still the
+        # original sender, so DeniDin's reply is attributed to who it was for.
         second_call = handler.session_manager.add_message_with_token_limit.call_args_list[1]
         assert second_call[1]["role"] == "assistant"
         assert second_call[1]["content"] == "Hello! How can I help you?"
-        assert second_call[1]["sender"] == "AI_test"  # recipient becomes sender for AI
+        assert "sender" not in second_call[1]
         assert second_call[1]["recipient"] == "whatsapp_tester1"  # sender becomes recipient for AI
 
 

@@ -9,7 +9,15 @@ bugfix-018-ledger-event-parallel-followup-empty-response
 When the model spuriously calls `capture_ledger_event` multiple times in parallel within one turn, the follow-up API call that submits those tool outputs back to OpenAI can fail with a 400 error, leaving the user with a completely empty (0-char) WhatsApp reply despite tokens already being billed
 
 ## Status
-Open - root cause confirmed via log inspection; fix not yet implemented
+Done - Merged to master (PR #179). Root cause confirmed via log inspection
+(no new billed calls needed): 17 near-identical parallel `capture_ledger_event`
+calls exceeded `max_output_tokens`, truncating the last call's arguments into
+unparseable JSON; the follow-up submission silently dropped that call_id,
+which OpenAI's real API rejected with 400, leaving a silently empty reply.
+Fixed by treating any turn with more than one `capture_ledger_event` call, or
+one with unparseable arguments, as an explicit protocol violation (rejected,
+nothing persisted, every call_id resolved in the follow-up) plus a generic
+fallback message for any other follow-up failure.
 
 ## Date Opened
 2026-07-30

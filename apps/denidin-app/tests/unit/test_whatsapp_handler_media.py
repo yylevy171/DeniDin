@@ -189,7 +189,9 @@ class TestMediaHandlerIntegration:
             chat_id='972501234567@c.us',  # bugfix-017: needed to link this turn to a session
             timestamp=1769000000,  # Feature 024: real notification timestamp, the
             # ledger event's "hard pointer" - not processing time
-            message_id=ANY
+            message_id=ANY,
+            sender_display_name='David Cohen'  # Feature 039: no senderContactName in this
+            # fixture, falls back to senderName
         )
         
         # Verify summary was sent back to user

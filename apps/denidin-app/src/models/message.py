@@ -38,6 +38,11 @@ class WhatsAppMessage:
     message_type: str
     is_group: bool = False
     received_timestamp: Optional[datetime] = None  # UTC timestamp when message was received by application
+    # Feature 039: resolved human-readable sender name for storage/display, preferring
+    # Green API's own WhatsApp-contact-book resolution (senderContactName) over the
+    # sender's self-set profile name (senderName) over the raw sender_id - see
+    # research.md §4/§4a for why this is not a new contacts-list implementation.
+    sender_display_name: str = ""
 
     @classmethod
     def from_notification(cls, notification) -> 'WhatsAppMessage':
@@ -74,6 +79,9 @@ class WhatsAppMessage:
         chat_id = sender_data.get('chatId', '')
         sender_id = sender_data.get('sender', '')
         sender_name = sender_data.get('senderName', '')
+        sender_display_name = (
+            sender_data.get('senderContactName') or sender_name or sender_id
+        )
 
         # Detect if it's a group chat (group chats have @g.us in chat_id)
         is_group = '@g.us' in chat_id
@@ -94,7 +102,8 @@ class WhatsAppMessage:
             timestamp=timestamp,
             message_type=message_type,
             is_group=is_group,
-            received_timestamp=received_timestamp
+            received_timestamp=received_timestamp,
+            sender_display_name=sender_display_name
         )
 
 
@@ -155,6 +164,10 @@ class AIResponse:
     finish_reason: str
     timestamp: int
     is_truncated: bool = False
+    # Feature 039: False when AIHandler detected the [[NO_REPLY]] sentinel as this
+    # turn's entire response_text - signals denidin.py to skip sending a WhatsApp
+    # reply for this turn (the triggering user message is still persisted).
+    should_reply: bool = True
     # Feature 018: Morning MCP tool calls made during this response, if any -
     # e.g. [{"name": "create_invoice", "error": None}]. Populated only when the
     # Responses API call had the Morning MCP server attached as a remote tool.
@@ -218,6 +231,7 @@ class AIResponse:
                 finish_reason=self.finish_reason,
                 timestamp=self.timestamp,
                 is_truncated=True,
+                should_reply=self.should_reply,
                 mcp_calls=self.mcp_calls
             )
         return self

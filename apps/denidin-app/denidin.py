@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 import signal
+from typing import Optional
 from whatsapp_chatbot_python import Notification
 from openai import OpenAI
 from src.models.config import AppConfiguration
@@ -25,6 +26,7 @@ from src.handlers.whatsapp_handler import WhatsAppHandler
 from src.handlers.media_handler import MediaHandler
 from src.managers.session_manager import SessionManager
 from src.managers.memory_manager import MemoryManager
+from src.managers.group_membership_resolver import GroupMembershipResolver
 from src.services.cleanup_service import SessionCleanupThread, run_startup_cleanup
 
 # Configuration
@@ -98,7 +100,8 @@ class DeniDin:
     Used by integration tests to interact with the app without WhatsApp layer.
     Also serves as global context for background threads (e.g., session cleanup).
     """
-    def __init__(self, ai_handler, config, whatsapp_handler, cleanup_thread=None):
+    def __init__(self, ai_handler, config, whatsapp_handler, cleanup_thread=None,
+                 group_membership_resolver=None):
         self.ai_handler = ai_handler
         self.config = config
         self.whatsapp_handler = whatsapp_handler
@@ -106,6 +109,8 @@ class DeniDin:
         # Add references for background thread access
         self.session_manager = ai_handler.session_manager if ai_handler.memory_enabled else None
         self.memory_manager = ai_handler.memory_manager if ai_handler.memory_enabled else None
+        # Feature 039: most-permissive-role RBAC resolution for group turns
+        self.group_membership_resolver = group_membership_resolver
         self._logger = get_logger(__name__)
     
     def handle_message(self, chat_id: str, content: str) -> dict:
@@ -133,17 +138,22 @@ class DeniDin:
             timestamp=timestamp,
             message_type="textMessage",
             is_group=False,
-            received_timestamp=datetime.now(timezone.utc)
+            received_timestamp=datetime.now(timezone.utc),
+            sender_display_name="Test User"
         )
-        
+
         # Create AI request
         ai_request = self.ai_handler.create_request(message)
-        
+
         # Get AI response
+        # Feature 039 fix: get_response's RBAC lookup falls back to `sender` only
+        # when `user_phone` isn't given - since `sender` is now a display name
+        # (not a phone), user_phone must always be passed explicitly, or RBAC
+        # silently resolves against a name instead of a phone.
         ai_response = self.ai_handler.get_response(
             ai_request,
-            sender=chat_id,
-            recipient="AI"
+            sender=message.sender_display_name,
+            user_phone=message.sender_id
         )
         
         # Get session_id from session manager
@@ -257,9 +267,16 @@ def initialize_app(config_dict: dict) -> DeniDin:
     
     # Initialize WhatsApp handler (without media_handler initially)
     whatsapp_handler = WhatsAppHandler()
-    
+
+    # Feature 039: most-permissive-role RBAC resolution for group turns - built off
+    # the module-level bot's own Green API groups client, never a new global.
+    group_membership_resolver = GroupMembershipResolver(bot.api.groups, ai_handler.user_manager)
+
     # Create DeniDin instance (will be used as context for background threads and MediaHandler)
-    denidin = DeniDin(ai_handler, config, whatsapp_handler, cleanup_thread=None)
+    denidin = DeniDin(
+        ai_handler, config, whatsapp_handler, cleanup_thread=None,
+        group_membership_resolver=group_membership_resolver
+    )
     
     # Initialize MediaHandler with DeniDin context and attach to WhatsAppHandler
     media_handler = MediaHandler(denidin)
@@ -304,11 +321,24 @@ logger.info("Handlers initialized: AIHandler, WhatsAppHandler")
 logger.info("=" * 60)
 
 
+def _resolve_group_user_phone(message) -> Optional[str]:
+    """Feature 039 (US4): for a group message, resolve the most-permissive member's
+    phone via GroupMembershipResolver - returns None for 1:1 messages, a missing
+    resolver, or any resolution failure (falls back to sender-only RBAC, never
+    blocks the turn)."""
+    if not message.is_group or denidin_app.group_membership_resolver is None:
+        return None
+
+    resolution = denidin_app.group_membership_resolver.resolve(message.chat_id)
+    return resolution.phone if resolution else None
+
+
 def _process_conversational_message(notification: Notification) -> None:
     """
     Shared turn-processing logic for any message type that flows into the conversational
-    AIHandler pipeline: validate -> parse -> group-mention check -> AIHandler -> send response,
-    with the same global error handling/fallback-message behavior.
+    AIHandler pipeline: validate -> parse -> AIHandler -> send response, with the same global
+    error handling/fallback-message behavior. Feature 039: group messages are no longer
+    gated by a mention check - addressed to DeniDin by default, same as 1:1.
 
     Extracted (Feature 030) from what was previously handle_text_message's own body, so the new
     contactMessage router (a shared WhatsApp contact card - see handle_contact_message) can reuse
@@ -336,26 +366,46 @@ def _process_conversational_message(notification: Notification) -> None:
             f"{message.text_content[:100]}..."
         )
 
-        # Check if application is mentioned in group (or if 1-on-1)
-        if not denidin_app.whatsapp_handler.is_bot_mentioned_in_group(message):
-            logger.debug(f"{tracking} Skipping group message without mention")
-            return
+        # Feature 039 (US4): group turns are governed by the most-permissive role
+        # present among the group's members, not the individual sender alone.
+        # None for 1:1 and for any resolution failure - AIHandler.create_request
+        # itself falls back to message.sender_id when user_phone is None, so 1:1
+        # RBAC there is unaffected. get_response has no such message-aware
+        # fallback (it only knows `sender`, which Feature 039 repurposed to hold
+        # the display name, not the phone - see the comment below), so its call
+        # must always resolve to a real phone explicitly.
+        group_user_phone = _resolve_group_user_phone(message)
 
         # Create AI request
-        ai_request = denidin_app.ai_handler.create_request(message)
+        ai_request = denidin_app.ai_handler.create_request(message, user_phone=group_user_phone)
         logger.debug(f"{tracking} Created AI request {ai_request.request_id}")
 
         # Get AI response (with retry logic and fallbacks built-in)
-        # Pass sender (WhatsApp ID) and recipient ('AI') for proper message tracking
+        # Feature 039: pass the resolved display name (not the raw WhatsApp id) as
+        # sender, so Message.sender/recipient hold a readable name, not a phone
+        # number - see SessionManager.add_message for the "AI" sentinel retirement.
+        # user_phone must be the real phone (group_user_phone for a group, else
+        # message.sender_id) - get_response's own RBAC fallback is `user_phone or
+        # sender`, and `sender` is now a display name, not a phone (found
+        # 2026-08-04: this silently broke RBAC-gated Morning MCP tool attachment
+        # for every 1:1 conversation, resolving the display name as an unknown
+        # phone -> defaulting to CLIENT role).
         ai_response = denidin_app.ai_handler.get_response(
             ai_request,
-            sender=message.sender_id,
-            recipient="AI"
+            sender=message.sender_display_name,
+            user_phone=group_user_phone or message.sender_id
         )
         logger.info(
             f"{tracking} AI response generated: {ai_response.tokens_used} tokens, "
             f"{len(ai_response.response_text)} chars"
         )
+
+        # Feature 039 (US4a): should_reply=False means the model determined this
+        # message wasn't for DeniDin - not an error, not a failure, just no reply.
+        # The user's message was already persisted inside get_response.
+        if not ai_response.should_reply:
+            logger.info(f"{tracking} No reply sent (should_reply=False, no-reply sentinel)")
+            return
 
         # Send response (with retry logic built-in)
         denidin_app.whatsapp_handler.send_response(notification, ai_response)
