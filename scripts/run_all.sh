@@ -1,9 +1,11 @@
 #!/bin/bash
 # Starts BOTH denidin-app and morning-mcp-app for a given environment.
-# CLAUDE.md's "ONE ENVIRONMENT SET AT A TIME" rule requires them bundled -
-# neither app's container may run alone. Use this instead of calling
-# run_denidin.sh/run_morning_mcp.sh individually, unless specifically asked
-# to start only one.
+# The two apps within one environment are still bundled - neither app's
+# container may run alone (see CLAUDE.md's "Environments (dev/prod)"
+# section). Use this instead of calling run_denidin.sh/run_morning_mcp.sh
+# individually, unless specifically asked to start only one. (Dev and prod
+# themselves may now run concurrently - see the same section - but that's
+# orthogonal to this per-environment app-pairing rule, which is unchanged.)
 #
 # Usage: ./scripts/run_all.sh dev|prod
 

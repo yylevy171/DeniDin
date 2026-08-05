@@ -1,17 +1,17 @@
 #!/bin/bash
 # Tears down EVERY DeniDin container in EVERY environment - both apps, dev
-# AND prod, unconditionally. Run this whenever switching environments, or to
-# fully reset local state - see CLAUDE.md's "ONE ENVIRONMENT SET AT A TIME"
-# rule: at most one full environment set (dev OR prod, never both) may be
-# running, and this is the tool that guarantees a clean slate before
-# starting the other one.
+# AND prod, unconditionally. Run this to fully reset local state, or when
+# unsure what's currently running. (2026-08-05: dev and prod may now run
+# concurrently - see CLAUDE.md's "Environments (dev/prod)" section - so this
+# is no longer "the tool that guarantees a clean slate before starting the
+# other one"; it's just an unconditional full-reset hammer.)
 #
 # Also used by each app's own in-container watchdog: on an env mismatch
-# (this container's own `environment` config value disagrees with
-# shared/active_env.json), the watchdog kills its app subprocess but leaves
-# the container itself running (so its own crash-loop doesn't restart the
-# app) - this script is what actually removes those now-app-less zombie
-# containers, same as any other cleanup.
+# (this container's own `environment` config value isn't currently declared
+# active in shared/active_env.json), the watchdog kills its app subprocess
+# but leaves the container itself running (so its own crash-loop doesn't
+# restart the app) - this script is what actually removes those now-app-less
+# zombie containers, same as any other cleanup.
 #
 # Usage: ./scripts/killall_containers.sh [-force]
 #
@@ -32,9 +32,9 @@ ME="$(env_lock_identity)"
 env_lock_ensure_shared_symlink
 env_lock_read
 
-if [ "$LOCK_ACTIVE_ENV" = "dev" ] && [ "$LOCK_OWNER" != "null" ] && [ "$LOCK_OWNER" != "$ME" ] && [ "$FORCE" != "-force" ]; then
-    echo "ERROR: dev is locked by '$LOCK_OWNER', not '$ME'. Refusing to kill everything." >&2
-    echo "       Pass -force to override (only if you're sure), or ask '$LOCK_OWNER' to free it first." >&2
+if [ "$LOCK_DEV_ACTIVE" = "true" ] && [ "$LOCK_DEV_OWNER" != "null" ] && [ "$LOCK_DEV_OWNER" != "$ME" ] && [ "$FORCE" != "-force" ]; then
+    echo "ERROR: dev is locked by '$LOCK_DEV_OWNER', not '$ME'. Refusing to kill everything." >&2
+    echo "       Pass -force to override (only if you're sure), or ask '$LOCK_DEV_OWNER' to free it first." >&2
     exit 1
 fi
 
@@ -53,9 +53,9 @@ python3 -c "
 import json
 from datetime import datetime, timezone
 with open('shared/active_env.json', 'w', encoding='utf-8') as f:
-    json.dump({'active_env': None, 'owner': None, 'updated_at': datetime.now(timezone.utc).isoformat()}, f, indent=2)
+    json.dump({'active_envs': {}, 'updated_at': datetime.now(timezone.utc).isoformat()}, f, indent=2)
     f.write('\n')
 "
 
-echo "shared/active_env.json reset to null/null (no environment active, no owner)."
+echo "shared/active_env.json reset to active_envs: {} (no environment active for anyone)."
 echo "All environments torn down."

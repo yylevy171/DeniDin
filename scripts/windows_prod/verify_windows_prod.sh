@@ -93,7 +93,15 @@ deploy_dir_not_a_git_repo() {
 }
 
 shared_state_local_json_valid() {
-  ssh_run "cat ~/$DEPLOY_DIR/config/shared_state.local.json" | grep -q '"shared_state_dir": *"/[^"]*/shared"'
+  # Just requires an absolute path - the target directory's own name is not
+  # part of the contract (env_lock.sh only ever reads this value and
+  # symlinks ./shared to whatever it points at; nothing depends on that
+  # target being named literally "shared"). Previously required the path to
+  # end in literally "/shared", which produced a false-positive FAIL against
+  # this box's real, working setup (its shared_state_dir is named
+  # ".shared_canonical" - functionally fine, just a different name) -
+  # caught 2026-08-05.
+  ssh_run "cat ~/$DEPLOY_DIR/config/shared_state.local.json" | grep -q '"shared_state_dir": *"/[^"]*"'
 }
 
 # Rewritten 2026-08-03: this file is no longer a generated no-op stub (see

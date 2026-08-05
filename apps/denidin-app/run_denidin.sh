@@ -18,13 +18,6 @@ if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
     exit 1
 fi
 
-if [ "$ENV" = "dev" ]; then
-    echo "NOTE: denidin-app-dev shares one real Green API instance with denidin-app-prod (FR-014)."
-    echo "      Only one of denidin-app-dev/denidin-app-prod should be actively running at a time"
-    echo "      whenever real WhatsApp traffic could arrive. See quickstart.md's hand-off procedure."
-    echo ""
-fi
-
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.$ENV.yml"
 LOCAL_OVERRIDE="$REPO_ROOT/docker/docker-compose.$ENV.local.yml"
 SERVICE="denidin-app-$ENV"
