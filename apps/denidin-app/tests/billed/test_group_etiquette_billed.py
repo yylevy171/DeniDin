@@ -60,9 +60,15 @@ class TestGroupEtiquetteBilled:
 
     @pytest.fixture
     def config(self):
-        config_path = Path(__file__).parent.parent.parent / "config" / "config.json"
+        # bugfix-024: was config.json, whose Green API instance is unauthorized
+        # (stateInstance="notAuthorized", no phone linked) - confirmed live 2026-08-05,
+        # which made case7's own_whatsapp_number fetch always fail open and skip.
+        # config.test.json matches every other billed test file's convention and its
+        # instance is confirmed authorized (used successfully throughout this session's
+        # dev-environment testing).
+        config_path = Path(__file__).parent.parent.parent / "config" / "config.test.json"
         if not config_path.exists():
-            pytest.skip("config.json not found")
+            pytest.skip("config.test.json not found")
 
         config = AppConfiguration.from_file(str(config_path))
         config.validate()
@@ -200,4 +206,37 @@ class TestGroupEtiquetteBilled:
 
         logger.info(f"Case 6 (@DeniDin overrides ambiguity) response: {response!r}")
         assert response is not None, "Expected a substantive reply, got no reply at all"
+        assert_hebrew_only(response)
+
+    def test_case7_native_mention_by_own_phone_number_gets_substantive_reply(self, denidin_app):
+        """bugfix-024: a REAL WhatsApp native @-mention picker inserts the mentioned
+        contact's raw phone number into message text, never a display name (confirmed
+        live via a real Green API getWaSettings call, not assumed from docs - see
+        CONSTITUTION.md "NO UNVERIFIED THIRD-PARTY ASSUMPTIONS"). This reproduces that
+        exact real shape - "@<own bare-digit number>" - using denidin_app's own,
+        actually-resolved own_whatsapp_number (never a hardcoded guess), and must get
+        a substantive reply, same as case6's manually-typed "@DeniDin" - proving
+        AIHandler.create_request's self-mention normalization (_normalize_self_mentions)
+        correctly rewrites it before the model ever sees the raw digits."""
+        from denidin import handle_text_message
+
+        own_number = denidin_app.ai_handler.own_whatsapp_number
+        if not own_number:
+            pytest.skip(
+                "own_whatsapp_number not resolved this run (startup getWaSettings call "
+                "failed or was unreachable) - can't reproduce the real native-mention "
+                "shape without it"
+            )
+
+        notification = create_real_notification(
+            _group_event(f'@{own_number} מי אתה?', case_id='case7')
+        )
+        handle_text_message(notification)
+        response = get_response(notification)
+
+        logger.info(f"Case 7 (native @-mention by own phone number) response: {response!r}")
+        assert response is not None, (
+            f"Expected a substantive reply (own number {own_number!r} was @-mentioned - "
+            f"this IS DeniDin being addressed), got no reply at all"
+        )
         assert_hebrew_only(response)

@@ -43,6 +43,34 @@ MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # impossible as a plain-text sentinel can get.
 NO_REPLY_SENTINEL = "[[NO_REPLY]]"
 
+def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
+    """bugfix-024: rewrite an @-mention of DeniDin's own WhatsApp number (WhatsApp's
+    native @-mention picker inserts the mentioned contact's raw phone number into
+    message text, never a display name - confirmed via a real Green API getWaSettings
+    call, see bugfix-024's spec; this was previously, and wrongly, assumed to always
+    render as "@DisplayName") into the name-shaped "@DeniDin" form the model's
+    existing, already-verified "@Name" addressee judgment knows how to recognize (see
+    runtime_constitution.md's Group Conversation Etiquette section and US7's case6
+    billed test) - a deterministic, code-level check performed BEFORE the text ever
+    reaches the model, not something left to model judgment (CONSTITUTION.md "NO
+    UNVERIFIED THIRD-PARTY ASSUMPTIONS").
+
+    A plain substring replace, not a regex: the real, verified mention format is an
+    exact match on `own_whatsapp_number`'s own bare-digit string (both the real
+    getWaSettings response and a real captured mention text use the identical bare
+    format, 2026-08-05) - no confirmed case involves a different digit format (e.g. a
+    "+" prefix) needing normalization, so handling one isn't justified. `str.replace`
+    already rewrites every occurrence, and can't touch anyone else's mentioned number
+    since it only ever searches for this exact self-mention substring.
+
+    No-op (returns text unchanged) if own_whatsapp_number is empty - e.g. the
+    startup fetch (denidin.py's initialize_app) failed or hasn't run, matching this
+    codebase's fail-open convention for non-critical startup data (CONSTITUTION §VI).
+    """
+    if not own_whatsapp_number:
+        return text
+    return text.replace(f"@{own_whatsapp_number}", "@DeniDin")
+
 # MCP tool names that require explicit human approval before they actually
 # execute (Feature 022; renamed from DOCUMENT_CREATING_MCP_TOOLS by Feature
 # 026, which extended coverage to client-mutating tools, not just
@@ -530,6 +558,14 @@ class AIHandler:
         # the shared status file the morning-mcp-app publishes. No cross-app import.
         self.morning_mcp_locator = MorningMcpLocator(getattr(config, 'mcp', {}) or {})
 
+        # bugfix-024: DeniDin's own WhatsApp phone number (bare digits, e.g.
+        # "972559723730"), fetched ONCE at startup via a real Green API call and set
+        # externally by denidin.py's initialize_app (never re-fetched per message -
+        # this constructor only establishes the "not yet known" default). Used by
+        # create_request to normalize a native @-mention of DeniDin's own number into
+        # the name-shaped form the model's existing addressee judgment recognizes.
+        self.own_whatsapp_number: str = ""
+
         # Feature 022: tracks, per chat_id, an MCP document-creation call
         # currently held pending the user's explicit approval. In-memory only
         # (see PendingApprovalManager docstring for why).
@@ -630,8 +666,15 @@ class AIHandler:
                 logger.warning(f"Blocked user attempted to create request: {effective_user_phone}")
                 raise PermissionError(f"User is blocked: {effective_user_phone}")
 
+        # bugfix-024: normalize a native @-mention of DeniDin's own number (e.g.
+        # "@972559723730") into the name-shaped "@DeniDin" form BEFORE the model ever
+        # sees it - a deterministic check, done here so both the OpenAI call and the
+        # persisted session history (which stores this same user_prompt) consistently
+        # reflect who was actually addressed. No-op for a message with no self-mention,
+        # or if own_whatsapp_number hasn't been resolved.
+        user_prompt = _normalize_self_mentions(message.text_content, self.own_whatsapp_number)
+
         # Validate and truncate message length
-        user_prompt = message.text_content
         if len(user_prompt) > MAX_MESSAGE_LENGTH:
             logger.warning(
                 f"Message length {len(user_prompt)} exceeds maximum {MAX_MESSAGE_LENGTH} chars. "

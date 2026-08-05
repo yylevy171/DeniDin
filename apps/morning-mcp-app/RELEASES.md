@@ -11,3 +11,7 @@ Initial versioned release: introduces semantic versioning, cut/deploy tooling, a
 ## morning-mcp-app v0.1.0 — 2026-08-03
 
 first alpha version
+
+## morning-mcp-app v0.2.0 — 2026-08-05
+
+Version bump to match denidin-app v0.2.0 - no functional changes in this app
