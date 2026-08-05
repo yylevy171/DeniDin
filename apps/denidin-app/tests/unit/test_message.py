@@ -240,14 +240,108 @@ class TestWhatsAppMessage:
     def test_message_tracking_fields_in_logging(self, sample_text_notification):
         """Test that message_id and received_timestamp can be used in log messages."""
         message = WhatsAppMessage.from_notification(sample_text_notification)
-        
+
         # Verify fields exist and can be formatted in log strings
         log_message = f"[msg_id={message.message_id}] [recv_ts={message.received_timestamp}] Processing message"
-        
+
         assert message.message_id in log_message
         assert str(message.received_timestamp) in log_message
         assert "[msg_id=" in log_message
         assert "[recv_ts=" in log_message
+
+    def test_sender_display_name_uses_sender_contact_name_when_present(self):
+        """
+        Feature 039 (T002a): senderContactName - the name saved in DeniDin's own WhatsApp
+        contact book for that number - takes priority over senderName (the sender's own
+        self-set profile name) and the raw sender id.
+        """
+        notification = Mock()
+        notification.event = {
+            'typeWebhook': 'incomingMessageReceived',
+            'messageData': {
+                'typeMessage': 'textMessage',
+                'textMessageData': {'textMessage': 'Hi'}
+            },
+            'senderData': {
+                'chatId': '1234567890@c.us',
+                'sender': '1234567890@c.us',
+                'senderName': 'Some Profile Name',
+                'senderContactName': 'Godfather'
+            },
+            'timestamp': 1234567890
+        }
+
+        message = WhatsAppMessage.from_notification(notification)
+
+        assert message.sender_display_name == 'Godfather'
+        # Existing fields unaffected
+        assert message.sender_name == 'Some Profile Name'
+        assert message.sender_id == '1234567890@c.us'
+
+    def test_sender_display_name_falls_back_to_sender_name(self):
+        """T002a: senderContactName absent -> falls back to senderName."""
+        notification = Mock()
+        notification.event = {
+            'typeWebhook': 'incomingMessageReceived',
+            'messageData': {
+                'typeMessage': 'textMessage',
+                'textMessageData': {'textMessage': 'Hi'}
+            },
+            'senderData': {
+                'chatId': '1234567890@c.us',
+                'sender': '1234567890@c.us',
+                'senderName': 'Some Profile Name'
+                # no senderContactName key at all
+            },
+            'timestamp': 1234567890
+        }
+
+        message = WhatsAppMessage.from_notification(notification)
+
+        assert message.sender_display_name == 'Some Profile Name'
+
+    def test_sender_display_name_falls_back_to_sender_name_when_contact_name_empty(self):
+        """T002a: senderContactName present but empty string -> still falls back to senderName."""
+        notification = Mock()
+        notification.event = {
+            'typeWebhook': 'incomingMessageReceived',
+            'messageData': {
+                'typeMessage': 'textMessage',
+                'textMessageData': {'textMessage': 'Hi'}
+            },
+            'senderData': {
+                'chatId': '1234567890@c.us',
+                'sender': '1234567890@c.us',
+                'senderName': 'Some Profile Name',
+                'senderContactName': ''
+            },
+            'timestamp': 1234567890
+        }
+
+        message = WhatsAppMessage.from_notification(notification)
+
+        assert message.sender_display_name == 'Some Profile Name'
+
+    def test_sender_display_name_falls_back_to_raw_sender_id(self):
+        """T002a: both senderContactName and senderName absent/empty -> falls back to sender_id."""
+        notification = Mock()
+        notification.event = {
+            'typeWebhook': 'incomingMessageReceived',
+            'messageData': {
+                'typeMessage': 'textMessage',
+                'textMessageData': {'textMessage': 'Hi'}
+            },
+            'senderData': {
+                'chatId': '1234567890@c.us',
+                'sender': '1234567890@c.us',
+                'senderName': ''
+            },
+            'timestamp': 1234567890
+        }
+
+        message = WhatsAppMessage.from_notification(notification)
+
+        assert message.sender_display_name == '1234567890@c.us'
 
 
 class TestAIRequest:
@@ -458,3 +552,35 @@ class TestAIResponse:
                 is_truncated=False
             )
             assert response.finish_reason == reason
+
+    def test_should_reply_defaults_true(self):
+        """Feature 039 (T003a): a fresh AIResponse defaults should_reply=True (no-reply
+        is an explicit opt-in via the [[NO_REPLY]] sentinel, never the default)."""
+        import time
+        response = AIResponse(
+            request_id='req_123',
+            response_text='Test',
+            tokens_used=10,
+            prompt_tokens=5,
+            completion_tokens=5,
+            model='gpt-4o-mini',
+            finish_reason='stop',
+            timestamp=int(time.time())
+        )
+        assert response.should_reply is True
+
+    def test_should_reply_false_round_trips(self):
+        """T003a: explicitly constructing should_reply=False round-trips correctly."""
+        import time
+        response = AIResponse(
+            request_id='req_123',
+            response_text='[[NO_REPLY]]',
+            tokens_used=10,
+            prompt_tokens=5,
+            completion_tokens=5,
+            model='gpt-4o-mini',
+            finish_reason='stop',
+            timestamp=int(time.time()),
+            should_reply=False
+        )
+        assert response.should_reply is False

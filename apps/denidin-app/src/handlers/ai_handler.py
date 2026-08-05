@@ -36,6 +36,13 @@ logger = get_logger(__name__)
 # Roles authorized to have the Morning MCP invoicing tools attached (Feature 018)
 MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 
+# Feature 039 (US4a): the model outputs this exact string as its entire response_text
+# to mean "send nothing back" (e.g. a group message clearly directed at someone else,
+# per runtime_constitution.md's group-etiquette guidance) - double-bracketed to make
+# accidental collision with genuine Hebrew conversational output as close to
+# impossible as a plain-text sentinel can get.
+NO_REPLY_SENTINEL = "[[NO_REPLY]]"
+
 # MCP tool names that require explicit human approval before they actually
 # execute (Feature 022; renamed from DOCUMENT_CREATING_MCP_TOOLS by Feature
 # 026, which extended coverage to client-mutating tools, not just
@@ -1307,10 +1314,22 @@ class AIHandler:
         )
         logger.debug(f"Full response: {response_text[:200]}...")
 
+        # Feature 039 (US4a): the model signals "send nothing" by returning exactly
+        # the sentinel as its entire response - the user's message is still
+        # persisted below (conversation context isn't lost), but no assistant
+        # reply is stored, and the caller (denidin.py) must not send anything.
+        should_reply = response_text.strip() != NO_REPLY_SENTINEL
+
         # Store messages in session if memory enabled
         if self.memory_enabled and self.session_manager and effective_chat_id:
             try:
                 # RBAC: Use token limit enforcement if enabled
+                # Feature 039: SessionManager.add_message* always forces recipient=None
+                # for role="user" and sender=None for role="assistant" (redundant with
+                # role, which already distinguishes them) - the "AI" sentinel is retired,
+                # so it's no longer passed here. `sender` (the resolved display name,
+                # threaded in from the caller) becomes the user message's sender and the
+                # assistant reply's recipient - who said it, and who it was for.
                 if self.rbac_enabled and user_obj:
                     # Store user message with token limit
                     self.session_manager.add_message_with_token_limit(
@@ -1320,48 +1339,47 @@ class AIHandler:
                         user_role=user_obj.role,
                         token_limit=user_obj.token_limit,
                         sender=sender or effective_chat_id,
-                        recipient=recipient or "AI",
                         ledger_event_ids=ledger_event_ids,
                         message_id=request.message_id
                     )
 
-                    # Store AI response with token limit
-                    self.session_manager.add_message_with_token_limit(
-                        chat_id=effective_chat_id,
-                        role="assistant",
-                        content=response_text,
-                        user_role=user_obj.role,
-                        token_limit=user_obj.token_limit,
-                        sender=recipient or "AI",
-                        recipient=sender or effective_chat_id
-                    )
+                    if should_reply:
+                        # Store AI response with token limit
+                        self.session_manager.add_message_with_token_limit(
+                            chat_id=effective_chat_id,
+                            role="assistant",
+                            content=response_text,
+                            user_role=user_obj.role,
+                            token_limit=user_obj.token_limit,
+                            recipient=sender or effective_chat_id
+                        )
                 else:
                     # Existing behavior: regular add_message without token limits
-                    # Store user message
-                    # sender should be WhatsApp ID (or test identifier), recipient is always 'AI' (or 'AI_test')
                     self.session_manager.add_message(
                         chat_id=effective_chat_id,
                         role="user",
                         content=request.user_prompt,
                         user_role=user_role or "client",
                         sender=sender or effective_chat_id,
-                        recipient=recipient or "AI",
                         ledger_event_ids=ledger_event_ids,
                         message_id=request.message_id
                     )
 
-                    # Store AI response
-                    # sender is always 'AI' (or 'AI_test'), recipient is WhatsApp ID (or test identifier)
-                    self.session_manager.add_message(
-                        chat_id=effective_chat_id,
-                        role="assistant",
-                        content=response_text,
-                        user_role=user_role or "client",
-                        sender=recipient or "AI",  # AI is the sender
-                        recipient=sender or effective_chat_id  # Reply goes to original sender
-                    )
+                    if should_reply:
+                        # Store AI response
+                        self.session_manager.add_message(
+                            chat_id=effective_chat_id,
+                            role="assistant",
+                            content=response_text,
+                            user_role=user_role or "client",
+                            recipient=sender or effective_chat_id  # Reply goes to original sender
+                        )
 
-                logger.debug(f"Stored user + assistant messages in session {effective_chat_id}")
+                storage_note = (
+                    " + assistant reply" if should_reply
+                    else " (no-reply sentinel, no assistant message stored)"
+                )
+                logger.debug(f"Stored user message{storage_note} in session {effective_chat_id}")
             except Exception as e:
                 logger.error(f"Failed to store messages in session: {e}", exc_info=True)
 
@@ -1385,6 +1403,7 @@ class AIHandler:
             finish_reason=finish_reason,
             timestamp=int(time.time()),
             is_truncated=False,
+            should_reply=should_reply,
             mcp_calls=mcp_calls
         )
 

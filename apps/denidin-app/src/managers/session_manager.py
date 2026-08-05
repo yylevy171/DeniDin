@@ -173,6 +173,15 @@ class SessionManager:
         message_id = message_id or str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
 
+        # Feature 039: retire the "AI" sender/recipient sentinel - role already
+        # distinguishes user vs. assistant messages unambiguously, so a user
+        # message's recipient and an assistant message's sender are always None,
+        # regardless of what the caller passes.
+        if role == "user":
+            recipient = None
+        elif role == "assistant":
+            sender = None
+
         message = Message(
             message_id=message_id,
             session_id=session.session_id,  # FK to session UUID
@@ -239,6 +248,12 @@ class SessionManager:
             session_dir = self.storage_dir / session.session_id
         messages_dir = session_dir / "messages"
 
+        # Feature 039 (US3): a group session's shared history needs to tell members
+        # apart, since the model otherwise sees a flat "user said X, user said Y"
+        # stream with no way to distinguish godfather from admin. 1:1 sessions have
+        # only one human counterpart, so no prefix is needed there.
+        is_group_session = '@g.us' in session.whatsapp_chat
+
         history = []
         for message_id in session.message_ids:
             message_file = messages_dir / f"{message_id}.json"
@@ -247,9 +262,13 @@ class SessionManager:
                 with open(message_file, encoding='utf-8') as f:
                     message_data = json.load(f)
 
+                content = message_data["content"]
+                if is_group_session and message_data["role"] == "user" and message_data.get("sender"):
+                    content = f"[{message_data['sender']}] {content}"
+
                 history.append({
                     "role": message_data["role"],
-                    "content": message_data["content"]
+                    "content": content
                 })
 
         return history

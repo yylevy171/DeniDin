@@ -79,34 +79,6 @@ class WhatsAppHandler:
 
         return True
 
-    def is_bot_mentioned_in_group(self, message: WhatsAppMessage, bot_name: str = "DeniDin") -> bool:
-        """
-        Check if application is mentioned in a group message.
-
-        Args:
-            message: WhatsApp message to check
-            bot_name: Name of the application to look for
-
-        Returns:
-            True if application is mentioned or message is 1-on-1, False otherwise
-        """
-        # Always process 1-on-1 messages
-        if not message.is_group:
-            return True
-
-        # In groups, only respond if mentioned
-        text_lower = message.text_content.lower()
-        bot_name_lower = bot_name.lower()
-
-        is_mentioned = bot_name_lower in text_lower
-
-        if not is_mentioned:
-            logger.debug(
-                f"Application not mentioned in group message {message.message_id}, skipping"
-            )
-
-        return is_mentioned
-
     def handle_unsupported_message(self, notification: Notification) -> None:
         """
         Send auto-reply for unsupported message types.
@@ -302,7 +274,8 @@ class WhatsAppHandler:
             sender_phone=sender,
             chat_id=chat_id,
             timestamp=timestamp,
-            message_id=message_id
+            message_id=message_id,
+            sender_display_name=message.sender_display_name
         )
         
         if not result.get("success", False):
