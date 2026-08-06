@@ -2,9 +2,10 @@
 
 **Feature**: 032-whatsapp-reply-reference-resolution
 **Format**: Given-When-Then (Gherkin/BDD), per METHODOLOGY.md §I — MANDATORY, blocks spec approval until present.
-**Status**: DRAFT — rescoped 2026-08-04 to general reply-resolution infrastructure only.
-Agreement-specific cancellation/modification user stories moved to Feature 040 (see that
-feature's `user-stories.md`).
+**Status**: CLARIFIED — rescoped 2026-08-04 to general reply-resolution infrastructure only,
+`speckit.clarify` complete same day (see spec.md's Clarifications section). Agreement-specific
+cancellation/modification user stories moved to Feature 040 (see that feature's
+`user-stories.md`).
 
 ---
 
@@ -51,8 +52,9 @@ carries a resolved reference to message A's stored `Message` (matched via `idMes
   reply's `stanzaId` can be matched against it (Q1, resolved: every message, not just
   ledger-event-producing ones).
 - A resolution step, given a `stanzaId`, that finds the corresponding stored `Message` (by its
-  Green API `idMessage`) and surfaces its content/metadata (plus `ledger_event_ids` if
-  present, unconditionally — this feature does not filter or interpret them).
+  Green API `idMessage`) — scoped to the same chat/group and the active/unexpired session only
+  (Q10/Q11, resolved 2026-08-04) — and surfaces its content/metadata (plus `ledger_event_ids`
+  if present, unconditionally — this feature does not filter or interpret them).
 
 **Acceptance Scenarios**:
 
@@ -61,15 +63,38 @@ carries a resolved reference to message A's stored `Message` (matched via `idMes
    `Message` record carries a resolved reference to message A (its content, sender,
    timestamp).
 2. **Given** message A happens to have `ledger_event_ids` (it captured a ledger event),
-   **When** a reply to message A is resolved, **Then** message A's `ledger_event_ids` are
-   included in the resolved reference as pass-through data — this feature does not act on or
-   interpret them (that's Feature 040's job).
+   **When** a reply to message A is resolved, **Then** the resolved reference carries the
+   FULL structured `LedgerEvent` record(s) those ids point to (client_name, source_type,
+   amounts, etc. — fetched via `LedgerEventManager`, not bare ids) as pass-through data, and
+   `content` is NOT also populated (mutually exclusive, 2026-08-04 revision — the record
+   already contains `raw_message_excerpt`) — this feature does not act on or interpret the
+   record's meaning (that's Feature 040's job).
 3. **Given** message A has no `ledger_event_ids` (ordinary conversational message), **When** a
    reply to message A is resolved, **Then** resolution still succeeds — content/metadata only,
    no ledger data attached, and no error.
 4. **Given** a reply whose `stanzaId` does not match any stored `Message` (e.g. message A
    predates this feature, or was never captured), **When** processed, **Then** resolution
    fails gracefully — no crash, and the reply is treated as an ordinary new message.
+5. **Given** message A was an image/PDF/DOCX message (processed by `MediaHandler`/an
+   extractor at ingestion time, with `extracted_text`/`document_analysis` already computed
+   and stored), **When** a reply to message A is resolved, **Then** the resolved reference
+   carries that already-computed `extracted_text`/`document_analysis` IN FULL, untruncated —
+   NOT the raw image/media bytes, and NO fresh vision-model call is made to re-analyze it. The
+   text itself is not shortened or summarized further by this feature; only the raw media is
+   excluded.
+6. **Given** message A was a media message with no `extracted_text`/`document_analysis`
+   available (e.g. extraction failed at ingestion time), **When** a reply to message A is
+   resolved, **Then** resolution still succeeds with whatever metadata is available (sender,
+   timestamp, media type) — no raw media is surfaced, no error.
+7. **Given** message A's session has since expired/been archived (past the 24h session
+   window), **When** a reply to message A is received, **Then** resolution fails gracefully —
+   archived/expired sessions and long-term ChromaDB memory are NOT searched (Clarifications,
+   2026-08-04) — and the reply is treated as an ordinary new message, same as Scenario 4.
+8. **Given** message A was sent in chat/group X, **When** a reply with the same `stanzaId`
+   value is (hypothetically) received in a different chat/group Y, **Then** resolution does
+   NOT match across chats — matching is scoped per chat/group (Clarifications, 2026-08-04),
+   mirroring how WhatsApp reply/quote actually works (you can only reply within the
+   conversation you're in).
 
 ---
 

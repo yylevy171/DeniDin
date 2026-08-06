@@ -5,9 +5,8 @@
 **Rescoped**: 2026-08-04 — split into general reply-resolution infrastructure (this feature)
 and agreement-specific cancellation/modification behavior (moved to Feature 040, see "Split
 History" below).
-**Status**: DRAFT — pre-`speckit.clarify` on the rescoped Q1/Q2 below. Do NOT proceed to
-`plan.md`/`tasks.md` until these are confirmed with the user (Q1/Q2 have working answers from
-2026-08-04 discussion; formal `speckit.clarify` pass still recommended before `plan.md`).
+**Status**: CLARIFIED — `speckit.clarify` pass complete 2026-08-04 (see Clarifications
+section below). Ready for `speckit.plan`.
 **Input**: User description: "create a new feature to support ref msgs (stanzaID, etc)" —
 originally motivated by a cancellation use case ("לבטל"/"למחוק" sent as a reply to a message
 that stated a fee agreement), but the underlying capability — resolving *any* WhatsApp
@@ -42,9 +41,24 @@ the motivating example for why reference resolution is needed at all.
 - **METHODOLOGY.md** (§I, II, VIII, IX, X): Spec-first development, mandatory user stories,
   Terminology Glossary, Technology Choices, Requirement IDs.
 
-**Required Files**: `user-stories.md` (present, DRAFT) ✅ · `spec.md` (this file, DRAFT) ·
-`plan.md` (NOT STARTED) · `research.md` (NOT STARTED) · `data-model.md` (NOT STARTED) ·
-`contracts/` (NOT STARTED) · `quickstart.md` (NOT STARTED) · `tasks.md` (NOT STARTED).
+**Required Files**: `user-stories.md` ✅ · `spec.md` (this file) ✅ · `plan.md` ✅ ·
+`research.md` ✅ · `data-model.md` ✅ · `contracts/` ✅ (`reply-resolution.md`) ·
+`quickstart.md` ✅ · `tasks.md` (NOT STARTED — next: `speckit.tasks`).
+
+---
+
+## Clarifications
+
+### Session 2026-08-04
+
+- Q: Should stanzaId resolution search only the active (unexpired) session, or also
+  archived/expired sessions and long-term ChromaDB memory? → A: Active session only — a
+  reply to a message from an expired/archived session simply fails to resolve, same as any
+  other unmatched `stanzaId` (falls back to ordinary new message).
+- Q: Should idMessage matching be scoped per-chat/group, or a global match across all chats?
+  → A: Scoped per chat/group (using `quotedMessage.participant`/the chat id) — matches how
+  WhatsApp reply/quote actually works (you can only reply within the same conversation) and
+  avoids theoretical cross-chat `idMessage` collisions.
 
 ---
 
@@ -100,13 +114,54 @@ Investigated via code reading (not assumed), 2026-07-30:
 **In scope**: capturing `idMessage`/`stanzaId`/`quotedMessage`, and resolving a `stanzaId` on
 an incoming reply back to DeniDin's own stored `Message` record — making the original
 message's content and metadata (and, if that message happens to have any
-`ledger_event_ids`, that linkage too — as optional, pass-through data, not something this
-feature interprets or acts on) available as extra context for whatever consumes it next.
+`ledger_event_ids`, the FULL structured `LedgerEvent` record(s) they point to — fetched via
+`LedgerEventManager`, not just the bare ids — as pass-through data, not something this feature
+interprets or acts on) available as extra context for whatever consumes it next. (Revised
+2026-08-04: bare `ledger_event_ids` alone would give a consumer nothing to actually reason
+from — see data-model.md's `content`/`ledger_events` mutual-exclusivity design, and the
+duplicate-data rationale below.)
+
+**Media messages are surfaced as their already-extracted text/analysis, in full, never the
+raw media.** If the resolved message is an image/PDF/DOCX (i.e. it went through
+`MediaHandler`/an extractor), the resolved reference carries that message's FULL, untruncated
+`extracted_text` (plus `document_analysis`) — the same text already computed and stored at
+ingestion time, included whole, not summarized or clipped further by this feature — but never
+the original image bytes/base64, and this feature never re-runs a vision call to produce it.
+Two reasons the raw media itself is excluded: (1) cost/latency — re-sending or re-analyzing
+an image on every future reply to it would silently multiply vision-model spend; (2) prompt
+size — raw image data doesn't belong inline in text context the way text does. The
+distinction is specifically raw-media-bytes vs. extracted-text — not a distinction about how
+much of the extracted text to include; extracted text goes in whole. If the resolved message
+is a media message with no extracted text/analysis available for any reason, resolution still
+succeeds with whatever metadata is available (sender, timestamp, media type) — no raw media,
+no error.
+
+**`content` (text or extracted text) and the structured `ledger_events` are mutually
+exclusive, never both** (2026-08-04 revision, data-model.md): a `LedgerEvent` record already
+contains `raw_message_excerpt` — the verbatim source text/image description the capture was
+based on — so when a message has `ledger_event_ids`, the resolved reference surfaces the full
+structured record(s) instead of `content`, not in addition to it. This avoids duplicating the
+same raw text twice and gives the model already-parsed, authoritative values (exact amounts,
+client name) rather than something it would otherwise need to re-derive from free text.
+
+**Lookup scope: active session only, scoped per chat/group.** Resolution only searches the
+current, unexpired session's stored messages (`data/sessions/`, per-role 24h expiration) —
+not archived/expired sessions (`data/sessions/expired/YYYY-MM-DD/`) and not long-term
+ChromaDB memory. A `stanzaId` referencing a message from an expired session simply fails to
+resolve (no crash — falls back to "ordinary new message," same as any other unmatched
+`stanzaId`). Additionally, matching is scoped per chat/group (using the chat/group id and/or
+`quotedMessage.participant`), never a global cross-chat match — mirrors how WhatsApp
+reply/quote actually works (you can only reply within the conversation you're in).
 
 **Out of scope** (moved to Feature 040): interpreting a resolved reference as a cancellation
 or modification request, `capture_ledger_event`'s `replaces_hint`/`replaced_event_id`
 semantics, and any RBAC question about who may act on a resolved reference. This feature
 resolves references; it does not decide what any caller does with them.
+
+**Out of scope** (deferred, not Feature 040 either): resolving a reply to a message from an
+expired/archived session. If this turns out to matter in practice (e.g. Feature 040 needs to
+cancel a weeks-old agreement via reply), it would need its own follow-up spec — not silently
+folded in here.
 
 ## Open Questions
 
@@ -118,9 +173,22 @@ resolves references; it does not decide what any caller does with them.
   resolves `stanzaId` → stored `Message`, and surfaces that message's content/metadata to
   whatever needs it (e.g. the AI's prompt, or a future non-AI consumer). **Scope is all
   messages, not just ledger-event ones** — if the resolved message happens to have
-  `ledger_event_ids`, that data is included as optional pass-through; if not, resolution still
-  succeeds with just the message content/metadata. This feature does not itself decide what a
+  `ledger_event_ids`, the full structured `LedgerEvent` record(s) are included as pass-through
+  (not bare ids — see 2026-08-04 revision above); if not, resolution still succeeds with just
+  the message content/metadata. This feature does not itself decide what a
   cancellation/modification request means — see Feature 040 for that.
+- **Q9 (RESOLVED 2026-08-04)**: If the resolved message is a media message (image/PDF/DOCX),
+  the resolved reference surfaces its already-computed `extracted_text`/`document_analysis`
+  IN FULL (from `MediaHandler`/extractors at original ingestion time) — never the raw
+  image/media bytes and never a fresh vision-model call. The line is raw-media-bytes vs.
+  extracted-text, not full-vs-truncated-text: the extracted text itself is never clipped by
+  this feature. Keeps resolved-reference context cheap and text-only regardless of what kind
+  of message is being referenced, without losing any of the already-extracted detail.
+- **Q10 (RESOLVED 2026-08-04)**: `stanzaId` resolution searches only the active/unexpired
+  session — not archived/expired sessions, not long-term ChromaDB memory. See Clarifications
+  and Scope above.
+- **Q11 (RESOLVED 2026-08-04)**: `idMessage` matching is scoped per chat/group, never a
+  global cross-chat match. See Clarifications and Scope above.
 
 ## Technology Choices
 
@@ -129,8 +197,9 @@ Not yet drafted — depends on final `speckit.plan` (e.g. whether `idMessage` st
 
 ## Next Steps
 
-1. Formal `speckit.clarify` pass (Q1/Q2 have working answers above; confirm before `plan.md`).
-2. `speckit.plan` — `plan.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`.
+1. ~~Formal `speckit.clarify` pass~~ — done 2026-08-04, see Clarifications above.
+2. ~~`speckit.plan`~~ — done 2026-08-04: `plan.md`, `research.md`, `data-model.md`,
+   `contracts/reply-resolution.md`, `quickstart.md`.
 3. `speckit.tasks` — TDD task breakdown, human approval gate before implementation.
 4. `speckit.analyze` — cross-artifact consistency check.
 5. `speckit.implement`.
