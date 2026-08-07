@@ -96,8 +96,8 @@ See: `specs/006-rbac-user-roles/`
 - [ ] Integration with Slack, Telegram, Discord
 
 ## Ideas Backlog (Unprioritized)
-- [ ] **045 - Mark Incoming Messages as Read (Blue Checkmarks)** - DRAFT spec, blocked on confirming Green API actually supports this (see `specs/backlog/045-mark-messages-read/`)
-- [ ] **046 - Accept "מאשר"/"מאשרת" as Approval Answers** - DRAFT spec, likely a `runtime_constitution.md` wording fix pending root-cause confirmation (see `specs/backlog/046-hebrew-approval-synonyms/`)
+- ✅ **045 - Mark Incoming Messages as Read (Blue Checkmarks)** - DONE, merged to master (PR #198, 2026-08-07) - see `specs/done/045-mark-messages-read/`
+- ✅ **046 - Accept "מאשר"/"מאשרת" as Approval Answers** - DONE, merged to master (PR #198, 2026-08-07) - see `specs/done/046-hebrew-approval-synonyms/`
 - [ ] Automated testing with synthetic conversations
 - [ ] Cost optimization with prompt caching
 - [ ] Support for WhatsApp Business API features (templates, buttons, lists)

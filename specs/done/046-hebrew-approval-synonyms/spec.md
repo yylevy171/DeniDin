@@ -2,8 +2,7 @@
 
 **Feature Branch**: `feature/046-hebrew-approval-synonyms`
 **Created**: 2026-08-07
-**Status**: CLARIFIED (2026-08-07) — all blocking Open Questions resolved. Ready for
-`speckit.plan`.
+**Status**: DONE — merged to master (PR #198, 2026-08-07).
 **Input**: User-submitted feature request #46 (2026-08-07): "allow \"מאשר\" / \"מאשרת\" as
 answers to approval questions meaning \"yes\"" — logged to `specs/ROADMAP.md`'s Ideas Backlog
 same day, promoted to a spec on explicit request.
