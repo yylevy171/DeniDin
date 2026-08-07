@@ -10,6 +10,11 @@
 # CLAUDE.md's pre-existing "never start an environment without approval" rule - both gates apply
 # to every call.
 #
+# ORDER, when deploying both apps to the same environment (2026-08-07): deploy morning-mcp-app
+# FIRST, denidin-app SECOND. This script only ever takes one <app> per call, so the order is on
+# the caller - denidin-app depends on morning-mcp-app (never the other way around), same
+# dependency direction scripts/run_all.sh's own start order follows.
+#
 # Usage: ./scripts/deploy_release.sh <app> <env> <version> [--artifacts-root <path>] [--verify-timeout <seconds>] [--remote-host <ssh-alias>] [--remote-deploy-dir <name>] [--local]
 #   <app>     : denidin-app | morning-mcp-app
 #   <env>     : dev | prod
