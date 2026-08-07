@@ -5,8 +5,10 @@
 **Rescoped**: 2026-08-04 — split into general reply-resolution infrastructure (this feature)
 and agreement-specific cancellation/modification behavior (moved to Feature 040, see "Split
 History" below).
-**Status**: CLARIFIED — `speckit.clarify` pass complete 2026-08-04 (see Clarifications
-section below). Ready for `speckit.plan`.
+**Status**: IN PROGRESS (moved to `specs/in-progress/` 2026-08-07) — planning complete
+(`speckit.clarify` → `speckit.plan` → `speckit.tasks` → `speckit.analyze`, all done 2026-08-04/05,
+PR #194 merged). Zero implementation code written yet. See `HANDOFF.md` for full state and
+next steps. Ready for `speckit.implement`.
 **Input**: User description: "create a new feature to support ref msgs (stanzaID, etc)" —
 originally motivated by a cancellation use case ("לבטל"/"למחוק" sent as a reply to a message
 that stated a fee agreement), but the underlying capability — resolving *any* WhatsApp

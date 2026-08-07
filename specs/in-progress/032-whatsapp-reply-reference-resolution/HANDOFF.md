@@ -1,9 +1,19 @@
 # Handoff: WhatsApp Reply/Quote Reference Resolution (Feature 032)
 
-**As of**: 2026-08-06. Planning complete (`speckit.specify` → `speckit.clarify` →
-`speckit.plan` → `speckit.tasks` → `speckit.analyze`, all done). **Zero implementation code
-written.** Next step for whoever picks this up: `speckit.implement`, starting at `tasks.md`'s
-Phase 1.
+**As of**: 2026-08-07. Moved `specs/backlog/` → `specs/in-progress/` this same day (this
+handoff moved with it). Planning complete (`speckit.specify` → `speckit.clarify` →
+`speckit.plan` → `speckit.tasks` → `speckit.analyze`, all done 2026-08-04/05, PR #194 merged
+to `master`). **Zero implementation code written.** Next step for whoever picks this up:
+`speckit.implement`, starting at `tasks.md`'s Phase 1.
+
+**Session note**: after this feature's planning finished, the same session briefly switched
+to scope Feature 027 (Mandatory Reference to an Existing Client for Invoicing) before coming
+back to 032. Feature 027 ended up fully implemented and shipped in that detour (PR #201,
+merged, spec now in `specs/done/027-mandatory-client-reference-invoicing/`) — unrelated to
+032's design, but explains the gap between 032's planning finishing (2026-08-04/05) and this
+handoff/in-progress move (2026-08-07). Nothing about 032 changed during that gap — this
+handoff's content is otherwise identical to the version written right after planning
+finished.
 
 ## What this feature is
 
