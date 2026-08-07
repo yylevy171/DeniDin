@@ -347,6 +347,78 @@ before starting Phase 5.
 
 ---
 
+## Phase 10: Player/WhatsApp ledger-event equivalence (cross-cutting verification)
+
+**Added 2026-08-07 (human decision), after Phase 4-9 were already scoped.**
+**Purpose**: prove `GreenAPIMessageSource` and `PlayerExportSource` are truly
+behaviorally interchangeable (the entire premise of Phase 2's `MessageSource`
+abstraction) by sending the *same message content* through both and asserting
+the resulting ledger event(s) match — not just "the player runs without
+crashing," a real equivalence regression test. One test per main ledger event
+type (not every variant): agreement multi-stage text, agreement multi-stage
+image, bank deposit screenshot, plus agreement update/cancellation (stubbed,
+skipped until Feature 040 — `specs/backlog/040-agreement-cancellation-modification/`
+— actually defines what an "update"/"cancellation" message looks like).
+
+**The event_id collision mechanism (by design, not a bug to route around)**:
+`LedgerEventManager._next_seq` (`src/managers/ledger_event_manager.py:223`)
+picks the smallest unused seq digit (0-9) scoped only to files already
+present in `storage_dir` for that `letter+ddmmyy+hhmm` — real wall-clock
+`datetime.now(timezone.utc)`, not the message's own `today_timestamp`. So
+two captures of the *same source_type*, run back-to-back in the same real
+minute, against the *same events dir state*, will independently land on the
+same `seq` and therefore the exact same `event_id`/filename — a genuine
+collision, not just an adjacent one. To compare the WhatsApp-path capture
+and the player-path capture apples-to-apples (same starting seq=0 for both,
+proving `LedgerEventManager` itself behaves identically either way), each
+test must: (1) run path A (e.g. WhatsApp) against a clean/isolated events
+dir, (2) move the resulting file(s) aside to a holding location (rename or
+copy elsewhere — never delete) BEFORE running path B, (3) run path B against
+the now-reset-to-empty events dir, (4) compare path A's set-aside file(s)
+against path B's file(s) field-by-field, excluding fields that are expected
+to legitimately differ (`event_id`'s own timestamp portion if the two runs
+happen to cross a real minute boundary; anything else derived from
+wall-clock capture time rather than message content).
+
+- [ ] T022a `billed`-tier: write `tests/billed/test_player_whatsapp_equivalence.py`
+  covering **agreement multi-stage text** — the same synthetic multi-message
+  fee-agreement conversation dispatched once via a real Green-API-shaped
+  notification sequence straight into `denidin.dispatch_notification`
+  (matching how existing integration tests already simulate a live webhook —
+  CONSTITUTION §V), and once via `PlayerExportSource` replaying an equivalent
+  parsed export. Asserts the resulting ledger event(s)' content fields match
+  (client_name, amounts, dates, source_type, etc.) — not exact OpenAI-response
+  byte-equality, since the model isn't perfectly deterministic even at
+  temperature 0. Establishes the shared set-aside-and-compare test helper
+  (likely `tests/billed/_equivalence_helpers.py`, test infrastructure, not
+  production code — no separate "b" task needed, same precedent as
+  `tests/billed/e2e_helpers.py`/`tests/expensive/e2e_helpers.py` elsewhere).
+- [ ] T023a `expensive`-tier (vision — per CLAUDE.md's tier split, an image
+  message is `expensive` not `billed`): same equivalence test for
+  **agreement multi-stage image** — a fixture image (via `LocalMediaServer`
+  for the player path, real `downloadUrl`-shaped notification for the
+  WhatsApp path) carrying the same fee-agreement content as T022a's text
+  version. Reuses T022a's set-aside helper.
+- [ ] T024a `expensive`-tier: same equivalence test for **bank deposit
+  screenshot** — a fixture bank-deposit receipt image. Reuses T022a's
+  set-aside helper.
+- [ ] T025a **STUBBED, skipped** (`@pytest.mark.skip(reason="blocked on
+  Feature 040")`) — **agreement update** equivalence test. Feature 040
+  (`specs/backlog/040-agreement-cancellation-modification/`) hasn't defined
+  what an update message/ledger-event shape looks like yet; write the test's
+  skeleton (imports, class, skip marker) now so the shape of what's expected
+  is on record, fill in real assertions once Feature 040 lands.
+- [ ] T026a **STUBBED, skipped** (same marker/reasoning as T025a) —
+  **agreement cancellation** equivalence test, also blocked on Feature 040.
+
+**No "b" tasks** — these tests exercise existing dispatch/capture machinery
+(Phases 2-4) rather than driving new production code; a failure here surfaces
+a real behavioral divergence between the two `MessageSource`s to fix at its
+actual source (`src/sources/`, `player/`, or `src/handlers/`), not something
+this phase itself implements.
+
+---
+
 ## Dependencies
 
 - Phase 2 and Phase 3 block everything else (Phases 4-8 depend on both).
@@ -362,10 +434,13 @@ before starting Phase 5.
 
 Phases 1–4 done (T005 dropped by human decision; T014a skipped in favor of
 a real run — see Phase 4). Phases 5 (reconciliation), 6 (relevancy), 7
-(review queue), 8 (expensive image-path regression), and 9 (README) are
-**not started** — no `player/reconciliation.py`, `player/relevancy.py`,
-`player/review_queue.py`, or `player/README.md` exist yet, and
-`run_player.py` has no `--reapply-review` mode.
+(review queue), 8 (expensive image-path regression), 9 (README), and 10
+(player/WhatsApp ledger-event equivalence, added 2026-08-07) are **not
+started** — no `player/reconciliation.py`, `player/relevancy.py`,
+`player/review_queue.py`, `player/README.md`, or
+`tests/billed/test_player_whatsapp_equivalence.py` exist yet, and
+`run_player.py` has no `--reapply-review` mode. Phase 10's T025a/T026a are
+permanently blocked (not just "not started") until Feature 040 lands.
 
 ## Next step
 
