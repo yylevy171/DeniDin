@@ -17,9 +17,13 @@ already exists unsigned (see "Manual sign of existing docs" below). This has pre
 silently broken since the very first document-creation tool shipped.
 
 ## Status
-Open - root cause investigated and confirmed (2026-08-06, via Morning's own public API
-Postman collection + doc-creation code); human approval of root cause and fix approach given
-2026-08-06 ("create a bugfix... lets start on it. this is P0!"). Test-gap analysis next.
+Done - Merged to master (PR #195, merge commit 0d5ec9c, 2026-08-07). Fix implemented (all six
+payload builders now send `signed: true`), covered by 6 new unit tests and 1 new billed
+regression test (`test_openai_created_invoice_is_signed_per_real_morning_api`, verifies
+`signed: true` directly against Morning's real `GET /documents/{id}`), and verified live
+against a rebuilt `dev`: 36/36 relevant billed tests passing (client management CRUD,
+document creation, invoice lifecycle, invoice creation, plus the new signed-verification
+test).
 
 ## Date Opened
 2026-08-06
