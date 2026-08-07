@@ -431,3 +431,47 @@ def test_close_transaction_account_still_works_after_vat_included_param_added():
     assert sent_payload["linkedDocumentIds"] == ["orig-10"]
     assert sent_payload["payment"][0]["price"] == 60.0
     assert sent_payload["vatType"] == 1  # vat_included defaults to True
+
+
+# --- bugfix-026: every document payload must be created signed, or Morning
+# refuses to let it be shared by email (blocked in prod - see
+# specs/bugfixes/bugfix-026-morning-documents-created-unsigned.md) ---
+
+
+def test_build_create_invoice_payload_is_signed():
+    payload = tools._build_create_invoice_payload(
+        client_name="לקוח בדיקה", amount=100.0, description="שירות ייעוץ"
+    )
+    assert payload["signed"] is True
+
+
+def test_build_transaction_account_payload_is_signed():
+    payload = tools._build_transaction_account_payload(
+        client_name="לקוח בדיקה", amount=45.0, description="שירות ייעוץ"
+    )
+    assert payload["signed"] is True
+
+
+def test_build_combo_document_payload_is_signed():
+    payload = tools._build_combo_document_payload(
+        client_name="לקוח בדיקה", amount=65.0, description="מכירה מיידית"
+    )
+    assert payload["signed"] is True
+
+
+def test_build_cancellation_payload_is_signed():
+    original = _original_invoice()
+    payload = tools._build_cancellation_payload(original)
+    assert payload["signed"] is True
+
+
+def test_build_payment_receipt_payload_is_signed():
+    original = _original_invoice()
+    payload = tools._build_payment_receipt_payload(original)
+    assert payload["signed"] is True
+
+
+def test_build_combo_closing_payload_is_signed():
+    original = _original_invoice(doc_type=300)
+    payload = tools._build_combo_closing_payload(original)
+    assert payload["signed"] is True

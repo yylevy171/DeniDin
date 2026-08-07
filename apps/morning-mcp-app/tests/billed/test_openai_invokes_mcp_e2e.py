@@ -217,6 +217,92 @@ def test_openai_invokes_create_invoice_via_remote_mcp(config, mcp_endpoint):
 
 
 @pytest.mark.billed
+def test_openai_created_invoice_is_signed_per_real_morning_api(config, mcp_endpoint):
+    """bugfix-026 regression guard: a document created through this real,
+    OpenAI-driven MCP flow must come back from Morning's own real GET
+    /documents/{id} endpoint with `signed: true` — not just trusted from the
+    model's textual claim or from list_invoices' search-result shape (which
+    the sibling test above already checks), but from the exact endpoint
+    Morning's "not digitally signed" email-share block cares about.
+
+    Independent from test_openai_invokes_create_invoice_via_remote_mcp (own
+    unique_marker/client_name) so it can be re-run alone without depending on
+    that test's document existing.
+    """
+    from openai import OpenAI
+
+    server_url, auth_token = mcp_endpoint
+    unique_marker = f"DENIDIN_SIGNED_CHECK_{int(datetime.now(timezone.utc).timestamp())}"
+    client_name = f"Test Corp {unique_marker}"
+
+    openai_client = OpenAI(api_key=config.openai_api_key)
+
+    response = openai_client.responses.create(
+        model=OPENAI_MODEL,
+        instructions=OPENAI_ASSISTANT_INSTRUCTIONS,
+        input=(
+            f"Create an invoice for a client named '{client_name}' for 50 NIS, "
+            f"description 'Consulting services {unique_marker}'."
+        ),
+        tools=[
+            {
+                "type": "mcp",
+                "server_label": "morning-invoices",
+                "server_url": server_url,
+                "require_approval": "never",
+                "headers": {"Authorization": f"Bearer {auth_token}"},
+            }
+        ],
+    )
+
+    mcp_calls = [item for item in response.output if getattr(item, "type", None) == "mcp_call"]
+    create_invoice_calls = [call for call in mcp_calls if call.name == "create_invoice"]
+    assert create_invoice_calls, (
+        f"Model did not invoke create_invoice via the remote MCP server. "
+        f"Full output: {response.output!r}"
+    )
+    assert all(call.error is None for call in create_invoice_calls), (
+        f"create_invoice call(s) reported an error: {[c.error for c in create_invoice_calls]}"
+    )
+
+    # Find the real document's internal id (not just the human-facing number
+    # in the Hebrew confirmation text) by searching the sandbox directly,
+    # same lookup-by-marker pattern as the sibling test above.
+    morning_client = MorningClient(
+        api_key_id=config.api_key_id,
+        api_key_secret=config.api_key_secret,
+        base_url=config.api_url,
+    )
+    found_item = None
+    for _ in range(12):
+        resp = morning_client.list_invoices(params={"clientName": client_name})
+        items = (resp.get("items") or resp.get("data") or []) if isinstance(resp, dict) else resp
+        for item in items:
+            if (item.get("client") or {}).get("name") == client_name or unique_marker in (
+                item.get("description") or ""
+            ):
+                found_item = item
+                break
+        if found_item:
+            break
+        time.sleep(1.5)
+
+    assert found_item, f"No invoice for {client_name!r} found in Morning after the OpenAI-driven call."
+    document_id = str(found_item.get("id") or found_item.get("documentId") or "")
+    assert document_id, f"Found invoice has no usable id: {found_item!r}"
+
+    # The actual regression check: query Morning's real GET /documents/{id}
+    # endpoint directly (MorningClient.get_invoice) and assert the document
+    # it returns is signed — the exact fact Morning's email-share feature
+    # gates on (bugfix-026).
+    real_document = morning_client.get_invoice(document_id)
+    assert real_document.get("signed") is True, (
+        f"Document created via create_invoice was NOT signed per Morning's "
+        f"real API response (bugfix-026 regression): {real_document!r}"
+    )
+
+
+@pytest.mark.billed
 def test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt(config, mcp_endpoint):
     """A prompt with nothing to do with invoicing must NOT trigger any Morning
     MCP tool call, even though the tools are registered and available. This is

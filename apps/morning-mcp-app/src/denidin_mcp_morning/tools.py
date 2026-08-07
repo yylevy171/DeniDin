@@ -99,7 +99,7 @@ def _build_create_invoice_payload(
         "vatType": vat_type,
         "currency": currency,
         "rounding": False,
-        "signed": False,
+        "signed": True,
         "description": description,
         "client": {
             "self": False,
@@ -153,7 +153,7 @@ def _build_transaction_account_payload(
         "lang": "he",
         "currency": currency,
         "rounding": False,
-        "signed": False,
+        "signed": True,
         "description": description,
         "client": {
             "self": False,
@@ -254,7 +254,7 @@ def _build_combo_document_payload(
         "vatType": vat_type,
         "currency": currency,
         "rounding": False,
-        "signed": False,
+        "signed": True,
         "description": description,
         "client": {
             "self": False,
@@ -578,7 +578,7 @@ def _build_cancellation_payload(
         "vatType": original.get("vatType", 1),
         "currency": original.get("currency", "ILS"),
         "rounding": False,
-        "signed": False,
+        "signed": True,
         "description": credit_description,
         "linkedDocumentIds": [original_id] if original_id else [],
         "client": {
@@ -674,7 +674,7 @@ def _build_payment_receipt_payload(original: dict, amount: Optional[float] = Non
         "lang": original.get("lang", "he"),
         "currency": original.get("currency", "ILS"),
         "rounding": False,
-        "signed": False,
+        "signed": True,
         "description": f"תשלום עבור חשבונית מספר {original_number or original_id}",
         "linkedDocumentIds": [original_id] if original_id else [],
         "client": {"self": False, "name": client_info.get("name")},
@@ -743,7 +743,7 @@ def _build_combo_closing_payload(
         "vatType": vat_type,
         "currency": original.get("currency", "ILS"),
         "rounding": False,
-        "signed": False,
+        "signed": True,
         "description": close_description,
         "linkedDocumentIds": [original_id] if original_id else [],
         "client": {
