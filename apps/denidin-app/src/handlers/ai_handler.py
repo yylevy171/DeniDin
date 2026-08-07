@@ -817,7 +817,7 @@ class AIHandler:
         combined = (morning_tools or []) + self._build_ledger_event_tool()
         return combined or None
 
-    def _build_instructions(self, constitution: str) -> str:
+    def _build_instructions(self, constitution: str, today_timestamp: Optional[int] = None) -> str:
         """
         Build the `instructions` string (constitution + current-date suffix)
         for a Responses API call. Used by a normal turn's call, the Feature 022
@@ -832,13 +832,30 @@ class AIHandler:
         Takes the constitution text directly (not a full AIRequest) so any
         caller with just a constitution string - not necessarily a full
         request object - can build the same instructions.
+
+        Args:
+            today_timestamp: (Feature 043, research.md R4) Unix epoch int
+                overriding "today" for relative-date resolution. `None` (the
+                default - every pre-043 call site) preserves current
+                behavior exactly: real wall-clock UTC "today". A caller
+                replaying a historical message (the WhatsApp export player)
+                passes that message's own timestamp instead, so the model
+                resolves "היום"/"אתמול" etc. against the message's actual
+                historical date rather than whenever the replay happens to
+                run - this was the one real correctness gap a full replay
+                audit found (see research.md R4); every OTHER date-derived
+                ledger field already correctly derives from the message's
+                own timestamp, never wall-clock.
         """
         # Give the model the actual current date. It has no clock of its own —
         # its training cutoff makes it default to a stale "current year", which
         # produced real wrong-year invoice lookups (e.g. resolving "7 בפברואר"
         # to 2023). This is appended at reply time, computed per call in UTC
         # (CONSTITUTION §II) — NOT templated into the constitution file.
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if today_timestamp is not None:
+            today = datetime.fromtimestamp(today_timestamp, tz=timezone.utc).strftime("%Y-%m-%d")
+        else:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         return (
             f"{constitution}\n\n---\n"
             f"THE CURRENT DATE IS {today} (UTC). Treat this as the authoritative "
@@ -886,7 +903,7 @@ class AIHandler:
 
         kwargs = {
             "model": request.model,
-            "instructions": self._build_instructions(request.constitution),
+            "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
             "input": input_items,
             "max_output_tokens": request.max_tokens,
         }
@@ -1531,7 +1548,7 @@ class AIHandler:
         ]
         kwargs = {
             "model": request.model,
-            "instructions": self._build_instructions(request.constitution),
+            "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
             "input": output_items,
             "previous_response_id": previous_response_id,
             "max_output_tokens": request.max_tokens,
@@ -1557,7 +1574,7 @@ class AIHandler:
         wait=wait_fixed(1),
         reraise=True
     )
-    def capture_ledger_events_from_text(self, text: str) -> List[Dict]:
+    def capture_ledger_events_from_text(self, text: str, today_timestamp: Optional[int] = None) -> List[Dict]:
         """
         Ledger Event Recognition (Feature 024) for the image path: a separate, internal
         text-only classification call over already-extracted document text, using the
@@ -1592,6 +1609,13 @@ class AIHandler:
         whatever it got - add_ledger_events_from_call owns the final never-silently-drop
         fallback, since it's the one path both the text and image routes persist
         through.
+
+        Args:
+            today_timestamp: (Feature 043) passed straight through to
+                _build_instructions - see that method's own docstring.
+                `None` (the default) preserves current wall-clock behavior;
+                callers replaying a historical image message pass that
+                message's own timestamp instead.
         """
         if not text:
             return []
@@ -1599,7 +1623,7 @@ class AIHandler:
         constitution = self._load_constitution()
         kwargs = {
             "model": self.config.ai_model,
-            "instructions": self._build_instructions(constitution),
+            "instructions": self._build_instructions(constitution, today_timestamp=today_timestamp),
             "input": [{"role": "user", "content": text}],
             "tools": [LEDGER_EVENT_TOOL],
             "max_output_tokens": self.config.ai_reply_max_tokens,
@@ -1665,7 +1689,7 @@ class AIHandler:
         }
         kwargs = {
             "model": request.model,
-            "instructions": self._build_instructions(request.constitution),
+            "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
             "input": [approval_item],
             "previous_response_id": pending.response_id,
             "max_output_tokens": request.max_tokens,

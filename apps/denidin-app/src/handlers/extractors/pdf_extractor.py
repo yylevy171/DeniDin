@@ -11,7 +11,7 @@ CHK Requirements:
 - CHK010: Layout/structure preservation
 - CHK078: Empty document handling
 """
-from typing import Dict, List
+from typing import Dict, List, Optional
 import io
 import logging
 try:
@@ -46,7 +46,7 @@ class PDFExtractor(MediaExtractor):
         # Create ImageExtractor for page processing
         self.image_extractor = ImageExtractor(denidin_context)
     
-    def analyze_media(self, media: Media, caption: str = "") -> Dict:
+    def analyze_media(self, media: Media, caption: str = "", today_timestamp: Optional[int] = None) -> Dict:
         """
         Analyze PDF using GPT-4o Vision (Phase 4 enhancement).
         
@@ -124,7 +124,9 @@ class PDFExtractor(MediaExtractor):
                     # Delegate to ImageExtractor (returns raw_response)
                     # Pass caption to provide context for analysis
                     logger.info(f"[PDFExtractor.analyze_media] Sending page {page_num + 1} to ImageExtractor")
-                    page_result = self.image_extractor.analyze_media(page_media, caption=caption)
+                    page_result = self.image_extractor.analyze_media(
+                        page_media, caption=caption, today_timestamp=today_timestamp
+                    )
                     
                     # Collect per-page results
                     raw_responses.append(page_result["raw_response"])

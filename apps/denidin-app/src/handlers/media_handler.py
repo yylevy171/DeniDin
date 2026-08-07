@@ -138,7 +138,14 @@ class MediaHandler:
             # Step 5: Extract text + document analysis (Phase 4 extractors)
             # Analyzers work with in-memory Media objects, not file paths
             # Pass caption to provide user context for analysis
-            analysis_result = self._extract_text(media_type, media, caption)
+            # Feature 043: threads the real historical message timestamp (this
+            # method's own `timestamp` param, already the constitution's "hard
+            # pointer" for ledger events below) into the extractor, so the
+            # image/PDF ledger-classification call resolves relative dates
+            # ("היום"/"אתמול") against the message's own date rather than
+            # wall-clock "today" - see AIHandler._build_instructions's
+            # today_timestamp docstring for the full rationale.
+            analysis_result = self._extract_text(media_type, media, caption, today_timestamp=timestamp)
             
             # Step 6: Create storage folder (CHK019: UTC timestamps)
             storage_folder = self.media_file_manager.create_storage_path()
@@ -296,24 +303,29 @@ class MediaHandler:
         except Exception as e:
             logger.error(f"Failed to store media turn in session: {e}", exc_info=True)
 
-    def _extract_text(self, media_type: str, media: Media, caption: str = "") -> Dict:
+    def _extract_text(self, media_type: str, media: Media, caption: str = "",
+                       today_timestamp: Optional[int] = None) -> Dict:
         """
         Route to appropriate analyzer based on media type.
-        
+
         Args:
             media_type: 'image', 'pdf', or 'docx'
             media: In-memory Media object with file data
             caption: User's message/question sent with the file (optional)
-        
+            today_timestamp: (Feature 043) the source message's real
+                historical timestamp - threaded from process_media_message's
+                own `timestamp` param straight through to the extractor, see
+                MediaExtractor.analyze_media's docstring.
+
         Returns:
             Analysis result with raw_response, extraction_quality, etc.
         """
         if media_type == 'image':
-            return self.image_extractor.analyze_media(media, caption=caption)
+            return self.image_extractor.analyze_media(media, caption=caption, today_timestamp=today_timestamp)
         elif media_type == 'pdf':
-            return self.pdf_extractor.analyze_media(media, caption=caption)
+            return self.pdf_extractor.analyze_media(media, caption=caption, today_timestamp=today_timestamp)
         elif media_type == 'docx':
-            return self.docx_extractor.analyze_media(media, caption=caption)
+            return self.docx_extractor.analyze_media(media, caption=caption, today_timestamp=today_timestamp)
         else:
             raise ValueError(f"Unknown media type: {media_type}")
     

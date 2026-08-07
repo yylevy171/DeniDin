@@ -34,16 +34,22 @@ class DOCXExtractor(MediaExtractor):
         """
         super().__init__(denidin_context)
     
-    def analyze_media(self, media: Media, caption: str = "", analyze: bool = True) -> Dict:
+    def analyze_media(self, media: Media, caption: str = "",
+                       today_timestamp: Optional[int] = None, analyze: bool = True) -> Dict:
         """
         Analyze DOCX using AI (Phase 4).
-        
+
         Text extraction is always done via python-docx (no AI needed).
         Document analysis is optional and uses AI call.
-        
+
         CHK006: Hebrew support via UTF-8.
         CHK010: Preserve paragraph structure.
-        
+
+        today_timestamp (Feature 043) is accepted for interface parity
+        with MediaExtractor.analyze_media but unused here - DOCXExtractor
+        never calls capture_ledger_events_from_text (no ledger capture on
+        this path).
+
         Args:
             media: Media object containing DOCX data in memory
             analyze: If True, use AI to analyze document (Phase 4)

@@ -40,6 +40,16 @@ _LETTER_BY_SOURCE_TYPE = {
 # signals a later human/script needs to resolve the real prior event id (REQ-DATA-002).
 REPLACED_EVENT_PLACEHOLDER = "צריך למצוא"
 
+# Feature 043, US5: identifies which rule-set generation (LEDGER_EVENT_TOOL's schema +
+# this file's field-population rules) produced a given persisted record - bumped by
+# hand in the same commit as any future schema-affecting change. Written by both live
+# capture and the player (both go through add_ledger_event, the single shared
+# persistence method) - NEVER retro-applied to pre-existing files (see
+# specs/in-progress/043-production-data-setup-tooling/data-model.md SS1 for why:
+# retro-applying would require guessing which historical rule generation actually
+# produced each old record, exactly the problem this field exists to avoid).
+CURRENT_SCHEMA_VERSION = 1
+
 # Matches ש"ח / ש׳ח / שח (various quote-character renderings of "shekel chadash").
 _SHEKEL_WORD_RE = re.compile(r'ש["\'״]?ח')
 _NUMERIC_RE = re.compile(r'-?\d+(\.\d+)?')
@@ -378,6 +388,7 @@ class LedgerEventManager:
             "replaces_hint": event.get("replaces_hint"),
             "reference_hint": event.get("reference_hint"),
             "agreement_label": agreement_label,  # REQ-DATA-004 - kept alongside agreement_id for evidence
+            "schema_version": CURRENT_SCHEMA_VERSION,  # Feature 043, US5
         }
 
         file_path = self.storage_dir / f"{event_id}.json"
@@ -495,3 +506,88 @@ class LedgerEventManager:
             if event_id is not None:
                 event_ids.append(event_id)
         return event_ids
+
+    def _load_event(self, event_id: str) -> Optional[Dict]:
+        """Shared read helper for resolve_replaced_event_id/apply_review_answer -
+        None (logged) if the file doesn't exist, never raises."""
+        file_path = self.storage_dir / f"{event_id}.json"
+        if not file_path.exists():
+            logger.error(f"No ledger event file found for event_id={event_id!r}")
+            return None
+        with file_path.open(encoding="utf-8") as f:
+            record: Dict = json.load(f)
+        return record
+
+    def _write_event(self, event_id: str, record: Dict) -> None:
+        """Shared atomic-write helper - same tmp-file-then-replace pattern as
+        add_ledger_event, so this class stays the sole owner of the on-disk
+        JSON format for every mutation, not just fresh writes."""
+        file_path = self.storage_dir / f"{event_id}.json"
+        tmp_path = file_path.with_suffix(".json.tmp")
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(record, f, sort_keys=True, ensure_ascii=False, indent=2)
+        tmp_path.replace(file_path)
+
+    def resolve_replaced_event_id(self, event_id: str, resolved_target_id: str) -> bool:
+        """
+        Feature 043, US2 (the player's relevancy/reference-resolution step): in-place
+        field update on an already-persisted event file, replacing
+        REPLACED_EVENT_PLACEHOLDER with the real prior event_id a correction/
+        cancellation was matched against - REPLACED_EVENT_PLACEHOLDER's own docstring
+        already describes this exact purpose ("signals a later human/script needs to
+        resolve the real prior event id"); this method is that script's write path.
+
+        Never overwrites a `replaced_event_id` that isn't CURRENTLY the placeholder -
+        not `None` (nothing to resolve - replaces_hint was never set), and not an
+        already-resolved id from a prior run (never silently re-link something a
+        previous resolution already settled).
+
+        Returns:
+            True on success. False (logged as ERROR internally, never raises) if
+            event_id doesn't exist, or its replaced_event_id isn't currently the
+            placeholder.
+        """
+        record = self._load_event(event_id)
+        if record is None:
+            return False
+
+        if record.get("replaced_event_id") != REPLACED_EVENT_PLACEHOLDER:
+            logger.error(
+                f"resolve_replaced_event_id: event {event_id!r}'s replaced_event_id "
+                f"is {record.get('replaced_event_id')!r}, not the placeholder - "
+                f"refusing to overwrite (never re-link an already-resolved or "
+                f"never-flagged event)"
+            )
+            return False
+
+        record["replaced_event_id"] = resolved_target_id
+        self._write_event(event_id, record)
+        logger.info(
+            f"Resolved {event_id}'s replaced_event_id -> {resolved_target_id}"
+        )
+        return True
+
+    def apply_review_answer(self, event_id: str, field_updates: Dict) -> bool:
+        """
+        Feature 043, US3 (the player's second-pass review-queue re-apply mode):
+        patches specific fields on one already-persisted event file per an
+        operator's answer to a flagged ambiguity - never touches any other event,
+        and never touches any field not present in `field_updates`.
+
+        Args:
+            event_id: the specific event file to patch.
+            field_updates: {field_name: new_value} - merged into the existing
+                record (existing keys not present here are left untouched).
+
+        Returns:
+            True on success. False (logged as ERROR internally, never raises) if
+            event_id doesn't exist.
+        """
+        record = self._load_event(event_id)
+        if record is None:
+            return False
+
+        record.update(field_updates)
+        self._write_event(event_id, record)
+        logger.info(f"Applied review answer to {event_id}: {sorted(field_updates.keys())}")
+        return True

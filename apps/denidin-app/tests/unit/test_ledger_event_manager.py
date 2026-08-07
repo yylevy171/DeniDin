@@ -58,6 +58,7 @@ INTERNAL_FIELDS = {
     "session_id", "whatsapp_chat", "message_id", "message_timestamp",
     "sender", "captured_at", "raw_message_excerpt", "replaces_hint",
     "reference_hint", "agreement_label",
+    "schema_version",  # Feature 043, US5 - 11th internal field
 }
 RESERVED_NULL_FIELDS = [
     "trigger_condition", "split_partner", "split_percent", "due_date",
@@ -102,7 +103,7 @@ class TestLedgerEventManagerCore:
         assert event_id is not None
         assert (temp_events_dir / f"{event_id}.json").exists()
 
-    def test_written_file_has_exactly_the_30_csv_fields_plus_10_internal_fields(
+    def test_written_file_has_exactly_the_30_csv_fields_plus_11_internal_fields(
         self, manager, temp_events_dir
     ):
         event_id = manager.add_ledger_event(
@@ -889,3 +890,150 @@ class TestAddLedgerEventsFromCall:
             message_id="m", message_timestamp=FIXED_TS, sender="w",
         )
         assert call_arguments == original
+
+
+class TestSchemaVersion:
+    """Feature 043, US5, T008a: every persisted record carries schema_version."""
+
+    def test_persisted_record_has_current_schema_version(self, manager, temp_events_dir):
+        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
+
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
+            message_id="m", message_timestamp=FIXED_TS, sender="w",
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["schema_version"] == CURRENT_SCHEMA_VERSION
+
+    def test_current_schema_version_is_an_int(self):
+        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
+
+        assert isinstance(CURRENT_SCHEMA_VERSION, int)
+
+    def test_add_ledger_events_from_call_also_stamps_schema_version(self, manager, temp_events_dir):
+        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
+
+        event_ids = manager.add_ledger_events_from_call(
+            session_id="s", whatsapp_chat="w", call_arguments=dict(SAMPLE_CALL_ARGUMENTS),
+            message_id="m", message_timestamp=FIXED_TS, sender="w",
+        )
+        for eid in event_ids:
+            assert _read(temp_events_dir, eid)["schema_version"] == CURRENT_SCHEMA_VERSION
+
+
+class TestResolveReplacedEventId:
+    """Feature 043, US2, T008a: LedgerEventManager.resolve_replaced_event_id."""
+
+    def test_replaces_placeholder_with_resolved_id_when_currently_placeholder(
+        self, manager, temp_events_dir
+    ):
+        prior_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
+            message_id="m1", message_timestamp=FIXED_TS, sender="w",
+        )
+        correction_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, replaces_hint="the original agreement"),
+            message_id="m2", message_timestamp=FIXED_TS, sender="w",
+        )
+        assert _read(temp_events_dir, correction_id)["replaced_event_id"] == "צריך למצוא"
+
+        result = manager.resolve_replaced_event_id(correction_id, prior_id)
+
+        assert result is True
+        assert _read(temp_events_dir, correction_id)["replaced_event_id"] == prior_id
+
+    def test_returns_false_and_does_not_overwrite_when_not_currently_placeholder(
+        self, manager, temp_events_dir
+    ):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),  # replaces_hint=None
+            message_id="m", message_timestamp=FIXED_TS, sender="w",
+        )
+        assert _read(temp_events_dir, event_id)["replaced_event_id"] is None
+
+        result = manager.resolve_replaced_event_id(event_id, "SOME_OTHER_ID")
+
+        assert result is False
+        assert _read(temp_events_dir, event_id)["replaced_event_id"] is None
+
+    def test_returns_false_for_nonexistent_event_id(self, manager, caplog):
+        with caplog.at_level(logging.ERROR):
+            result = manager.resolve_replaced_event_id("DOES_NOT_EXIST", "TARGET")
+        assert result is False
+        assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+    def test_only_targeted_event_file_is_modified(self, manager, temp_events_dir):
+        prior_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
+            message_id="m1", message_timestamp=FIXED_TS, sender="w",
+        )
+        untouched_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, replaces_hint="something else entirely"),
+            message_id="m2", message_timestamp=FIXED_TS, sender="w",
+        )
+        correction_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, replaces_hint="the original agreement"),
+            message_id="m3", message_timestamp=FIXED_TS, sender="w",
+        )
+        before_untouched = _read(temp_events_dir, untouched_id)
+
+        manager.resolve_replaced_event_id(correction_id, prior_id)
+
+        assert _read(temp_events_dir, untouched_id) == before_untouched
+
+
+class TestApplyReviewAnswer:
+    """Feature 043, US3, T008a: LedgerEventManager.apply_review_answer (second-pass)."""
+
+    def test_patches_specified_fields(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
+            message_id="m", message_timestamp=FIXED_TS, sender="w",
+        )
+
+        result = manager.apply_review_answer(
+            event_id, {"payer_name": "דני כהן", "notes": "resolved via review queue"}
+        )
+
+        assert result is True
+        data = _read(temp_events_dir, event_id)
+        assert data["payer_name"] == "דני כהן"
+        assert data["notes"] == "resolved via review queue"
+
+    def test_unspecified_fields_unchanged(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
+            message_id="m", message_timestamp=FIXED_TS, sender="w",
+        )
+        before = _read(temp_events_dir, event_id)
+
+        manager.apply_review_answer(event_id, {"payer_name": "דני כהן"})
+
+        after = _read(temp_events_dir, event_id)
+        for key in before:
+            if key != "payer_name":
+                assert after[key] == before[key]
+
+    def test_returns_false_for_nonexistent_event_id(self, manager, caplog):
+        with caplog.at_level(logging.ERROR):
+            result = manager.apply_review_answer("DOES_NOT_EXIST", {"payer_name": "x"})
+        assert result is False
+        assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+    def test_only_targeted_event_file_is_modified(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
+            message_id="m1", message_timestamp=FIXED_TS, sender="w",
+        )
+        other_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
+            message_id="m2", message_timestamp=FIXED_TS, sender="w",
+        )
+        before_other = _read(temp_events_dir, other_id)
+
+        manager.apply_review_answer(event_id, {"payer_name": "דני כהן"})
+
+        assert _read(temp_events_dir, other_id) == before_other

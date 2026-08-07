@@ -5,12 +5,18 @@ This test verifies that media messages from users receive appropriate responses.
 Tests are from the USER perspective: "Did I get a response when I sent this message?"
 
 ENTRY POINT: User sends message via WhatsApp
-FLOW: User message → Green API webhook → bot.router → handler → response sent back to user
+FLOW: User message → Green API webhook → HANDLER_REGISTRY/dispatch_notification → handler
+      → response sent back to user
 VERIFICATION: Check that the EXACT error message constant was sent to user
 
+Feature 043 note: routing resolution moved from the live bot.router's real
+handler list to HANDLER_REGISTRY/dispatch_notification (denidin.py) - there
+is no module-level `bot` object anymore (see research.md R3 for why). Tests
+that verify routing precedence now assert against HANDLER_REGISTRY directly,
+the actual production routing table, rather than a live router instance.
+
 **CRITICAL BDD REQUIREMENT**: NO MOCKING
-1. Tests use REAL bot.router instance from denidin.py
-2. Tests call REAL handler functions
+1. Tests call REAL handler functions
 3. Tests create REAL notification objects using SDK Notification class
 4. Tests check REAL behavior - what message the user receives
 5. From user perspective: "Did I get the exact message I expected?"
@@ -257,56 +263,36 @@ class TestMediaWebhookRoutingUserPerspective:
 
         Given: User forwards a text message (Green API reports it as
                typeMessage "extendedTextMessage", not "textMessage")
-        When: The real bot.router dispatches the webhook event
+        When: dispatch_notification resolves the webhook event's type
         Then: It resolves to the text-message handler, not the
               "unsupported message type" catch-all
 
-        bugfix-008 root cause: no @bot.router.message(...) registration exists
-        for "extendedTextMessage", so the SDK's real Observer/Handler filter
-        matching (used as-is here, not mocked) falls through to the catch-all
-        handler and the user gets an incorrect "unsupported" auto-reply.
+        bugfix-008 root cause: no registration existed for
+        "extendedTextMessage", so routing fell through to the catch-all
+        handler and the user got an incorrect "unsupported" auto-reply.
 
-        This test uses the REAL, production bot.router.message.handlers list -
-        populated by the actual @bot.router.message(...) decorators when
-        denidin.py was imported - and the SDK's real Handler.check_event /
-        Notification classes to determine which registered handler would
-        fire first. No internal component is mocked.
+        Updated for Feature 043 (the MessageSource refactor, research.md R3):
+        routing is no longer resolved via the live bot.router's real handler
+        list (there is no module-level `bot` anymore - that's the whole
+        point of this feature) - it's resolved via HANDLER_REGISTRY, the new
+        single source of truth for "which handler does this type route to,"
+        used identically by the live entry point and any other MessageSource
+        (e.g. the player). This test now asserts against HANDLER_REGISTRY
+        directly - the real production routing table, not a re-derivation of
+        it - which is a strictly more direct regression test for the same
+        bugfix-008 scenario than walking a live router's handler list ever
+        was.
         """
         import denidin as denidin_module
-        from whatsapp_chatbot_python.manager.handler import Notification as SdkNotification
 
-        event = {
-            'typeWebhook': 'incomingMessageReceived',
-            'senderData': {
-                'chatId': '972522968679@c.us',
-                'sender': '972522968679@c.us',
-                'senderName': 'Test User'
-            },
-            'messageData': {
-                'typeMessage': 'extendedTextMessage',
-                'extendedTextMessageData': {
-                    'text': 'This is a forwarded message'
-                }
-            }
-        }
-
-        router = denidin_module.bot.router
-        notification = SdkNotification(event, router.api, router.message.state_manager)
-
-        matched_handler = None
-        for handler in router.message.handlers:
-            if handler.check_event(notification):
-                matched_handler = handler.handler
-                break
-
-        assert matched_handler is not None, (
-            "No registered handler matched an extendedTextMessage event at all - "
-            "the message would be silently dropped."
+        resolved_handler = denidin_module.HANDLER_REGISTRY.get(
+            "extendedTextMessage", denidin_module.CATCH_ALL_HANDLER
         )
-        assert matched_handler is denidin_module.handle_text_message, (
+
+        assert resolved_handler is denidin_module.handle_text_message, (
             "CRITICAL: forwarded/quoted text (extendedTextMessage) is not routed "
             "to the text handler.\n"
-            f"Matched handler instead: {matched_handler.__name__}\n"
+            f"Resolved handler instead: {resolved_handler.__name__}\n"
             "Expected: handle_text_message"
         )
 

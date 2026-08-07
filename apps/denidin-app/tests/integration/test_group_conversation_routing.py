@@ -87,7 +87,10 @@ class TestMediaPathBypassesGroupEtiquette:
         )
         monkeypatch.setattr(
             media_handler.image_extractor, 'analyze_media',
-            lambda media, caption="": {
+            # today_timestamp (Feature 043): _extract_text now always passes
+            # this kwarg through - accepted here for signature compatibility,
+            # unused by this stub.
+            lambda media, caption="", today_timestamp=None: {
                 "raw_response": raw_response,
                 "extraction_quality": "high",
                 "warnings": [],
