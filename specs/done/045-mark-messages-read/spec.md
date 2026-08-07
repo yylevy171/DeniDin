@@ -2,8 +2,7 @@
 
 **Feature Branch**: `feature/045-mark-messages-read`
 **Created**: 2026-08-07
-**Status**: CLARIFIED (2026-08-07) — all blocking Open Questions resolved. Ready for
-`speckit.plan`.
+**Status**: DONE — merged to master (PR #198, 2026-08-07).
 **Input**: User-submitted feature request #45 (2026-08-07): "mark incoming messages as read
 so that sender sees blue checkmarks (send something back?)" — logged to
 `specs/ROADMAP.md`'s Ideas Backlog same day, promoted to a spec on explicit request.
