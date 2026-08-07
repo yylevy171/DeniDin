@@ -22,3 +22,7 @@ Fix list_invoices silent truncation beyond 10 items (real pagination + token-bud
 ## [0.2.2] - 2026-08-07
 
 signed docs
+
+## [0.2.3] - 2026-08-07
+
+bump version, no change
