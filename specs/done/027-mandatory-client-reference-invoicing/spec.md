@@ -3,10 +3,10 @@
 **Feature ID**: 027-mandatory-client-reference-invoicing
 **Priority**: P2 (picked up 2026-08-06 — see Status)
 **Status**: Done - implemented, tested (89/89 billed tests passing across both apps, plus real
-sandbox integration and unit coverage), and merged to master 2026-08-07 (PR pending - see git
-history). A related but distinct fuzzy-matching gap found during verification (a client
-reference that omits a geresh character entirely, e.g. "גקי" not finding "ג׳קי") was split out
-to `specs/bugfixes/bugfix-027-geresh-omitted-entirely-not-fuzzy-matched.md` rather than blocking
+sandbox integration and unit coverage), and merged to master 2026-08-07 (PR #201). A related but
+distinct fuzzy-matching gap found during verification (a client reference that omits a geresh
+character entirely, e.g. "גקי" not finding "ג׳קי") was split out to
+`specs/bugfixes/bugfix-027-geresh-omitted-entirely-not-fuzzy-matched.md` rather than blocking
 this feature - the punctuation-*variant* mismatch case (apostrophe vs. geresh) that this
 feature's own verification surfaced IS fixed here, in `_normalize_hebrew_geresh`.
 **Created**: July 29, 2026 (placeholder) — respecified August 6, 2026
