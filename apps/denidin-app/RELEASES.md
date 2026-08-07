@@ -27,3 +27,7 @@ just version bump, no change
 ## denidin-app v0.2.3 — 2026-08-07
 
 added mark-as-read, approval מאשר
+
+## denidin-app v0.3.0 — 2026-08-07
+
+Guide the bot to require a real client record (not just a name) before creating invoices/documents, and to offer adding the client when one doesn't exist yet.
