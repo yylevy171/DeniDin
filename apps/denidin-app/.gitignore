@@ -41,6 +41,11 @@ data/events/
 # Test data (generated during tests)
 test_data/
 
+# Player run configs targeting prod (real data_root/denidin_config, and a real
+# phone number once filled in) - never tracked, unlike the *_test.json ones,
+# which use only config.test.json's own placeholder values.
+player/*_prod.json
+
 # Dev environment persistent data (019-env-separation; renamed from test_data/)
 dev_data/
 

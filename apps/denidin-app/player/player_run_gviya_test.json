@@ -1,0 +1,7 @@
+{
+  "export_zip": "tests/fixtures/whatsapp_exports/גביה TEST.zip",
+  "chat_id": "120363999999999999@g.us",
+  "sender_map": {"אילה 🦋": "972501234567@c.us"},
+  "data_root": "test_data",
+  "denidin_config": "config/config.test.json"
+}
