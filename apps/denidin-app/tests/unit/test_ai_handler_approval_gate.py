@@ -30,3 +30,16 @@ def test_recognized_affirmatives(text):
 ])
 def test_non_affirmatives(text):
     assert _is_affirmative_reply(text) is False
+
+
+# Feature 046: "מאשר"/"מאשרת" (Hebrew "I confirm", masc./fem.) plus a couple more
+# common Hebrew affirmatives, added as their own test function per METHODOLOGY.md's
+# test-immutability rule rather than extending test_recognized_affirmatives above.
+@pytest.mark.parametrize("text", [
+    "מאשר", "מאשרת", "בטח", "סבבה",
+    "  מאשר  ",
+    "מאשרת.", "מאשר!", "בטח,",
+    "מאשר, תודה",
+])
+def test_recognized_affirmatives_feature_046(text):
+    assert _is_affirmative_reply(text) is True

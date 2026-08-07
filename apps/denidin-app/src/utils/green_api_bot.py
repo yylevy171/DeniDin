@@ -15,9 +15,13 @@ Re-implements both call sites with an is-it-actually-a-dict check instead, via s
 """
 import logging
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from whatsapp_chatbot_python import GreenAPIBot, GreenAPIBotError
+
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def _notification_data_or_none(data: Any) -> Optional[dict]:
@@ -28,6 +32,41 @@ def _notification_data_or_none(data: Any) -> Optional[dict]:
     as "queue empty, nothing to do here".
     """
     return data if isinstance(data, dict) else None
+
+
+def _extract_read_receipt_target(body: dict) -> Optional[tuple]:
+    """Feature 045: pulls (chatId, idMessage) out of a raw Green API notification body,
+    or None if either is missing - the body shape is a plain dict straight off the wire
+    (not yet parsed into a WhatsAppMessage), so this is a defensive best-effort lookup,
+    not a validated-schema read.
+    """
+    id_message = body.get("idMessage")
+    chat_id = body.get("senderData", {}).get("chatId")
+    if not id_message or not chat_id:
+        return None
+    return (chat_id, id_message)
+
+
+def mark_message_read(bot: Any, body: dict, is_blocked: bool) -> None:
+    """Feature 045: best-effort read-receipt for an incoming message, fired as early as
+    possible (before RBAC/session/AI processing) for every non-blocked sender. Never
+    raises - a failure here is purely cosmetic and must never break message processing;
+    it is logged only, never retried (see spec.md Q5).
+    """
+    if is_blocked:
+        return
+
+    target = _extract_read_receipt_target(body)
+    if target is None:
+        return
+
+    chat_id, id_message = target
+    try:
+        bot.api.marking.readChat(chat_id, idMessage=id_message)
+    except Exception as error:  # pylint: disable=broad-except
+        logger.warning(
+            f"Failed to mark message as read (chatId={chat_id}, idMessage={id_message}): {error}"
+        )
 
 
 class DeniDinGreenAPIBot(GreenAPIBot):
@@ -42,6 +81,10 @@ class DeniDinGreenAPIBot(GreenAPIBot):
         super().__init__(*args, delete_notifications_at_startup=False, **kwargs)
         if delete_notifications_at_startup:
             self._drain_startup_notifications()
+        # Feature 045: optional hook invoked with the raw notification body for every
+        # notification, before it's dispatched to any router handler. Set by denidin.py once
+        # denidin_app exists (needed for the blocked-sender check). None = no-op.
+        self.on_notification_received: Optional[Callable[[dict], None]] = None
 
     def _drain_startup_notifications(self) -> None:
         self.api.session.headers["Connection"] = "keep-alive"
@@ -68,6 +111,14 @@ class DeniDinGreenAPIBot(GreenAPIBot):
                 data = _notification_data_or_none(response.data)
                 if data is None:
                     continue
+
+                hook = getattr(self, "on_notification_received", None)
+                if hook is not None:
+                    try:
+                        hook(data["body"])
+                    except Exception as hook_error:  # pylint: disable=broad-except
+                        # A hook failure must never break notification processing itself.
+                        self.logger.log(logging.ERROR, hook_error)
 
                 self.router.route_event(data["body"])
                 self.api.receiving.deleteNotification(data["receiptId"])
