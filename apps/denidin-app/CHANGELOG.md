@@ -18,3 +18,7 @@ Group conversation support (no-mention-required replies, no-reply etiquette, gro
 ## [0.2.1] - 2026-08-05
 
 Fix bugfix-024 (recognize native WhatsApp @-mentions of DeniDin's own number by phone, not display name); reorganize billed Morning-MCP E2E test suite by topic and fix import bugs the split introduced.
+
+## [0.2.2] - 2026-08-07
+
+just version bump, no change
