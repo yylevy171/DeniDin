@@ -104,16 +104,15 @@ approved and live-behavior-preservation is verified.**
   8.38/10 (baseline 8.27/10, no regression), mypy 18 pre-existing errors
   unchanged (0 new).
 
-- [ ] T005 **Manual live-behavior-preservation verification** (not an
-  automated test — requires actually starting the app, so subject to
-  CLAUDE.md's "never start an environment without explicit approval" gate
-  same as any other environment start): confirm `dev` container still
-  routes every message type identically post-refactor. **Human approval
-  required before this step runs**, separate from approval of the code
-  change itself.
+- [x] ~~T005~~ **DROPPED** (human decision, 2026-08-07): manual `dev`-container
+  live-behavior verification is not needed. T003/T004's automated dispatch-
+  table-completeness tests, plus the real replay run against `test_data/events`
+  (see Phase 4), together substitute for it in practice — no `dev` start
+  required for this feature.
 
 **Checkpoint**: `import denidin` no longer touches Green API; live routing
-verified unchanged.
+verified via automated tests (T003/T004) — no manual `dev` verification needed
+(T005 dropped).
 
 ---
 
@@ -167,10 +166,8 @@ verified unchanged.
 pylint 9.13/10 (up from 9.10 baseline); mypy clean on all touched files
 (only pre-existing, unrelated missing-stub warnings remain).
 
-**Checkpoint**: all shared/live code changes complete and tested. T005
-(manual live-behavior-preservation verification, requiring an actual `dev`
-environment start) remains outstanding, gated on explicit human approval
-per CLAUDE.md - not yet run.
+**Checkpoint**: all shared/live code changes complete and tested. T005 dropped
+(see Phase 2) — no outstanding manual verification for this phase.
 
 ---
 
@@ -213,34 +210,58 @@ per CLAUDE.md - not yet run.
   T011a approved). **Done**: 5/5 tests passing, pylint 10.00/10, mypy
   clean.
 
-- [ ] T012a Write tests in `tests/unit/test_player_export_source.py`:
+- [x] T012a Write tests in `tests/unit/test_player_export_source.py`:
   `PlayerExportSource.start(dispatch)` calls `dispatch` once per
   `ParsedMessage` in chronological order, never blocks, exhausts cleanly.
-- [ ] T012b Implement `player/export_source.py`
-  (`PlayerExportSource`) (BLOCKED until T012a approved).
+- [x] T012b Implement `player/export_source.py`
+  (`PlayerExportSource`) (BLOCKED until T012a approved). **Done**.
 
-- [ ] T013a Write tests in `tests/unit/test_player_config_safety.py`:
+- [x] T013a Write tests in `tests/unit/test_player_config_safety.py`:
   `--data-root` omitted → refusal, no default; `--data-root` resolving to
   the literal `data` path without `--confirm-production-data-root` →
-  refusal; `config.player.json`'s shape validated (no Green API fields
-  required).
-- [ ] T013b Implement the CLI arg parsing + safety checks in
-  `player/run_player.py`, plus `config/config.player.json`
-  (BLOCKED until T013a approved).
+  refusal. **Revised from the original wording** (human decision,
+  2026-08-07): there is no separate `config/config.player.json` shape, and
+  no "no Green API fields required" criterion — the player's own config
+  file (`player/player_config.py`'s `PlayerConfig`:
+  `export_zip`/`chat_id`/`sender_map`/`data_root`/`denidin_config`) instead
+  *points at* an existing full `AppConfiguration` file (`config.test.json`/
+  `config.dev.json`) via `denidin_config`, reused as-is — Green API fields
+  are present and validated (unused, since the player always passes
+  `green_api=None`), but that's accepted as fine: one less config format to
+  maintain, and the unused fields are harmless. See
+  `tests/unit/test_player_config.py` for this file's own coverage
+  (`load_player_config`/`PlayerConfig`/`PlayerConfigError`).
+- [x] T013b Implement the CLI arg parsing + safety checks in
+  `player/run_player.py`, plus `player/player_config.py` (not
+  `config/config.player.json` — see T013a's revision above) (BLOCKED until
+  T013a approved). **Done**: `run_player.py` takes one positional player
+  config JSON file; `--start`/`--end`/`--confirm-production-data-root` stay
+  CLI-only (never baked into a reusable file — see
+  `contracts/player-cli.md`).
 
-- [ ] T014a `billed`-tier: write a small end-to-end test replaying 2-3
-  synthetic text-only messages (a fee-agreement statement, a message
-  spanning the date-range boundary) through the real pipeline via
-  `run_player.py`'s main loop, asserting: correct `event_date`/`txn_date`
-  reflect the replayed message's own historical date (regression test for
-  Phase 3's fix — the actual point of this feature), and the run summary
-  accounts for every message.
-- [ ] T014b Implement `run_player.py`'s main loop (date-range scoping,
+- [ ] T014a `billed`-tier: **SKIPPED this phase** (human decision,
+  2026-08-07) — a real run against `test_data/events` (prepared, not yet
+  executed — see HANDOFF.md) was judged sufficient end-to-end verification
+  instead of a synthetic `billed` test, for this phase specifically. **Not
+  a fixed precedent** — whether T017a (Phase 6, `billed`) and T020a (Phase
+  8, `expensive`) follow the same pattern or write the originally-planned
+  synthetic tests is an open, separate decision for whenever those phases
+  start (see each task's own note).
+- [x] T014b Implement `run_player.py`'s main loop (date-range scoping,
   driving `PlayerExportSource`, building the run summary) — no relevancy/
   reconciliation/review-queue wiring yet (BLOCKED until T014a approved).
+  **Done**: core replay loop working end-to-end for text + image/document
+  messages (via `LocalMediaServer`). **The prepared real run against
+  `test_data/events` (33 messages: 18 text + 15 vision) has still never
+  been executed** — needs fresh explicit approval (real OpenAI cost); this
+  is the actual end-to-end proof that Phase 3's `today_timestamp` fix works
+  and is recommended to happen before Phase 5 starts, since reconciliation
+  logic will reason about exactly this kind of real run's output.
 
 **Checkpoint**: pure replay (no reconciliation/relevancy/review-queue)
-works end-to-end for text messages.
+works end-to-end for text and media messages against the real live
+pipeline. **Not yet verified against a real run** (see T014b) — recommended
+before starting Phase 5.
 
 ---
 
@@ -270,7 +291,11 @@ works end-to-end for text messages.
 - [ ] T017a `billed`-tier: write an end-to-end test replaying a fee
   agreement followed by a correction message for the same client,
   asserting the correction's `replaced_event_id` resolves to the real
-  prior event's id (not the placeholder).
+  prior event's id (not the placeholder). **Open decision when this phase
+  starts** (human decision, 2026-08-07: deliberately not pre-decided): T014a
+  skipped its synthetic `billed` test in favor of one real run instead —
+  decide fresh whether T017a follows that same pattern or writes this test
+  as originally planned; not a fixed precedent either way.
 - [ ] T017b No new implementation expected (should already pass from
   T016b) — this task is verification-only; if it fails, fix surfaces here
   (BLOCKED until T017a approved).
@@ -301,7 +326,13 @@ works end-to-end for text messages.
   a fixture image with text mentioning a relative date ("אתמול"),
   asserting the resulting `txn_date` reflects the replayed message's
   historical date, not real wall-clock — the end-to-end regression test
-  for Phase 3's 4-hop timestamp threading.
+  for Phase 3's 4-hop timestamp threading. **Open decision when this phase
+  starts** (human decision, 2026-08-07: deliberately not pre-decided) —
+  same open question as T017a above: whether to follow T014a's
+  skip-synthetic-test/real-run-instead pattern, or write this test as
+  originally planned. The prepared real run against `test_data/events`
+  (Phase 4, T014b) does include 15 vision messages, so it may already
+  partially substitute — worth checking that run's actual results first.
 - [ ] T020b No new implementation expected — verification only (BLOCKED
   until T020a approved, and until the test has actually been run once
   with fresh approval per the expensive-test rules).
@@ -327,8 +358,24 @@ works end-to-end for text messages.
 - Phase 9 can happen any time after Phase 4 (needs a working CLI to
   document accurately).
 
+## Status (updated 2026-08-07)
+
+Phases 1–4 done (T005 dropped by human decision; T014a skipped in favor of
+a real run — see Phase 4). Phases 5 (reconciliation), 6 (relevancy), 7
+(review queue), 8 (expensive image-path regression), and 9 (README) are
+**not started** — no `player/reconciliation.py`, `player/relevancy.py`,
+`player/review_queue.py`, or `player/README.md` exist yet, and
+`run_player.py` has no `--reapply-review` mode.
+
 ## Next step
 
-Human approval of this tasks.md breakdown, then begin Phase 1/2 test tasks
-(T002, T003a) — per METHODOLOGY.md, implementation (any "b" task) never
-starts before its paired "a" task is written AND explicitly approved.
+**Recommended**: execute the prepared real run against `test_data/events`
+(Phase 4, T014b's note — 33 messages, 18 text + 15 vision; needs fresh
+explicit approval, real OpenAI cost) before starting Phase 5. It's the
+actual end-to-end proof that Phase 3's `today_timestamp` fix works, and
+Phase 5's reconciliation logic will reason about exactly the kind of
+real-run output it would produce — better to see real output first.
+
+Then begin Phase 5's test task (T015a), per METHODOLOGY.md — implementation
+(any "b" task) never starts before its paired "a" task is written AND
+explicitly approved.
