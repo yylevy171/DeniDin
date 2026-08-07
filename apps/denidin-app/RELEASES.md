@@ -23,3 +23,7 @@ Fix bugfix-024 (recognize native WhatsApp @-mentions of DeniDin's own number by 
 ## denidin-app v0.2.2 — 2026-08-07
 
 just version bump, no change
+
+## denidin-app v0.2.3 — 2026-08-07
+
+added mark-as-read, approval מאשר
