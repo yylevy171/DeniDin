@@ -79,7 +79,6 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 | 013 | Client Name Garbling and Unrequested Date Narrowing | - | Open (documentation only) | - |
 | 014 | list_invoices Only Returns One of Many | - | Open (documentation only) | - |
 | 022 | OpenAI MCP Approval Duplicate Execution | P0 | Open (interim mitigation deployed, true prevention deferred) | feature/033-ledger-event-persistence |
-| 026 | Morning Documents Created Unsigned (blocks email sharing) | P0 | Root cause approved, test-gap analysis next | bugfix/026-morning-documents-created-unsigned |
 
 ## Obsolete Bugfixes (`specs/obsolete/bugfixes/`)
 
@@ -101,6 +100,7 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 | 010 | Active Session Context Lost on Restart | - | 2026-07-08 (NOT REPRODUCIBLE) | - |
 | 010 | RBAC Phone/JID Mismatch | - | 2026-07-20 | #107 |
 | 011 | AI Declines Analytical Invoice Query | - | 2026-07-20 | #109 |
+| 026 | Morning Documents Created Unsigned (blocks email sharing) | P0 | 2026-08-07 | #195 |
 | 012 | Financial Summary Drops Non-Allowlisted Invoice Types | - | 2026-07-21 | #111 |
 | 020 | GreenAPIBot Crashes on Empty Notification Response | P0 | 2026-08-03 | #163 |
 
