@@ -27,3 +27,7 @@ signed docs
 ## morning-mcp-app v0.2.3 — 2026-08-07
 
 bump version, no change
+
+## morning-mcp-app v0.3.0 — 2026-08-07
+
+Mandatory real client reference for document creation (feature 027): resolve/attach documents by real Morning client_id instead of a bare name; fix Hebrew geresh/apostrophe mismatch breaking client lookup; fix list_invoices number search.
