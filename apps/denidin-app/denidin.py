@@ -655,7 +655,7 @@ def handle_unsupported_message_default(notification: Notification) -> None:
 # route to," used identically by denidin.py's own live entry point (via
 # GreenAPIMessageSource, below) and by anything else that supplies
 # notifications through a different MessageSource (e.g. the Feature 043
-# player, scripts/player/) - both call dispatch_notification the same way.
+# player, player/) - both call dispatch_notification the same way.
 HANDLER_REGISTRY: Dict[str, Callable[[Notification], None]] = {
     "textMessage": handle_text_message,
     "extendedTextMessage": handle_text_message,
@@ -713,7 +713,10 @@ if __name__ == "__main__":
     # research.md R3) and pass its real client into initialize_app(), which
     # needs it for _fetch_own_whatsapp_number/GroupMembershipResolver before
     # the blocking listen loop (message_source.start(), below) begins.
-    message_source = GreenAPIMessageSource(config)
+    # message_types is constructor-injected (not passed to start()) so
+    # start(dispatch) has the exact same signature as PlayerExportSource's -
+    # see green_api_source.py's own docstring.
+    message_source = GreenAPIMessageSource(config, message_types=list(HANDLER_REGISTRY.keys()))
     live_bot = message_source.connect()
 
     # Initialize app (handles memory system, cleanup thread, recovery)
@@ -721,6 +724,15 @@ if __name__ == "__main__":
 
     # Set global denidin_app for WhatsApp message handler
     denidin_app = denidin
+
+    # Feature 045's read-receipt hook: set as a post-construction attribute,
+    # not a constructor/start() arg - denidin.ai_handler.user_manager doesn't
+    # exist yet at the point message_source itself had to be constructed
+    # (connect() -> initialize_app(green_api=...) -> denidin, above). See
+    # green_api_source.py's is_blocked docstring for the full reasoning.
+    message_source.is_blocked = (
+        lambda chat_id: denidin.ai_handler.user_manager.get_user(chat_id).is_blocked
+    )
     
     # Perform orphaned session recovery if memory enabled
     if denidin.ai_handler.memory_enabled:
@@ -769,16 +781,12 @@ if __name__ == "__main__":
 
     try:
         # Start the WhatsApp message listener (blocking call) - registers
-        # dispatch_notification against every HANDLER_REGISTRY type (plus
-        # the catch-all) on the already-connected live_bot, wires Feature
-        # 045's read-receipt hook (user_manager), then runs
-        # live_bot.run_forever(). Signal handlers will raise
-        # KeyboardInterrupt for graceful shutdown.
-        message_source.start(
-            dispatch_notification,
-            message_types=list(HANDLER_REGISTRY.keys()),
-            user_manager=denidin.ai_handler.user_manager,
-        )
+        # dispatch_notification against every message type configured at
+        # construction time (plus the catch-all) on the already-connected
+        # live_bot, wires Feature 045's read-receipt hook (is_blocked, set
+        # above), then runs live_bot.run_forever(). Signal handlers will
+        # raise KeyboardInterrupt for graceful shutdown.
+        message_source.start(dispatch_notification)
     except KeyboardInterrupt:
         # This is raised by signal handlers or user Ctrl+C
         # Message already logged by signal handler or is implicit from Ctrl+C

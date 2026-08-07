@@ -11,8 +11,8 @@ See contracts/message-source.md.
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scripts.player.export_parser import ParsedMessage
-from scripts.player.notification_synth import synthesize_notification
+from player.export_parser import ParsedMessage
+from player.notification_synth import synthesize_notification
 from src.models.message import WhatsAppMessage
 
 

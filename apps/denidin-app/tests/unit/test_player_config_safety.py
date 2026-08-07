@@ -11,7 +11,7 @@ requirements (spec.md's Environment/data-safety), not nice-to-haves.
 """
 import pytest
 
-from scripts.player.config_safety import PlayerSafetyError, validate_data_root
+from player.config_safety import PlayerSafetyError, validate_data_root
 
 
 class TestValidateDataRoot:

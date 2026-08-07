@@ -20,7 +20,7 @@ once `/tasks` and `/implement` land. Nothing in this file is runnable yet.
 
 ```bash
 cd apps/denidin-app
-python3 scripts/player/run_player.py \
+python3 player/run_player.py \
     --export-zip /path/to/export.zip \
     --chat-id "972501234567@c.us" \
     --sender-map /path/to/sender_map.json \
@@ -47,7 +47,7 @@ flip `status` to `"answered"`, add an `answer` field), save a copy.
 ## 3. Re-apply answers (second pass)
 
 ```bash
-python3 scripts/player/run_player.py \
+python3 player/run_player.py \
     --reapply-review /path/to/answered_queue.jsonl \
     --data-root /path/to/real/production/data
 ```

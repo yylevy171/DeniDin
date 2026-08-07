@@ -14,7 +14,7 @@ import mimetypes
 from pathlib import Path
 from typing import Optional, Tuple
 
-from scripts.player.export_parser import ParsedMessage
+from player.export_parser import ParsedMessage
 
 # Extension -> Green API typeMessage, matching src/managers/media_file_manager.py's
 # own SUPPORTED_IMAGE_FORMATS + pdf/docx routing exactly (not re-derived from a

@@ -12,8 +12,8 @@ See contracts/message-source.md for the full interface contract.
 """
 from typing import Callable, Dict, List, Optional
 
-from scripts.player.export_parser import ParsedMessage
-from scripts.player.notification_synth import synthesize_notification
+from player.export_parser import ParsedMessage
+from player.notification_synth import synthesize_notification
 from src.sources.message_source import MessageSource
 
 

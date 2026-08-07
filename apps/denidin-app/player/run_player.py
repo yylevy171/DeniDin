@@ -10,24 +10,16 @@ This is the driver core only (US1's main loop) - no relevancy/reconciliation/
 review-queue wiring yet (later phases, per tasks.md's sequencing).
 """
 import argparse
-import json
 import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from scripts.player.config_safety import PlayerSafetyError, validate_data_root
-from scripts.player.export_parser import filter_date_range, parse_export
-from scripts.player.export_source import PlayerExportSource
-from scripts.player.media_server import LocalMediaServer
-
-
-def _load_sender_map(path: Optional[str]) -> Dict[str, str]:
-    if not path:
-        return {}
-    with open(path, encoding="utf-8") as f:
-        loaded: Dict[str, str] = json.load(f)
-    return loaded
+from player.config_safety import PlayerSafetyError, validate_data_root
+from player.export_parser import filter_date_range, parse_export
+from player.export_source import PlayerExportSource
+from player.media_server import LocalMediaServer
+from player.player_config import PlayerConfigError, load_player_config
 
 
 def _build_config_dict(config_path: str, data_root: str) -> dict:
@@ -109,16 +101,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="WhatsApp export -> ledger event player (Feature 043)"
     )
-    parser.add_argument("--export-zip", type=Path, help="Path to the WhatsApp export zip")
-    parser.add_argument("--chat-id", type=str, help="The real chat's JID")
-    parser.add_argument("--sender-map", type=str, default=None,
-                         help="Path to a {display_name: phone_jid} JSON file")
-    parser.add_argument("--data-root", type=str, default=None,
-                         help="Target events/sessions/media root - required, no default")
+    parser.add_argument("player_config", type=Path,
+                         help="Path to a player config JSON file (export_zip/chat_id/"
+                              "sender_map/data_root/denidin_config - see "
+                              "contracts/player-cli.md)")
     parser.add_argument("--confirm-production-data-root", action="store_true",
-                         help="Required in addition to --data-root when it resolves to 'data'")
-    parser.add_argument("--config", type=str, default="config/config.test.json",
-                         help="AppConfiguration-shaped JSON file (AI/OpenAI settings only)")
+                         help="Required in addition to a data_root that resolves to 'data'")
     parser.add_argument("--start", type=str, default=None, help="YYYY-MM-DD, clamped >= 2025-09-01")
     parser.add_argument("--end", type=str, default=None, help="YYYY-MM-DD, clamped <= today")
     return parser
@@ -128,22 +116,24 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = build_arg_parser().parse_args(argv)
 
     try:
-        data_root = validate_data_root(args.data_root, args.confirm_production_data_root)
+        player_config = load_player_config(args.player_config)
+    except PlayerConfigError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+    try:
+        data_root = validate_data_root(player_config.data_root, args.confirm_production_data_root)
     except PlayerSafetyError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
 
-    if not args.export_zip or not args.chat_id:
-        print("ERROR: --export-zip and --chat-id are required", file=sys.stderr)
-        return 2
-
-    sender_map = _load_sender_map(args.sender_map)
     start = _parse_date(args.start)
     end = _parse_date(args.end)
 
     outcomes = run_replay(
-        export_zip=args.export_zip, chat_id=args.chat_id, sender_map=sender_map,
-        data_root=data_root, config_path=args.config, start=start, end=end,
+        export_zip=player_config.export_zip, chat_id=player_config.chat_id,
+        sender_map=player_config.sender_map, data_root=data_root,
+        config_path=player_config.denidin_config, start=start, end=end,
     )
 
     dispatched = sum(1 for o in outcomes if o["status"] == "dispatched")

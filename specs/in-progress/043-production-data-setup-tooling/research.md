@@ -177,6 +177,13 @@ relevant. This piece is greenfield.
 
 ## R7 — Existing one-off migration script (style reference only)
 
+(Note, added later this feature: `scripts/migrate_stray_ledger_events.py`
+has since been removed as dead weight - `scripts/` held nothing but
+disposable one-off dev scripts, and this feature's own player moved out of
+it into its own top-level `player/` package. The research finding below is
+kept as-is since it's what informed the "don't copy this architecture"
+decision at the time; it no longer points at a file that exists.)
+
 `scripts/migrate_stray_ledger_events.py` calls `LedgerEventManager`
 directly (not via the live pipeline) to hand-migrate 3 specific historical
 records. Useful only as a style/structure reference (argparse, `--dry-run`,

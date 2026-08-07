@@ -10,8 +10,8 @@ dispatch(type_message, notification) for each synthesizable message.
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scripts.player.export_parser import ParsedMessage
-from scripts.player.export_source import PlayerExportSource
+from player.export_parser import ParsedMessage
+from player.export_source import PlayerExportSource
 
 
 def _text_msg(sender="Ayelet", text="hi", minute=0):

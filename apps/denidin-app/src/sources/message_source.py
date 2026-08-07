@@ -14,7 +14,7 @@ to that source.
 Two implementations: GreenAPIMessageSource (src/sources/green_api_source.py -
 today's live behavior, unchanged, just relocated so it's constructed only
 when live listening actually starts) and a player-side source
-(scripts/player/export_source.py - PlayerExportSource) that replays a parsed
+(player/export_source.py - PlayerExportSource) that replays a parsed
 WhatsApp export. Downstream processing (WhatsAppMessage parsing, AIHandler,
 MediaHandler, LedgerEventManager) is identical regardless of which source is
 active - this interface's only job is producing Notification-shaped objects

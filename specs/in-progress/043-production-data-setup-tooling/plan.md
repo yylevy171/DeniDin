@@ -12,7 +12,7 @@ functions → `WhatsAppHandler`/`MediaHandler` → `AIHandler` →
 `LedgerEventManager`), for a `[start, end]` date range. Two structural
 changes to shared/live code are required first (both small, additive,
 behavior-preserving when unused); everything else is new, player-only code
-under `scripts/player/`.
+under `player/`.
 
 ### Shared/live code changes (prerequisite, sequenced first — see tasks.md)
 
@@ -41,10 +41,10 @@ under `scripts/player/`.
    `resolve_replaced_event_id()`; `apply_review_answer()`. All additive,
    no existing method signature changes.
 
-### New player code (`apps/denidin-app/scripts/player/`)
+### New player code (`apps/denidin-app/player/`)
 
 ```
-scripts/player/
+player/
     __init__.py
     export_parser.py       # WhatsApp export .txt + zip -> List[ParsedMessage]
     notification_synth.py  # ParsedMessage -> Green-API-shaped Notification
@@ -109,7 +109,7 @@ constructs `GreenAPIMessageSource`.
 | `src/handlers/media_handler.py` | Threads `today_timestamp` into `_extract_text`/`analyze_media` calls |
 | `src/handlers/extractors/image_extractor.py` | `analyze_media` gains `today_timestamp` passthrough |
 | `src/managers/ledger_event_manager.py` | `CURRENT_SCHEMA_VERSION`, `schema_version` field, `resolve_replaced_event_id`, `apply_review_answer` |
-| `scripts/player/*` (new) | All player code, see above |
+| `player/*` (new) | All player code, see above |
 | `config/config.player.json` (new) | Player's own config |
 | `tests/e2e_helpers.py` | Possibly extended/refactored if `MessageSource` changes how tests construct notifications (confirm at `/tasks`) |
 
@@ -145,7 +145,7 @@ constructs `GreenAPIMessageSource`.
 - US3 (review queue) → `review_queue.py`, external to ledger schema.
 - US4 (no orphans) → `reconciliation.py`'s snapshot/move/manifest.
 - US5 (schema version) → `CURRENT_SCHEMA_VERSION` field.
-- US6 (permanent, git-tracked, documented) → `scripts/player/` package +
+- US6 (permanent, git-tracked, documented) → `player/` package +
   README.md + full test coverage above.
 
 ## Next step

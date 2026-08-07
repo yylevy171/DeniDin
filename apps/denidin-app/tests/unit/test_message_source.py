@@ -53,6 +53,7 @@ class _FakeBot:
 
     def __init__(self):
         self.router = _FakeRouter()
+        self.on_notification_received = None  # matches DeniDinGreenAPIBot's own default
 
     def run_forever(self):
         pass
@@ -150,10 +151,10 @@ class TestGreenAPIMessageSourceConnect:
 
     def test_start_reuses_an_already_connected_bot(self):
         factory = _BotFactorySpy()
-        source = GreenAPIMessageSource(_config(), bot_factory=factory)
+        source = GreenAPIMessageSource(_config(), bot_factory=factory, message_types=[])
 
         source.connect()
-        source.start(dispatch=lambda type_message, notification: None, message_types=[])
+        source.start(dispatch=lambda type_message, notification: None)
 
         assert len(factory.calls) == 1
 
@@ -161,10 +162,10 @@ class TestGreenAPIMessageSourceConnect:
 class TestGreenAPIMessageSourceStart:
     def test_start_calls_bot_factory_exactly_once_with_config_credentials(self):
         factory = _BotFactorySpy()
-        source = GreenAPIMessageSource(_config("real-instance-id", "real-token"), bot_factory=factory)
+        source = GreenAPIMessageSource(_config("real-instance-id", "real-token"), bot_factory=factory,
+                                        message_types=["textMessage"])
 
-        source.start(dispatch=lambda type_message, notification: None,
-                      message_types=["textMessage"])
+        source.start(dispatch=lambda type_message, notification: None)
 
         assert len(factory.calls) == 1
         args, kwargs = factory.calls[0]
@@ -173,11 +174,13 @@ class TestGreenAPIMessageSourceStart:
 
     def test_start_registers_every_requested_message_type(self):
         factory = _BotFactorySpy()
-        source = GreenAPIMessageSource(_config(), bot_factory=factory)
+        source = GreenAPIMessageSource(
+            _config(), bot_factory=factory,
+            message_types=["textMessage", "imageMessage", "documentMessage"],
+            include_catch_all=False,
+        )
 
-        source.start(dispatch=lambda type_message, notification: None,
-                      message_types=["textMessage", "imageMessage", "documentMessage"],
-                      include_catch_all=False)
+        source.start(dispatch=lambda type_message, notification: None)
 
         registered_types = {filters["type_message"] for filters, _handler in factory.bot.router.registrations}
         assert registered_types == {"textMessage", "imageMessage", "documentMessage"}
@@ -185,10 +188,10 @@ class TestGreenAPIMessageSourceStart:
     def test_registered_handler_calls_dispatch_with_type_and_notification(self):
         factory = _BotFactorySpy()
         received = []
-        source = GreenAPIMessageSource(_config(), bot_factory=factory)
+        source = GreenAPIMessageSource(_config(), bot_factory=factory,
+                                        message_types=["textMessage"], include_catch_all=False)
 
-        source.start(dispatch=lambda type_message, notification: received.append((type_message, notification)),
-                      message_types=["textMessage"], include_catch_all=False)
+        source.start(dispatch=lambda type_message, notification: received.append((type_message, notification)))
 
         # Simulate the router firing the registered handler, exactly as
         # whatsapp_chatbot_python would on a real incoming webhook.
@@ -206,10 +209,10 @@ class TestGreenAPIMessageSourceStart:
         denidin.py, or a specific type could get swallowed by the catch-all
         instead of its intended handler."""
         factory = _BotFactorySpy()
-        source = GreenAPIMessageSource(_config(), bot_factory=factory)
+        source = GreenAPIMessageSource(_config(), bot_factory=factory,
+                                        message_types=["textMessage", "imageMessage"])
 
-        source.start(dispatch=lambda type_message, notification: None,
-                      message_types=["textMessage", "imageMessage"])
+        source.start(dispatch=lambda type_message, notification: None)
 
         filters_in_order = [filters for filters, _handler in factory.bot.router.registrations]
         assert filters_in_order[0] == {"type_message": "textMessage"}
@@ -225,23 +228,46 @@ class TestGreenAPIMessageSourceStart:
         fail to match, silently breaking every unsupported/catch-all
         message type live currently handles via handle_unsupported_message_default."""
         factory = _BotFactorySpy()
-        source = GreenAPIMessageSource(_config(), bot_factory=factory)
+        source = GreenAPIMessageSource(_config(), bot_factory=factory,
+                                        message_types=[], include_catch_all=True)
 
-        source.start(dispatch=lambda type_message, notification: None,
-                      message_types=[], include_catch_all=True)
+        source.start(dispatch=lambda type_message, notification: None)
 
         assert len(factory.bot.router.registrations) == 1
         filters, _handler = factory.bot.router.registrations[0]
         assert filters == {}
         assert "type_message" not in filters
 
+    def test_is_blocked_defaults_to_none_and_no_hook_is_wired(self):
+        """is_blocked is a post-construction attribute (see
+        green_api_source.py's docstring for why it can't be a constructor
+        param) - defaults to None, matching DeniDinGreenAPIBot.
+        on_notification_received's own default-None-means-no-op idiom."""
+        factory = _BotFactorySpy()
+        source = GreenAPIMessageSource(_config(), bot_factory=factory, message_types=[])
+
+        assert source.is_blocked is None
+
+        source.start(dispatch=lambda type_message, notification: None)
+
+        assert factory.bot.on_notification_received is None
+
+    def test_is_blocked_set_before_start_wires_the_read_receipt_hook(self):
+        factory = _BotFactorySpy()
+        source = GreenAPIMessageSource(_config(), bot_factory=factory, message_types=[])
+        source.is_blocked = lambda chat_id: chat_id == "blocked@c.us"
+
+        source.start(dispatch=lambda type_message, notification: None)
+
+        assert callable(factory.bot.on_notification_received)
+
     def test_catch_all_handler_extracts_real_type_from_notification(self):
         factory = _BotFactorySpy()
         received = []
-        source = GreenAPIMessageSource(_config(), bot_factory=factory)
+        source = GreenAPIMessageSource(_config(), bot_factory=factory,
+                                        message_types=[], include_catch_all=True)
 
-        source.start(dispatch=lambda type_message, notification: received.append((type_message, notification)),
-                      message_types=[], include_catch_all=True)
+        source.start(dispatch=lambda type_message, notification: received.append((type_message, notification)))
 
         _filters, handler = factory.bot.router.registrations[0]
 

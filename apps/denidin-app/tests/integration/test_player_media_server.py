@@ -13,7 +13,7 @@ import urllib.request
 
 import pytest
 
-from scripts.player.media_server import LocalMediaServer
+from player.media_server import LocalMediaServer
 
 
 @pytest.mark.integration

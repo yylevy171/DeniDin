@@ -14,7 +14,7 @@ injection (`bot_factory`, defaulting to the real DeniDinGreenAPIBot - no
 behavior change for production, which never passes a custom factory) -
 never at `__init__`, and never as a bare module-level side effect. This is
 the only MessageSource that ever touches real Green API credentials; the
-player's own source (scripts/player/export_source.py) never constructs one.
+player's own source (player/export_source.py) never constructs one.
 """
 from typing import Any, Callable, List, Optional
 
@@ -42,12 +42,63 @@ DEFAULT_MESSAGE_TYPES: List[str] = [
 
 
 class GreenAPIMessageSource(MessageSource):
-    """The live Green API WhatsApp MessageSource."""
+    """The live Green API WhatsApp MessageSource.
 
-    def __init__(self, config, bot_factory: Callable[..., Any] = DeniDinGreenAPIBot):
+    `message_types`/`include_catch_all` are constructor-injected - `start(dispatch)`
+    must have the exact same signature as `PlayerExportSource.start(dispatch)` (and
+    the abstract `MessageSource.start`), so denidin.py's caller never needs to know
+    or care which concrete MessageSource it's holding. `is_blocked` (see below) is
+    the one exception, set as a public attribute AFTER construction rather than
+    passed to __init__ - not by choice, but because of a real ordering constraint:
+    see its own docstring.
+    """
+
+    def __init__(self, config, bot_factory: Callable[..., Any] = DeniDinGreenAPIBot,
+                 message_types: Optional[List[str]] = None,
+                 include_catch_all: bool = True):
+        """
+        Args:
+            message_types: which message types to register `dispatch`
+                against; defaults to DEFAULT_MESSAGE_TYPES. denidin.py's
+                live entry point is expected to always pass its own real
+                dispatch table's key list explicitly instead, so this class
+                never needs to be kept in sync with denidin.py's handler
+                registrations by hand.
+            include_catch_all: when True (the default), also registers one
+                final handler with NO type_message filter at all - matching
+                denidin.py's existing `@bot.router.message()` catch-all
+                exactly. This is NOT the same as registering
+                `type_message=None`: the real router's Handler.check_event
+                only skips a filter that is genuinely absent from
+                self.filters; an explicit `type_message=None` entry would
+                instead be checked (and fail to match) - confirmed by
+                reading whatsapp_chatbot_python/manager/handler.py
+                directly. The catch-all handler receives the notification's
+                own real type_message (read from its event data) rather
+                than a fixed one, since by definition it doesn't know its
+                type_message ahead of registration time.
+        """
         self._config = config
         self._bot_factory = bot_factory
+        self._message_types = message_types
+        self._include_catch_all = include_catch_all
         self.bot: Optional[Any] = None  # constructed only inside connect()/start()
+
+        # Feature 045's read-receipt hook (mark every non-blocked sender's incoming
+        # message as read, as early as possible - before route_event dispatches to
+        # any handler; see src/utils/green_api_bot.py's mark_message_read/
+        # on_notification_received) needs a single is-this-chat-id-blocked
+        # predicate - deliberately NOT the whole UserManager, which also does role
+        # resolution/token limits/memory scope this class has no business touching.
+        # This can't be a constructor param: denidin.py's live entry point must
+        # construct this class and call connect() BEFORE `denidin`/its UserManager
+        # exist at all (connect() -> initialize_app(green_api=...) -> denidin) - so
+        # it's set as a plain public attribute once denidin does exist, same idiom
+        # as DeniDinGreenAPIBot.on_notification_received itself (also set
+        # post-construction, defaults to None/no-op). `None` (the default) means no
+        # read-receipt hook is registered - correct both before it's been set yet,
+        # and permanently for the player, which never constructs this class at all.
+        self.is_blocked: Optional[Callable[[str], bool]] = None
 
     def connect(self) -> Any:
         """Constructs the real bot (draining pending notifications, today's
@@ -69,48 +120,17 @@ class GreenAPIMessageSource(MessageSource):
             )
         return self.bot
 
-    def start(self, dispatch: Callable[[str, Notification], None],
-              message_types: Optional[List[str]] = None,
-              include_catch_all: bool = True,
-              user_manager: Optional[Any] = None) -> None:
+    def start(self, dispatch: Callable[[str, Notification], None]) -> None:
         """Ensures the bot is connected (via `connect()`, a no-op if the
         live entry point already called it), registers `dispatch` against
-        every requested message type in order (specific types first, so the
-        underlying router's first-match-wins semantics - confirmed by
-        reading whatsapp_chatbot_python's Observer/Handler.check_event
-        directly, not assumed - behave exactly like today's decorator
-        order), then blocks running the bot's listen loop.
-
-        `message_types` defaults to DEFAULT_MESSAGE_TYPES - denidin.py's
-        live entry point is expected to always pass its own real dispatch
-        table's key list explicitly instead, so this class never needs to
-        be kept in sync with denidin.py's handler registrations by hand.
-
-        `include_catch_all`: when True (the default), also registers one
-        final handler with NO type_message filter at all - matching
-        denidin.py's existing `@bot.router.message()` catch-all exactly.
-        This is NOT the same as registering `type_message=None`: the real
-        router's Handler.check_event only skips a filter that is genuinely
-        absent from self.filters; an explicit `type_message=None` entry
-        would instead be checked (and fail to match) - confirmed by reading
-        whatsapp_chatbot_python/manager/handler.py directly. The catch-all
-        handler receives the notification's own real type_message (read
-        from its event data) rather than a fixed one, since by definition
-        it doesn't know its type_message ahead of registration time.
-
-        `user_manager`: Feature 045's read-receipt hook (mark every
-        non-blocked sender's incoming message as read, as early as
-        possible - before route_event dispatches to any handler; see
-        src/utils/green_api_bot.py's mark_message_read/
-        on_notification_received) needs an is-this-sender-blocked check,
-        which needs a UserManager. Wiring this here - rather than in
-        denidin.py's initialize_app(), where Feature 045 originally added
-        it against a module-level `bot` global - keeps GreenAPIMessageSource
-        the sole owner of anything that touches the real bot instance
-        (research.md R3); `initialize_app()` never receives the full bot,
-        only `green_api` (the `.api` client). `None` (e.g. the player,
-        which never calls this method at all) means no read-receipt hook is
-        registered - there is no live bot to mark anything read on.
+        every message type from `__init__`'s `message_types` in order
+        (specific types first, so the underlying router's first-match-wins
+        semantics - confirmed by reading whatsapp_chatbot_python's
+        Observer/Handler.check_event directly, not assumed - behave exactly
+        like today's decorator order), wires the read-receipt hook if
+        `self.is_blocked` was set, then blocks running the bot's listen
+        loop. Same signature as `PlayerExportSource.start` - see this
+        class's own docstring for why.
         """
         bot = self.connect()  # Any, not Optional - narrows cleanly for mypy below
 
@@ -118,27 +138,28 @@ class GreenAPIMessageSource(MessageSource):
         # specific types, e.g. a catch-all-only registration) must NOT fall
         # back to DEFAULT_MESSAGE_TYPES the way `message_types or DEFAULT...`
         # would (an empty list is falsy).
-        for type_message in (message_types if message_types is not None else DEFAULT_MESSAGE_TYPES):
+        types = self._message_types if self._message_types is not None else DEFAULT_MESSAGE_TYPES
+        for type_message in types:
             self._register(bot, type_message, dispatch)
 
-        if include_catch_all:
+        if self._include_catch_all:
             self._register_catch_all(bot, dispatch)
 
-        if user_manager is not None:
-            bot.on_notification_received = self._build_read_receipt_hook(bot, user_manager)
+        if self.is_blocked is not None:
+            bot.on_notification_received = self._build_read_receipt_hook(bot, self.is_blocked)
 
         bot.run_forever()
 
     @staticmethod
-    def _build_read_receipt_hook(bot: Any, user_manager: Any) -> Callable[[dict], None]:
+    def _build_read_receipt_hook(bot: Any, is_blocked: Callable[[str], bool]) -> Callable[[dict], None]:
         """Feature 045: returns the notification-received hook DeniDinGreenAPIBot's
         polling loop calls for every raw notification body, before route_event
         dispatches it to any handler - see mark_message_read's own docstring for why
         this is best-effort/non-fatal."""
         def _on_notification_received(body: dict) -> None:
             chat_id = body.get("senderData", {}).get("chatId", "")
-            is_blocked = bool(chat_id) and user_manager.get_user(chat_id).is_blocked
-            mark_message_read(bot, body, is_blocked=is_blocked)
+            blocked = bool(chat_id) and is_blocked(chat_id)
+            mark_message_read(bot, body, is_blocked=blocked)
         return _on_notification_received
 
     def _register(self, bot: Any, type_message: str,

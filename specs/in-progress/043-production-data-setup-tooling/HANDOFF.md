@@ -87,7 +87,7 @@ decision on whether it's needed at all now.
   `resolve_replaced_event_id()` (US2) and `apply_review_answer()` (US3).
 
 ### Phase 4 (US1 — replay a date range) — done through T014b
-New package `scripts/player/`:
+New package `player/`:
 - **`export_parser.py`** (T009) — WhatsApp export zip → `List[ParsedMessage]`.
   Confirmed against a real sample this session. Caught and fixed a real bug
   while implementing: a system notice mid-conversation (no "Name:" colon
@@ -142,7 +142,7 @@ moment it's approved:
 
 ```bash
 cd apps/denidin-app
-python3 scripts/player/run_player.py \
+python3 player/run_player.py \
     --export-zip "tests/fixtures/whatsapp_exports/גביה TEST.zip" \
     --chat-id "120363999999999999@g.us" \
     --sender-map <path to a JSON file: {"אילה 🦋": "972501234567@c.us"}> \
@@ -188,7 +188,7 @@ python3 scripts/player/run_player.py \
 4. **T020 (expensive-tier image-replay regression test)** — not started;
    needs its own fresh approval per the expensive-test rules when it
    happens (one at a time, never a bare sweep).
-5. **T021 (`scripts/player/README.md`)** — not written yet.
+5. **T021 (`player/README.md`)** — not written yet.
 6. **The prepared real run above** — not executed, needs explicit approval.
 7. **Nothing committed** — the user's own standing rule (confirmed
    elsewhere in this session) is unit/integration test judgment calls are

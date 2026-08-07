@@ -38,7 +38,7 @@ class MessageSource(ABC):
   byte-for-byte identical to pre-refactor `denidin.py` — this needs
   explicit verification in `/tasks`, not assumed from the design alone.
 
-## Player source (`PlayerExportSource`, `scripts/player/export_source.py`)
+## Player source (`PlayerExportSource`, `player/export_source.py`)
 
 - Constructed from a `List[ParsedMessage]` already filtered to `[start,
   end]` and sorted chronologically.

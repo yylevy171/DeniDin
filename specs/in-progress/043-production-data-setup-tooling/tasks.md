@@ -17,7 +17,7 @@ before its matching "b" task (implementation) begins. Once approved, a test
 is immutable without a fresh, explicit re-approval.
 
 **Path Conventions**: `apps/denidin-app/src/`, `apps/denidin-app/tests/`,
-`apps/denidin-app/scripts/player/` (per `plan.md`'s architecture).
+`apps/denidin-app/player/` (per `plan.md`'s architecture).
 
 **Two phases below (2 and 3) touch shared/live code** (`denidin.py`,
 `ai_handler.py`, `media_handler.py`, `ledger_event_manager.py`) — these are
@@ -184,7 +184,7 @@ per CLAUDE.md - not yet run.
   T002's findings), date-range filtering/clamping (`start` never earlier
   than 2025-09-01, `end` never later than "today" as injected via a fixed
   test clock, not real wall-clock).
-- [x] T009b Implement `scripts/player/export_parser.py` (BLOCKED until
+- [x] T009b Implement `player/export_parser.py` (BLOCKED until
   T009a approved). **Done**: 19/19 tests passing, pylint 9.89/10, mypy
   clean. Caught and fixed a real bug during implementation: a system notice
   mid-conversation (no "Name:" colon structure) could get glued onto the
@@ -200,7 +200,7 @@ per CLAUDE.md - not yet run.
   `MediaFileManager`'s own extension routing (imported/reused, not
   re-derived); unsupported attachment types produce no notification (per
   contracts/message-source.md).
-- [x] T010b [P] Implement `scripts/player/notification_synth.py` (BLOCKED
+- [x] T010b [P] Implement `player/notification_synth.py` (BLOCKED
   until T010a approved). **Done**: 14/14 tests passing, pylint 10.00/10,
   mypy clean. `synthesize_notification` returns `(event, type_message)` or
   `None` (unsupported extension).
@@ -209,14 +209,14 @@ per CLAUDE.md - not yet run.
   `tests/integration/test_player_media_server.py`: `LocalMediaServer`
   serves a fixture file over HTTP on an OS-assigned port, content matches
   byte-for-byte.
-- [x] T011b [P] Implement `scripts/player/media_server.py` (BLOCKED until
+- [x] T011b [P] Implement `player/media_server.py` (BLOCKED until
   T011a approved). **Done**: 5/5 tests passing, pylint 10.00/10, mypy
   clean.
 
 - [ ] T012a Write tests in `tests/unit/test_player_export_source.py`:
   `PlayerExportSource.start(dispatch)` calls `dispatch` once per
   `ParsedMessage` in chronological order, never blocks, exhausts cleanly.
-- [ ] T012b Implement `scripts/player/export_source.py`
+- [ ] T012b Implement `player/export_source.py`
   (`PlayerExportSource`) (BLOCKED until T012a approved).
 
 - [ ] T013a Write tests in `tests/unit/test_player_config_safety.py`:
@@ -225,7 +225,7 @@ per CLAUDE.md - not yet run.
   refusal; `config.player.json`'s shape validated (no Green API fields
   required).
 - [ ] T013b Implement the CLI arg parsing + safety checks in
-  `scripts/player/run_player.py`, plus `config/config.player.json`
+  `player/run_player.py`, plus `config/config.player.json`
   (BLOCKED until T013a approved).
 
 - [ ] T014a `billed`-tier: write a small end-to-end test replaying 2-3
@@ -251,7 +251,7 @@ works end-to-end for text messages.
   pre-existing files moved (never deleted) to `_to_delete/<run_id>/` with
   a correct manifest entry per file; files outside the range never read
   or touched; matched files (reproduced this run) left in place untouched.
-- [ ] T015b Implement `scripts/player/reconciliation.py`, wire into
+- [ ] T015b Implement `player/reconciliation.py`, wire into
   `run_player.py`'s driver (BLOCKED until T015a approved).
 
 ---
@@ -263,7 +263,7 @@ works end-to-end for text messages.
   source_type=הסכם only → most-recent-first → agreement_label tiebreak);
   no match found → `replaces_hint` left as-is, no invented link; only
   triggered when `replaces_hint`/`reference_hint` is non-null.
-- [ ] T016b Implement `scripts/player/relevancy.py`, wire into
+- [ ] T016b Implement `player/relevancy.py`, wire into
   `run_player.py` (calls `LedgerEventManager.resolve_replaced_event_id`
   after each message) (BLOCKED until T016a approved).
 
@@ -286,7 +286,7 @@ works end-to-end for text messages.
   `--reapply-review` reads answered entries and calls
   `LedgerEventManager.apply_review_answer` correctly, skipping any entry
   still `status: "open"`.
-- [ ] T019b Implement `scripts/player/review_queue.py` +
+- [ ] T019b Implement `player/review_queue.py` +
   `run_player.py`'s `--reapply-review` mode (BLOCKED until T018a
   approved).
 
@@ -310,7 +310,7 @@ works end-to-end for text messages.
 
 ## Phase 9: User Story 6 — Documentation (US6)
 
-- [ ] T021 Write `scripts/player/README.md`: invocation, `--data-root`/
+- [ ] T021 Write `player/README.md`: invocation, `--data-root`/
   safety flags, second-pass workflow, and a link back to this spec
   directory — required by US6's "documented" criterion.
 

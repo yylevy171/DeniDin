@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.player.export_parser import ParsedMessage, filter_date_range, parse_export
+from player.export_parser import ParsedMessage, filter_date_range, parse_export
 
 
 def _make_export_zip(tmp_path, chat_text: str, media_files=None) -> Path:

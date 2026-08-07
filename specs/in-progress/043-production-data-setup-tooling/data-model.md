@@ -56,7 +56,7 @@ never at import/construction time of the module. Only ever instantiated
 from `denidin.py`'s live entry point (`if __name__ == '__main__':` or
 equivalent), never by tests or the player.
 
-**Player-side source** (`scripts/player/export_source.py`,
+**Player-side source** (`player/export_source.py`,
 `PlayerExportSource`) — takes the parsed, date-range-filtered, chronologically
 ordered `List[ParsedMessage]` (see §4) plus a `chat_id`/sender-map, and for
 each one synthesizes a `Notification` object (via `notification_synth.py`)
@@ -92,7 +92,7 @@ def apply_review_answer(self, event_id: str, component_field_updates: Dict) -> b
 Both keep `LedgerEventManager` as the sole owner of the on-disk JSON format
 — the player never hand-writes event JSON directly.
 
-## 4. Player-internal types (`scripts/player/`)
+## 4. Player-internal types (`player/`)
 
 ```python
 @dataclass
