@@ -20,6 +20,7 @@ import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
+from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
@@ -45,7 +46,7 @@ def unpaid_invoice(morning_client):
     from denidin_mcp_morning.tools import create_invoice
 
     marker = f"DENIDIN_STATUSFILTER_UNPAID_{int(datetime.now(timezone.utc).timestamp())}"
-    client_name = f"Test Client {marker}"
+    _, client_name = seed_real_client(morning_client, marker)
     create_invoice(morning_client, client_name=client_name, amount=61.0, description=marker)
     return {"client_name": client_name}
 
@@ -57,7 +58,7 @@ def paid_invoice(morning_client):
     from denidin_mcp_morning.tools import create_invoice, create_receipt
 
     marker = f"DENIDIN_STATUSFILTER_PAID_{int(datetime.now(timezone.utc).timestamp())}"
-    client_name = f"Test Client {marker}"
+    _, client_name = seed_real_client(morning_client, marker)
     response = create_invoice(morning_client, client_name=client_name, amount=62.0, description=marker)
 
     # Real invoice id is only in the tool's own confirmation text - resolve

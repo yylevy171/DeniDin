@@ -12,6 +12,7 @@ import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
+from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
@@ -35,9 +36,10 @@ def seeded_invoice(morning_client):
     from denidin_mcp_morning.tools import create_invoice
 
     unique_marker = f"DENIDIN_SUMMARY_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    _, client_name = seed_real_client(morning_client, unique_marker)
     create_invoice(
         morning_client,
-        client_name=f"Test Client {unique_marker}",
+        client_name=client_name,
         amount=55.0,
         description=f"Summary seed {unique_marker}",
     )

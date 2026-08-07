@@ -53,6 +53,7 @@ import pytest
 from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     GODFATHER_CHAT_ID,
     _calls_for,
+    _seed_client_via_conversation,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_decline,
@@ -75,7 +76,13 @@ def _seed_fresh_invoice_and_get_number(client_name: str, amount: int, descriptio
     (create_invoice requires approval - Feature 022) and return its real,
     human-visible Morning invoice number (parsed from create_invoice's own
     Hebrew confirmation output, e.g. "חשבונית #60123") - so later turns in
-    the same test can reference a specific, unambiguous real document."""
+    the same test can reference a specific, unambiguous real document.
+
+    Feature 027: create_invoice now resolves client_name against a real
+    client record before creating anything - seeds one first via the real
+    add_client conversation (the only way to do so from this E2E layer).
+    """
+    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_021_SEED")
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"צור חשבונית ל-{client_name} על {amount} ₪ עבור {description}",
@@ -118,6 +125,7 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
     client_name = _unique_client_name()
     amount = _small_random_amount()
     description = random.choice(_SEED_DESCRIPTIONS)
+    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_TXN_ACCT")
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -164,6 +172,7 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     client_name = _unique_client_name()
     amount = _small_random_amount()
     description = random.choice(_SEED_DESCRIPTIONS)
+    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_COMBO")
 
     # Turn 1: no description given - create_combo_document requires one, so
     # the model is expected to ask for it (constitution's "ask for missing

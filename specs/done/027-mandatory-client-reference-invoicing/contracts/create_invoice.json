@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "create_invoice",
+  "type": "object",
+  "x-group": "A",
+  "x-client-resolution": "search-by-name",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/documents",
+    "notes": "Feature 027: client_name is now resolved via _resolve_client_by_name before the payload is built. On exactly one match, the payload's client object is {\"self\": false, \"id\": \"<resolved client_id>\"} - no name field (confirmed live against the real sandbox, research.md Decision 1). On zero matches, no /documents call is made at all - returns a friendly 'client not found' message (format_client_not_found). On >1 matches, no call is made - returns the existing disambiguation message (format_ambiguous_clients_message). On a single NON-exact (fuzzy/substring) match, the document is still created, but the confirmation reply discloses the real matched client name (REQ-INV-011)."
+  },
+  "properties": {
+    "client_name": {"type": "string", "description": "Free-text client reference - resolved to a real client record, never passed through as a bare string (REQ-INV-001/002)."},
+    "amount": {"type": "number", "minimum": 0},
+    "description": {"type": "string"},
+    "due_date": {"type": "string", "format": "date"},
+    "vat_included": {"type": "boolean", "default": true}
+  },
+  "required": ["client_name", "amount", "description"],
+  "x-approval": "always"
+}

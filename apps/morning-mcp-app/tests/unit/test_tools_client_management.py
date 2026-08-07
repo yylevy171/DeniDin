@@ -501,3 +501,98 @@ def test_list_clients_over_cap_reports_total_without_fetching_further_pages():
     assert len(client.search_clients_calls) == 1  # never fetched page 2+
     assert "278" in result
     assert "יותר מדי" in result or "צמצם" in result
+
+
+# --- Hebrew geresh normalization (bugfix, 2026-08-07) ---
+#
+# Found while verifying feature 027: the model doesn't consistently type a
+# Hebrew consonant-modifier apostrophe the same way across turns (e.g. an
+# add_client call using a plain ASCII apostrophe, "סידורוביץ'", vs a later
+# create_invoice call reconstructing the same name with the correct Hebrew
+# geresh punctuation mark instead, "סידורוביץ׳" - or vice versa). Since
+# Morning's real client search is sensitive to this exact character, that
+# silent inconsistency made an existing client resolve as "not found"
+# (confirmed live, 2026-08-07). Every client name is now normalized to the
+# single correct Hebrew geresh form at every write and lookup boundary.
+
+_APOSTROPHE_NAME = "סידורוביץ'"  # ASCII apostrophe (U+0027)
+_TYPOGRAPHIC_APOSTROPHE_NAME = "סידורוביץ’"  # typographic apostrophe (U+2019)
+_GERESH_NAME = "סידורוביץ׳"  # correct Hebrew geresh (U+05F3)
+
+
+def test_normalize_hebrew_geresh_replaces_ascii_apostrophe():
+    assert tools._normalize_hebrew_geresh(_APOSTROPHE_NAME) == _GERESH_NAME
+
+
+def test_normalize_hebrew_geresh_replaces_typographic_apostrophe():
+    assert tools._normalize_hebrew_geresh(_TYPOGRAPHIC_APOSTROPHE_NAME) == _GERESH_NAME
+
+
+def test_normalize_hebrew_geresh_is_a_no_op_when_already_geresh():
+    assert tools._normalize_hebrew_geresh(_GERESH_NAME) == _GERESH_NAME
+
+
+def test_resolve_client_by_name_normalizes_query_before_searching():
+    client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
+
+    tools._resolve_client_by_name(client, _APOSTROPHE_NAME)
+
+    assert client.search_clients_calls == [{"name": _GERESH_NAME}]
+
+
+def test_add_client_normalizes_name_before_sending_and_in_confirmation():
+    client = _FakeMorningClient()
+
+    result = tools.add_client(client, name=_APOSTROPHE_NAME, email="tech@example.com", phone="050-1234567")
+
+    assert client.add_client_calls[0]["name"] == _GERESH_NAME
+    assert _GERESH_NAME in result
+    assert _APOSTROPHE_NAME not in result
+
+
+def test_update_client_normalizes_lookup_name_before_searching():
+    record = _client_record(client_id="c-1", name=_GERESH_NAME)
+    client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
+
+    tools.update_client(client, name=_APOSTROPHE_NAME, email="new@example.com")
+
+    assert client.search_clients_calls == [{"name": _GERESH_NAME}]
+
+
+def test_update_client_normalizes_new_name_before_sending():
+    record = _client_record(client_id="c-1", name="Old Name")
+    client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
+
+    result = tools.update_client(client, name="Old Name", new_name=_APOSTROPHE_NAME)
+
+    assert client.update_client_calls[0][1]["name"] == _GERESH_NAME
+    assert _GERESH_NAME in result
+    assert _APOSTROPHE_NAME not in result
+
+
+def test_list_clients_normalizes_name_filter_before_searching():
+    client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
+
+    tools.list_clients(client, name=_APOSTROPHE_NAME)
+
+    assert client.search_clients_calls == [{"name": _GERESH_NAME}]
+
+
+def test_is_exact_name_match_treats_apostrophe_and_geresh_as_equal():
+    assert tools._is_exact_name_match(_GERESH_NAME, _APOSTROPHE_NAME)
+    assert tools._is_exact_name_match(_APOSTROPHE_NAME, _GERESH_NAME)
+
+
+def test_resolve_client_for_document_creation_resolves_apostrophe_query_against_geresh_stored_name():
+    """The exact scenario that broke live (2026-08-07): a document-creation
+    call retypes the seeded client's name with a different apostrophe/geresh
+    variant than what's actually stored - must still resolve, not refuse."""
+    record = _client_record(client_id="c-1", name=_GERESH_NAME)
+    client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
+
+    resolution = tools._resolve_client_for_document_creation(client, _APOSTROPHE_NAME)
+
+    assert resolution.client_id == "c-1"
+    assert resolution.refusal_message is None
+    # Same name modulo punctuation variant - not treated as a fuzzy/non-exact match.
+    assert resolution.disclosure_name is None

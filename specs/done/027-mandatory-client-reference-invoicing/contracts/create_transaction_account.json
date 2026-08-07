@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "create_transaction_account",
+  "type": "object",
+  "x-group": "A",
+  "x-client-resolution": "search-by-name",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/documents",
+    "notes": "Feature 027: identical client-resolution behavior to create_invoice (same group, same _resolve_client_by_name helper, same found/not-found/ambiguous/non-exact-disclosure rules - REQ-INV-001/002/003/005/011) - only the document type (300, no VAT) differs."
+  },
+  "properties": {
+    "client_name": {"type": "string", "description": "Free-text client reference - resolved to a real client record, never passed through as a bare string (REQ-INV-001/002)."},
+    "amount": {"type": "number", "minimum": 0},
+    "description": {"type": "string"},
+    "due_date": {"type": "string", "format": "date"}
+  },
+  "required": ["client_name", "amount", "description"],
+  "x-approval": "always"
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "create_credit_note",
+  "type": "object",
+  "x-group": "B",
+  "x-client-resolution": "preserve-original-id-or-refuse",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/documents",
+    "notes": "Feature 027: no client_name parameter (unchanged) - this tool derives its client from the fetched original document (client.get_invoice(original_invoice_id)). If original.client.id is present, the new document's client object is {\"self\": false, \"id\": \"<that same id>\"} (REQ-INV-012) instead of today's {\"self\": false, \"name\": original.client.name}, which silently drops the id. If original.client.id is ABSENT (a pre-Feature-027 bare-name original), no document is created at all - a friendly refusal is returned instead (REQ-INV-013); this is a deliberate limitation, not a fallback to bare-name behavior."
+  },
+  "properties": {
+    "original_invoice_id": {"type": "string", "description": "Morning document id of the invoice being credited. Its client sub-object must have a real id or this tool refuses (REQ-INV-013)."},
+    "amount": {"type": "number", "minimum": 0, "description": "Optional override - defaults to the original's full total."},
+    "description": {"type": "string"}
+  },
+  "required": ["original_invoice_id"],
+  "x-approval": "always"
+}

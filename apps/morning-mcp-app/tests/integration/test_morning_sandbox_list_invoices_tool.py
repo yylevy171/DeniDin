@@ -14,6 +14,7 @@ import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
+from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
@@ -37,7 +38,7 @@ def seeded_invoice(morning_client):
     from denidin_mcp_morning.tools import create_invoice
 
     unique_marker = f"DENIDIN_LIST_TEST_{int(datetime.now(timezone.utc).timestamp())}"
-    client_name = f"Test Client {unique_marker}"
+    _, client_name = seed_real_client(morning_client, unique_marker)
 
     create_invoice(
         morning_client,
@@ -81,7 +82,7 @@ def test_list_invoices_tool_finds_seeded_invoice_by_non_prefix_substring(morning
     from denidin_mcp_morning.tools import create_invoice, list_invoices
 
     unique_marker = f"DENIDIN_SUBSTRING_TEST_{int(datetime.now(timezone.utc).timestamp())}"
-    client_name = f"Yossi Cohen {unique_marker} Ltd"
+    _, client_name = seed_real_client(morning_client, unique_marker, name=f"Yossi Cohen {unique_marker} Ltd")
 
     create_invoice(
         morning_client,
@@ -184,3 +185,50 @@ def test_list_invoices_tool_refuses_when_over_cap(morning_client):
         f"Over-cap refusal and token-budget partial-truncation wording are mutually "
         f"exclusive - the over-cap path never reaches formatting. Reply: {result!r}"
     )
+
+
+# ============================================================================
+# `number` filter (bugfix, 2026-08-07) - Morning's real /documents/search
+# has always accepted a `number` param; confirms it live against the sandbox.
+# ============================================================================
+
+
+def test_list_invoices_tool_finds_document_by_number(morning_client, seeded_invoice):
+    from denidin_mcp_morning.tools import list_invoices
+
+    client_name = seeded_invoice["client_name"]
+
+    # Resolve the seeded invoice's real number first (via client name, as
+    # the existing tool already supports), then search by that number alone.
+    by_name_result = None
+    for _ in range(12):
+        by_name_result = list_invoices(morning_client, client_name=client_name)
+        if "מזהה פנימי" in by_name_result:
+            break
+        time.sleep(1.5)
+    assert by_name_result and "חשבונית #" in by_name_result, (
+        f"Could not resolve the seeded invoice's number to search by: {by_name_result!r}"
+    )
+    number = by_name_result.split("חשבונית #")[1].splitlines()[0].strip()
+
+    result = None
+    for _ in range(12):
+        result = list_invoices(morning_client, number=number)
+        if f"חשבונית #{number}" in result:
+            break
+        time.sleep(1.5)
+
+    assert f"חשבונית #{number}" in result, (
+        f"Searching by number={number!r} alone did not find the seeded invoice: {result!r}"
+    )
+    assert client_name in result, (
+        f"Result found by number should still show the real client name: {result!r}"
+    )
+
+
+def test_list_invoices_tool_number_not_found_is_friendly(morning_client):
+    from denidin_mcp_morning.tools import list_invoices
+
+    result = list_invoices(morning_client, number="99999999")
+
+    assert result == "לא נמצאו חשבוניות התואמות את החיפוש."

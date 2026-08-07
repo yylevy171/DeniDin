@@ -20,6 +20,7 @@ import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
+from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
@@ -43,8 +44,9 @@ def seeded_invoice_id(morning_client):
     from denidin_mcp_morning.tools import _build_create_invoice_payload
 
     unique_marker = f"DENIDIN_STATUS_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    client_id, _ = seed_real_client(morning_client, unique_marker)
     payload = _build_create_invoice_payload(
-        client_name=f"Test Client {unique_marker}",
+        client_id=client_id,
         amount=90.0,
         description=f"Status tools test {unique_marker}",
     )
@@ -142,7 +144,7 @@ def test_create_receipt_rejects_a_transaction_account_original(morning_client):
     import time
 
     unique_marker = f"DENIDIN_REJECT_TEST_{int(datetime.now(timezone.utc).timestamp())}"
-    client_name = f"Test Client {unique_marker}"
+    _, client_name = seed_real_client(morning_client, unique_marker)
     create_transaction_account(morning_client, client_name, 80.0, f"Reject test {unique_marker}")
 
     invoice_id = None
@@ -168,7 +170,7 @@ def seeded_transaction_account_id(morning_client):
     from denidin_mcp_morning.tools import create_transaction_account, list_invoices
 
     unique_marker = f"DENIDIN_TX_ACCOUNT_TEST_{int(datetime.now(timezone.utc).timestamp())}"
-    client_name = f"Test Client {unique_marker}"
+    _, client_name = seed_real_client(morning_client, unique_marker)
     create_transaction_account(
         morning_client, client_name, 40.0, f"Transaction account test {unique_marker}"
     )

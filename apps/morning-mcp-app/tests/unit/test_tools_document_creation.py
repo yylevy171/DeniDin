@@ -13,17 +13,30 @@ create_invoice/get_invoice contracts) — this mocks a third-party API
 boundary, not an internal component (CONSTITUTION.md §I/§V).
 """
 from denidin_mcp_morning import tools
+from denidin_mcp_morning.formatters import format_original_not_linked_to_client
 
 
 class _FakeMorningClient:
     """Records calls and returns pre-set responses — stands in for the
-    MorningClient network boundary."""
+    MorningClient network boundary.
 
-    def __init__(self, get_invoice_response=None, create_invoice_response=None):
+    Feature 027: Group A tools (create_transaction_account/
+    create_combo_document) now resolve their client_name via
+    `search_clients` before creating anything - `search_clients_response`
+    lets tests control that resolution (default: a single match on
+    "לקוח בדיקה", client_id "client-1", so existing happy-path tests keep
+    passing unchanged in spirit)."""
+
+    def __init__(self, get_invoice_response=None, create_invoice_response=None, search_clients_response=None):
         self._get_invoice_response = get_invoice_response
         self._create_invoice_response = create_invoice_response or {"id": "new-doc-1", "number": "1001"}
+        self._search_clients_response = search_clients_response or {
+            "items": [_client_record()],
+            "total": 1,
+        }
         self.create_invoice_calls = []
         self.get_invoice_calls = []
+        self.search_clients_calls = []
 
     def get_invoice(self, invoice_id):
         self.get_invoice_calls.append(invoice_id)
@@ -35,13 +48,33 @@ class _FakeMorningClient:
         self.create_invoice_calls.append(payload)
         return self._create_invoice_response
 
+    def search_clients(self, payload):
+        self.search_clients_calls.append(payload)
+        return self._search_clients_response
 
-def _original_invoice(doc_id="orig-1", number="500", amount=90.0, client_name="לקוח בדיקה", doc_type=305):
+
+def _client_record(client_id="client-1", name="לקוח בדיקה"):
+    """A raw Morning /clients/search item - just enough shape for
+    `_resolve_client_for_document_creation` (Group A resolution)."""
+    return {"id": client_id, "name": name, "active": True, "phone": "", "emails": []}
+
+
+def _original_invoice(
+    doc_id="orig-1", number="500", amount=90.0, client_name="לקוח בדיקה", client_id="client-1", doc_type=305
+):
+    """A raw Morning /documents/{id} response, used as a Group B tool's
+    linked original. Feature 027 (REQ-INV-012/013): `client_id` defaults to
+    a real-looking id (the "preserve" path, matching any document created
+    on/after this feature) - pass `client_id=None` to simulate a pre-feature,
+    bare-name-only original (the "refuse" path)."""
+    client_ref = {"name": client_name}
+    if client_id is not None:
+        client_ref["id"] = client_id
     return {
         "id": doc_id,
         "number": number,
         "type": doc_type,
-        "client": {"name": client_name},
+        "client": client_ref,
         "amount": amount,
         "total": amount,
         "currency": "ILS",
@@ -68,10 +101,11 @@ def _original_invoice(doc_id="orig-1", number="500", amount=90.0, client_name="�
 
 def test_build_transaction_account_payload_has_no_vat_fields():
     payload = tools._build_transaction_account_payload(
-        client_name="לקוח בדיקה", amount=45.0, description="שירות ייעוץ"
+        client_id="client-1", amount=45.0, description="שירות ייעוץ"
     )
 
     assert payload["type"] == 300
+    assert payload["client"] == {"self": False, "id": "client-1"}
     assert "vatType" not in payload
     for income_item in payload["income"]:
         assert "vatType" not in income_item
@@ -80,10 +114,10 @@ def test_build_transaction_account_payload_has_no_vat_fields():
 
 def test_build_transaction_account_payload_includes_due_date_when_given():
     with_due_date = tools._build_transaction_account_payload(
-        client_name="לקוח בדיקה", amount=45.0, description="שירות", due_date="2026-08-01"
+        client_id="client-1", amount=45.0, description="שירות", due_date="2026-08-01"
     )
     without_due_date = tools._build_transaction_account_payload(
-        client_name="לקוח בדיקה", amount=45.0, description="שירות"
+        client_id="client-1", amount=45.0, description="שירות"
     )
 
     assert with_due_date["dueDate"] == "2026-08-01"
@@ -95,17 +129,18 @@ def test_build_transaction_account_payload_includes_due_date_when_given():
 
 def test_build_combo_document_payload_type_and_shape():
     payload = tools._build_combo_document_payload(
-        client_name="לקוח בדיקה", amount=65.0, description="מכירה מיידית"
+        client_id="client-1", amount=65.0, description="מכירה מיידית"
     )
 
     assert payload["type"] == 320
+    assert payload["client"] == {"self": False, "id": "client-1"}
     assert payload["vatType"] == 1
     assert "dueDate" not in payload
 
 
 def test_build_combo_document_payload_vat_excluded_when_requested():
     payload = tools._build_combo_document_payload(
-        client_name="לקוח בדיקה", amount=65.0, description="מכירה מיידית", vat_included=False
+        client_id="client-1", amount=65.0, description="מכירה מיידית", vat_included=False
     )
 
     assert payload["vatType"] == 0
@@ -206,7 +241,17 @@ def test_create_transaction_account_returns_hebrew_confirmation():
     assert "800" in result
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 300
+    assert sent_payload["client"] == {"self": False, "id": "client-1"}
     assert "vatType" not in sent_payload
+
+
+def test_create_transaction_account_refuses_when_client_not_found():
+    client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
+
+    result = tools.create_transaction_account(client, "לקוח שלא קיים", 45.0, "שירות ייעוץ")
+
+    assert client.create_invoice_calls == []
+    assert "לא נמצא" in result or "אין" in result
 
 
 def test_create_combo_document_returns_hebrew_confirmation():
@@ -217,6 +262,22 @@ def test_create_combo_document_returns_hebrew_confirmation():
     assert "801" in result
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 320
+    assert sent_payload["client"] == {"self": False, "id": "client-1"}
+
+
+def test_create_combo_document_refuses_when_client_ambiguous():
+    client = _FakeMorningClient(
+        search_clients_response={
+            "items": [_client_record(client_id="c-1", name="לקוח א"), _client_record(client_id="c-2", name="לקוח ב")],
+            "total": 2,
+        }
+    )
+
+    result = tools.create_combo_document(client, "לקוח", 65.0, "מכירה מיידית")
+
+    assert client.create_invoice_calls == []
+    assert "לקוח א" in result
+    assert "לקוח ב" in result
 
 
 def test_create_credit_note_requires_existing_document():
@@ -229,6 +290,18 @@ def test_create_credit_note_requires_existing_document():
         pass
 
     assert client.create_invoice_calls == [], "must not create a document when the original lookup fails"
+
+
+def test_create_credit_note_refuses_when_original_has_no_client_id():
+    """Feature 027 (REQ-INV-013): a pre-feature, bare-name-only original
+    must not silently get a bare-name credit note either - refuse instead."""
+    original = _original_invoice(doc_id="orig-4b", number="602b", client_id=None)
+    client = _FakeMorningClient(get_invoice_response=original)
+
+    result = tools.create_credit_note(client, "orig-4b")
+
+    assert client.create_invoice_calls == []
+    assert result == format_original_not_linked_to_client()
 
 
 def test_create_credit_note_happy_path_uses_original_and_allows_override():
@@ -257,6 +330,19 @@ def test_create_receipt_requires_existing_document():
         pass
 
     assert client.create_invoice_calls == [], "must not create a document when the original lookup fails"
+
+
+def test_create_receipt_refuses_when_original_has_no_client_id():
+    """Feature 027 (REQ-INV-013): a pre-feature, bare-name-only original
+    must not silently get a bare-name receipt either - refuse instead."""
+    original = _original_invoice(doc_id="orig-5b", number="603b", client_id=None)
+    original["status"] = None  # not yet paid - would otherwise hit the idempotent no-op path first
+    client = _FakeMorningClient(get_invoice_response=original)
+
+    result = tools.create_receipt(client, "orig-5b")
+
+    assert client.create_invoice_calls == []
+    assert result == format_original_not_linked_to_client()
 
 
 def test_create_receipt_happy_path_uses_original_and_allows_override():
@@ -347,6 +433,20 @@ def test_close_transaction_account_requires_existing_document():
         pass
 
     assert client.create_invoice_calls == [], "must not create a document when the original lookup fails"
+
+
+def test_close_transaction_account_refuses_when_original_has_no_client_id():
+    """Feature 027 (REQ-INV-013): a pre-feature, bare-name-only original
+    must not silently get a bare-name closing document either - refuse
+    instead."""
+    original = _original_invoice(doc_id="orig-6b", number="604b", doc_type=300, client_id=None)
+    original["status"] = None  # not yet closed - would otherwise hit the idempotent no-op path first
+    client = _FakeMorningClient(get_invoice_response=original)
+
+    result = tools.close_transaction_account(client, "orig-6b")
+
+    assert client.create_invoice_calls == []
+    assert result == format_original_not_linked_to_client()
 
 
 def test_close_transaction_account_happy_path_full_amount():
@@ -440,21 +540,21 @@ def test_close_transaction_account_still_works_after_vat_included_param_added():
 
 def test_build_create_invoice_payload_is_signed():
     payload = tools._build_create_invoice_payload(
-        client_name="לקוח בדיקה", amount=100.0, description="שירות ייעוץ"
+        client_id="client-1", amount=100.0, description="שירות ייעוץ"
     )
     assert payload["signed"] is True
 
 
 def test_build_transaction_account_payload_is_signed():
     payload = tools._build_transaction_account_payload(
-        client_name="לקוח בדיקה", amount=45.0, description="שירות ייעוץ"
+        client_id="client-1", amount=45.0, description="שירות ייעוץ"
     )
     assert payload["signed"] is True
 
 
 def test_build_combo_document_payload_is_signed():
     payload = tools._build_combo_document_payload(
-        client_name="לקוח בדיקה", amount=65.0, description="מכירה מיידית"
+        client_id="client-1", amount=65.0, description="מכירה מיידית"
     )
     assert payload["signed"] is True
 

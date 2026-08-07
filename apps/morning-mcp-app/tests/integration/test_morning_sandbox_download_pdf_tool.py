@@ -11,6 +11,7 @@ import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
+from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
@@ -33,9 +34,8 @@ def seeded_invoice_id(morning_client):
     from denidin_mcp_morning.tools import _build_create_invoice_payload
 
     unique_marker = f"DENIDIN_PDF_TEST_{int(datetime.now(timezone.utc).timestamp())}"
-    payload = _build_create_invoice_payload(
-        client_name=f"Test Client {unique_marker}", amount=15.0, description=unique_marker
-    )
+    client_id, _ = seed_real_client(morning_client, unique_marker)
+    payload = _build_create_invoice_payload(client_id=client_id, amount=15.0, description=unique_marker)
     created = morning_client.create_invoice(payload)
     invoice_id = str(created.get("id") or created.get("documentId") or "")
     assert invoice_id

@@ -31,6 +31,7 @@ from .denidin_mcp_e2e_helpers import (
     _calls_for,
     _random_amount,
     _random_description,
+    _seed_client_via_conversation,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_decline,
@@ -107,7 +108,12 @@ def _seed_fresh_invoice(client_name: str, amount: int, description: str) -> None
     requires explicit approval - Feature 022) so the paid/cancel flow tests
     below mutate a fresh invoice each run, never the reusable 2026-02-07 fixed
     set. The seeded client name is what later turns use to reference the
-    invoice - never an id."""
+    invoice - never an id.
+
+    Feature 027: create_invoice now resolves client_name against a real
+    client record before creating anything - seeds one first via the real
+    add_client conversation (the only way to do so from this E2E layer)."""
+    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_SEED")
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"צור חשבונית ל-{client_name} על {amount} ₪ עבור {description}",
@@ -308,7 +314,12 @@ def _seed_transaction_account_invoice(client_name: str, amount: int, description
     this phrasing to that tool, using the real Hebrew terminology a user
     would say ("חשבון עסקה" / "חשבונית עסקה" / "חשבון עיסקה" are all real
     variants).
+
+    Feature 027: create_transaction_account now resolves client_name against
+    a real client record before creating anything - seeds one first via the
+    real add_client conversation (the only way to do so from this E2E layer).
     """
+    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_020_SEED_300")
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפתח חשבון עסקה עבור {client_name} על סך {amount} שח עבור {description}",

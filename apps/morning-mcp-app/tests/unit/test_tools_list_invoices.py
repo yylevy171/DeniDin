@@ -130,6 +130,54 @@ def test_list_invoices_zero_matches_returns_unchanged_no_results_message():
 
 
 # ============================================================================
+# `number` filter (bugfix, 2026-08-07): Morning's real /documents/search
+# endpoint has always accepted a `number` param (confirmed via the checked-in
+# Postman collection's "Search Documents" example) - never wired up here,
+# so any bare "invoice number X" reference had no real way to resolve short
+# of an unfiltered search, which fails outright once the sandbox holds more
+# documents than the fetch cap.
+# ============================================================================
+
+
+def test_map_list_invoices_filters_includes_number_as_an_int():
+    assert tools._map_list_invoices_filters(number="51365") == {"number": 51365}
+
+
+def test_map_list_invoices_filters_ignores_non_numeric_number():
+    assert tools._map_list_invoices_filters(number="not-a-number") == {}
+
+
+def test_map_list_invoices_filters_number_combines_with_other_filters():
+    params = tools._map_list_invoices_filters(client_name="Test Client", number="51365")
+    assert params == {"clientName": "Test Client", "number": 51365}
+
+
+def test_list_invoices_passes_number_filter_to_search():
+    client = _FakeMorningClient([_page_response([], total=0, page=1, pages=1)])
+
+    tools.list_invoices(client, number="51365")
+
+    assert client.list_invoices_calls == [{"number": 51365}]
+
+
+def test_list_invoices_finds_document_by_number():
+    item = _raw_document("51365")
+    client = _FakeMorningClient([_page_response([item], total=1, page=1, pages=1)])
+
+    result = tools.list_invoices(client, number="51365")
+
+    assert "חשבונית #51365" in result
+
+
+def test_list_invoices_number_not_found_returns_unchanged_no_results_message():
+    client = _FakeMorningClient([_page_response([], total=0, page=1, pages=1)])
+
+    result = tools.list_invoices(client, number="99999999")
+
+    assert result == "לא נמצאו חשבוניות התואמות את החיפוש."
+
+
+# ============================================================================
 # Token-budget truncation (REQ-INVOICE-008/009, research.md Decision 6)
 #
 # `token_budget` is a config-driven value (MorningMCPConfig.list_invoices_

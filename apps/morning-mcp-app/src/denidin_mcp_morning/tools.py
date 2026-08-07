@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import tiktoken
 from email_validator import EmailNotValidError, validate_email
@@ -25,6 +25,7 @@ from .formatters import (
     format_invoice_confirmation,
     format_invoice_details,
     format_invoice_list,
+    format_original_not_linked_to_client,
     format_too_many_clients_message,
     format_too_many_invoices_message,
 )
@@ -75,7 +76,7 @@ _STATUS_ALIASES = {
 
 
 def _build_create_invoice_payload(
-    client_name: str,
+    client_id: str,
     amount: float,
     description: str,
     due_date: Optional[str] = None,
@@ -83,6 +84,12 @@ def _build_create_invoice_payload(
     currency: str = "ILS",
 ) -> dict:
     """Map friendly create_invoice inputs onto a real Morning /documents payload.
+
+    Feature 027: `client_id` is a real, resolved Morning client_id (never a
+    bare name) — confirmed live (research.md Decision 1) that Morning
+    attaches the document to that real client record, populating
+    name/email/etc. server-side. Callers (create_invoice) MUST resolve the
+    client via `_resolve_client_for_document_creation` before calling this.
 
     Mirrors the shape the sandbox is known to accept (see the passing
     tests/integration/test_morning_sandbox_invoices_crud.py fixture): a single
@@ -103,7 +110,7 @@ def _build_create_invoice_payload(
         "description": description,
         "client": {
             "self": False,
-            "name": client_name,
+            "id": client_id,
         },
         "income": [
             {
@@ -131,7 +138,7 @@ def _build_create_invoice_payload(
 
 
 def _build_transaction_account_payload(
-    client_name: str,
+    client_id: str,
     amount: float,
     description: str,
     due_date: Optional[str] = None,
@@ -139,6 +146,11 @@ def _build_transaction_account_payload(
 ) -> dict:
     """Map create_transaction_account inputs onto a real Morning /documents
     payload for a type 300 ("חשבון עסקה") document.
+
+    Feature 027: `client_id` is a real, resolved Morning client_id (never a
+    bare name) - see _build_create_invoice_payload's docstring for the same
+    note; callers (create_transaction_account) MUST resolve via
+    `_resolve_client_for_document_creation` first.
 
     Per bugfix-014 Flow 4 (confirmed live): unlike a type 305 tax invoice,
     this document type carries NO VAT obligation - no vatType/vatRate field
@@ -157,7 +169,7 @@ def _build_transaction_account_payload(
         "description": description,
         "client": {
             "self": False,
-            "name": client_name,
+            "id": client_id,
         },
         "income": [
             {
@@ -194,17 +206,30 @@ def create_transaction_account(
 
     MCP tool: create_transaction_account (feature 021).
 
+    Feature 027: client_name is resolved to a real Morning client record
+    before anything is created (REQ-INV-001/002/003/005/011) - see
+    create_invoice's docstring for the full found/not-found/ambiguous/
+    non-exact-disclosure contract, reused identically here.
+
     Args:
         client: An authenticated MorningClient (injected).
-        client_name: Client name (Morning resolves/creates the client record).
+        client_name: Client name - resolved to a real client record, never
+            passed through as a bare string.
         amount: Amount in NIS - carries no VAT (see _build_transaction_account_payload).
         description: Service/product description.
         due_date: Optional due date, ISO format YYYY-MM-DD.
 
     Returns:
-        A Hebrew confirmation string with the document number and amount.
+        A Hebrew confirmation string with the document number and amount, or
+        a friendly refusal message (no document created) if the client
+        can't be resolved unambiguously.
     """
-    payload = _build_transaction_account_payload(client_name, amount, description, due_date)
+    client_name = _normalize_hebrew_geresh(client_name)
+    resolution = _resolve_client_for_document_creation(client, client_name)
+    if resolution.refusal_message is not None:
+        return resolution.refusal_message
+
+    payload = _build_transaction_account_payload(resolution.client_id, amount, description, due_date)
     response = client.create_invoice(payload)
 
     doc_id = str(
@@ -215,10 +240,11 @@ def create_transaction_account(
         or ""
     )
 
+    display_name = resolution.disclosure_name or client_name
     invoice = Invoice(
         id=doc_id,
         number=response.get("number"),
-        client_name=client_name,
+        client_name=display_name,
         amount=amount,
         total_amount=response.get("total", amount),
         currency=response.get("currency", "ILS"),
@@ -226,11 +252,14 @@ def create_transaction_account(
         status=response.get("status"),
         type=_TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
     )
-    return format_invoice_confirmation(invoice)
+    confirmation = format_invoice_confirmation(invoice)
+    if resolution.disclosure_name:
+        return f"מצאתי והשתמשתי בלקוח הבא: {resolution.disclosure_name}\n{confirmation}"
+    return confirmation
 
 
 def _build_combo_document_payload(
-    client_name: str,
+    client_id: str,
     amount: float,
     description: str,
     vat_included: bool = True,
@@ -238,6 +267,11 @@ def _build_combo_document_payload(
 ) -> dict:
     """Map create_combo_document inputs onto a real Morning /documents
     payload for a type 320 ("חשבונית מס/קבלה") combo invoice+receipt.
+
+    Feature 027: `client_id` is a real, resolved Morning client_id (never a
+    bare name) - see _build_create_invoice_payload's docstring for the same
+    note; callers (create_combo_document) MUST resolve via
+    `_resolve_client_for_document_creation` first.
 
     Per bugfix-014 Flow 1: this document is issued when payment is immediate
     (cash/card/instant transfer at time of sale) - self-contained, always
@@ -258,7 +292,7 @@ def _build_combo_document_payload(
         "description": description,
         "client": {
             "self": False,
-            "name": client_name,
+            "id": client_id,
         },
         "income": [
             {
@@ -294,17 +328,30 @@ def create_combo_document(
 
     MCP tool: create_combo_document (feature 021).
 
+    Feature 027: client_name is resolved to a real Morning client record
+    before anything is created (REQ-INV-001/002/003/005/011) - see
+    create_invoice's docstring for the full found/not-found/ambiguous/
+    non-exact-disclosure contract, reused identically here.
+
     Args:
         client: An authenticated MorningClient (injected).
-        client_name: Client name (Morning resolves/creates the client record).
+        client_name: Client name - resolved to a real client record, never
+            passed through as a bare string.
         amount: Amount in NIS, already received.
         description: Service/product description.
         vat_included: Whether VAT is included in the amount (default True).
 
     Returns:
-        A Hebrew confirmation string with the document number and amount.
+        A Hebrew confirmation string with the document number and amount, or
+        a friendly refusal message (no document created) if the client
+        can't be resolved unambiguously.
     """
-    payload = _build_combo_document_payload(client_name, amount, description, vat_included)
+    client_name = _normalize_hebrew_geresh(client_name)
+    resolution = _resolve_client_for_document_creation(client, client_name)
+    if resolution.refusal_message is not None:
+        return resolution.refusal_message
+
+    payload = _build_combo_document_payload(resolution.client_id, amount, description, vat_included)
     response = client.create_invoice(payload)
 
     doc_id = str(
@@ -315,17 +362,21 @@ def create_combo_document(
         or ""
     )
 
+    display_name = resolution.disclosure_name or client_name
     invoice = Invoice(
         id=doc_id,
         number=response.get("number"),
-        client_name=client_name,
+        client_name=display_name,
         amount=amount,
         total_amount=response.get("total", amount),
         currency=response.get("currency", "ILS"),
         status=response.get("status"),
         type=_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
     )
-    return format_invoice_confirmation(invoice)
+    confirmation = format_invoice_confirmation(invoice)
+    if resolution.disclosure_name:
+        return f"מצאתי והשתמשתי בלקוח הבא: {resolution.disclosure_name}\n{confirmation}"
+    return confirmation
 
 
 def create_invoice(
@@ -340,18 +391,37 @@ def create_invoice(
 
     MCP tool: create_invoice (contracts/create_invoice.json, user-stories.md US1).
 
+    Feature 027 (REQ-INV-001/002/003/005/011): client_name is resolved to a
+    real Morning client record via `_resolve_client_for_document_creation`
+    before anything is created - never passed through as a bare string:
+    - Exactly one match (exact or non-exact/fuzzy) -> the document is
+      attached to that real client's id; a non-exact match's real name is
+      disclosed in the confirmation reply.
+    - Zero matches -> no document is created; a friendly "client not found"
+      message is returned instead.
+    - More than one match -> no document is created; a disambiguation
+      message listing the real candidates is returned instead.
+
     Args:
         client: An authenticated MorningClient (injected).
-        client_name: Client name (Morning resolves/creates the client record).
+        client_name: Client name - resolved to a real client record, never
+            passed through as a bare string.
         amount: Invoice amount in NIS.
         description: Service/product description.
         due_date: Optional due date, ISO format YYYY-MM-DD.
         vat_included: Whether VAT is included in the amount (default True).
 
     Returns:
-        A Hebrew confirmation string with the invoice number, amount, and status.
+        A Hebrew confirmation string with the invoice number, amount, and
+        status, or a friendly refusal message (no document created) if the
+        client can't be resolved unambiguously.
     """
-    payload = _build_create_invoice_payload(client_name, amount, description, due_date, vat_included)
+    client_name = _normalize_hebrew_geresh(client_name)
+    resolution = _resolve_client_for_document_creation(client, client_name)
+    if resolution.refusal_message is not None:
+        return resolution.refusal_message
+
+    payload = _build_create_invoice_payload(resolution.client_id, amount, description, due_date, vat_included)
     response = client.create_invoice(payload)
 
     invoice_id = str(
@@ -362,29 +432,47 @@ def create_invoice(
         or ""
     )
 
+    display_name = resolution.disclosure_name or client_name
     invoice = Invoice(
         id=invoice_id,
         number=response.get("number"),
-        client_name=client_name,
+        client_name=display_name,
         amount=amount,
         total_amount=response.get("total", amount),
         currency=response.get("currency", "ILS"),
         due_date=due_date,
         status=response.get("status"),
     )
-    return format_invoice_confirmation(invoice)
+    confirmation = format_invoice_confirmation(invoice)
+    if resolution.disclosure_name:
+        return f"מצאתי והשתמשתי בלקוח הבא: {resolution.disclosure_name}\n{confirmation}"
+    return confirmation
 
 
 def _map_list_invoices_filters(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     client_name: Optional[str] = None,
+    number: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Map friendly list_invoices filters onto Morning's real /documents/search params.
 
     Key names (fromDate/toDate/clientName) are proven against the sandbox by
     tests/integration/test_morning_sandbox_invoices_crud.py. `status` is
     deliberately NOT sent server-side — see _matches_status.
+
+    `number` (bugfix, 2026-08-07): Morning's real /documents/search endpoint
+    has always accepted a `number` filter (confirmed via the checked-in
+    Postman collection's own "Search Documents" example - a bare int, e.g.
+    `"number": 12001`) - this was never wired up here, so any reference to
+    an invoice by its human-visible number alone (no client name/date) had
+    no real way to resolve short of an unfiltered list_invoices call, which
+    fails outright once the sandbox holds more documents than the fetch cap
+    (_LIST_INVOICES_MAX_ITEMS). `number` is accepted here as a string (the
+    natural shape a model/user provides, e.g. "51365") and converted to the
+    int Morning's API actually expects; a non-numeric value is dropped
+    rather than sent (Morning would reject it, and silently sending a
+    string risks matching nothing with no clear error).
     """
     params: Dict[str, Any] = {}
     if from_date:
@@ -393,6 +481,11 @@ def _map_list_invoices_filters(
         params["toDate"] = to_date
     if client_name:
         params["clientName"] = client_name
+    if number:
+        try:
+            params["number"] = int(number)
+        except (TypeError, ValueError):
+            logger.warning("Ignoring non-numeric invoice number filter: %r", number)
     return params
 
 
@@ -456,6 +549,7 @@ def list_invoices(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     client_name: Optional[str] = None,
+    number: Optional[str] = None,
     token_budget: int = _LIST_INVOICES_TOKEN_BUDGET,
 ) -> str:
     """List/search invoices and return a Hebrew, human-readable result.
@@ -480,6 +574,9 @@ def list_invoices(
         from_date: Optional start date, ISO format YYYY-MM-DD.
         to_date: Optional end date, ISO format YYYY-MM-DD.
         client_name: Optional client-name filter.
+        number: Optional exact document-number filter (e.g. "51365") - the
+            real Morning API's own `number` search field (bugfix, 2026-08-07),
+            previously never wired up here. Non-numeric values are ignored.
         token_budget: Max estimated tiktoken size of the formatted reply
             before truncation (REQ-INVOICE-010: config-driven in
             production via MorningMCPConfig.list_invoices_token_budget,
@@ -492,7 +589,7 @@ def list_invoices(
         message if none match, or a "too many, narrow your search" message
         if the real total exceeds the fetch cap.
     """
-    params = _map_list_invoices_filters(from_date, to_date, client_name)
+    params = _map_list_invoices_filters(from_date, to_date, client_name, number)
     first_page = client.list_invoices(params=params)
     raw_items = _extract_items(first_page)
     page_info = first_page if isinstance(first_page, dict) else {}
@@ -557,9 +654,13 @@ def _build_cancellation_payload(
     caller override the mirrored defaults (feature 021: standalone,
     partial credit notes are a real Morning capability, not just a full
     cancellation side effect of update_invoice_status).
+
+    Feature 027 (REQ-INV-012): reuses `original`'s real client_id instead of
+    rebuilding a bare-name client object - callers (create_credit_note) MUST
+    check `_extract_linked_client_id(original)` and refuse before calling
+    this if it's None (a pre-feature, bare-name-only original).
     """
     today = datetime.now(timezone.utc).date().isoformat()
-    client_info = original.get("client") or {}
     income_items = original.get("income") or []
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
@@ -583,7 +684,7 @@ def _build_cancellation_payload(
         "linkedDocumentIds": [original_id] if original_id else [],
         "client": {
             "self": False,
-            "name": client_info.get("name"),
+            "id": _extract_linked_client_id(original),
         },
         "income": [
             {
@@ -624,13 +725,18 @@ def create_credit_note(
         description: Optional override — defaults to a generated cancellation note.
 
     Returns:
-        A Hebrew confirmation string with the new credit note's number.
+        A Hebrew confirmation string with the new credit note's number, or a
+        friendly refusal message (no document created, REQ-INV-013) if the
+        original isn't linked to a real client record.
 
     Raises:
         Any exception raised by `client.get_invoice` if `original_invoice_id`
         does not resolve to a real document (propagated, not swallowed).
     """
     original = client.get_invoice(original_invoice_id)
+    if _extract_linked_client_id(original) is None:
+        return format_original_not_linked_to_client()
+
     payload = _build_cancellation_payload(original, amount=amount, description=description)
     credit_response = client.create_invoice(payload)
 
@@ -658,9 +764,13 @@ def _build_payment_receipt_payload(original: dict, amount: Optional[float] = Non
     then flips the original's status automatically (verified live: None -> 1).
     `amount` lets a caller issue a partial-payment receipt (feature 021:
     standalone create_receipt) instead of always closing the full amount.
+
+    Feature 027 (REQ-INV-012): reuses `original`'s real client_id instead of
+    rebuilding a bare-name client object - callers (create_receipt) MUST
+    check `_extract_linked_client_id(original)` and refuse before calling
+    this if it's None (a pre-feature, bare-name-only original).
     """
     today = datetime.now(timezone.utc).date().isoformat()
-    client_info = original.get("client") or {}
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
     total_amount = original.get("total")
@@ -677,7 +787,7 @@ def _build_payment_receipt_payload(original: dict, amount: Optional[float] = Non
         "signed": True,
         "description": f"תשלום עבור חשבונית מספר {original_number or original_id}",
         "linkedDocumentIds": [original_id] if original_id else [],
-        "client": {"self": False, "name": client_info.get("name")},
+        "client": {"self": False, "id": _extract_linked_client_id(original)},
         "payment": [{"type": 1, "price": receipt_amount, "date": today}],
     }
 
@@ -718,9 +828,13 @@ def _build_combo_closing_payload(
     Morning silently applied - confirmed live: a 40.0 item with no vatRate
     became a real 47.2 "amount" owed; closing for 40.0 instead of 47.2 left
     the original genuinely underpaid and its status correctly never flipped.
+
+    Feature 027 (REQ-INV-012): reuses `original`'s real client_id instead of
+    rebuilding a bare-name client object - callers (close_transaction_account)
+    MUST check `_extract_linked_client_id(original)` and refuse before
+    calling this if it's None (a pre-feature, bare-name-only original).
     """
     today = datetime.now(timezone.utc).date().isoformat()
-    client_info = original.get("client") or {}
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
     total_amount = original.get("total")
@@ -748,7 +862,7 @@ def _build_combo_closing_payload(
         "linkedDocumentIds": [original_id] if original_id else [],
         "client": {
             "self": False,
-            "name": client_info.get("name"),
+            "id": _extract_linked_client_id(original),
         },
         "income": [
             {
@@ -806,7 +920,9 @@ def close_transaction_account(
             (runtime_constitution.md), not this function's.
 
     Returns:
-        A Hebrew confirmation string with the new combo document's number.
+        A Hebrew confirmation string with the new combo document's number,
+        or a friendly refusal message (no document created, REQ-INV-013) if
+        the original isn't linked to a real client record.
 
     Raises:
         ValueError: If the original document's type is not 300 (transaction
@@ -826,6 +942,11 @@ def close_transaction_account(
     if amount is None and original.get("status") in _CLOSED_STATUS_CODES:
         # Already closed — idempotent no-op, avoid creating a duplicate closing document.
         return format_invoice_confirmation(Invoice.model_validate(original))
+
+    if _extract_linked_client_id(original) is None:
+        # Pre-feature, bare-name-only original - refuse rather than fall
+        # back to rebuilding a bare-name client object (REQ-INV-013).
+        return format_original_not_linked_to_client()
 
     payload = _build_combo_closing_payload(
         original, amount=amount, description=description, vat_included=vat_included
@@ -879,7 +1000,9 @@ def create_receipt(
             for backdating support.
 
     Returns:
-        A Hebrew confirmation string with the new receipt's number.
+        A Hebrew confirmation string with the new receipt's number, or a
+        friendly refusal message (no document created, REQ-INV-013) if the
+        original isn't linked to a real client record.
 
     Raises:
         ValueError: If the original document's type is not 305 (tax
@@ -906,6 +1029,11 @@ def create_receipt(
         # Already paid — idempotent no-op, avoid creating a duplicate receipt.
         return format_invoice_confirmation(Invoice.model_validate(original))
 
+    if _extract_linked_client_id(original) is None:
+        # Pre-feature, bare-name-only original - refuse rather than fall
+        # back to rebuilding a bare-name client object (REQ-INV-013).
+        return format_original_not_linked_to_client()
+
     payload = _build_payment_receipt_payload(original, amount=amount)
     receipt_response = client.create_invoice(payload)
 
@@ -919,6 +1047,30 @@ _ISRAELI_PHONE_MOBILE_LENGTH = 10  # 0 + 3-digit prefix + 7 digits, e.g. 050-123
 _ISRAELI_PHONE_LANDLINE_LENGTH = 9  # 0 + 1-digit area code + 7 digits, e.g. 02-1234567
 
 
+# Bugfix (2026-08-07, found while verifying Feature 027): the model does not
+# consistently type a Hebrew consonant-modifier apostrophe the same way
+# across turns - e.g. add_client sees a plain ASCII apostrophe ("סידורוביץ'")
+# but a later turn's create_invoke call reconstructs the same name using the
+# correct Hebrew geresh punctuation mark ("סידורוביץ׳", U+05F3) instead, or
+# vice versa. Since Morning's real client search is sensitive to this exact
+# character (confirmed live: a full-name query with the "wrong" variant
+# returned zero matches even though the client existed and a shorter,
+# punctuation-free query found it fine), that silent inconsistency caused a
+# real, existing client to be reported as "not found". Every client name is
+# now normalized to the single correct Hebrew form (geresh, never a plain or
+# typographic apostrophe) at every write and lookup boundary, so resolution
+# is robust to whichever variant was actually typed.
+_HEBREW_GERESH = "׳"  # ׳
+_APOSTROPHE_VARIANTS = ("'", "’")  # ASCII ' and typographic '
+
+
+def _normalize_hebrew_geresh(name: str) -> str:
+    """Replace any apostrophe-like character with the correct Hebrew geresh."""
+    for variant in _APOSTROPHE_VARIANTS:
+        name = name.replace(variant, _HEBREW_GERESH)
+    return name
+
+
 def _resolve_client_by_name(client: MorningClient, name: str) -> Tuple[Optional[Client], List[Client]]:
     """Resolve a client by name via Search Clients (REQ-CLIENT-003/007).
 
@@ -927,7 +1079,7 @@ def _resolve_client_by_name(client: MorningClient, name: str) -> Tuple[Optional[
     - 1 match: (client, [client])
     - >1 matches: (None, [client1, client2, ...]) - caller must disambiguate, never guess.
     """
-    response = client.search_clients({"name": name})
+    response = client.search_clients({"name": _normalize_hebrew_geresh(name)})
     items = response.get("items") or []
     candidates = [Client.model_validate(item) for item in items]
     if len(candidates) == 1:
@@ -937,13 +1089,71 @@ def _resolve_client_by_name(client: MorningClient, name: str) -> Tuple[Optional[
 
 def _is_exact_name_match(resolved_name: str, queried_name: str) -> bool:
     """Whether a resolved client's stored name is identical (case-
-    insensitive, whitespace-trimmed) to what was searched for. Morning's
-    real search is a token-prefix match (confirmed live, research.md
-    Decision 12) - a single non-ambiguous match can still be a partial/
-    prefix reference, not the literal stored name, so callers must
-    distinguish the two before deciding whether to explicitly disclose
-    which client was found."""
-    return resolved_name.strip().casefold() == queried_name.strip().casefold()
+    insensitive, whitespace-trimmed, apostrophe/geresh-normalized) to what
+    was searched for. Morning's real search is a token-prefix match
+    (confirmed live, research.md Decision 12) - a single non-ambiguous match
+    can still be a partial/prefix reference, not the literal stored name, so
+    callers must distinguish the two before deciding whether to explicitly
+    disclose which client was found. Normalizing both sides here (not just
+    at the search boundary) keeps this comparison correct even against an
+    older client record stored before this normalization existed."""
+    return _normalize_hebrew_geresh(resolved_name.strip().casefold()) == _normalize_hebrew_geresh(
+        queried_name.strip().casefold()
+    )
+
+
+class ClientResolution(NamedTuple):
+    """Result of resolving a Group A document-creation tool's free-text
+    client_name to a real Morning client (feature 027, REQ-INV-001/002/003/
+    005/011).
+
+    Exactly one of (client_id, refusal_message) is set:
+    - Resolved (0 or 1... well, exactly 1 match): client_id is set;
+      disclosure_name is set only when the match was non-exact (fuzzy/
+      substring), signalling the caller must disclose it before/with the
+      confirmation reply; refusal_message is None.
+    - Not found (0 matches) or ambiguous (>1 matches): client_id is None,
+      refusal_message holds the friendly Hebrew text to return as-is (no
+      document creation call should be made), disclosure_name is None.
+    """
+
+    client_id: Optional[str]
+    disclosure_name: Optional[str]
+    refusal_message: Optional[str]
+
+
+def _resolve_client_for_document_creation(client: MorningClient, client_name: str) -> ClientResolution:
+    """Resolve a Group A document-creation tool's client_name to a real
+    client_id, or a friendly refusal message (feature 027).
+
+    Reuses Feature 026's `_resolve_client_by_name`/`_is_exact_name_match`
+    unchanged - this is a thin combination of the two into the single
+    branch document-creation tools need, never a new Morning API call.
+    """
+    resolved, candidates = _resolve_client_by_name(client, client_name)
+    if resolved is not None:
+        disclosure_name = None if _is_exact_name_match(resolved.name, client_name) else resolved.name
+        return ClientResolution(client_id=resolved.id, disclosure_name=disclosure_name, refusal_message=None)
+    if candidates:
+        return ClientResolution(
+            client_id=None, disclosure_name=None, refusal_message=format_ambiguous_clients_message(candidates)
+        )
+    return ClientResolution(client_id=None, disclosure_name=None, refusal_message=format_client_not_found())
+
+
+def _extract_linked_client_id(original: dict) -> Optional[str]:
+    """Read a real client_id off an already-fetched linked original
+    document, if present (feature 027, REQ-INV-012/013).
+
+    Used by Group B tools (create_credit_note/create_receipt/
+    close_transaction_account), which derive their client from the
+    original document they're linked to rather than searching by name.
+    Returns None when the original's client sub-object has no id at all
+    (a pre-feature, bare-name-only attachment) - callers must refuse
+    rather than fall back to rebuilding a bare-name object.
+    """
+    client_info = original.get("client") or {}
+    return client_info.get("id")
 
 
 def _validate_email(email: str) -> str:
@@ -1005,15 +1215,16 @@ def list_clients(client: MorningClient, name: Optional[str] = None) -> str:
 
     Args:
         client: An authenticated MorningClient (injected).
-        name: Optional name filter, passed straight through to Morning's
-            real search (token-prefix match) to narrow results server-side.
+        name: Optional name filter (apostrophe/geresh-normalized - see
+            `_normalize_hebrew_geresh`), passed to Morning's real search
+            (token-prefix match) to narrow results server-side.
 
     Returns:
         A Hebrew string listing matching clients, a friendly "no clients"
         message if none, or a "too many, narrow your search" message with
         the real total if the count exceeds the display cap.
     """
-    payload: Dict[str, Any] = {"name": name} if name else {}
+    payload: Dict[str, Any] = {"name": _normalize_hebrew_geresh(name)} if name else {}
     first_page = client.search_clients(payload)
     total = first_page.get("total", 0) or 0
 
@@ -1092,7 +1303,9 @@ def add_client(
 
     Args:
         client: An authenticated MorningClient (injected).
-        name: Client/company name (required).
+        name: Client/company name (required, apostrophe/geresh-normalized -
+            see `_normalize_hebrew_geresh` - so the stored record always uses
+            the correct Hebrew form regardless of which variant was typed).
         email: Client email (required, validated).
         phone: Client phone number (required, normalized to Israeli format).
         tax_id: Optional Israeli business tax ID (ע"מ).
@@ -1104,11 +1317,12 @@ def add_client(
     Raises:
         ValueError: if email or phone fails validation/normalization.
     """
+    normalized_name = _normalize_hebrew_geresh(name)
     validated_email = _validate_email(email)
     normalized_phone = _normalize_israeli_phone(phone)
-    payload = _build_add_client_payload(name, validated_email, normalized_phone, tax_id)
+    payload = _build_add_client_payload(normalized_name, validated_email, normalized_phone, tax_id)
     client.add_client(payload)
-    return f"נוצר לקוח חדש: {name}"
+    return f"נוצר לקוח חדש: {normalized_name}"
 
 
 def _build_update_client_payload(
@@ -1152,8 +1366,10 @@ def update_client(
 
     Args:
         client: An authenticated MorningClient (injected).
-        name: Current name of the client to update (required, resolves the target).
-        new_name: Optional new name value.
+        name: Current name of the client to update (required, resolves the
+            target - apostrophe/geresh-normalized before resolution, see
+            `_normalize_hebrew_geresh`).
+        new_name: Optional new name value (apostrophe/geresh-normalized).
         email: Optional new email (validated).
         phone: Optional new phone (normalized to Israeli format).
         tax_id: Optional new Israeli business tax ID (ע"מ).
@@ -1176,12 +1392,13 @@ def update_client(
         return format_client_not_found()
 
     is_exact_match = _is_exact_name_match(resolved.name, name)
+    normalized_new_name = _normalize_hebrew_geresh(new_name) if new_name else None
     validated_email = _validate_email(email) if email else None
     normalized_phone = _normalize_israeli_phone(phone) if phone else None
-    payload = _build_update_client_payload(new_name, validated_email, normalized_phone, tax_id)
+    payload = _build_update_client_payload(normalized_new_name, validated_email, normalized_phone, tax_id)
     client.update_client(resolved.id, payload)
 
-    display_name = new_name or resolved.name
+    display_name = normalized_new_name or resolved.name
     if is_exact_match:
         return f"עודכנו פרטי הלקוח: {display_name}"
     return f"מצאתי ועדכנתי את הלקוח הבא: {resolved.name}\nהפרטים שעודכנו: {display_name}"

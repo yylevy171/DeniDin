@@ -22,6 +22,7 @@ from mcp.client.streamable_http import streamable_http_client
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
 from denidin_mcp_morning.server import build_asgi_app, create_server
+from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
@@ -99,7 +100,15 @@ def test_mcp_client_can_invoke_create_invoice_tool_end_to_end(server_url):
     """Proves dispatch, not just registration: a real MCP tool call reaches
     tools.create_invoice, which hits the real Morning sandbox."""
     unique_marker = f"DENIDIN_E2E_TEST_{int(datetime.now(timezone.utc).timestamp())}"
-    client_name = f"Test Client {unique_marker}"
+    # Feature 027: create_invoice now resolves client_name against a real
+    # client record before creating anything - seed one first, via a
+    # separate direct MorningClient (the MCP server under test has its own
+    # internal client instance, not exposed to this test).
+    config = load_config(CONFIG_PATH)
+    seeding_client = MorningClient(
+        api_key_id=config.api_key_id, api_key_secret=config.api_key_secret, base_url=config.api_url
+    )
+    _, client_name = seed_real_client(seeding_client, unique_marker)
 
     async def _run():
         async with streamable_http_client(server_url) as (read, write, _get_session_id):

@@ -43,12 +43,18 @@ class _FakeMorningClient:
 
 def _raw_invoice(doc_id, doc_type, status_code, total=1000, number=None):
     """A Morning single-document-GET-shaped raw item (see models.py's Invoice
-    mapping - status as an int code, per models._MORNING_STATUS_CODES)."""
+    mapping - status as an int code, per models._MORNING_STATUS_CODES).
+
+    Feature 027 (REQ-INV-012): `client.id` is present, matching any document
+    created on/after this feature (the "preserve" path) - this file isn't
+    about client-attachment behavior at all, so it always uses the
+    already-attached shape rather than exercising the refusal path (that's
+    covered directly in test_tools_document_creation.py)."""
     return {
         "id": doc_id,
         "number": number or doc_id,
         "type": doc_type,
-        "client": {"name": "לקוח בדיקה"},
+        "client": {"id": "client-1", "name": "לקוח בדיקה"},
         "amount": total,
         "total": total,
         "status": status_code,  # 0 = unpaid, 1 = closed/paid
