@@ -13,7 +13,7 @@ from whatsapp_chatbot_python import Notification
 from openai import OpenAI
 from src.models.config import AppConfiguration
 from src.utils.logger import get_logger
-from src.utils.green_api_bot import DeniDinGreenAPIBot
+from src.utils.green_api_bot import DeniDinGreenAPIBot, mark_message_read
 from src.constants.error_messages import (
     APP_NOT_READY_RETRY_LATER,
     UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
@@ -341,7 +341,17 @@ def initialize_app(config_dict: dict) -> DeniDin:
         
         # Update denidin with cleanup thread reference
         denidin.cleanup_thread = cleanup_thread
-    
+
+    # Feature 045: mark every non-blocked sender's incoming message as read, as early as
+    # possible (before route_event dispatches to any handler) - see
+    # src/utils/green_api_bot.py's mark_message_read/on_notification_received.
+    def _on_notification_received(body: dict) -> None:
+        chat_id = body.get("senderData", {}).get("chatId", "")
+        is_blocked = bool(chat_id) and ai_handler.user_manager.get_user(chat_id).is_blocked
+        mark_message_read(bot, body, is_blocked=is_blocked)
+
+    bot.on_notification_received = _on_notification_received
+
     return denidin
 
 

@@ -126,6 +126,45 @@ class TestRealGreenAPIConnectivity:
         except Exception as e:
             pytest.fail(f"Green API sendMessage failed with real API call: {e}")
 
+    def test_greenapi_readchat_marks_real_message_read(self, green_api_client):
+        """
+        Feature 045: calls the real Green API readChat endpoint against the most recent
+        real incoming message in this instance's journal, and asserts on Green API's own
+        structured acknowledgment ({'setRead': True}).
+
+        This is the same real call sequence (journals.lastIncomingMessages ->
+        marking.readChat) manually confirmed during speckit.clarify (2026-08-07), including
+        a human visually confirming the targeted message turned blue on their real device.
+        That visual confirmation is NOT re-asserted here - Green API's REST API has no way
+        to query the recipient-visible checkmark render itself, only its own acknowledgment
+        that the readChat call was accepted. This test locks in that acknowledgment as a
+        regression guard.
+        """
+        print(f"\n[Real API Test] Testing Green API readChat...")
+        print(f"[Real API Test] This is a REAL API call (not mocked)")
+
+        recent = green_api_client.journals.lastIncomingMessages(minutes=1440)
+        if not isinstance(recent.data, list) or not recent.data:
+            pytest.skip("No real incoming messages in the last 24h to mark as read")
+
+        target = recent.data[-1]
+        chat_id = target["chatId"]
+        id_message = target["idMessage"]
+
+        try:
+            response = green_api_client.marking.readChat(chat_id, idMessage=id_message)
+
+            assert response.code == 200, f"readChat returned non-200: {response.code}"
+            assert isinstance(response.data, dict), f"Unexpected response shape: {response.data}"
+            assert response.data.get("setRead") is True, (
+                f"readChat did not confirm setRead=True: {response.data}"
+            )
+            print(f"[Real API Test] ✓ readChat confirmed: {response.data}")
+            print(f"[Real API Test]   chatId={chat_id} idMessage={id_message}")
+
+        except Exception as e:
+            pytest.fail(f"Green API readChat failed with real API call: {e}")
+
 
 class TestRealOpenAPIConnectivity:
     """Test real OpenAI API connectivity - NO MOCKS."""

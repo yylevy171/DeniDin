@@ -176,6 +176,9 @@ def _build_pending_approval_fallback_text(tool_name: str, arguments_json: str) -
 _AFFIRMATIVE_REPLIES = {
     "yes", "yep", "yeah", "sure", "ok", "okay", "go ahead",
     "כן", "אישור", "בסדר", "אוקיי", "אוקי",
+    # Feature 046: additional common Hebrew affirmatives - "מאשר"/"מאשרת" ("I
+    # confirm", masc./fem.) plus "בטח"/"סבבה", not previously recognized.
+    "מאשר", "מאשרת", "בטח", "סבבה",
 }
 
 
