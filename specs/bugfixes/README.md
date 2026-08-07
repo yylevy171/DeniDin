@@ -79,6 +79,7 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 | 013 | Client Name Garbling and Unrequested Date Narrowing | - | Open (documentation only) | - |
 | 014 | list_invoices Only Returns One of Many | - | Open (documentation only) | - |
 | 022 | OpenAI MCP Approval Duplicate Execution | P0 | Open (interim mitigation deployed, true prevention deferred) | feature/033-ledger-event-persistence |
+| 026 | Morning Documents Created Unsigned (blocks email sharing) | P0 | Root cause approved, test-gap analysis next | bugfix/026-morning-documents-created-unsigned |
 
 ## Obsolete Bugfixes (`specs/obsolete/bugfixes/`)
 
