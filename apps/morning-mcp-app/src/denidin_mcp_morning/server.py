@@ -272,8 +272,10 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
         client_name: Optional[str] = None,
+        number: Optional[str] = None,
     ) -> str:
-        """List/search invoices with optional filters (status/date range/client name)."""
+        """List/search invoices with optional filters (status/date range/client
+        name/exact document number - e.g. "51365")."""
         return _call_with_error_boundary(
             tools.list_invoices,
             morning_client,
@@ -281,6 +283,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             from_date,
             to_date,
             client_name,
+            number,
             config.list_invoices_token_budget,
         )
 

@@ -16,6 +16,7 @@ import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
+from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
@@ -40,9 +41,9 @@ def paid_invoice(morning_client):
     from denidin_mcp_morning.tools import _build_create_invoice_payload, create_receipt
 
     unique_marker = f"DENIDIN_LINKEDDOCS_TEST_{int(datetime.now(timezone.utc).timestamp())}"
-    client_name = f"Test Client {unique_marker}"
+    client_id, client_name = seed_real_client(morning_client, unique_marker)
     payload = _build_create_invoice_payload(
-        client_name=client_name,
+        client_id=client_id,
         amount=77.0,
         description=f"Linked documents test {unique_marker}",
     )

@@ -31,7 +31,17 @@ import json
 
 import pytest
 
-from .denidin_mcp_e2e_helpers import GODFATHER_CHAT_ID, _HEBREW_FIRST_NAMES, _calls_for, _send_turn, _unique_client_name
+from .denidin_mcp_e2e_helpers import (
+    GODFATHER_CHAT_ID,
+    _HEBREW_FIRST_NAMES,
+    _calls_for,
+    _random_amount,
+    _random_description,
+    _seed_client_via_conversation,
+    _send_turn,
+    _send_turn_and_approve,
+    _unique_client_name,
+)
 
 # ============================================================================
 # list_invoices
@@ -538,3 +548,77 @@ def test_godfather_receives_partial_list_within_token_budget(denidin_app):
     )
 
 
+
+
+# ============================================================================
+# Bugfix (2026-08-07): searching for an invoice by its number alone
+# ("חפש לי את חשבונית X") - Morning's real /documents/search endpoint has
+# always accepted a `number` filter; it was never wired up in list_invoices,
+# so a bare-number reference had no real way to resolve once the sandbox
+# grew past the fetch cap. Discovered via feature 027's test work.
+# ============================================================================
+
+@pytest.mark.billed
+def test_godfather_searches_invoice_by_number_finds_it(denidin_app):
+    """Positive case: godfather asks to find an invoice by its real number
+    alone (no client name, no date) - the model must resolve it via
+    list_invoices' number filter and show the real details, not refuse with
+    a 'too many results' narrowing request."""
+    client_name = _unique_client_name()
+    amount = _random_amount()
+    description = _random_description()
+    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_NUMSEARCH_SEED")
+
+    _, (seed_response, seed_ai_response) = _send_turn_and_approve(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
+        id_prefix="E2E_NUMSEARCH_SEED",
+    )
+    create_calls = _calls_for(seed_ai_response, "create_invoice")
+    assert create_calls and create_calls[0]["error"] is None, (
+        f"Seed create_invoice failed: {seed_ai_response.mcp_calls if seed_ai_response else None!r}"
+    )
+    output = create_calls[0]["output"] or ""
+    assert "#" in output, f"Could not find invoice number marker in output: {output!r}"
+    invoice_number = output.split("#")[1].splitlines()[0].strip()
+
+    response, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"חפש לי את חשבונית מספר {invoice_number}",
+        id_prefix="E2E_NUMSEARCH_FIND",
+    )
+    list_calls = _calls_for(ai_response, "list_invoices")
+
+    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert list_calls, (
+        f"Model never invoked list_invoices for a bare invoice-number search: "
+        f"{ai_response.mcp_calls if ai_response else None!r}"
+    )
+    assert "יותר מדי" not in response and "לצמצם" not in response, (
+        f"Bot refused to narrow a search that already gave an exact number: {response!r}"
+    )
+    assert invoice_number in response, (
+        f"Bot reply did not surface the found invoice's number {invoice_number!r}: {response!r}"
+    )
+    assert client_name in response, (
+        f"Bot reply did not surface the found invoice's real client name: {response!r}"
+    )
+
+
+@pytest.mark.billed
+def test_godfather_searches_invoice_by_number_not_found_is_friendly(denidin_app):
+    """Negative case: godfather asks for an invoice number that doesn't
+    exist - no crash, no fabricated result, a clear 'not found' reply."""
+    bogus_number = "88887777"
+
+    response, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"חפש לי את חשבונית מספר {bogus_number}",
+        id_prefix="E2E_NUMSEARCH_NOTFOUND",
+    )
+
+    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert "Traceback" not in response
+    assert bogus_number not in response or "לא נמצא" in response or "לא מצאתי" in response, (
+        f"Expected a friendly 'not found' reply for a nonexistent invoice number: {response!r}"
+    )

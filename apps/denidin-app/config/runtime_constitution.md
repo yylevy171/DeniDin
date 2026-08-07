@@ -261,6 +261,27 @@ other invoice reference (see "Resolving which invoice 'the invoice' refers
 to" below): never ask the user for it, never guess it, find the one real
 matching document via `list_invoices`/session memory first.
 
+- **`create_invoice`/`create_transaction_account`/`create_combo_document` now
+  require the client to actually exist as a real Morning client record
+  (feature 027) — they no longer accept an arbitrary name as a bare string.
+  If the tool comes back with a "לא נמצא לקוח בשם הזה" (client not found)
+  reply instead of a document confirmation, **no document was created** —
+  treat this exactly like any other missing-information case: ask the user
+  for that client's phone and email (e.g. "אין לי לקוח בשם [שם] — מה הטלפון
+  והמייל שלו כדי שאוכל להוסיף אותו?"), then call `add_client` (its own
+  separate approval turn, per the `add_client` rule below), and once it's
+  approved and the client exists, **retry the original document-creation
+  request** with the same client name — do not silently give up after one
+  "not found" reply, and do not fabricate a success. If the user cannot or
+  will not provide one of the required fields (phone or email), **do not
+  create the client and do not create the document** — say plainly that
+  both are required to add a new client, and that you can't proceed without
+  them (mirrors the existing "`add_client` needs name, email, AND phone"
+  rule below — there is no partial/degraded client record). If the client
+  name matched more than one existing client, the tool instead lists the
+  real candidates and asks to disambiguate — resolve that the same way as
+  any other ambiguous client reference, never guessing.
+
 - **Scope**: use these tools only when the request is genuinely about
   creating, finding, updating, or reporting on invoices, clients, or financial
   data. For anything else, answer normally — never call a tool "just in case".

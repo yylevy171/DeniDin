@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "create_receipt",
+  "type": "object",
+  "x-group": "B",
+  "x-client-resolution": "preserve-original-id-or-refuse",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/documents",
+    "notes": "Feature 027: identical client-preservation-or-refusal behavior to create_credit_note (same group, same rule - REQ-INV-012/013) - only the document type (400, receipt) and only-supports-type-305-originals check differ (unchanged from Feature 023)."
+  },
+  "properties": {
+    "original_invoice_id": {"type": "string", "description": "Morning document id of the invoice being paid. Its client sub-object must have a real id or this tool refuses (REQ-INV-013)."},
+    "amount": {"type": "number", "minimum": 0, "description": "Optional override - defaults to the original's full total."},
+    "payment_date": {"type": "string", "format": "date", "description": "Currently unused - reserved for backdating support (unchanged from Feature 023)."}
+  },
+  "required": ["original_invoice_id"],
+  "x-approval": "always"
+}

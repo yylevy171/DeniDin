@@ -319,6 +319,82 @@ def _send_turn_and_approve(
     return ask_result, approve_result
 
 
+def _fresh_nonexistent_client_name(chat_id: str, id_prefix: str, max_attempts: int = 5) -> str:
+    """Return a client name from `_unique_client_name()`'s real-name pool
+    that is CONFIRMED not to already exist as a real Morning client -
+    needed by any test whose premise is "this client doesn't exist yet"
+    (feature 027's not-found/refusal flows).
+
+    `_unique_client_name()`'s pool (565x591 = ~334K combinations) is
+    "unique enough" for tests that don't care whether the name happens to
+    coincide with a real pre-existing client (harmless collision before
+    feature 027 - every create_invoice call succeeded regardless of
+    whether the client existed). Feature 027 makes a collision visible: if
+    the randomly-picked name happens to already be a real client (the
+    sandbox accumulates real clients across every E2E run, growing over
+    time), a "client doesn't exist yet" test's whole premise silently
+    doesn't hold, and its actual outcome is indistinguishable from success
+    on a fresh flow (a real, observed 2026-08-07 failure). This checks via
+    a real, read-only get_client_details turn (no approval needed) before
+    returning, and retries with a new name on a genuine collision.
+    """
+    for _ in range(max_attempts):
+        candidate = _unique_client_name()
+        response, _ = _send_turn(
+            chat_id=chat_id,
+            text=f"פרטים על הלקוח {candidate}",
+            id_prefix=f"{id_prefix}_FRESHCHECK",
+        )
+        if response and ("לא נמצא" in response or "אין" in response):
+            return candidate
+        logger.warning(f"Name collision picking a fresh nonexistent client name: {candidate!r} already exists")
+    raise RuntimeError(f"Could not find a genuinely nonexistent client name after {max_attempts} attempts")
+
+
+def _seed_client_via_conversation(
+    chat_id: str,
+    client_name: str,
+    id_prefix: str,
+    email: Optional[str] = None,
+    phone: str = _SEED_PHONE,
+) -> Tuple[Optional[str], Optional[AIResponse]]:
+    """Seed a real Morning client via the real, two-turn `add_client`
+    conversational flow (Feature 026, approval-gated) and return the
+    APPROVE turn's (response, ai_response).
+
+    Feature 027 (mandatory client reference for document creation): every
+    create_invoice/create_transaction_account/create_combo_document call
+    now resolves its client_name against a real client record and refuses
+    if none exists - any test that needs "a client that already exists"
+    MUST seed it this way first. This is the ONLY way to create a client
+    from this E2E layer (the app-wall forbids importing morning-mcp-app's
+    MorningClient directly - see this module's own docstring) - there is no
+    faster raw-API shortcut available here, unlike the sandbox-level
+    integration tests in apps/morning-mcp-app.
+
+    Asserts the seed itself actually succeeded (fails loudly, not silently)
+    - a downstream test failure caused by a failed seed would otherwise be
+    misleading about what actually broke. Sleeps 3s afterward (search-index
+    lag, research.md Decision 8 - a cost-free local wait, cheaper than
+    retrying a whole billed conversational turn) before returning, so the
+    client is reliably resolvable by the very next turn.
+    """
+    seed_email = email or _random_seed_email()
+    _, (response, ai_response) = _send_turn_and_approve(
+        chat_id=chat_id,
+        text=f"תוסיף לקוח חדש בשם {client_name}, מייל {seed_email}, טלפון {phone}",
+        id_prefix=f"{id_prefix}_SEEDCLIENT",
+    )
+    add_calls = _calls_for(ai_response, "add_client")
+    assert add_calls and add_calls[0]["error"] is None, (
+        f"Failed to seed client {client_name!r} via add_client - cannot "
+        f"proceed with the rest of this test: "
+        f"{ai_response.mcp_calls if ai_response else None!r}"
+    )
+    time.sleep(3)
+    return response, ai_response
+
+
 def _send_turn_and_decline(
     chat_id: str, text: str, id_prefix: str, decline_text: str = "לא"
 ) -> Tuple[Optional[str], Optional[AIResponse]]:

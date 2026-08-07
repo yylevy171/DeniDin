@@ -32,6 +32,8 @@ from denidin_mcp_morning.tools import (
     get_invoice_details,
 )
 
+from tests.integration._seed_helpers import seed_real_client
+
 APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
 
@@ -61,9 +63,9 @@ def seeded_invoice(morning_client):
     """A real, freshly created tax invoice (type 305) - used as the
     reference/original document for the credit-note and receipt tests."""
     marker = _unique_marker("SEED")
-    client_name = f"Test Client {marker}"
+    client_id, client_name = seed_real_client(morning_client, marker)
     payload = _build_create_invoice_payload(
-        client_name=client_name,
+        client_id=client_id,
         amount=90.0,
         description=f"Seed invoice {marker}",
     )
@@ -75,7 +77,7 @@ def seeded_invoice(morning_client):
 
 def test_create_transaction_account_tool_sandbox(morning_client):
     marker = _unique_marker("TA")
-    client_name = f"Test Client {marker}"
+    _, client_name = seed_real_client(morning_client, marker)
 
     result = create_transaction_account(morning_client, client_name, 45.0, f"Transaction account {marker}")
     assert client_name.split()[-1] in result or "45" in result or "45.00" in result
@@ -98,7 +100,7 @@ def test_create_transaction_account_tool_sandbox(morning_client):
 
 def test_create_combo_document_tool_sandbox(morning_client):
     marker = _unique_marker("COMBO")
-    client_name = f"Test Client {marker}"
+    _, client_name = seed_real_client(morning_client, marker)
 
     create_combo_document(morning_client, client_name, 35.0, f"Combo document {marker}")
 
@@ -195,9 +197,9 @@ def seeded_transaction_account(morning_client):
     """A real, freshly created transaction account (type 300) - used as the
     reference/original document for close_transaction_account tests."""
     marker = _unique_marker("SEED_TA")
-    client_name = f"Test Client {marker}"
+    client_id, client_name = seed_real_client(morning_client, marker)
     payload = _build_transaction_account_payload(
-        client_name=client_name,
+        client_id=client_id,
         amount=40.0,
         description=f"Seed transaction account {marker}",
     )

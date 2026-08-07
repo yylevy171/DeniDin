@@ -1,5 +1,4 @@
-"""Helpers for tests/billed/ (and tests/integration/test_ngrok_tunnel.py) —
-real OpenAI-driven E2E tests (Phase 5, T021).
+"""Helpers for tests/billed/ — real OpenAI-driven E2E tests (Phase 5, T021).
 
 `ngrok_tunnel()` manages a real, ephemeral ngrok tunnel (free tier: an
 authtoken is required, but no paid plan — a reserved/static domain is only
@@ -36,6 +35,13 @@ NGROK_LOCAL_API = "http://127.0.0.1:4040/api/tunnels"
 # same guidance. Explicitly tells the model to stay out of these tools for
 # anything unrelated to invoicing — this is what
 # test_openai_does_not_invoke_mcp_tools_for_unrelated_prompt checks holds.
+# Extend this (not a second, competing constant) whenever a new tool needs
+# to be discoverable by these tests, or a new reliability nudge is needed —
+# 2026-08-07: added the "always attempt the tool call" clause below after
+# observing the model sometimes hedge with a plain-text confirmatory
+# question instead of calling create_invoice, mirroring the same rule
+# apps/denidin-app/config/runtime_constitution.md already carries in
+# production for exactly this reason.
 OPENAI_ASSISTANT_INSTRUCTIONS = (
     "You are a bookkeeping assistant with access to Morning (Green Invoice) "
     "invoice-management tools via MCP: create_invoice, create_transaction_account, "
@@ -47,7 +53,15 @@ OPENAI_ASSISTANT_INSTRUCTIONS = (
     "request. Use these tools only when the user's request is actually about "
     "creating, finding, updating, or reporting on invoices, clients, or "
     "financial data. For anything unrelated to invoicing, answer normally "
-    "without calling any tool."
+    "without calling any tool. "
+    "ALWAYS attempt the tool call itself, in the same turn as the request, the "
+    "instant you have what it needs. NEVER reply with only a plain-text "
+    "confirmatory question ('should I create this invoice?') and wait for the "
+    "user's next message before attempting the call - if a client name is "
+    "given, do not ask whether that client already exists or should be "
+    "created first; just call the document-creation tool directly and let it "
+    "tell you if the client needs to be created. The tool call itself is the "
+    "only thing that surfaces any needed confirmation or error."
 )
 
 

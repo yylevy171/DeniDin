@@ -65,6 +65,25 @@ from denidin_mcp_morning.server import build_asgi_app, create_server  # noqa: E4
 TEST_HOST = "127.0.0.1"
 TEST_PORT = 8792
 
+
+def _seed_client(morning_client: MorningClient, client_name: str, unique_marker: str) -> None:
+    """Create a real Morning client and wait until it's findable.
+
+    Feature 027: create_invoice now resolves client_name against a real
+    client record before creating anything - a prompt naming a
+    never-before-seen client would otherwise be refused. Seeds directly via
+    MorningClient (this file already imports it for verification, unlike
+    apps/denidin-app's E2E layer, which has no such access) rather than
+    routing through a second OpenAI-driven add_client call.
+    """
+    morning_client.add_client(
+        {"name": client_name, "emails": [f"{unique_marker}@example.com"], "phone": "050-1234567"}
+    )
+    for _ in range(12):
+        if morning_client.search_clients({"name": client_name}).get("items"):
+            return
+        time.sleep(1.5)
+
 # Same text model denidin-app uses (apps/denidin-app/config/config.dev.json's
 # `ai_model`), per user decision 2026-07-09.
 OPENAI_MODEL = "gpt-4o-mini"
@@ -157,6 +176,14 @@ def test_openai_invokes_create_invoice_via_remote_mcp(config, mcp_endpoint):
     unique_marker = f"DENIDIN_OPENAI_E2E_{int(datetime.now(timezone.utc).timestamp())}"
     client_name = f"Test Corp {unique_marker}"
 
+    # Feature 027: create_invoice now requires a real, pre-existing client.
+    morning_client = MorningClient(
+        api_key_id=config.api_key_id,
+        api_key_secret=config.api_key_secret,
+        base_url=config.api_url,
+    )
+    _seed_client(morning_client, client_name, unique_marker)
+
     openai_client = OpenAI(api_key=config.openai_api_key)
 
     response = openai_client.responses.create(
@@ -190,11 +217,6 @@ def test_openai_invokes_create_invoice_via_remote_mcp(config, mcp_endpoint):
 
     # Independently verify: a real document actually landed in the Morning
     # sandbox, not just that the model/tool claimed success.
-    morning_client = MorningClient(
-        api_key_id=config.api_key_id,
-        api_key_secret=config.api_key_secret,
-        base_url=config.api_url,
-    )
     found = False
     last_items = None
     for _ in range(12):
@@ -235,6 +257,14 @@ def test_openai_created_invoice_is_signed_per_real_morning_api(config, mcp_endpo
     unique_marker = f"DENIDIN_SIGNED_CHECK_{int(datetime.now(timezone.utc).timestamp())}"
     client_name = f"Test Corp {unique_marker}"
 
+    # Feature 027: create_invoice now requires a real, pre-existing client.
+    morning_client = MorningClient(
+        api_key_id=config.api_key_id,
+        api_key_secret=config.api_key_secret,
+        base_url=config.api_url,
+    )
+    _seed_client(morning_client, client_name, unique_marker)
+
     openai_client = OpenAI(api_key=config.openai_api_key)
 
     response = openai_client.responses.create(
@@ -268,11 +298,6 @@ def test_openai_created_invoice_is_signed_per_real_morning_api(config, mcp_endpo
     # Find the real document's internal id (not just the human-facing number
     # in the Hebrew confirmation text) by searching the sandbox directly,
     # same lookup-by-marker pattern as the sibling test above.
-    morning_client = MorningClient(
-        api_key_id=config.api_key_id,
-        api_key_secret=config.api_key_secret,
-        base_url=config.api_url,
-    )
     found_item = None
     for _ in range(12):
         resp = morning_client.list_invoices(params={"clientName": client_name})

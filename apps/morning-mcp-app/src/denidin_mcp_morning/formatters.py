@@ -224,6 +224,15 @@ def format_client_not_found() -> str:
     return "לא נמצא לקוח בשם הזה."
 
 
+def format_original_not_linked_to_client() -> str:
+    """Friendly Hebrew message when a Group B tool's linked original document
+    has no real client attached (feature 027, REQ-INV-013) - a pre-feature,
+    bare-name-only document. Deliberately does not imply a fix exists (no
+    "try again" phrasing) - this feature builds no remediation path
+    (spec.md Clarifications 2026-08-06)."""
+    return "לא ניתן להפיק מסמך מקושר עבור חשבונית זו - היא לא מקושרת ללקוח קיים במערכת."
+
+
 def format_too_many_invoices_message(total: int) -> str:
     """Hebrew message when list_invoices' real Morning total exceeds the
     fetch cap (user-stories.md US2, REQ-INVOICE-003) - states the real

@@ -13,6 +13,7 @@ from denidin_mcp_morning.formatters import (
     format_invoice_confirmation,
     format_invoice_details,
     format_invoice_list,
+    format_original_not_linked_to_client,
     format_too_many_invoices_message,
     translate_document_type,
     translate_payment_type,
@@ -225,3 +226,23 @@ def test_format_too_many_invoices_message_states_total_and_asks_to_narrow():
     assert "נמצאו 103" in message
     assert "חשבונית #" not in message
     assert "צמצם" in message or "לצמצם" in message
+
+
+# --- format_original_not_linked_to_client (feature 027, Group B refusal — REQ-INV-013) ---
+
+
+def test_format_original_not_linked_to_client_is_a_friendly_non_empty_message():
+    message = format_original_not_linked_to_client()
+
+    assert isinstance(message, str)
+    assert message  # non-empty
+
+
+def test_format_original_not_linked_to_client_does_not_imply_a_fix_exists():
+    """Constitution §X shape ('[what happened]. [what to do next].') - but
+    this feature deliberately offers no remediation path (spec.md
+    Clarifications 2026-08-06), so the message must not promise one."""
+    message = format_original_not_linked_to_client()
+
+    assert "נסה שוב" not in message  # "try again" - would falsely imply retrying helps
+    assert "לקוח" in message  # mentions the actual problem (client linkage), not a generic error
