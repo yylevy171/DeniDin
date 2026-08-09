@@ -19,7 +19,7 @@ fully done (see "What's NOT proven" below).
 | **A2** VAT required/defaulted | ✅ `vat_included` required on `create_transaction_account`; unconditional default-included for a payment reference on both tools | A2-T1/A2-T2 billed **PASS**, A1-T1 expensive **PASS**, 10 integration tests **PASS** |
 | **A3** real payment date | ✅ `_validate_payment_date`, accepts ISO + DD/MM/YYYY (see gotcha below) | A1-T1 expensive **PASS**, integration tests **PASS** |
 | **A3b** bank details/payment method | ✅ `_build_payment_line`, default `bank_transfer`, bit support, `bank_number`/`branch`/`account` | A1-T1 expensive **PASS**, integration tests **PASS** |
-| **A4** approval ≠ what gets created | ⚠️ **partial** — see "Known gap" below | Failsafe half only (read-back + mismatch warning); pre-creation half not implemented |
+| **A4** approval ≠ what gets created | ✅ **done** (2026-08-10, user confirmed) | Explicit VAT call in every approval + verbatim post-creation readback/mismatch-warning — see below |
 | **B1** `לאשר` + closed question | ✅ added to whitelist, prompt now ends `אישור — כן/לא?` | Unit tests + visible in every passing billed/expensive approval text |
 | **B2** bidi/RTL matching | ✅ `re.search(r"\w+")`, no character-stripping | 12 new unit tests **PASS**, not exercised in billed/expensive |
 | **B3** approval states everything | ✅ `_build_pending_approval_details`, appended every turn | B3-T1 billed **PASS**, A1-T1 expensive **PASS** |
@@ -28,24 +28,20 @@ fully done (see "What's NOT proven" below).
 | **B4(c)** not-found is an error | ✅ `ClientNotFoundError` | 4 integration tests, real sandbox, **PASS** |
 | **B5** response-owed contract | ✅ `AIResponse.__post_init__` + `send_response` guards | 5 unit tests **PASS** |
 
-## ⚠️ Known gaps — be honest about these, don't just report "028 is done"
+## ⚠️ Known gap — be honest about this, don't just report "028 is done"
 
-1. **A4's pre-creation half isn't implemented.** The approved root cause says: *"if the
-   document's actual total will be larger than the requested figure, that larger figure is
-   what the user approves — having seen it."* `_build_pending_approval_details` (ai_handler.py)
-   currently shows `args.get("amount")` **verbatim** — the requested figure — with no
-   computation of what the grossed-up total will actually be when `vat_included=False`. Only the
-   **failsafe** half (read the real document back after creation, warn on mismatch) is built.
-   B3-T1's billed test used a VAT-exclusive request but never asserted the grossed-up figure
-   appears — so this gap is real and currently unverified either way. **Needs its own decision
-   before 028 can be called fully closed**, not just implementation.
-2. **B4(b) (zero-execution detection) has never actually run.** The code exists
-   (`if not approved_tool_executions:` in `_resolve_pending_approval`) and looks correct by
-   inspection, but no test — unit, integration, billed, or expensive — has ever driven a real
-   zero-execution scenario through it. It was explicitly assigned to "unit/integration, my
-   choice" during test design and then never actually written. Needs a test before this can be
-   trusted.
-3. **B2 is unit-proven only.** No billed/expensive test sends a real bidi-marked WhatsApp
+**A4 resolved 2026-08-10 — turned out not to be a gap.** I'd flagged that
+`_build_pending_approval_details` shows the requested amount verbatim rather than computing the
+grossed-up total when `vat_included=False`. Asked the user directly; they explicitly **don't
+want a calculated pre-creation total** — they prefer exactly what's already built: an explicit
+VAT call in every approval (already true) plus a verbatim post-creation readback comparing what
+Morning actually stored against what was requested (already true, `_read_back_stored_total` +
+`_amount_mismatch_warning`, both do a real `get_invoice` fetch, never a calculation). No further
+work needed here.
+
+1. ~~**B4(b) (zero-execution detection) has never actually run.**~~ **Resolved 2026-08-10** —
+   see the new unit tests in `tests/unit/test_ai_handler_zero_execution_detection.py`.
+2. **B2 is unit-proven only.** No billed/expensive test sends a real bidi-marked WhatsApp
    reply end to end — worth at least one real-conversation confirmation given B2's whole origin
    was a real production log line with a literal U+200F character.
 

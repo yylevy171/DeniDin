@@ -695,8 +695,13 @@ details (number/branch/account), transaction date, reference invoice number.
 - **A3-T3/T4/T5** — payment date missing / unparseable / in the future ⇒ the create request
   **fails** rather than silently substituting today. (User notification on failure is **B4(c) +
   B5**, not A3.)
-- **B4-T2** — a requested tool cannot end up never running; a client that is known to exist and
-  isn't found raises an **error**.
+- ~~**B4-T2**~~ — a requested tool cannot end up never running; a client that is known to exist
+  and isn't found raises an **error**. 🔄 **Split 2026-08-10**: the "known-existing client not
+  found raises an error" half is B4(c), already covered by
+  `test_morning_sandbox_client_not_found_is_an_error.py`. The "tool cannot end up never
+  running" half is B4(b) specifically, covered by 6 new unit tests in
+  `tests/unit/test_ai_handler_zero_execution_detection.py` — written 2026-08-10, after being
+  flagged in `bugfix-028-HANDOFF.md` as assigned-but-never-actually-written.
 - **B5** — the two-sided response contract (see below).
 - **A3b** — after the sandbox probe.
 
