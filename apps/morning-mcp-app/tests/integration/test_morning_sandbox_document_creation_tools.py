@@ -79,7 +79,11 @@ def test_create_transaction_account_tool_sandbox(morning_client):
     marker = _unique_marker("TA")
     _, client_name = seed_real_client(morning_client, marker)
 
-    result = create_transaction_account(morning_client, client_name, 45.0, f"Transaction account {marker}")
+    # bugfix-028 A2: vat_included is now required - an undecided VAT treatment
+    # must never reach Morning.
+    result = create_transaction_account(
+        morning_client, client_name, 45.0, f"Transaction account {marker}", vat_included=True
+    )
     assert client_name.split()[-1] in result or "45" in result or "45.00" in result
 
     # Follow-up call: independently confirm the persisted document's real
@@ -102,7 +106,12 @@ def test_create_combo_document_tool_sandbox(morning_client):
     marker = _unique_marker("COMBO")
     _, client_name = seed_real_client(morning_client, marker)
 
-    create_combo_document(morning_client, client_name, 35.0, f"Combo document {marker}")
+    # bugfix-028 A3: payment_date is now required - a combo document records
+    # money that has already moved, so its date is a fact, not a default.
+    create_combo_document(
+        morning_client, client_name, 35.0, f"Combo document {marker}",
+        vat_included=True, payment_date="2026-07-12"
+    )
 
     from denidin_mcp_morning.tools import list_invoices
 
@@ -202,6 +211,7 @@ def seeded_transaction_account(morning_client):
         client_id=client_id,
         amount=40.0,
         description=f"Seed transaction account {marker}",
+        vat_included=True,
     )
     response = morning_client.create_invoice(payload)
     invoice_id = _extract_id(response)

@@ -137,10 +137,175 @@ def _build_create_invoice_payload(
     return payload
 
 
+# bugfix-028 A3b - Morning's real payment-method codes, enumerated live against
+# the sandbox on 2026-08-09 (types 6-9 and 12 do not exist). Which fields a
+# payment line may carry depends entirely on its type: bank details persist ONLY
+# on type 4, and a reference number ONLY on type 5/10. Type 1 (מזומן) silently
+# drops everything except date/price, which is how four production deposits lost
+# their bank details without a single error.
+_PAYMENT_TYPE_CASH = 1
+_PAYMENT_TYPE_CHEQUE = 2
+_PAYMENT_TYPE_CREDIT_CARD = 3
+_PAYMENT_TYPE_BANK_TRANSFER = 4
+_PAYMENT_TYPE_PAYPAL = 5
+_PAYMENT_TYPE_APP = 10
+
+_PAYMENT_APP_TYPES = {"bit": 1, "pay": 2, "paybox": 3, "colu": 4, "google pay": 5, "apple pay": 6}
+
+# The default is a BANK TRANSFER, not cash (user decision, 2026-08-09, reversing
+# the earlier triage call that "all payments are intentionally booked as cash" -
+# made under a wrong impression). Payments must reflect how the money actually
+# arrived.
+_DEFAULT_PAYMENT_METHOD = "bank_transfer"
+
+_PAYMENT_METHOD_TYPES = {
+    "bank_transfer": _PAYMENT_TYPE_BANK_TRANSFER,
+    "cash": _PAYMENT_TYPE_CASH,
+    "cheque": _PAYMENT_TYPE_CHEQUE,
+    "credit_card": _PAYMENT_TYPE_CREDIT_CARD,
+    "paypal": _PAYMENT_TYPE_PAYPAL,
+}
+
+
+def _validate_payment_date(payment_date: Optional[str]) -> str:
+    """Validate a real transaction date for a payment line (bugfix-028 A3).
+
+    A payment-backed document records money that has ALREADY moved, so its
+    payment date is a fact to be carried, never a value to be guessed. Silently
+    substituting "today" is exactly what dated four production documents 09/08
+    for deposits value-dated 04/08-06/08.
+
+    Raises ValueError - never falls back - when the date is missing, unparseable,
+    or in the future (money cannot have arrived tomorrow; a future date means the
+    extraction failed and the user must be asked).
+    """
+    if not payment_date:
+        raise ValueError(
+            "A payment-backed document needs the real date the money moved, and none "
+            "was supplied. Ask the user for the transaction date rather than assuming today."
+        )
+    # Accepts ISO (YYYY-MM-DD) and this project's own persisted DD/MM/YYYY form.
+    # The ledger event that supplies this date stores it as DD/MM/YYYY - by design,
+    # matching `event_date` (REQ-DATA-005/007) - and Israeli bank confirmations
+    # print it that way too, so ISO-only meant our own captured date could not be
+    # handed to our own tool without a conversion nobody performed. DD/MM is not
+    # ambiguous here: nothing in this system emits MM/DD.
+    parsed = None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            parsed = datetime.strptime(payment_date, fmt).date()
+            break
+        except (ValueError, TypeError):
+            continue
+    if parsed is None:
+        raise ValueError(
+            f"Transaction date {payment_date!r} is not a usable date "
+            f"(expected YYYY-MM-DD or DD/MM/YYYY). Ask the user to confirm the date "
+            f"rather than guessing at its format."
+        )
+    if parsed > datetime.now(timezone.utc).date():
+        raise ValueError(
+            f"Transaction date {payment_date!r} is in the future - money cannot already "
+            f"have arrived. Ask the user to confirm the real transaction date."
+        )
+    # Always hand Morning the ISO form, whichever form came in - the API takes
+    # YYYY-MM-DD, and returning the caller's string verbatim would send a
+    # DD/MM/YYYY date straight through.
+    return parsed.isoformat()
+
+
+def _build_payment_line(
+    amount: float,
+    payment_date: str,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+    transaction_reference: Optional[str] = None,
+    currency: str = "ILS",
+) -> dict:
+    """Build one Morning payment line carrying how, and when, the money arrived.
+
+    Field support is per-type and live-verified (2026-08-09): `bankName`/
+    `bankBranch`/`bankAccount` persist only on type 4, and `transactionId` only
+    on types 5 and 10. Anything sent on a type that doesn't support it is
+    dropped by Morning without an error, so this maps deliberately rather than
+    sending everything and hoping.
+    """
+    method = (payment_method or _DEFAULT_PAYMENT_METHOD).strip().casefold()
+    line: Dict[str, Any] = {
+        "price": amount,
+        "date": _validate_payment_date(payment_date),
+        "currency": currency,
+        "currencyRate": 1,
+    }
+
+    if method in _PAYMENT_APP_TYPES:
+        line["type"] = _PAYMENT_TYPE_APP
+        line["appType"] = _PAYMENT_APP_TYPES[method]
+        if transaction_reference:
+            line["transactionId"] = transaction_reference
+        return line
+
+    if method not in _PAYMENT_METHOD_TYPES:
+        raise ValueError(
+            f"Unknown payment method {payment_method!r}. Supported: "
+            f"{sorted(list(_PAYMENT_METHOD_TYPES) + list(_PAYMENT_APP_TYPES))}"
+        )
+
+    line["type"] = _PAYMENT_METHOD_TYPES[method]
+    if line["type"] == _PAYMENT_TYPE_BANK_TRANSFER:
+        # Morning renders these back as "בנק X / סניף Y / מס' חשבון Z" itself.
+        if bank_number:
+            line["bankName"] = bank_number
+        if bank_branch:
+            line["bankBranch"] = bank_branch
+        if bank_account:
+            line["bankAccount"] = bank_account
+    elif line["type"] == _PAYMENT_TYPE_PAYPAL and transaction_reference:
+        line["transactionId"] = transaction_reference
+    return line
+
+
+def _read_back_stored_total(client: MorningClient, doc_id: str) -> Optional[float]:
+    """Read what Morning ACTUALLY stored for a just-created document.
+
+    bugfix-028 A4 failsafe. `POST /documents` returns no total and no amount at
+    all (probed live 2026-08-09: the response carries only client/id/lang/number/
+    signed/taxAuthority*/type/url/vatRate), so `response.get("total", amount)`
+    always handed back the number we asked for. That is how a document Morning
+    had stored at ₪2,784.80 was confirmed to the user as ₪2,360 for two days.
+
+    Never raises: this runs after a document has already been created, and a
+    failed read-back must not turn a successful creation into an error.
+    """
+    if not doc_id:
+        return None
+    try:
+        stored = client.get_invoice(doc_id)
+    except Exception as exc:  # noqa: BLE001 - failsafe: a read-back must never mask a real creation
+        logger.warning(f"Could not read back document {doc_id} to verify its stored total: {exc}")
+        return None
+    total = stored.get("amount")
+    return float(total) if isinstance(total, (int, float)) else None
+
+
+def _amount_mismatch_warning(requested: float, stored: Optional[float]) -> str:
+    """bugfix-028 A4: if what Morning stored differs from what the user approved,
+    say so, show both numbers, and ask - never silently reconcile."""
+    if stored is None or abs(stored - requested) < 0.01:
+        return ""
+    return (
+        f"⚠️ שים לב: אישרת {requested:,.2f} ₪ אבל המסמך נוצר בפועל על סך "
+        f"{stored:,.2f} ₪. מה תרצה שאעשה?\n\n"
+    )
+
+
 def _build_transaction_account_payload(
     client_id: str,
     amount: float,
     description: str,
+    vat_included: bool,
     due_date: Optional[str] = None,
     currency: str = "ILS",
 ) -> dict:
@@ -152,17 +317,26 @@ def _build_transaction_account_payload(
     note; callers (create_transaction_account) MUST resolve via
     `_resolve_client_for_document_creation` first.
 
-    Per bugfix-014 Flow 4 (confirmed live): unlike a type 305 tax invoice,
-    this document type carries NO VAT obligation - no vatType/vatRate field
-    anywhere in the payload, not even a "no VAT" value, since the field's
-    mere presence implies a tax document.
+    bugfix-028 A2 - `vat_included` is REQUIRED and has no default: an undecided
+    VAT treatment may never reach Morning.
+
+    This used to send no `vatType`/`vatRate` anywhere, on the bugfix-014 Flow 4
+    premise that a type-300 "carries NO VAT obligation ... the field's mere
+    presence implies a tax document". That premise was recorded from the
+    customer's Morning UI and explicitly never reproduced against the API, and
+    it is wrong: probed live 2026-08-09, omitting `vatType` is treated exactly
+    as `vatType: 0` ("price EXCLUDES vat"), so Morning adds ~18% - a price of 11
+    is stored as 12.98, and in production ₪2,360 was stored as ₪2,784.80.
+    `vatType: 1` ("price INCLUDES vat") stores 11 as 11.
     """
     today = datetime.now(timezone.utc).date().isoformat()
+    vat_type = 1 if vat_included else 0
 
     payload = {
         "type": _TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
         "date": today,
         "lang": "he",
+        "vatType": vat_type,
         "currency": currency,
         "rounding": False,
         "signed": True,
@@ -179,11 +353,12 @@ def _build_transaction_account_payload(
                 "price": amount,
                 "currency": currency,
                 "currencyRate": 1,
+                "vatType": vat_type,
             }
         ],
         "payment": [
             {
-                "type": 1,
+                "type": _PAYMENT_TYPE_CASH,
                 "price": amount,
                 "date": today,
             }
@@ -199,6 +374,7 @@ def create_transaction_account(
     client_name: str,
     amount: float,
     description: str,
+    vat_included: bool,
     due_date: Optional[str] = None,
 ) -> str:
     """Create a non-tax transaction account ("חשבון עסקה", type 300) in
@@ -229,7 +405,9 @@ def create_transaction_account(
     if resolution.refusal_message is not None:
         return resolution.refusal_message
 
-    payload = _build_transaction_account_payload(resolution.client_id, amount, description, due_date)
+    payload = _build_transaction_account_payload(
+        resolution.client_id, amount, description, vat_included, due_date
+    )
     response = client.create_invoice(payload)
 
     doc_id = str(
@@ -240,19 +418,20 @@ def create_transaction_account(
         or ""
     )
 
+    stored_total = _read_back_stored_total(client, doc_id)
     display_name = resolution.disclosure_name or client_name
     invoice = Invoice(
         id=doc_id,
         number=response.get("number"),
         client_name=display_name,
         amount=amount,
-        total_amount=response.get("total", amount),
+        total_amount=stored_total if stored_total is not None else amount,
         currency=response.get("currency", "ILS"),
         due_date=due_date,
         status=response.get("status"),
         type=_TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
     )
-    confirmation = format_invoice_confirmation(invoice)
+    confirmation = _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
     if resolution.disclosure_name:
         return f"מצאתי והשתמשתי בלקוח הבא: {resolution.disclosure_name}\n{confirmation}"
     return confirmation
@@ -262,7 +441,13 @@ def _build_combo_document_payload(
     client_id: str,
     amount: float,
     description: str,
-    vat_included: bool = True,
+    vat_included: bool,
+    payment_date: str,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+    transaction_reference: Optional[str] = None,
     currency: str = "ILS",
 ) -> dict:
     """Map create_combo_document inputs onto a real Morning /documents
@@ -273,10 +458,21 @@ def _build_combo_document_payload(
     note; callers (create_combo_document) MUST resolve via
     `_resolve_client_for_document_creation` first.
 
-    Per bugfix-014 Flow 1: this document is issued when payment is immediate
-    (cash/card/instant transfer at time of sale) - self-contained, always
-    already "paid", no due date (unlike a type 305 tax invoice, which is a
-    request for later payment).
+    Per bugfix-014 Flow 1: this document is issued when payment has ALREADY been
+    received - self-contained, always already "paid", no due date (unlike a type
+    305 tax invoice, which is a request for later payment).
+
+    bugfix-028 A3/A3b: because the money has already moved, this document
+    records a real historical transaction - so `payment_date` is REQUIRED and
+    validated (never defaulted to today), and the payment carries how the money
+    arrived. The default method is a bank transfer, which is the only type
+    Morning stores bank details on.
+
+    Note the type-320 amount consistency rule (live-confirmed): Morning rejects
+    the document outright with `errorCode 2422` if the income total and the
+    payment total disagree - which is what a wrong `vatType` causes here. On a
+    320 a VAT mistake fails loudly rather than inflating silently, unlike the
+    type-300 case behind A2.
     """
     today = datetime.now(timezone.utc).date().isoformat()
     vat_type = 1 if vat_included else 0
@@ -307,11 +503,16 @@ def _build_combo_document_payload(
             }
         ],
         "payment": [
-            {
-                "type": 1,
-                "price": amount,
-                "date": today,
-            }
+            _build_payment_line(
+                amount=amount,
+                payment_date=payment_date,
+                payment_method=payment_method,
+                bank_number=bank_number,
+                bank_branch=bank_branch,
+                bank_account=bank_account,
+                transaction_reference=transaction_reference,
+                currency=currency,
+            )
         ],
     }
 
@@ -321,9 +522,15 @@ def create_combo_document(
     client_name: str,
     amount: float,
     description: str,
-    vat_included: bool = True,
+    vat_included: bool,
+    payment_date: str,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+    transaction_reference: Optional[str] = None,
 ) -> str:
-    """Create an immediate-payment combo invoice+receipt ("חשבונית מס/קבלה",
+    """Create an already-paid combo invoice+receipt ("חשבונית מס/קבלה",
     type 320) in Morning and return a Hebrew confirmation message.
 
     MCP tool: create_combo_document (feature 021).
@@ -333,25 +540,56 @@ def create_combo_document(
     create_invoice's docstring for the full found/not-found/ambiguous/
     non-exact-disclosure contract, reused identically here.
 
+    bugfix-028 (A2/A3/A3b): `vat_included` and `payment_date` are both REQUIRED.
+    This document asserts that money has already arrived, so how much of it is
+    VAT, and when it arrived, are facts about a real transaction - neither may be
+    defaulted or guessed. Ask the user rather than assuming.
+
     Args:
         client: An authenticated MorningClient (injected).
         client_name: Client name - resolved to a real client record, never
             passed through as a bare string.
         amount: Amount in NIS, already received.
         description: Service/product description.
-        vat_included: Whether VAT is included in the amount (default True).
+        vat_included: Whether VAT is included in `amount`. Required - an
+            undecided VAT treatment must never reach Morning (A2).
+        payment_date: The real date the money moved, ISO YYYY-MM-DD. Required,
+            must not be in the future, never defaulted to today (A3).
+        payment_method: How the money arrived - "bank_transfer" (default),
+            "cash", "cheque", "credit_card", "paypal", or a payment app
+            ("bit", "pay", "paybox", "colu", "google pay", "apple pay").
+        bank_number/bank_branch/bank_account: Bank details from the transfer
+            confirmation. Stored only on a bank transfer (A3b).
+        transaction_reference: The אסמכתה. Stored only on a payment app or
+            PayPal payment - Morning has no field for it on a bank transfer.
 
     Returns:
-        A Hebrew confirmation string with the document number and amount, or
-        a friendly refusal message (no document created) if the client
-        can't be resolved unambiguously.
+        A Hebrew confirmation string with the document number and the amount
+        Morning actually stored, or a friendly disambiguation message (no
+        document created) if the client name matches more than one client.
+
+    Raises:
+        ClientNotFoundError: if the client name matches no client at all.
+        ValueError: if payment_date is missing, unparseable, or in the future,
+            or payment_method is unknown.
     """
     client_name = _normalize_hebrew_geresh(client_name)
     resolution = _resolve_client_for_document_creation(client, client_name)
     if resolution.refusal_message is not None:
         return resolution.refusal_message
 
-    payload = _build_combo_document_payload(resolution.client_id, amount, description, vat_included)
+    payload = _build_combo_document_payload(
+        resolution.client_id,
+        amount,
+        description,
+        vat_included=vat_included,
+        payment_date=payment_date,
+        payment_method=payment_method,
+        bank_number=bank_number,
+        bank_branch=bank_branch,
+        bank_account=bank_account,
+        transaction_reference=transaction_reference,
+    )
     response = client.create_invoice(payload)
 
     doc_id = str(
@@ -362,18 +600,19 @@ def create_combo_document(
         or ""
     )
 
+    stored_total = _read_back_stored_total(client, doc_id)
     display_name = resolution.disclosure_name or client_name
     invoice = Invoice(
         id=doc_id,
         number=response.get("number"),
         client_name=display_name,
         amount=amount,
-        total_amount=response.get("total", amount),
+        total_amount=stored_total if stored_total is not None else amount,
         currency=response.get("currency", "ILS"),
         status=response.get("status"),
         type=_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
     )
-    confirmation = format_invoice_confirmation(invoice)
+    confirmation = _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
     if resolution.disclosure_name:
         return f"מצאתי והשתמשתי בלקוח הבא: {resolution.disclosure_name}\n{confirmation}"
     return confirmation
@@ -1122,6 +1361,36 @@ class ClientResolution(NamedTuple):
     refusal_message: Optional[str]
 
 
+class ClientNotFoundError(ValueError):
+    """No client matched the name a document was asked to be created for.
+
+    bugfix-028 B4(c): this used to be returned as ordinary tool output with
+    `error=None`, indistinguishable from success at every layer above. In
+    production that let one ₪40,000 document be approved eight times, created
+    zero times, with the user never told the previous attempt had failed. The
+    tool was asked to create a document and did not create one - that is a
+    failure, and it has to be typed as one.
+    """
+
+
+# bugfix-028 B4(a): a name may be NARROWED but never DECORATED. Morning's client
+# search is a word-aligned prefix match of the whole stored name (probed live
+# 2026-08-09), so `הסתדרות כללית חדשה` matches, `הסתדרות` matches, and
+# `הסתדרות כללית חדשה (ח.פ 589103852)` matches NOTHING. `list_clients` renders
+# exactly that parenthesised form as a display label, the model reasonably fed
+# it back as the client's identity, and this app then failed to find its own
+# client. A tool's own output must be valid input to its sibling tool.
+_CLIENT_NAME_DECORATION = re.compile(r"\s*\([^()]*\)\s*$")
+
+
+def _strip_client_name_decoration(client_name: str) -> str:
+    """Drop a trailing parenthesised qualifier - `(ח.פ …)`, `(טלפון …)`, or both -
+    from a client name. Only ever strips a TRAILING parenthetical, so a client
+    genuinely named e.g. `חברה (2019) בע"מ` mid-string is untouched."""
+    stripped = _CLIENT_NAME_DECORATION.sub("", client_name).strip()
+    return stripped or client_name
+
+
 def _resolve_client_for_document_creation(client: MorningClient, client_name: str) -> ClientResolution:
     """Resolve a Group A document-creation tool's client_name to a real
     client_id, or a friendly refusal message (feature 027).
@@ -1129,8 +1398,25 @@ def _resolve_client_for_document_creation(client: MorningClient, client_name: st
     Reuses Feature 026's `_resolve_client_by_name`/`_is_exact_name_match`
     unchanged - this is a thin combination of the two into the single
     branch document-creation tools need, never a new Morning API call.
+
+    bugfix-028 B4: on a miss, retries once with any trailing parenthesised
+    decoration removed (see _strip_client_name_decoration), and raises
+    ClientNotFoundError rather than returning a friendly string when nothing
+    matches at all. An AMBIGUOUS match still returns its refusal message - that
+    is a question for the user ("which of these did you mean?"), not a failure.
     """
     resolved, candidates = _resolve_client_by_name(client, client_name)
+
+    if resolved is None and not candidates:
+        undecorated = _strip_client_name_decoration(client_name)
+        if undecorated != client_name:
+            logger.info(
+                f"No client matched {client_name!r}; retrying without its trailing "
+                f"qualifier as {undecorated!r} (bugfix-028 B4)"
+            )
+            resolved, candidates = _resolve_client_by_name(client, undecorated)
+            client_name = undecorated
+
     if resolved is not None:
         disclosure_name = None if _is_exact_name_match(resolved.name, client_name) else resolved.name
         return ClientResolution(client_id=resolved.id, disclosure_name=disclosure_name, refusal_message=None)
@@ -1138,7 +1424,7 @@ def _resolve_client_for_document_creation(client: MorningClient, client_name: st
         return ClientResolution(
             client_id=None, disclosure_name=None, refusal_message=format_ambiguous_clients_message(candidates)
         )
-    return ClientResolution(client_id=None, disclosure_name=None, refusal_message=format_client_not_found())
+    raise ClientNotFoundError(f"{format_client_not_found()} ({client_name})")
 
 
 def _extract_linked_client_id(original: dict) -> Optional[str]:

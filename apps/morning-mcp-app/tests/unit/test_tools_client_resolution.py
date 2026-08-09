@@ -12,20 +12,29 @@ Uses a fake MorningClient (dependency-injected, matching the real
 search_clients contract) — this mocks a third-party API boundary, not an
 internal component (CONSTITUTION.md §I/§V).
 """
+import pytest
+
 from denidin_mcp_morning import tools
 
 
 class _FakeMorningClient:
     """Records calls and returns pre-set responses — stands in for the
     MorningClient network boundary. Mirrors test_tools_client_management.py's
-    fake exactly (only the parts this feature's helpers need)."""
+    fake exactly (only the parts this feature's helpers need).
 
-    def __init__(self, search_clients_response=None):
+    bugfix-028: `search_clients_response_sequence` returns a different response
+    per call, so the resolver's second attempt (with a trailing `(ח.פ …)`
+    decoration stripped) can be exercised."""
+
+    def __init__(self, search_clients_response=None, search_clients_response_sequence=None):
         self._search_clients_response = search_clients_response or {"items": [], "total": 0}
+        self._sequence = list(search_clients_response_sequence or [])
         self.search_clients_calls = []
 
     def search_clients(self, payload):
         self.search_clients_calls.append(payload)
+        if self._sequence:
+            return self._sequence.pop(0)
         return self._search_clients_response
 
 
@@ -45,15 +54,49 @@ def _client_record(client_id="c-1", name="Test Client", phone="0527384938", tax_
 # --- _resolve_client_for_document_creation (REQ-INV-001/002/003/005/011) ---
 
 
-def test_resolve_client_for_document_creation_zero_matches_returns_refusal():
+def test_resolve_client_for_document_creation_zero_matches_raises():
+    """bugfix-028 B4(c) - CHANGED 2026-08-09. This previously asserted a friendly
+    refusal message was RETURNED. That is precisely the defect: returned as
+    ordinary output with error=None, "client not found" was indistinguishable
+    from success at every layer above, and one ₪40,000 document was approved
+    eight times, created zero times, with the user never told why.
+
+    A tool asked to create a document that creates none has failed, and must say
+    so in the only way the layers above can see. Note the search is now attempted
+    twice - once as given, once with any trailing `(ח.פ …)` decoration stripped
+    (B4(a)) - before concluding nothing matched.
+    """
     client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
 
-    resolution = tools._resolve_client_for_document_creation(client, "Nonexistent Client")
+    with pytest.raises(tools.ClientNotFoundError) as exc_info:
+        tools._resolve_client_for_document_creation(client, "Nonexistent Client")
 
-    assert resolution.client_id is None
-    assert resolution.refusal_message is not None
-    assert "לא נמצא" in resolution.refusal_message or "אין" in resolution.refusal_message
+    assert "לא נמצא" in str(exc_info.value)
     assert client.search_clients_calls == [{"name": "Nonexistent Client"}]
+
+
+def test_resolve_client_for_document_creation_retries_without_a_tax_id_decoration():
+    """bugfix-028 B4(a): `list_clients` renders a display label as
+    `שם (ח.פ 123456789)`, the model fed that back as the client's identity, and
+    Morning's word-aligned prefix search matched nothing. This app's own output
+    must be valid input to its own create tools."""
+    record = _client_record(client_id="c-9", name="הסתדרות כללית חדשה")
+    client = _FakeMorningClient(
+        search_clients_response_sequence=[
+            {"items": [], "total": 0},
+            {"items": [record], "total": 1},
+        ]
+    )
+
+    resolution = tools._resolve_client_for_document_creation(
+        client, "הסתדרות כללית חדשה (ח.פ 589103852)"
+    )
+
+    assert resolution.client_id == "c-9"
+    assert client.search_clients_calls == [
+        {"name": "הסתדרות כללית חדשה (ח.פ 589103852)"},
+        {"name": "הסתדרות כללית חדשה"},
+    ]
 
 
 def test_resolve_client_for_document_creation_exact_match_resolves_with_no_disclosure():

@@ -12,6 +12,8 @@ Uses a fake MorningClient (dependency-injected, matching the real
 create_invoice/get_invoice contracts) — this mocks a third-party API
 boundary, not an internal component (CONSTITUTION.md §I/§V).
 """
+import pytest
+
 from denidin_mcp_morning import tools
 from denidin_mcp_morning.formatters import format_original_not_linked_to_client
 
@@ -99,25 +101,39 @@ def _original_invoice(
 # --- _build_transaction_account_payload (type 300) ---
 
 
-def test_build_transaction_account_payload_has_no_vat_fields():
+def test_build_transaction_account_payload_states_its_vat_treatment():
+    """bugfix-028 A2 - INVERTED 2026-08-09. This test previously asserted the
+    payload had NO vatType/vatRate anywhere, encoding bugfix-014 Flow 4's premise
+    that a type-300 "carries no VAT obligation ... the field's mere presence
+    implies a tax document". That premise was recorded from the customer's
+    Morning UI and explicitly never reproduced against the API, and it is wrong:
+    probed live, omitting `vatType` is treated exactly as `vatType: 0` (price
+    EXCLUDES VAT) and Morning adds ~18%. It is what stored ₪2,360 as ₪2,784.80 in
+    production. The old assertion was pinning the bug in place.
+    """
     payload = tools._build_transaction_account_payload(
-        client_id="client-1", amount=45.0, description="שירות ייעוץ"
+        client_id="client-1", amount=45.0, description="שירות ייעוץ", vat_included=True
     )
 
     assert payload["type"] == 300
     assert payload["client"] == {"self": False, "id": "client-1"}
-    assert "vatType" not in payload
+    assert payload["vatType"] == 1, "a VAT-inclusive amount must say so explicitly"
     for income_item in payload["income"]:
-        assert "vatType" not in income_item
-        assert "vatRate" not in income_item
+        assert income_item["vatType"] == 1
+
+    exclusive = tools._build_transaction_account_payload(
+        client_id="client-1", amount=45.0, description="שירות ייעוץ", vat_included=False
+    )
+    assert exclusive["vatType"] == 0
 
 
 def test_build_transaction_account_payload_includes_due_date_when_given():
     with_due_date = tools._build_transaction_account_payload(
-        client_id="client-1", amount=45.0, description="שירות", due_date="2026-08-01"
+        client_id="client-1", amount=45.0, description="שירות", vat_included=True,
+        due_date="2026-08-01"
     )
     without_due_date = tools._build_transaction_account_payload(
-        client_id="client-1", amount=45.0, description="שירות"
+        client_id="client-1", amount=45.0, description="שירות", vat_included=True
     )
 
     assert with_due_date["dueDate"] == "2026-08-01"
@@ -129,7 +145,8 @@ def test_build_transaction_account_payload_includes_due_date_when_given():
 
 def test_build_combo_document_payload_type_and_shape():
     payload = tools._build_combo_document_payload(
-        client_id="client-1", amount=65.0, description="מכירה מיידית"
+        client_id="client-1", amount=65.0, description="מכירה מיידית",
+        vat_included=True, payment_date="2026-07-12"
     )
 
     assert payload["type"] == 320
@@ -140,7 +157,8 @@ def test_build_combo_document_payload_type_and_shape():
 
 def test_build_combo_document_payload_vat_excluded_when_requested():
     payload = tools._build_combo_document_payload(
-        client_id="client-1", amount=65.0, description="מכירה מיידית", vat_included=False
+        client_id="client-1", amount=65.0, description="מכירה מיידית",
+        vat_included=False, payment_date="2026-07-12"
     )
 
     assert payload["vatType"] == 0
@@ -236,28 +254,36 @@ def test_full_payment_still_works_via_create_receipt():
 def test_create_transaction_account_returns_hebrew_confirmation():
     client = _FakeMorningClient(create_invoice_response={"id": "ta-1", "number": "800", "status": None})
 
-    result = tools.create_transaction_account(client, "לקוח בדיקה", 45.0, "שירות ייעוץ")
+    result = tools.create_transaction_account(client, "לקוח בדיקה", 45.0, "שירות ייעוץ", vat_included=True)
 
     assert "800" in result
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 300
     assert sent_payload["client"] == {"self": False, "id": "client-1"}
-    assert "vatType" not in sent_payload
+    # bugfix-028 A2 (inverted): omitting vatType is NOT "no VAT" to Morning - it
+    # is "price excludes VAT", and it silently adds ~18%.
+    assert sent_payload["vatType"] == 1
 
 
 def test_create_transaction_account_refuses_when_client_not_found():
     client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
 
-    result = tools.create_transaction_account(client, "לקוח שלא קיים", 45.0, "שירות ייעוץ")
+    # bugfix-028 B4(c) (changed): a client that cannot be found is a FAILURE, not
+    # a friendly string returned as ordinary output with error=None - that is what
+    # let one production document be approved 8 times and created 0 times.
+    with pytest.raises(tools.ClientNotFoundError):
+        tools.create_transaction_account(client, "לקוח שלא קיים", 45.0, "שירות ייעוץ", vat_included=True)
 
     assert client.create_invoice_calls == []
-    assert "לא נמצא" in result or "אין" in result
 
 
 def test_create_combo_document_returns_hebrew_confirmation():
     client = _FakeMorningClient(create_invoice_response={"id": "combo-1", "number": "801", "status": 1})
 
-    result = tools.create_combo_document(client, "לקוח בדיקה", 65.0, "מכירה מיידית")
+    result = tools.create_combo_document(
+        client, "לקוח בדיקה", 65.0, "מכירה מיידית",
+        vat_included=True, payment_date="2026-07-12"
+    )
 
     assert "801" in result
     sent_payload = client.create_invoice_calls[0]
@@ -273,7 +299,10 @@ def test_create_combo_document_refuses_when_client_ambiguous():
         }
     )
 
-    result = tools.create_combo_document(client, "לקוח", 65.0, "מכירה מיידית")
+    result = tools.create_combo_document(
+        client, "לקוח", 65.0, "מכירה מיידית",
+        vat_included=True, payment_date="2026-07-12"
+    )
 
     assert client.create_invoice_calls == []
     assert "לקוח א" in result
@@ -547,14 +576,15 @@ def test_build_create_invoice_payload_is_signed():
 
 def test_build_transaction_account_payload_is_signed():
     payload = tools._build_transaction_account_payload(
-        client_id="client-1", amount=45.0, description="שירות ייעוץ"
+        client_id="client-1", amount=45.0, description="שירות ייעוץ", vat_included=True
     )
     assert payload["signed"] is True
 
 
 def test_build_combo_document_payload_is_signed():
     payload = tools._build_combo_document_payload(
-        client_id="client-1", amount=65.0, description="מכירה מיידית"
+        client_id="client-1", amount=65.0, description="מכירה מיידית",
+        vat_included=True, payment_date="2026-07-12"
     )
     assert payload["signed"] is True
 

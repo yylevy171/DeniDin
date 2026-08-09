@@ -137,6 +137,28 @@ class WhatsAppHandler:
             notification: Green API notification to reply to
             response: AI response to send
         """
+        # bugfix-028 B5: the send boundary is the last place that can tell a
+        # deliberate silence from a broken turn, and it used to check neither.
+        # Anything that didn't raise was logged as "Response sent successfully",
+        # including a literally empty message (sessions 047cacb7 turn 22,
+        # 12e158e2 turn 16, logged as "0 chars").
+        if not response.should_reply:
+            logger.info(
+                f"No reply owed for request {response.request_id} (should_reply=False) - "
+                f"sending nothing, as intended."
+            )
+            return
+        if not (response.response_text and response.response_text.strip()):
+            # Unreachable via AIResponse's own contract, which refuses to build
+            # this - kept as a boundary guard because "the user got nothing and
+            # nobody noticed" is the failure being eliminated, and defence in
+            # depth is cheap here.
+            logger.error(
+                f"Refusing to send an empty reply for request {response.request_id} - "
+                f"a zero-character message is not a response."
+            )
+            return
+
         try:
             logger.debug(f"Sending response for request {response.request_id}")
 

@@ -7,6 +7,13 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 import uuid
 
+# Feature 039's "send nothing this turn" signal. Defined here rather than in
+# ai_handler because bugfix-028 B5 makes AIResponse itself enforce the
+# response-owed contract, and a model may not import a handler.
+# `ai_handler.NO_REPLY_SENTINEL` re-exports this, so existing imports of it
+# (src and tests alike) keep working unchanged.
+NO_REPLY_SENTINEL = "[[NO_REPLY]]"
+
 
 def _frame_contact_message_text(contact_message_data: Dict[str, Any]) -> str:
     """Frame a shared WhatsApp contact card's displayName/vcard into readable
@@ -173,6 +180,37 @@ class AIResponse:
     # Responses API call had the Morning MCP server attached as a remote tool.
     # Serves both audit logging (REQ-SEC-002) and E2E test verification.
     mcp_calls: List[Dict] = field(default_factory=list)
+
+    def __post_init__(self):
+        """bugfix-028 B5: enforce the response-owed contract.
+
+        The constitution's "never leave the user with no signal" rule was never
+        actually enforced anywhere: `send_response` validated nothing and logged
+        any send that didn't raise as "Response sent successfully ... 0 chars", so
+        a literally empty WhatsApp message counted as a reply (sessions 047cacb7
+        turn 22, 12e158e2 turn 16).
+
+        "Always non-empty" would be the wrong rule - Feature 039 exists precisely
+        so a group message aimed at someone else produces nothing. `should_reply`
+        is the declaration of which case this is; what was missing is anything
+        holding the response to it. Making it an invariant of the object means
+        empty-because-intended and empty-because-broken can no longer look alike.
+        """
+        has_text = bool(self.response_text and self.response_text.strip())
+        if self.should_reply and not has_text:
+            raise ValueError(
+                f"AIResponse for request {self.request_id} owes the user a reply "
+                f"(should_reply=True) but carries no text. A zero-character message "
+                f"is not a reply - if this turn genuinely owes nothing, say so with "
+                f"should_reply=False."
+            )
+        # The other half of the contract - "no reply owed => nothing reaches the
+        # user" - is deliberately NOT enforced here. A no-reply turn legitimately
+        # carries text on the object (Feature 039 keeps the model's own
+        # `[[NO_REPLY]]` output, and tests/unit/test_denidin_no_reply_dispatch.py
+        # exercises a populated one); what must never happen is that text being
+        # SENT. That belongs at the send boundary, and lives in
+        # WhatsAppHandler.send_response.
 
     @classmethod
     def from_openai_response(cls, response, request_id: Optional[str] = None) -> 'AIResponse':

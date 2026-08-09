@@ -66,14 +66,24 @@ def test_create_invoice_non_exact_match_discloses_and_attaches_to_the_real_clien
     assert real_name in confirmation  # disclosed the real matched name
 
 
-def test_create_invoice_zero_matches_refuses_and_creates_nothing(morning_client):
+def test_create_invoice_zero_matches_raises_and_creates_nothing(morning_client):
+    """bugfix-028 B4(c) - CHANGED 2026-08-09: this asserted the refusal was
+    RETURNED as ordinary output. Returning it is the defect - with `error=None`
+    it was indistinguishable from success to every layer above, which is how one
+    ₪40,000 document was approved eight times and created zero times. Feature
+    027's requirement that nothing be created is unchanged and still asserted.
+    """
+    import pytest as _pytest
+    from denidin_mcp_morning.tools import ClientNotFoundError
+
     marker = f"DENIDIN_027_RESOLVE_NOTFOUND_{int(datetime.now(timezone.utc).timestamp())}"
     nonexistent_name = f"Test Client {marker}"  # deliberately never seeded
 
-    result = create_invoice(morning_client, client_name=nonexistent_name, amount=12.0, description=marker)
+    with _pytest.raises(ClientNotFoundError) as exc_info:
+        create_invoice(morning_client, client_name=nonexistent_name, amount=12.0, description=marker)
 
-    assert "לא נמצא" in result
-    assert "מזהה פנימי" not in result  # no document confirmation shape at all
+    assert "לא נמצא" in str(exc_info.value)
+    assert "מזהה פנימי" not in str(exc_info.value)  # no document confirmation shape at all
 
 
 def test_create_invoice_ambiguous_match_refuses_and_lists_real_candidates(morning_client):

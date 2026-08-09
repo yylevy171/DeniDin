@@ -21,7 +21,11 @@ except ImportError:
 
 from src.models.media import Media
 from src.handlers.extractors.base import MediaExtractor
-from src.handlers.extractors.image_extractor import ImageExtractor
+from src.handlers.extractors.image_extractor import (
+    DOC_TYPE_BANK,
+    DOC_TYPE_UNKNOWN,
+    ImageExtractor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +109,8 @@ class PDFExtractor(MediaExtractor):
             raw_responses = []  # Collect raw_response from each page
             extraction_qualities = []
             warnings_list = []
+            doc_types = []       # bugfix-028: per-page classification
+            combined_fields: Dict = {}
             page_analyses: List[Dict] = []  # Collect analyses from each page
             
             for page_num, page in enumerate(pdf_document):
@@ -130,12 +136,19 @@ class PDFExtractor(MediaExtractor):
                     raw_responses.append(page_result["raw_response"])
                     extraction_qualities.append(page_result["extraction_quality"])
                     warnings_list.append(page_result["warnings"])
+                    doc_types.append(page_result.get("doc_type"))
+                    # First page to supply a field wins - a multi-page agreement
+                    # repeats its client name on every page, and later pages are
+                    # more likely to be annexes than corrections.
+                    for key, value in (page_result.get("fields") or {}).items():
+                        combined_fields.setdefault(key, value)
                     logger.info(f"[PDFExtractor.analyze_media] Page {page_num + 1} analysis complete: {len(page_result.get('raw_response', ''))} chars")
                     
                 except Exception as e:
                     # CHK007: Handle per-page failures gracefully
                     logger.error(f"[PDFExtractor.analyze_media] Page {page_num + 1} failed: {e}", exc_info=True)
                     raw_responses.append("")
+                    doc_types.append(None)
                     extraction_qualities.append("failed")
                     warnings_list.append([f"Page {page_num + 1} failed: {str(e)}"])
             
@@ -146,11 +159,27 @@ class PDFExtractor(MediaExtractor):
             if not combined_raw_response:
                 combined_raw_response = "סיכום: PDF analysis completed but no content extracted"
             
+            # bugfix-028 (user, 2026-08-09): "pdf and docx are ALWAYS agreements
+            # or unknown - never bank." A bank transfer confirmation arrives as a
+            # phone screenshot; nobody sends one as a PDF. Enforced here in code
+            # rather than asked of the per-page vision prompt, so it holds
+            # whatever an individual page happens to look like.
+            page_types = {t for t in doc_types if t and t != DOC_TYPE_BANK}
+            doc_type = page_types.pop() if len(page_types) == 1 else DOC_TYPE_UNKNOWN
+            if DOC_TYPE_BANK in doc_types:
+                logger.warning(
+                    "[PDFExtractor] A page classified as %r - impossible for a PDF; "
+                    "recorded as %r instead.", DOC_TYPE_BANK, doc_type
+                )
+
             return {
                 "raw_response": combined_raw_response,
                 "extraction_quality": extraction_qualities,
                 "warnings": warnings_list,
-                "model_used": self.vision_model
+                "model_used": self.vision_model,
+                "doc_type": doc_type,
+                "fields": combined_fields,
+                "missing_required_fields": [],
             }
             
         except Exception as e:

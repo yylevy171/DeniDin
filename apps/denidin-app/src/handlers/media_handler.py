@@ -149,9 +149,14 @@ class MediaHandler:
                 content, storage_folder, filename, sender_phone
             )
             
-            # Step 8: Get the raw AI response as summary (uses only prompts from txt files)
-            # The prompt file defines the format, AI returns it, we pass it as-is
-            summary = analysis_result.get("raw_response", "")
+            # Step 8: Compose what the user actually reads, from the extractor's
+            # extracted text plus anything worth adding.
+            # bugfix-028: the extractor no longer authors this - it extracts and
+            # classifies, and nothing more. What gets added here is the QUESTION,
+            # when there is one: a document we couldn't classify, or a bank
+            # confirmation missing details we need, is something to ask about
+            # rather than to proceed on silently. "When it's not clear - ASK."
+            summary = self._compose_user_message(analysis_result)
             
             # Verify we got a summary from the AI
             if not summary:
@@ -317,6 +322,50 @@ class MediaHandler:
         else:
             raise ValueError(f"Unknown media type: {media_type}")
     
+    # bugfix-028: Hebrew labels for the fields a bank confirmation must carry,
+    # used to ask for them by name rather than by their internal keys.
+    _FIELD_LABELS_HE = {
+        "payer_name": "שם המעביר",
+        "amount": "הסכום",
+        "txn_date": "תאריך ההעברה",
+        "bank_number": "מספר הבנק",
+        "bank_branch": "מספר הסניף",
+        "bank_account": "מספר החשבון",
+        "client_name": "שם הלקוח",
+        "components": "פירוט שכר הטרחה",
+    }
+
+    def _compose_user_message(self, analysis_result: Dict) -> str:
+        """Build the reply the user reads: the extracted text, plus a question
+        when the document couldn't be classified or is missing details.
+
+        bugfix-028 (user, 2026-08-09): "WHEN NOT CLEAR - ASK". A document we
+        can't classify, or a bank confirmation we can't read every required
+        field off, is not something to quietly guess at - the user is right
+        there and can answer in one line. This is the point where that happens,
+        because it is the first point that knows both what was read and what
+        was missing.
+        """
+        extracted = (analysis_result.get("raw_response") or "").strip()
+        doc_type = analysis_result.get("doc_type")
+        missing = analysis_result.get("missing_required_fields") or []
+
+        if doc_type == "unknown":
+            question = (
+                "לא הצלחתי לזהות בוודאות איזה סוג מסמך זה - האם מדובר באישור "
+                "העברה/הפקדה בנקאית, בהסכם שכר טרחה, או במשהו אחר? מה תרצה שאעשה איתו?"
+            )
+        elif missing:
+            labels = [self._FIELD_LABELS_HE.get(f, f) for f in missing]
+            question = (
+                f"חסרים לי הפרטים הבאים כדי להמשיך: {', '.join(labels)}. "
+                f"תוכל להשלים אותם?"
+            )
+        else:
+            question = ""
+
+        return f"{extracted}\n\n{question}".strip() if question else extracted
+
     def _error_response(self, message: str) -> Dict:
         """
         Standard error response format.

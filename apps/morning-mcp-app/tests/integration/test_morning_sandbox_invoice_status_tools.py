@@ -145,7 +145,9 @@ def test_create_receipt_rejects_a_transaction_account_original(morning_client):
 
     unique_marker = f"DENIDIN_REJECT_TEST_{int(datetime.now(timezone.utc).timestamp())}"
     _, client_name = seed_real_client(morning_client, unique_marker)
-    create_transaction_account(morning_client, client_name, 80.0, f"Reject test {unique_marker}")
+    create_transaction_account(
+        morning_client, client_name, 80.0, f"Reject test {unique_marker}", vat_included=True
+    )
 
     invoice_id = None
     for _ in range(12):
@@ -172,7 +174,8 @@ def seeded_transaction_account_id(morning_client):
     unique_marker = f"DENIDIN_TX_ACCOUNT_TEST_{int(datetime.now(timezone.utc).timestamp())}"
     _, client_name = seed_real_client(morning_client, unique_marker)
     create_transaction_account(
-        morning_client, client_name, 40.0, f"Transaction account test {unique_marker}"
+        morning_client, client_name, 40.0, f"Transaction account test {unique_marker}",
+        vat_included=True,
     )
 
     import time

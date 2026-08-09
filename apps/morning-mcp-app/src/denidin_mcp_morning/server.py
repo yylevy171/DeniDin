@@ -171,7 +171,14 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         due_date: Optional[str] = None,
         vat_included: bool = True,
     ) -> str:
-        """Create a new invoice/document in Morning."""
+        """Create an ordinary TAX INVOICE ("חשבונית מס", document type 305) - a
+        request for payment that has NOT yet been received, which stays open/unpaid
+        until a receipt is issued against it.
+
+        Do NOT use this for money that has already arrived (a bank deposit, a
+        transfer confirmation, a payment screenshot): use create_combo_document for
+        a new payment, or create_receipt against the invoice the payment settles.
+        """
         return _call_with_error_boundary(
             tools.create_invoice, morning_client, client_name, amount, description, due_date, vat_included
         )
@@ -181,13 +188,21 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: str,
         amount: float,
         description: str,
+        vat_included: bool,
         due_date: Optional[str] = None,
     ) -> str:
         """Create a non-tax transaction account ("חשבון עסקה", document type 300) -
-        like an invoice, but carries no VAT. Use when the user explicitly asks for
-        a חשבון עסקה rather than an ordinary tax invoice."""
+        like an invoice, but not itself a tax document. Use when the user explicitly
+        asks for a חשבון עסקה rather than an ordinary tax invoice.
+
+        `vat_included` is REQUIRED: state whether `amount` already includes VAT.
+        There is no default and no "unknown" - ask the user if it isn't clear.
+        Getting it wrong silently changes what the client is billed (Morning adds
+        ~18% to an amount declared as VAT-exclusive).
+        """
         return _call_with_error_boundary(
-            tools.create_transaction_account, morning_client, client_name, amount, description, due_date
+            tools.create_transaction_account, morning_client, client_name, amount,
+            description, vat_included, due_date
         )
 
     @mcp.tool()
@@ -195,14 +210,40 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: str,
         amount: float,
         description: str,
-        vat_included: bool = True,
+        vat_included: bool,
+        payment_date: str,
+        payment_method: str = "bank_transfer",
+        bank_number: Optional[str] = None,
+        bank_branch: Optional[str] = None,
+        bank_account: Optional[str] = None,
+        transaction_reference: Optional[str] = None,
     ) -> str:
         """Create a combo tax invoice + receipt ("חשבונית מס/קבלה", document type 320)
-        for a sale where payment was already received immediately (cash/card/instant
-        transfer at time of sale) - a single self-contained, already-paid document,
-        never a request for later payment."""
+        for a payment that has ALREADY been received - a single self-contained,
+        already-paid document, never a request for later payment.
+
+        This is the right document for a bank deposit or transfer confirmation when
+        no earlier invoice covers that money. If an unpaid invoice for it already
+        exists, issue a receipt against that invoice instead (create_receipt for a
+        305, close_transaction_account for a 300) - never a second document for the
+        same money.
+
+        `vat_included` and `payment_date` are REQUIRED and must come from the real
+        transaction, never a guess: `payment_date` is the date the money actually
+        moved (ISO YYYY-MM-DD, never a future date, never "today" unless that is
+        genuinely when it arrived). Ask the user if either is unclear.
+
+        `payment_method` records how it arrived: "bank_transfer" (default), "cash",
+        "cheque", "credit_card", "paypal", or an app ("bit", "pay", "paybox",
+        "colu", "google pay", "apple pay"). Bank details are stored only on a bank
+        transfer; a reference number (אסמכתה) only on an app or PayPal payment.
+        `bank_number` is the bank's NUMBER (e.g. "31"), not its name - never
+        invent a bank's name when only its number is known.
+        """
         return _call_with_error_boundary(
-            tools.create_combo_document, morning_client, client_name, amount, description, vat_included
+            tools.create_combo_document, morning_client, client_name, amount, description,
+            vat_included, payment_date, payment_method, bank_number, bank_branch,
+            bank_account, transaction_reference
         )
 
     @mcp.tool()

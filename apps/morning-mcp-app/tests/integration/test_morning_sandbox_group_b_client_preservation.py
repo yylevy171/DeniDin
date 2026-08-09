@@ -91,7 +91,9 @@ def _seed_invoice_with_bare_name_client(morning_client, marker):
 
 def _seed_transaction_account_with_real_client(morning_client, marker):
     client_id, _ = seed_real_client(morning_client, marker)
-    payload = _build_transaction_account_payload(client_id=client_id, amount=40.0, description=marker)
+    payload = _build_transaction_account_payload(
+        client_id=client_id, amount=40.0, description=marker, vat_included=True
+    )
     response = morning_client.create_invoice(payload)
     return _extract_id(response), client_id
 

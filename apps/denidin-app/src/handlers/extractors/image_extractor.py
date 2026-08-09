@@ -14,11 +14,93 @@ CHK Requirements:
 """
 from typing import cast, Dict
 from pathlib import Path
+import json
 import logging
+import re
 from src.models.media import Media
 from src.handlers.extractors.base import MediaExtractor
 
 logger = logging.getLogger(__name__)
+
+# bugfix-028: the only three document classifications the vision step may return.
+# `bank` and `agreement` are entirely different documents in both appearance and
+# content, so the realistic worst case is a genuine one being read as UNKNOWN -
+# never one being confidently mistaken for the other. UNKNOWN is a safe outcome
+# precisely because it routes to asking the user, not to guessing.
+DOC_TYPE_BANK = "bank"
+DOC_TYPE_AGREEMENT = "agreement"
+DOC_TYPE_UNKNOWN = "unknown"
+_VALID_DOC_TYPES = {DOC_TYPE_BANK, DOC_TYPE_AGREEMENT, DOC_TYPE_UNKNOWN}
+
+# Required per type - a document classified as this type but missing any of these
+# is incomplete, and the caller must ASK rather than proceed on a guess.
+REQUIRED_FIELDS = {
+    # Three NUMBERS identify the account (user, 2026-08-09): bank number, branch,
+    # account. Screenshots usually show the bank NAME as well - that is optional
+    # extra, never a substitute for its number.
+    DOC_TYPE_BANK: ("payer_name", "amount", "txn_date", "bank_number", "bank_branch", "bank_account"),
+    DOC_TYPE_AGREEMENT: ("client_name", "components"),
+    DOC_TYPE_UNKNOWN: (),
+}
+
+_JSON_FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
+
+
+def _parse_vision_json(raw: str) -> Dict:
+    """Parse the vision call's structured response.
+
+    The extractor extracts and classifies; it does NOT author anything the user
+    reads. The reply is composed later from the extracted text plus whatever
+    needs adding (a question, when the document is unknown or incomplete).
+
+    Defensive by design: any failure to parse, or any doc_type outside the three
+    permitted values, degrades to UNKNOWN - which routes to asking the user
+    rather than to a guess.
+    """
+    empty = {
+        "doc_type": DOC_TYPE_UNKNOWN,
+        "extracted_text": "",
+        "fields": {},
+        "missing_required_fields": [],
+    }
+    if not raw or not raw.strip():
+        return empty
+
+    try:
+        payload = json.loads(_JSON_FENCE.sub("", raw.strip()))
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(
+            "[ImageExtractor] Vision response was not valid JSON - classifying as "
+            "UNKNOWN so the user is asked rather than guessed at. Raw: %r", raw[:300]
+        )
+        return empty
+    if not isinstance(payload, dict):
+        return empty
+
+    doc_type = payload.get("doc_type")
+    if doc_type not in _VALID_DOC_TYPES:
+        logger.warning(
+            "[ImageExtractor] Vision returned unrecognized doc_type %r - treating as UNKNOWN",
+            doc_type,
+        )
+        doc_type = DOC_TYPE_UNKNOWN
+
+    fields = payload.get("fields")
+    fields = fields if isinstance(fields, dict) else {}
+
+    # Recompute rather than trust: a field the model listed as present but left
+    # empty is missing, whatever its own missing_required_fields said.
+    declared = payload.get("missing_required_fields")
+    declared = [str(f) for f in declared] if isinstance(declared, list) else []
+    actually_missing = [f for f in REQUIRED_FIELDS[doc_type] if not fields.get(f)]
+    missing = sorted(set(declared) | set(actually_missing))
+
+    return {
+        "doc_type": doc_type,
+        "extracted_text": str(payload.get("extracted_text") or ""),
+        "fields": fields,
+        "missing_required_fields": missing,
+    }
 
 
 class ImageExtractor(MediaExtractor):
@@ -95,6 +177,22 @@ class ImageExtractor(MediaExtractor):
             logger.info(f"[ImageExtractor.extract] Raw AI response ({len(response_text)} chars):")
             logger.info(f"[ImageExtractor.extract] {response_text}")
 
+            # bugfix-028: the vision call now returns structured JSON, so the
+            # document TYPE is decided where the evidence actually is - looking at
+            # the image - instead of being re-inferred downstream from prose by a
+            # model that never saw it. A real run (2026-08-09) had the vision step
+            # read a bank confirmation perfectly and the text-only classifier then
+            # decline to capture it, because the prose it was handed carried the
+            # extractor's own "ביטחון: בינוני" hedge about a blurry name. Same
+            # image, opposite outcomes within an hour.
+            parsed = _parse_vision_json(response_text)
+            # The extractor authors nothing the user reads - it returns the text it
+            # read off the document, and the reply is composed downstream from that
+            # plus anything worth adding (see MediaHandler). Falls back to the raw
+            # output if the response wasn't parseable, so a format slip can never
+            # leave the user with nothing (bugfix-028 B5).
+            extracted_text = parsed["extracted_text"] or response_text
+
             # Ledger Event Recognition (runtime_constitution.md, Feature 024): a separate,
             # internal text-only classification call over the extracted text - NOT attached
             # to the vision call above. Confirmed empirically (real E2E run, 2026-07-28)
@@ -105,14 +203,21 @@ class ImageExtractor(MediaExtractor):
             # Plural (2026-07-30): a single document can genuinely warrant more than one
             # capture - see capture_ledger_events_from_text's docstring for the real bug
             # this replaced (silently dropping every component after the first).
-            ledger_events = self.ai_handler.capture_ledger_events_from_text(response_text)
+            ledger_events = self.ai_handler.capture_ledger_events_from_text(extracted_text)
 
             return {
-                "raw_response": response_text,
+                # The text read off the document - NOT a message to the user.
+                # MediaHandler composes what the user sees from this.
+                "raw_response": extracted_text,
                 "extraction_quality": "high",
                 "warnings": [],
                 "model_used": self.vision_model,
                 "ledger_events": ledger_events,
+                # bugfix-028: structured classification for downstream decisions.
+                "doc_type": parsed["doc_type"],
+                "fields": parsed["fields"],
+                "missing_required_fields": parsed["missing_required_fields"],
+                "extracted_text": parsed["extracted_text"],
             }
 
         except Exception as e:
@@ -123,6 +228,10 @@ class ImageExtractor(MediaExtractor):
                 "warnings": [f"Analysis failed: {str(e)}"],
                 "model_used": self.vision_model,
                 "ledger_events": [],
+                "doc_type": DOC_TYPE_UNKNOWN,
+                "fields": {},
+                "missing_required_fields": [],
+                "extracted_text": "",
             }
 
     def _vision_extract(self, media: Media, prompt: str) -> str:
