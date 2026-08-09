@@ -7,6 +7,11 @@
 # themselves may now run concurrently - see the same section - but that's
 # orthogonal to this per-environment app-pairing rule, which is unchanged.)
 #
+# Order matters (2026-08-07): morning-mcp-app starts FIRST, denidin-app
+# SECOND - denidin-app depends on morning-mcp-app (it discovers and calls
+# the Morning MCP tunnel at startup/per-request), never the other way
+# around, so morning-mcp-app must already be up before denidin-app starts.
+#
 # Usage: ./scripts/run_all.sh dev|prod
 
 set -e
@@ -20,5 +25,5 @@ if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
     exit 1
 fi
 
-"$REPO_ROOT/apps/denidin-app/run_denidin.sh" "$ENV"
 "$REPO_ROOT/apps/morning-mcp-app/run_morning_mcp.sh" "$ENV"
+"$REPO_ROOT/apps/denidin-app/run_denidin.sh" "$ENV"

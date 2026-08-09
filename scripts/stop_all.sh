@@ -4,6 +4,12 @@
 # stop_denidin.sh/stop_morning_mcp.sh individually, unless specifically
 # asked to stop only one.
 #
+# Order matters (2026-08-07): denidin-app stops FIRST, morning-mcp-app
+# SECOND - the reverse of run_all.sh's start order. denidin-app depends on
+# morning-mcp-app (never the other way around), so the dependent stops
+# before the dependency, same principle as run_all.sh, applied in reverse.
+# Do not "fix" this to match run_all.sh's literal order - it's intentional.
+#
 # Usage: ./scripts/stop_all.sh dev|prod [-force]
 
 set -e
