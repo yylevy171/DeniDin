@@ -68,7 +68,7 @@ and none of the three "Group B" tools (`create_receipt`/`create_credit_note`/
 `close_transaction_account`) carry the referenced document's real data (display number, amount,
 actual VAT) anywhere the approval builder can read it. This is a real, separate, three-tool gap
 — not a 028 fix. Filed as
-[`bugfix-038-group-b-approval-missing-reference-data.md`](bugfix-038-group-b-approval-missing-reference-data.md),
+[`bugfix-038-group-b-approval-missing-reference-data.md`](../../bugfixes/bugfix-038-group-b-approval-missing-reference-data.md),
 root cause and fix direction discussed live with the user (recorded in the spec), but **not yet
 through its own METHODOLOGY §VII approval gate** — treat that as not-started, not
 "in-progress-and-safe-to-continue-without-re-checking."
@@ -87,7 +87,7 @@ re-propose the direct-fetch design; it was already considered and turned down.
 
 ## Backlog spin-off filed this session
 
-[`specs/backlog/047-whatsapp-interactive-approval-buttons/`](../backlog/047-whatsapp-interactive-approval-buttons/)
+[`specs/backlog/047-whatsapp-interactive-approval-buttons/`](../../backlog/047-whatsapp-interactive-approval-buttons/)
 — your idea (interactive WhatsApp buttons would make B1/B2 structurally impossible). Draft/P2,
 gated behind a "Gate Zero" real button round-trip before any design work. Not touched further
 this session.

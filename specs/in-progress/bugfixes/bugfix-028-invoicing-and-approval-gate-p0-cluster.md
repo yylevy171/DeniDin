@@ -17,20 +17,20 @@ production; four of them, together, caused a ₪40,000 document to be approved e
 never created, with the user told nothing.
 
 ## Status
-**Open — root causes approved.** No fix designed or implemented. Per Bug-Driven Development
-(METHODOLOGY.md §VII step 2), every one of the ten sub-bugs had its root cause reviewed and
-approved individually by the user on 2026-08-09 — A3, A3b, B1, B2 as originally written;
-A1, A2, A4, B3, B4, B5 only after being reinvestigated and restated (the original wording is
-preserved below each, marked *as originally filed*, since it is what the production evidence
-was written against).
+**In Progress.** Moved from `specs/bugfixes/` to `specs/in-progress/bugfixes/` on 2026-08-10
+(this project's bugfix specs have no documented in-progress folder in CLAUDE.md/METHODOLOGY —
+this location was created for this bugfix at the user's explicit direction). All ten root
+causes approved 2026-08-09 (A3, A3b, B1, B2 as originally written; A1, A2, A4, B3, B4, B5 only
+after being reinvestigated and restated — original wording preserved below each, marked *as
+originally filed*). Test-gap analysis and the full `billed`/`expensive` test set approved the
+same day. Fixes implemented and the approved test set is green (unit 764 + 244, integration
+352, billed 4/4, expensive A1-T1 + 9/9 image classification) — see
+[`bugfix-028-HANDOFF.md`](bugfix-028-HANDOFF.md) for the live status snapshot, including the
+A1-T2 scenario carved out into `bugfix-038` once investigation showed it needed infrastructure
+outside this bugfix's approved scope.
 
-The **test-gap analysis and the `billed`/`expensive` test set are also approved** (2026-08-09,
-reviewed sub-bug by sub-bug — see "Test-gap analysis" below). Next: write the failing tests,
-then METHODOLOGY.md §VII step 5 (test approval gate) before any code changes.
-
-Filed in `specs/bugfixes/` because that is the canonical home for open bugfix specs
-(CLAUDE.md, `specs/bugfixes/README.md`); there is no `specs/backlog/bugfixes/`. "Backlogged"
-is recorded here in Status rather than by folder.
+**No PR/merge for the code yet** — testing isn't considered fully complete. Only this
+`specs/` move (plus related doc updates) is intended to reach `master` ahead of the code.
 
 ## Date Opened
 2026-08-09
@@ -38,7 +38,7 @@ is recorded here in Status rather than by folder.
 ## Reported By
 yaronlev171, from live production use 7–9 Aug 2026, plus code/data forensics against the
 read-only prod mount and prod logs. Full evidence and provenance:
-[`docs/production-analysis/2026-08-09-aug7-9-review.md`](../../docs/production-analysis/2026-08-09-aug7-9-review.md).
+[`docs/production-analysis/2026-08-09-aug7-9-review.md`](../../../docs/production-analysis/2026-08-09-aug7-9-review.md).
 
 ---
 
@@ -71,7 +71,7 @@ document was created, edited, or cancelled.
 | Ground truth | user-supplied screenshot of the Morning document list |
 
 Full runbook for repeating this:
-[`docs/production-analysis/README.md`](../../docs/production-analysis/README.md).
+[`docs/production-analysis/README.md`](../../../docs/production-analysis/README.md).
 
 ### What was examined
 - **21 ledger event files** (`{data_root}/events/*.json`)
@@ -173,8 +173,8 @@ is correct and stays.
 ### Artifacts
 | Source | Location |
 |---|---|
-| Full review doc | [`docs/production-analysis/2026-08-09-aug7-9-review.md`](../../docs/production-analysis/2026-08-09-aug7-9-review.md) |
-| Read-only runbook | [`docs/production-analysis/README.md`](../../docs/production-analysis/README.md) |
+| Full review doc | [`docs/production-analysis/2026-08-09-aug7-9-review.md`](../../../docs/production-analysis/2026-08-09-aug7-9-review.md) |
+| Read-only runbook | [`docs/production-analysis/README.md`](../../../docs/production-analysis/README.md) |
 | Prod data mount | `/Users/yaron/denidin-winprod-data/` (ro) |
 | Prod logs | `denidin-winprod:~/denidin-prod/apps/*/logs/prod/` |
 

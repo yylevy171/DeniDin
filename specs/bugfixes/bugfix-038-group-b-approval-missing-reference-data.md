@@ -149,9 +149,9 @@ and captures the user's direction, but METHODOLOGY §VII's formal steps 1-2 for 
 should still run before test design proceeds).
 
 ## Related Work
-- `specs/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — B3 (the approval
-  content requirement) and A3/A3b (payment date/method/bank details) are the direct ancestors
-  of this bugfix; this is explicitly the "next layer" for Group B that 028 didn't cover.
+- `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — B3 (the
+  approval content requirement) and A3/A3b (payment date/method/bank details) are the direct
+  ancestors of this bugfix; this is explicitly the "next layer" for Group B that 028 didn't cover.
 - `specs/done/023-reference-linked-document-creation/` — introduced all three Group B tools'
   current reference-by-ID pattern.
 - `specs/done/027-mandatory-client-reference-invoicing/` — `_extract_linked_client_id`,

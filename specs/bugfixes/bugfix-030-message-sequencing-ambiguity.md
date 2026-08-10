@@ -26,7 +26,7 @@ yaronlev171, from the 7–9 Aug 2026 production review
 > **Shared session context** — how this review was run, the read-only access paths, the full
 > map of bugfix-028…037, the triage decisions (including what was closed as *not* a bug), and
 > the open verification items:
-> [`bugfix-028` § Session Context](bugfix-028-invoicing-and-approval-gate-p0-cluster.md#session-context-2026-08-09-production-review).
+> [`bugfix-028` § Session Context](../in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md#session-context-2026-08-09-production-review) (moved to `specs/in-progress/bugfixes/` 2026-08-10).
 > All ten bugs in that set are **fix-forward only** — existing production documents are being
 > left as they are by explicit user decision.
 
@@ -64,5 +64,5 @@ or otherwise reference the specific user message they answer.
 - **`specs/in-progress/032-whatsapp-reply-reference-resolution/`** — already scoped for
   resolving inbound WhatsApp reply references. This bug is the **outbound** half; the two
   should be designed together and may collapse into one feature.
-- `specs/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — B3 (approval prompt
+- `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — B3 (approval prompt
   says nothing specific) is the defect this most amplifies.

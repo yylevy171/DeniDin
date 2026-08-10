@@ -112,5 +112,5 @@ the answer arrives, never what the question must contain.
 - `specs/done/022-explicit-approval-for-document-creation/` — the gate this plugs into.
 - `specs/done/046-hebrew-approval-synonyms/` — widened the affirmative whitelist; the layer this
   feature would make largely unnecessary for tapped approvals.
-- `specs/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — **B1** and **B2** are the
-  motivating defects; **B3** is the part buttons do *not* address.
+- `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — **B1** and
+  **B2** are the motivating defects; **B3** is the part buttons do *not* address.
