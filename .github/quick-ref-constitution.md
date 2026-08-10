@@ -18,9 +18,10 @@
 - **REQUIRED**: All config in `config/config.json` only
 - Pass config objects as parameters (dependency injection)
 
-### 3. UTC Timestamps ALWAYS
-- ✅ `datetime.now(timezone.utc)`
-- ❌ `datetime.now()`
+### 3. Israel Local Timestamps ALWAYS (amended 2026-08-10, bugfix-037)
+- ✅ `now_local()` (`utils.time_utils`) — aware, `Asia/Jerusalem`, offset on every record
+- ❌ `datetime.now()` (naive)
+- ❌ `datetime.now(timezone.utc)` — no UTC anywhere in this codebase any more
 
 ### 4. NO Monkey-Patching
 - **FORBIDDEN**: Runtime method replacement, dynamic attribute injection
@@ -251,7 +252,7 @@ else:
 ## Common Patterns to AVOID
 
 ❌ `os.getenv()` - Use config.json  
-❌ `datetime.now()` - Use `datetime.now(timezone.utc)`  
+❌ `datetime.now()` / `datetime.now(timezone.utc)` - Use `now_local()`  
 ❌ Monkey-patching - Use design patterns  
 ❌ String paths - Use `pathlib.Path`  
 ❌ Stack traces to users - Use friendly errors  
@@ -263,7 +264,7 @@ else:
 ## Quick Checklist
 
 - [ ] On feature branch (not master)
-- [ ] UTC timestamps throughout
+- [ ] Israel-local, timezone-aware timestamps throughout
 - [ ] No environment variables
 - [ ] Type hints & docstrings
 - [ ] Validation at entry points

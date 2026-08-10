@@ -7,11 +7,12 @@ the two apps independent (CLAUDE.md: no cross-app imports) while letting DeniDin
 the current (rotating, free-tier ngrok) tunnel URL for each Responses API call.
 """
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import cast, Optional
 
 from src.utils.logger import get_logger
+from src.utils.time_utils import now_local
 
 logger = get_logger(__name__)
 
@@ -74,7 +75,7 @@ class MorningMcpLocator:
             except ValueError as e:
                 logger.warning(f"Morning MCP status file has invalid 'updated_at': {e}")
                 return None
-            age_seconds = (datetime.now(timezone.utc) - updated_at).total_seconds()
+            age_seconds = (now_local() - updated_at).total_seconds()
             if age_seconds > self._max_age_seconds:
                 logger.warning(
                     f"Morning MCP status file is stale ({age_seconds:.0f}s old, "

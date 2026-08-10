@@ -8,7 +8,7 @@ Supports UUID-based architecture with separate file storage for messages.
 import json
 import uuid
 from dataclasses import dataclass, asdict, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Dict
 
@@ -16,6 +16,7 @@ import tiktoken
 
 from src.models.user import Role
 from src.utils.logger import get_logger
+from src.utils.time_utils import now_local
 
 logger = get_logger(__name__)
 
@@ -108,7 +109,7 @@ class SessionManager:
 
         # Create new session
         session_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+        now = now_local().isoformat()
 
         session = Session(
             session_id=session_id,
@@ -171,7 +172,7 @@ class SessionManager:
 
         # Create message
         message_id = message_id or str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
+        now = now_local().isoformat()
 
         # Feature 039: retire the "AI" sender/recipient sentinel - role already
         # distinguishes user vs. assistant messages unambiguously, so a user
@@ -364,7 +365,7 @@ class SessionManager:
         Returns:
             List of expired Session objects from active directory
         """
-        now = datetime.now(timezone.utc)
+        now = now_local()
         cutoff = now - timedelta(hours=self.session_timeout_hours)
         expired = []
 
@@ -535,7 +536,7 @@ class SessionManager:
         Returns:
             True if session is expired, False otherwise
         """
-        now = datetime.now(timezone.utc)
+        now = now_local()
         cutoff = now - timedelta(hours=self.session_timeout_hours)
         last_active = datetime.fromisoformat(session.last_active)
 

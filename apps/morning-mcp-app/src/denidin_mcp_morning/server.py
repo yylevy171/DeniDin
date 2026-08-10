@@ -14,7 +14,6 @@ globals, no monkey-patching).
 """
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -32,6 +31,7 @@ from . import tools
 from .config import MorningMCPConfig, load_config
 from .errors import friendly_error_message
 from .morning_client import MorningClient
+from .utils.correlation import correlation_scope, new_correlation_id
 from .utils.logger import DEFAULT_VERSION_FILE, read_version, get_logger
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.json"
@@ -119,12 +119,33 @@ def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> str:
     tool call must never take down the server process. Each call gets its
     own correlation id so the friendly message can be traced back to the
     full technical detail in the logs.
+
+    It is also the one point every tool passes through, so it owns the
+    call-level half of the audit trail (bugfix-036): which tool was invoked,
+    with which caller-facing arguments, and how it ended. The per-Morning-call
+    half - payload sent, response received - is written by `audit.py` from
+    inside the mutating tools, under the same correlation id.
+
+    `args[0]` is always the injected MorningClient; it is dropped from the
+    logged arguments (it carries the API credentials and is identical for
+    every call, so logging it would be both a leak risk and pure noise).
     """
-    correlation_id = str(uuid.uuid4())
-    try:
-        return func(*args)
-    except Exception as exc:  # noqa: BLE001 - deliberate MCP-boundary catch-all
-        return friendly_error_message(exc, correlation_id)
+    correlation_id = new_correlation_id()
+    tool_name = getattr(func, "__name__", repr(func))
+    with correlation_scope(correlation_id):
+        logger.info("[corr_id=%s] TOOL CALL %s args=%r", correlation_id, tool_name, args[1:])
+        try:
+            result = func(*args)
+        except Exception as exc:  # noqa: BLE001 - deliberate MCP-boundary catch-all
+            logger.info("[corr_id=%s] TOOL ERROR %s", correlation_id, tool_name)
+            return friendly_error_message(exc, correlation_id)
+        # Result length only, never the body: read tools return formatted lists
+        # that can run to thousands of characters and would bury the mutation
+        # records this trail exists to preserve.
+        logger.info(
+            "[corr_id=%s] TOOL OK %s result_chars=%d", correlation_id, tool_name, len(result or "")
+        )
+        return result
 
 
 def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = None) -> FastMCP:

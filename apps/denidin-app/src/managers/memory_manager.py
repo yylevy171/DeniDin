@@ -17,7 +17,7 @@ Error Handling:
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -26,6 +26,7 @@ from chromadb.config import Settings
 from openai import OpenAI
 
 from src.models.user import MemoryScope
+from src.utils.time_utils import now_local
 
 
 class CollectionWrapper:
@@ -155,7 +156,7 @@ class MemoryManager:
         metadata.setdefault('type', 'fact')
         metadata.setdefault('scope', MemoryScope.PRIVATE.value)  # Default to PRIVATE
         metadata.setdefault('embedding_model', self.embedding_model)
-        metadata['created_at'] = datetime.now(timezone.utc).isoformat()
+        metadata['created_at'] = now_local().isoformat()
 
         # Generate unique ID
         memory_id = str(uuid.uuid4())

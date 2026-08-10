@@ -83,8 +83,16 @@ docker --context denidin-winprod ps
 `wsl_ssh_run` is a shell function — it cannot be wrapped in `timeout`. Use the
 Bash tool's own timeout instead.
 
-Log timestamps are **UTC**. Ledger `event_id`/`event_time` are **local (IDT,
-UTC+3)**. Don't compare them directly.
+Timestamps are **Israel local time everywhere** — logs, ledger events, session
+records alike — and every full timestamp carries its real offset (`+03:00` IDT,
+`+02:00` IST). They can be compared directly.
+
+This changed on **2026-08-10** (bugfix-037). Anything written **before** that
+date still shows the old mixed representation: log lines in UTC with no label,
+`captured_at`/`message_timestamp` as `+00:00`, and `event_id`/`event_date`/
+`event_time` in local time with no offset — so on older data a ledger event's
+`06:00` and its own log line's `03:00:27` are the same instant, three hours
+apart on their face. Don't compare those directly.
 
 ### 5. ChromaDB inspection
 
