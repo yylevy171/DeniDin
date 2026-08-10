@@ -123,11 +123,11 @@ class TestLedgerEventCaptureTextBilled:
     def _event_id_bucket_prefixes(cls) -> set:
         """The event_id prefix (letter+ddmmyy+hhmm, sans seq digit) each fixed
         timestamp above maps to, computed the same way LedgerEventManager does
-        (Asia/Jerusalem local time) - so cleanup targets exactly the files these
-        tests could have produced, nothing else in test_data/events/."""
-        tz = ZoneInfo("Asia/Jerusalem")
+        (bugfix-037: via time_utils.local_from_timestamp) - so cleanup targets
+        exactly the files these tests could have produced, nothing else in
+        test_data/events/."""
         return {
-            f"A{datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(tz).strftime('%d%m%y%H%M')}"
+            f"A{local_from_timestamp(ts).strftime('%d%m%y%H%M')}"
             for ts in cls._FIXED_MESSAGE_TIMESTAMPS
         }
 
