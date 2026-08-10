@@ -52,6 +52,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import unquote
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -158,6 +159,49 @@ class TestLedgerEventCaptureE2E:
             f"would write into production/dev ledger data"
         )
         return denidin.denidin_app
+
+    # Fixed webhook 'timestamp' epochs used across this class's tests (mirrored
+    # from each test's own notification literal) - these are FIXED, not "now",
+    # so every run maps to the exact same LedgerEventManager event_id bucket
+    # (letter+ddmmyy+hhmm). REQ-ID-003 only allows 10 seq-digit files per
+    # bucket; without cleanup, test_data/events/ accumulates one file per run
+    # and permanently exhausts the bucket after ~10 runs - the same bug that
+    # broke tests/billed/test_ledger_event_capture_text_billed.py 2026-08-10
+    # (bugfix-028 billed run), fixed there the same way.
+    _FIXED_MESSAGE_TIMESTAMPS = (
+        1770000200, 1770000300, 1770000400, 1770001300, 1770001400, 1770001500,
+    )
+
+    @classmethod
+    def _event_id_bucket_prefixes(cls) -> set:
+        """The event_id prefix (letter+ddmmyy+hhmm, sans seq digit) each fixed
+        timestamp above maps to, computed the same way LedgerEventManager does
+        (Asia/Jerusalem local time) - so cleanup targets exactly the files these
+        tests could have produced, nothing else in test_data/events/."""
+        tz = ZoneInfo("Asia/Jerusalem")
+        return {
+            f"A{datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(tz).strftime('%d%m%y%H%M')}"
+            for ts in cls._FIXED_MESSAGE_TIMESTAMPS
+        }
+
+    @pytest.fixture(autouse=True)
+    def _clean_fixed_timestamp_events(self, config):
+        """Before AND after every test in this class: remove any previously-
+        persisted event file for this class's fixed-timestamp buckets, so
+        REQ-ID-003's 10-seq-digit cap never silently exhausts across repeated
+        runs again (see _FIXED_MESSAGE_TIMESTAMPS docstring above)."""
+        def _clean():
+            events_dir = Path(config.data_root) / "events"
+            if not events_dir.exists():
+                return
+            prefixes = self._event_id_bucket_prefixes()
+            for f in events_dir.glob("*.json"):
+                if any(f.stem.startswith(p) for p in prefixes):
+                    f.unlink()
+
+        _clean()
+        yield
+        _clean()
 
     @staticmethod
     def _fresh_chat_id(label: str) -> str:
