@@ -25,7 +25,7 @@ yaronlev171, from the 7–9 Aug 2026 production review
 > **Shared session context** — how this review was run, the read-only access paths, the full
 > map of bugfix-028…037, the triage decisions (including what was closed as *not* a bug), and
 > the open verification items:
-> [`bugfix-028` § Session Context](bugfix-028-invoicing-and-approval-gate-p0-cluster.md#session-context-2026-08-09-production-review).
+> [`bugfix-028` § Session Context](../in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md#session-context-2026-08-09-production-review) (moved to `specs/in-progress/bugfixes/` 2026-08-10).
 > All ten bugs in that set are **fix-forward only** — existing production documents are being
 > left as they are by explicit user decision.
 
@@ -71,5 +71,5 @@ A 9-digit number beginning with a valid Israeli mobile/landline prefix (`5x`, `2
 ## Related Work
 - Feature 026 (`REQ-CLIENT-016`) — introduced `_normalize_israeli_phone`; this extends its
   accepted-input set.
-- `specs/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — B3/B5: the
+- `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — B3/B5: the
   approve-then-fail sequence here is the same "validate late, tell the user late" pattern.

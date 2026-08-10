@@ -13,8 +13,50 @@ contains **no record of any document being created**.
 a financial incident has to be reconstructed second-hand.
 
 ## Status
-**Open — backlogged.** No fix designed. Per Bug-Driven Development (METHODOLOGY.md §VII), next
-step is human approval of the root cause before test-gap analysis.
+**Fixed** — branch `bugfix/036-037-mcp-audit-trail-and-timestamp-representation`, fixed
+together with bugfix-037 (2026-08-10). Root cause approved by the user; the failing-test gate
+(METHODOLOGY.md §VII steps 3-5) was **explicitly waived by the user** for both bugs in this
+branch, so the fix went straight from root-cause approval to implementation.
+
+### Root Cause (approved 2026-08-10)
+The tool-call path had no success-path logging at all:
+1. `server.py::_call_with_error_boundary` — the single choke point all 14 tools pass through —
+   minted a `correlation_id` per call but used it only in the `except` branch. On success it
+   logged nothing: not the tool name, not the arguments, not the result.
+2. Therefore **only raised exceptions ever reached the log** (via
+   `errors.friendly_error_message`). The three failed `create_transaction_account` attempts for
+   הסתדרות כללית חדשה were *refusals*, not exceptions —
+   `_resolve_client_for_document_creation` returns a friendly message and the tool returns it —
+   so nothing recorded them.
+3. `MorningClient`/`tools.py` read the payload sent and the response received into local
+   variables and discarded both. `add_client` discarded Morning's response outright, so the id
+   Morning assigned a new client existed nowhere in this app.
+
+The 88-line log is exactly what this code can emit; nothing was misconfigured.
+
+### Fix (option C of three considered)
+Correlated, two-layer audit trail:
+- `utils/correlation.py` — a `ContextVar` carrying one correlation id per tool call, so the
+  boundary's lines and the tools' lines can be joined without threading a parameter through
+  every signature (a read of an explicitly-scoped context value, not monkey-patching).
+- `server.py::_call_with_error_boundary` — logs `TOOL CALL` (tool name + caller-facing
+  arguments, with the injected `MorningClient` dropped: it carries the credentials and is
+  identical every call) and `TOOL OK`/`TOOL ERROR`. Result **length** only, never the body.
+- `audit.py::log_mutation` — one line per Morning mutation, from all six document-creating
+  tools plus `add_client`/`update_client`: resolved client id and name, payload sent, full
+  response received, and an at-a-glance document summary (`id`/`number`/`total`/`status`/`type`).
+- `audit.py::log_refusal` — the previously-silent decisions: client not found, ambiguous
+  client, original not linked to a client.
+
+Read tools are covered by the boundary lines only, deliberately without response bodies — a
+`list_invoices` result can carry 100 documents and would bury the mutations this trail exists
+to preserve.
+
+Verified by exercising the real boundary with a fake client at the `MorningClient` seam: a
+create logs requested `2360.0` alongside Morning's own `total: 2784.8` — i.e. the trail now
+captures exactly the evidence bugfix-028 A2/A4 had to be reconstructed second-hand from
+`denidin-app`'s logs. **Capturing** that total is all this bug covers; A4 (reporting the real
+total back to the user) remains open and unchanged.
 
 ## Date Opened
 2026-08-09
@@ -26,7 +68,7 @@ yaronlev171, from the 7–9 Aug 2026 production review
 > **Shared session context** — how this review was run, the read-only access paths, the full
 > map of bugfix-028…037, the triage decisions (including what was closed as *not* a bug), and
 > the open verification items:
-> [`bugfix-028` § Session Context](bugfix-028-invoicing-and-approval-gate-p0-cluster.md#session-context-2026-08-09-production-review).
+> [`bugfix-028` § Session Context](bugfix-028-invoicing-and-approval-gate-p0-cluster.md#session-context-2026-08-09-production-review) (also in `specs/in-progress/bugfixes/`, sibling to this file, as of 2026-08-10).
 > All ten bugs in that set are **fix-forward only** — existing production documents are being
 > left as they are by explicit user decision.
 
@@ -71,5 +113,5 @@ discarded.
 ## Related Work
 - `specs/done/018-denidin-morning-mcp-integration/` — audit logging was already listed there as
   outstanding polish. This bug is the evidence that it matters.
-- `specs/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — A4 needs the same
+- `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — A4 needs the same
   response data this bug is about capturing.
