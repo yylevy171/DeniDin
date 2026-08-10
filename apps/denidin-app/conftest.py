@@ -18,6 +18,8 @@ warnings.filterwarnings("ignore", message=".*builtin type.*has no __module__ att
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root / "src"))
 
+from src.utils.logger import LOCAL_LOG_DATEFMT, LocalTimeFormatter  # noqa: E402
+
 # Track current test file for logging
 _current_test_file = None
 
@@ -87,9 +89,11 @@ def pytest_runtest_setup(item):
     # Set up root logger with file handler for this test file
     root_logger = logging.getLogger()
     
-    formatter = logging.Formatter(
+    # bugfix-037: test logs use the same Israel-local, offset-bearing timestamps
+    # as the apps' own logs, so a test log can be read against a prod log directly.
+    formatter = LocalTimeFormatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        datefmt=LOCAL_LOG_DATEFMT
     )
     
     file_handler = logging.FileHandler(log_path)

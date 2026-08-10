@@ -161,11 +161,11 @@ class DeniDin:
         Returns:
             dict with keys: response_text, tokens_used, session_id
         """
-        from datetime import datetime, timezone
         from src.models.message import WhatsAppMessage
-        
+        from src.utils.time_utils import now_local
+
         # Create fake WhatsApp message for testing
-        timestamp = int(datetime.now(timezone.utc).timestamp())
+        timestamp = int(now_local().timestamp())
         message = WhatsAppMessage(
             message_id=f"test_{timestamp}",
             chat_id=chat_id,
@@ -175,7 +175,7 @@ class DeniDin:
             timestamp=timestamp,
             message_type="textMessage",
             is_group=False,
-            received_timestamp=datetime.now(timezone.utc),
+            received_timestamp=now_local(),
             sender_display_name="Test User"
         )
 

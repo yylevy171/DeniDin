@@ -12,10 +12,10 @@ in others, with nothing in the field names or the data model saying which is whi
 hazard for humans and for any future code that compares across stores.
 
 ## Status
-**Fixed** — branch `bugfix/036-037-mcp-audit-trail-and-timestamp-representation`, fixed
-together with bugfix-036 (2026-08-10). Root cause approved by the user; the failing-test gate
-(METHODOLOGY.md §VII steps 3-5) was **explicitly waived by the user** for both bugs in this
-branch.
+**Done - implemented and tested, merging to master** — branch
+`bugfix/036-037-mcp-audit-trail-and-timestamp-representation`, fixed together with bugfix-036
+(2026-08-10). Root cause approved by the user; the failing-test gate (METHODOLOGY.md §VII
+steps 3-5) was **explicitly waived by the user** for both bugs in this branch.
 
 ### Root Cause (approved 2026-08-10)
 Three representations, only one of them self-describing:
@@ -62,6 +62,35 @@ remain genuinely ambiguous (they carry no offset at all); the review runbook now
 **bugfix-034 L7** (`event_date` is the capture date, not the transaction date) was deliberately
 left out of scope — it is a different defect in the same fields. This fix is purely additive to
 those fields' meaning, so it does not conflict with L7 being fixed later.
+
+### Test Fallout Found and Fixed (2026-08-10)
+A full sweep of every test folder in both apps (unit/integration/billed/expensive) for
+timestamp-comparison assertions, done at the user's explicit request after this fix's first
+billed-test run failed, turned up one shared root cause in three files - each defines its own
+copy of a static `_assert_ledger_events_persisted` helper that built its expected
+`message_timestamp` with `tz=timezone.utc`, an exact-string comparison that no longer matched
+`LedgerEventManager`'s new local-time output:
+`tests/billed/test_ledger_event_capture_text_billed.py` (6 call sites),
+`tests/billed/test_ledger_event_capture_billed.py` (1 call site), and
+`tests/expensive/test_ledger_event_capture_e2e.py` (5 call sites). All three fixed with the
+same one-line change (`local_from_timestamp` in place of the UTC construction, matching what
+the app code itself does) and re-verified: both billed files 8/8 passed, one expensive test run
+(user-approved, one at a time per the expensive-test rules) passed, and the full denidin-app
+unit suite (733/733) re-ran clean afterward. Every other UTC reference across both apps' test
+suites was checked and confirmed unaffected (epoch construction, aware-aware arithmetic, or
+fixture/mock input never compared against code output) — see the conversation record for the
+full per-file breakdown.
+
+### Verification (2026-08-10)
+Real ledger events persisted end-to-end via `LedgerEventManager.add_ledger_event` were manually
+inspected: `event_id`/`event_date`/`event_time` and `message_timestamp`/`captured_at` all agree
+on the same instant (e.g. `event_time: "06:00"` alongside `message_timestamp:
+"2026-08-09T06:00:27+03:00"`) - the exact 3-hour-discrepancy-that-wasn't this bug reports no
+longer occurs. Log lines confirmed local with a real offset
+(`2026-08-10 03:12:57+0300 - ...`). denidin-app's full unit suite (733/733) and
+`tests/integration/` (29/29), morning-mcp-app's full unit suite (243/243, including the
+amended `test_status_writer.py`), and 9 real billed/expensive ledger-capture tests (8 billed +
+1 expensive) all passed.
 
 ## Date Opened
 2026-08-09

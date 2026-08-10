@@ -5,9 +5,10 @@ bash functions (019-env-separation) so the container entrypoint can call the sam
 logic directly, without a host-level ngrok-launching shell process.
 """
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+from .utils.time_utils import now_local
 
 
 def write_status_not_running(status_path: Path) -> None:
@@ -25,6 +26,6 @@ def _write(status_path: Path, status: str, server_url: Optional[str]) -> None:
     payload = {
         "status": status,
         "server_url": server_url,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": now_local().isoformat(),
     }
     status_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")

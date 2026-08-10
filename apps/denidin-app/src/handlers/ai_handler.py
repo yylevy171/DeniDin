@@ -6,7 +6,7 @@ Phase 6: RBAC (Role-Based Access Control)
 """
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast, Optional, List, Dict
 
@@ -20,6 +20,7 @@ from tenacity import (
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage, AIRequest, AIResponse
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
+from src.utils.time_utils import now_local
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_manager import MemoryManager
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
@@ -838,7 +839,7 @@ class AIHandler:
         # produced real wrong-year invoice lookups (e.g. resolving "7 בפברואר"
         # to 2023). This is appended at reply time, computed per call in UTC
         # (CONSTITUTION §II) — NOT templated into the constitution file.
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = now_local().strftime("%Y-%m-%d")
         return (
             f"{constitution}\n\n---\n"
             f"THE CURRENT DATE IS {today} (UTC). Treat this as the authoritative "
@@ -1319,7 +1320,7 @@ class AIHandler:
                 tool_name=ar.name,
                 arguments=ar.arguments,
                 server_label=ar.server_label,
-                created_at=datetime.now(timezone.utc).isoformat(),
+                created_at=now_local().isoformat(),
             )
             self.pending_approval_manager.set(effective_chat_id, new_pending)
             logger.info(

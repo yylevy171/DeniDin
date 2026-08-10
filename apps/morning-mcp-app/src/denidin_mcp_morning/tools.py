@@ -9,13 +9,14 @@ human-readable, Hebrew-formatted string.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 import tiktoken
 from email_validator import EmailNotValidError, validate_email
 from pydantic import ValidationError
 
+from .audit import log_mutation, log_refusal
 from .formatters import (
     format_ambiguous_clients_message,
     format_client_details,
@@ -32,6 +33,7 @@ from .formatters import (
 from .models import _MORNING_STATUS_CODES, Client, FinancialSummary, Invoice
 from .morning_client import MorningClient
 from .utils.logger import get_logger
+from .utils.time_utils import now_local
 
 logger = get_logger(__name__)
 
@@ -96,7 +98,7 @@ def _build_create_invoice_payload(
     income line and a single payment line — the sandbox requires at least one
     payment line (תקבולים) to accept a document.
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = now_local().date().isoformat()
     vat_type = 1 if vat_included else 0
 
     payload = {
@@ -157,7 +159,7 @@ def _build_transaction_account_payload(
     anywhere in the payload, not even a "no VAT" value, since the field's
     mere presence implies a tax document.
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = now_local().date().isoformat()
 
     payload = {
         "type": _TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
@@ -231,6 +233,13 @@ def create_transaction_account(
 
     payload = _build_transaction_account_payload(resolution.client_id, amount, description, due_date)
     response = client.create_invoice(payload)
+    log_mutation(
+        "create_transaction_account",
+        payload=payload,
+        response=response,
+        client_id=resolution.client_id,
+        client_name=resolution.disclosure_name or client_name,
+    )
 
     doc_id = str(
         response.get("id")
@@ -278,7 +287,7 @@ def _build_combo_document_payload(
     already "paid", no due date (unlike a type 305 tax invoice, which is a
     request for later payment).
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = now_local().date().isoformat()
     vat_type = 1 if vat_included else 0
 
     return {
@@ -353,6 +362,13 @@ def create_combo_document(
 
     payload = _build_combo_document_payload(resolution.client_id, amount, description, vat_included)
     response = client.create_invoice(payload)
+    log_mutation(
+        "create_combo_document",
+        payload=payload,
+        response=response,
+        client_id=resolution.client_id,
+        client_name=resolution.disclosure_name or client_name,
+    )
 
     doc_id = str(
         response.get("id")
@@ -423,6 +439,13 @@ def create_invoice(
 
     payload = _build_create_invoice_payload(resolution.client_id, amount, description, due_date, vat_included)
     response = client.create_invoice(payload)
+    log_mutation(
+        "create_invoice",
+        payload=payload,
+        response=response,
+        client_id=resolution.client_id,
+        client_name=resolution.disclosure_name or client_name,
+    )
 
     invoice_id = str(
         response.get("id")
@@ -660,7 +683,7 @@ def _build_cancellation_payload(
     check `_extract_linked_client_id(original)` and refuse before calling
     this if it's None (a pre-feature, bare-name-only original).
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = now_local().date().isoformat()
     income_items = original.get("income") or []
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
@@ -735,10 +758,22 @@ def create_credit_note(
     """
     original = client.get_invoice(original_invoice_id)
     if _extract_linked_client_id(original) is None:
+        log_refusal(
+            "create_credit_note",
+            "original_not_linked_to_client",
+            original_invoice_id=original_invoice_id,
+        )
         return format_original_not_linked_to_client()
 
     payload = _build_cancellation_payload(original, amount=amount, description=description)
     credit_response = client.create_invoice(payload)
+    log_mutation(
+        "create_credit_note",
+        payload=payload,
+        response=credit_response,
+        client_id=_extract_linked_client_id(original),
+        client_name=(original.get("client") or {}).get("name"),
+    )
 
     original_number = original.get("number", original_invoice_id)
     credit_number = credit_response.get("number", credit_response.get("id", ""))
@@ -770,7 +805,7 @@ def _build_payment_receipt_payload(original: dict, amount: Optional[float] = Non
     check `_extract_linked_client_id(original)` and refuse before calling
     this if it's None (a pre-feature, bare-name-only original).
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = now_local().date().isoformat()
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
     total_amount = original.get("total")
@@ -834,7 +869,7 @@ def _build_combo_closing_payload(
     MUST check `_extract_linked_client_id(original)` and refuse before
     calling this if it's None (a pre-feature, bare-name-only original).
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = now_local().date().isoformat()
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
     total_amount = original.get("total")
@@ -946,12 +981,24 @@ def close_transaction_account(
     if _extract_linked_client_id(original) is None:
         # Pre-feature, bare-name-only original - refuse rather than fall
         # back to rebuilding a bare-name client object (REQ-INV-013).
+        log_refusal(
+            "close_transaction_account",
+            "original_not_linked_to_client",
+            original_invoice_id=original_invoice_id,
+        )
         return format_original_not_linked_to_client()
 
     payload = _build_combo_closing_payload(
         original, amount=amount, description=description, vat_included=vat_included
     )
     combo_response = client.create_invoice(payload)
+    log_mutation(
+        "close_transaction_account",
+        payload=payload,
+        response=combo_response,
+        client_id=_extract_linked_client_id(original),
+        client_name=(original.get("client") or {}).get("name"),
+    )
 
     original_number = original.get("number", original_invoice_id)
     combo_number = combo_response.get("number", combo_response.get("id", ""))
@@ -1032,10 +1079,22 @@ def create_receipt(
     if _extract_linked_client_id(original) is None:
         # Pre-feature, bare-name-only original - refuse rather than fall
         # back to rebuilding a bare-name client object (REQ-INV-013).
+        log_refusal(
+            "create_receipt",
+            "original_not_linked_to_client",
+            original_invoice_id=original_invoice_id,
+        )
         return format_original_not_linked_to_client()
 
     payload = _build_payment_receipt_payload(original, amount=amount)
     receipt_response = client.create_invoice(payload)
+    log_mutation(
+        "create_receipt",
+        payload=payload,
+        response=receipt_response,
+        client_id=_extract_linked_client_id(original),
+        client_name=(original.get("client") or {}).get("name"),
+    )
 
     original_number = original.get("number", original_invoice_id)
     receipt_number = receipt_response.get("number", receipt_response.get("id", ""))
@@ -1134,10 +1193,23 @@ def _resolve_client_for_document_creation(client: MorningClient, client_name: st
     if resolved is not None:
         disclosure_name = None if _is_exact_name_match(resolved.name, client_name) else resolved.name
         return ClientResolution(client_id=resolved.id, disclosure_name=disclosure_name, refusal_message=None)
+    # bugfix-036: a refusal is a decision this server made about a document, but
+    # it is not an exception, so nothing used to record it - the three failed
+    # create_transaction_account attempts for הסתדרות כללית חדשה (7-9 Aug 2026)
+    # left no trace at all. Logged here rather than in each caller so every
+    # document-creation tool, present and future, is covered by construction;
+    # the tool name is on the boundary's TOOL CALL line under the same corr id.
     if candidates:
+        log_refusal(
+            "document_creation",
+            "ambiguous_client",
+            client_name=client_name,
+            candidates=[(candidate.id, candidate.name) for candidate in candidates],
+        )
         return ClientResolution(
             client_id=None, disclosure_name=None, refusal_message=format_ambiguous_clients_message(candidates)
         )
+    log_refusal("document_creation", "client_not_found", client_name=client_name)
     return ClientResolution(client_id=None, disclosure_name=None, refusal_message=format_client_not_found())
 
 
@@ -1321,7 +1393,17 @@ def add_client(
     validated_email = _validate_email(email)
     normalized_phone = _normalize_israeli_phone(phone)
     payload = _build_add_client_payload(normalized_name, validated_email, normalized_phone, tax_id)
-    client.add_client(payload)
+    response = client.add_client(payload)
+    # bugfix-036: the response was previously discarded outright, so the id
+    # Morning assigned the new client existed nowhere in this app. It still
+    # never reaches the caller (REQ-CLIENT-018) - only the log.
+    log_mutation(
+        "add_client",
+        payload=payload,
+        response=response,
+        client_id=(response or {}).get("id") if isinstance(response, dict) else None,
+        client_name=normalized_name,
+    )
     return f"נוצר לקוח חדש: {normalized_name}"
 
 
@@ -1388,7 +1470,14 @@ def update_client(
     resolved, candidates = _resolve_client_by_name(client, name)
     if resolved is None:
         if candidates:
+            log_refusal(
+                "update_client",
+                "ambiguous_client",
+                client_name=name,
+                candidates=[(candidate.id, candidate.name) for candidate in candidates],
+            )
             return format_ambiguous_clients_message(candidates)
+        log_refusal("update_client", "client_not_found", client_name=name)
         return format_client_not_found()
 
     is_exact_match = _is_exact_name_match(resolved.name, name)
@@ -1396,7 +1485,14 @@ def update_client(
     validated_email = _validate_email(email) if email else None
     normalized_phone = _normalize_israeli_phone(phone) if phone else None
     payload = _build_update_client_payload(normalized_new_name, validated_email, normalized_phone, tax_id)
-    client.update_client(resolved.id, payload)
+    response = client.update_client(resolved.id, payload)
+    log_mutation(
+        "update_client",
+        payload=payload,
+        response=response,
+        client_id=resolved.id,
+        client_name=normalized_new_name or resolved.name,
+    )
 
     display_name = normalized_new_name or resolved.name
     if is_exact_match:
@@ -1410,7 +1506,7 @@ def _resolve_period_dates(
     to_date: Optional[str] = None,
 ) -> tuple:
     """Resolve a friendly period name to a concrete (from_date, to_date) range."""
-    today = datetime.now(timezone.utc).date()
+    today = now_local().date()
 
     if period == "custom":
         if not (from_date and to_date):
