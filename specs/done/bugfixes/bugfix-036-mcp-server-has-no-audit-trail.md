@@ -13,7 +13,7 @@ contains **no record of any document being created**.
 a financial incident has to be reconstructed second-hand.
 
 ## Status
-**Done - implemented and tested, merging to master** — branch
+**Done - Merged to master (PR #210)** — branch
 `bugfix/036-037-mcp-audit-trail-and-timestamp-representation`, fixed together with bugfix-037
 (2026-08-10). Root cause approved by the user; the failing-test gate (METHODOLOGY.md §VII
 steps 3-5) was **explicitly waived by the user** for both bugs in this branch, so the fix went

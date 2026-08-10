@@ -12,7 +12,7 @@ in others, with nothing in the field names or the data model saying which is whi
 hazard for humans and for any future code that compares across stores.
 
 ## Status
-**Done - implemented and tested, merging to master** — branch
+**Done - Merged to master (PR #210)** — branch
 `bugfix/036-037-mcp-audit-trail-and-timestamp-representation`, fixed together with bugfix-036
 (2026-08-10). Root cause approved by the user; the failing-test gate (METHODOLOGY.md §VII
 steps 3-5) was **explicitly waived by the user** for both bugs in this branch.
