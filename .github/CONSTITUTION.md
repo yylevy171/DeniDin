@@ -80,28 +80,53 @@ Rationale: documentation, schemas, and SDKs describe intent, not always actual b
 
 ---
 
-## II. UTC Timestamp Requirement
+## II. Israel Local Time Requirement
 
-**All timestamps in the codebase MUST use UTC timezone.**
+**All timestamps in the codebase MUST use Israel local time (`Asia/Jerusalem`), as
+timezone-aware datetimes.**
+
+**Amended 2026-08-10 (bugfix-037), by explicit user decision** — this section previously
+required UTC everywhere. It no longer does: **there is no UTC anywhere in this codebase.**
+The change was made because three representations had accumulated with nothing labelling
+which was which (unlabelled UTC log lines, `+00:00` ISO timestamps, and unlabelled local
+ledger `event_date`/`event_time`), so the same instant read as `03:00:27` in one store and
+`06:00` in another. Everything the system actually handles is Israeli local time — Morning
+documents, bank-transfer screenshots, and Events.csv's date/time columns all state local
+times — so the representation now matches the domain rather than being converted at the
+edges.
 
 **Requirements**:
-1. **ALWAYS** use `datetime.now(timezone.utc)` - NEVER use `datetime.now()` without timezone
-2. **ALWAYS** use `datetime.now(timezone.utc).timestamp()` for Unix timestamps
-3. **ALWAYS** store `datetime` objects with UTC timezone information
-4. **ISO format logs** must include timezone: `message.received_timestamp.isoformat()` outputs UTC ISO format
-5. **Code review** must verify all datetime operations use UTC explicitly
+1. **ALWAYS** use `now_local()` (`utils.time_utils`) - NEVER `datetime.now()` without a
+   timezone, and never `datetime.now(timezone.utc)`
+2. **ALWAYS** use `now_local().timestamp()` for Unix timestamps (an epoch is an instant and
+   is unaffected by representation, but the call site should still read consistently)
+3. **ALWAYS** store timezone-**aware** `datetime` objects. A naive local datetime is still
+   forbidden: it breaks comparisons against stored values and silently gets DST wrong twice
+   a year
+4. **ISO format logs/records** therefore always carry the real offset (`+03:00` in IDT,
+   `+02:00` in IST), so every record is self-describing
+5. **Log lines** are formatted by `LocalTimeFormatter` and print the offset - never
+   `logging.Formatter`'s default, which renders whatever zone the process happens to run in
+6. **Code review** must verify all datetime operations resolve to `Asia/Jerusalem` explicitly
 
 **Examples**:
 ```python
 # ✅ CORRECT
-from datetime import datetime, timezone
-received_timestamp = datetime.now(timezone.utc)
+from src.utils.time_utils import now_local
+received_timestamp = now_local()
 
 # ❌ WRONG
-received_timestamp = datetime.now()  # FORBIDDEN
+received_timestamp = datetime.now()                 # FORBIDDEN (naive)
+received_timestamp = datetime.now(timezone.utc)     # FORBIDDEN since 2026-08-10
 ```
 
-**Rationale**: Consistent timezone usage prevents time-related bugs, simplifies debugging across distributed systems, and ensures accurate message tracking.
+**Pre-2026-08-10 data**: values already persisted with `+00:00` remain valid and compare
+correctly against new ones, precisely because both sides are timezone-aware. This is a
+fix-forward change; nothing is migrated.
+
+**Rationale**: One representation, matching the domain, stated explicitly on every record and
+every log line - so no reader (human or code) has to know which store they are looking at to
+know what time it says.
 
 ---
 
@@ -576,7 +601,7 @@ if config.feature_flags.get("enable_memory_system", False):
 **Requirements**:
 - **Log Format**: `[msg_id={uuid}] [recv_ts={timestamp}] {log_message}`
   - All logs related to message processing MUST include message_id
-  - All logs MUST include UTC timestamp in ISO format
+  - All logs MUST include an Israel-local timestamp carrying its offset (bugfix-037; was UTC until 2026-08-10)
 - **Log Levels**:
   - **INFO**: Application events, message flow, state transitions
   - **DEBUG**: Detailed parsing, configuration, API request/response details

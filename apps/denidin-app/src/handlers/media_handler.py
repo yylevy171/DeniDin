@@ -10,7 +10,7 @@ formats the extractor's analysis into user-friendly summaries.
 
 from typing import Dict, Optional
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime
 
 from src.models.media import Media
 from src.models.media_attachment import MediaAttachment
@@ -19,6 +19,7 @@ from src.handlers.extractors.pdf_extractor import PDFExtractor
 from src.handlers.extractors.docx_extractor import DOCXExtractor
 from src.managers.media_file_manager import MediaFileManager
 from src.utils.logger import get_logger
+from src.utils.time_utils import now_local
 
 logger = get_logger(__name__)
 
@@ -204,7 +205,7 @@ class MediaHandler:
                     if timestamp is not None:
                         event_timestamp = timestamp
                     else:
-                        event_timestamp = int(datetime.now(timezone.utc).timestamp())
+                        event_timestamp = int(now_local().timestamp())
                     session = self.session_manager.get_session(chat_id)
 
                     for call_arguments in ledger_events:

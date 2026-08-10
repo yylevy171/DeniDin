@@ -218,6 +218,30 @@ ChromaDB Collections:
 }
 ```
 
+### 4a. Timestamp Representation (all stores, both apps)
+
+**One representation, everywhere: Israel local time (`Asia/Jerusalem`), timezone-aware.**
+Established by bugfix-037 (2026-08-10), which replaced CONSTITUTION §II's former
+UTC-everywhere rule — see that section for the binding rule and the reasoning.
+
+| Where | Value | Notes |
+|---|---|---|
+| Log lines (both apps) | `2026-08-09 06:00:27+0300` | `LocalTimeFormatter`; the offset is always printed |
+| `captured_at`, `message_timestamp` (ledger events) | `2026-08-09T06:00:27.399417+03:00` | full ISO-8601, real offset |
+| Session `created_at` / `last_active` | ISO-8601 with offset | |
+| `morning-mcp-app` status file `updated_at` | ISO-8601 with offset | read back by `morning_mcp_locator` |
+| `event_date`, `event_time`, `event_id` (ledger events) | `09/08/2026`, `06:00`, `B09082606000` | Events.csv column formats — no offset field exists in that schema, and none is needed now that the whole system is local |
+| Unix epoch fields (`Message.timestamp`, Green API's own `timestamp`) | integer seconds | unaffected — an epoch is an instant, not a representation |
+
+All datetimes are **aware**; a naive local datetime is forbidden (it breaks comparisons and
+gets DST wrong twice a year). `now_local()` / `to_local()` / `local_from_timestamp()` in each
+app's `utils/time_utils.py` are the only sanctioned constructors.
+
+**Pre-2026-08-10 records** still carry `+00:00`, and pre-2026-08-10 log lines are unlabelled
+UTC. They stay valid and compare correctly against new records because both sides are aware —
+this was a fix-forward change with no migration. Only the *log lines* from before that date
+are genuinely ambiguous, since they carry no offset at all.
+
 ### 5. AI Handler (`src/handlers/ai_handler.py`)
 
 **Responsibilities:**
