@@ -28,6 +28,13 @@ never via Morning's raw REST API or Morning's own credentials.
 
 NO MOCKING anywhere: real webhook -> real router handler -> real OpenAI
 Responses API -> real Morning MCP server, over the real tunnel.
+
+A few tests in this suite depend on a small number of PERMANENT real
+sandbox clients, seeded once and never re-created per run (as opposed to
+`_unique_client_name`/`_seed_client_via_conversation` below, the default
+fresh-per-run pattern) - see GROUND_TRUTH_CLIENTS.md in this same directory
+for the full registry, why each one exists, and what to do if the sandbox
+is ever wiped.
 """
 from __future__ import annotations
 

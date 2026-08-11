@@ -53,29 +53,38 @@ def test_resolve_client_for_document_creation_zero_matches_returns_refusal():
     assert resolution.client_id is None
     assert resolution.refusal_message is not None
     assert "לא נמצא" in resolution.refusal_message or "אין" in resolution.refusal_message
-    assert client.search_clients_calls == [{"name": "Nonexistent Client"}]
+    # bugfix-039 (expanded 2026-08-11): a multi-word query with zero direct
+    # matches now also tries the per-word/truncation fallback
+    # (_resolve_client_by_name_words) before giving up - more than the one
+    # original whole-string call, but the first is still that exact call.
+    assert client.search_clients_calls[0] == {"name": "Nonexistent Client"}
 
 
-def test_resolve_client_for_document_creation_exact_match_resolves_with_no_disclosure():
+def test_resolve_client_for_document_creation_exact_match_resolves():
     record = _client_record(client_id="c-1", name="Test Client")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
     resolution = tools._resolve_client_for_document_creation(client, "Test Client")
 
     assert resolution.client_id == "c-1"
-    assert resolution.disclosure_name is None
     assert resolution.refusal_message is None
 
 
-def test_resolve_client_for_document_creation_non_exact_match_discloses_real_name():
+def test_resolve_client_for_document_creation_non_exact_match_asks_for_confirmation():
+    """bugfix-039 (expanded 2026-08-11): a non-exact single match must never
+    proceed to create a document - it refuses with a closed yes/no
+    confirmation question naming the real matched client instead, same as
+    the ambiguous/not-found cases. No document should be created on this
+    call; the caller must re-invoke with the confirmed exact name."""
     record = _client_record(client_id="c-1", name="Test Client International")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
     resolution = tools._resolve_client_for_document_creation(client, "Test Client")
 
-    assert resolution.client_id == "c-1"
-    assert resolution.disclosure_name == "Test Client International"
-    assert resolution.refusal_message is None
+    assert resolution.client_id is None
+    assert resolution.refusal_message is not None
+    assert "Test Client International" in resolution.refusal_message
+    assert "כן" in resolution.refusal_message and "לא" in resolution.refusal_message
 
 
 def test_resolve_client_for_document_creation_multiple_matches_returns_refusal_with_candidates():

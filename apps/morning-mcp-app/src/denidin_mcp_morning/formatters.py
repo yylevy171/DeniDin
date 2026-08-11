@@ -224,6 +224,23 @@ def format_client_not_found() -> str:
     return "לא נמצא לקוח בשם הזה."
 
 
+def format_client_name_confirmation_question(candidate_name: str) -> str:
+    """Hebrew confirmation question (bugfix-039, expanded 2026-08-11 per
+    user decision) for ANY tool - read or write - that resolves a
+    client_name to exactly one real client whose stored name isn't the
+    literal spelling given. Never silently proceed under the guessed name
+    (a write tool would create a real Morning document against a possibly-
+    wrong client before the user ever sees which one was picked) and never
+    silently refuse "not found" either - ask, and let the model re-invoke
+    the same tool with the now-confirmed exact name once the user answers.
+
+    A closed yes/no question (bugfix-028 B1: open-ended phrasing like a bare
+    "לאשר?" gets misparsed - always end "אישור - כן/לא?" so the parser has
+    something reliable to match), not a request for the user to retype
+    anything themselves."""
+    return f'מצאתי לקוח בשם "{candidate_name}" - האם לזה התכוונת? אישור - כן/לא?'
+
+
 def format_original_not_linked_to_client() -> str:
     """Friendly Hebrew message when a Group B tool's linked original document
     has no real client attached (feature 027, REQ-INV-013) - a pre-feature,
