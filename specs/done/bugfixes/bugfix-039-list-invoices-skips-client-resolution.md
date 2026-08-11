@@ -18,7 +18,7 @@ invoice-status question, or a document silently created against the wrong client
 directly harmful, not just annoying.
 
 ## Status
-**Done - implemented and tested, merging to master.** Root cause investigated and approved by user
+**Done - Merged to master (PR #211).** Root cause investigated and approved by user
 (yaronlev171, 2026-08-10); scope expanded by explicit user decision (2026-08-11, round 1) after a
 test surfaced a much bigger, related problem; round 2 (2026-08-11) added constitution guidance and
 permanent T1/T2 fixtures per user review; round 3 (2026-08-11, same day) was a full rewrite of the
