@@ -243,10 +243,13 @@ def test_update_client_tool_confirmation_never_includes_raw_client_id(morning_cl
     assert client_id not in result
 
 
-def test_update_client_tool_discloses_non_exact_match(morning_client):
-    """New requirement: when the target resolves via a non-exact (partial/
-    prefix) match, the confirmation must explicitly disclose which client
-    was actually updated, distinct from the exact-match phrasing."""
+def test_update_client_tool_non_exact_match_asks_for_confirmation_and_updates_nothing(morning_client):
+    """bugfix-039 (round 2, user decision 2026-08-11 - "bring it in line,
+    same bugfix"): a non-exact (partial/prefix) match used to update
+    immediately and disclose which client was used only in the success
+    reply - by then the real Morning mutation already happened against a
+    possibly-wrong client. Now, same as the create_* tools, it refuses
+    with a closed yes/no confirmation question and updates NOTHING."""
     from denidin_mcp_morning.tools import add_client, get_client_details, update_client
 
     # Random hex marker, not a timestamp - see the analogous comment in
@@ -254,14 +257,47 @@ def test_update_client_tool_discloses_non_exact_match(morning_client):
     unique_marker = uuid.uuid4().hex[:16].upper()
     name = f"Test Client {unique_marker}"
     partial_reference = f"Test Client {unique_marker[:-3]}"
+    original_tax_id = "308253681"
+
+    add_client(
+        morning_client, name=name, email=f"{unique_marker}@example.com", phone="050-1234567",
+        tax_id=original_tax_id,
+    )
+    _poll_until(lambda r: name in r, lambda: get_client_details(morning_client, name))
+
+    result = update_client(morning_client, name=partial_reference, tax_id="308253682")
+
+    assert name in result
+    assert "כן" in result and "לא" in result
+    # Nothing was actually updated - the original tax_id must still be the
+    # one on file, not the one from the refused, never-applied attempt.
+    details = get_client_details(morning_client, name)
+    assert original_tax_id in details
+    assert "308253682" not in details
+
+
+def test_update_client_tool_confirmed_non_exact_match_then_updates_with_exact_name(morning_client):
+    """The intended follow-up half of the flow above: once the model
+    re-invokes update_client with the now-confirmed EXACT real name (what
+    a "כן" reply to the confirmation question leads to), the update is
+    applied normally."""
+    from denidin_mcp_morning.tools import add_client, get_client_details, update_client
+
+    unique_marker = uuid.uuid4().hex[:16].upper()
+    name = f"Test Client {unique_marker}"
 
     add_client(morning_client, name=name, email=f"{unique_marker}@example.com", phone="050-1234567")
     _poll_until(lambda r: name in r, lambda: get_client_details(morning_client, name))
 
-    result = update_client(morning_client, name=partial_reference, tax_id="308253681")
+    result = update_client(morning_client, name=name, tax_id="308253681")
 
-    assert "מצאתי ועדכנתי את הלקוח הבא" in result
-    assert name in result
+    assert result.startswith("עודכנו פרטי הלקוח:")
+    # Search-index eventual-consistency lag (research.md Decision 8) - the
+    # PUT itself already succeeded (verified via the real Morning response,
+    # not just this reply text), but a get_client_details search
+    # immediately afterward can briefly still return the pre-update record.
+    details = _poll_until(lambda d: "308253681" in d, lambda: get_client_details(morning_client, name))
+    assert "308253681" in details
 
 
 def test_update_client_tool_exact_match_uses_standard_phrasing(morning_client):

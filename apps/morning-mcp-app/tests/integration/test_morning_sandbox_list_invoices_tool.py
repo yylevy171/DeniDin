@@ -109,6 +109,78 @@ def test_list_invoices_tool_finds_seeded_invoice_by_non_prefix_substring(morning
     )
 
 
+def test_list_invoices_tool_asks_for_confirmation_on_name_prefix_variant(morning_client):
+    """Regression test for bugfix-039: a multi-word client_name query where an
+    earlier word is a genuine prefix of the stored word (a nickname/
+    truncation), not its literal spelling, must resolve to exactly one real
+    client and ASK the user to confirm - never silently list that client's
+    invoices under a guessed name, and never silently claim "not found"
+    either (user decision, 2026-08-10: a read tool with no approval step has
+    no other opportunity to catch a wrong guess).
+
+    Feature 031 confirmed Morning's /documents/search `clientName` does
+    whole-string substring matching (research.md Decision 1), but every one
+    of its six probes was a single-token substring of one exact stored name
+    ("Yossi", "Cohen", "Ltd", ...) - never a multi-word query where a word
+    isn't the literal stored spelling. This is exactly the shape of the live
+    production failure (2026-08-10): querying "דוד אדלר" against a client
+    stored as "דודי אדלר" found nothing, because "דוד אדלר" (with the space)
+    is not a contiguous substring of "דודי אדלר" even though each word
+    individually is a prefix match. A live probe (2026-08-10) further
+    confirmed Morning's /clients/search `name` param has the exact same
+    whole-string-prefix limitation - so the fix cannot just reuse the
+    existing _resolve_client_by_name unchanged; it decomposes the query into
+    words and intersects per-word search results client-side
+    (_resolve_client_by_name_words). Reproduced here in Latin script against
+    a fresh seeded client for a stable, isolated regression test.
+    """
+    from denidin_mcp_morning.tools import create_invoice, list_invoices
+
+    unique_marker = f"DENIDIN_BUG039_{int(datetime.now(timezone.utc).timestamp())}"
+    stored_first_name = "Yossef"
+    queried_first_name = "Yoss"  # genuine prefix of the stored word, not its literal spelling
+    client_name = f"{stored_first_name} {unique_marker} Cohenberg"
+    _, client_name = seed_real_client(morning_client, unique_marker, name=client_name)
+
+    create_invoice(
+        morning_client,
+        client_name=client_name,
+        amount=63.0,
+        description=f"Name-variant seed {unique_marker}",
+    )
+
+    query = f"{queried_first_name} {unique_marker}"  # two words; first is a prefix variant
+
+    result = None
+    for _ in range(12):
+        result = list_invoices(morning_client, client_name=query)
+        if client_name in result:
+            break
+        time.sleep(1.5)
+
+    assert result is not None
+    assert client_name in result, (
+        f"Confirmation question should name the real resolved client so the user can confirm/deny: {result!r}"
+    )
+    assert "כן" in result and "לא" in result, f"Should be a closed yes/no question: {result!r}"
+    assert "חשבונית #" not in result, (
+        f"Must not silently list invoices under a guessed name - this is a question, not a result: {result!r}"
+    )
+
+
+def test_list_invoices_tool_reports_no_match_when_no_word_resolves(morning_client):
+    """Regression test for bugfix-039: a multi-word client_name query where
+    no word matches any real client at all must report "not found" - never
+    an ambiguous-refusal or a confirmation question with nothing to confirm
+    (user decision, 2026-08-10: "if truly no match on any prefix(es) -
+    decide that there is no match")."""
+    from denidin_mcp_morning.tools import list_invoices
+
+    result = list_invoices(morning_client, client_name="NO_SUCH_CLIENT_XXXXXXXX NO_SUCH_SURNAME_YYYYYYYY")
+
+    assert result == "לא נמצאו חשבוניות התואמות את החיפוש."
+
+
 def test_list_invoices_tool_returns_readable_string_for_no_matches(morning_client):
     from denidin_mcp_morning.tools import list_invoices
 
