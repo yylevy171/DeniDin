@@ -263,7 +263,7 @@ def _build_pending_approval_details(tool_name: str, arguments_json: str) -> str:
     if doc_label is None:
         return f"יש פעולה הממתינה לאישורך לפני שהיא מתבצעת.\n\n{APPROVAL_QUESTION}"
 
-    today = datetime.now(timezone.utc).date().strftime("%d/%m/%Y")
+    today = now_local().date().strftime("%d/%m/%Y")
     amount = args.get("amount")
     vat_included = args.get("vat_included")
     if vat_included is True:

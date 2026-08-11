@@ -205,7 +205,7 @@ def _validate_payment_date(payment_date: Optional[str]) -> str:
             f"(expected YYYY-MM-DD or DD/MM/YYYY). Ask the user to confirm the date "
             f"rather than guessing at its format."
         )
-    if parsed > datetime.now(timezone.utc).date():
+    if parsed > now_local().date():
         raise ValueError(
             f"Transaction date {payment_date!r} is in the future - money cannot already "
             f"have arrived. Ask the user to confirm the real transaction date."
