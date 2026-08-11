@@ -50,20 +50,81 @@ def test_create_invoice_exact_match_attaches_to_the_real_client(morning_client):
     assert "מצאתי" not in confirmation  # exact match - no disclosure needed
 
 
-def test_create_invoice_non_exact_match_discloses_and_attaches_to_the_real_client(morning_client):
+def test_create_invoice_non_exact_match_asks_for_confirmation_and_creates_nothing(morning_client):
+    """bugfix-039 (expanded 2026-08-11): a non-exact single match must
+    refuse with a closed yes/no confirmation question and create NOTHING -
+    never silently create-then-disclose, since by the time a disclosure is
+    shown the real Morning document already exists under a possibly-wrong
+    client, too late for the user to catch a bad guess."""
     marker = f"DENIDIN_027_RESOLVE_FUZZY_{int(datetime.now(timezone.utc).timestamp())}"
+    real_name = f"Test Client {marker} International"
+    seed_real_client(morning_client, marker, name=real_name)
+
+    # Query by a prefix, not the full stored name - forces a non-exact match.
+    result = create_invoice(morning_client, client_name=f"Test Client {marker}", amount=11.0, description=marker)
+
+    assert "מזהה פנימי" not in result  # no document confirmation shape at all - nothing created
+    assert real_name in result  # names the real candidate so the user can confirm
+    assert "כן" in result and "לא" in result  # closed yes/no question, not open-ended
+
+
+def test_create_invoice_confirmed_non_exact_match_then_creates_with_exact_name(morning_client):
+    """The intended follow-up half of the flow above: once the model
+    re-invokes create_invoice with the now-confirmed EXACT real name (what
+    a "כן" reply to the confirmation question leads to), the document is
+    created normally, attached to the real client."""
+    marker = f"DENIDIN_027_RESOLVE_FUZZY_CONFIRMED_{int(datetime.now(timezone.utc).timestamp())}"
     real_name = f"Test Client {marker} International"
     client_id, _ = seed_real_client(morning_client, marker, name=real_name)
 
-    # Query by a prefix, not the full stored name - forces a non-exact match.
-    confirmation = create_invoice(
-        morning_client, client_name=f"Test Client {marker}", amount=11.0, description=marker
-    )
+    confirmation = create_invoice(morning_client, client_name=real_name, amount=11.0, description=marker)
     invoice_id = _extract_id(confirmation)
 
     created = morning_client.get_invoice(invoice_id)
     assert created.get("client", {}).get("id") == client_id
-    assert real_name in confirmation  # disclosed the real matched name
+    assert "כן" not in confirmation.split("\n")[0]  # no leftover confirmation-question phrasing
+
+
+def test_create_invoice_single_letter_added_to_stored_name_asks_for_confirmation(morning_client):
+    """T1 (user-specified regression case, 2026-08-11): the STORED client's
+    surname is missing a trailing letter relative to what's typed - the
+    mirror direction of T2 below, and the one Morning's native prefix search
+    cannot cover on its own (a longer query can never be a prefix of a
+    shorter stored word) - this is exactly what _search_word_with_truncation
+    closes. The uniqueness marker sits in the UNEDITED first-name word so
+    the single-letter-edit relationship on the surname stays clean
+    (stored "צור" vs typed "צורן" - one letter added at the end, not the
+    first letter)."""
+    marker = f"DENIDIN_039_T1_{int(datetime.now(timezone.utc).timestamp())}"
+    real_name = f"זהבית{marker} צור"
+    typed_name = f"זהבית{marker} צורן"
+    seed_real_client(morning_client, marker, name=real_name)
+
+    result = create_invoice(morning_client, client_name=typed_name, amount=14.0, description=marker)
+
+    assert "מזהה פנימי" not in result  # nothing created
+    assert real_name in result  # names the real candidate
+    assert "כן" in result and "לא" in result
+
+
+def test_create_invoice_single_letter_removed_from_stored_name_asks_for_confirmation(morning_client):
+    """T2 (user-specified regression case, 2026-08-11): the STORED client's
+    first name has one extra trailing letter relative to what's typed - the
+    exact production incident shape (stored "דודי" vs typed "דוד"). Already
+    coverable by Morning's native whole-string prefix search alone (typed is
+    a literal prefix of stored) - kept as its own explicit regression test
+    per the user's request, not just folded into the general FUZZY test
+    above. Marker sits in the UNEDITED surname."""
+    marker = f"DENIDIN_039_T2_{int(datetime.now(timezone.utc).timestamp())}"
+    real_name = f"אדלר{marker} דודי"
+    typed_name = f"אדלר{marker} דוד"
+    seed_real_client(morning_client, marker, name=real_name)
+
+    result = create_invoice(morning_client, client_name=typed_name, amount=15.0, description=marker)
+
+    assert "מזהה פנימי" not in result  # nothing created
+    assert real_name in result  # names the real candidate
+    assert "כן" in result and "לא" in result
 
 
 def test_create_invoice_zero_matches_raises_and_creates_nothing(morning_client):

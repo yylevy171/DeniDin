@@ -106,15 +106,20 @@ def test_create_combo_document_raises_when_the_client_cannot_be_resolved(
     _assert_is_a_real_failure(exc_info.value)
 
 
-def test_a_decorated_client_name_is_still_resolvable(morning_client):
-    """B4(a): Morning's search is a word-aligned PREFIX match of the whole stored
-    name (live-probed 2026-08-09), so appending anything - a ח.פ, a phone -
-    takes a name from 1 match to 0. The model appended the ח.פ it had learned
-    from the client listing, and that composite is what failed in production.
+def test_a_decorated_client_name_asks_for_confirmation(morning_client):
+    """B4(a) (2026-08-09), superseded by bugfix-039 (2026-08-12): Morning's
+    search is a word-aligned PREFIX match of the whole stored name, so
+    appending anything - a ח.פ, a phone - takes a name from 1 match to 0.
+    The model appended the ח.פ it had learned from the client listing, and
+    that composite is what failed in production.
 
-    The tools must tolerate their own output being fed back to them: a name
-    carrying the `(ח.פ …)` decoration this app itself printed must resolve to
-    the same client the bare name resolves to.
+    B4(a) originally made this auto-resolve silently. bugfix-039 (round 3,
+    user decision 2026-08-11/12) replaced that with a stricter, unified
+    rule: ANY non-exact match - a decorated name is definitionally one,
+    since it never bag-equals the stored name's words - refuses and asks
+    for confirmation instead of silently proceeding. This test now asserts
+    THAT behavior: the tool must still find the real client (not report
+    "not found"), but must ask rather than silently resolve.
     """
     from tests.integration._seed_helpers import seed_real_client
     from denidin_mcp_morning.tools import _resolve_client_for_document_creation
@@ -133,8 +138,16 @@ def test_a_decorated_client_name_is_still_resolvable(morning_client):
     decorated = _resolve_client_for_document_creation(
         morning_client, f"{client_name} (ח.פ {tax_id})"
     )
-    assert decorated.client_id == bare.client_id, (
-        f"the decorated name resolved to {decorated.client_id!r} "
-        f"(refusal: {decorated.refusal_message!r}) instead of {bare.client_id!r} - "
-        f"this app's own display label is not valid input to its own create tools"
+    assert decorated.client_id is None, (
+        f"a decorated (non-exact) name must never silently resolve and proceed - "
+        f"got client_id={decorated.client_id!r}"
+    )
+    assert decorated.refusal_message is not None
+    assert client_name in decorated.refusal_message, (
+        f"the confirmation question must name the real client it found - got "
+        f"{decorated.refusal_message!r}"
+    )
+    assert "כן" in decorated.refusal_message and "לא" in decorated.refusal_message, (
+        f"a non-exact match must be a closed yes/no confirmation question, not a "
+        f"silent resolution - got {decorated.refusal_message!r}"
     )

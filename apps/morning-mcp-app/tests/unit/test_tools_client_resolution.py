@@ -22,9 +22,8 @@ class _FakeMorningClient:
     MorningClient network boundary. Mirrors test_tools_client_management.py's
     fake exactly (only the parts this feature's helpers need).
 
-    bugfix-028: `search_clients_response_sequence` returns a different response
-    per call, so the resolver's second attempt (with a trailing `(ח.פ …)`
-    decoration stripped) can be exercised."""
+    `search_clients_response_sequence` returns a different response per call,
+    for tests that need to distinguish successive search_clients calls."""
 
     def __init__(self, search_clients_response=None, search_clients_response_sequence=None):
         self._search_clients_response = search_clients_response or {"items": [], "total": 0}
@@ -62,9 +61,12 @@ def test_resolve_client_for_document_creation_zero_matches_raises():
     eight times, created zero times, with the user never told why.
 
     A tool asked to create a document that creates none has failed, and must say
-    so in the only way the layers above can see. Note the search is now attempted
-    twice - once as given, once with any trailing `(ח.פ …)` decoration stripped
-    (B4(a)) - before concluding nothing matched.
+    so in the only way the layers above can see. Resolution itself is delegated
+    to bugfix-039's `resolve_client_by_name` (round 3, 2026-08-11) - the old
+    B4(a) `(ח.פ …)`-decoration-stripping retry is retired, superseded by that
+    algorithm's general word-by-word/letter-by-letter matching (reconciled
+    2026-08-12: only the raise-on-zero-candidates behavior survives from B4(c),
+    see ClientNotFoundError's docstring).
     """
     client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
 
@@ -75,50 +77,31 @@ def test_resolve_client_for_document_creation_zero_matches_raises():
     assert client.search_clients_calls == [{"name": "Nonexistent Client"}]
 
 
-def test_resolve_client_for_document_creation_retries_without_a_tax_id_decoration():
-    """bugfix-028 B4(a): `list_clients` renders a display label as
-    `שם (ח.פ 123456789)`, the model fed that back as the client's identity, and
-    Morning's word-aligned prefix search matched nothing. This app's own output
-    must be valid input to its own create tools."""
-    record = _client_record(client_id="c-9", name="הסתדרות כללית חדשה")
-    client = _FakeMorningClient(
-        search_clients_response_sequence=[
-            {"items": [], "total": 0},
-            {"items": [record], "total": 1},
-        ]
-    )
-
-    resolution = tools._resolve_client_for_document_creation(
-        client, "הסתדרות כללית חדשה (ח.פ 589103852)"
-    )
-
-    assert resolution.client_id == "c-9"
-    assert client.search_clients_calls == [
-        {"name": "הסתדרות כללית חדשה (ח.פ 589103852)"},
-        {"name": "הסתדרות כללית חדשה"},
-    ]
-
-
-def test_resolve_client_for_document_creation_exact_match_resolves_with_no_disclosure():
+def test_resolve_client_for_document_creation_exact_match_resolves():
     record = _client_record(client_id="c-1", name="Test Client")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
     resolution = tools._resolve_client_for_document_creation(client, "Test Client")
 
     assert resolution.client_id == "c-1"
-    assert resolution.disclosure_name is None
     assert resolution.refusal_message is None
 
 
-def test_resolve_client_for_document_creation_non_exact_match_discloses_real_name():
+def test_resolve_client_for_document_creation_non_exact_match_asks_for_confirmation():
+    """bugfix-039 (expanded 2026-08-11): a non-exact single match must never
+    proceed to create a document - it refuses with a closed yes/no
+    confirmation question naming the real matched client instead, same as
+    the ambiguous/not-found cases. No document should be created on this
+    call; the caller must re-invoke with the confirmed exact name."""
     record = _client_record(client_id="c-1", name="Test Client International")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
     resolution = tools._resolve_client_for_document_creation(client, "Test Client")
 
-    assert resolution.client_id == "c-1"
-    assert resolution.disclosure_name == "Test Client International"
-    assert resolution.refusal_message is None
+    assert resolution.client_id is None
+    assert resolution.refusal_message is not None
+    assert "Test Client International" in resolution.refusal_message
+    assert "כן" in resolution.refusal_message and "לא" in resolution.refusal_message
 
 
 def test_resolve_client_for_document_creation_multiple_matches_returns_refusal_with_candidates():

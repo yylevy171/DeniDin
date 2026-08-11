@@ -341,6 +341,19 @@ matching document via `list_invoices`/session memory first.
   name matched more than one existing client, the tool instead lists the
   real candidates and asks to disambiguate — resolve that the same way as
   any other ambiguous client reference, never guessing.
+- **A "מצאתי לקוח בשם X - האם לזה התכוונת?" reply is a question, not a dead
+  end** — it means the name you gave was close but not an exact match
+  (a nickname, a spelling variant, a letter off), so **no document was
+  created yet.** This is still an in-progress request, exactly like the
+  not-found/ambiguous cases above: relay the question to the user as-is,
+  and once they confirm (a plain "כן"), **retry the exact same
+  document-creation request, this time with `client_name` set to the real
+  name the tool just gave you** (copy it verbatim, per the "reuse an id/name
+  you already have" rule elsewhere in this file) — do not silently give up,
+  and do not re-ask the user to repeat details you already have. If they say
+  "לא", ask what the correct client actually is rather than guessing again.
+  The same confirm-then-retry pattern applies to `list_invoices` when it
+  returns this same question for a fuzzy `client_name` filter.
 
 - **Scope**: use these tools only when the request is genuinely about
   creating, finding, updating, or reporting on invoices, clients, or financial

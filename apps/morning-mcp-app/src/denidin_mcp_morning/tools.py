@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
 import tiktoken
 from email_validator import EmailNotValidError, validate_email
@@ -21,6 +21,7 @@ from .formatters import (
     format_ambiguous_clients_message,
     format_client_details,
     format_client_list,
+    format_client_name_confirmation_question,
     format_client_not_found,
     format_financial_summary,
     format_invoice_confirmation,
@@ -387,7 +388,7 @@ def create_transaction_account(
     Feature 027: client_name is resolved to a real Morning client record
     before anything is created (REQ-INV-001/002/003/005/011) - see
     create_invoice's docstring for the full found/not-found/ambiguous/
-    non-exact-disclosure contract, reused identically here.
+    non-exact-confirmation contract, reused identically here.
 
     Args:
         client: An authenticated MorningClient (injected).
@@ -416,7 +417,7 @@ def create_transaction_account(
         payload=payload,
         response=response,
         client_id=resolution.client_id,
-        client_name=resolution.disclosure_name or client_name,
+        client_name=client_name,
     )
 
     doc_id = str(
@@ -428,11 +429,10 @@ def create_transaction_account(
     )
 
     stored_total = _read_back_stored_total(client, doc_id)
-    display_name = resolution.disclosure_name or client_name
     invoice = Invoice(
         id=doc_id,
         number=response.get("number"),
-        client_name=display_name,
+        client_name=client_name,
         amount=amount,
         total_amount=stored_total if stored_total is not None else amount,
         currency=response.get("currency", "ILS"),
@@ -440,10 +440,7 @@ def create_transaction_account(
         status=response.get("status"),
         type=_TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
     )
-    confirmation = _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
-    if resolution.disclosure_name:
-        return f"מצאתי והשתמשתי בלקוח הבא: {resolution.disclosure_name}\n{confirmation}"
-    return confirmation
+    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
 
 
 def _build_combo_document_payload(
@@ -547,7 +544,7 @@ def create_combo_document(
     Feature 027: client_name is resolved to a real Morning client record
     before anything is created (REQ-INV-001/002/003/005/011) - see
     create_invoice's docstring for the full found/not-found/ambiguous/
-    non-exact-disclosure contract, reused identically here.
+    non-exact-confirmation contract, reused identically here.
 
     bugfix-028 (A2/A3/A3b): `vat_included` and `payment_date` are both REQUIRED.
     This document asserts that money has already arrived, so how much of it is
@@ -605,7 +602,7 @@ def create_combo_document(
         payload=payload,
         response=response,
         client_id=resolution.client_id,
-        client_name=resolution.disclosure_name or client_name,
+        client_name=client_name,
     )
 
     doc_id = str(
@@ -617,21 +614,17 @@ def create_combo_document(
     )
 
     stored_total = _read_back_stored_total(client, doc_id)
-    display_name = resolution.disclosure_name or client_name
     invoice = Invoice(
         id=doc_id,
         number=response.get("number"),
-        client_name=display_name,
+        client_name=client_name,
         amount=amount,
         total_amount=stored_total if stored_total is not None else amount,
         currency=response.get("currency", "ILS"),
         status=response.get("status"),
         type=_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
     )
-    confirmation = _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
-    if resolution.disclosure_name:
-        return f"מצאתי והשתמשתי בלקוח הבא: {resolution.disclosure_name}\n{confirmation}"
-    return confirmation
+    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
 
 
 def create_invoice(
@@ -649,9 +642,14 @@ def create_invoice(
     Feature 027 (REQ-INV-001/002/003/005/011): client_name is resolved to a
     real Morning client record via `_resolve_client_for_document_creation`
     before anything is created - never passed through as a bare string:
-    - Exactly one match (exact or non-exact/fuzzy) -> the document is
-      attached to that real client's id; a non-exact match's real name is
-      disclosed in the confirmation reply.
+    - Exactly one EXACT match -> the document is attached to that real
+      client's id.
+    - Exactly one NON-exact/fuzzy match (bugfix-039, expanded 2026-08-11) ->
+      no document is created yet; a closed yes/no confirmation question
+      naming the real matched client is returned instead - never silently
+      create-then-disclose, since by then the document already exists
+      against a possibly-wrong client. Re-invoke this tool with the
+      confirmed exact name to actually create it.
     - Zero matches -> no document is created; a friendly "client not found"
       message is returned instead.
     - More than one match -> no document is created; a disambiguation
@@ -683,7 +681,7 @@ def create_invoice(
         payload=payload,
         response=response,
         client_id=resolution.client_id,
-        client_name=resolution.disclosure_name or client_name,
+        client_name=client_name,
     )
 
     invoice_id = str(
@@ -694,21 +692,18 @@ def create_invoice(
         or ""
     )
 
-    display_name = resolution.disclosure_name or client_name
+    stored_total = _read_back_stored_total(client, invoice_id)
     invoice = Invoice(
         id=invoice_id,
         number=response.get("number"),
-        client_name=display_name,
+        client_name=client_name,
         amount=amount,
-        total_amount=response.get("total", amount),
+        total_amount=stored_total if stored_total is not None else amount,
         currency=response.get("currency", "ILS"),
         due_date=due_date,
         status=response.get("status"),
     )
-    confirmation = format_invoice_confirmation(invoice)
-    if resolution.disclosure_name:
-        return f"מצאתי והשתמשתי בלקוח הבא: {resolution.disclosure_name}\n{confirmation}"
-    return confirmation
+    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
 
 
 def _map_list_invoices_filters(
@@ -848,9 +843,48 @@ def list_invoices(
     Returns:
         A Hebrew string listing matching invoices (a token-budget-limited
         prefix if the complete set doesn't fit), a friendly "no results"
-        message if none match, or a "too many, narrow your search" message
-        if the real total exceeds the fetch cap.
+        message if none match, a "too many, narrow your search" message if
+        the real total exceeds the fetch cap, a disambiguation message if a
+        multi-word `client_name` resolves to more than one real client, or a
+        confirmation question if it resolves to exactly one real client
+        whose stored name isn't the literal query given. An EXACT match
+        (including word-order-independent, e.g. "Solutions Tech" against a
+        client stored as "Tech Solutions") resolves and the search proceeds
+        normally under the real stored name - it does NOT ask a
+        confirmation question (a real production bug this exact code path
+        had, 2026-08-11: an always-ask-regardless-of-exactness bug meant
+        even a client seeded and queried with the literal identical name
+        got stuck asking "did you mean X?" in a loop - see bugfix-039's
+        "Session Handoff, round 3").
     """
+    if client_name and len(client_name.split()) > 1:
+        # bugfix-039 round 3: resolve_client_by_name is THE one client-
+        # name-matching mechanism now, used identically everywhere. Single-
+        # word queries are deliberately left untouched here (a genuine
+        # partial/substring search, e.g. "Cohen", not a specific full-name
+        # lookup) - Feature 031 already confirmed those work via Morning's
+        # own substring matching, and resolving them through this mechanism
+        # risks a false "ambiguous" refusal against clients unrelated to
+        # the caller's intent (many real clients can share one common word).
+        resolved, candidates = resolve_client_by_name(client, client_name)
+        if resolved is not None:
+            client_name = resolved.name  # exact match - search under the real stored name
+        elif len(candidates) == 1:
+            # Never silently search under a guessed name, and never silently
+            # say "not found" either - ask, since this tool has no approval
+            # step (unlike the creation tools) to catch a wrong guess.
+            return format_client_name_confirmation_question(candidates[0].name)
+        elif candidates:
+            log_refusal(
+                "list_invoices",
+                "ambiguous_client",
+                client_name=client_name,
+                candidates=[(candidate.id, candidate.name) for candidate in candidates],
+            )
+            return format_ambiguous_clients_message(candidates)
+        # else: candidates empty - fall through to the raw query below,
+        # which will also find nothing (preserves the existing "no
+        # results" message/path rather than inventing a new one).
     params = _map_list_invoices_filters(from_date, to_date, client_name, number)
     first_page = client.list_invoices(params=params)
     raw_items = _extract_items(first_page)
@@ -1385,6 +1419,240 @@ def _resolve_client_by_name(client: MorningClient, name: str) -> Tuple[Optional[
     return None, candidates
 
 
+def _levenshtein(a: str, b: str) -> int:
+    """Standard edit distance (insertions/deletions/substitutions, unit
+    cost). No external dependency - this project has none for it."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    previous_row = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        current_row = [i]
+        for j, cb in enumerate(b, start=1):
+            cost = 0 if ca == cb else 1
+            current_row.append(
+                min(
+                    previous_row[j] + 1,  # deletion
+                    current_row[j - 1] + 1,  # insertion
+                    previous_row[j - 1] + cost,  # substitution
+                )
+            )
+        previous_row = current_row
+    return previous_row[-1]
+
+
+def _bag_equal_words(query: str, candidate_name: str) -> bool:
+    """Whether `query` and `candidate_name` are made of exactly the same
+    words (case-insensitive, geresh-normalized), regardless of order -
+    the real exactness criterion for the algorithm below (bugfix-039,
+    round 3, 2026-08-11): the caller may not have typed the words in the
+    same order Morning stored them, and that alone must never turn a
+    genuinely exact name into a refusal."""
+
+    def _bag(name: str) -> List[str]:
+        return sorted(_normalize_hebrew_geresh(w.strip().casefold()) for w in name.split() if w)
+
+    return _bag(query) == _bag(candidate_name)
+
+
+def _search_word_prefix(client: MorningClient, prefix: str) -> Dict[str, Client]:
+    """One real Morning /clients/search call for a single prefix string -
+    the one search primitive the algorithm below is built from."""
+    response = client.search_clients({"name": _normalize_hebrew_geresh(prefix)})
+    items = response.get("items") or []
+    candidates = [Client.model_validate(item) for item in items]
+    return {c.id: c for c in candidates if c.id}
+
+
+_COMMON_WORD_DISCOVERY_CAP = 10  # user decision, 2026-08-11 - see resolve_client_by_name's loop
+
+
+def _grow_word(client: MorningClient, word: str, pool_ids: Optional[Set[str]]) -> Dict[str, Client]:
+    """Grow `word`'s own prefix one letter at a time (intersected with
+    `pool_ids` if given - None means unconstrained), stopping the moment
+    the result narrows to exactly 1, or once the word's letters run out,
+    or immediately on 0. Returns whatever {client_id: Client} state is at
+    the point it stopped.
+
+    This single mechanism naturally covers a query word with an extra
+    trailing letter beyond a real, shorter stored word (e.g. "צורן" vs
+    stored "צור") without any separate truncation step: it stops growing
+    the instant "צור" (3 letters) already narrows to one candidate, and
+    never reaches "צורו"/"צורן" where a longer-than-stored prefix would
+    find nothing.
+
+    Starts at 2 letters, not 1 (optimization, user decision 2026-08-11): a
+    single letter always matches broadly (real sandbox observed: "D" alone
+    -> 1479 total matches) - it can never usefully narrow anything, it's
+    just a wasted call. `word` shorter than 2 letters returns {} outright
+    (nothing to grow).
+
+    Every step filters against the SAME original `pool_ids` throughout -
+    never against a running/self-accumulated set from this word's own
+    previous letter. This matters against the real API: Morning paginates
+    (observed: 25 items/page even when the true total is in the
+    thousands), so an earlier letter's own returned page is an arbitrary,
+    non-representative sample of the TRUE match set - filtering a later,
+    more specific letter's results against that arbitrary sample would
+    silently discard real candidates that simply weren't on that earlier
+    page (a real bug caught here, 2026-08-11, testing against the live
+    sandbox: a freshly-seeded, genuinely-unique-marker client was dropped
+    from its own discovery result entirely because an early single-letter
+    page didn't happen to include it). Growing the prefix further is
+    already inherently narrowing via Morning's own search semantics
+    (anything matching a longer prefix necessarily also matches every
+    shorter prefix of it) - no client-side re-intersection against a
+    previous, possibly-incomplete page is needed or correct.
+    """
+    if len(word) < 2:
+        return {}
+    prefix = word[:2]
+    results = _search_word_prefix(client, prefix)
+    if pool_ids is not None:
+        results = {cid: c for cid, c in results.items() if cid in pool_ids}
+    if len(results) <= 1:
+        return results  # 0 -> dead end; 1 -> unique, no benefit growing further
+    for ch in word[2:]:
+        prefix += ch
+        results = _search_word_prefix(client, prefix)
+        if pool_ids is not None:
+            results = {cid: c for cid, c in results.items() if cid in pool_ids}
+        if len(results) <= 1:
+            return results
+    return results  # word's own letters exhausted, still >1
+
+
+def resolve_client_by_name(client: MorningClient, query: str) -> Tuple[Optional[Client], List[Client]]:
+    """THE ONE client-name-resolution mechanism (bugfix-039, round 3, user
+    decision 2026-08-11: "this AND ONLY this is the way to find clients in
+    morning" - replaces the old _resolve_client_by_name_words/
+    _search_word_with_truncation pair and every ad-hoc "try whole-string,
+    then maybe fall back" pattern across every caller). Full algorithm
+    writeup and the standalone prototype it was proven against first:
+    specs/bugfixes/bugfix-039-list-invoices-skips-client-resolution.md.
+
+    Returns (exact_client_or_None, ordered_candidates) - same shape as the
+    old _resolve_client_by_name, but:
+    - candidates are NEVER filtered by relevance (user decision,
+      2026-08-11: independent per-word discovery surfacing an unrelated
+      client that only shares one common word - e.g. a common patronymic/
+      surname fragment - with the query is intentional, not a bug; a
+      future refinement may special-case very common Hebrew name-part
+      patterns, explicitly deferred, not part of this change)
+    - candidates ARE always ordered by Levenshtein distance to the query
+      (closest first), so a long list still shows the most plausible read
+      on top.
+
+    STEP 0 (cheap fast path, one call): the caller may have already given
+    the exact right name (word-order-independent) - check the whole
+    string at once before doing any of the real work below.
+
+    If that doesn't resolve exactly and the query is multi-word, a single
+    `for word in words:` pass (query order) does two things per word, in
+    the same iteration:
+    1. Grows an INTERSECTED pool (started unconstrained) via `_grow_word`
+       - the only phase that can conclude an EXACT match (a unique
+         candidate whose full stored words bag-equal every query word) or
+         kill the chain (0 results) or carry an ambiguous pool to the next
+         word.
+    2. Independently of that pool, grows this SAME word alone via
+       `_grow_word` again (unconstrained) - because a real candidate can
+       be invisible to the intersected chain (e.g. a client sharing only
+       the LAST of three query words with nothing in common on the first
+       two is invisible to a chain that already narrowed on those first
+       two) yet still worth surfacing as a "did you mean" option. Whatever
+       this word alone narrows to is added to the running candidate set.
+    The loop keeps going through every word regardless of whether the
+    intersected chain already died, specifically so every word still gets
+    its turn at independent discovery.
+
+    STEP FINAL: once an exact match is concluded VIA THE LOOP (not Step 0
+    - Step 0's own result is already a fresh, direct whole-string lookup,
+    so re-running the identical query again would be pure waste), one
+    more whole-string lookup on the resolved name re-confirms against
+    fresh data - the loop's own confirmation came from piecemeal per-word/
+    per-letter prefix searches, not one direct fetch of the full name.
+    """
+    query = _normalize_hebrew_geresh(query)
+    words = [w for w in query.split() if w]
+    if not words:
+        return None, []
+
+    # STEP 0 - already a fresh, direct lookup; no Step Final needed on top.
+    resolved, _ = _resolve_client_by_name(client, query)
+    if resolved is not None and _bag_equal_words(query, resolved.name):
+        return resolved, []
+
+    if len(words) < 2:
+        # Single-word queries stay a broad partial search (existing app
+        # policy elsewhere, e.g. list_invoices) - not this algorithm's
+        # concern for exactness.
+        candidates = list(_search_word_prefix(client, words[0]).values())
+        return None, _sorted_by_distance(query, candidates)
+
+    # SINGLE PASS over the words - exactness tracking and candidate
+    # discovery both happen per word, in the same loop.
+    pool_ids: Optional[Set[str]] = None
+    chain_dead = False
+    candidates: Dict[str, Client] = {}
+
+    for word in words:
+        if len(word) < 2:
+            # A 1-letter word can never usefully narrow anything (see
+            # _grow_word) - skip it entirely rather than spend a call on
+            # it, for both discovery and the intersecting chain (user
+            # decision, 2026-08-11).
+            continue
+
+        discovered = _grow_word(client, word, None)
+        if len(discovered) <= _COMMON_WORD_DISCOVERY_CAP:
+            candidates.update(discovered)
+        # else: this word alone matched more than _COMMON_WORD_DISCOVERY_CAP
+        # real clients even using its FULL length (never narrowed) - a
+        # common Hebrew name-part (patronymic "בן", common surnames like
+        # "כהן"/"לוי", common first names like "דוד") is exactly this
+        # shape: real, but not a useful identifying signal on its own, so
+        # none of its matches are added as candidates (user decision,
+        # 2026-08-11 - a deterministic threshold, not relevance scoring).
+        # Only applies to discovery; the intersecting chain below still
+        # uses this same word normally, since a common word CAN still
+        # correctly narrow to an exact match once combined with another
+        # word (e.g. "בן" + "גוריון").
+
+        if chain_dead:
+            continue
+
+        intersected = _grow_word(client, word, pool_ids)
+        if len(intersected) == 0:
+            chain_dead = True  # this word ordering can't reach an exact match
+            continue
+        if len(intersected) == 1:
+            (candidate,) = intersected.values()
+            if _bag_equal_words(query, candidate.name):
+                return _resolve_client_final(client, candidate)  # EXACT MATCH, done
+            chain_dead = True  # provably terminal (see _grow_word docstring), not exact
+            continue
+        pool_ids = set(intersected.keys())  # carry the ambiguous pool to the next word
+
+    return None, _sorted_by_distance(query, list(candidates.values()))
+
+
+def _sorted_by_distance(query: str, candidates: List[Client]) -> List[Client]:
+    """Closest-to-the-query first (Levenshtein, normalized) - orders,
+    never filters (see resolve_client_by_name's docstring)."""
+    q = _normalize_hebrew_geresh(query.strip().casefold())
+    return sorted(candidates, key=lambda c: _levenshtein(q, _normalize_hebrew_geresh(c.name.strip().casefold())))
+
+
+def _resolve_client_final(client: MorningClient, resolved: Client) -> Tuple[Optional[Client], List[Client]]:
+    """Fresh-data re-confirmation once exactness is concluded."""
+    confirm, _ = _resolve_client_by_name(client, resolved.name)
+    return (confirm or resolved), []
+
+
 def _is_exact_name_match(resolved_name: str, queried_name: str) -> bool:
     """Whether a resolved client's stored name is identical (case-
     insensitive, whitespace-trimmed, apostrophe/geresh-normalized) to what
@@ -1406,17 +1674,22 @@ class ClientResolution(NamedTuple):
     005/011).
 
     Exactly one of (client_id, refusal_message) is set:
-    - Resolved (0 or 1... well, exactly 1 match): client_id is set;
-      disclosure_name is set only when the match was non-exact (fuzzy/
-      substring), signalling the caller must disclose it before/with the
-      confirmation reply; refusal_message is None.
-    - Not found (0 matches) or ambiguous (>1 matches): client_id is None,
-      refusal_message holds the friendly Hebrew text to return as-is (no
-      document creation call should be made), disclosure_name is None.
+    - Resolved: client_id is set, refusal_message is None. Only ever set for
+      an EXACT match (bugfix-039, expanded 2026-08-11) - a non-exact single
+      match no longer proceeds to create a document at all; see
+      refusal_message below.
+    - Not resolved - client_id is None, refusal_message holds the friendly
+      Hebrew text to return as-is (no document creation call should be
+      made). Three distinct cases all land here: not found, ambiguous
+      (>1 real candidate), and - new - a single non-exact match, which asks
+      the user to confirm (format_client_name_confirmation_question) rather
+      than silently creating a real Morning document against a client that
+      might not be who was meant. The caller cannot and does not need to
+      distinguish these three from refusal_message alone; all three mean
+      "create nothing, relay this message."
     """
 
     client_id: Optional[str]
-    disclosure_name: Optional[str]
     refusal_message: Optional[str]
 
 
@@ -1428,74 +1701,74 @@ class ClientNotFoundError(ValueError):
     production that let one ₪40,000 document be approved eight times, created
     zero times, with the user never told the previous attempt had failed. The
     tool was asked to create a document and did not create one - that is a
-    failure, and it has to be typed as one.
+    failure, and it has to be typed as one. Still raised here post-bugfix-039
+    (user decision, 2026-08-12): only the true zero-real-candidate case raises
+    - ambiguous and non-exact-single-match resolutions are genuine questions
+    for the user, not failures, and still return an ordinary refusal message.
     """
 
 
-# bugfix-028 B4(a): a name may be NARROWED but never DECORATED. Morning's client
-# search is a word-aligned prefix match of the whole stored name (probed live
-# 2026-08-09), so `הסתדרות כללית חדשה` matches, `הסתדרות` matches, and
-# `הסתדרות כללית חדשה (ח.פ 589103852)` matches NOTHING. `list_clients` renders
-# exactly that parenthesised form as a display label, the model reasonably fed
-# it back as the client's identity, and this app then failed to find its own
-# client. A tool's own output must be valid input to its sibling tool.
-_CLIENT_NAME_DECORATION = re.compile(r"\s*\([^()]*\)\s*$")
+def _resolve_client_for_document_creation(
+    client: MorningClient, client_name: str, tool_name: str = "document_creation"
+) -> ClientResolution:
+    """Resolve a client_name to a real client_id, or a friendly
+    refusal/confirmation message (feature 027, expanded bugfix-039
+    2026-08-11, round 3 2026-08-11).
 
+    Despite the name (kept for the three original Group A callers -
+    create_invoice/create_transaction_account/create_combo_document - and
+    to avoid an unnecessary rename churn across their existing tests), this
+    is also used by update_client (bugfix-039, round 2, user decision
+    2026-08-11: "bring it in line, same bugfix") - any tool that resolves a
+    free-text client_name to one real client before mutating something
+    shares the exact same correctness requirement, not just document
+    creation specifically. `tool_name` is passed through to `log_refusal`
+    so the audit trail still records the real calling tool, not a
+    misleading "document_creation" for a client update.
 
-def _strip_client_name_decoration(client_name: str) -> str:
-    """Drop a trailing parenthesised qualifier - `(ח.פ …)`, `(טלפון …)`, or both -
-    from a client name. Only ever strips a TRAILING parenthetical, so a client
-    genuinely named e.g. `חברה (2019) בע"מ` mid-string is untouched."""
-    stripped = _CLIENT_NAME_DECORATION.sub("", client_name).strip()
-    return stripped or client_name
+    Bugfix-039 (expanded, user decision 2026-08-11): a non-exact single
+    match used to proceed straight to mutating, disclosing which client
+    was used only in the success reply - by then the real Morning mutation
+    already happened against a possibly-wrong client, too late for the
+    user to catch a bad guess. Now it never does: any non-exact resolution
+    refuses (same as an ambiguous result) with a closed yes/no confirmation
+    question instead, and the model is expected to re-invoke the same tool
+    with the now-confirmed exact name once the user answers "כן" - which
+    then resolves exactly and proceeds normally (through the tool's own
+    single approval prompt, for the tools that have one).
 
-
-def _resolve_client_for_document_creation(client: MorningClient, client_name: str) -> ClientResolution:
-    """Resolve a Group A document-creation tool's client_name to a real
-    client_id, or a friendly refusal message (feature 027).
-
-    Reuses Feature 026's `_resolve_client_by_name`/`_is_exact_name_match`
-    unchanged - this is a thin combination of the two into the single
-    branch document-creation tools need, never a new Morning API call.
-
-    bugfix-028 B4: on a miss, retries once with any trailing parenthesised
-    decoration removed (see _strip_client_name_decoration), and raises
-    ClientNotFoundError rather than returning a friendly string when nothing
-    matches at all. An AMBIGUOUS match still returns its refusal message - that
-    is a question for the user ("which of these did you mean?"), not a failure.
+    Resolution itself is entirely delegated to `resolve_client_by_name`
+    (round 3, 2026-08-11) - the one client-name-matching mechanism used
+    everywhere now. A single non-exact candidate still gets the closed
+    confirmation-question treatment; more than one still gets the
+    ambiguous-candidates message (now ordered by Levenshtein distance to
+    the query, closest first); zero candidates raises ClientNotFoundError
+    (bugfix-028 B4(c), reconciled with bugfix-039 2026-08-12 - see that
+    class's docstring).
     """
-    resolved, candidates = _resolve_client_by_name(client, client_name)
-
-    if resolved is None and not candidates:
-        undecorated = _strip_client_name_decoration(client_name)
-        if undecorated != client_name:
-            logger.info(
-                f"No client matched {client_name!r}; retrying without its trailing "
-                f"qualifier as {undecorated!r} (bugfix-028 B4)"
-            )
-            resolved, candidates = _resolve_client_by_name(client, undecorated)
-            client_name = undecorated
+    resolved, candidates = resolve_client_by_name(client, client_name)
 
     if resolved is not None:
-        disclosure_name = None if _is_exact_name_match(resolved.name, client_name) else resolved.name
-        return ClientResolution(client_id=resolved.id, disclosure_name=disclosure_name, refusal_message=None)
+        return ClientResolution(client_id=resolved.id, refusal_message=None)
     # bugfix-036: a refusal is a decision this server made about a document, but
     # it is not an exception, so nothing used to record it - the three failed
     # create_transaction_account attempts for הסתדרות כללית חדשה (7-9 Aug 2026)
     # left no trace at all. Logged here rather than in each caller so every
     # document-creation tool, present and future, is covered by construction;
     # the tool name is on the boundary's TOOL CALL line under the same corr id.
+    if len(candidates) == 1:
+        return ClientResolution(
+            client_id=None, refusal_message=format_client_name_confirmation_question(candidates[0].name)
+        )
     if candidates:
         log_refusal(
-            "document_creation",
+            tool_name,
             "ambiguous_client",
             client_name=client_name,
             candidates=[(candidate.id, candidate.name) for candidate in candidates],
         )
-        return ClientResolution(
-            client_id=None, disclosure_name=None, refusal_message=format_ambiguous_clients_message(candidates)
-        )
-    log_refusal("document_creation", "client_not_found", client_name=client_name)
+        return ClientResolution(client_id=None, refusal_message=format_ambiguous_clients_message(candidates))
+    log_refusal(tool_name, "client_not_found", client_name=client_name)
     raise ClientNotFoundError(f"{format_client_not_found()} ({client_name})")
 
 
@@ -1612,10 +1885,19 @@ def get_client_details(client: MorningClient, name: str) -> str:
     (REQ-CLIENT-018). When resolved via a non-exact (partial/prefix) match,
     explicitly discloses which client was found rather than silently
     presenting details as if the reference were certain.
+
+    Resolution is entirely delegated to `resolve_client_by_name` (bugfix-
+    039, round 3, 2026-08-11 - "this AND ONLY this is the way to find
+    clients in morning") - previously this tool only ever did a direct
+    whole-string search, missing the multi-word word-order-independent/
+    letter-added-or-removed matching every other client-resolving tool
+    already had.
     """
-    resolved, candidates = _resolve_client_by_name(client, name)
+    resolved, candidates = resolve_client_by_name(client, name)
     if resolved is not None:
-        return format_client_details(resolved, is_exact_match=_is_exact_name_match(resolved.name, name))
+        return format_client_details(resolved, is_exact_match=True)
+    if len(candidates) == 1:
+        return format_client_details(candidates[0], is_exact_match=False)
     if candidates:
         return format_ambiguous_clients_message(candidates)
     return format_client_not_found()
@@ -1726,11 +2008,15 @@ def update_client(
     """Update an existing client's fields and return a Hebrew confirmation.
 
     MCP tool: update_client (contracts/update_client.json, user-stories.md
-    US4). `name` identifies WHICH client to update (resolved via
-    `_resolve_client_by_name` - never guesses on an ambiguous match,
-    REQ-CLIENT-003/007); `new_name`/`email`/`phone`/`tax_id` are the optional
-    fields being changed - at least one is required. Approval-gated at the
-    denidin-app layer (ai_handler.APPROVAL_REQUIRED_MCP_TOOLS).
+    US4). `name` identifies WHICH client to update - resolved via
+    `_resolve_client_for_document_creation` (bugfix-039, round 2, user
+    decision 2026-08-11: "bring it in line, same bugfix" - same non-exact
+    -match refuse-and-confirm treatment the create_* tools got, instead of
+    the old "resolve non-exact, then silently mutate" shape this tool had;
+    never guesses on an ambiguous match either, REQ-CLIENT-003/007);
+    `new_name`/`email`/`phone`/`tax_id` are the optional fields being
+    changed - at least one is required. Approval-gated at the denidin-app
+    layer (ai_handler.APPROVAL_REQUIRED_MCP_TOOLS).
 
     Args:
         client: An authenticated MorningClient (injected).
@@ -1743,8 +2029,12 @@ def update_client(
         tax_id: Optional new Israeli business tax ID (ע"מ).
 
     Returns:
-        A Hebrew confirmation string. Never includes the internal Morning
-        client_id (REQ-CLIENT-018).
+        A Hebrew confirmation string on an exact match (client actually
+        updated), or a friendly refusal/confirmation-question string on a
+        not-found/ambiguous/non-exact match (nothing updated - see
+        `_resolve_client_for_document_creation`'s docstring for the full
+        contract). Never includes the internal Morning client_id
+        (REQ-CLIENT-018).
 
     Raises:
         ValueError: if none of new_name/email/phone/tax_id is given, or if
@@ -1753,37 +2043,25 @@ def update_client(
     if not any([new_name, email, phone, tax_id]):
         raise ValueError("update_client requires at least one of new_name/email/phone/tax_id to change.")
 
-    resolved, candidates = _resolve_client_by_name(client, name)
-    if resolved is None:
-        if candidates:
-            log_refusal(
-                "update_client",
-                "ambiguous_client",
-                client_name=name,
-                candidates=[(candidate.id, candidate.name) for candidate in candidates],
-            )
-            return format_ambiguous_clients_message(candidates)
-        log_refusal("update_client", "client_not_found", client_name=name)
-        return format_client_not_found()
+    resolution = _resolve_client_for_document_creation(client, name, tool_name="update_client")
+    if resolution.refusal_message is not None:
+        return resolution.refusal_message
 
-    is_exact_match = _is_exact_name_match(resolved.name, name)
     normalized_new_name = _normalize_hebrew_geresh(new_name) if new_name else None
     validated_email = _validate_email(email) if email else None
     normalized_phone = _normalize_israeli_phone(phone) if phone else None
     payload = _build_update_client_payload(normalized_new_name, validated_email, normalized_phone, tax_id)
-    response = client.update_client(resolved.id, payload)
+    response = client.update_client(resolution.client_id, payload)
     log_mutation(
         "update_client",
         payload=payload,
         response=response,
-        client_id=resolved.id,
-        client_name=normalized_new_name or resolved.name,
+        client_id=resolution.client_id,
+        client_name=normalized_new_name or name,
     )
 
-    display_name = normalized_new_name or resolved.name
-    if is_exact_match:
-        return f"עודכנו פרטי הלקוח: {display_name}"
-    return f"מצאתי ועדכנתי את הלקוח הבא: {resolved.name}\nהפרטים שעודכנו: {display_name}"
+    display_name = normalized_new_name or name
+    return f"עודכנו פרטי הלקוח: {display_name}"
 
 
 def _resolve_period_dates(

@@ -441,14 +441,22 @@ def test_update_client_exact_match_uses_standard_phrasing():
     assert result.startswith("עודכנו פרטי הלקוח:")
 
 
-def test_update_client_non_exact_match_discloses_resolved_name():
+def test_update_client_non_exact_match_asks_for_confirmation_and_updates_nothing():
+    """bugfix-039 (round 2, user decision 2026-08-11 - "bring it in line,
+    same bugfix"): update_client used to resolve a non-exact single match
+    and mutate immediately, disclosing which client was used only in the
+    success reply - by then the real Morning update had already happened
+    against a possibly-wrong client. Now, same as the create_* tools, it
+    refuses with a closed yes/no confirmation question and updates
+    NOTHING; the caller must re-invoke with the confirmed exact name."""
     record = _client_record(name="Tech Solutions International")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
     result = tools.update_client(client, name="Tech Solutions", phone="050-1234567")
 
-    assert "מצאתי ועדכנתי את הלקוח הבא" in result
     assert "Tech Solutions International" in result
+    assert "כן" in result and "לא" in result
+    assert client.update_client_calls == []
 
 
 # --- list_clients: name filter + real pagination (REQ-CLIENT-001 fix) ---
@@ -594,5 +602,3 @@ def test_resolve_client_for_document_creation_resolves_apostrophe_query_against_
 
     assert resolution.client_id == "c-1"
     assert resolution.refusal_message is None
-    # Same name modulo punctuation variant - not treated as a fuzzy/non-exact match.
-    assert resolution.disclosure_name is None
