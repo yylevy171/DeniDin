@@ -30,3 +30,7 @@ bump version, no change
 ## [0.3.0] - 2026-08-07
 
 Mandatory real client reference for document creation (feature 027): resolve/attach documents by real Morning client_id instead of a bare name; fix Hebrew geresh/apostrophe mismatch breaking client lookup; fix list_invoices number search.
+
+## [0.4.0] - 2026-08-12
+
+resolve_client_name-first architecture, MCP audit logging, and receipt/credit-note payment-date fixes
