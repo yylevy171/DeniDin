@@ -14,7 +14,6 @@ rather than trusting the create response alone.
 Per CONSTITUTION §V and this app's testing policy (spec.md §Testing Strategy).
 """
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -31,7 +30,7 @@ from denidin_mcp_morning.tools import (
     create_transaction_account,
     get_invoice_details,
 )
-
+from denidin_mcp_morning.utils.time_utils import now_local
 from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -51,7 +50,7 @@ def morning_client():
 
 
 def _unique_marker(label):
-    return f"DENIDIN_021_{label}_{int(datetime.now(timezone.utc).timestamp())}"
+    return f"DENIDIN_021_{label}_{int(now_local().timestamp())}"
 
 
 def _extract_id(response):
@@ -82,7 +81,8 @@ def test_create_transaction_account_tool_sandbox(morning_client):
     # bugfix-028 A2: vat_included is now required - an undecided VAT treatment
     # must never reach Morning.
     result = create_transaction_account(
-        morning_client, client_name, 45.0, f"Transaction account {marker}", vat_included=True
+        morning_client, client_name, 45.0, f"Transaction account {marker}", vat_included=True,
+        name_resolved=True,
     )
     assert client_name.split()[-1] in result or "45" in result or "45.00" in result
 
@@ -92,7 +92,7 @@ def test_create_transaction_account_tool_sandbox(morning_client):
 
     listing = None
     for _ in range(12):
-        listing = list_invoices(morning_client, client_name=client_name)
+        listing = list_invoices(morning_client, client_name=client_name, name_resolved=True)
         if "חשבון עסקה" in listing:
             break
         time.sleep(1.5)
@@ -110,14 +110,14 @@ def test_create_combo_document_tool_sandbox(morning_client):
     # money that has already moved, so its date is a fact, not a default.
     create_combo_document(
         morning_client, client_name, 35.0, f"Combo document {marker}",
-        vat_included=True, payment_date="2026-07-12"
+        vat_included=True, payment_date="2026-07-12", name_resolved=True,
     )
 
     from denidin_mcp_morning.tools import list_invoices
 
     listing = None
     for _ in range(12):
-        listing = list_invoices(morning_client, client_name=client_name)
+        listing = list_invoices(morning_client, client_name=client_name, name_resolved=True)
         if "חשבונית מס / קבלה" in listing or "קבלה" in listing:
             break
         time.sleep(1.5)
@@ -158,7 +158,7 @@ def test_create_credit_note_tool_sandbox_partial_amount(morning_client, seeded_i
 def test_create_receipt_tool_sandbox_happy_path(morning_client, seeded_invoice):
     original_id, _ = seeded_invoice
 
-    create_receipt(morning_client, original_id)
+    create_receipt(morning_client, original_id, payment_date="2026-07-12")
 
     # Follow-up: independently re-fetch the original and confirm it flipped
     # to paid as a result of the receipt now existing. Checking both
@@ -171,6 +171,31 @@ def test_create_receipt_tool_sandbox_happy_path(morning_client, seeded_invoice):
     assert raw.get("status") in (1, 2), f"Expected a closed/paid status code, got: {raw.get('status')!r}"
 
 
+def test_create_receipt_tool_sandbox_records_the_real_payment_date_not_today(morning_client, seeded_invoice):
+    """A3 (2026-08-12): create_receipt's payment_date is REQUIRED and must
+    land on the real receipt's payment line verbatim, never today - a
+    "mark as paid" request can legitimately be about a payment that arrived
+    on an earlier date, not the day the receipt happens to be issued (same
+    real/issue-date distinction already verified for create_combo_document
+    in test_morning_sandbox_payment_details.py's own A3 test)."""
+    original_id, _ = seeded_invoice
+    real_payment_date = "2026-07-12"
+
+    create_receipt(morning_client, original_id, payment_date=real_payment_date)
+
+    raw = morning_client.get_invoice(original_id)
+    linked = raw.get("linkedDocuments") or []
+    receipts = [doc for doc in linked if doc.get("type") == 400]
+    assert receipts, f"Expected a linked receipt, got: {linked!r}"
+    receipt = morning_client.get_invoice(str(receipts[0].get("id")))
+    payments = receipt.get("payment") or []
+    assert payments, "type-400 receipts do persist a payment array - none came back"
+    assert payments[0]["date"] == real_payment_date, (
+        f"payment date is {payments[0]['date']!r}, expected the real payment "
+        f"date {real_payment_date!r} (document date staying today is correct and out of scope)"
+    )
+
+
 def test_create_receipt_tool_sandbox_already_paid_original(morning_client, seeded_invoice):
     """create_receipt's idempotency guard (feature 023): a repeated
     full-amount call against an already-paid original is a no-op - Morning
@@ -178,8 +203,8 @@ def test_create_receipt_tool_sandbox_already_paid_original(morning_client, seede
     guard is the only thing preventing a real duplicate financial document."""
     original_id, _ = seeded_invoice
 
-    create_receipt(morning_client, original_id)
-    create_receipt(morning_client, original_id)
+    create_receipt(morning_client, original_id, payment_date="2026-07-12")
+    create_receipt(morning_client, original_id, payment_date="2026-07-12")
 
     raw = morning_client.get_invoice(original_id)
     linked = raw.get("linkedDocuments") or []
@@ -194,7 +219,7 @@ def test_create_receipt_tool_sandbox_already_paid_original(morning_client, seede
 def test_create_receipt_tool_sandbox_partial_amount(morning_client, seeded_invoice):
     original_id, _ = seeded_invoice
 
-    create_receipt(morning_client, original_id, amount=80.0)
+    create_receipt(morning_client, original_id, payment_date="2026-07-12", amount=80.0)
 
     details = get_invoice_details(morning_client, invoice_id=original_id)
     assert "מסמכים מקושרים" in details

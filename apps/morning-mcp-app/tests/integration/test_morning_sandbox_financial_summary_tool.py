@@ -5,13 +5,13 @@ denidin_mcp_morning.tools.get_financial_summary against the live sandbox.
 Per CONSTITUTION §V and this app's testing policy (spec.md §Testing Strategy).
 """
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
+from denidin_mcp_morning.utils.time_utils import now_local
 from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -35,13 +35,14 @@ def seeded_invoice(morning_client):
     """Create one real sandbox invoice this month, for the summary to pick up."""
     from denidin_mcp_morning.tools import create_invoice
 
-    unique_marker = f"DENIDIN_SUMMARY_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    unique_marker = f"DENIDIN_SUMMARY_TEST_{int(now_local().timestamp())}"
     _, client_name = seed_real_client(morning_client, unique_marker)
     create_invoice(
         morning_client,
         client_name=client_name,
         amount=55.0,
         description=f"Summary seed {unique_marker}",
+        name_resolved=True,
     )
     # Give the sandbox's search index a moment (see the widened-retry fix in
     # test_morning_sandbox_list_invoices_tool.py for the same class of delay).

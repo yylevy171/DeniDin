@@ -13,13 +13,13 @@ No mocks: seeds a real invoice via create_invoice (US1), then drives
 get_invoice_details and the direct tools against the live sandbox.
 Per CONSTITUTION §V and this app's testing policy (spec.md §Testing Strategy).
 """
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
+from denidin_mcp_morning.utils.time_utils import now_local
 from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -43,7 +43,7 @@ def seeded_invoice_id(morning_client):
     """Create one real sandbox invoice and return its Morning document id."""
     from denidin_mcp_morning.tools import _build_create_invoice_payload
 
-    unique_marker = f"DENIDIN_STATUS_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    unique_marker = f"DENIDIN_STATUS_TEST_{int(now_local().timestamp())}"
     client_id, _ = seed_real_client(morning_client, unique_marker)
     payload = _build_create_invoice_payload(
         client_id=client_id,
@@ -71,7 +71,7 @@ def test_create_receipt_then_get_details_reflects_paid(morning_client, seeded_in
     US4, and calls this tool instead of a status-update tool)."""
     from denidin_mcp_morning.tools import create_receipt, get_invoice_details
 
-    create_result = create_receipt(morning_client, seeded_invoice_id)
+    create_result = create_receipt(morning_client, seeded_invoice_id, payment_date="2026-07-12")
     assert create_result
 
     details = get_invoice_details(morning_client, invoice_id=seeded_invoice_id)
@@ -85,8 +85,8 @@ def test_repeated_create_receipt_is_idempotent_no_op(morning_client, seeded_invo
     Morning itself does not reject a duplicate receipt (verified live)."""
     from denidin_mcp_morning.tools import create_receipt, get_invoice_details
 
-    create_receipt(morning_client, seeded_invoice_id)
-    create_receipt(morning_client, seeded_invoice_id)
+    create_receipt(morning_client, seeded_invoice_id, payment_date="2026-07-12")
+    create_receipt(morning_client, seeded_invoice_id, payment_date="2026-07-12")
 
     raw = morning_client.get_invoice(seeded_invoice_id)
     linked = raw.get("linkedDocuments") or []
@@ -143,15 +143,16 @@ def test_create_receipt_rejects_a_transaction_account_original(morning_client):
     from denidin_mcp_morning.tools import create_transaction_account, create_receipt, list_invoices
     import time
 
-    unique_marker = f"DENIDIN_REJECT_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    unique_marker = f"DENIDIN_REJECT_TEST_{int(now_local().timestamp())}"
     _, client_name = seed_real_client(morning_client, unique_marker)
     create_transaction_account(
-        morning_client, client_name, 80.0, f"Reject test {unique_marker}", vat_included=True
+        morning_client, client_name, 80.0, f"Reject test {unique_marker}", vat_included=True,
+        name_resolved=True,
     )
 
     invoice_id = None
     for _ in range(12):
-        result = list_invoices(morning_client, client_name=client_name)
+        result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
         if "מזהה פנימי" in result:
             invoice_id = result.split("מזהה פנימי (invoice_id): ")[1].splitlines()[0].strip()
             break
@@ -159,7 +160,7 @@ def test_create_receipt_rejects_a_transaction_account_original(morning_client):
     assert invoice_id, f"Could not resolve transaction account id for {client_name!r}"
 
     with pytest.raises(ValueError):
-        create_receipt(morning_client, invoice_id)
+        create_receipt(morning_client, invoice_id, payment_date="2026-07-12")
 
 
 @pytest.fixture()
@@ -171,18 +172,18 @@ def seeded_transaction_account_id(morning_client):
     vat_included fix)."""
     from denidin_mcp_morning.tools import create_transaction_account, list_invoices
 
-    unique_marker = f"DENIDIN_TX_ACCOUNT_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    unique_marker = f"DENIDIN_TX_ACCOUNT_TEST_{int(now_local().timestamp())}"
     _, client_name = seed_real_client(morning_client, unique_marker)
     create_transaction_account(
         morning_client, client_name, 40.0, f"Transaction account test {unique_marker}",
-        vat_included=True,
+        vat_included=True, name_resolved=True,
     )
 
     import time
 
     invoice_id = None
     for _ in range(12):
-        result = list_invoices(morning_client, client_name=client_name)
+        result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
         if "מזהה פנימי" in result:
             invoice_id = result.split("מזהה פנימי (invoice_id): ")[1].splitlines()[0].strip()
             break

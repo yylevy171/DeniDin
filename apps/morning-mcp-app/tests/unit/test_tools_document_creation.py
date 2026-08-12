@@ -57,7 +57,7 @@ class _FakeMorningClient:
 
 def _client_record(client_id="client-1", name="לקוח בדיקה"):
     """A raw Morning /clients/search item - just enough shape for
-    `_resolve_client_for_document_creation` (Group A resolution)."""
+    `_require_resolved_client` (Group A resolution)."""
     return {"id": client_id, "name": name, "active": True, "phone": "", "emails": []}
 
 
@@ -197,12 +197,13 @@ def test_build_credit_note_payload_description_override():
 def test_build_receipt_payload_defaults_and_override():
     original = _original_invoice()
 
-    default_payload = tools._build_payment_receipt_payload(original)
+    default_payload = tools._build_payment_receipt_payload(original, payment_date="2026-07-12")
     assert default_payload["type"] == 400
     assert default_payload["linkedDocumentIds"] == ["orig-1"]
     assert default_payload["payment"][0]["price"] == 90.0
+    assert default_payload["payment"][0]["date"] == "2026-07-12"
 
-    override_payload = tools._build_payment_receipt_payload(original, amount=35.0)
+    override_payload = tools._build_payment_receipt_payload(original, payment_date="2026-07-12", amount=35.0)
     assert override_payload["payment"][0]["price"] == 35.0
 
 
@@ -240,12 +241,53 @@ def test_full_payment_still_works_via_create_receipt():
     original["status"] = None  # not yet paid
     client = _FakeMorningClient(get_invoice_response=original)
 
-    result = tools.create_receipt(client, "orig-3")
+    result = tools.create_receipt(client, "orig-3", payment_date="2026-07-12")
 
     assert "601" in result
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 400
     assert sent_payload["linkedDocumentIds"] == ["orig-3"]
+
+
+# --- create_invoice (feature 022; previously had no dedicated unit test at
+# all - only indirect coverage via the shared resolution-helper test and
+# billed/E2E tests - gap found and closed 2026-08-12 during the client-name-
+# resolution architecture fix) ---
+
+
+def test_create_invoice_returns_hebrew_confirmation():
+    client = _FakeMorningClient(create_invoice_response={"id": "inv-1", "number": "900", "status": None})
+
+    result = tools.create_invoice(client, "לקוח בדיקה", 120.0, "ייעוץ", name_resolved=True)
+
+    assert "900" in result
+    sent_payload = client.create_invoice_calls[0]
+    assert sent_payload["client"] == {"self": False, "id": "client-1"}
+
+
+def test_create_invoice_refuses_when_client_not_found():
+    client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
+
+    with pytest.raises(tools.ClientNotFoundError):
+        tools.create_invoice(client, "לקוח שלא קיים", 120.0, "ייעוץ", name_resolved=True)
+
+    assert client.create_invoice_calls == []
+
+
+def test_create_invoice_not_resolved_refuses_without_any_lookup():
+    """Architecture fix (2026-08-12, user decision): create_invoice no
+    longer does its own fuzzy/word-growth matching - it requires
+    name_resolved=True and refuses immediately, with zero Morning calls,
+    otherwise. Follow-up (2026-08-12): this is now a real raise, not
+    ordinary refusal text - two outcomes only, succeed or raise."""
+    client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
+
+    with pytest.raises(tools.ClientNameNotResolvedError) as exc_info:
+        tools.create_invoice(client, "לקוח בדיקה", 120.0, "ייעוץ")
+
+    assert "resolve_client_name" in str(exc_info.value)
+    assert client.search_clients_calls == []
+    assert client.create_invoice_calls == []
 
 
 # --- New standalone tool functions ---
@@ -254,7 +296,9 @@ def test_full_payment_still_works_via_create_receipt():
 def test_create_transaction_account_returns_hebrew_confirmation():
     client = _FakeMorningClient(create_invoice_response={"id": "ta-1", "number": "800", "status": None})
 
-    result = tools.create_transaction_account(client, "לקוח בדיקה", 45.0, "שירות ייעוץ", vat_included=True)
+    result = tools.create_transaction_account(
+        client, "לקוח בדיקה", 45.0, "שירות ייעוץ", vat_included=True, name_resolved=True
+    )
 
     assert "800" in result
     sent_payload = client.create_invoice_calls[0]
@@ -271,9 +315,48 @@ def test_create_transaction_account_refuses_when_client_not_found():
     # bugfix-028 B4(c) (changed): a client that cannot be found is a FAILURE, not
     # a friendly string returned as ordinary output with error=None - that is what
     # let one production document be approved 8 times and created 0 times.
+    # Requires name_resolved=True (architecture fix, 2026-08-12) - the caller
+    # must have already gone through resolve_client_name.
     with pytest.raises(tools.ClientNotFoundError):
-        tools.create_transaction_account(client, "לקוח שלא קיים", 45.0, "שירות ייעוץ", vat_included=True)
+        tools.create_transaction_account(
+            client, "לקוח שלא קיים", 45.0, "שירות ייעוץ", vat_included=True, name_resolved=True
+        )
 
+    assert client.create_invoice_calls == []
+
+
+def test_create_transaction_account_not_resolved_refuses_without_any_lookup():
+    """Architecture fix (2026-08-12, user decision): create_transaction_account
+    no longer does its own fuzzy/word-growth matching - it requires
+    name_resolved=True and refuses immediately, with zero Morning calls,
+    otherwise. Follow-up (2026-08-12): this is now a real raise, not
+    ordinary refusal text - two outcomes only, succeed or raise."""
+    client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
+
+    with pytest.raises(tools.ClientNameNotResolvedError) as exc_info:
+        tools.create_transaction_account(client, "לקוח בדיקה", 45.0, "שירות ייעוץ", vat_included=True)
+
+    assert "resolve_client_name" in str(exc_info.value)
+    assert client.search_clients_calls == []
+    assert client.create_invoice_calls == []
+
+
+def test_create_combo_document_not_resolved_refuses_without_any_lookup():
+    """Architecture fix (2026-08-12, user decision): create_combo_document
+    no longer does its own fuzzy/word-growth matching - it requires
+    name_resolved=True and refuses immediately, with zero Morning calls,
+    otherwise. Real raise, not ordinary refusal text - two outcomes only,
+    succeed or raise. (Added 2026-08-12 alongside the other five gated
+    tools' equivalent test - this one was missing.)"""
+    client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
+
+    with pytest.raises(tools.ClientNameNotResolvedError) as exc_info:
+        tools.create_combo_document(
+            client, "לקוח בדיקה", 65.0, "מכירה מיידית", vat_included=True, payment_date="2026-07-12"
+        )
+
+    assert "resolve_client_name" in str(exc_info.value)
+    assert client.search_clients_calls == []
     assert client.create_invoice_calls == []
 
 
@@ -282,7 +365,7 @@ def test_create_combo_document_returns_hebrew_confirmation():
 
     result = tools.create_combo_document(
         client, "לקוח בדיקה", 65.0, "מכירה מיידית",
-        vat_included=True, payment_date="2026-07-12"
+        vat_included=True, payment_date="2026-07-12", name_resolved=True,
     )
 
     assert "801" in result
@@ -291,7 +374,14 @@ def test_create_combo_document_returns_hebrew_confirmation():
     assert sent_payload["client"] == {"self": False, "id": "client-1"}
 
 
-def test_create_combo_document_refuses_when_client_ambiguous():
+def test_create_combo_document_ambiguous_with_name_resolved_raises_not_found():
+    """Architecture fix (2026-08-12): create_combo_document no longer
+    discloses ambiguous candidates itself - that's resolve_client_name's job
+    now (see test_tools_resolve_client_name.py). Asserting name_resolved=True
+    against a name that's still ambiguous is a contract violation, and
+    collapses to the same ClientNotFoundError as any other non-exact result
+    under exact-only mode - a real behavior change from the old
+    disambiguation-message shape."""
     client = _FakeMorningClient(
         search_clients_response={
             "items": [_client_record(client_id="c-1", name="לקוח א"), _client_record(client_id="c-2", name="לקוח ב")],
@@ -299,14 +389,13 @@ def test_create_combo_document_refuses_when_client_ambiguous():
         }
     )
 
-    result = tools.create_combo_document(
-        client, "לקוח", 65.0, "מכירה מיידית",
-        vat_included=True, payment_date="2026-07-12"
-    )
+    with pytest.raises(tools.ClientNotFoundError):
+        tools.create_combo_document(
+            client, "לקוח", 65.0, "מכירה מיידית",
+            vat_included=True, payment_date="2026-07-12", name_resolved=True,
+        )
 
     assert client.create_invoice_calls == []
-    assert "לקוח א" in result
-    assert "לקוח ב" in result
 
 
 def test_create_credit_note_requires_existing_document():
@@ -353,7 +442,7 @@ def test_create_receipt_requires_existing_document():
     client = _FakeMorningClient(get_invoice_response=None)
 
     try:
-        tools.create_receipt(client, "nonexistent-id")
+        tools.create_receipt(client, "nonexistent-id", payment_date="2026-07-12")
         assert False, "expected an exception when original document doesn't exist"
     except LookupError:
         pass
@@ -368,7 +457,7 @@ def test_create_receipt_refuses_when_original_has_no_client_id():
     original["status"] = None  # not yet paid - would otherwise hit the idempotent no-op path first
     client = _FakeMorningClient(get_invoice_response=original)
 
-    result = tools.create_receipt(client, "orig-5b")
+    result = tools.create_receipt(client, "orig-5b", payment_date="2026-07-12")
 
     assert client.create_invoice_calls == []
     assert result == format_original_not_linked_to_client()
@@ -381,7 +470,7 @@ def test_create_receipt_happy_path_uses_original_and_allows_override():
         create_invoice_response={"id": "receipt-2", "number": "702"},
     )
 
-    result = tools.create_receipt(client, "orig-5", amount=55.0)
+    result = tools.create_receipt(client, "orig-5", payment_date="2026-07-12", amount=55.0)
 
     assert "702" in result
     sent_payload = client.create_invoice_calls[0]
@@ -597,7 +686,7 @@ def test_build_cancellation_payload_is_signed():
 
 def test_build_payment_receipt_payload_is_signed():
     original = _original_invoice()
-    payload = tools._build_payment_receipt_payload(original)
+    payload = tools._build_payment_receipt_payload(original, payment_date="2026-07-12")
     assert payload["signed"] is True
 
 

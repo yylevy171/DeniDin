@@ -7,6 +7,7 @@ keeps user-facing text Hebrew by default (REQ-I18N-001).
 import requests
 
 from denidin_mcp_morning.errors import friendly_error_message, mask_secret
+from denidin_mcp_morning.tools import ClientNameNotResolvedError, ClientNotFoundError
 
 
 def _http_error(status_code: int, body: str = "") -> requests.exceptions.HTTPError:
@@ -63,6 +64,41 @@ def test_value_error_never_echoes_raw_english_text():
     assert "❌" in message
     assert "bogus" not in message
     assert "Unsupported" not in message
+
+
+def test_client_not_found_error_returns_its_own_specific_message_not_generic_invalid_request():
+    """bugfix-028 B4(c), caught 2026-08-12: ClientNotFoundError IS a
+    ValueError, so without a dedicated branch ABOVE the generic ValueError
+    one, it fell into that generic branch and got replaced with the generic
+    "invalid request" text - discarding the specific, actionable "client not
+    found" message the exception was raised with, defeating half the point
+    of raising it in the first place. Unlike ordinary ValueErrors, this
+    message IS meant to reach the caller verbatim - it's already Hebrew,
+    user-facing text (format_client_not_found() + the searched name), not
+    internal developer detail."""
+    exc = ClientNotFoundError("לא נמצא לקוח בשם הזה. (מרדכי קיואן)")
+    message = friendly_error_message(exc, "corr-1")
+    assert message == str(exc)
+    assert "הבקשה אינה תקינה" not in message, (
+        "must not fall through to the generic ValueError branch"
+    )
+
+
+def test_client_name_not_resolved_error_returns_its_own_specific_message_not_generic_invalid_request():
+    """client-name-resolution architecture fix follow-up (2026-08-12):
+    ClientNameNotResolvedError IS a ValueError too, same trap as
+    ClientNotFoundError above - needs its own branch ABOVE the generic
+    ValueError one, or the specific "call resolve_client_name first"
+    procedural text gets discarded in favor of the generic message."""
+    exc = ClientNameNotResolvedError(
+        "יש לפנות תחילה לכלי resolve_client_name עם שם הלקוח, לוודא שם מדויק "
+        "התואם למאוחסן במורנינג, ולקרוא לכלי הזה שוב עם name_resolved=true והשם המדויק שהוחזר."
+    )
+    message = friendly_error_message(exc, "corr-1")
+    assert message == str(exc)
+    assert "הבקשה אינה תקינה" not in message, (
+        "must not fall through to the generic ValueError branch"
+    )
 
 
 def test_unexpected_exception_returns_generic_hebrew_message():

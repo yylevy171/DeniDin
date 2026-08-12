@@ -32,10 +32,10 @@ import pytest
 from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     GODFATHER_CHAT_ID,
     _calls_for,
-    _seed_client_via_conversation,
+    _is_genuine_document_creation,
+    _seed_fresh_client,
     _send_turn,
     _send_turn_and_approve,
-    _unique_client_name,
     require_live_morning_tunnel,
 )
 
@@ -59,8 +59,7 @@ def test_vat_included_transaction_account_is_stored_at_the_approved_amount(denid
     ₪424.80 difference surfaced only from the Morning UI two days later - never
     from our own logs or data.
     """
-    client_name = _unique_client_name()
-    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="B028_A2T1")
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B028_A2T1")
 
     _, (reply, ai_response) = _send_turn_and_approve(
         GODFATHER_CHAT_ID,
@@ -90,8 +89,7 @@ def test_unstated_vat_is_asked_about_rather_than_assumed(denidin_app):
     already demands exactly this question for `close_transaction_account`
     (:253-256) and demands nothing for `create_transaction_account`.
     """
-    client_name = _unique_client_name()
-    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="B028_A2T2")
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B028_A2T2")
 
     reply, ai_response = _send_turn(
         GODFATHER_CHAT_ID,
@@ -121,8 +119,7 @@ def test_the_approval_states_every_mandatory_element(denidin_app):
     """
     from datetime import datetime, timezone
 
-    client_name = _unique_client_name()
-    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="B028_B3T1")
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B028_B3T1")
 
     ask_result, _ = _send_turn_and_approve(
         GODFATHER_CHAT_ID,
@@ -204,7 +201,15 @@ def test_a_client_qualified_by_its_tax_id_still_resolves(denidin_app):
         f"no document-creation call executed at all - in production this exact "
         f"shape looped silently: {ai_response.mcp_calls if ai_response else None!r}"
     )
-    assert calls[0]["error"] is None, f"creation failed: {calls[0]!r}"
+    # bugfix-039 (caught in a post-merge sweep 2026-08-12): error is None on its
+    # own no longer implies success - a non-exact match (e.g. the model
+    # decorating the name with the ח.פ it just learned, exactly what this test
+    # is probing for) now refuses with a "did you mean" confirmation question,
+    # which is ALSO error=None and does NOT contain "לא נמצא לקוח" either. Both
+    # of this test's original checks would have silently passed on that
+    # refusal. _is_genuine_document_creation checks the output's own shape
+    # instead (format_invoice_confirmation always starts with "חשבונית #").
+    assert _is_genuine_document_creation(calls[0]), f"creation failed or was refused: {calls[0]!r}"
     assert "לא נמצא לקוח" not in (calls[0]["output"] or ""), (
         f"the client this app itself listed was not resolvable when fed back to "
         f"the create tool: arguments={calls[0]['arguments']!r} output={calls[0]['output']!r}"

@@ -27,7 +27,7 @@ No mocking (CONSTITUTION §I/§V) - real sandbox documents throughout.
 """
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -38,7 +38,7 @@ from denidin_mcp_morning.tools import (
     create_combo_document,
     create_transaction_account,
 )
-
+from denidin_mcp_morning.utils.time_utils import now_local
 from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -66,7 +66,7 @@ def _unique_marker(label):
     """Unique per CALL, not per second: seed_real_client derives the client's
     email from this, and Morning rejects a duplicate email (400). Parametrized
     cases run well inside the same second, so a timestamp alone collides."""
-    return f"DENIDIN_028_{label}_{int(datetime.now(timezone.utc).timestamp())}_{uuid.uuid4().hex[:6]}"
+    return f"DENIDIN_028_{label}_{int(now_local().timestamp())}_{uuid.uuid4().hex[:6]}"
 
 
 def _find_document(morning_client, client_name, expected_type):
@@ -104,6 +104,7 @@ def test_transaction_account_vat_included_stores_the_amount_asked_for(morning_cl
         amount=47.0,
         description=f"VAT-included transaction account {marker}",
         vat_included=True,
+        name_resolved=True,
     )
 
     stored = _find_document(morning_client, client_name, expected_type=300)
@@ -127,6 +128,7 @@ def test_transaction_account_vat_excluded_stores_the_grossed_up_amount(morning_c
         amount=47.0,
         description=f"VAT-excluded transaction account {marker}",
         vat_included=False,
+        name_resolved=True,
     )
 
     stored = _find_document(morning_client, client_name, expected_type=300)
@@ -148,6 +150,7 @@ def test_transaction_account_requires_an_explicit_vat_decision(morning_client):
             client_name=client_name,
             amount=47.0,
             description=f"No VAT decision {marker}",
+            name_resolved=True,
         )
 
 
@@ -170,6 +173,7 @@ def test_combo_document_carries_the_real_transaction_date(morning_client):
         description=f"Deposit-backed combo {marker}",
         vat_included=True,
         payment_date=TXN_DATE,
+        name_resolved=True,
     )
 
     stored = _find_document(morning_client, client_name, expected_type=320)
@@ -216,6 +220,7 @@ def test_combo_document_refuses_a_missing_or_unusable_payment_date(morning_clien
             description=f"{why} {marker}",
             vat_included=True,
             payment_date=bad_date,
+            name_resolved=True,
         )
 
 
@@ -224,7 +229,7 @@ def test_combo_document_refuses_a_future_payment_date(morning_client):
     a extraction failure, not a valid input."""
     marker = _unique_marker("A3_FUTURE")
     _, client_name = seed_real_client(morning_client, marker)
-    tomorrow = (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()
+    tomorrow = (now_local().date() + timedelta(days=1)).isoformat()
 
     with pytest.raises(ValueError):
         create_combo_document(
@@ -234,6 +239,7 @@ def test_combo_document_refuses_a_future_payment_date(morning_client):
             description=f"Future-dated deposit {marker}",
             vat_included=True,
             payment_date=tomorrow,
+            name_resolved=True,
         )
 
 
@@ -263,6 +269,7 @@ def test_bank_deposit_is_booked_as_a_bank_transfer_with_its_bank_details(morning
         bank_number="31",
         bank_branch="613",
         bank_account="123456",
+        name_resolved=True,
     )
 
     stored = _find_document(morning_client, client_name, expected_type=320)
@@ -295,6 +302,7 @@ def test_bit_deposit_is_booked_as_a_payment_app_carrying_its_reference(morning_c
         payment_date=TXN_DATE,
         payment_method="bit",
         transaction_reference="987654321",
+        name_resolved=True,
     )
 
     stored = _find_document(morning_client, client_name, expected_type=320)

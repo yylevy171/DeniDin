@@ -181,31 +181,51 @@ def test_list_clients_never_includes_raw_client_id():
 # --- get_client_details (US2) ---
 
 
-def test_get_client_details_not_found_is_friendly():
+def test_get_client_details_not_resolved_refuses_without_any_lookup():
+    """Client-name-resolution architecture fix (2026-08-12, user decision):
+    get_client_details no longer does its own fuzzy matching - it requires
+    name_resolved=True (the caller must have already called
+    resolve_client_name) and refuses immediately, with zero Morning calls,
+    otherwise. Follow-up (2026-08-12): this is now a real raise, not
+    ordinary refusal text - two outcomes only, succeed or raise."""
     client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
 
-    result = tools.get_client_details(client, "Nonexistent Client XYZ")
+    with pytest.raises(tools.ClientNameNotResolvedError) as exc_info:
+        tools.get_client_details(client, "Nonexistent Client XYZ")
 
-    assert isinstance(result, str)
-    assert "לא נמצא" in result or "אין" in result
+    assert "resolve_client_name" in str(exc_info.value)
+    assert client.search_clients_calls == []
 
 
-def test_get_client_details_ambiguous_lists_candidates_without_leaking_client_id():
+def test_get_client_details_not_found_raises():
+    """Unification (2026-08-12, user decision): get_client_details used to
+    return a friendly string here, a different mechanism from every other
+    client-resolving tool for the exact same situation - now it raises the
+    same ClientNotFoundError, same as create_invoice/create_transaction_account/
+    create_combo_document/update_client/list_invoices. Requires
+    name_resolved=True (architecture fix, same date) - the caller must have
+    already gone through resolve_client_name."""
+    client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
+
+    with pytest.raises(tools.ClientNotFoundError) as exc_info:
+        tools.get_client_details(client, "Nonexistent Client XYZ", name_resolved=True)
+
+    assert "לא נמצא" in str(exc_info.value) or "אין" in str(exc_info.value)
+
+
+def test_get_client_details_ambiguous_with_name_resolved_raises_not_found():
+    """Architecture fix (2026-08-12): get_client_details no longer discloses
+    ambiguous candidates itself - that's resolve_client_name's job now (see
+    test_tools_resolve_client_name.py). A caller asserting name_resolved=True
+    against a name that's still ambiguous is a contract violation, and
+    collapses to the same ClientNotFoundError as any other non-exact
+    result under exact-only mode."""
     record_a = _client_record(client_id="c-1", name="Tech Solutions A", tax_id="308253681")
     record_b = _client_record(client_id="c-2", name="Tech Solutions B", tax_id="111111111")
     client = _FakeMorningClient(search_clients_response={"items": [record_a, record_b], "total": 2})
 
-    result = tools.get_client_details(client, "Tech Solutions")
-
-    assert "Tech Solutions A" in result
-    assert "Tech Solutions B" in result
-    # Tax_id/phone ARE shown per candidate - that's how the user tells them apart
-    # (REQ-CLIENT-003's whole point). Only the internal client_id (UUID) is
-    # forbidden (REQ-CLIENT-018), not legitimate business-facing identifiers.
-    assert "308253681" in result
-    assert "111111111" in result
-    assert "c-1" not in result
-    assert "c-2" not in result
+    with pytest.raises(tools.ClientNotFoundError):
+        tools.get_client_details(client, "Tech Solutions", name_resolved=True)
 
 
 # --- add_client (US3) - reworked: name/email/phone all required, no address ---
@@ -291,25 +311,55 @@ def test_update_client_rejects_no_fields_to_change():
     assert client.update_client_calls == []
 
 
-def test_update_client_not_found_is_friendly():
+def test_update_client_not_resolved_refuses_without_any_lookup():
+    """Client-name-resolution architecture fix (2026-08-12, user decision):
+    update_client requires name_resolved=True and refuses immediately, with
+    zero Morning calls, otherwise - even before reaching the "at least one
+    field to change" check, since name_resolved is checked once resolution
+    is attempted (that check itself doesn't need resolution and still fires
+    first regardless, see test_update_client_rejects_no_fields_to_change).
+    Follow-up (2026-08-12): this is now a real raise, not ordinary refusal
+    text - two outcomes only, succeed or raise."""
     client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
 
-    result = tools.update_client(client, name="Nonexistent Client", email="new@example.com")
+    with pytest.raises(tools.ClientNameNotResolvedError) as exc_info:
+        tools.update_client(client, name="Nonexistent Client", email="new@example.com")
 
-    assert isinstance(result, str)
-    assert "לא נמצא" in result or "אין" in result
+    assert "resolve_client_name" in str(exc_info.value)
+    assert client.search_clients_calls == []
     assert client.update_client_calls == []
 
 
-def test_update_client_ambiguous_lists_candidates_without_mutating():
+def test_update_client_not_found_raises():
+    """bugfix-028 B4(c), applied to update_client via bugfix-039 round 2:
+    a genuinely-not-found client raises ClientNotFoundError rather than
+    returning a friendly string - the same silent-failure risk (an approved
+    update that updates nothing, with no signal anywhere that it failed)
+    applies here too. Requires name_resolved=True (architecture fix,
+    2026-08-12) - the caller must have already gone through
+    resolve_client_name."""
+    client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
+
+    with pytest.raises(tools.ClientNotFoundError):
+        tools.update_client(client, name="Nonexistent Client", email="new@example.com", name_resolved=True)
+
+    assert client.update_client_calls == []
+
+
+def test_update_client_ambiguous_with_name_resolved_raises_not_found():
+    """Architecture fix (2026-08-12): update_client no longer discloses
+    ambiguous candidates itself - that's resolve_client_name's job now. A
+    caller asserting name_resolved=True against a name that's still
+    ambiguous is a contract violation, and collapses to the same
+    ClientNotFoundError as any other non-exact result under exact-only
+    mode."""
     record_a = _client_record(client_id="c-1", name="Tech Solutions A")
     record_b = _client_record(client_id="c-2", name="Tech Solutions B")
     client = _FakeMorningClient(search_clients_response={"items": [record_a, record_b], "total": 2})
 
-    result = tools.update_client(client, name="Tech Solutions", email="new@example.com")
+    with pytest.raises(tools.ClientNotFoundError):
+        tools.update_client(client, name="Tech Solutions", email="new@example.com", name_resolved=True)
 
-    assert "Tech Solutions A" in result
-    assert "Tech Solutions B" in result
     assert client.update_client_calls == []
 
 
@@ -318,7 +368,7 @@ def test_update_client_rejects_malformed_email_before_network_call():
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
     with pytest.raises(ValueError):
-        tools.update_client(client, name="Tech Solutions", email="not-an-email")
+        tools.update_client(client, name="Tech Solutions", email="not-an-email", name_resolved=True)
     assert client.update_client_calls == []
 
 
@@ -327,7 +377,7 @@ def test_update_client_rejects_implausible_phone_before_network_call():
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
     with pytest.raises(ValueError):
-        tools.update_client(client, name="Tech Solutions", phone="123")
+        tools.update_client(client, name="Tech Solutions", phone="123", name_resolved=True)
     assert client.update_client_calls == []
 
 
@@ -335,7 +385,7 @@ def test_update_client_normalizes_phone_before_sending():
     record = _client_record(client_id="c-1")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    tools.update_client(client, name="Tech Solutions", phone="+972501234567")
+    tools.update_client(client, name="Tech Solutions", phone="+972501234567", name_resolved=True)
 
     client_id, payload = client.update_client_calls[0]
     assert client_id == "c-1"
@@ -348,7 +398,7 @@ def test_update_client_builds_partial_payload_with_only_changed_fields():
     record = _client_record(client_id="c-1")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    tools.update_client(client, name="Tech Solutions", phone="050-1234567")
+    tools.update_client(client, name="Tech Solutions", phone="050-1234567", name_resolved=True)
 
     client_id, payload = client.update_client_calls[0]
     assert client_id == "c-1"
@@ -361,7 +411,7 @@ def test_update_client_new_name_maps_to_name_field():
     record = _client_record(client_id="c-1", name="Tech Solutions")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    tools.update_client(client, name="Tech Solutions", new_name="Tech Solutions Ltd")
+    tools.update_client(client, name="Tech Solutions", new_name="Tech Solutions Ltd", name_resolved=True)
 
     client_id, payload = client.update_client_calls[0]
     assert client_id == "c-1"
@@ -372,7 +422,7 @@ def test_update_client_tax_id_editable_like_any_other_field():
     record = _client_record(client_id="c-1")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    tools.update_client(client, name="Tech Solutions", tax_id="308253681")
+    tools.update_client(client, name="Tech Solutions", tax_id="308253681", name_resolved=True)
 
     client_id, payload = client.update_client_calls[0]
     assert client_id == "c-1"
@@ -383,7 +433,7 @@ def test_update_client_confirmation_never_includes_client_id():
     record = _client_record(client_id="should-never-appear")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    result = tools.update_client(client, name="Tech Solutions", phone="050-1234567")
+    result = tools.update_client(client, name="Tech Solutions", phone="050-1234567", name_resolved=True)
 
     assert "should-never-appear" not in result
 
@@ -407,55 +457,57 @@ def test_is_exact_name_match_partial_reference_is_not_exact():
     assert tools._is_exact_name_match("Tech Solutions Ltd", "Tech Solutions") is False
 
 
-# --- get_client_details discloses non-exact matches (new requirement) ---
+# --- get_client_details requires an exact match once resolved (architecture fix, 2026-08-12) ---
 
 
 def test_get_client_details_exact_match_uses_standard_phrasing():
     record = _client_record(name="Tech Solutions")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    result = tools.get_client_details(client, "Tech Solutions")
+    result = tools.get_client_details(client, "Tech Solutions", name_resolved=True)
 
     assert result.startswith("לקוח:")
 
 
-def test_get_client_details_non_exact_match_discloses_resolved_name():
+def test_get_client_details_non_exact_match_with_name_resolved_raises_not_found():
+    """Architecture fix (2026-08-12): get_client_details used to disclose
+    which client it found on a non-exact match (research.md Decision, since
+    it's read-only). That disclosure now happens in resolve_client_name
+    instead (see test_resolve_client_name_non_exact_single_match_asks_for_
+    confirmation) - get_client_details itself only ever accepts an exact
+    match once name_resolved=True is asserted."""
     record = _client_record(name="Tech Solutions International")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    result = tools.get_client_details(client, "Tech Solutions")
-
-    assert "מצאתי את הלקוח" in result
-    assert "Tech Solutions International" in result
+    with pytest.raises(tools.ClientNotFoundError):
+        tools.get_client_details(client, "Tech Solutions", name_resolved=True)
 
 
-# --- update_client discloses non-exact matches (new requirement) ---
+# --- update_client requires an exact match once resolved (architecture fix, 2026-08-12) ---
 
 
 def test_update_client_exact_match_uses_standard_phrasing():
     record = _client_record(name="Tech Solutions")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    result = tools.update_client(client, name="Tech Solutions", phone="050-1234567")
+    result = tools.update_client(client, name="Tech Solutions", phone="050-1234567", name_resolved=True)
 
     assert result.startswith("עודכנו פרטי הלקוח:")
 
 
-def test_update_client_non_exact_match_asks_for_confirmation_and_updates_nothing():
-    """bugfix-039 (round 2, user decision 2026-08-11 - "bring it in line,
-    same bugfix"): update_client used to resolve a non-exact single match
-    and mutate immediately, disclosing which client was used only in the
-    success reply - by then the real Morning update had already happened
-    against a possibly-wrong client. Now, same as the create_* tools, it
-    refuses with a closed yes/no confirmation question and updates
-    NOTHING; the caller must re-invoke with the confirmed exact name."""
+def test_update_client_non_exact_match_with_name_resolved_raises_not_found_and_updates_nothing():
+    """Architecture fix (2026-08-12): update_client used to refuse with its
+    own closed yes/no confirmation question on a non-exact single match
+    (bugfix-039 round 2). That disclosure now happens in resolve_client_name
+    instead - update_client itself only ever accepts an exact match once
+    name_resolved=True is asserted, and a still-non-exact name under that
+    assertion is a contract violation, not a normal disambiguation moment."""
     record = _client_record(name="Tech Solutions International")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    result = tools.update_client(client, name="Tech Solutions", phone="050-1234567")
+    with pytest.raises(tools.ClientNotFoundError):
+        tools.update_client(client, name="Tech Solutions", phone="050-1234567", name_resolved=True)
 
-    assert "Tech Solutions International" in result
-    assert "כן" in result and "לא" in result
     assert client.update_client_calls == []
 
 
@@ -562,7 +614,7 @@ def test_update_client_normalizes_lookup_name_before_searching():
     record = _client_record(client_id="c-1", name=_GERESH_NAME)
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    tools.update_client(client, name=_APOSTROPHE_NAME, email="new@example.com")
+    tools.update_client(client, name=_APOSTROPHE_NAME, email="new@example.com", name_resolved=True)
 
     assert client.search_clients_calls == [{"name": _GERESH_NAME}]
 
@@ -571,7 +623,7 @@ def test_update_client_normalizes_new_name_before_sending():
     record = _client_record(client_id="c-1", name="Old Name")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    result = tools.update_client(client, name="Old Name", new_name=_APOSTROPHE_NAME)
+    result = tools.update_client(client, name="Old Name", new_name=_APOSTROPHE_NAME, name_resolved=True)
 
     assert client.update_client_calls[0][1]["name"] == _GERESH_NAME
     assert _GERESH_NAME in result
@@ -591,14 +643,3 @@ def test_is_exact_name_match_treats_apostrophe_and_geresh_as_equal():
     assert tools._is_exact_name_match(_APOSTROPHE_NAME, _GERESH_NAME)
 
 
-def test_resolve_client_for_document_creation_resolves_apostrophe_query_against_geresh_stored_name():
-    """The exact scenario that broke live (2026-08-07): a document-creation
-    call retypes the seeded client's name with a different apostrophe/geresh
-    variant than what's actually stored - must still resolve, not refuse."""
-    record = _client_record(client_id="c-1", name=_GERESH_NAME)
-    client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
-
-    resolution = tools._resolve_client_for_document_creation(client, _APOSTROPHE_NAME)
-
-    assert resolution.client_id == "c-1"
-    assert resolution.refusal_message is None

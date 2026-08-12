@@ -31,11 +31,11 @@ from .denidin_mcp_e2e_helpers import (
     _calls_for,
     _random_amount,
     _random_description,
-    _seed_client_via_conversation,
+    _seed_fresh_client,
     _send_turn,
     _send_turn_and_approve,
+    _send_turn_and_approve_receipt,
     _send_turn_and_decline,
-    _unique_client_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,12 +44,27 @@ logger = logging.getLogger(__name__)
 # get_invoice_details
 # ============================================================================
 
-# One fully-known invoice from the fixed 2026-02-07 set (verified free, no
-# billing) - referenced here by client name + date only, the way a real user
-# would; the model must resolve the actual invoice_id itself.
-KNOWN_INVOICE_NUMBER = "60006"
-KNOWN_INVOICE_CLIENT = "Test Client DENIDIN_TEST_1770474207"
-KNOWN_INVOICE_AMOUNT_IL = "123.45"
+# One fully-known, permanent ground-truth invoice (see GROUND_TRUTH_CLIENTS.md)
+# - referenced here by client name + date only, the way a real user would;
+# the model must resolve the actual invoice_id itself.
+#
+# Re-seeded 2026-08-12: the original fixture ("Test Client
+# DENIDIN_TEST_1770474207", invoice #60006, seeded 2026-02-07) was never
+# deleted (confirmed live via a direct list_invoices(number=...) lookup - the
+# document and its embedded client name are both still there) - but its
+# client was created before Feature 027 required documents to reference a
+# real, resolvable Client record: it's a bare name+phone object with no
+# Morning client_id at all (`'self': False`, no `id` key), so
+# `resolve_client_name`'s mandatory-first search (2026-08-12 architecture)
+# can never find it - `search_clients` searches real Client records, and
+# this one was never saved as one. Not a data-loss bug; an architecture
+# mismatch with a 2026-02-07 fixture that predates it. Replaced with a
+# properly-seeded fixture via the same real-`add_client` mechanism as
+# `זהבית צור`/`כרמלי דודי` (see GROUND_TRUTH_CLIENTS.md) - has a real
+# client_id, genuinely resolvable.
+KNOWN_INVOICE_NUMBER = "52046"
+KNOWN_INVOICE_CLIENT = "רימונה כהן"
+KNOWN_INVOICE_AMOUNT_IL = "156.75"
 KNOWN_INVOICE_STATUS_HE = "שולם"  # paid
 
 
@@ -69,7 +84,7 @@ def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
         chat_id=GODFATHER_CHAT_ID,
         text=(
             f"מה הסטטוס והפרטים המלאים של החשבונית של {KNOWN_INVOICE_CLIENT} "
-            f"מהשבעה בפברואר?"
+            f"מהשנים עשר באוגוסט?"
         ),
         id_prefix="E2E_DETAILS",
     )
@@ -103,17 +118,23 @@ def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
 # - "mark as paid"/"cancel" flows, formerly update_invoice_status (removed)
 # ============================================================================
 
-def _seed_fresh_invoice(client_name: str, amount: int, description: str) -> None:
-    """Seed a fresh invoice via a real WhatsApp exchange (create_invoice now
-    requires explicit approval - Feature 022) so the paid/cancel flow tests
-    below mutate a fresh invoice each run, never the reusable 2026-02-07 fixed
-    set. The seeded client name is what later turns use to reference the
-    invoice - never an id.
+def _seed_fresh_invoice(amount: int, description: str) -> str:
+    """Seed a fresh invoice for a brand-new client via a real WhatsApp
+    exchange (create_invoice now requires explicit approval - Feature 022)
+    so the paid/cancel flow tests below mutate a fresh invoice each run,
+    never the reusable 2026-02-07 fixed set. Returns the client name
+    actually used - never an id - for later turns to reference the invoice.
+
+    Only asserts on the end state (a fresh invoice genuinely exists before
+    the real test begins), never on the seeding turns themselves:
+    `_seed_fresh_client` already retries with a new name on its own if a
+    particular draw collides with an existing real sandbox client, so by
+    the time this returns, seeding has unambiguously succeeded.
 
     Feature 027: create_invoice now resolves client_name against a real
     client record before creating anything - seeds one first via the real
     add_client conversation (the only way to do so from this E2E layer)."""
-    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_SEED")
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_SEED")
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"צור חשבונית ל-{client_name} על {amount} ₪ עבור {description}",
@@ -124,6 +145,7 @@ def _seed_fresh_invoice(client_name: str, amount: int, description: str) -> None
         f"Seed create_invoice failed or was not called: {ai_response.mcp_calls!r}"
     )
     logger.info(f"Seeded fresh invoice for client {client_name!r}")
+    return client_name
 
 
 @pytest.mark.billed
@@ -147,19 +169,23 @@ def test_godfather_marks_invoice_paid_via_whatsapp(denidin_app):
 
     Issuing a receipt is a document-creating call, so it now requires
     explicit approval (Feature 022): the ASK turn must NOT execute it yet.
-    """
-    client_name = _unique_client_name()
-    _seed_fresh_invoice(client_name, _random_amount(), _random_description())
 
-    (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
+    `create_receipt`'s `payment_date` is mandatory (2026-08-12) - the ASK
+    turn deliberately gives no date, so the model must ask for one rather
+    than silently assuming "today" (it may legitimately land on "today" as
+    the actual answer once asked - a verbal "mark as paid" often does mean
+    today - but never without asking). Handles both legitimate shapes: the
+    model may ask an open question first (answered here with "היום"), or it
+    may go straight to the pending create_receipt approval already showing
+    a date for the user to confirm/correct - either way, only the FINAL
+    "כן" may ever actually execute create_receipt.
+    """
+    client_name = _seed_fresh_invoice(_random_amount(), _random_description())
+
+    (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve_receipt(
         chat_id=GODFATHER_CHAT_ID,
         text=f"סמן את החשבונית של {client_name} כשולמה",
         id_prefix="E2E_PAID",
-    )
-
-    assert not _calls_for(ask_ai_response, "create_receipt"), (
-        f"create_receipt executed on the ASK turn before approval was "
-        f"given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
     receipt_calls = _calls_for(ai_response, "create_receipt")
@@ -215,8 +241,7 @@ def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
     Issuing a credit note is a document-creating call, so it now requires
     explicit approval (Feature 022): the ASK turn must NOT execute it yet.
     """
-    client_name = _unique_client_name()
-    _seed_fresh_invoice(client_name, _random_amount(), _random_description())
+    client_name = _seed_fresh_invoice(_random_amount(), _random_description())
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -262,8 +287,7 @@ def test_godfather_declines_invoice_cancellation(denidin_app):
     never fire, and the original invoice is unaffected (spot-checked via a
     3rd turn's get_invoice_details, still showing an open/unpaid status, not
     cancelled)."""
-    client_name = _unique_client_name()
-    _seed_fresh_invoice(client_name, _random_amount(), _random_description())
+    client_name = _seed_fresh_invoice(_random_amount(), _random_description())
 
     decline_response, decline_ai_response = _send_turn_and_decline(
         chat_id=GODFATHER_CHAT_ID,
@@ -305,21 +329,27 @@ _COMBO_DOCUMENT_LABEL_HE = "חשבונית מס / קבלה"  # type 320
 _RECEIPT_DOCUMENT_LABEL_HE = "קבלה"  # type 400 - deliberately NOT a substring of the 320 label above
 
 
-def _seed_transaction_account_invoice(client_name: str, amount: int, description: str) -> None:
-    """Seed a fresh "חשבון עסקה" (type-300) document via a real, two-turn
-    approved WhatsApp exchange (create_transaction_account requires approval
-    - Feature 022). Spec 021 added create_transaction_account as its own
-    dedicated MCP tool (not a document_type param on create_invoice, which
-    stays permanently locked to type 305) - the model is expected to route
-    this phrasing to that tool, using the real Hebrew terminology a user
+def _seed_transaction_account_invoice(amount: int, description: str) -> str:
+    """Seed a fresh "חשבון עסקה" (type-300) document for a brand-new client
+    via a real, two-turn approved WhatsApp exchange (create_transaction_account
+    requires approval - Feature 022). Spec 021 added create_transaction_account
+    as its own dedicated MCP tool (not a document_type param on create_invoice,
+    which stays permanently locked to type 305) - the model is expected to
+    route this phrasing to that tool, using the real Hebrew terminology a user
     would say ("חשבון עסקה" / "חשבונית עסקה" / "חשבון עיסקה" are all real
-    variants).
+    variants). Returns the client name actually used.
+
+    Only asserts on the end state (a fresh חשבון עסקה genuinely exists before
+    the real test begins), never on the seeding turns themselves:
+    `_seed_fresh_client` already retries with a new name on its own if a
+    particular draw collides with an existing real sandbox client, same
+    methodology as `_seed_fresh_invoice` above.
 
     Feature 027: create_transaction_account now resolves client_name against
     a real client record before creating anything - seeds one first via the
     real add_client conversation (the only way to do so from this E2E layer).
     """
-    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_020_SEED_300")
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_020_SEED_300")
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפתח חשבון עסקה עבור {client_name} על סך {amount} שח עבור {description}",
@@ -338,6 +368,7 @@ def _seed_transaction_account_invoice(client_name: str, amount: int, description
     # side. This test can't retry the model's own tool call, so it gives
     # Morning's index a fixed head start instead.
     time.sleep(5)
+    return client_name
 
 
 @pytest.mark.billed
@@ -357,8 +388,7 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
     natural WhatsApp turn asking for the invoice's details, the same way a
     real user would confirm it themselves.
     """
-    client_name = _unique_client_name()
-    _seed_transaction_account_invoice(client_name, _random_amount(), _random_description())
+    client_name = _seed_transaction_account_invoice(_random_amount(), _random_description())
 
     (ask_response, ask_ai_response), (paid_response, paid_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -418,8 +448,7 @@ def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app
     updated per feature 023): godfather asks to mark a חשבון עסקה paid, then
     explicitly declines the pending approval - close_transaction_account must
     never fire, and no closing document (type 320 or otherwise) gets created."""
-    client_name = _unique_client_name()
-    _seed_transaction_account_invoice(client_name, _random_amount(), _random_description())
+    client_name = _seed_transaction_account_invoice(_random_amount(), _random_description())
 
     decline_response, decline_ai_response = _send_turn_and_decline(
         chat_id=GODFATHER_CHAT_ID,
@@ -467,8 +496,7 @@ def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin
     actually executes (or be declined by the model outright, without any
     tool call at all, per feature 023's "ask/refuse rather than guess"
     guidance)."""
-    client_name = _unique_client_name()
-    _seed_fresh_invoice(client_name, _random_amount(), _random_description())
+    client_name = _seed_fresh_invoice(_random_amount(), _random_description())
 
     _, (cancel_response, cancel_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,

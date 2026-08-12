@@ -188,6 +188,39 @@ class TestZeroExecutionIsDetected:
             f"the real failure detail should be surfaced, got: {result.response_text!r}"
         )
 
+    def test_failure_detail_from_a_real_mcp_error_field_is_surfaced(
+        self, ai_handler, mock_ai_client, pending_approval, approval_request
+    ):
+        """Root-cause fix follow-up (2026-08-12): a failed call's reason now
+        lives in `.error` (output=None), not `.output` - confirmed live
+        against the real OpenAI SDK: `error` is
+        `{"type": "mcp_tool_execution_error", "content": [{"type": "text",
+        "text": "..."}]}`. Without _extract_mcp_error_text, this would
+        silently fall through to the fully generic message, the exact same
+        silent-failure shape bugfix-028 exists to kill - just one layer up
+        from where it was originally found."""
+        scoped_create = mock_ai_client.with_options.return_value.responses.create
+        scoped_create.return_value = _fake_response([
+            _mcp_call(
+                "get_client_details",
+                output=None,
+                error={
+                    "type": "mcp_tool_execution_error",
+                    "content": [{"type": "text", "text": "לא נמצא לקוח בשם הזה. (מרדכי קיואן)"}],
+                },
+            ),
+        ])
+
+        result = ai_handler._resolve_pending_approval(
+            pending_approval, approval_request, effective_chat_id="972500000000@c.us",
+            user_obj=None, user_role="godfather", sender="972500000000@c.us",
+            recipient=None,
+        )
+
+        assert "לא נמצא לקוח" in result.response_text, (
+            f"the real failure detail from .error should be surfaced, got: {result.response_text!r}"
+        )
+
 
 class TestZeroExecutionGuardDoesNotInterfereWithTheExistingDuplicateGuard:
     """Guard against a regression in the OTHER direction: adding the ==0 check

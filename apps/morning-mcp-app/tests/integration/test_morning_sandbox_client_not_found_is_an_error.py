@@ -18,7 +18,6 @@ raising, so `pytest.raises` sees nothing.
 No mocking - the "not found" is real: a genuinely unused client name checked
 against the real sandbox first.
 """
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -30,6 +29,7 @@ from denidin_mcp_morning.tools import (
     create_invoice,
     create_transaction_account,
 )
+from denidin_mcp_morning.utils.time_utils import now_local
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
@@ -50,7 +50,7 @@ def morning_client():
 @pytest.fixture(scope="module")
 def nonexistent_client_name(morning_client):
     """A name confirmed against the real sandbox to match zero clients."""
-    name = f"לקוח שלא קיים DENIDIN_028_{int(datetime.now(timezone.utc).timestamp())}"
+    name = f"לקוח שלא קיים DENIDIN_028_{int(now_local().timestamp())}"
     found = morning_client.search_clients({"name": name}).get("items") or []
     assert not found, f"fixture precondition failed - {name!r} unexpectedly matched {found!r}"
     return name
@@ -73,6 +73,7 @@ def test_create_invoice_raises_when_the_client_cannot_be_resolved(
             client_name=nonexistent_client_name,
             amount=47.0,
             description="bugfix-028 B4c",
+            name_resolved=True,
         )
     _assert_is_a_real_failure(exc_info.value)
 
@@ -87,6 +88,7 @@ def test_create_transaction_account_raises_when_the_client_cannot_be_resolved(
             amount=47.0,
             description="bugfix-028 B4c",
             vat_included=True,
+            name_resolved=True,
         )
     _assert_is_a_real_failure(exc_info.value)
 
@@ -102,52 +104,51 @@ def test_create_combo_document_raises_when_the_client_cannot_be_resolved(
             description="bugfix-028 B4c",
             vat_included=True,
             payment_date="2026-07-12",
+            name_resolved=True,
         )
     _assert_is_a_real_failure(exc_info.value)
 
 
 def test_a_decorated_client_name_asks_for_confirmation(morning_client):
-    """B4(a) (2026-08-09), superseded by bugfix-039 (2026-08-12): Morning's
-    search is a word-aligned PREFIX match of the whole stored name, so
-    appending anything - a ח.פ, a phone - takes a name from 1 match to 0.
-    The model appended the ח.פ it had learned from the client listing, and
-    that composite is what failed in production.
+    """B4(a) (2026-08-09), superseded by bugfix-039 (2026-08-12), superseded
+    again by the client-name-resolution architecture fix (2026-08-12):
+    Morning's search is a word-aligned PREFIX match of the whole stored
+    name, so appending anything - a ח.פ, a phone - takes a name from 1
+    match to 0. The model appended the ח.פ it had learned from the client
+    listing, and that composite is what failed in production.
 
-    B4(a) originally made this auto-resolve silently. bugfix-039 (round 3,
-    user decision 2026-08-11/12) replaced that with a stricter, unified
-    rule: ANY non-exact match - a decorated name is definitionally one,
-    since it never bag-equals the stored name's words - refuses and asks
-    for confirmation instead of silently proceeding. This test now asserts
-    THAT behavior: the tool must still find the real client (not report
-    "not found"), but must ask rather than silently resolve.
+    B4(a) originally made this auto-resolve silently; bugfix-039 replaced
+    that with a stricter, unified rule (any non-exact match refuses and
+    asks). The architecture fix moved that disambiguation entirely into
+    `resolve_client_name` - `create_invoice`/etc. no longer do this
+    matching themselves at all (see test_morning_sandbox_resolve_client_
+    name_tool.py for the tool-agnostic coverage of this exact scenario).
+    This test now asserts the same real-world shape (a decorated name)
+    through `resolve_client_name` specifically, since that's the tool the
+    model would actually call for it.
     """
+    from denidin_mcp_morning.tools import resolve_client_name
     from tests.integration._seed_helpers import seed_real_client
-    from denidin_mcp_morning.tools import _resolve_client_for_document_creation
 
-    marker = f"DENIDIN_028_B4A_{int(datetime.now(timezone.utc).timestamp())}"
+    marker = f"DENIDIN_028_B4A_{int(now_local().timestamp())}"
     tax_id = "512345679"  # check-digit valid; Morning rejects invalid ones (errorCode 1111)
     _, client_name = seed_real_client(morning_client, marker)
-    morning_client.update_client(
-        _resolve_client_for_document_creation(morning_client, client_name).client_id,
-        {"taxId": tax_id},
-    )
 
-    bare = _resolve_client_for_document_creation(morning_client, client_name)
-    assert bare.client_id, f"precondition: the bare name must resolve - {bare.refusal_message!r}"
+    items = (morning_client.search_clients({"name": client_name}).get("items") or [])
+    assert items, f"expected the just-created client to be found via search_clients"
+    morning_client.update_client(items[0]["id"], {"taxId": tax_id})
 
-    decorated = _resolve_client_for_document_creation(
-        morning_client, f"{client_name} (ח.פ {tax_id})"
+    bare = resolve_client_name(morning_client, client_name)
+    assert bare.startswith("שם הלקוח המדויק"), f"precondition: the bare name must resolve - {bare!r}"
+
+    decorated = resolve_client_name(morning_client, f"{client_name} (ח.פ {tax_id})")
+    assert not decorated.startswith("שם הלקוח המדויק"), (
+        f"a decorated (non-exact) name must never silently resolve - got {decorated!r}"
     )
-    assert decorated.client_id is None, (
-        f"a decorated (non-exact) name must never silently resolve and proceed - "
-        f"got client_id={decorated.client_id!r}"
+    assert client_name in decorated, (
+        f"the confirmation question must name the real client it found - got {decorated!r}"
     )
-    assert decorated.refusal_message is not None
-    assert client_name in decorated.refusal_message, (
-        f"the confirmation question must name the real client it found - got "
-        f"{decorated.refusal_message!r}"
-    )
-    assert "כן" in decorated.refusal_message and "לא" in decorated.refusal_message, (
+    assert "כן" in decorated and "לא" in decorated, (
         f"a non-exact match must be a closed yes/no confirmation question, not a "
-        f"silent resolution - got {decorated.refusal_message!r}"
+        f"silent resolution - got {decorated!r}"
     )

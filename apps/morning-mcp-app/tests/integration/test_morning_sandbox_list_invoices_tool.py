@@ -7,13 +7,13 @@ on. Per CONSTITUTION §V and this app's testing policy (spec.md §Testing
 Strategy).
 """
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
+from denidin_mcp_morning.utils.time_utils import now_local
 from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -37,7 +37,7 @@ def seeded_invoice(morning_client):
     """Create one real sandbox invoice via the already-working create_invoice tool."""
     from denidin_mcp_morning.tools import create_invoice
 
-    unique_marker = f"DENIDIN_LIST_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    unique_marker = f"DENIDIN_LIST_TEST_{int(now_local().timestamp())}"
     _, client_name = seed_real_client(morning_client, unique_marker)
 
     create_invoice(
@@ -45,6 +45,7 @@ def seeded_invoice(morning_client):
         client_name=client_name,
         amount=75.0,
         description=f"List-invoices seed {unique_marker}",
+        name_resolved=True,
     )
     return {"client_name": client_name}
 
@@ -62,7 +63,7 @@ def test_list_invoices_tool_finds_seeded_invoice_by_client_name(morning_client, 
     found = False
     result = None
     for _ in range(12):
-        result = list_invoices(morning_client, client_name=client_name)
+        result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
         if client_name in result:
             found = True
             break
@@ -81,7 +82,7 @@ def test_list_invoices_tool_finds_seeded_invoice_by_non_prefix_substring(morning
     """
     from denidin_mcp_morning.tools import create_invoice, list_invoices
 
-    unique_marker = f"DENIDIN_SUBSTRING_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    unique_marker = f"DENIDIN_SUBSTRING_TEST_{int(now_local().timestamp())}"
     _, client_name = seed_real_client(morning_client, unique_marker, name=f"Yossi Cohen {unique_marker} Ltd")
 
     create_invoice(
@@ -89,6 +90,7 @@ def test_list_invoices_tool_finds_seeded_invoice_by_non_prefix_substring(morning
         client_name=client_name,
         amount=42.0,
         description=f"Substring-match seed {unique_marker}",
+        name_resolved=True,
     )
 
     # Middle word of client_name - not a prefix of the whole stored name.
@@ -109,34 +111,20 @@ def test_list_invoices_tool_finds_seeded_invoice_by_non_prefix_substring(morning
     )
 
 
-def test_list_invoices_tool_asks_for_confirmation_on_name_prefix_variant(morning_client):
-    """Regression test for bugfix-039: a multi-word client_name query where an
-    earlier word is a genuine prefix of the stored word (a nickname/
-    truncation), not its literal spelling, must resolve to exactly one real
-    client and ASK the user to confirm - never silently list that client's
-    invoices under a guessed name, and never silently claim "not found"
-    either (user decision, 2026-08-10: a read tool with no approval step has
-    no other opportunity to catch a wrong guess).
+def test_list_invoices_tool_non_exact_multi_word_with_name_resolved_raises_not_found(morning_client):
+    """Architecture fix (2026-08-12): list_invoices no longer asks its own
+    confirmation question on a non-exact multi-word client_name (bugfix-039)
+    - that disclosure now lives entirely in resolve_client_name (see
+    test_morning_sandbox_resolve_client_name_tool.py). Asserting
+    name_resolved=True against a name that's still only a prefix variant
+    (real production shape: "דוד אדלר" typed against stored "דודי אדלר",
+    2026-08-10) is a contract violation and raises ClientNotFoundError -
+    never silently lists under a guessed name, and never silently claims
+    "not found" for a name that actually IS resolvable via
+    resolve_client_name first."""
+    from denidin_mcp_morning.tools import ClientNotFoundError, create_invoice, list_invoices
 
-    Feature 031 confirmed Morning's /documents/search `clientName` does
-    whole-string substring matching (research.md Decision 1), but every one
-    of its six probes was a single-token substring of one exact stored name
-    ("Yossi", "Cohen", "Ltd", ...) - never a multi-word query where a word
-    isn't the literal stored spelling. This is exactly the shape of the live
-    production failure (2026-08-10): querying "דוד אדלר" against a client
-    stored as "דודי אדלר" found nothing, because "דוד אדלר" (with the space)
-    is not a contiguous substring of "דודי אדלר" even though each word
-    individually is a prefix match. A live probe (2026-08-10) further
-    confirmed Morning's /clients/search `name` param has the exact same
-    whole-string-prefix limitation - so the fix cannot just reuse the
-    existing _resolve_client_by_name unchanged; it decomposes the query into
-    words and intersects per-word search results client-side
-    (_resolve_client_by_name_words). Reproduced here in Latin script against
-    a fresh seeded client for a stable, isolated regression test.
-    """
-    from denidin_mcp_morning.tools import create_invoice, list_invoices
-
-    unique_marker = f"DENIDIN_BUG039_{int(datetime.now(timezone.utc).timestamp())}"
+    unique_marker = f"DENIDIN_BUG039_{int(now_local().timestamp())}"
     stored_first_name = "Yossef"
     queried_first_name = "Yoss"  # genuine prefix of the stored word, not its literal spelling
     client_name = f"{stored_first_name} {unique_marker} Cohenberg"
@@ -147,38 +135,43 @@ def test_list_invoices_tool_asks_for_confirmation_on_name_prefix_variant(morning
         client_name=client_name,
         amount=63.0,
         description=f"Name-variant seed {unique_marker}",
+        name_resolved=True,
     )
 
     query = f"{queried_first_name} {unique_marker}"  # two words; first is a prefix variant
 
-    result = None
-    for _ in range(12):
-        result = list_invoices(morning_client, client_name=query)
-        if client_name in result:
-            break
-        time.sleep(1.5)
-
-    assert result is not None
-    assert client_name in result, (
-        f"Confirmation question should name the real resolved client so the user can confirm/deny: {result!r}"
-    )
-    assert "כן" in result and "לא" in result, f"Should be a closed yes/no question: {result!r}"
-    assert "חשבונית #" not in result, (
-        f"Must not silently list invoices under a guessed name - this is a question, not a result: {result!r}"
-    )
+    with pytest.raises(ClientNotFoundError):
+        list_invoices(morning_client, client_name=query, name_resolved=True)
 
 
-def test_list_invoices_tool_reports_no_match_when_no_word_resolves(morning_client):
-    """Regression test for bugfix-039: a multi-word client_name query where
-    no word matches any real client at all must report "not found" - never
-    an ambiguous-refusal or a confirmation question with nothing to confirm
-    (user decision, 2026-08-10: "if truly no match on any prefix(es) -
-    decide that there is no match")."""
-    from denidin_mcp_morning.tools import list_invoices
+def test_list_invoices_tool_multi_word_not_resolved_refuses_without_any_lookup(morning_client):
+    """Architecture fix (2026-08-12): a multi-word client_name requires
+    name_resolved=True and refuses immediately, with zero Morning calls at
+    all, otherwise. Follow-up (2026-08-12): this is now a real raise, not
+    ordinary refusal text - two outcomes only, succeed or raise."""
+    from denidin_mcp_morning.tools import ClientNameNotResolvedError, list_invoices
 
-    result = list_invoices(morning_client, client_name="NO_SUCH_CLIENT_XXXXXXXX NO_SUCH_SURNAME_YYYYYYYY")
+    with pytest.raises(ClientNameNotResolvedError) as exc_info:
+        list_invoices(morning_client, client_name="NO_SUCH_CLIENT_XXXXXXXX NO_SUCH_SURNAME_YYYYYYYY")
 
-    assert result == "לא נמצאו חשבוניות התואמות את החיפוש."
+    assert "resolve_client_name" in str(exc_info.value)
+
+
+def test_list_invoices_tool_reports_not_found_when_no_word_resolves(morning_client):
+    """Regression test for bugfix-039, updated for the architecture fix
+    (2026-08-12): a multi-word client_name query where no word matches any
+    real client at all must raise ClientNotFoundError once name_resolved=True
+    is asserted - never an ambiguous-refusal or a confirmation question with
+    nothing to confirm (user decision, 2026-08-10: "if truly no match on any
+    prefix(es) - decide that there is no match")."""
+    from denidin_mcp_morning.tools import ClientNotFoundError, list_invoices
+
+    with pytest.raises(ClientNotFoundError):
+        list_invoices(
+            morning_client,
+            client_name="NO_SUCH_CLIENT_XXXXXXXX NO_SUCH_SURNAME_YYYYYYYY",
+            name_resolved=True,
+        )
 
 
 def test_list_invoices_tool_returns_readable_string_for_no_matches(morning_client):
@@ -274,7 +267,7 @@ def test_list_invoices_tool_finds_document_by_number(morning_client, seeded_invo
     # the existing tool already supports), then search by that number alone.
     by_name_result = None
     for _ in range(12):
-        by_name_result = list_invoices(morning_client, client_name=client_name)
+        by_name_result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
         if "מזהה פנימי" in by_name_result:
             break
         time.sleep(1.5)

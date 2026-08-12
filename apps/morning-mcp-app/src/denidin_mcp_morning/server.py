@@ -19,6 +19,7 @@ from typing import Any, Callable, Optional
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import CallToolResult, TextContent
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -111,14 +112,35 @@ def build_asgi_app(
     return app
 
 
-def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> str:
-    """Run a tools.* function, mapping any exception to a friendly message.
+def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> "str | CallToolResult":
+    """Run a tools.* function, mapping any exception to a friendly message
+    AND a real MCP-level failure - never plain text indistinguishable from
+    success.
 
     This is the MCP boundary (CONSTITUTION §X/§XVI): a tool must never
     surface a raw exception/stack trace to the caller, and a single failing
     tool call must never take down the server process. Each call gets its
     own correlation id so the friendly message can be traced back to the
     full technical detail in the logs.
+
+    Client-name-resolution architecture fix follow-up (2026-08-12, user
+    decision): every tool has exactly two outcomes - it succeeds, or it
+    raises. There is no third "ordinary text that happens to describe a
+    failure" outcome (that was the exact shape of bugfix-028 B4(c)'s
+    original bug - a tool that didn't do what was asked, returning text
+    indistinguishable from success). Confirmed live (real FastMCP server,
+    real MCP client, no mocking) that a tool function can RETURN (not just
+    raise) a `CallToolResult(isError=True, ...)` and the real `isError` flag
+    survives the round-trip untouched, with fully controlled friendly
+    content - unlike letting the exception propagate uncaught, which would
+    still set `isError=True` but with FastMCP's own auto-generated
+    "Error executing tool X: <raw message>" text instead of ours. Every
+    `@mcp.tool()` registration that routes through this function must pass
+    `structured_output=False` (confirmed live too: without it, FastMCP
+    auto-generates a `{"result": <str>}` output schema from the declared
+    `-> str` return annotation, and validating our returned CallToolResult
+    against that schema fails with a confusing Pydantic error - a strictly
+    WORSE outcome than the bug this fixes).
 
     It is also the one point every tool passes through, so it owns the
     call-level half of the audit trail (bugfix-036): which tool was invoked,
@@ -138,7 +160,11 @@ def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> str:
             result = func(*args)
         except Exception as exc:  # noqa: BLE001 - deliberate MCP-boundary catch-all
             logger.info("[corr_id=%s] TOOL ERROR %s", correlation_id, tool_name)
-            return friendly_error_message(exc, correlation_id)
+            friendly_message = friendly_error_message(exc, correlation_id)
+            return CallToolResult(
+                content=[TextContent(type="text", text=friendly_message)],
+                isError=True,
+            )
         # Result length only, never the body: read tools return formatted lists
         # that can run to thousands of characters and would bury the mutation
         # records this trail exists to preserve.
@@ -184,13 +210,14 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     )
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def create_invoice(
         client_name: str,
         amount: float,
         description: str,
         due_date: Optional[str] = None,
         vat_included: bool = True,
+        name_resolved: bool = False,
     ) -> str:
         """Create an ordinary TAX INVOICE ("חשבונית מס", document type 305) - a
         request for payment that has NOT yet been received, which stays open/unpaid
@@ -199,18 +226,24 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         Do NOT use this for money that has already arrived (a bank deposit, a
         transfer confirmation, a payment screenshot): use create_combo_document for
         a new payment, or create_receipt against the invoice the payment settles.
+
+        REQUIRES name_resolved=True: call resolve_client_name first with this
+        client_name, then pass the EXACT name it returns here, together with
+        name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
-            tools.create_invoice, morning_client, client_name, amount, description, due_date, vat_included
+            tools.create_invoice, morning_client, client_name, amount, description,
+            due_date, vat_included, name_resolved
         )
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def create_transaction_account(
         client_name: str,
         amount: float,
         description: str,
         vat_included: bool,
         due_date: Optional[str] = None,
+        name_resolved: bool = False,
     ) -> str:
         """Create a non-tax transaction account ("חשבון עסקה", document type 300) -
         like an invoice, but not itself a tax document. Use when the user explicitly
@@ -220,13 +253,17 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         There is no default and no "unknown" - ask the user if it isn't clear.
         Getting it wrong silently changes what the client is billed (Morning adds
         ~18% to an amount declared as VAT-exclusive).
+
+        REQUIRES name_resolved=True: call resolve_client_name first with this
+        client_name, then pass the EXACT name it returns here, together with
+        name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
             tools.create_transaction_account, morning_client, client_name, amount,
-            description, vat_included, due_date
+            description, vat_included, due_date, name_resolved
         )
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def create_combo_document(
         client_name: str,
         amount: float,
@@ -238,6 +275,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         bank_branch: Optional[str] = None,
         bank_account: Optional[str] = None,
         transaction_reference: Optional[str] = None,
+        name_resolved: bool = False,
     ) -> str:
         """Create a combo tax invoice + receipt ("חשבונית מס/קבלה", document type 320)
         for a payment that has ALREADY been received - a single self-contained,
@@ -260,14 +298,18 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         transfer; a reference number (אסמכתה) only on an app or PayPal payment.
         `bank_number` is the bank's NUMBER (e.g. "31"), not its name - never
         invent a bank's name when only its number is known.
+
+        REQUIRES name_resolved=True: call resolve_client_name first with this
+        client_name, then pass the EXACT name it returns here, together with
+        name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
             tools.create_combo_document, morning_client, client_name, amount, description,
             vat_included, payment_date, payment_method, bank_number, bank_branch,
-            bank_account, transaction_reference
+            bank_account, transaction_reference, name_resolved
         )
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def create_credit_note(
         original_invoice_id: str,
         amount: Optional[float] = None,
@@ -285,11 +327,11 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             tools.create_credit_note, morning_client, original_invoice_id, amount, description
         )
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def create_receipt(
         original_invoice_id: str,
+        payment_date: str,
         amount: Optional[float] = None,
-        payment_date: Optional[str] = None,
     ) -> str:
         """Create a standalone receipt ("קבלה", document type 400) linked to an
         existing document, identified by original_invoice_id (the Morning document
@@ -299,12 +341,17 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         the correct target for "mark as paid" phrasing once the referenced
         document's type is resolved to 305, not 300 (there is no separate
         status-update tool) - only supports type-305 originals, raises a clear
-        error for a type-300 original (use close_transaction_account instead)."""
+        error for a type-300 original (use close_transaction_account instead).
+
+        REQUIRES payment_date: the real date the money moved, ISO YYYY-MM-DD.
+        "Today" is a genuinely fine answer for a verbal "mark as paid" request,
+        but only once asked and confirmed - never silently assumed. Ask the
+        user if it isn't already stated in the conversation."""
         return _call_with_error_boundary(
-            tools.create_receipt, morning_client, original_invoice_id, amount, payment_date
+            tools.create_receipt, morning_client, original_invoice_id, payment_date, amount
         )
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def close_transaction_account(
         original_invoice_id: str,
         amount: Optional[float] = None,
@@ -328,16 +375,23 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             tools.close_transaction_account, morning_client, original_invoice_id, amount, description, vat_included
         )
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def list_invoices(
         status: Optional[str] = None,
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
         client_name: Optional[str] = None,
         number: Optional[str] = None,
+        name_resolved: bool = False,
     ) -> str:
         """List/search invoices with optional filters (status/date range/client
-        name/exact document number - e.g. "51365")."""
+        name/exact document number - e.g. "51365").
+
+        A MULTI-WORD client_name REQUIRES name_resolved=True: call
+        resolve_client_name first, then pass the EXACT name it returns here,
+        together with name_resolved=True. A single-word client_name is a
+        plain substring search and does not need this.
+        """
         return _call_with_error_boundary(
             tools.list_invoices,
             morning_client,
@@ -347,9 +401,10 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             client_name,
             number,
             config.list_invoices_token_budget,
+            name_resolved,
         )
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def get_invoice_details(invoice_id: str) -> str:
         """Fetch full details (status, dates, payments) for one invoice - use
         this to resolve a document's real type/current status before deciding
@@ -358,7 +413,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         tool; only document creation."""
         return _call_with_error_boundary(tools.get_invoice_details, morning_client, invoice_id)
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def add_client(
         name: str,
         email: str,
@@ -369,7 +424,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         ask the user for any that are missing rather than guessing."""
         return _call_with_error_boundary(tools.add_client, morning_client, name, email, phone, tax_id)
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def list_clients(name: Optional[str] = None) -> str:
         """List existing Morning clients. Pass name to narrow server-side
         (token-prefix match) - useful when a bare list would match too many
@@ -377,27 +432,53 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         to narrow when that happens)."""
         return _call_with_error_boundary(tools.list_clients, morning_client, name)
 
-    @mcp.tool()
-    def get_client_details(name: str) -> str:
-        """Get a single client's full details by name."""
-        return _call_with_error_boundary(tools.get_client_details, morning_client, name)
+    @mcp.tool(structured_output=False)
+    def resolve_client_name(name: str) -> str:
+        """Resolve a client name to Morning's exact stored name before calling
+        any other tool that needs one specific client (get_client_details,
+        list_invoices with a client_name filter, create_invoice,
+        create_transaction_account, create_combo_document, update_client).
 
-    @mcp.tool()
+        ALWAYS call this first whenever a user's request references a client by
+        name - even a name you believe is already exact - then pass the EXACT
+        name this returns, verbatim, into the target tool together with
+        name_resolved=True. Those six tools no longer do their own fuzzy
+        matching: they require name_resolved=True and refuse immediately,
+        without attempting any lookup, if it isn't set.
+        """
+        return _call_with_error_boundary(tools.resolve_client_name, morning_client, name)
+
+    @mcp.tool(structured_output=False)
+    def get_client_details(name: str, name_resolved: bool = False) -> str:
+        """Get a single client's full details by name.
+
+        REQUIRES name_resolved=True: call resolve_client_name first with
+        this name, then pass the EXACT name it returns here, together with
+        name_resolved=True. Without it, this refuses immediately.
+        """
+        return _call_with_error_boundary(tools.get_client_details, morning_client, name, name_resolved)
+
+    @mcp.tool(structured_output=False)
     def update_client(
         name: str,
         new_name: Optional[str] = None,
         email: Optional[str] = None,
         phone: Optional[str] = None,
         tax_id: Optional[str] = None,
+        name_resolved: bool = False,
     ) -> str:
-        """Update an existing client's fields. `name` identifies which client
-        (never guess on an ambiguous match - resolve first); at least one of
-        new_name/email/phone/tax_id must be given."""
+        """Update an existing client's fields. `name` identifies which client;
+        at least one of new_name/email/phone/tax_id must be given.
+
+        REQUIRES name_resolved=True: call resolve_client_name first with
+        this name, then pass the EXACT name it returns here, together with
+        name_resolved=True. Without it, this refuses immediately.
+        """
         return _call_with_error_boundary(
-            tools.update_client, morning_client, name, new_name, email, phone, tax_id
+            tools.update_client, morning_client, name, new_name, email, phone, tax_id, name_resolved
         )
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def get_financial_summary(
         period: str,
         from_date: Optional[str] = None,
@@ -408,7 +489,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             tools.get_financial_summary, morning_client, period, from_date, to_date
         )
 
-    @mcp.tool()
+    @mcp.tool(structured_output=False)
     def download_invoice_pdf(invoice_id: str) -> str:
         """Return a PDF download link for an invoice."""
         return _call_with_error_boundary(tools.download_invoice_pdf, morning_client, invoice_id)

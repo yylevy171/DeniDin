@@ -37,10 +37,9 @@ from .denidin_mcp_e2e_helpers import (
     _calls_for,
     _random_amount,
     _random_description,
-    _seed_client_via_conversation,
+    _seed_fresh_client,
     _send_turn,
     _send_turn_and_approve,
-    _unique_client_name,
 )
 
 # ============================================================================
@@ -564,10 +563,9 @@ def test_godfather_searches_invoice_by_number_finds_it(denidin_app):
     alone (no client name, no date) - the model must resolve it via
     list_invoices' number filter and show the real details, not refuse with
     a 'too many results' narrowing request."""
-    client_name = _unique_client_name()
     amount = _random_amount()
     description = _random_description()
-    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_NUMSEARCH_SEED")
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_NUMSEARCH_SEED")
 
     _, (seed_response, seed_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,

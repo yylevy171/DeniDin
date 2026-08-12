@@ -57,10 +57,11 @@ from .denidin_mcp_e2e_helpers import (
     _SEED_PHONE,
     _calls_for,
     _fresh_nonexistent_client_name,
+    _is_genuine_document_creation,
     _random_amount,
     _random_description,
     _random_seed_email,
-    _seed_client_via_conversation,
+    _seed_fresh_client,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_decline,
@@ -116,10 +117,9 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
     a real add_client conversation first (see US1's happy-path test below
     for the dedicated, from-scratch version of this same flow).
     """
-    client_name = _unique_client_name()
     amount = _random_amount()
     description = _random_description()
-    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_CREATE")
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_CREATE")
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -216,11 +216,10 @@ def test_godfather_approval_survives_intervening_small_talk(denidin_app):
     """An implicitly-declined pending approval (Feature 022) must not leave
     the app stuck: after unrelated small talk clears the pending request,
     the user can simply re-ask and complete the approval flow normally."""
-    client_name = _unique_client_name()
     amount = _random_amount()
     description = _random_description()
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_SMALLTALK")
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
-    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_SMALLTALK")
 
     _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -445,10 +444,9 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
     document is created attached to that real client, verified via a real
     follow-up get_invoice_details call, and the user is informed with a
     normal confirmation (a real invoice link)."""
-    client_name = _unique_client_name()
     amount = _random_amount()
     description = _random_description()
-    _seed_client_via_conversation(GODFATHER_CHAT_ID, client_name, id_prefix="E2E_027_HAPPY")
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_027_HAPPY")
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -528,8 +526,8 @@ def _run_similarly_named_client_flow(real_name: str, typed_name: str, id_prefix:
     ]
     for i in range(4):
         response, ai_response = turns[-1]
-        if response is not None and _calls_for(ai_response, "create_invoice") and any(
-            call["error"] is None for call in _calls_for(ai_response, "create_invoice")
+        if response is not None and any(
+            _is_genuine_document_creation(call) for call in _calls_for(ai_response, "create_invoice")
         ):
             break
         turns.append(_send_turn(chat_id=GODFATHER_CHAT_ID, text="כן", id_prefix=f"{id_prefix}_YES{i}"))
@@ -558,7 +556,9 @@ def _assert_similarly_named_client_flow_succeeded(turns, real_name: str, typed_n
     to confirm the full real conversational round-trip still ends up at the
     right place."""
     create_calls_by_turn = [_calls_for(ai_response, "create_invoice") for _, ai_response in turns]
-    successful_calls = [call for calls in create_calls_by_turn for call in calls if call["error"] is None]
+    successful_calls = [
+        call for calls in create_calls_by_turn for call in calls if _is_genuine_document_creation(call)
+    ]
 
     assert successful_calls, (
         f"No document was ever created within the turn budget - full conversation: "

@@ -8,11 +8,13 @@ from datetime import date
 import pytest
 
 from denidin_mcp_morning.formatters import (
+    format_client_name_resolved,
     format_currency_ils,
     format_date_il,
     format_invoice_confirmation,
     format_invoice_details,
     format_invoice_list,
+    format_name_not_resolved,
     format_original_not_linked_to_client,
     format_too_many_invoices_message,
     translate_document_type,
@@ -246,3 +248,36 @@ def test_format_original_not_linked_to_client_does_not_imply_a_fix_exists():
 
     assert "נסה שוב" not in message  # "try again" - would falsely imply retrying helps
     assert "לקוח" in message  # mentions the actual problem (client linkage), not a generic error
+
+
+# --- format_client_name_resolved / format_name_not_resolved (client-name-resolution architecture fix) ---
+
+
+def test_format_client_name_resolved_contains_the_exact_name_quoted():
+    """The model must be able to copy this name verbatim into its next tool
+    call together with name_resolved=True - quoted, matching the existing
+    convention (format_invoice_confirmation's 'לקוח: "..."') so the name
+    reads as one atomic, copyable token."""
+    message = format_client_name_resolved("כרמלי דודי")
+
+    assert '"כרמלי דודי"' in message
+
+
+def test_format_client_name_resolved_never_mentions_a_client_id():
+    """REQ-CLIENT-018 (feature 026): the internal Morning client_id must
+    never reach the model, in any tool's return value."""
+    message = format_client_name_resolved("כרמלי דודי")
+
+    assert "client_id" not in message.lower()
+    assert "id" not in message.lower().split()  # no bare "id" token
+
+
+def test_format_name_not_resolved_names_the_resolution_tool():
+    """A procedural instruction for the CALLING MODEL to act on immediately
+    (call resolve_client_name, then retry) - not a domain question for the
+    end user, so it must name the tool to call, not just say something
+    vague like "try again"."""
+    message = format_name_not_resolved()
+
+    assert "resolve_client_name" in message
+    assert "name_resolved" in message

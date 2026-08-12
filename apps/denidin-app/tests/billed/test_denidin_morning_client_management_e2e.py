@@ -34,12 +34,33 @@ from .denidin_mcp_e2e_helpers import (
     _HEBREW_NAME_SPELLING_VARIANTS,
     _SEED_PHONE,
     _calls_for,
+    _normalize_hebrew_geresh,
     _random_seed_email,
+    _seed_fresh_client,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_decline,
-    _unique_client_name,
 )
+
+def _single_word_first_name() -> str:
+    """A first name from the pool guaranteed not to itself contain a space -
+    a handful of real entries are two words (e.g. "בת שבע", "יעקב יוסף") -
+    needed by tests that build a prefix out of "the first name" specifically,
+    where a compound entry would make that operation meaningless."""
+    name = random.choice(_HEBREW_FIRST_NAMES)
+    while " " in name:
+        name = random.choice(_HEBREW_FIRST_NAMES)
+    return name
+
+
+def _single_word_family_name() -> str:
+    """Same as `_single_word_first_name`, for family names (e.g. "אבו ליל",
+    "אבו רוקן" are real two-word pool entries)."""
+    name = random.choice(_HEBREW_FAMILY_NAMES)
+    while " " in name:
+        name = random.choice(_HEBREW_FAMILY_NAMES)
+    return name
+
 
 # ============================================================================
 # list_clients (Feature 026, US1)
@@ -58,25 +79,9 @@ def test_godfather_lists_clients_via_whatsapp(denidin_app):
     instead of listing the seeded name directly. The assertion below adapts
     to whichever is actually true (read straight from the tool's own real
     output), rather than assuming either outcome in advance."""
-    client_name = _unique_client_name()
-    seed_email = _random_seed_email()
-
-    _, (add_response, add_ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"תוסיף לקוח חדש בשם {client_name}, מייל {seed_email}, טלפון {_SEED_PHONE}",
-        id_prefix="E2E_LIST_CLIENTS_SEED",
-    )
-    seed_calls = _calls_for(add_ai_response, "add_client")
-    assert seed_calls, (
-        f"Could not seed a client for the list_clients test. "
-        f"mcp_calls: {add_ai_response.mcp_calls if add_ai_response else None!r}. "
-        f"Reply: {add_response!r}"
-    )
-
-    # The sandbox's search index lags briefly after a write (research.md
-    # Decision 8) - a single local sleep here costs nothing, unlike retrying
-    # a whole billed conversational turn.
-    time.sleep(3)
+    # _seed_fresh_client already sleeps for the search-index lag (research.md
+    # Decision 8) on a successful seed - no need to sleep again here.
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_LIST_CLIENTS_SEED")
 
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -117,23 +122,9 @@ def test_godfather_lists_clients_via_whatsapp(denidin_app):
 def test_godfather_gets_client_details_via_whatsapp(denidin_app):
     """Godfather asks for a specific client's details by name - read-only,
     no approval wait (get_client_details is in NO_APPROVAL_MCP_TOOLS)."""
-    client_name = _unique_client_name()
-    seed_email = _random_seed_email()
-
-    _, (add_response, add_ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"תוסיף לקוח חדש בשם {client_name}, מייל {seed_email}, טלפון {_SEED_PHONE}",
-        id_prefix="E2E_CLIENT_DETAILS_SEED",
-    )
-    seed_calls = _calls_for(add_ai_response, "add_client")
-    assert seed_calls, (
-        f"Could not seed a client for the get_client_details test. "
-        f"mcp_calls: {add_ai_response.mcp_calls if add_ai_response else None!r}. "
-        f"Reply: {add_response!r}"
-    )
-
-    # Search-index lag (research.md Decision 8) - cost-free local sleep.
-    time.sleep(3)
+    # _seed_fresh_client already sleeps for the search-index lag (research.md
+    # Decision 8) on a successful seed - no need to sleep again here.
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_CLIENT_DETAILS_SEED")
 
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -237,20 +228,9 @@ def test_godfather_updates_client_via_whatsapp(denidin_app):
        (research.md Decision 3's partial-payload guarantee, exercised here
        through the full real WhatsApp conversation, not just the sandbox
        tool call)."""
-    client_name = _unique_client_name()
-    seed_email = _random_seed_email()
-
-    _, (seed_response, seed_ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"תוסיף לקוח חדש בשם {client_name}, מייל {seed_email}, טלפון {_SEED_PHONE}",
-        id_prefix="E2E_UPDATE_CLIENT_SEED",
-    )
-    assert _calls_for(seed_ai_response, "add_client") and _calls_for(seed_ai_response, "add_client")[0]["error"] is None, (
-        f"Could not seed a client for the update_client test. "
-        f"mcp_calls: {seed_ai_response.mcp_calls if seed_ai_response else None!r}. "
-        f"Reply: {seed_response!r}"
-    )
-    time.sleep(3)  # search-index lag (research.md Decision 8)
+    # _seed_fresh_client already sleeps for the search-index lag (research.md
+    # Decision 8) on a successful seed - no need to sleep again here.
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_UPDATE_CLIENT_SEED")
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -303,20 +283,9 @@ def test_godfather_declines_client_update(denidin_app):
     update_client must never fire, and a follow-up get_client_details call
     must show the original phone unchanged (mirrors
     test_godfather_declines_add_client's pattern)."""
-    client_name = _unique_client_name()
-    seed_email = _random_seed_email()
-
-    _, (seed_response, seed_ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"תוסיף לקוח חדש בשם {client_name}, מייל {seed_email}, טלפון {_SEED_PHONE}",
-        id_prefix="E2E_UPDATE_DECLINE_SEED",
-    )
-    assert _calls_for(seed_ai_response, "add_client") and _calls_for(seed_ai_response, "add_client")[0]["error"] is None, (
-        f"Could not seed a client for the decline-update test. "
-        f"mcp_calls: {seed_ai_response.mcp_calls if seed_ai_response else None!r}. "
-        f"Reply: {seed_response!r}"
-    )
-    time.sleep(3)  # search-index lag (research.md Decision 8)
+    # _seed_fresh_client already sleeps for the search-index lag (research.md
+    # Decision 8) on a successful seed - no need to sleep again here.
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_UPDATE_DECLINE_SEED")
 
     response, ai_response = _send_turn_and_decline(
         chat_id=GODFATHER_CHAT_ID,
@@ -424,20 +393,18 @@ def test_godfather_finds_client_via_hebrew_vowel_variant(denidin_app):
     Hebrew spelling before giving up (runtime_constitution.md's new
     "strict prefix match, not fuzzy" guidance)."""
     chaser_spelling, male_spelling = random.choice(_HEBREW_NAME_SPELLING_VARIANTS)
-    family_name = random.choice(_HEBREW_FAMILY_NAMES)
-    seed_name = f"{male_spelling} {family_name}"
-    query_name = f"{chaser_spelling} {family_name}"
-    seed_email = _random_seed_email()
-
-    _, (seed_response, seed_ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"תוסיף לקוח חדש בשם {seed_name}, מייל {seed_email}, טלפון {_SEED_PHONE}",
+    # _seed_fresh_client draws the family name itself (via name_factory) and
+    # retries with a new one if a particular draw collides with an existing
+    # real sandbox client - never asserts on the seeding turn itself, only
+    # on the end state. male_spelling is fixed (needed for the test's own
+    # spelling-variant premise); only the family name is redrawn on retry.
+    seed_name, _, _ = _seed_fresh_client(
+        GODFATHER_CHAT_ID,
         id_prefix="E2E_HEBREW_VARIANT_SEED",
+        name_factory=lambda: f"{male_spelling} {random.choice(_HEBREW_FAMILY_NAMES)}",
     )
-    assert _calls_for(seed_ai_response, "add_client") and _calls_for(seed_ai_response, "add_client")[0]["error"] is None, (
-        f"Could not seed client: {seed_response!r}"
-    )
-    time.sleep(3)  # search-index lag (research.md Decision 8)
+    family_name = seed_name.split()[-1]
+    query_name = f"{chaser_spelling} {family_name}"
 
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -453,86 +420,179 @@ def test_godfather_finds_client_via_hebrew_vowel_variant(denidin_app):
 
 
 @pytest.mark.billed
-def test_godfather_get_client_details_discloses_first_name_prefix_match(denidin_app):
-    """When get_client_details resolves to exactly one client via a
-    partial/prefix reference (not the literal stored name), the reply must
-    explicitly disclose which client was found - never silently proceed as
-    if the reference were certain."""
-    first_name = random.choice(_HEBREW_FIRST_NAMES)
-    family_name = random.choice(_HEBREW_FAMILY_NAMES)
-    full_name = f"{first_name} {family_name}"
+def test_godfather_get_client_details_resolves_ambiguous_first_name_prefix_after_confirmation(denidin_app):
+    """client-name-resolution architecture fix (2026-08-12): get_client_details
+    itself never resolves a partial/prefix reference anymore (superseding the
+    old test of the same shape, which asserted the OLD architecture's
+    single-turn disclosure - obsolete, since get_client_details now requires
+    an already-exact name and does zero matching of its own). The real flow
+    is two turns: (1) a partial first-name reference is one missing piece of
+    information - the exact client identity - so the model must call
+    resolve_client_name, get a non-exact single match, and relay its
+    confirmation question rather than silently proceeding or guessing; (2)
+    once the godfather confirms, the model must actually resolve and THEN
+    retrieve the real details - proven by the seeded email appearing in the
+    final reply, not just the name being echoed back."""
+    # _seed_fresh_client draws its own fresh first+family name pair and
+    # retries with a new one if a particular draw collides with an existing
+    # real sandbox client - never asserts on the seeding turn itself, only
+    # on the end state (a fresh client genuinely exists before the real test
+    # begins). A custom name_factory keeps the first name single-word (a
+    # handful of pool entries are themselves two words, e.g. "בת שבע") - this
+    # test's whole premise is truncating THE first name to build a prefix,
+    # which only means something for a single-word first name.
+    full_name, _, _ = _seed_fresh_client(
+        GODFATHER_CHAT_ID,
+        id_prefix="E2E_RESOLVE_FIRSTNAME_SEED",
+        name_factory=lambda: f"{_single_word_first_name()} {random.choice(_HEBREW_FAMILY_NAMES)}",
+    )
+    first_name = full_name.split(maxsplit=1)[0]
     # Only a prefix of the first name, alone - Morning's phrase-prefix search
     # only allows the LAST word of a query to be partial (confirmed live),
     # so a truncated first name followed by the full family name would not
     # match at all; querying with just the truncated first name (a single,
     # standalone word) does.
     first_name_prefix = first_name[: max(2, len(first_name) - 2)]
-    seed_email = _random_seed_email()
 
-    _, (seed_response, seed_ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"תוסיף לקוח חדש בשם {full_name}, מייל {seed_email}, טלפון {_SEED_PHONE}",
-        id_prefix="E2E_DISCLOSE_FIRSTNAME_SEED",
-    )
-    assert _calls_for(seed_ai_response, "add_client") and _calls_for(seed_ai_response, "add_client")[0]["error"] is None, (
-        f"Could not seed client: {seed_response!r}"
-    )
-    time.sleep(3)
-
-    response, ai_response = _send_turn(
+    ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
         text=f"פרטים על הלקוח {first_name_prefix}",
-        id_prefix="E2E_DISCLOSE_FIRSTNAME_QUERY",
+        id_prefix="E2E_RESOLVE_FIRSTNAME_ASK",
     )
 
-    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert full_name in response, (
-        f"Expected the reply to disclose the full resolved client name "
-        f"{full_name!r} (not just the prefix {first_name_prefix!r} the "
-        f"user typed) - got: {response!r}"
+    assert ask_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert not _calls_for(ask_ai_response, "get_client_details"), (
+        f"get_client_details executed on the ambiguous ASK turn, before the "
+        f"godfather confirmed which client was meant: "
+        f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+    )
+    # Morning geresh-normalizes any apostrophe in a stored name (e.g. "ריצ'רד"
+    # -> "ריצ׳רד") - resolve_client_name's confirmation question quotes
+    # Morning's own normalized form, not our raw generated full_name.
+    assert _normalize_hebrew_geresh(full_name) in ask_response, (
+        f"Expected resolve_client_name's confirmation question to name the "
+        f"full resolved client {full_name!r} (not just echo the prefix "
+        f"{first_name_prefix!r} the user typed) - got: {ask_response!r}"
+    )
+
+    confirm_response, confirm_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text="כן",
+        id_prefix="E2E_RESOLVE_FIRSTNAME_CONFIRM",
+    )
+
+    assert confirm_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert _calls_for(confirm_ai_response, "get_client_details"), (
+        f"Model never actually retrieved the client's details once the "
+        f"identity was confirmed: "
+        f"{confirm_ai_response.mcp_calls if confirm_ai_response else None!r}"
+    )
+    assert seed_email in confirm_response, (
+        f"Expected the client's own seeded email {seed_email!r} in the final "
+        f"reply - proof of a genuine detail retrieval after confirmation, "
+        f"not just the name echoed back: {confirm_response!r}"
     )
 
 
 @pytest.mark.billed
-def test_godfather_update_client_discloses_family_name_prefix_match_before_approval(denidin_app):
-    """Same disclosure requirement, but for update_client via a truncated
-    FAMILY name reference (standalone, confirmed live to match) - and since
-    approval happens BEFORE the tool executes/resolves (research.md
-    Decision 7), the model itself must resolve and name the real client in
-    the pending-approval prompt, not just echo back the partial wording."""
-    first_name = random.choice(_HEBREW_FIRST_NAMES)
-    family_name = random.choice(_HEBREW_FAMILY_NAMES)
-    full_name = f"{first_name} {family_name}"
+def test_godfather_update_client_resolves_ambiguous_family_name_prefix_after_confirmation(denidin_app):
+    """Same corrected flow as the get_client_details test above, but for
+    update_client - which additionally requires its own mutation approval
+    (Feature 022), separate from and after the identity confirmation. Three
+    real turns: (1) a partial FAMILY name reference (standalone, confirmed
+    live to match) is ambiguous - the model must relay resolve_client_name's
+    confirmation question and must NOT yet propose the update; (2) once
+    confirmed, the model resolves the exact name and proposes the actual
+    update_client call - this is the real pending-approval prompt, which
+    must name the resolved client and the new value, and must still not have
+    executed; (3) only the explicit approval actually performs it - verified
+    independently via a follow-up get_client_details call, not just trusted
+    from the model's own claim."""
+    # _seed_fresh_client draws its own fresh first+family name pair and
+    # retries with a new one if a particular draw collides with an existing
+    # real sandbox client - never asserts on the seeding turn itself, only
+    # on the end state. A custom name_factory keeps the family name
+    # single-word (a handful of pool entries are themselves two words, e.g.
+    # "אבו ליל") - this test's whole premise is truncating THE family name
+    # to build a prefix, which only means something for a single-word
+    # family name.
+    full_name, _, _ = _seed_fresh_client(
+        GODFATHER_CHAT_ID,
+        id_prefix="E2E_RESOLVE_FAMILYNAME_SEED",
+        name_factory=lambda: f"{random.choice(_HEBREW_FIRST_NAMES)} {_single_word_family_name()}",
+    )
+    family_name = full_name.split(maxsplit=1)[1]
     family_name_prefix = family_name[: max(2, len(family_name) - 2)]
-    seed_email = _random_seed_email()
     new_phone = "052-9876543"  # deliberately different from _SEED_PHONE, so a
         # real change is actually being requested
-
-    _, (seed_response, seed_ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"תוסיף לקוח חדש בשם {full_name}, מייל {seed_email}, טלפון {_SEED_PHONE}",
-        id_prefix="E2E_DISCLOSE_FAMILYNAME_SEED",
-    )
-    assert _calls_for(seed_ai_response, "add_client") and _calls_for(seed_ai_response, "add_client")[0]["error"] is None, (
-        f"Could not seed client: {seed_response!r}"
-    )
-    time.sleep(3)
 
     ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תעדכן את הטלפון של {family_name_prefix} ל-{new_phone}",
-        id_prefix="E2E_DISCLOSE_FAMILYNAME_ASK",
+        id_prefix="E2E_RESOLVE_FAMILYNAME_ASK",
     )
 
+    assert ask_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
     assert not _calls_for(ask_ai_response, "update_client"), (
-        f"update_client executed on the ASK turn before approval was given: "
+        f"update_client executed (or was even proposed) on the ambiguous ASK "
+        f"turn, before the godfather confirmed which client was meant: "
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
-    assert ask_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert full_name in ask_response, (
-        f"Expected the PENDING-APPROVAL prompt itself to name the full "
-        f"resolved client {full_name!r}, not just echo the partial "
-        f"reference {family_name_prefix!r} - got: {ask_response!r}"
+    # Morning geresh-normalizes any apostrophe in a stored name - see the
+    # matching comment in the get_client_details test above.
+    assert _normalize_hebrew_geresh(full_name) in ask_response, (
+        f"Expected resolve_client_name's confirmation question to name the "
+        f"full resolved client {full_name!r} (not just echo the prefix "
+        f"{family_name_prefix!r} the user typed) - got: {ask_response!r}"
+    )
+
+    confirm_response, confirm_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text="כן",
+        id_prefix="E2E_RESOLVE_FAMILYNAME_CONFIRM",
+    )
+
+    assert confirm_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert not _calls_for(confirm_ai_response, "update_client"), (
+        f"update_client executed before explicit approval of the mutation "
+        f"itself (identity confirmation and mutation approval are two "
+        f"separate steps): "
+        f"{confirm_ai_response.mcp_calls if confirm_ai_response else None!r}"
+    )
+    assert _normalize_hebrew_geresh(full_name) in confirm_response, (
+        f"Expected the real update_client PENDING-APPROVAL prompt to name "
+        f"the resolved client {full_name!r} - got: {confirm_response!r}"
+    )
+
+    approve_response, approve_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text="כן",
+        id_prefix="E2E_RESOLVE_FAMILYNAME_APPROVE",
+    )
+
+    assert approve_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    update_calls = _calls_for(approve_ai_response, "update_client")
+    assert update_calls and update_calls[0]["error"] is None, (
+        f"update_client did not succeed on the APPROVE turn: "
+        f"{approve_ai_response.mcp_calls if approve_ai_response else None!r}"
+    )
+
+    time.sleep(3)  # search-index lag (research.md Decision 8)
+
+    details_response, details_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"פרטים על הלקוח {full_name}",
+        id_prefix="E2E_RESOLVE_FAMILYNAME_VERIFY",
+    )
+
+    assert details_ai_response is not None
+    assert _SEED_PHONE not in (details_response or ""), (
+        f"sanity check: the seed phone {_SEED_PHONE!r} must not still be the "
+        f"reported one - got: {details_response!r}"
+    )
+    assert "052-9876543" in (details_response or ""), (
+        f"Expected the updated, normalized phone in the follow-up details "
+        f"reply, got: {details_response!r}"
     )
 
 

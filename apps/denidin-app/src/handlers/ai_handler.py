@@ -116,6 +116,7 @@ APPROVAL_REQUIRED_MCP_TOOLS = (
 NO_APPROVAL_MCP_TOOLS = (
     "list_invoices", "get_invoice_details", "get_financial_summary",
     "download_invoice_pdf", "list_clients", "get_client_details",
+    "resolve_client_name",
 )
 
 
@@ -1375,6 +1376,37 @@ class AIHandler:
 
         return followup, event_ids
 
+    @staticmethod
+    def _extract_mcp_error_text(call) -> str:
+        """Pull human-readable failure text off a Responses API `mcp_call`
+        item's `.error` field (client-name-resolution root-cause fix
+        follow-up, 2026-08-12).
+
+        Before this fix, a failed MCP tool call still reported `error=None`
+        and carried its failure text in `.output`, indistinguishable from
+        success - `.error` was never populated by anything upstream. Now
+        that morning-mcp-app's tools raise real, typed failures instead of
+        returning ordinary refusal text, a failed call has `output=None` and
+        a real `.error` object instead - confirmed live (real OpenAI call,
+        real MCP server, no mocking): `error` is a dict shaped
+        `{"type": "mcp_tool_execution_error", "content": [{"type": "text",
+        "text": "<our friendly message>"}]}`. Without this, the B4(b)
+        zero-execution failure-detail extraction below would silently lose
+        the actual reason (falling through to a fully generic message)
+        every time, since it only ever looked at `.output`.
+        """
+        error = getattr(call, "error", None)
+        if not error:
+            return ""
+        content = error.get("content") if isinstance(error, dict) else getattr(error, "content", None)
+        if not content:
+            return ""
+        for block in content:
+            text = block.get("text") if isinstance(block, dict) else getattr(block, "text", None)
+            if text:
+                return str(text)
+        return ""
+
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
                            user_obj, user_role: str, sender: Optional[str],
                            recipient: Optional[str], tools: Optional[List[Dict]]) -> AIResponse:
@@ -1955,6 +1987,10 @@ class AIHandler:
                     output = getattr(call, "output", None)
                     if output:
                         failure_detail = f" ({str(output)[:200]})"
+                        break
+                    error_text = self._extract_mcp_error_text(call)
+                    if error_text:
+                        failure_detail = f" ({error_text[:200]})"
                         break
                 logger.error(
                     f"[022] APPROVED TOOL NEVER RAN: chat={effective_chat_id!r}, "
