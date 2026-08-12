@@ -39,6 +39,9 @@ sweep's own investigation surfaced that `close_transaction_account` duplicates
 full finding. This bugfix (028) itself is not yet fully closed - remaining open items are
 tracked in the handoff's "Exact next steps" section.
 
+**PR #212** (opened 2026-08-13) carries this session's work (and the prior uncommitted sessions'
+work merged alongside it) to `master`.
+
 ## Date Opened
 2026-08-09
 
