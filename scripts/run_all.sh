@@ -12,6 +12,11 @@
 # the Morning MCP tunnel at startup/per-request), never the other way
 # around, so morning-mcp-app must already be up before denidin-app starts.
 #
+# NOTE: this only (re)deploys - it does NOT build either app. Both wrapped
+# scripts are `docker compose up -d` only; after a code change, build the
+# relevant service(s) first (`docker compose build <service>`) or this
+# silently keeps serving stale code either app's image was last built from.
+#
 # Usage: ./scripts/run_all.sh dev|prod
 
 set -e

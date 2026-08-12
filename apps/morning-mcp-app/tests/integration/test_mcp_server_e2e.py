@@ -10,7 +10,6 @@ works end-to-end, not just that the tools.py functions work in isolation.
 import asyncio
 import threading
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -22,6 +21,7 @@ from mcp.client.streamable_http import streamable_http_client
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
 from denidin_mcp_morning.server import build_asgi_app, create_server
+from denidin_mcp_morning.utils.time_utils import now_local
 from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -31,6 +31,7 @@ TEST_HOST = "127.0.0.1"
 TEST_PORT = 8799
 
 EXPECTED_TOOL_NAMES = {
+    "resolve_client_name",
     "create_invoice",
     "create_transaction_account",
     "create_combo_document",
@@ -99,7 +100,7 @@ def test_mcp_server_registers_all_expected_tools(server_url):
 def test_mcp_client_can_invoke_create_invoice_tool_end_to_end(server_url):
     """Proves dispatch, not just registration: a real MCP tool call reaches
     tools.create_invoice, which hits the real Morning sandbox."""
-    unique_marker = f"DENIDIN_E2E_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    unique_marker = f"DENIDIN_E2E_TEST_{int(now_local().timestamp())}"
     # Feature 027: create_invoice now resolves client_name against a real
     # client record before creating anything - seed one first, via a
     # separate direct MorningClient (the MCP server under test has its own
@@ -120,6 +121,7 @@ def test_mcp_client_can_invoke_create_invoice_tool_end_to_end(server_url):
                         "client_name": client_name,
                         "amount": 33.0,
                         "description": unique_marker,
+                        "name_resolved": True,
                     },
                 )
 
@@ -136,7 +138,16 @@ def test_mcp_tool_error_is_friendly_not_a_raw_stack_trace(server_url):
     detail. Without a mapping layer, FastMCP's default behavior surfaces the raw
     exception string (confirmed live: 'Error executing tool ...: 404 Client
     Error: Not Found for url: https://sandbox.d.greeninvoice.co.il/...'),
-    leaking the internal API URL to the caller."""
+    leaking the internal API URL to the caller.
+
+    Also asserts the real, protocol-level `isError` flag (2026-08-12 follow-up,
+    user decision) - confirmed live (separate throwaway probe, real FastMCP
+    server + real MCP client) that a tool RETURNING (not raising)
+    `CallToolResult(isError=True, ...)` survives the real MCP round-trip with
+    isError intact and exactly the friendly content we choose. Before this
+    fix, every tool failure came back as ordinary text with no error flag at
+    all - the same silent-failure shape bugfix-028 B4(c) exists to kill,
+    just never applied to this general error boundary."""
 
     async def _run():
         async with streamable_http_client(server_url) as (read, write, _get_session_id):
@@ -149,11 +160,38 @@ def test_mcp_tool_error_is_friendly_not_a_raw_stack_trace(server_url):
 
     result = asyncio.run(_run())
 
+    assert result.isError is True
     text = "".join(block.text for block in result.content if hasattr(block, "text"))
     assert "greeninvoice.co.il" not in text
     assert "Traceback" not in text
     assert "Client Error" not in text
     assert "❌" in text
+
+
+def test_mcp_tool_call_without_name_resolved_is_a_real_protocol_error(server_url):
+    """The exact scenario that started this fix (2026-08-12): a client-name-
+    consuming tool called without name_resolved=True must come back as a
+    real MCP-level failure (isError=True), not ordinary text indistinguishable
+    from success - confirmed through the real server/client, no mocking."""
+
+    async def _run():
+        async with streamable_http_client(server_url) as (read, write, _get_session_id):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                return await session.call_tool(
+                    "create_invoice",
+                    {
+                        "client_name": "Some Client Never Resolved",
+                        "amount": 10.0,
+                        "description": "should never execute",
+                    },
+                )
+
+    result = asyncio.run(_run())
+
+    assert result.isError is True
+    text = "".join(block.text for block in result.content if hasattr(block, "text"))
+    assert "resolve_client_name" in text
 
 
 AUTH_TEST_PORT = 8798

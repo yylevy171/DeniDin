@@ -51,6 +51,7 @@ from src.models.message import AIResponse
 from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     GODFATHER_CHAT_ID,
     _calls_for,
+    _client_name_exact_match_found,
     create_real_notification,
     get_response,
 )
@@ -167,13 +168,22 @@ def _ledger_event_count_for_chat(denidin_app, chat_id: str) -> int:
 
 @pytest.mark.billed
 def test_godfather_shares_contact_card_complete_requires_approval(denidin_app):
-    """US1: a shared contact card with name+phone+email all present proposes add_client
-    exactly like a typed request would - the existing Feature 026 approval gate must
-    intercept the ASK turn (no add_client call yet), and only the APPROVE turn (an explicit
-    Hebrew "כן") actually calls the tool.
+    """US1: a shared contact card with name+phone+email all present is resolved via the
+    exact same resolve_client_name-first flow (client-name-resolution architecture,
+    2026-08-12) a typed add_client request would use.
 
-    Uses the synthetic complete_card_dana_cohen.vcf fixture (the real captured fixture has
-    no email - see US2 below for that case).
+    "Dana Cohen" (the complete_card_dana_cohen.vcf fixture's name) is a PERMANENT
+    ground-truth sandbox fixture (created 2026-07-30, real client id
+    2c4f7b86-07c1-44c6-b119-f8f0249958e1 - see GROUND_TRUTH_CLIENTS.md) - the first time
+    this test ever ran successfully it created a real "Dana Cohen" client, and every run
+    since is therefore a genuine EXACT-match duplicate, not a fresh creation (found live,
+    2026-08-12, when this test started failing post the "offer to update instead" removal
+    - see runtime_constitution.md's "Do NOT offer... update" note). Adapted (2026-08-12,
+    user decision) to assert that real behavior directly instead of assuming a fresh
+    create every time: resolve_client_name reports the genuine exact match, add_client is
+    correctly never called (no duplicate, and no silent update either), and the
+    ledger-event false-positive guard still holds. No APPROVE turn - there is nothing
+    pending to approve when the client already exists.
     """
     vcard = _load_vcard("complete_card_dana_cohen.vcf")
     ledger_count_before = _ledger_event_count_for_chat(denidin_app, GODFATHER_CHAT_ID)
@@ -187,27 +197,17 @@ def test_godfather_shares_contact_card_complete_requires_approval(denidin_app):
 
     assert ask_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
     assert not _calls_for(ask_ai_response, "add_client"), (
-        f"add_client executed on the ASK turn (from a shared contact card) before approval "
-        f"was given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+        f"add_client executed for a client that already exists (real, permanent "
+        f"'Dana Cohen' fixture) - should have refused plainly, never silently "
+        f"duplicated or updated: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+    )
+    assert _client_name_exact_match_found(ask_ai_response), (
+        f"Expected resolve_client_name to report a genuine EXACT match for the "
+        f"permanent 'Dana Cohen' fixture: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
     assert _ledger_event_count_for_chat(denidin_app, GODFATHER_CHAT_ID) == ledger_count_before, (
         "capture_ledger_event was called on a raw vCard - contact-card fields "
         "(name/phone/email) must never be misread as fee-agreement/bank-deposit content"
-    )
-
-    response, ai_response = _send_text_turn(
-        chat_id=GODFATHER_CHAT_ID,
-        text="כן",
-        id_prefix="E2E_VCF_COMPLETE_APPROVE",
-    )
-
-    add_calls = _calls_for(ai_response, "add_client")
-    assert add_calls and all(c["error"] is None for c in add_calls), (
-        f"add_client did not succeed on the APPROVE turn after a complete contact card: "
-        f"{ai_response.mcp_calls if ai_response else None!r}"
-    )
-    assert any("Dana Cohen" in (c["arguments"] or "") for c in add_calls), (
-        f"add_client was not called with the vCard's name 'Dana Cohen': {add_calls!r}"
     )
 
 
@@ -219,7 +219,19 @@ def test_godfather_shares_contact_card_missing_email_is_asked_for(denidin_app):
     026's REQ-CLIENT-012 "ask for what's missing" behavior unchanged.
 
     Once the email is supplied in a follow-up turn, the flow proceeds exactly as US1
-    (confirmation -> approve -> creation).
+    (confirmation -> approve -> creation) - UNLESS "גיל ברטל" is (as of 2026-08-12) a
+    PERMANENT ground-truth sandbox fixture, same situation as "Dana Cohen" in the test
+    above (created 2026-07-30, same original seeding session, real Morning `client_id`
+    04d1c153-6d9c-467f-9eb1-a9661b4df4b6 - see GROUND_TRUTH_CLIENTS.md). Every run after
+    the first successful one is therefore a genuine exact-match duplicate. Unlike "Dana
+    Cohen", the model does not always refuse pre-emptively here - found live, 2026-08-12:
+    it called add_client anyway, and Morning's own API rejected the duplicate directly
+    (a real `mcp_tool_execution_error`, "❌ הבקשה נדחתה על ידי Morning"). Both outcomes
+    (a clean pre-emptive refusal, or an attempted call Morning itself rejects) are
+    accepted as correct below - what matters is that no duplicate client resulted, not
+    which of the two ways that got enforced. Only accepted as a "pass" when a genuine
+    EXACT match was actually seen in this flow - any OTHER add_client failure reason
+    still fails the test normally.
     """
     vcard = _load_vcard("00005372-גיל ברטל .vcf")
     assert "EMAIL" not in vcard  # sanity: this fixture genuinely has no email
@@ -265,7 +277,19 @@ def test_godfather_shares_contact_card_missing_email_is_asked_for(denidin_app):
         id_prefix="E2E_VCF_NOEMAIL_APPROVE",
     )
     add_calls = _calls_for(approve_ai_response, "add_client")
-    assert add_calls and all(c["error"] is None for c in add_calls), (
-        f"add_client did not succeed after supplying the missing email and approving: "
-        f"{approve_ai_response.mcp_calls if approve_ai_response else None!r}"
+    add_succeeded = bool(add_calls) and all(c["error"] is None for c in add_calls)
+
+    # "גיל ברטל" is a permanent fixture (see docstring) - a failure here is only
+    # acceptable when it's genuinely caused by that real exact-match duplicate,
+    # never for any other reason. Check every turn's resolve_client_name calls,
+    # not just the approve turn's - the exact match may have surfaced earlier.
+    exact_match_found = any(
+        _client_name_exact_match_found(r) for r in (ask_ai_response, supply_ai_response, approve_ai_response)
+    )
+    add_failed_as_known_duplicate = bool(add_calls) and not add_succeeded and exact_match_found
+
+    assert add_succeeded or add_failed_as_known_duplicate, (
+        f"add_client neither succeeded nor failed as the expected duplicate of the "
+        f"permanent 'גיל ברטל' fixture: add_calls={add_calls!r}, "
+        f"exact_match_found={exact_match_found!r}"
     )

@@ -1,17 +1,18 @@
-"""Real Morning-sandbox test for the get_client_details MCP tool (Feature 026, US2).
+"""Real Morning-sandbox test for the get_client_details MCP tool (Feature 026, US2;
+client-name-resolution architecture fix, bugfix-028 sub-piece, 2026-08-12).
 
 No mocks: drives denidin_mcp_morning.tools.get_client_details against the live
 sandbox, per CONSTITUTION §V and this app's testing policy.
 """
 import time
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
+from denidin_mcp_morning.utils.time_utils import now_local
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = APP_ROOT / "config" / "config.test.json"
@@ -24,10 +25,29 @@ _POLL_INTERVAL_SECONDS = 1.5
 
 def _poll_until(predicate, action):
     """Call `action()` up to _POLL_ATTEMPTS times until `predicate(result)` is
-    true, sleeping _POLL_INTERVAL_SECONDS between attempts. Returns the last result."""
+    true, sleeping _POLL_INTERVAL_SECONDS between attempts. Returns the last
+    result.
+
+    `action` may raise `ClientNotFoundError` transiently - get_client_details
+    (post architecture fix, 2026-08-12) raises on a genuine zero-match, and a
+    freshly-created client can legitimately zero-match for a few seconds
+    while Morning's search index catches up (this file's own documented
+    eventual-consistency lag). That's indistinguishable from a real
+    not-found on the FIRST poll attempt, so it's treated as "not ready yet"
+    here rather than failing the whole poll immediately - the same
+    tolerance the predicate-based retry already gives an unhelpful string
+    reply."""
+    from denidin_mcp_morning.tools import ClientNotFoundError
+
     result = None
-    for _ in range(_POLL_ATTEMPTS):
-        result = action()
+    for attempt in range(_POLL_ATTEMPTS):
+        try:
+            result = action()
+        except ClientNotFoundError:
+            if attempt == _POLL_ATTEMPTS - 1:
+                raise
+            time.sleep(_POLL_INTERVAL_SECONDS)
+            continue
         if predicate(result):
             return result
         time.sleep(_POLL_INTERVAL_SECONDS)
@@ -49,7 +69,7 @@ def morning_client():
 def test_get_client_details_returns_full_record(morning_client):
     from denidin_mcp_morning.tools import add_client, get_client_details
 
-    unique_marker = f"DENIDIN_DETAILS_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    unique_marker = f"DENIDIN_DETAILS_TEST_{int(now_local().timestamp())}"
     name = f"Test Client {unique_marker}"
 
     # Phone given already in normalized form (050-1234567) since add_client's
@@ -65,8 +85,8 @@ def test_get_client_details_returns_full_record(morning_client):
     )
 
     result = _poll_until(
-        lambda r: name in r,
-        lambda: get_client_details(morning_client, name),
+        lambda r: r.startswith("לקוח:"),
+        lambda: get_client_details(morning_client, name, name_resolved=True),
     )
 
     assert name in result
@@ -80,7 +100,7 @@ def test_get_client_details_returns_full_record(morning_client):
 def test_get_client_details_never_includes_raw_client_id(morning_client):
     from denidin_mcp_morning.tools import add_client, get_client_details
 
-    unique_marker = f"DENIDIN_DETAILS_ID_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    unique_marker = f"DENIDIN_DETAILS_ID_TEST_{int(now_local().timestamp())}"
     name = f"Test Client {unique_marker}"
 
     add_client(morning_client, name=name, email=f"{unique_marker}@example.com", phone="050-1234567")
@@ -92,15 +112,34 @@ def test_get_client_details_never_includes_raw_client_id(morning_client):
     assert items, "expected the just-created client to be found via search_clients"
     client_id = items[0]["id"]
 
-    result = get_client_details(morning_client, name)
+    result = get_client_details(morning_client, name, name_resolved=True)
 
     assert client_id not in result
 
 
-def test_get_client_details_discloses_non_exact_match(morning_client):
-    """New requirement: when the query resolves to exactly one client via a
-    non-exact (partial/prefix) match, the reply must explicitly disclose
-    which client was found, distinct from the exact-match phrasing."""
+def test_get_client_details_not_resolved_refuses_without_any_lookup(morning_client):
+    """Architecture fix (2026-08-12): omitting name_resolved must refuse
+    immediately, without attempting any Morning lookup at all - even for a
+    name that would otherwise resolve cleanly. Follow-up (2026-08-12): this
+    is now a real raise, not ordinary refusal text - two outcomes only,
+    succeed or raise."""
+    from denidin_mcp_morning.tools import ClientNameNotResolvedError, get_client_details
+
+    with pytest.raises(ClientNameNotResolvedError) as exc_info:
+        get_client_details(morning_client, "Any Client Name At All")
+
+    assert "resolve_client_name" in str(exc_info.value)
+
+
+def test_get_client_details_non_exact_match_with_name_resolved_raises_not_found(morning_client):
+    """Architecture fix (2026-08-12): get_client_details no longer discloses
+    non-exact matches itself - that disclosure now happens in
+    resolve_client_name instead (see
+    test_morning_sandbox_resolve_client_name_tool.py). Asserting
+    name_resolved=True against a name that's still only a partial/prefix
+    reference is a contract violation and raises ClientNotFoundError, same
+    as a genuine zero-match."""
+    from denidin_mcp_morning import tools
     from denidin_mcp_morning.tools import add_client, get_client_details
 
     # A random hex marker (not a timestamp) - sequential timestamps taken
@@ -115,26 +154,31 @@ def test_get_client_details_discloses_non_exact_match(morning_client):
 
     add_client(morning_client, name=name, email=f"{unique_marker}@example.com", phone="050-1234567")
 
-    result = _poll_until(
-        lambda r: name in r,
-        lambda: get_client_details(morning_client, partial_reference),
+    # Poll for search-index readiness via the real full name first (a plain
+    # read, no assertion here) - once that settles, the one real
+    # assertion call below is meaningful rather than racing eventual
+    # consistency.
+    items = _poll_until(
+        lambda items: bool(items),
+        lambda: (morning_client.search_clients({"name": name}).get("items") or []),
     )
+    assert items, "expected the just-created client to be found via search_clients"
 
-    assert "מצאתי את הלקוח" in result
-    assert name in result
+    with pytest.raises(tools.ClientNotFoundError):
+        get_client_details(morning_client, partial_reference, name_resolved=True)
 
 
 def test_get_client_details_exact_match_uses_standard_phrasing(morning_client):
     from denidin_mcp_morning.tools import add_client, get_client_details
 
-    unique_marker = f"DENIDIN_EXACT_TEST_{int(datetime.now(timezone.utc).timestamp())}"
+    unique_marker = f"DENIDIN_EXACT_TEST_{int(now_local().timestamp())}"
     name = f"Test Client {unique_marker}"
 
     add_client(morning_client, name=name, email=f"{unique_marker}@example.com", phone="050-1234567")
 
     result = _poll_until(
-        lambda r: name in r,
-        lambda: get_client_details(morning_client, name),
+        lambda r: r.startswith("לקוח:"),
+        lambda: get_client_details(morning_client, name, name_resolved=True),
     )
 
     assert result.startswith("לקוח:")

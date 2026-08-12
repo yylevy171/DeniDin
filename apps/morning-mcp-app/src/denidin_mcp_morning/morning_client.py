@@ -4,6 +4,20 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .auth import MorningAuth
+from .utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def _redact_headers(headers: dict) -> dict:
+    """Copy of `headers` safe to log - the bearer token is a real secret and must
+    never reach a log line (user request, 2026-08-12: log EVERYTHING sent to/from
+    Morning - this is the one exception, for the same reason API keys are never
+    logged elsewhere in this app)."""
+    redacted = dict(headers)
+    if "Authorization" in redacted:
+        redacted["Authorization"] = "Bearer <redacted>"
+    return redacted
 
 
 def _build_session(retries: int = 3, backoff_factor: float = 0.5):
@@ -53,10 +67,46 @@ class MorningClient:
         token = self.auth.get_token()
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
+    def _request(self, method: str, url: str, headers: dict, timeout: int, json_payload: dict = None) -> requests.Response:
+        """One real HTTP call to Morning, with full request/response logging (user
+        request, 2026-08-12: "log EVERYTHING sent back and forth between the mcp and
+        morning" - a live investigation into a resolve_client_name discrepancy had no
+        way to see the actual search_clients traffic, since audit logging only covers
+        mutations and only logs at the tool boundary, not the raw HTTP layer). Every
+        public method below goes through this one spot, so no future addition can
+        silently skip logging.
+
+        Logged at DEBUG deliberately - full request/response bodies are noisy and this
+        should be off in prod by default. Requires `server.py`'s `main()` to have
+        called `reconfigure_package_log_level(config.mcp_log_level)` after loading
+        config for this to actually respect `config.dev.json`'s `mcp.log_level` -
+        `get_logger()`'s own default is INFO, set at each module's import time,
+        before config exists (see that function's docstring for the full story).
+        A direct script that constructs MorningClient without going through
+        server.py's main() (e.g. an ad-hoc diagnostic) never gets that reconfigure
+        call, so it stays at the INFO default and won't show these DEBUG lines
+        either, unless it calls reconfigure_package_log_level itself.
+
+        Logs the response BEFORE `raise_for_status()` is called by the caller, so a
+        4xx/5xx body (often the most useful part) is always captured even though the
+        caller still raises on it afterward - unchanged behavior, just observed first.
+        """
+        logger.debug(
+            "Morning API request: %s %s headers=%s json=%s",
+            method, url, _redact_headers(headers), json_payload,
+        )
+        resp = self.session.request(method, url, json=json_payload, headers=headers, timeout=timeout)
+        try:
+            body = resp.json() if resp.content else None
+        except ValueError:
+            body = resp.text
+        logger.debug("Morning API response: status=%s body=%s", resp.status_code, body)
+        return resp
+
     def create_invoice(self, payload: dict) -> dict:
         url = f"{self.base_url}/documents"
         headers = self._auth_headers()
-        resp = self.session.post(url, json=payload, headers=headers, timeout=15)
+        resp = self._request("POST", url, headers, timeout=15, json_payload=payload)
         resp.raise_for_status()
         return resp.json()
 
@@ -64,14 +114,14 @@ class MorningClient:
         url = f"{self.base_url}/documents/search"
         headers = self._auth_headers()
         # The Morning API expects a POST to /documents/search with a JSON body (see Postman collection).
-        resp = self.session.post(url, json=params or {}, headers=headers, timeout=20)
+        resp = self._request("POST", url, headers, timeout=20, json_payload=params or {})
         resp.raise_for_status()
         return resp.json()
 
     def get_invoice(self, invoice_id: str) -> dict:
         url = f"{self.base_url}/documents/{invoice_id}"
         headers = self._auth_headers()
-        resp = self.session.get(url, headers=headers, timeout=15)
+        resp = self._request("GET", url, headers, timeout=15)
         resp.raise_for_status()
         return resp.json()
 
@@ -79,7 +129,7 @@ class MorningClient:
         """Mark a document as closed/paid (POST /documents/{id}/close, empty body)."""
         url = f"{self.base_url}/documents/{invoice_id}/close"
         headers = self._auth_headers()
-        resp = self.session.post(url, headers=headers, timeout=15)
+        resp = self._request("POST", url, headers, timeout=15)
         resp.raise_for_status()
         return resp.json() if resp.content else {}
 
@@ -87,7 +137,7 @@ class MorningClient:
         """Reopen a document/mark unpaid (POST /documents/{id}/open, empty body)."""
         url = f"{self.base_url}/documents/{invoice_id}/open"
         headers = self._auth_headers()
-        resp = self.session.post(url, headers=headers, timeout=15)
+        resp = self._request("POST", url, headers, timeout=15)
         resp.raise_for_status()
         return resp.json() if resp.content else {}
 
@@ -95,7 +145,7 @@ class MorningClient:
         """Create a new client (POST /clients)."""
         url = f"{self.base_url}/clients"
         headers = self._auth_headers()
-        resp = self.session.post(url, json=payload, headers=headers, timeout=15)
+        resp = self._request("POST", url, headers, timeout=15, json_payload=payload)
         resp.raise_for_status()
         return resp.json()
 
@@ -104,7 +154,7 @@ class MorningClient:
         full records - no separate GET-by-id call is needed anywhere."""
         url = f"{self.base_url}/clients/search"
         headers = self._auth_headers()
-        resp = self.session.post(url, json=payload, headers=headers, timeout=15)
+        resp = self._request("POST", url, headers, timeout=15, json_payload=payload)
         resp.raise_for_status()
         return resp.json()
 
@@ -113,6 +163,6 @@ class MorningClient:
         fields being changed."""
         url = f"{self.base_url}/clients/{client_id}"
         headers = self._auth_headers()
-        resp = self.session.put(url, json=payload, headers=headers, timeout=15)
+        resp = self._request("PUT", url, headers, timeout=15, json_payload=payload)
         resp.raise_for_status()
         return resp.json()

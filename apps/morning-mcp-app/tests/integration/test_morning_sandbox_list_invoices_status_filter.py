@@ -13,13 +13,13 @@ freshly created invoice was invisible to status="unpaid"). Per CONSTITUTION
 §V and this app's testing policy (spec.md §Testing Strategy).
 """
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
+from denidin_mcp_morning.utils.time_utils import now_local
 from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -45,9 +45,9 @@ def unpaid_invoice(morning_client):
     not the string "unpaid")."""
     from denidin_mcp_morning.tools import create_invoice
 
-    marker = f"DENIDIN_STATUSFILTER_UNPAID_{int(datetime.now(timezone.utc).timestamp())}"
+    marker = f"DENIDIN_STATUSFILTER_UNPAID_{int(now_local().timestamp())}"
     _, client_name = seed_real_client(morning_client, marker)
-    create_invoice(morning_client, client_name=client_name, amount=61.0, description=marker)
+    create_invoice(morning_client, client_name=client_name, amount=61.0, description=marker, name_resolved=True)
     return {"client_name": client_name}
 
 
@@ -57,9 +57,11 @@ def paid_invoice(morning_client):
     receipt (Morning's raw status code afterwards: 1)."""
     from denidin_mcp_morning.tools import create_invoice, create_receipt
 
-    marker = f"DENIDIN_STATUSFILTER_PAID_{int(datetime.now(timezone.utc).timestamp())}"
+    marker = f"DENIDIN_STATUSFILTER_PAID_{int(now_local().timestamp())}"
     _, client_name = seed_real_client(morning_client, marker)
-    response = create_invoice(morning_client, client_name=client_name, amount=62.0, description=marker)
+    response = create_invoice(
+        morning_client, client_name=client_name, amount=62.0, description=marker, name_resolved=True
+    )
 
     # Real invoice id is only in the tool's own confirmation text - resolve
     # it via list_invoices by client name, same as the MCP tool's own
@@ -68,14 +70,14 @@ def paid_invoice(morning_client):
 
     invoice_id = None
     for _ in range(12):
-        result = list_invoices(morning_client, client_name=client_name)
+        result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
         if "מזהה פנימי" in result:
             invoice_id = result.split("מזהה פנימי (invoice_id): ")[1].splitlines()[0].strip()
             break
         time.sleep(1.5)
     assert invoice_id, f"Could not resolve invoice_id for {client_name!r} to mark it paid: {response!r}"
 
-    create_receipt(morning_client, invoice_id)
+    create_receipt(morning_client, invoice_id, payment_date="2026-07-12")
     return {"client_name": client_name}
 
 
@@ -87,7 +89,7 @@ def _find_by_client_name(morning_client, client_name: str, status: str) -> str:
 
     result = ""
     for _ in range(12):
-        result = list_invoices(morning_client, status=status, client_name=client_name)
+        result = list_invoices(morning_client, status=status, client_name=client_name, name_resolved=True)
         if client_name in result:
             return result
         time.sleep(1.5)
@@ -111,7 +113,9 @@ def test_status_unpaid_filter_finds_a_freshly_created_invoice(morning_client, un
 def test_status_paid_filter_excludes_an_unpaid_invoice(morning_client, unpaid_invoice):
     from denidin_mcp_morning.tools import list_invoices
 
-    result = list_invoices(morning_client, status="paid", client_name=unpaid_invoice["client_name"])
+    result = list_invoices(
+        morning_client, status="paid", client_name=unpaid_invoice["client_name"], name_resolved=True
+    )
 
     assert unpaid_invoice["client_name"] not in result
 
@@ -137,7 +141,7 @@ def test_status_unpaid_filter_excludes_a_paid_invoice(morning_client, paid_invoi
     client_name = paid_invoice["client_name"]
     result = ""
     for _ in range(12):
-        result = list_invoices(morning_client, status="unpaid", client_name=client_name)
+        result = list_invoices(morning_client, status="unpaid", client_name=client_name, name_resolved=True)
         if client_name not in result:
             break
         time.sleep(1.5)

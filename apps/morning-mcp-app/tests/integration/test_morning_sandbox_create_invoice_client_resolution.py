@@ -1,21 +1,31 @@
-"""Real Morning-sandbox tests for feature 027's Group A client resolution
-(create_invoice as the representative tool - REQ-INV-001/002/003/005/009/011).
+"""Real Morning-sandbox tests for create_invoice's exact-only client
+resolution gate (client-name-resolution architecture fix, bugfix-028
+sub-piece, 2026-08-12 - representative of the same gate shared by
+create_transaction_account/create_combo_document/update_client/
+get_client_details/list_invoices).
 
 No mocks: drives denidin_mcp_morning.tools.create_invoice against the live
 sandbox and independently verifies the created document's real client.id
 via a direct MorningClient.get_invoice call - the tool's own reply text is
 never trusted as proof (REQ-INV-009).
 
+Non-exact/ambiguous client-name resolution is no longer this tool's own
+concern (that moved entirely to `resolve_client_name` - see
+test_morning_sandbox_resolve_client_name_tool.py, including the T1/T2
+production-incident-shaped regression cases). This file covers only what's
+still create_invoice's own job: accepting an exact match, and refusing
+(procedurally, or via ClientNotFoundError) on anything else.
+
 Per CONSTITUTION §V and this app's testing policy (spec.md §Testing Strategy).
 """
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from denidin_mcp_morning.config import load_config
 from denidin_mcp_morning.morning_client import MorningClient
-from denidin_mcp_morning.tools import create_invoice
+from denidin_mcp_morning.tools import ClientNameNotResolvedError, ClientNotFoundError, create_invoice
+from denidin_mcp_morning.utils.time_utils import now_local
 from tests.integration._seed_helpers import seed_real_client
 
 APP_ROOT = Path(__file__).resolve().parents[2]
@@ -39,10 +49,12 @@ def _extract_id(confirmation_text: str) -> str:
 
 
 def test_create_invoice_exact_match_attaches_to_the_real_client(morning_client):
-    marker = f"DENIDIN_027_RESOLVE_EXACT_{int(datetime.now(timezone.utc).timestamp())}"
+    marker = f"DENIDIN_027_RESOLVE_EXACT_{int(now_local().timestamp())}"
     client_id, client_name = seed_real_client(morning_client, marker)
 
-    confirmation = create_invoice(morning_client, client_name=client_name, amount=10.0, description=marker)
+    confirmation = create_invoice(
+        morning_client, client_name=client_name, amount=10.0, description=marker, name_resolved=True
+    )
     invoice_id = _extract_id(confirmation)
 
     created = morning_client.get_invoice(invoice_id)
@@ -50,102 +62,69 @@ def test_create_invoice_exact_match_attaches_to_the_real_client(morning_client):
     assert "מצאתי" not in confirmation  # exact match - no disclosure needed
 
 
-def test_create_invoice_non_exact_match_asks_for_confirmation_and_creates_nothing(morning_client):
-    """bugfix-039 (expanded 2026-08-11): a non-exact single match must
-    refuse with a closed yes/no confirmation question and create NOTHING -
-    never silently create-then-disclose, since by the time a disclosure is
-    shown the real Morning document already exists under a possibly-wrong
-    client, too late for the user to catch a bad guess."""
-    marker = f"DENIDIN_027_RESOLVE_FUZZY_{int(datetime.now(timezone.utc).timestamp())}"
+def test_create_invoice_not_resolved_refuses_without_any_lookup(morning_client):
+    """Architecture fix (2026-08-12): omitting name_resolved must refuse
+    immediately, without attempting any Morning lookup at all - even for a
+    name that would otherwise resolve cleanly, and creates nothing.
+    Follow-up (2026-08-12): this is now a real raise, not ordinary refusal
+    text - two outcomes only, succeed or raise."""
+    marker = f"DENIDIN_027_NOTRESOLVED_{int(now_local().timestamp())}"
+    _, client_name = seed_real_client(morning_client, marker)
+
+    with pytest.raises(ClientNameNotResolvedError) as exc_info:
+        create_invoice(morning_client, client_name=client_name, amount=10.0, description=marker)
+
+    assert "resolve_client_name" in str(exc_info.value)
+
+
+def test_create_invoice_zero_matches_raises_and_creates_nothing(morning_client):
+    """bugfix-028 B4(c): a client that cannot be found is a FAILURE, not a
+    friendly string returned as ordinary output with error=None - that is
+    what let one production document be approved eight times and created
+    zero times. Requires name_resolved=True (architecture fix, 2026-08-12) -
+    the caller must have already gone through resolve_client_name."""
+    marker = f"DENIDIN_027_RESOLVE_NOTFOUND_{int(now_local().timestamp())}"
+    nonexistent_name = f"Test Client {marker}"  # deliberately never seeded
+
+    with pytest.raises(ClientNotFoundError) as exc_info:
+        create_invoice(
+            morning_client, client_name=nonexistent_name, amount=12.0, description=marker, name_resolved=True
+        )
+
+    assert "לא נמצא" in str(exc_info.value)
+    assert "מזהה פנימי" not in str(exc_info.value)  # no document confirmation shape at all
+
+
+def test_create_invoice_non_exact_match_with_name_resolved_raises_not_found(morning_client):
+    """Architecture fix (2026-08-12): a non-exact match (a real client
+    exists, but the name given isn't its literal stored spelling) is no
+    longer a "did you mean X?" disclosure from create_invoice itself - that
+    disclosure now lives entirely in resolve_client_name. Asserting
+    name_resolved=True against a name that's still non-exact is a contract
+    violation and raises ClientNotFoundError; nothing is created."""
+    marker = f"DENIDIN_027_RESOLVE_FUZZY_{int(now_local().timestamp())}"
     real_name = f"Test Client {marker} International"
     seed_real_client(morning_client, marker, name=real_name)
 
     # Query by a prefix, not the full stored name - forces a non-exact match.
-    result = create_invoice(morning_client, client_name=f"Test Client {marker}", amount=11.0, description=marker)
-
-    assert "מזהה פנימי" not in result  # no document confirmation shape at all - nothing created
-    assert real_name in result  # names the real candidate so the user can confirm
-    assert "כן" in result and "לא" in result  # closed yes/no question, not open-ended
-
-
-def test_create_invoice_confirmed_non_exact_match_then_creates_with_exact_name(morning_client):
-    """The intended follow-up half of the flow above: once the model
-    re-invokes create_invoice with the now-confirmed EXACT real name (what
-    a "כן" reply to the confirmation question leads to), the document is
-    created normally, attached to the real client."""
-    marker = f"DENIDIN_027_RESOLVE_FUZZY_CONFIRMED_{int(datetime.now(timezone.utc).timestamp())}"
-    real_name = f"Test Client {marker} International"
-    client_id, _ = seed_real_client(morning_client, marker, name=real_name)
-
-    confirmation = create_invoice(morning_client, client_name=real_name, amount=11.0, description=marker)
-    invoice_id = _extract_id(confirmation)
-
-    created = morning_client.get_invoice(invoice_id)
-    assert created.get("client", {}).get("id") == client_id
-    assert "כן" not in confirmation.split("\n")[0]  # no leftover confirmation-question phrasing
+    with pytest.raises(ClientNotFoundError):
+        create_invoice(
+            morning_client, client_name=f"Test Client {marker}", amount=11.0, description=marker,
+            name_resolved=True,
+        )
 
 
-def test_create_invoice_single_letter_added_to_stored_name_asks_for_confirmation(morning_client):
-    """T1 (user-specified regression case, 2026-08-11): the STORED client's
-    surname is missing a trailing letter relative to what's typed - the
-    mirror direction of T2 below, and the one Morning's native prefix search
-    cannot cover on its own (a longer query can never be a prefix of a
-    shorter stored word) - this is exactly what _search_word_with_truncation
-    closes. The uniqueness marker sits in the UNEDITED first-name word so
-    the single-letter-edit relationship on the surname stays clean
-    (stored "צור" vs typed "צורן" - one letter added at the end, not the
-    first letter)."""
-    marker = f"DENIDIN_039_T1_{int(datetime.now(timezone.utc).timestamp())}"
-    real_name = f"זהבית{marker} צור"
-    typed_name = f"זהבית{marker} צורן"
-    seed_real_client(morning_client, marker, name=real_name)
+def test_create_invoice_ambiguous_match_with_name_resolved_raises_not_found(morning_client):
+    """Architecture fix (2026-08-12): create_invoice no longer discloses
+    ambiguous candidates itself - that's resolve_client_name's job now.
+    Asserting name_resolved=True against a name that's still ambiguous is a
+    contract violation and raises ClientNotFoundError; nothing is created."""
+    marker = f"DENIDIN_027_RESOLVE_AMBIG_{int(now_local().timestamp())}"
+    seed_real_client(morning_client, marker, name=f"Test Client {marker} Alpha")
+    seed_real_client(morning_client, f"{marker}_B", name=f"Test Client {marker} Beta")
 
-    result = create_invoice(morning_client, client_name=typed_name, amount=14.0, description=marker)
-
-    assert "מזהה פנימי" not in result  # nothing created
-    assert real_name in result  # names the real candidate
-    assert "כן" in result and "לא" in result
-
-
-def test_create_invoice_single_letter_removed_from_stored_name_asks_for_confirmation(morning_client):
-    """T2 (user-specified regression case, 2026-08-11): the STORED client's
-    first name has one extra trailing letter relative to what's typed - the
-    exact production incident shape (stored "דודי" vs typed "דוד"). Already
-    coverable by Morning's native whole-string prefix search alone (typed is
-    a literal prefix of stored) - kept as its own explicit regression test
-    per the user's request, not just folded into the general FUZZY test
-    above. Marker sits in the UNEDITED surname."""
-    marker = f"DENIDIN_039_T2_{int(datetime.now(timezone.utc).timestamp())}"
-    real_name = f"אדלר{marker} דודי"
-    typed_name = f"אדלר{marker} דוד"
-    seed_real_client(morning_client, marker, name=real_name)
-
-    result = create_invoice(morning_client, client_name=typed_name, amount=15.0, description=marker)
-
-    assert "מזהה פנימי" not in result  # nothing created
-    assert real_name in result  # names the real candidate
-    assert "כן" in result and "לא" in result
-
-
-def test_create_invoice_zero_matches_refuses_and_creates_nothing(morning_client):
-    marker = f"DENIDIN_027_RESOLVE_NOTFOUND_{int(datetime.now(timezone.utc).timestamp())}"
-    nonexistent_name = f"Test Client {marker}"  # deliberately never seeded
-
-    result = create_invoice(morning_client, client_name=nonexistent_name, amount=12.0, description=marker)
-
-    assert "לא נמצא" in result
-    assert "מזהה פנימי" not in result  # no document confirmation shape at all
-
-
-def test_create_invoice_ambiguous_match_refuses_and_lists_real_candidates(morning_client):
-    marker = f"DENIDIN_027_RESOLVE_AMBIG_{int(datetime.now(timezone.utc).timestamp())}"
-    _, name_a = seed_real_client(morning_client, marker, name=f"Test Client {marker} Alpha")
-    _, name_b = seed_real_client(morning_client, f"{marker}_B", name=f"Test Client {marker} Beta")
-
-    result = create_invoice(
-        morning_client, client_name=f"Test Client {marker}", amount=13.0, description=marker
-    )
-
-    assert "מזהה פנימי" not in result  # no document confirmation shape at all
-    assert name_a in result
-    assert name_b in result
+    with pytest.raises(ClientNotFoundError):
+        create_invoice(
+            morning_client, client_name=f"Test Client {marker}", amount=13.0, description=marker,
+            name_resolved=True,
+        )

@@ -76,8 +76,10 @@ def log_refusal(tool: str, reason: str, **context: Any) -> None:
 
     The three failed `create_transaction_account` attempts for
     הסתדרות כללית חדשה left no trace at all precisely because a refusal is not
-    an exception: `_resolve_client_for_document_creation` returns a friendly
-    message and the tool returns it. A refusal is a decision the server made
+    an exception: the resolution helper of the day (`_resolve_client_for_
+    document_creation`, since superseded by `_require_resolved_client` -
+    client-name-resolution architecture fix, 2026-08-12) returned a friendly
+    message and the tool returned it. A refusal is a decision the server made
     about a document, so it belongs in the same trail as the documents it did
     create.
     """

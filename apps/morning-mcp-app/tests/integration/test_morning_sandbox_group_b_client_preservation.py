@@ -91,7 +91,9 @@ def _seed_invoice_with_bare_name_client(morning_client, marker):
 
 def _seed_transaction_account_with_real_client(morning_client, marker):
     client_id, _ = seed_real_client(morning_client, marker)
-    payload = _build_transaction_account_payload(client_id=client_id, amount=40.0, description=marker)
+    payload = _build_transaction_account_payload(
+        client_id=client_id, amount=40.0, description=marker, vat_included=True
+    )
     response = morning_client.create_invoice(payload)
     return _extract_id(response), client_id
 
@@ -159,7 +161,7 @@ def test_create_receipt_preserves_real_client_id(morning_client):
     marker = f"DENIDIN_027_GROUPB_RECEIPT_PRESERVE_{int(datetime.now(timezone.utc).timestamp())}"
     original_id, client_id = _seed_invoice_with_real_client(morning_client, marker)
 
-    result = create_receipt(morning_client, original_id)
+    result = create_receipt(morning_client, original_id, payment_date="2026-07-12")
 
     assert result != format_original_not_linked_to_client()
     original_after = morning_client.get_invoice(original_id)
@@ -173,7 +175,7 @@ def test_create_receipt_refuses_when_original_has_no_real_client(morning_client)
     marker = f"DENIDIN_027_GROUPB_RECEIPT_REFUSE_{int(datetime.now(timezone.utc).timestamp())}"
     original_id = _seed_invoice_with_bare_name_client(morning_client, marker)
 
-    result = create_receipt(morning_client, original_id)
+    result = create_receipt(morning_client, original_id, payment_date="2026-07-12")
 
     assert result == format_original_not_linked_to_client()
     original_after = morning_client.get_invoice(original_id)

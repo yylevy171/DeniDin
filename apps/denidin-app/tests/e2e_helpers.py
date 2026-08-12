@@ -199,3 +199,38 @@ def assert_image_path_persisted(denidin_app, chat_id):
         f"to a real file on disk (resolved: {resolved})"
     )
     return resolved
+
+
+def validate_extraction_response(response):
+    """Validate a media response produced by the STRUCTURED extraction path
+    (bugfix-028), returning hebrew_ratio for logging.
+
+    Replaces validate_response_full for images and PDFs. The image extractor no
+    longer emits the old prose template ("סיכום:" + bullet list + "ביטחון:") -
+    it returns JSON, and what the user reads is composed afterwards from the
+    extracted text plus a question when one is needed. Asserting on the old
+    template would be asserting on a format that deliberately no longer exists.
+    PDFs are included because PDFExtractor delegates every page to the image
+    extractor.
+
+    Checks:
+    1. Response exists and is not empty
+    2. Response is Hebrew-only (>85% Hebrew chars)
+    3. No FILLER follow-ups
+
+    Note on (3): unlike assert_no_followups, a trailing question mark is NOT a
+    failure here. The system is now required to ASK when a document can't be
+    classified or a required field is missing, so a reply legitimately ends in a
+    question. Only conversational filler ("מה אני יכול לעזור") is still banned -
+    that distinction is the whole point of the rule, and conflating the two
+    would punish exactly the behaviour bugfix-028 set out to produce.
+    """
+    assert_response_exists(response)
+    hebrew_ratio = assert_hebrew_only(response)
+
+    filler = ['מה אני יכול', 'איך אני יכול', 'רוצה ש', 'צריך עזרה', 'what can', 'how can', 'need help']
+    final_section = response[-200:] if len(response) > 200 else response
+    found = [p for p in filler if p.lower() in final_section.lower()]
+    assert not found, f"Response ends with filler follow-up(s) {found}\nResponse: {response}"
+
+    return hebrew_ratio

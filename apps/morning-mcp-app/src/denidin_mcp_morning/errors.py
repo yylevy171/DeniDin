@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import requests
 
+from .tools import ClientNameNotResolvedError, ClientNotFoundError
 from .utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -65,6 +66,29 @@ def friendly_error_message(exc: Exception, correlation_id: str) -> str:
     if isinstance(exc, requests.exceptions.RequestException):
         logger.error("[corr_id=%s] Network error contacting Morning", correlation_id, exc_info=True)
         return _NETWORK_ERROR
+
+    if isinstance(exc, ClientNameNotResolvedError):
+        # client-name-resolution architecture fix follow-up (2026-08-12, user
+        # decision): a caller that skipped resolve_client_name is a genuine
+        # failure now, not ordinary text - same reasoning as ClientNotFoundError
+        # below, just a distinct exception class for a distinct cause (a
+        # skipped required step, not "this client doesn't exist"). The message
+        # is already user-facing Hebrew (format_name_not_resolved()).
+        logger.warning("[corr_id=%s] Client name not resolved: %s", correlation_id, exc)
+        return str(exc)
+
+    if isinstance(exc, ClientNotFoundError):
+        # bugfix-028 B4(c), caught here 2026-08-12 during a post-merge sweep:
+        # ClientNotFoundError IS a ValueError, so without this check it fell
+        # into the generic branch below and got replaced with the generic
+        # "❌ הבקשה אינה תקינה" text - discarding the specific, actionable
+        # "לא נמצא לקוח בשם X" message the exception was raised with, and
+        # defeating half the point of raising it (the OTHER half - marking
+        # the call as a genuine failure, not ordinary output - still held).
+        # This message is already user-facing Hebrew (format_client_not_found()
+        # + the searched name), unlike the generic ValueError case below.
+        logger.warning("[corr_id=%s] Client not found: %s", correlation_id, exc)
+        return str(exc)
 
     if isinstance(exc, ValueError):
         # The English exception text is developer-facing detail (business-rule

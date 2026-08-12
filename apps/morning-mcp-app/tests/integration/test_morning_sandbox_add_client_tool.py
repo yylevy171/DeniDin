@@ -26,12 +26,25 @@ _POLL_INTERVAL_SECONDS = 1.5
 
 
 def _poll_until(predicate, action):
+    """Retry `action()` until `predicate` accepts its result, tolerating a
+    transient exception (2026-08-12 follow-up): get_client_details/etc. can
+    now raise ClientNotFoundError instead of returning a "not found" string
+    during the same real search-index lag window this helper already exists
+    to ride out - a raise on an early attempt must not abort the poll."""
     result = None
+    last_exc = None
     for _ in range(_POLL_ATTEMPTS):
-        result = action()
+        try:
+            result = action()
+        except Exception as exc:  # noqa: BLE001 - e.g. search-index lag racing a fresh create
+            last_exc = exc
+            time.sleep(_POLL_INTERVAL_SECONDS)
+            continue
         if predicate(result):
             return result
         time.sleep(_POLL_INTERVAL_SECONDS)
+    if result is None and last_exc is not None:
+        raise last_exc
     return result
 
 
@@ -128,7 +141,7 @@ def test_add_client_tool_normalizes_and_persists_phone(morning_client):
 
     result = _poll_until(
         lambda r: name in r,
-        lambda: get_client_details(morning_client, name),
+        lambda: get_client_details(morning_client, name, name_resolved=True),
     )
 
     assert "050-1234567" in result  # normalized Israeli local dashed format
