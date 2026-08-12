@@ -371,11 +371,25 @@ matching document via `list_invoices`/session memory first.
      🚨 **Exception when the underlying request is to ADD a NEW client**
      (not to find/act on one expected to already exist): a
      confirmation-question or candidates-list result above is a duplicate
-     check that came back inconclusive — not a reason to block creation.
-     Relay it as an open choice, naming the similar existing client(s) and
-     explicitly offering to create a new one anyway, e.g. "מצאתי לקוח בשם
-     דומה 'X' — האם לזה התכוונת, או ליצור לקוח חדש בשם 'Y'?" — never as a
-     plain yes/no about the one candidate.
+     check that came back inconclusive — not a reason to block creation,
+     and never a reason to just ask the user to "be more specific" without
+     giving them an actual way out.
+
+     **Every single time** `resolve_client_name` returns anything other
+     than a clean exact match — whether it's one non-exact candidate or
+     several ambiguous ones — your reply MUST explicitly state BOTH, every
+     time, with no exceptions for candidate count:
+     (a) each similar candidate found, by name, and
+     (b) the option to create a brand-new client under the EXACT name the
+         user originally gave, spelled out as its own explicit choice —
+         never left implied, never omitted just because there happened to
+         be more than one candidate.
+     One candidate: "מצאתי לקוח בשם דומה 'X' — האם לזה התכוונת, או ליצור
+     לקוח חדש בשם 'Y'?" Several candidates: "מצאתי כמה לקוחות דומים: X1,
+     X2 — האם התכוונת לאחד מהם, או ליצור לקוח חדש בשם 'Y'?" (Y = the exact
+     original name, every time.) **Never** reply with only "אנא ציין באופן
+     מדויק יותר" (please be more specific) and stop there — that leaves the
+     user with no way to say "none of those, make a new one."
      - If the user confirms they want the new one → proceed to `add_client`
        using the ORIGINAL name exactly as given, never the similar
        candidate's spelling (see "Never alter the spelling of a name you
@@ -383,7 +397,15 @@ matching document via `list_invoices`/session memory first.
      - If they say they actually meant an existing candidate → that client
        already exists; there is nothing to add.
      An exact match (first bullet above) is unaffected by this exception —
-     that's a real duplicate, so still refuse and offer to update instead.
+     that's a real duplicate: tell the user plainly that a client by that
+     exact name already exists, and stop there. **Do NOT offer, suggest, or
+     proceed to update it** — removed 2026-08-12 after this "offer to update
+     instead" behavior caused a real, unrelated pre-existing client's
+     email/phone to be silently overwritten by unrelated conversation data
+     (auto-approved without anyone reviewing what was actually about to
+     change). If the user separately and explicitly asks to update a
+     specific existing client, that is `update_client`'s own normal flow -
+     never something add_client's own exact-match refusal chains into.
   3. **Only once you have the exact, confirmed name** — gather any OTHER
      still-missing required fields for the tool you actually need (amount,
      description, VAT treatment, dates, etc.), **one question at a time**,

@@ -126,22 +126,45 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
     user would actually know/say to distinguish this from an ordinary tax
     invoice).
 
-    Two-turn (Feature 022): the ASK turn must NOT execute
-    create_transaction_account yet; the APPROVE turn is where it actually
-    runs, with no error and the right client name in its arguments.
+    Three-turn (2026-08-12, root-caused via a full unfiltered log trace, not
+    assumed - see bugfix-028 handoff): this phrasing never states VAT
+    inclusion, so the model deterministically asks "האם הסכום כולל מעמ?"
+    first, every time (the constitution's mandatory vat_included rule) -
+    this is NOT flaky/random, it's the same real clarifying question every
+    single run. The first "כן" answers that question, which only then
+    produces the real create_transaction_account pending approval - a
+    second "כן" is needed to actually execute it. Previously a fixed 2-turn
+    (ASK+APPROVE) test, which always failed on this exact phrasing since the
+    "approve" turn was actually just answering the VAT question, never
+    approving anything.
     """
     amount = _small_random_amount()
     description = random.choice(_SEED_DESCRIPTIONS)
     client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_TXN_ACCT")
 
-    (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
+    ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפיק חשבון עסקה עבור {client_name} על סך {amount} שח עבור {description}",
-        id_prefix="E2E_TXN_ACCT",
+        id_prefix="E2E_TXN_ACCT_ASK",
     )
     assert not _calls_for(ask_ai_response, "create_transaction_account"), (
         f"create_transaction_account executed on the ASK turn before approval "
         f"was given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+    )
+
+    # First "כן" answers the mandatory VAT-inclusion question - this produces
+    # the real pending approval, not an execution yet.
+    _, vat_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID, text="כן", id_prefix="E2E_TXN_ACCT_VAT"
+    )
+    assert not _calls_for(vat_ai_response, "create_transaction_account"), (
+        f"create_transaction_account executed before the actual approval turn: "
+        f"{vat_ai_response.mcp_calls if vat_ai_response else None!r}"
+    )
+
+    # Second "כן" is the real approval.
+    response, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID, text="כן", id_prefix="E2E_TXN_ACCT_APPROVE"
     )
 
     create_calls = _calls_for(ai_response, "create_transaction_account")
@@ -172,9 +195,12 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     invoice+receipt document - the natural phrasing a real person uses right
     after a cash sale, not a request for payment later. Deliberately omits
     the description on the first turn (create_combo_document requires one),
-    so this is genuinely three-turn: ASK (missing description, must not
-    execute) -> DESCRIBE (now complete, triggers the pending approval, must
-    still not execute - Feature 022) -> APPROVE (executes).
+    so this is genuinely four-turn: ASK (missing description, must not
+    execute) -> DESCRIBE (now complete, but a combo document also carries a
+    receipt-like mandatory payment_date - Feature 021/bugfix-028 A3 - which
+    this phrasing never states, so the model asks for it instead of
+    proceeding straight to a pending approval; must not execute) -> DATE
+    (answers "today," must still not execute) -> APPROVE (executes).
     """
     amount = _small_random_amount()
     description = random.choice(_SEED_DESCRIPTIONS)
@@ -205,7 +231,21 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
         f"{description_ai_response.mcp_calls if description_ai_response else None!r}"
     )
 
-    # Turn 3: approve.
+    # Turn 3: a combo document also carries a receipt-like mandatory
+    # payment_date (same A3 rule as create_receipt) - the model asks for it
+    # here since this phrasing never states one; "today" is a fine ANSWER
+    # once asked, never a silent default (found live, 2026-08-12).
+    date_response, date_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text="היום",
+        id_prefix="E2E_COMBO_DATE",
+    )
+    assert not _calls_for(date_ai_response, "create_combo_document"), (
+        f"create_combo_document executed before the actual approval turn: "
+        f"{date_ai_response.mcp_calls if date_ai_response else None!r}"
+    )
+
+    # Turn 4: approve.
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
         text="כן",

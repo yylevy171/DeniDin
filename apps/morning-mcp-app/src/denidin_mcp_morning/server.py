@@ -33,7 +33,7 @@ from .config import MorningMCPConfig, load_config
 from .errors import friendly_error_message
 from .morning_client import MorningClient
 from .utils.correlation import correlation_scope, new_correlation_id
-from .utils.logger import DEFAULT_VERSION_FILE, read_version, get_logger
+from .utils.logger import DEFAULT_VERSION_FILE, read_version, get_logger, reconfigure_package_log_level
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.json"
 
@@ -500,6 +500,11 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
 def main() -> None:
     """Entry point: `python3 -m denidin_mcp_morning.server`."""
     config = load_config(DEFAULT_CONFIG_PATH)
+    # Every module's logger was already created (at import time, before config
+    # existed) via get_logger(__name__)'s INFO default - retroactively raise/lower
+    # them to the real configured level now that we have it (see
+    # reconfigure_package_log_level's docstring for why this can't happen earlier).
+    reconfigure_package_log_level(config.mcp_log_level)
 
     if not config.enable_mcp_server:
         logger.info("MCP server disabled (feature_flags.enable_mcp_server=false); exiting.")

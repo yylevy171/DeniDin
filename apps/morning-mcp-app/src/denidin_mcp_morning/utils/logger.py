@@ -194,3 +194,34 @@ def get_logger(
 
     # Production environment - set up logger with file handlers
     return setup_logger(name, logs_dir, log_filename, log_level, version_file=version_file)
+
+
+def reconfigure_package_log_level(level_name: str, package_prefix: str = 'denidin_mcp_morning') -> None:
+    """Retroactively raise/lower the level of every already-created logger (and its
+    already-attached handlers) under `package_prefix` to `level_name`.
+
+    Exists because of a real ordering gap (found 2026-08-12, while adding full
+    Morning request/response logging): every module in this package calls
+    `get_logger(__name__)` at IMPORT time, using `log_level`'s default ('INFO') -
+    but `main()` doesn't load config (and therefore doesn't know the real
+    configured level, `config.mcp_log_level`) until AFTER all those imports have
+    already run and created their loggers. Without this, a `logger.debug(...)`
+    call anywhere in this package could never appear no matter what
+    config.dev.json's `mcp.log_level` says, because both the logger's own level
+    AND its handlers' levels were already locked to INFO at creation time -
+    Python's logging module requires both to pass.
+
+    Call this once, in `main()`, immediately after `load_config()` - never at
+    import time (config isn't available yet) and never per-call (pointless
+    repeated work; a level doesn't change mid-process, same reasoning as
+    Feature 034's version-stamping).
+    """
+    level = getattr(logging, level_name.upper(), logging.INFO)
+    for name, logger_or_placeholder in list(logging.Logger.manager.loggerDict.items()):
+        if not isinstance(logger_or_placeholder, logging.Logger):
+            continue  # a logging.PlaceHolder, not a real logger - nothing to reconfigure
+        if name != package_prefix and not name.startswith(package_prefix + '.'):
+            continue
+        logger_or_placeholder.setLevel(level)
+        for handler in logger_or_placeholder.handlers:
+            handler.setLevel(level)

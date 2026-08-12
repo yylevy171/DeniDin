@@ -56,8 +56,12 @@ from .denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,
     _SEED_PHONE,
     _calls_for,
+    _client_name_exact_match_found,
+    _complete_add_client_flow,
     _fresh_nonexistent_client_name,
+    _normalize_hebrew_geresh,
     _is_genuine_document_creation,
+    _is_real_approval_prompt,
     _random_amount,
     _random_description,
     _random_seed_email,
@@ -463,7 +467,12 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
         f"create_invoice did not succeed for an existing client: {ai_response.mcp_calls!r}"
     )
     assert "http" in response, f"Bot reply did not include an invoice link: {response!r}"
-    assert client_name in (create_calls[0]["arguments"] or ""), (
+    # Geresh-normalized: create_invoice's own arguments echo the CONFIRMED
+    # exact name resolve_client_name disclosed (client-name-resolution
+    # architecture, 2026-08-12), which is Morning's own normalized form - a
+    # client_name containing a raw ASCII/typographic apostrophe (e.g.
+    # "לוסי צ'ורנוב") won't match verbatim against that (e.g. "לוסי צ׳ורנוב").
+    assert _normalize_hebrew_geresh(client_name) in (create_calls[0]["arguments"] or ""), (
         f"create_invoice was not called with {client_name!r}: {create_calls!r}"
     )
 
@@ -478,7 +487,7 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
         details_ai_response, "list_invoices"
     )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
-    assert client_name in combined_output, (
+    assert _normalize_hebrew_geresh(client_name) in combined_output, (
         f"Follow-up real Morning lookup did not confirm the invoice for "
         f"{client_name!r}: {combined_output!r}. Bot reply: {details_response!r}"
     )
@@ -503,7 +512,7 @@ def _run_similarly_named_client_flow(real_name: str, typed_name: str, id_prefix:
     confirmation question naming the real client is shown), not just the
     final outcome.
 
-    Bounded at 4 "כן" turns: per the real MCP approval mechanics
+    Bounded at 4 answer turns: per the real MCP approval mechanics
     (APPROVAL_REQUIRED_MCP_TOOLS - every create_invoice attempt, resolved or
     not, gets its own pending-approval gate), a non-exact match can take up
     to 2 full attempt+approve rounds (attempt with the typed name -> real
@@ -512,7 +521,17 @@ def _run_similarly_named_client_flow(real_name: str, typed_name: str, id_prefix:
     bare 2-question exchange in isolation, since the pre-execution approval
     gate applies to each attempt independently of the confirmation
     question. This helper does not assume which shape occurs; it drives
-    "כן" until settled and lets the caller check what actually happened.
+    turns until settled and lets the caller check what actually happened.
+
+    Real failure (2026-08-13): a blind "כן" every round doesn't work - a
+    live run got an identity "did you mean X, or create new Y?" question,
+    then several rewordings of a "pick 1 or 2" multi-choice, none of which
+    "כן" can correctly answer (none are yes/no questions), so the loop never
+    reached the real approval gate. Fixed: each round answers "כן" ONLY when
+    the prior response is the real approval prompt (`_is_real_approval_prompt`
+    - the "...לאישור... כן/לא?" gate); otherwise it answers with the exact
+    `real_name`, which is always a valid, unambiguous answer to either
+    question shape.
     """
     amount = _random_amount()
     description = _random_description()
@@ -530,7 +549,8 @@ def _run_similarly_named_client_flow(real_name: str, typed_name: str, id_prefix:
             _is_genuine_document_creation(call) for call in _calls_for(ai_response, "create_invoice")
         ):
             break
-        turns.append(_send_turn(chat_id=GODFATHER_CHAT_ID, text="כן", id_prefix=f"{id_prefix}_YES{i}"))
+        answer = "כן" if _is_real_approval_prompt(response) else real_name
+        turns.append(_send_turn(chat_id=GODFATHER_CHAT_ID, text=answer, id_prefix=f"{id_prefix}_YES{i}"))
 
     return turns, amount, description
 
@@ -732,14 +752,20 @@ def test_create_document_for_new_client_declines_client_creation(denidin_app):
         f"Bot reply looks like a fabricated document success despite the decline: {decline_response!r}"
     )
 
-    # Verified via Morning: the client genuinely doesn't exist.
+    # Verified via Morning: the client genuinely doesn't exist. An ambiguous
+    # or non-exact resolve_client_name result does NOT mean it exists - only
+    # a genuine EXACT match would (2026-08-12, user correction - a second,
+    # unrelated ad-hoc copy of the already-fixed "not found" text check made
+    # this exact mistake again; now routed through the one shared helper).
     details_response, details_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
         text=f"פרטים על הלקוח {client_name}",
         id_prefix="E2E_027_DECLINE_VERIFY",
     )
-    assert "לא נמצא" in details_response or "אין" in details_response, (
-        f"Client should not exist after declining its creation: {details_response!r}"
+    assert not _client_name_exact_match_found(details_ai_response), (
+        f"Client should not exist after declining its creation, but resolve_client_name "
+        f"reported a genuine exact match: {details_ai_response.mcp_calls if details_ai_response else None!r}. "
+        f"Full reply: {details_response!r}"
     )
 
 
@@ -834,18 +860,25 @@ def test_create_document_for_new_client_asked_for_missing_info_then_provided(den
     )
     assert bare_yes_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
 
-    # Now provide the missing info - this should trigger add_client's pending approval.
-    _, (add_response, add_ai_response) = _send_turn_and_approve(
+    # Now provide the missing info - _complete_add_client_flow drives this
+    # through to a real add_client success under client_name specifically,
+    # regardless of how many turns that takes (a plain approval, one extra
+    # disambiguation "כן", or a forced "create new" turn for an ambiguous
+    # candidates list) - this test only cares that a client was actually
+    # created under the requested name, not the mechanics.
+    add_response, add_ai_response = _complete_add_client_flow(
         chat_id=GODFATHER_CHAT_ID,
         text=f"מייל {seed_email}, טלפון {_SEED_PHONE}",
-        id_prefix="E2E_027_ASKINFO_PROVIDE",
+        client_name=client_name,
+        id_prefix="E2E_027_ASKINFO",
+        email=seed_email,
+        phone=_SEED_PHONE,
     )
     add_calls = _calls_for(add_ai_response, "add_client")
     assert add_calls and add_calls[0]["error"] is None, (
         f"add_client did not succeed once the missing info was provided: "
         f"{add_ai_response.mcp_calls if add_ai_response else None!r}"
     )
-    time.sleep(3)
 
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
