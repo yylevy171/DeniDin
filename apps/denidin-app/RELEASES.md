@@ -31,3 +31,7 @@ added mark-as-read, approval מאשר
 ## denidin-app v0.3.0 — 2026-08-07
 
 Guide the bot to require a real client record (not just a name) before creating invoices/documents, and to offer adding the client when one doesn't exist yet.
+
+## denidin-app v0.4.0 — 2026-08-12
+
+Client-name-resolution architecture overhaul, add_client safety fixes, and a full billed/expensive test sweep
