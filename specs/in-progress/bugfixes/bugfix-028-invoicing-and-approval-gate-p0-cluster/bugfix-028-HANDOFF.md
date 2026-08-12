@@ -1,4 +1,89 @@
-# Handoff: bugfix-028 — billed-suite sweep FINISHED, 90/90 clean (91 minus 1 deliberately removed) — SUPERSEDES everything below this point
+# Handoff: bugfix-028 — expensive sweep finished (20/21, 1 deferred to bugfix-038), token-budget config fix, bugfix-038 scope expanded — SUPERSEDES everything below this point
+
+**As of**: 2026-08-13, end of session (continuation of the billed-sweep session immediately
+below). Branch `bugfix/028-invoicing-and-approval-gate-p0-cluster`.
+
+## What happened after the billed sweep finished
+
+1. **Full `tests/expensive/` sweep run (21 tests), user-approved as one `-x` batch** (an
+   explicit, deliberate exception to the usual one-at-a-time expensive-test discipline - the
+   user's own call, with "stop means stop, no investigation/reruns on your own" as the
+   condition). **20/21 passed.**
+2. **Real bug found and fixed**: `test_six_component_agreement_is_classified_as_an_agreement`
+   failed - the vision model's JSON response was genuinely cut off mid-field (`"amount": 100`,
+   no closing brace) because `ai_reply_max_tokens` (2500) was too small for a verbose 6-component
+   Hebrew fee agreement. Not a model-comprehension failure - the model had correctly identified
+   `doc_type: "agreement"` and was correctly extracting every component before running out of
+   budget; the defensive JSON-parse fallback then correctly downgraded to `unknown` rather than
+   guess. **Fix, user-directed**: raised `ai_reply_max_tokens` to **20000** (explicit user
+   reasoning: "I don't want to ever worry about this again, and real prod traffic is very low" -
+   the ceiling only costs anything when actually used). Verified live: the same test passed
+   clean afterward, and so did the rest of the batch (which included the harder ledger-capture
+   sibling test for the same fixture).
+3. **Applied to every config file, tracked and untracked** (user's explicit follow-up
+   instruction): `config/config.example.json` (tracked), plus the three gitignored
+   per-environment files `config/config.dev.json`, `config/config.prod.json`,
+   `config/config.test.json` (`config/config.json` is a symlink to `config.test.json`, so it's
+   the same file, not a fourth edit). **The three gitignored files will NOT show up in any diff
+   or PR** - every other clone (`coder1`, `coder2`, etc.) needs this exact same
+   `"ai_reply_max_tokens": 2500` → `20000` edit made by hand in its own copies of
+   `config.dev.json`/`config.prod.json`/`config.test.json`, same as any other clone-local secret.
+4. **Test 21 failed, investigated deeply, NOT fixed here** - `test_given_a_deposit_matching_an_
+   existing_tax_invoice_then_a_receipt_closes_it`. Full root-cause investigation (live sandbox
+   verification: the actual receipt creation and Morning-side linkage are 100% correct - invoice
+   status flips to paid, the real invoice number is in the receipt's own description text - the
+   bug is purely that the PRE-APPROVAL message shown to the user never displays this, because
+   `create_receipt`'s tool signature has no display-data parameters to render). This investigation
+   is what surfaced the `close_transaction_account`/`create_combo_document` duplication (see
+   below) and is now fully captured in `bugfix-038`'s own (substantially expanded) spec - this
+   bugfix (028) does not fix it, by design; the test stays red here, on purpose, until 038 lands.
+5. **`bugfix-038`'s spec substantially expanded** (still spec-only - no implementation started,
+   per explicit user instruction: *"we are not starting it now, just defining it"*). New scope
+   added: `close_transaction_account` doesn't just have smaller gaps than its siblings - it's an
+   entirely separate, independently-written reimplementation of `create_combo_document`'s whole
+   type-320 payload-building logic (`_build_combo_closing_payload` vs.
+   `_build_combo_document_payload`), which is *why* its payment-date gap existed (bugfix-028's
+   own A3/A3b fix touched the wrong one of the two twin functions, never knowing the other
+   existed). Full architecture discussion, options considered, and the user's final decision
+   ("Option B" - keep 2 tools, don't merge into 1, but share the internal payload-builder and fix
+   the gap) are all in `bugfix-038`'s own spec now, including the user's exact chosen rename:
+   `close_transaction_account` → `create_combo_document_as_reference`. Also added: a requirement
+   that the reproduction test move to (or be duplicated into) the `billed` tier, since the actual
+   bug is a text/approval-rendering issue, not something that needs an image at all - see that
+   bugfix's own "Test-gap analysis" section.
+6. **This bugfix (028) itself is still not fully closed** - see "Exact next steps" at the bottom
+   of the *previous* handoff section (test #80's resolution, `דורית אשכנזי`'s
+   `GROUND_TRUTH_CLIENTS.md` update, the 4 other geresh-normalization call sites, T2's
+   confirmation run, `morning-mcp-app` integration suite re-verification) - none of that was
+   touched this continuation, still open.
+
+## Exact files touched this continuation (on top of the billed-sweep session's own list below)
+
+```
+apps/denidin-app/config/config.example.json        (tracked - ai_reply_max_tokens 2500->20000)
+apps/denidin-app/config/config.dev.json             (gitignored - same change, won't appear in any diff)
+apps/denidin-app/config/config.prod.json            (gitignored - same change, won't appear in any diff)
+apps/denidin-app/config/config.test.json            (gitignored - same change, won't appear in any diff)
+specs/bugfixes/bugfix-038-group-b-approval-missing-reference-data.md   (substantially expanded)
+specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster/bugfix-028-invoicing-and-approval-gate-p0-cluster.md  (Status updated)
+specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster/bugfix-028-HANDOFF.md  (this section)
+```
+
+## Exact next steps for whoever picks this up
+
+1. Everything from the immediately-preceding handoff section's "Exact next steps" still applies
+   (test #80 already resolved this session per that section, but the rest - `T2` confirmation
+   run, `GROUND_TRUTH_CLIENTS.md`, the 4 geresh call sites, `morning-mcp-app` integration
+   re-verification - is still open).
+2. When ready, start `bugfix-038`'s actual implementation - its own spec now has a full,
+   user-approved design (rename + shared payload builder + display-data parameters + new billed
+   test) ready to go, on its own dedicated branch (none exists yet).
+3. Eventually, `haleluya` again once 038 (or the rest of 028) is actually done - this session's
+   haleluya covers only what's described above and in the billed-sweep section below it.
+
+---
+
+
 
 **As of**: 2026-08-13, end of session. Branch `bugfix/028-invoicing-and-approval-gate-p0-cluster`.
 This session picked up exactly where the previous one stopped (test 80, `79/91 passing`)
