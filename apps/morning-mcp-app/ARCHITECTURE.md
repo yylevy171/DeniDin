@@ -32,7 +32,7 @@ denidin-app's number, architecture still TBD).
 │  tools.py  (Phase 2 — DONE, 14 tools)                       │
 │  One function per MCP tool: create_invoice, list_invoices, │
 │  get_invoice_details, create_receipt, create_credit_note,  │
-│  close_transaction_account, add_client, update_client,     │
+│  create_combo_document_as_reference, add_client, update_client,     │
 │  list_clients, get_client_details,                         │
 │  get_financial_summary, download_invoice_pdf (+ more,      │
 │  see README.md for the full current list - this diagram   │

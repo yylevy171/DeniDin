@@ -200,22 +200,22 @@ def test_list_invoices_single_word_client_name_is_untouched_by_the_gate():
 
 
 def test_map_list_invoices_filters_includes_number_as_an_int():
-    assert tools._map_list_invoices_filters(number="51365") == {"number": 51365}
+    assert tools._map_list_invoices_filters(document_display_number="51365") == {"number": 51365}
 
 
 def test_map_list_invoices_filters_ignores_non_numeric_number():
-    assert tools._map_list_invoices_filters(number="not-a-number") == {}
+    assert tools._map_list_invoices_filters(document_display_number="not-a-number") == {}
 
 
 def test_map_list_invoices_filters_number_combines_with_other_filters():
-    params = tools._map_list_invoices_filters(client_name="Test Client", number="51365")
+    params = tools._map_list_invoices_filters(client_name="Test Client", document_display_number="51365")
     assert params == {"clientName": "Test Client", "number": 51365}
 
 
 def test_list_invoices_passes_number_filter_to_search():
     client = _FakeMorningClient([_page_response([], total=0, page=1, pages=1)])
 
-    tools.list_invoices(client, number="51365")
+    tools.list_invoices(client, document_display_number="51365")
 
     assert client.list_invoices_calls == [{"number": 51365}]
 
@@ -224,7 +224,7 @@ def test_list_invoices_finds_document_by_number():
     item = _raw_document("51365")
     client = _FakeMorningClient([_page_response([item], total=1, page=1, pages=1)])
 
-    result = tools.list_invoices(client, number="51365")
+    result = tools.list_invoices(client, document_display_number="51365")
 
     assert "חשבונית #51365" in result
 
@@ -232,7 +232,7 @@ def test_list_invoices_finds_document_by_number():
 def test_list_invoices_number_not_found_returns_unchanged_no_results_message():
     client = _FakeMorningClient([_page_response([], total=0, page=1, pages=1)])
 
-    result = tools.list_invoices(client, number="99999999")
+    result = tools.list_invoices(client, document_display_number="99999999")
 
     assert result == "לא נמצאו חשבוניות התואמות את החיפוש."
 

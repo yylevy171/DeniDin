@@ -37,7 +37,7 @@ def morning_client():
 @pytest.fixture()
 def paid_invoice(morning_client):
     """Seed a real sandbox invoice and mark it paid (issuing a real, linked
-    receipt) - returns (invoice_id, client_name) for the tests below."""
+    receipt) - returns (internal_morning_id, client_name) for the tests below."""
     from denidin_mcp_morning.tools import _build_create_invoice_payload, create_receipt
 
     unique_marker = f"DENIDIN_LINKEDDOCS_TEST_{int(datetime.now(timezone.utc).timestamp())}"
@@ -48,20 +48,20 @@ def paid_invoice(morning_client):
         description=f"Linked documents test {unique_marker}",
     )
     response = morning_client.create_invoice(payload)
-    invoice_id = str(response.get("id") or response.get("documentId") or "")
-    assert invoice_id, f"Could not determine created invoice id from response: {response}"
+    internal_morning_id = str(response.get("id") or response.get("documentId") or "")
+    assert internal_morning_id, f"Could not determine created invoice id from response: {response}"
 
-    create_receipt(morning_client, invoice_id, payment_date="2026-07-12")
+    create_receipt(morning_client, internal_morning_id, payment_date="2026-07-12")
 
-    return invoice_id, client_name
+    return internal_morning_id, client_name
 
 
 def test_get_invoice_details_shows_linked_receipt(morning_client, paid_invoice):
     from denidin_mcp_morning.tools import get_invoice_details
 
-    invoice_id, _ = paid_invoice
+    internal_morning_id, _ = paid_invoice
 
-    result = get_invoice_details(morning_client, invoice_id=invoice_id)
+    result = get_invoice_details(morning_client, internal_morning_id=internal_morning_id)
 
     assert "מסמכים מקושרים" in result
     assert "קבלה" in result

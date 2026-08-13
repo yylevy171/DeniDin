@@ -86,14 +86,14 @@ def created_invoice(morning_client):
         pytest.fail(f"Create invoice failed (HTTP 400). Server response: {body}")
 
     # Response shapes vary; try several common keys
-    invoice_id = None
+    internal_morning_id = None
     if isinstance(resp, dict):
-        invoice_id = resp.get("id") or str(resp.get("documentId") or resp.get("document_id") or (resp.get("document") or {}).get("id"))
+        internal_morning_id = resp.get("id") or str(resp.get("documentId") or resp.get("document_id") or (resp.get("document") or {}).get("id"))
 
-    assert invoice_id, f"Failed to determine created invoice id from response: {resp}"
+    assert internal_morning_id, f"Failed to determine created invoice id from response: {resp}"
 
     return {
-        "id": str(invoice_id),
+        "id": str(internal_morning_id),
         "client_name": client_name,
         "client_phone": "+972541234567",
         "marker": unique_marker,

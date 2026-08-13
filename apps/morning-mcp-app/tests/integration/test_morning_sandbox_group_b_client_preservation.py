@@ -1,6 +1,6 @@
 """Real Morning-sandbox tests for feature 027's Group B client-id
 preservation/refusal (create_credit_note, create_receipt,
-close_transaction_account - REQ-INV-012/013).
+create_combo_document_as_reference - REQ-INV-012/013).
 
 No mocks: seeds a real original document (with or without a real client.id
 attached, per test), drives the Group B tool under test against the live
@@ -21,7 +21,7 @@ from denidin_mcp_morning.formatters import format_original_not_linked_to_client
 from denidin_mcp_morning.tools import (
     _build_create_invoice_payload,
     _build_transaction_account_payload,
-    close_transaction_account,
+    create_combo_document_as_reference,
     create_credit_note,
     create_receipt,
 )
@@ -182,14 +182,14 @@ def test_create_receipt_refuses_when_original_has_no_real_client(morning_client)
     assert not (original_after.get("linkedDocuments") or []), "must not have created a linked receipt"
 
 
-# --- close_transaction_account ---
+# --- create_combo_document_as_reference ---
 
 
-def test_close_transaction_account_preserves_real_client_id(morning_client):
+def test_create_combo_document_as_reference_preserves_real_client_id(morning_client):
     marker = f"DENIDIN_027_GROUPB_CLOSE_PRESERVE_{int(datetime.now(timezone.utc).timestamp())}"
     original_id, client_id = _seed_transaction_account_with_real_client(morning_client, marker)
 
-    result = close_transaction_account(morning_client, original_id)
+    result = create_combo_document_as_reference(morning_client, original_id, payment_date="2026-07-12")
 
     assert result != format_original_not_linked_to_client()
     original_after = morning_client.get_invoice(original_id)
@@ -199,11 +199,11 @@ def test_close_transaction_account_preserves_real_client_id(morning_client):
     assert closing_doc.get("client", {}).get("id") == client_id
 
 
-def test_close_transaction_account_refuses_when_original_has_no_real_client(morning_client):
+def test_create_combo_document_as_reference_refuses_when_original_has_no_real_client(morning_client):
     marker = f"DENIDIN_027_GROUPB_CLOSE_REFUSE_{int(datetime.now(timezone.utc).timestamp())}"
     original_id = _seed_transaction_account_with_bare_name_client(morning_client, marker)
 
-    result = close_transaction_account(morning_client, original_id)
+    result = create_combo_document_as_reference(morning_client, original_id, payment_date="2026-07-12")
 
     assert result == format_original_not_linked_to_client()
     original_after = morning_client.get_invoice(original_id)

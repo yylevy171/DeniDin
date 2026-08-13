@@ -37,7 +37,7 @@ EXPECTED_TOOL_NAMES = {
     "create_combo_document",
     "create_credit_note",
     "create_receipt",
-    "close_transaction_account",
+    "create_combo_document_as_reference",
     "list_invoices",
     "get_invoice_details",
     "add_client",
@@ -155,7 +155,7 @@ def test_mcp_tool_error_is_friendly_not_a_raw_stack_trace(server_url):
                 await session.initialize()
                 return await session.call_tool(
                     "get_invoice_details",
-                    {"invoice_id": "00000000-0000-0000-0000-000000000000"},
+                    {"internal_morning_id": "00000000-0000-0000-0000-000000000000"},
                 )
 
     result = asyncio.run(_run())

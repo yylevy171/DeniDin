@@ -7,14 +7,14 @@ Standalone client for the Morning (Green Invoice) API — Israeli invoicing/rece
 This app ships a working FastMCP server (`src/denidin_mcp_morning/server.py`,
 streamable-HTTP) exposing 14 tools — 11 invoice-management tools
 (`create_invoice`, `create_transaction_account`, `create_combo_document`,
-`create_credit_note`, `create_receipt`, `close_transaction_account`,
+`create_credit_note`, `create_receipt`, `create_combo_document_as_reference`,
 `list_invoices`, `get_invoice_details`, `add_client`, `get_financial_summary`,
 `download_invoice_pdf`) plus 3 client-management tools added by Feature 026
 (`list_clients`, `get_client_details`, `update_client`) — backed by the real
 Morning sandbox API, per `specs/done/005-mcp-morning-green-receipt/plan.md`
 and `tasks.md`, `specs/done/021-flexible-document-creation/spec.md` for the 4
 document-type-specific `create_*` tools, `specs/done/023-reference-linked-document-creation/spec.md`
-for `close_transaction_account` (which, alongside removing the separate
+for `create_combo_document_as_reference` (which, alongside removing the separate
 `update_invoice_status` tool entirely, replaced it), and
 `specs/in-progress/026-client-management/spec.md` for client management.
 (`send_invoice` was investigated and dropped — Morning's public API has no

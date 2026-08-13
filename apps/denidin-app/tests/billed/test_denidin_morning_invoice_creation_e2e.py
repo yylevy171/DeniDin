@@ -34,7 +34,7 @@ documentId GUIDs) - only casual references a person would actually use.
 
 **Two-tier turn behavior (Feature 022/023/026)**: every document-creating
 tool (create_invoice, create_transaction_account, create_combo_document,
-create_credit_note, create_receipt, close_transaction_account), plus
+create_credit_note, create_receipt, create_combo_document_as_reference), plus
 add_client/update_client (Feature 026), requires explicit human approval
 before it executes - see `_send_turn_and_approve`/`_send_turn_and_decline`
 in denidin_mcp_e2e_helpers.py. Read-only tools (list_invoices,
