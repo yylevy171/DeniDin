@@ -190,7 +190,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
-        token_ttl_seconds=config.token_ttl_seconds,
+        auth_url=config.auth_url,
         refresh_before_seconds=config.refresh_before_seconds,
     )
 

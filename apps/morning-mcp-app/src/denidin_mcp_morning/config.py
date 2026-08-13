@@ -24,13 +24,16 @@ class MorningMCPConfig:
     api_key_id: str
     api_key_secret: str
     api_url: str
+    # Feature 053: the OAuth2 token endpoint's host - genuinely different from
+    # api_url (see auth.py's docstring), so it's its own required, explicit
+    # config field, never derived from api_url.
+    auth_url: str
     # Which environment this container/process IS. Read by watchdog.py
     # against shared/active_env.json to detect a stale/mismatched container
     # (2026-07-21 incident). 'dev', 'prod', or 'test'.
     environment: Optional[str]
     default_currency: str
     default_vat_rate: float
-    token_ttl_seconds: int
     refresh_before_seconds: int
     rate_limit_per_second: float
     # Feature 038: max estimated tiktoken (o200k_base) size of list_invoices'
@@ -96,10 +99,10 @@ def load_config(path: Path) -> MorningMCPConfig:
         api_key_id=raw["api_key_id"],
         api_key_secret=raw["api_key_secret"],
         api_url=raw["api_url"],
+        auth_url=raw["auth_url"],
         environment=raw.get("environment") or None,
         default_currency=raw.get("default_currency", "ILS"),
         default_vat_rate=raw.get("default_vat_rate", 0.17),
-        token_ttl_seconds=raw.get("token_ttl_seconds", 3600),
         refresh_before_seconds=raw.get("refresh_before_seconds", 300),
         rate_limit_per_second=raw.get("rate_limit_per_second", 3),
         list_invoices_token_budget=raw.get("list_invoices_token_budget", 2500),

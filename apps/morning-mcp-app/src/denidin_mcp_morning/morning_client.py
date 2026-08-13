@@ -39,26 +39,25 @@ def _build_session(retries: int = 3, backoff_factor: float = 0.5):
 class MorningClient:
     """Client for Morning Green Receipt API with token management and retries.
 
-    Accepts either a single `api_key` string or `api_key_id` + `api_key_secret` pair.
+    Feature 053: `auth_url` is REQUIRED - the token endpoint lives on a
+    different host than `base_url` (see auth.py's docstring), so it can never
+    be defaulted/derived, only configured explicitly (CONSTITUTION §I).
     """
 
     def __init__(
         self,
-        api_key: str = None,
-        api_key_id: str = None,
-        api_key_secret: str = None,
+        api_key_id: str,
+        api_key_secret: str,
+        auth_url: str,
         base_url: str = "https://api.greeninvoice.co.il/api/v1",
-        token_ttl_seconds: int = 3600,
         refresh_before_seconds: int = 300,
         retries: int = 3,
     ):
         self.base_url = base_url.rstrip("/")
         self.auth = MorningAuth(
-            api_key=api_key,
             api_key_id=api_key_id,
             api_key_secret=api_key_secret,
-            base_url=self.base_url,
-            token_ttl_seconds=token_ttl_seconds,
+            auth_url=auth_url,
             refresh_before_seconds=refresh_before_seconds,
         )
         self.session = _build_session(retries=retries)
