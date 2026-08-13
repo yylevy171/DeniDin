@@ -3,7 +3,7 @@
 **Feature**: 048-whatsapp-typing-indicator
 **Format**: Given-When-Then (Gherkin/BDD), per METHODOLOGY.md §I — MANDATORY, blocks spec
 approval until present.
-**Status**: DONE — merged to master (2026-08-13). Single-call design (final, see spec.md Q1
+**Status**: DONE — merged to master (PR #217, 2026-08-13). Single-call design (final, see spec.md Q1
 for the reverted renewal-loop attempt). Media support (US4) added same day.
 
 ---

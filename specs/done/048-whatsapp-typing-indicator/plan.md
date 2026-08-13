@@ -3,7 +3,7 @@
 **Feature**: 048-whatsapp-typing-indicator
 **Branch**: `feature/048-whatsapp-typing-indicator`
 **Spec**: `./spec.md` · **User Stories**: `./user-stories.md`
-**Status**: DONE — merged to master (2026-08-13). Single-call design (final) after a renewal-loop
+**Status**: DONE — merged to master (PR #217, 2026-08-13). Single-call design (final) after a renewal-loop
 attempt was tried, found buggy, and reverted same day — see spec.md Q1.
 **Updated**: 2026-08-13
 

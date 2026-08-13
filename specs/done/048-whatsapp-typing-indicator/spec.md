@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/048-whatsapp-typing-indicator`
 **Created**: 2026-08-13
-**Status**: DONE — merged to master (2026-08-13). Single-call design (final). A renewal-loop
+**Status**: DONE — merged to master (PR #217, 2026-08-13). Single-call design (final). A renewal-loop
 attempt was built, live-tested, found buggy (unresolved ~20s scheduling delay), and reverted
 same day; see Q1. Media message support (US4) added same day after a scope correction (Q2).
 **Input**: User description: "whatsapp typing dots when processing" — show WhatsApp's native

@@ -2,7 +2,7 @@
 
 **Feature**: 048-whatsapp-typing-indicator
 **Input**: `plan.md`, `spec.md`, `user-stories.md` (all CLARIFIED/ready)
-**Status**: DONE — merged to master (2026-08-13). **No test tasks**, by explicit user decision
+**Status**: DONE — merged to master (PR #217, 2026-08-13). **No test tasks**, by explicit user decision
 (see plan.md's "Testing" note). This is a deliberate, scoped exception to the usual
 Task A (tests) → approval → Task B (implementation) split — not a precedent.
 
