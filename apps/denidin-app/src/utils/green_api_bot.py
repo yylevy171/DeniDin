@@ -69,6 +69,25 @@ def mark_message_read(bot: Any, body: dict, is_blocked: bool) -> None:
         )
 
 
+def send_typing_indicator(bot: Any, chat_id: str, is_blocked: bool) -> None:
+    """Feature 048 (reverted to single-call design 2026-08-13): best-effort typing
+    indicator, fired at the start of DeniDin's turn for every non-blocked sender. Single
+    fixed-duration call, no resend/renewal - a background-thread renewal loop was tried and
+    reverted the same day after live testing showed the first call itself being delayed by
+    ~20s for reasons not pinned down before the attempt was abandoned (spec.md Q1). Accepted
+    v1 limitation: on a turn slower than ~20s, the indicator may lapse before the reply
+    arrives. Never raises - a failure here is purely cosmetic and must never break message
+    processing; it is logged only, never retried.
+    """
+    if is_blocked:
+        return
+
+    try:
+        bot.api.serviceMethods.sendTyping(chat_id, typingTime=20000)
+    except Exception as error:  # pylint: disable=broad-except
+        logger.warning(f"Failed to send typing indicator (chatId={chat_id}): {error}")
+
+
 class DeniDinGreenAPIBot(GreenAPIBot):
     """GreenAPIBot with a startup-notification-drain and polling loop that survive a Green API
     backend serving a genuinely empty HTTP body for "notification queue is empty" (bugfix-020),
