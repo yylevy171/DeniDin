@@ -34,8 +34,7 @@ against a real production incident found during manual dev testing mid-implement
 rebuilt/redeployed with the fix. See "Final implementation (2026-08-13, live session)" below —
 **the shipped design differs from "Design directed by the user (2026-08-10)"** in one material
 way: Group B tool signatures stayed thin (no new display-only parameters), superseded by a
-same-turn tool-call correlation approach agreed live on 2026-08-13. PR: #TBD (filled in once
-opened, per haleluya's addendum-commit convention).
+same-turn tool-call correlation approach agreed live on 2026-08-13. PR: #214.
 
 ## Date Opened
 2026-08-10
