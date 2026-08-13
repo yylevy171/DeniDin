@@ -30,22 +30,22 @@ def morning_client():
 
 
 @pytest.fixture()
-def seeded_invoice_id(morning_client):
+def seeded_internal_morning_id(morning_client):
     from denidin_mcp_morning.tools import _build_create_invoice_payload
 
     unique_marker = f"DENIDIN_PDF_TEST_{int(datetime.now(timezone.utc).timestamp())}"
     client_id, _ = seed_real_client(morning_client, unique_marker)
     payload = _build_create_invoice_payload(client_id=client_id, amount=15.0, description=unique_marker)
     created = morning_client.create_invoice(payload)
-    invoice_id = str(created.get("id") or created.get("documentId") or "")
-    assert invoice_id
-    return invoice_id
+    internal_morning_id = str(created.get("id") or created.get("documentId") or "")
+    assert internal_morning_id
+    return internal_morning_id
 
 
-def test_download_invoice_pdf_returns_a_real_download_url(morning_client, seeded_invoice_id):
+def test_download_invoice_pdf_returns_a_real_download_url(morning_client, seeded_internal_morning_id):
     from denidin_mcp_morning.tools import download_invoice_pdf
 
-    result = download_invoice_pdf(morning_client, invoice_id=seeded_invoice_id)
+    result = download_invoice_pdf(morning_client, internal_morning_id=seeded_internal_morning_id)
 
     assert isinstance(result, str)
     assert "https://" in result
@@ -56,4 +56,4 @@ def test_download_invoice_pdf_rejects_nonexistent_invoice(morning_client):
     from denidin_mcp_morning.tools import download_invoice_pdf
 
     with pytest.raises(Exception):
-        download_invoice_pdf(morning_client, invoice_id="00000000-0000-0000-0000-000000000000")
+        download_invoice_pdf(morning_client, internal_morning_id="00000000-0000-0000-0000-000000000000")

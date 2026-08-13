@@ -5,7 +5,7 @@ lets 330/400 be created standalone, not only as update_invoice_status side
 effects.
 
 Also covers feature 023 (reference-linked combo document creation):
-close_transaction_account, and the _build_combo_closing_payload override
+create_combo_document_as_reference, and the _build_combo_closing_payload override
 support it needs.
 
 Uses a fake MorningClient (dependency-injected, matching the real
@@ -40,10 +40,10 @@ class _FakeMorningClient:
         self.get_invoice_calls = []
         self.search_clients_calls = []
 
-    def get_invoice(self, invoice_id):
-        self.get_invoice_calls.append(invoice_id)
+    def get_invoice(self, internal_morning_id):
+        self.get_invoice_calls.append(internal_morning_id)
         if self._get_invoice_response is None:
-            raise LookupError(f"no such invoice: {invoice_id}")
+            raise LookupError(f"no such invoice: {internal_morning_id}")
         return self._get_invoice_response
 
     def create_invoice(self, payload):
@@ -490,7 +490,7 @@ def test_build_combo_closing_payload_defaults_use_a_clean_single_income_line():
     under the ORIGINAL's own (possibly different) vatType context."""
     original = _original_invoice(doc_id="orig-300", number="900", amount=85.0, doc_type=300)
 
-    payload = tools._build_combo_closing_payload(original)
+    payload = tools._build_combo_closing_payload(original, payment_date="2026-07-12")
 
     assert payload["type"] == 320
     assert payload["linkedDocumentIds"] == ["orig-300"]
@@ -499,6 +499,8 @@ def test_build_combo_closing_payload_defaults_use_a_clean_single_income_line():
     assert payload["income"][0]["price"] == 85.0
     assert payload["income"][0]["vatRate"] == 0
     assert payload["payment"][0]["price"] == 85.0
+    # bugfix-038: payment_date is now real (validated), never hardcoded to today.
+    assert payload["payment"][0]["date"] == "2026-07-12"
 
 
 def test_build_combo_closing_payload_prefers_amount_field_over_summing_income_items():
@@ -512,7 +514,7 @@ def test_build_combo_closing_payload_prefers_amount_field_over_summing_income_it
     original["total"] = None  # the real shape: "total" is absent, only "amount" is authoritative
     original["income"][0]["price"] = 60.0  # raw item price, deliberately less than "amount" (VAT was added)
 
-    payload = tools._build_combo_closing_payload(original)
+    payload = tools._build_combo_closing_payload(original, payment_date="2026-07-12")
 
     assert payload["payment"][0]["price"] == 85.0, (
         "Must use original['amount'] (85.0), not sum raw income item prices (60.0)"
@@ -522,7 +524,7 @@ def test_build_combo_closing_payload_prefers_amount_field_over_summing_income_it
 def test_build_combo_closing_payload_amount_override():
     original = _original_invoice(doc_id="orig-301", number="901", amount=85.0, doc_type=300)
 
-    payload = tools._build_combo_closing_payload(original, amount=28.0)
+    payload = tools._build_combo_closing_payload(original, payment_date="2026-07-12", amount=28.0)
 
     assert payload["payment"][0]["price"] == 28.0
     assert len(payload["income"]) == 1
@@ -532,20 +534,22 @@ def test_build_combo_closing_payload_amount_override():
 def test_build_combo_closing_payload_description_override():
     original = _original_invoice(doc_id="orig-302", number="902", doc_type=300)
 
-    payload = tools._build_combo_closing_payload(original, description="סגירה חלקית לפי בקשת הלקוח")
+    payload = tools._build_combo_closing_payload(
+        original, payment_date="2026-07-12", description="סגירה חלקית לפי בקשת הלקוח"
+    )
 
     assert payload["description"] == "סגירה חלקית לפי בקשת הלקוח"
     assert payload["income"][0]["description"] == "סגירה חלקית לפי בקשת הלקוח"
 
 
-# --- Feature 023: close_transaction_account (new standalone tool) ---
+# --- Feature 023: create_combo_document_as_reference (new standalone tool) ---
 
 
-def test_close_transaction_account_requires_existing_document():
+def test_create_combo_document_as_reference_requires_existing_document():
     client = _FakeMorningClient(get_invoice_response=None)
 
     try:
-        tools.close_transaction_account(client, "nonexistent-id")
+        tools.create_combo_document_as_reference(client, "nonexistent-id", payment_date="2026-07-12")
         assert False, "expected an exception when original document doesn't exist"
     except LookupError:
         pass
@@ -553,7 +557,7 @@ def test_close_transaction_account_requires_existing_document():
     assert client.create_invoice_calls == [], "must not create a document when the original lookup fails"
 
 
-def test_close_transaction_account_refuses_when_original_has_no_client_id():
+def test_create_combo_document_as_reference_refuses_when_original_has_no_client_id():
     """Feature 027 (REQ-INV-013): a pre-feature, bare-name-only original
     must not silently get a bare-name closing document either - refuse
     instead."""
@@ -561,13 +565,13 @@ def test_close_transaction_account_refuses_when_original_has_no_client_id():
     original["status"] = None  # not yet closed - would otherwise hit the idempotent no-op path first
     client = _FakeMorningClient(get_invoice_response=original)
 
-    result = tools.close_transaction_account(client, "orig-6b")
+    result = tools.create_combo_document_as_reference(client, "orig-6b", payment_date="2026-07-12")
 
     assert client.create_invoice_calls == []
     assert result == format_original_not_linked_to_client()
 
 
-def test_close_transaction_account_happy_path_full_amount():
+def test_create_combo_document_as_reference_happy_path_full_amount():
     """US1: close an existing type-300 document with a full-amount combo document."""
     original = _original_invoice(doc_id="orig-6", number="604", amount=145.0, doc_type=300)
     client = _FakeMorningClient(
@@ -575,7 +579,7 @@ def test_close_transaction_account_happy_path_full_amount():
         create_invoice_response={"id": "combo-2", "number": "703"},
     )
 
-    result = tools.close_transaction_account(client, "orig-6")
+    result = tools.create_combo_document_as_reference(client, "orig-6", payment_date="2026-07-12")
 
     assert "703" in result
     assert "604" in result
@@ -583,9 +587,11 @@ def test_close_transaction_account_happy_path_full_amount():
     assert sent_payload["type"] == 320
     assert sent_payload["linkedDocumentIds"] == ["orig-6"]
     assert sent_payload["payment"][0]["price"] == 145.0
+    # bugfix-038: payment_date is now real (validated), never hardcoded to today.
+    assert sent_payload["payment"][0]["date"] == "2026-07-12"
 
 
-def test_close_transaction_account_happy_path_partial_amount():
+def test_create_combo_document_as_reference_happy_path_partial_amount():
     """US2: close an existing type-300 document with a partial-amount combo document."""
     original = _original_invoice(doc_id="orig-7", number="605", amount=145.0, doc_type=300)
     client = _FakeMorningClient(
@@ -593,7 +599,7 @@ def test_close_transaction_account_happy_path_partial_amount():
         create_invoice_response={"id": "combo-3", "number": "704"},
     )
 
-    result = tools.close_transaction_account(client, "orig-7", amount=45.0)
+    result = tools.create_combo_document_as_reference(client, "orig-7", payment_date="2026-07-12", amount=45.0)
 
     assert "704" in result
     sent_payload = client.create_invoice_calls[0]
@@ -601,13 +607,13 @@ def test_close_transaction_account_happy_path_partial_amount():
     assert sent_payload["payment"][0]["price"] == 45.0
 
 
-def test_close_transaction_account_rejects_non_transaction_account_original():
+def test_create_combo_document_as_reference_rejects_non_transaction_account_original():
     """US3: referencing a non-type-300 document must be rejected, not silently miscreated."""
     original = _original_invoice(doc_id="orig-8", number="606", doc_type=305)
     client = _FakeMorningClient(get_invoice_response=original)
 
     try:
-        tools.close_transaction_account(client, "orig-8")
+        tools.create_combo_document_as_reference(client, "orig-8", payment_date="2026-07-12")
         assert False, "expected ValueError for a non-type-300 original"
     except ValueError as exc:
         assert "305" in str(exc)
@@ -615,14 +621,16 @@ def test_close_transaction_account_rejects_non_transaction_account_original():
     assert client.create_invoice_calls == [], "must not create a document for an unsupported original type"
 
 
-def test_close_transaction_account_description_override():
+def test_create_combo_document_as_reference_description_override():
     original = _original_invoice(doc_id="orig-9", number="607", doc_type=300)
     client = _FakeMorningClient(
         get_invoice_response=original,
         create_invoice_response={"id": "combo-4", "number": "705"},
     )
 
-    tools.close_transaction_account(client, "orig-9", description="סגירה לפי הסכמה בעל פה")
+    tools.create_combo_document_as_reference(
+        client, "orig-9", payment_date="2026-07-12", description="סגירה לפי הסכמה בעל פה"
+    )
 
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["description"] == "סגירה לפי הסכמה בעל פה"
@@ -631,9 +639,9 @@ def test_close_transaction_account_description_override():
 # --- Feature 023: regression guard for the transaction-account closing flow ---
 
 
-def test_close_transaction_account_still_works_after_vat_included_param_added():
+def test_create_combo_document_as_reference_still_works_after_vat_included_param_added():
     """Regression guard: the type-300->320 closing flow (originally 020's
-    update_invoice_status branching, now close_transaction_account directly,
+    update_invoice_status branching, now create_combo_document_as_reference directly,
     per feature 023) must remain correct after _build_combo_closing_payload
     gained the vat_included parameter (replacing the buggy
     original.get("vatType", 1) inference - see feature 023's spec.md)."""
@@ -641,7 +649,7 @@ def test_close_transaction_account_still_works_after_vat_included_param_added():
     original["status"] = None  # not yet paid
     client = _FakeMorningClient(get_invoice_response=original)
 
-    result = tools.close_transaction_account(client, "orig-10")
+    result = tools.create_combo_document_as_reference(client, "orig-10", payment_date="2026-07-12")
 
     assert "608" in result
     sent_payload = client.create_invoice_calls[0]
@@ -692,5 +700,5 @@ def test_build_payment_receipt_payload_is_signed():
 
 def test_build_combo_closing_payload_is_signed():
     original = _original_invoice(doc_type=300)
-    payload = tools._build_combo_closing_payload(original)
+    payload = tools._build_combo_closing_payload(original, payment_date="2026-07-12")
     assert payload["signed"] is True

@@ -10,7 +10,7 @@ Formerly these scenarios all ran through the single internal
 `_mark_invoice_paid` helper behind `update_invoice_status(status="paid")`.
 Feature 023 removed that indirection entirely: the model resolves the
 target's real type itself (via get_invoice_details) and calls
-`create_receipt` or `close_transaction_account` directly. This file still
+`create_receipt` or `create_combo_document_as_reference` directly. This file still
 covers the same root cause (bugfix-014's Flow 4: the prior code
 unconditionally built a type-400 receipt regardless of the original's type)
 and the same idempotency guarantee (no duplicate closing document on a
@@ -25,7 +25,7 @@ from datetime import timedelta
 
 import pytest
 
-from denidin_mcp_morning.tools import close_transaction_account, create_receipt
+from denidin_mcp_morning.tools import create_combo_document_as_reference, create_receipt
 from denidin_mcp_morning.utils.time_utils import now_local
 
 
@@ -38,7 +38,7 @@ class _FakeMorningClient:
         self._created_response = created_response or {"id": "closing-doc-1", "number": "400-1"}
         self.create_invoice_calls = []
 
-    def get_invoice(self, invoice_id):
+    def get_invoice(self, internal_morning_id):
         return self._original
 
     def create_invoice(self, payload):
@@ -85,23 +85,25 @@ def test_type_305_still_issues_a_type_400_receipt():
 def test_type_300_issues_a_type_320_combo_document_not_a_receipt():
     """The bugfix-014 Flow 4 fix: a type-300 original must be closed by a
     type-320 combo document, never the type-400 receipt used for type-305 -
-    now reached via close_transaction_account directly."""
+    now reached via create_combo_document_as_reference directly."""
     original = _raw_invoice("inv-300", doc_type=300, status_code=0)
     client = _FakeMorningClient(original)
 
-    close_transaction_account(client, "inv-300")
+    create_combo_document_as_reference(client, "inv-300", payment_date="2026-07-12")
 
     assert len(client.create_invoice_calls) == 1
     payload = client.create_invoice_calls[0]
     assert payload["type"] == 320, f"Expected a type-320 combo document, got: {payload!r}"
     assert payload["linkedDocumentIds"] == ["inv-300"]
+    # bugfix-038: payment_date is now real (validated), never hardcoded to today.
+    assert payload["payment"][0]["date"] == "2026-07-12"
 
 
 def test_create_receipt_rejects_a_transaction_account_original():
     """Per spec 020's original clarification (only 300/305 supported) and
     feature 023's per-tool guards: create_receipt must reject a type-300
     original rather than silently issuing the wrong document type - the
-    caller should have used close_transaction_account instead."""
+    caller should have used create_combo_document_as_reference instead."""
     original = _raw_invoice("inv-300b", doc_type=300, status_code=0)
     client = _FakeMorningClient(original)
 
@@ -130,16 +132,16 @@ def test_create_receipt_rejects_a_credit_note_original():
     assert client.create_invoice_calls == [], "No document should be created for a rejected original type"
 
 
-def test_close_transaction_account_rejects_a_tax_invoice_original():
-    """Symmetric guard: close_transaction_account must reject a type-305
+def test_create_combo_document_as_reference_rejects_a_tax_invoice_original():
+    """Symmetric guard: create_combo_document_as_reference must reject a type-305
     original rather than guessing - the caller should have used
     create_receipt instead."""
     original = _raw_invoice("inv-305b", doc_type=305, status_code=0)
     client = _FakeMorningClient(original)
 
     try:
-        close_transaction_account(client, "inv-305b")
-        assert False, "Expected ValueError for a type-305 original passed to close_transaction_account"
+        create_combo_document_as_reference(client, "inv-305b", payment_date="2026-07-12")
+        assert False, "Expected ValueError for a type-305 original passed to create_combo_document_as_reference"
     except ValueError as exc:
         assert "305" in str(exc)
     assert client.create_invoice_calls == [], "No document should be created for a rejected original type"
@@ -147,14 +149,14 @@ def test_close_transaction_account_rejects_a_tax_invoice_original():
 
 def test_already_closed_type_300_is_idempotent_no_op():
     """The idempotency check must short-circuit before a new combo document
-    is built, for a full-amount close_transaction_account call against an
+    is built, for a full-amount create_combo_document_as_reference call against an
     already-closed type-300 original - same guarantee update_invoice_status
-    used to provide, now implemented directly in close_transaction_account
+    used to provide, now implemented directly in create_combo_document_as_reference
     since Morning itself does not reject a duplicate (verified live)."""
     original = _raw_invoice("inv-300-paid", doc_type=300, status_code=1)
     client = _FakeMorningClient(original)
 
-    close_transaction_account(client, "inv-300-paid")
+    create_combo_document_as_reference(client, "inv-300-paid", payment_date="2026-07-12")
 
     assert client.create_invoice_calls == [], "Already-closed original must not trigger a new closing document"
 
@@ -170,14 +172,14 @@ def test_already_closed_type_305_is_idempotent_no_op():
     assert client.create_invoice_calls == [], "Already-closed original must not trigger a new receipt"
 
 
-def test_partial_amount_close_transaction_account_ignores_idempotency_guard():
+def test_partial_amount_create_combo_document_as_reference_ignores_idempotency_guard():
     """An explicit partial amount is a deliberate, repeatable action (e.g. a
     second partial payment) - it must NOT be silently no-op'd just because
     the original happens to already be marked closed from a prior payment."""
     original = _raw_invoice("inv-300-partial", doc_type=300, status_code=1)
     client = _FakeMorningClient(original)
 
-    close_transaction_account(client, "inv-300-partial", amount=50.0)
+    create_combo_document_as_reference(client, "inv-300-partial", payment_date="2026-07-12", amount=50.0)
 
     assert len(client.create_invoice_calls) == 1
     assert client.create_invoice_calls[0]["payment"][0]["price"] == 50.0

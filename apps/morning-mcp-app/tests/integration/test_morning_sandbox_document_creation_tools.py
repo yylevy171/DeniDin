@@ -3,7 +3,7 @@ create_transaction_account (type 300), create_combo_document (type 320),
 create_credit_note (type 330, standalone), create_receipt (type 400,
 standalone).
 
-Also covers feature 023's close_transaction_account (standalone, reference-
+Also covers feature 023's create_combo_document_as_reference (standalone, reference-
 linked type-320 combo document that closes an existing type-300 document).
 
 No mocks against the app boundary itself - each test creates a real sandbox
@@ -23,7 +23,7 @@ from denidin_mcp_morning.morning_client import MorningClient
 from denidin_mcp_morning.tools import (
     _build_create_invoice_payload,
     _build_transaction_account_payload,
-    close_transaction_account,
+    create_combo_document_as_reference,
     create_combo_document,
     create_credit_note,
     create_receipt,
@@ -69,9 +69,9 @@ def seeded_invoice(morning_client):
         description=f"Seed invoice {marker}",
     )
     response = morning_client.create_invoice(payload)
-    invoice_id = _extract_id(response)
-    assert invoice_id, f"Could not determine created invoice id from response: {response}"
-    return invoice_id, client_name
+    internal_morning_id = _extract_id(response)
+    assert internal_morning_id, f"Could not determine created invoice id from response: {response}"
+    return internal_morning_id, client_name
 
 
 def test_create_transaction_account_tool_sandbox(morning_client):
@@ -133,7 +133,7 @@ def test_create_credit_note_tool_sandbox_happy_path(morning_client, seeded_invoi
 
     # Follow-up: the original invoice must independently show the new
     # credit note in its linked documents.
-    details = get_invoice_details(morning_client, invoice_id=original_id)
+    details = get_invoice_details(morning_client, internal_morning_id=original_id)
     assert "מסמכים מקושרים" in details
     assert "חשבונית זיכוי" in details
 
@@ -150,7 +150,7 @@ def test_create_credit_note_tool_sandbox_partial_amount(morning_client, seeded_i
 
     create_credit_note(morning_client, original_id, amount=50.0)
 
-    details = get_invoice_details(morning_client, invoice_id=original_id)
+    details = get_invoice_details(morning_client, internal_morning_id=original_id)
     assert "מסמכים מקושרים" in details
     assert "₪50.00" in details, f"Partial credit note amount not reflected in linked documents: {details!r}"
 
@@ -164,7 +164,7 @@ def test_create_receipt_tool_sandbox_happy_path(morning_client, seeded_invoice):
     # to paid as a result of the receipt now existing. Checking both
     # directions matters: "שולם" (paid) is a substring of "לא שולם" (unpaid),
     # so a bare "שולם" in details check alone is a false positive either way.
-    details = get_invoice_details(morning_client, invoice_id=original_id)
+    details = get_invoice_details(morning_client, internal_morning_id=original_id)
     assert "לא שולם" not in details, f"Original invoice still shows unpaid after receipt: {details!r}"
     assert "שולם" in details, f"Original invoice did not show as paid after receipt: {details!r}"
     raw = morning_client.get_invoice(original_id)
@@ -211,7 +211,7 @@ def test_create_receipt_tool_sandbox_already_paid_original(morning_client, seede
     receipts = [doc for doc in linked if doc.get("type") == 400]
     assert len(receipts) == 1, f"Expected exactly one linked receipt, got: {linked!r}"
 
-    details = get_invoice_details(morning_client, invoice_id=original_id)
+    details = get_invoice_details(morning_client, internal_morning_id=original_id)
     assert "לא שולם" not in details
     assert "שולם" in details
 
@@ -221,7 +221,7 @@ def test_create_receipt_tool_sandbox_partial_amount(morning_client, seeded_invoi
 
     create_receipt(morning_client, original_id, payment_date="2026-07-12", amount=80.0)
 
-    details = get_invoice_details(morning_client, invoice_id=original_id)
+    details = get_invoice_details(morning_client, internal_morning_id=original_id)
     assert "מסמכים מקושרים" in details
     assert "₪80.00" in details, f"Partial receipt amount not reflected in linked documents: {details!r}"
 
@@ -229,7 +229,7 @@ def test_create_receipt_tool_sandbox_partial_amount(morning_client, seeded_invoi
 @pytest.fixture()
 def seeded_transaction_account(morning_client):
     """A real, freshly created transaction account (type 300) - used as the
-    reference/original document for close_transaction_account tests."""
+    reference/original document for create_combo_document_as_reference tests."""
     marker = _unique_marker("SEED_TA")
     client_id, client_name = seed_real_client(morning_client, marker)
     payload = _build_transaction_account_payload(
@@ -239,16 +239,16 @@ def seeded_transaction_account(morning_client):
         vat_included=True,
     )
     response = morning_client.create_invoice(payload)
-    invoice_id = _extract_id(response)
-    assert invoice_id, f"Could not determine created transaction account id from response: {response}"
-    return invoice_id, client_name
+    internal_morning_id = _extract_id(response)
+    assert internal_morning_id, f"Could not determine created transaction account id from response: {response}"
+    return internal_morning_id, client_name
 
 
-def test_close_transaction_account_tool_sandbox_happy_path_full_amount(morning_client, seeded_transaction_account):
+def test_create_combo_document_as_reference_tool_sandbox_happy_path_full_amount(morning_client, seeded_transaction_account):
     """US1: closing an existing type-300 document with a full-amount combo document."""
     original_id, _ = seeded_transaction_account
 
-    result = close_transaction_account(morning_client, original_id)
+    result = create_combo_document_as_reference(morning_client, original_id, payment_date="2026-07-12")
     assert result
 
     # Follow-up: independently re-fetch the original and confirm it flipped
@@ -259,7 +259,7 @@ def test_close_transaction_account_tool_sandbox_happy_path_full_amount(morning_c
     # false positive if the original never actually flipped (feature 023's
     # confirmed root cause: closing with a mismatched amount leaves the
     # original genuinely unpaid, and Morning correctly never flips it).
-    details = get_invoice_details(morning_client, invoice_id=original_id)
+    details = get_invoice_details(morning_client, internal_morning_id=original_id)
     assert "לא שולם" not in details, f"Original transaction account still shows unpaid: {details!r}"
     assert "שולם" in details, f"Original transaction account did not show as paid after closing: {details!r}"
     assert "מסמכים מקושרים" in details
@@ -268,26 +268,26 @@ def test_close_transaction_account_tool_sandbox_happy_path_full_amount(morning_c
     assert raw.get("status") in (1, 2), f"Expected a closed/paid status code, got: {raw.get('status')!r}"
 
 
-def test_close_transaction_account_tool_sandbox_partial_amount(morning_client, seeded_transaction_account):
+def test_create_combo_document_as_reference_tool_sandbox_partial_amount(morning_client, seeded_transaction_account):
     """US2: closing an existing type-300 document with a partial-amount combo document."""
     original_id, _ = seeded_transaction_account
 
-    close_transaction_account(morning_client, original_id, amount=15.0)
+    create_combo_document_as_reference(morning_client, original_id, payment_date="2026-07-12", amount=15.0)
 
-    details = get_invoice_details(morning_client, invoice_id=original_id)
+    details = get_invoice_details(morning_client, internal_morning_id=original_id)
     assert "מסמכים מקושרים" in details
     assert "₪15.00" in details, f"Partial combo-close amount not reflected in linked documents: {details!r}"
 
 
-def test_close_transaction_account_tool_sandbox_nonexistent_original(morning_client):
+def test_create_combo_document_as_reference_tool_sandbox_nonexistent_original(morning_client):
     """Edge case: a bogus/nonexistent original id must raise, not silently create anything."""
     bogus_id = "00000000-0000-0000-0000-000000000000"
 
     with pytest.raises(Exception):
-        close_transaction_account(morning_client, bogus_id)
+        create_combo_document_as_reference(morning_client, bogus_id, payment_date="2026-07-12")
 
 
-def test_close_transaction_account_tool_sandbox_rejects_non_transaction_account_original(
+def test_create_combo_document_as_reference_tool_sandbox_rejects_non_transaction_account_original(
     morning_client, seeded_invoice
 ):
     """US3/negative: referencing an existing document that is NOT type 300
@@ -296,11 +296,11 @@ def test_close_transaction_account_tool_sandbox_rejects_non_transaction_account_
     original_id, client_name = seeded_invoice
 
     with pytest.raises(ValueError):
-        close_transaction_account(morning_client, original_id)
+        create_combo_document_as_reference(morning_client, original_id, payment_date="2026-07-12")
 
     # Follow-up: confirm no combo document was created against the rejected
     # original despite the raised error.
-    details = get_invoice_details(morning_client, invoice_id=original_id)
+    details = get_invoice_details(morning_client, internal_morning_id=original_id)
     assert "מסמכים מקושרים" not in details, (
         f"A document must not have been linked to a rejected non-transaction-account original: {details!r}"
     )

@@ -67,10 +67,10 @@ def test_update_client_prefers_new_name_when_renaming():
     assert "שם חדש" in result
 
 
-def test_create_credit_note_never_includes_the_raw_invoice_id():
-    """original_invoice_id is an internal UUID - constitution rule "never
-    ask for or mention invoice_id" applies here too."""
-    args = json.dumps({"original_invoice_id": "e206dc08-a492-4279-80cf-1f098a3cf607", "amount": 100})
+def test_create_credit_note_never_includes_the_raw_internal_morning_id():
+    """original_internal_morning_id is an internal UUID - constitution rule "never
+    ask for or mention internal_morning_id" applies here too."""
+    args = json.dumps({"original_internal_morning_id": "e206dc08-a492-4279-80cf-1f098a3cf607", "amount": 100})
 
     result = _build_pending_approval_fallback_text("create_credit_note", args)
 
@@ -79,8 +79,8 @@ def test_create_credit_note_never_includes_the_raw_invoice_id():
     assert result.endswith("לאשר?")
 
 
-def test_create_receipt_never_includes_the_raw_invoice_id():
-    args = json.dumps({"original_invoice_id": "e206dc08-a492-4279-80cf-1f098a3cf607"})
+def test_create_receipt_never_includes_the_raw_internal_morning_id():
+    args = json.dumps({"original_internal_morning_id": "e206dc08-a492-4279-80cf-1f098a3cf607"})
 
     result = _build_pending_approval_fallback_text("create_receipt", args)
 
@@ -88,10 +88,10 @@ def test_create_receipt_never_includes_the_raw_invoice_id():
     assert result.endswith("לאשר?")
 
 
-def test_close_transaction_account_never_includes_the_raw_invoice_id():
-    args = json.dumps({"original_invoice_id": "e206dc08-a492-4279-80cf-1f098a3cf607", "amount": 300})
+def test_create_combo_document_as_reference_never_includes_the_raw_internal_morning_id():
+    args = json.dumps({"original_internal_morning_id": "e206dc08-a492-4279-80cf-1f098a3cf607", "amount": 300})
 
-    result = _build_pending_approval_fallback_text("close_transaction_account", args)
+    result = _build_pending_approval_fallback_text("create_combo_document_as_reference", args)
 
     assert "e206dc08-a492-4279-80cf-1f098a3cf607" not in result
     assert "300" in result

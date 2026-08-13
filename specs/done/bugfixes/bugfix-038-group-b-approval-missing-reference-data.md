@@ -28,14 +28,13 @@ documents (receipts, credit notes, transaction-account closings) are created tod
 yet of a live production incident from this specific gap, unlike bugfix-028's cluster.
 
 ## Status
-**Open — root cause investigated and fix direction agreed with the user twice: originally
-2026-08-10 (during bugfix-028's A1-T2 verification), and again 2026-08-13 with the scope
-expansion above, when the same test failed again during an expensive-test sweep and the
-investigation traced `close_transaction_account`'s gap to its duplicate-payload-builder root
-cause.** Per Bug-Driven Development (METHODOLOGY.md §VII), the root-cause approval gate is
-satisfied for both the original scope and the 2026-08-13 addition (this document's own edit
-history is that approval). Test-gap analysis for the expanded scope is below, not yet started
-for implementation.
+**Resolved and merged 2026-08-13.** Implemented, verified (unit + billed + expensive, including
+against a real production incident found during manual dev testing mid-implementation — see
+"Additional scope: multi-turn id/display-number confusion" below), and both dev containers
+rebuilt/redeployed with the fix. See "Final implementation (2026-08-13, live session)" below —
+**the shipped design differs from "Design directed by the user (2026-08-10)"** in one material
+way: Group B tool signatures stayed thin (no new display-only parameters), superseded by a
+same-turn tool-call correlation approach agreed live on 2026-08-13. PR: #214.
 
 ## Date Opened
 2026-08-10
@@ -122,6 +121,86 @@ should also cross-check the model-supplied display values (number/amount) agains
 independently fetches, and refuse on mismatch, is an open question for the formal design phase,
 not yet directed by the user.
 
+## Final implementation (2026-08-13, live session) — supersedes the 2026-08-10 design on one point
+
+Re-approved live with the user 2026-08-13, before any code was written this session (the
+2026-08-10/2026-08-13 approvals recorded above predate this same-day session and were re-confirmed
+rather than assumed to carry over). **The one point that changed**: the 2026-08-10 design's
+"tool signatures should require the resolved display data as explicit arguments" direction was
+**rejected** on reconsideration — user: *"I dont want to send to the mcp unnecessary data
+elements that are used only to display to the user. The mcp tools being thin is good."*
+
+**Shipped design instead** — same two-part approval shape (Part 1 = reference data pulled from
+the original; Part 2 = the actual request being approved), same "no direct HTTP fetch, the AI
+does it all" constraint, but achieved without adding any parameters to the Group B tools:
+
+1. Group B MCP tool signatures stay **exactly as they were** — only `original_internal_morning_id`
+   (renamed from `original_invoice_id`, see below) plus each tool's existing functional params.
+2. `runtime_constitution.md` requires the model to call `get_invoice_details` on the original,
+   **fresh, in the same turn**, immediately before proposing any Group B call.
+3. `ai_handler.py`'s `_finalize_response` passes that turn's already-executed `mcp_calls` into
+   `_build_pending_approval_details`, which correlates the pending call's
+   `original_internal_morning_id` against a matching prior `get_invoice_details` call's real
+   output (`_find_referenced_document_details`) — no new network access, no new architecture.
+4. Part 1 renders **everything `get_invoice_details` returns**, minus its internal-id line
+   (never shown to users) — bare minimum required, per the user: client name, document date,
+   amount, exactly as they are on the reference document.
+5. **Accepted risk**: this depends on the model actually complying with the "look it up first,
+   same turn" prompt instruction, not a structural (schema-level) guarantee. No fallback-refusal
+   path if the lookup is missing — Part 1 just comes up empty, same failure shape as before this
+   bugfix, just less likely.
+
+**Also shipped, unchanged from the 2026-08-13 scope expansion below**: the
+`close_transaction_account` → `create_combo_document_as_reference` rename, the shared
+`_build_combo_document_core_payload` extraction, and the renamed tool's payment-detail fix
+(`payment_date`/`payment_method`/bank details, required, matching `create_combo_document`'s
+A3/A3b treatment).
+
+## Additional scope: `internal_morning_id`/`document_display_number` terminology rename
+(2026-08-13, live session — found during manual dev verification of the fix above)
+
+Manual testing of the freshly-deployed fix in `dev` surfaced a real, live failure: a multi-turn
+"mark as paid" exchange (find the document → ask for the payment date → ask separately whether
+VAT is included → approve) caused the model to pass the document's **DISPLAY number**
+(`"40280"`) as `invoice_id` on a fresh `get_invoice_details` call, instead of the real internal
+id it had already correctly resolved twice earlier in the very same conversation — right after
+its own immediately-preceding reply had said "חשבון עסקה #40280" out loud. Morning rejected the
+malformed id outright; the whole request silently failed with no approval ever shown. Confirmed
+live (chat `972522968679@c.us`, 2026-08-13 13:52-13:53) — `get_invoice_details` called with
+`internal_morning_id="40280"`.
+
+**Root cause, per the user's own diagnosis**: the codebase had no structural distinction between
+"the internal Morning GUID" and "the human-readable document number" — both flowed through
+tooling and prompt text under ambiguous, overlapping names (`invoice_id`, "invoice number",
+"document number"), and a prose-only constitution rule ("the visible number is NOT the id")
+already existed but wasn't enough to prevent the model conflating them under multi-turn
+pressure. User: *"the real issue is the fact that the number of the document is being
+understood as the ID... parameters need to be renamed."*
+
+**Fix — a structural rename, not just clarified prose**, confirmed live with the user:
+- `invoice_id` → **`internal_morning_id`**; `original_invoice_id` → **`original_internal_morning_id`**
+  — across every Morning MCP tool that takes one (`get_invoice_details`, `download_invoice_pdf`,
+  `create_receipt`, `create_credit_note`, `create_combo_document_as_reference`), both at the
+  MCP-exposed layer (`server.py`) and the internal implementation layer (`tools.py`), plus
+  `ai_handler.py`'s correlation logic and `runtime_constitution.md`.
+- `list_invoices`' `number` filter → **`document_display_number`**.
+- Deliberately scoped to the LLM-facing contract only — internal-only occurrences (`Payment.
+  invoice_id` in `models.py`, `morning_client.py`'s low-level REST wrapper methods, Morning's own
+  raw wire-format `"number"` key) were left unchanged; the model never sees those.
+- `runtime_constitution.md` gained a new, explicit "Two distinct identifiers exist for every
+  document" section stating the rule unconditionally (user-facing text → `document_display_
+  number`; MCP calls → `internal_morning_id`/`original_internal_morning_id`, never reconstruct
+  one from the other), plus a clarification on the existing "fresh, same-turn" instruction that
+  "fresh" means re-fetching with the SAME already-resolved id, not re-deriving the id itself.
+- **New regression test**: `test_multi_turn_clarification_uses_the_real_internal_id_not_the_
+  display_number` (`tests/billed/test_group_b_reference_approval_billed.py`) reproduces the exact
+  multi-turn shape (bare "mark as paid" → separate date question → separate VAT question →
+  approve) and asserts the real internal id is used throughout. Confirmed passing against the
+  fix; the live incident log is this bugfix's own RED evidence.
+- Verified after the rename: both apps' full unit suites green (787 + 279), all 4 billed tests in
+  `test_group_b_reference_approval_billed.py` green, the original expensive A1-T2 test green, both
+  dev containers (`morning-mcp-app-dev`, `denidin-app-dev`) rebuilt and redeployed with the fix.
+
 ## Scope — confirmed to span all three Group B tools, not just receipts
 
 Read in full during this investigation (2026-08-10; re-verified against current code 2026-08-13):
@@ -192,6 +271,15 @@ implemented.
    refactor; `create_combo_document`'s own existing tests (already green) are sufficient to catch
    a behavior regression on that side, and the renamed tool's own (new/updated) tests cover the
    other side.
+
+**As shipped**: items 2 and 3 landed together in one file, `tests/billed/test_group_b_reference_
+approval_billed.py` — one test per Group B tool (`create_receipt`/`create_credit_note`/
+`create_combo_document_as_reference`), plus a 4th test added mid-implementation for the
+multi-turn id/display-number incident (see "Additional scope" above). Also added:
+`tests/unit/test_ai_handler_pending_approval_reference_data.py` (22 pure-function unit tests for
+`_build_pending_approval_details`'s new correlation logic and `_find_referenced_document_details`
+- not part of the original test-gap analysis since the shipped design's correlation mechanism
+didn't exist yet when this analysis was written).
 
 ## Related Work
 - `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — B3 (the

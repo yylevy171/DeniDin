@@ -46,7 +46,7 @@ OPENAI_ASSISTANT_INSTRUCTIONS = (
     "You are a bookkeeping assistant with access to Morning (Green Invoice) "
     "invoice-management tools via MCP: create_invoice, create_transaction_account, "
     "create_combo_document, create_credit_note, create_receipt, "
-    "close_transaction_account, list_invoices, get_invoice_details, add_client, "
+    "create_combo_document_as_reference, list_invoices, get_invoice_details, add_client, "
     "get_financial_summary, and download_invoice_pdf. There is no separate "
     "status-update tool - resolve a document's real type via get_invoice_details "
     "before choosing which create_*/close_* tool to call for a status-change "

@@ -1,5 +1,5 @@
 """bugfix-038 — Group B document approvals (create_receipt/create_credit_note/
-close_transaction_account) referencing an existing document must show the user
+create_combo_document_as_reference) referencing an existing document must show the user
 what they're actually approving, and go fetch what's missing rather than
 present a blank preview.
 

@@ -128,8 +128,8 @@ print(tools.add_client(client, name="רימונה כהן", email="ground-truth-i
 # Wait a few seconds for the search index before create_invoice (name_resolved
 # requires an exact search hit) - or just retry create_invoice once if it refuses.
 print(tools.create_invoice(client, client_name="רימונה כהן", amount=156.75, description="Ground truth fixture invoice", name_resolved=True))
-# Read the invoice_id out of the confirmation above, then:
-print(tools.create_receipt(client, "<invoice_id>", payment_date="<today's date, ISO>"))
+# Read the internal_morning_id out of the confirmation above, then:
+print(tools.create_receipt(client, "<internal_morning_id>", payment_date="<today's date, ISO>"))
 ```
 Record the new invoice number/amount/date from the output and update
 `test_denidin_morning_invoice_lifecycle_e2e.py`'s `KNOWN_INVOICE_*` constants

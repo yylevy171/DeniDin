@@ -10,7 +10,7 @@ conftest.py for fixtures, denidin_mcp_e2e_helpers.py for helpers/constants).
 
 get_invoice_details is read-only, no approval wait. "Mark as paid"/"cancel"
 phrasing dispatches directly to a document-creating tool (create_receipt/
-create_credit_note/close_transaction_account - there is no separate
+create_credit_note/create_combo_document_as_reference - there is no separate
 status-update tool, feature 023 removed it entirely), so those all require
 explicit approval - see `_send_turn_and_approve`/`_send_turn_and_decline`.
 
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 # One fully-known, permanent ground-truth invoice (see GROUND_TRUTH_CLIENTS.md)
 # - referenced here by client name + date only, the way a real user would;
-# the model must resolve the actual invoice_id itself.
+# the model must resolve the actual internal_morning_id itself.
 #
 # Re-seeded 2026-08-12: the original fixture ("Test Client
 # DENIDIN_TEST_1770474207", invoice #60006, seeded 2026-02-07) was never
@@ -200,8 +200,8 @@ def test_godfather_marks_invoice_paid_via_whatsapp(denidin_app):
     assert all(c["error"] is None for c in receipt_calls), (
         f"create_receipt call(s) reported an error: {receipt_calls}"
     )
-    assert any('"original_invoice_id"' in (c["arguments"] or "") for c in receipt_calls), (
-        f"create_receipt was not called with a resolved original_invoice_id: {receipt_calls!r}"
+    assert any('"original_internal_morning_id"' in (c["arguments"] or "") for c in receipt_calls), (
+        f"create_receipt was not called with a resolved original_internal_morning_id: {receipt_calls!r}"
     )
 
     # The resulting status, not just call success, is what this flow proves:
@@ -272,8 +272,8 @@ def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
     assert all(c["error"] is None for c in credit_calls), (
         f"create_credit_note call(s) reported an error: {credit_calls}"
     )
-    assert any('"original_invoice_id"' in (c["arguments"] or "") for c in credit_calls), (
-        f"create_credit_note was not called with a resolved original_invoice_id: {credit_calls!r}"
+    assert any('"original_internal_morning_id"' in (c["arguments"] or "") for c in credit_calls), (
+        f"create_credit_note was not called with a resolved original_internal_morning_id: {credit_calls!r}"
     )
 
     # The resulting status, not just call success: the confirmation message
@@ -407,7 +407,7 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
     account document) must be closed by a linked type-320 combo document when
     marked paid, never the type-400 receipt used for a regular tax invoice.
     Feature 023 removed update_invoice_status - the model must resolve the
-    target's real type as 300 and call close_transaction_account directly
+    target's real type as 300 and call create_combo_document_as_reference directly
     (the same tool a direct "תסגור לי את חשבון העסקה" request would use).
 
     Issuing a combo document is a document-creating call, so it now requires
@@ -424,27 +424,27 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
         chat_id=GODFATHER_CHAT_ID,
         # States VAT-inclusion explicitly (feature 023's constitution rule
         # otherwise has the model ask "כולל מע״מ?" before calling
-        # close_transaction_account, confirmed live 2026-07-30) - this test
+        # create_combo_document_as_reference, confirmed live 2026-07-30) - this test
         # is about the mark-as-paid dispatch itself, not the VAT-ambiguity
         # question, so the prompt removes that ambiguity up front rather than
         # adding a third conversational turn to answer it.
         text=f"סמן את חשבון העסקה של {client_name} כשולם, כולל מע״מ",
         id_prefix="E2E_020_PAID_300",
     )
-    assert not _calls_for(ask_ai_response, "close_transaction_account"), (
-        f"close_transaction_account executed on the ASK turn before approval was "
+    assert not _calls_for(ask_ai_response, "create_combo_document_as_reference"), (
+        f"create_combo_document_as_reference executed on the ASK turn before approval was "
         f"given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
-    close_calls = _calls_for(paid_ai_response, "close_transaction_account")
+    close_calls = _calls_for(paid_ai_response, "create_combo_document_as_reference")
     assert paid_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
     assert close_calls, (
-        f"Model never invoked close_transaction_account via the remote MCP server for "
+        f"Model never invoked create_combo_document_as_reference via the remote MCP server for "
         f"'mark as paid' phrasing on a חשבון עסקה. mcp_calls: {paid_ai_response.mcp_calls!r}. "
         f"Final reply: {paid_response!r}"
     )
     assert all(c["error"] is None for c in close_calls), (
-        f"close_transaction_account call(s) reported an error: {close_calls}"
+        f"create_combo_document_as_reference call(s) reported an error: {close_calls}"
     )
 
     details_response, details_ai_response = _send_turn(
@@ -476,7 +476,7 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
 def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app):
     """Decline variant for the 300->320 path (Feature 022 x spec 020, dispatch
     updated per feature 023): godfather asks to mark a חשבון עסקה paid, then
-    explicitly declines the pending approval - close_transaction_account must
+    explicitly declines the pending approval - create_combo_document_as_reference must
     never fire, and no closing document (type 320 or otherwise) gets created."""
     client_name = _seed_transaction_account_invoice(_random_amount(), _random_description())
 
@@ -484,15 +484,15 @@ def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app
         chat_id=GODFATHER_CHAT_ID,
         # See test_godfather_marks_transaction_account_invoice_paid_via_whatsapp's
         # comment above - states VAT-inclusion explicitly so there's a real
-        # close_transaction_account pending approval to decline, rather than
+        # create_combo_document_as_reference pending approval to decline, rather than
         # the model asking a VAT-clarifying question with nothing yet pending.
         text=f"סמן את חשבון העסקה של {client_name} כשולם, כולל מע״מ",
         id_prefix="E2E_020_PAID_300_DECLINE",
     )
 
     assert decline_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert not _calls_for(decline_ai_response, "close_transaction_account"), (
-        f"close_transaction_account executed despite an explicit decline: "
+    assert not _calls_for(decline_ai_response, "create_combo_document_as_reference"), (
+        f"create_combo_document_as_reference executed despite an explicit decline: "
         f"{decline_ai_response.mcp_calls if decline_ai_response else None!r}"
     )
 
@@ -514,7 +514,7 @@ def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app
 @pytest.mark.billed
 def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin_app):
     """Negative case for spec 020/023: a document type neither create_receipt
-    (only 305) nor close_transaction_account (only 300) supports as an
+    (only 305) nor create_combo_document_as_reference (only 300) supports as an
     "original" must surface a friendly refusal, not silently create a wrong
     document. Uses a real, achievable-today setup: create an invoice, cancel
     it (issues a real linked type-330 credit invoice - see
@@ -551,7 +551,7 @@ def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin
     # paid" phrasing before it discovers the real type - both must reject a
     # type-330 original if called.
     attempted_calls = _calls_for(ai_response, "create_receipt") + _calls_for(
-        ai_response, "close_transaction_account"
+        ai_response, "create_combo_document_as_reference"
     )
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"

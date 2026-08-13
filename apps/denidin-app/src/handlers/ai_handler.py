@@ -89,9 +89,9 @@ def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
 # create_credit_note/create_receipt all create a real Morning document too,
 # same as create_invoice - gated for the same reason. `update_invoice_status`
 # (removed, feature 023) used to be gated here too; its status-word phrasing
-# now dispatches directly to create_receipt/close_transaction_account/
+# now dispatches directly to create_receipt/create_combo_document_as_reference/
 # create_credit_note instead, which are already covered here.
-# close_transaction_account (feature 023) creates a real Morning document
+# create_combo_document_as_reference (feature 023) creates a real Morning document
 # the same way - gated for the same reason. add_client/update_client
 # (feature 026) are real, persisted client-record writes - same category.
 APPROVAL_REQUIRED_MCP_TOOLS = (
@@ -100,7 +100,7 @@ APPROVAL_REQUIRED_MCP_TOOLS = (
     "create_combo_document",
     "create_credit_note",
     "create_receipt",
-    "close_transaction_account",
+    "create_combo_document_as_reference",
     "add_client",
     "update_client",
 )
@@ -133,9 +133,9 @@ def _build_pending_approval_fallback_text(tool_name: str, arguments_json: str) -
     so the user can still tell what they're approving even when the model
     stayed silent.
 
-    Never includes `original_invoice_id` (a raw internal UUID) - the
-    constitution's "never ask for or mention invoice_id" rule applies here
-    too, so create_credit_note/create_receipt/close_transaction_account
+    Never includes `original_internal_morning_id` (a raw internal UUID) - the
+    constitution's "never ask for or mention internal_morning_id" rule applies here
+    too, so create_credit_note/create_receipt/create_combo_document_as_reference
     fall back to naming the ACTION only, plus any safe (non-id) fields
     present (amount/description), never the id itself.
 
@@ -168,7 +168,7 @@ def _build_pending_approval_fallback_text(tool_name: str, arguments_json: str) -
             return f"להפיק חשבונית זיכוי לחשבונית שזוהתה בשיחה{_amount_suffix()} — לאשר?"
         if tool_name == "create_receipt":
             return f"להפיק קבלה עבור החשבונית שזוהתה בשיחה{_amount_suffix()} — לאשר?"
-        if tool_name == "close_transaction_account":
+        if tool_name == "create_combo_document_as_reference":
             return f"לסגור את חשבון העסקה שזוהה בשיחה{_amount_suffix()} — לאשר?"
         if tool_name == "add_client":
             return f"ליצור לקוח חדש: {args['name']}, {args['email']}, {args['phone']} — לאשר?"
@@ -186,8 +186,69 @@ _DOCUMENT_TYPE_LABELS = {
     "create_combo_document": "חשבונית מס/קבלה",
     "create_credit_note": "חשבונית זיכוי",
     "create_receipt": "קבלה",
-    "close_transaction_account": "חשבונית מס/קבלה (סגירת חשבון עסקה)",
+    "create_combo_document_as_reference": "חשבונית מס/קבלה (סגירת חשבון עסקה)",
 }
+
+# bugfix-038: the three "Group B" tools that create a document AGAINST an
+# existing one (identified only by original_internal_morning_id, an internal Morning
+# id the constitution forbids ever showing the user). Design confirmed live
+# with the user 2026-08-13: these tools' MCP signatures stay thin (no new
+# display-only params) - instead, the model is required
+# (runtime_constitution.md) to call get_invoice_details on the original,
+# FRESH, in the SAME turn, before proposing any of these. See
+# _find_referenced_document_details below for the correlation this enables.
+_GROUP_B_REFERENCE_TOOLS = {"create_receipt", "create_credit_note", "create_combo_document_as_reference"}
+
+# The exact line format_invoice_confirmation (morning-mcp-app) always appends
+# to get_invoice_details' output - the one line that must never reach the
+# user (an internal Morning document id), even though the rest of that same
+# real output is otherwise shown verbatim as bugfix-038's Part 1.
+_INTERNAL_MORNING_ID_LINE_PREFIX = "מזהה פנימי"
+
+
+def _find_referenced_document_details(original_internal_morning_id: Optional[str], mcp_calls: List[Dict[str, Any]]) -> Optional[str]:
+    """bugfix-038: find a get_invoice_details call, already executed earlier
+    in this SAME turn, whose internal_morning_id argument matches original_internal_morning_id -
+    and return its real output verbatim (the referenced document's own real
+    data, as Morning returned it - client name, amount, dates, status, etc.).
+
+    Returns None if no matching lookup exists in mcp_calls - the accepted
+    risk of this design (user, 2026-08-13): correctness here depends on the
+    model actually complying with the constitution's "look it up first, same
+    turn" instruction, not a structural guarantee. When None, the pending-
+    approval block simply has no reference section, same failure shape as
+    before this bugfix - never raises, never fabricates data.
+
+    Never a network call itself - `mcp_calls` is the turn's own already-
+    materialized tool-call history (see ai_handler.py's _finalize_response),
+    so this is a pure, free correlation, not a new fetch."""
+    if not original_internal_morning_id or not mcp_calls:
+        return None
+    for call in mcp_calls:
+        if call.get("name") != "get_invoice_details":
+            continue
+        try:
+            call_args = json.loads(call.get("arguments") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(call_args, dict):
+            continue
+        output = call.get("output")
+        if call_args.get("internal_morning_id") == original_internal_morning_id and output:
+            return str(output)
+    return None
+
+
+def _strip_internal_morning_id_line(details_text: str) -> str:
+    """Never show the internal Morning document id to the user (constitution -
+    see bugfix-038's Origin). get_invoice_details' raw output always includes
+    it (morning-mcp-app's format_invoice_confirmation); this strips exactly
+    that one line, leaving everything else - client name, amount, dates,
+    status, linked documents - intact and unmodified."""
+    return "\n".join(
+        line for line in details_text.split("\n")
+        if not line.startswith(_INTERNAL_MORNING_ID_LINE_PREFIX)
+    )
 
 _PAYMENT_METHOD_LABELS = {
     "bank_transfer": "העברה בנקאית",
@@ -219,7 +280,9 @@ def _format_date_for_display(raw: str) -> str:
         return raw
 
 
-def _build_pending_approval_details(tool_name: str, arguments_json: str) -> str:
+def _build_pending_approval_details(
+    tool_name: str, arguments_json: str, mcp_calls: Optional[List[Dict[str, Any]]] = None
+) -> str:
     """bugfix-028 B3/A4: state EXACTLY what will be created, every time.
 
     This is not a fallback. Before this, the message a user was asked to approve
@@ -236,6 +299,16 @@ def _build_pending_approval_details(tool_name: str, arguments_json: str) -> str:
     information too, and silently dropping it is how the ₪40,000 request lost
     both its purpose and its "לפני מע״מ".
 
+    bugfix-038: for the three "Group B" reference tools (`_GROUP_B_REFERENCE_
+    TOOLS`), the approval gains a PART 1 preceding the block above - the
+    referenced document's own real data (client name, document date, amount at
+    minimum; everything else get_invoice_details returns, except its internal
+    id line), found via `_find_referenced_document_details` correlating
+    `original_internal_morning_id` against a get_invoice_details call already executed
+    earlier in this SAME turn (`mcp_calls`). Absent for every other tool, and
+    absent for Group B tools too when no matching lookup is found (accepted
+    risk - see that function's docstring).
+
     Never raises: it runs on the response-handling hot path.
     """
     try:
@@ -244,6 +317,17 @@ def _build_pending_approval_details(tool_name: str, arguments_json: str) -> str:
         args = {}
     if not isinstance(args, dict):
         args = {}
+
+    reference_block = ""
+    if tool_name in _GROUP_B_REFERENCE_TOOLS:
+        reference_details = _find_referenced_document_details(
+            args.get("original_internal_morning_id"), mcp_calls or []
+        )
+        if reference_details:
+            reference_block = (
+                f"📄 המסמך המקושר:\n"
+                f"{_strip_internal_morning_id_line(reference_details)}\n\n"
+            )
 
     if tool_name == "add_client":
         return (
@@ -304,7 +388,7 @@ def _build_pending_approval_details(tool_name: str, arguments_json: str) -> str:
         ref = args.get("invoice_number") or args.get("original_invoice_number")
         lines.append(f"חשבונית מקושרת: {ref}")
 
-    return "\n".join(lines) + f"\n\n{APPROVAL_QUESTION}"
+    return reference_block + "\n".join(lines) + f"\n\n{APPROVAL_QUESTION}"
 
 
 # Free-form affirmative replies recognized as approval of a pending MCP
@@ -1461,7 +1545,7 @@ class AIHandler:
         # Extract Morning MCP tool calls, if any (REQ-SEC-002 audit logging;
         # also lets E2E tests verify tool usage without a second AI call).
         # Includes arguments/output for diagnosability (e.g. confirming
-        # which invoice_id the model actually passed to a follow-up tool
+        # which internal_morning_id the model actually passed to a follow-up tool
         # call) - never logged/returned with secrets, just tool I/O.
         mcp_calls = [
             {
@@ -1527,7 +1611,11 @@ class AIHandler:
             # being authorised, and the user must see the same fields in the same
             # place on every approval - including the ones the model's own
             # phrasing dropped (in production: "לפני מע״מ" and the purpose).
-            details = _build_pending_approval_details(ar.name, ar.arguments)
+            # bugfix-038: mcp_calls (this SAME turn's already-executed real tool
+            # calls, extracted above) is passed through so a Group B reference
+            # tool's approval can be enriched with the referenced document's own
+            # real data - see _find_referenced_document_details.
+            details = _build_pending_approval_details(ar.name, ar.arguments, mcp_calls)
             if response_text.strip():
                 response_text = f"{response_text.strip()}\n\n{details}"
             else:

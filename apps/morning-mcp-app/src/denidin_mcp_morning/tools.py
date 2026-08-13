@@ -453,7 +453,7 @@ def create_transaction_account(
     return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
 
 
-def _build_combo_document_payload(
+def _build_combo_document_core_payload(
     client_id: str,
     amount: float,
     description: str,
@@ -465,14 +465,17 @@ def _build_combo_document_payload(
     bank_account: Optional[str] = None,
     transaction_reference: Optional[str] = None,
     currency: str = "ILS",
+    lang: str = "he",
+    linked_document_ids: Optional[List[str]] = None,
 ) -> dict:
-    """Map create_combo_document inputs onto a real Morning /documents
-    payload for a type 320 ("חשבונית מס/קבלה") combo invoice+receipt.
-
-    Feature 027: `client_id` is a real, resolved Morning client_id (never a
-    bare name) - see _build_create_invoice_payload's docstring for the same
-    note; callers (create_combo_document) MUST resolve via
-    `_require_resolved_client` first.
+    """bugfix-038: the SINGLE shared type-320 ("חשבונית מס/קבלה") payload
+    shape, used by both `create_combo_document` (a fresh standalone
+    document) and `create_combo_document_as_reference` (closing an existing
+    type-300). Extracted after discovering these had drifted into two
+    independent implementations (`_build_combo_document_payload` and
+    `_build_combo_closing_payload`) - which is exactly why bugfix-028's A3/A3b
+    payment-detail fix reached only one of them: nobody knew the second one
+    existed. A fix here now reaches both by construction.
 
     Per bugfix-014 Flow 1: this document is issued when payment has ALREADY been
     received - self-contained, always already "paid", no due date (unlike a type
@@ -480,7 +483,8 @@ def _build_combo_document_payload(
 
     bugfix-028 A3/A3b: because the money has already moved, this document
     records a real historical transaction - so `payment_date` is REQUIRED and
-    validated (never defaulted to today), and the payment carries how the money
+    validated (never defaulted to today, via `_build_payment_line`'s own
+    `_validate_payment_date` call), and the payment carries how the money
     arrived. The default method is a bank transfer, which is the only type
     Morning stores bank details on.
 
@@ -489,14 +493,19 @@ def _build_combo_document_payload(
     payment total disagree - which is what a wrong `vatType` causes here. On a
     320 a VAT mistake fails loudly rather than inflating silently, unlike the
     type-300 case behind A2.
+
+    `lang`/`linked_document_ids` exist only for the closing caller (mirrors
+    the original type-300's own language, links back to it) - the fresh
+    caller never passes them, preserving its exact prior payload shape (no
+    `linkedDocumentIds` key at all when closing nothing).
     """
     today = now_local().date().isoformat()
     vat_type = 1 if vat_included else 0
 
-    return {
+    payload: Dict[str, Any] = {
         "type": _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
         "date": today,
-        "lang": "he",
+        "lang": lang,
         "vatType": vat_type,
         "currency": currency,
         "rounding": False,
@@ -531,6 +540,50 @@ def _build_combo_document_payload(
             )
         ],
     }
+    if linked_document_ids is not None:
+        payload["linkedDocumentIds"] = linked_document_ids
+    return payload
+
+
+def _build_combo_document_payload(
+    client_id: str,
+    amount: float,
+    description: str,
+    vat_included: bool,
+    payment_date: str,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+    transaction_reference: Optional[str] = None,
+    currency: str = "ILS",
+) -> dict:
+    """Map create_combo_document inputs onto a real Morning /documents
+    payload for a type 320 ("חשבונית מס/קבלה") combo invoice+receipt.
+
+    Feature 027: `client_id` is a real, resolved Morning client_id (never a
+    bare name) - see _build_create_invoice_payload's docstring for the same
+    note; callers (create_combo_document) MUST resolve via
+    `_require_resolved_client` first.
+
+    bugfix-038: thin wrapper over the shared `_build_combo_document_core_
+    payload` - see that function's docstring for the full payload-shape
+    rationale. Kept as its own named function so create_combo_document's
+    call site (and every existing test targeting this name) is unaffected.
+    """
+    return _build_combo_document_core_payload(
+        client_id=client_id,
+        amount=amount,
+        description=description,
+        vat_included=vat_included,
+        payment_date=payment_date,
+        payment_method=payment_method,
+        bank_number=bank_number,
+        bank_branch=bank_branch,
+        bank_account=bank_account,
+        transaction_reference=transaction_reference,
+        currency=currency,
+    )
 
 
 def create_combo_document(
@@ -705,7 +758,7 @@ def create_invoice(
         client_name=client_name,
     )
 
-    invoice_id = str(
+    internal_morning_id = str(
         response.get("id")
         or response.get("documentId")
         or response.get("document_id")
@@ -713,9 +766,9 @@ def create_invoice(
         or ""
     )
 
-    stored_total = _read_back_stored_total(client, invoice_id)
+    stored_total = _read_back_stored_total(client, internal_morning_id)
     invoice = Invoice(
-        id=invoice_id,
+        id=internal_morning_id,
         number=response.get("number"),
         client_name=client_name,
         amount=amount,
@@ -731,7 +784,7 @@ def _map_list_invoices_filters(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     client_name: Optional[str] = None,
-    number: Optional[str] = None,
+    document_display_number: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Map friendly list_invoices filters onto Morning's real /documents/search params.
 
@@ -739,18 +792,21 @@ def _map_list_invoices_filters(
     tests/integration/test_morning_sandbox_invoices_crud.py. `status` is
     deliberately NOT sent server-side — see _matches_status.
 
-    `number` (bugfix, 2026-08-07): Morning's real /documents/search endpoint
+    `document_display_number` (bugfix, 2026-08-07; renamed from `number` by
+    bugfix-038 - see this file's module-level note on `internal_morning_id`
+    vs `document_display_number`): Morning's real /documents/search endpoint
     has always accepted a `number` filter (confirmed via the checked-in
     Postman collection's own "Search Documents" example - a bare int, e.g.
     `"number": 12001`) - this was never wired up here, so any reference to
     an invoice by its human-visible number alone (no client name/date) had
     no real way to resolve short of an unfiltered list_invoices call, which
     fails outright once the sandbox holds more documents than the fetch cap
-    (_LIST_INVOICES_MAX_ITEMS). `number` is accepted here as a string (the
-    natural shape a model/user provides, e.g. "51365") and converted to the
-    int Morning's API actually expects; a non-numeric value is dropped
-    rather than sent (Morning would reject it, and silently sending a
-    string risks matching nothing with no clear error).
+    (_LIST_INVOICES_MAX_ITEMS). Accepted here as a string (the natural shape
+    a model/user provides, e.g. "51365") and converted to the int Morning's
+    API actually expects (under its own wire key, `"number"` - unrelated to
+    this parameter's name); a non-numeric value is dropped rather than sent
+    (Morning would reject it, and silently sending a string risks matching
+    nothing with no clear error).
     """
     params: Dict[str, Any] = {}
     if from_date:
@@ -759,11 +815,11 @@ def _map_list_invoices_filters(
         params["toDate"] = to_date
     if client_name:
         params["clientName"] = client_name
-    if number:
+    if document_display_number:
         try:
-            params["number"] = int(number)
+            params["number"] = int(document_display_number)
         except (TypeError, ValueError):
-            logger.warning("Ignoring non-numeric invoice number filter: %r", number)
+            logger.warning("Ignoring non-numeric document_display_number filter: %r", document_display_number)
     return params
 
 
@@ -827,7 +883,7 @@ def list_invoices(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     client_name: Optional[str] = None,
-    number: Optional[str] = None,
+    document_display_number: Optional[str] = None,
     token_budget: int = _LIST_INVOICES_TOKEN_BUDGET,
     name_resolved: bool = False,
 ) -> str:
@@ -853,9 +909,11 @@ def list_invoices(
         from_date: Optional start date, ISO format YYYY-MM-DD.
         to_date: Optional end date, ISO format YYYY-MM-DD.
         client_name: Optional client-name filter.
-        number: Optional exact document-number filter (e.g. "51365") - the
-            real Morning API's own `number` search field (bugfix, 2026-08-07),
-            previously never wired up here. Non-numeric values are ignored.
+        document_display_number: Optional exact document-number filter (e.g.
+            "51365" - the human-visible label, NEVER an internal_morning_id)
+            - the real Morning API's own `number` search field (bugfix,
+            2026-08-07), previously never wired up here. Non-numeric values
+            are ignored.
         token_budget: Max estimated tiktoken size of the formatted reply
             before truncation (REQ-INVOICE-010: config-driven in
             production via MorningMCPConfig.list_invoices_token_budget,
@@ -897,7 +955,7 @@ def list_invoices(
         # real clients can share one common word).
         resolved_client = _require_resolved_client(client, client_name, name_resolved, "list_invoices")
         client_name = resolved_client.name  # exact match - search under the real stored name
-    params = _map_list_invoices_filters(from_date, to_date, client_name, number)
+    params = _map_list_invoices_filters(from_date, to_date, client_name, document_display_number)
     first_page = client.list_invoices(params=params)
     raw_items = _extract_items(first_page)
     page_info = first_page if isinstance(first_page, dict) else {}
@@ -928,7 +986,7 @@ def list_invoices(
     return format_invoice_list(shown_invoices, total_matched=len(invoices))
 
 
-def get_invoice_details(client: MorningClient, invoice_id: str) -> str:
+def get_invoice_details(client: MorningClient, internal_morning_id: str) -> str:
     """Fetch full details for one invoice and return a Hebrew, human-readable view.
 
     MCP tool: get_invoice_details (contracts/get_invoice_details.json,
@@ -936,12 +994,12 @@ def get_invoice_details(client: MorningClient, invoice_id: str) -> str:
 
     Args:
         client: An authenticated MorningClient (injected).
-        invoice_id: Morning document id.
+        internal_morning_id: Morning document id.
 
     Returns:
         A Hebrew string with status, dates, and any recorded payments.
     """
-    response = client.get_invoice(invoice_id)
+    response = client.get_invoice(internal_morning_id)
     invoice = Invoice.model_validate(response)
     return format_invoice_details(invoice)
 
@@ -1012,7 +1070,7 @@ def _build_cancellation_payload(
 
 def create_credit_note(
     client: MorningClient,
-    original_invoice_id: str,
+    original_internal_morning_id: str,
     amount: Optional[float] = None,
     description: Optional[str] = None,
 ) -> str:
@@ -1028,7 +1086,7 @@ def create_credit_note(
 
     Args:
         client: An authenticated MorningClient (injected).
-        original_invoice_id: Morning document id of the invoice being credited.
+        original_internal_morning_id: Morning document id of the invoice being credited.
         amount: Optional override — defaults to the original's full total.
         description: Optional override — defaults to a generated cancellation note.
 
@@ -1038,15 +1096,15 @@ def create_credit_note(
         original isn't linked to a real client record.
 
     Raises:
-        Any exception raised by `client.get_invoice` if `original_invoice_id`
+        Any exception raised by `client.get_invoice` if `original_internal_morning_id`
         does not resolve to a real document (propagated, not swallowed).
     """
-    original = client.get_invoice(original_invoice_id)
+    original = client.get_invoice(original_internal_morning_id)
     if _extract_linked_client_id(original) is None:
         log_refusal(
             "create_credit_note",
             "original_not_linked_to_client",
-            original_invoice_id=original_invoice_id,
+            original_internal_morning_id=original_internal_morning_id,
         )
         return format_original_not_linked_to_client()
 
@@ -1060,7 +1118,7 @@ def create_credit_note(
         client_name=(original.get("client") or {}).get("name"),
     )
 
-    original_number = original.get("number", original_invoice_id)
+    original_number = original.get("number", original_internal_morning_id)
     credit_number = credit_response.get("number", credit_response.get("id", ""))
 
     return (
@@ -1123,6 +1181,12 @@ def _build_payment_receipt_payload(original: dict, payment_date: str, amount: Op
 
 def _build_combo_closing_payload(
     original: dict,
+    payment_date: str,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+    transaction_reference: Optional[str] = None,
     amount: Optional[float] = None,
     description: Optional[str] = None,
     vat_included: bool = True,
@@ -1130,6 +1194,17 @@ def _build_combo_closing_payload(
     """Build a Morning invoice/receipt combo (type 320) payload that closes a
     type-300 ("חשבון עסקה") `original` as paid, either in full (defaults) or
     partially (`amount` override).
+
+    bugfix-038: now a thin wrapper over the shared `_build_combo_document_
+    core_payload` - previously an entirely independent reimplementation
+    (`create_combo_document`'s own `_build_combo_document_payload` was the
+    other one) that had silently hardcoded `payment: [{"type": 1, ...,
+    "date": today}]` ever since, missing bugfix-028 A3/A3b's requirement
+    that a payment-backed document record the REAL date/method/bank details
+    the money moved with - because nobody fixing that bug knew this second
+    implementation existed. `payment_date` is now REQUIRED and validated
+    (via `_build_payment_line`'s `_validate_payment_date`, same as
+    create_combo_document), never defaulted to today.
 
     Per bugfix-014's Flow 4 finding: a type-300 document is closed by a
     type-320 combo document, not the type-400 receipt used for type-305.
@@ -1159,11 +1234,10 @@ def _build_combo_closing_payload(
     the original genuinely underpaid and its status correctly never flipped.
 
     Feature 027 (REQ-INV-012): reuses `original`'s real client_id instead of
-    rebuilding a bare-name client object - callers (close_transaction_account)
+    rebuilding a bare-name client object - callers (create_combo_document_as_reference)
     MUST check `_extract_linked_client_id(original)` and refuse before
     calling this if it's None (a pre-feature, bare-name-only original).
     """
-    today = now_local().date().isoformat()
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
     total_amount = original.get("total")
@@ -1175,70 +1249,72 @@ def _build_combo_closing_payload(
             float(item.get("price", 0)) * float(item.get("quantity", 1)) for item in income_items
         )
 
-    vat_type = 1 if vat_included else 0
     close_amount = amount if amount is not None else total_amount
     close_description = description or f"תשלום עבור חשבון עסקה מספר {original_number or original_id}"
 
-    return {
-        "type": _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
-        "date": today,
-        "lang": original.get("lang", "he"),
-        "vatType": vat_type,
-        "currency": original.get("currency", "ILS"),
-        "rounding": False,
-        "signed": True,
-        "description": close_description,
-        "linkedDocumentIds": [original_id] if original_id else [],
-        "client": {
-            "self": False,
-            "id": _extract_linked_client_id(original),
-        },
-        "income": [
-            {
-                "catalogNum": "",
-                "description": close_description,
-                "quantity": 1,
-                "price": close_amount,
-                "currency": original.get("currency", "ILS"),
-                "currencyRate": 1,
-                "vatRate": 0,
-                "vatType": vat_type,
-            }
-        ],
-        "payment": [{"type": 1, "price": close_amount, "date": today}],
-    }
+    return _build_combo_document_core_payload(
+        client_id=_extract_linked_client_id(original),
+        amount=close_amount,
+        description=close_description,
+        vat_included=vat_included,
+        payment_date=payment_date,
+        payment_method=payment_method,
+        bank_number=bank_number,
+        bank_branch=bank_branch,
+        bank_account=bank_account,
+        transaction_reference=transaction_reference,
+        currency=original.get("currency", "ILS"),
+        lang=original.get("lang", "he"),
+        linked_document_ids=[original_id] if original_id else [],
+    )
 
 
-def close_transaction_account(
+def create_combo_document_as_reference(
     client: MorningClient,
-    original_invoice_id: str,
+    original_internal_morning_id: str,
+    payment_date: str,
     amount: Optional[float] = None,
     description: Optional[str] = None,
     vat_included: bool = True,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+    transaction_reference: Optional[str] = None,
 ) -> str:
     """Create a standalone combo document ("חשבונית מס/קבלה", type 320) that
     closes an existing transaction account ("חשבון עסקה", type 300), linked
     via `linkedDocumentIds`, and return a Hebrew confirmation.
 
-    MCP tool: close_transaction_account (feature 023). Mirrors
-    create_credit_note/create_receipt's existing standalone-with-reference
-    pattern (021), extended to the type-300->320 closing flow (bugfix-014
-    Flow 4, originally 020). Feature 023 removed the separate
-    update_invoice_status tool - "mark as paid" phrasing for a type-300
-    original now dispatches straight here, decided by the model, not a
-    status-word-matching code path.
+    MCP tool: create_combo_document_as_reference (feature 023, renamed from
+    close_transaction_account by bugfix-038). Mirrors create_credit_note/
+    create_receipt's existing standalone-with-reference pattern (021),
+    extended to the type-300->320 closing flow (bugfix-014 Flow 4, originally
+    020). Feature 023 removed the separate update_invoice_status tool -
+    "mark as paid" phrasing for a type-300 original now dispatches straight
+    here, decided by the model, not a status-word-matching code path.
+
+    bugfix-038: `payment_date`/`payment_method`/bank details are now real
+    parameters (previously this tool independently reimplemented type-320's
+    payload via its own now-removed hardcoded `payment: [{"type": 1, ...,
+    "date": today}]`, missing bugfix-028 A3/A3b's payment-detail requirement
+    entirely because it was a second, undiscovered implementation of the same
+    document shape create_combo_document already had this fixed for). Same
+    treatment as create_combo_document exactly: required, validated, never
+    defaulted to today.
 
     Idempotency (feature 023): unlike Morning itself, which does NOT reject a
     duplicate closing document (confirmed live), a full-amount call
     (`amount=None`) against an already-closed original is a no-op returning
     the current state, so repeated "mark as paid"-style requests can't create
-    duplicate combo documents. An explicit partial `amount` always creates a
-    new document regardless of current status - partial closes are a
-    deliberate, repeatable real Morning capability.
+    duplicate combo documents - this no-op path needs no `payment_date` at
+    all, since no new document is created. An explicit partial `amount`
+    always creates a new document regardless of current status - partial
+    closes are a deliberate, repeatable real Morning capability.
 
     Args:
         client: An authenticated MorningClient (injected).
-        original_invoice_id: Morning document id of the transaction account
+        original_internal_morning_id: Morning document id of the transaction account
             being closed.
         amount: Optional override — defaults to the original's full total.
         description: Optional override — defaults to a generated closing note.
@@ -1247,6 +1323,17 @@ def close_transaction_account(
             inferred from the type-300 original's own (VAT-less) shape;
             asking the user when unstated is the model's responsibility
             (runtime_constitution.md), not this function's.
+        payment_date: The real date the money moved, ISO YYYY-MM-DD or
+            DD/MM/YYYY. Required whenever a document is actually created
+            (validated by `_validate_payment_date` - never defaulted to
+            today); not needed for the idempotent no-op path above.
+        payment_method: How the money arrived - "bank_transfer" (default),
+            "cash", "cheque", "credit_card", "paypal", or a payment app
+            ("bit", "pay", "paybox", "colu", "google pay", "apple pay").
+        bank_number/bank_branch/bank_account: Bank details from the transfer
+            confirmation. Stored only on a bank transfer.
+        transaction_reference: The אסמכתה. Stored only on a payment app or
+            PayPal payment.
 
     Returns:
         A Hebrew confirmation string with the new combo document's number,
@@ -1256,11 +1343,14 @@ def close_transaction_account(
     Raises:
         ValueError: If the original document's type is not 300 (transaction
             account) — the combo-closing flow only applies to type-300
-            originals; other types are not guessed at.
-        Any exception raised by `client.get_invoice` if `original_invoice_id`
+            originals; other types are not guessed at. Also raised (via
+            `_validate_payment_date`) if `payment_date` is missing,
+            unparseable, or in the future, when a document is actually
+            about to be created (not the idempotent no-op path).
+        Any exception raised by `client.get_invoice` if `original_internal_morning_id`
         does not resolve to a real document (propagated, not swallowed).
     """
-    original = client.get_invoice(original_invoice_id)
+    original = client.get_invoice(original_internal_morning_id)
     original_type = original.get("type")
     if original_type != _TRANSACTION_ACCOUNT_DOCUMENT_TYPE:
         raise ValueError(
@@ -1276,25 +1366,34 @@ def close_transaction_account(
         # Pre-feature, bare-name-only original - refuse rather than fall
         # back to rebuilding a bare-name client object (REQ-INV-013).
         log_refusal(
-            "close_transaction_account",
+            "create_combo_document_as_reference",
             "original_not_linked_to_client",
-            original_invoice_id=original_invoice_id,
+            original_internal_morning_id=original_internal_morning_id,
         )
         return format_original_not_linked_to_client()
 
     payload = _build_combo_closing_payload(
-        original, amount=amount, description=description, vat_included=vat_included
+        original,
+        payment_date=payment_date,
+        payment_method=payment_method,
+        bank_number=bank_number,
+        bank_branch=bank_branch,
+        bank_account=bank_account,
+        transaction_reference=transaction_reference,
+        amount=amount,
+        description=description,
+        vat_included=vat_included,
     )
     combo_response = client.create_invoice(payload)
     log_mutation(
-        "close_transaction_account",
+        "create_combo_document_as_reference",
         payload=payload,
         response=combo_response,
         client_id=_extract_linked_client_id(original),
         client_name=(original.get("client") or {}).get("name"),
     )
 
-    original_number = original.get("number", original_invoice_id)
+    original_number = original.get("number", original_internal_morning_id)
     combo_number = combo_response.get("number", combo_response.get("id", ""))
 
     return (
@@ -1304,7 +1403,7 @@ def close_transaction_account(
 
 def create_receipt(
     client: MorningClient,
-    original_invoice_id: str,
+    original_internal_morning_id: str,
     payment_date: str,
     amount: Optional[float] = None,
 ) -> str:
@@ -1319,7 +1418,7 @@ def create_receipt(
     not a status-word-matching code path.
 
     Only accepts a type-305 original (feature 023) - any other type (300,
-    a transaction account closed by close_transaction_account instead; 320,
+    a transaction account closed by create_combo_document_as_reference instead; 320,
     already self-closed; 330/400, not themselves payable) is rejected. This
     is a deterministic backstop for when the caller picked the wrong tool,
     not the primary defense (the model is expected to resolve the type
@@ -1342,7 +1441,7 @@ def create_receipt(
 
     Args:
         client: An authenticated MorningClient (injected).
-        original_invoice_id: Morning document id of the invoice being paid.
+        original_internal_morning_id: Morning document id of the invoice being paid.
         payment_date: The real date the money moved, ISO YYYY-MM-DD (or
             DD/MM/YYYY). Required - raises if missing, unparseable, or in
             the future.
@@ -1356,24 +1455,24 @@ def create_receipt(
     Raises:
         ValueError: If the original document's type is not 305 (tax
             invoice) — e.g. 300 (transaction account, use
-            close_transaction_account instead), 320 (combo, already
+            create_combo_document_as_reference instead), 320 (combo, already
             self-closed), 330/400 (a credit note/receipt is not itself
             something to pay). Strict positive check (only 305 allowed),
-            matching close_transaction_account's own guard and the
+            matching create_combo_document_as_reference's own guard and the
             unsupported-type rejection the removed update_invoice_status
             used to provide for any non-300/305 original. Also raised (via
             `_validate_payment_date`) if `payment_date` is missing,
             unparseable, or in the future - except in the idempotent no-op
             case below, where it's never even inspected.
-        Any exception raised by `client.get_invoice` if `original_invoice_id`
+        Any exception raised by `client.get_invoice` if `original_internal_morning_id`
         does not resolve to a real document (propagated, not swallowed).
     """
-    original = client.get_invoice(original_invoice_id)
+    original = client.get_invoice(original_internal_morning_id)
     original_type = original.get("type")
     if original_type != _TAX_INVOICE_DOCUMENT_TYPE:
         raise ValueError(
             f"Cannot create a receipt for document type {original_type} "
-            f"(only {_TAX_INVOICE_DOCUMENT_TYPE} is supported - use close_transaction_account "
+            f"(only {_TAX_INVOICE_DOCUMENT_TYPE} is supported - use create_combo_document_as_reference "
             f"for a {_TRANSACTION_ACCOUNT_DOCUMENT_TYPE} original)"
         )
 
@@ -1389,7 +1488,7 @@ def create_receipt(
         log_refusal(
             "create_receipt",
             "original_not_linked_to_client",
-            original_invoice_id=original_invoice_id,
+            original_internal_morning_id=original_internal_morning_id,
         )
         return format_original_not_linked_to_client()
 
@@ -1403,7 +1502,7 @@ def create_receipt(
         client_name=(original.get("client") or {}).get("name"),
     )
 
-    original_number = original.get("number", original_invoice_id)
+    original_number = original.get("number", original_internal_morning_id)
     receipt_number = receipt_response.get("number", receipt_response.get("id", ""))
 
     return f"הופקה קבלה מספר {receipt_number} עבור חשבונית מספר {original_number}."
@@ -1858,7 +1957,7 @@ def _extract_linked_client_id(original: dict) -> Optional[str]:
     document, if present (feature 027, REQ-INV-012/013).
 
     Used by Group B tools (create_credit_note/create_receipt/
-    close_transaction_account), which derive their client from the
+    create_combo_document_as_reference), which derive their client from the
     original document they're linked to rather than searching by name.
     Returns None when the original's client sub-object has no id at all
     (a pre-feature, bare-name-only attachment) - callers must refuse
@@ -2278,7 +2377,7 @@ def get_financial_summary(
     return format_financial_summary(summary)
 
 
-def download_invoice_pdf(client: MorningClient, invoice_id: str, lang: str = "he") -> str:
+def download_invoice_pdf(client: MorningClient, internal_morning_id: str, lang: str = "he") -> str:
     """Return a PDF download link for an invoice, in a Hebrew confirmation string.
 
     MCP tool: download_invoice_pdf (contracts/download_invoice_pdf.json,
@@ -2291,7 +2390,7 @@ def download_invoice_pdf(client: MorningClient, invoice_id: str, lang: str = "he
 
     Args:
         client: An authenticated MorningClient (injected).
-        invoice_id: Morning document id.
+        internal_morning_id: Morning document id.
         lang: Which link to prefer — "he" (Hebrew) or "origin" (default/English).
             Falls back to whichever is present if the preferred one is missing.
 
@@ -2301,12 +2400,12 @@ def download_invoice_pdf(client: MorningClient, invoice_id: str, lang: str = "he
     Raises:
         ValueError: if no download URL is present on the document at all.
     """
-    original = client.get_invoice(invoice_id)
+    original = client.get_invoice(internal_morning_id)
     urls = original.get("url") or {}
     pdf_url = urls.get(lang) or urls.get("origin") or urls.get("he")
 
     if not pdf_url:
-        raise ValueError(f"No PDF download URL available for invoice {invoice_id!r}.")
+        raise ValueError(f"No PDF download URL available for invoice {internal_morning_id!r}.")
 
-    invoice_number = original.get("number", invoice_id)
+    invoice_number = original.get("number", internal_morning_id)
     return f"קישור להורדת חשבונית מספר {invoice_number}:\n{pdf_url}"
