@@ -51,7 +51,7 @@ def paid_invoice(morning_client):
     invoice_id = str(response.get("id") or response.get("documentId") or "")
     assert invoice_id, f"Could not determine created invoice id from response: {response}"
 
-    create_receipt(morning_client, invoice_id)
+    create_receipt(morning_client, invoice_id, payment_date="2026-07-12")
 
     return invoice_id, client_name
 
@@ -72,7 +72,7 @@ def test_list_invoices_shows_receipt_document_type(morning_client, paid_invoice)
     """The receipt itself, when it comes back as its own line item from
     list_invoices (bugfix-014: it is not filtered out), must be visibly
     labeled as a receipt - not indistinguishable from a real invoice."""
-    from denidin_mcp_morning.tools import list_invoices
+    from denidin_mcp_morning.tools import ClientNotFoundError, list_invoices
 
     _, client_name = paid_invoice
 
@@ -80,11 +80,20 @@ def test_list_invoices_shows_receipt_document_type(morning_client, paid_invoice)
     # pattern in test_morning_sandbox_list_invoices_tool.py) - both the
     # original invoice and the receipt created by marking it paid need to
     # land in the index before list_invoices' search-based lookup sees them.
+    # name_resolved=True (architecture fix, 2026-08-12) - client_name here is
+    # the real seeded, exact name. A ClientNotFoundError on an early attempt
+    # is tolerated the same as an empty/incomplete result - the same index
+    # lag this retry loop already exists to ride out can make even an exact
+    # name resolve to zero candidates for a moment.
     result = None
     for _ in range(12):
-        result = list_invoices(morning_client, client_name=client_name)
-        if "קבלה" in result and "חשבונית מס" in result:
-            break
+        try:
+            result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
+        except ClientNotFoundError:
+            result = None
+        else:
+            if "קבלה" in result and "חשבונית מס" in result:
+                break
         time.sleep(1.5)
 
     assert result is not None and "קבלה" in result, (

@@ -1,4 +1,4 @@
-# Bugfix Spec: Group B document approvals show a blank preview and never fetch what's missing
+# Bugfix Spec: Group B document approvals show a blank preview, never fetch what's missing, AND duplicate a whole document type's creation logic
 
 ## Bug ID
 bugfix-038-group-b-approval-missing-reference-data
@@ -12,6 +12,15 @@ user is asked to sign off on. Two of the three also still hardcode payment metho
 as `create_combo_document` did before bugfix-028's A3/A3b fix — never carried over to this
 family of tools.
 
+**Scope expanded 2026-08-13** (see "Additional scope" section below): investigating this bug's
+`close_transaction_account` case surfaced a second, structurally deeper problem in the same
+tool — it independently reimplements `create_combo_document`'s entire type-320 payload-building
+logic (`_build_combo_closing_payload` vs. `_build_combo_document_payload`, two separate
+functions building the same document shape), and that duplication is *why* the payment-date/
+method/bank-detail gap above exists on `close_transaction_account` specifically: bugfix-028's
+A3/A3b fix was applied to `create_combo_document`'s payload builder and never propagated to its
+undiscovered twin. Both problems are fixed together in this bugfix now.
+
 ## Priority
 P1 — surfaced while verifying bugfix-028's A1-T2 (deposit matching an existing invoice); real
 documents (receipts, credit notes, transaction-account closings) are created today with a
@@ -19,11 +28,14 @@ documents (receipts, credit notes, transaction-account closings) are created tod
 yet of a live production incident from this specific gap, unlike bugfix-028's cluster.
 
 ## Status
-**Open — root cause investigated and fix direction agreed with the user in the same session
-that found it (2026-08-10, during bugfix-028's A1-T2 verification).** Per Bug-Driven Development
-(METHODOLOGY.md §VII), this still needs the formal root-cause approval gate and test-gap
-analysis before implementation — the direction below is what was discussed live, not yet a
-signed-off spec in the METHODOLOGY sense.
+**Open — root cause investigated and fix direction agreed with the user twice: originally
+2026-08-10 (during bugfix-028's A1-T2 verification), and again 2026-08-13 with the scope
+expansion above, when the same test failed again during an expensive-test sweep and the
+investigation traced `close_transaction_account`'s gap to its duplicate-payload-builder root
+cause.** Per Bug-Driven Development (METHODOLOGY.md §VII), the root-cause approval gate is
+satisfied for both the original scope and the 2026-08-13 addition (this document's own edit
+history is that approval). Test-gap analysis for the expanded scope is below, not yet started
+for implementation.
 
 ## Date Opened
 2026-08-10
@@ -112,21 +124,37 @@ not yet directed by the user.
 
 ## Scope — confirmed to span all three Group B tools, not just receipts
 
-Read in full during this investigation (2026-08-10):
+Read in full during this investigation (2026-08-10; re-verified against current code 2026-08-13):
 
 | Tool | Doc type | Current gap |
 |---|---|---|
-| `create_receipt` | 400 | `payment_date` parameter **already exists and is documented as "Currently unused — payload uses today's date; reserved for backdating support"** — never wired up. No `payment_method`/bank-detail parameters at all; `_build_payment_receipt_payload` hardcodes `{"type": 1, "price": ..., "date": today}` — the exact cash/today-date defaults bugfix-028 A3/A3b fixed for `create_combo_document`, never carried to this tool. |
-| `create_credit_note` | 330 | Mirrors the original's `vatType`/client/income automatically (no VAT decision needed — inherits it). Same hardcoded `payment`: `{"type": 1, ..., "date": today}`. |
-| `close_transaction_account` | 320 (closing a 300) | Already has `vat_included` as an explicit, well-documented parameter (unlike the other two) — closest of the three to Group A's shape already. Still no way to surface the original 300's own data in the approval. |
+| `create_receipt` | 400 | **`payment_date`/payment-recording gap CLOSED** — bugfix-028 A3 (2026-08-12) made `payment_date` a required, wired-up parameter; `_build_payment_receipt_payload` now correctly uses it (`payment: [{..., "date": validated_payment_date}]`), not a hardcoded today. **Still open**: no `description` parameter at all (its two siblings both have one), and no display-only reference number parameter, so `_build_pending_approval_details` has nothing to render for purpose or "which invoice does this close" — confirmed live 2026-08-13, approval showed `לקוח: (מהמסמך המקושר)` / `עבור: (לא צוין)` and failed the existing test on the missing invoice number. |
+| `create_credit_note` | 330 | Mirrors the original's `vatType`/client/income automatically (no VAT decision needed — inherits it). Still hardcodes `payment`: `{"type": 1, ..., "date": today}` — same class of gap `create_receipt` had before A3, never fixed here. No display-only reference number parameter either. |
+| `close_transaction_account` (→ renamed `create_combo_document_as_reference`, see below) | 320 (closing a 300) | Already has `vat_included` as an explicit, well-documented parameter (unlike the other two). **Also hardcodes `payment`'s date to today** (`_build_combo_closing_payload`) — no `payment_date`/`payment_method`/bank-detail parameters exist at all, unlike its own undiscovered twin `create_combo_document`, which bugfix-028 A3/A3b already required these on. No display-only reference number parameter either. |
 
 User: *"It's not just 400, it's also the cancellations that work the same way! ... this needs to
 be nailed."*
 
+## Additional scope added 2026-08-13 — `close_transaction_account` is a duplicate of `create_combo_document`, not just missing fields
+
+Found while re-investigating this bugfix's still-red test after an expensive-test sweep: `close_transaction_account` doesn't just have a *smaller* version of `create_combo_document`'s payment-detail gap — it is a **structurally independent reimplementation of the entire type-320 payload**, via its own `_build_combo_closing_payload`, parallel to and never sharing code with `_build_combo_document_payload`. That duplication is the actual root cause of the payment-date gap above: bugfix-028's A3/A3b fix touched `_build_combo_document_payload` only, and had no way to also fix a twin function nobody knew existed.
+
+User's reaction on discovering this live: *"This is a real MESS!!! HOW DID YOU CREATE 2 TOOLS FOR THE SAME GODDAMN THING?!"* — traced to history: `create_combo_document` shipped in Feature 021; `close_transaction_account` was added later (Feature 023/bugfix-014) explicitly modeled after `create_receipt`/`create_credit_note`'s reference pattern instead of extending `create_combo_document`, because 320 is the one document type reachable both as a fresh standalone document and as the closing document for an existing 300.
+
+**Decision (user, 2026-08-13, "Option B"): do not merge the two MCP tools into one.** The model-facing contracts genuinely differ (`create_combo_document` needs `client_name`+`name_resolved`; the closing tool needs `original_invoice_id`, client always inherited, never re-supplied) — collapsing them into one tool with optional-either-or parameters was considered and rejected as messier than two focused tools. Instead:
+
+1. **Rename** `close_transaction_account` → **`create_combo_document_as_reference`** (user's chosen name) — a naming-only refactor, but touches every file that references the tool by name (confirmed 2026-08-13: 19 files across both apps — `runtime_constitution.md`, `ai_handler.py`'s approval-gated tool list, `formatters.py`, `server.py`/`tools.py`, unit/integration tests in `morning-mcp-app`, billed/expensive tests and `denidin_mcp_e2e_helpers.py` in `denidin-app`, plus `ARCHITECTURE.md`/`README.md`). Mechanical (grep/rename), not a logic change.
+2. **Extract one shared internal payload-builder** used by both `create_combo_document` and the renamed tool, so a fix to one can never again silently fail to reach its twin.
+3. **Fix the renamed tool's payment gap**: real `payment_date`/`payment_method`/bank-detail parameters, required, matching `create_combo_document`'s A3/A3b treatment exactly — no more hardcoded `today`.
+4. **Add the missing display-only parameters to all three Group B tools** (this bugfix's original scope): `description` on `create_receipt` (parity with its siblings), and a display-only original-document reference number on all three, so `_build_pending_approval_details`'s existing (currently dead-code) `invoice_number`/`original_invoice_number` fallback line finally has data to render.
+
+**Additional requirement (user, 2026-08-13): the reproduction test for this bug must move to (or be duplicated into) the `billed` tier, not stay `expensive`-only.** The existing test (`test_given_a_deposit_matching_an_existing_tax_invoice_then_a_receipt_closes_it`) only fails inside an `expensive` (vision/image) test because its scenario *starts* with a bank-deposit screenshot — but the actual bug (approval text missing the referenced document's display data) is purely a text/tool-argument/rendering problem, unrelated to image classification. User: *"make sure this is tested as billed tests and not 'wait' for expensives. There's no reason we need an image for this simple test - the bug should have been caught earlier."* A billed-tier version should drive the same scenario via a plain text request (e.g. "seed a 305, then ask in plain Hebrew text to create a receipt against it") so this class of bug is caught on every free, no-approval-needed `billed` run instead of only during an infrequent, gated `expensive` sweep.
+
 ## What is explicitly NOT part of this bugfix
 - bugfix-028's A1 flow (no matching 305 → 320) — already correct, already tested, unaffected.
-- Any change to `create_combo_document` itself — it already has everything this bugfix gives
-  the other three tools.
+- Merging `create_combo_document` and the renamed reference tool into a single MCP tool —
+  explicitly considered and rejected 2026-08-13 (see above); they stay two tools sharing
+  internal implementation only.
 - The rejected direct-HTTP-fetch design — recorded above for posterity, not to be revisited
   without a new decision.
 
@@ -138,15 +166,32 @@ originally written and approved as part of bugfix-028's test set, moved here 202
 pollute the tests here"*) once investigation showed it depends on this bugfix's fix, not
 bugfix-028's approved scope. Relocated from
 `apps/denidin-app/tests/expensive/test_ledger_event_capture_e2e.py` to
-`apps/denidin-app/tests/expensive/test_group_b_reference_approval_e2e.py`. Still red — expected,
-since the fix isn't implemented — and will need re-review once this bugfix's own root cause and
-test plan go through their own METHODOLOGY §VII gates rather than inheriting bugfix-028's.
+`apps/denidin-app/tests/expensive/test_group_b_reference_approval_e2e.py`. Still red as of
+2026-08-13 (re-confirmed live during an expensive-test sweep) — expected, since the fix isn't
+implemented.
 
-## Test-gap analysis
-Not started — this bugfix has not yet been through its own root-cause approval gate as a
-standalone item (the discussion above happened live while investigating bugfix-028's A1-T2,
-and captures the user's direction, but METHODOLOGY §VII's formal steps 1-2 for *this* bugfix
-should still run before test design proceeds).
+## Test-gap analysis (2026-08-13)
+
+1. **The existing `expensive` test stays** — it's still the right end-to-end check that a real
+   bank-deposit *image* correctly resolves to an existing invoice and closes it, which is
+   genuinely a vision-classification concern, not just an approval-rendering one.
+2. **New: a `billed` (text-only) test covering the same approval-content assertion**, per the
+   user's requirement above — seeds a 305 via a normal conversational `create_invoice` flow
+   (no image), then asks in plain text to create a receipt against it, and asserts the pending
+   approval names the real invoice number (mirroring the existing test's core assertion,
+   `invoice_number in approval_text`). Lives in `tests/billed/`, likely alongside the other
+   invoice-lifecycle billed tests.
+3. **`create_credit_note` and the renamed `create_combo_document_as_reference` currently have
+   no test asserting their approval CONTENT at all** (only the receipt case does, via the test
+   above) — the fix must not ship for all three tools while only one has a regression test.
+   Needs at least one billed test per tool (or one parametrized test covering all three) proving
+   the approval names the real referenced document, not a placeholder.
+4. **The rename itself needs no new test** — it's a pure identifier change; existing tests that
+   already call the tool by name are the regression coverage, once updated to the new name.
+5. **The shared-payload-builder extraction needs no new test either** — it's an internal
+   refactor; `create_combo_document`'s own existing tests (already green) are sufficient to catch
+   a behavior regression on that side, and the renamed tool's own (new/updated) tests cover the
+   other side.
 
 ## Related Work
 - `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — B3 (the
@@ -157,3 +202,8 @@ should still run before test design proceeds).
 - `specs/done/027-mandatory-client-reference-invoicing/` — `_extract_linked_client_id`,
   `format_original_not_linked_to_client`, the pattern these tools already use for the client
   side of "resolve the original first."
+- `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster/bugfix-028-HANDOFF.md`
+  (2026-08-13 session) — the billed-suite sweep session that re-ran this test, found it still
+  red, and traced `close_transaction_account`'s gap to the duplicate-payload-builder root cause
+  documented in "Additional scope added 2026-08-13" above. That session's own scope stayed
+  test-only (bugfix-028); this bugfix absorbs the actual fix.

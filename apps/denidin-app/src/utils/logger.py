@@ -12,17 +12,45 @@ specs/in-progress/034-versioning-release-mgmt/research.md Decision 2) and stampe
 LogRecord via a Filter attached to the Logger object itself, so it survives both setup_logger()'s
 own handlers and get_logger()'s test-environment shortcut (which reuses the root logger's already-
 configured handlers instead of creating new ones).
+
+bugfix-037: log timestamps are Israel local time, with an explicit offset on every line.
+They used to be `logging.Formatter`'s default - `time.localtime`, i.e. whatever zone the
+process happened to be in - which meant a prod container (no TZ set, Docker's UTC default)
+wrote UTC while the same code under host pytest wrote Israel time, in the identical
+unlabelled format. LocalTimeFormatter makes the zone a property of the code rather than of
+the environment, and prints the offset so a line can never be misread.
 """
 import logging
 import os
 import re
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Union
 
+from .time_utils import LOCAL_TZ
+
 DEFAULT_VERSION_FILE = Path(__file__).resolve().parent.parent.parent / "VERSION"
 
 _VERSION_PATTERN = re.compile(r'^\d+\.\d+\.\d+')
+
+# %z renders the real offset (+0300 in IDT, +0200 in IST), so a log line states its own
+# zone instead of relying on the reader knowing which one it was written in.
+LOCAL_LOG_DATEFMT = '%Y-%m-%d %H:%M:%S%z'
+
+
+class LocalTimeFormatter(logging.Formatter):
+    """Formats every record's timestamp in Asia/Jerusalem (bugfix-037).
+
+    A Formatter subclass, not a reassignment of `logging.Formatter.converter` -
+    `converter` works on `time.struct_time`, which cannot render a real UTC offset
+    (`%z` on one reports the *system* zone, which is exactly the ambiguity this
+    replaces), and patching it at runtime would be monkey-patching (CONSTITUTION §XVII).
+    """
+
+    def formatTime(self, record: logging.LogRecord, datefmt: Union[str, None] = None) -> str:
+        local_dt = datetime.fromtimestamp(record.created, tz=LOCAL_TZ)
+        return local_dt.strftime(datefmt or LOCAL_LOG_DATEFMT)
 
 
 def read_version(version_file: Path) -> str:
@@ -102,9 +130,9 @@ def setup_logger(
     _ensure_version_filter(logger, version_file)
 
     # Create formatter
-    formatter = logging.Formatter(
+    formatter = LocalTimeFormatter(
         '%(asctime)s - [v%(version)s] - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        datefmt=LOCAL_LOG_DATEFMT
     )
 
     # File handler with rotation

@@ -24,12 +24,12 @@ NO MOCKING - real OpenAI API calls, real session storage.
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from src.models.config import AppConfiguration
+from src.utils.time_utils import local_from_timestamp
 from tests.e2e_helpers import (
     create_real_notification,
     get_response,
@@ -144,7 +144,9 @@ class TestLedgerEventCaptureBilled:
             f"found {len(events)}: {events}"
         )
 
-        expected_ts_iso = datetime.fromtimestamp(expected_event_timestamp, tz=timezone.utc).isoformat()
+        # bugfix-037: message_timestamp is now persisted in Israel local time (with a
+        # real offset), not UTC - build the expected value the same way the app does.
+        expected_ts_iso = local_from_timestamp(expected_event_timestamp).isoformat()
         for record in events:
             assert record.get("message_timestamp") == expected_ts_iso, (
                 f"message_timestamp={record.get('message_timestamp')!r} does not match the "

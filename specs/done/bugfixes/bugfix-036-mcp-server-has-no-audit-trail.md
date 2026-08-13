@@ -13,10 +13,11 @@ contains **no record of any document being created**.
 a financial incident has to be reconstructed second-hand.
 
 ## Status
-**Fixed** — branch `bugfix/036-037-mcp-audit-trail-and-timestamp-representation`, fixed
-together with bugfix-037 (2026-08-10). Root cause approved by the user; the failing-test gate
-(METHODOLOGY.md §VII steps 3-5) was **explicitly waived by the user** for both bugs in this
-branch, so the fix went straight from root-cause approval to implementation.
+**Done - Merged to master (PR #210)** — branch
+`bugfix/036-037-mcp-audit-trail-and-timestamp-representation`, fixed together with bugfix-037
+(2026-08-10). Root cause approved by the user; the failing-test gate (METHODOLOGY.md §VII
+steps 3-5) was **explicitly waived by the user** for both bugs in this branch, so the fix went
+straight from root-cause approval to implementation.
 
 ### Root Cause (approved 2026-08-10)
 The tool-call path had no success-path logging at all:
@@ -57,6 +58,13 @@ create logs requested `2360.0` alongside Morning's own `total: 2784.8` — i.e. 
 captures exactly the evidence bugfix-028 A2/A4 had to be reconstructed second-hand from
 `denidin-app`'s logs. **Capturing** that total is all this bug covers; A4 (reporting the real
 total back to the user) remains open and unchanged.
+
+### Verification (2026-08-10)
+Real MCP-protocol integration tests exercising the exact instrumented path passed unchanged
+(`tests/integration/test_mcp_server_e2e.py`, `test_morning_sandbox_create_invoice_tool.py` —
+8/8, including `test_mcp_tool_error_is_friendly_not_a_raw_stack_trace`, which hits the
+error-boundary logging branch), morning-mcp-app's full unit suite (243/243), and denidin-app's
+full unit suite (733/733) and its `tests/integration/` suite (29/29).
 
 ## Date Opened
 2026-08-09

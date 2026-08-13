@@ -15,17 +15,45 @@ specs/in-progress/034-versioning-release-mgmt/research.md Decision 2) and stampe
 LogRecord via a Filter attached to the Logger object itself, so it survives both setup_logger()'s
 own handlers and get_logger()'s test-environment shortcut (which reuses the root logger's already-
 configured handlers instead of creating new ones).
+
+bugfix-037: log timestamps are Israel local time, with an explicit offset on every line.
+They used to be `logging.Formatter`'s default - `time.localtime`, i.e. whatever zone the
+process happened to be in - which meant a prod container (no TZ set, Docker's UTC default)
+wrote UTC while the same code under host pytest wrote Israel time, in the identical
+unlabelled format. LocalTimeFormatter makes the zone a property of the code rather than of
+the environment, and prints the offset so a line can never be misread.
 """
 import logging
 import os
 import re
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Union
 
+from .time_utils import LOCAL_TZ
+
 DEFAULT_VERSION_FILE = Path(__file__).resolve().parents[3] / "VERSION"
 
 _VERSION_PATTERN = re.compile(r'^\d+\.\d+\.\d+')
+
+# %z renders the real offset (+0300 in IDT, +0200 in IST), so a log line states its own
+# zone instead of relying on the reader knowing which one it was written in.
+LOCAL_LOG_DATEFMT = '%Y-%m-%d %H:%M:%S%z'
+
+
+class LocalTimeFormatter(logging.Formatter):
+    """Formats every record's timestamp in Asia/Jerusalem (bugfix-037).
+
+    A Formatter subclass, not a reassignment of `logging.Formatter.converter` -
+    `converter` works on `time.struct_time`, which cannot render a real UTC offset
+    (`%z` on one reports the *system* zone, which is exactly the ambiguity this
+    replaces), and patching it at runtime would be monkey-patching (CONSTITUTION §XVII).
+    """
+
+    def formatTime(self, record: logging.LogRecord, datefmt: Union[str, None] = None) -> str:
+        local_dt = datetime.fromtimestamp(record.created, tz=LOCAL_TZ)
+        return local_dt.strftime(datefmt or LOCAL_LOG_DATEFMT)
 
 
 def read_version(version_file: Path) -> str:
@@ -102,9 +130,9 @@ def setup_logger(
     _ensure_version_filter(logger, version_file)
 
     # Create formatter
-    formatter = logging.Formatter(
+    formatter = LocalTimeFormatter(
         '%(asctime)s - [v%(version)s] - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        datefmt=LOCAL_LOG_DATEFMT
     )
 
     # File handler with rotation
@@ -166,3 +194,34 @@ def get_logger(
 
     # Production environment - set up logger with file handlers
     return setup_logger(name, logs_dir, log_filename, log_level, version_file=version_file)
+
+
+def reconfigure_package_log_level(level_name: str, package_prefix: str = 'denidin_mcp_morning') -> None:
+    """Retroactively raise/lower the level of every already-created logger (and its
+    already-attached handlers) under `package_prefix` to `level_name`.
+
+    Exists because of a real ordering gap (found 2026-08-12, while adding full
+    Morning request/response logging): every module in this package calls
+    `get_logger(__name__)` at IMPORT time, using `log_level`'s default ('INFO') -
+    but `main()` doesn't load config (and therefore doesn't know the real
+    configured level, `config.mcp_log_level`) until AFTER all those imports have
+    already run and created their loggers. Without this, a `logger.debug(...)`
+    call anywhere in this package could never appear no matter what
+    config.dev.json's `mcp.log_level` says, because both the logger's own level
+    AND its handlers' levels were already locked to INFO at creation time -
+    Python's logging module requires both to pass.
+
+    Call this once, in `main()`, immediately after `load_config()` - never at
+    import time (config isn't available yet) and never per-call (pointless
+    repeated work; a level doesn't change mid-process, same reasoning as
+    Feature 034's version-stamping).
+    """
+    level = getattr(logging, level_name.upper(), logging.INFO)
+    for name, logger_or_placeholder in list(logging.Logger.manager.loggerDict.items()):
+        if not isinstance(logger_or_placeholder, logging.Logger):
+            continue  # a logging.PlaceHolder, not a real logger - nothing to reconfigure
+        if name != package_prefix and not name.startswith(package_prefix + '.'):
+            continue
+        logger_or_placeholder.setLevel(level)
+        for handler in logger_or_placeholder.handlers:
+            handler.setLevel(level)

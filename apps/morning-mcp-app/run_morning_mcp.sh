@@ -49,6 +49,13 @@ COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE" -f "$LOCAL_OVE
 # AT A TIME" rule) - this script does not do that for you.
 env_lock_acquire "$ENV"
 
+# NOTE: this only (re)deploys the image already on disk - it does NOT build.
+# `up -d` starts/recreates the container from whatever image was last built
+# (`docker compose build "$SERVICE"`); it never rebuilds from current source.
+# After any code change, `build` must be run first or this silently keeps
+# serving stale code (real incident, 2026-08-12: a stop/run cycle here alone
+# was mistaken for a rebuild - see CLAUDE.md's "Merging a code fix to master
+# does not redeploy it" for the general rule this is one instance of).
 docker compose "${COMPOSE_ARGS[@]}" up -d "$SERVICE"
 docker compose "${COMPOSE_ARGS[@]}" ps "$SERVICE"
 

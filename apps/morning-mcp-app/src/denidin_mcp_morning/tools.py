@@ -9,22 +9,26 @@ human-readable, Hebrew-formatted string.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, NoReturn, Optional, Set, Tuple
 
 import tiktoken
 from email_validator import EmailNotValidError, validate_email
 from pydantic import ValidationError
 
+from .audit import log_mutation, log_refusal
 from .formatters import (
     format_ambiguous_clients_message,
     format_client_details,
     format_client_list,
+    format_client_name_confirmation_question,
+    format_client_name_resolved,
     format_client_not_found,
     format_financial_summary,
     format_invoice_confirmation,
     format_invoice_details,
     format_invoice_list,
+    format_name_not_resolved,
     format_original_not_linked_to_client,
     format_too_many_clients_message,
     format_too_many_invoices_message,
@@ -32,6 +36,7 @@ from .formatters import (
 from .models import _MORNING_STATUS_CODES, Client, FinancialSummary, Invoice
 from .morning_client import MorningClient
 from .utils.logger import get_logger
+from .utils.time_utils import now_local
 
 logger = get_logger(__name__)
 
@@ -89,14 +94,14 @@ def _build_create_invoice_payload(
     bare name) — confirmed live (research.md Decision 1) that Morning
     attaches the document to that real client record, populating
     name/email/etc. server-side. Callers (create_invoice) MUST resolve the
-    client via `_resolve_client_for_document_creation` before calling this.
+    client via `_require_resolved_client` before calling this.
 
     Mirrors the shape the sandbox is known to accept (see the passing
     tests/integration/test_morning_sandbox_invoices_crud.py fixture): a single
     income line and a single payment line — the sandbox requires at least one
     payment line (תקבולים) to accept a document.
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = now_local().date().isoformat()
     vat_type = 1 if vat_included else 0
 
     payload = {
@@ -137,10 +142,175 @@ def _build_create_invoice_payload(
     return payload
 
 
+# bugfix-028 A3b - Morning's real payment-method codes, enumerated live against
+# the sandbox on 2026-08-09 (types 6-9 and 12 do not exist). Which fields a
+# payment line may carry depends entirely on its type: bank details persist ONLY
+# on type 4, and a reference number ONLY on type 5/10. Type 1 (מזומן) silently
+# drops everything except date/price, which is how four production deposits lost
+# their bank details without a single error.
+_PAYMENT_TYPE_CASH = 1
+_PAYMENT_TYPE_CHEQUE = 2
+_PAYMENT_TYPE_CREDIT_CARD = 3
+_PAYMENT_TYPE_BANK_TRANSFER = 4
+_PAYMENT_TYPE_PAYPAL = 5
+_PAYMENT_TYPE_APP = 10
+
+_PAYMENT_APP_TYPES = {"bit": 1, "pay": 2, "paybox": 3, "colu": 4, "google pay": 5, "apple pay": 6}
+
+# The default is a BANK TRANSFER, not cash (user decision, 2026-08-09, reversing
+# the earlier triage call that "all payments are intentionally booked as cash" -
+# made under a wrong impression). Payments must reflect how the money actually
+# arrived.
+_DEFAULT_PAYMENT_METHOD = "bank_transfer"
+
+_PAYMENT_METHOD_TYPES = {
+    "bank_transfer": _PAYMENT_TYPE_BANK_TRANSFER,
+    "cash": _PAYMENT_TYPE_CASH,
+    "cheque": _PAYMENT_TYPE_CHEQUE,
+    "credit_card": _PAYMENT_TYPE_CREDIT_CARD,
+    "paypal": _PAYMENT_TYPE_PAYPAL,
+}
+
+
+def _validate_payment_date(payment_date: Optional[str]) -> str:
+    """Validate a real transaction date for a payment line (bugfix-028 A3).
+
+    A payment-backed document records money that has ALREADY moved, so its
+    payment date is a fact to be carried, never a value to be guessed. Silently
+    substituting "today" is exactly what dated four production documents 09/08
+    for deposits value-dated 04/08-06/08.
+
+    Raises ValueError - never falls back - when the date is missing, unparseable,
+    or in the future (money cannot have arrived tomorrow; a future date means the
+    extraction failed and the user must be asked).
+    """
+    if not payment_date:
+        raise ValueError(
+            "A payment-backed document needs the real date the money moved, and none "
+            "was supplied. Ask the user for the transaction date rather than assuming today."
+        )
+    # Accepts ISO (YYYY-MM-DD) and this project's own persisted DD/MM/YYYY form.
+    # The ledger event that supplies this date stores it as DD/MM/YYYY - by design,
+    # matching `event_date` (REQ-DATA-005/007) - and Israeli bank confirmations
+    # print it that way too, so ISO-only meant our own captured date could not be
+    # handed to our own tool without a conversion nobody performed. DD/MM is not
+    # ambiguous here: nothing in this system emits MM/DD.
+    parsed = None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            parsed = datetime.strptime(payment_date, fmt).date()
+            break
+        except (ValueError, TypeError):
+            continue
+    if parsed is None:
+        raise ValueError(
+            f"Transaction date {payment_date!r} is not a usable date "
+            f"(expected YYYY-MM-DD or DD/MM/YYYY). Ask the user to confirm the date "
+            f"rather than guessing at its format."
+        )
+    if parsed > now_local().date():
+        raise ValueError(
+            f"Transaction date {payment_date!r} is in the future - money cannot already "
+            f"have arrived. Ask the user to confirm the real transaction date."
+        )
+    # Always hand Morning the ISO form, whichever form came in - the API takes
+    # YYYY-MM-DD, and returning the caller's string verbatim would send a
+    # DD/MM/YYYY date straight through.
+    return parsed.isoformat()
+
+
+def _build_payment_line(
+    amount: float,
+    payment_date: str,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+    transaction_reference: Optional[str] = None,
+    currency: str = "ILS",
+) -> dict:
+    """Build one Morning payment line carrying how, and when, the money arrived.
+
+    Field support is per-type and live-verified (2026-08-09): `bankName`/
+    `bankBranch`/`bankAccount` persist only on type 4, and `transactionId` only
+    on types 5 and 10. Anything sent on a type that doesn't support it is
+    dropped by Morning without an error, so this maps deliberately rather than
+    sending everything and hoping.
+    """
+    method = (payment_method or _DEFAULT_PAYMENT_METHOD).strip().casefold()
+    line: Dict[str, Any] = {
+        "price": amount,
+        "date": _validate_payment_date(payment_date),
+        "currency": currency,
+        "currencyRate": 1,
+    }
+
+    if method in _PAYMENT_APP_TYPES:
+        line["type"] = _PAYMENT_TYPE_APP
+        line["appType"] = _PAYMENT_APP_TYPES[method]
+        if transaction_reference:
+            line["transactionId"] = transaction_reference
+        return line
+
+    if method not in _PAYMENT_METHOD_TYPES:
+        raise ValueError(
+            f"Unknown payment method {payment_method!r}. Supported: "
+            f"{sorted(list(_PAYMENT_METHOD_TYPES) + list(_PAYMENT_APP_TYPES))}"
+        )
+
+    line["type"] = _PAYMENT_METHOD_TYPES[method]
+    if line["type"] == _PAYMENT_TYPE_BANK_TRANSFER:
+        # Morning renders these back as "בנק X / סניף Y / מס' חשבון Z" itself.
+        if bank_number:
+            line["bankName"] = bank_number
+        if bank_branch:
+            line["bankBranch"] = bank_branch
+        if bank_account:
+            line["bankAccount"] = bank_account
+    elif line["type"] == _PAYMENT_TYPE_PAYPAL and transaction_reference:
+        line["transactionId"] = transaction_reference
+    return line
+
+
+def _read_back_stored_total(client: MorningClient, doc_id: str) -> Optional[float]:
+    """Read what Morning ACTUALLY stored for a just-created document.
+
+    bugfix-028 A4 failsafe. `POST /documents` returns no total and no amount at
+    all (probed live 2026-08-09: the response carries only client/id/lang/number/
+    signed/taxAuthority*/type/url/vatRate), so `response.get("total", amount)`
+    always handed back the number we asked for. That is how a document Morning
+    had stored at ₪2,784.80 was confirmed to the user as ₪2,360 for two days.
+
+    Never raises: this runs after a document has already been created, and a
+    failed read-back must not turn a successful creation into an error.
+    """
+    if not doc_id:
+        return None
+    try:
+        stored = client.get_invoice(doc_id)
+    except Exception as exc:  # noqa: BLE001 - failsafe: a read-back must never mask a real creation
+        logger.warning(f"Could not read back document {doc_id} to verify its stored total: {exc}")
+        return None
+    total = stored.get("amount")
+    return float(total) if isinstance(total, (int, float)) else None
+
+
+def _amount_mismatch_warning(requested: float, stored: Optional[float]) -> str:
+    """bugfix-028 A4: if what Morning stored differs from what the user approved,
+    say so, show both numbers, and ask - never silently reconcile."""
+    if stored is None or abs(stored - requested) < 0.01:
+        return ""
+    return (
+        f"⚠️ שים לב: אישרת {requested:,.2f} ₪ אבל המסמך נוצר בפועל על סך "
+        f"{stored:,.2f} ₪. מה תרצה שאעשה?\n\n"
+    )
+
+
 def _build_transaction_account_payload(
     client_id: str,
     amount: float,
     description: str,
+    vat_included: bool,
     due_date: Optional[str] = None,
     currency: str = "ILS",
 ) -> dict:
@@ -150,19 +320,28 @@ def _build_transaction_account_payload(
     Feature 027: `client_id` is a real, resolved Morning client_id (never a
     bare name) - see _build_create_invoice_payload's docstring for the same
     note; callers (create_transaction_account) MUST resolve via
-    `_resolve_client_for_document_creation` first.
+    `_require_resolved_client` first.
 
-    Per bugfix-014 Flow 4 (confirmed live): unlike a type 305 tax invoice,
-    this document type carries NO VAT obligation - no vatType/vatRate field
-    anywhere in the payload, not even a "no VAT" value, since the field's
-    mere presence implies a tax document.
+    bugfix-028 A2 - `vat_included` is REQUIRED and has no default: an undecided
+    VAT treatment may never reach Morning.
+
+    This used to send no `vatType`/`vatRate` anywhere, on the bugfix-014 Flow 4
+    premise that a type-300 "carries NO VAT obligation ... the field's mere
+    presence implies a tax document". That premise was recorded from the
+    customer's Morning UI and explicitly never reproduced against the API, and
+    it is wrong: probed live 2026-08-09, omitting `vatType` is treated exactly
+    as `vatType: 0` ("price EXCLUDES vat"), so Morning adds ~18% - a price of 11
+    is stored as 12.98, and in production ₪2,360 was stored as ₪2,784.80.
+    `vatType: 1` ("price INCLUDES vat") stores 11 as 11.
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = now_local().date().isoformat()
+    vat_type = 1 if vat_included else 0
 
     payload = {
         "type": _TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
         "date": today,
         "lang": "he",
+        "vatType": vat_type,
         "currency": currency,
         "rounding": False,
         "signed": True,
@@ -179,11 +358,12 @@ def _build_transaction_account_payload(
                 "price": amount,
                 "currency": currency,
                 "currencyRate": 1,
+                "vatType": vat_type,
             }
         ],
         "payment": [
             {
-                "type": 1,
+                "type": _PAYMENT_TYPE_CASH,
                 "price": amount,
                 "date": today,
             }
@@ -199,38 +379,56 @@ def create_transaction_account(
     client_name: str,
     amount: float,
     description: str,
+    vat_included: bool,
     due_date: Optional[str] = None,
+    name_resolved: bool = False,
 ) -> str:
     """Create a non-tax transaction account ("חשבון עסקה", type 300) in
     Morning and return a Hebrew confirmation message.
 
     MCP tool: create_transaction_account (feature 021).
 
-    Feature 027: client_name is resolved to a real Morning client record
-    before anything is created (REQ-INV-001/002/003/005/011) - see
-    create_invoice's docstring for the full found/not-found/ambiguous/
-    non-exact-disclosure contract, reused identically here.
+    Client-name-resolution architecture fix (2026-08-12, user decision):
+    this tool no longer does its own fuzzy/word-growth matching or
+    disambiguation - that is entirely `resolve_client_name`'s job now. This
+    tool requires `name_resolved=True` (the caller must have already
+    resolved the name via `resolve_client_name`) and only ever accepts an
+    exact, word-order-independent match - see `_require_resolved_client`'s
+    docstring for the full contract.
 
     Args:
         client: An authenticated MorningClient (injected).
-        client_name: Client name - resolved to a real client record, never
-            passed through as a bare string.
+        client_name: The client's exact, already-resolved name.
         amount: Amount in NIS - carries no VAT (see _build_transaction_account_payload).
         description: Service/product description.
         due_date: Optional due date, ISO format YYYY-MM-DD.
+        name_resolved: Must be True (asserting `resolve_client_name` was
+            already called with this name) or this refuses immediately,
+            attempting no Morning lookup at all.
 
     Returns:
-        A Hebrew confirmation string with the document number and amount, or
-        a friendly refusal message (no document created) if the client
-        can't be resolved unambiguously.
+        A Hebrew confirmation string with the document number and amount on
+        an exact match, or a plain procedural refusal string (name_resolved
+        wasn't True - see `_require_resolved_client`).
+
+    Raises:
+        ClientNotFoundError: if name_resolved is True but the name doesn't
+            match a real client exactly.
     """
     client_name = _normalize_hebrew_geresh(client_name)
-    resolution = _resolve_client_for_document_creation(client, client_name)
-    if resolution.refusal_message is not None:
-        return resolution.refusal_message
+    resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_transaction_account")
 
-    payload = _build_transaction_account_payload(resolution.client_id, amount, description, due_date)
+    payload = _build_transaction_account_payload(
+        resolved_client.id, amount, description, vat_included, due_date
+    )
     response = client.create_invoice(payload)
+    log_mutation(
+        "create_transaction_account",
+        payload=payload,
+        response=response,
+        client_id=resolved_client.id,
+        client_name=client_name,
+    )
 
     doc_id = str(
         response.get("id")
@@ -240,29 +438,32 @@ def create_transaction_account(
         or ""
     )
 
-    display_name = resolution.disclosure_name or client_name
+    stored_total = _read_back_stored_total(client, doc_id)
     invoice = Invoice(
         id=doc_id,
         number=response.get("number"),
-        client_name=display_name,
+        client_name=client_name,
         amount=amount,
-        total_amount=response.get("total", amount),
+        total_amount=stored_total if stored_total is not None else amount,
         currency=response.get("currency", "ILS"),
         due_date=due_date,
         status=response.get("status"),
         type=_TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
     )
-    confirmation = format_invoice_confirmation(invoice)
-    if resolution.disclosure_name:
-        return f"מצאתי והשתמשתי בלקוח הבא: {resolution.disclosure_name}\n{confirmation}"
-    return confirmation
+    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
 
 
 def _build_combo_document_payload(
     client_id: str,
     amount: float,
     description: str,
-    vat_included: bool = True,
+    vat_included: bool,
+    payment_date: str,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+    transaction_reference: Optional[str] = None,
     currency: str = "ILS",
 ) -> dict:
     """Map create_combo_document inputs onto a real Morning /documents
@@ -271,14 +472,25 @@ def _build_combo_document_payload(
     Feature 027: `client_id` is a real, resolved Morning client_id (never a
     bare name) - see _build_create_invoice_payload's docstring for the same
     note; callers (create_combo_document) MUST resolve via
-    `_resolve_client_for_document_creation` first.
+    `_require_resolved_client` first.
 
-    Per bugfix-014 Flow 1: this document is issued when payment is immediate
-    (cash/card/instant transfer at time of sale) - self-contained, always
-    already "paid", no due date (unlike a type 305 tax invoice, which is a
-    request for later payment).
+    Per bugfix-014 Flow 1: this document is issued when payment has ALREADY been
+    received - self-contained, always already "paid", no due date (unlike a type
+    305 tax invoice, which is a request for later payment).
+
+    bugfix-028 A3/A3b: because the money has already moved, this document
+    records a real historical transaction - so `payment_date` is REQUIRED and
+    validated (never defaulted to today), and the payment carries how the money
+    arrived. The default method is a bank transfer, which is the only type
+    Morning stores bank details on.
+
+    Note the type-320 amount consistency rule (live-confirmed): Morning rejects
+    the document outright with `errorCode 2422` if the income total and the
+    payment total disagree - which is what a wrong `vatType` causes here. On a
+    320 a VAT mistake fails loudly rather than inflating silently, unlike the
+    type-300 case behind A2.
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = now_local().date().isoformat()
     vat_type = 1 if vat_included else 0
 
     return {
@@ -307,11 +519,16 @@ def _build_combo_document_payload(
             }
         ],
         "payment": [
-            {
-                "type": 1,
-                "price": amount,
-                "date": today,
-            }
+            _build_payment_line(
+                amount=amount,
+                payment_date=payment_date,
+                payment_method=payment_method,
+                bank_number=bank_number,
+                bank_branch=bank_branch,
+                bank_account=bank_account,
+                transaction_reference=transaction_reference,
+                currency=currency,
+            )
         ],
     }
 
@@ -321,38 +538,88 @@ def create_combo_document(
     client_name: str,
     amount: float,
     description: str,
-    vat_included: bool = True,
+    vat_included: bool,
+    payment_date: str,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+    transaction_reference: Optional[str] = None,
+    name_resolved: bool = False,
 ) -> str:
-    """Create an immediate-payment combo invoice+receipt ("חשבונית מס/קבלה",
+    """Create an already-paid combo invoice+receipt ("חשבונית מס/קבלה",
     type 320) in Morning and return a Hebrew confirmation message.
 
     MCP tool: create_combo_document (feature 021).
 
-    Feature 027: client_name is resolved to a real Morning client record
-    before anything is created (REQ-INV-001/002/003/005/011) - see
-    create_invoice's docstring for the full found/not-found/ambiguous/
-    non-exact-disclosure contract, reused identically here.
+    Client-name-resolution architecture fix (2026-08-12, user decision):
+    this tool no longer does its own fuzzy/word-growth matching or
+    disambiguation - that is entirely `resolve_client_name`'s job now. This
+    tool requires `name_resolved=True` (the caller must have already
+    resolved the name via `resolve_client_name`) and only ever accepts an
+    exact, word-order-independent match - see `_require_resolved_client`'s
+    docstring for the full contract.
+
+    bugfix-028 (A2/A3/A3b): `vat_included` and `payment_date` are both REQUIRED.
+    This document asserts that money has already arrived, so how much of it is
+    VAT, and when it arrived, are facts about a real transaction - neither may be
+    defaulted or guessed. Ask the user rather than assuming.
 
     Args:
         client: An authenticated MorningClient (injected).
-        client_name: Client name - resolved to a real client record, never
-            passed through as a bare string.
+        client_name: The client's exact, already-resolved name.
         amount: Amount in NIS, already received.
         description: Service/product description.
-        vat_included: Whether VAT is included in the amount (default True).
+        vat_included: Whether VAT is included in `amount`. Required - an
+            undecided VAT treatment must never reach Morning (A2).
+        payment_date: The real date the money moved, ISO YYYY-MM-DD. Required,
+            must not be in the future, never defaulted to today (A3).
+        payment_method: How the money arrived - "bank_transfer" (default),
+            "cash", "cheque", "credit_card", "paypal", or a payment app
+            ("bit", "pay", "paybox", "colu", "google pay", "apple pay").
+        bank_number/bank_branch/bank_account: Bank details from the transfer
+            confirmation. Stored only on a bank transfer (A3b).
+        transaction_reference: The אסמכתה. Stored only on a payment app or
+            PayPal payment - Morning has no field for it on a bank transfer.
+        name_resolved: Must be True (asserting `resolve_client_name` was
+            already called with this name) or this refuses immediately,
+            attempting no Morning lookup at all.
 
     Returns:
-        A Hebrew confirmation string with the document number and amount, or
-        a friendly refusal message (no document created) if the client
-        can't be resolved unambiguously.
+        A Hebrew confirmation string with the document number and the amount
+        Morning actually stored on an exact match, or a plain procedural
+        refusal string (name_resolved wasn't True - see
+        `_require_resolved_client`).
+
+    Raises:
+        ClientNotFoundError: if name_resolved is True but the name doesn't
+            match a real client exactly.
+        ValueError: if payment_date is missing, unparseable, or in the future,
+            or payment_method is unknown.
     """
     client_name = _normalize_hebrew_geresh(client_name)
-    resolution = _resolve_client_for_document_creation(client, client_name)
-    if resolution.refusal_message is not None:
-        return resolution.refusal_message
+    resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_combo_document")
 
-    payload = _build_combo_document_payload(resolution.client_id, amount, description, vat_included)
+    payload = _build_combo_document_payload(
+        resolved_client.id,
+        amount,
+        description,
+        vat_included=vat_included,
+        payment_date=payment_date,
+        payment_method=payment_method,
+        bank_number=bank_number,
+        bank_branch=bank_branch,
+        bank_account=bank_account,
+        transaction_reference=transaction_reference,
+    )
     response = client.create_invoice(payload)
+    log_mutation(
+        "create_combo_document",
+        payload=payload,
+        response=response,
+        client_id=resolved_client.id,
+        client_name=client_name,
+    )
 
     doc_id = str(
         response.get("id")
@@ -362,21 +629,18 @@ def create_combo_document(
         or ""
     )
 
-    display_name = resolution.disclosure_name or client_name
+    stored_total = _read_back_stored_total(client, doc_id)
     invoice = Invoice(
         id=doc_id,
         number=response.get("number"),
-        client_name=display_name,
+        client_name=client_name,
         amount=amount,
-        total_amount=response.get("total", amount),
+        total_amount=stored_total if stored_total is not None else amount,
         currency=response.get("currency", "ILS"),
         status=response.get("status"),
         type=_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
     )
-    confirmation = format_invoice_confirmation(invoice)
-    if resolution.disclosure_name:
-        return f"מצאתי והשתמשתי בלקוח הבא: {resolution.disclosure_name}\n{confirmation}"
-    return confirmation
+    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
 
 
 def create_invoice(
@@ -386,43 +650,60 @@ def create_invoice(
     description: str,
     due_date: Optional[str] = None,
     vat_included: bool = True,
+    name_resolved: bool = False,
 ) -> str:
     """Create an invoice in Morning and return a Hebrew confirmation message.
 
     MCP tool: create_invoice (contracts/create_invoice.json, user-stories.md US1).
 
-    Feature 027 (REQ-INV-001/002/003/005/011): client_name is resolved to a
-    real Morning client record via `_resolve_client_for_document_creation`
-    before anything is created - never passed through as a bare string:
-    - Exactly one match (exact or non-exact/fuzzy) -> the document is
-      attached to that real client's id; a non-exact match's real name is
-      disclosed in the confirmation reply.
-    - Zero matches -> no document is created; a friendly "client not found"
-      message is returned instead.
-    - More than one match -> no document is created; a disambiguation
-      message listing the real candidates is returned instead.
+    Client-name-resolution architecture fix (2026-08-12, user decision):
+    this tool no longer does its own fuzzy/word-growth matching or
+    disambiguation - that is entirely `resolve_client_name`'s job now (the
+    one, sole entry point for that). This tool requires `name_resolved=True`
+    (the caller must have already resolved the name via `resolve_client_name`)
+    and only ever accepts an exact, word-order-independent match:
+    - Exactly one EXACT match -> the document is attached to that real
+      client's id.
+    - Anything else (non-exact, ambiguous, or zero matches) -> raises
+      `ClientNotFoundError` - the caller was supposed to have already
+      resolved this via `resolve_client_name`, so any non-exact result here
+      is a contract violation, not a normal disambiguation moment.
+    - `name_resolved` not `True` at all -> refuses immediately, attempting
+      no Morning lookup, via a plain procedural string (never raised) - see
+      `_require_resolved_client`'s docstring for the full contract.
 
     Args:
         client: An authenticated MorningClient (injected).
-        client_name: Client name - resolved to a real client record, never
-            passed through as a bare string.
+        client_name: The client's exact, already-resolved name.
         amount: Invoice amount in NIS.
         description: Service/product description.
         due_date: Optional due date, ISO format YYYY-MM-DD.
         vat_included: Whether VAT is included in the amount (default True).
+        name_resolved: Must be True (asserting `resolve_client_name` was
+            already called with this name) or this refuses immediately,
+            attempting no Morning lookup at all.
 
     Returns:
         A Hebrew confirmation string with the invoice number, amount, and
-        status, or a friendly refusal message (no document created) if the
-        client can't be resolved unambiguously.
+        status on an exact match, or a plain procedural refusal string
+        (name_resolved wasn't True).
+
+    Raises:
+        ClientNotFoundError: if name_resolved is True but the name doesn't
+            match a real client exactly.
     """
     client_name = _normalize_hebrew_geresh(client_name)
-    resolution = _resolve_client_for_document_creation(client, client_name)
-    if resolution.refusal_message is not None:
-        return resolution.refusal_message
+    resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_invoice")
 
-    payload = _build_create_invoice_payload(resolution.client_id, amount, description, due_date, vat_included)
+    payload = _build_create_invoice_payload(resolved_client.id, amount, description, due_date, vat_included)
     response = client.create_invoice(payload)
+    log_mutation(
+        "create_invoice",
+        payload=payload,
+        response=response,
+        client_id=resolved_client.id,
+        client_name=client_name,
+    )
 
     invoice_id = str(
         response.get("id")
@@ -432,21 +713,18 @@ def create_invoice(
         or ""
     )
 
-    display_name = resolution.disclosure_name or client_name
+    stored_total = _read_back_stored_total(client, invoice_id)
     invoice = Invoice(
         id=invoice_id,
         number=response.get("number"),
-        client_name=display_name,
+        client_name=client_name,
         amount=amount,
-        total_amount=response.get("total", amount),
+        total_amount=stored_total if stored_total is not None else amount,
         currency=response.get("currency", "ILS"),
         due_date=due_date,
         status=response.get("status"),
     )
-    confirmation = format_invoice_confirmation(invoice)
-    if resolution.disclosure_name:
-        return f"מצאתי והשתמשתי בלקוח הבא: {resolution.disclosure_name}\n{confirmation}"
-    return confirmation
+    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
 
 
 def _map_list_invoices_filters(
@@ -551,6 +829,7 @@ def list_invoices(
     client_name: Optional[str] = None,
     number: Optional[str] = None,
     token_budget: int = _LIST_INVOICES_TOKEN_BUDGET,
+    name_resolved: bool = False,
 ) -> str:
     """List/search invoices and return a Hebrew, human-readable result.
 
@@ -586,9 +865,38 @@ def list_invoices(
     Returns:
         A Hebrew string listing matching invoices (a token-budget-limited
         prefix if the complete set doesn't fit), a friendly "no results"
-        message if none match, or a "too many, narrow your search" message
-        if the real total exceeds the fetch cap.
+        message if a resolved/unfiltered/number/single-word search finds
+        nothing, a "too many, narrow your search" message if the real
+        total exceeds the fetch cap, or a plain procedural refusal if a
+        multi-word `client_name` is given without `name_resolved=True`
+        (architecture fix, 2026-08-12 - disambiguation/confirmation-
+        question handling for a non-exact multi-word name now lives
+        entirely in `resolve_client_name`, not here). An EXACT match
+        (including word-order-independent, e.g. "Solutions Tech" against a
+        client stored as "Tech Solutions") resolves and the search proceeds
+        normally under the real stored name.
+
+    Raises:
+        ClientNotFoundError: if a multi-word `client_name` is given,
+            `name_resolved=True`, and it doesn't match a real client
+            exactly (unification, 2026-08-12). A single-word `client_name`
+            is a substring filter, not a specific-client lookup, and never
+            requires `name_resolved` or raises this way - see the comment
+            at this method's first branch.
     """
+    if client_name and len(client_name.split()) > 1:
+        # Client-name-resolution architecture fix (2026-08-12, user
+        # decision): this tool no longer does its own fuzzy/word-growth
+        # matching or disambiguation for a multi-word client_name - that is
+        # entirely resolve_client_name's job now. Single-word queries are
+        # deliberately left untouched here (a genuine partial/substring
+        # search, e.g. "Cohen", not a specific full-name lookup) - Feature
+        # 031 already confirmed those work via Morning's own substring
+        # matching, and resolving them through this gate risks a false
+        # rejection against clients unrelated to the caller's intent (many
+        # real clients can share one common word).
+        resolved_client = _require_resolved_client(client, client_name, name_resolved, "list_invoices")
+        client_name = resolved_client.name  # exact match - search under the real stored name
     params = _map_list_invoices_filters(from_date, to_date, client_name, number)
     first_page = client.list_invoices(params=params)
     raw_items = _extract_items(first_page)
@@ -660,7 +968,7 @@ def _build_cancellation_payload(
     check `_extract_linked_client_id(original)` and refuse before calling
     this if it's None (a pre-feature, bare-name-only original).
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = now_local().date().isoformat()
     income_items = original.get("income") or []
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
@@ -735,10 +1043,22 @@ def create_credit_note(
     """
     original = client.get_invoice(original_invoice_id)
     if _extract_linked_client_id(original) is None:
+        log_refusal(
+            "create_credit_note",
+            "original_not_linked_to_client",
+            original_invoice_id=original_invoice_id,
+        )
         return format_original_not_linked_to_client()
 
     payload = _build_cancellation_payload(original, amount=amount, description=description)
     credit_response = client.create_invoice(payload)
+    log_mutation(
+        "create_credit_note",
+        payload=payload,
+        response=credit_response,
+        client_id=_extract_linked_client_id(original),
+        client_name=(original.get("client") or {}).get("name"),
+    )
 
     original_number = original.get("number", original_invoice_id)
     credit_number = credit_response.get("number", credit_response.get("id", ""))
@@ -751,7 +1071,7 @@ def create_credit_note(
 _CLOSED_STATUS_CODES = {1, 2}  # closed (via payment) / manually closed — see models._MORNING_STATUS_CODES
 
 
-def _build_payment_receipt_payload(original: dict, amount: Optional[float] = None) -> dict:
+def _build_payment_receipt_payload(original: dict, payment_date: str, amount: Optional[float] = None) -> dict:
     """Build a Morning receipt (type 400) payload that marks `original` paid
     (fully by default, or partially via `amount`).
 
@@ -765,12 +1085,21 @@ def _build_payment_receipt_payload(original: dict, amount: Optional[float] = Non
     `amount` lets a caller issue a partial-payment receipt (feature 021:
     standalone create_receipt) instead of always closing the full amount.
 
+    bugfix-028 A3 (2026-08-12): `payment_date` is REQUIRED and validated via
+    `_validate_payment_date` (same shared validator as create_combo_document/
+    create_transaction_account) - the money has already moved, so the date it
+    moved is a fact the payment line must carry, never silently "today". The
+    document's own top-level `date` (issue date, set below) stays today
+    regardless - a receipt can genuinely be issued today for a payment that
+    arrived on an earlier date.
+
     Feature 027 (REQ-INV-012): reuses `original`'s real client_id instead of
     rebuilding a bare-name client object - callers (create_receipt) MUST
     check `_extract_linked_client_id(original)` and refuse before calling
     this if it's None (a pre-feature, bare-name-only original).
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    validated_payment_date = _validate_payment_date(payment_date)
+    today = now_local().date().isoformat()
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
     total_amount = original.get("total")
@@ -788,7 +1117,7 @@ def _build_payment_receipt_payload(original: dict, amount: Optional[float] = Non
         "description": f"תשלום עבור חשבונית מספר {original_number or original_id}",
         "linkedDocumentIds": [original_id] if original_id else [],
         "client": {"self": False, "id": _extract_linked_client_id(original)},
-        "payment": [{"type": 1, "price": receipt_amount, "date": today}],
+        "payment": [{"type": 1, "price": receipt_amount, "date": validated_payment_date}],
     }
 
 
@@ -834,7 +1163,7 @@ def _build_combo_closing_payload(
     MUST check `_extract_linked_client_id(original)` and refuse before
     calling this if it's None (a pre-feature, bare-name-only original).
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = now_local().date().isoformat()
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
     total_amount = original.get("total")
@@ -946,12 +1275,24 @@ def close_transaction_account(
     if _extract_linked_client_id(original) is None:
         # Pre-feature, bare-name-only original - refuse rather than fall
         # back to rebuilding a bare-name client object (REQ-INV-013).
+        log_refusal(
+            "close_transaction_account",
+            "original_not_linked_to_client",
+            original_invoice_id=original_invoice_id,
+        )
         return format_original_not_linked_to_client()
 
     payload = _build_combo_closing_payload(
         original, amount=amount, description=description, vat_included=vat_included
     )
     combo_response = client.create_invoice(payload)
+    log_mutation(
+        "close_transaction_account",
+        payload=payload,
+        response=combo_response,
+        client_id=_extract_linked_client_id(original),
+        client_name=(original.get("client") or {}).get("name"),
+    )
 
     original_number = original.get("number", original_invoice_id)
     combo_number = combo_response.get("number", combo_response.get("id", ""))
@@ -964,8 +1305,8 @@ def close_transaction_account(
 def create_receipt(
     client: MorningClient,
     original_invoice_id: str,
+    payment_date: str,
     amount: Optional[float] = None,
-    payment_date: Optional[str] = None,
 ) -> str:
     """Create a standalone receipt ("קבלה", type 400) linked to an existing
     document, and return a Hebrew confirmation.
@@ -992,12 +1333,20 @@ def create_receipt(
     a new receipt regardless of current status - partial payments are a
     deliberate, repeatable real Morning capability.
 
+    bugfix-028 A3 (2026-08-12): `payment_date` is REQUIRED - money already
+    moved, so its real date is a fact to carry, never a silent "today"
+    (same reasoning, same shared `_validate_payment_date` validator, as
+    create_combo_document/create_transaction_account). The model may
+    legitimately land on "today" as the answer (a verbal "mark as paid" often
+    does mean today), but only after asking - never by skipping the question.
+
     Args:
         client: An authenticated MorningClient (injected).
         original_invoice_id: Morning document id of the invoice being paid.
+        payment_date: The real date the money moved, ISO YYYY-MM-DD (or
+            DD/MM/YYYY). Required - raises if missing, unparseable, or in
+            the future.
         amount: Optional override — defaults to the original's full total.
-        payment_date: Currently unused — payload uses today's date; reserved
-            for backdating support.
 
     Returns:
         A Hebrew confirmation string with the new receipt's number, or a
@@ -1012,7 +1361,10 @@ def create_receipt(
             something to pay). Strict positive check (only 305 allowed),
             matching close_transaction_account's own guard and the
             unsupported-type rejection the removed update_invoice_status
-            used to provide for any non-300/305 original.
+            used to provide for any non-300/305 original. Also raised (via
+            `_validate_payment_date`) if `payment_date` is missing,
+            unparseable, or in the future - except in the idempotent no-op
+            case below, where it's never even inspected.
         Any exception raised by `client.get_invoice` if `original_invoice_id`
         does not resolve to a real document (propagated, not swallowed).
     """
@@ -1027,15 +1379,29 @@ def create_receipt(
 
     if amount is None and original.get("status") in _CLOSED_STATUS_CODES:
         # Already paid — idempotent no-op, avoid creating a duplicate receipt.
+        # payment_date is deliberately never inspected here - nothing is
+        # actually being recorded on this path.
         return format_invoice_confirmation(Invoice.model_validate(original))
 
     if _extract_linked_client_id(original) is None:
         # Pre-feature, bare-name-only original - refuse rather than fall
         # back to rebuilding a bare-name client object (REQ-INV-013).
+        log_refusal(
+            "create_receipt",
+            "original_not_linked_to_client",
+            original_invoice_id=original_invoice_id,
+        )
         return format_original_not_linked_to_client()
 
-    payload = _build_payment_receipt_payload(original, amount=amount)
+    payload = _build_payment_receipt_payload(original, payment_date=payment_date, amount=amount)
     receipt_response = client.create_invoice(payload)
+    log_mutation(
+        "create_receipt",
+        payload=payload,
+        response=receipt_response,
+        client_id=_extract_linked_client_id(original),
+        client_name=(original.get("client") or {}).get("name"),
+    )
 
     original_number = original.get("number", original_invoice_id)
     receipt_number = receipt_response.get("number", receipt_response.get("id", ""))
@@ -1087,6 +1453,240 @@ def _resolve_client_by_name(client: MorningClient, name: str) -> Tuple[Optional[
     return None, candidates
 
 
+def _levenshtein(a: str, b: str) -> int:
+    """Standard edit distance (insertions/deletions/substitutions, unit
+    cost). No external dependency - this project has none for it."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    previous_row = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        current_row = [i]
+        for j, cb in enumerate(b, start=1):
+            cost = 0 if ca == cb else 1
+            current_row.append(
+                min(
+                    previous_row[j] + 1,  # deletion
+                    current_row[j - 1] + 1,  # insertion
+                    previous_row[j - 1] + cost,  # substitution
+                )
+            )
+        previous_row = current_row
+    return previous_row[-1]
+
+
+def _bag_equal_words(query: str, candidate_name: str) -> bool:
+    """Whether `query` and `candidate_name` are made of exactly the same
+    words (case-insensitive, geresh-normalized), regardless of order -
+    the real exactness criterion for the algorithm below (bugfix-039,
+    round 3, 2026-08-11): the caller may not have typed the words in the
+    same order Morning stored them, and that alone must never turn a
+    genuinely exact name into a refusal."""
+
+    def _bag(name: str) -> List[str]:
+        return sorted(_normalize_hebrew_geresh(w.strip().casefold()) for w in name.split() if w)
+
+    return _bag(query) == _bag(candidate_name)
+
+
+def _search_word_prefix(client: MorningClient, prefix: str) -> Dict[str, Client]:
+    """One real Morning /clients/search call for a single prefix string -
+    the one search primitive the algorithm below is built from."""
+    response = client.search_clients({"name": _normalize_hebrew_geresh(prefix)})
+    items = response.get("items") or []
+    candidates = [Client.model_validate(item) for item in items]
+    return {c.id: c for c in candidates if c.id}
+
+
+_COMMON_WORD_DISCOVERY_CAP = 10  # user decision, 2026-08-11 - see resolve_client_by_name's loop
+
+
+def _grow_word(client: MorningClient, word: str, pool_ids: Optional[Set[str]]) -> Dict[str, Client]:
+    """Grow `word`'s own prefix one letter at a time (intersected with
+    `pool_ids` if given - None means unconstrained), stopping the moment
+    the result narrows to exactly 1, or once the word's letters run out,
+    or immediately on 0. Returns whatever {client_id: Client} state is at
+    the point it stopped.
+
+    This single mechanism naturally covers a query word with an extra
+    trailing letter beyond a real, shorter stored word (e.g. "צורן" vs
+    stored "צור") without any separate truncation step: it stops growing
+    the instant "צור" (3 letters) already narrows to one candidate, and
+    never reaches "צורו"/"צורן" where a longer-than-stored prefix would
+    find nothing.
+
+    Starts at 2 letters, not 1 (optimization, user decision 2026-08-11): a
+    single letter always matches broadly (real sandbox observed: "D" alone
+    -> 1479 total matches) - it can never usefully narrow anything, it's
+    just a wasted call. `word` shorter than 2 letters returns {} outright
+    (nothing to grow).
+
+    Every step filters against the SAME original `pool_ids` throughout -
+    never against a running/self-accumulated set from this word's own
+    previous letter. This matters against the real API: Morning paginates
+    (observed: 25 items/page even when the true total is in the
+    thousands), so an earlier letter's own returned page is an arbitrary,
+    non-representative sample of the TRUE match set - filtering a later,
+    more specific letter's results against that arbitrary sample would
+    silently discard real candidates that simply weren't on that earlier
+    page (a real bug caught here, 2026-08-11, testing against the live
+    sandbox: a freshly-seeded, genuinely-unique-marker client was dropped
+    from its own discovery result entirely because an early single-letter
+    page didn't happen to include it). Growing the prefix further is
+    already inherently narrowing via Morning's own search semantics
+    (anything matching a longer prefix necessarily also matches every
+    shorter prefix of it) - no client-side re-intersection against a
+    previous, possibly-incomplete page is needed or correct.
+    """
+    if len(word) < 2:
+        return {}
+    prefix = word[:2]
+    results = _search_word_prefix(client, prefix)
+    if pool_ids is not None:
+        results = {cid: c for cid, c in results.items() if cid in pool_ids}
+    if len(results) <= 1:
+        return results  # 0 -> dead end; 1 -> unique, no benefit growing further
+    for ch in word[2:]:
+        prefix += ch
+        results = _search_word_prefix(client, prefix)
+        if pool_ids is not None:
+            results = {cid: c for cid, c in results.items() if cid in pool_ids}
+        if len(results) <= 1:
+            return results
+    return results  # word's own letters exhausted, still >1
+
+
+def resolve_client_by_name(client: MorningClient, query: str) -> Tuple[Optional[Client], List[Client]]:
+    """THE ONE client-name-resolution mechanism (bugfix-039, round 3, user
+    decision 2026-08-11: "this AND ONLY this is the way to find clients in
+    morning" - replaces the old _resolve_client_by_name_words/
+    _search_word_with_truncation pair and every ad-hoc "try whole-string,
+    then maybe fall back" pattern across every caller). Full algorithm
+    writeup and the standalone prototype it was proven against first:
+    specs/bugfixes/bugfix-039-list-invoices-skips-client-resolution.md.
+
+    Returns (exact_client_or_None, ordered_candidates) - same shape as the
+    old _resolve_client_by_name, but:
+    - candidates are NEVER filtered by relevance (user decision,
+      2026-08-11: independent per-word discovery surfacing an unrelated
+      client that only shares one common word - e.g. a common patronymic/
+      surname fragment - with the query is intentional, not a bug; a
+      future refinement may special-case very common Hebrew name-part
+      patterns, explicitly deferred, not part of this change)
+    - candidates ARE always ordered by Levenshtein distance to the query
+      (closest first), so a long list still shows the most plausible read
+      on top.
+
+    STEP 0 (cheap fast path, one call): the caller may have already given
+    the exact right name (word-order-independent) - check the whole
+    string at once before doing any of the real work below.
+
+    If that doesn't resolve exactly and the query is multi-word, a single
+    `for word in words:` pass (query order) does two things per word, in
+    the same iteration:
+    1. Grows an INTERSECTED pool (started unconstrained) via `_grow_word`
+       - the only phase that can conclude an EXACT match (a unique
+         candidate whose full stored words bag-equal every query word) or
+         kill the chain (0 results) or carry an ambiguous pool to the next
+         word.
+    2. Independently of that pool, grows this SAME word alone via
+       `_grow_word` again (unconstrained) - because a real candidate can
+       be invisible to the intersected chain (e.g. a client sharing only
+       the LAST of three query words with nothing in common on the first
+       two is invisible to a chain that already narrowed on those first
+       two) yet still worth surfacing as a "did you mean" option. Whatever
+       this word alone narrows to is added to the running candidate set.
+    The loop keeps going through every word regardless of whether the
+    intersected chain already died, specifically so every word still gets
+    its turn at independent discovery.
+
+    STEP FINAL: once an exact match is concluded VIA THE LOOP (not Step 0
+    - Step 0's own result is already a fresh, direct whole-string lookup,
+    so re-running the identical query again would be pure waste), one
+    more whole-string lookup on the resolved name re-confirms against
+    fresh data - the loop's own confirmation came from piecemeal per-word/
+    per-letter prefix searches, not one direct fetch of the full name.
+    """
+    query = _normalize_hebrew_geresh(query)
+    words = [w for w in query.split() if w]
+    if not words:
+        return None, []
+
+    # STEP 0 - already a fresh, direct lookup; no Step Final needed on top.
+    resolved, _ = _resolve_client_by_name(client, query)
+    if resolved is not None and _bag_equal_words(query, resolved.name):
+        return resolved, []
+
+    if len(words) < 2:
+        # Single-word queries stay a broad partial search (existing app
+        # policy elsewhere, e.g. list_invoices) - not this algorithm's
+        # concern for exactness.
+        candidates = list(_search_word_prefix(client, words[0]).values())
+        return None, _sorted_by_distance(query, candidates)
+
+    # SINGLE PASS over the words - exactness tracking and candidate
+    # discovery both happen per word, in the same loop.
+    pool_ids: Optional[Set[str]] = None
+    chain_dead = False
+    candidates: Dict[str, Client] = {}
+
+    for word in words:
+        if len(word) < 2:
+            # A 1-letter word can never usefully narrow anything (see
+            # _grow_word) - skip it entirely rather than spend a call on
+            # it, for both discovery and the intersecting chain (user
+            # decision, 2026-08-11).
+            continue
+
+        discovered = _grow_word(client, word, None)
+        if len(discovered) <= _COMMON_WORD_DISCOVERY_CAP:
+            candidates.update(discovered)
+        # else: this word alone matched more than _COMMON_WORD_DISCOVERY_CAP
+        # real clients even using its FULL length (never narrowed) - a
+        # common Hebrew name-part (patronymic "בן", common surnames like
+        # "כהן"/"לוי", common first names like "דוד") is exactly this
+        # shape: real, but not a useful identifying signal on its own, so
+        # none of its matches are added as candidates (user decision,
+        # 2026-08-11 - a deterministic threshold, not relevance scoring).
+        # Only applies to discovery; the intersecting chain below still
+        # uses this same word normally, since a common word CAN still
+        # correctly narrow to an exact match once combined with another
+        # word (e.g. "בן" + "גוריון").
+
+        if chain_dead:
+            continue
+
+        intersected = _grow_word(client, word, pool_ids)
+        if len(intersected) == 0:
+            chain_dead = True  # this word ordering can't reach an exact match
+            continue
+        if len(intersected) == 1:
+            (candidate,) = intersected.values()
+            if _bag_equal_words(query, candidate.name):
+                return _resolve_client_final(client, candidate)  # EXACT MATCH, done
+            chain_dead = True  # provably terminal (see _grow_word docstring), not exact
+            continue
+        pool_ids = set(intersected.keys())  # carry the ambiguous pool to the next word
+
+    return None, _sorted_by_distance(query, list(candidates.values()))
+
+
+def _sorted_by_distance(query: str, candidates: List[Client]) -> List[Client]:
+    """Closest-to-the-query first (Levenshtein, normalized) - orders,
+    never filters (see resolve_client_by_name's docstring)."""
+    q = _normalize_hebrew_geresh(query.strip().casefold())
+    return sorted(candidates, key=lambda c: _levenshtein(q, _normalize_hebrew_geresh(c.name.strip().casefold())))
+
+
+def _resolve_client_final(client: MorningClient, resolved: Client) -> Tuple[Optional[Client], List[Client]]:
+    """Fresh-data re-confirmation once exactness is concluded."""
+    confirm, _ = _resolve_client_by_name(client, resolved.name)
+    return (confirm or resolved), []
+
+
 def _is_exact_name_match(resolved_name: str, queried_name: str) -> bool:
     """Whether a resolved client's stored name is identical (case-
     insensitive, whitespace-trimmed, apostrophe/geresh-normalized) to what
@@ -1102,43 +1702,155 @@ def _is_exact_name_match(resolved_name: str, queried_name: str) -> bool:
     )
 
 
-class ClientResolution(NamedTuple):
-    """Result of resolving a Group A document-creation tool's free-text
-    client_name to a real Morning client (feature 027, REQ-INV-001/002/003/
-    005/011).
+def resolve_client_name(client: MorningClient, name: str) -> str:
+    """Resolve a free-text client name to Morning's real stored name and
+    return a Hebrew resolution report (client-name-resolution architecture
+    fix, bugfix-028 sub-piece, 2026-08-12, user decision). THE canonical,
+    sole entry point for fuzzy/word-growth client-name resolution (built on
+    `resolve_client_by_name`, bugfix-039 round 3) - supersedes calling that
+    engine directly from any caller-facing tool.
 
-    Exactly one of (client_id, refusal_message) is set:
-    - Resolved (0 or 1... well, exactly 1 match): client_id is set;
-      disclosure_name is set only when the match was non-exact (fuzzy/
-      substring), signalling the caller must disclose it before/with the
-      confirmation reply; refusal_message is None.
-    - Not found (0 matches) or ambiguous (>1 matches): client_id is None,
-      refusal_message holds the friendly Hebrew text to return as-is (no
-      document creation call should be made), disclosure_name is None.
+    MCP tool: resolve_client_name. Read-only - no approval wait
+    (REQ-CLIENT-008). The model MUST call this first, before any other tool
+    that needs one specific client, whenever a user's request references a
+    client by name - then pass the CONFIRMED, EXACT name back into the
+    target tool together with `name_resolved=True`.
+
+    Four outcomes, each a single Hebrew string:
+    - Exactly one EXACT match -> discloses the stored name; use it verbatim.
+    - Exactly one NON-exact match -> a closed yes/no confirmation question
+      (format_client_name_confirmation_question) - same contract every
+      other tool already used for this case.
+    - More than one match -> an ambiguous-candidates listing
+      (format_ambiguous_clients_message), Levenshtein-ordered.
+    - Zero matches -> a friendly "not found" message (format_client_not_found).
+      Unlike every tool that CONSUMES a resolved name, this does NOT raise
+      ClientNotFoundError - it is the exploratory FIRST call, before any
+      tool has been asked to act on a specific client, so a genuine
+      zero-match here is an ordinary, expected outcome of exploring a name,
+      not a failed mutation/lookup attempt (see `_raise_client_not_found`'s
+      docstring for the contrasting case).
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        name: Free-text client name (apostrophe/geresh-normalized before
+            resolution - see `_normalize_hebrew_geresh`).
+
+    Returns:
+        A Hebrew string: the resolved exact name (never the client_id -
+        REQ-CLIENT-018), a confirmation question, an ambiguous-candidates
+        list, or a "not found" message.
     """
-
-    client_id: Optional[str]
-    disclosure_name: Optional[str]
-    refusal_message: Optional[str]
-
-
-def _resolve_client_for_document_creation(client: MorningClient, client_name: str) -> ClientResolution:
-    """Resolve a Group A document-creation tool's client_name to a real
-    client_id, or a friendly refusal message (feature 027).
-
-    Reuses Feature 026's `_resolve_client_by_name`/`_is_exact_name_match`
-    unchanged - this is a thin combination of the two into the single
-    branch document-creation tools need, never a new Morning API call.
-    """
-    resolved, candidates = _resolve_client_by_name(client, client_name)
+    resolved, candidates = resolve_client_by_name(client, name)
     if resolved is not None:
-        disclosure_name = None if _is_exact_name_match(resolved.name, client_name) else resolved.name
-        return ClientResolution(client_id=resolved.id, disclosure_name=disclosure_name, refusal_message=None)
+        return format_client_name_resolved(resolved.name)
+    if len(candidates) == 1:
+        return format_client_name_confirmation_question(candidates[0].name)
     if candidates:
-        return ClientResolution(
-            client_id=None, disclosure_name=None, refusal_message=format_ambiguous_clients_message(candidates)
-        )
-    return ClientResolution(client_id=None, disclosure_name=None, refusal_message=format_client_not_found())
+        return format_ambiguous_clients_message(candidates)
+    return format_client_not_found()
+
+
+def _resolve_exact_client_name(client: MorningClient, name: str) -> Optional[Client]:
+    """Direct, exact (word-order-independent) lookup only - Step 0 of
+    resolve_client_by_name, reused directly: one Search Clients call on the
+    literal name, accepted only if it's a unique client whose stored name is
+    a word-for-word (order-independent) match. Never grows letters, never
+    picks a 'closest' candidate - that fuzzy work belongs to
+    resolve_client_name alone now."""
+    name = _normalize_hebrew_geresh(name)
+    resolved, _ = _resolve_client_by_name(client, name)
+    if resolved is not None and _bag_equal_words(name, resolved.name):
+        return resolved
+    return None
+
+
+def _require_resolved_client(
+    client: MorningClient, client_name: str, name_resolved: bool, tool_name: str
+) -> Client:
+    """The one gate every client-name-consuming tool shares (client-name-
+    resolution architecture fix, bugfix-028 sub-piece, 2026-08-12, user
+    decision: "these tools MUST GET a resolved name which matches").
+
+    Every tool built on this gate has exactly two outcomes: it returns a
+    real, resolved `Client`, or it raises (2026-08-12, user decision,
+    tightened after the original 028 B4(c) fix stopped short of applying
+    the same principle here: "the tool has no idea if resolve was called or
+    not - it's stupid - it takes what it got and tries. if it succeeds -
+    great. if it fails - it raises the exception according to what
+    failed."). There is no third "ordinary refusal text" outcome anymore -
+    that was the same shape of bug B4(c) already fixed for the
+    zero-candidate case, just left unfixed here originally.
+
+    Hard gate: name_resolved must be exactly True, or this raises
+    IMMEDIATELY, without attempting any Morning lookup at all - forcing the
+    model through resolve_client_name rather than letting a stale/guessed
+    name get lucky against Morning by accident. Once True is asserted, this
+    does ONLY an exact, word-order-independent lookup - no fuzzy/letter
+    growth, no disambiguation dialogue (that already happened, or should
+    have, in resolve_client_name). A multi-candidate OR zero-candidate
+    result under this exact-only mode are treated identically -
+    ClientNotFoundError - since the correct recovery for either is the
+    same: call resolve_client_name and retry.
+    """
+    if not name_resolved:
+        log_refusal(tool_name, "name_not_resolved", client_name=client_name)
+        raise ClientNameNotResolvedError(format_name_not_resolved())
+    resolved = _resolve_exact_client_name(client, client_name)
+    if resolved is None:
+        _raise_client_not_found(tool_name, client_name)
+    return resolved
+
+
+class ClientNotFoundError(ValueError):
+    """No client matched the name a document was asked to be created for.
+
+    bugfix-028 B4(c): this used to be returned as ordinary tool output with
+    `error=None`, indistinguishable from success at every layer above. In
+    production that let one ₪40,000 document be approved eight times, created
+    zero times, with the user never told the previous attempt had failed. The
+    tool was asked to create a document and did not create one - that is a
+    failure, and it has to be typed as one. Still raised here post-bugfix-039
+    (user decision, 2026-08-12): only the true zero-real-candidate case raises
+    - ambiguous and non-exact-single-match resolutions are genuine questions
+    for the user, not failures, and still return an ordinary refusal message.
+    """
+
+
+class ClientNameNotResolvedError(ValueError):
+    """The caller (the model) invoked a client-name-consuming tool without
+    first calling `resolve_client_name` (name_resolved wasn't True).
+
+    bugfix-028 B4(c) follow-up (2026-08-12, user decision): originally this
+    was returned as ordinary tool output ("please call resolve_client_name
+    first") with `error=None` - the exact same silent-failure shape B4(c)
+    already fixed for the zero-candidate case, just reintroduced here. A
+    distinct exception class from `ClientNotFoundError` on purpose (user:
+    "you can have many exception classes for the different kinds of errors
+    that can happen, if it's meaningful") - this is a caller-contract
+    violation (skipped a required step), not "this client doesn't exist";
+    logs/audits can tell the two apart even though both now surface as a
+    real MCP-level failure (see server.py's `_call_with_error_boundary`).
+    """
+
+
+def _raise_client_not_found(tool_name: str, client_name: str) -> NoReturn:
+    """The one place a genuine zero-candidate client-name resolution turns
+    into a failure (unification, 2026-08-12, user decision: "I want 1 way
+    and that every flow uses the same exact way" - previously
+    `_resolve_client_for_document_creation`'s raise, `get_client_details`'s
+    own `return format_client_not_found()`, and `list_invoices`'s silent
+    fall-through to a generic "no results" message were three different
+    mechanisms for the same underlying situation, with `list_invoices` not
+    even signaling anything about the client specifically). Every tool
+    that resolves one specific named client - whether to mutate it,
+    describe it, or list documents for it - now raises this same
+    exception, with the same message shape and the same audit-log entry,
+    so `errors.py`'s `friendly_error_message` produces an identical
+    user-facing message regardless of which tool was called.
+    """
+    log_refusal(tool_name, "client_not_found", client_name=client_name)
+    raise ClientNotFoundError(f"{format_client_not_found()} ({client_name})")
 
 
 def _extract_linked_client_id(original: dict) -> Optional[str]:
@@ -1243,24 +1955,44 @@ def list_clients(client: MorningClient, name: Optional[str] = None) -> str:
     return format_client_list(clients)
 
 
-def get_client_details(client: MorningClient, name: str) -> str:
+def get_client_details(client: MorningClient, name: str, name_resolved: bool = False) -> str:
     """Retrieve a single client's full detail record by name.
 
     MCP tool: get_client_details (contracts/get_client_details.json,
     user-stories.md US2). Read-only - no approval wait (REQ-CLIENT-008).
     Name-only lookup (REQ-CLIENT-002, analysis 2026-07-29: tax-ID lookup was
-    considered and dropped). Never guesses on ambiguous matches
-    (REQ-CLIENT-003/007) and never includes the internal client_id
-    (REQ-CLIENT-018). When resolved via a non-exact (partial/prefix) match,
-    explicitly discloses which client was found rather than silently
-    presenting details as if the reference were certain.
+    considered and dropped). Never includes the internal client_id
+    (REQ-CLIENT-018).
+
+    Client-name-resolution architecture fix (2026-08-12, user decision):
+    this tool no longer does its own fuzzy/word-growth matching or
+    disambiguation - that is entirely `resolve_client_name`'s job now (the
+    one, sole entry point for that). This tool requires `name_resolved=True`
+    (the caller must have already resolved the name via `resolve_client_name`)
+    and only ever accepts an exact, word-order-independent match - see
+    `_require_resolved_client`'s docstring for the full contract.
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        name: The client's exact, already-resolved name.
+        name_resolved: Must be True (asserting `resolve_client_name` was
+            already called with this name) or this refuses immediately,
+            attempting no Morning lookup at all.
+
+    Returns:
+        A Hebrew client-details string on an exact match, or a plain
+        procedural refusal string (name_resolved wasn't True) - see
+        `_require_resolved_client`.
+
+    Raises:
+        ClientNotFoundError: if name_resolved is True but the name doesn't
+            match a real client exactly (unification, 2026-08-12 - this
+            tool used to return a friendly string here, a different
+            mechanism from every other client-resolving tool for the same
+            situation; see `_raise_client_not_found`'s docstring).
     """
-    resolved, candidates = _resolve_client_by_name(client, name)
-    if resolved is not None:
-        return format_client_details(resolved, is_exact_match=_is_exact_name_match(resolved.name, name))
-    if candidates:
-        return format_ambiguous_clients_message(candidates)
-    return format_client_not_found()
+    resolved_client = _require_resolved_client(client, name, name_resolved, "get_client_details")
+    return format_client_details(resolved_client, is_exact_match=True)
 
 
 def _build_add_client_payload(
@@ -1321,7 +2053,17 @@ def add_client(
     validated_email = _validate_email(email)
     normalized_phone = _normalize_israeli_phone(phone)
     payload = _build_add_client_payload(normalized_name, validated_email, normalized_phone, tax_id)
-    client.add_client(payload)
+    response = client.add_client(payload)
+    # bugfix-036: the response was previously discarded outright, so the id
+    # Morning assigned the new client existed nowhere in this app. It still
+    # never reaches the caller (REQ-CLIENT-018) - only the log.
+    log_mutation(
+        "add_client",
+        payload=payload,
+        response=response,
+        client_id=(response or {}).get("id") if isinstance(response, dict) else None,
+        client_name=normalized_name,
+    )
     return f"נוצר לקוח חדש: {normalized_name}"
 
 
@@ -1354,54 +2096,68 @@ def update_client(
     email: Optional[str] = None,
     phone: Optional[str] = None,
     tax_id: Optional[str] = None,
+    name_resolved: bool = False,
 ) -> str:
     """Update an existing client's fields and return a Hebrew confirmation.
 
     MCP tool: update_client (contracts/update_client.json, user-stories.md
-    US4). `name` identifies WHICH client to update (resolved via
-    `_resolve_client_by_name` - never guesses on an ambiguous match,
-    REQ-CLIENT-003/007); `new_name`/`email`/`phone`/`tax_id` are the optional
-    fields being changed - at least one is required. Approval-gated at the
-    denidin-app layer (ai_handler.APPROVAL_REQUIRED_MCP_TOOLS).
+    US4). `new_name`/`email`/`phone`/`tax_id` are the optional fields being
+    changed - at least one is required. Approval-gated at the denidin-app
+    layer (ai_handler.APPROVAL_REQUIRED_MCP_TOOLS).
+
+    Client-name-resolution architecture fix (2026-08-12, user decision):
+    `name` identifies WHICH client to update, but this tool no longer does
+    its own fuzzy/word-growth matching or disambiguation - that is entirely
+    `resolve_client_name`'s job now. This tool requires `name_resolved=True`
+    (the caller must have already resolved the name via `resolve_client_name`)
+    and only ever accepts an exact, word-order-independent match - see
+    `_require_resolved_client`'s docstring for the full contract.
 
     Args:
         client: An authenticated MorningClient (injected).
-        name: Current name of the client to update (required, resolves the
-            target - apostrophe/geresh-normalized before resolution, see
-            `_normalize_hebrew_geresh`).
+        name: The client's exact, already-resolved current name.
         new_name: Optional new name value (apostrophe/geresh-normalized).
         email: Optional new email (validated).
         phone: Optional new phone (normalized to Israeli format).
         tax_id: Optional new Israeli business tax ID (ע"מ).
+        name_resolved: Must be True (asserting `resolve_client_name` was
+            already called with this name) or this refuses immediately,
+            attempting no Morning lookup at all.
 
     Returns:
-        A Hebrew confirmation string. Never includes the internal Morning
-        client_id (REQ-CLIENT-018).
+        A Hebrew confirmation string on an exact match (client actually
+        updated), or a plain procedural refusal string (name_resolved
+        wasn't True - see `_require_resolved_client`). Never includes the
+        internal Morning client_id (REQ-CLIENT-018).
 
     Raises:
+        ClientNotFoundError: if name_resolved is True but the name doesn't
+            match a real client exactly (bugfix-028 B4(c) - an update
+            approved against a nonexistent client must not look
+            indistinguishable from success).
         ValueError: if none of new_name/email/phone/tax_id is given, or if
             email/phone fails validation/normalization.
     """
     if not any([new_name, email, phone, tax_id]):
         raise ValueError("update_client requires at least one of new_name/email/phone/tax_id to change.")
 
-    resolved, candidates = _resolve_client_by_name(client, name)
-    if resolved is None:
-        if candidates:
-            return format_ambiguous_clients_message(candidates)
-        return format_client_not_found()
+    resolved_client = _require_resolved_client(client, name, name_resolved, "update_client")
 
-    is_exact_match = _is_exact_name_match(resolved.name, name)
     normalized_new_name = _normalize_hebrew_geresh(new_name) if new_name else None
     validated_email = _validate_email(email) if email else None
     normalized_phone = _normalize_israeli_phone(phone) if phone else None
     payload = _build_update_client_payload(normalized_new_name, validated_email, normalized_phone, tax_id)
-    client.update_client(resolved.id, payload)
+    response = client.update_client(resolved_client.id, payload)
+    log_mutation(
+        "update_client",
+        payload=payload,
+        response=response,
+        client_id=resolved_client.id,
+        client_name=normalized_new_name or name,
+    )
 
-    display_name = normalized_new_name or resolved.name
-    if is_exact_match:
-        return f"עודכנו פרטי הלקוח: {display_name}"
-    return f"מצאתי ועדכנתי את הלקוח הבא: {resolved.name}\nהפרטים שעודכנו: {display_name}"
+    display_name = normalized_new_name or name
+    return f"עודכנו פרטי הלקוח: {display_name}"
 
 
 def _resolve_period_dates(
@@ -1410,7 +2166,7 @@ def _resolve_period_dates(
     to_date: Optional[str] = None,
 ) -> tuple:
     """Resolve a friendly period name to a concrete (from_date, to_date) range."""
-    today = datetime.now(timezone.utc).date()
+    today = now_local().date()
 
     if period == "custom":
         if not (from_date and to_date):

@@ -29,6 +29,7 @@ from tests.e2e_helpers import (
     assert_metadata_bullets,
     assert_no_followups,
     validate_response_full,
+    validate_extraction_response,
     assert_image_path_persisted,
 )
 
@@ -184,7 +185,7 @@ class TestWhatsAppE2E:
         logger.info(f"Response length: {len(response)} chars")
         logger.info(f"FULL RESPONSE:\n{response}")
         
-        hebrew_ratio = validate_response_full(response)
+        hebrew_ratio = validate_extraction_response(response)
         logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}")
 
         # bugfix-009 (reopened 2026-07-30): the persisted session message for this
@@ -317,7 +318,7 @@ class TestWhatsAppE2E:
         logger.info(f"[test_e2e_hebrew_pdf_from_you] FULL RESPONSE:\n{response}")
         
         # Validate response against all 4 assertions
-        hebrew_ratio = validate_response_full(response)
+        hebrew_ratio = validate_extraction_response(response)
         logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}, Has סיכום:, Has metadata bullets, No follow-up questions")
     
     @pytest.mark.expensive
@@ -423,7 +424,7 @@ class TestWhatsAppE2E:
         logger.info(f"Response length: {len(response)} chars")
         logger.info(f"FULL RESPONSE:\n{response}")
         
-        hebrew_ratio = validate_response_full(response)
+        hebrew_ratio = validate_extraction_response(response)
         logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}")
     
 

@@ -15,18 +15,20 @@ integration contract this class fulfills.
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
-from zoneinfo import ZoneInfo
+
+from src.utils.time_utils import LOCAL_TZ, local_from_timestamp, now_local
 
 logger = logging.getLogger(__name__)
 
 # Events.csv's date/time columns are Asia/Jerusalem local time (confirmed with the
-# user 2026-07-29) - message_timestamp is stored UTC (CONSTITUTION SS II) and must be
-# converted at the point of formatting event_id/event_date/event_time only, never
-# stored as the canonical internal timestamp.
-ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
+# user 2026-07-29). As of bugfix-037 (2026-08-10) that is no longer a per-field
+# exception converted at the formatting boundary - it is what the whole system
+# uses, so message_timestamp/captured_at are local too and every field on a
+# persisted event now describes the same instant in the same zone.
+ISRAEL_TZ = LOCAL_TZ  # retained name; the canonical definition lives in time_utils
 
 # event_id letter prefix, matches Events.csv's existing convention exactly (verified
 # by direct inspection of all 1159 rows - see research.md). "H"/חשבונית is
@@ -191,17 +193,23 @@ class LedgerEventManager:
         datetime for the source message, falling back to processing time (with a
         WARNING) only if message_timestamp is genuinely absent - see spec.md Edge
         Cases. Returns (local_dt, pointer_ts_iso) where pointer_ts_iso is None iff
-        message_timestamp was None (the hard pointer itself is never guessed)."""
+        message_timestamp was None (the hard pointer itself is never guessed).
+
+        bugfix-037: pointer_ts_iso is now local (offset +03:00/+02:00) like every
+        other timestamp, so it agrees on its face with the event_date/event_time
+        derived from the same instant - reading 03:00:27+00:00 next to 06:00 used
+        to look like a 3-hour discrepancy that did not exist.
+        """
         if message_timestamp is not None:
-            pointer_ts_iso = datetime.fromtimestamp(message_timestamp, tz=timezone.utc).isoformat()
-            local_dt = datetime.fromtimestamp(message_timestamp, tz=timezone.utc).astimezone(ISRAEL_TZ)
+            local_dt = local_from_timestamp(message_timestamp)
+            pointer_ts_iso = local_dt.isoformat()
         else:
             logger.warning(
                 "message_timestamp=None - falling back to processing time for "
                 "date/time derivation only; the hard pointer itself is genuinely unknown"
             )
             pointer_ts_iso = None
-            local_dt = datetime.now(timezone.utc).astimezone(ISRAEL_TZ)
+            local_dt = now_local()
         return local_dt, pointer_ts_iso
 
     def build_agreement_id(
@@ -277,7 +285,7 @@ class LedgerEventManager:
         """
         event = dict(event)  # never mutate caller's dict
 
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = now_local().isoformat()
         local_dt, pointer_ts_iso = self._resolve_local_dt(message_timestamp)
 
         source_type = event.get("source_type")

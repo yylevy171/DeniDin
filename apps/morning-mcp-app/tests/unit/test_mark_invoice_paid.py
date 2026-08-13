@@ -21,7 +21,12 @@ Uses a fake MorningClient (dependency-injected, matching the real
 get_invoice/create_invoice contract) - this is mocking a third-party API
 boundary, not an internal component (CONSTITUTION.md §I/§V).
 """
+from datetime import timedelta
+
+import pytest
+
 from denidin_mcp_morning.tools import close_transaction_account, create_receipt
+from denidin_mcp_morning.utils.time_utils import now_local
 
 
 class _FakeMorningClient:
@@ -69,7 +74,7 @@ def test_type_305_still_issues_a_type_400_receipt():
     original = _raw_invoice("inv-305", doc_type=305, status_code=0)
     client = _FakeMorningClient(original)
 
-    create_receipt(client, "inv-305")
+    create_receipt(client, "inv-305", payment_date="2026-07-12")
 
     assert len(client.create_invoice_calls) == 1
     payload = client.create_invoice_calls[0]
@@ -101,7 +106,7 @@ def test_create_receipt_rejects_a_transaction_account_original():
     client = _FakeMorningClient(original)
 
     try:
-        create_receipt(client, "inv-300b")
+        create_receipt(client, "inv-300b", payment_date="2026-07-12")
         assert False, "Expected ValueError for a type-300 original passed to create_receipt"
     except ValueError as exc:
         assert "300" in str(exc)
@@ -118,7 +123,7 @@ def test_create_receipt_rejects_a_credit_note_original():
     client = _FakeMorningClient(original)
 
     try:
-        create_receipt(client, "inv-330")
+        create_receipt(client, "inv-330", payment_date="2026-07-12")
         assert False, "Expected ValueError for a type-330 original passed to create_receipt"
     except ValueError as exc:
         assert "330" in str(exc)
@@ -160,7 +165,7 @@ def test_already_closed_type_305_is_idempotent_no_op():
     original = _raw_invoice("inv-305-paid", doc_type=305, status_code=2)
     client = _FakeMorningClient(original)
 
-    create_receipt(client, "inv-305-paid")
+    create_receipt(client, "inv-305-paid", payment_date="2026-07-12")
 
     assert client.create_invoice_calls == [], "Already-closed original must not trigger a new receipt"
 
@@ -184,7 +189,57 @@ def test_partial_amount_create_receipt_ignores_idempotency_guard():
     original = _raw_invoice("inv-305-partial", doc_type=305, status_code=1)
     client = _FakeMorningClient(original)
 
-    create_receipt(client, "inv-305-partial", amount=25.0)
+    create_receipt(client, "inv-305-partial", payment_date="2026-07-12", amount=25.0)
 
     assert len(client.create_invoice_calls) == 1
     assert client.create_invoice_calls[0]["payment"][0]["price"] == 25.0
+
+
+# -------------------------------------------------------------------- A3
+# (2026-08-12): create_receipt's payment_date - mandatory, like
+# create_combo_document/create_transaction_account's own A3 requirement, and
+# validated by the same shared `_validate_payment_date` - never a silent
+# "today". Unlike a bank-deposit screenshot, a verbal "mark as paid" request
+# has no document to read a date from, so "today" is a genuinely likely real
+# answer here - but only once the model has actually asked and the user
+# confirmed it, never assumed.
+
+
+@pytest.mark.parametrize(
+    "bad_date",
+    [None, "", "not-a-date", "2026-13-45"],
+)
+def test_create_receipt_refuses_a_missing_or_unusable_payment_date(bad_date):
+    original = _raw_invoice("inv-305-nodate", doc_type=305, status_code=0)
+    client = _FakeMorningClient(original)
+
+    with pytest.raises(ValueError):
+        create_receipt(client, "inv-305-nodate", payment_date=bad_date)
+
+    assert client.create_invoice_calls == [], "No receipt should be created without a real payment date"
+
+
+def test_create_receipt_refuses_a_future_payment_date():
+    original = _raw_invoice("inv-305-future", doc_type=305, status_code=0)
+    client = _FakeMorningClient(original)
+    tomorrow = (now_local().date() + timedelta(days=1)).isoformat()
+
+    with pytest.raises(ValueError):
+        create_receipt(client, "inv-305-future", payment_date=tomorrow)
+
+    assert client.create_invoice_calls == [], "No receipt should be created for a future payment date"
+
+
+def test_create_receipt_uses_the_given_payment_date_not_today():
+    """The payment line must carry the REAL date given, not silently today -
+    the document's own top-level issue date stays today regardless (a
+    receipt can genuinely be issued today for a payment that arrived
+    earlier), mirroring create_combo_document's same distinction."""
+    original = _raw_invoice("inv-305-realdate", doc_type=305, status_code=0)
+    client = _FakeMorningClient(original)
+
+    create_receipt(client, "inv-305-realdate", payment_date="2026-07-12")
+
+    payload = client.create_invoice_calls[0]
+    assert payload["payment"][0]["date"] == "2026-07-12"
+    assert payload["date"] != "2026-07-12", "the document's own issue date should still be today"

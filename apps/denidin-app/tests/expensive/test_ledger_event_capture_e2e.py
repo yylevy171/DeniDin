@@ -45,9 +45,9 @@ Run ONE test at a time, with fresh explicit approval each time:
 
 import json
 import logging
+import re
 import threading
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import unquote
@@ -55,6 +55,7 @@ from urllib.parse import unquote
 import pytest
 
 from src.models.config import AppConfiguration
+from src.utils.time_utils import local_from_timestamp
 from tests.e2e_helpers import (
     create_real_notification,
     get_response,
@@ -158,11 +159,146 @@ class TestLedgerEventCaptureE2E:
         )
         return denidin.denidin_app
 
+    # Fixed webhook 'timestamp' epochs used across this class's tests (mirrored
+    # from each test's own notification literal) - these are FIXED, not "now",
+    # so every run maps to the exact same LedgerEventManager event_id bucket
+    # (letter+ddmmyy+hhmm). REQ-ID-003 only allows 10 seq-digit files per
+    # bucket; without cleanup, test_data/events/ accumulates one file per run
+    # and permanently exhausts the bucket after ~10 runs - the same bug that
+    # broke tests/billed/test_ledger_event_capture_text_billed.py 2026-08-10
+    # (bugfix-028 billed run), fixed there the same way.
+    _FIXED_MESSAGE_TIMESTAMPS = (
+        1770000200, 1770000300, 1770000400, 1770001300, 1770001400, 1770001500,
+    )
+
+    @classmethod
+    def _event_id_bucket_prefixes(cls) -> set:
+        """The event_id prefix (letter+ddmmyy+hhmm, sans seq digit) each fixed
+        timestamp above maps to, computed the same way LedgerEventManager does
+        (bugfix-037: via time_utils.local_from_timestamp) - so cleanup targets
+        exactly the files these tests could have produced, nothing else in
+        test_data/events/."""
+        return {
+            f"A{local_from_timestamp(ts).strftime('%d%m%y%H%M')}"
+            for ts in cls._FIXED_MESSAGE_TIMESTAMPS
+        }
+
+    @pytest.fixture(autouse=True)
+    def _clean_fixed_timestamp_events(self, config):
+        """Before AND after every test in this class: remove any previously-
+        persisted event file for this class's fixed-timestamp buckets, so
+        REQ-ID-003's 10-seq-digit cap never silently exhausts across repeated
+        runs again (see _FIXED_MESSAGE_TIMESTAMPS docstring above)."""
+        def _clean():
+            events_dir = Path(config.data_root) / "events"
+            if not events_dir.exists():
+                return
+            prefixes = self._event_id_bucket_prefixes()
+            for f in events_dir.glob("*.json"):
+                if any(f.stem.startswith(p) for p in prefixes):
+                    f.unlink()
+
+        _clean()
+        yield
+        _clean()
+
     @staticmethod
     def _fresh_chat_id(label: str) -> str:
         """A unique-per-run chat_id, so re-running a single test doesn't accumulate
         unbounded ledger events for a shared chat and confuse assertions."""
         return f"97250{uuid.uuid4().hex[:7]}_{label}@c.us"
+
+    @staticmethod
+    def _godfather_chat_id(config) -> str:
+        """bugfix-028: the deposit->document tests need a chat whose role actually
+        gets the Morning tools attached (RBAC-gated to godfather/admin), so they
+        cannot use a random `_fresh_chat_id`."""
+        phone = str(config.godfather_phone).lstrip("+")
+        return phone if phone.endswith("@c.us") else f"{phone}@c.us"
+
+    # bugfix-028: the payer named on Bank-test-image.jpg. Both deposit->document
+    # tests must resolve this name from the IMAGE's own extracted text (user,
+    # 2026-08-09: "use the extracted text for every data"), so it has to exist as
+    # a real Morning client for either test to be able to create anything.
+    BANK_IMAGE_PAYER = "עטיה רועי מאיר"
+
+    @staticmethod
+    def _ensure_client_exists(chat_id, name, id_prefix):
+        """Seed `name` as a real Morning client, but only if it isn't one already.
+
+        Idempotent on purpose: these tests can't invent a client name (it has to
+        be the one the screenshot actually shows), so a blind seed on every run
+        would pile up duplicates and eventually make the name ambiguous - at
+        which point the system would correctly start asking which one is meant
+        and the test would fail for a reason that has nothing to do with the bug.
+
+        Decided on the TOOL's output, not the model's prose - `get_client_details`
+        returning the not-found string is a fact; a sentence about it is a
+        paraphrase.
+        """
+        from tests.billed.denidin_mcp_e2e_helpers import (
+            _calls_for,
+            _seed_client_via_conversation,
+            _send_turn,
+        )
+
+        _, ai_response = _send_turn(
+            chat_id, f"תן לי את הפרטים של הלקוח {name}", id_prefix=f"{id_prefix}_LOOKUP"
+        )
+        lookups = _calls_for(ai_response, "get_client_details")
+        already_exists = bool(lookups) and "לא נמצא" not in (lookups[0]["output"] or "")
+        if already_exists:
+            logger.info(f"client {name!r} already exists - not re-seeding")
+            return
+        _seed_client_via_conversation(chat_id, name, id_prefix=f"{id_prefix}_SEED")
+
+    @staticmethod
+    def _assert_no_open_invoice_for(chat_id, name, id_prefix):
+        """Guard against cross-test interference: both deposit tests use the same
+        payer (the one on the screenshot), and their expected outcome DIFFERS
+        depending on whether an unpaid invoice for that payer already exists -
+        320 when none does, 400 when one does. A leftover open invoice from a
+        half-finished run would silently invert the expected result.
+        """
+        from tests.billed.denidin_mcp_e2e_helpers import _calls_for, _send_turn
+
+        _, ai_response = _send_turn(
+            chat_id, f"אילו חשבוניות פתוחות יש ל{name}?", id_prefix=f"{id_prefix}_PRECHECK"
+        )
+        listings = _calls_for(ai_response, "list_invoices")
+        output = (listings[0]["output"] or "") if listings else ""
+        assert "פתוח" not in output, (
+            f"precondition failed: {name!r} already has an unpaid invoice in the "
+            f"sandbox, so this deposit would correctly close it (a 400) instead of "
+            f"producing a new 320. Close it in Morning, then re-run. Listing: {output!r}"
+        )
+
+    @staticmethod
+    def _clear_chat_test_data(denidin_app, chat_id):
+        """bugfix-028 (user requirement, 2026-08-09): clear this chat's test data
+        before AND after, so a shared, non-random chat_id can't collide with a
+        previous run's events/session or leave duplicates behind for the next one.
+
+        Only ever touches test_data/ - the `denidin_app` fixture above already
+        refuses to run at all if LedgerEventManager.storage_dir is not under this
+        test's isolated data_root.
+        """
+        events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
+        for f in list(events_dir.glob("*.json")):
+            try:
+                with open(f, encoding='utf-8') as fh:
+                    data = json.load(fh)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if data.get("whatsapp_chat") == chat_id:
+                f.unlink()
+
+        session_manager = denidin_app.ai_handler.session_manager
+        if session_manager is not None:
+            try:
+                session_manager.clear_session(chat_id)
+            except AttributeError:
+                logger.warning("SessionManager has no clear_session - session data not cleared")
 
     @staticmethod
     def _events_for_chat(denidin_app, chat_id):
@@ -205,7 +341,9 @@ class TestLedgerEventCaptureE2E:
                 f"found {len(events)}: {events}"
             )
 
-        expected_ts_iso = datetime.fromtimestamp(expected_event_timestamp, tz=timezone.utc).isoformat()
+        # bugfix-037: message_timestamp is now persisted in Israel local time (with a
+        # real offset), not UTC - build the expected value the same way the app does.
+        expected_ts_iso = local_from_timestamp(expected_event_timestamp).isoformat()
         for record in events:
             assert record.get("message_timestamp") == expected_ts_iso, (
                 f"message_timestamp={record.get('message_timestamp')!r} does not match the "
@@ -504,16 +642,35 @@ class TestLedgerEventCaptureE2E:
             )
 
     def test_given_real_bank_deposit_image_then_full_fields_correctly_persisted(
-        self, denidin_app, http_server
+        self, denidin_app, http_server, config
     ):
         """Given a real bank-transfer confirmation screenshot (Bank-test-image.jpg:
         a Bank Hapoalim-style transfer, 12/07/2026, ₪1,500.00, from account holder
         עטיה רועי מאיר, note "יעוץ משפטי (הערת לקוח)"), When sent as a WhatsApp
         image, Then it's captured with source_type=בנק, event_subtype=הפקדה, and
-        amount normalized to the exact integer 1500 (T024b)."""
-        from denidin import handle_image_message
+        amount normalized to the exact integer 1500 (T024b).
 
-        chat_id = self._fresh_chat_id("image_bank_full")
+        **bugfix-028 (A1, A2-T3, A3-T2, A3b, B3-optionals), extended 2026-08-09
+        with the user's explicit sign-off to modify an already-approved test.**
+        Capture was never the whole story: this test used to stop at the ledger
+        event and never ask for the document the deposit implies, which is exactly
+        why four production invoices came out as the wrong document type, on the
+        wrong date, unpaid. It now continues into document creation and asserts
+        what Morning actually stored.
+
+        This makes the test dependent on a live Morning tunnel and on running as
+        the godfather (the Morning tools are RBAC-gated), unlike every other test
+        in this class.
+        """
+        from denidin import handle_image_message
+        from tests.billed.denidin_mcp_e2e_helpers import (
+            _calls_for,
+            _send_turn,
+            _send_turn_and_approve,
+        )
+
+        chat_id = self._godfather_chat_id(config)
+        self._clear_chat_test_data(denidin_app, chat_id)
         notification = create_real_notification({
             'typeWebhook': 'incomingMessageReceived',
             'timestamp': 1770001400,
@@ -552,6 +709,101 @@ class TestLedgerEventCaptureE2E:
         assert captured["amount"] == 1500, f"expected amount normalized to int 1500, got {captured['amount']!r}"
         assert captured["event_id"].startswith("B"), f"malformed event_id: {captured['event_id']!r}"
         self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
+
+        # ---------------- bugfix-028: the document the deposit implies ----------------
+        try:
+            # Asserted in the PERSISTED form, not the model's raw output: the
+            # model emits ISO (per capture_ledger_event's schema) and
+            # `_normalize_iso_date` converts it to this project's stored
+            # DD/MM/YYYY convention, matching `event_date` (REQ-DATA-005/007).
+            # Despite its name that helper normalizes FROM ISO, not to it.
+            assert captured.get("txn_date") == "12/07/2026", (
+                f"A3: the transaction date on the screenshot (12/07/2026) must be "
+                f"captured, got {captured.get('txn_date')!r} - the document date cannot "
+                f"be right if the deposit's own date was never established"
+            )
+
+            # Everything the document needs comes from the image's own extracted
+            # text - payer, amount, date, bank details (user, 2026-08-09). The
+            # request itself supplies nothing but the intent, and deliberately
+            # says "חשבונית", the ordinary word a user would use, NOT a document
+            # type: choosing the type is the system's job and is what A1 is about.
+            self._ensure_client_exists(chat_id, self.BANK_IMAGE_PAYER, id_prefix="B028_A1T1")
+            self._assert_no_open_invoice_for(chat_id, self.BANK_IMAGE_PAYER, id_prefix="B028_A1T1")
+
+            logger.info("WHEN the godfather asks for an invoice for that deposit")
+            ask_result, (reply, ai_response) = _send_turn_and_approve(
+                chat_id,
+                "תפיק חשבונית עבור זה",
+                id_prefix="B028_A1T1",
+            )
+            approval_text = ask_result[0] or ""
+
+            # The payer was never typed - it can only have come from the image.
+            assert self.BANK_IMAGE_PAYER.split()[0] in approval_text, (
+                f"the approval doesn't name the payer the screenshot shows "
+                f"({self.BANK_IMAGE_PAYER}) - the extracted text is not being used. "
+                f"Approval was: {approval_text!r}"
+            )
+
+            # A1: money already in the bank is never a bare 305.
+            assert not _calls_for(ai_response, "create_invoice"), (
+                f"A1: a deposit produced a plain tax invoice (305) - it leaves the "
+                f"money showing as unpaid. Calls: {ai_response.mcp_calls if ai_response else None!r}"
+            )
+            combo_calls = _calls_for(ai_response, "create_combo_document")
+            assert combo_calls, (
+                f"A1: expected a חשבונית מס/קבלה (320) for an already-received payment. "
+                f"Calls: {ai_response.mcp_calls if ai_response else None!r}"
+            )
+            assert combo_calls[0]["error"] is None, f"creation failed: {combo_calls[0]!r}"
+
+            # B3 optionals: what the user was asked to approve must carry the
+            # transaction date and the bank details, since both are known here.
+            for element, needle in (
+                ("transaction date", "12/07"),
+                ("bank details", "בנק"),
+            ):
+                assert needle in approval_text, (
+                    f"B3: the approval omits the {element} even though the screenshot "
+                    f"supplied it. Approval was: {approval_text!r}"
+                )
+
+            # A2-T3: a payment reference defaults to VAT included, stated explicitly.
+            assert "מע" in approval_text, (
+                f"A2: the VAT treatment is never stated. Approval was: {approval_text!r}"
+            )
+
+            details, _ = _send_turn(
+                chat_id, "תן לי את הפרטים המלאים של המסמך שהופק", id_prefix="B028_A1T1_VERIFY"
+            )
+            details = details or ""
+            # A2-T3: 1,500 arrived in the bank; 1,500 is what the document must hold.
+            assert "1,770" not in details and "1770" not in details, (
+                f"A2: the deposited 1,500 was inflated by 18%: {details!r}"
+            )
+            assert "1,500" in details or "1500" in details, (
+                f"A2: the document does not hold the deposited amount: {details!r}"
+            )
+            # A3-T2: the payment carries the deposit's own date, not today's.
+            assert "12/07/2026" in details or "2026-07-12" in details, (
+                f"A3: the payment line is dated the day the document was issued "
+                f"rather than the day the money moved (12/07/2026): {details!r}"
+            )
+            # A3b: booked as a bank transfer, not as cash.
+            assert "העברה בנקאית" in details, (
+                f"A3b: a bank deposit must be booked as העברה בנקאית (payment type 4), "
+                f"which is the only type Morning stores bank details on: {details!r}"
+            )
+        finally:
+            self._clear_chat_test_data(denidin_app, chat_id)
+
+    # NOTE (2026-08-10): the deposit-matching-an-existing-305 scenario (formerly
+    # A1-T2) has been MOVED to
+    # tests/expensive/test_group_b_reference_approval_e2e.py, since investigating
+    # its failure showed it depends on bugfix-038's fix (Group B approval
+    # reference data), not this bugfix's approved scope. See
+    # specs/bugfixes/bugfix-038-group-b-approval-missing-reference-data.md.
 
     def test_given_real_six_component_agreement_image_mor_ben_shaya_then_all_components_correctly_persisted(
         self, denidin_app, http_server

@@ -23,14 +23,24 @@ this location was created for this bugfix at the user's explicit direction). All
 causes approved 2026-08-09 (A3, A3b, B1, B2 as originally written; A1, A2, A4, B3, B4, B5 only
 after being reinvestigated and restated — original wording preserved below each, marked *as
 originally filed*). Test-gap analysis and the full `billed`/`expensive` test set approved the
-same day. Fixes implemented and the approved test set is green (unit 764 + 244, integration
-352, billed 4/4, expensive A1-T1 + 9/9 image classification) — see
-[`bugfix-028-HANDOFF.md`](bugfix-028-HANDOFF.md) for the live status snapshot, including the
-A1-T2 scenario carved out into `bugfix-038` once investigation showed it needed infrastructure
-outside this bugfix's approved scope.
+same day. Fixes implemented and merged across several sessions (`66f6334`, `57fbd40`, and this
+session's merge) — see [`bugfix-028-HANDOFF.md`](bugfix-028-HANDOFF.md) for the full live
+history, including the A1-T2 scenario carved out into `bugfix-038` once investigation showed it
+needed infrastructure outside this bugfix's approved scope.
 
-**No PR/merge for the code yet** — testing isn't considered fully complete. Only this
-`specs/` move (plus related doc updates) is intended to reach `master` ahead of the code.
+**As of 2026-08-13**: the full `tests/billed/` sweep is finished clean (90/90, 1 obsolete test
+deliberately removed, 1 environment-dependent skip, zero known failures) and the full
+`tests/expensive/` sweep (21 tests) is clean except for the one test that structurally belongs
+to `bugfix-038` (`test_given_a_deposit_matching_an_existing_tax_invoice_then_a_receipt_closes_it`,
+left red on purpose - not this bugfix's scope). `bugfix-038`'s own spec was substantially
+expanded this session (root cause + fix direction agreed, not yet implemented) after this
+sweep's own investigation surfaced that `close_transaction_account` duplicates
+`create_combo_document`'s entire payload-building logic - see that bugfix's own spec for the
+full finding. This bugfix (028) itself is not yet fully closed - remaining open items are
+tracked in the handoff's "Exact next steps" section.
+
+**PR #212** (opened 2026-08-13) carries this session's work (and the prior uncommitted sessions'
+work merged alongside it) to `master`.
 
 ## Date Opened
 2026-08-09

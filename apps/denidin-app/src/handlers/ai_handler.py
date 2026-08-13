@@ -5,8 +5,9 @@ Phase 5 (002+007): Memory system integration
 Phase 6: RBAC (Role-Based Access Control)
 """
 import json
+import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast, Optional, List, Dict
 
@@ -18,8 +19,12 @@ from tenacity import (
     retry_if_exception_type
 )
 from src.models.config import AppConfiguration
-from src.models.message import WhatsAppMessage, AIRequest, AIResponse
+from src.models.message import (
+    WhatsAppMessage, AIRequest, AIResponse,
+    NO_REPLY_SENTINEL as _NO_REPLY_SENTINEL,
+)
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
+from src.utils.time_utils import now_local, local_from_timestamp
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_manager import MemoryManager
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
@@ -41,7 +46,12 @@ MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # per runtime_constitution.md's group-etiquette guidance) - double-bracketed to make
 # accidental collision with genuine Hebrew conversational output as close to
 # impossible as a plain-text sentinel can get.
-NO_REPLY_SENTINEL = "[[NO_REPLY]]"
+#
+# bugfix-028 B5: the definition now lives in src.models.message, because AIResponse
+# itself enforces the response-owed contract and a model may not import a handler.
+# Re-exported here so every existing `from src.handlers.ai_handler import
+# NO_REPLY_SENTINEL` keeps working.
+NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
 
 def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
     """bugfix-024: rewrite an @-mention of DeniDin's own WhatsApp number (WhatsApp's
@@ -106,6 +116,7 @@ APPROVAL_REQUIRED_MCP_TOOLS = (
 NO_APPROVAL_MCP_TOOLS = (
     "list_invoices", "get_invoice_details", "get_financial_summary",
     "download_invoice_pdf", "list_clients", "get_client_details",
+    "resolve_client_name",
 )
 
 
@@ -133,7 +144,7 @@ def _build_pending_approval_fallback_text(tool_name: str, arguments_json: str) -
     """
     generic = (
         "יש פעולה הממתינה לאישורך לפני שהיא מתבצעת. "
-        "השב/י \"כן\" כדי לאשר, או כל תשובה אחרת כדי לבטל."
+        "אישור — כן/לא?"
     )
     try:
         args = json.loads(arguments_json) if arguments_json else {}
@@ -169,6 +180,133 @@ def _build_pending_approval_fallback_text(tool_name: str, arguments_json: str) -
     return generic
 
 
+_DOCUMENT_TYPE_LABELS = {
+    "create_invoice": "חשבונית מס",
+    "create_transaction_account": "חשבון עסקה",
+    "create_combo_document": "חשבונית מס/קבלה",
+    "create_credit_note": "חשבונית זיכוי",
+    "create_receipt": "קבלה",
+    "close_transaction_account": "חשבונית מס/קבלה (סגירת חשבון עסקה)",
+}
+
+_PAYMENT_METHOD_LABELS = {
+    "bank_transfer": "העברה בנקאית",
+    "cash": "מזומן",
+    "cheque": "צ׳ק",
+    "credit_card": "כרטיס אשראי",
+    "paypal": "פייפאל",
+    "bit": "ביט",
+}
+
+APPROVAL_QUESTION = "אישור — כן/לא?"
+
+
+def _format_date_for_display(raw: str) -> str:
+    """bugfix-028: render any date in the approval block as DD/MM/YYYY,
+    matching the document-date line built a few lines above this call site.
+
+    `payment_date` arrives here as whatever the model passed to the Morning
+    tool - ISO (the tool's own required format, per `_validate_payment_date`
+    in morning-mcp-app) - and was previously echoed verbatim. That produced a
+    single approval message showing "תאריך המסמך: 09/08/2026" next to "תאריך
+    העסקה: 2026-07-12" - two different date formats side by side, confusing
+    for exactly the non-technical user this block exists to inform. Falls
+    back to the raw string on anything unparseable rather than hiding it.
+    """
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except (ValueError, TypeError):
+        return raw
+
+
+def _build_pending_approval_details(tool_name: str, arguments_json: str) -> str:
+    """bugfix-028 B3/A4: state EXACTLY what will be created, every time.
+
+    This is not a fallback. Before this, the message a user was asked to approve
+    was either the model's own free narration or - when it narrated nothing, as
+    it did on 22 turns in the 7-9 Aug window - a one-line string built from tool
+    arguments. Neither was guaranteed to state what the document would be, so a
+    user approved figures that did not match what got created (₪2,360 approved,
+    ₪2,784.80 stored) and consecutive attempts were byte-identical.
+
+    Mandatory in every document-creation approval (user, 2026-08-09): document
+    type, document date, client, amount, VAT treatment, purpose. Optional when
+    known: bank details, transaction date, reference invoice number. An element
+    that is missing is shown as such rather than omitted - "not stated" is
+    information too, and silently dropping it is how the ₪40,000 request lost
+    both its purpose and its "לפני מע״מ".
+
+    Never raises: it runs on the response-handling hot path.
+    """
+    try:
+        args = json.loads(arguments_json) if arguments_json else {}
+    except (json.JSONDecodeError, TypeError):
+        args = {}
+    if not isinstance(args, dict):
+        args = {}
+
+    if tool_name == "add_client":
+        return (
+            f"📋 לאישור — לקוח חדש:\n"
+            f"שם: {args.get('name', '(חסר)')}\n"
+            f"מייל: {args.get('email', '(חסר)')}\n"
+            f"טלפון: {args.get('phone', '(חסר)')}\n\n{APPROVAL_QUESTION}"
+        )
+    if tool_name == "update_client":
+        changed = [f"{k}: {v}" for k, v in args.items() if k != "name" and v]
+        return (
+            f"📋 לאישור — עדכון לקוח:\n"
+            f"לקוח: {args.get('name', '(חסר)')}\n"
+            f"שינויים: {', '.join(changed) if changed else '(לא צוינו)'}\n\n{APPROVAL_QUESTION}"
+        )
+
+    doc_label = _DOCUMENT_TYPE_LABELS.get(tool_name)
+    if doc_label is None:
+        return f"יש פעולה הממתינה לאישורך לפני שהיא מתבצעת.\n\n{APPROVAL_QUESTION}"
+
+    today = now_local().date().strftime("%d/%m/%Y")
+    amount = args.get("amount")
+    vat_included = args.get("vat_included")
+    if vat_included is True:
+        vat_label = "כולל מע״מ"
+    elif vat_included is False:
+        vat_label = "לא כולל מע״מ"
+    else:
+        vat_label = "(לא צוין — יש להבהיר לפני ההפקה)"
+
+    lines = [
+        "📋 לאישור:",
+        f"סוג מסמך: {doc_label}",
+        f"תאריך המסמך: {today}",
+        f"לקוח: {args.get('client_name') or '(מהמסמך המקושר)'}",
+        f"סכום: {amount if amount is not None else '(חסר)'} ₪",
+        f"מע״מ: {vat_label}",
+        f"עבור: {args.get('description') or '(לא צוין)'}",
+    ]
+
+    # Optionals - shown only when they actually exist (user, 2026-08-09).
+    if args.get("payment_date"):
+        lines.append(f"תאריך העסקה: {_format_date_for_display(args['payment_date'])}")
+    method = args.get("payment_method")
+    if method:
+        lines.append(f"אמצעי תשלום: {_PAYMENT_METHOD_LABELS.get(method, method)}")
+    bank_bits = [
+        f"בנק {args['bank_number']}" if args.get("bank_number") else "",
+        f"סניף {args['bank_branch']}" if args.get("bank_branch") else "",
+        f"חשבון {args['bank_account']}" if args.get("bank_account") else "",
+    ]
+    bank_bits = [b for b in bank_bits if b]
+    if bank_bits:
+        lines.append(f"פרטי בנק: {', '.join(bank_bits)}")
+    if args.get("transaction_reference"):
+        lines.append(f"אסמכתה: {args['transaction_reference']}")
+    if args.get("invoice_number") or args.get("original_invoice_number"):
+        ref = args.get("invoice_number") or args.get("original_invoice_number")
+        lines.append(f"חשבונית מקושרת: {ref}")
+
+    return "\n".join(lines) + f"\n\n{APPROVAL_QUESTION}"
+
+
 # Free-form affirmative replies recognized as approval of a pending MCP
 # document-creation request (Feature 022) - matched against the trimmed,
 # casefolded message (or its leading token), not as a substring-anywhere
@@ -179,6 +317,12 @@ _AFFIRMATIVE_REPLIES = {
     # Feature 046: additional common Hebrew affirmatives - "מאשר"/"מאשרת" ("I
     # confirm", masc./fem.) plus "בטח"/"סבבה", not previously recognized.
     "מאשר", "מאשרת", "בטח", "סבבה",
+    # bugfix-028 B1: the prompt itself ended "— לאשר?" while this set had only
+    # "אישור", so the prompt invited a word the parser rejected. Live: the user
+    # answered "לאשר" twice, got the identical prompt back twice, and gave up.
+    # The prompt is now a closed question (see _build_pending_approval_details),
+    # but the word it used to invite must still be understood.
+    "לאשר",
 }
 
 
@@ -194,8 +338,24 @@ def _is_affirmative_reply(text: str) -> bool:
         return False
     if normalized in _AFFIRMATIVE_REPLIES:
         return True
-    leading_token = normalized.split()[0].strip(".,!?")
-    return leading_token in _AFFIRMATIVE_REPLIES
+    # bugfix-028 B2: the leading token is found by searching for the first RUN OF
+    # WORD CHARACTERS rather than by splitting on whitespace, because WhatsApp
+    # prefixes RTL text with Unicode bidi controls (U+200F RIGHT-TO-LEFT MARK and
+    # friends) that are NOT whitespace - `'‏'.isspace()` is False - so
+    # `.strip().split()[0]` yielded `'‏כן'` and missed this set entirely.
+    # Verified live: 2026-08-09 04:00:45 UTC the user sent `‏כן` and the log
+    # recorded approve=False; 8 messages in that window carried bidi controls.
+    #
+    # Deliberately NOT a list of characters to strip (rejected by the user) and
+    # deliberately NOT a substring-anywhere check: `\w` excludes every bidi
+    # control, punctuation and quote mark by definition, so no enumeration is
+    # needed, while anchoring on the FIRST word still refuses "לא נכון, אל תפיק"
+    # - a containment test would read that as approval and create a real
+    # financial document against an explicit refusal.
+    leading_match = re.search(r"\w+", normalized, flags=re.UNICODE)
+    if leading_match is None:
+        return False
+    return leading_match.group(0) in _AFFIRMATIVE_REPLIES
 
 # Ledger Event Recognition (runtime_constitution.md) - a local OpenAI function tool,
 # NOT a remote MCP server: nothing is executed anywhere when the model "calls" it. The
@@ -853,9 +1013,9 @@ class AIHandler:
         # to 2023). This is appended at reply time, computed per call in UTC
         # (CONSTITUTION §II) — NOT templated into the constitution file.
         if today_timestamp is not None:
-            today = datetime.fromtimestamp(today_timestamp, tz=timezone.utc).strftime("%Y-%m-%d")
+            today = local_from_timestamp(today_timestamp).strftime("%Y-%m-%d")
         else:
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            today = now_local().strftime("%Y-%m-%d")
         return (
             f"{constitution}\n\n---\n"
             f"THE CURRENT DATE IS {today} (UTC). Treat this as the authoritative "
@@ -1233,6 +1393,37 @@ class AIHandler:
 
         return followup, event_ids
 
+    @staticmethod
+    def _extract_mcp_error_text(call) -> str:
+        """Pull human-readable failure text off a Responses API `mcp_call`
+        item's `.error` field (client-name-resolution root-cause fix
+        follow-up, 2026-08-12).
+
+        Before this fix, a failed MCP tool call still reported `error=None`
+        and carried its failure text in `.output`, indistinguishable from
+        success - `.error` was never populated by anything upstream. Now
+        that morning-mcp-app's tools raise real, typed failures instead of
+        returning ordinary refusal text, a failed call has `output=None` and
+        a real `.error` object instead - confirmed live (real OpenAI call,
+        real MCP server, no mocking): `error` is a dict shaped
+        `{"type": "mcp_tool_execution_error", "content": [{"type": "text",
+        "text": "<our friendly message>"}]}`. Without this, the B4(b)
+        zero-execution failure-detail extraction below would silently lose
+        the actual reason (falling through to a fully generic message)
+        every time, since it only ever looked at `.output`.
+        """
+        error = getattr(call, "error", None)
+        if not error:
+            return ""
+        content = error.get("content") if isinstance(error, dict) else getattr(error, "content", None)
+        if not content:
+            return ""
+        for block in content:
+            text = block.get("text") if isinstance(block, dict) else getattr(block, "text", None)
+            if text:
+                return str(text)
+        return ""
+
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
                            user_obj, user_role: str, sender: Optional[str],
                            recipient: Optional[str], tools: Optional[List[Dict]]) -> AIResponse:
@@ -1336,7 +1527,7 @@ class AIHandler:
                 tool_name=ar.name,
                 arguments=ar.arguments,
                 server_label=ar.server_label,
-                created_at=datetime.now(timezone.utc).isoformat(),
+                created_at=now_local().isoformat(),
             )
             self.pending_approval_manager.set(effective_chat_id, new_pending)
             logger.info(
@@ -1347,24 +1538,28 @@ class AIHandler:
                 f"Pending MCP approval created for chat={effective_chat_id}, "
                 f"tool={ar.name}, request={request.request_id}"
             )
-            if not response_text.strip():
-                # Observed live (smoke test, 2026-07-23): a turn that produces
-                # an mcp_approval_request can come back with NO message output
-                # item at all (response.output_text == "") - the constitution
-                # tells the model to narrate before asking, but that's prompt
-                # guidance, not a guarantee. Without this fallback, the user
-                # would get a silent/empty WhatsApp reply while the action
-                # sits pending - never leave them with no signal at all.
-                # Build a specific message from the pending approval's own
-                # arguments (2026-07-30 finding: a fully generic fallback left
-                # the user unable to tell WHICH client/invoice was pending,
-                # even though that info was already sitting right there).
-                response_text = _build_pending_approval_fallback_text(ar.name, ar.arguments)
+            # bugfix-028 B3: the authoritative statement of what will be created
+            # is appended EVERY time, not only when the model stayed silent. The
+            # model's narration is conversation; this is the record of the action
+            # being authorised, and the user must see the same fields in the same
+            # place on every approval - including the ones the model's own
+            # phrasing dropped (in production: "לפני מע״מ" and the purpose).
+            details = _build_pending_approval_details(ar.name, ar.arguments)
+            if response_text.strip():
+                response_text = f"{response_text.strip()}\n\n{details}"
+            else:
+                response_text = details
                 logger.warning(
                     f"Model produced no narrating text alongside a pending "
-                    f"approval for request {request.request_id} - using "
-                    f"fallback confirmation prompt."
+                    f"approval for request {request.request_id} - the approval "
+                    f"details block is the entire reply."
                 )
+
+            # (The former "model narrated nothing" fallback that lived here is
+            # gone: _build_pending_approval_details above now runs on every
+            # approval turn, so response_text can no longer be empty at this
+            # point. `_build_pending_approval_fallback_text` is kept as the
+            # one-line summary form used elsewhere.)
         elif approval_requests and not effective_chat_id:
             logger.warning(
                 f"[022] mcp_approval_request found but effective_chat_id is falsy "
@@ -1798,6 +1993,41 @@ class AIHandler:
                 )
                 self.pending_approval_manager.clear(effective_chat_id)
                 return self._create_fallback_response(request.request_id, APPROVAL_POSSIBLY_DUPLICATED)
+
+            if not approved_tool_executions:
+                # bugfix-028 B4(b): the approved tool ran ZERO times. The guard
+                # above has always caught "more than once"; nothing caught "not
+                # at all", and nothing counted failures across turns - so the
+                # same ₪40,000 document was approved eight times, created never,
+                # and the user was re-asked an identical question every time with
+                # no hint that the previous attempt had failed.
+                #
+                # The pending approval is CLEARED rather than left in place: a
+                # retry of the identical request would fail identically, and
+                # leaving it pending is what produced the loop. The user is told
+                # plainly, with whatever the tool actually said.
+                failure_detail = ""
+                for call in executed_calls:
+                    output = getattr(call, "output", None)
+                    if output:
+                        failure_detail = f" ({str(output)[:200]})"
+                        break
+                    error_text = self._extract_mcp_error_text(call)
+                    if error_text:
+                        failure_detail = f" ({error_text[:200]})"
+                        break
+                logger.error(
+                    f"[022] APPROVED TOOL NEVER RAN: chat={effective_chat_id!r}, "
+                    f"tool={pending.tool_name!r}, approval_request_id={pending.approval_request_id!r} "
+                    f"produced 0 executions of the approved tool (expected exactly 1). "
+                    f"All mcp_calls: {executed_calls!r}"
+                )
+                self.pending_approval_manager.clear(effective_chat_id)
+                return self._create_fallback_response(
+                    request.request_id,
+                    f"אישרת, אבל הפעולה לא בוצעה בפועל{failure_detail}. "
+                    f"לא נוצר שום מסמך. נסי שוב או ספרי לי איך להמשיך."
+                )
 
             self.pending_approval_manager.clear(effective_chat_id)
             logger.info(f"[022] Approved and cleared pending for chat={effective_chat_id!r}")

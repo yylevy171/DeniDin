@@ -6,6 +6,7 @@ Uses a fake MorningClient (dependency-injected, matching the real
 internal component (CONSTITUTION.md §I/§V), mirroring the established
 pattern in test_tools_client_management.py.
 """
+import pytest
 import tiktoken
 
 from denidin_mcp_morning import tools
@@ -24,10 +25,19 @@ class _FakeMorningClient:
         # call order (page 1 first, then page 2, ...).
         self._responses = responses
         self.list_invoices_calls = []
+        self.search_clients_calls = []
 
     def list_invoices(self, params=None):
         self.list_invoices_calls.append(params or {})
         return self._responses[len(self.list_invoices_calls) - 1]
+
+    def search_clients(self, payload=None):
+        # No test in this file exercises a client_name that actually
+        # resolves - only the not-found/not-resolved paths, which need
+        # every prefix/word lookup resolve_client_by_name makes to come
+        # back empty, same as a genuinely nonexistent client would.
+        self.search_clients_calls.append(payload or {})
+        return {"items": [], "total": 0}
 
 
 def _raw_document(number: str, client_name: str = "Test Client") -> dict:
@@ -127,6 +137,56 @@ def test_list_invoices_zero_matches_returns_unchanged_no_results_message():
     result = tools.list_invoices(client)
 
     assert result == "לא נמצאו חשבוניות התואמות את החיפוש."
+
+
+def test_list_invoices_multi_word_client_name_not_found_raises():
+    """Unification (2026-08-12, user decision): a multi-word client_name
+    that resolves to zero real clients used to fall through silently to
+    the raw query below, which also finds nothing but only ever produces
+    a generic "no invoices matched" message - never telling the user
+    their CLIENT specifically wasn't found. Now it raises the same
+    ClientNotFoundError every other client-resolving tool raises. Requires
+    name_resolved=True (architecture fix, 2026-08-12) - the caller must
+    have already gone through resolve_client_name."""
+    client = _FakeMorningClient([_page_response([], total=0, page=1, pages=1)])
+
+    with pytest.raises(tools.ClientNotFoundError) as exc_info:
+        tools.list_invoices(client, client_name="Nonexistent Client XYZ", name_resolved=True)
+
+    assert "לא נמצא" in str(exc_info.value) or "אין" in str(exc_info.value)
+    assert client.list_invoices_calls == []  # never even reaches the raw query
+
+
+def test_list_invoices_multi_word_client_name_not_resolved_refuses_without_any_lookup():
+    """Architecture fix (2026-08-12): list_invoices no longer does its own
+    fuzzy/word-growth matching for a multi-word client_name - it requires
+    name_resolved=True and refuses immediately, with zero Morning calls at
+    all (neither search_clients nor list_invoices), otherwise. Follow-up
+    (2026-08-12): this is now a real raise, not ordinary refusal text - two
+    outcomes only, succeed or raise."""
+    client = _FakeMorningClient([_page_response([], total=0, page=1, pages=1)])
+
+    with pytest.raises(tools.ClientNameNotResolvedError) as exc_info:
+        tools.list_invoices(client, client_name="Nonexistent Client XYZ")
+
+    assert "resolve_client_name" in str(exc_info.value)
+    assert client.search_clients_calls == []
+    assert client.list_invoices_calls == []
+
+
+def test_list_invoices_single_word_client_name_is_untouched_by_the_gate():
+    """Regression: a single-word client_name is a deliberate plain substring
+    search (this tool's own long-standing policy, unrelated to the
+    resolution architecture) - it must NOT require name_resolved, and must
+    NOT go through search_clients at all, regardless of name_resolved."""
+    item = _raw_document("1", client_name="Cohen Industries")
+    client = _FakeMorningClient([_page_response([item], total=1, page=1, pages=1)])
+
+    result = tools.list_invoices(client, client_name="Cohen")
+
+    assert "חשבונית #1" in result
+    assert client.search_clients_calls == []  # never resolved - single word, untouched
+    assert client.list_invoices_calls == [{"clientName": "Cohen"}]
 
 
 # ============================================================================
