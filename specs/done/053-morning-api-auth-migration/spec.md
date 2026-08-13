@@ -8,7 +8,7 @@ blocked without further warning.
 **Status**: Done — implemented, tested (22 new unit tests, 3 new + several updated real sandbox
 integration tests, all green), and verified live via a real dev-environment smoke test (real
 OpenAI call → real MCP tool call → real Morning sandbox document creation, through the actual
-rebuilt `morning-mcp-app-dev` container). Merging to master.
+rebuilt `morning-mcp-app-dev` container). Merged to master (PR #218).
 **Input**: User report — a deprecation warning shown in Morning's own login UI, corroborated by
 real primary-source research this session (see Origin below)
 
