@@ -13,7 +13,11 @@ from whatsapp_chatbot_python import Notification
 from openai import OpenAI
 from src.models.config import AppConfiguration
 from src.utils.logger import get_logger
-from src.utils.green_api_bot import DeniDinGreenAPIBot, mark_message_read
+from src.utils.green_api_bot import (
+    DeniDinGreenAPIBot,
+    mark_message_read,
+    send_typing_indicator,
+)
 from src.constants.error_messages import (
     APP_NOT_READY_RETRY_LATER,
     UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
@@ -431,6 +435,17 @@ def _process_conversational_message(notification: Notification) -> None:
         ai_request = denidin_app.ai_handler.create_request(message, user_phone=group_user_phone)
         logger.debug(f"{tracking} Created AI request {ai_request.request_id}")
 
+        # Feature 048: show WhatsApp's typing indicator while DeniDin works on a reply to
+        # this turn - fires on every inbound conversational turn uniformly, including a
+        # user's yes/no reply to a pending approval (same entry point, no special-casing
+        # needed - see user-stories.md US1 scenario 4). Best-effort/log-only; skipped for
+        # blocked senders (mirrors feature 045's read-receipt precedent). Single call, no
+        # renewal (spec.md Q1) - a renewal loop was tried and reverted 2026-08-13 after live
+        # testing surfaced an unresolved scheduling delay; accepted limitation that the
+        # indicator may lapse before the reply arrives on turns slower than ~20s.
+        is_blocked = denidin_app.ai_handler.user_manager.get_user(message.sender_id).is_blocked
+        send_typing_indicator(bot, message.chat_id, is_blocked)
+
         # Get AI response (with retry logic and fallbacks built-in)
         # Feature 039: pass the resolved display name (not the raw WhatsApp id) as
         # sender, so Message.sender/recipient hold a readable name, not a phone
@@ -497,6 +512,30 @@ def _process_conversational_message(notification: Notification) -> None:
                     f"Failed to send fallback message (no tracking available): {fallback_error}",
                     exc_info=True
                 )
+
+
+def _process_media_message(notification: Notification) -> None:
+    """
+    Feature 048 (2026-08-13, corrected same day): shared wrapper around
+    WhatsAppHandler.handle_media_message that adds the typing indicator around media
+    processing (images, documents, video, audio) - originally scoped OUT of this feature
+    (spec.md Q2), which was wrong: "typing while processing" plainly includes media, not
+    just conversational turns. WhatsAppHandler has no `bot`/API reference of its own (only
+    MediaHandler), so this lives here at the same level as _process_conversational_message
+    rather than inside the handler itself - mirrors that function's shape, not its full
+    error handling (handle_media_message already has its own failure path via
+    FAILED_TO_PROCESS_FILE_DEFAULT).
+
+    Args:
+        notification: Green API notification object containing media message data
+    """
+    from src.models.message import WhatsAppMessage  # local import - matches existing style
+
+    message = WhatsAppMessage.from_notification(notification)
+    is_blocked = denidin_app.ai_handler.user_manager.get_user(message.sender_id).is_blocked
+    send_typing_indicator(bot, message.chat_id, is_blocked)
+
+    denidin_app.whatsapp_handler.handle_media_message(notification)
 
 
 @bot.router.message(type_message=["textMessage", "extendedTextMessage"])
@@ -570,7 +609,7 @@ def handle_image_message(notification: Notification) -> None:
         _handle_not_initialized_error(notification, "image")
         return
     
-    denidin_app.whatsapp_handler.handle_media_message(notification)
+    _process_media_message(notification)
 
 
 @bot.router.message(type_message="documentMessage")
@@ -586,7 +625,7 @@ def handle_document_message(notification: Notification) -> None:
         _handle_not_initialized_error(notification, "document")
         return
     
-    denidin_app.whatsapp_handler.handle_media_message(notification)
+    _process_media_message(notification)
 
 
 @bot.router.message(type_message="videoMessage")
@@ -602,7 +641,7 @@ def handle_video_message(notification: Notification) -> None:
         _handle_not_initialized_error(notification, "video")
         return
     
-    denidin_app.whatsapp_handler.handle_media_message(notification)
+    _process_media_message(notification)
 
 
 @bot.router.message(type_message="audioMessage")
@@ -618,7 +657,7 @@ def handle_audio_message(notification: Notification) -> None:
         _handle_not_initialized_error(notification, "audio")
         return
     
-    denidin_app.whatsapp_handler.handle_media_message(notification)
+    _process_media_message(notification)
 
 
 @bot.router.message()
