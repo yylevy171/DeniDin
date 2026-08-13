@@ -59,6 +59,7 @@ def server_url():
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
+        auth_url=config.auth_url,
     )
     mcp = create_server(config, client=client)
     mcp.settings.host = TEST_HOST
@@ -107,7 +108,8 @@ def test_mcp_client_can_invoke_create_invoice_tool_end_to_end(server_url):
     # internal client instance, not exposed to this test).
     config = load_config(CONFIG_PATH)
     seeding_client = MorningClient(
-        api_key_id=config.api_key_id, api_key_secret=config.api_key_secret, base_url=config.api_url
+        api_key_id=config.api_key_id, api_key_secret=config.api_key_secret,
+        base_url=config.api_url, auth_url=config.auth_url,
     )
     _, client_name = seed_real_client(seeding_client, unique_marker)
 
@@ -211,6 +213,7 @@ def server_url_with_auth():
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
+        auth_url=config.auth_url,
     )
     mcp = create_server(config, client=client)
     mcp.settings.host = TEST_HOST

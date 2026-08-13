@@ -26,15 +26,43 @@ def test_load_config_from_real_test_file():
 
 
 def test_load_config_applies_defaults_when_optional_fields_missing():
-    """config.test.json only has the 3 required keys; optional fields must default."""
+    """config.test.json only has the 4 required keys; optional fields must default."""
     config = load_config(TEST_CONFIG_PATH)
 
     assert config.default_currency == "ILS"
     assert config.default_vat_rate == 0.17
-    assert config.token_ttl_seconds == 3600
     assert config.refresh_before_seconds == 300
     assert config.rate_limit_per_second == 3
     assert config.enable_mcp_server is False
+
+
+def test_load_config_requires_auth_url(tmp_path):
+    """Feature 053: auth_url is required - missing it must fail loudly at
+    startup (schema validation), never silently default to some shared host
+    (CONSTITUTION §I: no inference, config must be explicit)."""
+    missing_auth_url = tmp_path / "config.json"
+    missing_auth_url.write_text(
+        json.dumps(
+            {
+                "api_key_id": "x",
+                "api_key_secret": "y",
+                "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError):
+        load_config(missing_auth_url)
+
+
+def test_load_config_reads_auth_url_when_present():
+    """auth_url is a genuinely different host than api_url - confirm both are
+    read independently, neither derived from the other."""
+    config = load_config(TEST_CONFIG_PATH)
+
+    assert config.auth_url.startswith("https://")
+    assert config.auth_url != config.api_url
 
 
 def test_load_config_from_example_file_with_full_flat_shape():
@@ -108,6 +136,7 @@ def test_load_config_defaults_mcp_auth_token_to_none(tmp_path):
                 "api_key_id": "x",
                 "api_key_secret": "y",
                 "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+                "auth_url": "https://api.sandbox.morning.dev",
             }
         ),
         encoding="utf-8",
@@ -134,6 +163,7 @@ def test_load_config_defaults_ngrok_fields_to_none(tmp_path):
                 "api_key_id": "x",
                 "api_key_secret": "y",
                 "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+                "auth_url": "https://api.sandbox.morning.dev",
             }
         ),
         encoding="utf-8",
@@ -153,6 +183,7 @@ def test_load_config_reads_ngrok_fields_when_present(tmp_path):
                 "api_key_id": "x",
                 "api_key_secret": "y",
                 "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+                "auth_url": "https://api.sandbox.morning.dev",
                 "mcp": {
                     "ngrok_authtoken": "ngrok-token-value",
                     "ngrok_domain": "example.ngrok-free.app",
@@ -176,6 +207,7 @@ def test_load_config_reads_mcp_auth_token_when_present(tmp_path):
                 "api_key_id": "x",
                 "api_key_secret": "y",
                 "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+                "auth_url": "https://api.sandbox.morning.dev",
                 "mcp": {"auth_token": "super-secret-token"},
             }
         ),
@@ -201,6 +233,7 @@ def test_load_config_defaults_openai_api_key_to_none(tmp_path):
                 "api_key_id": "x",
                 "api_key_secret": "y",
                 "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+                "auth_url": "https://api.sandbox.morning.dev",
             }
         ),
         encoding="utf-8",
@@ -219,6 +252,7 @@ def test_load_config_reads_openai_api_key_when_present(tmp_path):
                 "api_key_id": "x",
                 "api_key_secret": "y",
                 "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+                "auth_url": "https://api.sandbox.morning.dev",
                 "openai_api_key": "sk-test-key-value",
             }
         ),

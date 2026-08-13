@@ -22,11 +22,12 @@ def morning_client():
     api_key_id = morning_cfg.get("api_key_id")
     api_key_secret = morning_cfg.get("api_key_secret")
     base_url = morning_cfg.get("api_url", "https://sandbox.d.greeninvoice.co.il/api/v1/")
+    auth_url = morning_cfg.get("auth_url", "https://api.sandbox.morning.dev")
 
     if not (api_key_id and api_key_secret):
         pytest.skip("No `api_key_id`/`api_key_secret` in test config")
 
-    return MorningClient(api_key_id=api_key_id, api_key_secret=api_key_secret, base_url=base_url)
+    return MorningClient(api_key_id=api_key_id, api_key_secret=api_key_secret, base_url=base_url, auth_url=auth_url)
 
 
 @pytest.fixture(scope="module")

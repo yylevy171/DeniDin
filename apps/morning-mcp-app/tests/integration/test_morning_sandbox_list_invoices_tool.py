@@ -29,6 +29,7 @@ def morning_client():
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
+        auth_url=config.auth_url,
     )
 
 
@@ -278,7 +279,7 @@ def test_list_invoices_tool_finds_document_by_number(morning_client, seeded_invo
 
     result = None
     for _ in range(12):
-        result = list_invoices(morning_client, number=number)
+        result = list_invoices(morning_client, document_display_number=number)
         if f"חשבונית #{number}" in result:
             break
         time.sleep(1.5)
@@ -294,6 +295,6 @@ def test_list_invoices_tool_finds_document_by_number(morning_client, seeded_invo
 def test_list_invoices_tool_number_not_found_is_friendly(morning_client):
     from denidin_mcp_morning.tools import list_invoices
 
-    result = list_invoices(morning_client, number="99999999")
+    result = list_invoices(morning_client, document_display_number="99999999")
 
     assert result == "לא נמצאו חשבוניות התואמות את החיפוש."
