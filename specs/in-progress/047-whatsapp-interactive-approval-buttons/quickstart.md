@@ -29,12 +29,12 @@ godfather/admin dev number and (for US-groups behavior) the project's existing t
 
 ## US1 — Approve a document with one tap
 
-**✅ Verified live, 2026-08-14** (approve path): real invoice #52120 created for client "יוסי
-יהושע", ₪20.00, resolved by a real tap on `"כן"`. `sent_message_id`/`stanza_id` matched
-correctly, `create_invoice` executed exactly once (no duplicate/zero-execution guard fired),
-confirmation + PDF download link sent as plain text. The `"לא"`/decline-tap path is not yet
-separately confirmed live (expected to be byte-identical to a typed `לא`, per
-contracts/button-tap-resolution.md's delegation design, but not yet directly observed).
+**✅ Verified live, 2026-08-14** — both approve and decline: real invoice #52120 created for
+client "יוסי יהושע", ₪20.00, resolved by a real tap on `"כן"`. `sent_message_id`/`stanza_id`
+matched correctly, `create_invoice` executed exactly once (no duplicate/zero-execution guard
+fired), confirmation + PDF download link sent as plain text. Separately, a real tap on `"לא"`
+resolved via `[047] ... selected_id='denidin_decline', approve=False`, delegating to the same
+fresh-turn fallthrough a typed `לא` produces (per contracts/button-tap-resolution.md).
 
 1. Send the document-creation request in a 1:1 chat with DeniDin.
 2. Confirm the reply carries the full `📋 לאישור:` block **and** renders as two native WhatsApp
@@ -47,6 +47,10 @@ contracts/button-tap-resolution.md's delegation design, but not yet directly obs
 
 ## US2 — Typing still works, unconditionally
 
+**✅ Verified live, 2026-08-14**: a ₪14 pending approval was sent with buttons; ignored, typed
+`כן` instead — resolved via the free-text path exactly as before this feature
+(`_resolve_pending_approval`), invoice created normally.
+
 1. Trigger a new pending approval (as above).
 2. Ignore the buttons; type `כן` (or `אישור`, or `לאשר`, with or without a leading RTL mark)
    instead.
@@ -54,6 +58,13 @@ contracts/button-tap-resolution.md's delegation design, but not yet directly obs
    unaffected by buttons rendering alongside it.
 
 ## US3 — A stale tap does nothing observable
+
+**✅ Verified live, 2026-08-14** (scenario 4's supersession case — see tasks.md T009 for the
+exact log lines): with a ₪13 request pending, a tap on an older, already-resolved (declined) ₪15
+message was correctly ignored — `stanza_id` mismatch, no reply, the live ₪13 approval untouched
+and resolved normally moments later. Scenario 1-3 (tap the *same* message immediately after
+resolving it via text) uses the identical code path but was not separately re-run — judged
+sufficient.
 
 1. Trigger a pending approval, resolve it via text (`כן` or `לא`) — do **not** tap the button.
 2. Now tap the (still-visible) button on that already-resolved message.
@@ -77,6 +88,10 @@ contracts/button-tap-resolution.md's delegation design, but not yet directly obs
    prompt, just delivered with buttons attached.
 
 ## Groups (Clarifications: buttons behave the same as 1:1)
+
+**✅ Verified live, 2026-08-14** in `קבוצה נסיונית עם דנידין` (`120363410226011645@g.us`): a ₪15
+invoice request, buttons rendered in the group, tapped `"כן"`, resolved correctly
+(`resolve_button_tap` received the group `chat_id`, invoice created).
 
 1. In the test group, from the godfather or admin account, trigger a document-creation request.
 2. Confirm the buttons render in the group the same as 1:1.

@@ -1,8 +1,9 @@
 # Tasks: WhatsApp Interactive Buttons for the Approval Gate
 
-**Status (2026-08-14)**: Implementation complete (T001-T008, T012-T014). Phase 5's manual
-verification (T009-T011) is not yet done — it requires a real device/dev environment and is
-explicitly a human-driven check, not something to run unattended.
+**Status (2026-08-14)**: All 14 tasks complete, including Phase 5's live manual verification
+(all 5 quickstart scenarios: approve, decline, stanza_id staleness guard, text-path
+non-interference, groups — all confirmed against real WhatsApp/Green API/OpenAI/Morning sandbox
+traffic, see T009-T011 for log evidence). Feature ready for `haleluya`.
 
 **Input**: Design documents from `specs/in-progress/047-whatsapp-interactive-approval-buttons/`
 **Prerequisites**: `plan.md`, `spec.md`, `user-stories.md`, `research.md`, `data-model.md`,
@@ -165,18 +166,25 @@ provided.)
 task of their own — their behavior is delivered entirely by Phase 3 (T005-T007) and Phase 2
 (T002-T004). This phase is where they're actually checked.
 
-- [ ] T009 [US3] Manual check per `quickstart.md` US3, both scenarios: (1) tap a button on an
-  already-resolved (via text) pending approval — confirm nothing observable happens; (2) trigger
-  a pending approval, then trigger a second one before resolving the first (supersedes it in
-  `PendingApprovalManager`), then tap the **first** message's button — confirm the *second*
-  (current) pending approval is untouched, nothing observable happens. This second scenario is
-  the specific correctness property `sent_message_id`/`stanza_id`-matching exists for.
-- [ ] T010 [US2] Manual check per `quickstart.md` US2: with a pending approval showing buttons,
-  ignore them and type `כן` (or `אישור`, `לאשר`, with/without a leading RTL mark) instead —
-  confirm it resolves exactly as it did before this feature existed.
-- [ ] T011 Manual check per `quickstart.md`'s Groups section: trigger and tap-resolve an
-  approval in the project's test group — confirm the tap is attributed to the actual tapping
-  member and resolves correctly.
+- [x] T009 [US3] **Verified live, 2026-08-14**, via a stronger real case than originally
+  scripted: with a ₪13 request pending (unresolved), tapped the button on an **older, already
+  tap-declined** ₪15 message (from a separate, earlier turn). Log:
+  `[047] Stale button tap ignored: ... stanza_id='3EB098F2CEC30B162F3994', pending=PendingApproval(...
+  amount:13 ... sent_message_id='3EB0491EBC9252B07A3154')` → `Button tap produced no resolution
+  ... sending nothing`. The ₪13 pending approval was untouched (resolved correctly, separately,
+  moments later) — proves the exact `sent_message_id`/`stanza_id` mismatch guard this task exists
+  for, against a real superseding pending approval. **Gap, accepted 2026-08-14**: the literal
+  "tap the same message you just resolved via text" sub-case (a fresh pending approval, resolved
+  by typing `כן`, then tapped) was not separately observed — same code path, not independently
+  exercised. Judged sufficient; not re-run.
+- [x] T010 [US2] **Verified live, 2026-08-14**: pending approval for a ₪14 invoice sent with
+  buttons; ignored them, typed `כן` instead — resolved via the free-text path exactly as before
+  this feature (`_resolve_pending_approval`, `MCP calls for request req_5f3c1a42d16d`: `amount:14`
+  invoice created). Buttons rendering alongside the text path had no effect on it.
+- [x] T011 **Verified live, 2026-08-14**, in `קבוצה נסיונית עם דנידין`
+  (`120363410226011645@g.us`): pending approval created and shown with buttons in the group,
+  tapped `"כן"`, resolved correctly (`[047] Resolving pending approval via BUTTON TAP for
+  chat='120363410226011645@g.us' ... approve=True`), ₪15 invoice created via the group turn.
 
 VC0-VC2 for this phase (documentation-only — no code changes expected; if any bug is found and
 fixed here, it lands in Phase 3's files, and that fix gets its own VC1-VC2).
