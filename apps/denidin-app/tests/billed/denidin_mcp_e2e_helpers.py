@@ -44,6 +44,7 @@ import random
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Callable, List, Optional, Tuple
 
 from whatsapp_chatbot_python import Notification
@@ -153,22 +154,103 @@ def build_text_webhook(chat_id: str, sender_name: str, text: str, message_id: st
     }
 
 
+def build_button_tap_webhook(
+    chat_id: str, sender_name: str, selected_id: str, stanza_id: str, message_id: str
+) -> dict:
+    """Build a real Green API incomingMessageReceived webhook event dict for an
+    interactiveButtonsResponse (a WhatsApp interactive-button tap, Feature 047) -
+    shape matches the real payload captured live during Gate Zero
+    (specs/.../047-whatsapp-interactive-approval-buttons/research.md /
+    gate-zero-captured-notifications.json), trimmed to the fields
+    denidin.py's handle_button_tap and WhatsAppMessage.from_notification
+    actually read."""
+    return {
+        'typeWebhook': 'incomingMessageReceived',
+        'timestamp': int(time.time()),
+        'idMessage': message_id,
+        'instanceData': {
+            'idInstance': 7103000000,
+            'wid': '972501234567@c.us',
+            'typeInstance': 'whatsapp'
+        },
+        'senderData': {
+            'chatId': chat_id,
+            'sender': chat_id,
+            'senderName': sender_name,
+            'senderContactName': sender_name,
+        },
+        'messageData': {
+            'typeMessage': 'interactiveButtonsResponse',
+            'interactiveButtonsResponse': {
+                'stanzaId': stanza_id,
+                'selectedIndex': 0,
+                'selectedId': selected_id,
+                'selectedDisplayText': 'כן' if selected_id == 'denidin_approve' else 'לא',
+            },
+        }
+    }
+
+
 def create_real_notification(event_dict: dict) -> Notification:
-    """Create a real SDK Notification object (no mocking), tracking answer() calls."""
+    """Create a real SDK Notification object (no mocking), tracking answer() and
+    answer_with_interactive_buttons() calls.
+
+    Feature 047: `answer_with_interactive_buttons` needs `self.api` internally
+    (`chat = self.get_chat(); return self.api.sending.sendInteractiveButtons(...)`),
+    which this bare `Notification.__new__` construction never sets (real
+    `__init__` is deliberately skipped, same as before this feature) - a real
+    Green API send would be as undesirable here as `.answer()`'s real send
+    always was (this is a fake test chat_id, nothing should actually be
+    delivered anywhere). So this is captured the same way `.answer()` already
+    is, rather than routed through a real `self.api` - additive, not a change
+    to the existing `.answer()` capture pattern. `body` is ALSO appended to
+    `_test_sent_messages` (dual-write) so every existing helper reading
+    `get_response()`/`_test_sent_messages[0]` keeps seeing exactly what a real
+    user would read on screen, regardless of whether it arrived as plain text
+    or as an interactive-buttons body - the same content either way, per
+    spec.md Scope ("buttons change how the answer arrives, never what the
+    question contains")."""
     notification = Notification.__new__(Notification)
     notification.event = event_dict
     notification._test_sent_messages = []
+    notification._test_button_sends = []
 
     def track_answer(message):
         notification._test_sent_messages.append(message)
         logger.info(f"Would send to user: {message}")
 
+    _next_id = [0]
+
+    def track_answer_with_interactive_buttons(body, buttons, header=None, footer=None):
+        _next_id[0] += 1
+        id_message = f"TEST_BUTTONS_{event_dict.get('idMessage', 'noid')}_{_next_id[0]}"
+        notification._test_button_sends.append({
+            'body': body, 'buttons': buttons, 'header': header, 'footer': footer,
+            'idMessage': id_message,
+        })
+        notification._test_sent_messages.append(body)
+        logger.info(
+            f"Would send interactive buttons to user: body={body!r} buttons={buttons!r} "
+            f"idMessage={id_message}"
+        )
+        return SimpleNamespace(code=200, data={'idMessage': id_message}, error=None)
+
     notification.answer = track_answer
+    notification.answer_with_interactive_buttons = track_answer_with_interactive_buttons
     return notification
 
 
 def get_response(notification: Notification) -> Optional[str]:
     return notification._test_sent_messages[0] if notification._test_sent_messages else None
+
+
+def get_button_send(notification: Notification) -> Optional[dict]:
+    """Feature 047: the captured `answer_with_interactive_buttons` call this
+    notification's turn made, if any - {'body', 'buttons', 'header', 'footer',
+    'idMessage'}. None if this turn sent plain text instead (no pending
+    approval was created) or sent nothing at all."""
+    sends = notification._test_button_sends
+    return sends[0] if sends else None
 
 
 # ============================================================================
@@ -444,6 +526,75 @@ def _send_turn_and_approve(
     """
     ask_result = _send_turn(chat_id, text, id_prefix=f"{id_prefix}_ASK")
     approve_result = _send_turn(chat_id, approval_text, id_prefix=f"{id_prefix}_APPROVE")
+    return ask_result, approve_result
+
+
+def _send_button_tap(
+    chat_id: str, selected_id: str, id_prefix: str, stanza_id: Optional[str] = None
+) -> Tuple[Optional[str], Optional[AIResponse]]:
+    """Feature 047: send one real WhatsApp interactive-button tap through the
+    real router handler (handle_button_tap), same shape _send_turn uses for
+    text. Returns (reply text, AIResponse) for inspection - a stale/no-op tap
+    (resolve_button_tap returned None) means both are None, since nothing at
+    all gets sent in that case (spec.md Clarifications: silent).
+
+    `stanza_id` defaults to chat_id's CURRENT pending approval's
+    `sent_message_id` - the same thing a real device would be tapping (the
+    button actually rendered on screen), read via the same
+    PendingApprovalManager.attach_sent_message_id wiring denidin.py's real
+    turn-processing path uses (see create_real_notification's
+    answer_with_interactive_buttons stub - it returns a real idMessage-shaped
+    Response, so this wiring fires exactly as it does in production). Pass an
+    explicit stanza_id to deliberately simulate a stale tap (e.g. a
+    previous turn's idMessage, after a newer pending approval has replaced
+    it)."""
+    import denidin
+
+    if stanza_id is None:
+        pending = denidin.denidin_app.ai_handler.pending_approval_manager.get(chat_id)
+        assert pending is not None and pending.sent_message_id, (
+            f"No pending approval with a sent_message_id for chat={chat_id!r} - "
+            f"nothing to tap. pending={pending!r}"
+        )
+        stanza_id = pending.sent_message_id
+
+    notification = create_real_notification(build_button_tap_webhook(
+        chat_id=chat_id,
+        sender_name="E2E Godfather",
+        selected_id=selected_id,
+        stanza_id=stanza_id,
+        message_id=f"{id_prefix}_{int(datetime.now(timezone.utc).timestamp())}"
+    ))
+    denidin.handle_button_tap(notification)
+    response = get_response(notification)
+
+    ai_response = denidin.denidin_app.ai_handler.last_response
+
+    if ai_response is not None:
+        for call in ai_response.mcp_calls:
+            logger.info(
+                f"mcp_call: name={call['name']} error={call['error']!r} "
+                f"arguments={call['arguments']!r} output={call['output']!r}"
+            )
+    logger.info(f"Bot response (button tap): {response}")
+
+    return response, ai_response
+
+
+def _send_turn_and_approve_via_button_tap(
+    chat_id: str, text: str, id_prefix: str
+) -> Tuple[Tuple[Optional[str], Optional[AIResponse]], Tuple[Optional[str], Optional[AIResponse]]]:
+    """Like `_send_turn_and_approve`, but approves via a real WhatsApp
+    interactive-button tap ("כן"/BUTTON_ID_APPROVE) instead of typing "כן" -
+    exercises the Feature 047 button-tap resolution path
+    (AIHandler.resolve_button_tap) end to end, real webhook to real reply,
+    same as _send_turn_and_approve does for the text path. Returns the same
+    ((ask_response, ask_ai_response), (approve_response, approve_ai_response))
+    shape, so existing assertions on either half work unchanged."""
+    from src.managers.pending_approval_manager import BUTTON_ID_APPROVE
+
+    ask_result = _send_turn(chat_id, text, id_prefix=f"{id_prefix}_ASK")
+    approve_result = _send_button_tap(chat_id, BUTTON_ID_APPROVE, id_prefix=f"{id_prefix}_TAP_APPROVE")
     return ask_result, approve_result
 
 

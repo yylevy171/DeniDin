@@ -1,0 +1,50 @@
+[
+  {
+    "typeWebhook": "incomingMessageReceived",
+    "idMessage": "AC4C12ED181F6012343342571B062628",
+    "instanceData": {
+      "idInstance": 710722700313,
+      "wid": "972559723730@c.us",
+      "typeInstance": "whatsapp"
+    },
+    "timestamp": 1786689048,
+    "senderData": {
+      "chatId": "972522968679@c.us",
+      "sender": "972522968679@c.us",
+      "senderName": "אני ואנוכי",
+      "senderContactName": "אני ואנוכי",
+      "chatName": "אני ואנוכי"
+    },
+    "messageData": {
+      "typeMessage": "interactiveButtonsResponse",
+      "quotedMessage": {
+        "typeMessage": "interactiveButtons",
+        "interactiveButtons": {
+          "titleText": "Gate Zero test",
+          "contentText": "בדיקת כפתורים (feature 047) - זו הודעת בדיקה בלבד, נא ללחוץ על אחד הכפתורים.",
+          "footerText": "DeniDin dev",
+          "buttons": [
+            {
+              "type": "reply",
+              "buttonId": "gate_zero_yes",
+              "buttonText": "אישור"
+            },
+            {
+              "type": "reply",
+              "buttonId": "gate_zero_no",
+              "buttonText": "ביטול"
+            }
+          ]
+        },
+        "stanzaId": "3EB0C93530F6E687164133",
+        "participant": "972559723730@c.us"
+      },
+      "interactiveButtonsResponse": {
+        "stanzaId": "3EB0C93530F6E687164133",
+        "selectedIndex": 1,
+        "selectedId": "gate_zero_no",
+        "selectedDisplayText": "ביטול"
+      }
+    }
+  }
+]

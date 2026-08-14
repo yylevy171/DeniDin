@@ -1,0 +1,126 @@
+[
+  {
+    "typeWebhook": "outgoingAPIMessageReceived",
+    "idMessage": "3EB012F0778106CD2F5150",
+    "instanceData": {
+      "idInstance": 710722700313,
+      "wid": "972559723730@c.us",
+      "typeInstance": "whatsapp"
+    },
+    "timestamp": 1786688926,
+    "senderData": {
+      "chatId": "120363410226011645@g.us",
+      "sender": "972559723730@c.us",
+      "senderName": "+972 55-972-3730",
+      "senderContactName": "+972 55-972-3730",
+      "chatName": "קבוצה נסיונית עם דנידין"
+    },
+    "messageData": {
+      "typeMessage": "interactiveButtons",
+      "interactiveButtons": {
+        "titleText": "Gate Zero group test",
+        "contentText": "בדיקת כפתורים בקבוצה (feature 047) - הודעת בדיקה בלבד, נא ללחוץ על אחד הכפתורים.",
+        "footerText": "DeniDin dev",
+        "buttons": [
+          {
+            "type": "reply",
+            "buttonId": "gate_zero_group_yes",
+            "buttonText": "אישור"
+          },
+          {
+            "type": "reply",
+            "buttonId": "gate_zero_group_no",
+            "buttonText": "ביטול"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "typeWebhook": "outgoingMessageStatus",
+    "chatId": "120363410226011645@g.us",
+    "instanceData": {
+      "idInstance": 710722700313,
+      "wid": "972559723730@c.us",
+      "typeInstance": "whatsapp"
+    },
+    "timestamp": 1786688927,
+    "idMessage": "3EB012F0778106CD2F5150",
+    "sendByApi": true,
+    "status": "sent"
+  },
+  {
+    "typeWebhook": "outgoingMessageStatus",
+    "chatId": "120363410226011645@g.us",
+    "instanceData": {
+      "idInstance": 710722700313,
+      "wid": "972559723730@c.us",
+      "typeInstance": "whatsapp"
+    },
+    "timestamp": 1786688929,
+    "idMessage": "3EB012F0778106CD2F5150",
+    "sendByApi": true,
+    "status": "delivered"
+  },
+  {
+    "typeWebhook": "outgoingMessageStatus",
+    "chatId": "120363410226011645@g.us",
+    "instanceData": {
+      "idInstance": 710722700313,
+      "wid": "972559723730@c.us",
+      "typeInstance": "whatsapp"
+    },
+    "timestamp": 1786688937,
+    "idMessage": "3EB012F0778106CD2F5150",
+    "sendByApi": true,
+    "status": "read"
+  },
+  {
+    "typeWebhook": "incomingMessageReceived",
+    "idMessage": "ACE6E8A900260A66A7972DCBF2CE720B",
+    "instanceData": {
+      "idInstance": 710722700313,
+      "wid": "972559723730@c.us",
+      "typeInstance": "whatsapp"
+    },
+    "timestamp": 1786688947,
+    "senderData": {
+      "chatId": "120363410226011645@g.us",
+      "sender": "972522968679@c.us",
+      "senderName": "אני ואנוכי",
+      "senderContactName": "אני ואנוכי",
+      "chatName": "קבוצה נסיונית עם דנידין"
+    },
+    "messageData": {
+      "typeMessage": "interactiveButtonsResponse",
+      "quotedMessage": {
+        "typeMessage": "interactiveButtons",
+        "interactiveButtons": {
+          "titleText": "Gate Zero group test",
+          "contentText": "בדיקת כפתורים בקבוצה (feature 047) - הודעת בדיקה בלבד, נא ללחוץ על אחד הכפתורים.",
+          "footerText": "DeniDin dev",
+          "buttons": [
+            {
+              "type": "reply",
+              "buttonId": "gate_zero_group_yes",
+              "buttonText": "אישור"
+            },
+            {
+              "type": "reply",
+              "buttonId": "gate_zero_group_no",
+              "buttonText": "ביטול"
+            }
+          ]
+        },
+        "stanzaId": "3EB012F0778106CD2F5150",
+        "participant": "972559723730@c.us"
+      },
+      "interactiveButtonsResponse": {
+        "stanzaId": "3EB012F0778106CD2F5150",
+        "selectedIndex": 1,
+        "selectedId": "gate_zero_group_no",
+        "selectedDisplayText": "ביטול"
+      }
+    }
+  }
+]

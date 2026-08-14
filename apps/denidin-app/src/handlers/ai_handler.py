@@ -29,7 +29,9 @@ from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_manager import MemoryManager
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
 from src.managers.user_manager import UserManager
-from src.managers.pending_approval_manager import PendingApprovalManager, PendingApproval
+from src.managers.pending_approval_manager import (
+    PendingApprovalManager, PendingApproval, BUTTON_ID_APPROVE
+)
 from src.models.user import Role
 from src.handlers.morning_mcp_locator import MorningMcpLocator
 from src.constants.error_messages import (
@@ -1586,6 +1588,12 @@ class AIHandler:
             f"[022] approval_requests found in response.output: {len(approval_requests)} "
             f"(effective_chat_id={effective_chat_id!r})"
         )
+        # Feature 047: this turn creates a pending approval iff the block above will
+        # actually store one - same condition, computed once here so both the
+        # PendingApproval creation below and AIResponse.offer_approval_buttons stay
+        # in lockstep by construction (never two separately-maintained conditions
+        # that could drift apart).
+        new_pending_approval_created = bool(approval_requests and effective_chat_id)
         if approval_requests and effective_chat_id:
             ar = approval_requests[0]
             new_pending = PendingApproval(
@@ -1733,7 +1741,8 @@ class AIHandler:
             timestamp=int(time.time()),
             is_truncated=False,
             should_reply=should_reply,
-            mcp_calls=mcp_calls
+            mcp_calls=mcp_calls,
+            offer_approval_buttons=new_pending_approval_created
         )
 
         # Check if response needs truncation for WhatsApp
@@ -2119,6 +2128,71 @@ class AIHandler:
             f"tool={pending.tool_name} - falling through to a fresh turn"
         )
         return None
+
+    def resolve_button_tap(
+        self, chat_id: str, selected_id: str, stanza_id: str, message_id: str,
+        user_phone: Optional[str], sender: Optional[str],
+    ) -> Optional[AIResponse]:
+        """
+        Feature 047: resolves a WhatsApp interactive-button tap against chat_id's
+        pending approval (Feature 022), if the tap's stanza_id matches the message
+        it was actually sent as (contracts/pending-approval-message-binding.md).
+
+        Deliberately does NOT reimplement approve/decline resolution: once the
+        stanza_id match below confirms this tap is live (not stale/superseded -
+        the one check `get_response`/`_resolve_pending_approval` has no concept of,
+        since neither knows about individual WhatsApp message ids), this
+        synthesizes a plain "כן"/"לא" `AIRequest` and delegates to the existing
+        `get_response`/`_resolve_pending_approval` pipeline verbatim - same
+        duplicate-execution guards, same decline behavior (falls through to a
+        fresh turn, exactly like a genuine typed "לא" does today - a button
+        decline is byte-for-byte the same experience as a typed one, per US2's
+        non-interference requirement).
+
+        Returns:
+            None if there's no pending approval, or its sent_message_id doesn't
+            equal stanza_id (stale/superseded tap) - per spec.md Clarifications,
+            the caller must send nothing observable at all in this case. A real
+            AIResponse otherwise.
+        """
+        user_obj = None
+        if self.rbac_enabled and self.user_manager and user_phone:
+            user_obj = self.user_manager.get_user(user_phone)
+            if user_obj.is_blocked:
+                logger.warning(f"[047] Blocked user attempted to resolve a button tap: {user_phone!r}")
+                return None
+
+        pending = self.pending_approval_manager.get(chat_id) if user_obj else None
+        if pending is None or pending.sent_message_id != stanza_id:
+            logger.info(
+                f"[047] Stale button tap ignored: chat={chat_id!r}, selected_id={selected_id!r}, "
+                f"stanza_id={stanza_id!r}, pending={pending!r}"
+            )
+            return None
+        # user_obj is guaranteed non-None here: pending is only ever non-None (the
+        # branch above just confirmed it is) when user_obj was truthy, per the
+        # ternary a few lines up - explicit for mypy, which can't infer that
+        # implication across the ternary on its own.
+        assert user_obj is not None
+
+        approve = selected_id == BUTTON_ID_APPROVE
+        logger.info(
+            f"[047] Resolving pending approval via BUTTON TAP for chat={chat_id!r}, "
+            f"tool={pending.tool_name!r}, selected_id={selected_id!r}, approve={approve}"
+        )
+
+        synthetic_request = AIRequest(
+            user_prompt="כן" if approve else "לא",
+            constitution=self._load_constitution(),
+            max_tokens=self.config.ai_reply_max_tokens,
+            model=self.config.ai_model,
+            chat_id=chat_id,
+            message_id=message_id,
+        )
+        return self.get_response(
+            synthetic_request, chat_id=chat_id, user_role=user_obj.role,
+            sender=sender, recipient=None, user_phone=user_phone,
+        )
 
     def _create_fallback_response(self, request_id: str, message: str) -> AIResponse:
         """

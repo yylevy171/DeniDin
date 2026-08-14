@@ -1,12 +1,13 @@
 # User Stories: WhatsApp Interactive Buttons for the Approval Gate
 
 **Feature**: 047-whatsapp-interactive-approval-buttons
-**Status**: Draft — backlogged, pre-clarification
+**Status**: In progress — Gate Zero closed, clarification complete (2026-08-14)
 **Created**: 2026-08-09
 
-All stories are **blocked on Gate Zero** (a real button round-trip with the webhook JSON
-captured — see `spec.md`). They are written as intent, not as a commitment to a mechanism that
-has not yet been observed.
+Gate Zero (a real button round-trip with the webhook JSON captured — see `spec.md`/`research.md`)
+is closed, and all open clarification questions are resolved (see `spec.md` Clarifications).
+Updated below to match: exact button labels (`"כן"`/`"לא"`), and US3's stale-tap behavior
+(silent, since WhatsApp/Green API confirmed to offer no way to disable a button after the fact).
 
 ---
 
@@ -19,16 +20,16 @@ invisibly prefixed by my RTL keyboard.
 
 **Given** DeniDin has a document-creation call pending my approval
 **When** it asks me to approve it
-**Then** the message carries the full `📋 לאישור:` details block **and** two buttons, "אישור" and
-"ביטול"
+**Then** the message carries the full `📋 לאישור:` details block **and** two buttons, "כן" and
+"לא" (matching the existing closed question `אישור — כן/לא?` verbatim — clarified 2026-08-14)
 
 **Given** that message
-**When** I tap "אישור"
+**When** I tap "כן"
 **Then** the pending document is created exactly once, and I get the same confirmation I would
 have got by typing `כן`
 
 **Given** that message
-**When** I tap "ביטול"
+**When** I tap "לא"
 **Then** nothing is created, and DeniDin says so plainly
 
 ---
@@ -52,11 +53,13 @@ have got by typing `כן`
 **So that** an idle tap can never create a real financial document.
 
 **Given** an approval that was already resolved, superseded, or has expired
-**When** I tap its (still visible) "אישור" button
-**Then** no document is created, and DeniDin tells me that request is no longer live — rather
-than silently ignoring me, which is the failure bugfix-028's B5 was about
-
-*(Exact behaviour depends on Gate Zero finding 5 — whether such a tap even reaches us.)*
+**When** I tap its (still visible — WhatsApp/Green API has no way to grey it out, confirmed via
+`editMessage`, see research.md) "כן" button
+**Then** no document is created, and DeniDin does nothing observable — no reply, no visible
+change. (Clarified 2026-08-14: this is a deliberate exception to bugfix-028's B5 concern about
+silent failures — B5 was about a *typed* reply going unacknowledged during a live turn; a stale
+tap on an old button is a different situation, and the human explicitly chose silence over a
+reply here, since the button can't be disabled either way.)
 
 ---
 
