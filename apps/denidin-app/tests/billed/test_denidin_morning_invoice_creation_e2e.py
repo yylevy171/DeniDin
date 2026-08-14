@@ -66,6 +66,7 @@ from .denidin_mcp_e2e_helpers import (
     _random_description,
     _random_seed_email,
     _seed_fresh_client,
+    _send_button_tap,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_decline,
@@ -154,6 +155,87 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
     )
 
     # The reply must actually carry a link, not just confirm success in the abstract.
+    assert "http" in response, (
+        f"Bot reply did not include an invoice link. Full reply: {response!r}"
+    )
+
+
+@pytest.mark.billed
+def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
+    """Feature 047: identical to test_godfather_creates_invoice_via_whatsapp
+    above, except the approval is given by a real WhatsApp interactive-button
+    tap (AIHandler.resolve_button_tap, via handle_button_tap) instead of
+    typing "כן" - exercises the full button-tap resolution path end to end
+    against real OpenAI/Morning MCP traffic: the ASK turn must actually send
+    real interactive buttons (not just a plain-text prompt), and the tap must
+    resolve to the same real, single create_invoice execution the text path
+    produces."""
+    amount = _random_amount()
+    description = _random_description()
+    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_CREATE_TAP")
+
+    ask_response, ask_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
+        id_prefix="E2E_CREATE_TAP_ASK",
+    )
+
+    assert not _calls_for(ask_ai_response, "create_invoice"), (
+        f"create_invoice executed on the ASK turn before approval was given: "
+        f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+    )
+
+    # The ASK turn must have actually sent real interactive buttons - not
+    # silently fallen back to plain text (which would make this test
+    # indistinguishable from the text-path test above, and mask a real
+    # regression the way this exact scenario did before the E2E harness
+    # gained answer_with_interactive_buttons support, 2026-08-14). Checked
+    # right here, between the ASK and TAP turns - checking any later (e.g.
+    # after the tap has already resolved and cleared it) would always show
+    # None regardless of whether the buttons send itself actually worked, a
+    # real ordering bug caught in this test's own first run, 2026-08-14.
+    # sent_message_id is populated by the exact same production wiring
+    # (denidin.py's attach_sent_message_id call) that requires a real,
+    # successful buttons send in the first place, so its presence here is
+    # direct proof - no need for get_button_send()'s captured body/buttons.
+    import denidin as denidin_module
+    pending_after_ask = denidin_module.denidin_app.ai_handler.pending_approval_manager.get(
+        GODFATHER_CHAT_ID
+    )
+    assert pending_after_ask is not None and pending_after_ask.sent_message_id, (
+        "ASK turn did not result in a pending approval with a real "
+        "sent_message_id attached - either no pending approval was created, "
+        "or the interactive-buttons send failed and silently fell back "
+        "(check for 'Failed to send approval buttons' in the log)."
+    )
+
+    from src.managers.pending_approval_manager import BUTTON_ID_APPROVE
+    response, ai_response = _send_button_tap(
+        GODFATHER_CHAT_ID, BUTTON_ID_APPROVE, id_prefix="E2E_CREATE_TAP_APPROVE"
+    )
+
+    create_calls = _calls_for(ai_response, "create_invoice")
+
+    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert len(response) > 0
+
+    assert create_calls, (
+        f"Model never invoked create_invoice via the remote MCP server, even "
+        f"after the button tap. mcp_calls: {ai_response.mcp_calls!r}. "
+        f"Final reply: {response!r}"
+    )
+    assert all(c["error"] is None for c in create_calls), (
+        f"create_invoice call(s) reported an error: {create_calls}"
+    )
+    assert any(client_name in (c["arguments"] or "") for c in create_calls), (
+        f"create_invoice was not called with the client name {client_name!r}: {create_calls!r}"
+    )
+    assert len(create_calls) == 1, (
+        f"create_invoice executed {len(create_calls)} times via the button-tap "
+        f"resolution path, expected exactly 1 (duplicate-execution guard "
+        f"regression): {create_calls!r}"
+    )
+
     assert "http" in response, (
         f"Bot reply did not include an invoice link. Full reply: {response!r}"
     )
