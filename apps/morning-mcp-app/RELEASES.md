@@ -43,3 +43,7 @@ close_transaction_account renamed to create_combo_document_as_reference with rea
 ## morning-mcp-app v0.4.2 — 2026-08-14
 
 Migrated MorningAuth to Morning's real OAuth2 client_credentials token endpoint (feature 053), replacing the deprecated /account/token flow ahead of Morning's stated cutoff.
+
+## morning-mcp-app v0.4.3 — 2026-08-14
+
+Version sync with denidin-app v0.4.3 - no functional changes to morning-mcp-app in this release.
