@@ -1,5 +1,9 @@
 # Tasks: WhatsApp Interactive Buttons for the Approval Gate
 
+**Status (2026-08-14)**: Implementation complete (T001-T008, T012-T014). Phase 5's manual
+verification (T009-T011) is not yet done — it requires a real device/dev environment and is
+explicitly a human-driven check, not something to run unattended.
+
 **Input**: Design documents from `specs/in-progress/047-whatsapp-interactive-approval-buttons/`
 **Prerequisites**: `plan.md`, `spec.md`, `user-stories.md`, `research.md`, `data-model.md`,
 `contracts/pending-approval-message-binding.md`, `contracts/whatsapp-buttons-send.md`,
@@ -39,7 +43,7 @@ full suite is run once at the end (Phase 6) as the acceptance check.
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirm `git branch --show-current` is
+- [x] T001 Confirm `git branch --show-current` is
   `feature/047-whatsapp-interactive-approval-buttons` (already created). No new dependencies
   needed (research.md: `whatsapp_api_client_python`/`whatsapp_chatbot_python` already project
   dependencies, `sendInteractiveButtons` already exposed).
@@ -51,14 +55,14 @@ full suite is run once at the end (Phase 6) as the acceptance check.
 **Purpose**: The data-model changes every later phase builds on. **No story-specific wiring
 starts until this phase is complete.**
 
-- [ ] T002 Add `sent_message_id: Optional[str] = None` to `PendingApproval` and the
+- [x] T002 Add `sent_message_id: Optional[str] = None` to `PendingApproval` and the
   module-level `BUTTON_ID_APPROVE = "denidin_approve"` / `BUTTON_ID_DECLINE = "denidin_decline"`
   constants, `apps/denidin-app/src/managers/pending_approval_manager.py`.
-- [ ] T003 Implement `attach_sent_message_id(self, chat_id: str, id_message: str) -> None` on
+- [x] T003 Implement `attach_sent_message_id(self, chat_id: str, id_message: str) -> None` on
   `PendingApprovalManager`, same file. No-op (logged at `info`, `[022]`-prefixed matching
   `get`/`set`/`clear`'s existing style) if no pending approval currently exists for `chat_id` —
   never raises. Per contracts/pending-approval-message-binding.md.
-- [ ] T004 Add `offer_approval_buttons: bool = False` to `AIResponse`,
+- [x] T004 Add `offer_approval_buttons: bool = False` to `AIResponse`,
   `apps/denidin-app/src/models/message.py`.
 
 **Checkpoint**: All three new pieces of state exist, unused by any behavior yet.
@@ -81,7 +85,7 @@ layered on top. This is also what delivers US3 (stale tap) and US2 (text path un
 neither gets its own implementation task below; they're verified via `quickstart.md` and the
 Phase 6 full-suite run.
 
-- [ ] T005 [US1] Implement the buttons-send branch in `send_response`,
+- [x] T005 [US1] Implement the buttons-send branch in `send_response`,
   `apps/denidin-app/src/handlers/whatsapp_handler.py`: when `response.offer_approval_buttons` is
   `True`, call `notification.api.sending.sendInteractiveButtons(chatId=chat_id,
   body=response.response_text, buttons=[{"type": "reply", "buttonId": BUTTON_ID_APPROVE,
@@ -93,7 +97,7 @@ Phase 6 full-suite run.
   `📋 לאישור:` block) — per contracts/whatsapp-buttons-send.md's "surface an error, not a silent
   fallback" decision. When `offer_approval_buttons` is `False`: **byte-for-byte unchanged**
   existing behavior.
-- [ ] T006 [US1] Implement `resolve_button_tap(chat_id, selected_id, stanza_id, sender,
+- [x] T006 [US1] Implement `resolve_button_tap(chat_id, selected_id, stanza_id, sender,
   recipient) -> Optional[AIResponse]` on `AIHandler`,
   `apps/denidin-app/src/handlers/ai_handler.py`. Looks up
   `pending = pending_approval_manager.get(chat_id)`; returns `None` immediately (US3: silent, no
@@ -108,7 +112,7 @@ Phase 6 full-suite run.
   contracts/button-tap-resolution.md and contracts/pending-approval-message-binding.md.
   **Does not modify `_resolve_pending_approval` or `_is_affirmative_reply` in any way** — this
   is a fully separate method (US2's non-interference requirement).
-- [ ] T007 [US1] Register `@bot.router.message(type_message="interactiveButtonsResponse")` in
+- [x] T007 [US1] Register `@bot.router.message(type_message="interactiveButtonsResponse")` in
   `apps/denidin-app/denidin.py` (**not** `@bot.router.buttons(...)` — research.md's confirmed
   library gap: that decorator only matches the old deprecated button-reply types). Extracts
   `chat_id`/`selected_id`/`stanza_id` from `notification.event`, calls
@@ -132,7 +136,7 @@ change delivery, never content.
 
 **Independent Test**: `quickstart.md` US4.
 
-- [ ] T008 [US4] No implementation — `_build_pending_approval_details` (ai_handler.py ~283) has
+- [x] T008 [US4] No implementation — `_build_pending_approval_details` (ai_handler.py ~283) has
   zero call-site or logic changes anywhere in this feature (its one existing call site,
   ai_handler.py ~1618, is untouched). This task exists only to record that the claim was
   checked, not assumed.
@@ -173,16 +177,16 @@ fixed here, it lands in Phase 3's files, and that fix gets its own VC1-VC2).
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T012 [P] Run `python3 -m pylint src/ --fail-under=7.0 --rcfile=.pylintrc` and
+- [x] T012 [P] Run `python3 -m pylint src/ --fail-under=7.0 --rcfile=.pylintrc` and
   `python3 -m mypy src/ --config-file=mypy.ini` from `apps/denidin-app/` — fix any new findings
   introduced by this feature's changes (pre-existing findings elsewhere untouched).
-- [ ] T013 Run the full non-billed, non-expensive suite: `python3 -m pytest tests/ -v --tb=short`
+- [x] T013 Run the full non-billed, non-expensive suite: `python3 -m pytest tests/ -v --tb=short`
   from `apps/denidin-app/`. **This is the acceptance check for the "no new tests" decision**:
   confirm 0 failures, and specifically confirm every existing approval-gate test
   (`test_ai_handler.py`'s pending-approval tests, `test_whatsapp_handler.py`'s `send_response`
   tests) passes with its assertions exactly as they were before this feature — if any of them
   needed to change to pass, stop and report rather than editing the test.
-- [ ] T014 Update `CLAUDE.md`'s Architecture section (`### Message flow` /
+- [x] T014 Update `CLAUDE.md`'s Architecture section (`### Message flow` /
   `### Key components`): note the new `interactiveButtonsResponse` router case, the
   `PendingApproval.sent_message_id` binding, and that document approvals now have two entry
   points (typed reply, unchanged; button tap, new) into the same gate.
