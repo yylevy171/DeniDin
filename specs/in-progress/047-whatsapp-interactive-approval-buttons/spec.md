@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/047-whatsapp-interactive-approval-buttons`
 **Created**: 2026-08-09
-**Status**: In progress — Gate Zero closed, clarification complete, `plan.md` done (2026-08-14), ready for `/speckit.tasks`
+**Status**: In progress — Gate Zero closed, clarification complete, `plan.md` and `tasks.md` done (2026-08-14). Task A (tests) for Phase 1-2 awaiting human approval before implementation begins.
 **Priority**: P2
 **Input**: User description (2026-08-09, during bugfix-028): *"doesnt whatsapp allow a button to
 press which can be used for approval in our case? (and a 2nd button for 'dont approve' of
@@ -20,7 +20,7 @@ course)"*
 **Required Files**: `user-stories.md` ✅ · `spec.md` (this file) ✅ ·
 `plan.md` ✅ · `research.md` (Gate Zero CLOSED) ✅ ·
 `data-model.md` ✅ · `contracts/` (3 files) ✅ · `quickstart.md` ✅ ·
-`tasks.md` (NOT STARTED — next: `/speckit.tasks`).
+`tasks.md` ✅ (28 tasks / 7 phases — Task A tests require human approval before Task B).
 
 ---
 
