@@ -34,3 +34,11 @@ Mandatory real client reference for document creation (feature 027): resolve/att
 ## [0.4.0] - 2026-08-12
 
 resolve_client_name-first architecture, MCP audit logging, and receipt/credit-note payment-date fixes
+
+## [0.4.1] - 2026-08-13
+
+close_transaction_account renamed to create_combo_document_as_reference with real required payment_date/payment_method/bank-detail params (was silently hardcoding today's date) and a shared type-320 payload builder with create_combo_document; invoice_id/original_invoice_id renamed to internal_morning_id/original_internal_morning_id and list_invoices' number filter to document_display_number, fixing a live incident where the model passed a document's display number where the internal id was required.
+
+## [0.4.2] - 2026-08-14
+
+Migrated MorningAuth to Morning's real OAuth2 client_credentials token endpoint (feature 053), replacing the deprecated /account/token flow ahead of Morning's stated cutoff.

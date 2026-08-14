@@ -132,6 +132,7 @@ def mcp_endpoint(config):
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
+        auth_url=config.auth_url,
     )
     mcp = create_server(config, client=client)
     mcp.settings.host = TEST_HOST
@@ -181,6 +182,7 @@ def test_openai_invokes_create_invoice_via_remote_mcp(config, mcp_endpoint):
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
+        auth_url=config.auth_url,
     )
     _seed_client(morning_client, client_name, unique_marker)
 
@@ -262,6 +264,7 @@ def test_openai_created_invoice_is_signed_per_real_morning_api(config, mcp_endpo
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
+        auth_url=config.auth_url,
     )
     _seed_client(morning_client, client_name, unique_marker)
 

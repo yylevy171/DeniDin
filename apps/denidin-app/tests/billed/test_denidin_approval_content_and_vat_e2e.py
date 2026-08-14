@@ -86,7 +86,7 @@ def test_unstated_vat_is_asked_about_rather_than_assumed(denidin_app):
     A2 requirement 1 (user, 2026-08-09): VAT is mandatory at creation and
     "unknown" is not a permitted state - the model must be able to say
     definitively with-or-without before anything is created. The constitution
-    already demands exactly this question for `close_transaction_account`
+    already demands exactly this question for `create_combo_document_as_reference`
     (:253-256) and demands nothing for `create_transaction_account`.
     """
     client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B028_A2T2")

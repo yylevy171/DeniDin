@@ -434,7 +434,7 @@ def _send_turn_and_approve(
     """Send a turn expected to trigger a pending MCP document-creation
     approval (any of create_invoice/create_transaction_account/
     create_combo_document/create_credit_note/create_receipt/
-    close_transaction_account - Feature 022), then send a second turn with a
+    create_combo_document_as_reference - Feature 022), then send a second turn with a
     Hebrew affirmative to approve it.
 
     Returns ((ask_response, ask_ai_response), (approve_response, approve_ai_response))
@@ -485,6 +485,47 @@ def _send_turn_and_approve_receipt(
 
     approve_result = _send_turn(chat_id, "כן", id_prefix=f"{id_prefix}_APPROVE")
     return (ask_response, ask_ai_response), approve_result
+
+
+def _send_turn_and_approve_capturing_approval(
+    chat_id: str, text: str, id_prefix: str, tool_name: str, clarify_answer: str = "היום"
+) -> Tuple[str, Optional[AIResponse]]:
+    """Like `_send_turn_and_approve`/`_send_turn_and_approve_receipt`, but for
+    a caller (bugfix-038) that needs the actual TEXT of whichever turn carried
+    the real pending-approval prompt (identified via `_is_real_approval_prompt`
+    - "לאישור"/"כן"/"לא" together, never a bare identity-resolution question) -
+    not just the ASK turn's raw reply, which for `create_receipt` may instead
+    be an open clarifying question (payment_date is mandatory - see
+    `_send_turn_and_approve_receipt`) rather than the approval itself.
+
+    Generalizes `_send_turn_and_approve_receipt` to any Group A/B tool: sends
+    `text`, and if the reply is not yet a real approval prompt, sends one
+    `clarify_answer` turn (default "today" - the common answer to a missing-
+    date question) before giving up. Asserts `tool_name` never fires before
+    the final "כן". Returns (approval_text, approve_ai_response) - callers
+    inspect `approval_text` for what the user was actually asked to approve,
+    and `approve_ai_response` (via `_calls_for`) for the real outcome."""
+    response, ai_response = _send_turn(chat_id, text, id_prefix=f"{id_prefix}_ASK")
+    assert not _calls_for(ai_response, tool_name), (
+        f"{tool_name} executed before any approval was given: "
+        f"{ai_response.mcp_calls if ai_response else None!r}"
+    )
+
+    if not _is_real_approval_prompt(response):
+        response, ai_response = _send_turn(chat_id, clarify_answer, id_prefix=f"{id_prefix}_CLARIFY")
+        assert not _calls_for(ai_response, tool_name), (
+            f"{tool_name} executed before the actual approval turn: "
+            f"{ai_response.mcp_calls if ai_response else None!r}"
+        )
+
+    assert _is_real_approval_prompt(response), (
+        f"expected a real pending-approval prompt (containing 'לאישור') after "
+        f"at most one clarifying turn, got: {response!r}"
+    )
+    approval_text = response
+
+    _, approve_ai_response = _send_turn(chat_id, "כן", id_prefix=f"{id_prefix}_APPROVE")
+    return approval_text, approve_ai_response
 
 
 def _fresh_nonexistent_client_name(chat_id: str, id_prefix: str, max_attempts: int = 5) -> str:
@@ -781,7 +822,7 @@ def _send_turn_and_decline(
 # EXCEPTION (Feature 022, 2026-07-23; tool list updated for feature 023):
 # every document-creating tool (create_invoice, create_transaction_account,
 # create_combo_document, create_credit_note, create_receipt,
-# close_transaction_account) creates a Morning document when it executes (an
+# create_combo_document_as_reference) creates a Morning document when it executes (an
 # invoice, a linked Receipt, a linked combo document, or a linked Credit
 # Invoice - there is no "status change" that isn't also document creation;
 # update_invoice_status, which used to be one more tool in this list, was

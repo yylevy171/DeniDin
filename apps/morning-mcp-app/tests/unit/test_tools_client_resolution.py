@@ -1,5 +1,5 @@
 """Tests for feature 027's `_extract_linked_client_id` — the shared Group B
-helper used by create_credit_note/create_receipt/close_transaction_account
+helper used by create_credit_note/create_receipt/create_combo_document_as_reference
 to read a real client_id off an already-fetched original document, if
 present.
 

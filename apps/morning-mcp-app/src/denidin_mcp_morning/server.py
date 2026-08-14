@@ -190,7 +190,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
-        token_ttl_seconds=config.token_ttl_seconds,
+        auth_url=config.auth_url,
         refresh_before_seconds=config.refresh_before_seconds,
     )
 
@@ -284,7 +284,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         This is the right document for a bank deposit or transfer confirmation when
         no earlier invoice covers that money. If an unpaid invoice for it already
         exists, issue a receipt against that invoice instead (create_receipt for a
-        305, close_transaction_account for a 300) - never a second document for the
+        305, create_combo_document_as_reference for a 300) - never a second document for the
         same money.
 
         `vat_included` and `payment_date` are REQUIRED and must come from the real
@@ -311,12 +311,12 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
 
     @mcp.tool(structured_output=False)
     def create_credit_note(
-        original_invoice_id: str,
+        original_internal_morning_id: str,
         amount: Optional[float] = None,
         description: Optional[str] = None,
     ) -> str:
         """Create a standalone credit note ("חשבונית זיכוי", document type 330)
-        linked to an existing document, identified by original_invoice_id (the
+        linked to an existing document, identified by original_internal_morning_id (the
         Morning document id of the invoice being credited - resolve this first,
         e.g. via list_invoices, if the user only gave a client name or invoice
         number). Defaults to a full credit against the original's total; pass
@@ -324,43 +324,49 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         this invoice" phrasing (there is no separate status-update tool) -
         call this directly with the full amount in that case."""
         return _call_with_error_boundary(
-            tools.create_credit_note, morning_client, original_invoice_id, amount, description
+            tools.create_credit_note, morning_client, original_internal_morning_id, amount, description
         )
 
     @mcp.tool(structured_output=False)
     def create_receipt(
-        original_invoice_id: str,
+        original_internal_morning_id: str,
         payment_date: str,
         amount: Optional[float] = None,
     ) -> str:
         """Create a standalone receipt ("קבלה", document type 400) linked to an
-        existing document, identified by original_invoice_id (the Morning document
+        existing document, identified by original_internal_morning_id (the Morning document
         id of the invoice being paid - resolve this first, e.g. via list_invoices,
         if the user only gave a client name or invoice number). Defaults to the
         original's full total; pass amount for a partial-payment receipt. Also
         the correct target for "mark as paid" phrasing once the referenced
         document's type is resolved to 305, not 300 (there is no separate
         status-update tool) - only supports type-305 originals, raises a clear
-        error for a type-300 original (use close_transaction_account instead).
+        error for a type-300 original (use create_combo_document_as_reference instead).
 
         REQUIRES payment_date: the real date the money moved, ISO YYYY-MM-DD.
         "Today" is a genuinely fine answer for a verbal "mark as paid" request,
         but only once asked and confirmed - never silently assumed. Ask the
         user if it isn't already stated in the conversation."""
         return _call_with_error_boundary(
-            tools.create_receipt, morning_client, original_invoice_id, payment_date, amount
+            tools.create_receipt, morning_client, original_internal_morning_id, payment_date, amount
         )
 
     @mcp.tool(structured_output=False)
-    def close_transaction_account(
-        original_invoice_id: str,
+    def create_combo_document_as_reference(
+        original_internal_morning_id: str,
+        payment_date: str,
         amount: Optional[float] = None,
         description: Optional[str] = None,
         vat_included: bool = True,
+        payment_method: str = "bank_transfer",
+        bank_number: Optional[str] = None,
+        bank_branch: Optional[str] = None,
+        bank_account: Optional[str] = None,
+        transaction_reference: Optional[str] = None,
     ) -> str:
         """Create a combo document ("חשבונית מס/קבלה", document type 320) that
         closes an existing transaction account ("חשבון עסקה", document type 300),
-        identified by original_invoice_id (the Morning document id of the
+        identified by original_internal_morning_id (the Morning document id of the
         transaction account being closed - resolve this first, e.g. via
         list_invoices, if the user only gave a client name or document number).
         Defaults to closing the full amount; pass amount for a partial close.
@@ -370,9 +376,24 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         conversation whether VAT should be included, ask the user rather than
         guessing. Also the correct target for "mark as paid" phrasing once
         the referenced document's type is resolved to 300 (there is no
-        separate status-update tool)."""
+        separate status-update tool).
+
+        REQUIRES payment_date: the real date the money moved, ISO YYYY-MM-DD.
+        "Today" is a genuinely fine answer for a verbal "mark as paid" request,
+        but only once asked and confirmed - never silently assumed. Ask the
+        user if it isn't already stated in the conversation (bugfix-038 - same
+        treatment as create_receipt/create_combo_document; this tool used to
+        silently default to today, which is exactly the bug this fixed).
+
+        `payment_method` records how it arrived: "bank_transfer" (default), "cash",
+        "cheque", "credit_card", "paypal", or an app ("bit", "pay", "paybox",
+        "colu", "google pay", "apple pay"). Bank details are stored only on a bank
+        transfer; a reference number (אסמכתה) only on an app or PayPal payment.
+        `bank_number` is the bank's NUMBER (e.g. "31"), not its name."""
         return _call_with_error_boundary(
-            tools.close_transaction_account, morning_client, original_invoice_id, amount, description, vat_included
+            tools.create_combo_document_as_reference, morning_client, original_internal_morning_id, payment_date,
+            amount, description, vat_included, payment_method, bank_number, bank_branch,
+            bank_account, transaction_reference
         )
 
     @mcp.tool(structured_output=False)
@@ -381,11 +402,12 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
         client_name: Optional[str] = None,
-        number: Optional[str] = None,
+        document_display_number: Optional[str] = None,
         name_resolved: bool = False,
     ) -> str:
         """List/search invoices with optional filters (status/date range/client
-        name/exact document number - e.g. "51365").
+        name/exact document_display_number - e.g. "51365", the human-visible
+        label - NEVER an internal_morning_id).
 
         A MULTI-WORD client_name REQUIRES name_resolved=True: call
         resolve_client_name first, then pass the EXACT name it returns here,
@@ -399,19 +421,19 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             from_date,
             to_date,
             client_name,
-            number,
+            document_display_number,
             config.list_invoices_token_budget,
             name_resolved,
         )
 
     @mcp.tool(structured_output=False)
-    def get_invoice_details(invoice_id: str) -> str:
+    def get_invoice_details(internal_morning_id: str) -> str:
         """Fetch full details (status, dates, payments) for one invoice - use
         this to resolve a document's real type/current status before deciding
         which create_*/close_* tool to call for a status-change request
         ("mark as paid", "cancel it") - there is no separate status-update
         tool; only document creation."""
-        return _call_with_error_boundary(tools.get_invoice_details, morning_client, invoice_id)
+        return _call_with_error_boundary(tools.get_invoice_details, morning_client, internal_morning_id)
 
     @mcp.tool(structured_output=False)
     def add_client(
@@ -490,9 +512,9 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         )
 
     @mcp.tool(structured_output=False)
-    def download_invoice_pdf(invoice_id: str) -> str:
+    def download_invoice_pdf(internal_morning_id: str) -> str:
         """Return a PDF download link for an invoice."""
-        return _call_with_error_boundary(tools.download_invoice_pdf, morning_client, invoice_id)
+        return _call_with_error_boundary(tools.download_invoice_pdf, morning_client, internal_morning_id)
 
     return mcp
 

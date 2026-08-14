@@ -6,16 +6,21 @@
   "properties": {
     "api_key_id": {
       "type": "string",
-      "description": "Morning API key id, used in the /account/token JWT exchange."
+      "description": "Morning API key id (OAuth2 client_id), used in the /idp/v1/oauth/token client_credentials exchange (feature 053)."
     },
     "api_key_secret": {
       "type": "string",
-      "description": "Morning API key secret, used in the /account/token JWT exchange."
+      "description": "Morning API key secret (OAuth2 client_secret), used in the /idp/v1/oauth/token client_credentials exchange (feature 053)."
     },
     "api_url": {
       "type": "string",
       "format": "uri",
       "description": "Base URL for the Morning REST API. Sandbox: https://sandbox.d.greeninvoice.co.il/api/v1/ ; Production: https://api.greeninvoice.co.il/api/v1/"
+    },
+    "auth_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Feature 053: base URL for Morning's OAuth2 token endpoint (POST {auth_url}/idp/v1/oauth/token) - a DIFFERENT host than api_url, confirmed against Morning's real, current OpenAPI spec (developers.morning.co). Sandbox: https://api.sandbox.morning.dev ; Production: https://api.morning.co . Required - never derived from api_url (CONSTITUTION §I: no inference)."
     },
     "file_upload_url": {
       "type": "string",
@@ -29,11 +34,6 @@
     },
     "default_currency": { "type": "string", "default": "ILS" },
     "default_vat_rate": { "type": "number", "default": 0.17 },
-    "token_ttl_seconds": {
-      "type": "integer",
-      "default": 3600,
-      "description": "Assumed JWT lifetime; MorningAuth caches the token for this long."
-    },
     "refresh_before_seconds": {
       "type": "integer",
       "default": 300,
@@ -104,5 +104,5 @@
       }
     }
   },
-  "required": ["api_key_id", "api_key_secret", "api_url"]
+  "required": ["api_key_id", "api_key_secret", "api_url", "auth_url"]
 }

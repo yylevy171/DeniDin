@@ -37,8 +37,9 @@ def test_list_invoices_sandbox():
         pytest.skip("`api_key_id`/`api_key_secret` look like placeholders. Provide real sandbox credentials to run this test.")
 
     base_url = morning_cfg.get("api_url", "https://sandbox.d.greeninvoice.co.il/api/v1/")
+    auth_url = morning_cfg.get("auth_url", "https://api.sandbox.morning.dev")
     # MorningClient accepts api_key_id and api_key_secret and will exchange them for a JWT.
-    client = MorningClient(api_key_id=api_key_id, api_key_secret=api_key_secret, base_url=base_url)
+    client = MorningClient(api_key_id=api_key_id, api_key_secret=api_key_secret, base_url=base_url, auth_url=auth_url)
 
     # This is a read-only call; it may return an empty list/dict which is acceptable.
     resp = client.list_invoices(params={})

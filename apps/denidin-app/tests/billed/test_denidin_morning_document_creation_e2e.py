@@ -20,7 +20,7 @@ shared locations instead of any one of the resulting files.)
 **Two-turn approval (Feature 022, merged after this file was first written;
 tool list updated for features 023/026)**: create_transaction_account,
 create_combo_document, create_credit_note, create_receipt, and
-close_transaction_account all create a real Morning document, exactly like
+create_combo_document_as_reference all create a real Morning document, exactly like
 create_invoice - so all of them are in ai_handler.APPROVAL_REQUIRED_MCP_TOOLS
 (renamed from DOCUMENT_CREATING_MCP_TOOLS by Feature 026, which extended it
 to also cover client-mutating tools) and require an explicit approval turn

@@ -57,6 +57,7 @@ def morning_client():
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
+        auth_url=config.auth_url,
     )
 
 

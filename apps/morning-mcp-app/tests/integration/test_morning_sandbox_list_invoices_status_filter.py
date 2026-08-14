@@ -35,6 +35,7 @@ def morning_client():
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
+        auth_url=config.auth_url,
     )
 
 
@@ -68,16 +69,16 @@ def paid_invoice(morning_client):
     # documented resolution path (there's no other way to get the id here).
     from denidin_mcp_morning.tools import list_invoices
 
-    invoice_id = None
+    internal_morning_id = None
     for _ in range(12):
         result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
         if "מזהה פנימי" in result:
-            invoice_id = result.split("מזהה פנימי (invoice_id): ")[1].splitlines()[0].strip()
+            internal_morning_id = result.split("מזהה פנימי (internal_morning_id): ")[1].splitlines()[0].strip()
             break
         time.sleep(1.5)
-    assert invoice_id, f"Could not resolve invoice_id for {client_name!r} to mark it paid: {response!r}"
+    assert internal_morning_id, f"Could not resolve internal_morning_id for {client_name!r} to mark it paid: {response!r}"
 
-    create_receipt(morning_client, invoice_id, payment_date="2026-07-12")
+    create_receipt(morning_client, internal_morning_id, payment_date="2026-07-12")
     return {"client_name": client_name}
 
 

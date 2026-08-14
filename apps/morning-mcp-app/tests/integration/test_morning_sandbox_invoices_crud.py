@@ -22,11 +22,12 @@ def morning_client():
     api_key_id = morning_cfg.get("api_key_id")
     api_key_secret = morning_cfg.get("api_key_secret")
     base_url = morning_cfg.get("api_url", "https://sandbox.d.greeninvoice.co.il/api/v1/")
+    auth_url = morning_cfg.get("auth_url", "https://api.sandbox.morning.dev")
 
     if not (api_key_id and api_key_secret):
         pytest.skip("No `api_key_id`/`api_key_secret` in test config")
 
-    return MorningClient(api_key_id=api_key_id, api_key_secret=api_key_secret, base_url=base_url)
+    return MorningClient(api_key_id=api_key_id, api_key_secret=api_key_secret, base_url=base_url, auth_url=auth_url)
 
 
 @pytest.fixture(scope="module")
@@ -86,14 +87,14 @@ def created_invoice(morning_client):
         pytest.fail(f"Create invoice failed (HTTP 400). Server response: {body}")
 
     # Response shapes vary; try several common keys
-    invoice_id = None
+    internal_morning_id = None
     if isinstance(resp, dict):
-        invoice_id = resp.get("id") or str(resp.get("documentId") or resp.get("document_id") or (resp.get("document") or {}).get("id"))
+        internal_morning_id = resp.get("id") or str(resp.get("documentId") or resp.get("document_id") or (resp.get("document") or {}).get("id"))
 
-    assert invoice_id, f"Failed to determine created invoice id from response: {resp}"
+    assert internal_morning_id, f"Failed to determine created invoice id from response: {resp}"
 
     return {
-        "id": str(invoice_id),
+        "id": str(internal_morning_id),
         "client_name": client_name,
         "client_phone": "+972541234567",
         "marker": unique_marker,

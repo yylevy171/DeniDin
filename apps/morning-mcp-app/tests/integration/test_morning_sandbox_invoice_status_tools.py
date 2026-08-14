@@ -1,6 +1,6 @@
 """Real Morning-sandbox test for get_invoice_details and the direct
 document-creation tools that replace `update_invoice_status` (removed,
-feature 023): create_receipt, create_credit_note, close_transaction_account.
+feature 023): create_receipt, create_credit_note, create_combo_document_as_reference.
 
 Formerly this file drove `update_invoice_status(status=...)` directly.
 Feature 023 removed that tool entirely - Morning has no real "status" field
@@ -35,11 +35,12 @@ def morning_client():
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
+        auth_url=config.auth_url,
     )
 
 
 @pytest.fixture()
-def seeded_invoice_id(morning_client):
+def seeded_internal_morning_id(morning_client):
     """Create one real sandbox invoice and return its Morning document id."""
     from denidin_mcp_morning.tools import _build_create_invoice_payload
 
@@ -51,54 +52,54 @@ def seeded_invoice_id(morning_client):
         description=f"Status tools test {unique_marker}",
     )
     response = morning_client.create_invoice(payload)
-    invoice_id = str(response.get("id") or response.get("documentId") or "")
-    assert invoice_id, f"Could not determine created invoice id from response: {response}"
-    return invoice_id
+    internal_morning_id = str(response.get("id") or response.get("documentId") or "")
+    assert internal_morning_id, f"Could not determine created invoice id from response: {response}"
+    return internal_morning_id
 
 
-def test_get_invoice_details_returns_status_and_dates(morning_client, seeded_invoice_id):
+def test_get_invoice_details_returns_status_and_dates(morning_client, seeded_internal_morning_id):
     from denidin_mcp_morning.tools import get_invoice_details
 
-    result = get_invoice_details(morning_client, invoice_id=seeded_invoice_id)
+    result = get_invoice_details(morning_client, internal_morning_id=seeded_internal_morning_id)
 
     assert isinstance(result, str)
     assert "לא שולם" in result  # freshly created documents are open ("unpaid")
 
 
-def test_create_receipt_then_get_details_reflects_paid(morning_client, seeded_invoice_id):
+def test_create_receipt_then_get_details_reflects_paid(morning_client, seeded_internal_morning_id):
     """Formerly update_invoice_status(status="paid") - now create_receipt
     directly (the model resolves the target's real type as 305 first, per
     US4, and calls this tool instead of a status-update tool)."""
     from denidin_mcp_morning.tools import create_receipt, get_invoice_details
 
-    create_result = create_receipt(morning_client, seeded_invoice_id, payment_date="2026-07-12")
+    create_result = create_receipt(morning_client, seeded_internal_morning_id, payment_date="2026-07-12")
     assert create_result
 
-    details = get_invoice_details(morning_client, invoice_id=seeded_invoice_id)
+    details = get_invoice_details(morning_client, internal_morning_id=seeded_internal_morning_id)
     assert "לא שולם" not in details
     assert "שולם" in details
 
 
-def test_repeated_create_receipt_is_idempotent_no_op(morning_client, seeded_invoice_id):
+def test_repeated_create_receipt_is_idempotent_no_op(morning_client, seeded_internal_morning_id):
     """Formerly update_invoice_status(status="paid")'s idempotency guarantee
     - now implemented directly in create_receipt (feature 023), since
     Morning itself does not reject a duplicate receipt (verified live)."""
     from denidin_mcp_morning.tools import create_receipt, get_invoice_details
 
-    create_receipt(morning_client, seeded_invoice_id, payment_date="2026-07-12")
-    create_receipt(morning_client, seeded_invoice_id, payment_date="2026-07-12")
+    create_receipt(morning_client, seeded_internal_morning_id, payment_date="2026-07-12")
+    create_receipt(morning_client, seeded_internal_morning_id, payment_date="2026-07-12")
 
-    raw = morning_client.get_invoice(seeded_invoice_id)
+    raw = morning_client.get_invoice(seeded_internal_morning_id)
     linked = raw.get("linkedDocuments") or []
     receipts = [doc for doc in linked if doc.get("type") == 400]
     assert len(receipts) == 1, f"Expected exactly one linked receipt, got: {linked!r}"
 
-    details = get_invoice_details(morning_client, invoice_id=seeded_invoice_id)
+    details = get_invoice_details(morning_client, internal_morning_id=seeded_internal_morning_id)
     assert "לא שולם" not in details
     assert "שולם" in details
 
 
-def test_there_is_no_mark_as_unpaid_action_anymore(morning_client, seeded_invoice_id):
+def test_there_is_no_mark_as_unpaid_action_anymore(morning_client, seeded_internal_morning_id):
     """Feature 023 (human-directed architecture decision, 2026-07-29): there
     is no such thing as "marking something unpaid" - only document creation.
     Formerly `_mark_invoice_unpaid`/`update_invoice_status(status="unpaid")`
@@ -114,7 +115,7 @@ def test_there_is_no_mark_as_unpaid_action_anymore(morning_client, seeded_invoic
     assert not hasattr(tools, "_mark_invoice_paid")
 
 
-def test_create_credit_note_issues_a_linked_credit_invoice(morning_client, seeded_invoice_id):
+def test_create_credit_note_issues_a_linked_credit_invoice(morning_client, seeded_internal_morning_id):
     """Use case: the user made a mistake creating the invoice (wrong amount,
     typo, etc.) and needs it voided so a corrected one can be created instead.
     Israeli law forbids deleting/voiding an issued tax invoice outright — the
@@ -124,11 +125,11 @@ def test_create_credit_note_issues_a_linked_credit_invoice(morning_client, seede
     directly (US5)."""
     from denidin_mcp_morning.tools import create_credit_note, get_invoice_details
 
-    result = create_credit_note(morning_client, seeded_invoice_id)
+    result = create_credit_note(morning_client, seeded_internal_morning_id)
 
     assert "זיכוי" in result
 
-    details = get_invoice_details(morning_client, invoice_id=seeded_invoice_id)
+    details = get_invoice_details(morning_client, internal_morning_id=seeded_internal_morning_id)
     assert "מסמכים מקושרים" in details
     assert "זיכוי" in details
 
@@ -150,24 +151,24 @@ def test_create_receipt_rejects_a_transaction_account_original(morning_client):
         name_resolved=True,
     )
 
-    invoice_id = None
+    internal_morning_id = None
     for _ in range(12):
         result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
         if "מזהה פנימי" in result:
-            invoice_id = result.split("מזהה פנימי (invoice_id): ")[1].splitlines()[0].strip()
+            internal_morning_id = result.split("מזהה פנימי (internal_morning_id): ")[1].splitlines()[0].strip()
             break
         time.sleep(1.5)
-    assert invoice_id, f"Could not resolve transaction account id for {client_name!r}"
+    assert internal_morning_id, f"Could not resolve transaction account id for {client_name!r}"
 
     with pytest.raises(ValueError):
-        create_receipt(morning_client, invoice_id, payment_date="2026-07-12")
+        create_receipt(morning_client, internal_morning_id, payment_date="2026-07-12")
 
 
 @pytest.fixture()
 def seeded_transaction_account_id(morning_client):
     """Create one real sandbox type-300 ('חשבון עסקה') document via the real
     create_transaction_account tool (021) - deliberately not a hand-built
-    payload, so this test exercises the exact shape close_transaction_account
+    payload, so this test exercises the exact shape create_combo_document_as_reference
     must handle in real usage (a VAT-less original, per feature 023's
     vat_included fix)."""
     from denidin_mcp_morning.tools import create_transaction_account, list_invoices
@@ -181,33 +182,35 @@ def seeded_transaction_account_id(morning_client):
 
     import time
 
-    invoice_id = None
+    internal_morning_id = None
     for _ in range(12):
         result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
         if "מזהה פנימי" in result:
-            invoice_id = result.split("מזהה פנימי (invoice_id): ")[1].splitlines()[0].strip()
+            internal_morning_id = result.split("מזהה פנימי (internal_morning_id): ")[1].splitlines()[0].strip()
             break
         time.sleep(1.5)
-    assert invoice_id, f"Could not resolve transaction account id for {client_name!r}"
-    return invoice_id
+    assert internal_morning_id, f"Could not resolve transaction account id for {client_name!r}"
+    return internal_morning_id
 
 
-def test_close_transaction_account_issues_a_type_320_combo_document(
+def test_create_combo_document_as_reference_issues_a_type_320_combo_document(
     morning_client, seeded_transaction_account_id
 ):
-    """Spec 020 / bugfix-014 Flow 4, now reached via close_transaction_account
+    """Spec 020 / bugfix-014 Flow 4, now reached via create_combo_document_as_reference
     directly (feature 023 removed update_invoice_status): a type-300 original
     must be closed by a linked type-320 combo document, not the type-400
     receipt used for type-305 - confirms the real payload shape Morning
     actually accepts, and that the vat_included fix (feature 023) works
     against a real VAT-less type-300 original created via the real
     create_transaction_account tool."""
-    from denidin_mcp_morning.tools import close_transaction_account, get_invoice_details
+    from denidin_mcp_morning.tools import create_combo_document_as_reference, get_invoice_details
 
-    close_result = close_transaction_account(morning_client, seeded_transaction_account_id)
+    close_result = create_combo_document_as_reference(
+        morning_client, seeded_transaction_account_id, payment_date="2026-07-12"
+    )
     assert close_result
 
-    details = get_invoice_details(morning_client, invoice_id=seeded_transaction_account_id)
+    details = get_invoice_details(morning_client, internal_morning_id=seeded_transaction_account_id)
     assert "לא שולם" not in details
     assert "שולם" in details
 
@@ -222,17 +225,17 @@ def test_close_transaction_account_issues_a_type_320_combo_document(
     )
 
 
-def test_close_transaction_account_is_idempotent(
+def test_create_combo_document_as_reference_is_idempotent(
     morning_client, seeded_transaction_account_id
 ):
     """Marking an already-closed type-300 document paid again must not
     create a second linked closing document (feature 023's idempotency
-    guard in close_transaction_account, replacing update_invoice_status's
+    guard in create_combo_document_as_reference, replacing update_invoice_status's
     same guarantee)."""
-    from denidin_mcp_morning.tools import close_transaction_account
+    from denidin_mcp_morning.tools import create_combo_document_as_reference
 
-    close_transaction_account(morning_client, seeded_transaction_account_id)
-    close_transaction_account(morning_client, seeded_transaction_account_id)
+    create_combo_document_as_reference(morning_client, seeded_transaction_account_id, payment_date="2026-07-12")
+    create_combo_document_as_reference(morning_client, seeded_transaction_account_id, payment_date="2026-07-12")
 
     raw = morning_client.get_invoice(seeded_transaction_account_id)
     linked = raw.get("linkedDocuments") or []

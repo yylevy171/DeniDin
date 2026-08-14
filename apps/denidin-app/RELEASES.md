@@ -35,3 +35,11 @@ Guide the bot to require a real client record (not just a name) before creating 
 ## denidin-app v0.4.0 — 2026-08-12
 
 Client-name-resolution architecture overhaul, add_client safety fixes, and a full billed/expensive test sweep
+
+## denidin-app v0.4.1 — 2026-08-13
+
+Group B document approvals (receipt/credit note/combo-document-as-reference) now show the referenced document's real data - client, date, amount, status - before approval, instead of a blank placeholder; internal Morning ids and human-facing document numbers are now structurally distinct throughout the Morning tool contract, fixing a live incident where the model confused the two.
+
+## denidin-app v0.4.2 — 2026-08-14
+
+WhatsApp typing indicator shown while processing a message (feature 048).

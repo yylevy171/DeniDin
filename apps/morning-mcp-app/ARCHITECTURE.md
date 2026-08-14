@@ -32,7 +32,7 @@ denidin-app's number, architecture still TBD).
 │  tools.py  (Phase 2 — DONE, 14 tools)                       │
 │  One function per MCP tool: create_invoice, list_invoices, │
 │  get_invoice_details, create_receipt, create_credit_note,  │
-│  close_transaction_account, add_client, update_client,     │
+│  create_combo_document_as_reference, add_client, update_client,     │
 │  list_clients, get_client_details,                         │
 │  get_financial_summary, download_invoice_pdf (+ more,      │
 │  see README.md for the full current list - this diagram   │
@@ -55,11 +55,15 @@ denidin-app's number, architecture still TBD).
            │ uses
 ┌──────────▼─────────────────┐
 │  auth.py  (EXISTS)           │
-│  MorningAuth: exchanges       │
-│  api_key_id+secret for a JWT  │
-│  at POST /account/token,      │
-│  caches it, refreshes before  │
-│  expiry. Thread-safe.         │
+│  MorningAuth: OAuth2           │
+│  client_credentials exchange  │
+│  at POST {auth_url}/idp/v1/   │
+│  oauth/token (feature 053 -   │
+│  different host than the      │
+│  main API). Caches the token  │
+│  using the real expiresAt,    │
+│  refreshes before expiry.     │
+│  Thread-safe.                 │
 └──────────┬─────────────────┘
            │ reads
 ┌──────────▼─────────────────┐
@@ -91,8 +95,9 @@ Nothing in this chain is mocked in tests — the "real Morning API" box really i
 ## Config & secrets
 
 Single source of truth: `config/config.json` (gitignored), flat shape —
-`api_key_id`, `api_key_secret`, `api_url`, plus optional tuning
-(`token_ttl_seconds`, `refresh_before_seconds`, `rate_limit_per_second`,
+`api_key_id`, `api_key_secret`, `api_url`, `auth_url` (feature 053 - the
+OAuth2 token endpoint's host, genuinely different from `api_url`), plus
+optional tuning (`refresh_before_seconds`, `rate_limit_per_second`,
 `mcp.{host,port,transport,log_level}`, `feature_flags.enable_mcp_server`).
 Validated at load time (`config.py`) against `config/config.schema.json`,
 which is copied **inside** the app (not just referenced from `specs/`)
