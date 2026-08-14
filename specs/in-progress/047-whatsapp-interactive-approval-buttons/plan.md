@@ -54,10 +54,20 @@ so nothing about the existing text-approval behavior should need a single existi
 touched, let alone rewritten. The full suite (`pytest tests/ -v --tb=short`) is the acceptance
 check, run once at the end (Phase 7), in place of per-phase TDD gates. Manual verification per
 `quickstart.md` substitutes for the dedicated automated coverage the original TDD task pairs
-would have provided (notably US3's stale-tap/supersession scenarios). No `tests/billed/` or
-`tests/expensive/` needed either way — nothing here calls OpenAI or vision; the only new
-external call (`sendInteractiveButtons`) is Green API, already exercised for real by Gate Zero's
-manual round-trip.
+would have provided (notably US3's stale-tap/supersession scenarios). No `tests/expensive/`
+needed — nothing here calls vision. **Update, 2026-08-14 (post-implementation, user-requested)**:
+one `tests/billed/` test *was* added after all —
+`test_godfather_creates_invoice_via_whatsapp_button_tap` — approving via a real simulated button
+tap instead of typed text, against real OpenAI/Morning MCP traffic. Adding it surfaced a real
+regression first: `tests/billed/denidin_mcp_e2e_helpers.py`'s `create_real_notification()` never
+set `.api` (deliberately, to avoid a real Green API send from tests, mirroring the pre-existing
+`.answer()` capture pattern) - which crashed `answer_with_interactive_buttons` on every
+approval-gated billed test, silently falling back to the error-notice path. Most tests didn't
+notice; `test_the_approval_states_every_mandatory_element` (checks the approval prompt's exact
+content) did, and was genuinely failing until the harness gained an equivalent
+`answer_with_interactive_buttons` stub. See that test's own docstring and the harness's updated
+`create_real_notification` docstring for the full account. No existing test's assertions were
+changed - purely additive, plus this one new test.
 **Target Platform**: N/A beyond the code change itself — no container/runtime change (existing
 rebuild-on-merge process applies).
 **Constraints**: Green API confirmed live: max 3 buttons per message, 25 chars/button label
