@@ -474,7 +474,16 @@ def _process_conversational_message(notification: Notification) -> None:
             return
 
         # Send response (with retry logic built-in)
-        denidin_app.whatsapp_handler.send_response(notification, ai_response)
+        # Feature 047: when this turn just sent a new pending approval as
+        # interactive buttons, send_response returns the sent idMessage - attach it
+        # to the pending approval so a later tap's stanzaId can be matched against
+        # it (contracts/pending-approval-message-binding.md). None in every other
+        # case (plain-text sends, no-reply, or a failed buttons send).
+        sent_id_message = denidin_app.whatsapp_handler.send_response(notification, ai_response)
+        if sent_id_message is not None:
+            denidin_app.ai_handler.pending_approval_manager.attach_sent_message_id(
+                message.chat_id, sent_id_message
+            )
         logger.info(f"{tracking} Response sent to {message.sender_name}")
 
     except Exception as e:
@@ -658,6 +667,64 @@ def handle_audio_message(notification: Notification) -> None:
         return
     
     _process_media_message(notification)
+
+
+@bot.router.message(type_message="interactiveButtonsResponse")
+def handle_button_tap(notification: Notification) -> None:
+    """
+    Feature 047: handle a WhatsApp interactive-buttons tap resolving a pending
+    document-creation approval (Feature 022).
+
+    Registered via the plain router.message mechanism, NOT @bot.router.buttons(...) -
+    research.md confirmed the library's own ButtonObserver only matches the older,
+    deprecated button-reply types (buttonsResponseMessage/templateButtonsReplyMessage/
+    listResponseMessage), never interactiveButtonsResponse (the type a real
+    sendInteractiveButtons tap actually produces, per Gate Zero).
+
+    Args:
+        notification: Green API notification object containing the tap
+    """
+    if denidin_app is None:
+        _handle_not_initialized_error(notification, "interactiveButtonsResponse")
+        return
+
+    from src.models.message import WhatsAppMessage  # local import - matches existing style
+
+    message = WhatsAppMessage.from_notification(notification)
+    button_data = notification.event.get("messageData", {}).get("interactiveButtonsResponse", {})
+    selected_id = button_data.get("selectedId", "")
+    stanza_id = button_data.get("stanzaId", "")
+
+    ai_response = denidin_app.ai_handler.resolve_button_tap(
+        chat_id=message.chat_id,
+        selected_id=selected_id,
+        stanza_id=stanza_id,
+        message_id=message.message_id,
+        user_phone=message.sender_id,
+        sender=message.sender_display_name,
+    )
+
+    if ai_response is None:
+        # Stale/superseded tap, or no pending approval at all - spec.md
+        # Clarifications: silently ignore, send nothing at all (no send_response
+        # call, no notification.answer call).
+        logger.info(
+            f"[047] Button tap produced no resolution for chat={message.chat_id!r} "
+            f"(selected_id={selected_id!r}, stanza_id={stanza_id!r}) - sending nothing"
+        )
+        return
+
+    sent_id_message = denidin_app.whatsapp_handler.send_response(notification, ai_response)
+    if sent_id_message is not None:
+        # A resolution reply is always plain text (never offer_approval_buttons)
+        # per contracts/button-tap-resolution.md, so this should never actually
+        # fire - kept only for symmetry with _process_conversational_message's
+        # identical wiring, in case a future change ever chains a fresh pending
+        # approval directly off a button resolution.
+        denidin_app.ai_handler.pending_approval_manager.attach_sent_message_id(
+            message.chat_id, sent_id_message
+        )
+    logger.info(f"[047] Button tap resolved and response sent for chat={message.chat_id!r}")
 
 
 @bot.router.message()

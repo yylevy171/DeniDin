@@ -2,7 +2,7 @@
 WhatsAppHandler - Handles WhatsApp message processing with retry logic
 Phase 5: US3 - Error Handling & Resilience
 """
-from typing import cast
+from typing import cast, Optional
 import requests
 from tenacity import (
     retry,
@@ -13,8 +13,10 @@ from tenacity import (
 from whatsapp_chatbot_python import Notification
 from src.constants.error_messages import (
     UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
-    FAILED_TO_PROCESS_FILE_DEFAULT
+    FAILED_TO_PROCESS_FILE_DEFAULT,
+    APPROVAL_BUTTONS_SEND_FAILED
 )
+from src.managers.pending_approval_manager import BUTTON_ID_APPROVE, BUTTON_ID_DECLINE
 from src.models.message import WhatsAppMessage, AIResponse
 from src.utils.logger import get_logger
 
@@ -129,13 +131,20 @@ class WhatsAppHandler:
                 # 5xx errors: let tenacity retry them by raising
             raise
 
-    def send_response(self, notification: Notification, response: AIResponse) -> None:
+    def send_response(self, notification: Notification, response: AIResponse) -> Optional[str]:
         """
         Send AI response back to WhatsApp with error handling.
 
         Args:
             notification: Green API notification to reply to
             response: AI response to send
+
+        Returns:
+            Feature 047: the sent WhatsApp idMessage when this was an approval-buttons
+            send (response.offer_approval_buttons=True) that succeeded; None in every
+            other case (plain-text sends, should_reply=False no-ops, or a failed
+            buttons send - see _send_approval_buttons). Every pre-047 caller ignores
+            this return value, so this is a superset of the existing contract.
         """
         # bugfix-028 B5: the send boundary is the last place that can tell a
         # deliberate silence from a broken turn, and it used to check neither.
@@ -147,7 +156,7 @@ class WhatsAppHandler:
                 f"No reply owed for request {response.request_id} (should_reply=False) - "
                 f"sending nothing, as intended."
             )
-            return
+            return None
         if not (response.response_text and response.response_text.strip()):
             # Unreachable via AIResponse's own contract, which refuses to build
             # this - kept as a boundary guard because "the user got nothing and
@@ -157,7 +166,15 @@ class WhatsAppHandler:
                 f"Refusing to send an empty reply for request {response.request_id} - "
                 f"a zero-character message is not a response."
             )
-            return
+            return None
+
+        # Feature 047: a turn that just created/refreshed a pending approval is sent
+        # as interactive buttons instead of plain text - a fully separate send path
+        # (different Green API endpoint, different failure handling: an error is
+        # surfaced rather than silently falling back to plain text, per
+        # spec.md Clarifications). Every other turn's behavior below is unchanged.
+        if response.offer_approval_buttons:
+            return self._send_approval_buttons(notification, response)
 
         try:
             logger.debug(f"Sending response for request {response.request_id}")
@@ -202,6 +219,67 @@ class WhatsAppHandler:
         except Exception as e:
             logger.error(f"Unexpected error sending response: {e}", exc_info=True)
             raise
+
+        return None
+
+    def _send_approval_buttons(self, notification: Notification, response: AIResponse) -> Optional[str]:
+        """
+        Feature 047: send response.response_text (the existing 📋 לאישור: block,
+        unmodified) as WhatsApp interactive buttons ("כן"/"לא") instead of plain text.
+
+        Per contracts/whatsapp-buttons-send.md: whatsapp_api_client_python's underlying
+        GreenAPI client is configured with raise_errors=False (this codebase's actual
+        default - confirmed by reading API.py, not assumed), so a failed send does NOT
+        raise - it comes back as a Response with code != 200 / data not a dict. Checking
+        the Response's own code/data is therefore the correct (and only reliable) way to
+        detect failure here, not a try/except around the call.
+
+        Returns:
+            The sent idMessage on success; None on any failure (after sending a
+            distinct plain-text error notice - never a silent fallback to the
+            approval prompt itself, per spec.md Clarifications).
+        """
+        buttons = [
+            {"type": "reply", "buttonId": BUTTON_ID_APPROVE, "buttonText": "כן"},
+            {"type": "reply", "buttonId": BUTTON_ID_DECLINE, "buttonText": "לא"},
+        ]
+
+        try:
+            result = notification.answer_with_interactive_buttons(response.response_text, buttons)
+        except Exception as e:  # pylint: disable=broad-except
+            # Defensive only (per the note above, this client does not normally raise) -
+            # a genuinely unexpected exception (e.g. a bug in the library itself) must
+            # still be treated as a send failure, not propagate and crash the turn.
+            logger.error(
+                f"Unexpected exception sending approval buttons for request "
+                f"{response.request_id}: {e}", exc_info=True
+            )
+            result = None
+
+        id_message = None
+        if result is not None and result.code == 200 and isinstance(result.data, dict):
+            id_message = result.data.get("idMessage")
+
+        if id_message is None:
+            logger.error(
+                f"Failed to send approval buttons for request {response.request_id}: "
+                f"code={getattr(result, 'code', None)!r}, "
+                f"error={getattr(result, 'error', None)!r}"
+            )
+            try:
+                notification.answer(APPROVAL_BUTTONS_SEND_FAILED)
+            except Exception as notice_error:  # pylint: disable=broad-except
+                logger.error(
+                    f"Failed to send approval-buttons failure notice for request "
+                    f"{response.request_id}: {notice_error}", exc_info=True
+                )
+            return None
+
+        logger.info(
+            f"Approval buttons sent successfully for request {response.request_id}: "
+            f"idMessage={id_message}"
+        )
+        return cast(str, id_message)
 
     def is_media_message(self, notification: Notification) -> bool:
         """

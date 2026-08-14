@@ -20,51 +20,69 @@
   - `chat_id = notification.event["senderData"]["chatId"]`
   - `selected_id = notification.event["messageData"]["interactiveButtonsResponse"]["selectedId"]`
   - `stanza_id = notification.event["messageData"]["interactiveButtonsResponse"]["stanzaId"]`
-  - `sender`/`recipient` resolved the same way every other handler resolves them today (Feature
-    039's display-name resolution chain), for audit logging only — the tap's *effect* is
-    determined solely by `chat_id`/`selected_id`/`stanza_id`, never by who sent it (RBAC for
-    who's *allowed* to approve is out of scope for this feature — Gate Zero item 4 established
-    correct per-tapper attribution is available, but this feature doesn't add a new permission
-    check beyond what already gates the underlying MCP tool).
-- Call `ai_handler.resolve_button_tap(chat_id, selected_id, stanza_id, sender, recipient)`.
+  - `chat_id`/`message_id`/`user_phone`/`sender` all resolved via
+    `WhatsAppMessage.from_notification(notification)` (same machinery `handle_media_message`
+    already uses for a non-text message type — its shared `senderData`-based extraction works
+    unchanged for `interactiveButtonsResponse` too, confirmed against the real captured
+    payload): `message.chat_id`, `message.message_id` (**this app's own synthetic UUID**, not
+    the raw Green API `idMessage` — matches exactly what a typed reply's `AIRequest.message_id`
+    already carries, for consistency), `message.sender_id` (real phone/JID, for RBAC), and
+    `message.sender_display_name` (Feature 039's resolution chain, for persistence/logging
+    only). The tap's *effect* is otherwise determined solely by
+    `chat_id`/`selected_id`/`stanza_id` (RBAC for who's *allowed* to approve is out of scope for
+    this feature — Gate Zero item 4 established correct per-tapper attribution is available, but
+    this feature doesn't add a new permission check beyond what already gates the underlying MCP
+    tool).
+- Call
+  `ai_handler.resolve_button_tap(chat_id, selected_id, stanza_id, message_id, user_phone, sender)`.
 - If the result is `None` (stale tap, or a genuinely absent pending approval): send nothing —
   no call to `send_response`, no call to `notification.answer`. This is the literal
   implementation of spec.md's "silently ignore."
 - If the result is a real `AIResponse`: pass it to `whatsapp_handler.send_response(...)` exactly
-  like any other turn's response (this response's `offer_approval_buttons` is always `False` —
-  a resolution reply is plain text, e.g. the same confirmation text `_resolve_pending_approval`
-  already produces for a typed `כן`).
+  like any other turn's response.
 - If `denidin_app is None` (not yet initialized): same `_handle_not_initialized_error` pattern
   every other handler already uses.
 
 **`AIHandler` PROVIDES** (new):
-- `resolve_button_tap(chat_id, selected_id, stanza_id, sender, recipient) -> Optional[AIResponse]`
-  — per data-model.md. Internally: looks up `pending = pending_approval_manager.get(chat_id)`;
-  returns `None` immediately if `pending is None` or `pending.sent_message_id != stanza_id`
-  (stale — see `pending-approval-message-binding.md`). Otherwise resolves via the same
-  `_call_openai_approval_api`/duplicate-execution-guard logic
-  `_resolve_pending_approval` already uses, branching on `selected_id == BUTTON_ID_APPROVE`
-  (approve) vs. anything else, i.e. `BUTTON_ID_DECLINE` (decline) — **never** via
-  `_is_affirmative_reply` (that function parses free text; a button's `selected_id` is already
-  an unambiguous, closed value by construction, so applying word-matching to it would be a
-  regression, not a simplification).
-- Logs the approval mechanism distinguishably from a typed reply — e.g.
-  `logger.info(f"[047] Pending approval resolved via BUTTON TAP for chat={chat_id!r}, "
-  f"tool={pending.tool_name!r}, selected_id={selected_id!r}")`, alongside the existing
-  `[022]`-prefixed resolution logging `_call_openai_approval_api`/`_resolve_pending_approval`
-  already emit — satisfies spec.md Clarifications' audit requirement via `denidin-app`-side
-  logging (see plan.md's Constitution Check note on why this doesn't extend into
-  `apps/morning-mcp-app`'s own audit trail).
+- `resolve_button_tap(chat_id, selected_id, stanza_id, message_id, user_phone, sender) ->
+  Optional[AIResponse]` — per data-model.md. Internally: looks up
+  `pending = pending_approval_manager.get(chat_id)` (only if RBAC resolved a non-blocked
+  `user_obj` from `user_phone` — same precondition `get_response` already applies to the typed
+  path); returns `None` immediately if `pending is None` or `pending.sent_message_id !=
+  stanza_id` (stale — see `pending-approval-message-binding.md`).
+- **Implementation simplification, found while building this (2026-08-14)**: rather than
+  reimplementing `_call_openai_approval_api`'s duplicate-execution guards a second time,
+  `resolve_button_tap` synthesizes a plain `AIRequest` with `user_prompt="כן"` (if
+  `selected_id == BUTTON_ID_APPROVE`) or `"לא"` (otherwise) and **delegates to the existing
+  `get_response`/`_resolve_pending_approval` pipeline verbatim** — genuinely zero duplicated
+  approve/decline logic, not just guard-reuse. This also means a button decline inherits
+  `_resolve_pending_approval`'s exact existing behavior: it declines, then **falls through to a
+  fresh conversational turn** processing `"לא"` as a new message — identical, byte-for-byte, to
+  what a genuine typed `לא` already produces today. This was a deliberate choice over hand-writing
+  a bespoke "cancelled" confirmation: it guarantees button-decline and text-decline can never
+  drift apart in behavior, satisfying US2's non-interference requirement by construction rather
+  than by parallel-but-separate implementation. `resolve_button_tap` itself never calls
+  `_is_affirmative_reply` on anything (that function parses free text; the synthesized `"כן"`/`"לא"`
+  strings are fixed constants chosen because they're unambiguously in/out of its whitelist, not
+  parsed values) — the staleness decision is made entirely beforehand, by `stanza_id`, before any
+  free-text-shaped value is ever constructed.
+- Logs the approval mechanism distinguishably from a typed reply *before* delegating — e.g.
+  `logger.info(f"[047] Resolving pending approval via BUTTON TAP for chat={chat_id!r}, "
+  f"tool={pending.tool_name!r}, selected_id={selected_id!r}, approve={approve}")`, alongside the
+  existing `[022]`-prefixed resolution logging `_call_openai_approval_api`/
+  `_resolve_pending_approval` already emit — satisfies spec.md Clarifications' audit requirement
+  via `denidin-app`-side logging (see plan.md's Constitution Check note on why this doesn't
+  extend into `apps/morning-mcp-app`'s own audit trail).
 
 **`AIHandler` EXPECTS**:
 - `selected_id` is one of the two known constants (`BUTTON_ID_APPROVE`/`BUTTON_ID_DECLINE`) —
-  any other value (a malformed/unexpected payload) is treated the same as `BUTTON_ID_DECLINE`
-  (the existing `_resolve_pending_approval` precedent: anything not affirmatively recognized is
-  a decline, never silently ignored *once a live match on `stanza_id` has already established
-  this is a real, current tap* — staleness is decided first, by `stanza_id`, and only then does
-  `selected_id` decide approve vs. decline).
-- `chat_id`/`stanza_id` are non-empty strings, per the always-present shape confirmed in every
-  captured Gate Zero payload.
+  any other value is treated the same as `BUTTON_ID_DECLINE` (`approve = selected_id ==
+  BUTTON_ID_APPROVE`, so anything else takes the decline/fresh-turn path — never silently
+  ignored *once a live match on `stanza_id` has already established this is a real, current
+  tap*; staleness is decided first, by `stanza_id`, and only then does `selected_id` decide
+  approve vs. decline).
+- `chat_id`/`stanza_id`/`message_id` are non-empty strings, per the always-present shape
+  confirmed in every captured Gate Zero payload.
 
 ---
 

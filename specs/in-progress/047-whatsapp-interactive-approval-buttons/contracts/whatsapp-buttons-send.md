@@ -28,20 +28,32 @@
   on failure — see below). This is a superset of the existing contract; every existing caller
   that ignores the return value keeps working unchanged.
 - When `response.offer_approval_buttons` is `True`: calls
-  `notification.api.sending.sendInteractiveButtons(chatId=chat_id, body=response.response_text,
-  buttons=[{"type": "reply", "buttonId": BUTTON_ID_APPROVE, "buttonText": "כן"},
-  {"type": "reply", "buttonId": BUTTON_ID_DECLINE, "buttonText": "לא"}])` instead of
-  `notification.answer(response.response_text)`. `body` carries the full existing
-  `📋 לאישור:` text unchanged (well under the confirmed 20000-char cap) — buttons change how the
-  answer arrives, never what the question contains (spec.md Scope).
-- On failure (any exception from the `sendInteractiveButtons` call): logs the failure using the
-  same categorized-by-status-code pattern `send_response` already applies to
-  `requests.HTTPError`/`Timeout`/`ConnectionError`, then sends a **separate, plain-text error
-  notice** via the existing `notification.answer(...)` path (e.g. "⚠️ לא הצלחתי לשלוח את בקשת
-  האישור עם כפתורים. נסי לשלוח את הבקשה שוב.") — per spec.md Clarifications ("surface an error",
-  not a silent fallback). This notice is **not** the `📋 לאישור:` block itself — the user is told
-  the prompt failed, not shown a degraded copy of it, since the model's approval details were
-  never actually delivered in this failure case.
+  `notification.answer_with_interactive_buttons(response.response_text, buttons=[{"type":
+  "reply", "buttonId": BUTTON_ID_APPROVE, "buttonText": "כן"}, {"type": "reply", "buttonId":
+  BUTTON_ID_DECLINE, "buttonText": "לא"}])` — a convenience method the `whatsapp_chatbot_python`
+  `Notification` class already provides (`manager/handler.py`, confirmed while building T005;
+  resolves `chat_id` internally the same way `notification.answer` does, and delegates to the
+  identical `sendInteractiveButtons` Green API call) — instead of `notification.answer(...)`.
+  Its body carries the full existing `📋 לאישור:` text unchanged (well under the confirmed
+  20000-char cap) — buttons change how the answer arrives, never what the question contains
+  (spec.md Scope).
+- On failure: **implementation correction (discovered while building T005, 2026-08-14)** — the
+  original assumption here ("any exception from the `sendInteractiveButtons` call") was wrong.
+  Reading `API.py` confirms `whatsapp_api_client_python`'s `GreenAPI` client is constructed with
+  `raise_errors=False` throughout this codebase (never overridden) — both HTTP-status failures
+  and network-level errors are caught internally and returned as a `Response` object
+  (`code != 200`, `data` not a dict) rather than raised. This matches something already directly
+  observed live, earlier the same day: Gate Zero's first `sendInteractiveButtons` attempt (missing
+  `"type": "reply"`) came back as `code=400, data=None` with **no exception raised at all**. The
+  correct (and only reliable) failure check is therefore **the returned `Response`'s own
+  `code`/`data`**, not a `try`/`except` around the call (a defensive `except Exception` is kept
+  around the call site regardless, purely for genuinely unexpected library bugs — never the
+  primary detection mechanism). On a detected failure: logs the failure (`code`/`error`), then
+  sends a **separate, plain-text error notice** via the existing `notification.answer(...)` path
+  (`constants/error_messages.APPROVAL_BUTTONS_SEND_FAILED`) — per spec.md Clarifications
+  ("surface an error", not a silent fallback). This notice is **not** the `📋 לאישור:` block
+  itself — the user is told the prompt failed, not shown a degraded copy of it, since the
+  model's approval details were never actually delivered in this failure case.
 - When `response.offer_approval_buttons` is `False` (the overwhelming majority of turns):
   behavior is 100% unchanged — same `notification.answer(...)` call as today.
 
@@ -49,8 +61,9 @@
 - `response.offer_approval_buttons` is only ever `True` when `response.should_reply` is also
   `True` and `response.response_text` is non-empty (already guaranteed by `AIResponse`'s own
   `__post_init__` invariant — no new validation needed here).
-- `notification.api` exposes `sending.sendInteractiveButtons` — already true, confirmed live via
-  Gate Zero, same client object `notification.answer` itself delegates through.
+- `notification` exposes `answer_with_interactive_buttons` — already true (library-provided),
+  confirmed by source read, delegating to the same `sending.sendInteractiveButtons` Green API
+  call Gate Zero verified live.
 
 ---
 

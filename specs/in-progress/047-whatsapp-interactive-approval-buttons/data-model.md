@@ -59,20 +59,24 @@ confirmed (Gate Zero) to live in a separate field (`selectedDisplayText`).
 
 ## New `AIHandler` method: `resolve_button_tap`
 
-Not a new persisted entity, but the new resolution path parallel to
-`_resolve_pending_approval`:
+Not a new persisted entity, but the new resolution path alongside `_resolve_pending_approval`.
+**Implementation note (as-built, 2026-08-14)**: rather than reimplementing approve/decline
+resolution, this does its own `stanza_id` staleness check and then *delegates* to the existing
+`get_response`/`_resolve_pending_approval` pipeline via a synthetic `"כן"`/`"לא"` `AIRequest` —
+see contracts/button-tap-resolution.md for the full rationale (genuinely zero duplicated
+approve/decline logic, and a button decline inherits the exact same fresh-turn fallthrough
+behavior a typed `לא` already has today).
 
 ```python
 def resolve_button_tap(
-    self, chat_id: str, selected_id: str, stanza_id: str,
-    sender: Optional[str], recipient: Optional[str],
+    self, chat_id: str, selected_id: str, stanza_id: str, message_id: str,
+    user_phone: Optional[str], sender: Optional[str],
 ) -> Optional[AIResponse]:
     """Resolves a button tap against chat_id's pending approval, if the tap's stanza_id
     matches the message it was actually sent as. Returns None (caller sends nothing -
     clarify: silent) if there's no pending approval, or its sent_message_id doesn't equal
-    stanza_id (stale/superseded tap). Otherwise resolves exactly as
-    _resolve_pending_approval's affirmative/decline branches do (reusing
-    _call_openai_approval_api and its duplicate-execution guards verbatim), driven by
+    stanza_id (stale/superseded tap). Otherwise synthesizes a "כן"/"לא" AIRequest and
+    delegates to get_response/_resolve_pending_approval verbatim, driven by
     selected_id == BUTTON_ID_APPROVE rather than parsed free text."""
 ```
 
