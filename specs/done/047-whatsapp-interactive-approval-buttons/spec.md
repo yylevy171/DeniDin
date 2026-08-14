@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/047-whatsapp-interactive-approval-buttons`
 **Created**: 2026-08-09
-**Status**: Done - implemented and tested, merging to master. Gate Zero closed, clarification complete, `plan.md`/`tasks.md` done, implementation complete (2026-08-14, no new automated tests by explicit user decision — full existing suite green, 0 test files touched), all 5 `quickstart.md` scenarios verified live against real WhatsApp/Green API/OpenAI/Morning sandbox traffic (approve, decline, stanza_id staleness guard, text-path non-interference, groups). Also verified with real billed tests (text approval, approval-content-check, and a new button-tap billed test) and one real expensive test (image → ledger event → approval turn) confirming the approval mechanism itself works correctly end to end.
+**Status**: Done - Merged to master (PR #222). Gate Zero closed, clarification complete, `plan.md`/`tasks.md` done, implementation complete (2026-08-14, no new automated tests by explicit user decision — full existing suite green, 0 test files touched), all 5 `quickstart.md` scenarios verified live against real WhatsApp/Green API/OpenAI/Morning sandbox traffic (approve, decline, stanza_id staleness guard, text-path non-interference, groups). Also verified with real billed tests (text approval, approval-content-check, and a new button-tap billed test) and one real expensive test (image → ledger event → approval turn) confirming the approval mechanism itself works correctly end to end.
 **Priority**: P2
 **Input**: User description (2026-08-09, during bugfix-028): *"doesnt whatsapp allow a button to
 press which can be used for approval in our case? (and a 2nd button for 'dont approve' of
