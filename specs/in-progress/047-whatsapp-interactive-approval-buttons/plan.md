@@ -42,15 +42,22 @@ dependency, already exposes everything needed
 (per its own docstring: losing a pending approval on restart just means the user re-issues the
 request). One new field on the existing in-memory `PendingApproval` dataclass, no new storage
 layer, no migration.
-**Testing**: `pytest` — `tests/unit/` (new `PendingApprovalManager.attach_sent_message_id`
-tests, stanzaId-matching/staleness logic tests), `tests/integration/` (a real
-`interactiveButtonsResponse`-shaped notification dispatched through `bot.router`, per
-CONSTITUTION §V — covers the new router handler, the approve/decline resolution path, and the
-stale-tap no-op path, all with real internal objects). No `tests/billed/` or `tests/expensive/`
-needed — nothing here calls OpenAI or vision; the only new external call
-(`sendInteractiveButtons`) is Green API, already exercised for real by Gate Zero's manual round
--trip and covered going forward the same way every other Green API send in this app is (real
-integration-test dispatch, not mocked).
+**Testing**: **No new automated tests** for this feature, by explicit user decision
+(2026-08-14, same kind of scoped exception as Feature 048's) — implementation proceeds directly
+from `tasks.md`'s "b" tasks, without a preceding "a" (test-writing) step or its human-approval
+gate. **Hard requirement standing in for that coverage**: every existing test that exercises the
+approval gate (`tests/unit/test_ai_handler.py`'s pending-approval/`_resolve_pending_approval`/
+`_is_affirmative_reply` tests, `tests/unit/test_whatsapp_handler.py`'s `send_response` tests,
+any integration test dispatching a real text-based approval reply) must keep passing **with no
+change to their logic or assertions** — this feature is additive (a new, parallel entry point),
+so nothing about the existing text-approval behavior should need a single existing test to be
+touched, let alone rewritten. The full suite (`pytest tests/ -v --tb=short`) is the acceptance
+check, run once at the end (Phase 7), in place of per-phase TDD gates. Manual verification per
+`quickstart.md` substitutes for the dedicated automated coverage the original TDD task pairs
+would have provided (notably US3's stale-tap/supersession scenarios). No `tests/billed/` or
+`tests/expensive/` needed either way — nothing here calls OpenAI or vision; the only new
+external call (`sendInteractiveButtons`) is Green API, already exercised for real by Gate Zero's
+manual round-trip.
 **Target Platform**: N/A beyond the code change itself — no container/runtime change (existing
 rebuild-on-merge process applies).
 **Constraints**: Green API confirmed live: max 3 buttons per message, 25 chars/button label
@@ -77,13 +84,12 @@ path, one new field + one new method on `PendingApproval`/`PendingApprovalManage
   unchanged; `sent_message_id` is an opaque WhatsApp-assigned string id, not a timestamp.
 - ✅ **§III Git workflow**: on `feature/047-whatsapp-interactive-approval-buttons`, off
   `master`.
-- ✅ **§V Integration tests, no mocking**: the new integration test dispatches a real
-  webhook-shaped `interactiveButtonsResponse` notification (the exact captured shape in
-  `gate-zero-captured-notifications.json`) through `bot.router`, exercising real
-  `AIHandler`/`WhatsAppHandler`/`PendingApprovalManager` objects together — true integration,
-  not a direct method call. The `sendInteractiveButtons` call itself was verified for real
-  during Gate Zero (not mocked, not assumed) and remains a real Green API call at runtime; no
-  new mocking is introduced anywhere.
+- ✅ **§V no mocking**: N/A in the automated-test sense this feature ships without new tests
+  (explicit user decision, see Testing above) — there's no new mock to avoid. What §V governs
+  (real internal objects, real external calls, never mocked) remains true in spirit: the
+  `sendInteractiveButtons` call itself was verified for real during Gate Zero (not mocked, not
+  assumed) and remains a real Green API call at runtime; existing integration tests that do
+  exercise the approval gate continue to do so via real `bot.router` dispatch, unchanged.
 - ✅ **§XVII No monkey-patching**: all new behavior is new methods/handlers, constructed the
   same dependency-injected way as every existing manager — no runtime patching of
   `whatsapp_chatbot_python`, `PendingApprovalManager`, or `AIHandler`.
