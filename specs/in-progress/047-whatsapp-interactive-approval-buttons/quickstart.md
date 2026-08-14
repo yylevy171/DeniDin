@@ -10,11 +10,31 @@ godfather/admin dev number and (for US-groups behavior) the project's existing t
 
 ## Prerequisites
 
-- `denidin-app-dev` running.
+- `denidin-app-dev` running **from a freshly built image** — `docker compose up`/`run_all.sh`
+  does NOT rebuild by itself (CLAUDE.md's "Merging a code fix does not redeploy it"). Verified
+  live 2026-08-14: starting dev while it was already running recreated the container from a
+  stale cached image with none of this feature's code, and the first test sent an
+  indistinguishable-looking plain-text approval prompt with no buttons at all — not an error, no
+  crash, just silently the old behavior. Confirm before testing:
+  `docker exec denidin-dev-denidin-app-dev-1 grep -c offer_approval_buttons /app/src/models/message.py`
+  should print `1`, not `0`. If `0`: `docker compose --project-directory . -f
+  docker/docker-compose.dev.yml -f docker/docker-compose.dev.local.yml build denidin-app-dev &&
+  ... up -d --no-deps denidin-app-dev`.
+- `morning-mcp-app-dev` running and its tunnel status `"running"` in
+  `shared/mcp-status-dev/morning_mcp_status.dev.json` with a **fresh** `updated_at` (a stale
+  status file from a previous, now-dead container looks identical at a glance) — verify with
+  `curl -o /dev/null -w '%{http_code}\n' <server_url_without_/mcp>/health` returning `200`.
 - A real document-creation request ready to issue (e.g. "צור חשבונית ל[לקוח קיים] על סך 100 ש״ח
   עבור בדיקה"), against a client that already exists in the Morning sandbox (dev environment).
 
 ## US1 — Approve a document with one tap
+
+**✅ Verified live, 2026-08-14** (approve path): real invoice #52120 created for client "יוסי
+יהושע", ₪20.00, resolved by a real tap on `"כן"`. `sent_message_id`/`stanza_id` matched
+correctly, `create_invoice` executed exactly once (no duplicate/zero-execution guard fired),
+confirmation + PDF download link sent as plain text. The `"לא"`/decline-tap path is not yet
+separately confirmed live (expected to be byte-identical to a typed `לא`, per
+contracts/button-tap-resolution.md's delegation design, but not yet directly observed).
 
 1. Send the document-creation request in a 1:1 chat with DeniDin.
 2. Confirm the reply carries the full `📋 לאישור:` block **and** renders as two native WhatsApp

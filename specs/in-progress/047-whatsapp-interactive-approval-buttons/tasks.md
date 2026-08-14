@@ -125,6 +125,14 @@ Phase 6 full-suite run.
 **Checkpoint**: Tapping a live button approves/declines a real pending approval exactly once,
 end to end. Verify via `quickstart.md` US1 (real device).
 
+**✅ Verified live, 2026-08-14** (approve path only) — see `quickstart.md` US1. Real invoice
+#52120 created, exactly once, via a real button tap; `sent_message_id`/`stanza_id` binding
+confirmed working. Found and fixed one unrelated operational issue along the way (not a code
+bug in this feature): `run_all.sh dev` recreated the container from a stale pre-047 image
+without rebuilding — silently produced plain-text-only prompts with no buttons and no error.
+Documented in `quickstart.md` Prerequisites so it isn't hit again. Decline path and Phase 4/5
+scenarios (T009-T011) still pending live confirmation.
+
 VC0-VC2 for this phase.
 
 ---
