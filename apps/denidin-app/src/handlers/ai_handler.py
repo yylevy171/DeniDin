@@ -2169,6 +2169,11 @@ class AIHandler:
                 f"stanza_id={stanza_id!r}, pending={pending!r}"
             )
             return None
+        # user_obj is guaranteed non-None here: pending is only ever non-None (the
+        # branch above just confirmed it is) when user_obj was truthy, per the
+        # ternary a few lines up - explicit for mypy, which can't infer that
+        # implication across the ternary on its own.
+        assert user_obj is not None
 
         approve = selected_id == BUTTON_ID_APPROVE
         logger.info(
