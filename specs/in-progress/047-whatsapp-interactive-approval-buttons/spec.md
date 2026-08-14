@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/047-whatsapp-interactive-approval-buttons`
 **Created**: 2026-08-09
-**Status**: In progress — Gate Zero closed, clarification complete (2026-08-14), ready for `plan.md`
+**Status**: In progress — Gate Zero closed, clarification complete, `plan.md` done (2026-08-14), ready for `/speckit.tasks`
 **Priority**: P2
 **Input**: User description (2026-08-09, during bugfix-028): *"doesnt whatsapp allow a button to
 press which can be used for approval in our case? (and a 2nd button for 'dont approve' of
@@ -17,10 +17,10 @@ course)"*
 - **METHODOLOGY.md** (§I, II, VIII, IX, X): Spec-first development, mandatory user stories,
   Terminology Glossary, Technology Choices, Requirement IDs.
 
-**Required Files**: `user-stories.md` (present, DRAFT) ✅ · `spec.md` (this file, DRAFT) ·
-`plan.md` (NOT STARTED) · `research.md` (present, 2026-08-14 — **Gate Zero CLOSED**, see below) ✅ ·
-`data-model.md` (NOT STARTED) · `contracts/` (NOT STARTED) · `quickstart.md` (NOT STARTED) ·
-`tasks.md` (NOT STARTED).
+**Required Files**: `user-stories.md` ✅ · `spec.md` (this file) ✅ ·
+`plan.md` ✅ · `research.md` (Gate Zero CLOSED) ✅ ·
+`data-model.md` ✅ · `contracts/` (3 files) ✅ · `quickstart.md` ✅ ·
+`tasks.md` (NOT STARTED — next: `/speckit.tasks`).
 
 ---
 

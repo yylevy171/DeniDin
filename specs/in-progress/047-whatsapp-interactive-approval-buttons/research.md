@@ -117,6 +117,31 @@ stale-tap guard must be silent (drop the tap with no visible UI change and no re
 reply explaining the situation (rejected in clarify — see spec.md Clarifications) — there is no
 third option where the button itself visibly becomes inert.
 
+## Additional finding (during plan, 2026-08-14): the library's own `router.buttons` does not
+match the observed live type
+
+`whatsapp_chatbot_python`'s `Router` exposes a dedicated `router.buttons` observer
+(`manager/observer.py`'s `ButtonObserver`), which looks like the natural registration point for
+a button-tap handler. Read its source rather than assuming: `ButtonObserver.add_handler` hard-
+codes its filter to exactly three message types — `buttonsResponseMessage`,
+`templateButtonsReplyMessage`, `listResponseMessage` — all belonging to the **older, deprecated**
+button-sending methods (`sendButtons`/`sendTemplateButtons`/`sendListMessage`, per spec.md's
+"What is already known"). None of these is `interactiveButtonsResponse`, the type Gate Zero
+actually observed live from `sendInteractiveButtons`. A handler registered via
+`@bot.router.buttons()` would therefore silently never fire for this feature's real traffic — it
+would compile, register, and simply never match. The correct registration is the same plain
+`@bot.router.message(type_message="interactiveButtonsResponse")` mechanism every other handler in
+`denidin.py` already uses (confirmed via `Router.route_event`/`Observer.propagate_event`: dispatch
+is a flat filter match on `messageData.typeMessage`, nothing button-specific about it beyond that
+filter value).
+
+Also confirmed from the same source read: `Router.route_event` only forwards
+`typeWebhook == "incomingMessageReceived"` events to `router.message` (→ our handlers) at all —
+`outgoingAPIMessageReceived` and `outgoingMessageStatus` (the 3 extra notifications every send
+produces, per the captured payloads above) are routed to separate observers our code never
+subscribes to. No extra filtering is needed in application code to keep those out of the new
+handler.
+
 ## Gate Zero status: CLOSED (2026-08-14)
 
 All 6 questions Gate Zero posed are now answered against real, captured payloads. `plan.md` may
