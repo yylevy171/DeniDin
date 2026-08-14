@@ -38,3 +38,7 @@ Client-name-resolution architecture overhaul, add_client safety fixes, and a ful
 ## [0.4.1] - 2026-08-13
 
 Group B document approvals (receipt/credit note/combo-document-as-reference) now show the referenced document's real data - client, date, amount, status - before approval, instead of a blank placeholder; internal Morning ids and human-facing document numbers are now structurally distinct throughout the Morning tool contract, fixing a live incident where the model confused the two.
+
+## [0.4.2] - 2026-08-14
+
+WhatsApp typing indicator shown while processing a message (feature 048).
