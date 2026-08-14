@@ -16,6 +16,13 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Feature 047: stable identifiers sent as a button's buttonId and matched against
+# selectedId on the tap reply - never the display label ("כן"/"לא"), which is
+# presentation only and lives in a separate field (selectedDisplayText), confirmed
+# via Gate Zero's real round-trip (see specs/.../047-.../research.md).
+BUTTON_ID_APPROVE = "denidin_approve"
+BUTTON_ID_DECLINE = "denidin_decline"
+
 
 @dataclass
 class PendingApproval:
@@ -35,6 +42,13 @@ class PendingApproval:
         created_at: UTC isoformat timestamp, for logging/diagnostics only —
             there is no timeout/expiry: a pending approval stays open until
             the user replies (Feature 022 clarification).
+        sent_message_id: Feature 047 - the WhatsApp idMessage of the
+            interactive-buttons message presenting this pending approval, once
+            it's actually been sent (None until PendingApprovalManager.
+            attach_sent_message_id is called - creation and send are two
+            separate steps, see contracts/pending-approval-message-binding.md).
+            A button tap whose stanzaId doesn't equal this field is stale by
+            definition, including the case where it's still None.
     """
     response_id: str
     approval_request_id: str
@@ -42,6 +56,7 @@ class PendingApproval:
     arguments: str
     server_label: str
     created_at: str
+    sent_message_id: Optional[str] = None
 
 
 class PendingApprovalManager:
@@ -79,4 +94,26 @@ class PendingApprovalManager:
         logger.info(
             f"[022] PendingApprovalManager(id={id(self)}).clear({chat_id!r}) "
             f"(current keys: {list(self._pending.keys())!r})"
+        )
+
+    def attach_sent_message_id(self, chat_id: str, id_message: str) -> None:
+        """Feature 047: records the WhatsApp idMessage of the just-sent buttons message
+        for chat_id's currently pending approval, if one still exists.
+
+        No-op (logged, never raises) if the pending approval was already
+        resolved/cleared/replaced before this call landed - a real possible race
+        (e.g. an unusually fast text-based decline beating the send's own response
+        back), not an error: whatever it would have attached to no longer matters.
+        """
+        pending = self._pending.get(chat_id)
+        if pending is None:
+            logger.info(
+                f"[022] PendingApprovalManager(id={id(self)}).attach_sent_message_id("
+                f"{chat_id!r}, {id_message!r}) - no pending approval to attach to, ignored"
+            )
+            return
+        pending.sent_message_id = id_message
+        logger.info(
+            f"[022] PendingApprovalManager(id={id(self)}).attach_sent_message_id("
+            f"{chat_id!r}, {id_message!r}) - attached"
         )

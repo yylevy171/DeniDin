@@ -179,6 +179,11 @@ class AIResponse:
     # Responses API call had the Morning MCP server attached as a remote tool.
     # Serves both audit logging (REQ-SEC-002) and E2E test verification.
     mcp_calls: List[Dict] = field(default_factory=list)
+    # Feature 047: True when this turn's response just created (or refreshed) a
+    # pending document-creation approval - signals WhatsAppHandler to send via
+    # sendInteractiveButtons ("כן"/"לא") instead of plain text. Set by AIHandler at
+    # the same point PendingApproval is first set().
+    offer_approval_buttons: bool = False
 
     def __post_init__(self):
         """bugfix-028 B5: enforce the response-owed contract.
