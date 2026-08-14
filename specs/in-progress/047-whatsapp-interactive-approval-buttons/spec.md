@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/047-whatsapp-interactive-approval-buttons`
 **Created**: 2026-08-09
-**Status**: Draft — backlogged, pre-clarification
+**Status**: In progress — Gate Zero closed, clarification complete (2026-08-14), ready for `plan.md`
 **Priority**: P2
 **Input**: User description (2026-08-09, during bugfix-028): *"doesnt whatsapp allow a button to
 press which can be used for approval in our case? (and a 2nd button for 'dont approve' of
@@ -23,6 +23,33 @@ course)"*
 `tasks.md` (NOT STARTED).
 
 ---
+
+## Clarifications
+
+### Session 2026-08-14
+
+- Q: Two buttons or three? → A: Two — matching the current text-approval flow exactly. The
+  buttons must be labeled **"כן"** / **"לא"** (not "אישור"/"ביטול" as earlier drafts of this
+  spec assumed), matching the live approval gate's actual closed question verbatim:
+  `אישור — כן/לא?` (`config/runtime_constitution.md:515`). No third button.
+- Q: What happens on a stale tap? → A: **Silently ignore** (no document created, no reply
+  sent). The preferred alternative — grey out/disable the buttons once resolved — was tested
+  live via `serviceMethods.editMessage` and confirmed **not possible**: the API returns `200`
+  but the message is visibly unchanged on a real device (see research.md). With no way to make
+  the button itself go inert, and "reply explaining it's stale" rejected as the fallback, a
+  stale tap does nothing observable — same as any other message DeniDin chooses not to act on.
+- Q: Should buttons appear in group chats? → A: Yes, same as 1:1. Gate Zero's group test already
+  confirmed taps are correctly attributed to the actual tapping member (`senderData.sender`),
+  same as any typed group message today — no special-casing needed, consistent behavior between
+  1:1 and group chats.
+- Q: Should a tap be recorded distinguishably from a typed approval? → A: Yes. The approval
+  mechanism (button tap vs. free text) must be part of whatever audit trail bugfix-036 covers —
+  cheap to add while building this new code path, and closes the audit gap for this mechanism
+  from day one.
+- Q: If `sendInteractiveButtons` itself fails, what happens to the approval prompt? → A:
+  **Surface an error** rather than silently falling back to the plain-text-only `📋 לאישור:`
+  prompt. Explicitly the human's choice over the recommended silent-fallback option — a failed
+  send must be visible, not masked by a degraded-but-working text path.
 
 ## Origin
 
@@ -96,16 +123,10 @@ the answer arrives, never what the question must contain.
 
 ## Open questions for clarification
 
-1. **Two buttons or three?** "אישור" / "ביטול" — or a third for "עוד פרטים"?
-2. **What happens to a stale button** once an approval has been resolved by text, superseded, or
-   has expired — silently ignore, or reply explaining it's no longer live? (Depends on Gate Zero
-   finding 5.)
-3. **Groups** — should buttons appear at all in a group chat, where any member could tap them?
-   Note RBAC for a group turn already resolves to the most-permissive member
-   (`GroupMembershipResolver`), which is a *different* question from who physically tapped.
-4. **Audit** — bugfix-036 notes the MCP server has no audit trail. Should a tap be recorded
-   distinguishably from a typed approval, so "who approved this document, and how" stays
-   answerable?
+1. ~~**Two buttons or three?**~~ Resolved 2026-08-14 — see Clarifications above.
+2. ~~**What happens to a stale button?**~~ Resolved 2026-08-14 — see Clarifications above.
+3. ~~**Groups?**~~ Resolved 2026-08-14 — see Clarifications above.
+4. ~~**Audit?**~~ Resolved 2026-08-14 — see Clarifications above.
 
 ## Related work
 

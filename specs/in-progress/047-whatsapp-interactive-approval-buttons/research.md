@@ -100,6 +100,23 @@ tappable on a real device, real dev number, real Green API instance. Prod uses s
 infrastructure (own Green API instance/number, per CLAUDE.md's 2026-08-03 asymmetry note) and
 was not tested here — no reason to expect divergence, but not itself confirmed.
 
+## Additional finding (during clarify, 2026-08-14): `editMessage` cannot alter buttons
+
+Tested whether `serviceMethods.editMessage(chatId, idMessage, message)` could be used to grey
+out/strip the buttons from an already-sent `interactiveButtons` message once it's been resolved
+(the preferred stale-tap UX, if feasible). Sent a real interactive-buttons message, then called
+`editMessage` against its `idMessage` with new text.
+
+**Result**: the API call itself returned `200` with a **different** `idMessage` than the one
+being edited, and on the real device **nothing changed** — the original message was untouched
+(possibly a silently-failed no-op, possibly created an unseen/undelivered separate message;
+either way, not the intended edit). Confirmed live, not assumed: `editMessage` does not work on
+`interactiveButtons` messages — there is no API-level way to disable/strip buttons after the
+fact. This closes off the "grey out the button after resolution" design option entirely; the
+stale-tap guard must be silent (drop the tap with no visible UI change and no reply) or must
+reply explaining the situation (rejected in clarify — see spec.md Clarifications) — there is no
+third option where the button itself visibly becomes inert.
+
 ## Gate Zero status: CLOSED (2026-08-14)
 
 All 6 questions Gate Zero posed are now answered against real, captured payloads. `plan.md` may
