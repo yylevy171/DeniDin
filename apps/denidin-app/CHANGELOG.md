@@ -42,3 +42,7 @@ Group B document approvals (receipt/credit note/combo-document-as-reference) now
 ## [0.4.2] - 2026-08-14
 
 WhatsApp typing indicator shown while processing a message (feature 048).
+
+## [0.4.3] - 2026-08-14
+
+WhatsApp interactive buttons (כן/לא) for the document-creation approval gate - a real button tap now resolves a pending approval alongside the existing typed-text path, with a stanza_id-based guard against a stale tap resolving the wrong (superseded) approval.
