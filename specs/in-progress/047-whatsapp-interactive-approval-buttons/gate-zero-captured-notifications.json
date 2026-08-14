@@ -1,0 +1,89 @@
+[
+  {
+    "typeWebhook": "outgoingMessageStatus",
+    "chatId": "972522968679@c.us",
+    "instanceData": {
+      "idInstance": 710722700313,
+      "wid": "972559723730@c.us",
+      "typeInstance": "whatsapp"
+    },
+    "timestamp": 1786688655,
+    "idMessage": "3EB0C93530F6E687164133",
+    "sendByApi": true,
+    "status": "sent"
+  },
+  {
+    "typeWebhook": "outgoingMessageStatus",
+    "chatId": "972522968679@c.us",
+    "instanceData": {
+      "idInstance": 710722700313,
+      "wid": "972559723730@c.us",
+      "typeInstance": "whatsapp"
+    },
+    "timestamp": 1786688659,
+    "idMessage": "3EB0C93530F6E687164133",
+    "sendByApi": true,
+    "status": "delivered"
+  },
+  {
+    "typeWebhook": "outgoingMessageStatus",
+    "chatId": "972522968679@c.us",
+    "instanceData": {
+      "idInstance": 710722700313,
+      "wid": "972559723730@c.us",
+      "typeInstance": "whatsapp"
+    },
+    "timestamp": 1786688665,
+    "idMessage": "3EB0C93530F6E687164133",
+    "sendByApi": true,
+    "status": "read"
+  },
+  {
+    "typeWebhook": "incomingMessageReceived",
+    "idMessage": "AC8FEC03A980F8ED5E6245D4CE70481C",
+    "instanceData": {
+      "idInstance": 710722700313,
+      "wid": "972559723730@c.us",
+      "typeInstance": "whatsapp"
+    },
+    "timestamp": 1786688664,
+    "senderData": {
+      "chatId": "972522968679@c.us",
+      "sender": "972522968679@c.us",
+      "senderName": "אני ואנוכי",
+      "senderContactName": "אני ואנוכי",
+      "chatName": "אני ואנוכי"
+    },
+    "messageData": {
+      "typeMessage": "interactiveButtonsResponse",
+      "quotedMessage": {
+        "typeMessage": "interactiveButtons",
+        "interactiveButtons": {
+          "titleText": "Gate Zero test",
+          "contentText": "בדיקת כפתורים (feature 047) - זו הודעת בדיקה בלבד, נא ללחוץ על אחד הכפתורים.",
+          "footerText": "DeniDin dev",
+          "buttons": [
+            {
+              "type": "reply",
+              "buttonId": "gate_zero_yes",
+              "buttonText": "אישור"
+            },
+            {
+              "type": "reply",
+              "buttonId": "gate_zero_no",
+              "buttonText": "ביטול"
+            }
+          ]
+        },
+        "stanzaId": "3EB0C93530F6E687164133",
+        "participant": "972559723730@c.us"
+      },
+      "interactiveButtonsResponse": {
+        "stanzaId": "3EB0C93530F6E687164133",
+        "selectedIndex": 0,
+        "selectedId": "gate_zero_yes",
+        "selectedDisplayText": "אישור"
+      }
+    }
+  }
+]

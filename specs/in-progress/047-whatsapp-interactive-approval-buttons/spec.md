@@ -18,7 +18,7 @@ course)"*
   Terminology Glossary, Technology Choices, Requirement IDs.
 
 **Required Files**: `user-stories.md` (present, DRAFT) ✅ · `spec.md` (this file, DRAFT) ·
-`plan.md` (NOT STARTED) · `research.md` (NOT STARTED — **blocked, see Gate Zero**) ·
+`plan.md` (NOT STARTED) · `research.md` (present, 2026-08-14 — **Gate Zero CLOSED**, see below) ✅ ·
 `data-model.md` (NOT STARTED) · `contracts/` (NOT STARTED) · `quickstart.md` (NOT STARTED) ·
 `tasks.md` (NOT STARTED).
 
@@ -53,7 +53,7 @@ button-reply webhook type — no `buttonsResponseMessage`, no `interactiveButton
 `contactsArrayMessage`, `imageMessage`, `documentMessage`, `videoMessage`, `audioMessage`, plus a
 catch-all — so a button tap today would fall into the catch-all and do nothing useful.
 
-## 🚧 Gate Zero — a real button round-trip, before any design
+## ✅ Gate Zero — a real button round-trip, before any design (CLOSED 2026-08-14, see research.md)
 
 **No design work, no `plan.md`, no code may begin until a real button has been sent to a real
 WhatsApp number, tapped by a real person, and the resulting webhook JSON captured and recorded in
