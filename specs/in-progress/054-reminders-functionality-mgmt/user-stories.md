@@ -49,25 +49,29 @@ observable value. Tied for P1 with creation because a reminder that's created bu
 equivalent to not having the feature at all.
 
 **Independent Test**: Create a one-time reminder due a few minutes out. Wait for it to become due.
-Verify the reminder text arrives as a WhatsApp message in the same chat it was created from, and
-that the occurrence's status changes from `pending` to `fired` at that point — without a
-dedicated new background process being spun up per reminder.
+Verify the reminder text arrives as a WhatsApp message in the godfather's own 1:1 chat with
+DeniDin, and that the occurrence's status changes from `pending` to `fired` at that point —
+without a dedicated new background process being spun up per reminder.
 
 **Acceptance Scenarios**:
 
 1. **Given** a reminder occurrence whose due date/time has arrived, **When** the shared delivery
    mechanism next checks for due occurrences, **Then** the reminder's message text is sent as a
-   proactive WhatsApp message to the chat it was created from, and the occurrence's status
-   changes from `pending` to `fired`.
-2. **Given** multiple reminders (from the same or different users) are simultaneously due,
-   **When** the delivery mechanism runs, **Then** all are delivered, using the same single shared
-   mechanism rather than one instance per reminder.
+   proactive WhatsApp message to the godfather's own 1:1 chat with DeniDin, and the occurrence's
+   status changes from `pending` to `fired`.
+2. **Given** multiple reminders are simultaneously due, **When** the delivery mechanism runs,
+   **Then** all are delivered, using the same single shared mechanism rather than one instance per
+   reminder.
 3. **Given** a reminder occurrence became due while the delivery mechanism was not running (e.g.
    during a restart), **When** the mechanism resumes, **Then** the overdue `pending` occurrence
    still fires (late) rather than being silently skipped.
 4. **Given** a recurring reminder with multiple past occurrences, **When** its occurrence history
    is inspected, **Then** each occurrence shows its own independent status (`pending`/`fired`),
    not one shared status for the whole series.
+5. **Given** a reminder was created or last modified by ADMIN (via admin's own chat with DeniDin,
+   using admin's blanket access), **When** it fires, **Then** it still delivers to the godfather's
+   own 1:1 chat — never to the admin's chat — matching a reminder created by the godfather
+   directly, byte-for-byte.
 
 ---
 
@@ -106,9 +110,11 @@ occurrence vs. whole series, when the target is recurring), and only applies it 
    message text, **When** the change is applied, **Then** it applies to all remaining `pending`
    occurrences still following the series' default pattern — already-`fired` occurrences and any
    previously Detached occurrences are untouched.
-6. **Given** any GODFATHER- or ADMIN-role user, **When** they ask to modify a reminder created by
-   a different GODFATHER- or ADMIN-role user, **Then** the system permits it (fully symmetric
-   cross-user override — not restricted to any one directional precedence).
+6. **Given** there is exactly one reminder list (owned by "the godfather"), **When** either a
+   GODFATHER-role or an ADMIN-role user asks to modify any reminder in it, regardless of who
+   originally created it, **Then** the system permits it — this is not a "cross-user override" of
+   anything, it's just this app's ordinary RBAC gate (FR-001) plus ADMIN's existing blanket-access
+   pattern, applied to the one list.
 
 ---
 
