@@ -5,7 +5,8 @@
 **Status**: In progress — `speckit.specify` drafted 2026-08-16 from user clarification;
 `speckit.clarify` completed 2026-08-16 (11 questions asked/answered across two sessions);
 `speckit.plan` completed 2026-08-16 (`research.md`, `data-model.md`, `contracts/`,
-`quickstart.md`, `plan.md`). Not yet run through `speckit.tasks`/`speckit.analyze`.
+`quickstart.md`, `plan.md`); `speckit.tasks` completed 2026-08-16 (`tasks.md`, 8 phases, 35
+tasks). Not yet run through `speckit.analyze`.
 **Created**: 2026-08-16
 
 ---
@@ -418,6 +419,6 @@ written to hold under either model and needed no changes once the decision was m
 ---
 
 See `user-stories.md` (MANDATORY, Given-When-Then) in this same directory for the full
-prioritized user stories backing these requirements, and `plan.md`/`research.md`/
-`data-model.md`/`contracts/`/`quickstart.md` for the completed `speckit.plan` output.
-`speckit.tasks` and `speckit.analyze` have not yet been run for this feature.
+prioritized user stories backing these requirements, `plan.md`/`research.md`/`data-model.md`/
+`contracts/`/`quickstart.md` for the completed `speckit.plan` output, and `tasks.md` for the
+completed `speckit.tasks` output. `speckit.analyze` has not yet been run for this feature.
