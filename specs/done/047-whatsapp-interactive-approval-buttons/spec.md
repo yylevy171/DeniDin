@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/047-whatsapp-interactive-approval-buttons`
 **Created**: 2026-08-09
-**Status**: Draft — backlogged, pre-clarification
+**Status**: Done - Merged to master (PR #222). Gate Zero closed, clarification complete, `plan.md`/`tasks.md` done, implementation complete (2026-08-14, no new automated tests by explicit user decision — full existing suite green, 0 test files touched), all 5 `quickstart.md` scenarios verified live against real WhatsApp/Green API/OpenAI/Morning sandbox traffic (approve, decline, stanza_id staleness guard, text-path non-interference, groups). Also verified with real billed tests (text approval, approval-content-check, and a new button-tap billed test) and one real expensive test (image → ledger event → approval turn) confirming the approval mechanism itself works correctly end to end.
 **Priority**: P2
 **Input**: User description (2026-08-09, during bugfix-028): *"doesnt whatsapp allow a button to
 press which can be used for approval in our case? (and a 2nd button for 'dont approve' of
@@ -17,12 +17,41 @@ course)"*
 - **METHODOLOGY.md** (§I, II, VIII, IX, X): Spec-first development, mandatory user stories,
   Terminology Glossary, Technology Choices, Requirement IDs.
 
-**Required Files**: `user-stories.md` (present, DRAFT) ✅ · `spec.md` (this file, DRAFT) ·
-`plan.md` (NOT STARTED) · `research.md` (NOT STARTED — **blocked, see Gate Zero**) ·
-`data-model.md` (NOT STARTED) · `contracts/` (NOT STARTED) · `quickstart.md` (NOT STARTED) ·
-`tasks.md` (NOT STARTED).
+**Required Files**: `user-stories.md` ✅ · `spec.md` (this file) ✅ ·
+`plan.md` ✅ · `research.md` (Gate Zero CLOSED) ✅ ·
+`data-model.md` ✅ · `contracts/` (3 files) ✅ · `quickstart.md` ✅ ·
+`tasks.md` ✅ (14 tasks / 6 phases — **no new automated tests**, explicit user decision
+2026-08-14: existing approval-gate tests must pass unmodified, full suite is the acceptance
+check).
 
 ---
+
+## Clarifications
+
+### Session 2026-08-14
+
+- Q: Two buttons or three? → A: Two — matching the current text-approval flow exactly. The
+  buttons must be labeled **"כן"** / **"לא"** (not "אישור"/"ביטול" as earlier drafts of this
+  spec assumed), matching the live approval gate's actual closed question verbatim:
+  `אישור — כן/לא?` (`config/runtime_constitution.md:515`). No third button.
+- Q: What happens on a stale tap? → A: **Silently ignore** (no document created, no reply
+  sent). The preferred alternative — grey out/disable the buttons once resolved — was tested
+  live via `serviceMethods.editMessage` and confirmed **not possible**: the API returns `200`
+  but the message is visibly unchanged on a real device (see research.md). With no way to make
+  the button itself go inert, and "reply explaining it's stale" rejected as the fallback, a
+  stale tap does nothing observable — same as any other message DeniDin chooses not to act on.
+- Q: Should buttons appear in group chats? → A: Yes, same as 1:1. Gate Zero's group test already
+  confirmed taps are correctly attributed to the actual tapping member (`senderData.sender`),
+  same as any typed group message today — no special-casing needed, consistent behavior between
+  1:1 and group chats.
+- Q: Should a tap be recorded distinguishably from a typed approval? → A: Yes. The approval
+  mechanism (button tap vs. free text) must be part of whatever audit trail bugfix-036 covers —
+  cheap to add while building this new code path, and closes the audit gap for this mechanism
+  from day one.
+- Q: If `sendInteractiveButtons` itself fails, what happens to the approval prompt? → A:
+  **Surface an error** rather than silently falling back to the plain-text-only `📋 לאישור:`
+  prompt. Explicitly the human's choice over the recommended silent-fallback option — a failed
+  send must be visible, not masked by a degraded-but-working text path.
 
 ## Origin
 
@@ -53,7 +82,7 @@ button-reply webhook type — no `buttonsResponseMessage`, no `interactiveButton
 `contactsArrayMessage`, `imageMessage`, `documentMessage`, `videoMessage`, `audioMessage`, plus a
 catch-all — so a button tap today would fall into the catch-all and do nothing useful.
 
-## 🚧 Gate Zero — a real button round-trip, before any design
+## ✅ Gate Zero — a real button round-trip, before any design (CLOSED 2026-08-14, see research.md)
 
 **No design work, no `plan.md`, no code may begin until a real button has been sent to a real
 WhatsApp number, tapped by a real person, and the resulting webhook JSON captured and recorded in
@@ -96,16 +125,10 @@ the answer arrives, never what the question must contain.
 
 ## Open questions for clarification
 
-1. **Two buttons or three?** "אישור" / "ביטול" — or a third for "עוד פרטים"?
-2. **What happens to a stale button** once an approval has been resolved by text, superseded, or
-   has expired — silently ignore, or reply explaining it's no longer live? (Depends on Gate Zero
-   finding 5.)
-3. **Groups** — should buttons appear at all in a group chat, where any member could tap them?
-   Note RBAC for a group turn already resolves to the most-permissive member
-   (`GroupMembershipResolver`), which is a *different* question from who physically tapped.
-4. **Audit** — bugfix-036 notes the MCP server has no audit trail. Should a tap be recorded
-   distinguishably from a typed approval, so "who approved this document, and how" stays
-   answerable?
+1. ~~**Two buttons or three?**~~ Resolved 2026-08-14 — see Clarifications above.
+2. ~~**What happens to a stale button?**~~ Resolved 2026-08-14 — see Clarifications above.
+3. ~~**Groups?**~~ Resolved 2026-08-14 — see Clarifications above.
+4. ~~**Audit?**~~ Resolved 2026-08-14 — see Clarifications above.
 
 ## Related work
 

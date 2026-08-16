@@ -29,3 +29,9 @@ APPROVAL_POSSIBLY_DUPLICATED = "אירעה שגיאה באישור הפעולה 
 # fails for any reason, there is no text to fall back to at all - never leave
 # the user with a silently empty WhatsApp message.
 LEDGER_FOLLOWUP_FAILED_TRY_AGAIN = "אני נתקלתי בשגיאה בעיבוד הודעתך. אנא נסה שוב או נסח אותה מחדש."
+
+# Interactive approval buttons send failure (Feature 047) - sendInteractiveButtons
+# failed, so the user never saw the approval details at all (not just a degraded
+# text-only version of them). Clarify decision: surface an error, never a silent
+# fallback to the plain-text approval prompt.
+APPROVAL_BUTTONS_SEND_FAILED = "לא הצלחתי לשלוח את בקשת האישור עם כפתורים. אנא נסה לשלוח את הבקשה שוב."

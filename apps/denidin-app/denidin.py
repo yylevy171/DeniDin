@@ -158,6 +158,17 @@ class DeniDin:
         # Feature 039: most-permissive-role RBAC resolution for group turns
         self.group_membership_resolver = group_membership_resolver
         self._logger = get_logger(__name__)
+        # Feature 048's typing indicator needs the live bot (bot.api.serviceMethods.
+        # sendTyping) at message-processing time, same as mark_message_read needs it
+        # at notification-received time - but Feature 043 deliberately removed the
+        # module-level `bot` global those used to close over (research.md R3). Set
+        # as a post-construction attribute in __main__, same idiom as
+        # GreenAPIMessageSource.is_blocked (see its own docstring for why this can't
+        # be a constructor param: __main__ constructs GreenAPIMessageSource, then
+        # this DeniDin instance, in that order). None here (the default) means "no
+        # live bot" - correct for tests/the player, where send_typing_indicator's own
+        # broad except degrades this to a harmless logged warning, never a crash.
+        self.green_api_bot: Optional[Any] = None
     
     def handle_message(self, chat_id: str, content: str) -> dict:
         """
@@ -460,7 +471,8 @@ def _process_conversational_message(notification: Notification) -> None:
         # testing surfaced an unresolved scheduling delay; accepted limitation that the
         # indicator may lapse before the reply arrives on turns slower than ~20s.
         is_blocked = denidin_app.ai_handler.user_manager.get_user(message.sender_id).is_blocked
-        send_typing_indicator(bot, message.chat_id, is_blocked)
+        if denidin_app.green_api_bot is not None:
+            send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
         # Get AI response (with retry logic and fallbacks built-in)
         # Feature 039: pass the resolved display name (not the raw WhatsApp id) as
@@ -490,7 +502,16 @@ def _process_conversational_message(notification: Notification) -> None:
             return
 
         # Send response (with retry logic built-in)
-        denidin_app.whatsapp_handler.send_response(notification, ai_response)
+        # Feature 047: when this turn just sent a new pending approval as
+        # interactive buttons, send_response returns the sent idMessage - attach it
+        # to the pending approval so a later tap's stanzaId can be matched against
+        # it (contracts/pending-approval-message-binding.md). None in every other
+        # case (plain-text sends, no-reply, or a failed buttons send).
+        sent_id_message = denidin_app.whatsapp_handler.send_response(notification, ai_response)
+        if sent_id_message is not None:
+            denidin_app.ai_handler.pending_approval_manager.attach_sent_message_id(
+                message.chat_id, sent_id_message
+            )
         logger.info(f"{tracking} Response sent to {message.sender_name}")
 
     except Exception as e:
@@ -549,12 +570,12 @@ def _process_media_message(notification: Notification) -> None:
 
     message = WhatsAppMessage.from_notification(notification)
     is_blocked = denidin_app.ai_handler.user_manager.get_user(message.sender_id).is_blocked
-    send_typing_indicator(bot, message.chat_id, is_blocked)
+    if denidin_app.green_api_bot is not None:
+        send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
     denidin_app.whatsapp_handler.handle_media_message(notification)
 
 
-@bot.router.message(type_message=["textMessage", "extendedTextMessage"])
 def handle_text_message(notification: Notification) -> None:
     """
     Handle incoming text messages from WhatsApp with comprehensive error handling.
@@ -670,6 +691,68 @@ def handle_audio_message(notification: Notification) -> None:
     _process_media_message(notification)
 
 
+def handle_button_tap(notification: Notification) -> None:
+    """
+    Feature 047: handle a WhatsApp interactive-buttons tap resolving a pending
+    document-creation approval (Feature 022).
+
+    Registered via the plain router.message mechanism, NOT @bot.router.buttons(...) -
+    research.md confirmed the library's own ButtonObserver only matches the older,
+    deprecated button-reply types (buttonsResponseMessage/templateButtonsReplyMessage/
+    listResponseMessage), never interactiveButtonsResponse (the type a real
+    sendInteractiveButtons tap actually produces, per Gate Zero). Registration itself
+    happens via GreenAPIMessageSource's explicit message_types list in __main__
+    (Feature 043 - no module-level `bot`/decorator, see research.md R3), deliberately
+    NOT via HANDLER_REGISTRY/dispatch_notification (that dict's exact-8-types shape
+    is locked by an existing immutable test predating this feature) - dispatch_notification
+    special-cases this one type instead.
+
+    Args:
+        notification: Green API notification object containing the tap
+    """
+    if denidin_app is None:
+        _handle_not_initialized_error(notification, "interactiveButtonsResponse")
+        return
+
+    from src.models.message import WhatsAppMessage  # local import - matches existing style
+
+    message = WhatsAppMessage.from_notification(notification)
+    button_data = notification.event.get("messageData", {}).get("interactiveButtonsResponse", {})
+    selected_id = button_data.get("selectedId", "")
+    stanza_id = button_data.get("stanzaId", "")
+
+    ai_response = denidin_app.ai_handler.resolve_button_tap(
+        chat_id=message.chat_id,
+        selected_id=selected_id,
+        stanza_id=stanza_id,
+        message_id=message.message_id,
+        user_phone=message.sender_id,
+        sender=message.sender_display_name,
+    )
+
+    if ai_response is None:
+        # Stale/superseded tap, or no pending approval at all - spec.md
+        # Clarifications: silently ignore, send nothing at all (no send_response
+        # call, no notification.answer call).
+        logger.info(
+            f"[047] Button tap produced no resolution for chat={message.chat_id!r} "
+            f"(selected_id={selected_id!r}, stanza_id={stanza_id!r}) - sending nothing"
+        )
+        return
+
+    sent_id_message = denidin_app.whatsapp_handler.send_response(notification, ai_response)
+    if sent_id_message is not None:
+        # A resolution reply is always plain text (never offer_approval_buttons)
+        # per contracts/button-tap-resolution.md, so this should never actually
+        # fire - kept only for symmetry with _process_conversational_message's
+        # identical wiring, in case a future change ever chains a fresh pending
+        # approval directly off a button resolution.
+        denidin_app.ai_handler.pending_approval_manager.attach_sent_message_id(
+            message.chat_id, sent_id_message
+        )
+    logger.info(f"[047] Button tap resolved and response sent for chat={message.chat_id!r}")
+
+
 def handle_unsupported_message_default(notification: Notification) -> None:
     """
     Catch-all handler for unsupported message types.
@@ -717,7 +800,19 @@ def dispatch_notification(type_message: str, notification: Notification) -> None
     """The dispatch callable every MessageSource.start() calls - looks up
     HANDLER_REGISTRY, falling back to CATCH_ALL_HANDLER for any type not
     explicitly registered (same behavior the old catch-all decorator gave,
-    just explicit instead of relying on router iteration order)."""
+    just explicit instead of relying on router iteration order).
+
+    interactiveButtonsResponse (Feature 047) is special-cased rather than added
+    to HANDLER_REGISTRY itself: that dict's exact-8-types shape is locked by an
+    existing immutable test (test_denidin_dispatch.py) predating Feature 047's
+    merge into this branch - widening it needs its own explicit human sign-off,
+    not a side effect of a git merge. __main__ registers this type explicitly
+    with GreenAPIMessageSource alongside HANDLER_REGISTRY's own keys, so it
+    still reaches here rather than falling through to CATCH_ALL_HANDLER.
+    """
+    if type_message == "interactiveButtonsResponse":
+        handle_button_tap(notification)
+        return
     handler = HANDLER_REGISTRY.get(type_message, CATCH_ALL_HANDLER)
     handler(notification)
 
@@ -756,8 +851,12 @@ if __name__ == "__main__":
     # the blocking listen loop (message_source.start(), below) begins.
     # message_types is constructor-injected (not passed to start()) so
     # start(dispatch) has the exact same signature as PlayerExportSource's -
-    # see green_api_source.py's own docstring.
-    message_source = GreenAPIMessageSource(config, message_types=list(HANDLER_REGISTRY.keys()))
+    # see green_api_source.py's own docstring. interactiveButtonsResponse
+    # (Feature 047) is appended explicitly rather than folded into
+    # HANDLER_REGISTRY itself - see dispatch_notification's docstring for why.
+    message_source = GreenAPIMessageSource(
+        config, message_types=list(HANDLER_REGISTRY.keys()) + ["interactiveButtonsResponse"]
+    )
     live_bot = message_source.connect()
 
     # Initialize app (handles memory system, cleanup thread, recovery)
@@ -765,6 +864,11 @@ if __name__ == "__main__":
 
     # Set global denidin_app for WhatsApp message handler
     denidin_app = denidin
+
+    # Feature 048's typing indicator: same post-construction-attribute idiom as
+    # message_source.is_blocked below - see DeniDin.__init__'s green_api_bot
+    # docstring for why this can't be a constructor/initialize_app() arg either.
+    denidin_app.green_api_bot = live_bot
 
     # Feature 045's read-receipt hook: set as a post-construction attribute,
     # not a constructor/start() arg - denidin.ai_handler.user_manager doesn't
