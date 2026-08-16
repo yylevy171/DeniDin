@@ -59,6 +59,10 @@ INTERNAL_FIELDS = {
     "sender", "captured_at", "raw_message_excerpt", "replaces_hint",
     "reference_hint", "agreement_label",
     "schema_version",  # Feature 043, US5 - 11th internal field
+    # Phase 11 (schema v2, 2026-08-16) - not yet Events.csv columns, see
+    # tasks.md Phase 11 and TestBankPaymentDetailFields below.
+    "payment_method", "bank_number", "bank_branch", "bank_account",
+    "transaction_reference",
 }
 RESERVED_NULL_FIELDS = [
     "trigger_condition", "split_partner", "split_percent", "due_date",
@@ -103,9 +107,14 @@ class TestLedgerEventManagerCore:
         assert event_id is not None
         assert (temp_events_dir / f"{event_id}.json").exists()
 
-    def test_written_file_has_exactly_the_30_csv_fields_plus_11_internal_fields(
+    def test_written_file_has_exactly_the_30_csv_fields_plus_16_internal_fields(
         self, manager, temp_events_dir
     ):
+        """Updated by Phase 11 (schema v2, 2026-08-16, explicit human sign-off to
+        implement T027b) - was 11 internal fields, now 16 (payment_method/
+        bank_number/bank_branch/bank_account/transaction_reference added). CSV-
+        mapped count is unchanged - those five are DeniDin-internal for now, not
+        yet Events.csv columns. See TestBankPaymentDetailFields below."""
         event_id = manager.add_ledger_event(
             session_id="sess-1", whatsapp_chat="972500000000@c.us",
             event=dict(SAMPLE_EVENT), message_id="msg-1",

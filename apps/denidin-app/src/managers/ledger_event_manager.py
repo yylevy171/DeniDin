@@ -50,7 +50,11 @@ REPLACED_EVENT_PLACEHOLDER = "צריך למצוא"
 # specs/in-progress/043-production-data-setup-tooling/data-model.md SS1 for why:
 # retro-applying would require guessing which historical rule generation actually
 # produced each old record, exactly the problem this field exists to avoid).
-CURRENT_SCHEMA_VERSION = 1
+# v2 (Phase 11, added 2026-08-16): payment_method/bank_number/bank_branch/
+# bank_account/transaction_reference - see tasks.md Phase 11 for the full gap
+# writeup (bugfix-028/038 added the same fields to the Morning invoicing tools;
+# the ledger's own capture never mirrored them).
+CURRENT_SCHEMA_VERSION = 2
 
 # Matches ש"ח / ש׳ח / שח (various quote-character renderings of "shekel chadash").
 _SHEKEL_WORD_RE = re.compile(r'ש["\'״]?ח')
@@ -353,6 +357,23 @@ class LedgerEventManager:
             component_label = None
             agreement_label = None
 
+        # Phase 11 (schema v2): bank/payment details apply only to בנק - forced null
+        # for הסכם regardless of what the caller/AI passed, same defensive discipline
+        # as agreement_label/component_label being forced null for בנק above (never
+        # trust an inapplicable field to have been left blank on its own).
+        if source_type == "בנק":
+            payment_method = event.get("payment_method")
+            bank_number = event.get("bank_number")
+            bank_branch = event.get("bank_branch")
+            bank_account = event.get("bank_account")
+            transaction_reference = event.get("transaction_reference")
+        else:
+            payment_method = None
+            bank_number = None
+            bank_branch = None
+            bank_account = None
+            transaction_reference = None
+
         record = {
             # CSV-mapped fields (30 - 29 original + txn_date, REQ-DATA-005/007)
             "event_id": event_id,
@@ -385,7 +406,7 @@ class LedgerEventManager:
             "invoice_type": None,  # reserved - future Morning-reconciliation feature
             "morning_document_id": None,  # reserved - future Morning-reconciliation feature
             "invoice_actual_creation_date": None,  # reserved - future Morning-reconciliation feature
-            # DeniDin-internal fields (10, not Events.csv columns - traceability/evidence)
+            # DeniDin-internal fields (15, not Events.csv columns - traceability/evidence)
             "session_id": session_id,
             "whatsapp_chat": whatsapp_chat,
             "message_id": message_id,
@@ -396,6 +417,13 @@ class LedgerEventManager:
             "replaces_hint": event.get("replaces_hint"),
             "reference_hint": event.get("reference_hint"),
             "agreement_label": agreement_label,  # REQ-DATA-004 - kept alongside agreement_id for evidence
+            # Phase 11 (schema v2) - not yet Events.csv columns, DeniDin-internal for
+            # now (see tasks.md Phase 11); null for source_type=הסכם, see above.
+            "payment_method": payment_method,
+            "bank_number": bank_number,
+            "bank_branch": bank_branch,
+            "bank_account": bank_account,
+            "transaction_reference": transaction_reference,
             "schema_version": CURRENT_SCHEMA_VERSION,  # Feature 043, US5
         }
 

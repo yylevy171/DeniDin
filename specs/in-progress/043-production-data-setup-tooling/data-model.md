@@ -25,13 +25,31 @@ this field is only ever `null` or the literal placeholder
 (US2) may now overwrite that placeholder with a real resolved `event_id`,
 via a new manager method (see §3).
 
-**`CURRENT_SCHEMA_VERSION` will bump again to `2`** under tasks.md's Phase 11
-(added 2026-08-16, not yet implemented): `payment_method`/`bank_number`/
-`bank_branch`/`bank_account`/`transaction_reference` — mirroring the same
-argument names bugfix-028/038 added to the Morning invoicing tools for the
-identical underlying deposit screenshot — are currently entirely absent from
-`LEDGER_EVENT_TOOL`/the persisted event schema. See tasks.md Phase 11 for the
-full gap writeup and TDD task pair (T027a/T027b, not started).
+### 1b. `CURRENT_SCHEMA_VERSION` v2 — bank/payment-detail fields (Phase 11, implemented 2026-08-16)
+
+Five more DeniDin-internal (non-CSV, same category as `replaces_hint`/
+`reference_hint`/`agreement_label`) fields, mirroring the argument names
+bugfix-028/038 added to the Morning invoicing tools for the identical
+underlying deposit screenshot — closing the gap where the ledger's own בנק
+capture had no way to state where the money came from:
+
+| Field | Type | Rule |
+|---|---|---|
+| `payment_method` | `str \| null` | direct from `capture_ledger_event`; `null` for `source_type=הסכם` (forced code-side, regardless of what the caller/AI passed — same discipline as `agreement_label` being forced null for `בנק`) |
+| `bank_number` | `str \| null` | direct from `capture_ledger_event`; the bank's NUMBER, never its name; `null` for `source_type=הסכם` |
+| `bank_branch` | `str \| null` | direct from `capture_ledger_event`; `null` for `source_type=הסכם` |
+| `bank_account` | `str \| null` | direct from `capture_ledger_event`; `null` for `source_type=הסכם` |
+| `transaction_reference` | `str \| null` | direct from `capture_ledger_event` (the אסמכתה on a bit/paybox/paypal payment); `null` for `source_type=הסכם` |
+
+Not mapped to an Events.csv column (unlike `bugfix-028`'s Morning-tool
+counterparts, which feed a real document) — these are DeniDin-internal
+evidence fields only, same status as `agreement_label`. `payment_date` was
+deliberately NOT duplicated here: `txn_date` (already on every component)
+already serves that role for a `בנק` event. `CURRENT_SCHEMA_VERSION` is `2`
+as of this addition. See tasks.md Phase 11 (T027a/T027b) for the full gap
+writeup and test coverage (`TestLedgerEventToolBankPaymentFields` in
+`test_ai_handler_ledger_events.py`, `TestBankPaymentDetailFields` in
+`test_ledger_event_manager.py`).
 
 ## 2. `MessageSource` interface (new, `src/sources/`)
 

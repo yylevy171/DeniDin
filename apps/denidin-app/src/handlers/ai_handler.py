@@ -529,6 +529,42 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                 "type": ["string", "null"],
                 "description": "Free-text loose reference to a related (not replaced) prior matter, if any.",
             },
+            "payment_method": {
+                "type": ["string", "null"],
+                "description": (
+                    "How the money arrived, ONLY for source_type=בנק (always null for הסכם) - "
+                    "e.g. 'bank_transfer' (the default when unstated), 'bit', 'paybox', 'cash', "
+                    "'credit_card', 'cheque', 'paypal'. Mirrors the same field on the Morning "
+                    "document-creation tools (see runtime_constitution.md) - this is the "
+                    "ledger's own record of it, independent of whether a Morning document is "
+                    "ever created for this deposit."
+                ),
+            },
+            "bank_number": {
+                "type": ["string", "null"],
+                "description": (
+                    "The bank's NUMBER (e.g. '31'), never its name - only for payment_method="
+                    "bank_transfer, always null otherwise. A deposit screenshot's extracted "
+                    "text gives you the number, not a name - never guess or invent a bank name "
+                    "to fill this in. Null if the screenshot doesn't state it clearly."
+                ),
+            },
+            "bank_branch": {
+                "type": ["string", "null"],
+                "description": "The bank branch number, only for payment_method=bank_transfer, always null otherwise.",
+            },
+            "bank_account": {
+                "type": ["string", "null"],
+                "description": "The bank account number, only for payment_method=bank_transfer, always null otherwise.",
+            },
+            "transaction_reference": {
+                "type": ["string", "null"],
+                "description": (
+                    "The אסמכתה (transaction/confirmation reference) shown on a bit/paybox/"
+                    "paypal/other payment-app screenshot - not used for bank_transfer, which "
+                    "carries bank_number/bank_branch/bank_account instead."
+                ),
+            },
             "raw_message_excerpt": {
                 "type": "string",
                 "description": "Verbatim source text (or a precise description of the image) this capture is based on - the hard pointer for later verification.",
@@ -617,7 +653,8 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
         },
         "required": [
             "source_type", "event_subtype", "client_name", "payer_name", "agreement_label",
-            "replaces_hint", "reference_hint", "raw_message_excerpt", "component_count",
+            "replaces_hint", "reference_hint", "payment_method", "bank_number", "bank_branch",
+            "bank_account", "transaction_reference", "raw_message_excerpt", "component_count",
             "components",
         ],
         "additionalProperties": False,
