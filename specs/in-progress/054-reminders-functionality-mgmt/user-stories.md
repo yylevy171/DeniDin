@@ -71,19 +71,21 @@ dedicated new background process being spun up per reminder.
 
 ---
 
-### User Story 3 - Modify an existing reminder (Priority: P2)
+### User Story 3 - Modify an existing reminder, single occurrence or whole series (Priority: P2)
 
 As a godfather/admin user, I want to change a reminder I already created (its time, message, or
-recurrence) without deleting and recreating it, and have DeniDin help me find the right one if I
-have several.
+recurrence) without deleting and recreating it — and for a recurring reminder, I want to be able
+to change just one upcoming occurrence (e.g. push back next Monday's only) or the whole series
+(e.g. change the time for every future occurrence) — with DeniDin helping me find the right one
+if I have several.
 
 **Why this priority**: Necessary for the feature to be usable long-term (plans change), but the
 feature is still valuable with only create+delete if this were deferred — hence P2, not P1.
 
 **Independent Test**: With two or more existing reminders, ask to change one by a partial
 description (e.g. "move my accountant reminder to 3pm instead"). Verify the system identifies the
-correct reminder (disambiguating if needed), confirms the specific change, and only applies it
-after approval.
+correct reminder (disambiguating if needed), confirms the specific change and its scope (single
+occurrence vs. whole series, when the target is recurring), and only applies it after approval.
 
 **Acceptance Scenarios**:
 
@@ -92,36 +94,53 @@ after approval.
    change, presents a summary of the change, and requires approval before applying it.
 2. **Given** a user's description matches more than one of their reminders, **When** they ask to
    modify "it", **Then** the system lists the candidates and asks which one before proceeding.
-3. **Given** an approved modification to a recurring reminder's recurrence rule, **When** the
-   change is applied, **Then** it applies to the whole series (all remaining `pending`
-   occurrences) — already-`fired` occurrences are untouched.
-4. **Given** any GODFATHER- or ADMIN-role user, **When** they ask to modify a reminder created by
+3. **Given** the matched reminder is recurring and the user's request doesn't already make the
+   scope clear, **When** the system prompts for the change, **Then** it also asks whether the
+   change applies to a single occurrence or the whole series, before presenting the approval
+   summary.
+4. **Given** an approved single-occurrence modification (e.g. "just push next Monday's to 5pm"),
+   **When** the change is applied, **Then** only that one occurrence's due datetime/message is
+   updated (becoming a Detached occurrence) — the Recurrence Rule and all sibling occurrences are
+   untouched.
+5. **Given** an approved whole-series modification to a recurring reminder's recurrence rule or
+   message text, **When** the change is applied, **Then** it applies to all remaining `pending`
+   occurrences still following the series' default pattern — already-`fired` occurrences and any
+   previously Detached occurrences are untouched.
+6. **Given** any GODFATHER- or ADMIN-role user, **When** they ask to modify a reminder created by
    a different GODFATHER- or ADMIN-role user, **Then** the system permits it (fully symmetric
    cross-user override — not restricted to any one directional precedence).
 
 ---
 
-### User Story 4 - Delete an existing reminder (Priority: P2)
+### User Story 4 - Delete an existing reminder, single occurrence or whole series (Priority: P2)
 
-As a godfather/admin user, I want to cancel a reminder I no longer need, including a whole
-recurring series, with the same "help me find it" assistance as modification.
+As a godfather/admin user, I want to cancel a reminder I no longer need — either just one upcoming
+occurrence of a recurring reminder (e.g. skip this week only) or the whole series — with the same
+"help me find it" assistance as modification.
 
 **Why this priority**: Same tier as modification — necessary for long-term usability, not
 required for the MVP delivery loop itself.
 
 **Independent Test**: Ask to delete a specific existing reminder by description. Verify the
-system identifies it (disambiguating if needed), confirms the deletion, and only removes it (and
-cancels any remaining pending occurrences) after approval.
+system identifies it (disambiguating if needed), confirms the deletion and its scope (single
+occurrence vs. whole series, when the target is recurring), and only removes what was approved.
 
 **Acceptance Scenarios**:
 
 1. **Given** a user has exactly one reminder matching their description, **When** they ask to
    delete it, **Then** the system confirms which reminder was matched, presents the deletion for
    approval, and only deletes it once approved.
-2. **Given** a recurring reminder with some `fired` and some `pending` occurrences, **When** it is
-   deleted, **Then** all remaining `pending` occurrences are cancelled and `fired` occurrences
-   remain as unmodified historical records.
-3. **Given** the deletion summary has been presented, **When** the user declines, **Then** the
+2. **Given** the matched reminder is recurring and the user's request doesn't already make the
+   scope clear, **When** the system prompts for confirmation, **Then** it also asks whether the
+   deletion applies to a single occurrence or the whole series.
+3. **Given** an approved single-occurrence deletion (e.g. "skip this Thursday's"), **When**
+   applied, **Then** only that one `pending` occurrence is cancelled — the rest of the series is
+   unaffected and continues firing on schedule.
+4. **Given** an approved whole-series deletion of a recurring reminder with some `fired` and some
+   `pending` occurrences, **When** applied, **Then** all remaining `pending` occurrences
+   (including any Detached ones) are cancelled and `fired` occurrences remain as unmodified
+   historical records.
+5. **Given** the deletion summary has been presented, **When** the user declines, **Then** the
    reminder (and all its occurrences) remain unchanged.
 
 ---
