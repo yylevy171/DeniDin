@@ -93,6 +93,59 @@ class TestExtractFunctionCall:
         assert set(params["required"]) == set(params["properties"].keys())
 
 
+class TestLedgerEventToolBankPaymentFields:
+    """Phase 11 (tasks.md, 043-production-data-setup-tooling), T027a - written
+    BEFORE implementation, RED until T027b lands.
+
+    Gap: bugfix-028/038 (A2/A3/A3b) added payment_date/payment_method/
+    bank_number/bank_branch/bank_account/transaction_reference as arguments on
+    the Morning invoicing tools (create_combo_document et al.), extracted from
+    the same bank-deposit screenshot LEDGER_EVENT_TOOL captures - but
+    LEDGER_EVENT_TOOL itself never mirrored them, so the ledger's own
+    בנק-source-type record has no way to state where the money came from.
+    payment_date is NOT duplicated here - txn_date (already on every component)
+    already serves that role for a בנק event, see its own description.
+
+    Field-level placement: call-level (like source_type/payer_name), not
+    per-component - a single בנק capture describes one underlying transfer,
+    never a different bank account per component (mirrors where bugfix-028
+    itself placed the equivalent arguments: top-level tool args, not per
+    invoice line).
+    """
+
+    NEW_FIELDS = {
+        "payment_method", "bank_number", "bank_branch", "bank_account",
+        "transaction_reference",
+    }
+
+    def test_all_five_fields_present_in_schema_properties(self):
+        properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
+        assert self.NEW_FIELDS <= set(properties.keys())
+
+    def test_all_five_fields_are_nullable_strings(self):
+        """Never a bare 'string' type - always applicable-but-unstated (ask the
+        user) vs. genuinely not applicable (a הסכם event) must both be
+        representable, same convention as payer_name/agreement_label."""
+        properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
+        for field in self.NEW_FIELDS:
+            assert properties[field]["type"] == ["string", "null"], (
+                f"{field} must be a nullable string, matching payer_name's convention"
+            )
+
+    def test_all_five_fields_have_non_empty_descriptions(self):
+        properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
+        for field in self.NEW_FIELDS:
+            assert properties[field].get("description"), f"{field} needs a real description"
+
+    def test_call_level_not_nested_in_component_items(self):
+        """Placement check (see class docstring): these five must live on the
+        call's own top-level properties, never inside components.items - a
+        single בנק capture has one bank account, not one per component."""
+        properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
+        component_properties = properties["components"]["items"]["properties"]
+        assert self.NEW_FIELDS.isdisjoint(component_properties.keys())
+
+
 class TestExtractFunctionCallId:
     """extract_function_call_id - the companion helper needed for the ledger-event
     follow-up round-trip (reasoning models emit a function_call OR a message, never

@@ -921,6 +921,109 @@ class TestSchemaVersion:
             assert _read(temp_events_dir, eid)["schema_version"] == CURRENT_SCHEMA_VERSION
 
 
+class TestBankPaymentDetailFields:
+    """Phase 11 (tasks.md, 043-production-data-setup-tooling), T027a - written
+    BEFORE implementation, RED until T027b lands. See
+    TestLedgerEventToolBankPaymentFields in test_ai_handler_ledger_events.py for
+    the schema-shape half of this gap; this class covers persistence.
+
+    NOT part of CSV_MAPPED_FIELDS/INTERNAL_FIELDS/SAMPLE_EVENT at the top of this
+    file on purpose - those back an existing, already-approved completeness test
+    (test_written_file_has_exactly_the_30_csv_fields_plus_11_internal_fields)
+    that must stay untouched until T027b lands with its own fresh sign-off to
+    update it (immutable-tests rule, METHODOLOGY.md). This class asserts the
+    post-Phase-11 shape independently instead.
+    """
+
+    NEW_FIELDS = {
+        "payment_method", "bank_number", "bank_branch", "bank_account",
+        "transaction_reference",
+    }
+
+    def test_bank_event_persists_all_five_fields_verbatim(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(
+                SAMPLE_EVENT, source_type="בנק",
+                payment_method="bank_transfer", bank_number="31",
+                bank_branch="123", bank_account="456789",
+                transaction_reference=None,
+            ),
+            message_id="m", message_timestamp=FIXED_TS, sender="w",
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["payment_method"] == "bank_transfer"
+        assert data["bank_number"] == "31"
+        assert data["bank_branch"] == "123"
+        assert data["bank_account"] == "456789"
+        assert data["transaction_reference"] is None
+
+    def test_bank_event_bit_payment_carries_transaction_reference_not_bank_details(
+        self, manager, temp_events_dir
+    ):
+        """Mirrors the Morning-tool convention (runtime_constitution.md): bank
+        details belong to a bank_transfer, transaction_reference (אסמכתה) to a
+        bit/paypal/other app payment - both fields exist regardless, but only
+        one is typically populated for a given transfer."""
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(
+                SAMPLE_EVENT, source_type="בנק",
+                payment_method="bit", transaction_reference="123456",
+                bank_number=None, bank_branch=None, bank_account=None,
+            ),
+            message_id="m", message_timestamp=FIXED_TS, sender="w",
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["payment_method"] == "bit"
+        assert data["transaction_reference"] == "123456"
+        assert data["bank_number"] is None
+
+    def test_bank_event_omitted_fields_default_to_null_not_a_keyerror(
+        self, manager, temp_events_dir
+    ):
+        """The five fields must be accessed via .get(), same convention as every
+        other optional field (payer_name, replaces_hint, ...) - a caller that
+        doesn't supply them (e.g. a pre-Phase-11 caller, or a genuinely
+        unstated screenshot) must never crash."""
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, source_type="בנק"),
+            message_id="m", message_timestamp=FIXED_TS, sender="w",
+        )
+        data = _read(temp_events_dir, event_id)
+        for field in self.NEW_FIELDS:
+            assert data[field] is None
+
+    def test_agreement_event_forces_all_five_fields_null_even_if_present(
+        self, manager, temp_events_dir
+    ):
+        """Defensive code-side nulling for source_type=הסכם, same discipline as
+        agreement_label/component_label being forced null for בנק - never trust
+        the caller/AI to have left an inapplicable field blank on its own."""
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(
+                SAMPLE_EVENT, source_type="הסכם",
+                payment_method="bank_transfer", bank_number="31",
+                bank_branch="123", bank_account="456789",
+                transaction_reference="999",
+            ),
+            message_id="m", message_timestamp=FIXED_TS, sender="w",
+        )
+        data = _read(temp_events_dir, event_id)
+        for field in self.NEW_FIELDS:
+            assert data[field] is None, f"{field} must be forced null for source_type=הסכם"
+
+    def test_schema_version_is_2_once_these_fields_land(self):
+        """Locks in the specific bump this phase requires - CURRENT_SCHEMA_VERSION
+        must materially change in the same commit as LEDGER_EVENT_TOOL's schema,
+        per its own docstring."""
+        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
+
+        assert CURRENT_SCHEMA_VERSION == 2
+
+
 class TestResolveReplacedEventId:
     """Feature 043, US2, T008a: LedgerEventManager.resolve_replaced_event_id."""
 
