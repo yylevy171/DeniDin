@@ -25,6 +25,14 @@ this field is only ever `null` or the literal placeholder
 (US2) may now overwrite that placeholder with a real resolved `event_id`,
 via a new manager method (see §3).
 
+**`CURRENT_SCHEMA_VERSION` will bump again to `2`** under tasks.md's Phase 11
+(added 2026-08-16, not yet implemented): `payment_method`/`bank_number`/
+`bank_branch`/`bank_account`/`transaction_reference` — mirroring the same
+argument names bugfix-028/038 added to the Morning invoicing tools for the
+identical underlying deposit screenshot — are currently entirely absent from
+`LEDGER_EVENT_TOOL`/the persisted event schema. See tasks.md Phase 11 for the
+full gap writeup and TDD task pair (T027a/T027b, not started).
+
 ## 2. `MessageSource` interface (new, `src/sources/`)
 
 A core app abstraction (not player-only), extracted from `denidin.py`'s

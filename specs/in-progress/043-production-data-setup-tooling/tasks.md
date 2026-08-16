@@ -419,6 +419,59 @@ this phase itself implements.
 
 ---
 
+## Phase 11: Ledger event bank/payment-detail fields (schema gap closure)
+
+**Added 2026-08-16 (human decision), found while auditing readiness to finish this
+feature.** Purpose: `capture_ledger_event`/`LedgerEventManager`'s persisted `בנק`
+(bank deposit) event has **no field at all** for bank/payment details — confirmed
+by reading `LEDGER_EVENT_TOOL` (`ai_handler.py`) end to end and cross-checking
+against the full persisted schema in `specs/done/033-ledger-event-persistence/
+data-model.md`: only `client_name`, `payer_name`, `amount`, `txn_date` (optional),
+`vat_status`, `notes` exist for a component.
+
+Meanwhile `bugfix-028` (A2/A3/A3b, merged into this branch 2026-08-16) added
+exactly these fields as **required/optional arguments on the Morning invoicing
+tools** (`create_combo_document`/`create_transaction_account`/
+`create_combo_document_as_reference`, per `bugfix-038`'s later generalization),
+extracted from the very same deposit screenshot the ledger event is captured
+from: `payment_date`, `payment_method`, `bank_number`, `bank_branch`,
+`bank_account`, `transaction_reference` (exact argument names, confirmed against
+`apps/morning-mcp-app/src/denidin_mcp_morning/tools.py`). Today, processing a bank-
+deposit screenshot captures full bank details on the *invoicing* path but silently
+drops them on the *ledger bookkeeping* path — the record this feature's player
+rebuilds/replays has no way to state where the money came from. This is **not**
+one of `data-model.md`'s already-`reserved` fields (`invoice_status`/
+`invoice_number`/`invoice_type`/`morning_document_id`/
+`invoice_actual_creation_date`, explicitly reserved for a future Morning-
+reconciliation feature) — bank/payment details were never scoped in the ledger
+schema at all, reserved or otherwise. Checked for other post-branch merges
+introducing further un-mirrored fields (features 047/048/053, bugfix-038 itself):
+none found — bugfix-028/038's bank/payment-detail fields are the only gap.
+
+**Open design question for T027a to settle (recommendation, not yet a human
+decision):** these fields almost certainly belong at the **call level** (like
+`source_type`/`payer_name`), not nested per-component — a single בנק capture
+describes one underlying transfer, never a different bank account per
+component, and this mirrors where bugfix-028 itself placed them (top-level tool
+arguments, not per invoice line).
+
+- [ ] T027a Write tests in `tests/unit/test_ledger_event_manager.py` (extending)
+  and wherever `LEDGER_EVENT_TOOL`'s schema is already covered: new optional
+  fields `payment_method`, `bank_number`, `bank_branch`, `bank_account`,
+  `transaction_reference` accepted on a `capture_ledger_event` call; always
+  `null` for `source_type=הסכם` (never applicable, same pattern as
+  `agreement_label`/`component_label` being null for `בנק`); `add_ledger_event`
+  persists them correctly; `CURRENT_SCHEMA_VERSION` bumped to `2`; pre-existing
+  event files without these fields are unaffected/untouched (same
+  never-retro-applied rule as T008).
+- [ ] T027b Implement: add the five fields to `LEDGER_EVENT_TOOL`'s schema,
+  thread through `LedgerEventManager.add_ledger_event`, bump
+  `CURRENT_SCHEMA_VERSION` to `2`, update `specs/done/033-ledger-event-
+  persistence/data-model.md`'s field table with the new columns (BLOCKED until
+  T027a approved).
+
+---
+
 ## Dependencies
 
 - Phase 2 and Phase 3 block everything else (Phases 4-8 depend on both).
@@ -429,18 +482,25 @@ this phase itself implements.
   media-server (T011b).
 - Phase 9 can happen any time after Phase 4 (needs a working CLI to
   document accurately).
+- Phase 11 is independent of Phases 5-10 (touches `LEDGER_EVENT_TOOL`/
+  `LedgerEventManager` directly, not the player) but should land before
+  Phase 10's T022a/T023a/T024a equivalence tests are written, so those
+  tests assert against the final schema rather than needing a follow-up
+  revision.
 
-## Status (updated 2026-08-07)
+## Status (updated 2026-08-16)
 
 Phases 1–4 done (T005 dropped by human decision; T014a skipped in favor of
 a real run — see Phase 4). Phases 5 (reconciliation), 6 (relevancy), 7
-(review queue), 8 (expensive image-path regression), 9 (README), and 10
-(player/WhatsApp ledger-event equivalence, added 2026-08-07) are **not
-started** — no `player/reconciliation.py`, `player/relevancy.py`,
-`player/review_queue.py`, `player/README.md`, or
-`tests/billed/test_player_whatsapp_equivalence.py` exist yet, and
-`run_player.py` has no `--reapply-review` mode. Phase 10's T025a/T026a are
-permanently blocked (not just "not started") until Feature 040 lands.
+(review queue), 8 (expensive image-path regression), 9 (README), 10
+(player/WhatsApp ledger-event equivalence, added 2026-08-07), and 11 (ledger
+event bank/payment-detail fields, added 2026-08-16) are **not started** — no
+`player/reconciliation.py`, `player/relevancy.py`, `player/review_queue.py`,
+`player/README.md`, or `tests/billed/test_player_whatsapp_equivalence.py`
+exist yet, `run_player.py` has no `--reapply-review` mode, and
+`LEDGER_EVENT_TOOL`/`LedgerEventManager` have no bank/payment-detail fields
+yet. Phase 10's T025a/T026a are permanently blocked (not just "not
+started") until Feature 040 lands.
 
 ## Next step
 
@@ -451,6 +511,7 @@ actual end-to-end proof that Phase 3's `today_timestamp` fix works, and
 Phase 5's reconciliation logic will reason about exactly the kind of
 real-run output it would produce — better to see real output first.
 
-Then begin Phase 5's test task (T015a), per METHODOLOGY.md — implementation
+Then begin Phase 5's test task (T015a) and/or Phase 11's T027a (independent
+of Phase 5-10 work — see Dependencies), per METHODOLOGY.md — implementation
 (any "b" task) never starts before its paired "a" task is written AND
 explicitly approved.
