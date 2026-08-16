@@ -3,8 +3,9 @@
 **Feature ID**: 055-multiple-clients-godfathers
 **Priority**: TBD
 **Status**: In progress — `speckit.specify` drafted 2026-08-16 from user clarification;
-`speckit.clarify` completed 2026-08-16 (5 questions asked/answered). Not yet run through
-`speckit.plan`.
+`speckit.clarify` completed 2026-08-16 (11 questions asked/answered across two sessions);
+`speckit.plan` completed 2026-08-16 (`research.md`, `data-model.md`, `contracts/`,
+`quickstart.md`, `plan.md`). Not yet run through `speckit.tasks`/`speckit.analyze`.
 **Created**: 2026-08-16
 
 ---
@@ -104,11 +105,14 @@ optional.
 
 - Q: How is a tenant expected to be hosted, and roughly how many tenants at once — process-level
   isolation (container set per tenant, extending today's dev/prod pattern) or in-process
-  (one shared app instance routing per-tenant by config)? → A: **Not decided — left open for
-  `speckit.plan` to evaluate both options** against expected tenant count and effort before
-  committing. This spec's requirements (tenant isolation, multi-godfather, super-admin,
-  capability abstraction, per-tenant constitution) hold under either hosting model; the choice
-  is a planning/architecture decision, not a scoping one.
+  (one shared app instance routing per-tenant by config)? → A: **Decided in `speckit.plan` —
+  shared, multi-tenant-native services** (not container-per-tenant): one denidin-app process
+  serves all tenants, one messaging-gateway service holds and listens to all tenants' Green API
+  instances concurrently, one morning-mcp-app process/tunnel serves all tenants' Morning
+  accounts. Isolation is achieved via per-tenant credential sets and `tenant_id`-partitioned
+  data paths, not process boundaries. Full reasoning in `research.md`. This spec's requirements
+  hold unchanged under this model — "own Green API instance"/"own Morning account" means own
+  *credentials/instance identity*, not a dedicated process.
 - Q: Should the OpenAI credential be per-tenant or shared across all tenants? → A: **Per-tenant
   — firm decision, no longer just a working assumption.** Consistent with every other
   integration being fully isolated; gives per-tenant usage/cost visibility and blast-radius
@@ -130,9 +134,9 @@ optional.
 - Q: How should the existing single-tenant deployment's data become "tenant #1"? → A:
   **Explicit migration script/step** — a dedicated migration copies/restructures existing
   `data/sessions`, `data/memory`, `data/events` into the new tenant-scoped layout, rather than
-  an in-place/implicit default-tenant assignment. Exact target layout and script mechanics
-  belong in `speckit.plan` (depends on the still-open hosting-model decision above), but the
-  approach itself — a real, explicit migration step, not implicit reuse — is now decided.
+  an in-place/implicit default-tenant assignment. Exact target layout is now fixed by
+  `data-model.md` (`{data_root}/{tenant_id}/...`); the migration script's own mechanics are a
+  `speckit.tasks` decision.
 - Q: What identifies a tenant (config, logs, data paths)? → A: **Both** — an internally
   generated UUID (stable, collision-proof primary identifier used in data paths/internal
   references) plus a human-readable external account name/slug (used in config filenames, log
@@ -142,12 +146,13 @@ optional.
   this message"; nothing stops the same real phone number from being a client in tenant A and a
   godfather in tenant B.
 - Q: How does multi-tenancy interact with the existing dev/prod environment split — does each
-  tenant get its own dev AND prod, or does dev/prod stop being per-tenant? → A: **Not decided —
-  left open for `speckit.plan`**, tightly coupled to the still-open hosting-model decision above.
-  Flagged as a real open risk: this is a genuinely new axis (environment × tenant) that the
-  existing dev/prod isolation/locking machinery (`env_lock.sh`, `shared/active_env.json`,
-  per-environment watchdogs) was never designed around, and `speckit.plan` needs to explicitly
-  reconcile the two rather than assume today's dev/prod model extends for free.
+  tenant get its own dev AND prod, or does dev/prod stop being per-tenant? → A: **Decided in
+  `speckit.plan` — dev/prod stays exactly 2 environments total, unchanged from today.** Tenant
+  is a data/config dimension *within* an environment, not a multiplier of environments — no 2N
+  container pairs. A new tenant is tested via a dev-environment tenant slot before being added
+  to the prod environment's tenant list. `env_lock.sh`/`shared/active_env.json`/the watchdogs
+  need no redesign for a tenant axis, since there isn't one at the environment level. Full
+  reasoning in `research.md`.
 - Q: Does this feature need to build tenant-onboarding tooling, or is manual config-file
   creation sufficient? → A: **Manual config, no tooling** — same mechanics as today's dev/prod
   setup (copy a template config, fill in credentials, restart). No onboarding script/CLI is
@@ -159,7 +164,7 @@ optional.
   Godfathers cannot self-serve any tenant-level setting under this feature; a conversational
   self-service flow (if ever wanted) is out of scope here.
 
-## Terminology
+## Terminology Glossary
 
 - **Tenant (Account)**: The paying business-level entity operating one instance of DeniDin's
   behavior. Identified internally by a generated UUID (stable, used in data paths/internal
@@ -183,11 +188,21 @@ optional.
   or more concrete implementations (Green API implements messaging provider today; Morning
   implements invoicing provider today; a future "ypay" would be a second invoicing-provider
   implementation). A tenant's configuration selects which implementation to use per capability,
-  resolved via dependency injection at startup — not a runtime plugin system.
-- **Common constitution / Tenant constitution**: The existing `runtime_constitution.md` splits
-  into a common section (identical across all tenants, preserves the existing prompt-caching
-  prefix behavior) and a per-tenant supplement (tenant-specific rules), concatenated after the
-  common section when `AIHandler` builds `instructions`.
+  resolved via dependency injection per call (a registry lookup by `tenant_id`, per
+  `research.md` §5) — not a runtime plugin system.
+- **Bot name**: The name a tenant's bot goes by in conversation (e.g. "DeniDin" for the
+  existing tenant, "Jabaloola" for a hypothetical new one) — tenant-configurable, not
+  hardcoded. Feeds the common constitution's "Core Identity" line (see below) and therefore
+  Feature 039's group `@Name` self-recognition check, which judges whether a message's `@Name`
+  plausibly refers to the bot's own established identity.
+- **Common constitution / Tenant constitution**: The existing `runtime_constitution.md` becomes
+  a **template** (not literal shared text) — its "Core Identity" line has a `{bot_name}`
+  placeholder, substituted with each tenant's own bot name before being concatenated with that
+  tenant's supplement. This is still fully compatible with OpenAI's prompt-caching benefit
+  (REQ-CONST-001/SC-006): caching keys on the longest identical prefix *per OpenAI account*, and
+  every tenant already has its own OpenAI account/credential (REQ-TENANT-003) — so "identical
+  across every call for a given tenant" (what caching actually needs) holds exactly as before,
+  even though the rendered text now differs *across* tenants by design.
 
 ## Assumptions
 
@@ -204,6 +219,18 @@ optional.
   settings (constitution supplement, godfather list, capability selection) are edited by ylevy
   directly in config files; godfathers have no self-serve path to change their own tenant's
   settings.
+- **Per-tenant customization is config/data-only** (working assumption, explicitly reversible):
+  every tenant runs the identical codebase; differences are expressed as data (config values,
+  constitution supplement, capability-implementation selection) — no tenant requires code that
+  doesn't exist for every other tenant. If a tenant later needs genuinely bespoke code, the
+  capability-interface + per-tenant-selection mechanism (REQ-CAP-001–004) already accommodates
+  it without redesign: register a one-off implementation class for that capability, reference it
+  only from that tenant's config — same mechanism as picking among shared implementations, just
+  with an implementation used by exactly one tenant. See `research.md` for the full reasoning.
+- **No first-class support for pulling one tenant into its own isolated deployment** (e.g. for
+  regulatory or extreme-scale reasons) — the shared-services hosting model (see `research.md`)
+  doesn't preclude this later, but it isn't built now; a tenant needing that would be a
+  deliberate one-off decision at that time, not a supported mode of this feature.
 
 ## Technology Choices
 
@@ -213,80 +240,140 @@ optional.
   `denidin.py`'s `initialize_app` and CONSTITUTION §XVII's no-monkey-patching rule.
 - No new datastore is introduced — tenant config remains plain JSON files, consistent with the
   "no environment variables / config is code" rule; exact per-tenant config file naming/layout
-  is a `speckit.plan` mechanic, not a technology choice.
+  is a `speckit.tasks` mechanic, not a technology choice.
 - Tenant identification uses Python's standard `uuid` module for the internal id — no new
   ID-generation dependency.
 
 ## Requirements
 
-**Note**: the hosting model (process-per-tenant vs. one shared process routing per-tenant, see
-Clarifications) is still an open decision for `speckit.plan`. The requirements below are written
-to hold under either model.
+**Note**: the hosting model is decided in `speckit.plan`/`research.md` — shared, multi-tenant-
+native services, not container-per-tenant (see Clarifications). The requirements below were
+written to hold under either model and needed no changes once the decision was made.
 
 ### Tenant isolation
-- The system MUST support more than one tenant running from a single DeniDin/morning-mcp-app
-  codebase, each with its own Green API instance, WhatsApp Business number, and Morning
-  account — no tenant's messaging or invoicing traffic is visible to or shared with another
-  tenant.
-- The system MUST keep each tenant's memory store (`MemoryManager`/ChromaDB), session data
-  (`SessionManager`), and ledger events (`ledger_event_manager.py`) fully separate from every
-  other tenant's — the existing dev/prod data-root-per-environment pattern is the closest
-  existing precedent, but tenant isolation is a new, orthogonal axis (a single environment,
-  e.g. `prod`, hosts multiple tenants at once).
-- The system MUST use a separate OpenAI account/credential per tenant (firm decision, see
-  Clarifications).
+- **REQ-TENANT-001**: The system MUST support more than one tenant running from a single
+  DeniDin/morning-mcp-app codebase, each with its own Green API instance, WhatsApp Business
+  number, and Morning account — no tenant's messaging or invoicing traffic is visible to or
+  shared with another tenant.
+- **REQ-TENANT-002**: The system MUST keep each tenant's memory store (`MemoryManager`/
+  ChromaDB), session data (`SessionManager`), and ledger events (`ledger_event_manager.py`)
+  fully separate from every other tenant's — the existing dev/prod data-root-per-environment
+  pattern is the closest existing precedent, but tenant isolation is a new, orthogonal axis (a
+  single environment, e.g. `prod`, hosts multiple tenants at once).
+- **REQ-TENANT-003**: The system MUST use a separate OpenAI account/credential per tenant (firm
+  decision, see Clarifications).
 
 ### Multi-godfather per tenant
-- A tenant's config MUST support designating more than one phone number as `Role.GODFATHER`
-  within that tenant.
-- Every godfather designated for a tenant MUST receive full godfather-level permissions/tool
-  access (including Morning MCP access) scoped to that tenant only.
+- **REQ-ROLE-001**: A tenant's config MUST support designating more than one phone number as
+  `Role.GODFATHER` within that tenant.
+- **REQ-ROLE-002**: Every godfather designated for a tenant MUST receive full godfather-level
+  permissions/tool access (including Morning MCP access) scoped to that tenant only.
 
 ### Super-admin across tenants
-- ylevy's phone number MUST resolve to `Role.ADMIN` in every tenant's own RBAC config
-  independently (each tenant's config lists it, rather than a single cross-tenant override
-  mechanism).
-- Admin-level capabilities (already existing today, e.g. answering "what version are you
-  running?") MUST continue to work per-tenant when ylevy interacts with any given tenant's
-  WhatsApp number.
-- There MUST NOT be a hardcoded/break-glass admin fallback outside of config — a tenant missing
-  the admin phone number in its config has no admin access to that tenant until the config is
-  corrected and the tenant restarted (see Clarifications).
+- **REQ-ROLE-003**: ylevy's phone number MUST resolve to `Role.ADMIN` in every tenant's own
+  RBAC config independently (each tenant's config lists it, rather than a single cross-tenant
+  override mechanism).
+- **REQ-ROLE-004**: Admin-level capabilities (already existing today, e.g. answering "what
+  version are you running?") MUST continue to work per-tenant when ylevy interacts with any
+  given tenant's WhatsApp number.
+- **REQ-ROLE-005**: There MUST NOT be a hardcoded/break-glass admin fallback outside of config —
+  a tenant missing the admin phone number in its config has no admin access to that tenant until
+  the config is corrected and the tenant restarted (see Clarifications).
 
 ### Capability abstraction
-- The system MUST define a "messaging provider" capability interface, with Green API as its
-  existing implementation, selected per tenant via configuration/dependency injection.
-- The system MUST define an "invoicing provider" capability interface, with Morning as its
-  existing implementation, selected per tenant via configuration/dependency injection.
-- Adding a new capability implementation (e.g. a future "ypay" invoicing provider) MUST NOT
-  require changes to core application logic (`AIHandler`, `denidin.py` dispatch, etc.) beyond
-  registering the new implementation and referencing it from a tenant's config.
-- No dynamic/runtime plugin loading — capability implementations are ordinary code, wired via
-  dependency injection, per this project's no-monkey-patching constitutional rule (§XVII).
+- **REQ-CAP-001**: The system MUST define a "messaging provider" capability interface, with
+  Green API as its existing implementation, selected per tenant via configuration/dependency
+  injection.
+- **REQ-CAP-002**: The system MUST define an "invoicing provider" capability interface, with
+  Morning as its existing implementation, selected per tenant via configuration/dependency
+  injection.
+- **REQ-CAP-003**: Adding a new capability implementation (e.g. a future "ypay" invoicing
+  provider) MUST NOT require changes to core application logic (`AIHandler`, `denidin.py`
+  dispatch, etc.) beyond registering the new implementation and referencing it from a tenant's
+  config.
+- **REQ-CAP-004**: No dynamic/runtime plugin loading — capability implementations are ordinary
+  code, wired via dependency injection, per this project's no-monkey-patching constitutional
+  rule (§XVII).
+- **REQ-CAP-005**: If a tenant's config omits a non-messaging capability implementation (e.g.
+  invoicing provider), the tenant MUST still start and serve messaging; that capability's tools
+  simply aren't attached for that tenant (see Clarifications). Omitting the messaging provider
+  is not a supported degraded state.
+- **REQ-CAP-006**: The invoicing-provider capability (morning-mcp-app) MUST run as a single
+  shared server/tunnel serving every tenant, distinguishing tenants by auth token, not by a
+  separate server process or ngrok tunnel per tenant (see `research.md`) — "own Morning
+  account" (REQ-TENANT-001) means own credentials/audit trail, not own server.
 
 ### Per-tenant constitution
-- `runtime_constitution.md` MUST split into a common section (shared, identical across all
-  tenants) and a per-tenant supplement, concatenated after the common section when `AIHandler`
-  builds `instructions` — preserving the common section as the stable, byte-identical prefix
-  needed for OpenAI's automatic prompt caching (per the existing description in
-  `apps/denidin-app/CLAUDE.md`).
+- **REQ-CONST-001**: `runtime_constitution.md` MUST split into a common section (shared
+  template across all tenants) and a per-tenant supplement, concatenated after the rendered
+  common section when `AIHandler` builds `instructions` — preserving the rendered common
+  section as the stable, byte-identical-per-tenant prefix needed for OpenAI's automatic prompt
+  caching (per the existing description in `apps/denidin-app/CLAUDE.md`; caching keys per
+  OpenAI account, and every tenant has its own — see Terminology Glossary).
+- **REQ-CONST-002**: Each tenant MUST be able to configure its own bot name (e.g. "DeniDin",
+  "Jabaloola"), substituted into the common constitution template's "Core Identity" line at
+  render time. This is not cosmetic — Feature 039's group `@Name` self-recognition check reads
+  this line to judge whether a message addresses the bot, so an un-substituted or wrong bot name
+  would break that mechanism per-tenant.
+- **REQ-CONST-003**: A tenant's constitution supplement MUST be a standalone `.md` file
+  (referenced from tenant config by relative path), never inline JSON config text — supplements
+  are expected to grow large, and inline strings are the wrong shape for prose (see
+  `data-model.md`).
+
+### Tenant registry structure
+- **REQ-TENANT-004**: Tenant identity (id, account name, bot name, godfathers/admins,
+  constitution supplement pointer, capability selection) MUST live in a dedicated,
+  environment-agnostic `tenants.json`, separate from each environment's `config.<env>.json` —
+  not embedded inline inside the per-environment config files. Rationale: a tenant's identity/
+  business rules don't change based on environment, and keeping them out of the
+  credential-bearing config files keeps credential rotation and identity edits as independent,
+  separately-auditable changes (see `data-model.md`).
+- **REQ-TENANT-005**: Each tenant's per-environment credentials (Green API, OpenAI, MCP bearer
+  token; Morning credentials in `morning-mcp-app`'s own config) MUST live inside that
+  environment's own config file, keyed by `tenant_id`, joined against `tenants.json` by that
+  same id — credentials differ between dev and prod even for the same tenant (REQ-TENANT-001's
+  existing dev/prod asymmetry, now per-tenant).
+
+### Background processing
+- **REQ-BG-001**: `SessionCleanupThread` (hourly sweep) and startup cleanup recovery MUST remain
+  a single unified thread/pass that iterates every tenant's data root in turn, not one thread per
+  tenant — this is idempotent maintenance I/O with no need for per-tenant concurrency.
+- **REQ-BG-002**: Messaging listeners (one per tenant's Green API instance, `research.md` §1)
+  remain inherently per-tenant — a distinct external connection per tenant cannot be unified.
+- Explicitly accepted gap (not built by this feature): `watchdog.py` stays process/
+  environment-level only. If one tenant's messaging listener silently dies while the process is
+  otherwise healthy, the watchdog does not detect it — narrower blast radius than today's
+  whole-process failures, but a real gap, flagged as a follow-up for a future feature rather
+  than scope-creeping this one (see Edge Cases).
+
+### Observability
+- **REQ-LOG-001**: Every log line produced while a tenant is in context (i.e. handling that
+  tenant's message, running a maintenance task scoped to that tenant) MUST include that
+  tenant's `bot_name` — not just `tenant_id` — so operators can read logs without a lookup
+  table. Applies to both `denidin-app` and `morning-mcp-app`. Exact log-line format (e.g.
+  extending the existing `[v<version>]` prefix convention to `[v<version>][<bot_name>]`) is a
+  `speckit.tasks` decision.
 
 ### Migration
-- The existing single-tenant deployment's data (`data/sessions`, `data/memory`, `data/events`)
-  MUST be migrated into "tenant #1" via an explicit migration script/step (see Clarifications) —
-  not treated as already-compliant in place. Target on-disk layout and script mechanics are
-  deferred to `speckit.plan`, pending the hosting-model decision.
+- **REQ-MIGRATE-001**: The existing single-tenant deployment's data (`data/sessions`,
+  `data/memory`, `data/events`) MUST be migrated into "tenant #1" via an explicit migration
+  script/step (see Clarifications) — not treated as already-compliant in place. Target layout:
+  `{data_root}/{tenant_id}/...` (`data-model.md`); script mechanics deferred to
+  `speckit.tasks`.
 
 ### Group membership resolution
-- `GroupMembershipResolver`'s existing mechanism (most-permissive member's role governs a group
-  turn) is unchanged, but now operates within a single tenant's scope — a WhatsApp group lives
-  on exactly one tenant's WhatsApp Business number, so no group can span multiple tenants.
+- **REQ-GROUP-001**: `GroupMembershipResolver`'s existing mechanism (most-permissive member's
+  role governs a group turn) is unchanged, but now operates within a single tenant's scope — a
+  WhatsApp group lives on exactly one tenant's WhatsApp Business number, so no group can span
+  multiple tenants.
 
 ### Key Entities
-- **Tenant**: internal UUID, external account name/slug, own Green API instance credentials,
-  own WhatsApp number, own Morning account credentials, own OpenAI credential, own data root
-  (sessions/memory/events), own constitution supplement, list of godfather(s) + admin phone
-  numbers.
+- **Tenant**: internal UUID, external account name/slug, bot name, own Green API instance
+  credentials, own WhatsApp number, own Morning account credentials, own OpenAI credential, own
+  data root (sessions/memory/events), own constitution supplement (a linked `.md` file, not
+  inline text — REQ-CONST-003), list of godfather(s) + admin phone numbers. Split across a
+  shared `tenants.json` (identity) and per-environment credential maps (REQ-TENANT-004/005) —
+  see `data-model.md`.
 - **Capability implementation registry**: per-tenant mapping of capability name (e.g.
   "messaging_provider", "invoicing_provider") to a concrete implementation, resolved at
   startup/per-request via dependency injection.
@@ -301,8 +388,12 @@ to hold under either model.
   break-glass fallback — config is the sole source of truth, recovered by editing that
   tenant's config and restarting (resolved — see Clarifications).
 - Migration of the existing single-tenant deployment's data into "tenant #1" happens via an
-  explicit migration script/step, not implicit reuse (resolved — see Clarifications); exact
-  target layout and script mechanics still deferred to `speckit.plan`.
+  explicit migration script/step, not implicit reuse, into the `{data_root}/{tenant_id}/...`
+  layout (resolved — see Clarifications, `data-model.md`); script mechanics deferred to
+  `speckit.tasks`.
+- A tenant's messaging listener can silently die without `watchdog.py` noticing (process stays
+  healthy overall) — accepted gap, not built by this feature (see "Background processing"
+  Requirements). Flagged for a future follow-up, not silently forgotten.
 
 ## Success Criteria
 
@@ -319,11 +410,14 @@ to hold under either model.
 - **SC-005**: Adding a new invoicing-provider capability implementation requires zero changes to
   `AIHandler`/`denidin.py` dispatch logic — only new implementation code plus a tenant config
   reference.
-- **SC-006**: The common constitution's byte content is identical across every tenant's built
-  `instructions` (prompt-cache prefix preserved), verified by direct comparison.
+- **SC-006**: The rendered common constitution's byte content is identical across every one of a
+  *given* tenant's own calls (prompt-cache prefix preserved per tenant/OpenAI account — it is
+  expected to differ *across* tenants once bot name/other template values differ), verified by
+  direct comparison.
 
 ---
 
 See `user-stories.md` (MANDATORY, Given-When-Then) in this same directory for the full
-prioritized user stories backing these requirements. `speckit.plan`, `speckit.tasks`, and
-`speckit.analyze` have not yet been run for this feature.
+prioritized user stories backing these requirements, and `plan.md`/`research.md`/
+`data-model.md`/`contracts/`/`quickstart.md` for the completed `speckit.plan` output.
+`speckit.tasks` and `speckit.analyze` have not yet been run for this feature.
