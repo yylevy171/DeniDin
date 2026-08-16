@@ -341,9 +341,17 @@ before starting Phase 5.
 
 ## Phase 9: User Story 6 — Documentation (US6)
 
-- [ ] T021 Write `player/README.md`: invocation, `--data-root`/
+- [x] T021 Write `player/README.md`: invocation, `--data-root`/
   safety flags, second-pass workflow, and a link back to this spec
-  directory — required by US6's "documented" criterion.
+  directory — required by US6's "documented" criterion. **Done**
+  (2026-08-16): documents the actual implemented CLI (player-config-file +
+  `--start`/`--end`/`--confirm-production-data-root`), the real outcome
+  statuses (`dispatched`/`unmapped-sender`/`unsupported-type`), and
+  explicitly flags what's NOT yet built (reconciliation, relevancy,
+  review-queue/`--reapply-review`, the run-summary JSON file) rather than
+  documenting the aspirational shape in `contracts/player-cli.md` as if it
+  already worked. Also flags that `quickstart.md` predates the actual
+  implementation and describes a superseded CLI shape.
 
 ---
 
@@ -551,14 +559,15 @@ merged `event_date`+`event_time` into `event_datetime`; unified
 `replaced_event_id`/`reference` into one `reference` mechanism
 (`resolve_reference`, `REFERENCE_PLACEHOLDER`). `CURRENT_SCHEMA_VERSION` reset
 to `1` as a new baseline. See data-model.md §1b for the full field-by-field
-writeup. Phases 5 (reconciliation), 6 (relevancy), 7 (review queue), 8
-(expensive image-path regression), 9 (README), and 10 (player/WhatsApp
-ledger-event equivalence, added 2026-08-07) are **not started** — no
+writeup. Phase 9 (README) also done 2026-08-16 — `player/README.md` written,
+documenting the actually-implemented CLI and explicitly flagging what isn't
+built yet. Phases 5 (reconciliation), 6 (relevancy), 7 (review queue), 8
+(expensive image-path regression), and 10 (player/WhatsApp ledger-event
+equivalence, added 2026-08-07) are **not started** — no
 `player/reconciliation.py`, `player/relevancy.py`, `player/review_queue.py`,
-`player/README.md`, or `tests/billed/test_player_whatsapp_equivalence.py`
-exist yet, and `run_player.py` has no `--reapply-review` mode. Phase 10's
-T025a/T026a are permanently blocked (not just "not started") until Feature
-040 lands.
+or `tests/billed/test_player_whatsapp_equivalence.py` exist yet, and
+`run_player.py` has no `--reapply-review` mode. Phase 10's T025a/T026a are
+permanently blocked (not just "not started") until Feature 040 lands.
 
 ## Next step
 
