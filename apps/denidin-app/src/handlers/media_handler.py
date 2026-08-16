@@ -106,8 +106,9 @@ class MediaHandler:
             sender_display_name: Resolved human-readable sender name (Feature 039,
                 WhatsAppMessage.sender_display_name) - used only for the persisted
                 Message.sender/recipient values in _store_media_turn, never for
-                filenames or LedgerEvent.sender (both keep using sender_phone, the
-                raw JID, unchanged). Falls back to sender_phone if not given.
+                filenames (which keep using sender_phone, the raw JID, unchanged;
+                ledger events no longer persist a sender field at all - Phase 11,
+                2026-08-16). Falls back to sender_phone if not given.
 
         Returns:
             {
@@ -222,7 +223,6 @@ class MediaHandler:
                             call_arguments=call_arguments,
                             message_id=message_id,
                             message_timestamp=event_timestamp,
-                            sender=sender_phone,
                         )
                         ledger_event_ids.extend(new_event_ids)
                 except Exception as e:

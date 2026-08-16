@@ -4,11 +4,24 @@ Unit tests for LedgerEventManager (Feature 033: Ledger Event Persistence).
 Written BEFORE implementation, per TDD workflow (METHODOLOGY.md §VI). Covers
 tasks.md Phase 2 (T002a-T006a): core file persistence, event_id generation
 (local-time conversion, per-letter-per-minute seq collision handling), amount
-normalization, replaced/reference placeholder logic, and reserved-null fields.
+normalization, reference placeholder logic, and reserved-null fields.
 
-See specs/in-progress/033-ledger-event-persistence/data-model.md for the full
-field list and specs/in-progress/033-ledger-event-persistence/spec.md for the
-Clarifications this behavior derives from.
+Phase 11 (043-production-data-setup-tooling, 2026-08-16): substantially revised
+after a real-data-grounded audit against the actual historical Events.csv (1159
+rows, real client PII - gitignored, not committed, not required to run this
+suite; used only for that one-time interactive review) found several fields
+that duplicated each other or diverged from real usage - see
+specs/in-progress/043-production-data-setup-tooling/data-model.md §1b for the
+full field-by-field writeup this file's shape now reflects: event_date/event_time
+merged into event_datetime; notes removed (merged into description/
+reference_hint); replaced_event_id/replaces_hint folded into reference/
+reference_hint (found to be the same mechanism in the real ledger); sender/
+message_timestamp removed (no reader, fully covered by event_datetime);
+agreement_label no longer persisted (only used to build agreement_id).
+
+See specs/in-progress/033-ledger-event-persistence/data-model.md for the
+original field list and specs/in-progress/033-ledger-event-persistence/spec.md
+for the Clarifications this behavior derives from.
 """
 
 import json
@@ -20,10 +33,8 @@ import pytest
 
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
 
-# Raw arguments shape capture_ledger_event's LEDGER_EVENT_TOOL always produces
-# (19 keys as of 2026-07-30, ai_handler.py - added agreement_label/component_label
-# [REQ-DATA-004], txn_date [REQ-DATA-005, unified from hours_date/transaction_date
-# same day]). Not every test needs every field non-null.
+# Raw arguments shape capture_ledger_event's LEDGER_EVENT_TOOL produces (Phase 11
+# shape, 2026-08-16). Not every test needs every field non-null.
 SAMPLE_EVENT = {
     "source_type": "הסכם",
     "event_subtype": "יצירה",
@@ -37,32 +48,25 @@ SAMPLE_EVENT = {
     "hourly_rate": None,
     "txn_date": None,
     "vat_status": "לא צוין",
-    "replaces_hint": None,
     "reference_hint": None,
-    "notes": None,
     "raw_message_excerpt": "ישראל ישראלי 5,000₪ כתב הגנה",
     "agreement_label": "תיק בדיקה",
     "component_label": "בסיס",
 }
 
 CSV_MAPPED_FIELDS = {
-    "event_id", "event_date", "event_time", "source_type", "event_subtype",
-    "client_name", "payer_name", "description", "amount", "replaced_event_id",
-    "reference", "notes", "agreement_id", "component_id", "component_label",
+    "event_id", "event_datetime", "source_type", "event_subtype",
+    "client_name", "payer_name", "description", "amount",
+    "reference", "agreement_id", "component_id", "component_label",
     "trigger_condition", "percent", "percent_base", "hours", "hourly_rate",
     "txn_date", "vat_status", "split_partner", "split_percent",
     "due_date", "invoice_status", "invoice_number", "invoice_type",
     "morning_document_id", "invoice_actual_creation_date",
 }
 INTERNAL_FIELDS = {
-    "session_id", "whatsapp_chat", "message_id", "message_timestamp",
-    "sender", "captured_at", "raw_message_excerpt", "replaces_hint",
-    "reference_hint", "agreement_label",
-    "schema_version",  # Feature 043, US5 - 11th internal field
-    # Phase 11 (schema v2, 2026-08-16) - not yet Events.csv columns, see
-    # tasks.md Phase 11 and TestBankPaymentDetailFields below.
-    "payment_method", "bank_number", "bank_branch", "bank_account",
-    "transaction_reference",
+    "session_id", "whatsapp_chat", "message_id", "captured_at",
+    "raw_message_excerpt", "reference_hint", "schema_version",
+    "bank_number", "bank_branch", "bank_account",
 }
 RESERVED_NULL_FIELDS = [
     "trigger_condition", "split_partner", "split_percent", "due_date",
@@ -102,23 +106,23 @@ class TestLedgerEventManagerCore:
         event_id = manager.add_ledger_event(
             session_id="sess-1", whatsapp_chat="972500000000@c.us",
             event=dict(SAMPLE_EVENT), message_id="msg-1",
-            message_timestamp=FIXED_TS, sender="972500000000@c.us",
+            message_timestamp=FIXED_TS,
         )
         assert event_id is not None
         assert (temp_events_dir / f"{event_id}.json").exists()
 
-    def test_written_file_has_exactly_the_30_csv_fields_plus_16_internal_fields(
+    def test_written_file_has_exactly_the_27_csv_fields_plus_10_internal_fields(
         self, manager, temp_events_dir
     ):
-        """Updated by Phase 11 (schema v2, 2026-08-16, explicit human sign-off to
-        implement T027b) - was 11 internal fields, now 16 (payment_method/
-        bank_number/bank_branch/bank_account/transaction_reference added). CSV-
-        mapped count is unchanged - those five are DeniDin-internal for now, not
-        yet Events.csv columns. See TestBankPaymentDetailFields below."""
+        """Phase 11 (2026-08-16, human sign-off after a full field-by-field real-
+        data-grounded review): was 30 CSV + 11 internal (schema v1), briefly 30 CSV
+        + 16 internal (T027b's now-reverted payment_method/transaction_reference
+        addition, schema v2), now 27 CSV + 10 internal (schema reset to v1) - see
+        data-model.md §1b for the complete before/after field list."""
         event_id = manager.add_ledger_event(
             session_id="sess-1", whatsapp_chat="972500000000@c.us",
             event=dict(SAMPLE_EVENT), message_id="msg-1",
-            message_timestamp=FIXED_TS, sender="972500000000@c.us",
+            message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert set(data.keys()) == CSV_MAPPED_FIELDS | INTERNAL_FIELDS
@@ -127,7 +131,7 @@ class TestLedgerEventManagerCore:
         event_id = manager.add_ledger_event(
             session_id="sess-1", whatsapp_chat="972500000000@c.us",
             event=dict(SAMPLE_EVENT), message_id="msg-1",
-            message_timestamp=FIXED_TS, sender="972500000000@c.us",
+            message_timestamp=FIXED_TS,
         )
         raw = (temp_events_dir / f"{event_id}.json").read_text(encoding="utf-8")
         assert "ישראל ישראלי" in raw, "Hebrew must not be \\u-escaped (ensure_ascii=False)"
@@ -140,7 +144,7 @@ class TestLedgerEventManagerCore:
         manager.add_ledger_event(
             session_id="sess-1", whatsapp_chat="972500000000@c.us",
             event=event, message_id="msg-1",
-            message_timestamp=FIXED_TS, sender="972500000000@c.us",
+            message_timestamp=FIXED_TS,
         )
         assert event == original
 
@@ -148,7 +152,7 @@ class TestLedgerEventManagerCore:
         event_id = manager.add_ledger_event(
             session_id="sess-1", whatsapp_chat="972500000000@c.us",
             event=dict(SAMPLE_EVENT), message_id="msg-1",
-            message_timestamp=FIXED_TS, sender="972500000000@c.us",
+            message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["source_type"] == "הסכם"
@@ -159,7 +163,6 @@ class TestLedgerEventManagerCore:
         assert data["session_id"] == "sess-1"
         assert data["whatsapp_chat"] == "972500000000@c.us"
         assert data["message_id"] == "msg-1"
-        assert data["sender"] == "972500000000@c.us"
         assert data["raw_message_excerpt"] == SAMPLE_EVENT["raw_message_excerpt"]
 
 
@@ -169,7 +172,7 @@ class TestEventIdGeneration:
     def test_source_type_agreement_gets_A_prefix(self, manager):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT, source_type="הסכם"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         assert event_id.startswith("A")
 
@@ -177,41 +180,42 @@ class TestEventIdGeneration:
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         assert event_id.startswith("B")
 
     def test_date_time_converted_to_asia_jerusalem_local(self, manager):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         assert event_id == "A28072614060"
 
-    def test_event_date_and_event_time_fields_match_local_conversion(self, manager, temp_events_dir):
+    def test_event_datetime_field_matches_local_conversion(self, manager, temp_events_dir):
+        """Phase 11: event_date+event_time merged into one event_datetime field,
+        format DD/MM/YYYY HH:MM (human decision, 2026-08-16)."""
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
-        assert data["event_date"] == "28/07/2026"
-        assert data["event_time"] == "14:06"
+        assert data["event_datetime"] == "28/07/2026 14:06"
 
     def test_first_event_for_new_minute_gets_seq_0(self, manager):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         assert event_id.endswith("0")
 
     def test_second_event_same_minute_gets_seq_1(self, manager):
         first = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m1", message_timestamp=FIXED_TS, sender="w",
+            message_id="m1", message_timestamp=FIXED_TS,
         )
         second = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m2", message_timestamp=FIXED_TS, sender="w",
+            message_id="m2", message_timestamp=FIXED_TS,
         )
         assert first == "A28072614060"
         assert second == "A28072614061"
@@ -220,12 +224,12 @@ class TestEventIdGeneration:
         agreement_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, source_type="הסכם"),
-            message_id="m1", message_timestamp=FIXED_TS, sender="w",
+            message_id="m1", message_timestamp=FIXED_TS,
         )
         bank_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה"),
-            message_id="m2", message_timestamp=FIXED_TS, sender="w",
+            message_id="m2", message_timestamp=FIXED_TS,
         )
         assert agreement_id == "A28072614060"
         assert bank_id == "B28072614060", "different letter must not share the other's seq counter"
@@ -241,7 +245,7 @@ class TestEventIdGeneration:
         monkeypatch.setattr(Path, "open", spy_open)
         manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         assert not any("Events.csv" in p for p in opened_paths)
 
@@ -249,14 +253,14 @@ class TestEventIdGeneration:
         for i in range(10):
             event_id = manager.add_ledger_event(
                 session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-                message_id=f"m{i}", message_timestamp=FIXED_TS, sender="w",
+                message_id=f"m{i}", message_timestamp=FIXED_TS,
             )
             assert event_id is not None
 
         with caplog.at_level(logging.ERROR):
             eleventh = manager.add_ledger_event(
                 session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-                message_id="m10", message_timestamp=FIXED_TS, sender="w",
+                message_id="m10", message_timestamp=FIXED_TS,
             )
 
         assert eleventh is None
@@ -267,7 +271,7 @@ class TestEventIdGeneration:
             manager.add_ledger_event(
                 session_id="s", whatsapp_chat="w",
                 event=dict(SAMPLE_EVENT, client_name=f"client-{i}"),
-                message_id=f"m{i}", message_timestamp=FIXED_TS, sender="w",
+                message_id=f"m{i}", message_timestamp=FIXED_TS,
             )
         seq9_file = temp_events_dir / "A28072614069.json"
         before = seq9_file.read_text(encoding="utf-8")
@@ -275,7 +279,7 @@ class TestEventIdGeneration:
         manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, client_name="eleventh-client"),
-            message_id="m10", message_timestamp=FIXED_TS, sender="w",
+            message_id="m10", message_timestamp=FIXED_TS,
         )
 
         assert seq9_file.read_text(encoding="utf-8") == before
@@ -285,13 +289,11 @@ class TestEventIdGeneration:
         with caplog.at_level(logging.WARNING):
             event_id = manager.add_ledger_event(
                 session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-                message_id="m", message_timestamp=None, sender="w",
+                message_id="m", message_timestamp=None,
             )
         assert event_id is not None
         data = _read(temp_events_dir, event_id)
-        assert data["message_timestamp"] is None, "the hard pointer is genuinely unknown, must stay None"
-        assert data["event_date"] is not None
-        assert data["event_time"] is not None
+        assert data["event_datetime"] is not None, "still derives from processing-time fallback"
         assert any(r.levelno == logging.WARNING for r in caplog.records)
 
 
@@ -311,36 +313,41 @@ class TestAmountNormalization:
     def test_amount_normalized(self, manager, temp_events_dir, raw, expected):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT, amount=raw),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["amount"] == expected
 
-    def test_unparseable_amount_left_blank_original_kept_in_notes_and_warning_logged(
+    def test_unparseable_amount_left_blank_original_kept_in_description_and_warning_logged(
         self, manager, temp_events_dir, caplog
     ):
+        """Phase 11: notes (CSV column) removed - this fallback text now appends
+        to description instead (the component's own content, per data-model.md
+        §1b's routing decision)."""
         raw = "8,000₪; 20,000₪; עוד 30,000₪"
         with caplog.at_level(logging.WARNING):
             event_id = manager.add_ledger_event(
                 session_id="s", whatsapp_chat="w",
-                event=dict(SAMPLE_EVENT, amount=raw, notes=None),
-                message_id="m", message_timestamp=FIXED_TS, sender="w",
+                event=dict(SAMPLE_EVENT, amount=raw, description=None),
+                message_id="m", message_timestamp=FIXED_TS,
             )
         data = _read(temp_events_dir, event_id)
         assert data["amount"] is None
-        assert raw in (data["notes"] or "")
+        assert raw in (data["description"] or "")
         assert any(r.levelno == logging.WARNING for r in caplog.records)
 
-    def test_unparseable_amount_appends_to_existing_notes_not_overwrite(self, manager, temp_events_dir):
+    def test_unparseable_amount_appends_to_existing_description_not_overwrite(
+        self, manager, temp_events_dir
+    ):
         raw = "8,000₪; 20,000₪"
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
-            event=dict(SAMPLE_EVENT, amount=raw, notes="original note text"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            event=dict(SAMPLE_EVENT, amount=raw, description="original description text"),
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
-        assert "original note text" in data["notes"]
-        assert raw in data["notes"]
+        assert "original description text" in data["description"]
+        assert raw in data["description"]
 
 
 class TestHoursNormalization:
@@ -369,64 +376,64 @@ class TestHoursNormalization:
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, hours=raw, txn_date="2026-07-28" if raw else None),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["hours"] == expected
 
-    def test_unparseable_hours_left_blank_original_kept_in_notes_and_warning_logged(
+    def test_unparseable_hours_left_blank_original_kept_in_description_and_warning_logged(
         self, manager, temp_events_dir, caplog
     ):
         raw = "כמה שעות שיידרשו"
         with caplog.at_level(logging.WARNING):
             event_id = manager.add_ledger_event(
                 session_id="s", whatsapp_chat="w",
-                event=dict(SAMPLE_EVENT, hours=raw, txn_date="2026-07-28", notes=None),
-                message_id="m", message_timestamp=FIXED_TS, sender="w",
+                event=dict(SAMPLE_EVENT, hours=raw, txn_date="2026-07-28", description=None),
+                message_id="m", message_timestamp=FIXED_TS,
             )
         data = _read(temp_events_dir, event_id)
         assert data["hours"] is None
-        assert raw in (data["notes"] or "")
+        assert raw in (data["description"] or "")
         assert any(r.levelno == logging.WARNING for r in caplog.records)
 
-    def test_unparseable_hours_appends_to_existing_notes_not_overwrite(self, manager, temp_events_dir):
+    def test_unparseable_hours_appends_to_existing_description_not_overwrite(
+        self, manager, temp_events_dir
+    ):
         raw = "כמה שעות שיידרשו"
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
-            event=dict(SAMPLE_EVENT, hours=raw, txn_date="2026-07-28", notes="original note text"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            event=dict(SAMPLE_EVENT, hours=raw, txn_date="2026-07-28", description="original description text"),
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
-        assert "original note text" in data["notes"]
-        assert raw in data["notes"]
+        assert "original description text" in data["description"]
+        assert raw in data["description"]
 
 
-class TestReplacedEventAndReferencePlaceholders:
-    """T005a: REQ-DATA-002."""
+class TestReferencePlaceholder:
+    """T005a: REQ-DATA-002. Phase 11 (2026-08-16, human decision): unified
+    reference mechanism - replaced_event_id/replaces_hint folded into
+    reference/reference_hint. Real-data audit (against the actual 1159-row
+    Events.csv) found both fields held real event_id(s) in practice, the only
+    difference being direction (replaced_event_id one-directional; reference
+    genuinely bidirectional in several real rows) - merged into one field/
+    mechanism here, the direction/multi-ref question itself left open/deferred.
+    See data-model.md §1b."""
 
-    def test_replaces_hint_present_sets_replaced_event_id_placeholder(self, manager, temp_events_dir):
+    def test_reference_hint_present_sets_reference_placeholder(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
-            event=dict(SAMPLE_EVENT, replaces_hint="correction to prior arrangement"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            event=dict(SAMPLE_EVENT, reference_hint="correction to prior arrangement"),
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
-        assert data["replaced_event_id"] == "צריך למצוא"
+        assert data["reference"] == "צריך למצוא"
 
-    def test_replaces_hint_absent_leaves_replaced_event_id_blank(self, manager, temp_events_dir):
+    def test_reference_hint_absent_leaves_reference_blank(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
-            event=dict(SAMPLE_EVENT, replaces_hint=None),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
-        )
-        data = _read(temp_events_dir, event_id)
-        assert data["replaced_event_id"] is None
-
-    def test_reference_always_blank_regardless_of_reference_hint(self, manager, temp_events_dir):
-        event_id = manager.add_ledger_event(
-            session_id="s", whatsapp_chat="w",
-            event=dict(SAMPLE_EVENT, reference_hint="משרד הרווחה"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            event=dict(SAMPLE_EVENT, reference_hint=None),
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["reference"] is None
@@ -435,7 +442,7 @@ class TestReplacedEventAndReferencePlaceholders:
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, reference_hint="משרד הרווחה"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["reference_hint"] == "משרד הרווחה"
@@ -450,7 +457,7 @@ class TestReservedNullFields:
     def test_all_reserved_fields_always_null(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         for field in RESERVED_NULL_FIELDS:
@@ -462,42 +469,63 @@ class TestAgreementAndComponentIds:
     """T006b (added 2026-07-30): REQ-DATA-004 — agreement_id/component_id
     generation, matching the real Events.csv convention, with the user's hard
     consistency requirement (byte-for-byte identical across a batch, guaranteed
-    by construction, never by trusting repeated AI text)."""
+    by construction, never by trusting repeated AI text).
+
+    Phase 11 (2026-08-16): agreement_label itself confirmed no longer persisted
+    as its own field (real-data audit found agreement_id already fully embeds
+    the (slugified) label, and every component references the SAME agreement_id
+    - never re-derived/reconstructed later, same discipline as a UUID - see
+    data-model.md §1b)."""
 
     def test_agreement_event_gets_non_null_agreement_id_and_component_id(
         self, manager, temp_events_dir
     ):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["agreement_id"] is not None
         assert data["component_id"] is not None
 
-    def test_bank_event_has_null_agreement_component_id_and_labels(
+    def test_bank_event_has_null_agreement_and_component_id(
         self, manager, temp_events_dir
     ):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["agreement_id"] is None
         assert data["component_id"] is None
         assert data["component_label"] is None
-        assert data["agreement_label"] is None
 
     def test_agreement_id_matches_real_csv_format(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, client_name="אתי אסולין", agreement_label="ערעור לארצי"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         # FIXED_TS -> 28/07/2026 local -> MMYY "0726"
         assert data["agreement_id"] == "0726-אתי_אסולין-ערעור_לארצי"
+
+    def test_agreement_label_itself_not_persisted_as_its_own_field(
+        self, manager, temp_events_dir
+    ):
+        """Phase 11 (2026-08-16, human requirement): "I never want to see the
+        label in the data except embedded in the agreement id itself" - confirms
+        agreement_label is a construction-only input, never a standalone output
+        field."""
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, agreement_label="ערעור לארצי"),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert "agreement_label" not in data
+        assert "ערעור_לארצי" in data["agreement_id"]
 
     def test_component_id_is_agreement_id_plus_slugified_component_label(
         self, manager, temp_events_dir
@@ -505,7 +533,7 @@ class TestAgreementAndComponentIds:
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, component_label="עדכון - ערעור לארצי"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["component_id"] == f"{data['agreement_id']}-עדכון_ערעור_לארצי"
@@ -515,7 +543,7 @@ class TestAgreementAndComponentIds:
     ):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         expected = manager.build_agreement_id("ישראל ישראלי", "תיק בדיקה", FIXED_TS)
@@ -533,7 +561,7 @@ class TestAgreementAndComponentIds:
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, agreement_label="a slightly different label"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
             agreement_id=explicit_id,
         )
         data = _read(temp_events_dir, event_id)
@@ -548,7 +576,7 @@ class TestAgreementAndComponentIds:
             event_id = manager.add_ledger_event(
                 session_id="s", whatsapp_chat="w",
                 event=dict(SAMPLE_EVENT, client_name="גיליאן דוידיאן", component_label=f"רכיב {i}"),
-                message_id=f"m{i}", message_timestamp=FIXED_TS, sender="w",
+                message_id=f"m{i}", message_timestamp=FIXED_TS,
                 agreement_id=shared_id,
             )
             ids.append(_read(temp_events_dir, event_id)["agreement_id"])
@@ -566,7 +594,7 @@ class TestAgreementAndComponentIds:
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, component_label="שעות עבודה"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["component_label"] == "שעות עבודה"
@@ -577,13 +605,14 @@ class TestTxnDate:
     REQ-DATA-005 - תאריך_ביצוע, code-normalized from the AI-resolved ISO-8601 txn_date.
     One field, two populating cases: (1) an hourly work-log component's worked-date
     (required whenever hours is set), (2) a בנק component's own stated transaction/
-    value date (always optional). Both distinct from event_date (message-arrival date)."""
+    value date (always optional). Both distinct from event_datetime (message-arrival
+    instant)."""
 
     def test_txn_date_normalized_from_iso_to_ddmmyyyy(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, hours="4", txn_date="2026-07-29"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["txn_date"] == "29/07/2026"
@@ -592,25 +621,24 @@ class TestTxnDate:
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, hours=None, txn_date=None),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["hours"] is None
         assert data["txn_date"] is None
 
-    def test_txn_date_distinct_from_event_date_for_hours_case(self, manager, temp_events_dir):
+    def test_txn_date_distinct_from_event_datetime_for_hours_case(self, manager, temp_events_dir):
         """The whole point of REQ-DATA-005: hours worked "אתמול" (yesterday) must be
-        able to carry a DIFFERENT date than event_date (the message's own arrival
-        date, derived from FIXED_TS = 28/07/2026 local)."""
+        able to carry a DIFFERENT date than event_datetime (the message's own
+        arrival instant, derived from FIXED_TS = 28/07/2026 local)."""
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, hours="4", txn_date="2026-07-27"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
-        assert data["event_date"] == "28/07/2026"
+        assert data["event_datetime"] == "28/07/2026 14:06"
         assert data["txn_date"] == "27/07/2026"
-        assert data["txn_date"] != data["event_date"]
 
     def test_hours_set_but_txn_date_missing_leaves_blank_and_logs_warning(
         self, manager, temp_events_dir, caplog
@@ -619,7 +647,7 @@ class TestTxnDate:
             event_id = manager.add_ledger_event(
                 session_id="s", whatsapp_chat="w",
                 event=dict(SAMPLE_EVENT, hours="4", txn_date=None),
-                message_id="m", message_timestamp=FIXED_TS, sender="w",
+                message_id="m", message_timestamp=FIXED_TS,
             )
         data = _read(temp_events_dir, event_id)
         assert data["hours"] == 4.0
@@ -633,7 +661,7 @@ class TestTxnDate:
             event_id = manager.add_ledger_event(
                 session_id="s", whatsapp_chat="w",
                 event=dict(SAMPLE_EVENT, hours="4", txn_date="אתמול"),
-                message_id="m", message_timestamp=FIXED_TS, sender="w",
+                message_id="m", message_timestamp=FIXED_TS,
             )
         data = _read(temp_events_dir, event_id)
         assert data["txn_date"] is None
@@ -645,7 +673,7 @@ class TestTxnDate:
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, hours="שעתיים", txn_date="2026-07-28"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["hours"] == 2.0
@@ -654,30 +682,29 @@ class TestTxnDate:
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, source_type="בנק", txn_date="2026-07-26"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["txn_date"] == "26/07/2026"
 
-    def test_txn_date_distinct_from_event_date_for_bank_case(self, manager, temp_events_dir):
+    def test_txn_date_distinct_from_event_datetime_for_bank_case(self, manager, temp_events_dir):
         """A screenshot forwarded a day after the actual deposit must be able to carry
-        a txn_date DIFFERENT from event_date (derived from FIXED_TS = 28/07/2026
+        a txn_date DIFFERENT from event_datetime (derived from FIXED_TS = 28/07/2026
         local, the message's own arrival time)."""
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, source_type="בנק", txn_date="2026-07-26"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
-        assert data["event_date"] == "28/07/2026"
+        assert data["event_datetime"] == "28/07/2026 14:06"
         assert data["txn_date"] == "26/07/2026"
-        assert data["txn_date"] != data["event_date"]
 
     def test_txn_date_null_by_default_for_bank_event(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, source_type="בנק"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["txn_date"] is None
@@ -689,22 +716,21 @@ class TestTxnDate:
             event_id = manager.add_ledger_event(
                 session_id="s", whatsapp_chat="w",
                 event=dict(SAMPLE_EVENT, source_type="בנק", txn_date="אתמול"),
-                message_id="m", message_timestamp=FIXED_TS, sender="w",
+                message_id="m", message_timestamp=FIXED_TS,
             )
         data = _read(temp_events_dir, event_id)
         assert data["txn_date"] is None
         assert any(r.levelno == logging.WARNING for r in caplog.records)
 
 
-# A `capture_ledger_event` call's raw arguments (2026-07-30 components-array
-# redesign) - agreement-level fields top-level, per-component fields nested.
+# A `capture_ledger_event` call's raw arguments (Phase 11 shape, 2026-08-16) -
+# agreement-level fields top-level, per-component fields nested.
 SAMPLE_CALL_ARGUMENTS = {
     "source_type": "הסכם",
     "event_subtype": "יצירה",
     "client_name": "ישראל ישראלי",
     "payer_name": None,
     "agreement_label": "תיק בדיקה",
-    "replaces_hint": None,
     "reference_hint": None,
     "raw_message_excerpt": "ישראל ישראלי - הצעת שכר טרחה",
     "component_count": 1,
@@ -719,7 +745,6 @@ SAMPLE_CALL_ARGUMENTS = {
             "hourly_rate": None,
             "txn_date": None,
             "vat_status": "לא צוין",
-            "notes": None,
         },
     ],
 }
@@ -762,7 +787,7 @@ class TestAddLedgerEventsFromCall:
     def test_single_component_persists_one_event(self, manager, temp_events_dir):
         event_ids = manager.add_ledger_events_from_call(
             session_id="s", whatsapp_chat="w", call_arguments=dict(SAMPLE_CALL_ARGUMENTS),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         assert len(event_ids) == 1
         data = _read(temp_events_dir, event_ids[0])
@@ -783,7 +808,7 @@ class TestAddLedgerEventsFromCall:
 
         event_ids = manager.add_ledger_events_from_call(
             session_id="s", whatsapp_chat="w", call_arguments=call_arguments,
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
 
         assert len(event_ids) == 3
@@ -802,20 +827,19 @@ class TestAddLedgerEventsFromCall:
         call_arguments = {
             "source_type": "בנק", "event_subtype": "הפקדה",
             "client_name": None, "payer_name": None,
-            "agreement_label": None, "replaces_hint": None, "reference_hint": None,
+            "agreement_label": None, "reference_hint": None,
             "raw_message_excerpt": "הפקדה בסך 9,440 ₪",
             "component_count": 1,
             "components": [{
                 "component_label": None, "description": "הפקדה", "amount": "9,440₪",
                 "percent": None, "percent_base": None, "hours": None,
                 "hourly_rate": None, "txn_date": None, "vat_status": "לא צוין",
-                "notes": None,
             }],
         }
 
         event_ids = manager.add_ledger_events_from_call(
             session_id="s", whatsapp_chat="w", call_arguments=call_arguments,
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
 
         assert len(event_ids) == 1
@@ -831,20 +855,20 @@ class TestAddLedgerEventsFromCall:
         """REQ-DATA-008 (added 2026-08-02, real billed incident 2026-07-31): an empty
         components array must never silently persist nothing - that's exactly the
         Mor ben-Shaya failure (1 call, 0 persisted, 0 errors logged). Must persist
-        exactly one flagged fallback record and log an ERROR."""
+        exactly one flagged fallback record and log an ERROR. Phase 11: the
+        explanatory text now lives in description (notes was removed)."""
         call_arguments = dict(SAMPLE_CALL_ARGUMENTS, components=[])
         with caplog.at_level(logging.ERROR):
             event_ids = manager.add_ledger_events_from_call(
                 session_id="s", whatsapp_chat="w", call_arguments=call_arguments,
-                message_id="m", message_timestamp=FIXED_TS, sender="w",
+                message_id="m", message_timestamp=FIXED_TS,
             )
         assert len(event_ids) == 1
         data = _read(temp_events_dir, event_ids[0])
         assert data["client_name"] == "ישראל ישראלי"  # agreement-level fields still carried
         assert data["amount"] is None
-        assert data["description"] is None
         assert data["component_label"] is None
-        assert "needs manual review" in (data["notes"] or "")
+        assert "needs manual review" in (data["description"] or "")
         assert data["agreement_id"] is not None, "still traceable/groupable, even though empty"
         assert any(r.levelno == logging.ERROR for r in caplog.records)
 
@@ -858,7 +882,7 @@ class TestAddLedgerEventsFromCall:
         with caplog.at_level(logging.ERROR):
             event_ids = manager.add_ledger_events_from_call(
                 session_id="s", whatsapp_chat="w", call_arguments=call_arguments,
-                message_id="m", message_timestamp=FIXED_TS, sender="w",
+                message_id="m", message_timestamp=FIXED_TS,
             )
         assert len(event_ids) == 1
         data = _read(temp_events_dir, event_ids[0])
@@ -869,7 +893,7 @@ class TestAddLedgerEventsFromCall:
         with caplog.at_level(logging.ERROR):
             manager.add_ledger_events_from_call(
                 session_id="s", whatsapp_chat="w", call_arguments=dict(SAMPLE_CALL_ARGUMENTS),
-                message_id="m", message_timestamp=FIXED_TS, sender="w",
+                message_id="m", message_timestamp=FIXED_TS,
             )
         assert not any(r.levelno == logging.ERROR for r in caplog.records)
 
@@ -882,13 +906,12 @@ class TestAddLedgerEventsFromCall:
 
         event_ids = manager.add_ledger_events_from_call(
             session_id="s", whatsapp_chat="w", call_arguments=call_arguments,
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
 
         for eid in event_ids:
             data = _read(temp_events_dir, eid)
             assert data["client_name"] == "ישראל ישראלי"
-            assert data["agreement_label"] == "תיק בדיקה"
             assert data["raw_message_excerpt"] == "ישראל ישראלי - הצעת שכר טרחה"
 
     def test_call_arguments_dict_not_mutated(self, manager):
@@ -896,203 +919,172 @@ class TestAddLedgerEventsFromCall:
         original = json.loads(json.dumps(call_arguments))  # deep copy for comparison
         manager.add_ledger_events_from_call(
             session_id="s", whatsapp_chat="w", call_arguments=call_arguments,
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         assert call_arguments == original
 
 
 class TestSchemaVersion:
-    """Feature 043, US5, T008a: every persisted record carries schema_version."""
+    """Feature 043, US5, T008a: every persisted record carries schema_version.
+    Phase 11 (2026-08-16): reset to 1 as a new baseline generation after a
+    substantial real-data-grounded revision - see data-model.md §1b and
+    ledger_event_manager.py's own CURRENT_SCHEMA_VERSION comment for why
+    resetting (rather than incrementing) is safe here (no real persisted file
+    has ever carried a schema_version value at all)."""
 
     def test_persisted_record_has_current_schema_version(self, manager, temp_events_dir):
         from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
 
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert data["schema_version"] == CURRENT_SCHEMA_VERSION
 
-    def test_current_schema_version_is_an_int(self):
+    def test_current_schema_version_is_1(self):
         from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
 
-        assert isinstance(CURRENT_SCHEMA_VERSION, int)
+        assert CURRENT_SCHEMA_VERSION == 1
 
     def test_add_ledger_events_from_call_also_stamps_schema_version(self, manager, temp_events_dir):
         from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
 
         event_ids = manager.add_ledger_events_from_call(
             session_id="s", whatsapp_chat="w", call_arguments=dict(SAMPLE_CALL_ARGUMENTS),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         for eid in event_ids:
             assert _read(temp_events_dir, eid)["schema_version"] == CURRENT_SCHEMA_VERSION
 
 
 class TestBankPaymentDetailFields:
-    """Phase 11 (tasks.md, 043-production-data-setup-tooling), T027a - written
-    BEFORE implementation, RED until T027b lands. See
-    TestLedgerEventToolBankPaymentFields in test_ai_handler_ledger_events.py for
-    the schema-shape half of this gap; this class covers persistence.
+    """Phase 11 (tasks.md, 043-production-data-setup-tooling), T027a/T027b.
 
-    NOT part of CSV_MAPPED_FIELDS/INTERNAL_FIELDS/SAMPLE_EVENT at the top of this
-    file on purpose - those back an existing, already-approved completeness test
-    (test_written_file_has_exactly_the_30_csv_fields_plus_11_internal_fields)
-    that must stay untouched until T027b lands with its own fresh sign-off to
-    update it (immutable-tests rule, METHODOLOGY.md). This class asserts the
-    post-Phase-11 shape independently instead.
+    payment_method/transaction_reference (originally added in this same phase's
+    first pass, T027b) were REMOVED in a same-day real-data-grounded follow-up
+    review (2026-08-16, human decision): no payment-app support exists yet, and
+    payment_method was redundant with bank_number/bank_branch/bank_account's own
+    presence already implying a bank transfer. bank_number/bank_branch/
+    bank_account themselves remain - closing the real gap this phase exists for
+    (bugfix-028/038 added the equivalent fields to the Morning invoicing tools;
+    the ledger's own capture never mirrored them). See data-model.md §1b.
     """
 
-    NEW_FIELDS = {
-        "payment_method", "bank_number", "bank_branch", "bank_account",
-        "transaction_reference",
-    }
+    NEW_FIELDS = {"bank_number", "bank_branch", "bank_account"}
 
-    def test_bank_event_persists_all_five_fields_verbatim(self, manager, temp_events_dir):
+    def test_bank_event_persists_all_three_fields_verbatim(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(
                 SAMPLE_EVENT, source_type="בנק",
-                payment_method="bank_transfer", bank_number="31",
-                bank_branch="123", bank_account="456789",
-                transaction_reference=None,
+                bank_number="31", bank_branch="123", bank_account="456789",
             ),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
-        assert data["payment_method"] == "bank_transfer"
         assert data["bank_number"] == "31"
         assert data["bank_branch"] == "123"
         assert data["bank_account"] == "456789"
-        assert data["transaction_reference"] is None
-
-    def test_bank_event_bit_payment_carries_transaction_reference_not_bank_details(
-        self, manager, temp_events_dir
-    ):
-        """Mirrors the Morning-tool convention (runtime_constitution.md): bank
-        details belong to a bank_transfer, transaction_reference (אסמכתה) to a
-        bit/paypal/other app payment - both fields exist regardless, but only
-        one is typically populated for a given transfer."""
-        event_id = manager.add_ledger_event(
-            session_id="s", whatsapp_chat="w",
-            event=dict(
-                SAMPLE_EVENT, source_type="בנק",
-                payment_method="bit", transaction_reference="123456",
-                bank_number=None, bank_branch=None, bank_account=None,
-            ),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
-        )
-        data = _read(temp_events_dir, event_id)
-        assert data["payment_method"] == "bit"
-        assert data["transaction_reference"] == "123456"
-        assert data["bank_number"] is None
 
     def test_bank_event_omitted_fields_default_to_null_not_a_keyerror(
         self, manager, temp_events_dir
     ):
-        """The five fields must be accessed via .get(), same convention as every
-        other optional field (payer_name, replaces_hint, ...) - a caller that
-        doesn't supply them (e.g. a pre-Phase-11 caller, or a genuinely
-        unstated screenshot) must never crash."""
+        """The three fields must be accessed via .get(), same convention as every
+        other optional field (payer_name, reference_hint, ...) - a caller that
+        doesn't supply them (e.g. a genuinely unstated screenshot) must never
+        crash."""
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(SAMPLE_EVENT, source_type="בנק"),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         for field in self.NEW_FIELDS:
             assert data[field] is None
 
-    def test_agreement_event_forces_all_five_fields_null_even_if_present(
+    def test_agreement_event_forces_all_three_fields_null_even_if_present(
         self, manager, temp_events_dir
     ):
         """Defensive code-side nulling for source_type=הסכם, same discipline as
-        agreement_label/component_label being forced null for בנק - never trust
-        the caller/AI to have left an inapplicable field blank on its own."""
+        component_label being forced null for בנק - never trust the caller/AI to
+        have left an inapplicable field blank on its own."""
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
             event=dict(
                 SAMPLE_EVENT, source_type="הסכם",
-                payment_method="bank_transfer", bank_number="31",
-                bank_branch="123", bank_account="456789",
-                transaction_reference="999",
+                bank_number="31", bank_branch="123", bank_account="456789",
             ),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         for field in self.NEW_FIELDS:
             assert data[field] is None, f"{field} must be forced null for source_type=הסכם"
 
-    def test_schema_version_is_2_once_these_fields_land(self):
-        """Locks in the specific bump this phase requires - CURRENT_SCHEMA_VERSION
-        must materially change in the same commit as LEDGER_EVENT_TOOL's schema,
-        per its own docstring."""
-        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
 
-        assert CURRENT_SCHEMA_VERSION == 2
+class TestResolveReference:
+    """Feature 043, US2, T008a: LedgerEventManager.resolve_reference. Renamed from
+    resolve_replaced_event_id (Phase 11, 2026-08-16) - operates on the unified
+    reference field now, see TestReferencePlaceholder above and data-model.md
+    §1b for why replaced_event_id/reference were folded together."""
 
-
-class TestResolveReplacedEventId:
-    """Feature 043, US2, T008a: LedgerEventManager.resolve_replaced_event_id."""
-
-    def test_replaces_placeholder_with_resolved_id_when_currently_placeholder(
+    def test_resolves_placeholder_with_resolved_id_when_currently_placeholder(
         self, manager, temp_events_dir
     ):
         prior_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m1", message_timestamp=FIXED_TS, sender="w",
+            message_id="m1", message_timestamp=FIXED_TS,
         )
         correction_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
-            event=dict(SAMPLE_EVENT, replaces_hint="the original agreement"),
-            message_id="m2", message_timestamp=FIXED_TS, sender="w",
+            event=dict(SAMPLE_EVENT, reference_hint="the original agreement"),
+            message_id="m2", message_timestamp=FIXED_TS,
         )
-        assert _read(temp_events_dir, correction_id)["replaced_event_id"] == "צריך למצוא"
+        assert _read(temp_events_dir, correction_id)["reference"] == "צריך למצוא"
 
-        result = manager.resolve_replaced_event_id(correction_id, prior_id)
+        result = manager.resolve_reference(correction_id, prior_id)
 
         assert result is True
-        assert _read(temp_events_dir, correction_id)["replaced_event_id"] == prior_id
+        assert _read(temp_events_dir, correction_id)["reference"] == prior_id
 
     def test_returns_false_and_does_not_overwrite_when_not_currently_placeholder(
         self, manager, temp_events_dir
     ):
         event_id = manager.add_ledger_event(
-            session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),  # replaces_hint=None
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),  # reference_hint=None
+            message_id="m", message_timestamp=FIXED_TS,
         )
-        assert _read(temp_events_dir, event_id)["replaced_event_id"] is None
+        assert _read(temp_events_dir, event_id)["reference"] is None
 
-        result = manager.resolve_replaced_event_id(event_id, "SOME_OTHER_ID")
+        result = manager.resolve_reference(event_id, "SOME_OTHER_ID")
 
         assert result is False
-        assert _read(temp_events_dir, event_id)["replaced_event_id"] is None
+        assert _read(temp_events_dir, event_id)["reference"] is None
 
     def test_returns_false_for_nonexistent_event_id(self, manager, caplog):
         with caplog.at_level(logging.ERROR):
-            result = manager.resolve_replaced_event_id("DOES_NOT_EXIST", "TARGET")
+            result = manager.resolve_reference("DOES_NOT_EXIST", "TARGET")
         assert result is False
         assert any(r.levelno == logging.ERROR for r in caplog.records)
 
     def test_only_targeted_event_file_is_modified(self, manager, temp_events_dir):
         prior_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m1", message_timestamp=FIXED_TS, sender="w",
+            message_id="m1", message_timestamp=FIXED_TS,
         )
         untouched_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
-            event=dict(SAMPLE_EVENT, replaces_hint="something else entirely"),
-            message_id="m2", message_timestamp=FIXED_TS, sender="w",
+            event=dict(SAMPLE_EVENT, reference_hint="something else entirely"),
+            message_id="m2", message_timestamp=FIXED_TS,
         )
         correction_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w",
-            event=dict(SAMPLE_EVENT, replaces_hint="the original agreement"),
-            message_id="m3", message_timestamp=FIXED_TS, sender="w",
+            event=dict(SAMPLE_EVENT, reference_hint="the original agreement"),
+            message_id="m3", message_timestamp=FIXED_TS,
         )
         before_untouched = _read(temp_events_dir, untouched_id)
 
-        manager.resolve_replaced_event_id(correction_id, prior_id)
+        manager.resolve_reference(correction_id, prior_id)
 
         assert _read(temp_events_dir, untouched_id) == before_untouched
 
@@ -1103,22 +1095,22 @@ class TestApplyReviewAnswer:
     def test_patches_specified_fields(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
 
         result = manager.apply_review_answer(
-            event_id, {"payer_name": "דני כהן", "notes": "resolved via review queue"}
+            event_id, {"payer_name": "דני כהן", "description": "resolved via review queue"}
         )
 
         assert result is True
         data = _read(temp_events_dir, event_id)
         assert data["payer_name"] == "דני כהן"
-        assert data["notes"] == "resolved via review queue"
+        assert data["description"] == "resolved via review queue"
 
     def test_unspecified_fields_unchanged(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS, sender="w",
+            message_id="m", message_timestamp=FIXED_TS,
         )
         before = _read(temp_events_dir, event_id)
 
@@ -1138,11 +1130,11 @@ class TestApplyReviewAnswer:
     def test_only_targeted_event_file_is_modified(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m1", message_timestamp=FIXED_TS, sender="w",
+            message_id="m1", message_timestamp=FIXED_TS,
         )
         other_id = manager.add_ledger_event(
             session_id="s", whatsapp_chat="w", event=dict(SAMPLE_EVENT),
-            message_id="m2", message_timestamp=FIXED_TS, sender="w",
+            message_id="m2", message_timestamp=FIXED_TS,
         )
         before_other = _read(temp_events_dir, other_id)
 

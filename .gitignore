@@ -95,3 +95,10 @@ creds/DeniDin Dev Creds*.txt
 # binary blobs, and shouldn't be treated as source even though it never
 # actually contains secrets - see specs/035-windows-always-on-prod/).
 /artifacts/
+
+# Real historical Events.csv (1159 rows, real client names/amounts/case
+# details - AHLedger's actual bookkeeping export) - used locally as ground
+# truth for Feature 043's Phase 11 real-data-grounded field audit
+# (2026-08-16, see specs/in-progress/043-production-data-setup-tooling/
+# data-model.md §1b). Never commit - real client PII, not test fixture data.
+apps/denidin-app/tests/fixtures/whatsapp_exports/Events.csv

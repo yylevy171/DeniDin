@@ -479,6 +479,47 @@ is a separate, bigger decision outside this task's scope.
   — count only, no behavior/assertion-logic change. 912/912 unit+integration
   tests pass; pylint 9.14/10 (up from 9.11); no new mypy errors.
 
+**T027c (same day, 2026-08-16): full real-data-grounded field audit and
+revision, human-initiated ("I was not aware of this addition... Any addition
+to the ledger data model needs to be approved by me from now on").** Rather
+than stopping at T027b's 5 new fields, every field on the persisted record
+(both pre-existing and new) was reviewed one by one against the real
+`Events.csv` (1159 rows) and `summary.md` (AHLedger's build-heuristics
+retrospective) — not assumptions. Each field's fate was individually
+confirmed, not batch-approved. Full writeup: data-model.md §1b (supersedes
+the version written for T027b). Summary of the outcome:
+- **Removed**: `message_timestamp`, `sender`, `notes` (merged into
+  `description`/`reference_hint`), `replaced_event_id`/`replaces_hint`
+  (folded into `reference`/`reference_hint`), `agreement_label` (no longer
+  persisted, stays a construction-only tool input), `payment_method`/
+  `transaction_reference` (T027b's own addition, reverted - no payment-app
+  support exists yet).
+- **Merged**: `event_date`+`event_time` → `event_datetime`; `captured_at`
+  reformatted to match.
+- **Kept as-is after real-data review**: `session_id`, `whatsapp_chat`,
+  `message_id`, `raw_message_excerpt`, `payer_name`, `component_label`,
+  `description`.
+- **`reference`/`reference_hint` unified**: real-data audit found
+  `reference`/`replaced_event_id` were never two different mechanisms in
+  practice (both hold real `event_id`s; direction was the only real
+  difference) - `LedgerEventManager.resolve_replaced_event_id` renamed to
+  `resolve_reference`, `REPLACED_EVENT_PLACEHOLDER` renamed to
+  `REFERENCE_PLACEHOLDER`. Two follow-on questions explicitly deferred, not
+  decided: reusing this mechanism for Morning-document references, and
+  whether it should support genuine bidirectional/multi-ref linking (today's
+  placeholder mechanism stays one-directional-by-construction).
+- **`bank_number`/`bank_branch`/`bank_account` retained** — the real gap
+  closure this phase exists for.
+- **`CURRENT_SCHEMA_VERSION` reset to `1`** (not incremented to `3`) - human
+  decision: today's result is a new baseline generation, not an increment.
+  Safe (no real persisted file has ever carried any `schema_version` value).
+- **Test suite**: `test_ledger_event_manager.py` substantially rewritten
+  (89 tests, all passing); `test_ai_handler_ledger_events.py`'s
+  `TestLedgerEventToolBankPaymentFields` updated (3→3 fields, adds a
+  regression test locking in `payment_method`/`transaction_reference`'s
+  removal). Full suite: 911/911 unit+integration tests pass; pylint 9.18/10;
+  no new mypy errors.
+
 ---
 
 ## Dependencies
@@ -500,17 +541,24 @@ is a separate, bigger decision outside this task's scope.
 ## Status (updated 2026-08-16)
 
 Phases 1–4 and 11 done (T005 dropped by human decision; T014a skipped in
-favor of a real run — see Phase 4). Phase 11 (ledger event bank/payment-
-detail fields) completed 2026-08-16 — `LEDGER_EVENT_TOOL`/`LedgerEventManager`
-now support `payment_method`/`bank_number`/`bank_branch`/`bank_account`/
-`transaction_reference`, `CURRENT_SCHEMA_VERSION` is `2`. Phases 5
-(reconciliation), 6 (relevancy), 7 (review queue), 8 (expensive image-path
-regression), 9 (README), and 10 (player/WhatsApp ledger-event equivalence,
-added 2026-08-07) are **not started** — no `player/reconciliation.py`,
-`player/relevancy.py`, `player/review_queue.py`, `player/README.md`, or
-`tests/billed/test_player_whatsapp_equivalence.py` exist yet, and
-`run_player.py` has no `--reapply-review` mode. Phase 10's T025a/T026a are
-permanently blocked (not just "not started") until Feature 040 lands.
+favor of a real run — see Phase 4). Phase 11 (ledger event schema, T027a/b/c)
+completed 2026-08-16 — after T027b's initial 5-field addition, a same-day
+real-data-grounded audit (T027c) revised the record substantially: added
+`bank_number`/`bank_branch`/`bank_account` (the real gap); removed
+`message_timestamp`/`sender`/`notes`/`payment_method`/`transaction_reference`/
+`agreement_label` (as a persisted field)/`replaced_event_id`/`replaces_hint`;
+merged `event_date`+`event_time` into `event_datetime`; unified
+`replaced_event_id`/`reference` into one `reference` mechanism
+(`resolve_reference`, `REFERENCE_PLACEHOLDER`). `CURRENT_SCHEMA_VERSION` reset
+to `1` as a new baseline. See data-model.md §1b for the full field-by-field
+writeup. Phases 5 (reconciliation), 6 (relevancy), 7 (review queue), 8
+(expensive image-path regression), 9 (README), and 10 (player/WhatsApp
+ledger-event equivalence, added 2026-08-07) are **not started** — no
+`player/reconciliation.py`, `player/relevancy.py`, `player/review_queue.py`,
+`player/README.md`, or `tests/billed/test_player_whatsapp_equivalence.py`
+exist yet, and `run_player.py` has no `--reapply-review` mode. Phase 10's
+T025a/T026a are permanently blocked (not just "not started") until Feature
+040 lands.
 
 ## Next step
 

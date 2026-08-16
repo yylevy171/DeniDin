@@ -94,8 +94,7 @@ class TestExtractFunctionCall:
 
 
 class TestLedgerEventToolBankPaymentFields:
-    """Phase 11 (tasks.md, 043-production-data-setup-tooling), T027a - written
-    BEFORE implementation, RED until T027b lands.
+    """Phase 11 (tasks.md, 043-production-data-setup-tooling), T027a/T027b.
 
     Gap: bugfix-028/038 (A2/A3/A3b) added payment_date/payment_method/
     bank_number/bank_branch/bank_account/transaction_reference as arguments on
@@ -106,6 +105,12 @@ class TestLedgerEventToolBankPaymentFields:
     payment_date is NOT duplicated here - txn_date (already on every component)
     already serves that role for a בנק event, see its own description.
 
+    Revised same-day (2026-08-16, real-data-grounded follow-up review, human
+    decision): payment_method/transaction_reference REMOVED - no payment-app
+    support exists yet, and payment_method was redundant with bank_number/
+    bank_branch/bank_account's own presence already implying a bank transfer.
+    Only the three bank-detail fields remain. See data-model.md §1b.
+
     Field-level placement: call-level (like source_type/payer_name), not
     per-component - a single בנק capture describes one underlying transfer,
     never a different bank account per component (mirrors where bugfix-028
@@ -113,16 +118,13 @@ class TestLedgerEventToolBankPaymentFields:
     invoice line).
     """
 
-    NEW_FIELDS = {
-        "payment_method", "bank_number", "bank_branch", "bank_account",
-        "transaction_reference",
-    }
+    NEW_FIELDS = {"bank_number", "bank_branch", "bank_account"}
 
-    def test_all_five_fields_present_in_schema_properties(self):
+    def test_all_three_fields_present_in_schema_properties(self):
         properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
         assert self.NEW_FIELDS <= set(properties.keys())
 
-    def test_all_five_fields_are_nullable_strings(self):
+    def test_all_three_fields_are_nullable_strings(self):
         """Never a bare 'string' type - always applicable-but-unstated (ask the
         user) vs. genuinely not applicable (a הסכם event) must both be
         representable, same convention as payer_name/agreement_label."""
@@ -132,18 +134,25 @@ class TestLedgerEventToolBankPaymentFields:
                 f"{field} must be a nullable string, matching payer_name's convention"
             )
 
-    def test_all_five_fields_have_non_empty_descriptions(self):
+    def test_all_three_fields_have_non_empty_descriptions(self):
         properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
         for field in self.NEW_FIELDS:
             assert properties[field].get("description"), f"{field} needs a real description"
 
     def test_call_level_not_nested_in_component_items(self):
-        """Placement check (see class docstring): these five must live on the
+        """Placement check (see class docstring): these three must live on the
         call's own top-level properties, never inside components.items - a
         single בנק capture has one bank account, not one per component."""
         properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
         component_properties = properties["components"]["items"]["properties"]
         assert self.NEW_FIELDS.isdisjoint(component_properties.keys())
+
+    def test_payment_method_and_transaction_reference_removed(self):
+        """Reversed in the same-day follow-up review (2026-08-16) - see class
+        docstring. Locks the reversal in against silent re-addition."""
+        properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
+        assert "payment_method" not in properties
+        assert "transaction_reference" not in properties
 
 
 class TestExtractFunctionCallId:

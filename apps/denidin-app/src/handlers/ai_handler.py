@@ -518,52 +518,39 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                 "description": (
                     "Short human-readable Hebrew label for the matter/agreement as a whole "
                     "(e.g. 'ערעור לארצי', 'תביעת נזיקין נגד מדינה') - a few words, not a full "
-                    "sentence. Required (non-null) for source_type=הסכם; always null for בנק."
+                    "sentence. Required (non-null) for source_type=הסכם; always null for בנק. "
+                    "Stated ONCE, when this matter's first component(s) are created - used only "
+                    "to build agreement_id (never persisted as its own field; every later "
+                    "component/message referencing this same matter does so via agreement_id "
+                    "or reference/reference_hint, never by restating this label)."
                 ),
-            },
-            "replaces_hint": {
-                "type": ["string", "null"],
-                "description": "Free-text description of a prior arrangement this corrects/cancels, ONLY if identifiable from this conversation - never a guess.",
             },
             "reference_hint": {
                 "type": ["string", "null"],
-                "description": "Free-text loose reference to a related (not replaced) prior matter, if any.",
-            },
-            "payment_method": {
-                "type": ["string", "null"],
                 "description": (
-                    "How the money arrived, ONLY for source_type=בנק (always null for הסכם) - "
-                    "e.g. 'bank_transfer' (the default when unstated), 'bit', 'paybox', 'cash', "
-                    "'credit_card', 'cheque', 'paypal'. Mirrors the same field on the Morning "
-                    "document-creation tools (see runtime_constitution.md) - this is the "
-                    "ledger's own record of it, independent of whether a Morning document is "
-                    "ever created for this deposit."
+                    "Free-text explanation of how this event relates to a prior one - covers "
+                    "replacing/correcting/cancelling a prior arrangement AND a looser, non-"
+                    "superseding relation to a related matter, uniformly (both are a "
+                    "'reference' - there is no separate 'replace' mechanism). Only when "
+                    "identifiable from this conversation - never a guess."
                 ),
             },
             "bank_number": {
                 "type": ["string", "null"],
                 "description": (
-                    "The bank's NUMBER (e.g. '31'), never its name - only for payment_method="
-                    "bank_transfer, always null otherwise. A deposit screenshot's extracted "
-                    "text gives you the number, not a name - never guess or invent a bank name "
-                    "to fill this in. Null if the screenshot doesn't state it clearly."
+                    "The bank's NUMBER (e.g. '31'), never its name - only for source_type=בנק, "
+                    "always null for הסכם. A deposit screenshot's extracted text gives you the "
+                    "number, not a name - never guess or invent a bank name to fill this in. "
+                    "Null if the screenshot doesn't state it clearly."
                 ),
             },
             "bank_branch": {
                 "type": ["string", "null"],
-                "description": "The bank branch number, only for payment_method=bank_transfer, always null otherwise.",
+                "description": "The bank branch number, only for source_type=בנק, always null for הסכם.",
             },
             "bank_account": {
                 "type": ["string", "null"],
-                "description": "The bank account number, only for payment_method=bank_transfer, always null otherwise.",
-            },
-            "transaction_reference": {
-                "type": ["string", "null"],
-                "description": (
-                    "The אסמכתה (transaction/confirmation reference) shown on a bit/paybox/"
-                    "paypal/other payment-app screenshot - not used for bank_transfer, which "
-                    "carries bank_number/bank_branch/bank_account instead."
-                ),
+                "description": "The bank account number, only for source_type=בנק, always null for הסכם.",
             },
             "raw_message_excerpt": {
                 "type": "string",
@@ -603,7 +590,19 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                                 "source_type=הסכם; always null for בנק."
                             ),
                         },
-                        "description": {"type": ["string", "null"], "description": "The matter/engagement for this component, verbatim or closely paraphrased."},
+                        "description": {
+                            "type": ["string", "null"],
+                            "description": (
+                                "The matter/engagement for this component, verbatim or closely "
+                                "paraphrased - PLUS any ambiguity/uncertainty about THIS "
+                                "component worth flagging for the human reviewer (e.g. additive "
+                                "vs. alternative to another component), appended to the same "
+                                "field rather than a separate one. Reserve reference_hint "
+                                "specifically for reasoning about how this event relates to a "
+                                "PRIOR event - everything else about this component's own "
+                                "content goes here."
+                            ),
+                        },
                         "amount": {
                             "type": ["string", "null"],
                             "description": (
@@ -641,11 +640,10 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                             "enum": ["כולל", "לא כולל", "לא צוין"],
                             "description": "VAT-inclusive, VAT-exclusive, or not stated for THIS component - never assumed.",
                         },
-                        "notes": {"type": ["string", "null"], "description": "Any ambiguity or uncertainty about THIS component worth flagging for the human reviewer, including how it relates to other components (e.g. additive vs. alternative)."},
                     },
                     "required": [
                         "component_label", "description", "amount", "percent", "percent_base",
-                        "hours", "hourly_rate", "txn_date", "vat_status", "notes",
+                        "hours", "hourly_rate", "txn_date", "vat_status",
                     ],
                     "additionalProperties": False,
                 },
@@ -653,9 +651,8 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
         },
         "required": [
             "source_type", "event_subtype", "client_name", "payer_name", "agreement_label",
-            "replaces_hint", "reference_hint", "payment_method", "bank_number", "bank_branch",
-            "bank_account", "transaction_reference", "raw_message_excerpt", "component_count",
-            "components",
+            "reference_hint", "bank_number", "bank_branch", "bank_account",
+            "raw_message_excerpt", "component_count", "components",
         ],
         "additionalProperties": False,
     },
@@ -1508,7 +1505,6 @@ class AIHandler:
                         call_arguments=call["arguments"],
                         message_id=request.message_id,
                         message_timestamp=request.timestamp,
-                        sender=sender or effective_chat_id,
                     )
                     event_ids.extend(new_event_ids)
                 except Exception as e:

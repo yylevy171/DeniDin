@@ -38,9 +38,16 @@ _LETTER_BY_SOURCE_TYPE = {
     "בנק": "B",
 }
 
-# Literal placeholder written into replaced_event_id when replaces_hint is present -
-# signals a later human/script needs to resolve the real prior event id (REQ-DATA-002).
-REPLACED_EVENT_PLACEHOLDER = "צריך למצוא"
+# Literal placeholder written into reference when reference_hint is present - signals
+# a later human/script needs to resolve the real prior event id (REQ-DATA-002).
+# Named REFERENCE_PLACEHOLDER (not REPLACED_EVENT_PLACEHOLDER) since Phase 11's
+# 2026-08-16 real-data audit found replaced_event_id/reference were never actually two
+# different things in the real historical ledger - both hold real event_id(s), the
+# only difference being direction (replaced_event_id: one-directional, the new event
+# names what it supersedes; reference: found to be genuinely bidirectional in
+# practice - two unrelated-by-supersession events pointing at each other). Folded into
+# one field/mechanism; the direction/multi-ref question itself stays open, deferred.
+REFERENCE_PLACEHOLDER = "צריך למצוא"
 
 # Feature 043, US5: identifies which rule-set generation (LEDGER_EVENT_TOOL's schema +
 # this file's field-population rules) produced a given persisted record - bumped by
@@ -50,11 +57,13 @@ REPLACED_EVENT_PLACEHOLDER = "צריך למצוא"
 # specs/in-progress/043-production-data-setup-tooling/data-model.md SS1 for why:
 # retro-applying would require guessing which historical rule generation actually
 # produced each old record, exactly the problem this field exists to avoid).
-# v2 (Phase 11, added 2026-08-16): payment_method/bank_number/bank_branch/
-# bank_account/transaction_reference - see tasks.md Phase 11 for the full gap
-# writeup (bugfix-028/038 added the same fields to the Morning invoicing tools;
-# the ledger's own capture never mirrored them).
-CURRENT_SCHEMA_VERSION = 2
+# Reset to 1 (Phase 11, 2026-08-16, human decision): today's real-Events.csv-grounded
+# audit revised enough of the original Feature 033 shape (see data-model.md SS1b) that
+# the result is treated as a new baseline generation, not an increment on the old one.
+# Safe to reset because no real persisted file has EVER carried schema_version=1 (or
+# any value) - confirmed by inspecting all 29 real files under test_data/events/, all
+# predate the field entirely (MISSING), so there is no collision with an old "v1".
+CURRENT_SCHEMA_VERSION = 1
 
 # Matches ש"ח / ש׳ח / שח (various quote-character renderings of "shekel chadash").
 _SHEKEL_WORD_RE = re.compile(r'ש["\'״]?ח')
@@ -142,9 +151,10 @@ def _slugify(text: Optional[str]) -> str:
 def _normalize_iso_date(raw: Optional[str]) -> Optional[str]:
     """REQ-DATA-005/007: code-side reformat (never trust the AI's own string format
     verbatim) from the AI-resolved ISO-8601 YYYY-MM-DD to the persisted DD/MM/YYYY
-    convention (matching event_date). Used for txn_date - an AI-resolved calendar
-    date distinct from message_timestamp, whether it's an hours-worked date (הסכם)
-    or a transaction date (בנק). Returns None if unparseable (never guesses)."""
+    convention (matching event_datetime's date portion). Used for txn_date - an
+    AI-resolved calendar date distinct from the source message's own timestamp,
+    whether it's an hours-worked date (הסכם) or a transaction date (בנק). Returns
+    None if unparseable (never guesses)."""
     if not raw:
         return None
     try:
@@ -196,25 +206,19 @@ class LedgerEventManager:
         """Shared by add_ledger_event and build_agreement_id: Asia/Jerusalem local
         datetime for the source message, falling back to processing time (with a
         WARNING) only if message_timestamp is genuinely absent - see spec.md Edge
-        Cases. Returns (local_dt, pointer_ts_iso) where pointer_ts_iso is None iff
-        message_timestamp was None (the hard pointer itself is never guessed).
+        Cases. Drives event_datetime/event_id generation.
 
-        bugfix-037: pointer_ts_iso is now local (offset +03:00/+02:00) like every
-        other timestamp, so it agrees on its face with the event_date/event_time
-        derived from the same instant - reading 03:00:27+00:00 next to 06:00 used
-        to look like a 3-hour discrepancy that did not exist.
+        Phase 11 (2026-08-16): no longer returns a second (pointer_ts_iso) value -
+        that fed the now-removed message_timestamp persisted field (event_datetime
+        already covers the same instant; see data-model.md SS1b).
         """
         if message_timestamp is not None:
-            local_dt = local_from_timestamp(message_timestamp)
-            pointer_ts_iso = local_dt.isoformat()
-        else:
-            logger.warning(
-                "message_timestamp=None - falling back to processing time for "
-                "date/time derivation only; the hard pointer itself is genuinely unknown"
-            )
-            pointer_ts_iso = None
-            local_dt = now_local()
-        return local_dt, pointer_ts_iso
+            return local_from_timestamp(message_timestamp)
+        logger.warning(
+            "message_timestamp=None - falling back to processing time for "
+            "date/time derivation only; the hard pointer itself is genuinely unknown"
+        )
+        return now_local()
 
     def build_agreement_id(
         self,
@@ -228,7 +232,7 @@ class LedgerEventManager:
         once per multi-component batch and pass the identical string into every
         add_ledger_event call for that batch, instead of relying on the AI to repeat
         agreement_label verbatim across separate tool calls."""
-        local_dt, _ = self._resolve_local_dt(message_timestamp)
+        local_dt = self._resolve_local_dt(message_timestamp)
         mmyy = local_dt.strftime("%m%y")
         return f"{mmyy}-{_slugify(client_name)}-{_slugify(agreement_label)}"
 
@@ -254,7 +258,6 @@ class LedgerEventManager:
         event: Dict,
         message_id: Optional[str],
         message_timestamp: Optional[int],
-        sender: Optional[str],
         agreement_id: Optional[str] = None,
     ) -> Optional[str]:
         """
@@ -264,16 +267,13 @@ class LedgerEventManager:
             session_id: source session (no longer implied by folder nesting)
             whatsapp_chat: source chat JID, same convention as Session.whatsapp_chat
             event: the parsed capture_ledger_event function-call arguments, merged
-                shared+component shape (18 keys: 8 agreement-level + 10 component-level
-                - LEDGER_EVENT_TOOL's schema; `component_count` is popped separately by
-                add_ledger_events_from_call and never reaches this flat shape) - never
-                mutated
+                shared+component shape - LEDGER_EVENT_TOOL's schema; `component_count`
+                is popped separately by add_ledger_events_from_call and never reaches
+                this flat shape - never mutated
             message_id: source message id (the traceability pointer this feature adds)
-            message_timestamp: Unix epoch of the source message (the "hard pointer") -
-                falls back to processing time for event_date/event_time only if None
-                (message_timestamp itself stays None - the hard pointer is genuinely
-                unknown, never guessed)
-            sender: source message sender JID
+            message_timestamp: Unix epoch of the source message - drives event_datetime/
+                event_id generation; falls back to processing time (WARNING logged)
+                only if None, since the hard pointer is genuinely unknown, never guessed
             agreement_id: (REQ-DATA-004, added 2026-07-30) caller-supplied agreement_id
                 for a multi-component batch - used as-is when given, so every component
                 in that batch shares byte-for-byte the same id. When None (a standalone,
@@ -289,8 +289,13 @@ class LedgerEventManager:
         """
         event = dict(event)  # never mutate caller's dict
 
-        now_iso = now_local().isoformat()
-        local_dt, pointer_ts_iso = self._resolve_local_dt(message_timestamp)
+        # Phase 11 (schema v2->v1 reset, 2026-08-16): captured_at/event_datetime share
+        # one human-readable convention (DD/MM/YYYY HH:MM) instead of ISO+offset -
+        # message_timestamp/sender are no longer separately persisted at all (the
+        # former is fully covered by event_datetime; the latter had no reader anywhere
+        # - see data-model.md SS1b for the full real-data-grounded audit).
+        captured_at = now_local().strftime("%d/%m/%Y %H:%M")
+        local_dt = self._resolve_local_dt(message_timestamp)
 
         source_type = event.get("source_type")
         assert source_type is not None, "LEDGER_EVENT_TOOL's schema requires source_type"
@@ -308,26 +313,36 @@ class LedgerEventManager:
 
         event_id = f"{letter}{ddmmyy}{hhmm}{seq}"
 
+        # notes (CSV column) was removed (Phase 11): its two roles now go to whichever
+        # field actually matches the content - unparseable-value fallback text (this
+        # component's own content) appends to description; AI-authored relationship
+        # reasoning (why this replaces/relates to a prior event) is the AI's own job to
+        # put in reference_hint directly, per the tool schema's updated description.
         amount_raw = event.get("amount")
         amount = _normalize_amount(amount_raw)
-        notes = event.get("notes")
+        description = event.get("description")
         if amount_raw is not None and amount is None:
             logger.warning(
                 f"Could not normalize amount {amount_raw!r} to a single integer - "
-                f"leaving 'amount' blank and preserving the original text in notes"
+                f"leaving 'amount' blank and preserving the original text in description"
             )
-            notes = f"{notes}; {amount_raw}" if notes else amount_raw
+            description = f"{description}; {amount_raw}" if description else amount_raw
 
-        replaced_event_id = REPLACED_EVENT_PLACEHOLDER if event.get("replaces_hint") else None
+        # reference (Phase 11): unified mechanism, folding in what used to be the
+        # separate replaced_event_id/replaces_hint pair - see data-model.md SS1b for the
+        # real-data finding that motivated this (both held real event_ids in practice,
+        # replaced_event_id one-directional, reference bidirectional - merged into one
+        # field/direction question deferred).
+        reference = REFERENCE_PLACEHOLDER if event.get("reference_hint") else None
 
         hours_raw = event.get("hours")
         hours = _normalize_hours(hours_raw)
         if hours_raw is not None and hours is None:
             logger.warning(
                 f"Could not normalize hours {hours_raw!r} to a number - leaving "
-                f"'שעות' blank and preserving the original text in notes"
+                f"'שעות' blank and preserving the original text in description"
             )
-            notes = f"{notes}; {hours_raw}" if notes else hours_raw
+            description = f"{description}; {hours_raw}" if description else hours_raw
 
         txn_date_raw = event.get("txn_date")
         txn_date = _normalize_iso_date(txn_date_raw)
@@ -343,6 +358,9 @@ class LedgerEventManager:
                     f"leaving 'תאריך_ביצוע' blank"
                 )
 
+        # agreement_label (Phase 11): stays a LEDGER_EVENT_TOOL input (stated once, used
+        # to build agreement_id below) but is no longer persisted as its own field - see
+        # data-model.md SS1b. Every component still shares the identical agreement_id.
         agreement_label = event.get("agreement_label")
         component_label = event.get("component_label")
         if source_type == "הסכם":
@@ -355,39 +373,30 @@ class LedgerEventManager:
             resolved_agreement_id = None
             component_id = None
             component_label = None
-            agreement_label = None
 
-        # Phase 11 (schema v2): bank/payment details apply only to בנק - forced null
-        # for הסכם regardless of what the caller/AI passed, same defensive discipline
-        # as agreement_label/component_label being forced null for בנק above (never
+        # Bank details apply only to בנק - forced null for הסכם regardless of what the
+        # caller/AI passed, same defensive discipline as component_label above (never
         # trust an inapplicable field to have been left blank on its own).
         if source_type == "בנק":
-            payment_method = event.get("payment_method")
             bank_number = event.get("bank_number")
             bank_branch = event.get("bank_branch")
             bank_account = event.get("bank_account")
-            transaction_reference = event.get("transaction_reference")
         else:
-            payment_method = None
             bank_number = None
             bank_branch = None
             bank_account = None
-            transaction_reference = None
 
         record = {
-            # CSV-mapped fields (30 - 29 original + txn_date, REQ-DATA-005/007)
+            # CSV-mapped fields
             "event_id": event_id,
-            "event_date": local_dt.strftime("%d/%m/%Y"),
-            "event_time": local_dt.strftime("%H:%M"),
+            "event_datetime": local_dt.strftime("%d/%m/%Y %H:%M"),  # Phase 11: merged event_date+event_time
             "source_type": source_type,
             "event_subtype": event.get("event_subtype"),
             "client_name": event.get("client_name"),
             "payer_name": event.get("payer_name"),
-            "description": event.get("description"),
+            "description": description,
             "amount": amount,
-            "replaced_event_id": replaced_event_id,
-            "reference": None,  # always blank in this feature - see spec.md Clarifications
-            "notes": notes,
+            "reference": reference,  # Phase 11: unified replaced_event_id/reference mechanism
             "agreement_id": resolved_agreement_id,  # REQ-DATA-004
             "component_id": component_id,  # REQ-DATA-004
             "component_label": component_label,  # REQ-DATA-004
@@ -406,24 +415,16 @@ class LedgerEventManager:
             "invoice_type": None,  # reserved - future Morning-reconciliation feature
             "morning_document_id": None,  # reserved - future Morning-reconciliation feature
             "invoice_actual_creation_date": None,  # reserved - future Morning-reconciliation feature
-            # DeniDin-internal fields (15, not Events.csv columns - traceability/evidence)
+            # DeniDin-internal fields, not Events.csv columns - traceability/evidence
             "session_id": session_id,
             "whatsapp_chat": whatsapp_chat,
             "message_id": message_id,
-            "message_timestamp": pointer_ts_iso,
-            "sender": sender,
-            "captured_at": now_iso,
+            "captured_at": captured_at,
             "raw_message_excerpt": event.get("raw_message_excerpt"),
-            "replaces_hint": event.get("replaces_hint"),
             "reference_hint": event.get("reference_hint"),
-            "agreement_label": agreement_label,  # REQ-DATA-004 - kept alongside agreement_id for evidence
-            # Phase 11 (schema v2) - not yet Events.csv columns, DeniDin-internal for
-            # now (see tasks.md Phase 11); null for source_type=הסכם, see above.
-            "payment_method": payment_method,
             "bank_number": bank_number,
             "bank_branch": bank_branch,
             "bank_account": bank_account,
-            "transaction_reference": transaction_reference,
             "schema_version": CURRENT_SCHEMA_VERSION,  # Feature 043, US5
         }
 
@@ -446,7 +447,6 @@ class LedgerEventManager:
         call_arguments: Dict,
         message_id: Optional[str],
         message_timestamp: Optional[int],
-        sender: Optional[str],
     ) -> List[str]:
         """
         Persist every component of one `capture_ledger_event` call (2026-07-30,
@@ -454,13 +454,14 @@ class LedgerEventManager:
         choosing to invoke this tool N times for a multi-stage/conditional agreement,
         proven unreliable even with a materially stronger model: two real documents,
         both fully comprehended by extraction, both still produced only one tool call
-        each with every component after the first dumped into free-text `notes`
+        each with every component after the first dumped into free-text prose
         instead of split out - see spec.md's Clarifications for the investigation).
 
         `call_arguments` is one `capture_ledger_event` call's full parsed arguments -
         agreement-level fields (source_type, event_subtype, client_name, payer_name,
-        agreement_label, replaces_hint, reference_hint, raw_message_excerpt) plus a
-        `components` list (>=1 item, even for a single-component or בנק capture).
+        agreement_label, reference_hint, bank_number/bank_branch/bank_account,
+        raw_message_excerpt) plus a `components` list (>=1 item, even for a
+        single-component or בנק capture).
         Each component is merged with the shared agreement-level fields into the same
         flat shape `add_ledger_event`'s `event` parameter already expects, then
         persisted individually - `add_ledger_event` itself is unchanged.
@@ -482,11 +483,12 @@ class LedgerEventManager:
         never silently return an empty list (a real, observed billed failure -
         2026-07-31, the Mor ben-Shaya 6-component test - persisted nothing and logged
         no error at all). Instead persist a single flagged fallback record from the
-        call's own agreement-level fields, with `notes` explaining the gap - matching
-        this feature's existing philosophy that an explicitly incomplete capture is
-        the correct output, not silence. A non-empty but `component_count`-mismatched
-        `components` is persisted as given (never drop real data) with an ERROR logged
-        for human review, rather than fabricating or dropping anything.
+        call's own agreement-level fields, with `description` explaining the gap -
+        matching this feature's existing philosophy that an explicitly incomplete
+        capture is the correct output, not silence. A non-empty but
+        `component_count`-mismatched `components` is persisted as given (never drop
+        real data) with an ERROR logged for human review, rather than fabricating or
+        dropping anything.
         """
         call_arguments = dict(call_arguments)  # never mutate caller's dict
         component_count = call_arguments.pop("component_count", None)
@@ -502,13 +504,14 @@ class LedgerEventManager:
                 f"losing this capture entirely. shared_fields={shared_fields!r}"
             )
             components = [{
-                "component_label": None, "description": None, "amount": None,
-                "percent": None, "percent_base": None, "hours": None,
-                "hourly_rate": None, "txn_date": None, "vat_status": "לא צוין",
-                "notes": (
+                "component_label": None,
+                "description": (
                     "AI capture returned zero components (even after a retry) - "
                     "needs manual review against the original message/image."
                 ),
+                "amount": None,
+                "percent": None, "percent_base": None, "hours": None,
+                "hourly_rate": None, "txn_date": None, "vat_status": "לא צוין",
             }]
         elif component_count is not None and len(components) != component_count:
             logger.error(
@@ -536,7 +539,6 @@ class LedgerEventManager:
                 event=merged_event,
                 message_id=message_id,
                 message_timestamp=message_timestamp,
-                sender=sender,
                 agreement_id=batch_agreement_id,
             )
             if event_id is not None:
@@ -544,7 +546,7 @@ class LedgerEventManager:
         return event_ids
 
     def _load_event(self, event_id: str) -> Optional[Dict]:
-        """Shared read helper for resolve_replaced_event_id/apply_review_answer -
+        """Shared read helper for resolve_reference/apply_review_answer -
         None (logged) if the file doesn't exist, never raises."""
         file_path = self.storage_dir / f"{event_id}.json"
         if not file_path.exists():
@@ -564,42 +566,44 @@ class LedgerEventManager:
             json.dump(record, f, sort_keys=True, ensure_ascii=False, indent=2)
         tmp_path.replace(file_path)
 
-    def resolve_replaced_event_id(self, event_id: str, resolved_target_id: str) -> bool:
+    def resolve_reference(self, event_id: str, resolved_target_id: str) -> bool:
         """
         Feature 043, US2 (the player's relevancy/reference-resolution step): in-place
         field update on an already-persisted event file, replacing
-        REPLACED_EVENT_PLACEHOLDER with the real prior event_id a correction/
-        cancellation was matched against - REPLACED_EVENT_PLACEHOLDER's own docstring
-        already describes this exact purpose ("signals a later human/script needs to
-        resolve the real prior event id"); this method is that script's write path.
+        REFERENCE_PLACEHOLDER with the real prior event_id this event relates to
+        (replaces, cancels, or otherwise references) - REFERENCE_PLACEHOLDER's own
+        docstring already describes this exact purpose ("signals a later human/script
+        needs to resolve the real prior event id"); this method is that script's write
+        path. Renamed from resolve_replaced_event_id (Phase 11, 2026-08-16): real-data
+        audit found replaced_event_id/reference were never two different mechanisms in
+        the real historical ledger, just one, folded here - see data-model.md SS1b.
 
-        Never overwrites a `replaced_event_id` that isn't CURRENTLY the placeholder -
-        not `None` (nothing to resolve - replaces_hint was never set), and not an
+        Never overwrites a `reference` that isn't CURRENTLY the placeholder - not
+        `None` (nothing to resolve - reference_hint was never set), and not an
         already-resolved id from a prior run (never silently re-link something a
         previous resolution already settled).
 
         Returns:
             True on success. False (logged as ERROR internally, never raises) if
-            event_id doesn't exist, or its replaced_event_id isn't currently the
-            placeholder.
+            event_id doesn't exist, or its reference isn't currently the placeholder.
         """
         record = self._load_event(event_id)
         if record is None:
             return False
 
-        if record.get("replaced_event_id") != REPLACED_EVENT_PLACEHOLDER:
+        if record.get("reference") != REFERENCE_PLACEHOLDER:
             logger.error(
-                f"resolve_replaced_event_id: event {event_id!r}'s replaced_event_id "
-                f"is {record.get('replaced_event_id')!r}, not the placeholder - "
+                f"resolve_reference: event {event_id!r}'s reference "
+                f"is {record.get('reference')!r}, not the placeholder - "
                 f"refusing to overwrite (never re-link an already-resolved or "
                 f"never-flagged event)"
             )
             return False
 
-        record["replaced_event_id"] = resolved_target_id
+        record["reference"] = resolved_target_id
         self._write_event(event_id, record)
         logger.info(
-            f"Resolved {event_id}'s replaced_event_id -> {resolved_target_id}"
+            f"Resolved {event_id}'s reference -> {resolved_target_id}"
         )
         return True
 
