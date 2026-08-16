@@ -76,6 +76,12 @@ isolation.
   the same raw Green API `chat_id` pattern. `speckit.tasks`/`speckit.implement` MUST audit every
   existing module-level/in-memory cache in `apps/denidin-app/src/` for this before this feature
   ships, not just the ones already known about.
+- **Addendum (`speckit.analyze` remediation, finding G1)**: the cache-key fix above is
+  necessary but not sufficient for `GroupMembershipResolver` specifically — it also needs the
+  *correct tenant's* Green API client for `getGroupData` (a single constructor-injected client
+  under the old single-tenant model has no obvious default under N tenants). See
+  `contracts/group-resolution-tenant-scoping.md` and `data-model.md`'s "Group Membership
+  Resolution" section for the full fix — two distinct changes, not one.
 
 ## 3. Dev/prod × tenant
 

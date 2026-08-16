@@ -93,10 +93,22 @@ sufficient rather than introducing a redundant `Message.tenant_id` field (mirror
 `sender="AI"` sentinel removal precedent in Feature 039 — don't store what's already implied by
 where the record lives).
 
-## Group Membership Resolution Cache (existing component, tenant-risk flagged)
+## Group Membership Resolution (existing component, tenant-risk flagged — two distinct fixes)
 
-`GroupMembershipResolver`'s existing in-memory cache, currently keyed by `chat_id` alone, MUST
-be re-keyed to `(tenant_id, chat_id)` under the shared-process hosting model — flagged as a
-concrete, named risk in `research.md` §2, not just a general warning. This is the first of
-potentially more such caches; `speckit.tasks` MUST include an explicit audit task for every
-existing module-level/in-memory cache in `apps/denidin-app/src/`.
+`GroupMembershipResolver` needs two separate changes under the shared-process hosting model,
+both required, neither substituting for the other (clarified at `speckit.analyze` remediation,
+finding G1 — see `contracts/group-resolution-tenant-scoping.md` for the full contract):
+
+1. **Cache re-keying**: its existing in-memory cache, currently keyed by `chat_id` alone, MUST
+   be re-keyed to `(tenant_id, chat_id)` — flagged as a concrete, named risk in `research.md`
+   §2, not just a general warning.
+2. **Client selection**: `resolve()` MUST take `tenant_id` as a required parameter and use
+   *that tenant's own* Green API `groups_client` for `getGroupData` — under the old
+   single-tenant model this was a single constructor-injected client; under N tenants there is
+   no single correct client to default to. Missing this fix would mean either every tenant's
+   group resolution silently queries the same (wrong, for N-1 of them) Green API instance, or
+   the resolver has no client at all and fails outright.
+
+This is the first of potentially more such caches; `speckit.tasks`/`speckit.implement` MUST
+include an explicit audit task for every existing module-level/in-memory cache in
+`apps/denidin-app/src/` (`tasks.md` T034).

@@ -2,8 +2,10 @@
 
 **Input**: Design documents from `specs/in-progress/055-multiple-clients-godfathers/`
 **Prerequisites**: `plan.md`, `spec.md`, `user-stories.md`, `research.md`, `data-model.md`,
-`contracts/messaging-gateway.md`, `contracts/invoicing-capability.md`, `quickstart.md` — all
-present.
+`contracts/messaging-gateway.md`, `contracts/invoicing-capability.md`,
+`contracts/group-resolution-tenant-scoping.md`, `contracts/tenant-scoped-rbac.md`,
+`contracts/tenant-scoped-data-managers.md` (three added at `speckit.analyze` remediation),
+`quickstart.md` — all present.
 
 ---
 
@@ -79,7 +81,7 @@ place a shared-process design has to get isolation right.
 - [ ] T004b [P] Implement `TenantManager` in `apps/denidin-app/src/managers/tenant_manager.py`
   (BLOCKED until T004a approved).
 
-- [ ] T005a [US-cross] Write tests for `TenantManager.get_tenant(tenant_id)` /
+- [ ] T005a Write tests for `TenantManager.get_tenant(tenant_id)` /
   `TenantManager.all_tenants()` lookup helpers in the same test file: unknown `tenant_id`
   raises/returns `None` (decide + document which — no silent wrong-tenant fallback); lookups
   are O(1), not a linear scan re-parsing config each call.
@@ -161,9 +163,11 @@ OpenAI/memory/sessions/ledger events — `research.md` §1's shared-multi-tenant
   backup) into `{data_root}/{tenant_id}/...` for a designated "tenant #1"; script is
   idempotent (safe to re-run without duplicating/corrupting data); dry-run mode reports what
   would move without touching anything.
-- [ ] T013b [US1] Implement the migration script (location: `apps/denidin-app/scripts/` — a
-  new one-off script, per REQ-MIGRATE-001; exact CLI shape at implementer's discretion, dry-run
-  required) (BLOCKED until T013a approved).
+- [ ] T013b [US1] Implement the migration script in `apps/denidin-app/scripts/` — location
+  confirmed at `speckit.analyze` (finding A1) against this directory's existing precedent,
+  `migrate_stray_ledger_events.py` (a comparable one-off data-migration script already there);
+  per REQ-MIGRATE-001; exact CLI shape at implementer's discretion, dry-run required (BLOCKED
+  until T013a approved).
 
 - [ ] T014 [US1] 👤 **MANUAL APPROVAL GATE**: `quickstart.md` "Verifying tenant isolation" —
   two real tenants configured, cross-tenant isolation confirmed end to end (messaging, memory,
@@ -291,7 +295,12 @@ selected per tenant; the shared morning-mcp-app server distinguishes tenants by 
 
 - [ ] T026 [US4] 👤 **MANUAL APPROVAL GATE**: `quickstart.md` capability degraded-start
   scenario, plus a real two-tenant Morning MCP call confirming correct credential/audit
-  attribution per tenant.
+  attribution per tenant. **Added at `speckit.analyze` remediation, finding G2**: reviewer also
+  explicitly confirms REQ-CAP-003/SC-005 — walk through what adding a hypothetical second
+  invoicing-provider implementation (e.g. "ypay") would require, and confirm it's registration +
+  a tenant config reference only, with zero `AIHandler`/`denidin.py` dispatch-code changes. Not
+  an automated test (there's no second real implementation to test against yet) — a documented
+  design-review confirmation at this gate, recorded in the approval note.
 
 **Checkpoint**: All P1 stories plus capability abstraction work independently.
 
@@ -357,11 +366,21 @@ VC0-VC2 for this phase.
 - [ ] T032b [P] Extend `apps/denidin-app/src/services/cleanup_service.py` (BLOCKED until T032a
   approved).
 
-- [ ] T033a [US-cross] Write tests proving `GroupMembershipResolver`'s cache is keyed
+- [ ] T033a Write tests proving `GroupMembershipResolver`'s cache is keyed
   `(tenant_id, chat_id)`, not `chat_id` alone (the named risk in `research.md` §2/
   `data-model.md`): two tenants with a colliding raw `chat_id` never share a cache entry.
 - [ ] T033b Re-key the cache in
   `apps/denidin-app/src/managers/group_membership_resolver.py` (BLOCKED until T033a approved).
+
+- [ ] T033c **Added at `speckit.analyze` remediation, finding G1** — write tests for
+  `GroupMembershipResolver.resolve(tenant_id, chat_id)` selecting the *calling tenant's own*
+  Green API `groups_client`, not a single constructor-injected client: two tenants' `resolve`
+  calls for otherwise-identical `chat_id`s hit their own tenant's Green API instance only, never
+  cross over. Per `contracts/group-resolution-tenant-scoping.md`. Distinct from T033a/b (cache
+  key vs. client selection — both required, neither substitutes for the other).
+- [ ] T033d Implement `tenant_id`-aware client selection (via `TenantManager`/Messaging
+  Gateway lookup) in `group_membership_resolver.py`, and update `denidin.py`'s
+  `_resolve_group_user_phone` to pass `tenant_id` through (BLOCKED until T033c approved).
 
 - [ ] T034 **Audit task, not a TDD pair**: review every other module-level/in-memory cache or
   shared mutable state in `apps/denidin-app/src/` for the same cross-tenant leak risk flagged

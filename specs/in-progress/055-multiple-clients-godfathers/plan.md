@@ -92,10 +92,17 @@ Per METHODOLOGY.md §VII (mandatory for multi-component features — this one to
   Messaging Gateway ↔ Tenant Config.
 - **`contracts/invoicing-capability.md`** — `AIHandler` ↔ morning-mcp-app (shared server,
   extension of the existing MCP contract); `BearerTokenMiddleware` ↔ Tenant Config.
+- **`contracts/group-resolution-tenant-scoping.md`** (added at `speckit.analyze` remediation,
+  finding G1) — `denidin.py` ↔ `GroupMembershipResolver` (tenant-scoping extension);
+  Messaging Gateway/`TenantManager` ↔ `GroupMembershipResolver` (per-tenant Green API client
+  lookup, not just the cache-key fix already in `data-model.md`).
+- **`contracts/tenant-scoped-rbac.md`** (added at `speckit.analyze` remediation, finding G3) —
+  `UserManager` ↔ Tenant Config.
+- **`contracts/tenant-scoped-data-managers.md`** (added at `speckit.analyze` remediation,
+  finding G3) — `SessionManager`/`MemoryManager`/`ledger_event_manager` ↔ tenant-partitioned
+  data root.
 
-Not yet written (deferred to `speckit.tasks`, once the exact component boundaries are decided
-at task-breakdown granularity): `UserManager` ↔ Tenant Config (per-tenant RBAC lookup),
-`SessionManager`/`MemoryManager`/`ledger_event_manager` ↔ tenant-partitioned data root.
+All components named in this section's opening paragraph now have a written contract.
 
 ## Project Structure
 
@@ -129,7 +136,9 @@ apps/denidin-app/src/
 │   ├── session_manager.py        # EXTENDED — tenant_id-partitioned data root
 │   ├── memory_manager.py         # EXTENDED — tenant_id-partitioned ChromaDB collections
 │   ├── ledger_event_manager.py   # EXTENDED — tenant_id-partitioned events
-│   └── group_membership_resolver.py  # EXTENDED — cache re-keyed to (tenant_id, chat_id)
+│   └── group_membership_resolver.py  # EXTENDED — cache re-keyed to (tenant_id, chat_id) AND
+│                                    # resolve() takes tenant_id, selects that tenant's own
+│                                    # groups_client (contracts/group-resolution-tenant-scoping.md)
 ├── services/
 │   └── messaging_gateway.py      # NEW — multi-tenant Green API listener/router (contracts/messaging-gateway.md)
 ├── capabilities/                 # NEW — capability interfaces + implementations
@@ -159,4 +168,8 @@ violations must be justified).*
 ---
 
 **Status**: Phase 0 (research.md) and Phase 1 (data-model.md, contracts/, quickstart.md)
-complete. Not yet run through `speckit.tasks` or `speckit.analyze`.
+complete. `speckit.tasks` complete (`tasks.md`). `speckit.analyze` complete — findings
+remediated (2026-08-16): G1 (`GroupMembershipResolver` tenant-scoping), G2 (REQ-CAP-003
+verification), G3 (two missing Integration Contracts), C1 (Technology Choices format), I1/I2
+(staleness/format nits) — see `spec.md`'s Clarifications for the summary and each artifact's
+own updated content for the fix.

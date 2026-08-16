@@ -6,7 +6,8 @@
 `speckit.clarify` completed 2026-08-16 (11 questions asked/answered across two sessions);
 `speckit.plan` completed 2026-08-16 (`research.md`, `data-model.md`, `contracts/`,
 `quickstart.md`, `plan.md`); `speckit.tasks` completed 2026-08-16 (`tasks.md`, 8 phases, 35
-tasks). Not yet run through `speckit.analyze`.
+tasks); `speckit.analyze` completed 2026-08-16 (7 findings — 1 HIGH, 3 MEDIUM, 3 LOW/INFO — all
+remediated same day, see Clarifications). Ready for `speckit.implement`.
 **Created**: 2026-08-16
 
 ---
@@ -165,6 +166,28 @@ optional.
   Godfathers cannot self-serve any tenant-level setting under this feature; a conversational
   self-service flow (if ever wanted) is out of scope here.
 
+### Session 2026-08-16 (speckit.analyze remediation)
+
+Read-only cross-artifact analysis found 7 findings (0 CRITICAL, 1 HIGH, 3 MEDIUM, 3 LOW/INFO),
+all remediated same session:
+- **G1 (HIGH)**: `GroupMembershipResolver` had no defined path to the *correct tenant's* Green
+  API client (cache re-keying alone, already in `data-model.md`, wasn't sufficient). Fixed:
+  new `contracts/group-resolution-tenant-scoping.md`, REQ-GROUP-002.
+- **G2 (MEDIUM)**: REQ-CAP-003 ("new capability implementation needs no core-logic changes")
+  had no verification step. Fixed: added to `tasks.md` T026's manual approval gate.
+- **G3 (MEDIUM)**: Two Integration Contracts named in `plan.md` but deferred to `speckit.tasks`
+  were never actually written. Fixed: `contracts/tenant-scoped-rbac.md`,
+  `contracts/tenant-scoped-data-managers.md` added.
+- **C1 (MEDIUM)**: `spec.md`'s "Technology Choices" section didn't follow METHODOLOGY §IX's
+  required per-technology format. Fixed: reformatted below.
+- **I1/I2 (LOW)**: `plan.md`'s stale status line; `tasks.md`'s two non-conforming `[US-cross]`
+  labels. Fixed in both files.
+- **A1 (LOW, resolved as non-issue)**: `tasks.md` T013b's migration-script location
+  (`apps/denidin-app/scripts/`) was flagged as unverified — confirmed correct; that directory
+  already holds a precedent one-off migration script (`migrate_stray_ledger_events.py`).
+- **D1 (INFO, no action)**: US2/US3 task overlap on `UserManager` — expected, already
+  self-flagged in `tasks.md`, not a real duplication.
+
 ## Terminology Glossary
 
 - **Tenant (Account)**: The paying business-level entity operating one instance of DeniDin's
@@ -235,15 +258,47 @@ optional.
 
 ## Technology Choices
 
-- Capability abstraction is implemented as Python interfaces (abstract base classes) with
-  concrete implementations selected via dependency injection from each tenant's config at
-  startup — no new framework/library, consistent with the existing DI-based construction in
-  `denidin.py`'s `initialize_app` and CONSTITUTION §XVII's no-monkey-patching rule.
-- No new datastore is introduced — tenant config remains plain JSON files, consistent with the
-  "no environment variables / config is code" rule; exact per-tenant config file naming/layout
-  is a `speckit.tasks` mechanic, not a technology choice.
-- Tenant identification uses Python's standard `uuid` module for the internal id — no new
-  ID-generation dependency.
+Reformatted at `speckit.analyze` remediation (finding C1) to match METHODOLOGY §IX's required
+per-technology structure — substance was already present in `research.md`, now also captured
+here in the mandated format.
+
+**Technology Choice: DI-based capability/tenant resolution (no new framework)**
+- **Decision Date**: 2026-08-16 (`speckit.plan`, `research.md` §5)
+- **Rationale**: Capability implementations (messaging/invoicing providers) and tenant
+  resolution are both plain Python interfaces + dependency injection, resolved per-call by
+  `tenant_id` via a registry lookup. No new framework/library — consistent with the existing
+  DI-based construction in `denidin.py`'s `initialize_app` and CONSTITUTION §XVII's
+  no-monkey-patching rule.
+- **Alternatives Considered**: A dynamic/runtime plugin-loading system (reflection-based
+  discovery) — rejected (REQ-CAP-004): adds real complexity with no benefit at this feature's
+  scale (low tens of tenants, manual onboarding), and no-monkey-patching favors explicit code
+  over dynamic loading anyway.
+- **Migration Path**: If a future capability needs genuinely bespoke per-tenant code (spec.md
+  Assumptions' "customization depth" open question), the same DI mechanism accommodates a
+  one-off implementation registered for exactly one tenant — no framework change needed.
+
+**Technology Choice: Plain JSON files for tenant config (no new datastore)**
+- **Decision Date**: 2026-08-16 (`speckit.plan`)
+- **Rationale**: Tenant config (`tenants.json` + per-environment `tenant_credentials`) stays
+  plain JSON, consistent with "no environment variables / config is code" and every other
+  config file in this project.
+- **Alternatives Considered**: A real database (SQLite/Postgres) for the tenant registry —
+  rejected: low tens of tenants expected, no query complexity that JSON-file lookup can't
+  handle, and would introduce a new operational dependency (backups, migrations) this project
+  has otherwise avoided entirely.
+- **Migration Path**: If tenant count or query needs grow beyond what flat JSON comfortably
+  supports, `TenantManager`'s load/lookup interface (`data-model.md`) is the seam a future
+  swap to a real datastore would go behind — callers never touch the file format directly.
+
+**Technology Choice: Python's standard `uuid` module for tenant identification**
+- **Decision Date**: 2026-08-16 (`speckit.plan`)
+- **Rationale**: `tenant_id` needs to be stable and collision-proof; the standard library's
+  `uuid4()` already satisfies this with zero new dependencies.
+- **Alternatives Considered**: A custom sequential/short-id scheme — rejected: adds
+  collision-avoidance logic to build and test for no real benefit, since `tenant_id` is
+  internal-only (external human-facing identification is `account_name`, per
+  `data-model.md`'s split).
+- **Migration Path**: N/A — UUIDs don't need replacing; not a technology expected to change.
 
 ## Requirements
 
@@ -367,6 +422,11 @@ written to hold under either model and needed no changes once the decision was m
   role governs a group turn) is unchanged, but now operates within a single tenant's scope — a
   WhatsApp group lives on exactly one tenant's WhatsApp Business number, so no group can span
   multiple tenants.
+- **REQ-GROUP-002** (added at `speckit.analyze` remediation, finding G1): `GroupMembershipResolver`
+  MUST resolve using the *calling tenant's own* Green API client for `getGroupData` — not a
+  single constructor-injected client as under the old single-tenant model — and its cache MUST
+  be keyed `(tenant_id, chat_id)`, not `chat_id` alone. See
+  `contracts/group-resolution-tenant-scoping.md`.
 
 ### Key Entities
 - **Tenant**: internal UUID, external account name/slug, bot name, own Green API instance
@@ -421,4 +481,5 @@ written to hold under either model and needed no changes once the decision was m
 See `user-stories.md` (MANDATORY, Given-When-Then) in this same directory for the full
 prioritized user stories backing these requirements, `plan.md`/`research.md`/`data-model.md`/
 `contracts/`/`quickstart.md` for the completed `speckit.plan` output, and `tasks.md` for the
-completed `speckit.tasks` output. `speckit.analyze` has not yet been run for this feature.
+completed `speckit.tasks` output. `speckit.analyze` has run and its findings are remediated
+(see Clarifications) — ready for `speckit.implement`.
