@@ -267,9 +267,11 @@ reminder, P3: recurring reminder cadence) and their edge cases.
   action. Delivery MUST originate from a single shared background mechanism common to all
   reminders — the number of active reminders MUST NOT change the number of concurrent delivery
   mechanisms running.
-- **FR-009**: Each occurrence of a reminder MUST be tracked with its own status — `pending` or
-  `fired` — set independently per occurrence, so a recurring reminder's history of past firings
-  is individually inspectable regardless of the reminder's own overall state.
+- **FR-009**: Each occurrence of a reminder MUST be tracked with its own status — `pending`,
+  `fired`, or `cancelled` — set independently per occurrence, so a recurring reminder's history of
+  past firings is individually inspectable regardless of the reminder's own overall state. `pending`
+  is a derived/computed state (not itself a stored value) — see `data-model.md`'s Sweep resolution
+  logic section for exactly how it's resolved.
 - **FR-010**: System MUST support modifying or deleting an existing reminder entirely through
   natural conversation at any time: the user states intent → system helps identify the correct
   reminder (disambiguating among candidates if the description matches more than one) → if the
@@ -360,7 +362,7 @@ reminder, P3: recurring reminder cadence) and their edge cases.
   occurrence in the past — verified across both reminder types at creation time.
 - **SC-005**: Recurring reminder occurrences fire matching their configured cadence (daily,
   weekly with selected weekdays, monthly with day-of-month or Nth-weekday) and end condition
-  (never/after-N/until-date), with each occurrence individually trackable as pending or fired,
+  (never/after-N/until-date), with each occurrence individually trackable as pending, fired, or cancelled,
   matching standard calendar-app (Outlook/Google Calendar) recurrence semantics.
 
 ## Related work

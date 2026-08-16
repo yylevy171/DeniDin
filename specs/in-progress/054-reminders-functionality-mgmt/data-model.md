@@ -88,6 +88,16 @@ Each 5-minute sweep tick (triggered by APScheduler's `CronTrigger(minute='*/5')`
    trading a small amount of per-tick CPU (negligible at this app's scale — a cap of 20 reminders
    total) for never letting a cache drift out of sync with the exceptions table.
 
+**On the `pending` status (spec.md FR-009/Terminology Glossary)**: `pending` is a **derived**
+state, never a literal stored column value anywhere in this schema. An occurrence is `pending` iff
+`recurring_ical_events` would currently generate it as a future/imminent occurrence of an active
+reminder AND no `reminder_exceptions` row for its date has `status='CANCELLED'`. It becomes
+`fired` the instant a `fired_occurrences` row is inserted for it (step 4 above), and `cancelled`
+only by an explicit `reminder_exceptions` row (single occurrence) or the whole reminder's own
+`status='cancelled'` (whole series). No table has a `pending` value in a `status` column — code
+implementing FR-009's "each occurrence individually inspectable" requirement (e.g. for
+`list_reminders`, FR-013) must compute this three-way state on read, not look it up.
+
 ## Ownership
 
 There is conceptually **one** reminder list, owned by "the godfather" (`config.godfather_phone`

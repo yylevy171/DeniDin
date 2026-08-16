@@ -139,6 +139,11 @@ created and persisted, even though nothing fires yet — that's US2).
   `fired_occurrences` row and calls `session_manager.add_message(...)`, a failed send leaves the
   occurrence undelivered for retry on the next tick, one-time and recurring reminders share the
   identical code path (no special-casing) — all against a stub `bot`/`send_proactive_message`.
+  **MUST include**: a reminder whose `created_by_phone`/`created_by_role` is ADMIN (not
+  GODFATHER) still resolves its delivery target from `config.godfather_phone` — asserting
+  `send_proactive_message` is called with the godfather's chat_id regardless of who created the
+  row (FR-008; this was corrected twice during design review and previously had only manual
+  `quickstart.md` #17 coverage).
 - [ ] T012b [US2] Implement `_sweep_due_reminders`/`run_startup_reminder_sweep` in
   `src/services/reminder_delivery_service.py` (BLOCKED until T012a approved, depends on T005b,
   T011b).
@@ -178,7 +183,10 @@ fires.
   phase, per `quickstart.md` #12), rounding applied to any new time.
 - [ ] T017b [US3] Write tests for the `modify_reminder` tool + resolution path in
   `tests/unit/test_ai_handler_reminders.py`: scope disambiguation prompt when ambiguous, dispatch
-  to the correct `ReminderManager` method by `scope`.
+  to the correct `ReminderManager` method by `scope`. **MUST include**: an ADMIN-role request
+  targeting a reminder whose `created_by_role=GODFATHER` succeeds unmodified — no owner-matching
+  filter anywhere in the dispatch path (FR-011; there is exactly one reminder list, so this locks
+  in that no such filter accidentally gets introduced later).
 - [ ] T017c [US3] Implement `ReminderManager.modify_single_occurrence`/`modify_whole_series` +
   `MODIFY_REMINDER_TOOL` schema + its approval-resolution wiring (BLOCKED until T017a and T017b
   approved, depends on T008b, T016b).
@@ -202,7 +210,8 @@ fires.
   `reminder_exceptions` row, rest of series unaffected), `delete_whole_series` (marks `reminders`
   row cancelled, cancels all pending exceptions, `fired_occurrences` untouched).
 - [ ] T019b [US4] Write tests for the `delete_reminder` tool + resolution path in
-  `tests/unit/test_ai_handler_reminders.py`: scope disambiguation, dispatch by `scope`.
+  `tests/unit/test_ai_handler_reminders.py`: scope disambiguation, dispatch by `scope`. **MUST
+  include**: the same ADMIN-acts-on-GODFATHER's-reminder assertion as T017b, for delete (FR-011).
 - [ ] T019c [US4] Implement `ReminderManager.delete_single_occurrence`/`delete_whole_series` +
   `DELETE_REMINDER_TOOL` schema + its approval-resolution wiring (BLOCKED until T019a and T019b
   approved, depends on T017c).

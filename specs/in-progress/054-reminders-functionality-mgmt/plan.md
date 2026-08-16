@@ -160,7 +160,8 @@ apps/denidin-app/
     │   ├── test_reminder_manager.py                    # NEW — modeled on test_ledger_event_manager.py
     │   ├── test_pending_local_tool_approval_manager.py # NEW
     │   ├── test_ai_handler_reminders.py                # NEW — modeled on test_ai_handler_ledger_events.py
-    │   └── test_reminder_delivery_service.py           # NEW — sweep logic against a stub bot/sender
+    │   ├── test_reminder_delivery_service.py           # NEW — sweep logic against a stub bot/sender
+    │   └── test_green_api_bot.py                       # MODIFIED (already exists) — + send_proactive_message tests
     ├── integration/
     │   └── test_reminder_conversation_routing.py       # NEW — real textMessage-shaped notification
     │                                                    #   through bot.router, real internal wiring,
