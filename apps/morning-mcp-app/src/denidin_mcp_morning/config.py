@@ -3,9 +3,9 @@
 Reads a flat config/config.json (schema: config/config.schema.json) — no
 environment variables are read anywhere in this module, per CONSTITUTION.md §I.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import json
 import jsonschema
@@ -15,6 +15,25 @@ _SCHEMA_PATH = Path(__file__).resolve().parents[2] / "config" / "config.schema.j
 
 class ConfigError(Exception):
     """Raised when config/config.json is missing, malformed, or fails schema validation."""
+
+
+@dataclass(frozen=True)
+class TenantMorningCredentials:
+    """One tenant's own Morning API credentials + MCP bearer token (Feature 055
+    Phase 6, REQ-CAP-006/contracts/invoicing-capability.md) - "own Morning
+    account" means own credentials/audit trail, not a separate server/tunnel.
+
+    Additive: an empty `tenants` list on `MorningMCPConfig` (today's shape,
+    every existing config.<env>.json) preserves the original single-shared-
+    account behavior exactly (REQ-PARITY-001) - this dataclass and everything
+    that reads it only comes into play once a config file actually lists at
+    least one tenant.
+    """
+
+    tenant_id: str
+    api_key_id: str
+    api_key_secret: str
+    mcp_auth_token: str
 
 
 @dataclass(frozen=True)
@@ -55,6 +74,11 @@ class MorningMCPConfig:
     mcp_status_file: Optional[str]
     openai_api_key: Optional[str]
     enable_mcp_server: bool
+    # Feature 055 Phase 6 (REQ-CAP-006): additive, empty by default. Non-empty
+    # switches the server from one shared secret/account to a per-tenant token
+    # map + per-tenant MorningClient (see server.py's create_server/
+    # build_asgi_app).
+    tenants: Tuple[TenantMorningCredentials, ...] = field(default_factory=tuple)
 
 
 def _load_schema() -> Dict[str, Any]:
@@ -95,6 +119,37 @@ def load_config(path: Path) -> MorningMCPConfig:
     mcp_section = raw.get("mcp") or {}
     feature_flags = raw.get("feature_flags") or {}
 
+    tenants_raw = raw.get("tenants") or []
+    seen_tenant_ids: Dict[str, str] = {}
+    seen_tokens: Dict[str, str] = {}
+    tenants: List[TenantMorningCredentials] = []
+    for entry in tenants_raw:
+        tenant_id = entry["tenant_id"]
+        mcp_auth_token = entry["mcp_auth_token"]
+        # contracts/invoicing-capability.md's "Tenant Config PROVIDES" clause:
+        # one mcp_auth_token per tenant, unique across all tenants in this
+        # environment, enforced at config-load time - two tenants sharing a
+        # token would silently merge their invoicing access, a config error,
+        # never a valid state.
+        if mcp_auth_token in seen_tokens:
+            raise ConfigError(
+                f"Config file has duplicate tenant mcp_auth_token, shared between "
+                f"tenants {seen_tokens[mcp_auth_token]!r} and {tenant_id!r} ({path}) - "
+                "each tenant must have its own unique token"
+            )
+        if tenant_id in seen_tenant_ids:
+            raise ConfigError(f"Config file lists tenant_id {tenant_id!r} more than once ({path})")
+        seen_tokens[mcp_auth_token] = tenant_id
+        seen_tenant_ids[tenant_id] = mcp_auth_token
+        tenants.append(
+            TenantMorningCredentials(
+                tenant_id=tenant_id,
+                api_key_id=entry["api_key_id"],
+                api_key_secret=entry["api_key_secret"],
+                mcp_auth_token=mcp_auth_token,
+            )
+        )
+
     return MorningMCPConfig(
         api_key_id=raw["api_key_id"],
         api_key_secret=raw["api_key_secret"],
@@ -117,4 +172,5 @@ def load_config(path: Path) -> MorningMCPConfig:
         mcp_status_file=mcp_section.get("status_file") or None,
         openai_api_key=raw.get("openai_api_key") or None,
         enable_mcp_server=feature_flags.get("enable_mcp_server", False),
+        tenants=tuple(tenants),
     )

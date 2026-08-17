@@ -262,3 +262,110 @@ def test_load_config_reads_openai_api_key_when_present(tmp_path):
     config = load_config(config_with_key)
 
     assert config.openai_api_key == "sk-test-key-value"
+
+
+def _base_config_dict(**overrides):
+    base = {
+        "api_key_id": "x",
+        "api_key_secret": "y",
+        "api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+        "auth_url": "https://api.sandbox.morning.dev",
+    }
+    base.update(overrides)
+    return base
+
+
+class TestTenantsConfig:
+    """Feature 055 Phase 6, T023a (REQ-CAP-006/contracts/invoicing-capability.md):
+    the optional, additive `tenants` list."""
+
+    def test_tenants_defaults_to_empty_tuple_when_omitted(self, tmp_path):
+        """REQ-PARITY-001: every existing config.<env>.json omits this key
+        entirely - must load exactly as before."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps(_base_config_dict()), encoding="utf-8")
+
+        config = load_config(config_path)
+
+        assert config.tenants == ()
+
+    def test_tenants_list_is_parsed_into_typed_credentials(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            json.dumps(_base_config_dict(tenants=[
+                {
+                    "tenant_id": "tenant-a", "api_key_id": "a-key-id",
+                    "api_key_secret": "a-key-secret", "mcp_auth_token": "a-token",
+                },
+                {
+                    "tenant_id": "tenant-b", "api_key_id": "b-key-id",
+                    "api_key_secret": "b-key-secret", "mcp_auth_token": "b-token",
+                },
+            ])),
+            encoding="utf-8",
+        )
+
+        config = load_config(config_path)
+
+        assert len(config.tenants) == 2
+        assert config.tenants[0].tenant_id == "tenant-a"
+        assert config.tenants[0].mcp_auth_token == "a-token"
+        assert config.tenants[1].tenant_id == "tenant-b"
+
+    def test_duplicate_mcp_auth_token_across_tenants_raises_config_error(self, tmp_path):
+        """contracts/invoicing-capability.md: two tenants sharing a token is a
+        config-load error, not silently merged access."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            json.dumps(_base_config_dict(tenants=[
+                {
+                    "tenant_id": "tenant-a", "api_key_id": "a-key-id",
+                    "api_key_secret": "a-key-secret", "mcp_auth_token": "SAME-TOKEN",
+                },
+                {
+                    "tenant_id": "tenant-b", "api_key_id": "b-key-id",
+                    "api_key_secret": "b-key-secret", "mcp_auth_token": "SAME-TOKEN",
+                },
+            ])),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ConfigError):
+            load_config(config_path)
+
+    def test_duplicate_tenant_id_raises_config_error(self, tmp_path):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            json.dumps(_base_config_dict(tenants=[
+                {
+                    "tenant_id": "tenant-a", "api_key_id": "a-key-id",
+                    "api_key_secret": "a-key-secret", "mcp_auth_token": "token-1",
+                },
+                {
+                    "tenant_id": "tenant-a", "api_key_id": "a-key-id-2",
+                    "api_key_secret": "a-key-secret-2", "mcp_auth_token": "token-2",
+                },
+            ])),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ConfigError):
+            load_config(config_path)
+
+    def test_single_tenant_list_loads_cleanly(self, tmp_path):
+        """One tenant is a valid, real shape (not just a "must have 2+" test
+        fixture) - onboarding the very first tenant this way must work."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            json.dumps(_base_config_dict(tenants=[
+                {
+                    "tenant_id": "tenant-a", "api_key_id": "a-key-id",
+                    "api_key_secret": "a-key-secret", "mcp_auth_token": "a-token",
+                },
+            ])),
+            encoding="utf-8",
+        )
+
+        config = load_config(config_path)
+
+        assert len(config.tenants) == 1

@@ -15,7 +15,7 @@ globals, no monkey-patching).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -34,6 +34,7 @@ from .errors import friendly_error_message
 from .morning_client import MorningClient
 from .utils.correlation import correlation_scope, new_correlation_id
 from .utils.logger import DEFAULT_VERSION_FILE, read_version, get_logger, reconfigure_package_log_level
+from .utils.tenant_context import current_tenant_id, tenant_scope
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.json"
 
@@ -43,29 +44,47 @@ logger = get_logger(__name__)
 class BearerTokenMiddleware(BaseHTTPMiddleware):
     """Reject requests missing a matching `Authorization: Bearer <token>` header.
 
-    No-op if `token` is falsy — appropriate for pure local/dev use (this
-    server's own test suite, manual local testing). This server has one
-    expected main consumer (denidin-app) plus ad hoc manual tests, so a
-    single shared secret is the right model here, not a multi-tenant OAuth
-    system (see spec.md — FastMCP's built-in `auth`/`token_verifier` is full
-    OAuth 2.1 resource-server machinery, overkill for this use case).
+    Two modes, mutually exclusive:
+    - `tokens` (Feature 055 Phase 6, REQ-CAP-006/contracts/invoicing-capability.md):
+      a per-tenant token map ({token: tenant_id}) - the resolved tenant_id is
+      bound via `utils.tenant_context.tenant_scope` for the rest of that
+      request's lifetime, so the correct Morning credentials and audit
+      attribution are used without a second lookup. An unrecognized token is
+      rejected exactly as an invalid shared secret always was.
+    - `token` (original, pre-055 shape): one shared secret, no tenant concept -
+      still fully supported, byte-identical behavior to before this phase
+      (REQ-PARITY-001) for anyone not using the multi-tenant `tokens` map.
+
+    No-op (no auth enforced) if neither is given - appropriate for pure
+    local/dev use (this server's own test suite, manual local testing).
     """
 
-    def __init__(self, app, token: Optional[str]) -> None:
+    def __init__(
+        self, app, token: Optional[str] = None, tokens: Optional[Dict[str, str]] = None
+    ) -> None:
         super().__init__(app)
-        self._expected_header = f"Bearer {token}" if token else None
+        # {expected "Authorization" header value: tenant_id or None}. `token`
+        # (legacy single-secret mode) maps to tenant_id=None - tenant_scope(None)
+        # is a harmless no-op for callers that never check current_tenant_id().
+        self._header_to_tenant: Dict[str, Optional[str]] = {}
+        if tokens:
+            self._header_to_tenant = {f"Bearer {tok}": tid for tok, tid in tokens.items()}
+        elif token:
+            self._header_to_tenant = {f"Bearer {token}": None}
 
     async def dispatch(self, request: Request, call_next):
         if request.url.path == HEALTH_PATH:
             return await call_next(request)
 
-        if self._expected_header is None:
+        if not self._header_to_tenant:
             return await call_next(request)
 
-        if request.headers.get("Authorization") != self._expected_header:
+        presented = request.headers.get("Authorization")
+        if presented not in self._header_to_tenant:
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-        return await call_next(request)
+        with tenant_scope(self._header_to_tenant[presented]):
+            return await call_next(request)
 
 
 def _make_health_handler(environment: Optional[str], version: str) -> Callable[[Request], Any]:
@@ -90,6 +109,7 @@ def _make_health_handler(environment: Optional[str], version: str) -> Callable[[
 def build_asgi_app(
     mcp: FastMCP,
     auth_token: Optional[str] = None,
+    tenant_tokens: Optional[Dict[str, str]] = None,
     environment: Optional[str] = None,
     version_file: Path = DEFAULT_VERSION_FILE,
 ) -> Starlette:
@@ -99,6 +119,12 @@ def build_asgi_app(
     wrapped with `BearerTokenMiddleware` before serving (same pattern already
     proven in tests/integration/test_mcp_server_e2e.py).
 
+    `tenant_tokens` (Feature 055 Phase 6): a per-tenant token map, mutually
+    exclusive with `auth_token` (pass at most one - `tenant_tokens` wins if both
+    are given, for callers that mistakenly pass both). `auth_token` alone keeps
+    this app's original, pre-055 single-shared-secret behavior byte-identical
+    (REQ-PARITY-001).
+
     `version_file` (Feature 034, REQ-VER-002): defaults to this app's real VERSION file;
     tests pass a scratch path.
     """
@@ -107,7 +133,9 @@ def build_asgi_app(
     app.router.routes.append(
         Route(HEALTH_PATH, _make_health_handler(environment, version), methods=["GET"])
     )
-    if auth_token:
+    if tenant_tokens:
+        app.add_middleware(BearerTokenMiddleware, tokens=tenant_tokens)
+    elif auth_token:
         app.add_middleware(BearerTokenMiddleware, token=auth_token)
     return app
 
@@ -154,12 +182,16 @@ def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> "str | Ca
     """
     correlation_id = new_correlation_id()
     tool_name = getattr(func, "__name__", repr(func))
+    tenant_id = current_tenant_id()  # Feature 055 Phase 6, T024a: "every audit line"
     with correlation_scope(correlation_id):
-        logger.info("[corr_id=%s] TOOL CALL %s args=%r", correlation_id, tool_name, args[1:])
+        logger.info(
+            "[corr_id=%s] [tenant=%s] TOOL CALL %s args=%r",
+            correlation_id, tenant_id, tool_name, args[1:],
+        )
         try:
             result = func(*args)
         except Exception as exc:  # noqa: BLE001 - deliberate MCP-boundary catch-all
-            logger.info("[corr_id=%s] TOOL ERROR %s", correlation_id, tool_name)
+            logger.info("[corr_id=%s] [tenant=%s] TOOL ERROR %s", correlation_id, tenant_id, tool_name)
             friendly_message = friendly_error_message(exc, correlation_id)
             return CallToolResult(
                 content=[TextContent(type="text", text=friendly_message)],
@@ -169,30 +201,70 @@ def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> "str | Ca
         # that can run to thousands of characters and would bury the mutation
         # records this trail exists to preserve.
         logger.info(
-            "[corr_id=%s] TOOL OK %s result_chars=%d", correlation_id, tool_name, len(result or "")
+            "[corr_id=%s] [tenant=%s] TOOL OK %s result_chars=%d",
+            correlation_id, tenant_id, tool_name, len(result or ""),
         )
         return result
 
 
-def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = None) -> FastMCP:
-    """Build a FastMCP server with all 11 tools registered, bound to one MorningClient.
+def create_server(
+    config: MorningMCPConfig,
+    client: Optional[MorningClient] = None,
+    clients_by_tenant: Optional[Dict[str, MorningClient]] = None,
+) -> FastMCP:
+    """Build a FastMCP server with all 11 tools registered.
+
+    Feature 055 Phase 6 (REQ-CAP-006/contracts/invoicing-capability.md): one
+    shared server serves every tenant, distinguishing tenants by MCP bearer
+    token (BearerTokenMiddleware) rather than running a separate server/tunnel
+    per tenant. Each tool call resolves the CURRENT request's tenant (via
+    `utils.tenant_context`, bound by the middleware) to that tenant's own
+    `MorningClient` - never a shared/global one - falling back to `default_client`
+    when no per-tenant map applies (today's single-shared-account shape,
+    `config.tenants` empty - REQ-PARITY-001: byte-identical to before this phase).
 
     Args:
         config: Validated app config (see config.load_config).
-        client: Optional pre-built MorningClient (injected); built from `config`
+        client: Optional pre-built MorningClient (injected) used as the single
+            shared/default client - built from `config`'s top-level credentials
             if omitted. Exposed as a parameter so tests can inject a client
             without needing a second real config file.
+        clients_by_tenant: Optional pre-built {tenant_id: MorningClient} map
+            (injected); built from `config.tenants` if omitted and `config.tenants`
+            is non-empty. Empty/omitted means "no per-tenant credentials
+            configured" - every call uses `default_client`, same as before this
+            phase existed.
 
     Returns:
         A FastMCP instance, not yet running.
     """
-    morning_client = client or MorningClient(
+    default_client = client or MorningClient(
         api_key_id=config.api_key_id,
         api_key_secret=config.api_key_secret,
         base_url=config.api_url,
         auth_url=config.auth_url,
         refresh_before_seconds=config.refresh_before_seconds,
     )
+    resolved_clients_by_tenant: Dict[str, MorningClient] = clients_by_tenant or {
+        tenant.tenant_id: MorningClient(
+            api_key_id=tenant.api_key_id,
+            api_key_secret=tenant.api_key_secret,
+            base_url=config.api_url,
+            auth_url=config.auth_url,
+            refresh_before_seconds=config.refresh_before_seconds,
+        )
+        for tenant in config.tenants
+    }
+
+    def _current_client() -> MorningClient:
+        """Resolve the client for whichever tenant (if any) the request
+        currently in flight belongs to - evaluated fresh on every tool call
+        (never cached at server-construction time), per research.md §5's
+        per-call resolution rule."""
+        tenant_id = current_tenant_id()
+        if tenant_id and tenant_id in resolved_clients_by_tenant:
+            return resolved_clients_by_tenant[tenant_id]
+        return default_client
 
     # FastMCP auto-enables Host-header DNS-rebinding protection restricted to
     # 127.0.0.1/localhost whenever `host` is loopback and no transport_security
@@ -232,7 +304,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
-            tools.create_invoice, morning_client, client_name, amount, description,
+            tools.create_invoice, _current_client(), client_name, amount, description,
             due_date, vat_included, name_resolved
         )
 
@@ -259,7 +331,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
-            tools.create_transaction_account, morning_client, client_name, amount,
+            tools.create_transaction_account, _current_client(), client_name, amount,
             description, vat_included, due_date, name_resolved
         )
 
@@ -304,7 +376,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
-            tools.create_combo_document, morning_client, client_name, amount, description,
+            tools.create_combo_document, _current_client(), client_name, amount, description,
             vat_included, payment_date, payment_method, bank_number, bank_branch,
             bank_account, transaction_reference, name_resolved
         )
@@ -324,7 +396,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         this invoice" phrasing (there is no separate status-update tool) -
         call this directly with the full amount in that case."""
         return _call_with_error_boundary(
-            tools.create_credit_note, morning_client, original_internal_morning_id, amount, description
+            tools.create_credit_note, _current_client(), original_internal_morning_id, amount, description
         )
 
     @mcp.tool(structured_output=False)
@@ -348,7 +420,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         but only once asked and confirmed - never silently assumed. Ask the
         user if it isn't already stated in the conversation."""
         return _call_with_error_boundary(
-            tools.create_receipt, morning_client, original_internal_morning_id, payment_date, amount
+            tools.create_receipt, _current_client(), original_internal_morning_id, payment_date, amount
         )
 
     @mcp.tool(structured_output=False)
@@ -391,7 +463,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         transfer; a reference number (אסמכתה) only on an app or PayPal payment.
         `bank_number` is the bank's NUMBER (e.g. "31"), not its name."""
         return _call_with_error_boundary(
-            tools.create_combo_document_as_reference, morning_client, original_internal_morning_id, payment_date,
+            tools.create_combo_document_as_reference, _current_client(), original_internal_morning_id, payment_date,
             amount, description, vat_included, payment_method, bank_number, bank_branch,
             bank_account, transaction_reference
         )
@@ -416,7 +488,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         """
         return _call_with_error_boundary(
             tools.list_invoices,
-            morning_client,
+            _current_client(),
             status,
             from_date,
             to_date,
@@ -433,7 +505,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         which create_*/close_* tool to call for a status-change request
         ("mark as paid", "cancel it") - there is no separate status-update
         tool; only document creation."""
-        return _call_with_error_boundary(tools.get_invoice_details, morning_client, internal_morning_id)
+        return _call_with_error_boundary(tools.get_invoice_details, _current_client(), internal_morning_id)
 
     @mcp.tool(structured_output=False)
     def add_client(
@@ -444,7 +516,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
     ) -> str:
         """Add a new client to Morning. name/email/phone are all required -
         ask the user for any that are missing rather than guessing."""
-        return _call_with_error_boundary(tools.add_client, morning_client, name, email, phone, tax_id)
+        return _call_with_error_boundary(tools.add_client, _current_client(), name, email, phone, tax_id)
 
     @mcp.tool(structured_output=False)
     def list_clients(name: Optional[str] = None) -> str:
@@ -452,7 +524,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         (token-prefix match) - useful when a bare list would match too many
         clients to display (the tool itself reports the real total and asks
         to narrow when that happens)."""
-        return _call_with_error_boundary(tools.list_clients, morning_client, name)
+        return _call_with_error_boundary(tools.list_clients, _current_client(), name)
 
     @mcp.tool(structured_output=False)
     def resolve_client_name(name: str) -> str:
@@ -468,7 +540,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         matching: they require name_resolved=True and refuse immediately,
         without attempting any lookup, if it isn't set.
         """
-        return _call_with_error_boundary(tools.resolve_client_name, morning_client, name)
+        return _call_with_error_boundary(tools.resolve_client_name, _current_client(), name)
 
     @mcp.tool(structured_output=False)
     def get_client_details(name: str, name_resolved: bool = False) -> str:
@@ -478,7 +550,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         this name, then pass the EXACT name it returns here, together with
         name_resolved=True. Without it, this refuses immediately.
         """
-        return _call_with_error_boundary(tools.get_client_details, morning_client, name, name_resolved)
+        return _call_with_error_boundary(tools.get_client_details, _current_client(), name, name_resolved)
 
     @mcp.tool(structured_output=False)
     def update_client(
@@ -497,7 +569,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
-            tools.update_client, morning_client, name, new_name, email, phone, tax_id, name_resolved
+            tools.update_client, _current_client(), name, new_name, email, phone, tax_id, name_resolved
         )
 
     @mcp.tool(structured_output=False)
@@ -508,13 +580,13 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
     ) -> str:
         """Aggregate totals/counts for a period: "month", "quarter", "year", or "custom"."""
         return _call_with_error_boundary(
-            tools.get_financial_summary, morning_client, period, from_date, to_date
+            tools.get_financial_summary, _current_client(), period, from_date, to_date
         )
 
     @mcp.tool(structured_output=False)
     def download_invoice_pdf(internal_morning_id: str) -> str:
         """Return a PDF download link for an invoice."""
-        return _call_with_error_boundary(tools.download_invoice_pdf, morning_client, internal_morning_id)
+        return _call_with_error_boundary(tools.download_invoice_pdf, _current_client(), internal_morning_id)
 
     return mcp
 
@@ -536,13 +608,24 @@ def main() -> None:
         )
 
     server = create_server(config)
+    # Feature 055 Phase 6: config.tenants (empty by default - REQ-PARITY-001)
+    # switches auth from the single shared secret to a per-tenant token map.
+    tenant_tokens = (
+        {tenant.mcp_auth_token: tenant.tenant_id for tenant in config.tenants}
+        if config.tenants
+        else None
+    )
     logger.info(
         "Starting %s on %s:%s (%s)%s",
         config.mcp_server_name,
         config.mcp_host,
         config.mcp_port,
         config.mcp_transport,
-        " [bearer-token auth enabled]" if config.mcp_auth_token else " [no auth configured]",
+        (
+            f" [bearer-token auth enabled, {len(tenant_tokens)} tenant(s)]"
+            if tenant_tokens
+            else " [bearer-token auth enabled]" if config.mcp_auth_token else " [no auth configured]"
+        ),
     )
 
     if config.mcp_transport == "streamable-http":
@@ -550,7 +633,10 @@ def main() -> None:
         # wrapped with BearerTokenMiddleware before serving.
         import uvicorn
 
-        app = build_asgi_app(server, auth_token=config.mcp_auth_token, environment=config.environment)
+        app = build_asgi_app(
+            server, auth_token=config.mcp_auth_token, tenant_tokens=tenant_tokens,
+            environment=config.environment,
+        )
         uvicorn.run(app, host=config.mcp_host, port=config.mcp_port, log_level=config.mcp_log_level.lower())
     else:
         # stdio/sse aren't network-exposed the same way; no HTTP-level

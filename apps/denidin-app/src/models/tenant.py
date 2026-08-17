@@ -25,6 +25,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from whatsapp_chatbot_python import Notification
 
+from src.capabilities.registry import CapabilityRegistry
 from src.constants.error_messages import (
     CONTACT_CARD_ONE_AT_A_TIME,
     ERROR_PROCESSING_MESSAGE_TRY_AGAIN,
@@ -129,7 +130,12 @@ class Tenant:
         self.media_handler = MediaHandler(self)
         self.whatsapp_handler.media_handler = self.media_handler
 
-        self.bot = bot_factory(self.green_api["instance_id"], self.green_api["api_token"])
+        # Feature 055 Phase 6 (REQ-CAP-001/003): the messaging provider is a
+        # DI-resolved capability implementation, selected per tenant via
+        # capability_selection['messaging_provider'] - Green API is today's only
+        # registered implementation, but this tenant no longer hardcodes it.
+        messaging_provider = CapabilityRegistry.resolve(self, "messaging_provider")
+        self.bot = messaging_provider.build_bot(self, bot_factory)
 
         self.group_membership_resolver = GroupMembershipResolver(
             self.bot.api.groups, self.ai_handler.user_manager

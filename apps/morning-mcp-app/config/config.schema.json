@@ -102,6 +102,20 @@
           "description": "Gate for starting the FastMCP server. When false, the server entrypoint does not start; the existing client library and its integration tests are unaffected."
         }
       }
+    },
+    "tenants": {
+      "type": "array",
+      "description": "Feature 055 (Multi-Tenancy) Phase 6, REQ-CAP-006: optional, additive list of per-tenant Morning credentials + MCP bearer tokens. Empty/omitted (every existing config.<env>.json as of this feature) preserves the original single-shared-account behavior exactly - the top-level api_key_id/api_key_secret/mcp.auth_token are still what's used. Non-empty switches the server to per-tenant bearer-token auth (server.py's BearerTokenMiddleware) and a separate MorningClient per tenant, distinguishing tenants by which token was presented rather than a separate server/tunnel per tenant. Each tenant's mcp_auth_token MUST be unique across this list (enforced at config-load time - config.py raises ConfigError on a duplicate, never silently merges access).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tenant_id": { "type": "string", "description": "Must match the same tenant's tenant_id in apps/denidin-app's tenants.json." },
+          "api_key_id": { "type": "string", "description": "This tenant's own Morning API key id (OAuth2 client_id)." },
+          "api_key_secret": { "type": "string", "description": "This tenant's own Morning API key secret (OAuth2 client_secret)." },
+          "mcp_auth_token": { "type": "string", "description": "This tenant's own MCP bearer token - must match the corresponding entry in apps/denidin-app's per-tenant credential config, and be unique across every tenant in this list." }
+        },
+        "required": ["tenant_id", "api_key_id", "api_key_secret", "mcp_auth_token"]
+      }
     }
   },
   "required": ["api_key_id", "api_key_secret", "api_url", "auth_url"]

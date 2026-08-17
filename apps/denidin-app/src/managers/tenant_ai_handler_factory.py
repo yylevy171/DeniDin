@@ -24,6 +24,7 @@ from dataclasses import replace
 
 from openai import OpenAI
 
+from src.capabilities.registry import CapabilityRegistry
 from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
 from src.models.tenant import Tenant
@@ -53,6 +54,23 @@ class TenantAIHandlerFactory:
 
         first_godfather = tenant.godfathers[0] if tenant.godfathers else None
 
+        # Feature 055 Phase 6 (REQ-CAP-002/005/006, contracts/invoicing-capability.md):
+        # the invoicing provider is a DI-resolved capability, selected per tenant.
+        # CapabilityRegistry.resolve returns None for a tenant with no working
+        # invoicing provider (REQ-CAP-005) - in that case any morning_auth_token
+        # inherited from base_config.mcp is explicitly dropped, never silently
+        # carried through. This closes a real cross-tenant credential-leak gap: before
+        # this wiring, AIHandler._build_morning_mcp_tools read morning_auth_token
+        # straight from base_config.mcp, so every tenant sharing one process would
+        # have received the SAME token if the environment config still carried the
+        # old, pre-multi-tenancy shared value.
+        mcp = dict(base_config.mcp) if base_config.mcp else {}
+        invoicing_provider = CapabilityRegistry.resolve(tenant, "invoicing_provider")
+        if invoicing_provider is not None:
+            mcp.update(invoicing_provider.mcp_config_overrides(tenant))
+        else:
+            mcp.pop("morning_auth_token", None)
+
         return replace(
             base_config,
             green_api_instance_id=tenant.green_api["instance_id"],
@@ -66,4 +84,5 @@ class TenantAIHandlerFactory:
                 "godfather_phones": list(tenant.godfathers),
             },
             memory=memory,
+            mcp=mcp,
         )

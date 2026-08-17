@@ -360,49 +360,92 @@ selected per tenant; the shared morning-mcp-app server distinguishes tenants by 
 
 ### Capability interfaces (`apps/denidin-app`)
 
-- [ ] T021a [P] [US4] Write tests for the `messaging_provider`/`invoicing_provider` interfaces
+- [x] T021a [P] [US4] Write tests for the `messaging_provider`/`invoicing_provider` interfaces
   and DI resolution in `apps/denidin-app/tests/unit/test_capabilities.py` (new file): resolving
-  `(tenant_id, "invoicing_provider")` returns the tenant's configured implementation; a tenant
-  with no invoicing provider configured resolves to `None`/a documented sentinel, not an
-  exception (REQ-CAP-005); resolution is per-call (a registry lookup), not a startup-only
-  singleton (`research.md` §5).
-- [ ] T021b [P] [US4] Implement `apps/denidin-app/src/capabilities/messaging_provider.py`,
-  `invoicing_provider.py` (interfaces) + `impl/green_api_messaging.py`,
-  `impl/morning_invoicing.py` (BLOCKED until T021a approved).
+  `(tenant, "invoicing_provider")` (tenant OBJECT, not a bare `tenant_id` string - matches every
+  other Phase 3+ factory in this codebase; documented explicitly in the test file's own
+  docstring) returns the tenant's configured implementation; a tenant with no invoicing provider
+  configured resolves to `None`, not an exception (REQ-CAP-005); resolution is per-call (a
+  registry lookup), not a startup-only singleton (`research.md` §5). 15 tests.
+- [x] T021b [P] [US4] Implemented `apps/denidin-app/src/capabilities/messaging_provider.py`,
+  `invoicing_provider.py` (ABC interfaces) + `impl/green_api_messaging.py`,
+  `impl/morning_invoicing.py` + `registry.py` (`CapabilityRegistry.resolve(tenant,
+  capability_name)`). Wired into `Tenant.start()` (messaging - replaces the inline `bot_factory`
+  call) and `TenantAIHandlerFactory` (invoicing - the resolved `InvoicingProvider`'s
+  `mcp_config_overrides` feed `config.mcp`), not left unused.
 
-- [ ] T022a [US4] Write tests confirming a tenant missing the invoicing provider still starts
+- [x] T022a [US4] Write tests confirming a tenant missing the invoicing provider still starts
   and serves messaging (REQ-CAP-005) — `apps/denidin-app/tests/integration/test_capability_degraded_start.py`
-  (new file).
-- [ ] T022b [US4] Wire the degraded-start behavior into `AIHandler`'s tool-attachment logic
-  (BLOCKED until T022a approved).
+  (new file, 6 tests). Found and closed a REAL pre-existing gap while writing this (not merely
+  a missing-degraded-start test): before this wiring, `AIHandler._build_morning_mcp_tools` read
+  `morning_auth_token` straight from `base_config.mcp` (the old, pre-multi-tenancy shared-secret
+  shape) - meaning EVERY tenant sharing one process would have received the SAME Morning bearer
+  token if the environment config still carried one. `TestNoSharedTokenLeakage` is the test that
+  caught it (confirmed red before T022b, green after).
+- [x] T022b [US4] Wired via `TenantAIHandlerFactory`: `CapabilityRegistry.resolve(tenant,
+  "invoicing_provider")` returns `None` for a degraded tenant, and the factory explicitly drops
+  any inherited `mcp.morning_auth_token` in that case (never silently carries it through) -
+  `AIHandler._build_morning_mcp_tools` itself needed ZERO changes (its existing "no auth_token
+  configured -> proceed without invoicing tools" graceful-degradation path, pre-dating this
+  feature, already does exactly the right thing once the token is correctly absent).
 
 ### Shared MCP server multi-tenancy (`apps/morning-mcp-app`)
 
-- [ ] T023a [P] [US4] Write tests for per-tenant bearer tokens in
-  `apps/morning-mcp-app/tests/unit/test_bearer_middleware.py` (extend/create): each tenant's
-  token resolves to that tenant's `tenant_id`; an unrecognized token is rejected exactly as an
-  invalid shared secret is today; two tenants configured with the same token is a config-load
-  error, not silently merged access (contract requirement).
-- [ ] T023b [P] [US4] Extend `BearerTokenMiddleware` to a per-tenant token map in
-  `apps/morning-mcp-app/src/denidin_mcp_morning/server.py` (BLOCKED until T023a approved).
+- [x] T023a [P] [US4] Write tests for per-tenant bearer tokens: extended
+  `apps/morning-mcp-app/tests/unit/test_auth_middleware.py` (`TestPerTenantTokenMap`, 7 tests)
+  and `tests/unit/test_config.py` (`TestTenantsConfig`, 5 tests): each tenant's token resolves
+  to that tenant's `tenant_id` (verified via a new `utils.tenant_context` contextvar, bound for
+  the request's duration); an unrecognized token is rejected exactly as an invalid shared secret
+  is today; two tenants configured with the same token (or the same `tenant_id` twice) is a
+  config-load `ConfigError`, not silently merged access.
+- [x] T023b [P] [US4] `BearerTokenMiddleware` extended to a `tokens: Dict[token, tenant_id]` mode
+  (mutually exclusive with the original `token:` single-secret mode - REQ-PARITY-001, byte-
+  identical for any caller not passing `tokens`), binding the resolved `tenant_id` via a new
+  `utils/tenant_context.py` (mirrors `utils/correlation.py`'s existing `ContextVar` pattern
+  exactly). **Empirically verified, not assumed** (CONSTITUTION's no-unverified-third-party-
+  assumptions rule): a `ContextVar` set inside `BaseHTTPMiddleware.dispatch()` before
+  `call_next()` DOES survive into the real downstream FastMCP tool-call handler in this app's
+  actual installed Starlette 1.3.1/FastMCP/uvicorn versions - probed live against a throwaway
+  FastMCP server before committing to this design, since `BaseHTTPMiddleware` has a well-known
+  history of breaking contextvar propagation in some framework/version combinations. `config.py`
+  gained an additive `tenants: Tuple[TenantMorningCredentials, ...]` field (empty by default)
+  + config-schema entry; `create_server`/`build_asgi_app`/`main()` all updated to build a
+  per-tenant `MorningClient` map and resolve the current call's client via the new contextvar,
+  falling back to the original single `default_client` when `config.tenants` is empty (parity).
+- [x] T024a [US4] Write tests for tenant-attributed audit logging: new
+  `apps/morning-mcp-app/tests/unit/test_audit.py` (this module had zero prior test coverage -
+  "extend existing file" became "create it", 4 tests): every audit line (mutation and refusal
+  alike) records the resolved `tenant_id`, including explicitly recording `None` (not omitting
+  the field) when no tenant context is bound, so a reader can tell "no tenant" apart from "field
+  missing" (a config regression).
+- [x] T024b [US4] Extended `apps/morning-mcp-app/src/denidin_mcp_morning/audit.py`'s
+  `log_mutation`/`log_refusal` with a `[tenant=%s]` segment (matching this repo's `key=value`
+  log-tagging convention); also extended `server.py`'s `_call_with_error_boundary`'s own
+  TOOL CALL/OK/ERROR lines the same way, since its own docstring already describes it as owning
+  "the call-level half of the audit trail" - T024a's "every audit line" is read to cover both.
 
-- [ ] T024a [US4] Write tests for tenant-attributed audit logging in
-  `apps/morning-mcp-app/tests/unit/test_audit.py` (extend existing file): every audit line
-  (mutation and refusal alike) records the resolved `tenant_id`.
-- [ ] T024b [US4] Extend `apps/morning-mcp-app/src/denidin_mcp_morning/audit.py` (BLOCKED
-  until T024a approved).
-
-- [ ] T025a [US4] **Downgraded 2026-08-17 (no second real Morning account available yet)**:
-  write tests confirming tool handlers use the resolved tenant's credentials for the underlying
+- [x] T025a [US4] **Downgraded 2026-08-17 (no second real Morning account available yet)**:
+  wrote tests confirming tool handlers use the resolved tenant's credentials for the underlying
   API call, not a shared/global credential — `apps/morning-mcp-app/tests/integration/
-  test_multi_tenant_morning.py` (new file). Uses the *existing* real Morning sandbox account,
+  test_multi_tenant_morning.py` (new file, 3 tests, real sandbox `get_financial_summary` calls
+  per tenant token + one auth-rejection test). Uses the *existing* real Morning sandbox account,
   referenced by two distinct synthetic `tenant_id`s in test config — proves the per-tenant
   credential-threading plumbing against a real API call, but does **not** prove true
   cross-account isolation (both synthetic tenants hit the same real backend account). That
   stronger guarantee is deferred to T025c below. Still real-sandbox, no mocking, per
-  CONSTITUTION §V.
-- [ ] T025b [US4] Wire tenant-resolved credentials into `server.py`'s
-  `_call_with_error_boundary` (BLOCKED until T025a approved).
+  CONSTITUTION §V. **Written but NOT executed in this session**: this clone's local
+  `config/config.test.json` (gitignored, real credentials) is missing the `auth_url` field
+  Feature 053 made required, a pre-existing environmental gap unrelated to this feature - it
+  ALREADY blocks the pre-existing `test_mcp_server_e2e.py` the same way (confirmed by running
+  it), so this is not a regression this feature introduced. Per CLAUDE.md, config files are not
+  edited mid-run to unblock a test - surfaced to the user instead of silently patched. The test
+  code itself follows `test_mcp_server_e2e.py`'s exact established real-server pattern and
+  should pass once that config gap is fixed locally.
+- [x] T025b [US4] Wired tenant-resolved credentials into `create_server`'s tool closures via a
+  `_current_client()` resolver (checked on every call, per research.md §5's per-call rule, never
+  cached at server-construction time) - not `_call_with_error_boundary` itself (which stays
+  generic across every tool and doesn't know about Morning credentials at all); `_current_client`
+  is what each of the 11 tool wrappers now calls instead of a single closed-over `morning_client`.
 - [ ] T025c 👤 **DEFERRED, blocked pending a real second Morning sandbox/account**: re-run
   T025a's scenario with two genuinely distinct Morning accounts, confirming real cross-account
   isolation (not just credential-threading correctness). Logged as an explicit, known coverage
@@ -415,7 +458,11 @@ selected per tenant; the shared morning-mcp-app server distinguishes tenants by 
   invoicing-provider implementation (e.g. "ypay") would require, and confirm it's registration +
   a tenant config reference only, with zero `AIHandler`/`denidin.py` dispatch-code changes. Not
   an automated test (there's no second real implementation to test against yet) — a documented
-  design-review confirmation at this gate, recorded in the approval note.
+  design-review confirmation at this gate, recorded in the approval note. **Left undone in this
+  session** — a manual approval gate needing the user, same as T017/T020a; not attempted. (Note:
+  the automated `test_capability_degraded_start.py` above already exercises the "still starts
+  and serves messaging" half in code; this gate's remaining, distinct value is the live
+  operator-facing walkthrough plus the REQ-CAP-003 design-review confirmation.)
 - [ ] T026b 👤 **DEFERRED — MANUAL APPROVAL GATE, blocked pending a real second tenant**: a
   real two-tenant Morning MCP call confirming correct credential/audit attribution across two
   genuinely distinct live tenants.

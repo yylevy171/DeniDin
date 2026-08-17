@@ -25,6 +25,7 @@ from typing import Any, Dict, Optional
 
 from .utils.correlation import current_correlation_id
 from .utils.logger import get_logger
+from .utils.tenant_context import current_tenant_id
 
 logger = get_logger(__name__)
 
@@ -60,8 +61,9 @@ def log_mutation(
         client_name: the client name as resolved/normalized, when known.
     """
     logger.info(
-        "[corr_id=%s] AUDIT %s OK client_id=%s client_name=%r document=%r payload=%r response=%r",
+        "[corr_id=%s] [tenant=%s] AUDIT %s OK client_id=%s client_name=%r document=%r payload=%r response=%r",
         current_correlation_id(),
+        current_tenant_id(),
         tool,
         client_id,
         client_name,
@@ -84,8 +86,9 @@ def log_refusal(tool: str, reason: str, **context: Any) -> None:
     create.
     """
     logger.warning(
-        "[corr_id=%s] AUDIT %s REFUSED reason=%s context=%r",
+        "[corr_id=%s] [tenant=%s] AUDIT %s REFUSED reason=%s context=%r",
         current_correlation_id(),
+        current_tenant_id(),
         tool,
         reason,
         context,
