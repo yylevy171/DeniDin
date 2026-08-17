@@ -132,7 +132,7 @@ MODIFY_REMINDER_TOOL: Dict[str, Any] = {
                 "description": "ISO-8601 local date/datetime identifying WHICH occurrence (matched against the plain rule's own generated dates), required iff scope=single_occurrence.",
             },
             "new_message_text": {"type": ["string", "null"]},
-            "new_due_at": {"type": ["string", "null"], "description": "Only meaningful for scope=single_occurrence; must be in the future after rounding."},
+            "new_due_at": {"type": ["string", "null"], "description": "Meaningful for scope=single_occurrence, or for scope=whole_series when the target reminder is one-time (no recurrence to replace - this is how a one-time reminder's only occurrence gets rescheduled); must be in the future after rounding."},
             "new_recurrence": {"type": ["object", "null"], "description": "Only meaningful for scope=whole_series; same shape as create_reminder's recurrence."},
         },
         "required": [

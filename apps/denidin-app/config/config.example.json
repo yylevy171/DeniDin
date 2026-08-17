@@ -38,6 +38,9 @@
     "morning_server_label": "morning-invoices",
     "url_max_age_seconds": 0
   },
+  "reminders": {
+    "max_active_reminders": 20
+  },
   "user_roles": {
     "godfather": {
       "max_tokens": 100000,

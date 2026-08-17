@@ -18,7 +18,13 @@ master's `UID`, keyed by a real `RECURRENCE-ID` — the same mechanism every rea
 (Google/Outlook/Apple Calendar) uses for "edit just this occurrence." This is deliberately not
 reinvented: `icalendar` (RFC5545 (de)serialization) and `recurring_ical_events` (built on
 `icalendar`, computes concrete due occurrences for a time window, correctly resolving
-`RECURRENCE-ID` overrides and `STATUS=CANCELLED` exceptions) are new dependencies added for this.
+`RECURRENCE-ID` reschedule overrides — a rescheduled occurrence's new `DTSTART`/`SUMMARY` come
+back exactly right, live-verified 2026-08-16) are new dependencies added for this. **Correction to
+an earlier draft of this document** (live-verified 2026-08-16, not just read from docs): the
+library does **not** suppress a `STATUS=CANCELLED` override from its results — it returns the
+occurrence anyway, tagged `STATUS=CANCELLED`, and the caller must filter it out. `ReminderManager`
+does this filtering itself (see Sweep resolution logic below) — "nothing hand-rolled" applies to
+the RRULE-expansion/RECURRENCE-ID-matching math, not to cancellation filtering, which is ours.
 A stored reminder could in principle be exported/imported as a real `.ics` file, though no such
 feature is being built now.
 
@@ -68,6 +74,19 @@ that has genuinely already happened, never pre-computed for the future. This is 
 `FR-009`'s "each occurrence individually trackable" requirement possible without needing to
 materialize an unbounded future.
 
+## `ReminderManager.resolve_schedule` — validate-only preview (added during implementation)
+
+`create_reminder`'s validation/rounding logic (schema shape checks, RRULE construction, the
+5-minute rounding, the past-date check) is factored into a `@staticmethod resolve_schedule
+(schedule_type, one_time_due_at, recurrence) -> (rrule_str_or_None, rounded_dtstart)`, which
+`create_reminder` itself calls before checking the cap and inserting. This exists so `AIHandler`
+can call the identical validation at PROPOSAL time (before the approval gate) — without it, the
+approval summary shown to the user (`_build_reminder_approval_details`) would have no way to show
+the correctly-rounded time, since rounding only happened inside `create_reminder`'s insert path.
+`resolve_schedule` never checks the cap and never persists — `create_reminder` calls it fresh
+again at actual persist time too (not cached), which is what closes the TOCTOU gap described in
+`contracts/local-tool-approval-gate.md`.
+
 ## Sweep resolution logic (unified for one-time and recurring — no special-casing)
 
 Each 5-minute sweep tick (triggered by APScheduler's `CronTrigger(minute='*/5')`, see
@@ -77,13 +96,17 @@ Each 5-minute sweep tick (triggered by APScheduler's `CronTrigger(minute='*/5')`
    `SUMMARY` from the `reminders` row) plus one override VEVENT per matching `reminder_exceptions`
    row (`UID` shared, `RECURRENCE-ID`, `DTSTART`/`SUMMARY` if overridden, `STATUS`).
 2. Call `recurring_ical_events.of(cal).between(window_start, window_end)` for the current sweep
-   window — the library resolves `RRULE` expansion, `RECURRENCE-ID` overrides, and
-   `STATUS=CANCELLED` suppression internally; nothing about that resolution is hand-rolled.
+   window — the library resolves `RRULE` expansion and `RECURRENCE-ID` reschedule overrides.
+   **It does NOT suppress `STATUS=CANCELLED` occurrences** (live-verified 2026-08-16, contradicting
+   an earlier draft of this document) — it returns them anyway, tagged `STATUS=CANCELLED` on the
+   returned component. `ReminderManager` MUST filter these out itself before treating anything as
+   due.
 3. A one-time reminder (`rrule IS NULL`) is just a VEVENT with no `RRULE` — the same library call
    handles it identically (a single-instance calendar event), so there is exactly one code path
    for both reminder types, not two.
-4. For whatever concrete occurrence(s) the library returns as due in this window: deliver (see
-   `contracts/reminder-delivery.md`), then insert a `fired_occurrences` row. No cached
+4. For whatever concrete occurrence(s) the library returns as due in this window, after filtering
+   out any `STATUS=CANCELLED` ones: deliver (see `contracts/reminder-delivery.md`), then insert a
+   `fired_occurrences` row. No cached
    "next due" pointer is maintained on the `reminders` table — recomputed fresh every tick,
    trading a small amount of per-tick CPU (negligible at this app's scale — a cap of 20 reminders
    total) for never letting a cache drift out of sync with the exceptions table.

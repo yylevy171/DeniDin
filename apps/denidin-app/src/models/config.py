@@ -43,6 +43,9 @@ class AppConfiguration:
     # Morning MCP integration (Feature 018)
     mcp: Dict = field(default_factory=dict)
 
+    # Reminders (Feature 054) - no feature flag, RBAC (GODFATHER/ADMIN) is the only gate
+    reminders: Dict = field(default_factory=dict)
+
     @classmethod
     def from_file(cls, file_path: str) -> 'AppConfiguration':
         """
@@ -96,7 +99,8 @@ class AppConfiguration:
             'memory': {},
             'constitution_config': {},
             'user_roles': {},
-            'mcp': {}
+            'mcp': {},
+            'reminders': {}
         }
 
         # Merge with defaults
@@ -160,6 +164,15 @@ class AppConfiguration:
                 if key not in config_data['mcp']:
                     config_data['mcp'][key] = value
 
+        # Set reminders sub-field defaults (Feature 054)
+        if 'reminders' in config_data and config_data['reminders']:
+            reminders_defaults = {
+                'max_active_reminders': 20
+            }
+            for key, value in reminders_defaults.items():
+                if key not in config_data['reminders']:
+                    config_data['reminders'][key] = value
+
         # Filter out unknown keys (backward compatibility for removed config fields)
         valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
         filtered_config = {k: v for k, v in config_data.items() if k in valid_fields}
@@ -196,3 +209,11 @@ class AppConfiguration:
             max_age = self.mcp.get('url_max_age_seconds', 0)
             if not isinstance(max_age, (int, float)) or max_age < 0:
                 raise ValueError(f"mcp.url_max_age_seconds must be a non-negative number, got {max_age!r}")
+
+        # Validate reminders.max_active_reminders is a positive integer, if configured
+        if self.reminders:
+            max_active = self.reminders.get('max_active_reminders', 20)
+            if not isinstance(max_active, int) or isinstance(max_active, bool) or max_active < 1:
+                raise ValueError(
+                    f"reminders.max_active_reminders must be a positive integer, got {max_active!r}"
+                )

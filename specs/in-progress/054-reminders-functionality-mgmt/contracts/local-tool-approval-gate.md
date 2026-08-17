@@ -9,19 +9,31 @@
 
 **Deliberately NOT added to `pending_approval_manager.py`** — CONSTITUTION's test-immutability
 rule protects Feature 047's existing approval-gate tests, and `PendingApproval` is structurally
-tied to OpenAI's MCP-specific `mcp_approval_request`/`mcp_approval_response` mechanism
-(`response_id`/`approval_request_id`), which is meaningless for a local `function_call` (there is
-no server-side pending state on OpenAI's side to resolve against — the call's arguments are
-already fully known from `response.output`).
+tied to OpenAI's MCP-specific `mcp_approval_request`/`mcp_approval_response` mechanism, which is
+meaningless for a local `function_call` in the sense that matters for the ACTION itself: there is
+no server-side pending state on OpenAI's side to resolve against for approve/decline, since the
+call's arguments are already fully known from `response.output`.
 
 ```python
 @dataclass
 class PendingLocalToolApproval:
-    tool_name: str          # "create_reminder" | "modify_reminder" | "delete_reminder"
-    arguments: dict          # already json.loads'd - NOT a JSON string (unlike PendingApproval.arguments)
-    created_at: str          # local_isoformat(), diagnostics only, no expiry (same as PendingApproval)
+    tool_name: str           # "create_reminder" | "modify_reminder" | "delete_reminder"
+    response_id: str = ""    # the id of the Responses API call that produced this function_call
+    call_id: str = ""        # that function_call item's own call_id
+    arguments: dict = field(default_factory=dict)  # already json.loads'd - NOT a JSON string (unlike PendingApproval.arguments)
+    created_at: str = ""     # local_isoformat(), diagnostics only, no expiry (same as PendingApproval)
     sent_message_id: Optional[str] = None   # button-tap staleness binding, same mechanism as Feature 047
 ```
+
+**Correction to the original draft of this contract** (caught while implementing, 2026-08-16): an
+earlier version of this dataclass dropped `response_id`/`call_id` entirely, reasoning the approved
+ACTION doesn't need them (true — it dispatches straight to `ReminderManager`, no
+`mcp_approval_response`-style round-trip). What that reasoning missed: the **confirmation**
+follow-up call (§3 below, letting the model phrase a natural reply once the action succeeds) still
+needs to chain via `previous_response_id`/reference the original `call_id` for its
+`function_call_output` — and by the time the user replies "כן" on a LATER WhatsApp turn, the
+original `response` object from the proposal turn is long out of scope. Only what's stored on
+`PendingLocalToolApproval` survives across turns, so both fields are required after all.
 
 `PendingLocalToolApprovalManager`: in-memory `Dict[str, PendingLocalToolApproval]` keyed by
 `chat_id`, same shape as `PendingApprovalManager` — `get(chat_id)`, `set(chat_id, approval)`,

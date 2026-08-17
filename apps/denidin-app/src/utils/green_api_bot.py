@@ -69,6 +69,50 @@ def mark_message_read(bot: Any, body: dict, is_blocked: bool) -> None:
         )
 
 
+def send_proactive_message(bot: Any, chat_id: str, message: str) -> Optional[str]:
+    """Feature 054 (reminders): send an unprompted WhatsApp message - NOT a reply
+    to any incoming notification, unlike every other send in this codebase
+    (WhatsAppHandler.send_response always answers a real Notification). Called
+    from the reminder delivery sweep, a background thread with no Notification
+    object to answer through.
+
+    Calls straight through to bot.api.sending.sendMessage(chatId, message) on
+    the shared module-level `bot` object (never construct a second GreenAPIBot -
+    its constructor drains pending notifications as a side effect, must only
+    ever happen once for the one real bot instance, per denidin.py's existing
+    documented constraint).
+
+    Returns the sent idMessage on success, None on failure - logged, never
+    raises, same best-effort-response-checking convention as
+    WhatsAppHandler._send_approval_buttons (the library's raise_errors default
+    is False, so a failed send returns a Response rather than raising).
+
+    No lock around this call, by explicit user decision (2026-08-16) -
+    bot.api.session (a plain requests.Session) is shared with the existing
+    polling loop's own concurrent HTTP calls, not a proven-thread-safe pattern,
+    but an accepted, unmitigated residual risk (low probability, low impact if
+    it manifests - an occasional HTTP hiccup, not data corruption). See
+    specs/in-progress/054-reminders-functionality-mgmt/research.md's Gate Zero
+    for the live verification this call still needs before being trusted.
+    """
+    try:
+        response = bot.api.sending.sendMessage(chat_id, message)
+    except Exception as error:  # pylint: disable=broad-except
+        logger.error(f"Failed to send proactive message (chatId={chat_id}): {error}", exc_info=True)
+        return None
+
+    if response is None or getattr(response, "code", None) != 200 or not isinstance(response.data, dict):
+        logger.error(
+            f"Proactive message send did not succeed (chatId={chat_id}): "
+            f"code={getattr(response, 'code', None)!r}, data={getattr(response, 'data', None)!r}"
+        )
+        return None
+
+    id_message = response.data.get("idMessage")
+    logger.info(f"Sent proactive message (chatId={chat_id}, idMessage={id_message})")
+    return id_message
+
+
 def send_typing_indicator(bot: Any, chat_id: str, is_blocked: bool) -> None:
     """Feature 048 (reverted to single-call design 2026-08-13): best-effort typing
     indicator, fired at the start of DeniDin's turn for every non-blocked sender. Single

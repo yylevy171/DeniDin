@@ -24,6 +24,11 @@ PyYAML>=6.0
 # Retry logic for API calls
 tenacity>=8.0.0
 
+# Reminders (Feature 054): RFC5545 recurrence + wall-clock-aligned scheduling
+icalendar>=6.1.0
+recurring-ical-events>=3.4.0
+APScheduler>=3.10.0
+
 # Testing
 pytest>=7.0.0
 pytest-cov>=4.0.0
@@ -34,3 +39,4 @@ mypy>=1.0.0
 pylint>=3.0.0
 types-requests>=2.31.0
 types-PyYAML>=6.0.0
+types-icalendar>=6.3.2

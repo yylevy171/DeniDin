@@ -32,6 +32,9 @@ from src.managers.session_manager import SessionManager
 from src.managers.memory_manager import MemoryManager
 from src.managers.group_membership_resolver import GroupMembershipResolver
 from src.services.cleanup_service import SessionCleanupThread, run_startup_cleanup
+from src.services.reminder_delivery_service import (
+    run_startup_reminder_sweep, start_reminder_scheduler,
+)
 
 # Configuration
 CONFIG_PATH = 'config/config.json'
@@ -142,7 +145,7 @@ class DeniDin:
     Also serves as global context for background threads (e.g., session cleanup).
     """
     def __init__(self, ai_handler, config, whatsapp_handler, cleanup_thread=None,
-                 group_membership_resolver=None):
+                 group_membership_resolver=None, reminder_scheduler=None):
         self.ai_handler = ai_handler
         self.config = config
         self.whatsapp_handler = whatsapp_handler
@@ -152,6 +155,10 @@ class DeniDin:
         self.memory_manager = ai_handler.memory_manager if ai_handler.memory_enabled else None
         # Feature 039: most-permissive-role RBAC resolution for group turns
         self.group_membership_resolver = group_membership_resolver
+        # Feature 054: the single shared APScheduler instance driving the
+        # reminder delivery sweep - None until initialize_app() sets it (no
+        # feature flag, always started - see reminder_delivery_service.py).
+        self.reminder_scheduler = reminder_scheduler
         self._logger = get_logger(__name__)
     
     def handle_message(self, chat_id: str, content: str) -> dict:
@@ -255,6 +262,10 @@ class DeniDin:
             self._logger.info("Stopping session cleanup thread...")
             self.cleanup_thread.stop()
             self._logger.info("Cleanup thread stopped")
+        if self.reminder_scheduler is not None:
+            self._logger.info("Stopping reminder delivery scheduler...")
+            self.reminder_scheduler.shutdown(wait=False)
+            self._logger.info("Reminder delivery scheduler stopped")
         if self.memory_manager is not None:
             self._logger.info("Closing ChromaDB client...")
             self.memory_manager.client.close()
@@ -342,9 +353,25 @@ def initialize_app(config_dict: dict) -> DeniDin:
         
         cleanup_thread = SessionCleanupThread(denidin, cleanup_interval)
         cleanup_thread.start()
-        
+
         # Update denidin with cleanup thread reference
         denidin.cleanup_thread = cleanup_thread
+
+    # Feature 054: reminder delivery scheduler is deliberately NOT started here.
+    # initialize_app() is the shared bootstrap tests/integration/ calls directly
+    # (a process-global denidin_app singleton, reused across test files) -
+    # starting a real APScheduler against the real `bot` object here would let
+    # an ordinary test run reach bot.api.sending.sendMessage unattended, using
+    # config.test.json's real (not sandboxed) Green API credentials. Every
+    # OTHER real bot.api call in this codebase (mark_message_read,
+    # send_typing_indicator) is safe in tests only because its trigger point
+    # (bot.on_notification_received, fired from run_forever()'s live polling
+    # loop) is never reached by any test - they dispatch straight to router
+    # handler functions instead. The reminder scheduler follows that same
+    # discipline: wired in __main__ below, alongside bot.run_forever() itself,
+    # never inside this shared bootstrap. See tasks.md T013's note (2026-08-17)
+    # for the incident this design avoided (caught before any real send
+    # happened - test_data/reminders/reminders.db had zero rows at the time).
 
     # Feature 045: mark every non-blocked sender's incoming message as read, as early as
     # possible (before route_event dispatches to any handler) - see
@@ -769,14 +796,23 @@ if __name__ == "__main__":
         'memory': config.memory,
         'constitution_config': config.constitution_config,
         'user_roles': config.user_roles,
-        'mcp': config.mcp
+        'mcp': config.mcp,
+        'reminders': config.reminders
     }
-    
+
     # Initialize app (handles memory system, cleanup thread, recovery)
     denidin = initialize_app(config_dict)
-    
+
     # Set global denidin_app for WhatsApp message handler
     denidin_app = denidin
+
+    # Feature 054: reminder delivery scheduler - deliberately started HERE, not
+    # inside initialize_app() (see that function's comment for why: this is the
+    # real, live-running app, gated the same way bot.run_forever() below is -
+    # never reachable from initialize_app()'s test-harness callers). No feature
+    # flag - unconditional, RBAC alone gates reminder *creation*.
+    run_startup_reminder_sweep(denidin, bot)
+    denidin.reminder_scheduler = start_reminder_scheduler(denidin, bot)
     
     # Perform orphaned session recovery if memory enabled
     if denidin.ai_handler.memory_enabled:
@@ -808,7 +844,13 @@ if __name__ == "__main__":
             if denidin.ai_handler.memory_enabled and denidin.cleanup_thread:
                 logger.info("Stopping session cleanup thread...")
                 denidin.cleanup_thread.stop()
-            
+
+            # Feature 054: stop the reminder delivery scheduler (unconditional -
+            # no feature flag, always started in initialize_app())
+            if denidin.reminder_scheduler is not None:
+                logger.info("Stopping reminder delivery scheduler...")
+                denidin.reminder_scheduler.shutdown(wait=False)
+
             # Raise KeyboardInterrupt to break out of bot.run_forever()
             raise KeyboardInterrupt()
 
@@ -837,6 +879,11 @@ if __name__ == "__main__":
             if denidin.ai_handler.memory_enabled and denidin.cleanup_thread:
                 logger.info("Stopping session cleanup thread...")
                 denidin.cleanup_thread.stop()
+
+            # Feature 054: stop the reminder delivery scheduler if not already stopped
+            if denidin.reminder_scheduler is not None:
+                logger.info("Stopping reminder delivery scheduler...")
+                denidin.reminder_scheduler.shutdown(wait=False)
     except Exception as e:
         # Catch any unexpected error to prevent crash
         logger.critical(

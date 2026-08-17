@@ -58,32 +58,53 @@ with the captured raw request/response once that test has actually run, followin
 entries — this file is intentionally left with this section still open as a visible checklist for
 whoever runs that test.
 
-## ✅ `icalendar`/`recurring_ical_events` — timezone-awareness preservation (non-live, pure-library sanity check)
+## ✅ `icalendar`/`recurring_ical_events` — CLOSED 2026-08-16 (non-live, pure-library sanity check)
 
-**Status**: design confirmed 2026-08-16 to use real iCalendar (RFC5545) data — `icalendar` for
-VEVENT (de)serialization and `recurring_ical_events` for resolving concrete due occurrences
-(RRULE expansion + RECURRENCE-ID overrides + STATUS=CANCELLED suppression), superseding an
-earlier design draft that called `dateutil.rrule` directly. Both are pure computation libraries,
-not third-party *services* DeniDin integrates with at runtime, so neither is itself subject to
-the "must be a live call" Gate Zero rule the way Green API/OpenAI/Morning are. Still recorded here
-because this codebase has a hard, mandatory, previously-violated-once (bugfix-037's predecessor
-issues) rule that every datetime everywhere is aware Asia/Jerusalem, never naive, never UTC — so
-any new date-handling dependency's behavior on this specific point is worth a recorded, deliberate
-check rather than an assumed one. (`dateutil.rrule`'s own tz-preservation behavior, checked prior
-to this design revision, still applies transitively — both `icalendar` and `recurring_ical_events`
-are built on `dateutil` internally — but is no longer this feature's own direct dependency.)
+**Status**: CLOSED. Both items below verified via a real snippet against the installed
+`icalendar` 6.3.2 / `recurring-ical-events` 3.8.2, before `ReminderManager`'s resolution code was
+written — not a live third-party-service call (neither library is a service DeniDin integrates
+with at runtime), but recorded with the same discipline given this codebase's hard mandatory
+Israel-local-time rule.
 
-**Still to verify (cheap, non-live — before `ReminderManager`'s sweep-resolution code is written,
-not blocking on Gate Zero R1)**:
-1. That an `icalendar.Calendar`/`vDDDTypes` round-trip preserves an aware `Asia/Jerusalem`
-   `DTSTART` (both winter `+02:00` and summer `+03:00` offsets, since Israel observes DST) without
-   silently normalizing to UTC or dropping tzinfo — `icalendar` is known to support `VTIMEZONE`
-   but the exact behavior when constructing VEVENTs programmatically (not parsed from a `.ics`
-   file with an explicit `VTIMEZONE` block) needs a real snippet, not an assumption from docs.
-2. That `recurring_ical_events.of(cal).between(window_start, window_end)` efficiently handles a
-   `never`-ending RRULE queried against a narrow future window (e.g. the next 5 minutes) — i.e.
-   that it does not internally enumerate the whole recurrence history from `DTSTART` forward every
-   call, which would degrade over a long-lived `never`-ending reminder's lifetime. Both of these
-   are ordinary `tests/unit/` coverage once written (constructing a calendar, asserting `.tzinfo`
-   and timing behavior), not a live third-party call — just flagged here before the sweep code is
-   written so nothing gets built on an unverified read of either library's documentation.
+1. **Tz-awareness preserved**: constructing a VEVENT programmatically with an aware
+   `Asia/Jerusalem` `DTSTART` and calling `recurring_ical_events.of(cal).between(...)` returns
+   occurrences whose `DTSTART.dt.tzinfo` is `Asia/Jerusalem` — confirmed, no silent UTC
+   normalization, no naive datetimes anywhere in the round-trip.
+2. **Narrow-window query is efficient for `never`-ending RRULEs**: a `FREQ=DAILY` rule with
+   `DTSTART` over 6 years in the past, queried for a 5-minute window near "now," resolved in
+   ~10ms — confirmed it does not enumerate the full history.
+3. **🚨 CORRECTION to the original design (data-model.md/contracts/reminder-delivery.md
+   updated)**: `recurring_ical_events` does **NOT** suppress a `STATUS=CANCELLED` override VEVENT
+   from its results. It returns the occurrence anyway, with `STATUS=CANCELLED` set on the returned
+   component — the original design text ("the library... correctly resolving... STATUS=CANCELLED
+   suppression internally") was wrong, an assumption read from the library's stated purpose rather
+   than verified. `ReminderManager.get_due_occurrences` filters these out itself (one `if
+   occ.get('STATUS') == 'CANCELLED': continue` per occurrence) — this is exactly the kind of
+   mistake CONSTITUTION's NO UNVERIFIED THIRD-PARTY ASSUMPTIONS rule exists to catch, caught here
+   before any dependent code shipped on the wrong assumption, not after.
+4. **RECURRENCE-ID reschedule overrides confirmed working correctly**: an override VEVENT with a
+   new `DTSTART`/`SUMMARY` correctly replaces the plain rule's occurrence for that date in the
+   returned results.
+5. **🚨 Second correction, found while writing `ReminderManager`'s tests (not anticipated by this
+   section's original scope, surfaced by a real duplicate-delivery test failure)**:
+   `recurring_ical_events` returns the recurring series' **anchor occurrence (the one at `DTSTART`
+   itself) twice** — once with microseconds intact, once truncated to whole seconds — whenever
+   `DTSTART` carries microsecond precision. Confirmed via a minimal repro (`FREQ=DAILY`, `DTSTART`
+   = `now - 1 minute` with real microseconds): `between()` returned 2 occurrences for what should
+   be 1, differing only in `.microsecond`. **Fix applied**: `ReminderManager.round_to_five_minutes`
+   now explicitly `.replace(microsecond=0)`s its result (previously relied on the epoch-arithmetic
+   happening to land on a clean value, which usually but not provably always holds under
+   floating-point rounding), and `_reconstruct_calendar` independently strips microseconds at the
+   read boundary too (`_parse_local_no_micros`) as defense-in-depth, so even a
+   microsecond-bearing value that somehow reached storage some other way can't trigger this. Both
+   fixes are covered by dedicated regression tests
+   (`test_always_strips_microseconds`, `test_microsecond_bearing_dtstart_does_not_duplicate_occurrence`
+   in `tests/unit/test_reminder_manager.py`). This is the second real library-behavior correction
+   this feature's own testing caught before it could ship as a bug (the first being item 3 above) —
+   worth noting as validation that writing the tests *before* trusting the design paid for itself
+   twice over, not just once.
+
+Verification script (run 2026-08-16, output captured, not reproduced verbatim here — see git
+history/session log for the exact commands): built a weekly `FREQ=WEEKLY;BYDAY=MO,TH` calendar,
+queried a window covering both a plain and a rescheduled occurrence, then a second calendar with a
+`STATUS=CANCELLED` override, confirming all four findings above.

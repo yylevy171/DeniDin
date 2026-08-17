@@ -31,18 +31,31 @@ times at creation (see `data-model.md`), so a reminder is guaranteed to become d
 sweep tick, never between two ticks.
 
 **`run_startup_reminder_sweep(global_context, bot)` (module-level function) MUST** run
-synchronously on the main thread during `initialize_app()`, **before** `scheduler.start()` —
-mirrors `run_startup_cleanup()`'s precedent (`services/cleanup_service.py`) for catching anything
-that became due while the process wasn't running (container restart). Calls the exact same
-`_sweep_due_reminders` the periodic job calls — one shared implementation, two call sites.
+synchronously on the main thread **before** `scheduler.start()` — mirrors `run_startup_cleanup()`'s
+precedent (`services/cleanup_service.py`) for catching anything that became due while the process
+wasn't running (container restart). Calls the exact same `_sweep_due_reminders` the periodic job
+calls — one shared implementation, two call sites.
 
-**`denidin.py` MUST** construct and start this scheduler unconditionally in `initialize_app()`
-(no feature flag — RBAC alone gates reminder *creation*, but the delivery mechanism itself has no
-reason to be conditional beyond "does at least one active reminder exist," which the sweep query
-itself already handles as a no-op when the answer is no), store it as
-`denidin.reminder_scheduler`, and call `.shutdown()` on it in both the SIGINT/SIGTERM handler and
-the `__main__` `KeyboardInterrupt` block, alongside the existing `denidin.cleanup_thread.stop()`
-calls.
+**`denidin.py` MUST** construct and start this scheduler unconditionally (no feature flag — RBAC
+alone gates reminder *creation*, but the delivery mechanism itself has no reason to be conditional
+beyond "does at least one active reminder exist," which the sweep query itself already handles as
+a no-op when the answer is no), store it as `denidin.reminder_scheduler`, and call `.shutdown()`
+on it in both the SIGINT/SIGTERM handler and the `__main__` `KeyboardInterrupt` block, alongside
+the existing `denidin.cleanup_thread.stop()` calls.
+
+**🚨 Correction, caught during implementation (2026-08-17)**: this wiring is deliberately placed in
+the `if __name__ == "__main__":` block, **NOT** inside `initialize_app()` as an earlier draft of
+this contract said. `initialize_app()` is the shared bootstrap `tests/integration/` calls directly
+(a process-global `denidin_app` singleton reused across test files) — starting a real
+`BackgroundScheduler` against the real `bot` object there would let an ordinary test run reach
+`bot.api.sending.sendMessage` unattended, using `config.test.json`'s real (not sandboxed) Green
+API credentials. No actual harm occurred (verified: `test_data/reminders/reminders.db` had zero
+rows at the time this was caught), but the structural risk was real. Every other genuine
+`bot.api` call in this codebase (`mark_message_read`, `send_typing_indicator`) is safe in tests
+only because its trigger point (`bot.on_notification_received`, fired from `run_forever()`'s live
+polling loop) is never reached by any test — they dispatch straight to router handler functions
+instead. The reminder scheduler now follows that same discipline: started alongside
+`bot.run_forever()` itself in `__main__`, never inside the shared test-reachable bootstrap.
 
 ---
 
@@ -56,9 +69,11 @@ For every `reminders` row with `status = 'active'`:
    `STATUS`).
 2. Call `recurring_ical_events.of(cal).between(window_start, window_end)` for the current 5-minute
    sweep window (`window_start` = this tick's wall-clock time, `window_end` = 5 minutes later) —
-   this single call resolves RRULE expansion, RECURRENCE-ID overrides, and STATUS=CANCELLED
-   suppression; nothing about that resolution is hand-written (see `data-model.md`).
-3. For each concrete occurrence returned as due:
+   this resolves RRULE expansion and RECURRENCE-ID reschedule overrides; nothing about that math
+   is hand-written (see `data-model.md`). It does **not** suppress `STATUS=CANCELLED` occurrences
+   (live-verified 2026-08-16) — `ReminderManager` filters those out itself, one `if` check per
+   returned occurrence, before anything is treated as due.
+3. For each concrete non-cancelled occurrence returned as due:
    a. `message_text = occurrence's SUMMARY` (already resolved to the override text if this
       occurrence came from a `reminder_exceptions` row, else the master's `message_text`).
    b. `id_message = send_proactive_message(bot, godfather_chat_id, message_text)` — see below.
