@@ -68,7 +68,7 @@ confirming with the user. This was a deliberate scope boundary, not an oversight
 |---|---|---|
 | **1. Setup** | ✅ done | T001 (branch confirm), T002 (spike — see `research.md` §7) |
 | **2. Foundational** | ✅ done | `src/models/tenant.py` (Tenant dataclass — identity/credentials part), `src/managers/tenant_manager.py` (loads/joins `tenants.json` + `config.<env>.json`'s `tenant_credentials`) |
-| **3. US1 (tenant isolation)** | 🟡 partial | Done: T009 (`TenantAIHandlerFactory`), T006-T008 (Tenant runtime — `Tenant.start()` + 9 handler bound methods, in the same `tenant.py` file, extended after Phase 2), T013a/b (`scripts/migrate_to_tenant.py` + 8 tests). **Not done: T014a (cross-tenant isolation integration test)**. |
+| **3. US1 (tenant isolation)** | ✅ done | T009 (`TenantAIHandlerFactory`), T006-T008 (Tenant runtime), T013a/b (`scripts/migrate_to_tenant.py` + 8 tests), T014a (`tests/integration/test_tenant_isolation.py`, 4 tests — real `route_event` dispatch through two synthetic tenants, proves SC-002). T014b remains deferred (blocked pending a real second tenant, not required for completeness). |
 | **4-8** | ❌ not started | Multi-godfather, super-admin, capability abstraction, per-tenant constitution, logging/cleanup/cache-audit polish |
 
 Test files that exist: `test_tenant.py`, `test_tenant_manager.py`, `test_tenant_ai_handler_factory.py`,
@@ -76,13 +76,18 @@ Test files that exist: `test_tenant.py`, `test_tenant_manager.py`, `test_tenant_
 
 ## Immediate next step
 
-T013a/b are done (`scripts/migrate_to_tenant.py` implemented, 8 tests passing, 850/850 full
-unit suite green, `tasks.md` updated and committed). **Next up: T014a** — the synthetic-second-
-tenant integration test proving isolation end-to-end (a fabricated second tenant config,
-mocked-HTTP-boundary convention, no real second Green API/Morning account needed — this is the
-actual acceptance test for SC-002 under this feature's current scope). Then Phase 4 (T015:
-multi-godfather — add `godfather_phones` to `UserManager`, additive, backward-compatible)
-onward, in the order `tasks.md` lays out.
+Phase 3 (User Story 1) is now fully complete — T013a/b and T014a all done and committed
+(`scripts/migrate_to_tenant.py`, `tests/integration/test_tenant_isolation.py`; 850/850 unit,
+33/33 integration, zero regressions). T014b stays deferred (blocked pending a real second
+tenant, not required for completeness).
+
+**Next up: Phase 4 (T015-T017), multi-godfather support** — add `godfather_phones: Optional[
+List[str]]` to `UserManager.__init__` (additive, backward-compatible — keep the existing
+singular `godfather_phone` working unchanged for anyone still passing it), then update
+`TenantAIHandlerFactory._build_tenant_config` to pass the tenant's full `godfathers` list
+instead of today's `godfathers[0]`-only wiring. Then Phase 5 (super-admin), Phase 6 (capability
+abstraction), Phase 7 (per-tenant constitution), Phase 8 (logging/cleanup/cache polish), in the
+order `tasks.md` lays out.
 
 ## Rules to not forget (violating any of these was explicitly corrected by the user this session)
 

@@ -205,13 +205,28 @@ Subsumed into T009 above — no separate task.
   `--data-root`/`--tenant-id`/`--dry-run`, matching `migrate_stray_ledger_events.py`'s existing
   shape. Full unit suite: 850 passed (up from 842), zero regressions.
 
-- [ ] T014a [US1] **Now (synthetic second tenant)**: integration test suite proves isolation
-  end to end — a synthetic second tenant config (fabricated `green_api`/`morning` values, real
-  distinct OpenAI key or a second key on the same account) exercises messaging tagging, session/
-  memory/ledger partitioning, and credential selection, using this repo's existing
-  mocked-HTTP-boundary test convention (no real second Green API/Morning account needed — see
-  2026-08-17 scope note in Clarifications). This is the actual acceptance test for SC-002 as
-  scoped by this feature.
+- [x] T014a [US1] **Now (synthetic second tenant)**: integration test suite proves isolation
+  end to end, `apps/denidin-app/tests/integration/test_tenant_isolation.py` (4 tests) — two
+  synthetic tenants (fabricated `green_api` values, distinct OpenAI api_key strings, no real
+  second Green API/Morning/OpenAI account — see 2026-08-17 scope note in Clarifications),
+  dispatched via the real production entry point (`tenant.bot.router.route_event(webhook_dict)`
+  — real `Router`/`Observer`/`Handler` dispatch chain, not a direct method call, per
+  CONSTITUTION SS V's "real entry point" integration-test rule). Only the two genuine external
+  network boundaries are stood in for (Green API's HTTP client via the same real-Router/
+  fake-API-client `_FakeBot` pattern `test_tenant_runtime.py` established; OpenAI's
+  `client.responses.create`, stubbed per this repo's existing `_mock_response`-shaped fixture
+  convention) — SessionManager, UserManager/RBAC, LedgerEventManager, WhatsAppHandler are all
+  real, unmodified. Proves: a message to tenant A is answered only via tenant A's own bot and
+  never invokes tenant B's OpenAI client; Tier-1 session data lands only under the receiving
+  tenant's own `data_root` (the other tenant's dir exists — eagerly created at construction,
+  not a signal — but stays empty); two tenants receiving messages independently never cross-
+  contaminate; ledger events written via one tenant's `LedgerEventManager` land only under that
+  tenant's own `events/` dir. This is the actual acceptance test for SC-002 as scoped by this
+  feature. Long-term (ChromaDB) memory disabled per tenant in the test config, so no real
+  OpenAI network call of any kind occurs — honors this session's "billed/expensive untouched"
+  constraint by construction, not just by omission. Full unit suite still 850 passed (test
+  lives under `tests/integration/`, so the unit count is unaffected); integration suite run in
+  full for regressions.
 - [ ] T014b [US1] 👤 **DEFERRED — MANUAL APPROVAL GATE, blocked pending a real second tenant**:
   `quickstart.md` "Verifying tenant isolation" with two *real*, live WhatsApp numbers. Not
   required to consider US1/this feature complete — exercised whenever a real second client's
