@@ -118,27 +118,38 @@ OpenAI/memory/sessions/ledger events — `research.md` §1's shared-multi-tenant
 
 **Independent Test**: `quickstart.md` "Verifying tenant isolation (SC-002)".
 
-### Messaging gateway (`contracts/messaging-gateway.md`)
+### Messaging (`contracts/messaging-gateway.md`, superseded — see below)
 
-- [ ] T006a [P] [US1] Write tests for per-tenant Green API listener startup in
-  `apps/denidin-app/tests/unit/test_messaging_gateway.py`: one listener spawned per tenant
-  with a `messaging_provider` configured; a tenant's listener failing to start (bad
-  credentials) does NOT prevent other tenants' listeners from starting or block the process
-  (REQ-BG-002, contract's crash-isolation clause).
-- [ ] T006b [P] [US1] Implement listener orchestration in
-  `apps/denidin-app/src/services/messaging_gateway.py` (BLOCKED until T006a approved).
+**Corrected 2026-08-17, after direct design discussion with the user**: there is no separate
+"gateway" component, and no `tenant_id` tagging/routing layer. `Tenant` (`src/models/tenant.py`)
+is itself a complete, self-contained messaging endpoint — `Tenant.start()` builds its own
+`Bot`/`AIHandler`/`WhatsAppHandler`/`MediaHandler`/`GroupMembershipResolver` and registers all 9
+message-type handlers as **bound methods** on its own bot's router (never a module global,
+never a parameter-threaded `tenant_id`) — each handler only ever sees `self`. Outbound routing
+is automatically correct by construction: `WhatsAppHandler` replies via `notification.answer()`,
+and Green API's `Notification` is intrinsically tied to whichever `Bot` received it.
+Crash isolation (REQ-BG-002) comes from one `threading.Thread` per tenant running
+`bot.run_forever()`, combined with that method's own built-in retry-on-exception (confirmed at
+the T002 spike, `research.md` §7).
 
-- [ ] T007a [US1] Write tests for inbound `tenant_id` tagging: a message arriving on tenant A's
-  Green API instance is tagged `tenant_id=A` before reaching the core pipeline; the pipeline
-  itself never re-derives `tenant_id` from message content.
-- [ ] T007b [US1] Implement inbound tagging + the `(tenant_id, WhatsAppMessage)` entry point
-  the contract requires, wired into `apps/denidin-app/denidin.py`'s router handlers (BLOCKED
-  until T007a approved).
-
-- [ ] T008a [US1] Write tests for outbound send routing: a send request tagged `tenant_id=A`
-  routes through tenant A's Green API instance only, never tenant B's.
-- [ ] T008b [US1] Implement outbound routing in `messaging_gateway.py` (BLOCKED until T008a
-  approved).
+- [x] T006a/T007a/T008a [P] [US1] Write tests for `Tenant.start()`/handler registration/
+  multi-tenant isolation in `apps/denidin-app/tests/unit/test_tenant_runtime.py` (new file, 19
+  tests): all 9 message types registered on the tenant's own bot.router; registered handlers
+  are bound methods whose `__self__` is that exact tenant instance; invoking tenant A's handler
+  never touches tenant B's `ai_handler`; `bot_factory` is injectable (real Green API bot
+  construction always makes a real HTTP call, confirmed during this task — no way around it,
+  hence the injection point) so tests never hit the real network; own-WhatsApp-number fetch
+  (bugfix-024) fails open per-tenant; read-receipt hook (Feature 045) wired per-tenant.
+- [x] T006b/T007b/T008b [P] [US1] Implement `Tenant.start()` + the 9 handler bound methods +
+  `_process_conversational_message`/`_process_media_message`/`_resolve_group_user_phone` in
+  `apps/denidin-app/src/models/tenant.py` — ported from `denidin.py`'s former module-level free
+  functions (`denidin_app.X` → `self.X`, `bot` → `self.bot`; the old `if denidin_app is None`
+  guard removed — structurally impossible now, handlers are never registered until `self` is
+  fully built). **`denidin.py`'s own module-level `bot`/`denidin_app`/9 free functions are
+  intentionally left untouched by this task** — 6 existing integration tests hard-depend on
+  that exact module-level shape; switching the real entry point over to construct `Tenant`
+  instances is scoped as an explicit follow-up, not bundled into this pass. All 19 new tests
+  pass; full unit suite verified green (842 passed, up from 823 — no regressions).
 
 ### Tenant-scoped data paths + OpenAI credential — corrected 2026-08-17 (implementation
 discovery, `research.md` §8; supersedes the original T009-T012 split below)

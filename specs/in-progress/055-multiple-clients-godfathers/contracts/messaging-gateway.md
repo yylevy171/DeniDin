@@ -2,6 +2,20 @@
 
 **Feature**: 055-multiple-clients-godfathers · Per METHODOLOGY.md §VII format.
 
+**SUPERSEDED 2026-08-17**, discovered during `speckit.implement`: there is no separate
+"gateway"/routing component. `WhatsAppHandler` never holds its own `bot` reference — every
+reply goes through `notification.answer(...)`, and Green API's `Notification` object is
+intrinsically tied to whichever `Bot` instance received it. Combined with the "one full stack
+per tenant" design (`contracts/tenant-scoped-data-managers.md`), this means **outbound routing
+is automatically correct by construction** — no dispatch table, no `tenant_id`-keyed lookup.
+Each `Tenant` (see `src/models/tenant.py`) owns its own `Bot`, registers its own 9 message-type
+handlers as bound methods on that bot's router, and runs its own listener thread — a complete,
+self-contained messaging endpoint, not a client of a shared gateway. `DeniDin` (the App) just
+calls `tenant.start()` for each configured tenant. Kept below for historical record, not the
+implemented design.
+
+---
+
 ---
 
 ### Messaging Gateway ↔ Core Conversation Pipeline Contract
