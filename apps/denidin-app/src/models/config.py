@@ -43,6 +43,18 @@ class AppConfiguration:
     # Morning MCP integration (Feature 018)
     mcp: Dict = field(default_factory=dict)
 
+    # Feature 055 (Multi-Tenancy) Phase 7, REQ-CONST-001/002: the bot's own name,
+    # substituted into runtime_constitution.md's {bot_name} template placeholder at
+    # render time (AIHandler._load_constitution). Defaults to "DeniDin" - the single-
+    # tenant shape's literal, hardcoded value before this feature existed - so a
+    # config that never sets this renders byte-identically (REQ-PARITY-001).
+    bot_name: str = "DeniDin"
+    # REQ-CONST-001/003: optional path (relative to this app's cwd) to a tenant's own
+    # constitution supplement .md file, concatenated after the rendered common
+    # section. None (default) means no supplement - a normal, valid state, not a
+    # misconfiguration.
+    constitution_supplement_file: Optional[str] = None
+
     @classmethod
     def from_file(cls, file_path: str) -> 'AppConfiguration':
         """

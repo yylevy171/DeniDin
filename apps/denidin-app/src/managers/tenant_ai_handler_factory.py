@@ -85,4 +85,10 @@ class TenantAIHandlerFactory:
             },
             memory=memory,
             mcp=mcp,
+            # Feature 055 Phase 7 (REQ-CONST-001/002/003): each tenant's own bot
+            # name (rendered into runtime_constitution.md's {bot_name} template
+            # placeholder) and constitution supplement file, both read by
+            # AIHandler._load_constitution.
+            bot_name=tenant.bot_name,
+            constitution_supplement_file=tenant.constitution_supplement_file,
         )

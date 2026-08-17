@@ -55,12 +55,12 @@ MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # NO_REPLY_SENTINEL` keeps working.
 NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
 
-def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
-    """bugfix-024: rewrite an @-mention of DeniDin's own WhatsApp number (WhatsApp's
+def _normalize_self_mentions(text: str, own_whatsapp_number: str, bot_name: str = "DeniDin") -> str:
+    """bugfix-024: rewrite an @-mention of the bot's own WhatsApp number (WhatsApp's
     native @-mention picker inserts the mentioned contact's raw phone number into
     message text, never a display name - confirmed via a real Green API getWaSettings
     call, see bugfix-024's spec; this was previously, and wrongly, assumed to always
-    render as "@DisplayName") into the name-shaped "@DeniDin" form the model's
+    render as "@DisplayName") into the name-shaped "@{bot_name}" form the model's
     existing, already-verified "@Name" addressee judgment knows how to recognize (see
     runtime_constitution.md's Group Conversation Etiquette section and US7's case6
     billed test) - a deterministic, code-level check performed BEFORE the text ever
@@ -75,13 +75,19 @@ def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
     already rewrites every occurrence, and can't touch anyone else's mentioned number
     since it only ever searches for this exact self-mention substring.
 
+    `bot_name` (Feature 055, Multi-Tenancy, T029a's static-grep gap): defaults to
+    "DeniDin" - the pre-055 hardcoded literal this replaced (REQ-PARITY-001) - but a
+    tenant with a different bot_name (e.g. "Jabaloola") MUST normalize into its own
+    name here too, or its self-mention text would never match its own, correctly-
+    templated runtime_constitution.md self-recognition section (REQ-CONST-002).
+
     No-op (returns text unchanged) if own_whatsapp_number is empty - e.g. the
     startup fetch (denidin.py's initialize_app) failed or hasn't run, matching this
     codebase's fail-open convention for non-critical startup data (CONSTITUTION §VI).
     """
     if not own_whatsapp_number:
         return text
-    return text.replace(f"@{own_whatsapp_number}", "@DeniDin")
+    return text.replace(f"@{own_whatsapp_number}", f"@{bot_name}")
 
 # MCP tool names that require explicit human approval before they actually
 # execute (Feature 022; renamed from DOCUMENT_CREATING_MCP_TOOLS by Feature
@@ -730,6 +736,13 @@ class AIHandler:
         self._constitution_content: Optional[str] = None
         self._constitution_mtime: Optional[float] = None
 
+        # Feature 055 (Multi-Tenancy) Phase 7: this tenant's own constitution
+        # supplement file, mtime-cached separately from the common file above
+        # (a different path, loaded/rendered independently - see
+        # _load_constitution_supplement).
+        self._supplement_content: Optional[str] = None
+        self._supplement_mtime: Optional[float] = None
+
         # Memory system and RBAC are always on (2026-07-14 decision: both
         # graduated from feature flags to permanent behavior).
         self.memory_enabled = True
@@ -887,11 +900,57 @@ class AIHandler:
             if not self._constitution_content:
                 logger.warning(f"Constitution file is empty: {filepath}, using system_message fallback")
                 return ""
-            
-            return self._constitution_content
-            
+
+            # Feature 055 (Multi-Tenancy) Phase 7, REQ-CONST-001/002: render the
+            # {bot_name} template placeholder (a plain string replace - a no-op,
+            # byte-identical, on any pre-055 fixture/config content that never
+            # contains the placeholder at all - REQ-PARITY-001), then concatenate
+            # this tenant's own supplement (if any) after the rendered common
+            # section, preserving it as the stable per-tenant prefix OpenAI's
+            # prompt caching relies on (SC-006).
+            rendered = self._constitution_content.replace("{bot_name}", self.config.bot_name)
+            supplement = self._load_constitution_supplement()
+            if supplement:
+                return f"{rendered}\n\n---\n\n{supplement}"
+            return rendered
+
         except Exception as e:
             logger.error(f"Failed to load constitution file {filepath}: {e}", exc_info=True)
+            return ""
+
+    def _load_constitution_supplement(self) -> str:
+        """Feature 055 (Multi-Tenancy) Phase 7, REQ-CONST-001/003: load this
+        tenant's own constitution supplement file, mtime-cached independently of
+        the common file. A tenant with no supplement configured, or whose
+        supplement file is missing/empty, is a normal, valid state (not a
+        misconfiguration) - returns "" without error in every such case, so
+        _load_constitution never adds a stray blank section.
+        """
+        supplement_file = getattr(self.config, 'constitution_supplement_file', None)
+        if not supplement_file:
+            return ""
+
+        filepath = Path(supplement_file)
+        if not filepath.exists():
+            logger.warning(
+                f"Constitution supplement file not found: {filepath} - proceeding without it"
+            )
+            return ""
+
+        try:
+            current_mtime = filepath.stat().st_mtime
+            if self._supplement_mtime != current_mtime:
+                self._supplement_content = filepath.read_text(encoding='utf-8').strip()
+                self._supplement_mtime = current_mtime
+                logger.debug(
+                    f"Constitution supplement loaded: {filepath} "
+                    f"({len(self._supplement_content)} chars, mtime: {current_mtime})"
+                )
+            return self._supplement_content or ""
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(
+                f"Failed to load constitution supplement file {filepath}: {e}", exc_info=True
+            )
             return ""
 
     def create_request(self, message: WhatsAppMessage, chat_id: Optional[str] = None,
@@ -930,7 +989,9 @@ class AIHandler:
         # persisted session history (which stores this same user_prompt) consistently
         # reflect who was actually addressed. No-op for a message with no self-mention,
         # or if own_whatsapp_number hasn't been resolved.
-        user_prompt = _normalize_self_mentions(message.text_content, self.own_whatsapp_number)
+        user_prompt = _normalize_self_mentions(
+            message.text_content, self.own_whatsapp_number, self.config.bot_name
+        )
 
         # Validate and truncate message length
         if len(user_prompt) > MAX_MESSAGE_LENGTH:

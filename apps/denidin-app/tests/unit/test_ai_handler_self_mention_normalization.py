@@ -58,6 +58,20 @@ class TestNormalizeSelfMentions:
         result = _normalize_self_mentions(text, "972559723730")
         assert result == "@972501234567 ו@DeniDin שניכם תעזרו לי"
 
+    def test_bot_name_parameter_is_used_instead_of_the_default(self):
+        """Feature 055 (Multi-Tenancy) T029a: a tenant whose bot isn't named
+        DeniDin must normalize into ITS OWN name, or its self-mention text
+        would never match its own runtime_constitution.md self-recognition
+        section (REQ-CONST-002 - both are rendered from the same bot_name)."""
+        result = _normalize_self_mentions("@972559723730 מי אתה?", "972559723730", "Jabaloola")
+        assert result == "@Jabaloola מי אתה?"
+
+    def test_bot_name_defaults_to_denidin_when_omitted(self):
+        """REQ-PARITY-001: every pre-055 call site (and every test above that
+        doesn't pass bot_name at all) keeps the exact old literal."""
+        result = _normalize_self_mentions("@972559723730 מי אתה?", "972559723730")
+        assert result == "@DeniDin מי אתה?"
+
 
 class TestCreateRequestAppliesSelfMentionNormalization:
     """Confirms AIHandler.create_request actually wires own_whatsapp_number into the
@@ -99,3 +113,19 @@ class TestCreateRequestAppliesSelfMentionNormalization:
         handler.own_whatsapp_number = "972559723730"
         request = handler.create_request(self._message("@972559723730 מי אתה?"))
         assert request.user_prompt == "@DeniDin מי אתה?"
+
+    def test_tenant_bot_name_is_used_when_configured(self):
+        """Feature 055 (Multi-Tenancy) T029a: create_request must thread
+        self.config.bot_name through, not just the module-level default."""
+        config = AppConfiguration(
+            green_api_instance_id="test", green_api_token="test", ai_api_key="test-key",
+            ai_model="gpt-4o-mini", ai_reply_max_tokens=100, log_level="INFO",
+            bot_name="Jabaloola",
+        )
+        handler = AIHandler(MagicMock(), config)
+        handler.session_manager.get_conversation_history = MagicMock(return_value=[])
+        handler.own_whatsapp_number = "972559723730"
+
+        request = handler.create_request(self._message("@972559723730 מי אתה?"))
+
+        assert request.user_prompt == "@Jabaloola מי אתה?"

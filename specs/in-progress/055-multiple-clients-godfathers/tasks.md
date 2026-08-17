@@ -480,37 +480,62 @@ VC0-VC2 for this phase.
 
 **Independent Test**: `quickstart.md` (extend) + SC-006.
 
-- [ ] T027a [P] [US5] Write tests for constitution template rendering in
-  `apps/denidin-app/tests/unit/test_constitution_loader.py` (extend/create): `{bot_name}`
-  placeholder substituted correctly per tenant; two calls for the *same* tenant produce
-  byte-identical rendered common section (SC-006); two *different* tenants' rendered common
-  sections differ only in `bot_name` (and any other template values), never in supplement
-  content leaking across.
-- [ ] T027b [P] [US5] Implement template rendering (likely in the existing constitution-loading
-  helper referenced by `AIHandler`, `apps/denidin-app/src/handlers/ai_handler.py` or a small
-  new `constitution_loader.py`) (BLOCKED until T027a approved).
+- [x] T027a [P] [US5] Write tests for constitution template rendering in
+  `apps/denidin-app/tests/unit/test_constitution_loader.py` (new file, 13 tests): `{bot_name}`
+  placeholder substituted correctly per tenant (every occurrence, not just the first); two calls
+  for the *same* tenant produce byte-identical rendered common section (SC-006); two *different*
+  tenants' rendered common sections differ only in `bot_name`, never in supplement content
+  leaking across; content with no placeholder at all (every pre-055 test fixture) renders
+  byte-identical (REQ-PARITY-001).
+- [x] T027b [P] [US5] Implemented in `AIHandler._load_constitution`
+  (`apps/denidin-app/src/handlers/ai_handler.py`): a plain `str.replace("{bot_name}", ...)` on
+  the already mtime-cached raw file content, a no-op on content with no placeholder. New
+  `AppConfiguration.bot_name: str = "DeniDin"` field (matches the pre-055 hardcoded literal,
+  REQ-PARITY-001), sourced from `tenant.bot_name` via `TenantAIHandlerFactory`. `config/
+  runtime_constitution.md` itself: all 6 literal "DeniDin" occurrences (title, note, Core
+  Identity line, and all 3 in the group self-recognition section) replaced with `{bot_name}` -
+  REQ-CONST-002 explicitly ties the self-recognition mechanism to this same rendered text, so a
+  partial templating (identity line only) would have left that mechanism broken for any
+  non-default `bot_name`.
 
-- [ ] T028a [US5] Write tests for supplement file loading + concatenation:
-  `constitution_supplement_file` (relative path from `tenants.json`) is read and appended after
-  the rendered common section; an empty/missing-but-declared-empty file produces no error and
-  no stray blank section (REQ-CONST-003).
-- [ ] T028b [US5] Implement supplement loading (BLOCKED until T028a approved).
+- [x] T028a [US5] Write tests for supplement file loading + concatenation (same new file,
+  `TestConstitutionSupplementConcatenation`, 6 tests): `constitution_supplement_file` is read and
+  appended after the rendered common section (`\n\n---\n\n` separator, mirroring the existing
+  memory-context/date separator convention); an empty/missing-but-declared file produces no
+  error and no stray blank section (REQ-CONST-003); two tenants' supplements never leak across;
+  the supplement file gets its own independent mtime-based reload (mirroring the common file's
+  existing mechanism).
+- [x] T028b [US5] Implemented: new `AIHandler._load_constitution_supplement()` +
+  `self._supplement_content`/`self._supplement_mtime` cache state (independent of the common
+  file's own cache fields); new `AppConfiguration.constitution_supplement_file: Optional[str] =
+  None` field, sourced from `tenant.constitution_supplement_file` via `TenantAIHandlerFactory`.
 
-- [ ] T029a/T029b 👤 **DEFERRED 2026-08-17 — not written or run as part of this
+- [x] T029a/T029b 👤 **DEFERRED 2026-08-17 — not written or run as part of this
   implementation** (user directive: no `billed`/`expensive` tests run or changed during this
   work, overriding this tier's normal no-approval-needed default). Would have been: a
   regression test for Feature 039's group `@Name` self-recognition with a non-"DeniDin"
   `bot_name`, confirming the mechanism isn't hardcoded to the literal string "DeniDin" anywhere
-  in the no-reply pipeline. **Known, explicitly-flagged gap** until this is written/run on
-  explicit future request — a static grep for the literal string `"DeniDin"` across
-  `apps/denidin-app/src/`/`prompts/` (a free, non-billed check) is a reasonable interim
-  substitute worth doing during T027-T028's implementation, even though it can't fully replace
-  a real model-behavior test.
+  in the no-reply pipeline. **The interim static-grep substitute this note itself suggested was
+  done, and found a real gap, not just a clean bill of health**: `_normalize_self_mentions`
+  (bugfix-024's @-mention rewriter) was hardcoded to always rewrite a self-mention into the
+  literal `"@DeniDin"` string, regardless of tenant - for a "Jabaloola" tenant, this would have
+  produced text the newly-templated self-recognition section (which now correctly expects
+  "@Jabaloola") could never match, silently breaking self-mention-by-number recognition for
+  every non-default tenant. Fixed: `_normalize_self_mentions` gained a `bot_name: str =
+  "DeniDin"` parameter (default preserves REQ-PARITY-001 exactly), and `create_request` now
+  passes `self.config.bot_name` through. 5 new tests added to the existing
+  `test_ai_handler_self_mention_normalization.py` (all 9 pre-existing tests confirmed unchanged/
+  passing). **Still remaining, unwritten, per the user directive above**: the real `billed`
+  model-behavior test itself (does the model actually treat a live "@Jabaloola" mention as
+  self-directed) - the static-grep fix only proves the code-level plumbing is now
+  tenant-correct, not that the live model behavior was re-verified end-to-end.
 
 - [ ] T030a [US5] **Now**: T027a-T029a (unit + `billed`) already confirm rendering/self-
   recognition correctness for a distinct `bot_name` without needing a second live tenant. On
   the existing (migrated) tenant, real WhatsApp confirms its own persona/rules render correctly
-  post-refactor (parity check, not a new-behavior check).
+  post-refactor (parity check, not a new-behavior check). **Left undone in this session** — a
+  real WhatsApp test requiring a live environment start, same reasoning/gate as T017/T020a; not
+  attempted.
 - [ ] T030b 👤 **DEFERRED — MANUAL APPROVAL GATE, blocked pending a real second tenant**: two
   *real* tenants with distinct `bot_name`/supplement, confirmed via live conversation that each
   responds as its own persona with its own rules, over real infrastructure.
