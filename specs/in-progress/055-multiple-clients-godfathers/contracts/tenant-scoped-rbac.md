@@ -2,6 +2,17 @@
 
 **Feature**: 055-multiple-clients-godfathers · Per METHODOLOGY.md §VII format.
 
+**SUPERSEDED 2026-08-17** by `contracts/tenant-scoped-data-managers.md`'s
+`TenantAIHandlerFactory` contract, discovered during `speckit.implement`: `UserManager` does
+NOT need an extended `get_user(phone, tenant_id=...)` signature. It's constructor-scoped
+(`godfather_phone`/`admin_phones`/`blocked_phones` passed once at construction) — the correct
+design is one `UserManager` instance per tenant, built from `tenant.godfathers`/`tenant.admins`,
+not a `tenant_id` parameter threaded through `get_user`. `UserManager`'s only real code change
+is the multi-godfather extension (see the other contract) — `get_user(phone)` itself is
+unchanged. Kept below for historical record, not the implemented design.
+
+---
+
 Added during `speckit.analyze` remediation (finding G3) — the underlying work was already
 covered by `tasks.md` T015/T018/T019, but METHODOLOGY §VII requires the contract itself to be
 written down, not just implied by task descriptions.

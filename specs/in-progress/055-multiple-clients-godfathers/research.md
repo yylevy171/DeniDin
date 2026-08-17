@@ -76,12 +76,39 @@ isolation.
   the same raw Green API `chat_id` pattern. `speckit.tasks`/`speckit.implement` MUST audit every
   existing module-level/in-memory cache in `apps/denidin-app/src/` for this before this feature
   ships, not just the ones already known about.
-- **Addendum (`speckit.analyze` remediation, finding G1)**: the cache-key fix above is
-  necessary but not sufficient for `GroupMembershipResolver` specifically — it also needs the
-  *correct tenant's* Green API client for `getGroupData` (a single constructor-injected client
-  under the old single-tenant model has no obvious default under N tenants). See
-  `contracts/group-resolution-tenant-scoping.md` and `data-model.md`'s "Group Membership
-  Resolution" section for the full fix — two distinct changes, not one.
+- **Addendum, superseded 2026-08-17 (implementation discovery)**: this entry originally said
+  `GroupMembershipResolver` needed a cache-key fix AND a tenant-aware client lookup (G1). Both
+  turned out to be unnecessary — see §8 below. Left here, struck through in spirit not in text,
+  for the historical record of how this risk was originally assessed before implementation
+  revealed the simpler, correct shape.
+
+## 8. The real multi-tenancy shape, discovered during `speckit.implement` (2026-08-17)
+
+Reading the actual code (`AIHandler.__init__`, `SessionManager`/`MemoryManager`/
+`LedgerEventManager`/`UserManager`/`GroupMembershipResolver` constructors) revealed that every
+one of them is already **constructor-scoped** — storage directory, OpenAI client, godfather
+list, Green API groups client are all passed once at construction, never per-call. `AIHandler`
+itself already builds exactly one of each internally from a single `config`/`ai_client`.
+
+**This changes the correct multi-tenant design from "thread `tenant_id` through every method
+call" (§1-§2's original framing) to "construct one full stack per tenant."** One `AIHandler`
+per tenant (via a new `TenantAIHandlerFactory`), each with its own manager instances built from
+that tenant's own `Tenant` object. The messaging gateway holds `Dict[tenant_id, AIHandler]` and
+routes by `tenant_id`.
+
+**Consequences, all positive**:
+- `SessionManager`, `MemoryManager`, `LedgerEventManager`, `GroupMembershipResolver` need
+  **zero internal code changes**. `UserManager` needs exactly one small, additive change
+  (multi-godfather — see `contracts/tenant-scoped-data-managers.md`).
+- The G1 risk (`GroupMembershipResolver`'s cache) vanishes by construction — each tenant's
+  resolver has its own cache, no re-keying needed, no runtime client lookup needed.
+- REQ-PARITY-001's guarantee gets *stronger*, not just satisfied: untouched classes, not just
+  optional-parameter defaults, are what protects `tests/billed/`/`tests/expensive/`.
+- Less code to write and review than originally planned across Phase 3.
+
+`contracts/tenant-scoped-rbac.md` and `contracts/group-resolution-tenant-scoping.md` are marked
+superseded (not deleted) in place. `contracts/tenant-scoped-data-managers.md` was rewritten to
+be the authoritative version of both.
 
 ## 3. Dev/prod × tenant
 

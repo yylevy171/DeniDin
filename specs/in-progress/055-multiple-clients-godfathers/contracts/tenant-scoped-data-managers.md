@@ -2,63 +2,79 @@
 
 **Feature**: 055-multiple-clients-godfathers · Per METHODOLOGY.md §VII format.
 
-Added during `speckit.analyze` remediation (finding G3) — the underlying work was already
-covered by `tasks.md` T009-T011, but METHODOLOGY §VII requires the contract itself to be
-written down, not just implied by task descriptions. Covers the three managers whose data
-roots become `tenant_id`-partitioned (`data-model.md`).
+**Rewritten 2026-08-17 (implementation discovery)**: the original version of this contract
+assumed `SessionManager`/`MemoryManager`/`ledger_event_manager` methods would need a `tenant_id`
+parameter threaded through every call. Reading the actual code during `speckit.implement`
+showed this is unnecessary — `SessionManager`, `MemoryManager`, and `LedgerEventManager` are
+already **constructor-scoped** (storage directory, and for `MemoryManager` the OpenAI client
+too, are passed once at construction, not per call), and `AIHandler.__init__` already builds
+exactly one of each from a single `config`/`ai_client`. The correct multi-tenant design is
+**one full stack per tenant** — one `AIHandler` per tenant, each internally holding its own
+`UserManager`/`SessionManager`/`MemoryManager`/`LedgerEventManager`/`GroupMembershipResolver`,
+constructed from that tenant's own `Tenant` object — not per-call `tenant_id` threading. This
+also **fully supersedes `contracts/group-resolution-tenant-scoping.md`** (finding G1): one
+`GroupMembershipResolver` instance per tenant means its cache is isolated by construction, no
+`(tenant_id, chat_id)` re-keying needed.
+
+**REQ-PARITY-001, strengthened**: `SessionManager`, `MemoryManager`, `LedgerEventManager`,
+`UserManager`, and `GroupMembershipResolver` need **zero internal code changes**. Any caller
+that constructs one of these directly (including `tests/billed/`/`tests/expensive/`, untouched
+during this implementation) is unaffected — not by a default-parameter fallback, but because
+the classes themselves are literally unmodified.
 
 ---
 
-**Amended 2026-08-17 (REQ-PARITY-001)**: every `tenant_id` parameter added below is *optional*,
-defaulting to the migrated tenant — never a newly-required argument. `tests/billed/`/
-`tests/expensive/` are not touched during this implementation and must keep working unchanged.
+### `TenantAIHandlerFactory` (new) ↔ `Tenant` Contract
 
-### Core Conversation Pipeline ↔ `SessionManager` Contract (extension)
+**`TenantAIHandlerFactory.build(tenant: Tenant, base_config: AppConfiguration) -> AIHandler`
+MUST**:
+- Construct exactly one `AIHandler` for `tenant`, internally building its own
+  `UserManager(godfather_phones=tenant.godfathers, admin_phones=tenant.admins, ...)`,
+  `SessionManager(storage_dir=tenant.data_root / "sessions", ...)`,
+  `MemoryManager(storage_dir=tenant.data_root / "memory", ai_client=<built from
+  tenant.openai>, ...)`, `LedgerEventManager(storage_dir=tenant.data_root / "events")` — mirrors
+  `AIHandler.__init__`'s existing single-tenant construction exactly, just sourcing values from
+  `tenant` instead of a single global `config`.
+- Reuse `base_config` only for values that are genuinely environment-wide, not per-tenant (e.g.
+  `ai_embedding_model`, `feature_flags`) — never for anything `Tenant` itself provides.
+- Not mutate or replace any *existing* single-tenant construction path (`AIHandler.__init__`,
+  `denidin.py`'s `initialize_app`) — this factory is additive, called once per tenant from a new
+  multi-tenant bootstrap path.
 
-**Callers (`denidin.py`, `AIHandler`) MUST**:
-- Pass `tenant_id` to every `SessionManager` call that today takes only `chat_id`/`user_phone`
-  — `get_session`, `add_message`, and friends all gain this parameter (optional, defaults to
-  the migrated tenant when omitted).
-
-**`SessionManager` PROVIDES**:
-- Session files rooted at `{environment_data_root}/{tenant_id}/sessions/...` instead of
-  `{environment_data_root}/sessions/...` — same file format/naming beneath that root, unchanged.
-- Two tenants' sessions for the same `chat_id` value (should not normally collide, since
-  `chat_id`s are Green-API-instance-scoped, but not guaranteed impossible across two different
-  instances) never read/write each other's files.
-
-**`SessionManager` EXPECTS**: `tenant_id` is always present and valid (same standing
-expectation as every other tenant-scoped component, `research.md` §2).
-
----
-
-### Core Conversation Pipeline / `MemoryManager` Contract (extension)
-
-**Callers MUST**:
-- Pass `tenant_id` to `MemoryManager.recall`/write-path calls.
-
-**`MemoryManager` PROVIDES**:
-- A genuinely separate ChromaDB persistent client/directory per tenant
-  (`{data_root}/{tenant_id}/memory/`, clarified 2026-08-17 — not one shared ChromaDB instance
-  with tenant-prefixed collection names) — collection names inside stay exactly as today
-  (`memory_{entity_id}`, `_public`, `_private`, `memory_system_context`). A recall for tenant
-  A's entity never surfaces tenant B's memories, because tenant B's ChromaDB data doesn't exist
-  in tenant A's directory at all, regardless of content similarity or a colliding `entity_id`.
-
-**`MemoryManager` EXPECTS**: `tenant_id` always present and valid.
+**`Tenant` PROVIDES** (already implemented, `src/models/tenant.py`): `data_root` (derived
+`Path`), `openai`/`green_api` credentials, `godfathers`/`admins`, `capability_selection`.
 
 ---
 
-### `AIHandler`'s `capture_ledger_event` tool ↔ `ledger_event_manager` Contract (extension)
+### Messaging Gateway ↔ Per-Tenant `AIHandler` Registry Contract
 
-**`AIHandler` MUST**:
-- Pass `tenant_id` when invoking `ledger_event_manager`'s write path.
+**Messaging Gateway MUST**:
+- Hold a `Dict[tenant_id, AIHandler]` (built via `TenantAIHandlerFactory`, one entry per active
+  tenant) and route each inbound message to the matching tenant's `AIHandler` — never a shared
+  `AIHandler` instance handling more than one tenant.
+- For the migrated ("tenant #1") case specifically: the existing single-tenant `initialize_app`
+  path continues to work completely unchanged for direct callers (tests, `__main__`) — the
+  multi-tenant registry is a parallel bootstrap path, not a replacement, until
+  `denidin.py`'s entry point itself is switched over (a later task, not Phase 3's concern).
 
-**`ledger_event_manager` PROVIDES**:
-- Events written under `{environment_data_root}/{tenant_id}/events/{event_id}.json` instead of
-  `{environment_data_root}/events/{event_id}.json` — `event_id` format itself (source-type
-  letter + `DDMMYY` + `HHMM` + sequence digit) is unchanged; uniqueness is still guaranteed
-  within one tenant's own event stream (cross-tenant `event_id` collisions are possible in
-  principle but harmless, since the two events live under different tenant directories).
+**Per-Tenant `AIHandler` Registry EXPECTS**: nothing beyond what `AIHandler.__init__` already
+requires today (a valid `ai_client`, a valid `config`-shaped object) — no new requirements
+placed on `AIHandler` itself.
 
-**`ledger_event_manager` EXPECTS**: `tenant_id` always present and valid.
+---
+
+### `UserManager` — multi-godfather extension (the one real, necessary code change here)
+
+Unlike the managers above, `UserManager` needs one small, additive, backward-compatible change
+— today's `godfather_phone: Optional[str] = None` constructor parameter is genuinely singular
+(a real limitation, not a multi-tenancy artifact), and REQ-ROLE-001 needs a tenant to support
+*more than one* godfather.
+
+**`UserManager.__init__` MUST**:
+- Gain a new optional `godfather_phones: Optional[List[str]] = None` parameter, checked
+  *in addition to* the existing singular `godfather_phone` (both may resolve `Role.GODFATHER`;
+  the two are additive, not either/or).
+- Existing callers passing only `godfather_phone` (a single string) — including
+  `tests/billed/`/`tests/expensive/`, untouched — MUST see zero behavior change.
+- Per-tenant construction (via `TenantAIHandlerFactory`) passes `tenant.godfathers` (already a
+  list) as `godfather_phones`, leaving `godfather_phone` unset.

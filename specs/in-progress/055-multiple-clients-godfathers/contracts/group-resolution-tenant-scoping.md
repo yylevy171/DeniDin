@@ -2,6 +2,18 @@
 
 **Feature**: 055-multiple-clients-godfathers · Per METHODOLOGY.md §VII format.
 
+**SUPERSEDED 2026-08-17** by `contracts/tenant-scoped-data-managers.md`'s "one full stack per
+tenant" design, discovered during `speckit.implement`: `GroupMembershipResolver.resolve()`
+does NOT need an extended `(tenant_id, chat_id)` signature or a runtime client lookup. One
+`GroupMembershipResolver` instance per tenant (constructed with that tenant's own
+`groups_client`, exactly like today's single-tenant `initialize_app`) means its cache is
+isolated by construction — the `(tenant_id, chat_id)` re-keying this document originally
+specified is unnecessary; a plain `chat_id`-keyed cache, unchanged, is already correct once
+each tenant has its own resolver instance. Kept below for historical record, not the
+implemented design.
+
+---
+
 Added during `speckit.analyze` remediation (finding G1): `GroupMembershipResolver`
 (Feature 039) was constructor-injected with a single `groups_client` under the single-tenant
 model. Under shared multi-tenant services (`research.md` §1), there are N tenants' Green API

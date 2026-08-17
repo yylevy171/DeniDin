@@ -140,41 +140,34 @@ OpenAI/memory/sessions/ledger events — `research.md` §1's shared-multi-tenant
 - [ ] T008b [US1] Implement outbound routing in `messaging_gateway.py` (BLOCKED until T008a
   approved).
 
-### Tenant-scoped data paths
+### Tenant-scoped data paths + OpenAI credential — corrected 2026-08-17 (implementation
+discovery, `research.md` §8; supersedes the original T009-T012 split below)
 
-- [ ] T009a [P] [US1] Write tests for tenant-scoped `SessionManager` in
-  `apps/denidin-app/tests/unit/test_session_manager.py` (extend existing file): sessions for
-  tenant A and tenant B with the same `chat_id` land in different files
-  (`{data_root}/{tenant_id}/sessions/...`); no accidental cross-tenant read; **REQ-PARITY-001**
-  — every existing test in this file that predates this task, calling without `tenant_id`,
-  still passes unmodified (default-to-migrated-tenant behavior).
-- [ ] T009b [P] [US1] Extend `SessionManager` to accept/derive `tenant_id`-scoped paths,
-  parameter optional/defaulting to the migrated tenant, in
-  `apps/denidin-app/src/managers/session_manager.py` (BLOCKED until T009a approved).
+`SessionManager`/`MemoryManager`/`LedgerEventManager` are already constructor-scoped (storage
+dir, and for `MemoryManager` the OpenAI client, passed once at construction — not per call).
+**They need zero internal code changes.** The correct design is one full stack per tenant via a
+new `TenantAIHandlerFactory`, per `contracts/tenant-scoped-data-managers.md`. This also
+subsumes the original T012 (OpenAI credential) — it falls out of the same factory, not a
+separate `AIHandler` change.
 
-- [ ] T010a [P] [US1] Write tests for tenant-scoped `MemoryManager` in
-  `apps/denidin-app/tests/unit/test_memory_manager.py`: separate ChromaDB persistent directory
-  per tenant (`{data_root}/{tenant_id}/memory/`, `data-model.md`); a recall for tenant A never
-  surfaces tenant B's memories even with semantically similar content; **REQ-PARITY-001** —
-  pre-existing tests in this file, unmodified, still pass (default-to-migrated-tenant).
-- [ ] T010b [P] [US1] Extend `MemoryManager` (optional `tenant_id`, default migrated tenant) in
-  `apps/denidin-app/src/managers/memory_manager.py` (BLOCKED until T010a approved).
-
-- [ ] T011a [P] [US1] Write tests for tenant-scoped `ledger_event_manager` in
-  `apps/denidin-app/tests/unit/test_ledger_event_manager.py`: events written under
-  `{data_root}/{tenant_id}/events/`; **REQ-PARITY-001** — pre-existing tests unmodified still
-  pass.
-- [ ] T011b [P] [US1] Extend `apps/denidin-app/src/managers/ledger_event_manager.py` (optional
-  `tenant_id`, default migrated tenant) (BLOCKED until T011a approved).
+- [ ] T009a [P] [US1] Write tests for `TenantAIHandlerFactory.build(tenant, base_config)` in
+  `apps/denidin-app/tests/unit/test_tenant_ai_handler_factory.py` (new file): given two
+  `Tenant` objects, produces two `AIHandler` instances whose `session_manager.storage_dir`,
+  `memory_manager.storage_dir`, `ledger_event_manager.storage_dir` all resolve under each
+  tenant's own `{data_root}/{tenant_id}/...`, never cross over; each `AIHandler.client`
+  (OpenAI) is built from that tenant's own `openai` credential, never shared; **REQ-PARITY-001**
+  — `AIHandler.__init__`/`SessionManager`/`MemoryManager`/`LedgerEventManager` themselves are
+  not modified by this task at all (verified by this test file not needing to touch
+  `test_ai_handler.py`/`test_session_manager.py`/`test_memory_manager.py`/
+  `test_ledger_event_manager.py`).
+- [ ] T009b [P] [US1] Implement `TenantAIHandlerFactory` in
+  `apps/denidin-app/src/managers/tenant_ai_handler_factory.py` (BLOCKED until T009a approved) —
+  builds a tenant-scoped `AppConfiguration`-shaped view from `Tenant` + `base_config`, then
+  calls `AIHandler(ai_client_for_tenant, tenant_scoped_config)` unchanged.
 
 ### Tenant-scoped OpenAI credential
 
-- [ ] T012a [US1] Write tests for `AIHandler` resolving the calling tenant's own OpenAI
-  credential per call (not a shared global client) in
-  `apps/denidin-app/tests/unit/test_ai_handler.py` (extend existing file, mocked OpenAI
-  client).
-- [ ] T012b [US1] Implement tenant-scoped credential resolution in
-  `apps/denidin-app/src/handlers/ai_handler.py` (BLOCKED until T012a approved).
+Subsumed into T009 above — no separate task.
 
 ### Migration (REQ-MIGRATE-001)
 
@@ -216,23 +209,31 @@ VC0-VC2 for this phase.
 **Independent Test**: `quickstart.md` (extend with a two-godfather scenario per US2's
 Acceptance Scenarios in `user-stories.md`).
 
-- [ ] T015a [US2] Write tests for tenant-scoped RBAC resolution in
-  `apps/denidin-app/tests/unit/test_user_manager.py` (extend existing file): a tenant with two
-  `godfathers` entries resolves `Role.GODFATHER` for either number, scoped to that tenant only
-  — the same number in a different tenant's context resolves independently (per spec.md's
-  "same phone number, different roles per tenant" decision); **REQ-PARITY-001** — pre-existing
-  tests in this file, calling `get_user(phone)` without `tenant_id`, unmodified, still pass.
-- [ ] T015b [US2] Extend `UserManager.get_user`/role resolution to take `tenant_id` and consult
-  `TenantManager` for that tenant's `godfathers`/`admins` lists, in
-  `apps/denidin-app/src/managers/user_manager.py` (BLOCKED until T015a approved).
+**Corrected 2026-08-17 (`research.md` §8)**: `UserManager` doesn't need `tenant_id` threaded
+through `get_user` — one `UserManager` instance per tenant (via `TenantAIHandlerFactory`,
+Phase 3) already scopes RBAC correctly. The one real, additive code change needed is
+multi-godfather support (today's `godfather_phone` is genuinely singular), per
+`contracts/tenant-scoped-data-managers.md`.
+
+- [ ] T015a [US2] Write tests for `UserManager`'s new `godfather_phones: Optional[List[str]]`
+  parameter in `apps/denidin-app/tests/unit/test_user_manager.py` (extend existing file): a
+  `UserManager` constructed with two `godfather_phones` resolves `Role.GODFATHER` for either
+  number; **REQ-PARITY-001** — every pre-existing test in this file, constructing `UserManager`
+  with only the existing singular `godfather_phone`, unmodified, still passes unchanged
+  (verifies this is additive, not a breaking rename).
+- [ ] T015b [US2] Add `godfather_phones` to `UserManager.__init__` in
+  `apps/denidin-app/src/managers/user_manager.py` — checked in addition to (not instead of) the
+  existing `godfather_phone` (BLOCKED until T015a approved). `TenantAIHandlerFactory` (T009b)
+  passes `tenant.godfathers` here.
 
 - [ ] T016a [US2] Write tests confirming token-limit/tool attachment (including Morning MCP)
   is identical for both godfathers of one tenant, and that ledger events/invoices either
-  godfather creates are visible to the other (shared tenant-level state, not per-godfather
-  siloed) — `apps/denidin-app/tests/integration/test_multi_godfather.py` (new file, real
-  internal components per CONSTITUTION §V).
-- [ ] T016b [US2] Wire-through in `denidin.py`/`AIHandler` if any gaps found by T016a (BLOCKED
-  until T016a approved — may be a no-op if T015b already covers it).
+  godfather creates are visible to the other (shared tenant-level state — both godfathers'
+  `AIHandler` requests resolve to the *same* per-tenant `AIHandler` instance/data root, not
+  per-godfather siloed) — `apps/denidin-app/tests/integration/test_multi_godfather.py` (new
+  file, real internal components per CONSTITUTION §V).
+- [ ] T016b [US2] Wire-through if any gaps found by T016a (BLOCKED until T016a approved — may
+  be a no-op; the shared-instance design already implies this).
 
 - [ ] T017 [US2] 👤 **MANUAL APPROVAL GATE — not blocked, needs no second tenant**: real
   WhatsApp test on the existing (migrated) tenant — two godfather phone numbers on that one
@@ -252,18 +253,21 @@ VC0-VC2 for this phase.
 **Independent Test**: `quickstart.md` "Verifying super-admin access (SC-004)".
 
 - [ ] T018a [US3] Write tests for cross-tenant admin resolution in
-  `test_user_manager.py`: ylevy's number resolves `Role.ADMIN` in tenant A and tenant B
-  independently (two separate `admins` list entries, not a special-cased global check);
-  version-query admin capability (ungated by RBAC) still resolves per-tenant version info.
-- [ ] T018b [US3] Confirm/extend `UserManager` (likely already covered by T015b's tenant-aware
-  resolution — this task is the story-level regression test, not necessarily new code) (BLOCKED
-  until T018a approved).
+  `apps/denidin-app/tests/integration/test_multi_tenant_admin.py` (new file, real internal
+  components): ylevy's number, listed in two different tenants' `admins`, resolves
+  `Role.ADMIN` independently in each tenant's own `AIHandler`/`UserManager` instance (via
+  `TenantAIHandlerFactory`) — not a special-cased global check; version-query admin capability
+  (ungated by RBAC) still resolves per-tenant version info.
+- [ ] T018b [US3] Confirm this is the natural behavior of `TenantAIHandlerFactory` (T009b) +
+  per-tenant `admins` (likely a no-op — one `UserManager` per tenant already implies
+  independence; fix here only if a real gap is found) (BLOCKED until T018a approved).
 
 - [ ] T019a [US3] Write tests for REQ-ROLE-005 (no break-glass): a tenant whose config omits
   ylevy's admin number resolves that number as a normal (non-admin) role for that tenant only —
   no fallback, no cross-tenant leakage of admin status.
-- [ ] T019b [US3] Confirm this is the natural behavior of T015b's config-driven resolution (no
-  new code expected; if a gap is found, fix here) (BLOCKED until T019a approved).
+- [ ] T019b [US3] Confirm this is the natural behavior of `TenantAIHandlerFactory`'s
+  per-tenant construction (no new code expected; if a gap is found, fix here) (BLOCKED until
+  T019a approved).
 
 - [ ] T020a [US3] **Now**: on the existing (migrated) tenant, real WhatsApp test — ylevy's
   number resolves admin, "what version are you running?" answers correctly. Cross-tenant
@@ -427,21 +431,14 @@ VC0-VC2 for this phase.
 - [ ] T032b [P] Extend `apps/denidin-app/src/services/cleanup_service.py` (BLOCKED until T032a
   approved).
 
-- [ ] T033a Write tests proving `GroupMembershipResolver`'s cache is keyed
-  `(tenant_id, chat_id)`, not `chat_id` alone (the named risk in `research.md` §2/
-  `data-model.md`): two tenants with a colliding raw `chat_id` never share a cache entry.
-- [ ] T033b Re-key the cache in
-  `apps/denidin-app/src/managers/group_membership_resolver.py` (BLOCKED until T033a approved).
-
-- [ ] T033c **Added at `speckit.analyze` remediation, finding G1** — write tests for
-  `GroupMembershipResolver.resolve(tenant_id, chat_id)` selecting the *calling tenant's own*
-  Green API `groups_client`, not a single constructor-injected client: two tenants' `resolve`
-  calls for otherwise-identical `chat_id`s hit their own tenant's Green API instance only, never
-  cross over. Per `contracts/group-resolution-tenant-scoping.md`. Distinct from T033a/b (cache
-  key vs. client selection — both required, neither substitutes for the other).
-- [ ] T033d Implement `tenant_id`-aware client selection (via `TenantManager`/Messaging
-  Gateway lookup) in `group_membership_resolver.py`, and update `denidin.py`'s
-  `_resolve_group_user_phone` to pass `tenant_id` through (BLOCKED until T033c approved).
+- [x] T033a/b/c/d **No longer needed — resolved by construction, 2026-08-17
+  (`research.md` §8, supersedes `speckit.analyze` finding G1)**: `GroupMembershipResolver` is
+  constructor-scoped, exactly like `SessionManager`/`MemoryManager`. `TenantAIHandlerFactory`
+  (T009b) already builds one resolver instance per tenant, with that tenant's own
+  `groups_client` — no shared cache exists to collide, no runtime client lookup needed.
+  `GroupMembershipResolver` itself is not modified. Confirm with a single regression test in
+  `test_multi_godfather.py`/`test_multi_tenant_admin.py`-style integration coverage (Phase 4/5)
+  rather than a dedicated test file — no new task number needed.
 
 - [ ] T034 **Audit task, not a TDD pair**: review every other module-level/in-memory cache or
   shared mutable state in `apps/denidin-app/src/` for the same cross-tenant leak risk flagged
@@ -473,16 +470,16 @@ VC0-VC2 for this phase.
   (P1 stories 3→4→5, then P2 stories 6→7) since US1 is the real MVP and US2/US3 build directly
   on US1's tenant-scoped `UserManager` work — but US4/US5 (P2) are independent of each other and
   could be parallelized by separate implementers once Phase 3 lands.
-- **Polish (Phase 8)**: Depends on all five user stories (T033's cache fix specifically depends
-  on US1's tenant_id plumbing existing).
+- **Polish (Phase 8)**: Depends on all five user stories (T031/T032's logging/cleanup work
+  depends on US1's `TenantAIHandlerFactory`/tenant registry existing).
 
 ### Parallel Opportunities
 
 - Phase 2: T003/T004/T005 are sequential within Foundational (model → manager → lookups) but
   all "a" test tasks across different phases with `[P]` can be drafted in parallel by different
   implementers once their dependencies land.
-- Phase 3: T009/T010/T011 (SessionManager/MemoryManager/ledger_event_manager extensions) are
-  `[P]` — independent files, no cross-dependency.
+- Phase 3: T006-T008 (messaging gateway) and T009 (`TenantAIHandlerFactory`) can be developed
+  in parallel by different implementers — the factory doesn't depend on the gateway existing.
 - Phase 6: T021 (capability interfaces) and T023 (bearer middleware) are `[P]` — different apps
   entirely.
 - Phase 8: T031/T032 are `[P]` — independent concerns (logging vs. cleanup).

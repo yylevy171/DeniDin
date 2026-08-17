@@ -133,18 +133,23 @@ No new top-level app/service directory. Changes land inside the existing two app
 
 ```text
 apps/denidin-app/src/
+├── models/
+│   └── tenant.py                 # NEW — Tenant dataclass (joined identity + credentials)
 ├── managers/
 │   ├── tenant_manager.py         # NEW — loads/joins tenants.json + config.<env>.json's
 │   │                              # tenant_credentials, exposes tenant_id lookups
+│   ├── tenant_ai_handler_factory.py  # NEW — builds one AIHandler per tenant (corrected
+│   │                                  # 2026-08-17, research.md SS8 — see below)
 │   ├── logging_utils.py          # EXTENDED (or NEW, tasks decision) — tenant bot_name in every
 │   │                              # tenant-scoped log line (REQ-LOG-001)
-│   ├── user_manager.py           # EXTENDED — RBAC resolution becomes tenant-scoped
-│   ├── session_manager.py        # EXTENDED — tenant_id-partitioned data root
-│   ├── memory_manager.py         # EXTENDED — tenant_id-partitioned ChromaDB collections
-│   ├── ledger_event_manager.py   # EXTENDED — tenant_id-partitioned events
-│   └── group_membership_resolver.py  # EXTENDED — cache re-keyed to (tenant_id, chat_id) AND
-│                                    # resolve() takes tenant_id, selects that tenant's own
-│                                    # groups_client (contracts/group-resolution-tenant-scoping.md)
+│   ├── user_manager.py           # EXTENDED — ONE additive change only: new optional
+│   │                              # godfather_phones list param (multi-godfather, REQ-ROLE-001)
+│   ├── session_manager.py        # UNCHANGED — already constructor-scoped; one instance per
+│   │                              # tenant via tenant_ai_handler_factory.py
+│   ├── memory_manager.py         # UNCHANGED — same reason
+│   ├── ledger_event_manager.py   # UNCHANGED — same reason
+│   └── group_membership_resolver.py  # UNCHANGED — same reason (also resolves the G1 risk
+│                                    # by construction — see research.md SS8)
 ├── services/
 │   └── messaging_gateway.py      # NEW — multi-tenant Green API listener/router (contracts/messaging-gateway.md)
 ├── capabilities/                 # NEW — capability interfaces + implementations
@@ -153,8 +158,8 @@ apps/denidin-app/src/
 │   └── impl/
 │       ├── green_api_messaging.py
 │       └── morning_invoicing.py
-└── handlers/ai_handler.py        # EXTENDED — tenant-scoped OpenAI credential + constitution
-                                   # supplement + capability-gated tool attachment
+└── handlers/ai_handler.py        # UNCHANGED — one instance per tenant, built by
+                                   # tenant_ai_handler_factory.py, not internally modified
 
 apps/morning-mcp-app/src/denidin_mcp_morning/
 ├── server.py                     # EXTENDED — BearerTokenMiddleware → per-tenant token map
@@ -162,9 +167,13 @@ apps/morning-mcp-app/src/denidin_mcp_morning/
 ```
 
 **Structure Decision**: extend both existing apps in place; no new app, no new deployable unit.
-`tenant_manager.py` is the one genuinely new core component in `denidin-app`; everything else
-is an extension of an existing manager/handler, consistent with `research.md`'s
-shared-process decision.
+**Corrected 2026-08-17** (`research.md` §8, an implementation-time discovery): the original
+plan assumed `session_manager.py`/`memory_manager.py`/`ledger_event_manager.py`/
+`group_membership_resolver.py`/`ai_handler.py` would all need internal extension. Reading the
+actual code showed they're already constructor-scoped — the real new work is
+`tenant_ai_handler_factory.py` (builds one full stack per tenant from each `Tenant` object),
+not per-call `tenant_id` threading. Less new/changed code than originally planned, and a
+stronger REQ-PARITY-001 guarantee (untouched classes, not just optional-parameter defaults).
 
 ## Complexity Tracking
 

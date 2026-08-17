@@ -462,12 +462,18 @@ written to hold under either model and needed no changes once the decision was m
   `speckit.tasks`.
 
 ### Parity guarantee
-- **REQ-PARITY-001** (added 2026-08-17): every existing method gaining a `tenant_id` parameter
-  MUST make it optional, defaulting to the migrated tenant, not a newly-required argument. Any
-  caller that doesn't pass `tenant_id` (including `tests/billed/`/`tests/expensive/`, which are
-  explicitly not modified during this implementation) gets exactly today's single-tenant
-  behavior, unchanged. This is the actual mechanism behind SC-002/SC-006's parity claims, not
-  just a byproduct of care.
+- **REQ-PARITY-001** (added 2026-08-17, strengthened during `speckit.implement` —
+  `research.md` §8): the mechanism turned out to be even stronger than originally specified.
+  `SessionManager`, `MemoryManager`, `LedgerEventManager`, `GroupMembershipResolver`, and
+  `AIHandler` are already constructor-scoped in this codebase — multi-tenancy is achieved by
+  constructing one full stack per tenant (`TenantAIHandlerFactory`), not by threading
+  `tenant_id` through method calls. These classes get **zero internal code changes**. The one
+  exception is `UserManager`, which gains one small, additive, optional parameter
+  (`godfather_phones`, for REQ-ROLE-001) — existing callers passing only the original singular
+  `godfather_phone` are unaffected. Either way, any caller that doesn't go through the new
+  per-tenant factory (including `tests/billed/`/`tests/expensive/`, explicitly not modified
+  during this implementation) gets exactly today's single-tenant behavior — by construction,
+  not convention. This is the actual mechanism behind SC-002/SC-006's parity claims.
 
 ### Group membership resolution
 - **REQ-GROUP-001**: `GroupMembershipResolver`'s existing mechanism (most-permissive member's
