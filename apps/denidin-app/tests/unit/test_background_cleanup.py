@@ -20,7 +20,11 @@ from unittest.mock import Mock, MagicMock, patch
 
 from src.managers.session_manager import SessionManager
 from src.handlers.ai_handler import AIHandler
-from src.services.cleanup_service import SessionCleanupThread
+from src.services.cleanup_service import (
+    MultiTenantSessionCleanupThread,
+    SessionCleanupThread,
+    run_startup_cleanup_for_tenants,
+)
 from src.models.config import AppConfiguration
 
 
@@ -257,6 +261,120 @@ class TestBackgroundCleanupThread:
             with open(archived_session_file) as f:
                 archived_data = json.load(f)
             assert archived_data.get("transferred_to_longterm", False) is True, "Should be marked as transferred"
-            
+
         finally:
             cleanup_thread.stop()
+
+
+class _FakeTenantContext:
+    """Minimal duck-typed `global_context` for these tests - real SessionManager
+    (real, fast file I/O), Mock() ai_handler (no real ChromaDB/OpenAI needed to
+    exercise the cross-tenant SWEEP logic under test here, distinct from
+    TestBackgroundCleanupThread above which already covers the full real
+    per-session mechanics)."""
+
+    def __init__(self, bot_name: str, storage_dir):
+        self.bot_name = bot_name
+        self.session_manager = SessionManager(storage_dir=str(storage_dir), session_timeout_hours=1 / 3600)
+        self.ai_handler = MagicMock()
+        self.ai_handler.transfer_session_to_long_term_memory = Mock(
+            return_value={"success": True, "memory_id": f"memory-{bot_name}"}
+        )
+
+
+def _expire_session(session_manager, chat_id: str) -> str:
+    session_manager.add_message(chat_id, "user", "Old message", "client")
+    session = session_manager.get_session(chat_id)
+    old_time = datetime.now(timezone.utc) - timedelta(hours=2)
+    session.last_active = old_time.isoformat()
+    session_manager._save_session(session)
+    return session.session_id
+
+
+class TestMultiTenantSessionCleanupThread:
+    """Feature 055 Phase 8, T032a (REQ-BG-001): one unified sweep iterates every
+    tenant's own data root in turn; one tenant's cleanup error doesn't abort the
+    sweep for other tenants."""
+
+    def test_sweep_processes_expired_sessions_across_multiple_tenants(self, tmp_path):
+        tenant_a = _FakeTenantContext("DeniDin", tmp_path / "tenant_a")
+        tenant_b = _FakeTenantContext("Jabaloola", tmp_path / "tenant_b")
+        chat_a = "client_a@c.us"
+        chat_b = "client_b@c.us"
+        _expire_session(tenant_a.session_manager, chat_a)
+        _expire_session(tenant_b.session_manager, chat_b)
+
+        cleanup_thread = MultiTenantSessionCleanupThread(
+            tenants=[tenant_a, tenant_b], cleanup_interval_seconds=3600
+        )
+        cleanup_thread.start()
+        try:
+            time.sleep(2)
+
+            assert chat_a not in tenant_a.session_manager.chat_to_session
+            assert chat_b not in tenant_b.session_manager.chat_to_session
+            tenant_a.ai_handler.transfer_session_to_long_term_memory.assert_called()
+            tenant_b.ai_handler.transfer_session_to_long_term_memory.assert_called()
+        finally:
+            cleanup_thread.stop()
+
+    def test_one_tenants_cleanup_error_does_not_abort_the_sweep_for_others(self, tmp_path):
+        """The actual point of REQ-BG-001: tenant A is structurally broken
+        (get_expired_sessions raises) but tenant B still gets cleaned up in
+        the same sweep."""
+        tenant_a = _FakeTenantContext("Broken", tmp_path / "tenant_a")
+        tenant_a.session_manager.get_expired_sessions = Mock(side_effect=RuntimeError("boom"))
+        tenant_b = _FakeTenantContext("Healthy", tmp_path / "tenant_b")
+        chat_b = "client_b@c.us"
+        _expire_session(tenant_b.session_manager, chat_b)
+
+        cleanup_thread = MultiTenantSessionCleanupThread(
+            tenants=[tenant_a, tenant_b], cleanup_interval_seconds=3600
+        )
+        cleanup_thread.start()
+        try:
+            time.sleep(2)
+
+            assert chat_b not in tenant_b.session_manager.chat_to_session
+            tenant_b.ai_handler.transfer_session_to_long_term_memory.assert_called()
+        finally:
+            cleanup_thread.stop()
+
+    def test_no_tenants_configured_does_not_crash_the_loop(self, tmp_path):
+        cleanup_thread = MultiTenantSessionCleanupThread(tenants=[], cleanup_interval_seconds=3600)
+        cleanup_thread.start()
+        try:
+            time.sleep(1)
+            assert cleanup_thread._thread.is_alive()  # pylint: disable=protected-access
+        finally:
+            cleanup_thread.stop()
+
+
+class TestRunStartupCleanupForTenants:
+    """Feature 055 Phase 8, T032a (REQ-BG-001): same isolation guarantee, for the
+    one-time startup sweep."""
+
+    def test_processes_expired_sessions_for_every_tenant(self, tmp_path):
+        tenant_a = _FakeTenantContext("DeniDin", tmp_path / "tenant_a")
+        tenant_b = _FakeTenantContext("Jabaloola", tmp_path / "tenant_b")
+        chat_a = "client_a@c.us"
+        chat_b = "client_b@c.us"
+        _expire_session(tenant_a.session_manager, chat_a)
+        _expire_session(tenant_b.session_manager, chat_b)
+
+        run_startup_cleanup_for_tenants([tenant_a, tenant_b])
+
+        assert chat_a not in tenant_a.session_manager.chat_to_session
+        assert chat_b not in tenant_b.session_manager.chat_to_session
+
+    def test_one_tenants_startup_failure_does_not_abort_the_others(self, tmp_path):
+        tenant_a = _FakeTenantContext("Broken", tmp_path / "tenant_a")
+        tenant_a.session_manager.get_expired_sessions = Mock(side_effect=RuntimeError("boom"))
+        tenant_b = _FakeTenantContext("Healthy", tmp_path / "tenant_b")
+        chat_b = "client_b@c.us"
+        _expire_session(tenant_b.session_manager, chat_b)
+
+        # Must not raise - tenant_a's failure is caught internally.
+        run_startup_cleanup_for_tenants([tenant_a, tenant_b])
+
+        assert chat_b not in tenant_b.session_manager.chat_to_session

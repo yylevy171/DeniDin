@@ -10,7 +10,7 @@ import shutil
 import uuid
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
-from src.utils.logger import setup_logger, get_logger
+from src.utils.logger import bind_tenant_context, current_tenant_context, get_logger, setup_logger
 
 
 class TestLogger:
@@ -455,3 +455,109 @@ class TestVersionFilter:
 
         assert len(caplog.records) == 1
         assert caplog.records[0].version == '2.0.0'
+
+
+class TestTenantFilter:
+    """Feature 055 (Multi-Tenancy) Phase 8, T031a (REQ-LOG-001): every tenant-scoped
+    log line carries a `tenant=<bot_name>` key=value token, sourced from a
+    threading.local() binding (bind_tenant_context) rather than a fixed value -
+    same Filter-attached-to-the-Logger-object mechanism as TestVersionFilter above,
+    named `test_logging_utils.py` in tasks.md's original wording but implemented
+    here in this file (matching the actual module under test, logger.py, per this
+    repo's test_<module>.py convention - same naming-deviation precedent as
+    T013a/T018a).
+    """
+
+    @pytest.fixture
+    def temp_logs_dir(self):
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @pytest.fixture(autouse=True)
+    def _reset_tenant_binding(self):
+        """threading.local() persists across tests on the same (main) thread -
+        reset to the unbound sentinel before and after every test in this class
+        so no test's binding leaks into another's."""
+        bind_tenant_context("-")
+        yield
+        bind_tenant_context("-")
+
+    def _read_log(self, logs_path: str) -> str:
+        log_file = os.path.join(logs_path, 'denidin.log')
+        with open(log_file, 'r') as f:
+            return f.read()
+
+    def test_current_tenant_context_defaults_to_unset_sentinel(self):
+        assert current_tenant_context() == "-"
+
+    def test_bind_tenant_context_updates_current_tenant_context(self):
+        bind_tenant_context("Jabaloola")
+        assert current_tenant_context() == "Jabaloola"
+
+    def test_log_line_includes_bound_tenant(self, temp_logs_dir):
+        bind_tenant_context("Jabaloola")
+        logs_path = os.path.join(temp_logs_dir, 'logs')
+        logger_name = f'test_tenant_{uuid.uuid4().hex[:8]}'
+        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO')
+
+        logger.info('hello')
+        for handler in logger.handlers:
+            handler.flush()
+
+        content = self._read_log(logs_path)
+        assert 'tenant=Jabaloola' in content
+        assert 'hello' in content
+
+    def test_log_line_shows_unset_sentinel_when_no_tenant_bound(self, temp_logs_dir):
+        """Never omitted - explicitly "-", so a reader can tell "no tenant bound"
+        apart from "field missing" (a config/wiring regression)."""
+        logs_path = os.path.join(temp_logs_dir, 'logs')
+        logger_name = f'test_tenant_unbound_{uuid.uuid4().hex[:8]}'
+        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO')
+
+        logger.info('hello')
+        for handler in logger.handlers:
+            handler.flush()
+
+        content = self._read_log(logs_path)
+        assert 'tenant=-' in content
+
+    def test_tenant_tag_appears_after_the_version_tag(self, temp_logs_dir):
+        """Format decided 2026-08-17: appended AFTER the existing [v<version>]
+        prefix, e.g. '[v1.4.2] tenant=Jabaloola ...' - logfmt-style key=value,
+        not bracket notation."""
+        bind_tenant_context("Jabaloola")
+        logs_path = os.path.join(temp_logs_dir, 'logs')
+        logger_name = f'test_tenant_order_{uuid.uuid4().hex[:8]}'
+        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO')
+
+        logger.info('hello')
+        for handler in logger.handlers:
+            handler.flush()
+
+        content = self._read_log(logs_path)
+        assert content.index('[v') < content.index('tenant=Jabaloola')
+
+    def test_get_logger_also_includes_tenant(self, caplog):
+        """Same test-environment-shortcut concern as TestVersionFilter's
+        equivalent test above - the Filter must be attached to the Logger
+        object itself to survive get_logger()'s root-logger-reuse shortcut."""
+        bind_tenant_context("Jabaloola")
+        logger_name = f'test_get_tenant_{uuid.uuid4().hex[:8]}'
+        logger = get_logger(logger_name, log_level='INFO')
+
+        with caplog.at_level('INFO', logger=logger_name):
+            logger.info('via get_logger')
+
+        assert len(caplog.records) == 1
+        assert caplog.records[0].tenant == 'Jabaloola'
+
+    def test_rebinding_on_the_same_thread_overwrites_the_previous_value(self, temp_logs_dir):
+        """A thread that binds a second tenant later (shouldn't normally happen
+        in production - one dedicated thread per tenant - but must not silently
+        keep stamping the first tenant's name if it did)."""
+        bind_tenant_context("TenantA")
+        bind_tenant_context("TenantB")
+
+        assert current_tenant_context() == "TenantB"

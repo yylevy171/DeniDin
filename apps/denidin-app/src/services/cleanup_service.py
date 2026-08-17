@@ -3,12 +3,23 @@ Session cleanup service for application-level tasks.
 
 App-level cleanup thread with access to global context (SessionManager, MemoryManager, AIHandler).
 Ensures atomic transfer + archival operations.
+
+Feature 055 (Multi-Tenancy) Phase 8, REQ-BG-001: `MultiTenantSessionCleanupThread`/
+`run_startup_cleanup_for_tenants` extend this to sweep every tenant's own data root in
+one unified background thread (not one thread per tenant - matches the "shared,
+multi-tenant-native services" architecture this feature settled on throughout), with
+per-tenant exception isolation so one tenant's failure never skips any other tenant's
+cleanup. `Tenant` (src/models/tenant.py) itself duck-types as a `global_context` (its
+own `.ai_handler` attribute, plus a `session_manager` property aliasing
+`ai_handler.session_manager` - the same shape `denidin.py`'s single-tenant `DeniDin`
+class already has), so every existing function/class below is reused UNCHANGED for the
+multi-tenant case - no parity risk to the single-tenant path.
 """
 
 import threading
 import time
-from typing import Optional
-from src.utils.logger import get_logger
+from typing import Any, List, Optional
+from src.utils.logger import bind_tenant_context, get_logger
 from src.managers.session_manager import Session
 
 logger = get_logger(__name__)
@@ -87,21 +98,33 @@ class SessionCleanupThread:
         3. Remove from index (session no longer accessible)
         4. Update transferred_to_longterm flag
         """
-        try:
-            # Get all expired sessions
-            expired_sessions = self.global_context.session_manager.get_expired_sessions()
+        _cleanup_expired_sessions_for_context(self.global_context)
 
-            if not expired_sessions:
-                logger.debug("No expired sessions to clean up")
-                return
 
-            logger.info(f"Found {len(expired_sessions)} expired session(s) to process")
+def _cleanup_expired_sessions_for_context(global_context: Any, log_context: str = "") -> None:
+    """One periodic-sweep pass for ONE context (a single-tenant `DeniDin` instance, or -
+    Feature 055 Phase 8 - one `Tenant` among several in a multi-tenant sweep). Shared by
+    `SessionCleanupThread._cleanup_expired_sessions` (single-tenant, `log_context=""` -
+    REQ-PARITY-001: byte-identical log lines to before this function was extracted) and
+    `MultiTenantSessionCleanupThread` (one call per tenant). Catches its own top-level
+    exception (unchanged pre-055 behavior) so a failure here never propagates to a caller
+    iterating multiple contexts (REQ-BG-001).
+    """
+    try:
+        # Get all expired sessions
+        expired_sessions = global_context.session_manager.get_expired_sessions()
 
-            for session in expired_sessions:
-                self._process_single_session(session)
+        if not expired_sessions:
+            logger.debug(f"{log_context}No expired sessions to clean up")
+            return
 
-        except Exception as cleanup_error:
-            logger.error(f"Error during session cleanup: {cleanup_error}", exc_info=True)
+        logger.info(f"{log_context}Found {len(expired_sessions)} expired session(s) to process")
+
+        for session in expired_sessions:
+            _process_session_cleanup(global_context, session, log_context)
+
+    except Exception as cleanup_error:  # pylint: disable=broad-except
+        logger.error(f"{log_context}Error during session cleanup: {cleanup_error}", exc_info=True)
 
 
 def run_startup_cleanup(global_context):
@@ -132,6 +155,98 @@ def run_startup_cleanup(global_context):
 
     except Exception as e:
         logger.error(f"Startup cleanup error: {e}", exc_info=True)
+
+
+def run_startup_cleanup_for_tenants(tenants: List[Any]) -> None:
+    """Feature 055 Phase 8 (REQ-BG-001): run startup cleanup once per tenant, in turn.
+    `run_startup_cleanup` already catches its own top-level exception (unchanged, see
+    above), so one tenant's failure can never skip any other tenant's startup cleanup -
+    no additional try/except needed here to get that guarantee."""
+    for tenant in tenants:
+        bind_tenant_context(getattr(tenant, "bot_name", "-"))
+        run_startup_cleanup(tenant)
+
+
+class MultiTenantSessionCleanupThread:
+    """Feature 055 Phase 8 (REQ-BG-001): ONE unified background thread sweeping every
+    tenant's own data root in turn - not one `SessionCleanupThread` per tenant (matches
+    this feature's "shared, multi-tenant-native services, not N processes/threads"
+    architecture throughout, e.g. `research.md` §6's background-thread-policy decision).
+
+    Each tenant's own sweep already self-isolates its exception
+    (`_cleanup_expired_sessions_for_context`); this class adds an OUTER per-tenant
+    try/except too, so even a structurally broken tenant (e.g. missing `.ai_handler`
+    entirely, raising before that inner try block is even reached) can't take down the
+    sweep for the rest.
+    """
+
+    def __init__(self, tenants: List[Any], cleanup_interval_seconds: int = 3600):
+        """
+        Args:
+            tenants: every tenant to sweep each cycle - each one duck-types as a
+                `global_context` (`.session_manager`, `.ai_handler`; `Tenant` provides
+                both). Read fresh from this list reference each sweep, so a caller that
+                mutates the underlying list (a tenant added/removed) is picked up on
+                the next cycle without restarting the thread.
+            cleanup_interval_seconds: interval between sweeps, same meaning as
+                `SessionCleanupThread`'s own parameter.
+        """
+        self.tenants = tenants
+        self.cleanup_interval_seconds = cleanup_interval_seconds
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+
+        logger.info(
+            f"MultiTenantSessionCleanupThread initialized: {len(tenants)} tenant(s), "
+            f"interval={cleanup_interval_seconds}s"
+        )
+
+    def start(self):
+        """Start the background cleanup thread."""
+        if self._running:
+            logger.warning("Multi-tenant cleanup thread already running")
+            return
+
+        self._running = True
+        self._thread = threading.Thread(target=self._cleanup_loop, daemon=True)
+        self._thread.start()
+        logger.info("Multi-tenant session cleanup thread started")
+
+    def stop(self):
+        """Stop the background cleanup thread."""
+        if not self._running:
+            return
+
+        self._running = False
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5)
+        logger.info("Multi-tenant session cleanup thread stopped")
+
+    def _cleanup_loop(self):
+        """Main cleanup loop - runs periodically, same immediate-first-pass shape as
+        `SessionCleanupThread._cleanup_loop` (cleanup runs before the first sleep, not
+        only after - critical for catching sessions that expired while the app was
+        down, same rationale as that class's own version)."""
+        while self._running:
+            if self._running:
+                self._cleanup_all_tenants()
+            time.sleep(self.cleanup_interval_seconds)
+
+    def _cleanup_all_tenants(self) -> None:
+        """One sweep across every tenant, in turn. A given tenant's failure is logged
+        and skipped - never aborts the sweep for the tenants after it."""
+        for tenant in self.tenants:
+            bot_name = getattr(tenant, "bot_name", "?")
+            try:
+                bind_tenant_context(bot_name)
+                _cleanup_expired_sessions_for_context(tenant, log_context=f"[{bot_name}] ")
+            except Exception as sweep_error:  # pylint: disable=broad-except
+                logger.error(
+                    f"[{bot_name}] Cleanup sweep failed for this tenant - "
+                    f"continuing with the remaining tenants: {sweep_error}",
+                    exc_info=True,
+                )
+                continue
 
 
 def _process_session_cleanup(global_context, session: Session, log_prefix: str = ""):

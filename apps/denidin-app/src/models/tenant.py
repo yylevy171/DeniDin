@@ -34,7 +34,7 @@ from src.handlers.media_handler import MediaHandler
 from src.handlers.whatsapp_handler import WhatsAppHandler
 from src.managers.group_membership_resolver import GroupMembershipResolver
 from src.utils.green_api_bot import DeniDinGreenAPIBot, mark_message_read, send_typing_indicator
-from src.utils.logger import get_logger
+from src.utils.logger import bind_tenant_context, get_logger
 
 logger = get_logger(__name__)
 
@@ -105,6 +105,15 @@ class Tenant:
         """
         return bool(self.mcp_auth_token) and "invoicing_provider" in self.capability_selection
 
+    @property
+    def session_manager(self) -> Optional[Any]:
+        """Feature 055 Phase 8 (REQ-BG-001): alias for `ai_handler.session_manager` -
+        makes a started `Tenant` duck-type directly as a cleanup_service.py
+        `global_context` (`.session_manager` + `.ai_handler` as sibling top-level
+        attributes), the exact same shape `denidin.py`'s single-tenant `DeniDin`
+        class already has. `None` before `start()` (matching `ai_handler` itself)."""
+        return self.ai_handler.session_manager if self.ai_handler else None
+
     # ------------------------------------------------------------------
     # Runtime startup
     # ------------------------------------------------------------------
@@ -119,6 +128,12 @@ class Tenant:
         can supply a fake bot instead of making real Green API calls — construction
         of the real bot class always makes at least one real HTTP call.
         """
+        # Feature 055 Phase 8 (REQ-LOG-001): bind on the calling thread too (not
+        # just the dedicated dispatch thread launched below) - every log line
+        # start() itself produces (e.g. _fetch_own_whatsapp_number's, below) is
+        # then correctly tagged as well, whichever thread calls start().
+        bind_tenant_context(self.bot_name)
+
         # Local import: breaks a circular import (tenant_ai_handler_factory.py
         # imports Tenant for its type hint).
         from src.managers.tenant_ai_handler_factory import TenantAIHandlerFactory
@@ -154,8 +169,19 @@ class Tenant:
 
         self._register_handlers()
 
-        self._listener_thread = threading.Thread(target=self.bot.run_forever, daemon=True)
+        self._listener_thread = threading.Thread(target=self._run_forever, daemon=True)
         self._listener_thread.start()
+
+    def _run_forever(self) -> None:
+        """Thread target for `_listener_thread` (Feature 055 Phase 8, REQ-LOG-001):
+        binds this tenant's `bot_name` to THIS thread before handing off to the
+        real dispatch loop, so every log line from anything invoked synchronously
+        within it (this tenant's own AIHandler, SessionManager, MemoryManager,
+        WhatsAppHandler, LedgerEventManager, ...) is automatically tagged
+        `tenant=<bot_name>` - see `src/utils/logger.py`'s module docstring for
+        the full mechanism. No log-call-site changes needed anywhere else."""
+        bind_tenant_context(self.bot_name)
+        self.bot.run_forever()
 
     def _register_handlers(self) -> None:
         """Register all 9 message-type handlers as bound methods on this tenant's
@@ -187,17 +213,17 @@ class Tenant:
                 phone = response.data.get("phone", "")
                 if phone:
                     logger.info(
-                        f"[{self.bot_name}] Resolved own WhatsApp number for "
+                        f"Resolved own WhatsApp number for "
                         f"self-mention detection: {phone}"
                     )
                     return phone
             logger.warning(
-                f"[{self.bot_name}] getWaSettings did not return a usable 'phone' field "
+                f"getWaSettings did not return a usable 'phone' field "
                 f"(code={response.code}) — self-mention-by-number detection unavailable"
             )
         except Exception as e:  # pylint: disable=broad-except
             logger.warning(
-                f"[{self.bot_name}] Failed to fetch own WhatsApp number: {e} — "
+                f"Failed to fetch own WhatsApp number: {e} — "
                 "self-mention-by-number detection unavailable"
             )
         return ""
@@ -259,7 +285,7 @@ class Tenant:
             # Stale/superseded tap, or no pending approval at all — silently
             # ignore, send nothing at all.
             logger.info(
-                f"[{self.bot_name}] Button tap produced no resolution for "
+                f"Button tap produced no resolution for "
                 f"chat={message.chat_id!r} (selected_id={selected_id!r}, "
                 f"stanza_id={stanza_id!r}) — sending nothing"
             )
@@ -271,7 +297,7 @@ class Tenant:
                 message.chat_id, sent_id_message
             )
         logger.info(
-            f"[{self.bot_name}] Button tap resolved and response sent for "
+            f"Button tap resolved and response sent for "
             f"chat={message.chat_id!r}"
         )
 
@@ -311,14 +337,14 @@ class Tenant:
             )
 
             logger.info(
-                f"[{self.bot_name}] {tracking} Received message from "
+                f"{tracking} Received message from "
                 f"{message.sender_name} ({message.sender_id}): {message.text_content[:100]}..."
             )
 
             group_user_phone = self._resolve_group_user_phone(message)
 
             ai_request = self.ai_handler.create_request(message, user_phone=group_user_phone)
-            logger.debug(f"[{self.bot_name}] {tracking} Created AI request {ai_request.request_id}")
+            logger.debug(f"{tracking} Created AI request {ai_request.request_id}")
 
             is_blocked = self.ai_handler.user_manager.get_user(message.sender_id).is_blocked
             send_typing_indicator(self.bot, message.chat_id, is_blocked)
@@ -329,13 +355,13 @@ class Tenant:
                 user_phone=group_user_phone or message.sender_id,
             )
             logger.info(
-                f"[{self.bot_name}] {tracking} AI response generated: "
+                f"{tracking} AI response generated: "
                 f"{ai_response.tokens_used} tokens, {len(ai_response.response_text)} chars"
             )
 
             if not ai_response.should_reply:
                 logger.info(
-                    f"[{self.bot_name}] {tracking} No reply sent "
+                    f"{tracking} No reply sent "
                     "(should_reply=False, no-reply sentinel)"
                 )
                 return
@@ -345,7 +371,7 @@ class Tenant:
                 self.ai_handler.pending_approval_manager.attach_sent_message_id(
                     message.chat_id, sent_id_message
                 )
-            logger.info(f"[{self.bot_name}] {tracking} Response sent to {message.sender_name}")
+            logger.info(f"{tracking} Response sent to {message.sender_name}")
 
         except Exception as e:  # pylint: disable=broad-except
             try:
@@ -354,22 +380,22 @@ class Tenant:
                     f"[recv_ts={message.received_timestamp.isoformat()}]"
                 )
                 logger.error(
-                    f"[{self.bot_name}] {tracking} Unexpected error processing message: {e}",
+                    f"{tracking} Unexpected error processing message: {e}",
                     exc_info=True,
                 )
             except (NameError, AttributeError, UnboundLocalError):
                 logger.error(
-                    f"[{self.bot_name}] Unexpected error processing message "
+                    f"Unexpected error processing message "
                     f"(no tracking available): {e}",
                     exc_info=True,
                 )
 
             try:
                 notification.answer(ERROR_PROCESSING_MESSAGE_TRY_AGAIN)
-                logger.info(f"[{self.bot_name}] Generic fallback message sent to user")
+                logger.info(f"Generic fallback message sent to user")
             except Exception as fallback_error:  # pylint: disable=broad-except
                 logger.error(
-                    f"[{self.bot_name}] Failed to send fallback message: {fallback_error}",
+                    f"Failed to send fallback message: {fallback_error}",
                     exc_info=True,
                 )
 

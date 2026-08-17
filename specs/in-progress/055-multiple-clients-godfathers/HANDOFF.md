@@ -73,7 +73,7 @@ confirming with the user. This was a deliberate scope boundary, not an oversight
 | **5. US3 (super-admin)** | 🟡 mostly done | T018a/b, T019a/b (`tests/integration/test_multi_tenant_admin.py`, 6 tests — both b-halves confirmed no-ops). **T020a remains: a real WhatsApp test on the existing tenant — requires starting a live environment, which needs fresh per-action human approval every time (CLAUDE.md), not attempted here. T020b is the usual deferred-pending-a-real-second-tenant gate.** |
 | **6. US4 (capability abstraction)** | 🟡 mostly done | T021a/b (`src/capabilities/` - `MessagingProvider`/`InvoicingProvider` interfaces + `CapabilityRegistry`, wired into `Tenant.start()`/`TenantAIHandlerFactory`), T022a/b (degraded-start - found and closed a REAL pre-existing cross-tenant token-leak gap, not just a missing test), T023a/b + T024a/b (`apps/morning-mcp-app`: per-tenant `BearerTokenMiddleware` + `utils/tenant_context.py` ContextVar, empirically verified through the real FastMCP/Starlette/uvicorn stack before committing to the design; tenant-attributed audit logging), T025a/b (per-tenant `MorningClient` resolution in `create_server`, real-sandbox test **written but not executed** - blocked by a pre-existing `config.test.json` schema gap in this clone, unrelated to this feature, confirmed via the same gap blocking the pre-existing `test_mcp_server_e2e.py`). **T025c/T026a/T026b remain: all manual/deferred gates, none attempted.** |
 | **7. US5 (per-tenant constitution)** | 🟡 mostly done | T027a/b (`{bot_name}` template rendering, `test_constitution_loader.py`, 13 tests), T028a/b (supplement concatenation, same file, 6 tests), T029a's static-grep interim substitute (found and fixed a REAL gap: `_normalize_self_mentions` was hardcoded to `"@DeniDin"` regardless of tenant - now `bot_name`-aware, 5 new tests in `test_ai_handler_self_mention_normalization.py`). `config/runtime_constitution.md` itself now fully templated (all 6 literal "DeniDin" occurrences → `{bot_name}`). **T029a/b's own real `billed` model-behavior test stays deferred** (frozen this session, per the user's explicit directive) - the static-grep fix only proves code-level plumbing, not re-verified live model behavior. **T030a remains: a real WhatsApp parity check on the existing tenant** - same live-environment-start gate as T017/T020a, not attempted. T030b is the usual deferred-pending-a-real-second-tenant gate. |
-| **8** | ❌ not started | Logging/cleanup/cache-audit polish |
+| **8. Polish** | 🟡 mostly done | T031a/b (tenant-attributed `tenant=<bot_name>` log tags, `threading.local()`-based, bound once per tenant's own dispatch thread — `test_logger.py`, 7 tests), T032a/b (`MultiTenantSessionCleanupThread`/`run_startup_cleanup_for_tenants`, one unified sweep with per-tenant exception isolation — `test_background_cleanup.py`, 5 tests), T033 (already resolved by construction, pre-055), T034 (cache audit — clean bill of health, written finding at `T034-cache-audit-findings.md`, no fix needed). **T035 remains: `quickstart.md`'s live-tenant half needs a live environment start (same gate as T017/T020a/T030a) — not attempted; its synthetic-second-tenant half is, in substance, already exercised throughout this session's test suite.** |
 
 Test files that exist (denidin-app): `test_tenant.py`, `test_tenant_manager.py`,
 `test_tenant_ai_handler_factory.py`, `test_tenant_runtime.py`, `test_migrate_to_tenant.py`,
@@ -94,32 +94,33 @@ code, not silently patched mid-run) - surface it and ask for the missing value, 
 
 ## Immediate next step
 
-Phases 3, 4, 5, 6, and 7 are all done except their manual/deferred-gate items, T029a/b's own
-`billed` test (explicitly frozen this session, not this feature's call to unfreeze), and one
-execution caveat (the config.test.json blocker, morning-mcp-app only, documented above).
-denidin-app: unit suite 894 passed, integration suite 50 passed. morning-mcp-app: unit suite 308
-passed (4 pre-existing, unrelated failures also caused by the config.test.json gap - do not "fix"
-these either without the user). Zero regressions introduced by this feature throughout, on
-either app.
+**All 8 phases are now done except manual/deferred/live-infrastructure gates and one execution
+caveat.** This is, in substance, the end of the automatable work for this feature under its
+current scope. denidin-app: unit suite 906 passed, integration suite 50 passed. morning-mcp-app:
+unit suite 308 passed (4 pre-existing, unrelated failures caused by the config.test.json gap -
+do not "fix" these either without the user). Zero regressions introduced by this feature
+throughout, on either app, at every single phase checkpoint.
 
 **Open manual-approval-gate items, all needing the user, none attempted in this session:**
-T017 (Phase 4), T020a (Phase 5), T025c/T026a/T026b (Phase 6), T030a/T030b (Phase 7) - see each
-phase's row above for specifics. Every one of these requires either a live environment start
-(needs fresh per-action approval, CLAUDE.md) or a real second tenant/second Morning account that
-doesn't exist yet. Do not attempt to simulate or skip any of them — leave them `[ ]` and move on,
-same as this feature's other manual gates throughout. T029a/b (Phase 7's own `billed` test) is a
-DIFFERENT kind of gap - not a manual/live gate, but explicitly frozen per this session's own
-"billed/expensive stay untouched" constraint; don't write/run it without the user first lifting
-that freeze (it's not blocked on infrastructure the way the others are).
+T017 (Phase 4), T020a (Phase 5), T025c/T026a/T026b (Phase 6), T030a/T030b (Phase 7), T035 (Phase
+8) - see each phase's row above for specifics. Every one of these requires either a live
+environment start (needs fresh per-action approval, CLAUDE.md) or a real second tenant/second
+Morning account that doesn't exist yet. Do not attempt to simulate or skip any of them — leave
+them `[ ]` and move on. T029a/b (Phase 7's own `billed` test) is a DIFFERENT kind of gap - not a
+manual/live gate, but explicitly frozen per this session's own "billed/expensive stay untouched"
+constraint; don't write/run it without the user first lifting that freeze.
 
-**Next up: Phase 8 (T031-T035), polish & cross-cutting concerns** — read that phase's full task
-list in `tasks.md` before starting (not yet reviewed in this session) - per the summary at the
-top of this file, expect tenant-attributed logging (`tenant=<bot_name>` format, single combined
-log file - already partially present as ad-hoc `[{self.bot_name}]` prefixes in `tenant.py`, not
-yet the formal `tenant=X` convention), unified background-thread/cleanup-thread policy, and a
-cache/state audit for anything still accidentally global instead of per-tenant. This is the last
-phase - once it's done (minus its own manual gates, if any), the feature is code-complete per
-the user's "keep going until fully code complete" instruction from this session.
+**Next up, if the user wants further work on this feature:**
+1. Get the user to fix (or explicitly hand you) `apps/morning-mcp-app/config/config.test.json`'s
+   missing `auth_url` field, then actually RUN `tests/integration/test_multi_tenant_morning.py`
+   (T025a) - it's written and should pass, but was never executed in this session.
+2. Work through the manual-approval-gate list above, one at a time, with the user's explicit
+   per-action sign-off each time (per CLAUDE.md - no blanket approval carries across these).
+3. Revisit T029a/b (the real `billed` self-recognition test) once the user lifts this session's
+   billed/expensive freeze.
+4. Otherwise: this feature's code and its own test suite are complete. The next natural step
+   is the `/haleluya` finish-feature flow (spec status update, commit, PR, merge) - but per this
+   repo's standing rule, only when the user actually says the word, not before.
 
 ## Rules to not forget (violating any of these was explicitly corrected by the user this session)
 

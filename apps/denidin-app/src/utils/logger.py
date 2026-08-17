@@ -19,14 +19,50 @@ process happened to be in - which meant a prod container (no TZ set, Docker's UT
 wrote UTC while the same code under host pytest wrote Israel time, in the identical
 unlabelled format. LocalTimeFormatter makes the zone a property of the code rather than of
 the environment, and prints the offset so a line can never be misread.
+
+Feature 055 (Multi-Tenancy) Phase 8, REQ-LOG-001: every tenant-scoped log line carries a
+`tenant=<bot_name>` key=value token (logfmt-style, for grep/parsing - decided 2026-08-17,
+not bracket notation), appended after the existing `[v<version>]` prefix. Same mechanism as
+the version stamp (a Filter attached to the Logger object), but sourced from a
+`threading.local()` instead of a fixed process-wide value: each `Tenant` binds its own
+`bot_name` once, at the top of its own dedicated listener thread
+(`bind_tenant_context`, called from `Tenant.start()`'s thread target) - every log line from
+any code invoked synchronously within that thread's call stack (AIHandler, SessionManager,
+MemoryManager, WhatsAppHandler, LedgerEventManager, ...) is automatically tagged correctly,
+with zero changes to any of those modules' own logging calls. A thread that never calls
+`bind_tenant_context` (the main/bootstrap thread, or a single-tenant deployment that never
+adopts this at all) logs `tenant=-`, matching `current_correlation_id`'s existing "-" =
+"unset" convention in the morning-mcp-app - never omitted, so a reader can tell "no tenant
+bound" apart from "field missing" (a config regression).
 """
 import logging
 import os
 import re
+import threading
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Union
+
+# Feature 055 Phase 8: per-thread tenant binding - see module docstring.
+_UNSET_TENANT = "-"
+_tenant_local = threading.local()
+
+
+def bind_tenant_context(bot_name: str) -> None:
+    """Bind `bot_name` to the CALLING thread for the remainder of its lifetime.
+
+    Call once, at the very top of a tenant's own dedicated dispatch thread
+    (`Tenant.start()`'s listener-thread target) - every log line emitted by
+    anything invoked synchronously within that thread afterward picks it up
+    automatically via `_TenantFilter`, with no parameter threading required.
+    """
+    _tenant_local.bot_name = bot_name
+
+
+def current_tenant_context() -> str:
+    """The `bot_name` bound on the calling thread, or "-" if none is bound."""
+    return getattr(_tenant_local, "bot_name", _UNSET_TENANT)
 
 from .time_utils import LOCAL_TZ
 
@@ -84,6 +120,24 @@ def _ensure_version_filter(logger: logging.Logger, version_file: Union[str, Path
     logger.addFilter(_VersionFilter(read_version(Path(version_file))))
 
 
+class _TenantFilter(logging.Filter):
+    """Stamps every LogRecord with the tenant currently bound on the CALLING
+    thread (see module docstring / bind_tenant_context) - unlike _VersionFilter,
+    this is read fresh per record, not fixed at attach time, since it varies by
+    which tenant's thread produced this particular line."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.tenant = current_tenant_context()
+        return True
+
+
+def _ensure_tenant_filter(logger: logging.Logger) -> None:
+    """Idempotent: attaches a _TenantFilter to `logger` unless one is already there."""
+    if any(isinstance(f, _TenantFilter) for f in logger.filters):
+        return
+    logger.addFilter(_TenantFilter())
+
+
 def setup_logger(
     name: str,
     logs_dir: str = 'logs',
@@ -128,10 +182,11 @@ def setup_logger(
         return logger
 
     _ensure_version_filter(logger, version_file)
+    _ensure_tenant_filter(logger)
 
     # Create formatter
     formatter = LocalTimeFormatter(
-        '%(asctime)s - [v%(version)s] - %(name)s - %(levelname)s - %(message)s',
+        '%(asctime)s - [v%(version)s] tenant=%(tenant)s - %(name)s - %(levelname)s - %(message)s',
         datefmt=LOCAL_LOG_DATEFMT
     )
 
@@ -193,6 +248,7 @@ def get_logger(
         logger = logging.getLogger(name)
         logger.setLevel(getattr(logging, log_level))
         _ensure_version_filter(logger, version_file)
+        _ensure_tenant_filter(logger)
         return logger
 
     # Production environment - set up logger with file handlers

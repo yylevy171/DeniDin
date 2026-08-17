@@ -550,24 +550,52 @@ VC0-VC2 for this phase.
 
 **Purpose**: Requirements that span multiple stories rather than belonging to one.
 
-- [ ] T031a [P] Write tests for tenant-attributed log lines (REQ-LOG-001) in
-  `apps/denidin-app/tests/unit/test_logging_utils.py` and the equivalent in
-  `apps/morning-mcp-app/tests/unit/`: every tenant-scoped log line includes a `tenant=<bot_name>`
-  key=value token (format decided 2026-08-17, for grep/logfmt-style parsing — not bracket
-  notation), appended to the existing `[v<version>]` prefix, e.g.
-  `[v1.4.2] tenant=Jabaloola ...`. Single combined log file per environment, unchanged from
-  today (`logs/dev/denidin.log`) — no per-tenant log file/directory split (rejected: matches
-  the "don't multiply infrastructure per tenant" principle already applied elsewhere; a
-  combined stream stays useful for debugging cross-tenant timing, and `grep 'tenant=Jabaloola'`
-  gives the per-tenant view on demand).
-- [ ] T031b [P] Implement in both apps' logging setup (BLOCKED until T031a approved).
+- [x] T031a [P] Write tests for tenant-attributed log lines (REQ-LOG-001): extended
+  `apps/denidin-app/tests/unit/test_logger.py` (`TestTenantFilter`, 7 tests — named after the
+  actual module, `logger.py`, not `test_logging_utils.py`, matching this repo's
+  `test_<module>.py` convention, same naming-deviation precedent as T013a/T018a). Every
+  tenant-scoped log line includes a `tenant=<bot_name>` key=value token, appended after the
+  existing `[v<version>]` prefix; a thread with no tenant bound logs `tenant=-` (never omitted,
+  so a reader can tell "no tenant bound" apart from "field missing" - matches morning-mcp-app's
+  existing `current_correlation_id()` "-" = "unset" convention). **`apps/morning-mcp-app`'s
+  equivalent was already done in Phase 6/T024** (`[tenant=%s]` tags on `audit.py`'s
+  `log_mutation`/`log_refusal` and `server.py`'s `_call_with_error_boundary`'s TOOL CALL/OK/
+  ERROR lines) - no new work needed there for this task.
+- [x] T031b [P] Implemented in `apps/denidin-app/src/utils/logger.py`: same
+  Filter-attached-to-the-Logger-object mechanism as the existing `_VersionFilter`
+  (REQ-VER-003), but sourced from a NEW `threading.local()` (`bind_tenant_context`/
+  `current_tenant_context`) rather than a fixed process-wide value - each `Tenant` binds its
+  own `bot_name` once, at the top of both `start()` and its own dedicated listener thread
+  (`Tenant._run_forever`, `src/models/tenant.py`), so every log line from anything invoked
+  synchronously within that thread (AIHandler, SessionManager, MemoryManager, WhatsAppHandler,
+  LedgerEventManager, ...) is automatically tagged correctly with ZERO changes to any of those
+  modules' own logging calls. `tenant.py`'s 14 pre-existing ad-hoc `[{self.bot_name}]`
+  bracket-notation log-line prefixes (from Phase 3) were removed as redundant, now superseded
+  by the new formal `tenant=X` mechanism (per the 2026-08-17 format decision: "single, but use
+  the x=y notation").
 
-- [ ] T032a [P] Write tests for unified `SessionCleanupThread`/startup cleanup (REQ-BG-001) in
-  `apps/denidin-app/tests/unit/test_cleanup_service.py` (extend existing file): a single sweep
-  iterates every tenant's data root in turn; one tenant's cleanup error doesn't abort the sweep
-  for other tenants.
-- [ ] T032b [P] Extend `apps/denidin-app/src/services/cleanup_service.py` (BLOCKED until T032a
-  approved).
+- [x] T032a [P] Write tests for unified `SessionCleanupThread`/startup cleanup (REQ-BG-001):
+  extended `apps/denidin-app/tests/unit/test_background_cleanup.py` (named after the actual
+  module under test's own historical file, not `test_cleanup_service.py` - same naming
+  precedent as above; 5 new tests, `TestMultiTenantSessionCleanupThread` +
+  `TestRunStartupCleanupForTenants`): a single sweep iterates every tenant's data root in turn;
+  one tenant's cleanup error (`get_expired_sessions` raising) doesn't abort the sweep for other
+  tenants, for both the periodic thread and the one-time startup sweep; a sweep with zero
+  tenants configured doesn't crash the loop.
+- [x] T032b [P] Extended `apps/denidin-app/src/services/cleanup_service.py`: new
+  `MultiTenantSessionCleanupThread` class (ONE unified background thread, not one
+  `SessionCleanupThread` per tenant - matches this feature's "shared, multi-tenant-native
+  services" architecture throughout) + `run_startup_cleanup_for_tenants`. The existing
+  `_cleanup_expired_sessions`/`run_startup_cleanup`/`_process_session_cleanup` machinery is
+  reused UNCHANGED (one small extraction: `_cleanup_expired_sessions`'s body became a
+  module-level `_cleanup_expired_sessions_for_context(global_context, log_context="")`
+  function, called with `log_context=""` from the single-tenant path - REQ-PARITY-001,
+  byte-identical log lines to before). New `Tenant.session_manager` property
+  (`src/models/tenant.py`) aliases `ai_handler.session_manager`, making a started `Tenant`
+  itself duck-type directly as a `global_context` (same shape `denidin.py`'s single-tenant
+  `DeniDin` class already has: `.session_manager` + `.ai_handler` as sibling top-level
+  attributes) - no new adapter/wrapper class needed to plug tenants into the existing cleanup
+  functions.
 
 - [x] T033a/b/c/d **No longer needed — resolved by construction, 2026-08-17
   (`research.md` §8, supersedes `speckit.analyze` finding G1)**: `GroupMembershipResolver` is
@@ -578,18 +606,32 @@ VC0-VC2 for this phase.
   `test_multi_godfather.py`/`test_multi_tenant_admin.py`-style integration coverage (Phase 4/5)
   rather than a dedicated test file — no new task number needed.
 
-- [ ] T034 **Audit task, not a TDD pair**: review every other module-level/in-memory cache or
+- [x] T034 **Audit task, not a TDD pair**: reviewed every other module-level/in-memory cache or
   shared mutable state in `apps/denidin-app/src/` for the same cross-tenant leak risk flagged
-  in `plan.md`'s Constitution Check (§XVII). Produce a short written finding (list of
-  caches found, which needed re-keying, which didn't and why) — fix any found in a follow-up
-  commit within this same phase, not deferred silently.
+  in `plan.md`'s Constitution Check (§XVII). Written finding:
+  `specs/in-progress/055-multiple-clients-godfathers/T034-cache-audit-findings.md`. **Clean bill
+  of health, no fix required**: every module-level construct found is an immutable constant
+  (lookup tables/regexes/tool schemas, never mutated); every mutable dict/cache found (session
+  index, user-role cache, group-membership cache, pending-approval map, ChromaDB collection
+  cache, constitution mtime cache, Morning-MCP-locator state) is an *instance* attribute of an
+  object that is itself one of the 8 constructor-scoped-per-tenant stack components (or
+  constructed fresh inside one of them) - confirmed by reading each owning class's constructor,
+  not assumed from the pattern alone. No `functools.lru_cache`, no bare `global` statement, no
+  singleton `_instance=None` pattern anywhere in `src/`.
 
 - [ ] T035 Run `quickstart.md` end to end against the migrated real tenant + a synthetic second
   tenant (per the 2026-08-17 scope note) as the final sanity check — this is "feature complete"
   under this feature's scope (parity + onboarding capability). The fully-live, two-real-tenant
   version of `quickstart.md` remains open, tracked via the T014b/T020b/T025c/T026b/T030b
   deferred gates above, exercised whenever a real second client exists — not a blocker to
-  calling this feature done.
+  calling this feature done. **Left undone in this session**: `quickstart.md`'s "against the
+  migrated real tenant" half needs a live environment start, same gate as T017/T020a/T030a,
+  not attempted. The "synthetic second tenant" half is, in substance, already exercised by this
+  session's automated test suite throughout (`test_tenant_isolation.py`,
+  `test_multi_godfather.py`, `test_multi_tenant_admin.py`,
+  `test_capability_degraded_start.py`) - a fresh session picking this up should read
+  `quickstart.md` itself and decide whether a literal walkthrough adds anything beyond what
+  those tests already prove, rather than assuming it's fully separate work.
 
 **Checkpoint**: Feature complete per `spec.md`'s Requirements/Success Criteria, under this
 feature's scope (see Clarifications, 2026-08-17).
