@@ -17,9 +17,16 @@ approved).
 "b" task (implementation) begins. Once approved, a test is immutable without a fresh, explicit
 re-approval. Unit tests may mock the Green API/Morning/OpenAI HTTP boundary (constitution §I/V);
 integration tests exercise real internal components (`TenantManager`, `UserManager`,
-`SessionManager`, etc.) with no `unittest.mock` of internal objects. `billed/` tests need no
-per-run approval; no new `expensive/` tests are anticipated by this feature (flag at
-implementation time if one becomes necessary).
+`SessionManager`, etc.) with no `unittest.mock` of internal objects.
+
+**Override (2026-08-17, this feature only)**: `tests/billed/` and `tests/expensive/` are
+**not run and not modified at any point during this implementation** — stricter than this
+repo's normal "billed tests run freely, no per-run approval" default. This is the enforcement
+mechanism behind the parity guarantee (REQ-PARITY-001, `spec.md` Clarifications): every
+extended method's `tenant_id` parameter is optional, defaulting to the migrated tenant, so
+these untouched, unrun test files keep exercising byte-identical single-tenant behavior by
+construction. T029a/b (a new billed test) is deferred under this constraint — see that task's
+entry in Phase 7.
 
 **Path Conventions**: Two apps — `apps/denidin-app/src/`, `apps/denidin-app/tests/`,
 `apps/morning-mcp-app/src/denidin_mcp_morning/`, `apps/morning-mcp-app/tests/` (per `plan.md`'s
@@ -140,22 +147,27 @@ OpenAI/memory/sessions/ledger events — `research.md` §1's shared-multi-tenant
 - [ ] T009a [P] [US1] Write tests for tenant-scoped `SessionManager` in
   `apps/denidin-app/tests/unit/test_session_manager.py` (extend existing file): sessions for
   tenant A and tenant B with the same `chat_id` land in different files
-  (`{data_root}/{tenant_id}/sessions/...`); no accidental cross-tenant read.
-- [ ] T009b [P] [US1] Extend `SessionManager` to accept/derive `tenant_id`-scoped paths in
+  (`{data_root}/{tenant_id}/sessions/...`); no accidental cross-tenant read; **REQ-PARITY-001**
+  — every existing test in this file that predates this task, calling without `tenant_id`,
+  still passes unmodified (default-to-migrated-tenant behavior).
+- [ ] T009b [P] [US1] Extend `SessionManager` to accept/derive `tenant_id`-scoped paths,
+  parameter optional/defaulting to the migrated tenant, in
   `apps/denidin-app/src/managers/session_manager.py` (BLOCKED until T009a approved).
 
-- [ ] T010a [P] [US1] Write tests for tenant-scoped `MemoryManager` ChromaDB collections in
-  `apps/denidin-app/tests/unit/test_memory_manager.py`: collection names/paths are
-  `tenant_id`-partitioned; a recall for tenant A never surfaces tenant B's memories even with
-  semantically similar content.
-- [ ] T010b [P] [US1] Extend `MemoryManager` in
+- [ ] T010a [P] [US1] Write tests for tenant-scoped `MemoryManager` in
+  `apps/denidin-app/tests/unit/test_memory_manager.py`: separate ChromaDB persistent directory
+  per tenant (`{data_root}/{tenant_id}/memory/`, `data-model.md`); a recall for tenant A never
+  surfaces tenant B's memories even with semantically similar content; **REQ-PARITY-001** —
+  pre-existing tests in this file, unmodified, still pass (default-to-migrated-tenant).
+- [ ] T010b [P] [US1] Extend `MemoryManager` (optional `tenant_id`, default migrated tenant) in
   `apps/denidin-app/src/managers/memory_manager.py` (BLOCKED until T010a approved).
 
 - [ ] T011a [P] [US1] Write tests for tenant-scoped `ledger_event_manager` in
   `apps/denidin-app/tests/unit/test_ledger_event_manager.py`: events written under
-  `{data_root}/{tenant_id}/events/`.
-- [ ] T011b [P] [US1] Extend `apps/denidin-app/src/managers/ledger_event_manager.py` (BLOCKED
-  until T011a approved).
+  `{data_root}/{tenant_id}/events/`; **REQ-PARITY-001** — pre-existing tests unmodified still
+  pass.
+- [ ] T011b [P] [US1] Extend `apps/denidin-app/src/managers/ledger_event_manager.py` (optional
+  `tenant_id`, default migrated tenant) (BLOCKED until T011a approved).
 
 ### Tenant-scoped OpenAI credential
 
@@ -210,7 +222,8 @@ Acceptance Scenarios in `user-stories.md`).
   `apps/denidin-app/tests/unit/test_user_manager.py` (extend existing file): a tenant with two
   `godfathers` entries resolves `Role.GODFATHER` for either number, scoped to that tenant only
   — the same number in a different tenant's context resolves independently (per spec.md's
-  "same phone number, different roles per tenant" decision).
+  "same phone number, different roles per tenant" decision); **REQ-PARITY-001** — pre-existing
+  tests in this file, calling `get_user(phone)` without `tenant_id`, unmodified, still pass.
 - [ ] T015b [US2] Extend `UserManager.get_user`/role resolution to take `tenant_id` and consult
   `TenantManager` for that tenant's `godfathers`/`admins` lists, in
   `apps/denidin-app/src/managers/user_manager.py` (BLOCKED until T015a approved).
@@ -368,13 +381,16 @@ VC0-VC2 for this phase.
   no stray blank section (REQ-CONST-003).
 - [ ] T028b [US5] Implement supplement loading (BLOCKED until T028a approved).
 
-- [ ] T029a [US5] Write a regression test for Feature 039's group `@Name` self-recognition with
-  a non-"DeniDin" `bot_name` (e.g. "Jabaloola") — confirms the mechanism still correctly judges
-  self-reference per tenant, not hardcoded to the literal string "DeniDin" anywhere in the
-  no-reply pipeline. `apps/denidin-app/tests/billed/test_group_self_recognition_multitenant.py`
-  (real, text-only OpenAI call — `billed` tier, no per-run approval needed).
-- [ ] T029b [US5] Fix any hardcoded "DeniDin" references found by T029a (BLOCKED until T029a
-  approved and run at least once to surface findings).
+- [ ] T029a/T029b 👤 **DEFERRED 2026-08-17 — not written or run as part of this
+  implementation** (user directive: no `billed`/`expensive` tests run or changed during this
+  work, overriding this tier's normal no-approval-needed default). Would have been: a
+  regression test for Feature 039's group `@Name` self-recognition with a non-"DeniDin"
+  `bot_name`, confirming the mechanism isn't hardcoded to the literal string "DeniDin" anywhere
+  in the no-reply pipeline. **Known, explicitly-flagged gap** until this is written/run on
+  explicit future request — a static grep for the literal string `"DeniDin"` across
+  `apps/denidin-app/src/`/`prompts/` (a free, non-billed check) is a reasonable interim
+  substitute worth doing during T027-T028's implementation, even though it can't fully replace
+  a real model-behavior test.
 
 - [ ] T030a [US5] **Now**: T027a-T029a (unit + `billed`) already confirm rendering/self-
   recognition correctness for a distinct `bot_name` without needing a second live tenant. On

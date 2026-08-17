@@ -10,7 +10,13 @@ written down, not just implied by task descriptions.
 
 ### `UserManager` ↔ Tenant Config Contract
 
-**`UserManager.get_user(tenant_id, phone)` (extended signature — was `get_user(phone)`) MUST**:
+**Amended 2026-08-17 (REQ-PARITY-001)**: `tenant_id` is an *optional* parameter, defaulting to
+the migrated tenant — not a newly-required argument. `tests/billed/`/`tests/expensive/`, not
+touched during this implementation, keep calling `get_user(phone)` unchanged and get exactly
+today's single-tenant resolution.
+
+**`UserManager.get_user(phone, tenant_id=MIGRATED_TENANT_ID)` (extended signature — was
+`get_user(phone)`) MUST**:
 - Resolve role by consulting only the named tenant's `godfathers`/`admins` lists
   (`data-model.md`'s Tenant Identity table) — never fall back to another tenant's lists, never
   a global phone→role table.

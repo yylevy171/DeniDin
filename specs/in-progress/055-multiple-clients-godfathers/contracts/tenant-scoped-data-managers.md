@@ -9,11 +9,16 @@ roots become `tenant_id`-partitioned (`data-model.md`).
 
 ---
 
+**Amended 2026-08-17 (REQ-PARITY-001)**: every `tenant_id` parameter added below is *optional*,
+defaulting to the migrated tenant — never a newly-required argument. `tests/billed/`/
+`tests/expensive/` are not touched during this implementation and must keep working unchanged.
+
 ### Core Conversation Pipeline ↔ `SessionManager` Contract (extension)
 
 **Callers (`denidin.py`, `AIHandler`) MUST**:
 - Pass `tenant_id` to every `SessionManager` call that today takes only `chat_id`/`user_phone`
-  — `get_session`, `add_message`, and friends all gain this parameter.
+  — `get_session`, `add_message`, and friends all gain this parameter (optional, defaults to
+  the migrated tenant when omitted).
 
 **`SessionManager` PROVIDES**:
 - Session files rooted at `{environment_data_root}/{tenant_id}/sessions/...` instead of

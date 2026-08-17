@@ -214,6 +214,19 @@ all remediated same session:
   prefix — no per-tenant log file/directory split, consistent with the "don't multiply
   infrastructure per tenant" principle already applied to hosting/containers/MCP tunnels.
 
+### Session 2026-08-17 (implementation-start constraint)
+
+- Q: How is parity with today's single-tenant behavior actually guaranteed, not just assumed?
+  → A: **`tenant_id` is optional on every extended method (`UserManager.get_user`,
+  `SessionManager`/`MemoryManager`/`ledger_event_manager` methods, `AIHandler`'s
+  constitution/credential resolution), defaulting to the migrated tenant when omitted** — see
+  new **REQ-PARITY-001** below. This means `tests/billed/` and `tests/expensive/` — which are
+  explicitly **not run and not modified during this implementation** (user directive, stricter
+  than this repo's normal "billed tests run freely" rule) — keep exercising byte-identical
+  single-tenant behavior by construction, without needing to be touched at all. `tasks.md`'s
+  T029a (a new billed test) is deferred under this same constraint — written/run later, on
+  explicit request, not part of this implementation pass.
+
 ## Terminology Glossary
 
 - **Tenant (Account)**: The paying business-level entity operating one instance of DeniDin's
@@ -447,6 +460,14 @@ written to hold under either model and needed no changes once the decision was m
   script/step (see Clarifications) — not treated as already-compliant in place. Target layout:
   `{data_root}/{tenant_id}/...` (`data-model.md`); script mechanics deferred to
   `speckit.tasks`.
+
+### Parity guarantee
+- **REQ-PARITY-001** (added 2026-08-17): every existing method gaining a `tenant_id` parameter
+  MUST make it optional, defaulting to the migrated tenant, not a newly-required argument. Any
+  caller that doesn't pass `tenant_id` (including `tests/billed/`/`tests/expensive/`, which are
+  explicitly not modified during this implementation) gets exactly today's single-tenant
+  behavior, unchanged. This is the actual mechanism behind SC-002/SC-006's parity claims, not
+  just a byproduct of care.
 
 ### Group membership resolution
 - **REQ-GROUP-001**: `GroupMembershipResolver`'s existing mechanism (most-permissive member's
