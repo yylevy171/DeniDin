@@ -7,7 +7,9 @@
 `speckit.plan` completed 2026-08-16 (`research.md`, `data-model.md`, `contracts/`,
 `quickstart.md`, `plan.md`); `speckit.tasks` completed 2026-08-16 (`tasks.md`, 8 phases, 35
 tasks); `speckit.analyze` completed 2026-08-16 (7 findings — 1 HIGH, 3 MEDIUM, 3 LOW/INFO — all
-remediated same day, see Clarifications). Ready for `speckit.implement`.
+remediated same day, see Clarifications); scope narrowed 2026-08-17 to parity + onboarding
+capability (no real second tenant available — see Clarifications), plus the data-segregation
+(ChromaDB) and logging-format decisions. Ready for `speckit.implement`.
 **Created**: 2026-08-16
 
 ---
@@ -188,6 +190,30 @@ all remediated same session:
 - **D1 (INFO, no action)**: US2/US3 task overlap on `UserManager` — expected, already
   self-flagged in `tasks.md`, not a real duplication.
 
+### Session 2026-08-17 (scope narrowing + open questions)
+
+- Q: No real second-tenant credentials exist and none will be created for this feature — how
+  does that change scope? → A: **This feature's scope is parity with the existing single-tenant
+  behavior (migrated as "tenant #1") plus the plumbing/capability to onboard a real second
+  tenant when one exists — not live-verified multi-tenant behavior.** Every requirement/task
+  still gets built and automated-tested (via a synthetic second tenant, mocked at the same HTTP
+  boundary this repo's tests already use for the single tenant today — zero new real accounts
+  needed for that layer). Tasks/gates that specifically require a genuinely live second
+  WhatsApp number or Morning account are split into a "now" (automated, synthetic) part and a
+  "deferred" (blocked pending a real second client) part — see `tasks.md` T014a/b, T020a/b,
+  T025a/c, T026a/b, T030a/b. Deferred parts are not required to consider this feature complete;
+  SC-002/SC-003/SC-004/SC-006 are satisfied via automated tests with synthetic tenant config
+  under this scope, not literal live infrastructure.
+- Q: Is ChromaDB memory isolation a shared instance with tenant-prefixed collection names, or a
+  separate instance per tenant? → A: **Separate ChromaDB persistent directory per tenant**
+  (`{data_root}/{tenant_id}/memory/`), matching sessions/events — collection names inside stay
+  unchanged from today. See `data-model.md`.
+- Q: Where do tenant-scoped log lines physically live, and in what format? → A: **Single
+  combined log file per environment (unchanged), every line tagged `tenant=<bot_name>`**
+  (key=value/logfmt-style, not bracket notation) appended to the existing `[v<version>]`
+  prefix — no per-tenant log file/directory split, consistent with the "don't multiply
+  infrastructure per tenant" principle already applied to hosting/containers/MCP tunnels.
+
 ## Terminology Glossary
 
 - **Tenant (Account)**: The paying business-level entity operating one instance of DeniDin's
@@ -238,7 +264,9 @@ all remediated same session:
 - No new dedicated "client" data entity/model is introduced by this feature — clients remain an
   RBAC-role-only concept, scoped implicitly via their godfather's tenant.
 - No tenant-onboarding tooling (script/CLI/wizard) is built by this feature — onboarding a new
-  tenant is manual config-file creation, same effort as today's dev/prod setup.
+  tenant is manual config-file creation, same effort as today's dev/prod setup. The manual
+  steps themselves are captured as a checklist at `scripts/onboard_new_tenant.md` (repo root),
+  written to later evolve into `scripts/onboard_new_tenant.sh` once volume justifies it.
 - No conversational self-service tenant management is built by this feature — all tenant
   settings (constitution supplement, godfather list, capability selection) are edited by ylevy
   directly in config files; godfathers have no self-serve path to change their own tenant's
@@ -406,9 +434,12 @@ written to hold under either model and needed no changes once the decision was m
 - **REQ-LOG-001**: Every log line produced while a tenant is in context (i.e. handling that
   tenant's message, running a maintenance task scoped to that tenant) MUST include that
   tenant's `bot_name` — not just `tenant_id` — so operators can read logs without a lookup
-  table. Applies to both `denidin-app` and `morning-mcp-app`. Exact log-line format (e.g.
-  extending the existing `[v<version>]` prefix convention to `[v<version>][<bot_name>]`) is a
-  `speckit.tasks` decision.
+  table. Applies to both `denidin-app` and `morning-mcp-app`. Format (decided 2026-08-17):
+  a `tenant=<bot_name>` key=value token appended to the existing `[v<version>]` prefix
+  (`logfmt`-style, grep/parse-friendly), e.g. `[v1.4.2] tenant=Jabaloola ...`. Logs stay a
+  single combined file per environment (`logs/dev/denidin.log`, unchanged) — no per-tenant log
+  file/directory split, consistent with the "don't multiply infrastructure per tenant"
+  principle already applied to hosting/containers/MCP tunnels.
 
 ### Migration
 - **REQ-MIGRATE-001**: The existing single-tenant deployment's data (`data/sessions`,
@@ -458,16 +489,27 @@ written to hold under either model and needed no changes once the decision was m
 
 ## Success Criteria
 
+**Scope note (2026-08-17)**: under this feature's scope (see Clarifications), "at least two
+tenants" below is satisfied by the real migrated tenant plus a *synthetic* second tenant
+exercised via automated tests — not two literal live WhatsApp deployments. Each criterion notes
+its deferred, fully-live counterpart where one exists.
+
 - **SC-001**: A new tenant can be fully configured and brought online (own WhatsApp number,
   Green API, Morning, OpenAI credential) with zero changes to shared application code — only a
-  new config file plus the manual onboarding steps.
+  new config file plus the manual onboarding steps. Verified via the plumbing/config shape
+  existing and working for a synthetic tenant; live onboarding of a real tenant deferred until
+  one exists.
 - **SC-002**: A message sent to one tenant's WhatsApp number never appears in, or affects, any
-  other tenant's session, memory, ledger events, or Morning invoicing data — verified end-to-end
-  with at least two tenants running concurrently.
+  other tenant's session, memory, ledger events, or Morning invoicing data — verified via
+  automated tests with the real migrated tenant plus a synthetic second tenant (`tasks.md`
+  T014a). Fully-live two-real-tenant verification: `tasks.md` T014b, deferred.
 - **SC-003**: A tenant configured with two godfather phone numbers grants both full
   godfather-level access within that tenant, with zero cross-tenant leakage of that access.
+  Fully live-verifiable now (`tasks.md` T017) — needs only a second real *phone number*, not a
+  second tenant's infrastructure.
 - **SC-004**: ylevy's phone number resolves as admin in every configured tenant with no manual
-  per-message override, confirmed across at least two tenants.
+  per-message override — automated-test-verified across the real tenant + a synthetic one
+  (`tasks.md` T020a); fully-live two-real-tenant verification: T020b, deferred.
 - **SC-005**: Adding a new invoicing-provider capability implementation requires zero changes to
   `AIHandler`/`denidin.py` dispatch logic — only new implementation code plus a tenant config
   reference.

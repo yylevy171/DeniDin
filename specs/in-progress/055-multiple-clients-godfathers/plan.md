@@ -11,6 +11,12 @@ no new branch; no monkey-patching — capability/tenant resolution is DI-based t
 
 ---
 
+**Scope note (2026-08-17)**: no real second-tenant credentials exist or will be created for
+this feature — see `spec.md`'s Clarifications. Scope is parity with the existing single-tenant
+behavior (migrated as "tenant #1") plus the plumbing/capability to onboard a real second tenant
+later, verified via automated tests with a synthetic second tenant. `tasks.md` marks each task
+requiring genuinely live second-tenant infrastructure as deferred, not required for completion.
+
 ## Summary
 
 Turn DeniDin from a single-tenant deployment into a multi-tenant one, without multiplying

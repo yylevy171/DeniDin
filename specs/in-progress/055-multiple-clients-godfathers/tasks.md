@@ -30,6 +30,17 @@ that delivery may be split into sub-phases; the phase structure below is written
 `Checkpoint` is a real, shippable-behind-a-feature-flag increment — `speckit.implement` may
 stop after any checkpoint without leaving the codebase in a broken state.
 
+**Scope decision (2026-08-17)**: no real second-tenant credentials (Green API/WhatsApp number,
+Morning account) exist or will be created for this feature — there is no real second paying
+client yet. This feature's actual scope is **parity with the existing single-tenant behavior
+(migrated as "tenant #1") plus the plumbing/capability to onboard a real second tenant when one
+exists** — not live-verified multi-tenant behavior. Every task below still gets built and tested
+(via a synthetic second tenant, mocked at the same HTTP boundary this repo's tests already use
+for the single tenant today), but tasks requiring a genuinely live second WhatsApp
+number/Morning account are explicitly split into a "now" part (automated, synthetic) and a
+"deferred" part (blocked, pending a real second client) — see T014a/b, T020a/b, T025a/c,
+T026a/b, T030a/b. Deferred parts are not required to consider this feature complete.
+
 ## Version Control steps (applied at the end of every phase below)
 
 - **VC0**: Confirm `git branch --show-current` is `feature/055-multiple-clients-godfathers`.
@@ -169,9 +180,17 @@ OpenAI/memory/sessions/ledger events — `research.md` §1's shared-multi-tenant
   per REQ-MIGRATE-001; exact CLI shape at implementer's discretion, dry-run required (BLOCKED
   until T013a approved).
 
-- [ ] T014 [US1] 👤 **MANUAL APPROVAL GATE**: `quickstart.md` "Verifying tenant isolation" —
-  two real tenants configured, cross-tenant isolation confirmed end to end (messaging, memory,
-  sessions, ledger events, OpenAI credential).
+- [ ] T014a [US1] **Now (synthetic second tenant)**: integration test suite proves isolation
+  end to end — a synthetic second tenant config (fabricated `green_api`/`morning` values, real
+  distinct OpenAI key or a second key on the same account) exercises messaging tagging, session/
+  memory/ledger partitioning, and credential selection, using this repo's existing
+  mocked-HTTP-boundary test convention (no real second Green API/Morning account needed — see
+  2026-08-17 scope note in Clarifications). This is the actual acceptance test for SC-002 as
+  scoped by this feature.
+- [ ] T014b [US1] 👤 **DEFERRED — MANUAL APPROVAL GATE, blocked pending a real second tenant**:
+  `quickstart.md` "Verifying tenant isolation" with two *real*, live WhatsApp numbers. Not
+  required to consider US1/this feature complete — exercised whenever a real second client's
+  credentials exist.
 
 **Checkpoint**: User Story 1 fully functional and independently testable — this alone is a
 viable MVP increment (a single migrated tenant plus room to onboard a second).
@@ -204,8 +223,10 @@ Acceptance Scenarios in `user-stories.md`).
 - [ ] T016b [US2] Wire-through in `denidin.py`/`AIHandler` if any gaps found by T016a (BLOCKED
   until T016a approved — may be a no-op if T015b already covers it).
 
-- [ ] T017 [US2] 👤 **MANUAL APPROVAL GATE**: real WhatsApp test — two godfather numbers on one
-  tenant, both get full godfather behavior.
+- [ ] T017 [US2] 👤 **MANUAL APPROVAL GATE — not blocked, needs no second tenant**: real
+  WhatsApp test on the existing (migrated) tenant — two godfather phone numbers on that one
+  tenant, both get full godfather behavior. Only a second real *phone number* is needed here,
+  not a second tenant's infrastructure, so this gate is fully exercisable now.
 
 **Checkpoint**: User Stories 1 AND 2 both work independently.
 
@@ -233,8 +254,13 @@ VC0-VC2 for this phase.
 - [ ] T019b [US3] Confirm this is the natural behavior of T015b's config-driven resolution (no
   new code expected; if a gap is found, fix here) (BLOCKED until T019a approved).
 
-- [ ] T020 [US3] 👤 **MANUAL APPROVAL GATE**: real WhatsApp test — ylevy's number resolves
-  admin in two distinct tenants; "what version are you running?" answers correctly per tenant.
+- [ ] T020a [US3] **Now**: on the existing (migrated) tenant, real WhatsApp test — ylevy's
+  number resolves admin, "what version are you running?" answers correctly. Cross-tenant
+  independence itself (T018a/T019a) is already covered by automated tests with a synthetic
+  second tenant.
+- [ ] T020b [US3] 👤 **DEFERRED — MANUAL APPROVAL GATE, blocked pending a real second tenant**:
+  ylevy's number resolves admin on a second *real*, live tenant too — confirms the config-driven
+  independence holds over real infrastructure, not just synthetic test config.
 
 **Checkpoint**: User Stories 1, 2, AND 3 all work independently — the three P1 stories
 complete.
@@ -285,22 +311,33 @@ selected per tenant; the shared morning-mcp-app server distinguishes tenants by 
 - [ ] T024b [US4] Extend `apps/morning-mcp-app/src/denidin_mcp_morning/audit.py` (BLOCKED
   until T024a approved).
 
-- [ ] T025a [US4] Write tests confirming tool handlers use the resolved tenant's Morning
-  credentials for the underlying API call, not a shared/global credential —
-  `apps/morning-mcp-app/tests/integration/test_multi_tenant_morning.py` (new file, real
-  Morning sandbox per CONSTITUTION's no-mocking-external-services-in-integration-tests rule,
-  two sandbox credential sets needed).
+- [ ] T025a [US4] **Downgraded 2026-08-17 (no second real Morning account available yet)**:
+  write tests confirming tool handlers use the resolved tenant's credentials for the underlying
+  API call, not a shared/global credential — `apps/morning-mcp-app/tests/integration/
+  test_multi_tenant_morning.py` (new file). Uses the *existing* real Morning sandbox account,
+  referenced by two distinct synthetic `tenant_id`s in test config — proves the per-tenant
+  credential-threading plumbing against a real API call, but does **not** prove true
+  cross-account isolation (both synthetic tenants hit the same real backend account). That
+  stronger guarantee is deferred to T025c below. Still real-sandbox, no mocking, per
+  CONSTITUTION §V.
 - [ ] T025b [US4] Wire tenant-resolved credentials into `server.py`'s
   `_call_with_error_boundary` (BLOCKED until T025a approved).
+- [ ] T025c 👤 **DEFERRED, blocked pending a real second Morning sandbox/account**: re-run
+  T025a's scenario with two genuinely distinct Morning accounts, confirming real cross-account
+  isolation (not just credential-threading correctness). Logged as an explicit, known coverage
+  gap until then — not silently assumed covered by T025a.
 
-- [ ] T026 [US4] 👤 **MANUAL APPROVAL GATE**: `quickstart.md` capability degraded-start
-  scenario, plus a real two-tenant Morning MCP call confirming correct credential/audit
-  attribution per tenant. **Added at `speckit.analyze` remediation, finding G2**: reviewer also
+- [ ] T026a [US4] **Now**: `quickstart.md` capability degraded-start scenario — needs only the
+  existing (migrated) tenant, temporarily configured with no invoicing provider. 👤 Manual
+  approval gate. **Added at `speckit.analyze` remediation, finding G2**: reviewer also
   explicitly confirms REQ-CAP-003/SC-005 — walk through what adding a hypothetical second
   invoicing-provider implementation (e.g. "ypay") would require, and confirm it's registration +
   a tenant config reference only, with zero `AIHandler`/`denidin.py` dispatch-code changes. Not
   an automated test (there's no second real implementation to test against yet) — a documented
   design-review confirmation at this gate, recorded in the approval note.
+- [ ] T026b 👤 **DEFERRED — MANUAL APPROVAL GATE, blocked pending a real second tenant**: a
+  real two-tenant Morning MCP call confirming correct credential/audit attribution across two
+  genuinely distinct live tenants.
 
 **Checkpoint**: All P1 stories plus capability abstraction work independently.
 
@@ -339,8 +376,13 @@ VC0-VC2 for this phase.
 - [ ] T029b [US5] Fix any hardcoded "DeniDin" references found by T029a (BLOCKED until T029a
   approved and run at least once to surface findings).
 
-- [ ] T030 [US5] 👤 **MANUAL APPROVAL GATE**: two tenants with distinct `bot_name`/supplement,
-  confirmed via real conversation that each responds as its own persona with its own rules.
+- [ ] T030a [US5] **Now**: T027a-T029a (unit + `billed`) already confirm rendering/self-
+  recognition correctness for a distinct `bot_name` without needing a second live tenant. On
+  the existing (migrated) tenant, real WhatsApp confirms its own persona/rules render correctly
+  post-refactor (parity check, not a new-behavior check).
+- [ ] T030b 👤 **DEFERRED — MANUAL APPROVAL GATE, blocked pending a real second tenant**: two
+  *real* tenants with distinct `bot_name`/supplement, confirmed via live conversation that each
+  responds as its own persona with its own rules, over real infrastructure.
 
 **Checkpoint**: All 5 user stories independently functional.
 
@@ -354,9 +396,14 @@ VC0-VC2 for this phase.
 
 - [ ] T031a [P] Write tests for tenant-attributed log lines (REQ-LOG-001) in
   `apps/denidin-app/tests/unit/test_logging_utils.py` and the equivalent in
-  `apps/morning-mcp-app/tests/unit/`: every tenant-scoped log line includes `bot_name`, format
-  extends the existing `[v<version>]` prefix convention (exact format: implementer's choice,
-  document once decided).
+  `apps/morning-mcp-app/tests/unit/`: every tenant-scoped log line includes a `tenant=<bot_name>`
+  key=value token (format decided 2026-08-17, for grep/logfmt-style parsing — not bracket
+  notation), appended to the existing `[v<version>]` prefix, e.g.
+  `[v1.4.2] tenant=Jabaloola ...`. Single combined log file per environment, unchanged from
+  today (`logs/dev/denidin.log`) — no per-tenant log file/directory split (rejected: matches
+  the "don't multiply infrastructure per tenant" principle already applied elsewhere; a
+  combined stream stays useful for debugging cross-tenant timing, and `grep 'tenant=Jabaloola'`
+  gives the per-tenant view on demand).
 - [ ] T031b [P] Implement in both apps' logging setup (BLOCKED until T031a approved).
 
 - [ ] T032a [P] Write tests for unified `SessionCleanupThread`/startup cleanup (REQ-BG-001) in
@@ -388,10 +435,15 @@ VC0-VC2 for this phase.
   caches found, which needed re-keying, which didn't and why) — fix any found in a follow-up
   commit within this same phase, not deferred silently.
 
-- [ ] T035 Run `quickstart.md` end to end in full (onboarding, isolation, super-admin,
-  degraded-start) as a final pre-`speckit.analyze` sanity check.
+- [ ] T035 Run `quickstart.md` end to end against the migrated real tenant + a synthetic second
+  tenant (per the 2026-08-17 scope note) as the final sanity check — this is "feature complete"
+  under this feature's scope (parity + onboarding capability). The fully-live, two-real-tenant
+  version of `quickstart.md` remains open, tracked via the T014b/T020b/T025c/T026b/T030b
+  deferred gates above, exercised whenever a real second client exists — not a blocker to
+  calling this feature done.
 
-**Checkpoint**: Feature complete per `spec.md`'s Requirements/Success Criteria.
+**Checkpoint**: Feature complete per `spec.md`'s Requirements/Success Criteria, under this
+feature's scope (see Clarifications, 2026-08-17).
 
 VC0-VC2 for this phase.
 

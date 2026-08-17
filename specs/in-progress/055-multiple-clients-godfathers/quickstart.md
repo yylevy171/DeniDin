@@ -6,6 +6,13 @@
 Exact CLI/config file names are `speckit.tasks`/`speckit.implement` decisions — this is the
 shape, not the final interface.
 
+**Scope note (2026-08-17)**: everything below describes the fully-live, two-real-tenant
+version of each scenario. Under this feature's actual current scope (no real second tenant
+available — see `spec.md`'s Clarifications), these are exercised via automated tests against a
+*synthetic* second tenant instead; see `tasks.md`'s "now" vs "deferred" task splits (T014a/b,
+T020a/b, T025a/c, T026a/b, T030a/b). This document stays the target/deferred version, run for
+real whenever a second client exists.
+
 ## Example configuration shape
 
 Tenant **identity** (environment-agnostic) and tenant **credentials** (per-environment) are

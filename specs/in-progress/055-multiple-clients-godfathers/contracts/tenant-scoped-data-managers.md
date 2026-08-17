@@ -33,10 +33,12 @@ expectation as every other tenant-scoped component, `research.md` §2).
 - Pass `tenant_id` to `MemoryManager.recall`/write-path calls.
 
 **`MemoryManager` PROVIDES**:
-- ChromaDB collection names/paths partitioned by `tenant_id` (e.g.
-  `{tenant_id}_memory_{entity_id}`/`_public`/`_private`, exact naming a `speckit.implement`
-  decision) — a recall for tenant A's entity never surfaces tenant B's memories even for
-  semantically similar content or a colliding `entity_id`.
+- A genuinely separate ChromaDB persistent client/directory per tenant
+  (`{data_root}/{tenant_id}/memory/`, clarified 2026-08-17 — not one shared ChromaDB instance
+  with tenant-prefixed collection names) — collection names inside stay exactly as today
+  (`memory_{entity_id}`, `_public`, `_private`, `memory_system_context`). A recall for tenant
+  A's entity never surfaces tenant B's memories, because tenant B's ChromaDB data doesn't exist
+  in tenant A's directory at all, regardless of content similarity or a colliding `entity_id`.
 
 **`MemoryManager` EXPECTS**: `tenant_id` always present and valid.
 
