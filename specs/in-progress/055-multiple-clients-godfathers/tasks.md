@@ -183,17 +183,27 @@ Subsumed into T009 above — no separate task.
 
 ### Migration (REQ-MIGRATE-001)
 
-- [ ] T013a [US1] Write tests for the migration script in
-  `apps/denidin-app/tests/unit/test_tenant_migration.py`: existing `data/sessions`,
-  `data/memory`, `data/events` are copied (not moved destructively without a confirmed
-  backup) into `{data_root}/{tenant_id}/...` for a designated "tenant #1"; script is
-  idempotent (safe to re-run without duplicating/corrupting data); dry-run mode reports what
-  would move without touching anything.
-- [ ] T013b [US1] Implement the migration script in `apps/denidin-app/scripts/` — location
-  confirmed at `speckit.analyze` (finding A1) against this directory's existing precedent,
-  `migrate_stray_ledger_events.py` (a comparable one-off data-migration script already there);
-  per REQ-MIGRATE-001; exact CLI shape at implementer's discretion, dry-run required (BLOCKED
-  until T013a approved).
+- [x] T013a [US1] Write tests for the migration script in
+  `apps/denidin-app/tests/unit/test_migrate_to_tenant.py` (named after the script itself,
+  `scripts/migrate_to_tenant.py`, rather than the `test_tenant_migration.py` name originally
+  sketched here — kept consistent with this repo's `test_<module_under_test>.py` convention):
+  existing `sessions/`, `memory/`, `events/` are copied (never moved/deleted — copy-only) into
+  `{data_root}/{tenant_id}/...`; a missing source subdir is skipped without error; the script is
+  idempotent (second run reports "already migrated", doesn't duplicate/corrupt/raise); dry-run
+  mode reports the plan and touches nothing (no target dir created, source untouched). 8 tests,
+  all passing against the T013b implementation below.
+- [x] T013b [US1] Implement the migration script,
+  `apps/denidin-app/scripts/migrate_to_tenant.py` — location confirmed at `speckit.analyze`
+  (finding A1) against this directory's existing precedent, `migrate_stray_ledger_events.py` (a
+  comparable one-off data-migration script already there); per REQ-MIGRATE-001. `migrate_tenant_data
+  (data_root, tenant_id, dry_run=False) -> List[str]` does a plain `shutil.copytree` per subdir
+  (never `shutil.move`/`rmtree` — the flat-layout source is left in place untouched on purpose, so
+  a bad run can never lose data and the script is trivially safe to re-run), returning
+  human-readable action strings for the CLI to print; idempotency comes from checking whether the
+  tenant-scoped destination already exists before copying (skip + "already migrated", rather than
+  letting `copytree` raise `FileExistsError` on a second run). `argparse` CLI wrapper takes
+  `--data-root`/`--tenant-id`/`--dry-run`, matching `migrate_stray_ledger_events.py`'s existing
+  shape. Full unit suite: 850 passed (up from 842), zero regressions.
 
 - [ ] T014a [US1] **Now (synthetic second tenant)**: integration test suite proves isolation
   end to end — a synthetic second tenant config (fabricated `green_api`/`morning` values, real

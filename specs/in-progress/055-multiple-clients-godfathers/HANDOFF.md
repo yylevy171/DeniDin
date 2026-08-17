@@ -68,7 +68,7 @@ confirming with the user. This was a deliberate scope boundary, not an oversight
 |---|---|---|
 | **1. Setup** | ✅ done | T001 (branch confirm), T002 (spike — see `research.md` §7) |
 | **2. Foundational** | ✅ done | `src/models/tenant.py` (Tenant dataclass — identity/credentials part), `src/managers/tenant_manager.py` (loads/joins `tenants.json` + `config.<env>.json`'s `tenant_credentials`) |
-| **3. US1 (tenant isolation)** | 🟡 partial | Done: T009 (`TenantAIHandlerFactory`), T006-T008 (Tenant runtime — `Tenant.start()` + 9 handler bound methods, in the same `tenant.py` file, extended after Phase 2). **Not done: T013 (migration script — tests written, impl not started), T014a (cross-tenant isolation integration test)**. |
+| **3. US1 (tenant isolation)** | 🟡 partial | Done: T009 (`TenantAIHandlerFactory`), T006-T008 (Tenant runtime — `Tenant.start()` + 9 handler bound methods, in the same `tenant.py` file, extended after Phase 2), T013a/b (`scripts/migrate_to_tenant.py` + 8 tests). **Not done: T014a (cross-tenant isolation integration test)**. |
 | **4-8** | ❌ not started | Multi-godfather, super-admin, capability abstraction, per-tenant constitution, logging/cleanup/cache-audit polish |
 
 Test files that exist: `test_tenant.py`, `test_tenant_manager.py`, `test_tenant_ai_handler_factory.py`,
@@ -76,22 +76,13 @@ Test files that exist: `test_tenant.py`, `test_tenant_manager.py`, `test_tenant_
 
 ## Immediate next step
 
-1. Implement `apps/denidin-app/scripts/migrate_to_tenant.py` — a `migrate_tenant_data(data_root:
-   Path, tenant_id: str, dry_run: bool = False) -> List[str]` function (copy-only, never
-   destructive, idempotent — see the already-written test file for exact expected behavior)
-   plus an `argparse` CLI wrapper (`--data-root`, `--tenant-id`, `--dry-run`), matching
-   `scripts/migrate_stray_ledger_events.py`'s existing style/conventions.
-2. Run `./venv/bin/python3 -m pytest tests/unit/test_migrate_to_tenant.py -v` (use the venv
-   directly — bare `python3` resolves to a system Python 3.14, not this clone's venv; verify
-   with `which python3` if unsure, per this repo's clone-isolation rules).
-3. Run the full unit suite (`tests/unit/`) to confirm no regressions, same as every prior task.
-4. Mark T013 `[x]` in `tasks.md` with a short note (matching the style of every other completed
-   task in that file), commit (see commit message conventions in the git log — long, detailed,
-   explain the *why* not just the *what*).
-5. Move to T014a (the synthetic-second-tenant integration test proving isolation end-to-end —
-   this is the actual acceptance test for SC-002 under this feature's current scope, see
-   below). Then Phase 4 (T015: multi-godfather — add `godfather_phones` to `UserManager`,
-   additive, backward-compatible) onward, in the order `tasks.md` lays out.
+T013a/b are done (`scripts/migrate_to_tenant.py` implemented, 8 tests passing, 850/850 full
+unit suite green, `tasks.md` updated and committed). **Next up: T014a** — the synthetic-second-
+tenant integration test proving isolation end-to-end (a fabricated second tenant config,
+mocked-HTTP-boundary convention, no real second Green API/Morning account needed — this is the
+actual acceptance test for SC-002 under this feature's current scope). Then Phase 4 (T015:
+multi-godfather — add `godfather_phones` to `UserManager`, additive, backward-compatible)
+onward, in the order `tasks.md` lays out.
 
 ## Rules to not forget (violating any of these was explicitly corrected by the user this session)
 
