@@ -158,6 +158,41 @@ unification impossible.
   liveness signal, surfaced somewhere the watchdog or an operator can see) — deliberately not
   built now; flagged as a named follow-up rather than silently accepted as "fine."
 
+## 7. T002 spike finding (2026-08-17): can `whatsapp_api_client_python` run N concurrent
+per-tenant listeners in one process?
+
+**Verdict: yes, confirmed feasible.** Verified by direct source inspection of the installed
+`whatsapp_chatbot_python==0.9.9` package in `apps/denidin-app`'s own venv (`bot.py`,
+`manager/router.py`) — no code executed, no real Green API calls made.
+
+- **`Bot`/`GreenAPIBot` instances are fully independent**: each construction gets its own
+  `GreenAPI` client, own `Router`, own `Observer`s. No module-level/global mutable state in the
+  library that would collide across tenants — confirms `research.md` §1's hosting-model
+  decision doesn't need revisiting.
+- **`run_forever()` is a synchronous, blocking long-polling loop** (`while True:
+  receiveNotification()`) — not async, doesn't spawn its own thread. The messaging gateway must
+  run each tenant's `bot.run_forever()` in its own `threading.Thread` — plain threading is
+  sufficient (no asyncio rewrite needed), since each thread mostly blocks on network I/O via
+  `requests`, releasing the GIL.
+- **Crash isolation comes largely for free**: `run_forever()`'s own exception handling already
+  retries after a 5s sleep rather than propagating — combined with one thread per tenant, an
+  unhandled exception in one tenant's loop only affects that thread, satisfying
+  `contracts/messaging-gateway.md`'s crash-isolation requirement without extra work.
+- **Gotcha #1 — shared logger, duplicate handlers**: every `Bot` instance calls
+  `logging.getLogger("whatsapp-chatbot-python")` (same hardcoded name every time) and
+  unconditionally `addHandler(...)`s a new `StreamHandler` onto it. Under N tenants, this
+  logger accumulates N handlers — the library's own internal log lines would print N times
+  once a second tenant's `Bot` exists. **Fix needed in T006b**: guard against duplicate
+  handlers (e.g. `if not logger.handlers`), or simply don't rely on this library's internal
+  logger for tenant-scoped output at all — treat it as internal diagnostic noise, separate
+  from this feature's own `tenant=<bot_name>` logging (REQ-LOG-001).
+- **Gotcha #2 — handler registration is per-instance, not global**: today's `denidin.py`
+  registers `@bot.router.message(type_message=...)` handlers on one global `bot.router` at
+  import time. Since `Router` is constructed per-`Bot`, the messaging gateway must register the
+  *same* handler functions onto *every* tenant's own `bot.router` — a loop wiring identical
+  handlers onto each tenant's `Bot`, not a verbatim reuse of today's single-decorator-at-
+  import-time pattern. Concrete adjustment for T006b/T007b, not a blocker.
+
 ## Summary of decisions superseding `spec.md`'s deferred Clarifications
 
 | Question | Decision | Where |

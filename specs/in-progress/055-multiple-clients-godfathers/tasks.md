@@ -62,14 +62,13 @@ T026a/b, T030a/b. Deferred parts are not required to consider this feature compl
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirm `git branch --show-current` is `feature/055-multiple-clients-godfathers`
+- [x] T001 Confirm `git branch --show-current` is `feature/055-multiple-clients-godfathers`
   (already exists).
-- [ ] T002 **Spike, not a TDD pair**: confirm `whatsapp_api_client_python` (already a project
-  dependency) can run N concurrent per-instance listeners inside one process cleanly
-  (asyncio/threading) — `plan.md`'s Technical Context flags this as unconfirmed. Produce a
-  short written finding (append to `research.md` as an addendum) before Phase 3 begins; if the
-  SDK can't do this cleanly, `research.md` §1's hosting-model decision needs revisiting before
-  proceeding — do not silently work around it inside the messaging gateway.
+- [x] T002 **Spike, not a TDD pair**: confirmed 2026-08-17 via direct source inspection of the
+  installed `whatsapp_chatbot_python==0.9.9` package (no code executed) — feasible, plain
+  `threading.Thread` per tenant, two implementation gotchas found (duplicate log handlers;
+  per-instance handler registration). Full finding: `research.md` §7. Hosting-model decision
+  (`research.md` §1) does NOT need revisiting.
 
 ---
 
