@@ -70,27 +70,36 @@ confirming with the user. This was a deliberate scope boundary, not an oversight
 | **2. Foundational** | ✅ done | `src/models/tenant.py` (Tenant dataclass — identity/credentials part), `src/managers/tenant_manager.py` (loads/joins `tenants.json` + `config.<env>.json`'s `tenant_credentials`) |
 | **3. US1 (tenant isolation)** | ✅ done | T009 (`TenantAIHandlerFactory`), T006-T008 (Tenant runtime), T013a/b (`scripts/migrate_to_tenant.py` + 8 tests), T014a (`tests/integration/test_tenant_isolation.py`, 4 tests — real `route_event` dispatch through two synthetic tenants, proves SC-002). T014b remains deferred (blocked pending a real second tenant, not required for completeness). |
 | **4. US2 (multi-godfather)** | 🟡 mostly done | T015a/b (`UserManager.godfather_phones`, additive), T016a/b (`tests/integration/test_multi_godfather.py`, 5 tests — T016b was a no-op, confirmed). **T017 remains: a 👤 manual-approval-gate real-WhatsApp test — needs only a second real phone number on the existing tenant, not a second tenant's infrastructure, so it's exercisable now but requires the user.** |
-| **5-8** | ❌ not started | Super-admin, capability abstraction, per-tenant constitution, logging/cleanup/cache-audit polish |
+| **5. US3 (super-admin)** | 🟡 mostly done | T018a/b, T019a/b (`tests/integration/test_multi_tenant_admin.py`, 6 tests — both b-halves confirmed no-ops). **T020a remains: a real WhatsApp test on the existing tenant — requires starting a live environment, which needs fresh per-action human approval every time (CLAUDE.md), not attempted here. T020b is the usual deferred-pending-a-real-second-tenant gate.** |
+| **6-8** | ❌ not started | Capability abstraction, per-tenant constitution, logging/cleanup/cache-audit polish |
 
 Test files that exist: `test_tenant.py`, `test_tenant_manager.py`, `test_tenant_ai_handler_factory.py`,
 `test_tenant_runtime.py`, `test_migrate_to_tenant.py` (uncommitted, no implementation yet).
 
 ## Immediate next step
 
-Phases 3 and 4 are both done except one gate: T015a/b (`UserManager.godfather_phones`,
-additive) and T016a/b (`tests/integration/test_multi_godfather.py`, 5 tests, T016b a confirmed
-no-op) are committed. Full unit suite: 863 passed. Full integration suite: 38 passed. Zero
-regressions throughout.
+Phases 3, 4, and 5 are all done except their manual-approval-gate items. Full unit suite: 863
+passed. Full integration suite: 44 passed. Zero regressions throughout.
 
-**T017 is the one open item in Phase 4** — a 👤 manual-approval-gate task: a real WhatsApp test
-on the existing (already-migrated) tenant, adding a second real godfather phone number and
-confirming both get full godfather behavior live. This needs the user (a real second phone
-number, not a second tenant's infrastructure) — do not attempt to simulate or skip it; leave it
-`[ ]` and move on, same as T014b.
+**Two open manual-approval-gate items, both needing the user, neither attempted in this
+session:**
+- **T017** (Phase 4): real WhatsApp test on the existing tenant — add a second real godfather
+  phone number, confirm both get full godfather behavior live.
+- **T020a** (Phase 5): real WhatsApp test on the existing tenant — confirm ylevy's number
+  resolves admin and "what version are you running?" answers correctly live. Requires starting
+  a live environment, which needs fresh, explicit per-action human approval every time
+  (CLAUDE.md's "NEVER START AN ENVIRONMENT... WITHOUT EXPLICIT APPROVAL" rule) — not sought in
+  this session, so this was deliberately left undone rather than attempted.
+- (T014b, T020b, and the rest of that family stay deferred as before — blocked pending a real
+  second tenant, not required for completeness.)
 
-**Next up: Phase 5 (T018-T020), super-admin oversight across all tenants** — read that phase's
-task list in `tasks.md` before starting (not yet reviewed in this session). Then Phase 6
-(capability abstraction / shared MCP server per-tenant bearer tokens), Phase 7 (per-tenant
+Do not attempt to simulate or skip either T017 or T020a — leave them `[ ]` and move on, same
+as every other manual gate in this feature.
+
+**Next up: Phase 6 (T021-T026), pluggable capability abstraction** — read that phase's full
+task list in `tasks.md` before starting (not yet reviewed in this session); per the module
+docstring convention, `contracts/invoicing-capability.md` is the current, authoritative design
+doc for this phase (shared MCP server, per-tenant bearer tokens). Then Phase 7 (per-tenant
 constitution), Phase 8 (tenant-attributed logging/cleanup/cache-audit polish), in the order
 `tasks.md` lays out.
 

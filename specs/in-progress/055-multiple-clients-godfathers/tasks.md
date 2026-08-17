@@ -309,27 +309,36 @@ VC0-VC2 for this phase.
 
 **Independent Test**: `quickstart.md` "Verifying super-admin access (SC-004)".
 
-- [ ] T018a [US3] Write tests for cross-tenant admin resolution in
+- [x] T018a [US3] Write tests for cross-tenant admin resolution in
   `apps/denidin-app/tests/integration/test_multi_tenant_admin.py` (new file, real internal
   components): ylevy's number, listed in two different tenants' `admins`, resolves
   `Role.ADMIN` independently in each tenant's own `AIHandler`/`UserManager` instance (via
   `TenantAIHandlerFactory`) — not a special-cased global check; version-query admin capability
-  (ungated by RBAC) still resolves per-tenant version info.
-- [ ] T018b [US3] Confirm this is the natural behavior of `TenantAIHandlerFactory` (T009b) +
-  per-tenant `admins` (likely a no-op — one `UserManager` per tenant already implies
-  independence; fix here only if a real gap is found) (BLOCKED until T018a approved).
+  (ungated by RBAC) still resolves per-tenant version info. 3 tests in
+  `TestCrossTenantAdminResolution`: both tenants resolve ADMIN for the shared number; the two
+  `UserManager` instances are genuinely separate objects (not merely "both say ADMIN", which a
+  hidden shared/global check could also produce); `AIHandler._app_version` (Feature 034,
+  process-wide `VERSION` file, read once per construction) is independently present and equal
+  on both tenants' handlers.
+- [x] T018b [US3] Confirmed **no-op** — all 3 T018a tests passed immediately against the
+  existing `TenantAIHandlerFactory`/`UserManager` implementation, zero further code changes.
 
-- [ ] T019a [US3] Write tests for REQ-ROLE-005 (no break-glass): a tenant whose config omits
-  ylevy's admin number resolves that number as a normal (non-admin) role for that tenant only —
-  no fallback, no cross-tenant leakage of admin status.
-- [ ] T019b [US3] Confirm this is the natural behavior of `TenantAIHandlerFactory`'s
-  per-tenant construction (no new code expected; if a gap is found, fix here) (BLOCKED until
-  T019a approved).
+- [x] T019a [US3] Write tests for REQ-ROLE-005 (no break-glass) in the same file
+  (`TestNoBreakGlassAdminLeakage`, 3 tests): a tenant whose config omits ylevy's admin number
+  resolves that number as CLIENT for that tenant only (no fallback, no cross-tenant leakage);
+  a number listed in NO tenant's admins never resolves ADMIN by any fallback mechanism (there
+  is none to fall back to); being a GODFATHER in one tenant grants no special treatment
+  whatsoever in a second tenant that doesn't list that number in any role list.
+- [x] T019b [US3] Confirmed **no-op** — same result as T018b, all 3 T019a tests passed
+  immediately with zero further code changes.
 
 - [ ] T020a [US3] **Now**: on the existing (migrated) tenant, real WhatsApp test — ylevy's
   number resolves admin, "what version are you running?" answers correctly. Cross-tenant
   independence itself (T018a/T019a) is already covered by automated tests with a synthetic
-  second tenant.
+  second tenant. **Left undone in this session** — a real WhatsApp send/receive requires
+  starting a live environment, which needs fresh, explicit per-action human approval every
+  time (CLAUDE.md's "NEVER START AN ENVIRONMENT... WITHOUT EXPLICIT APPROVAL" rule) and was
+  not sought; a future session (or the user directly) should run this once approved.
 - [ ] T020b [US3] 👤 **DEFERRED — MANUAL APPROVAL GATE, blocked pending a real second tenant**:
   ylevy's number resolves admin on a second *real*, live tenant too — confirms the config-driven
   independence holds over real infrastructure, not just synthetic test config.
