@@ -252,25 +252,45 @@ Phase 3) already scopes RBAC correctly. The one real, additive code change neede
 multi-godfather support (today's `godfather_phone` is genuinely singular), per
 `contracts/tenant-scoped-data-managers.md`.
 
-- [ ] T015a [US2] Write tests for `UserManager`'s new `godfather_phones: Optional[List[str]]`
+- [x] T015a [US2] Write tests for `UserManager`'s new `godfather_phones: Optional[List[str]]`
   parameter in `apps/denidin-app/tests/unit/test_user_manager.py` (extend existing file): a
   `UserManager` constructed with two `godfather_phones` resolves `Role.GODFATHER` for either
   number; **REQ-PARITY-001** — every pre-existing test in this file, constructing `UserManager`
   with only the existing singular `godfather_phone`, unmodified, still passes unchanged
-  (verifies this is additive, not a breaking rename).
-- [ ] T015b [US2] Add `godfather_phones` to `UserManager.__init__` in
+  (verifies this is additive, not a breaking rename). 11 new tests (`TestUserManagerMultipleGodfathers`
+  + a `TestUserManagerPreExistingSingularGodfatherPhoneUnaffected` regression tripwire); all 36
+  pre-existing tests in the file confirmed unchanged and passing before T015b (red-phase run).
+- [x] T015b [US2] Add `godfather_phones` to `UserManager.__init__` in
   `apps/denidin-app/src/managers/user_manager.py` — checked in addition to (not instead of) the
-  existing `godfather_phone` (BLOCKED until T015a approved). `TenantAIHandlerFactory` (T009b)
-  passes `tenant.godfathers` here.
+  existing `godfather_phone` via a second `_godfather_phones_normalized` set, ORed into the same
+  role-resolution branch. `TenantAIHandlerFactory` now passes `tenant.godfathers` through
+  `AppConfiguration.user_roles["godfather_phones"]` (matching `admin_phones`/`blocked_phones`'s
+  existing dict-key convention, rather than a new top-level `AppConfiguration` field), read by
+  `AIHandler`'s `UserManager` construction alongside the pre-existing keys; `godfather_phone` is
+  also still set to `tenant.godfathers[0]` for backward compat with anything else reading that
+  field directly. One pre-existing test (`test_ai_handler_rbac.py`'s
+  `test_initializes_user_manager_with_config`) pins the exact `UserManager(...)` call signature
+  via `assert_called_once_with` and needed one line added (`godfather_phones=[]`) to keep
+  matching post-T015b's additive kwarg — a mechanical widening of the assertion, not a change to
+  what the test actually verifies (godfather_phone/admin_phones/blocked_phones wiring). Full
+  unit suite: 863 passed (up from 850), zero other regressions.
 
-- [ ] T016a [US2] Write tests confirming token-limit/tool attachment (including Morning MCP)
+- [x] T016a [US2] Write tests confirming token-limit/tool attachment (including Morning MCP)
   is identical for both godfathers of one tenant, and that ledger events/invoices either
   godfather creates are visible to the other (shared tenant-level state — both godfathers'
   `AIHandler` requests resolve to the *same* per-tenant `AIHandler` instance/data root, not
   per-godfather siloed) — `apps/denidin-app/tests/integration/test_multi_godfather.py` (new
-  file, real internal components per CONSTITUTION §V).
-- [ ] T016b [US2] Wire-through if any gaps found by T016a (BLOCKED until T016a approved — may
-  be a no-op; the shared-instance design already implies this).
+  file, real internal components per CONSTITUTION §V, real `route_event` dispatch matching
+  `test_tenant_isolation.py`'s convention). 5 tests: identical token limit; literally-equal
+  assembled tools list (the always-on ledger-event tool, RBAC-independent — real Morning MCP
+  attachment isn't exercised here, no live server in this test env); both godfathers' storage_dir
+  pointing at the one shared tenant `sessions`/`events` dirs; both godfathers' real webhook turns
+  landing on the one stubbed `client.responses.create` (proving no hidden second AIHandler);
+  ledger events attributed to either godfather persisted side by side in the one shared
+  `events/` dir. All 5 passed on the first run.
+- [x] T016b [US2] Wire-through if any gaps found by T016a — **no-op**, confirmed: T016a's 5
+  tests all passed immediately against the existing T009/T015 implementation with zero further
+  code changes, exactly as the shared-instance design predicted.
 
 - [ ] T017 [US2] 👤 **MANUAL APPROVAL GATE — not blocked, needs no second tenant**: real
   WhatsApp test on the existing (migrated) tenant — two godfather phone numbers on that one

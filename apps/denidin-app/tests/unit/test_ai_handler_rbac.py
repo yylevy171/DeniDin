@@ -49,10 +49,15 @@ class TestAIHandlerRBACInitialization:
         handler = AIHandler(ai_client, config, cleanup_interval_seconds=3600)
         
         # Assert
+        # Feature 055 (Multi-Tenancy) T015b: AIHandler now also passes an additive
+        # godfather_phones=[] (config.user_roles omits the key here, so it defaults
+        # to empty) - the original godfather_phone/admin_phones/blocked_phones
+        # wiring this test actually verifies is otherwise unchanged.
         mock_user_manager_class.assert_called_once_with(
             godfather_phone="+972501234567",
             admin_phones=["+972509999999"],
-            blocked_phones=["+972505555555"]
+            blocked_phones=["+972505555555"],
+            godfather_phones=[]
         )
         assert handler.user_manager is not None
 

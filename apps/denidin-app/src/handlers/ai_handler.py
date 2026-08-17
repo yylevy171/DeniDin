@@ -743,9 +743,17 @@ class AIHandler:
         user_roles = getattr(config, 'user_roles', {})
         admin_phones = user_roles.get('admin_phones', [])
         blocked_phones = user_roles.get('blocked_phones', [])
+        # Feature 055 (Multi-Tenancy) T015b: additive - a tenant with more than one
+        # godfather-level phone number lists the rest here, alongside (never instead
+        # of) the original singular godfather_phone. Read from the same user_roles
+        # dict admin_phones/blocked_phones already come from (TenantAIHandlerFactory
+        # populates it; the pre-existing single-tenant config shape simply omits this
+        # key, so REQ-PARITY-001 holds unchanged for it).
+        godfather_phones = user_roles.get('godfather_phones', [])
         logger.debug(
-            "UserManager config: godfather_phone_set=%s, admin_phones=%d, blocked_phones=%d",
+            "UserManager config: godfather_phone_set=%s, godfather_phones=%d, admin_phones=%d, blocked_phones=%d",
             bool(godfather_phone),
+            len(godfather_phones),
             len(admin_phones),
             len(blocked_phones)
         )
@@ -753,9 +761,10 @@ class AIHandler:
         self.user_manager = UserManager(
             godfather_phone=godfather_phone,
             admin_phones=admin_phones,
-            blocked_phones=blocked_phones
+            blocked_phones=blocked_phones,
+            godfather_phones=godfather_phones
         )
-        logger.info(f"UserManager initialized with godfather: {godfather_phone}, admins: {len(admin_phones)}, blocked: {len(blocked_phones)}")
+        logger.info(f"UserManager initialized with godfather: {godfather_phone}, godfather_phones: {len(godfather_phones)}, admins: {len(admin_phones)}, blocked: {len(blocked_phones)}")
 
         logger.info("Initializing SessionManager and MemoryManager")
 

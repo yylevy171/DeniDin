@@ -12,10 +12,12 @@ REQ-PARITY-001: this factory is purely additive. `denidin.py`'s existing single-
 `initialize_app` path, and anything else that constructs `AIHandler` directly
 (including `tests/billed/`/`tests/expensive/`), is completely unaffected.
 
-Scope note (Phase 3/US1 only — tasks.md T009): only the *first* configured godfather
-is wired through today's existing singular `godfather_phone` config field. Full
-multi-godfather support is Phase 4/US2's concern (T015), which extends this factory
-once `UserManager` supports a phone list.
+Multi-godfather (Phase 4/US2, tasks.md T015): every configured godfather is passed
+through via `user_roles["godfather_phones"]`, resolved by `UserManager`'s additive
+`godfather_phones` parameter (T015b). The first godfather is ALSO still set on the
+original singular `godfather_phone` field (harmless duplication - `UserManager`
+checks both independently) purely so nothing else reading `config.godfather_phone`
+directly sees an unset value for a tenant that has at least one godfather.
 """
 
 from dataclasses import replace
@@ -58,6 +60,10 @@ class TenantAIHandlerFactory:
             ai_api_key=tenant.openai["api_key"],
             data_root=str(tenant.data_root),
             godfather_phone=first_godfather,
-            user_roles={"admin_phones": list(tenant.admins), "blocked_phones": []},
+            user_roles={
+                "admin_phones": list(tenant.admins),
+                "blocked_phones": [],
+                "godfather_phones": list(tenant.godfathers),
+            },
             memory=memory,
         )

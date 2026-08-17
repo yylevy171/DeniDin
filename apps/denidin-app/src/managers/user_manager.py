@@ -27,19 +27,28 @@ class UserManager:
         self,
         godfather_phone: Optional[str] = None,
         admin_phones: Optional[list[str]] = None,
-        blocked_phones: Optional[list[str]] = None
+        blocked_phones: Optional[list[str]] = None,
+        godfather_phones: Optional[list[str]] = None
     ):
         """Initialize UserManager with role configuration.
 
         Args:
-            godfather_phone: Phone number of the godfather (power user)
+            godfather_phone: Phone number of the godfather (power user) - the
+                original, singular field. Kept unchanged (REQ-PARITY-001).
             admin_phones: List of admin phone numbers
             blocked_phones: List of blocked phone numbers
+            godfather_phones: Feature 055 (Multi-Tenancy, US2/T015): additional
+                godfather-level phone numbers, checked TOGETHER with (never instead
+                of) godfather_phone - a tenant can have more than one godfather.
+                Additive: passing only godfather_phone (today's single-tenant
+                shape) behaves exactly as before.
         """
         self.godfather_phone = godfather_phone
         self.admin_phones = admin_phones if admin_phones is not None else []
         self.blocked_phones = blocked_phones if blocked_phones is not None else []
+        self.godfather_phones = godfather_phones if godfather_phones is not None else []
         self._godfather_phone_normalized = _normalize_phone(godfather_phone) if godfather_phone else None
+        self._godfather_phones_normalized = {_normalize_phone(p) for p in self.godfather_phones}
         self._admin_phones_normalized = {_normalize_phone(p) for p in self.admin_phones}
         self._blocked_phones_normalized = {_normalize_phone(p) for p in self.blocked_phones}
         self._user_cache: dict[str, User] = {}
@@ -71,7 +80,7 @@ class UserManager:
         normalized = _normalize_phone(phone)
         if normalized in self._admin_phones_normalized:
             role = Role.ADMIN
-        elif normalized == self._godfather_phone_normalized:
+        elif normalized == self._godfather_phone_normalized or normalized in self._godfather_phones_normalized:
             role = Role.GODFATHER
         elif normalized in self._blocked_phones_normalized:
             role = Role.BLOCKED

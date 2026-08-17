@@ -227,3 +227,91 @@ class TestUserManagerEdgeCases:
         user1 = manager.get_user("+972501234567")
         user2 = manager.get_user("+972501234567")
         assert user1 is user2  # Same object reference
+
+
+class TestUserManagerMultipleGodfathers:
+    """Feature 055 (Multi-Tenancy), tasks.md T015a: multi-godfather-per-tenant support
+    (REQ-ROLE / US2). `godfather_phones` is a NEW, additive parameter - checked in
+    addition to (never instead of) the existing singular `godfather_phone`, per
+    contracts/tenant-scoped-data-managers.md and research.md SS8's correction (one
+    UserManager instance per tenant already scopes RBAC correctly; the one real gap
+    was that today's `godfather_phone` field is genuinely singular)."""
+
+    def test_create_user_manager_with_godfather_phones(self):
+        """Test creating UserManager with the new plural godfather_phones list."""
+        manager = UserManager(godfather_phones=["+972501111111", "+972502222222"])
+        assert manager.godfather_phones == ["+972501111111", "+972502222222"]
+
+    def test_create_user_manager_without_godfather_phones_defaults_empty(self):
+        """Test creating UserManager without godfather_phones defaults to an empty
+        list, matching admin_phones/blocked_phones's existing default convention."""
+        manager = UserManager()
+        assert manager.godfather_phones == []
+
+    def test_first_godfather_phone_in_list_resolves_to_godfather_role(self):
+        manager = UserManager(godfather_phones=["+972501111111", "+972502222222"])
+        user = manager.get_user("+972501111111")
+        assert user.role == Role.GODFATHER
+
+    def test_second_godfather_phone_in_list_also_resolves_to_godfather_role(self):
+        """The actual point of this feature: BOTH numbers get full godfather-level
+        access, not just the first one in the list."""
+        manager = UserManager(godfather_phones=["+972501111111", "+972502222222"])
+        user = manager.get_user("+972502222222")
+        assert user.role == Role.GODFATHER
+
+    def test_three_godfather_phones_all_resolve_to_godfather_role(self):
+        phones = ["+972501111111", "+972502222222", "+972503333333"]
+        manager = UserManager(godfather_phones=phones)
+        for phone in phones:
+            assert manager.get_user(phone).role == Role.GODFATHER
+
+    def test_singular_godfather_phone_and_plural_godfather_phones_both_apply_together(self):
+        """The two parameters are additive, not mutually exclusive - a tenant
+        migrated from the old singular field plus a newly-added second godfather
+        both resolve correctly from the same UserManager instance."""
+        manager = UserManager(
+            godfather_phone="+972501111111", godfather_phones=["+972502222222"]
+        )
+        assert manager.get_user("+972501111111").role == Role.GODFATHER
+        assert manager.get_user("+972502222222").role == Role.GODFATHER
+
+    def test_admin_role_still_takes_precedence_over_a_godfather_phones_entry(self):
+        """Role precedence (ADMIN > GODFATHER > BLOCKED > CLIENT) is unchanged by
+        this addition - a number listed in both stays ADMIN."""
+        manager = UserManager(
+            admin_phones=["+972501111111"], godfather_phones=["+972501111111"]
+        )
+        assert manager.get_user("+972501111111").role == Role.ADMIN
+
+    def test_phone_not_in_godfather_phones_list_is_not_a_godfather(self):
+        manager = UserManager(godfather_phones=["+972501111111"])
+        user = manager.get_user("+972509999999")
+        assert user.role != Role.GODFATHER
+        assert user.role == Role.CLIENT
+
+    def test_godfather_phones_entry_matches_a_whatsapp_jid_via_existing_normalization(self):
+        """Same JID-vs-bare-digits normalization that already applies to the
+        singular godfather_phone/admin_phones/blocked_phones fields."""
+        manager = UserManager(godfather_phones=["972501111111"])
+        user = manager.get_user("972501111111@c.us")
+        assert user.role == Role.GODFATHER
+
+
+class TestUserManagerPreExistingSingularGodfatherPhoneUnaffected:
+    """REQ-PARITY-001: every pre-existing test in this file constructs UserManager
+    with only the singular godfather_phone and must keep passing byte-for-byte
+    unchanged - this class re-runs the same core assertions explicitly, as a
+    regression tripwire tied directly to this feature's parity requirement (rather
+    than relying solely on the rest of this file staying untouched, which it also
+    is)."""
+
+    def test_singular_godfather_phone_alone_still_resolves_godfather_role(self):
+        manager = UserManager(godfather_phone="+972507654321")
+        user = manager.get_user("+972507654321")
+        assert user.role == Role.GODFATHER
+
+    def test_no_godfather_configured_at_all_still_defaults_to_client(self):
+        manager = UserManager()
+        user = manager.get_user("+972501234567")
+        assert user.role == Role.CLIENT

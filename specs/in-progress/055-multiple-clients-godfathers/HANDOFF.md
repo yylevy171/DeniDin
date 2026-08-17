@@ -69,25 +69,30 @@ confirming with the user. This was a deliberate scope boundary, not an oversight
 | **1. Setup** | ✅ done | T001 (branch confirm), T002 (spike — see `research.md` §7) |
 | **2. Foundational** | ✅ done | `src/models/tenant.py` (Tenant dataclass — identity/credentials part), `src/managers/tenant_manager.py` (loads/joins `tenants.json` + `config.<env>.json`'s `tenant_credentials`) |
 | **3. US1 (tenant isolation)** | ✅ done | T009 (`TenantAIHandlerFactory`), T006-T008 (Tenant runtime), T013a/b (`scripts/migrate_to_tenant.py` + 8 tests), T014a (`tests/integration/test_tenant_isolation.py`, 4 tests — real `route_event` dispatch through two synthetic tenants, proves SC-002). T014b remains deferred (blocked pending a real second tenant, not required for completeness). |
-| **4-8** | ❌ not started | Multi-godfather, super-admin, capability abstraction, per-tenant constitution, logging/cleanup/cache-audit polish |
+| **4. US2 (multi-godfather)** | 🟡 mostly done | T015a/b (`UserManager.godfather_phones`, additive), T016a/b (`tests/integration/test_multi_godfather.py`, 5 tests — T016b was a no-op, confirmed). **T017 remains: a 👤 manual-approval-gate real-WhatsApp test — needs only a second real phone number on the existing tenant, not a second tenant's infrastructure, so it's exercisable now but requires the user.** |
+| **5-8** | ❌ not started | Super-admin, capability abstraction, per-tenant constitution, logging/cleanup/cache-audit polish |
 
 Test files that exist: `test_tenant.py`, `test_tenant_manager.py`, `test_tenant_ai_handler_factory.py`,
 `test_tenant_runtime.py`, `test_migrate_to_tenant.py` (uncommitted, no implementation yet).
 
 ## Immediate next step
 
-Phase 3 (User Story 1) is now fully complete — T013a/b and T014a all done and committed
-(`scripts/migrate_to_tenant.py`, `tests/integration/test_tenant_isolation.py`; 850/850 unit,
-33/33 integration, zero regressions). T014b stays deferred (blocked pending a real second
-tenant, not required for completeness).
+Phases 3 and 4 are both done except one gate: T015a/b (`UserManager.godfather_phones`,
+additive) and T016a/b (`tests/integration/test_multi_godfather.py`, 5 tests, T016b a confirmed
+no-op) are committed. Full unit suite: 863 passed. Full integration suite: 38 passed. Zero
+regressions throughout.
 
-**Next up: Phase 4 (T015-T017), multi-godfather support** — add `godfather_phones: Optional[
-List[str]]` to `UserManager.__init__` (additive, backward-compatible — keep the existing
-singular `godfather_phone` working unchanged for anyone still passing it), then update
-`TenantAIHandlerFactory._build_tenant_config` to pass the tenant's full `godfathers` list
-instead of today's `godfathers[0]`-only wiring. Then Phase 5 (super-admin), Phase 6 (capability
-abstraction), Phase 7 (per-tenant constitution), Phase 8 (logging/cleanup/cache polish), in the
-order `tasks.md` lays out.
+**T017 is the one open item in Phase 4** — a 👤 manual-approval-gate task: a real WhatsApp test
+on the existing (already-migrated) tenant, adding a second real godfather phone number and
+confirming both get full godfather behavior live. This needs the user (a real second phone
+number, not a second tenant's infrastructure) — do not attempt to simulate or skip it; leave it
+`[ ]` and move on, same as T014b.
+
+**Next up: Phase 5 (T018-T020), super-admin oversight across all tenants** — read that phase's
+task list in `tasks.md` before starting (not yet reviewed in this session). Then Phase 6
+(capability abstraction / shared MCP server per-tenant bearer tokens), Phase 7 (per-tenant
+constitution), Phase 8 (tenant-attributed logging/cleanup/cache-audit polish), in the order
+`tasks.md` lays out.
 
 ## Rules to not forget (violating any of these was explicitly corrected by the user this session)
 

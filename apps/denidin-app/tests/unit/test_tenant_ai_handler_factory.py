@@ -13,11 +13,12 @@ MemoryManager/LedgerEventManager/UserManager themselves — verified implicitly 
 this file never touching test_ai_handler.py/test_session_manager.py/
 test_memory_manager.py/test_ledger_event_manager.py/test_user_manager.py.
 
-Note: full multi-godfather support (more than one godfather per tenant) is Phase
-4/US2's concern (tasks.md T015) — this factory currently wires only the first
-configured godfather through today's existing singular `godfather_phone` config
-field, by design, so Phase 3 needs zero AppConfiguration/AIHandler/UserManager
-changes at all. T015 will extend this factory once UserManager supports a list.
+Note: full multi-godfather support (more than one godfather per tenant, tasks.md
+T015) is covered by `TestTenantAIHandlerFactoryRBAC`'s
+`test_second_godfather_of_a_multi_godfather_tenant_also_resolves`/
+`test_multi_godfather_lists_are_independent_across_tenants` below - the factory
+now passes every configured godfather through `user_roles["godfather_phones"]`
+(UserManager's additive T015b parameter), not just `tenant.godfathers[0]`.
 """
 
 from pathlib import Path
@@ -168,6 +169,32 @@ class TestTenantAIHandlerFactoryRBAC:
 
         assert handler_a.user_manager.get_user("+972509999999").role.value == "ADMIN"
         assert handler_b.user_manager.get_user("+972509999999").role.value == "CLIENT"
+
+    def test_second_godfather_of_a_multi_godfather_tenant_also_resolves(self, tmp_path):
+        """Feature 055 US2/T015: a tenant with MORE than one godfather - the second
+        (and beyond) godfather must resolve GODFATHER too, not just tenant.godfathers[0]
+        (the Phase 3 scope limit T015 extends this factory past)."""
+        tenant = _tenant(tmp_path, godfathers=["+972501111111", "+972502222222"])
+        handler = TenantAIHandlerFactory.build(tenant, _base_config())
+
+        assert handler.user_manager.get_user("+972501111111").role.value == "GODFATHER"
+        assert handler.user_manager.get_user("+972502222222").role.value == "GODFATHER"
+
+    def test_multi_godfather_lists_are_independent_across_tenants(self, tmp_path):
+        tenant_a = _tenant(
+            tmp_path, tenant_id="tenant-a", account_name="a",
+            godfathers=["+972501111111", "+972502222222"],
+        )
+        tenant_b = _tenant(
+            tmp_path, tenant_id="tenant-b", account_name="b",
+            godfathers=["+972503333333"],
+        )
+
+        handler_a = TenantAIHandlerFactory.build(tenant_a, _base_config())
+        handler_b = TenantAIHandlerFactory.build(tenant_b, _base_config())
+
+        assert handler_a.user_manager.get_user("+972502222222").role.value == "GODFATHER"
+        assert handler_b.user_manager.get_user("+972502222222").role.value == "CLIENT"
 
 
 class TestTenantAIHandlerFactoryEnvironmentWideValuesPreserved:
