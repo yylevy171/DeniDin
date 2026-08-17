@@ -80,29 +80,28 @@ phase depends on. **No story-specific wiring starts until this phase's tests are
 implementation passes** — this is the literal foundation `research.md` §2 calls out as the one
 place a shared-process design has to get isolation right.
 
-- [ ] T003a [P] Write tests for `Tenant` dataclass in `apps/denidin-app/tests/unit/test_tenant.py`:
+- [x] T003a [P] Write tests for `Tenant` dataclass in `apps/denidin-app/tests/unit/test_tenant.py`:
   construction from a `tenants.json` entry + matching `tenant_credentials` entry; missing
   optional fields (e.g. no `morning`/invoicing capability) default sanely; `data_root` is
-  always derived (`{data_root}/{tenant_id}/`), never settable directly.
-- [ ] T003b [P] Implement `Tenant` dataclass in `apps/denidin-app/src/models/tenant.py`
-  (BLOCKED until T003a approved) — per `data-model.md`'s Tenant Identity + Tenant Credentials
-  tables.
+  always derived (`{data_root}/{tenant_id}/`), never settable directly. **16 tests.**
+- [x] T003b [P] Implement `Tenant` dataclass in `apps/denidin-app/src/models/tenant.py` — per
+  `data-model.md`'s Tenant Identity + Tenant Credentials tables. All 16 tests pass.
 
-- [ ] T004a [P] Write tests for `TenantManager.load()` in
+- [x] T004a [P] Write tests for `TenantManager.load()` in
   `apps/denidin-app/tests/unit/test_tenant_manager.py`: loads `tenants.json` + the active
   environment's `tenant_credentials`, joins by `tenant_id`; raises a clear config error (not a
-  silent skip) on a `tenant_credentials` entry with no matching `tenants.json` identity; raises
-  on duplicate `account_name` or duplicate `mcp_auth_token` within one environment
-  (REQ-TENANT-004/005); a tenant missing `morning` credentials loads successfully (REQ-CAP-005
-  — degraded, not an error).
-- [ ] T004b [P] Implement `TenantManager` in `apps/denidin-app/src/managers/tenant_manager.py`
-  (BLOCKED until T004a approved).
+  silent skip) on a `tenant_credentials` entry with no matching `tenants.json` identity
+  (resolved which direction errors: orphaned *credentials* error; a `tenants.json` identity
+  simply not yet credentialed in this environment is valid, phased onboarding); raises on
+  duplicate `account_name` or duplicate `mcp_auth_token` within one environment
+  (REQ-TENANT-004/005); a tenant missing invoicing-provider credentials loads successfully
+  (REQ-CAP-005 — degraded, not an error).
+- [x] T004b [P] Implement `TenantManager` in `apps/denidin-app/src/managers/tenant_manager.py`.
 
-- [ ] T005a Write tests for `TenantManager.get_tenant(tenant_id)` /
+- [x] T005a Write tests for `TenantManager.get_tenant(tenant_id)` /
   `TenantManager.all_tenants()` lookup helpers in the same test file: unknown `tenant_id`
-  raises/returns `None` (decide + document which — no silent wrong-tenant fallback); lookups
-  are O(1), not a linear scan re-parsing config each call.
-- [ ] T005b Implement the lookup helpers (BLOCKED until T005a approved).
+  **raises `KeyError`** (decided — no silent wrong-tenant fallback); dict-backed O(1) lookups.
+- [x] T005b Implement the lookup helpers. **9 tests total for T004+T005; 25 across Phase 2.**
 
 **Checkpoint**: `TenantManager` fully tested standalone, unused by any behavior yet. Run
 `apps/denidin-app/tests/unit/test_tenant.py` `test_tenant_manager.py` — all green before
