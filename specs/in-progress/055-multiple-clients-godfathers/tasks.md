@@ -150,20 +150,21 @@ new `TenantAIHandlerFactory`, per `contracts/tenant-scoped-data-managers.md`. Th
 subsumes the original T012 (OpenAI credential) — it falls out of the same factory, not a
 separate `AIHandler` change.
 
-- [ ] T009a [P] [US1] Write tests for `TenantAIHandlerFactory.build(tenant, base_config)` in
-  `apps/denidin-app/tests/unit/test_tenant_ai_handler_factory.py` (new file): given two
-  `Tenant` objects, produces two `AIHandler` instances whose `session_manager.storage_dir`,
+- [x] T009a [P] [US1] Write tests for `TenantAIHandlerFactory.build(tenant, base_config)` in
+  `apps/denidin-app/tests/unit/test_tenant_ai_handler_factory.py` (new file, 11 tests): given
+  two `Tenant` objects, produces two `AIHandler` instances whose `session_manager.storage_dir`,
   `memory_manager.storage_dir`, `ledger_event_manager.storage_dir` all resolve under each
   tenant's own `{data_root}/{tenant_id}/...`, never cross over; each `AIHandler.client`
-  (OpenAI) is built from that tenant's own `openai` credential, never shared; **REQ-PARITY-001**
-  — `AIHandler.__init__`/`SessionManager`/`MemoryManager`/`LedgerEventManager` themselves are
-  not modified by this task at all (verified by this test file not needing to touch
-  `test_ai_handler.py`/`test_session_manager.py`/`test_memory_manager.py`/
-  `test_ledger_event_manager.py`).
-- [ ] T009b [P] [US1] Implement `TenantAIHandlerFactory` in
-  `apps/denidin-app/src/managers/tenant_ai_handler_factory.py` (BLOCKED until T009a approved) —
-  builds a tenant-scoped `AppConfiguration`-shaped view from `Tenant` + `base_config`, then
-  calls `AIHandler(ai_client_for_tenant, tenant_scoped_config)` unchanged.
+  (OpenAI) is built from that tenant's own `openai` credential, never shared; RBAC (admin/
+  godfather) resolves independently per tenant; environment-wide values (`ai_embedding_model`)
+  pass through from `base_config` unchanged. **REQ-PARITY-001 confirmed**: zero changes needed
+  to `AIHandler`/`SessionManager`/`MemoryManager`/`LedgerEventManager`/`UserManager`.
+- [x] T009b [P] [US1] Implement `TenantAIHandlerFactory` in
+  `apps/denidin-app/src/managers/tenant_ai_handler_factory.py` — builds a tenant-scoped
+  `AppConfiguration` view via `dataclasses.replace`, then calls the unmodified `AIHandler`
+  constructor. Scope note: Phase 3 wires only the first configured godfather (via today's
+  existing singular `godfather_phone` field) — full multi-godfather is T015's extension. All
+  11 tests pass; full unit suite verified green (823 passed, up from 812 — no regressions).
 
 ### Tenant-scoped OpenAI credential
 

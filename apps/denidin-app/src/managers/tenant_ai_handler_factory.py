@@ -1,0 +1,63 @@
+"""TenantAIHandlerFactory: builds one full AIHandler stack per tenant.
+
+See specs/in-progress/055-multiple-clients-godfathers/research.md §8 and
+contracts/tenant-scoped-data-managers.md for the design this implements: `AIHandler`
+(and everything it constructs internally — `UserManager`, `SessionManager`,
+`MemoryManager`, `LedgerEventManager`) is already constructor-scoped, so multi-tenancy
+is achieved by constructing one full, independent stack per tenant, sourcing values
+from that tenant's own `Tenant` object into a tenant-scoped `AppConfiguration` view —
+not by threading `tenant_id` through method calls. `AIHandler` itself is not modified.
+
+REQ-PARITY-001: this factory is purely additive. `denidin.py`'s existing single-tenant
+`initialize_app` path, and anything else that constructs `AIHandler` directly
+(including `tests/billed/`/`tests/expensive/`), is completely unaffected.
+
+Scope note (Phase 3/US1 only — tasks.md T009): only the *first* configured godfather
+is wired through today's existing singular `godfather_phone` config field. Full
+multi-godfather support is Phase 4/US2's concern (T015), which extends this factory
+once `UserManager` supports a phone list.
+"""
+
+from dataclasses import replace
+
+from openai import OpenAI
+
+from src.handlers.ai_handler import AIHandler
+from src.models.config import AppConfiguration
+from src.models.tenant import Tenant
+
+
+class TenantAIHandlerFactory:
+    """Builds one fully independent AIHandler stack per tenant."""
+
+    @staticmethod
+    def build(tenant: Tenant, base_config: AppConfiguration) -> AIHandler:
+        """Construct one AIHandler for `tenant`, sourcing tenant-specific values from
+        it and carrying over environment-wide values (e.g. ai_embedding_model,
+        feature_flags) from `base_config` unchanged."""
+        tenant_config = TenantAIHandlerFactory._build_tenant_config(tenant, base_config)
+        ai_client = OpenAI(api_key=tenant.openai["api_key"], timeout=30.0)
+        return AIHandler(ai_client, tenant_config)
+
+    @staticmethod
+    def _build_tenant_config(tenant: Tenant, base_config: AppConfiguration) -> AppConfiguration:
+        """A tenant-scoped AppConfiguration view: overrides credentials/data paths/RBAC
+        lists from `tenant`, keeps everything else from `base_config` as-is."""
+        memory = dict(base_config.memory) if base_config.memory else {}
+        memory["session"] = dict(memory.get("session", {}))
+        memory["session"]["storage_dir"] = str(tenant.data_root / "sessions")
+        memory["longterm"] = dict(memory.get("longterm", {}))
+        memory["longterm"]["storage_dir"] = str(tenant.data_root / "memory")
+
+        first_godfather = tenant.godfathers[0] if tenant.godfathers else None
+
+        return replace(
+            base_config,
+            green_api_instance_id=tenant.green_api["instance_id"],
+            green_api_token=tenant.green_api["api_token"],
+            ai_api_key=tenant.openai["api_key"],
+            data_root=str(tenant.data_root),
+            godfather_phone=first_godfather,
+            user_roles={"admin_phones": list(tenant.admins), "blocked_phones": []},
+            memory=memory,
+        )
