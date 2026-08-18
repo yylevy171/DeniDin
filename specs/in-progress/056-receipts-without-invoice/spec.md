@@ -13,17 +13,17 @@ feature 56 to encompass the 2 new logic changes required for accounting rules in
 
 **IMPORTANT**: This spec complies with:
 - **CONSTITUTION.md** ("NO UNVERIFIED THIRD-PARTY ASSUMPTIONS"): the exact Morning API mechanism
-  for a document-less transaction-account cancellation (which status code/endpoint) is NOT
-  assumed here — it is left as an open question for `speckit.plan`/`research.md` to confirm
-  against the real sandbox, same discipline as every other Morning-integration feature in this
-  project.
+  for a document-less transaction-account cancellation was NOT assumed — it was confirmed live
+  against the real sandbox on 2026-08-18 (see `research.md`), same discipline as every other
+  Morning-integration feature in this project.
 - **METHODOLOGY.md** (§I, II, VIII, IX, X): Spec-first development, mandatory user stories,
   Terminology Glossary, Technology Choices, Requirement IDs (continuing the `REQ-INV-*` series
   started by Feature 027, next available number `REQ-INV-014`).
 
 **Required Files**: `user-stories.md` (present, DRAFT) ✅ · `spec.md` (this file, DRAFT) ·
-`plan.md` (NOT STARTED) · `research.md` (NOT STARTED) · `data-model.md` (NOT STARTED) ·
-`contracts/` (NOT STARTED) · `quickstart.md` (NOT STARTED) · `tasks.md` (NOT STARTED).
+`research.md` (present — transaction-account cancellation mechanism, live-confirmed 2026-08-18)
+✅ · `plan.md` (NOT STARTED) · `data-model.md` (NOT STARTED) · `contracts/` (NOT STARTED) ·
+`quickstart.md` (NOT STARTED) · `tasks.md` (NOT STARTED).
 
 ---
 
@@ -160,24 +160,42 @@ accounting-rule logic changes captured together as one feature per explicit user
   (resolved client id/name where applicable, payload sent, response received) — no exception
   carved out for either new capability.
 
-## Open Questions for `speckit.plan`
+## Resolved via live sandbox research (2026-08-18) — see `research.md`
 
-- **Exact Morning mechanism for "cancel with no document"**: `MorningClient` currently exposes
-  `close_invoice`/`open_invoice` (POST `/documents/{id}/close|open`, manual-close status 2 —
-  mapped to this app's canonical `"paid"` status in `models._MORNING_STATUS_CODES`, which is
-  semantically wrong for an abandoned/no-money-moved transaction account) and Morning's own
-  status vocabulary separately has "cancelling document" (3) / "cancelled document" (4). Which
-  of these (or a different, not-yet-confirmed endpoint) is the correct live mechanism must be
-  confirmed against the real Morning sandbox before implementation, per CONSTITUTION's
-  "NO UNVERIFIED THIRD-PARTY ASSUMPTIONS" rule — not decided here.
-- **New MCP tool vs. extending an existing one** for the cancellation capability (mirrors how
-  Feature 021 chose new type-specific tools over one generic `create_document`): given how
-  structurally different "no document, status-only" is from every existing `create_*`/`close_*`
-  tool's contract, a new dedicated tool (naming TBD, e.g. `cancel_transaction_account`) looks
-  like the natural direction, but the final call belongs to `plan.md`.
-- Whether `MorningClient` needs a new method at all, or whether the confirmed-correct endpoint
-  is already covered by an existing one (e.g. `close_invoice`, if manual-close turns out to be
-  the right mechanism after live confirmation).
+The Open Questions below were live-confirmed against the real Morning sandbox (plus the
+authoritative Green Invoice Postman collection) rather than decided by assumption, per
+CONSTITUTION's "NO UNVERIFIED THIRD-PARTY ASSUMPTIONS" rule. Full trace, evidence, and the two
+new findings below in `research.md`.
+
+- **Exact Morning mechanism for "cancel with no document"**: **CONFIRMED — `close_invoice`**
+  (`MorningClient`'s already-existing method, POST `/documents/{id}/close`). Live-verified: sets
+  a type-300 transaction account's status `0 → 2`, creates zero documents (`linkedDocuments`
+  stays `[]`, the close response's own id equals the original — no new document id), and is
+  cleanly reversible via the already-existing `open_invoice`. Morning's status codes 3/"cancelling
+  document"/4/"cancelled document" were ruled out: the authoritative Postman collection confirms
+  there is no `/cancel` endpoint at all, and 3/4's real Hebrew names describe the two sides of
+  the credit-note flow specifically — neither is reachable without creating a document, which is
+  exactly what this feature must avoid.
+- **New MCP tool vs. extending an existing one**: leaning new dedicated tool (working name
+  `cancel_transaction_account`) — `close_invoice`'s contract (an id, nothing else) doesn't fit
+  naturally as a branch of any existing `create_*` tool's shape. Final call still belongs to
+  `plan.md`.
+- **Does `MorningClient` need a new method?**: **No** — `close_invoice`/`open_invoice` already
+  exist and are confirmed correct; no new client-level code needed for the Morning API surface
+  itself.
+
+### New requirements surfaced by this research (not part of the original placeholder)
+
+- **REQ-INV-025**: The cancellation capability MUST implement its own idempotency guard in
+  application code (check current status before calling `close_invoice`; short-circuit as a
+  no-op if already closed) — confirmed live that Morning's raw API rejects a redundant
+  `close_invoice` call with a 400 error rather than no-op'ing silently, consistent with this
+  app's existing idempotency pattern for `create_receipt`/`create_combo_document_as_reference`.
+- **REQ-INV-026**: The cancellation capability's confirmation/response text MUST NOT reuse
+  `get_invoice_details`'s existing status formatting as-is — confirmed live that it renders a
+  cancelled (status-2) transaction account as **"שולם" (paid)**, which is actively misleading
+  for money that never moved. A distinct confirmation message (or a formatter branch aware of
+  *why* a document was closed) is required.
 
 ## Out of Scope
 

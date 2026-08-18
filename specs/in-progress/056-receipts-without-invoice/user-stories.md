@@ -73,9 +73,10 @@ existence for a deal that never closed.
 
 **Independent Test**: Against a real type-300 transaction account created in the Morning
 sandbox, the new cancellation capability changes its state to reflect cancellation/abandonment
-with zero new documents created — independently verifiable via `list_invoices` before/after
-(document count unchanged) and `get_invoice_details` on the transaction account itself (status
-changed) — with no dependency on User Story 1.
+with zero new documents created — independently verifiable by re-fetching the document itself
+(`linkedDocuments` unchanged, `status` changed from `0` to `2`) — with no dependency on User
+Story 1. Live-confirmed mechanism (`research.md`, 2026-08-18): `MorningClient.close_invoice`
+(already existing), not a new endpoint or a new client method.
 
 **Acceptance Scenarios**:
 
@@ -94,6 +95,11 @@ changed) — with no dependency on User Story 1.
    rejected with a clear error — tax-invoice cancellation continues exclusively through
    `create_credit_note`'s existing, document-producing flow (REQ-INV-022), never through this
    document-less path.
+5. **Given** the cancellation succeeds, **When** DeniDin confirms it to the godfather, **Then**
+   the confirmation text never says the transaction account was "paid" (שולם) — Morning's own
+   `get_invoice_details` formatter does exactly that for a manually-closed document, confirmed
+   live to be misleading for a cancellation where no money moved (REQ-INV-026); this capability
+   uses its own, distinct confirmation wording instead.
 
 ---
 
