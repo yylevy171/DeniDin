@@ -35,6 +35,17 @@ class Message:
     was_received: bool = True
     order_num: int = 0
     image_path: Optional[str] = None
+    # Feature 043 (Phase 11 follow-up, 2026-08-18): the raw text a media extractor
+    # (image/PDF/DOCX) pulled out of this message's attachment, if any - None/empty
+    # when the attachment had no image_path (a text message) or the extractor found
+    # no text in it. Replaces LedgerEvent.raw_message_excerpt's old role for media
+    # messages: since this message's own message_id/session_id is already the
+    # ledger event's traceability pointer, the source content belongs here (once,
+    # on the message itself) rather than duplicated into every ledger event
+    # captured from it. For a text message, `content` already IS the verbatim
+    # source text, so this field stays None there - only ever populated alongside
+    # image_path.
+    extracted_text: Optional[str] = None
     # Feature 033: id(s) of any LedgerEvent(s) captured from this specific message -
     # the reverse link to LedgerEvent.message_id. Empty for the vast majority of
     # messages (most capture nothing).
@@ -137,6 +148,7 @@ class SessionManager:
         sender: Optional[str] = None,
         recipient: Optional[str] = None,
         image_path: Optional[str] = None,
+        extracted_text: Optional[str] = None,
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None
     ) -> str:
@@ -151,6 +163,9 @@ class SessionManager:
             sender: Message sender (optional)
             recipient: Message recipient (optional)
             image_path: Path to image file (optional)
+            extracted_text: Raw text a media extractor pulled out of this
+                message's attachment (image/PDF/DOCX), if any (Feature 043,
+                optional - see Message.extracted_text's own docstring).
             ledger_event_ids: id(s) of any LedgerEvent(s) captured from this message
                 (Feature 033, optional - defaults to empty list)
             message_id: The id decided when this message was first recognized as
@@ -195,6 +210,7 @@ class SessionManager:
             was_received=True,
             order_num=session.message_counter,
             image_path=image_path,
+            extracted_text=extracted_text,
             ledger_event_ids=list(ledger_event_ids) if ledger_event_ids else []
         )
 

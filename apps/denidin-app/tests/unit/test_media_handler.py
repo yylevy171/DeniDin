@@ -667,18 +667,18 @@ class TestLedgerEventPersistenceViaMediaHandler:
         handler.image_extractor = Mock()
         handler.image_extractor.analyze_media = Mock(return_value={
             "raw_response": "בנק - הפקדה של 9,440 ₪",
+            "extracted_text": "בנק - הפקדה של 9,440 ₪",
             "ledger_events": [{
                 "source_type": "בנק", "event_subtype": "הפקדה",
                 "client_name": None, "payer_name": None,
-                "agreement_label": None, "replaces_hint": None, "reference_hint": None,
-                "raw_message_excerpt": "9,440 ₪ הפקדה",
+                "agreement_label": None, "reference_hint": None,
                 "component_count": 1,
                 "components": [{
                     "component_label": None, "description": "הפקדה", "amount": "9,440₪",
                     "percent": None, "percent_base": None, "hours": None,
                     "hourly_rate": None, "txn_date": None,
                     "vat_status": "לא צוין",
-                    "notes": None,
+                    "trigger_condition": None,
                 }],
             }],
         })
@@ -725,6 +725,11 @@ class TestLedgerEventPersistenceViaMediaHandler:
         assert "media-msg-1" in session.message_ids
         assert (session_dir / "messages" / "media-msg-1.json").exists()
 
+        # Feature 043 (2026-08-18): the extractor's own extracted_text now lands on
+        # the message itself, replacing raw_message_excerpt's old per-ledger-event
+        # duplication of the same content (see LedgerEventManager's own removal).
+        assert user_messages[0]["extracted_text"] == "בנק - הפקדה של 9,440 ₪"
+
     def test_no_ledger_event_leaves_message_ledger_event_ids_empty(
         self, real_denidin_context, tmp_path
     ):
@@ -762,3 +767,85 @@ class TestLedgerEventPersistenceViaMediaHandler:
                 user_messages.append(msg)
         assert len(user_messages) == 1
         assert user_messages[0]["ledger_event_ids"] == []
+
+
+class TestExtractedTextPersistence:
+    """Feature 043 (2026-08-18): Message.extracted_text - the media extractor's own
+    extracted_text (image/PDF/DOCX all now genuinely return this key, see each
+    extractor's own analyze_media docstring) persisted onto the user message,
+    replacing raw_message_excerpt's old per-ledger-event duplication of the same
+    content. Real SessionManager (not Mock), same pattern as
+    TestLedgerEventPersistenceViaMediaHandler above, so assertions verify genuine
+    on-disk persistence."""
+
+    @pytest.fixture
+    def real_denidin_context(self, tmp_path):
+        from src.managers.session_manager import SessionManager
+        from src.managers.ledger_event_manager import LedgerEventManager
+
+        denidin = Mock()
+        denidin.config.data_root = str(tmp_path)
+        denidin.ai_handler.session_manager = SessionManager(
+            storage_dir=str(tmp_path / "sessions"), session_timeout_hours=24
+        )
+        denidin.ai_handler.ledger_event_manager = LedgerEventManager(
+            storage_dir=str(tmp_path / "events")
+        )
+        return denidin
+
+    def _process_and_get_user_message(self, real_denidin_context, tmp_path, analyze_media_result,
+                                       message_id, chat_id):
+        handler = MediaHandler(real_denidin_context)
+        handler.image_extractor = Mock()
+        handler.image_extractor.analyze_media = Mock(return_value=analyze_media_result)
+        handler.media_file_manager = Mock()
+        handler.media_file_manager.download_file = Mock(return_value=(b"data", True))
+        handler.media_file_manager.validate_file_size = Mock(return_value=None)
+        handler.media_file_manager.validate_format = Mock(return_value="image")
+        handler.media_file_manager.create_storage_path = Mock(return_value=tmp_path / "media")
+        handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-x.jpg")
+
+        result = handler.process_media_message(
+            file_url="https://example.com/photo.jpg", filename="photo.jpg",
+            mime_type="image/jpeg", file_size=1000,
+            sender_phone=chat_id, chat_id=chat_id,
+            timestamp=1770000500, message_id=message_id,
+        )
+        assert result["success"] is True
+
+        session_manager = real_denidin_context.ai_handler.session_manager
+        session = session_manager.get_session(chat_id)
+        session_dir = session_manager.storage_dir / session.session_id
+        with (session_dir / "messages" / f"{message_id}.json").open(encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_extracted_text_persisted_onto_user_message(self, real_denidin_context, tmp_path):
+        msg = self._process_and_get_user_message(
+            real_denidin_context, tmp_path,
+            {"raw_response": "summary text", "extracted_text": "טקסט שחולץ מהתמונה",
+             "ledger_events": []},
+            message_id="msg-extracted-1", chat_id="972500000010@c.us",
+        )
+        assert msg["extracted_text"] == "טקסט שחולץ מהתמונה"
+
+    def test_no_text_found_leaves_extracted_text_none_not_empty_string(
+        self, real_denidin_context, tmp_path
+    ):
+        """Extractor's contract returns "" when nothing was found - normalized to
+        None on the message, matching Message.extracted_text's own contract."""
+        msg = self._process_and_get_user_message(
+            real_denidin_context, tmp_path,
+            {"raw_response": "לא זוהה טקסט בתמונה", "extracted_text": "", "ledger_events": []},
+            message_id="msg-extracted-2", chat_id="972500000011@c.us",
+        )
+        assert msg["extracted_text"] is None
+
+    def test_missing_extracted_text_key_defaults_to_none(self, real_denidin_context, tmp_path):
+        """Defensive: an extractor result missing the key entirely (shouldn't
+        happen now that all three extractors return it, but never crash)."""
+        msg = self._process_and_get_user_message(
+            real_denidin_context, tmp_path,
+            {"raw_response": "summary only", "ledger_events": []},
+            message_id="msg-extracted-3", chat_id="972500000012@c.us",
+        )
+        assert msg["extracted_text"] is None

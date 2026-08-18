@@ -146,6 +146,63 @@ the full task history, and `test_ai_handler_ledger_events.py`'s
 `TestLedgerEventToolBankPaymentFields` / `test_ledger_event_manager.py`'s
 full suite (substantially rewritten the same day) for test coverage.
 
+### 1c. Interactive player review follow-up (2026-08-18)
+
+A full 33-message interactive human review of a real export (see the review
+protocol in this feature's own tasks — dispatching one message at a time
+through the real, unmodified pipeline, human approve/correct each capture)
+surfaced 10 concrete findings against the Phase 11 shape above, all
+addressed the same day:
+
+**`raw_message_excerpt` removed entirely** (from `LEDGER_EVENT_TOOL`'s
+schema AND `LedgerEventManager`'s persisted record — internal-field count
+now **9**, not 10). Rationale: the ledger event's own `message_id` +
+`session_id` already deterministically locate the exact source message file
+on disk (`{session_id}/messages/{message_id}.json`), so duplicating the
+source text into the ledger event was redundant — the "hard pointer"
+requirement is now met structurally via that pointer instead of a tool-call
+field the model had to author. This unblocked closing the finding that the
+model never actually captured a real verbatim excerpt for image messages
+(only a derived/OCR'd description) — fixing it at the source: **new
+`Message.extracted_text` field** (`session_manager.py`), populated by
+`MediaHandler` from the media extractor's own `extracted_text` (image/PDF/
+DOCX all now genuinely return this key — PDF/DOCX previously only returned
+`raw_response`, a pre-existing gap fixed as part of this). For a text
+message, `Message.content` already held the verbatim text; no change needed
+there.
+
+**`trigger_condition` wired up** — previously hardcoded `null` in
+`LedgerEventManager` with no schema property at all (structurally
+impossible for the model to populate). Now a real `LEDGER_EVENT_TOOL`
+component property, forced `null` for `בנק` (no conditional-fee concept
+applies to a bank deposit) same as `component_label`.
+
+**Code-side (not just prompt) enforcement added for two near-universal
+model misses**, since tool-description guidance alone proved insufficient
+against real, observed failure rates in the review:
+- `payer_name` forced `null` for `בנק` events; a misplaced depositor name
+  (found in `payer_name` instead of `client_name`, ~half the time in the
+  real review) is rescued into `client_name` rather than discarded.
+- `vat_status` forced `כולל` for every `בנק` event, unconditionally — the
+  model applied this correctly only 1 of 15 times in the real review,
+  despite the same principle already existing elsewhere in the constitution
+  for Morning payment-reference documents.
+
+**Constitution guidance strengthened** (`runtime_constitution.md`, no
+schema/code change): checks (`שיק`) must prompt a clarifying question
+rather than being silently captured as `בנק` or silently declined; material
+name ambiguity (e.g. a hyphenated name) gets a concrete anchored example;
+`reference_hint` guidance now explicitly covers "addition" phrasing
+("תוספת") that was previously under-triggering it; hourly work-log entries'
+"always capture, no exceptions" rule was made more emphatic after a real
+miss; several stale `notes`-field references (dead since Phase 11 removed
+that field) were corrected to `description`.
+
+See this session's review notes (throwaway, not committed) for the full
+10-finding writeup; `test_ledger_event_manager.py`'s `TestPayerNameBankHandling`/
+`TestVatStatusBankDefault`/`TestTriggerConditionField` and
+`test_session_manager.py`'s `TestExtractedTextStorage` for test coverage.
+
 ## 2. `MessageSource` interface (new, `src/sources/`)
 
 A core app abstraction (not player-only), extracted from `denidin.py`'s

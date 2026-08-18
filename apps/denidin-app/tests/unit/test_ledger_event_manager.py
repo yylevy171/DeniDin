@@ -48,8 +48,8 @@ SAMPLE_EVENT = {
     "hourly_rate": None,
     "txn_date": None,
     "vat_status": "לא צוין",
+    "trigger_condition": None,
     "reference_hint": None,
-    "raw_message_excerpt": "ישראל ישראלי 5,000₪ כתב הגנה",
     "agreement_label": "תיק בדיקה",
     "component_label": "בסיס",
 }
@@ -63,13 +63,21 @@ CSV_MAPPED_FIELDS = {
     "due_date", "invoice_status", "invoice_number", "invoice_type",
     "morning_document_id", "invoice_actual_creation_date",
 }
+# raw_message_excerpt removed (Feature 043, 2026-08-18): the ledger event's own
+# message_id/session_id pointer is now sufficient - the source content lives on
+# the Message record itself (content for text, + the new extracted_text field
+# for media), never duplicated into the ledger event. See
+# data-model.md §1b's follow-up entry for the full rationale.
 INTERNAL_FIELDS = {
     "session_id", "whatsapp_chat", "message_id", "captured_at",
-    "raw_message_excerpt", "reference_hint", "schema_version",
+    "reference_hint", "schema_version",
     "bank_number", "bank_branch", "bank_account",
 }
+# trigger_condition removed (Feature 043, 2026-08-18, finding #10): now wired to
+# the AI's own component-level input for הסכם (LEDGER_EVENT_TOOL exposes it) -
+# still forced null for בנק, but no longer unconditionally reserved.
 RESERVED_NULL_FIELDS = [
-    "trigger_condition", "split_partner", "split_percent", "due_date",
+    "split_partner", "split_percent", "due_date",
     "invoice_status", "invoice_number", "invoice_type",
     "morning_document_id", "invoice_actual_creation_date",
 ]
@@ -111,14 +119,17 @@ class TestLedgerEventManagerCore:
         assert event_id is not None
         assert (temp_events_dir / f"{event_id}.json").exists()
 
-    def test_written_file_has_exactly_the_27_csv_fields_plus_10_internal_fields(
+    def test_written_file_has_exactly_the_27_csv_fields_plus_9_internal_fields(
         self, manager, temp_events_dir
     ):
         """Phase 11 (2026-08-16, human sign-off after a full field-by-field real-
         data-grounded review): was 30 CSV + 11 internal (schema v1), briefly 30 CSV
         + 16 internal (T027b's now-reverted payment_method/transaction_reference
-        addition, schema v2), now 27 CSV + 10 internal (schema reset to v1) - see
-        data-model.md §1b for the complete before/after field list."""
+        addition, schema v2), then 27 CSV + 10 internal (schema reset to v1) - see
+        data-model.md §1b for the complete before/after field list. 2026-08-18
+        (self-review follow-up): raw_message_excerpt removed from internal (now
+        9) - the message pointer + Message.extracted_text replace it, see
+        INTERNAL_FIELDS's own comment above."""
         event_id = manager.add_ledger_event(
             session_id="sess-1", whatsapp_chat="972500000000@c.us",
             event=dict(SAMPLE_EVENT), message_id="msg-1",
@@ -163,7 +174,6 @@ class TestLedgerEventManagerCore:
         assert data["session_id"] == "sess-1"
         assert data["whatsapp_chat"] == "972500000000@c.us"
         assert data["message_id"] == "msg-1"
-        assert data["raw_message_excerpt"] == SAMPLE_EVENT["raw_message_excerpt"]
 
 
 class TestEventIdGeneration:
@@ -732,7 +742,6 @@ SAMPLE_CALL_ARGUMENTS = {
     "payer_name": None,
     "agreement_label": "תיק בדיקה",
     "reference_hint": None,
-    "raw_message_excerpt": "ישראל ישראלי - הצעת שכר טרחה",
     "component_count": 1,
     "components": [
         {
@@ -745,6 +754,7 @@ SAMPLE_CALL_ARGUMENTS = {
             "hourly_rate": None,
             "txn_date": None,
             "vat_status": "לא צוין",
+            "trigger_condition": None,
         },
     ],
 }
@@ -828,12 +838,12 @@ class TestAddLedgerEventsFromCall:
             "source_type": "בנק", "event_subtype": "הפקדה",
             "client_name": None, "payer_name": None,
             "agreement_label": None, "reference_hint": None,
-            "raw_message_excerpt": "הפקדה בסך 9,440 ₪",
             "component_count": 1,
             "components": [{
                 "component_label": None, "description": "הפקדה", "amount": "9,440₪",
                 "percent": None, "percent_base": None, "hours": None,
                 "hourly_rate": None, "txn_date": None, "vat_status": "לא צוין",
+                "trigger_condition": None,
             }],
         }
 
@@ -912,7 +922,6 @@ class TestAddLedgerEventsFromCall:
         for eid in event_ids:
             data = _read(temp_events_dir, eid)
             assert data["client_name"] == "ישראל ישראלי"
-            assert data["raw_message_excerpt"] == "ישראל ישראלי - הצעת שכר טרחה"
 
     def test_call_arguments_dict_not_mutated(self, manager):
         call_arguments = dict(SAMPLE_CALL_ARGUMENTS)
@@ -1020,6 +1029,126 @@ class TestBankPaymentDetailFields:
         data = _read(temp_events_dir, event_id)
         for field in self.NEW_FIELDS:
             assert data[field] is None, f"{field} must be forced null for source_type=הסכם"
+
+
+class TestPayerNameBankHandling:
+    """Finding #4 (2026-08-18 player review, self-review of a full 33-message
+    real run): payer_name has no meaning for a בנק event (no payer/client
+    routing distinction applies to a bank deposit) - the model put the
+    depositor/account-holder name here about half the time anyway despite the
+    tool description already saying not to. Code-side enforcement closes the
+    gap: forced null for בנק, and - since discarding a misplaced real name
+    would be data loss for exactly the mistake this guards against - rescued
+    into client_name when the model left that field empty."""
+
+    def test_payer_name_forced_null_for_bank_event(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, source_type="בנק", client_name="דני כהן", payer_name="דני כהן"),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["payer_name"] is None
+
+    def test_payer_name_rescued_into_client_name_when_client_name_empty(
+        self, manager, temp_events_dir, caplog
+    ):
+        with caplog.at_level(logging.WARNING):
+            event_id = manager.add_ledger_event(
+                session_id="s", whatsapp_chat="w",
+                event=dict(SAMPLE_EVENT, source_type="בנק", client_name=None, payer_name="דני כהן"),
+                message_id="m", message_timestamp=FIXED_TS,
+            )
+        data = _read(temp_events_dir, event_id)
+        assert data["client_name"] == "דני כהן", "misplaced name rescued, never silently dropped"
+        assert data["payer_name"] is None
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+    def test_payer_name_not_rescued_when_client_name_already_set(self, manager, temp_events_dir):
+        """Both given (a genuine same-name coincidence, or the model correctly set
+        client_name and redundantly also set payer_name) - client_name wins as-is,
+        never overwritten by the rescue path."""
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, source_type="בנק", client_name="שם נכון", payer_name="שם אחר"),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["client_name"] == "שם נכון"
+        assert data["payer_name"] is None
+
+    def test_payer_name_untouched_for_agreement_event(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, source_type="הסכם", payer_name="הראל ביטוח"),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["payer_name"] == "הראל ביטוח"
+
+
+class TestVatStatusBankDefault:
+    """Finding #6 (2026-08-18 player review): the model defaulted vat_status
+    correctly for בנק events only 1 of 15 times in a real run, despite the
+    underlying principle already existing elsewhere in the constitution for
+    Morning payment-reference documents ("money already deposited necessarily
+    contains the VAT element already"). Code-side enforcement: unconditionally
+    כולל for every בנק event, regardless of what the AI passed."""
+
+    @pytest.mark.parametrize("given", ["לא צוין", "לא כולל", "כולל", None])
+    def test_vat_status_always_kolel_for_bank_event(self, manager, temp_events_dir, given):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, source_type="בנק", vat_status=given),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["vat_status"] == "כולל"
+
+    def test_vat_status_untouched_for_agreement_event(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, source_type="הסכם", vat_status="לא כולל"),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["vat_status"] == "לא כולל"
+
+
+class TestTriggerConditionField:
+    """Finding #10 (2026-08-18 player review): trigger_condition was previously
+    hardcoded None regardless of input - LEDGER_EVENT_TOOL never even exposed
+    it as a component property, so a textbook conditional fee (msg 18: "אם
+    הבקשה נקבעת לדיון") had nowhere to go and got folded into description
+    instead. Now wired to the AI's own component-level input for הסכם, forced
+    null for בנק (no conditional-fee concept applies to a bank deposit)."""
+
+    def test_trigger_condition_persisted_for_agreement_event(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, source_type="הסכם", trigger_condition="אם הבקשה נקבעת לדיון"),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["trigger_condition"] == "אם הבקשה נקבעת לדיון"
+
+    def test_trigger_condition_null_when_not_given(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, source_type="הסכם"),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["trigger_condition"] is None
+
+    def test_trigger_condition_forced_null_for_bank_event(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", whatsapp_chat="w",
+            event=dict(SAMPLE_EVENT, source_type="בנק", trigger_condition="אם משהו"),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["trigger_condition"] is None
 
 
 class TestResolveReference:

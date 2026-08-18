@@ -528,6 +528,39 @@ the version written for T027b). Summary of the outcome:
   removal). Full suite: 911/911 unit+integration tests pass; pylint 9.18/10;
   no new mypy errors.
 
+### Phase 11 follow-up (2026-08-18) — interactive player review findings
+
+A full 33-message interactive human review (dispatching one real message at
+a time through the live pipeline, human approve/correct each capture, per
+the review protocol used for this session) surfaced 10 concrete findings
+against the Phase 11 shape above. All 10 fixed same-day:
+
+- **`raw_message_excerpt` removed** from both `LEDGER_EVENT_TOOL` and
+  `LedgerEventManager`'s persisted record (internal-field count 10→**9**).
+  Replaced by a new **`Message.extracted_text`** field
+  (`session_manager.py`), populated by `MediaHandler` from the media
+  extractor's own `extracted_text` — fixing, as part of the same change, a
+  pre-existing gap where `PDFExtractor`/`DOCXExtractor` never actually
+  returned that key at all (only `ImageExtractor` did; both now do,
+  matching their own docstrings' claimed contract).
+- **`trigger_condition` wired up** — previously hardcoded `null` with no
+  schema property at all; now a real, model-populatable component field.
+- **Code-side enforcement added** (prompt guidance alone proved
+  insufficient against real observed failure rates) for `payer_name`
+  (forced `null` for `בנק`, misplaced values rescued into `client_name`)
+  and `vat_status` (forced `כולל` for every `בנק` event — the model got
+  this right only 1/15 times in the real review).
+- **Constitution guidance strengthened**: checks (`שיק`) now prompt a
+  clarifying question instead of silent `בנק` capture or silent decline;
+  a concrete anchored example added for material name ambiguity; explicit
+  "addition" phrasing ("תוספת") added to the `reference_hint` trigger list;
+  hourly work-log capture completeness made more emphatic; several stale
+  `notes`/`replaces_hint` references (dead since this same Phase 11 landed)
+  corrected to `description`/`reference_hint`.
+- Full suite after all fixes: 932/932 unit+integration tests pass (898
+  unit + 34 integration); pylint 9.11/10; no new mypy errors. See
+  data-model.md §1c for the complete field-by-field writeup.
+
 ---
 
 ## Dependencies
@@ -546,7 +579,7 @@ the version written for T027b). Summary of the outcome:
   tests assert against the final schema rather than needing a follow-up
   revision.
 
-## Status (updated 2026-08-16)
+## Status (updated 2026-08-18)
 
 Phases 1–4 and 11 done (T005 dropped by human decision; T014a skipped in
 favor of a real run — see Phase 4). Phase 11 (ledger event schema, T027a/b/c)
@@ -559,7 +592,14 @@ merged `event_date`+`event_time` into `event_datetime`; unified
 `replaced_event_id`/`reference` into one `reference` mechanism
 (`resolve_reference`, `REFERENCE_PLACEHOLDER`). `CURRENT_SCHEMA_VERSION` reset
 to `1` as a new baseline. See data-model.md §1b for the full field-by-field
-writeup. Phase 9 (README) also done 2026-08-16 — `player/README.md` written,
+writeup. A same-day-named-later follow-up (2026-08-18, see "Phase 11
+follow-up" above) — a full 33-message interactive human review of a real
+export — found and fixed 10 more concrete issues: `raw_message_excerpt`
+removed in favor of a new `Message.extracted_text` field; `trigger_condition`
+wired up; code-side enforcement added for `payer_name`/`vat_status` on `בנק`
+events; several constitution-guidance and stale-reference fixes. See
+data-model.md §1c. Phase 9 (README) also done 2026-08-16 — `player/README.md`
+written,
 documenting the actually-implemented CLI and explicitly flagging what isn't
 built yet. Phases 5 (reconciliation), 6 (relevancy), 7 (review queue), 8
 (expensive image-path regression), and 10 (player/WhatsApp ledger-event

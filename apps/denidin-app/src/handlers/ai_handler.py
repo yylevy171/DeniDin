@@ -502,15 +502,27 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                     "every component shares the same subtype."
                 ),
             },
-            "client_name": {"type": ["string", "null"], "description": "The client's name, verbatim."},
+            "client_name": {
+                "type": ["string", "null"],
+                "description": (
+                    "The client's name, verbatim. For source_type=בנק, this is the "
+                    "depositor/account-holder name shown on the bank-transfer confirmation "
+                    "or banking-app screenshot ('שם חשבון מחויב' or the 'העברה מ-X' line) - "
+                    "always put it here, never in payer_name, which does not apply to בנק "
+                    "events at all (see payer_name's own description)."
+                ),
+            },
             "payer_name": {
                 "type": ["string", "null"],
                 "description": (
-                    "The paying entity, ONLY if different from client_name (e.g. an "
-                    "insurer/union routing payment). Watch specifically for 'דרך X' / "
-                    "'באמצעות X' / 'via X' / 'through X' near a client's name (often its "
-                    "own line right after the client name) - a strong, common signal "
-                    "that X is the payer, not part of agreement_label/description."
+                    "For source_type=הסכם ONLY: the paying entity, ONLY if different from "
+                    "client_name (e.g. an insurer/union routing payment). Watch specifically "
+                    "for 'דרך X' / 'באמצעות X' / 'via X' / 'through X' near a client's name "
+                    "(often its own line right after the client name) - a strong, common "
+                    "signal that X is the payer, not part of agreement_label/description. "
+                    "ALWAYS null for source_type=בנק - a bank deposit's account-holder name "
+                    "goes in client_name, never here; there is no payer/client distinction "
+                    "for a בנק event."
                 ),
             },
             "agreement_label": {
@@ -528,11 +540,20 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
             "reference_hint": {
                 "type": ["string", "null"],
                 "description": (
-                    "Free-text explanation of how this event relates to a prior one - covers "
-                    "replacing/correcting/cancelling a prior arrangement AND a looser, non-"
-                    "superseding relation to a related matter, uniformly (both are a "
-                    "'reference' - there is no separate 'replace' mechanism). Only when "
-                    "identifiable from this conversation - never a guess."
+                    "Free-text explanation of how this event relates to a PRIOR one already "
+                    "captured earlier in this SAME conversation - covers replacing/correcting/"
+                    "cancelling a prior arrangement, an explicit ADDITION/supplement to one "
+                    "('תוספת', 'עוד X על מה ששולם', 'בנוסף ל-'), AND a looser, non-superseding "
+                    "relation to a related matter - all of these are a 'reference', uniformly "
+                    "(there is no separate 'replace' mechanism). Set this whenever the message "
+                    "itself uses this kind of language, even if you can't identify exactly "
+                    "which prior event it targets - describe what you DO know (amount "
+                    "mentioned, approximate timing, client) so a human/script can resolve it "
+                    "later; never skip it just because the exact match is unclear. "
+                    "Conversely: leave this null for a plain NEW mention with no correction/"
+                    "addition/cancellation language at all (e.g. a fresh hourly work-log entry, "
+                    "a brand-new fee agreement) - superficial similarity to another entry "
+                    "(same client, similar amount) is NOT by itself a reason to set this."
                 ),
             },
             "bank_number": {
@@ -551,10 +572,6 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
             "bank_account": {
                 "type": ["string", "null"],
                 "description": "The bank account number, only for source_type=בנק, always null for הסכם.",
-            },
-            "raw_message_excerpt": {
-                "type": "string",
-                "description": "Verbatim source text (or a precise description of the image) this capture is based on - the hard pointer for later verification.",
             },
             "component_count": {
                 "type": "integer",
@@ -640,10 +657,23 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                             "enum": ["כולל", "לא כולל", "לא צוין"],
                             "description": "VAT-inclusive, VAT-exclusive, or not stated for THIS component - never assumed.",
                         },
+                        "trigger_condition": {
+                            "type": ["string", "null"],
+                            "description": (
+                                "The condition THIS component's amount/existence depends on, "
+                                "verbatim or closely paraphrased, when the source states one "
+                                "(e.g. 'אם הבקשה נקבעת לדיון', 'במידה ועושים גם ברע', 'בתנאי "
+                                "ש...') - only for source_type=הסכם, always null for בנק and "
+                                "for an unconditional component. Put the condition itself here, "
+                                "not in description - description is for the component's own "
+                                "matter/content, this is specifically for what has to happen "
+                                "for it to apply."
+                            ),
+                        },
                     },
                     "required": [
                         "component_label", "description", "amount", "percent", "percent_base",
-                        "hours", "hourly_rate", "txn_date", "vat_status",
+                        "hours", "hourly_rate", "txn_date", "vat_status", "trigger_condition",
                     ],
                     "additionalProperties": False,
                 },
@@ -652,7 +682,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
         "required": [
             "source_type", "event_subtype", "client_name", "payer_name", "agreement_label",
             "reference_hint", "bank_number", "bank_branch", "bank_account",
-            "raw_message_excerpt", "component_count", "components",
+            "component_count", "components",
         ],
         "additionalProperties": False,
     },

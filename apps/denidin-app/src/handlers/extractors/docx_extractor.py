@@ -105,15 +105,22 @@ class DOCXExtractor(MediaExtractor):
             
             return {
                 "raw_response": raw_response,
+                # Feature 043 (2026-08-18): the deterministic python-docx text itself
+                # (paragraphs + table cells), distinct from raw_response (the AI's
+                # analysis OF that text, empty when analyze=False) - this is what
+                # Message.extracted_text persists, mirroring ImageExtractor's own
+                # extracted_text/raw_response distinction.
+                "extracted_text": extracted_text,
                 "extraction_quality": extraction_quality,
                 "warnings": warnings,
                 "model_used": model_used
             }
-            
+
         except Exception as e:
             # CHK005, CHK007: Graceful failure on corrupted/invalid files
             return {
                 "raw_response": "",
+                "extracted_text": "",
                 "extraction_quality": "failed",
                 "warnings": [f"DOCX analysis failed: {str(e)}"],
                 "model_used": "python-docx"

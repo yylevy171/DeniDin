@@ -130,13 +130,22 @@ class TestLedgerEventCaptureBilled:
     @staticmethod
     def _assert_ledger_events_persisted(denidin_app, chat_id, expected_count, expected_event_timestamp):
         """Asserts events were persisted for this chat, each with the bookkeeping
-        fields LedgerEventManager.add_ledger_event adds (message_timestamp = the
-        real hard pointer, sender, captured_at, message_id) present and correct.
-        Returns the events in capture order for further field-specific assertions.
+        fields LedgerEventManager.add_ledger_event adds (event_datetime = the real
+        hard pointer, captured_at, message_id) present and correct. Returns the
+        events in capture order for further field-specific assertions.
 
         expected_event_timestamp: the real Green API notification timestamp (unix
         epoch seconds) these events should be pointed at - the constitution's "hard
         pointer" requirement (never processing time, never a guess).
+
+        2026-08-18 (player-review follow-up audit): this helper was stale -
+        `message_timestamp` and `sender` were both removed from the persisted
+        record back in the original Phase 11 revision (2026-08-16; sender/
+        message_timestamp fully covered by event_datetime, see data-model.md
+        SS1b) but this helper still asserted on them, which would have failed
+        the very next time this file actually ran. Fixed to check
+        `event_datetime` (the field that actually replaced message_timestamp)
+        and dropped the sender assertion entirely.
         """
         events = TestLedgerEventCaptureBilled._events_for_chat(denidin_app, chat_id)
         assert len(events) == expected_count, (
@@ -144,35 +153,44 @@ class TestLedgerEventCaptureBilled:
             f"found {len(events)}: {events}"
         )
 
-        # bugfix-037: message_timestamp is now persisted in Israel local time (with a
-        # real offset), not UTC - build the expected value the same way the app does.
-        expected_ts_iso = local_from_timestamp(expected_event_timestamp).isoformat()
+        # bugfix-037/Phase 11: event_datetime is Israel local time, "DD/MM/YYYY HH:MM".
+        expected_event_datetime = local_from_timestamp(expected_event_timestamp).strftime("%d/%m/%Y %H:%M")
         for record in events:
-            assert record.get("message_timestamp") == expected_ts_iso, (
-                f"message_timestamp={record.get('message_timestamp')!r} does not match the "
-                f"real notification timestamp {expected_ts_iso!r} - the constitution's 'hard "
-                f"pointer' requirement (never processing time, never a guess)"
+            assert record.get("event_datetime") == expected_event_datetime, (
+                f"event_datetime={record.get('event_datetime')!r} does not match the "
+                f"real notification timestamp {expected_event_datetime!r} - the constitution's "
+                f"'hard pointer' requirement (never processing time, never a guess)"
             )
-            assert record.get("sender"), "sender was not persisted"
             assert record.get("captured_at"), "captured_at was not persisted"
             assert record.get("message_id"), (
                 "message_id must be non-null for events captured after Feature 033 - "
                 "closes the traceability gap that motivated this feature"
             )
+            assert "raw_message_excerpt" not in record, (
+                "raw_message_excerpt was removed from the persisted schema (2026-08-18) - "
+                "the source content now lives on the message record itself "
+                "(Message.content for text, Message.extracted_text for media)"
+            )
         return events
+
+    @staticmethod
+    def _read_message(denidin_app, chat_id, message_id):
+        """Reads the real persisted message record off disk (session_manager's
+        actual storage), for field-level assertions beyond the ledger_event_ids
+        cross-check below."""
+        session_manager = denidin_app.ai_handler.session_manager
+        session_id = session_manager.chat_to_session[chat_id]
+        message_file = session_manager.storage_dir / session_id / "messages" / f"{message_id}.json"
+        with open(message_file, encoding='utf-8') as f:
+            return json.load(f)
 
     @staticmethod
     def _assert_message_links_back_to_event(denidin_app, chat_id, event):
         """Cross-checks the reverse link: the source message's ledger_event_ids
         (Feature 033) must include this event's event_id."""
-        session_manager = denidin_app.ai_handler.session_manager
-        session_id = session_manager.chat_to_session[chat_id]
-        message_id = event["message_id"]
-        message_file = session_manager.storage_dir / session_id / "messages" / f"{message_id}.json"
-        with open(message_file, encoding='utf-8') as f:
-            message_data = json.load(f)
+        message_data = TestLedgerEventCaptureBilled._read_message(denidin_app, chat_id, event["message_id"])
         assert event["event_id"] in message_data["ledger_event_ids"], (
-            f"event {event['event_id']} not found in source message {message_id}'s "
+            f"event {event['event_id']} not found in source message {event['message_id']}'s "
             f"ledger_event_ids={message_data.get('ledger_event_ids')!r}"
         )
 
@@ -222,9 +240,30 @@ class TestLedgerEventCaptureBilled:
             f"expected amount normalized to int 9000, got {captured.get('amount')!r}"
         )
         assert captured.get("vat_status") == "כולל"
-        assert captured.get("raw_message_excerpt")
         assert captured["event_id"].startswith("A")
         self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
+
+        # Finding #1 (2026-08-18 player review): a plain new agreement mention -
+        # no correction/addition/cancellation language at all - must NOT set
+        # reference/reference_hint, even though this is the very first message in
+        # a fresh chat (nothing to reference by construction, but this locks in
+        # the general rule with a real model response).
+        assert captured.get("reference") is None, (
+            f"a brand-new agreement mention should not set reference, got {captured.get('reference')!r}"
+        )
+        assert captured.get("reference_hint") is None
+
+        # Feature 043 (2026-08-18): raw_message_excerpt's replacement - a text
+        # message's own content already IS the verbatim source (Message.content),
+        # so extracted_text (media-only) must stay None here.
+        message_data = self._read_message(denidin_app, chat_id, captured["message_id"])
+        assert message_data.get("extracted_text") is None, (
+            "extracted_text is media-only - a text message must never populate it"
+        )
+        assert "רונית" in message_data["content"] or "כהן" in message_data["content"], (
+            "the message's own content must carry the real verbatim text - this IS "
+            "the hard-pointer content now that raw_message_excerpt is gone"
+        )
 
     def test_given_ordinary_chatter_when_processed_then_no_ledger_event_captured(self, denidin_app):
         """Given an ordinary conversational message with no money/engagement content,

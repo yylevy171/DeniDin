@@ -92,6 +92,15 @@ class TestExtractFunctionCall:
         assert params["additionalProperties"] is False
         assert set(params["required"]) == set(params["properties"].keys())
 
+    def test_component_item_schema_also_strict_with_all_fields_required(self):
+        """Same invariant, one level down - strict mode applies recursively to the
+        components array's own item schema (2026-08-18: added trigger_condition
+        here, finding #10 - this guards against it landing in properties without
+        also landing in required, or vice versa)."""
+        item_schema = LEDGER_EVENT_TOOL["parameters"]["properties"]["components"]["items"]
+        assert item_schema["additionalProperties"] is False
+        assert set(item_schema["required"]) == set(item_schema["properties"].keys())
+
 
 class TestLedgerEventToolBankPaymentFields:
     """Phase 11 (tasks.md, 043-production-data-setup-tooling), T027a/T027b.
@@ -272,9 +281,7 @@ SAMPLE_EVENT = {
     "client_name": "ישראל ישראלי",
     "payer_name": None,
     "agreement_label": "תיק בדיקה",
-    "replaces_hint": None,
     "reference_hint": None,
-    "raw_message_excerpt": "ישראל ישראלי 5,000₪ כתב הגנה",
     "component_count": 1,
     "components": [
         {
@@ -287,7 +294,7 @@ SAMPLE_EVENT = {
             "hourly_rate": None,
             "txn_date": None,
             "vat_status": "לא צוין",
-            "notes": None,
+            "trigger_condition": None,
         },
     ],
 }

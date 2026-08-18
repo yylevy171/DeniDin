@@ -386,27 +386,64 @@ class LedgerEventManager:
             bank_branch = None
             bank_account = None
 
+        # payer_name is a הסכם-only concept (a routed/intermediary payment) - forced
+        # null for בנק regardless of what the AI passed, same defensive discipline as
+        # bank_number/etc above (finding #4, 2026-08-18 player review: the model put
+        # the depositor/account-holder name here about half the time instead of
+        # client_name, despite the tool description now forbidding it). Rather than
+        # just discarding a misplaced name (real data loss for exactly the mistake
+        # this is guarding against), rescue it into client_name when the model left
+        # client_name empty - never lose a real captured name to a field-choice
+        # mistake, matching this file's existing amount/hours "preserve the original
+        # rather than drop it" philosophy.
+        client_name = event.get("client_name")
+        payer_name_raw = event.get("payer_name")
+        if source_type == "בנק":
+            if not client_name and payer_name_raw:
+                logger.warning(
+                    f"בנק event: client_name empty but payer_name={payer_name_raw!r} "
+                    f"given - payer_name doesn't apply to בנק, rescuing its value into "
+                    f"client_name instead of discarding it"
+                )
+                client_name = payer_name_raw
+            payer_name = None
+        else:
+            payer_name = payer_name_raw
+
+        # vat_status is unconditionally כולל for בנק (finding #6, 2026-08-18 player
+        # review: the model got this right only 1 of 15 times across a real run
+        # despite the underlying rule already existing elsewhere in the constitution
+        # for Morning payment-reference documents - "money already deposited
+        # necessarily contains the VAT element already" - so this needs code-side
+        # enforcement, not just prompt guidance, same reasoning as payer_name above).
+        vat_status = "כולל" if source_type == "בנק" else event.get("vat_status")
+
         record = {
             # CSV-mapped fields
             "event_id": event_id,
             "event_datetime": local_dt.strftime("%d/%m/%Y %H:%M"),  # Phase 11: merged event_date+event_time
             "source_type": source_type,
             "event_subtype": event.get("event_subtype"),
-            "client_name": event.get("client_name"),
-            "payer_name": event.get("payer_name"),
+            "client_name": client_name,
+            "payer_name": payer_name,
             "description": description,
             "amount": amount,
             "reference": reference,  # Phase 11: unified replaced_event_id/reference mechanism
             "agreement_id": resolved_agreement_id,  # REQ-DATA-004
             "component_id": component_id,  # REQ-DATA-004
             "component_label": component_label,  # REQ-DATA-004
-            "trigger_condition": None,  # reserved - nuances feature
+            # Finding #10 (2026-08-18 player review): was hardcoded None regardless of
+            # what the AI passed - LEDGER_EVENT_TOOL never even exposed this as a
+            # component property, so it was structurally impossible to populate. Now
+            # wired to the AI's own component-level input, forced null for בנק (no
+            # conditional-fee concept applies there) same as component_label above.
+            "trigger_condition": event.get("trigger_condition") if source_type == "הסכם" else None,
             "percent": event.get("percent"),
             "percent_base": event.get("percent_base"),
             "hours": hours,
             "hourly_rate": event.get("hourly_rate"),
             "txn_date": txn_date,  # REQ-DATA-005/007 - hours-worked date (הסכם) or transaction date (בנק)
-            "vat_status": event.get("vat_status"),
+            "vat_status": vat_status,
             "split_partner": None,  # reserved - nuances feature
             "split_percent": None,  # reserved - nuances feature
             "due_date": None,  # reserved - nuances feature
@@ -420,7 +457,6 @@ class LedgerEventManager:
             "whatsapp_chat": whatsapp_chat,
             "message_id": message_id,
             "captured_at": captured_at,
-            "raw_message_excerpt": event.get("raw_message_excerpt"),
             "reference_hint": event.get("reference_hint"),
             "bank_number": bank_number,
             "bank_branch": bank_branch,
@@ -459,8 +495,8 @@ class LedgerEventManager:
 
         `call_arguments` is one `capture_ledger_event` call's full parsed arguments -
         agreement-level fields (source_type, event_subtype, client_name, payer_name,
-        agreement_label, reference_hint, bank_number/bank_branch/bank_account,
-        raw_message_excerpt) plus a `components` list (>=1 item, even for a
+        agreement_label, reference_hint, bank_number/bank_branch/bank_account)
+        plus a `components` list (>=1 item, even for a
         single-component or בנק capture).
         Each component is merged with the shared agreement-level fields into the same
         flat shape `add_ledger_event`'s `event` parameter already expects, then

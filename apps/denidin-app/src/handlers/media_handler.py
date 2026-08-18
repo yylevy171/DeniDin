@@ -239,9 +239,17 @@ class MediaHandler:
                 relative_image_path = str(file_path.relative_to(Path(self.config.data_root)))
             except ValueError:
                 relative_image_path = str(file_path)
+            # Feature 043 (Phase 11 follow-up, 2026-08-18): the extractor already
+            # computed this for every media type (image/PDF/DOCX share the common
+            # extracted_text/document_analysis contract - see extractors' own
+            # docstrings) - persist it onto the message itself now, replacing
+            # raw_message_excerpt's old per-ledger-event duplication of the same
+            # content. Empty string normalizes to None (no text found), matching
+            # Message.extracted_text's "None when nothing extracted" contract.
+            extracted_text = analysis_result.get("extracted_text") or None
             self._store_media_turn(
                 chat_id, sender_display_name or sender_phone, media_type, caption, summary,
-                ledger_event_ids, message_id, relative_image_path
+                ledger_event_ids, message_id, relative_image_path, extracted_text
             )
 
             return {
@@ -263,7 +271,7 @@ class MediaHandler:
     def _store_media_turn(
         self, chat_id: str, sender_display: str, media_type: str, caption: str, summary: str,
         ledger_event_ids: Optional[list] = None, message_id: Optional[str] = None,
-        image_path: Optional[str] = None
+        image_path: Optional[str] = None, extracted_text: Optional[str] = None
     ) -> None:
         """bugfix-017: store both sides of a media turn in the session, mirroring
         AIHandler._finalize_response's user+assistant storage for text turns.
@@ -288,6 +296,11 @@ class MediaHandler:
         bugfix-009's original call site; restored here alongside the Feature
         033 traceability fields it was merged with.
 
+        extracted_text (Feature 043, 2026-08-18): the media extractor's own
+        extracted_text for this attachment (image/PDF/DOCX), if any - attached
+        to the user message only, same as image_path. None when the extractor
+        found no text.
+
         sender_display (Feature 039): the resolved human-readable sender name
         (falls back to the raw phone if unavailable) - SessionManager.add_message
         itself now always overrides recipient=None for user messages and
@@ -300,7 +313,7 @@ class MediaHandler:
                 chat_id=chat_id, role="user", content=user_content,
                 user_role="client", sender=sender_display,
                 ledger_event_ids=ledger_event_ids, message_id=message_id,
-                image_path=image_path,
+                image_path=image_path, extracted_text=extracted_text,
             )
             self.session_manager.add_message(
                 chat_id=chat_id, role="assistant", content=summary,
