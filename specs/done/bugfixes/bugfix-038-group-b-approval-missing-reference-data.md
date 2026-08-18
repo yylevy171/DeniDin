@@ -282,7 +282,7 @@ multi-turn id/display-number incident (see "Additional scope" above). Also added
 didn't exist yet when this analysis was written).
 
 ## Related Work
-- `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — B3 (the
+- `specs/done/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — B3 (the
   approval content requirement) and A3/A3b (payment date/method/bank details) are the direct
   ancestors of this bugfix; this is explicitly the "next layer" for Group B that 028 didn't cover.
 - `specs/done/023-reference-linked-document-creation/` — introduced all three Group B tools'
@@ -290,7 +290,7 @@ didn't exist yet when this analysis was written).
 - `specs/done/027-mandatory-client-reference-invoicing/` — `_extract_linked_client_id`,
   `format_original_not_linked_to_client`, the pattern these tools already use for the client
   side of "resolve the original first."
-- `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster/bugfix-028-HANDOFF.md`
+- `specs/done/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster/bugfix-028-HANDOFF.md`
   (2026-08-13 session) — the billed-suite sweep session that re-ran this test, found it still
   red, and traced `close_transaction_account`'s gap to the duplicate-payload-builder root cause
   documented in "Additional scope added 2026-08-13" above. That session's own scope stayed
