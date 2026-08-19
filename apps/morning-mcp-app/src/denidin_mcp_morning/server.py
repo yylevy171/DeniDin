@@ -165,11 +165,24 @@ def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> "str | Ca
                 content=[TextContent(type="text", text=friendly_message)],
                 isError=True,
             )
-        # Result length only, never the body: read tools return formatted lists
-        # that can run to thousands of characters and would bury the mutation
-        # records this trail exists to preserve.
+        # Full result body (2026-08-19, user decision - supersedes the prior
+        # length-only design below): this app's tool arguments/results are all
+        # plain text/JSON, never binary (confirmed - even download_invoice_pdf
+        # returns a URL string, not file bytes), so there is no redaction
+        # concern here the way there is for denidin-app's WhatsApp media
+        # webhooks. "Everything that comes in, everything that goes out" now
+        # applies uniformly to every tool, mutating or read-only alike -
+        # mutations still ALSO get their own audit.py record (payload sent to
+        # Morning, response received, resolved client), which this does not
+        # replace.
+        #
+        # Previously: result length only, never the body - read tools return
+        # formatted lists that can run to thousands of characters and would
+        # bury the mutation records audit.py preserves. Kept as history, not
+        # current behavior.
         logger.info(
-            "[corr_id=%s] TOOL OK %s result_chars=%d", correlation_id, tool_name, len(result or "")
+            "[corr_id=%s] TOOL OK %s result_chars=%d result=%r",
+            correlation_id, tool_name, len(result or ""), result,
         )
         return result
 

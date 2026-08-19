@@ -198,6 +198,40 @@ class TestAppConfiguration:
             config.validate()
         assert "ai_reply_max_tokens" in str(exc_info.value).lower()
 
+    def test_max_retries_defaults_to_1(self, valid_config_data):
+        """2026-08-19 fix: max_retries used to be declared in config.test.json/
+        config.example.json but silently dropped on load (no matching
+        dataclass field existed) - now a real field, default 1."""
+        config = AppConfiguration(**valid_config_data)
+        assert config.max_retries == 1
+
+    def test_max_retries_loaded_from_file(self, tmp_path, valid_config_data):
+        """from_file() must actually pick up an explicit max_retries value,
+        not silently drop it (the exact gap this field's addition closes)."""
+        valid_config_data['max_retries'] = 3
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps(valid_config_data), encoding='utf-8')
+
+        config = AppConfiguration.from_file(str(config_path))
+
+        assert config.max_retries == 3
+
+    def test_validate_fails_with_negative_max_retries(self, valid_config_data):
+        """Test that validate() fails when max_retries < 0."""
+        valid_config_data['max_retries'] = -1
+        config = AppConfiguration(**valid_config_data)
+
+        with pytest.raises(ValueError) as exc_info:
+            config.validate()
+        assert "max_retries" in str(exc_info.value).lower()
+
+    def test_validate_passes_with_zero_max_retries(self, valid_config_data):
+        """0 is a valid value - it means no retries at all, not "unset"."""
+        valid_config_data['max_retries'] = 0
+        config = AppConfiguration(**valid_config_data)
+
+        config.validate()  # Should not raise
+
     def test_log_level_validates_info_debug_only(self, valid_config_data):
         """Test that log_level only accepts INFO or DEBUG."""
         # Test valid values

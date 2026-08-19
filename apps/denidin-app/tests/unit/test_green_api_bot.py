@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch, call
 
 from whatsapp_chatbot_python import GreenAPIBot
 
-from src.utils.green_api_bot import DeniDinGreenAPIBot, _notification_data_or_none
+from src.utils.green_api_bot import DeniDinGreenAPIBot, _notification_data_or_none, send_proactive_message
 
 
 def _fake_response(data):
@@ -167,3 +167,57 @@ class TestInit:
 
     def test_is_a_real_green_api_bot(self):
         assert issubclass(DeniDinGreenAPIBot, GreenAPIBot)
+
+
+class TestSendProactiveMessage:
+    """Feature 054 (T011a): the delivery sweep's unprompted-send helper - the
+    one genuine new external boundary this feature adds. No lock-related test
+    (none exists, by explicit user decision - see contracts/reminder-delivery.md)."""
+
+    def _bot_with_sending_result(self, code, data):
+        bot = Mock()
+        bot.api.sending.sendMessage.return_value = Mock(code=code, data=data)
+        return bot
+
+    def test_success_returns_id_message(self):
+        bot = self._bot_with_sending_result(200, {"idMessage": "wamid.123"})
+        result = send_proactive_message(bot, "972501234567@c.us", "hello")
+        assert result == "wamid.123"
+        bot.api.sending.sendMessage.assert_called_once_with("972501234567@c.us", "hello")
+
+    def test_non_200_code_returns_none(self):
+        bot = self._bot_with_sending_result(400, {"error": "bad request"})
+        assert send_proactive_message(bot, "chat1", "hi") is None
+
+    def test_non_dict_data_returns_none(self):
+        # The library's raise_errors=False default means a failure comes back
+        # as a Response with non-dict/garbage data rather than an exception -
+        # same shape WhatsAppHandler._send_approval_buttons already guards for.
+        bot = self._bot_with_sending_result(200, "not a dict")
+        assert send_proactive_message(bot, "chat1", "hi") is None
+
+    def test_missing_id_message_key_returns_none(self):
+        bot = self._bot_with_sending_result(200, {"no_id_message_here": True})
+        assert send_proactive_message(bot, "chat1", "hi") is None
+
+    def test_none_response_returns_none(self):
+        bot = Mock()
+        bot.api.sending.sendMessage.return_value = None
+        assert send_proactive_message(bot, "chat1", "hi") is None
+
+    def test_exception_from_sending_call_returns_none_never_raises(self):
+        bot = Mock()
+        bot.api.sending.sendMessage.side_effect = ConnectionError("network down")
+        result = send_proactive_message(bot, "chat1", "hi")
+        assert result is None
+
+    def test_never_constructs_a_second_bot_only_uses_the_passed_one(self):
+        """Sanity check that this function is a pure pass-through to the given
+        bot object - no internal GreenAPIBot()/GreenAPI() construction (the
+        hard constraint denidin.py documents: constructing a second one drains
+        pending notifications from the live instance, must only ever happen
+        once)."""
+        import inspect
+        source = inspect.getsource(send_proactive_message)
+        assert "GreenAPIBot(" not in source
+        assert "GreenAPI(" not in source

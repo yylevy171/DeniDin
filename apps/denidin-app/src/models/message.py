@@ -135,6 +135,23 @@ class AIRequest:
     message_id: str
     request_id: str = field(default="")
     timestamp: Optional[int] = None
+    # The real, un-role-resolved WhatsAppMessage this request was built from
+    # (2026-08-19, user decision) - carries message.sender_id (the ACTUAL
+    # sender's own phone, never overridden by group-turn RBAC resolution)
+    # and anything else about the original message any downstream code
+    # might need. Added specifically to end a real bug: created_by_phone on
+    # a reminder was being set from the RBAC-resolved phone (for a group
+    # turn, the group's MOST-PERMISSIVE MEMBER per Feature 039 - e.g. an
+    # admin, even when a lower-privileged member actually sent the message),
+    # not the literal sender - wrong for anything that needs to know who
+    # actually asked, like the reminder-delivery fallback target. The fix is
+    # architectural, not a one-off parameter: pass the whole original
+    # message through AIRequest (already threaded everywhere downstream
+    # needs it) rather than threading yet another individual scalar
+    # (sender/user_phone/etc. already exist as separate params on
+    # get_response/create_request and this was exactly the pattern that
+    # caused the conflation in the first place).
+    original_message: Optional["WhatsAppMessage"] = None
 
     def __post_init__(self):
         """Auto-generate fields if not provided"""

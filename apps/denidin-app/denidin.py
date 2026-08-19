@@ -19,6 +19,7 @@ from src.utils.green_api_bot import (
     mark_message_read,
     send_typing_indicator,
 )
+from src.utils.whatsapp_audit_log import log_inbound, log_outbound
 from src.constants.error_messages import (
     APP_NOT_READY_RETRY_LATER,
     UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
@@ -33,6 +34,9 @@ from src.managers.session_manager import SessionManager
 from src.managers.memory_manager import MemoryManager
 from src.managers.group_membership_resolver import GroupMembershipResolver
 from src.services.cleanup_service import SessionCleanupThread, run_startup_cleanup
+from src.services.reminder_delivery_service import (
+    run_startup_reminder_sweep, start_reminder_scheduler,
+)
 
 # Configuration
 CONFIG_PATH = 'config/config.json'
@@ -82,9 +86,16 @@ def mask_api_key(key: str) -> str:
 
 
 # Initialize OpenAI client
+# NOTE: this module-level client is never actually used - initialize_app()
+# (the real, single entry point used by both __main__ and every test/the
+# player) constructs its own, separately, from its own `config` argument.
+# Kept in sync with that one anyway (max_retries=config.max_retries, 2026-08-19
+# fix - see AppConfiguration.max_retries' own docstring) so this dead code
+# doesn't silently drift from the real behavior if it's ever wired up.
 ai_client = OpenAI(
     api_key=config.ai_api_key,
-    timeout=30.0
+    timeout=30.0,
+    max_retries=config.max_retries
 )
 
 # Global DeniDin instance for WhatsApp message handler
@@ -147,7 +158,7 @@ class DeniDin:
     Also serves as global context for background threads (e.g., session cleanup).
     """
     def __init__(self, ai_handler, config, whatsapp_handler, cleanup_thread=None,
-                 group_membership_resolver=None):
+                 group_membership_resolver=None, reminder_scheduler=None):
         self.ai_handler = ai_handler
         self.config = config
         self.whatsapp_handler = whatsapp_handler
@@ -157,6 +168,10 @@ class DeniDin:
         self.memory_manager = ai_handler.memory_manager if ai_handler.memory_enabled else None
         # Feature 039: most-permissive-role RBAC resolution for group turns
         self.group_membership_resolver = group_membership_resolver
+        # Feature 054: the single shared APScheduler instance driving the
+        # reminder delivery sweep - None until initialize_app() sets it (no
+        # feature flag, always started - see reminder_delivery_service.py).
+        self.reminder_scheduler = reminder_scheduler
         self._logger = get_logger(__name__)
         # Feature 048's typing indicator needs the live bot (bot.api.serviceMethods.
         # sendTyping) at message-processing time, same as mark_message_read needs it
@@ -274,6 +289,10 @@ class DeniDin:
             self._logger.info("Stopping session cleanup thread...")
             self.cleanup_thread.stop()
             self._logger.info("Cleanup thread stopped")
+        if self.reminder_scheduler is not None:
+            self._logger.info("Stopping reminder delivery scheduler...")
+            self.reminder_scheduler.shutdown(wait=False)
+            self._logger.info("Reminder delivery scheduler stopped")
         if self.memory_manager is not None:
             self._logger.info("Closing ChromaDB client...")
             self.memory_manager.client.close()
@@ -291,6 +310,7 @@ def _handle_not_initialized_error(notification: Notification, message_type: str)
     logger.error(f"CRITICAL: denidin_app not initialized - cannot process {message_type} messages")
     try:
         notification.answer(APP_NOT_READY_RETRY_LATER)
+        log_outbound(notification.event.get("senderData", {}).get("chatId", ""), APP_NOT_READY_RETRY_LATER, kind="text")
     except Exception:
         pass
 
@@ -325,10 +345,21 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
     config = AppConfiguration(**filtered_config)
     config.validate()
     
-    # Initialize OpenAI client
+    # Initialize OpenAI client. max_retries=config.max_retries (2026-08-19 fix)
+    # is the ONLY retry mechanism for OpenAI calls now - the SDK's own
+    # retry/backoff/Retry-After-honoring implementation, single source of
+    # truth, replacing the ad-hoc per-method tenacity decorators that used
+    # to double up with the SDK's own previously-unconfigured default retry
+    # behavior (see AppConfiguration.max_retries' own docstring for the
+    # incident this closed). PendingApproval resolution
+    # (_call_openai_approval_api) still explicitly overrides this to 0 via
+    # .with_options(max_retries=0) for its own, different reason (avoiding
+    # double-execution of an approved side-effecting action on retry,
+    # bugfix-022) - unaffected by this client-level default.
     ai_client = OpenAI(
         api_key=config.ai_api_key,
-        timeout=30.0
+        timeout=30.0,
+        max_retries=config.max_retries
     )
     
     # Initialize AI handler
@@ -374,9 +405,24 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
         
         cleanup_thread = SessionCleanupThread(denidin, cleanup_interval)
         cleanup_thread.start()
-        
+
         # Update denidin with cleanup thread reference
         denidin.cleanup_thread = cleanup_thread
+
+    # Feature 054: reminder delivery scheduler is deliberately NOT started here.
+    # initialize_app() is the shared bootstrap tests/integration/ calls directly
+    # (a process-global denidin_app singleton, reused across test files) -
+    # starting a real APScheduler against the real bot object here would let
+    # an ordinary test run reach bot.api.sending.sendMessage unattended, using
+    # config.test.json's real (not sandboxed) Green API credentials. This
+    # function no longer has access to the live bot instance itself anyway
+    # (Feature 043 - only `green_api`, the `.api` client, is injected) - the
+    # reminder scheduler needs the FULL live bot (send_proactive_message calls
+    # bot.api.sending.sendMessage), so it's wired in __main__ below instead,
+    # alongside message_source.start() itself, using `live_bot` directly. See
+    # tasks.md T013's note (2026-08-17) for the incident this design avoided
+    # (caught before any real send happened - test_data/reminders/reminders.db
+    # had zero rows at the time).
 
     # Feature 045's read-receipt hook (mark every non-blocked sender's incoming
     # message as read) is wired by GreenAPIMessageSource.start(), not here -
@@ -513,9 +559,20 @@ def _process_conversational_message(notification: Notification) -> None:
         # to the pending approval so a later tap's stanzaId can be matched against
         # it (contracts/pending-approval-message-binding.md). None in every other
         # case (plain-text sends, no-reply, or a failed buttons send).
+        # Feature 054 bug (caught 2026-08-17 via a real billed test - a button tap
+        # was always rejected as stale): a pending approval is EITHER an MCP one
+        # (pending_approval_manager) OR a local-tool one, e.g. create/modify/delete
+        # reminder (pending_local_tool_approval_manager) - never both at once for
+        # the same chat - but this call site only ever attached to the MCP manager.
+        # attach_sent_message_id() is a documented no-op (logged, never raises) on
+        # whichever manager has nothing pending for this chat, so calling both
+        # unconditionally is safe.
         sent_id_message = denidin_app.whatsapp_handler.send_response(notification, ai_response)
         if sent_id_message is not None:
             denidin_app.ai_handler.pending_approval_manager.attach_sent_message_id(
+                message.chat_id, sent_id_message
+            )
+            denidin_app.ai_handler.pending_local_tool_approval_manager.attach_sent_message_id(
                 message.chat_id, sent_id_message
             )
         logger.info(f"{tracking} Response sent to {message.sender_name}")
@@ -539,6 +596,10 @@ def _process_conversational_message(notification: Notification) -> None:
         # Send generic fallback message to user
         try:
             notification.answer(ERROR_PROCESSING_MESSAGE_TRY_AGAIN)
+            log_outbound(
+                notification.event.get("senderData", {}).get("chatId", ""),
+                ERROR_PROCESSING_MESSAGE_TRY_AGAIN, kind="text",
+            )
             try:
                 logger.info(f"{tracking} Generic fallback message sent to user")
             except (NameError, AttributeError):
@@ -590,6 +651,7 @@ def handle_text_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "text")
         return
@@ -610,6 +672,7 @@ def handle_contact_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "contact")
         return
@@ -630,11 +693,13 @@ def handle_contacts_array_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "contacts array")
         return
 
     notification.answer(CONTACT_CARD_ONE_AT_A_TIME)
+    log_outbound(notification.event.get("senderData", {}).get("chatId", ""), CONTACT_CARD_ONE_AT_A_TIME, kind="text")
 
 
 def handle_image_message(notification: Notification) -> None:
@@ -645,10 +710,11 @@ def handle_image_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing image data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "image")
         return
-    
+
     _process_media_message(notification)
 
 
@@ -660,10 +726,11 @@ def handle_document_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing document data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "document")
         return
-    
+
     _process_media_message(notification)
 
 
@@ -675,10 +742,11 @@ def handle_video_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing video data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "video")
         return
-    
+
     _process_media_message(notification)
 
 
@@ -690,10 +758,11 @@ def handle_audio_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing audio data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "audio")
         return
-    
+
     _process_media_message(notification)
 
 
@@ -716,6 +785,7 @@ def handle_button_tap(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing the tap
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "interactiveButtonsResponse")
         return
@@ -728,15 +798,9 @@ def handle_button_tap(notification: Notification) -> None:
     stanza_id = button_data.get("stanzaId", "")
 
     ai_response = denidin_app.ai_handler.resolve_button_tap(
-        chat_id=message.chat_id,
+        message=message,
         selected_id=selected_id,
         stanza_id=stanza_id,
-        message_id=message.message_id,
-        user_phone=message.sender_id,
-        sender=message.sender_display_name,
-        is_group=message.is_group,
-        chat_name=message.chat_name,
-        sender_phone=message.sender_id,
     )
 
     if ai_response is None:
@@ -754,9 +818,13 @@ def handle_button_tap(notification: Notification) -> None:
         # A resolution reply is always plain text (never offer_approval_buttons)
         # per contracts/button-tap-resolution.md, so this should never actually
         # fire - kept only for symmetry with _process_conversational_message's
-        # identical wiring, in case a future change ever chains a fresh pending
-        # approval directly off a button resolution.
+        # identical wiring (now both managers, Feature 054 - see the comment
+        # there), in case a future change ever chains a fresh pending approval
+        # directly off a button resolution.
         denidin_app.ai_handler.pending_approval_manager.attach_sent_message_id(
+            message.chat_id, sent_id_message
+        )
+        denidin_app.ai_handler.pending_local_tool_approval_manager.attach_sent_message_id(
             message.chat_id, sent_id_message
         )
     logger.info(f"[047] Button tap resolved and response sent for chat={message.chat_id!r}")
@@ -771,10 +839,11 @@ def handle_unsupported_message_default(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "unsupported")
         return
-    
+
     denidin_app.whatsapp_handler.handle_unsupported_message(notification)
 
 
@@ -843,6 +912,7 @@ if __name__ == "__main__":
         'ai_vision_model': config.ai_vision_model,
         'ai_embedding_model': config.ai_embedding_model,
         'ai_reply_max_tokens': config.ai_reply_max_tokens,
+        'max_retries': config.max_retries,
         'log_level': config.log_level,
         'data_root': config.data_root,
         'feature_flags': config.feature_flags,
@@ -850,9 +920,10 @@ if __name__ == "__main__":
         'memory': config.memory,
         'constitution_config': config.constitution_config,
         'user_roles': config.user_roles,
-        'mcp': config.mcp
+        'mcp': config.mcp,
+        'reminders': config.reminders
     }
-    
+
     # Feature 043: construct the live Green API bot explicitly here (via
     # GreenAPIMessageSource.connect(), NOT at module import time - see
     # research.md R3) and pass its real client into initialize_app(), which
@@ -887,6 +958,17 @@ if __name__ == "__main__":
     message_source.is_blocked = (
         lambda chat_id: denidin.ai_handler.user_manager.get_user(chat_id).is_blocked
     )
+
+    # Feature 054: reminder delivery scheduler - deliberately started HERE, not
+    # inside initialize_app() (see that function's comment for why: this is the
+    # real, live-running app, gated the same way message_source.start()'s
+    # blocking bot.run_forever() below is - never reachable from
+    # initialize_app()'s test-harness callers). Uses `live_bot` (Feature 043 -
+    # initialize_app() itself only ever receives `green_api`, the `.api`
+    # client, not the full bot object send_proactive_message needs). No
+    # feature flag - unconditional, RBAC alone gates reminder *creation*.
+    run_startup_reminder_sweep(denidin, live_bot)
+    denidin.reminder_scheduler = start_reminder_scheduler(denidin, live_bot)
     
     # Perform orphaned session recovery if memory enabled
     if denidin.ai_handler.memory_enabled:
@@ -918,7 +1000,13 @@ if __name__ == "__main__":
             if denidin.ai_handler.memory_enabled and denidin.cleanup_thread:
                 logger.info("Stopping session cleanup thread...")
                 denidin.cleanup_thread.stop()
-            
+
+            # Feature 054: stop the reminder delivery scheduler (unconditional -
+            # no feature flag, always started in __main__ above)
+            if denidin.reminder_scheduler is not None:
+                logger.info("Stopping reminder delivery scheduler...")
+                denidin.reminder_scheduler.shutdown(wait=False)
+
             # Raise KeyboardInterrupt to break out of message_source.start()'s
             # blocking bot.run_forever() call, below.
             raise KeyboardInterrupt()
@@ -952,6 +1040,11 @@ if __name__ == "__main__":
             if denidin.ai_handler.memory_enabled and denidin.cleanup_thread:
                 logger.info("Stopping session cleanup thread...")
                 denidin.cleanup_thread.stop()
+
+            # Feature 054: stop the reminder delivery scheduler if not already stopped
+            if denidin.reminder_scheduler is not None:
+                logger.info("Stopping reminder delivery scheduler...")
+                denidin.reminder_scheduler.shutdown(wait=False)
     except Exception as e:
         # Catch any unexpected error to prevent crash
         logger.critical(
