@@ -12,12 +12,6 @@ from pathlib import Path
 from typing import Any, cast, Optional, List, Dict
 
 from openai import OpenAI, APITimeoutError, RateLimitError, APIError
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_fixed,
-    retry_if_exception_type
-)
 from src.models.config import AppConfiguration
 from src.models.message import (
     WhatsAppMessage, AIRequest, AIResponse,
@@ -1540,17 +1534,19 @@ class AIHandler:
             f"running (in any language), state this exact value."
         )
 
-    @retry(
-        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
-        stop=stop_after_attempt(2),  # Initial attempt + 1 retry = 2 total
-        wait=wait_fixed(1),  # 1 second wait between retries
-        reraise=True
-    )
     def _call_openai_api(self, request: AIRequest, conversation_history: Optional[List[Dict]] = None,
                          tools: Optional[List[Dict]] = None):
         """
-        Make the actual OpenAI Responses API call with retry logic.
-        Retries ONCE (max 2 attempts) on transient failures, waits 1 second.
+        Make the actual OpenAI Responses API call.
+
+        Retries on transient failures (RateLimitError/APITimeoutError/APIError)
+        are handled entirely by the OpenAI SDK's own client-level max_retries
+        (2026-08-19 - see AppConfiguration.max_retries' own docstring for why
+        this method no longer carries its own tenacity @retry decorator: it
+        used to double up with the SDK's own previously-unconfigured default
+        retry behavior, up to 6 real HTTP attempts for one logical call). The
+        SDK honors real server Retry-After guidance, which a fixed local wait
+        never did.
 
         Args:
             request: AI request to send
@@ -1561,9 +1557,9 @@ class AIHandler:
             OpenAI Responses API response
 
         Raises:
-            RateLimitError: After 2 attempts (1 retry)
-            APITimeoutError: After 2 attempts (1 retry)
-            APIError: After 2 attempts (1 retry)
+            RateLimitError: After the client's own max_retries attempts are exhausted
+            APITimeoutError: Same
+            APIError: Same
         """
         logger.debug(f"Calling OpenAI Responses API for request {request.request_id}")
 
@@ -2562,12 +2558,6 @@ class AIHandler:
 
         return ai_response
 
-    @retry(
-        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
-        stop=stop_after_attempt(2),
-        wait=wait_fixed(1),
-        reraise=True
-    )
     def _call_openai_ledger_followup_api(self, request: AIRequest, previous_response_id: str,
                                          ledger_calls: List[Dict],
                                          tools: Optional[List[Dict]] = None,
@@ -2686,12 +2676,6 @@ class AIHandler:
         )
         return response
 
-    @retry(
-        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
-        stop=stop_after_attempt(2),
-        wait=wait_fixed(1),
-        reraise=True
-    )
     def capture_ledger_events_from_text(self, text: str, today_timestamp: Optional[int] = None) -> List[Dict]:
         """
         Ledger Event Recognition (Feature 024) for the image path: a separate, internal
@@ -2824,12 +2808,11 @@ class AIHandler:
         # default auto-retry-on-429 re-executing that already-approved tool
         # call a second time (two invoices created from one approval). A
         # failed attempt here must surface as a clean error to the caller,
-        # never retry itself. This method is also deliberately NOT wrapped in
-        # the @retry(...) tenacity decorator used elsewhere in this file - a
-        # bugfix-022 incident recurred even with max_retries=0 because that
-        # decorator was still transparently retrying this whole method (a
-        # second real API call) on RateLimitError/APITimeoutError/APIError.
-        # No retry of this call is ever safe, at any layer.
+        # never retry itself - explicitly overriding the client's own
+        # max_retries=config.max_retries (2026-08-19, see
+        # AppConfiguration.max_retries' own docstring) via .with_options(...)
+        # right here, rather than relying on any outer/shared retry layer to
+        # respect this. No retry of this call is ever safe, at any layer.
         response = self.client.with_options(max_retries=0).responses.create(**kwargs)  # type: ignore[call-overload]
         logger.info(
             f"[022] _call_openai_approval_api response: id={getattr(response, 'id', None)!r}, "

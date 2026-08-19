@@ -86,9 +86,16 @@ def mask_api_key(key: str) -> str:
 
 
 # Initialize OpenAI client
+# NOTE: this module-level client is never actually used - initialize_app()
+# (the real, single entry point used by both __main__ and every test/the
+# player) constructs its own, separately, from its own `config` argument.
+# Kept in sync with that one anyway (max_retries=config.max_retries, 2026-08-19
+# fix - see AppConfiguration.max_retries' own docstring) so this dead code
+# doesn't silently drift from the real behavior if it's ever wired up.
 ai_client = OpenAI(
     api_key=config.ai_api_key,
-    timeout=30.0
+    timeout=30.0,
+    max_retries=config.max_retries
 )
 
 # Global DeniDin instance for WhatsApp message handler
@@ -338,10 +345,21 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
     config = AppConfiguration(**filtered_config)
     config.validate()
     
-    # Initialize OpenAI client
+    # Initialize OpenAI client. max_retries=config.max_retries (2026-08-19 fix)
+    # is the ONLY retry mechanism for OpenAI calls now - the SDK's own
+    # retry/backoff/Retry-After-honoring implementation, single source of
+    # truth, replacing the ad-hoc per-method tenacity decorators that used
+    # to double up with the SDK's own previously-unconfigured default retry
+    # behavior (see AppConfiguration.max_retries' own docstring for the
+    # incident this closed). PendingApproval resolution
+    # (_call_openai_approval_api) still explicitly overrides this to 0 via
+    # .with_options(max_retries=0) for its own, different reason (avoiding
+    # double-execution of an approved side-effecting action on retry,
+    # bugfix-022) - unaffected by this client-level default.
     ai_client = OpenAI(
         api_key=config.ai_api_key,
-        timeout=30.0
+        timeout=30.0,
+        max_retries=config.max_retries
     )
     
     # Initialize AI handler
@@ -894,6 +912,7 @@ if __name__ == "__main__":
         'ai_vision_model': config.ai_vision_model,
         'ai_embedding_model': config.ai_embedding_model,
         'ai_reply_max_tokens': config.ai_reply_max_tokens,
+        'max_retries': config.max_retries,
         'log_level': config.log_level,
         'data_root': config.data_root,
         'feature_flags': config.feature_flags,

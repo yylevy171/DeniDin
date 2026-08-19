@@ -28,6 +28,21 @@ class AppConfiguration:
     ai_vision_model: str = 'gpt-5.6-luna'
     ai_embedding_model: str = 'text-embedding-3-large'  # Embedding model for long-term memory (ChromaDB)
     ai_reply_max_tokens: int = 1000
+    # Retries-after-the-initial-attempt for every OpenAI Responses API call
+    # (2026-08-19 fix - this field was declared in config.test.json/
+    # config.example.json for a long time but never actually reached this
+    # dataclass, so it did nothing; the real retry count was silently the
+    # OpenAI SDK's own hardcoded default of 2, doubled up with this app's own
+    # tenacity retry decorators wrapping the SAME calls - up to 6 real HTTP
+    # attempts for one logical call, several of which could each sleep a
+    # real server-suggested Retry-After delay, occasionally summing to 100+
+    # seconds for what looked like it should take ~5s). Passed straight into
+    # the OpenAI() client constructor's own max_retries= (denidin.py) - the
+    # SDK's own retry/backoff/Retry-After-honoring implementation is now the
+    # SINGLE retry mechanism for every OpenAI call in this app, replacing the
+    # ad-hoc per-method tenacity decorators that used to double up with it
+    # (and, for two follow-up methods, weren't present at all).
+    max_retries: int = 1
     log_level: str = 'INFO'
 
     # Data storage configuration
@@ -92,6 +107,7 @@ class AppConfiguration:
             'ai_vision_model': 'gpt-5.6-luna',
             'ai_embedding_model': 'text-embedding-3-large',
             'ai_reply_max_tokens': 1000,
+            'max_retries': 1,
             'log_level': 'INFO',
             'data_root': 'data',
             'godfather_phone': None,
@@ -189,6 +205,10 @@ class AppConfiguration:
         # Validate ai_reply_max_tokens is positive
         if self.ai_reply_max_tokens < 1:
             raise ValueError(f"ai_reply_max_tokens must be >= 1, got {self.ai_reply_max_tokens}")
+
+        # Validate max_retries is a non-negative integer (0 is valid - no retries at all)
+        if not isinstance(self.max_retries, int) or isinstance(self.max_retries, bool) or self.max_retries < 0:
+            raise ValueError(f"max_retries must be a non-negative integer, got {self.max_retries!r}")
 
         # Validate log_level is INFO or DEBUG
         if self.log_level not in ['INFO', 'DEBUG']:
