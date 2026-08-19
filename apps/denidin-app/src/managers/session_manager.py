@@ -26,15 +26,65 @@ class Message:
     """Individual message in a conversation."""
     message_id: str
     session_id: str  # Session UUID reference
-    role: str  # "user" or "assistant"
+    # 2026-08-19: the REAL role - one of "admin"/"godfather"/"client" (the
+    # human sender's actual RBAC role, Role.value.lower()) or "assistant"
+    # (DeniDin's own reply). Replaces the old structural "user"/"assistant"
+    # value, which conflated "who this message is really from" with "what
+    # OpenAI's API needs this turn labeled as" - see ai_required_role below
+    # for the latter. Never "blocked": a BLOCKED user's message never
+    # reaches persistence (add_message_with_token_limit raises on a 0
+    # token_limit before any Message is constructed).
+    role: str
     content: str
+    # 2026-08-19: derived, never caller-supplied directly - "user" for
+    # admin/godfather/client, "assistant" for assistant. This, NOT `role`,
+    # is what get_conversation_history_for_session puts in the "role" key
+    # of the dict handed to OpenAI's Responses API - which only accepts
+    # literal "user"/"assistant"/"system"/"developer", not an RBAC role
+    # name. `role` stays the real, meaningful value for everything else
+    # (display, group-turn attribution, future analytics).
+    ai_required_role: str = "user"
+    # 2026-08-19: the real WhatsApp JID of whoever sent this message - the
+    # individual sender's own number for admin/godfather/client (never a
+    # group's JID: a group is never a sender), or DeniDin's own number
+    # (WhatsAppHandler.own_number) for assistant. Was, until this date, a
+    # resolved human-readable display name - see sender_name below for
+    # that.
     sender: Optional[str] = None
+    # 2026-08-19: renamed from the old `sender` field above - the resolved,
+    # human-readable display name (Feature 039's senderContactName ->
+    # senderName -> raw-id fallback chain), independent of the real WhatsApp
+    # identifier now carried by `sender`.
+    sender_name: Optional[str] = None
+    # 2026-08-19: the real WhatsApp JID of who this message is addressed
+    # to - the other party's number in a 1:1 chat (DeniDin's own number if
+    # a human sent it, the human's own number if DeniDin sent it), or the
+    # group's own JID in a group (a group message is addressed to the whole
+    # group, regardless of which individual sent or DeniDin replied - never
+    # null, unlike the old Feature 039 sentinel-retirement scheme this
+    # replaces).
     recipient: Optional[str] = None
+    # 2026-08-19: resolved display name of whatever `recipient` points at -
+    # a person's display name, "DeniDin" for the bot, or a group's own
+    # subject/name (Green API's senderData.chatName, real on every group
+    # notification already).
+    recipient_name: Optional[str] = None
     timestamp: Optional[str] = None
     received_at: Optional[str] = None
     was_received: bool = True
     order_num: int = 0
     image_path: Optional[str] = None
+    # Feature 043 (Phase 11 follow-up, 2026-08-18): the raw text a media extractor
+    # (image/PDF/DOCX) pulled out of this message's attachment, if any - None/empty
+    # when the attachment had no image_path (a text message) or the extractor found
+    # no text in it. Replaces LedgerEvent.raw_message_excerpt's old role for media
+    # messages: since this message's own message_id/session_id is already the
+    # ledger event's traceability pointer, the source content belongs here (once,
+    # on the message itself) rather than duplicated into every ledger event
+    # captured from it. For a text message, `content` already IS the verbatim
+    # source text, so this field stays None there - only ever populated alongside
+    # image_path.
+    extracted_text: Optional[str] = None
     # Feature 033: id(s) of any LedgerEvent(s) captured from this specific message -
     # the reverse link to LedgerEvent.message_id. Empty for the vast majority of
     # messages (most capture nothing).
@@ -135,8 +185,11 @@ class SessionManager:
         content: str,
         user_role: str,
         sender: Optional[str] = None,
+        sender_name: Optional[str] = None,
         recipient: Optional[str] = None,
+        recipient_name: Optional[str] = None,
         image_path: Optional[str] = None,
+        extracted_text: Optional[str] = None,
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None
     ) -> str:
@@ -145,12 +198,37 @@ class SessionManager:
 
         Args:
             chat_id: WhatsApp chat ID
-            role: Message role ("user" or "assistant")
+            role: Structural turn role for THIS call - literal "user" or
+                "assistant". Kept as a separate parameter from the persisted
+                Message.role (see below) purely so every existing call site's
+                "user"/"assistant" literal keeps working unchanged; this
+                value itself is never persisted.
             content: Message content
-            user_role: User role for token limits (not used yet)
-            sender: Message sender (optional)
-            recipient: Message recipient (optional)
+            user_role: The real role for a "user" turn - a `Role` enum member
+                (Role.ADMIN/GODFATHER/CLIENT) or, on the RBAC-disabled
+                fallback path, a plain lowercase string ("client"/"godfather").
+                Ignored when role="assistant". Combined with `role` above to
+                compute the persisted Message.role (2026-08-19: one of
+                "admin"/"godfather"/"client"/"assistant" - see Message's own
+                docstring) and Message.ai_required_role ("user"/"assistant",
+                what OpenAI's API actually needs this turn labeled as).
+            sender: The real WhatsApp JID of whoever sent this message -
+                the individual's own number for a user turn, DeniDin's own
+                number (WhatsAppHandler.own_number) for an assistant turn.
+            sender_name: Resolved human-readable display name of `sender`
+                (2026-08-19, renamed from this parameter's old name -
+                `sender` itself used to hold this value before real WhatsApp
+                numbers were threaded through).
+            recipient: The real WhatsApp JID this message is addressed to -
+                the other party's number in a 1:1 chat, or the group's own
+                JID in a group (never null, never a sentinel string).
+            recipient_name: Resolved display name of `recipient` - a
+                person's display name, "DeniDin" for the bot, or a group's
+                own subject/name.
             image_path: Path to image file (optional)
+            extracted_text: Raw text a media extractor pulled out of this
+                message's attachment (image/PDF/DOCX), if any (Feature 043,
+                optional - see Message.extracted_text's own docstring).
             ledger_event_ids: id(s) of any LedgerEvent(s) captured from this message
                 (Feature 033, optional - defaults to empty list)
             message_id: The id decided when this message was first recognized as
@@ -174,27 +252,38 @@ class SessionManager:
         message_id = message_id or str(uuid.uuid4())
         now = now_local().isoformat()
 
-        # Feature 039: retire the "AI" sender/recipient sentinel - role already
-        # distinguishes user vs. assistant messages unambiguously, so a user
-        # message's recipient and an assistant message's sender are always None,
-        # regardless of what the caller passes.
-        if role == "user":
-            recipient = None
-        elif role == "assistant":
-            sender = None
+        # 2026-08-19: compute the real, persisted role + the OpenAI-safe
+        # derived role. `role`/`user_role` themselves are never persisted -
+        # see this method's docstring for why they still exist as separate
+        # parameters. A BLOCKED user_role should structurally never reach
+        # here (add_message_with_token_limit raises first on a 0
+        # token_limit) - normalized the same as any other value rather than
+        # special-cased, since there's no real path that exercises it.
+        if role == "assistant":
+            real_role = "assistant"
+            ai_required_role = "assistant"
+        else:
+            real_role = (
+                user_role.value.lower() if isinstance(user_role, Role) else str(user_role).lower()
+            )
+            ai_required_role = "user"
 
         message = Message(
             message_id=message_id,
             session_id=session.session_id,  # FK to session UUID
-            role=role,
+            role=real_role,
+            ai_required_role=ai_required_role,
             content=content,
             sender=sender,
+            sender_name=sender_name,
             recipient=recipient,
+            recipient_name=recipient_name,
             timestamp=now,
             received_at=now,
             was_received=True,
             order_num=session.message_counter,
             image_path=image_path,
+            extracted_text=extracted_text,
             ledger_event_ids=list(ledger_event_ids) if ledger_event_ids else []
         )
 
@@ -205,7 +294,11 @@ class SessionManager:
 
         message_file = messages_dir / f"{message_id}.json"
         with open(message_file, 'w', encoding='utf-8') as f:
-            json.dump(asdict(message), f, indent=2)
+            # ensure_ascii=False (2026-08-19): every other JSON persistence path
+            # in this codebase (LedgerEventManager) already writes real UTF-8
+            # Hebrew instead of \uXXXX escapes - this file never matched that,
+            # making every persisted message unreadable via a raw `cat`.
+            json.dump(asdict(message), f, indent=2, ensure_ascii=False)
 
         # Update session
         session.message_ids.append(message_id)
@@ -264,11 +357,18 @@ class SessionManager:
                     message_data = json.load(f)
 
                 content = message_data["content"]
-                if is_group_session and message_data["role"] == "user" and message_data.get("sender"):
-                    content = f"[{message_data['sender']}] {content}"
+                # 2026-08-19: message_data["role"] is now the REAL role
+                # ("admin"/"godfather"/"client"/"assistant"), not "user" -
+                # ai_required_role is what OpenAI's API needs, and what a
+                # "was this a human turn" check must key off. sender_name
+                # (renamed from the old `sender`) is the display-name value
+                # this prefix was always meant to show.
+                if (is_group_session and message_data.get("ai_required_role") == "user"
+                        and message_data.get("sender_name")):
+                    content = f"[{message_data['sender_name']}] {content}"
 
                 history.append({
-                    "role": message_data["role"],
+                    "role": message_data.get("ai_required_role", message_data["role"]),
                     "content": content
                 })
 
@@ -316,7 +416,7 @@ class SessionManager:
             session_dict['created_at'] = session_dict['created_at'].isoformat()
 
         with open(session_file, 'w', encoding='utf-8') as f:
-            json.dump(session_dict, f, indent=2)
+            json.dump(session_dict, f, indent=2, ensure_ascii=False)
 
     def _load_session(self, session_id: str) -> Session:
         """Load session metadata from disk."""
@@ -590,7 +690,9 @@ class SessionManager:
         content: str,
         user_role: Role,
         sender: Optional[str] = None,
+        sender_name: Optional[str] = None,
         recipient: Optional[str] = None,
+        recipient_name: Optional[str] = None,
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None
     ) -> str:
@@ -599,11 +701,16 @@ class SessionManager:
 
         Args:
             chat_id: WhatsApp chat ID
-            role: Message role ("user" or "assistant")
+            role: Structural turn role ("user" or "assistant") - see
+                add_message's docstring for what this and user_role actually
+                compute.
             content: Message content
-            user_role: User role (for tracking, not enforced here)
-            sender: Message sender (optional)
-            recipient: Message recipient (optional)
+            user_role: The real role for a "user" turn - see add_message's
+                docstring.
+            sender: Message sender's real WhatsApp JID (optional)
+            sender_name: Sender's resolved display name (optional)
+            recipient: Message recipient's real WhatsApp JID (optional)
+            recipient_name: Recipient's resolved display name (optional)
             ledger_event_ids: id(s) of any LedgerEvent(s) captured from this message
                 (Feature 033, optional)
             message_id: The id decided at message-arrival time (Feature 033) - see
@@ -614,7 +721,9 @@ class SessionManager:
         """
         # Add message normally
         message_id = self.add_message(
-            chat_id, role, content, user_role, sender, recipient,
+            chat_id, role, content, user_role,
+            sender=sender, sender_name=sender_name,
+            recipient=recipient, recipient_name=recipient_name,
             ledger_event_ids=ledger_event_ids, message_id=message_id
         )
 
@@ -634,7 +743,9 @@ class SessionManager:
         user_role: Role,
         token_limit: int,
         sender: Optional[str] = None,
+        sender_name: Optional[str] = None,
         recipient: Optional[str] = None,
+        recipient_name: Optional[str] = None,
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None
     ) -> str:
@@ -643,12 +754,17 @@ class SessionManager:
 
         Args:
             chat_id: WhatsApp chat ID
-            role: Message role ("user" or "assistant")
+            role: Structural turn role ("user" or "assistant") - see
+                add_message's docstring for what this and user_role actually
+                compute.
             content: Message content
-            user_role: User role
+            user_role: The real role for a "user" turn - see add_message's
+                docstring.
             token_limit: Maximum tokens allowed for this role
-            sender: Message sender (optional)
-            recipient: Message recipient (optional)
+            sender: Message sender's real WhatsApp JID (optional)
+            sender_name: Sender's resolved display name (optional)
+            recipient: Message recipient's real WhatsApp JID (optional)
+            recipient_name: Recipient's resolved display name (optional)
             ledger_event_ids: id(s) of any LedgerEvent(s) captured from this message
                 (Feature 033, optional)
             message_id: The id decided at message-arrival time (Feature 033) - see
@@ -678,7 +794,9 @@ class SessionManager:
 
         # Add message with token tracking
         return self.add_message_with_tokens(
-            chat_id, role, content, user_role, sender, recipient,
+            chat_id, role, content, user_role,
+            sender=sender, sender_name=sender_name,
+            recipient=recipient, recipient_name=recipient_name,
             ledger_event_ids=ledger_event_ids, message_id=message_id
         )
 

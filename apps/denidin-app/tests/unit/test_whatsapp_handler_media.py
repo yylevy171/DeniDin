@@ -190,8 +190,10 @@ class TestMediaHandlerIntegration:
             timestamp=1769000000,  # Feature 024: real notification timestamp, the
             # ledger event's "hard pointer" - not processing time
             message_id=ANY,
-            sender_display_name='David Cohen'  # Feature 039: no senderContactName in this
+            sender_display_name='David Cohen',  # Feature 039: no senderContactName in this
             # fixture, falls back to senderName
+            is_group=False,  # 2026-08-19: threaded through for Message.recipient resolution
+            chat_name=''
         )
         
         # Verify summary was sent back to user

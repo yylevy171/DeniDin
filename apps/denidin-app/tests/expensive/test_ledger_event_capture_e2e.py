@@ -283,6 +283,11 @@ class TestLedgerEventCaptureE2E:
         refuses to run at all if LedgerEventManager.storage_dir is not under this
         test's isolated data_root.
         """
+        # 2026-08-19: LedgerEvent no longer carries its own whatsapp_chat (removed -
+        # redundant with session_id) - resolve session_id via SessionManager
+        # instead (safe even pre-test, when no real session exists yet: creates
+        # an empty one that matches zero real event files).
+        session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
         events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
         for f in list(events_dir.glob("*.json")):
             try:
@@ -290,7 +295,7 @@ class TestLedgerEventCaptureE2E:
                     data = json.load(fh)
             except (OSError, json.JSONDecodeError):
                 continue
-            if data.get("whatsapp_chat") == chat_id:
+            if data.get("session_id") == session_id:
                 f.unlink()
 
         session_manager = denidin_app.ai_handler.session_manager
@@ -305,13 +310,19 @@ class TestLedgerEventCaptureE2E:
         """All persisted LedgerEvent files (data/events/*.json) for this chat_id,
         sorted by captured_at - reads the real files off disk, not an in-memory
         proxy, so assertions prove the event genuinely landed in permanent storage
-        (Feature 033's whole point)."""
+        (Feature 033's whole point).
+
+        2026-08-19: LedgerEvent no longer carries its own whatsapp_chat (removed -
+        redundant with session_id, which already points at a session that carries
+        its own whatsapp_chat) - filters by session_id instead, resolved via the
+        real SessionManager for this chat_id."""
+        session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
         events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
         results = []
         for f in events_dir.glob("*.json"):
             with open(f, encoding='utf-8') as fh:
                 data = json.load(fh)
-            if data.get("whatsapp_chat") == chat_id:
+            if data.get("session_id") == session_id:
                 results.append(data)
         results.sort(key=lambda d: d["captured_at"])
         return results
@@ -439,7 +450,6 @@ class TestLedgerEventCaptureE2E:
             assert e["source_type"] == "הסכם"
             assert e["event_subtype"] == "יצירה"
             assert "עידן" in (e.get("client_name") or "") or "שבתאי" in (e.get("client_name") or "")
-            assert e.get("raw_message_excerpt")
             assert e["event_id"].startswith("A")
             # Feature 033: this is the first real proof message_id threading works on
             # the image path end-to-end (component tests use a real object but not a
@@ -508,9 +518,22 @@ class TestLedgerEventCaptureE2E:
         assert captured["source_type"] == "בנק"
         assert captured["event_subtype"] == "הפקדה"
         assert captured["amount"] == 9440, f"expected amount normalized to int 9440, got {captured['amount']!r}"
-        assert captured.get("raw_message_excerpt")
         assert captured["event_id"].startswith("B")
         self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
+
+        # Feature 043 (2026-08-18): raw_message_excerpt was removed from the ledger
+        # event itself - the source message's own extracted_text is now where this
+        # content lives (real proof on the real image E2E path, not just a unit test).
+        session_manager = denidin_app.ai_handler.session_manager
+        session_id = session_manager.chat_to_session[chat_id]
+        message_file = (
+            session_manager.storage_dir / session_id / "messages" / f"{captured['message_id']}.json"
+        )
+        with open(message_file, encoding='utf-8') as f:
+            message_data = json.load(f)
+        assert message_data.get("extracted_text"), (
+            "the real vision extraction's text must land on the message record"
+        )
 
         # bugfix-009 (reopened 2026-07-30): the media turn's user message must also
         # carry a real image_path, not just exist.

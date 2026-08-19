@@ -77,6 +77,36 @@ def test_extract_simple_docx_text(docx_extractor, mock_denidin_context):
     assert mock_denidin_context.ai_handler.get_response.call_count == 1
 
 
+def test_extracted_text_key_holds_the_deterministic_docx_text(docx_extractor, mock_denidin_context):
+    """Feature 043 (2026-08-18): extracted_text was previously missing entirely
+    from this extractor's return dict (only raw_response existed) - now present,
+    distinct from raw_response (the AI's analysis OF this text)."""
+    media = create_docx_media("Hello World", "This is a test document")
+    mock_response = Mock()
+    mock_response.response_text = "Analysis: something else entirely"
+    mock_denidin_context.ai_handler.get_response.return_value = mock_response
+
+    result = docx_extractor.analyze_media(media, analyze=True)
+
+    assert result["extracted_text"] == "Hello World\n\nThis is a test document"
+    assert result["extracted_text"] != result["raw_response"]
+
+
+def test_extracted_text_empty_when_analyze_false_still_has_deterministic_text(
+    docx_extractor, mock_denidin_context
+):
+    """extracted_text (python-docx, deterministic) must be populated regardless
+    of analyze - only raw_response (the optional AI analysis) is empty when
+    analyze=False."""
+    media = create_docx_media("Just the text")
+
+    result = docx_extractor.analyze_media(media, analyze=False)
+
+    assert result["extracted_text"] == "Just the text"
+    assert result["raw_response"] == ""
+    assert mock_denidin_context.ai_handler.get_response.call_count == 0
+
+
 def test_extract_hebrew_text(docx_extractor, mock_denidin_context):
     """
     CHK006: Extract Hebrew text with UTF-8 encoding.

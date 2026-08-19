@@ -24,7 +24,7 @@ from src.models.message import (
     NO_REPLY_SENTINEL as _NO_REPLY_SENTINEL,
 )
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
-from src.utils.time_utils import now_local
+from src.utils.time_utils import now_local, local_from_timestamp
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_manager import MemoryManager
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
@@ -502,15 +502,27 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                     "every component shares the same subtype."
                 ),
             },
-            "client_name": {"type": ["string", "null"], "description": "The client's name, verbatim."},
+            "client_name": {
+                "type": ["string", "null"],
+                "description": (
+                    "The client's name, verbatim. For source_type=בנק, this is the "
+                    "depositor/account-holder name shown on the bank-transfer confirmation "
+                    "or banking-app screenshot ('שם חשבון מחויב' or the 'העברה מ-X' line) - "
+                    "always put it here, never in payer_name, which does not apply to בנק "
+                    "events at all (see payer_name's own description)."
+                ),
+            },
             "payer_name": {
                 "type": ["string", "null"],
                 "description": (
-                    "The paying entity, ONLY if different from client_name (e.g. an "
-                    "insurer/union routing payment). Watch specifically for 'דרך X' / "
-                    "'באמצעות X' / 'via X' / 'through X' near a client's name (often its "
-                    "own line right after the client name) - a strong, common signal "
-                    "that X is the payer, not part of agreement_label/description."
+                    "For source_type=הסכם ONLY: the paying entity, ONLY if different from "
+                    "client_name (e.g. an insurer/union routing payment). Watch specifically "
+                    "for 'דרך X' / 'באמצעות X' / 'via X' / 'through X' near a client's name "
+                    "(often its own line right after the client name) - a strong, common "
+                    "signal that X is the payer, not part of agreement_label/description. "
+                    "ALWAYS null for source_type=בנק - a bank deposit's account-holder name "
+                    "goes in client_name, never here; there is no payer/client distinction "
+                    "for a בנק event."
                 ),
             },
             "agreement_label": {
@@ -518,20 +530,48 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                 "description": (
                     "Short human-readable Hebrew label for the matter/agreement as a whole "
                     "(e.g. 'ערעור לארצי', 'תביעת נזיקין נגד מדינה') - a few words, not a full "
-                    "sentence. Required (non-null) for source_type=הסכם; always null for בנק."
+                    "sentence. Required (non-null) for source_type=הסכם; always null for בנק. "
+                    "Stated ONCE, when this matter's first component(s) are created - used only "
+                    "to build agreement_id (never persisted as its own field; every later "
+                    "component/message referencing this same matter does so via agreement_id "
+                    "or reference/reference_hint, never by restating this label)."
                 ),
-            },
-            "replaces_hint": {
-                "type": ["string", "null"],
-                "description": "Free-text description of a prior arrangement this corrects/cancels, ONLY if identifiable from this conversation - never a guess.",
             },
             "reference_hint": {
                 "type": ["string", "null"],
-                "description": "Free-text loose reference to a related (not replaced) prior matter, if any.",
+                "description": (
+                    "Free-text explanation of how this event relates to a PRIOR one already "
+                    "captured earlier in this SAME conversation - covers replacing/correcting/"
+                    "cancelling a prior arrangement, an explicit ADDITION/supplement to one "
+                    "('תוספת', 'עוד X על מה ששולם', 'בנוסף ל-'), AND a looser, non-superseding "
+                    "relation to a related matter - all of these are a 'reference', uniformly "
+                    "(there is no separate 'replace' mechanism). Set this whenever the message "
+                    "itself uses this kind of language, even if you can't identify exactly "
+                    "which prior event it targets - describe what you DO know (amount "
+                    "mentioned, approximate timing, client) so a human/script can resolve it "
+                    "later; never skip it just because the exact match is unclear. "
+                    "Conversely: leave this null for a plain NEW mention with no correction/"
+                    "addition/cancellation language at all (e.g. a fresh hourly work-log entry, "
+                    "a brand-new fee agreement) - superficial similarity to another entry "
+                    "(same client, similar amount) is NOT by itself a reason to set this."
+                ),
             },
-            "raw_message_excerpt": {
-                "type": "string",
-                "description": "Verbatim source text (or a precise description of the image) this capture is based on - the hard pointer for later verification.",
+            "bank_number": {
+                "type": ["string", "null"],
+                "description": (
+                    "The bank's NUMBER (e.g. '31'), never its name - only for source_type=בנק, "
+                    "always null for הסכם. A deposit screenshot's extracted text gives you the "
+                    "number, not a name - never guess or invent a bank name to fill this in. "
+                    "Null if the screenshot doesn't state it clearly."
+                ),
+            },
+            "bank_branch": {
+                "type": ["string", "null"],
+                "description": "The bank branch number, only for source_type=בנק, always null for הסכם.",
+            },
+            "bank_account": {
+                "type": ["string", "null"],
+                "description": "The bank account number, only for source_type=בנק, always null for הסכם.",
             },
             "component_count": {
                 "type": "integer",
@@ -567,7 +607,19 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                                 "source_type=הסכם; always null for בנק."
                             ),
                         },
-                        "description": {"type": ["string", "null"], "description": "The matter/engagement for this component, verbatim or closely paraphrased."},
+                        "description": {
+                            "type": ["string", "null"],
+                            "description": (
+                                "The matter/engagement for this component, verbatim or closely "
+                                "paraphrased - PLUS any ambiguity/uncertainty about THIS "
+                                "component worth flagging for the human reviewer (e.g. additive "
+                                "vs. alternative to another component), appended to the same "
+                                "field rather than a separate one. Reserve reference_hint "
+                                "specifically for reasoning about how this event relates to a "
+                                "PRIOR event - everything else about this component's own "
+                                "content goes here."
+                            ),
+                        },
                         "amount": {
                             "type": ["string", "null"],
                             "description": (
@@ -605,11 +657,23 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                             "enum": ["כולל", "לא כולל", "לא צוין"],
                             "description": "VAT-inclusive, VAT-exclusive, or not stated for THIS component - never assumed.",
                         },
-                        "notes": {"type": ["string", "null"], "description": "Any ambiguity or uncertainty about THIS component worth flagging for the human reviewer, including how it relates to other components (e.g. additive vs. alternative)."},
+                        "trigger_condition": {
+                            "type": ["string", "null"],
+                            "description": (
+                                "The condition THIS component's amount/existence depends on, "
+                                "verbatim or closely paraphrased, when the source states one "
+                                "(e.g. 'אם הבקשה נקבעת לדיון', 'במידה ועושים גם ברע', 'בתנאי "
+                                "ש...') - only for source_type=הסכם, always null for בנק and "
+                                "for an unconditional component. Put the condition itself here, "
+                                "not in description - description is for the component's own "
+                                "matter/content, this is specifically for what has to happen "
+                                "for it to apply."
+                            ),
+                        },
                     },
                     "required": [
                         "component_label", "description", "amount", "percent", "percent_base",
-                        "hours", "hourly_rate", "txn_date", "vat_status", "notes",
+                        "hours", "hourly_rate", "txn_date", "vat_status", "trigger_condition",
                     ],
                     "additionalProperties": False,
                 },
@@ -617,8 +681,8 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
         },
         "required": [
             "source_type", "event_subtype", "client_name", "payer_name", "agreement_label",
-            "replaces_hint", "reference_hint", "raw_message_excerpt", "component_count",
-            "components",
+            "reference_hint", "bank_number", "bank_branch", "bank_account",
+            "component_count", "components",
         ],
         "additionalProperties": False,
     },
@@ -1063,7 +1127,7 @@ class AIHandler:
         combined = (morning_tools or []) + self._build_ledger_event_tool()
         return combined or None
 
-    def _build_instructions(self, constitution: str) -> str:
+    def _build_instructions(self, constitution: str, today_timestamp: Optional[int] = None) -> str:
         """
         Build the `instructions` string (constitution + current-date suffix)
         for a Responses API call. Used by a normal turn's call, the Feature 022
@@ -1078,13 +1142,30 @@ class AIHandler:
         Takes the constitution text directly (not a full AIRequest) so any
         caller with just a constitution string - not necessarily a full
         request object - can build the same instructions.
+
+        Args:
+            today_timestamp: (Feature 043, research.md R4) Unix epoch int
+                overriding "today" for relative-date resolution. `None` (the
+                default - every pre-043 call site) preserves current
+                behavior exactly: real wall-clock UTC "today". A caller
+                replaying a historical message (the WhatsApp export player)
+                passes that message's own timestamp instead, so the model
+                resolves "היום"/"אתמול" etc. against the message's actual
+                historical date rather than whenever the replay happens to
+                run - this was the one real correctness gap a full replay
+                audit found (see research.md R4); every OTHER date-derived
+                ledger field already correctly derives from the message's
+                own timestamp, never wall-clock.
         """
         # Give the model the actual current date. It has no clock of its own —
         # its training cutoff makes it default to a stale "current year", which
         # produced real wrong-year invoice lookups (e.g. resolving "7 בפברואר"
         # to 2023). This is appended at reply time, computed per call in UTC
         # (CONSTITUTION §II) — NOT templated into the constitution file.
-        today = now_local().strftime("%Y-%m-%d")
+        if today_timestamp is not None:
+            today = local_from_timestamp(today_timestamp).strftime("%Y-%m-%d")
+        else:
+            today = now_local().strftime("%Y-%m-%d")
         return (
             f"{constitution}\n\n---\n"
             f"THE CURRENT DATE IS {today} (UTC). Treat this as the authoritative "
@@ -1132,7 +1213,7 @@ class AIHandler:
 
         kwargs = {
             "model": request.model,
-            "instructions": self._build_instructions(request.constitution),
+            "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
             "input": input_items,
             "max_output_tokens": request.max_tokens,
         }
@@ -1149,7 +1230,9 @@ class AIHandler:
 
     def get_response(self, request: AIRequest, chat_id: Optional[str] = None,
                      user_role: str = 'client', sender: Optional[str] = None,
-                     recipient: Optional[str] = None, user_phone: Optional[str] = None) -> AIResponse:
+                     recipient: Optional[str] = None, user_phone: Optional[str] = None,
+                     is_group: bool = False, chat_name: Optional[str] = None,
+                     sender_phone: Optional[str] = None) -> AIResponse:
         """
         Get AI response for a request with error handling and fallbacks.
         Includes memory system integration for session storage.
@@ -1158,9 +1241,34 @@ class AIHandler:
             request: AI request to process
             chat_id: Optional chat ID for session management (uses request.chat_id if not provided)
             user_role: User role for token limits ('client' or 'godfather') - DEPRECATED when RBAC enabled
-            sender: WhatsApp sender ID for message storage
-            recipient: WhatsApp recipient ID for message storage
-            user_phone: User's phone number for RBAC (uses sender if not provided)
+            sender: Sender's resolved display name (2026-08-19: NOT a WhatsApp
+                ID despite this parameter's name - historical naming, kept for
+                caller compatibility. `user_phone` below carries the real
+                WhatsApp JID.
+            recipient: Historical/display-only, same caveat as `sender` -
+                superseded by the is_group/chat_name-driven recipient
+                resolution in _finalize_response for what actually gets
+                persisted on Message.recipient now.
+            user_phone: User's real WhatsApp JID (RBAC lookup AND, 2026-08-19,
+                now also the real Message.sender for a user turn) - uses
+                `sender` if not provided.
+            is_group: Whether effective_chat_id is a WhatsApp group
+                (2026-08-19) - drives Message.recipient/.recipient_name
+                resolution: a group message is addressed to the group's own
+                JID/name, never to one individual member or to DeniDin alone.
+            chat_name: Green API's resolved chat display name
+                (senderData.chatName, WhatsAppMessage.chat_name) - a group's
+                real subject/name when is_group, used for
+                Message.recipient_name.
+            sender_phone: The ACTUAL individual sender's real WhatsApp JID
+                (2026-08-19, message.sender_id) - deliberately separate from
+                `user_phone`, which for a group turn is the most-permissive
+                MEMBER's phone (Feature 039's group RBAC resolution, possibly
+                a different person entirely, chosen only for its role/token
+                limit). Message.sender must always be who actually sent this
+                specific message, never whoever's role happened to govern the
+                turn. Falls back to `user_phone` when not given (the 1:1 case,
+                where they're always the same person anyway).
 
         Returns:
             AIResponse with generated text or fallback message
@@ -1199,7 +1307,9 @@ class AIHandler:
                 f"routing to _resolve_pending_approval instead of a normal turn"
             )
             resolved = self._resolve_pending_approval(
-                pending, request, effective_chat_id, user_obj, user_role, sender, recipient
+                pending, request, effective_chat_id, user_obj, user_role, sender, recipient,
+                user_phone=user_phone, is_group=is_group, chat_name=chat_name,
+                sender_phone=sender_phone
             )
             logger.info(
                 f"[022] _resolve_pending_approval returned "
@@ -1240,7 +1350,9 @@ class AIHandler:
             response = self._call_openai_api(request, conversation_history=conversation_history, tools=tools)
 
             return self._finalize_response(
-                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools
+                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools,
+                user_phone=user_phone, is_group=is_group, chat_name=chat_name,
+                sender_phone=sender_phone
             )
 
         except APITimeoutError as e:
@@ -1450,11 +1562,9 @@ class AIHandler:
                 try:
                     new_event_ids = self.ledger_event_manager.add_ledger_events_from_call(
                         session_id=session.session_id,
-                        whatsapp_chat=effective_chat_id,
                         call_arguments=call["arguments"],
                         message_id=request.message_id,
                         message_timestamp=request.timestamp,
-                        sender=sender or effective_chat_id,
                     )
                     event_ids.extend(new_event_ids)
                 except Exception as e:
@@ -1495,7 +1605,10 @@ class AIHandler:
 
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
                            user_obj, user_role: str, sender: Optional[str],
-                           recipient: Optional[str], tools: Optional[List[Dict]]) -> AIResponse:
+                           recipient: Optional[str], tools: Optional[List[Dict]], *,
+                           user_phone: Optional[str] = None, is_group: bool = False,
+                           chat_name: Optional[str] = None,
+                           sender_phone: Optional[str] = None) -> AIResponse:
         """
         Shared post-API-call logic: extract mcp_calls, detect a new pending
         approval (Feature 022), store messages in session, build the final
@@ -1660,13 +1773,35 @@ class AIHandler:
         # Store messages in session if memory enabled
         if self.memory_enabled and self.session_manager and effective_chat_id:
             try:
-                # RBAC: Use token limit enforcement if enabled
-                # Feature 039: SessionManager.add_message* always forces recipient=None
-                # for role="user" and sender=None for role="assistant" (redundant with
-                # role, which already distinguishes them) - the "AI" sentinel is retired,
-                # so it's no longer passed here. `sender` (the resolved display name,
-                # threaded in from the caller) becomes the user message's sender and the
-                # assistant reply's recipient - who said it, and who it was for.
+                # 2026-08-19: real WhatsApp identifiers for Message.sender/
+                # .recipient, replacing the old Feature 039 sentinel-retirement
+                # scheme (recipient=None for role="user", sender=None for
+                # role="assistant"). `sender` (this method's own parameter) stays
+                # the resolved display name - now Message.sender_name.
+                # own_whatsapp_number is bare digits (bugfix-024's getWaSettings
+                # call) - "" when unresolved (e.g. no live Green API client, the
+                # player), same fail-open convention as everywhere else it's used.
+                own_number_jid = f"{self.own_whatsapp_number}@c.us" if self.own_whatsapp_number else None
+                # sender_phone (this method's own param) is the ACTUAL sender's
+                # JID - deliberately NOT user_phone, which for a group turn is
+                # the most-permissive MEMBER's phone (possibly someone else
+                # entirely - see get_response's docstring). Falls back to
+                # user_phone (1:1 case, always the same person), then to
+                # effective_chat_id as a last resort (Green API's own 1:1
+                # chatId IS the contact's JID - never true for a group).
+                resolved_sender_phone = sender_phone or user_phone or (
+                    effective_chat_id if not is_group else None
+                )
+                sender_name_val = sender
+                # A group message is addressed to the whole group (its own
+                # JID/name), regardless of which individual sent it or that
+                # DeniDin is replying - never to one member, never to DeniDin
+                # alone.
+                user_msg_recipient = effective_chat_id if is_group else own_number_jid
+                user_msg_recipient_name = (chat_name or effective_chat_id) if is_group else "DeniDin"
+                assistant_msg_recipient = effective_chat_id if is_group else resolved_sender_phone
+                assistant_msg_recipient_name = (chat_name or effective_chat_id) if is_group else sender_name_val
+
                 if self.rbac_enabled and user_obj:
                     # Store user message with token limit
                     self.session_manager.add_message_with_token_limit(
@@ -1675,7 +1810,10 @@ class AIHandler:
                         content=request.user_prompt,
                         user_role=user_obj.role,
                         token_limit=user_obj.token_limit,
-                        sender=sender or effective_chat_id,
+                        sender=resolved_sender_phone,
+                        sender_name=sender_name_val,
+                        recipient=user_msg_recipient,
+                        recipient_name=user_msg_recipient_name,
                         ledger_event_ids=ledger_event_ids,
                         message_id=request.message_id
                     )
@@ -1688,7 +1826,10 @@ class AIHandler:
                             content=response_text,
                             user_role=user_obj.role,
                             token_limit=user_obj.token_limit,
-                            recipient=sender or effective_chat_id
+                            sender=own_number_jid,
+                            sender_name="DeniDin",
+                            recipient=assistant_msg_recipient,
+                            recipient_name=assistant_msg_recipient_name,
                         )
                 else:
                     # Existing behavior: regular add_message without token limits
@@ -1697,7 +1838,10 @@ class AIHandler:
                         role="user",
                         content=request.user_prompt,
                         user_role=user_role or "client",
-                        sender=sender or effective_chat_id,
+                        sender=resolved_sender_phone,
+                        sender_name=sender_name_val,
+                        recipient=user_msg_recipient,
+                        recipient_name=user_msg_recipient_name,
                         ledger_event_ids=ledger_event_ids,
                         message_id=request.message_id
                     )
@@ -1709,7 +1853,10 @@ class AIHandler:
                             role="assistant",
                             content=response_text,
                             user_role=user_role or "client",
-                            recipient=sender or effective_chat_id  # Reply goes to original sender
+                            sender=own_number_jid,
+                            sender_name="DeniDin",
+                            recipient=assistant_msg_recipient,
+                            recipient_name=assistant_msg_recipient_name,
                         )
 
                 storage_note = (
@@ -1823,7 +1970,7 @@ class AIHandler:
         ]
         kwargs = {
             "model": request.model,
-            "instructions": self._build_instructions(request.constitution),
+            "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
             "input": output_items,
             "previous_response_id": previous_response_id,
             "max_output_tokens": request.max_tokens,
@@ -1849,7 +1996,7 @@ class AIHandler:
         wait=wait_fixed(1),
         reraise=True
     )
-    def capture_ledger_events_from_text(self, text: str) -> List[Dict]:
+    def capture_ledger_events_from_text(self, text: str, today_timestamp: Optional[int] = None) -> List[Dict]:
         """
         Ledger Event Recognition (Feature 024) for the image path: a separate, internal
         text-only classification call over already-extracted document text, using the
@@ -1884,6 +2031,13 @@ class AIHandler:
         whatever it got - add_ledger_events_from_call owns the final never-silently-drop
         fallback, since it's the one path both the text and image routes persist
         through.
+
+        Args:
+            today_timestamp: (Feature 043) passed straight through to
+                _build_instructions - see that method's own docstring.
+                `None` (the default) preserves current wall-clock behavior;
+                callers replaying a historical image message pass that
+                message's own timestamp instead.
         """
         if not text:
             return []
@@ -1891,7 +2045,7 @@ class AIHandler:
         constitution = self._load_constitution()
         kwargs = {
             "model": self.config.ai_model,
-            "instructions": self._build_instructions(constitution),
+            "instructions": self._build_instructions(constitution, today_timestamp=today_timestamp),
             "input": [{"role": "user", "content": text}],
             "tools": [LEDGER_EVENT_TOOL],
             "max_output_tokens": self.config.ai_reply_max_tokens,
@@ -1957,7 +2111,7 @@ class AIHandler:
         }
         kwargs = {
             "model": request.model,
-            "instructions": self._build_instructions(request.constitution),
+            "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
             "input": [approval_item],
             "previous_response_id": pending.response_id,
             "max_output_tokens": request.max_tokens,
@@ -1990,7 +2144,10 @@ class AIHandler:
 
     def _resolve_pending_approval(self, pending: PendingApproval, request: AIRequest,
                                   effective_chat_id: str, user_obj, user_role: str,
-                                  sender: Optional[str], recipient: Optional[str]) -> Optional[AIResponse]:
+                                  sender: Optional[str], recipient: Optional[str], *,
+                                  user_phone: Optional[str] = None, is_group: bool = False,
+                                  chat_name: Optional[str] = None,
+                                  sender_phone: Optional[str] = None) -> Optional[AIResponse]:
         """
         Resolve a pending document-creation MCP approval (Feature 022) using
         this turn's message as the yes/no reply.
@@ -2105,7 +2262,9 @@ class AIHandler:
             self.pending_approval_manager.clear(effective_chat_id)
             logger.info(f"[022] Approved and cleared pending for chat={effective_chat_id!r}")
             return self._finalize_response(
-                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools
+                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools,
+                user_phone=user_phone, is_group=is_group, chat_name=chat_name,
+                sender_phone=sender_phone
             )
 
         # Not a recognized affirmative: decline, close out OpenAI's
@@ -2131,7 +2290,9 @@ class AIHandler:
 
     def resolve_button_tap(
         self, chat_id: str, selected_id: str, stanza_id: str, message_id: str,
-        user_phone: Optional[str], sender: Optional[str],
+        user_phone: Optional[str], sender: Optional[str], *,
+        is_group: bool = False, chat_name: Optional[str] = None,
+        sender_phone: Optional[str] = None,
     ) -> Optional[AIResponse]:
         """
         Feature 047: resolves a WhatsApp interactive-button tap against chat_id's
@@ -2192,6 +2353,7 @@ class AIHandler:
         return self.get_response(
             synthetic_request, chat_id=chat_id, user_role=user_obj.role,
             sender=sender, recipient=None, user_phone=user_phone,
+            is_group=is_group, chat_name=chat_name, sender_phone=sender_phone,
         )
 
     def _create_fallback_response(self, request_id: str, message: str) -> AIResponse:

@@ -11,7 +11,7 @@ CHK Requirements:
 - CHK010: Layout/structure preservation
 - CHK078: Empty document handling
 """
-from typing import Dict, List
+from typing import Dict, List, Optional
 import io
 import logging
 try:
@@ -50,7 +50,7 @@ class PDFExtractor(MediaExtractor):
         # Create ImageExtractor for page processing
         self.image_extractor = ImageExtractor(denidin_context)
     
-    def analyze_media(self, media: Media, caption: str = "") -> Dict:
+    def analyze_media(self, media: Media, caption: str = "", today_timestamp: Optional[int] = None) -> Dict:
         """
         Analyze PDF using GPT-4o Vision (Phase 4 enhancement).
         
@@ -75,7 +75,7 @@ class PDFExtractor(MediaExtractor):
             # CHK007: Check if PyMuPDF is available
             if fitz is None:
                 return {
-                    "extracted_text": [],
+                    "extracted_text": "",
                     "document_analysis": {
                         "document_type": "generic",
                         "summary": "PDF processing unavailable",
@@ -95,6 +95,7 @@ class PDFExtractor(MediaExtractor):
                 pdf_document.close()
                 return {
                     "raw_response": "סיכום: Empty PDF document",
+                    "extracted_text": "",
                     "document_analysis": {
                         "document_type": "generic",
                         "summary": "Empty PDF document",
@@ -107,6 +108,7 @@ class PDFExtractor(MediaExtractor):
             
             # Process each page
             raw_responses = []  # Collect raw_response from each page
+            extracted_texts = []  # Feature 043 (2026-08-18): same, for extracted_text
             extraction_qualities = []
             warnings_list = []
             doc_types = []       # bugfix-028: per-page classification
@@ -130,10 +132,13 @@ class PDFExtractor(MediaExtractor):
                     # Delegate to ImageExtractor (returns raw_response)
                     # Pass caption to provide context for analysis
                     logger.info(f"[PDFExtractor.analyze_media] Sending page {page_num + 1} to ImageExtractor")
-                    page_result = self.image_extractor.analyze_media(page_media, caption=caption)
+                    page_result = self.image_extractor.analyze_media(
+                        page_media, caption=caption, today_timestamp=today_timestamp
+                    )
                     
                     # Collect per-page results
                     raw_responses.append(page_result["raw_response"])
+                    extracted_texts.append(page_result.get("extracted_text", ""))
                     extraction_qualities.append(page_result["extraction_quality"])
                     warnings_list.append(page_result["warnings"])
                     doc_types.append(page_result.get("doc_type"))
@@ -148,16 +153,23 @@ class PDFExtractor(MediaExtractor):
                     # CHK007: Handle per-page failures gracefully
                     logger.error(f"[PDFExtractor.analyze_media] Page {page_num + 1} failed: {e}", exc_info=True)
                     raw_responses.append("")
+                    extracted_texts.append("")
                     doc_types.append(None)
                     extraction_qualities.append("failed")
                     warnings_list.append([f"Page {page_num + 1} failed: {str(e)}"])
-            
+
             pdf_document.close()
-            
+
             # For PDFs, combine raw_responses from all pages
             combined_raw_response = "\n---\n".join([r for r in raw_responses if r])
             if not combined_raw_response:
                 combined_raw_response = "סיכום: PDF analysis completed but no content extracted"
+            # Feature 043 (2026-08-18): same combining for extracted_text - what
+            # Message.extracted_text persists, distinct from combined_raw_response
+            # (identical today since ImageExtractor's own extracted_text/raw_response
+            # only diverge in its JSON-parse-failure fallback case, but kept as its
+            # own combine so a future divergence there flows through correctly).
+            combined_extracted_text = "\n---\n".join([t for t in extracted_texts if t])
             
             # bugfix-028 (user, 2026-08-09): "pdf and docx are ALWAYS agreements
             # or unknown - never bank." A bank transfer confirmation arrives as a
@@ -174,6 +186,7 @@ class PDFExtractor(MediaExtractor):
 
             return {
                 "raw_response": combined_raw_response,
+                "extracted_text": combined_extracted_text,
                 "extraction_quality": extraction_qualities,
                 "warnings": warnings_list,
                 "model_used": self.vision_model,
@@ -181,11 +194,12 @@ class PDFExtractor(MediaExtractor):
                 "fields": combined_fields,
                 "missing_required_fields": [],
             }
-            
+
         except Exception as e:
             # CHK007: Fail gracefully on PDF-level errors
             return {
                 "raw_response": "",
+                "extracted_text": "",
                 "extraction_quality": [],
                 "warnings": [[f"PDF analysis failed: {str(e)}"]],
                 "model_used": self.vision_model

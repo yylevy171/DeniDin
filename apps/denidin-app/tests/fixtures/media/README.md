@@ -41,13 +41,12 @@ These real documents can be used for additional testing and validation.
 
 ## Regenerating Documents
 
-To regenerate the test documents from templates:
-
-```bash
-cd denidin-app
-python3 scripts/generate_test_fixtures.py
-python3 scripts/generate_receipt_image.py
-```
+The `generate_test_fixtures.py`/`generate_receipt_image.py` scripts that
+originally produced these files have been removed (they were one-off
+generators, not part of the app) - the committed fixture files themselves
+are unaffected and stay as the fixed, frozen test data they always were.
+Regenerating a document from its `.txt` template would require rewriting an
+equivalent script.
 
 ## Notes
 

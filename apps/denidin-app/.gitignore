@@ -41,6 +41,24 @@ data/events/
 # Test data (generated during tests)
 test_data/
 
+# Player run output (Feature 043) - dedicated data_root for player/run_player.py
+# runs, isolated from test_data/ (the real shared pytest fixture dir) - see
+# run_player.py's _build_config_dict for the data_root -> memory storage_dir
+# override that makes this isolation actually work.
+player_data/
+
+# Player run configs targeting prod (real data_root/denidin_config, and a real
+# phone number once filled in) - never tracked, unlike the *_test.json ones,
+# which use only config.test.json's own placeholder values.
+player/*_prod.json
+
+# Throwaway tooling/state for an interactive, human-reviewed player run
+# (Feature 043) - NOT part of the production player/ module. Lives in-repo
+# (not /tmp) so it survives across sessions instead of getting silently wiped
+# between them (2026-08-17 incident: a /tmp-based version of this lost all
+# review progress and the throwaway data_root between sessions).
+.player_review_scratch/
+
 # Dev environment persistent data (019-env-separation; renamed from test_data/)
 dev_data/
 

@@ -267,6 +267,10 @@ before starting Phase 5.
 
 ## Phase 5: User Story 4 — No orphaned/unaccounted events (US4, feeds US1)
 
+**DEPRIORITIZED (human decision, 2026-08-19): skip for now, not needed at
+this time.** Not removed — may resume later if a real repeated-replay
+scenario makes it relevant.
+
 - [ ] T015a Write tests in `tests/unit/test_reconciliation.py`: pre-run
   snapshot correctly scoped to `[start,end]` by `event_date`; unmatched
   pre-existing files moved (never deleted) to `_to_delete/<run_id>/` with
@@ -278,6 +282,11 @@ before starting Phase 5.
 ---
 
 ## Phase 6: User Story 2 — Relevancy/reference resolution (US2)
+
+**DEPRIORITIZED (human decision, 2026-08-19): skip for now, not needed at
+this time.** Not removed — real motivating example exists (Finding B, the
+33-message run's msg 8/msg 33 unlinked payment), but user's read on that
+finding was "fine and well known," not urgent enough to build this yet.
 
 - [ ] T016a Write tests in `tests/unit/test_relevancy.py`: the 4-step
   deterministic matching heuristic (client_name exact match →
@@ -304,6 +313,9 @@ before starting Phase 5.
 
 ## Phase 7: User Story 3 — Review queue (US3)
 
+**DEPRIORITIZED (human decision, 2026-08-19): skip for now, not needed at
+this time.** Not removed.
+
 - [ ] T018a Write tests in `tests/unit/test_review_queue.py`: the notes-
   heuristic correctly flags known ambiguity-marker phrases (finalized list
   per plan.md) and does NOT flag ordinary notes text; queue `.jsonl`
@@ -319,6 +331,16 @@ before starting Phase 5.
 
 ## Phase 8: User Story 5 — Image-path replay regression (`expensive` tier)
 
+**Checked against the real 33-message run (2026-08-19) — NOT proven, despite
+that run including 15 real vision messages.** All 15 images were bank-
+deposit screenshots carrying explicit absolute dates from the bank's own UI
+(`תאריך פעולה: DD/MM/YYYY`); grepped every image's `extracted_text` across
+all 33 messages for "אתמול"/"היום" — zero matches. Phase 8's specific
+scenario (a relative-date phrase *inside an image's OCR'd text* resolving
+against the replayed message's historical timestamp via `ImageExtractor`'s
+`today_timestamp` threading) was never actually exercised by that run. The
+code path exists (built in Phase 3) but is unproven end-to-end. Still open.
+
 - [ ] T020a **Requires explicit user approval before running** (expensive
   tier, real vision calls — per project rules, one at a time, never a bare
   sweep): write a full image-path replay test in
@@ -326,13 +348,7 @@ before starting Phase 5.
   a fixture image with text mentioning a relative date ("אתמול"),
   asserting the resulting `txn_date` reflects the replayed message's
   historical date, not real wall-clock — the end-to-end regression test
-  for Phase 3's 4-hop timestamp threading. **Open decision when this phase
-  starts** (human decision, 2026-08-07: deliberately not pre-decided) —
-  same open question as T017a above: whether to follow T014a's
-  skip-synthetic-test/real-run-instead pattern, or write this test as
-  originally planned. The prepared real run against `test_data/events`
-  (Phase 4, T014b) does include 15 vision messages, so it may already
-  partially substitute — worth checking that run's actual results first.
+  for Phase 3's 4-hop timestamp threading.
 - [ ] T020b No new implementation expected — verification only (BLOCKED
   until T020a approved, and until the test has actually been run once
   with fresh approval per the expensive-test rules).
@@ -341,81 +357,168 @@ before starting Phase 5.
 
 ## Phase 9: User Story 6 — Documentation (US6)
 
-- [ ] T021 Write `player/README.md`: invocation, `--data-root`/
+- [x] T021 Write `player/README.md`: invocation, `--data-root`/
   safety flags, second-pass workflow, and a link back to this spec
-  directory — required by US6's "documented" criterion.
+  directory — required by US6's "documented" criterion. **Done**
+  (2026-08-16): documents the actual implemented CLI (player-config-file +
+  `--start`/`--end`/`--confirm-production-data-root`), the real outcome
+  statuses (`dispatched`/`unmapped-sender`/`unsupported-type`), and
+  explicitly flags what's NOT yet built (reconciliation, relevancy,
+  review-queue/`--reapply-review`, the run-summary JSON file) rather than
+  documenting the aspirational shape in `contracts/player-cli.md` as if it
+  already worked. Also flags that `quickstart.md` predates the actual
+  implementation and describes a superseded CLI shape.
 
 ---
 
-## Phase 10: Player/WhatsApp ledger-event equivalence (cross-cutting verification)
+**Phase 10 (Player/WhatsApp ledger-event equivalence) — REMOVED (human
+decision, 2026-08-19).** Originally scoped 2026-08-07 to prove
+`GreenAPIMessageSource` and `PlayerExportSource` produce byte-equivalent
+ledger events for identical input. Dropped as fundamentally not viable: the
+model is not deterministic (confirmed directly this session — the same
+exact message text, "אורית בנימין/מקורות/שעתיים", produced two genuinely
+different real outcomes — one run asked a clarifying question about the
+date, another inferred it and captured directly — across two separate real
+runs), so an equivalence test asserting matching output between two paths
+would be asserting something that isn't reliably true even for the SAME
+path run twice. Not deprioritized like Phases 5-7 — removed as a premise
+that doesn't hold.
 
-**Added 2026-08-07 (human decision), after Phase 4-9 were already scoped.**
-**Purpose**: prove `GreenAPIMessageSource` and `PlayerExportSource` are truly
-behaviorally interchangeable (the entire premise of Phase 2's `MessageSource`
-abstraction) by sending the *same message content* through both and asserting
-the resulting ledger event(s) match — not just "the player runs without
-crashing," a real equivalence regression test. One test per main ledger event
-type (not every variant): agreement multi-stage text, agreement multi-stage
-image, bank deposit screenshot, plus agreement update/cancellation (stubbed,
-skipped until Feature 040 — `specs/backlog/040-agreement-cancellation-modification/`
-— actually defines what an "update"/"cancellation" message looks like).
+---
 
-**The event_id collision mechanism (by design, not a bug to route around)**:
-`LedgerEventManager._next_seq` (`src/managers/ledger_event_manager.py:223`)
-picks the smallest unused seq digit (0-9) scoped only to files already
-present in `storage_dir` for that `letter+ddmmyy+hhmm` — real wall-clock
-`datetime.now(timezone.utc)`, not the message's own `today_timestamp`. So
-two captures of the *same source_type*, run back-to-back in the same real
-minute, against the *same events dir state*, will independently land on the
-same `seq` and therefore the exact same `event_id`/filename — a genuine
-collision, not just an adjacent one. To compare the WhatsApp-path capture
-and the player-path capture apples-to-apples (same starting seq=0 for both,
-proving `LedgerEventManager` itself behaves identically either way), each
-test must: (1) run path A (e.g. WhatsApp) against a clean/isolated events
-dir, (2) move the resulting file(s) aside to a holding location (rename or
-copy elsewhere — never delete) BEFORE running path B, (3) run path B against
-the now-reset-to-empty events dir, (4) compare path A's set-aside file(s)
-against path B's file(s) field-by-field, excluding fields that are expected
-to legitimately differ (`event_id`'s own timestamp portion if the two runs
-happen to cross a real minute boundary; anything else derived from
-wall-clock capture time rather than message content).
+## Phase 11: Ledger event bank/payment-detail fields (schema gap closure)
 
-- [ ] T022a `billed`-tier: write `tests/billed/test_player_whatsapp_equivalence.py`
-  covering **agreement multi-stage text** — the same synthetic multi-message
-  fee-agreement conversation dispatched once via a real Green-API-shaped
-  notification sequence straight into `denidin.dispatch_notification`
-  (matching how existing integration tests already simulate a live webhook —
-  CONSTITUTION §V), and once via `PlayerExportSource` replaying an equivalent
-  parsed export. Asserts the resulting ledger event(s)' content fields match
-  (client_name, amounts, dates, source_type, etc.) — not exact OpenAI-response
-  byte-equality, since the model isn't perfectly deterministic even at
-  temperature 0. Establishes the shared set-aside-and-compare test helper
-  (likely `tests/billed/_equivalence_helpers.py`, test infrastructure, not
-  production code — no separate "b" task needed, same precedent as
-  `tests/billed/e2e_helpers.py`/`tests/expensive/e2e_helpers.py` elsewhere).
-- [ ] T023a `expensive`-tier (vision — per CLAUDE.md's tier split, an image
-  message is `expensive` not `billed`): same equivalence test for
-  **agreement multi-stage image** — a fixture image (via `LocalMediaServer`
-  for the player path, real `downloadUrl`-shaped notification for the
-  WhatsApp path) carrying the same fee-agreement content as T022a's text
-  version. Reuses T022a's set-aside helper.
-- [ ] T024a `expensive`-tier: same equivalence test for **bank deposit
-  screenshot** — a fixture bank-deposit receipt image. Reuses T022a's
-  set-aside helper.
-- [ ] T025a **STUBBED, skipped** (`@pytest.mark.skip(reason="blocked on
-  Feature 040")`) — **agreement update** equivalence test. Feature 040
-  (`specs/backlog/040-agreement-cancellation-modification/`) hasn't defined
-  what an update message/ledger-event shape looks like yet; write the test's
-  skeleton (imports, class, skip marker) now so the shape of what's expected
-  is on record, fill in real assertions once Feature 040 lands.
-- [ ] T026a **STUBBED, skipped** (same marker/reasoning as T025a) —
-  **agreement cancellation** equivalence test, also blocked on Feature 040.
+**Added 2026-08-16 (human decision), found while auditing readiness to finish this
+feature.** Purpose: `capture_ledger_event`/`LedgerEventManager`'s persisted `בנק`
+(bank deposit) event has **no field at all** for bank/payment details — confirmed
+by reading `LEDGER_EVENT_TOOL` (`ai_handler.py`) end to end and cross-checking
+against the full persisted schema in `specs/done/033-ledger-event-persistence/
+data-model.md`: only `client_name`, `payer_name`, `amount`, `txn_date` (optional),
+`vat_status`, `notes` exist for a component.
 
-**No "b" tasks** — these tests exercise existing dispatch/capture machinery
-(Phases 2-4) rather than driving new production code; a failure here surfaces
-a real behavioral divergence between the two `MessageSource`s to fix at its
-actual source (`src/sources/`, `player/`, or `src/handlers/`), not something
-this phase itself implements.
+Meanwhile `bugfix-028` (A2/A3/A3b, merged into this branch 2026-08-16) added
+exactly these fields as **required/optional arguments on the Morning invoicing
+tools** (`create_combo_document`/`create_transaction_account`/
+`create_combo_document_as_reference`, per `bugfix-038`'s later generalization),
+extracted from the very same deposit screenshot the ledger event is captured
+from: `payment_date`, `payment_method`, `bank_number`, `bank_branch`,
+`bank_account`, `transaction_reference` (exact argument names, confirmed against
+`apps/morning-mcp-app/src/denidin_mcp_morning/tools.py`). Today, processing a bank-
+deposit screenshot captures full bank details on the *invoicing* path but silently
+drops them on the *ledger bookkeeping* path — the record this feature's player
+rebuilds/replays has no way to state where the money came from. This is **not**
+one of `data-model.md`'s already-`reserved` fields (`invoice_status`/
+`invoice_number`/`invoice_type`/`morning_document_id`/
+`invoice_actual_creation_date`, explicitly reserved for a future Morning-
+reconciliation feature) — bank/payment details were never scoped in the ledger
+schema at all, reserved or otherwise. Checked for other post-branch merges
+introducing further un-mirrored fields (features 047/048/053, bugfix-038 itself):
+none found — bugfix-028/038's bank/payment-detail fields are the only gap.
+
+**Design question resolved (human decision, 2026-08-16, via explicit "implement"
+instruction after reviewing T027a's tests):** call level (like `source_type`/
+`payer_name`), not nested per-component — a single בנק capture describes one
+underlying transfer, never a different bank account per component, mirroring
+where bugfix-028 itself placed them (top-level tool arguments, not per invoice
+line). Not mapped to an Events.csv column — DeniDin-internal only, same status
+as `agreement_label` (see data-model.md §1b) — extending the real CSV contract
+is a separate, bigger decision outside this task's scope.
+
+- [x] T027a Write tests in `tests/unit/test_ledger_event_manager.py` (extending)
+  and wherever `LEDGER_EVENT_TOOL`'s schema is already covered: new optional
+  fields `payment_method`, `bank_number`, `bank_branch`, `bank_account`,
+  `transaction_reference` accepted on a `capture_ledger_event` call; always
+  `null` for `source_type=הסכם` (never applicable, same pattern as
+  `agreement_label`/`component_label` being null for `בנק`); `add_ledger_event`
+  persists them correctly; `CURRENT_SCHEMA_VERSION` bumped to `2`; pre-existing
+  event files without these fields are unaffected/untouched (same
+  never-retro-applied rule as T008). **Done**: `TestLedgerEventToolBankPaymentFields`
+  (test_ai_handler_ledger_events.py) + `TestBankPaymentDetailFields`
+  (test_ledger_event_manager.py), 9 tests, verified RED against pre-T027b code.
+- [x] T027b Implement: add the five fields to `LEDGER_EVENT_TOOL`'s schema,
+  thread through `LedgerEventManager.add_ledger_event`, bump
+  `CURRENT_SCHEMA_VERSION` to `2`, update this feature's own data-model.md
+  (§1b) with the new field table (BLOCKED until T027a approved). **Done**:
+  9/9 new tests passing; one pre-existing, already-approved completeness test
+  (`test_written_file_has_exactly_the_30_csv_fields_plus_11_internal_fields`,
+  now `...plus_16_internal_fields`) updated with explicit human sign-off
+  (the "implement" instruction, given full context of what it would require)
+  — count only, no behavior/assertion-logic change. 912/912 unit+integration
+  tests pass; pylint 9.14/10 (up from 9.11); no new mypy errors.
+
+**T027c (same day, 2026-08-16): full real-data-grounded field audit and
+revision, human-initiated ("I was not aware of this addition... Any addition
+to the ledger data model needs to be approved by me from now on").** Rather
+than stopping at T027b's 5 new fields, every field on the persisted record
+(both pre-existing and new) was reviewed one by one against the real
+`Events.csv` (1159 rows) and `summary.md` (AHLedger's build-heuristics
+retrospective) — not assumptions. Each field's fate was individually
+confirmed, not batch-approved. Full writeup: data-model.md §1b (supersedes
+the version written for T027b). Summary of the outcome:
+- **Removed**: `message_timestamp`, `sender`, `notes` (merged into
+  `description`/`reference_hint`), `replaced_event_id`/`replaces_hint`
+  (folded into `reference`/`reference_hint`), `agreement_label` (no longer
+  persisted, stays a construction-only tool input), `payment_method`/
+  `transaction_reference` (T027b's own addition, reverted - no payment-app
+  support exists yet).
+- **Merged**: `event_date`+`event_time` → `event_datetime`; `captured_at`
+  reformatted to match.
+- **Kept as-is after real-data review**: `session_id`, `whatsapp_chat`,
+  `message_id`, `raw_message_excerpt`, `payer_name`, `component_label`,
+  `description`.
+- **`reference`/`reference_hint` unified**: real-data audit found
+  `reference`/`replaced_event_id` were never two different mechanisms in
+  practice (both hold real `event_id`s; direction was the only real
+  difference) - `LedgerEventManager.resolve_replaced_event_id` renamed to
+  `resolve_reference`, `REPLACED_EVENT_PLACEHOLDER` renamed to
+  `REFERENCE_PLACEHOLDER`. Two follow-on questions explicitly deferred, not
+  decided: reusing this mechanism for Morning-document references, and
+  whether it should support genuine bidirectional/multi-ref linking (today's
+  placeholder mechanism stays one-directional-by-construction).
+- **`bank_number`/`bank_branch`/`bank_account` retained** — the real gap
+  closure this phase exists for.
+- **`CURRENT_SCHEMA_VERSION` reset to `1`** (not incremented to `3`) - human
+  decision: today's result is a new baseline generation, not an increment.
+  Safe (no real persisted file has ever carried any `schema_version` value).
+- **Test suite**: `test_ledger_event_manager.py` substantially rewritten
+  (89 tests, all passing); `test_ai_handler_ledger_events.py`'s
+  `TestLedgerEventToolBankPaymentFields` updated (3→3 fields, adds a
+  regression test locking in `payment_method`/`transaction_reference`'s
+  removal). Full suite: 911/911 unit+integration tests pass; pylint 9.18/10;
+  no new mypy errors.
+
+### Phase 11 follow-up (2026-08-18) — interactive player review findings
+
+A full 33-message interactive human review (dispatching one real message at
+a time through the live pipeline, human approve/correct each capture, per
+the review protocol used for this session) surfaced 10 concrete findings
+against the Phase 11 shape above. All 10 fixed same-day:
+
+- **`raw_message_excerpt` removed** from both `LEDGER_EVENT_TOOL` and
+  `LedgerEventManager`'s persisted record (internal-field count 10→**9**).
+  Replaced by a new **`Message.extracted_text`** field
+  (`session_manager.py`), populated by `MediaHandler` from the media
+  extractor's own `extracted_text` — fixing, as part of the same change, a
+  pre-existing gap where `PDFExtractor`/`DOCXExtractor` never actually
+  returned that key at all (only `ImageExtractor` did; both now do,
+  matching their own docstrings' claimed contract).
+- **`trigger_condition` wired up** — previously hardcoded `null` with no
+  schema property at all; now a real, model-populatable component field.
+- **Code-side enforcement added** (prompt guidance alone proved
+  insufficient against real observed failure rates) for `payer_name`
+  (forced `null` for `בנק`, misplaced values rescued into `client_name`)
+  and `vat_status` (forced `כולל` for every `בנק` event — the model got
+  this right only 1/15 times in the real review).
+- **Constitution guidance strengthened**: checks (`שיק`) now prompt a
+  clarifying question instead of silent `בנק` capture or silent decline;
+  a concrete anchored example added for material name ambiguity; explicit
+  "addition" phrasing ("תוספת") added to the `reference_hint` trigger list;
+  hourly work-log capture completeness made more emphatic; several stale
+  `notes`/`replaces_hint` references (dead since this same Phase 11 landed)
+  corrected to `description`/`reference_hint`.
+- Full suite after all fixes: 932/932 unit+integration tests pass (898
+  unit + 34 integration); pylint 9.11/10; no new mypy errors. See
+  data-model.md §1c for the complete field-by-field writeup.
 
 ---
 
@@ -429,28 +532,68 @@ this phase itself implements.
   media-server (T011b).
 - Phase 9 can happen any time after Phase 4 (needs a working CLI to
   document accurately).
+- Phase 11 is independent of Phases 5-10 (touches `LEDGER_EVENT_TOOL`/
+  `LedgerEventManager` directly, not the player) but should land before
+  Phase 10's T022a/T023a/T024a equivalence tests are written, so those
+  tests assert against the final schema rather than needing a follow-up
+  revision.
 
-## Status (updated 2026-08-07)
+## Status (updated 2026-08-18)
 
-Phases 1–4 done (T005 dropped by human decision; T014a skipped in favor of
-a real run — see Phase 4). Phases 5 (reconciliation), 6 (relevancy), 7
-(review queue), 8 (expensive image-path regression), 9 (README), and 10
-(player/WhatsApp ledger-event equivalence, added 2026-08-07) are **not
-started** — no `player/reconciliation.py`, `player/relevancy.py`,
-`player/review_queue.py`, `player/README.md`, or
-`tests/billed/test_player_whatsapp_equivalence.py` exist yet, and
-`run_player.py` has no `--reapply-review` mode. Phase 10's T025a/T026a are
-permanently blocked (not just "not started") until Feature 040 lands.
+Phases 1–4 and 11 done (T005 dropped by human decision; T014a skipped in
+favor of a real run — see Phase 4). Phase 11 (ledger event schema, T027a/b/c)
+completed 2026-08-16 — after T027b's initial 5-field addition, a same-day
+real-data-grounded audit (T027c) revised the record substantially: added
+`bank_number`/`bank_branch`/`bank_account` (the real gap); removed
+`message_timestamp`/`sender`/`notes`/`payment_method`/`transaction_reference`/
+`agreement_label` (as a persisted field)/`replaced_event_id`/`replaces_hint`;
+merged `event_date`+`event_time` into `event_datetime`; unified
+`replaced_event_id`/`reference` into one `reference` mechanism
+(`resolve_reference`, `REFERENCE_PLACEHOLDER`). `CURRENT_SCHEMA_VERSION` reset
+to `1` as a new baseline. See data-model.md §1b for the full field-by-field
+writeup. A same-day-named-later follow-up (2026-08-18, see "Phase 11
+follow-up" above) — a full 33-message interactive human review of a real
+export — found and fixed 10 more concrete issues: `raw_message_excerpt`
+removed in favor of a new `Message.extracted_text` field; `trigger_condition`
+wired up; code-side enforcement added for `payer_name`/`vat_status` on `בנק`
+events; several constitution-guidance and stale-reference fixes. See
+data-model.md §1c. Phase 9 (README) also done 2026-08-16 — `player/README.md`
+written, documenting the actually-implemented CLI and explicitly flagging
+what isn't built yet.
+
+**2026-08-19 update**: the "real run against real data" this file used to
+recommend as Phase 4's next step has now actually happened twice — the
+33-message live validation run, and a real `player/run_player.py` date-range
+run (which also surfaced and fixed a real data-root isolation bug in the
+shipped player app itself; see `HANDOFF.md`). Following those runs, the
+human made explicit scope decisions on the remaining phases:
+
+- **Phase 5 (reconciliation), Phase 6 (relevancy), Phase 7 (review queue)**
+  — **deprioritized, not removed**: skip for now, not needed at this time.
+  May resume later.
+- **Phase 8 (expensive image-path regression)** — checked against the real
+  33-message run and found **not actually proven**: all 15 real image
+  messages in that run were bank screenshots with explicit absolute dates,
+  never relative-date language ("אתמול"/"היום") — Phase 3's vision-path
+  `today_timestamp` threading is built but still end-to-end unverified.
+  Still open, still needs T020a (explicit approval, expensive tier).
+- **Phase 10 (player/WhatsApp equivalence)** — **removed entirely**, not
+  deprioritized: the model's confirmed non-determinism (the same exact
+  message text produced two different real outcomes across two separate
+  runs this session) makes an equivalence assertion between two paths
+  fundamentally unreliable, not just currently low-priority.
 
 ## Next step
 
-**Recommended**: execute the prepared real run against `test_data/events`
-(Phase 4, T014b's note — 33 messages, 18 text + 15 vision; needs fresh
-explicit approval, real OpenAI cost) before starting Phase 5. It's the
-actual end-to-end proof that Phase 3's `today_timestamp` fix works, and
-Phase 5's reconciliation logic will reason about exactly the kind of
-real-run output it would produce — better to see real output first.
-
-Then begin Phase 5's test task (T015a), per METHODOLOGY.md — implementation
-(any "b" task) never starts before its paired "a" task is written AND
-explicitly approved.
+No phase is currently being actively pursued. What remains open:
+1. Phase 8 (T020a) — write and (with fresh approval) run the expensive-tier
+   image-path relative-date regression test, since the real run never
+   organically exercised this scenario.
+2. Two items outside the phase structure entirely, surfaced by the
+   33-message run and not yet acted on (see `HANDOFF.md`'s "Suggested next
+   steps"): the model-should-ask-clarifying-questions-more-often gap
+   (Findings C/D/E), and Finding A (message lost, not queued, when an
+   OpenAI/MCP call fails mid-turn). Both need their own explicit human
+   sign-off before any code/constitution change — real behavior changes to
+   production, not minor fixes.
+3. Phases 5-7, whenever/if reprioritized.
