@@ -6,7 +6,7 @@
 **Status**: Done — implemented, tested (unit/integration/billed all green, including delivery-
 target redesign and past-date-rejection coverage added post-implementation), and manually
 verified live against a real dev WhatsApp number. Gate Zero closed 2026-08-19 (see `research.md`).
-Merged via PR #TBD.
+Merged via PR #234.
 **Priority**: P2 (first-pass estimate, adjust if needed)
 **Input**: User description: "reminders - functionality and mgmt" (2026-08-15, placeholder), fleshed
 out via conversation 2026-08-16 (see Clarifications).
