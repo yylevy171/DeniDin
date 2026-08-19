@@ -34,16 +34,22 @@ class DOCXExtractor(MediaExtractor):
         """
         super().__init__(denidin_context)
     
-    def analyze_media(self, media: Media, caption: str = "", analyze: bool = True) -> Dict:
+    def analyze_media(self, media: Media, caption: str = "",
+                       today_timestamp: Optional[int] = None, analyze: bool = True) -> Dict:
         """
         Analyze DOCX using AI (Phase 4).
-        
+
         Text extraction is always done via python-docx (no AI needed).
         Document analysis is optional and uses AI call.
-        
+
         CHK006: Hebrew support via UTF-8.
         CHK010: Preserve paragraph structure.
-        
+
+        today_timestamp (Feature 043) is accepted for interface parity
+        with MediaExtractor.analyze_media but unused here - DOCXExtractor
+        never calls capture_ledger_events_from_text (no ledger capture on
+        this path).
+
         Args:
             media: Media object containing DOCX data in memory
             analyze: If True, use AI to analyze document (Phase 4)
@@ -99,15 +105,22 @@ class DOCXExtractor(MediaExtractor):
             
             return {
                 "raw_response": raw_response,
+                # Feature 043 (2026-08-18): the deterministic python-docx text itself
+                # (paragraphs + table cells), distinct from raw_response (the AI's
+                # analysis OF that text, empty when analyze=False) - this is what
+                # Message.extracted_text persists, mirroring ImageExtractor's own
+                # extracted_text/raw_response distinction.
+                "extracted_text": extracted_text,
                 "extraction_quality": extraction_quality,
                 "warnings": warnings,
                 "model_used": model_used
             }
-            
+
         except Exception as e:
             # CHK005, CHK007: Graceful failure on corrupted/invalid files
             return {
                 "raw_response": "",
+                "extracted_text": "",
                 "extraction_quality": "failed",
                 "warnings": [f"DOCX analysis failed: {str(e)}"],
                 "model_used": "python-docx"

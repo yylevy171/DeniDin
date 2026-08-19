@@ -12,7 +12,7 @@ CHK Requirements:
 - CHK027: Specific prompt (not just example)
 - CHK078: Empty document handling
 """
-from typing import cast, Dict
+from typing import cast, Dict, Optional
 from pathlib import Path
 import json
 import logging
@@ -121,7 +121,7 @@ class ImageExtractor(MediaExtractor):
         self.ai_handler = denidin_context.ai_handler
         self.vision_model = self.config.ai_vision_model
     
-    def analyze_media(self, media: Media, caption: str = "") -> Dict:
+    def analyze_media(self, media: Media, caption: str = "", today_timestamp: Optional[int] = None) -> Dict:
         """
         Analyze image using GPT-4o Vision (Phase 4 enhancement).
         
@@ -203,7 +203,9 @@ class ImageExtractor(MediaExtractor):
             # Plural (2026-07-30): a single document can genuinely warrant more than one
             # capture - see capture_ledger_events_from_text's docstring for the real bug
             # this replaced (silently dropping every component after the first).
-            ledger_events = self.ai_handler.capture_ledger_events_from_text(extracted_text)
+            ledger_events = self.ai_handler.capture_ledger_events_from_text(
+                extracted_text, today_timestamp=today_timestamp
+            )
 
             return {
                 # The text read off the document - NOT a message to the user.

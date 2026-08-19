@@ -34,7 +34,7 @@ read-only prod mount and prod logs. Full evidence and provenance:
 > **Shared session context** — how this review was run, the read-only access paths, the full
 > map of bugfix-028…037, the triage decisions (including what was closed as *not* a bug), and
 > the open verification items:
-> [`bugfix-028` § Session Context](../in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md#session-context-2026-08-09-production-review) (moved to `specs/in-progress/bugfixes/` 2026-08-10).
+> [`bugfix-028` § Session Context](../done/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md#session-context-2026-08-09-production-review) (now in `specs/done/bugfixes/`).
 > All ten bugs in that set are **fix-forward only** — existing production documents are being
 > left as they are by explicit user decision.
 
@@ -143,7 +143,7 @@ CONSTITUTION §I/§V; the `billed` tier is the right home for the text-side asse
 - All ledger/memory/session internals — P2 per the ranking rule above.
 
 ## Related Work
-- `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — the P0 cluster; P1-2
+- `specs/done/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — the P0 cluster; P1-2
   here is the reason its A2 survived undetected. To be worked in parallel.
 - `specs/backlog/025-morning-sourced-ledger-events/` — would give the ledger the invoice
   linkage that makes duplicate/already-invoiced detection richer than reference-matching alone.

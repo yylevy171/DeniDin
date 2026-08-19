@@ -52,6 +52,13 @@ class WhatsAppMessage:
     # sender's self-set profile name (senderName) over the raw sender_id - see
     # research.md §4/§4a for why this is not a new contacts-list implementation.
     sender_display_name: str = ""
+    # 2026-08-19: Green API's own senderData.chatName - the resolved display
+    # name of the CHAT itself (not the individual sender): a group's real
+    # subject/name for a group chat, or (per observed real payloads) the
+    # same resolved contact name as sender_display_name for a 1:1 chat.
+    # Used for Message.recipient_name when this message's chat is the
+    # recipient (a group message is addressed to the whole group).
+    chat_name: str = ""
 
     @classmethod
     def from_notification(cls, notification) -> 'WhatsAppMessage':
@@ -89,6 +96,7 @@ class WhatsAppMessage:
         sender_display_name = (
             sender_data.get('senderContactName') or sender_name or sender_id
         )
+        chat_name = sender_data.get('chatName') or ''
 
         # Detect if it's a group chat (group chats have @g.us in chat_id)
         is_group = '@g.us' in chat_id
@@ -110,7 +118,8 @@ class WhatsAppMessage:
             message_type=message_type,
             is_group=is_group,
             received_timestamp=received_timestamp,
-            sender_display_name=sender_display_name
+            sender_display_name=sender_display_name,
+            chat_name=chat_name
         )
 
 

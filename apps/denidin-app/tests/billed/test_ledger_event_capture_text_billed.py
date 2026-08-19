@@ -25,9 +25,8 @@ Run with: pytest tests/billed/test_ledger_event_capture_text_billed.py -m billed
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -37,6 +36,9 @@ from tests.e2e_helpers import (
     create_real_notification,
     get_response,
     assert_response_exists,
+    ClarificationAnswerBank,
+    converse_until_ledger_events_captured,
+    reserve_ledger_event_bucket_prefixes,
 )
 
 logger = logging.getLogger(__name__)
@@ -117,6 +119,12 @@ class TestLedgerEventCaptureTextBilled:
     # earlier runs.
     _FIXED_MESSAGE_TIMESTAMPS = (
         1770000500, 1770000600, 1770001000, 1770002000, 1770002100, 1770002200,
+        # 2026-08-18 player-review follow-up additions:
+        1770000530,  # גיליאן דוידיאן follow-up answer (added to the existing test)
+        1770003000,  # trigger_condition
+        1770004000, 1770004100,  # reference_hint "addition" (two-message flow)
+        1770005000,  # ask-instead-of-guess (hyphenated name)
+        1770006000,  # hourly minimal-message regression
     )
 
     @classmethod
@@ -157,28 +165,42 @@ class TestLedgerEventCaptureTextBilled:
         return f"97250{uuid.uuid4().hex[:7]}_{label}@c.us"
 
     @staticmethod
-    def _israel_date_str(days_ago: int = 0) -> str:
-        """REQ-DATA-005: the real local Asia/Jerusalem calendar date, `DD/MM/YYYY`,
-        `days_ago` days before whenever this test actually runs - the model resolves
-        'אתמול'/'היום' against the REAL current date injected into its instructions
-        (`AIHandler._build_instructions`), not against any synthetic notification
-        timestamp this test supplies, so expected txn_date values must be computed
-        the same way, at run time, not hardcoded."""
-        israel_now = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Jerusalem"))
-        return (israel_now - timedelta(days=days_ago)).strftime("%d/%m/%Y")
+    def _israel_date_str(base_timestamp: int, days_ago: int = 0) -> str:
+        """REQ-DATA-005: `DD/MM/YYYY`, `days_ago` days before the Israel-local date of
+        `base_timestamp` - the model resolves 'אתמול'/'היום' against the MESSAGE'S
+        OWN timestamp, not real wall-clock time (every real `AIHandler._build_instructions`
+        call site passes `today_timestamp=request.timestamp`, confirmed 2026-08-18 -
+        see `ai_handler.py:1216,1906,1981,2047`), so expected txn_date values must be
+        computed from the same fixed message timestamp the test itself sends, never
+        from whenever the test happens to actually run.
+
+        Contrast with `captured_at`, which genuinely IS real wall-clock - it's
+        persisted via `now_local()` at the moment `LedgerEventManager` writes the
+        event to disk (`ledger_event_manager.py:297`), independent of the message's
+        own timestamp. Don't generalize this fix to that field - only date fields
+        the MODEL resolves from message text (txn_date, event_datetime) go through
+        the message's own timestamp; `captured_at` is a write-time system stamp."""
+        base_date = local_from_timestamp(base_timestamp)
+        return (base_date - timedelta(days=days_ago)).strftime("%d/%m/%Y")
 
     @staticmethod
     def _events_for_chat(denidin_app, chat_id):
         """All persisted LedgerEvent files (data/events/*.json) for this chat_id,
         sorted by captured_at - reads the real files off disk, not an in-memory
         proxy, so assertions prove the event genuinely landed in permanent storage
-        (Feature 033's whole point)."""
+        (Feature 033's whole point).
+
+        2026-08-19: LedgerEvent no longer carries its own whatsapp_chat (removed -
+        redundant with session_id, which already points at a session that carries
+        its own whatsapp_chat) - filters by session_id instead, resolved via the
+        real SessionManager for this chat_id."""
+        session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
         events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
         results = []
         for f in events_dir.glob("*.json"):
             with open(f, encoding='utf-8') as fh:
                 data = json.load(fh)
-            if data.get("whatsapp_chat") == chat_id:
+            if data.get("session_id") == session_id:
                 results.append(data)
         results.sort(key=lambda d: d["captured_at"])
         return results
@@ -186,15 +208,24 @@ class TestLedgerEventCaptureTextBilled:
     @staticmethod
     def _assert_ledger_events_persisted(denidin_app, chat_id, expected_count, expected_event_timestamp):
         """Asserts events were persisted for this chat, each with the bookkeeping
-        fields LedgerEventManager.add_ledger_event adds (message_timestamp = the
-        real hard pointer, sender, captured_at, message_id) present and correct.
-        Returns the events in capture order for further field-specific assertions.
+        fields LedgerEventManager.add_ledger_event adds (event_datetime = the real
+        hard pointer, captured_at, message_id) present and correct. Returns the
+        events in capture order for further field-specific assertions.
 
         expected_count: exact count required, or None to only assert >=1.
 
         expected_event_timestamp: the real Green API notification timestamp (unix
         epoch seconds) these events should be pointed at - the constitution's "hard
         pointer" requirement (never processing time, never a guess).
+
+        2026-08-18 (player-review follow-up audit): this helper was stale -
+        `message_timestamp` and `sender` were both removed from the persisted
+        record back in the original Phase 11 revision (2026-08-16; sender/
+        message_timestamp fully covered by event_datetime, see data-model.md
+        SS1b) but this helper still asserted on them, which would have failed
+        the very next time this file actually ran. Fixed to check
+        `event_datetime` (the field that actually replaced message_timestamp)
+        and dropped the sender assertion entirely.
         """
         events = TestLedgerEventCaptureTextBilled._events_for_chat(denidin_app, chat_id)
         if expected_count is None:
@@ -205,35 +236,44 @@ class TestLedgerEventCaptureTextBilled:
                 f"found {len(events)}: {events}"
             )
 
-        # bugfix-037: message_timestamp is now persisted in Israel local time (with a
-        # real offset), not UTC - build the expected value the same way the app does.
-        expected_ts_iso = local_from_timestamp(expected_event_timestamp).isoformat()
+        # bugfix-037/Phase 11: event_datetime is Israel local time, "DD/MM/YYYY HH:MM".
+        expected_event_datetime = local_from_timestamp(expected_event_timestamp).strftime("%d/%m/%Y %H:%M")
         for record in events:
-            assert record.get("message_timestamp") == expected_ts_iso, (
-                f"message_timestamp={record.get('message_timestamp')!r} does not match the "
-                f"real notification timestamp {expected_ts_iso!r} - the constitution's 'hard "
-                f"pointer' requirement (never processing time, never a guess)"
+            assert record.get("event_datetime") == expected_event_datetime, (
+                f"event_datetime={record.get('event_datetime')!r} does not match the "
+                f"real notification timestamp {expected_event_datetime!r} - the constitution's "
+                f"'hard pointer' requirement (never processing time, never a guess)"
             )
-            assert record.get("sender"), "sender was not persisted"
             assert record.get("captured_at"), "captured_at was not persisted"
             assert record.get("message_id"), (
                 "message_id must be non-null for events captured after Feature 033 - "
                 "closes the traceability gap that motivated this feature"
             )
+            assert "raw_message_excerpt" not in record, (
+                "raw_message_excerpt was removed from the persisted schema (2026-08-18) - "
+                "the source content now lives on the message record itself "
+                "(Message.content for text, Message.extracted_text for media)"
+            )
         return events
+
+    @staticmethod
+    def _read_message(denidin_app, chat_id, message_id):
+        """Reads the real persisted message record off disk (session_manager's
+        actual storage), for field-level assertions beyond the ledger_event_ids
+        cross-check below."""
+        session_manager = denidin_app.ai_handler.session_manager
+        session_id = session_manager.chat_to_session[chat_id]
+        message_file = session_manager.storage_dir / session_id / "messages" / f"{message_id}.json"
+        with open(message_file, encoding='utf-8') as f:
+            return json.load(f)
 
     @staticmethod
     def _assert_message_links_back_to_event(denidin_app, chat_id, event):
         """Cross-checks the reverse link: the source message's ledger_event_ids
         (Feature 033) must include this event's event_id."""
-        session_manager = denidin_app.ai_handler.session_manager
-        session_id = session_manager.chat_to_session[chat_id]
-        message_id = event["message_id"]
-        message_file = session_manager.storage_dir / session_id / "messages" / f"{message_id}.json"
-        with open(message_file, encoding='utf-8') as f:
-            message_data = json.load(f)
+        message_data = TestLedgerEventCaptureTextBilled._read_message(denidin_app, chat_id, event["message_id"])
         assert event["event_id"] in message_data["ledger_event_ids"], (
-            f"event {event['event_id']} not found in source message {message_id}'s "
+            f"event {event['event_id']} not found in source message {event['message_id']}'s "
             f"ledger_event_ids={message_data.get('ledger_event_ids')!r}"
         )
 
@@ -260,7 +300,29 @@ class TestLedgerEventCaptureTextBilled:
         constitution/nuances follow-on feature per spec.md's "Deferred to a
         follow-on feature" - a failure here doesn't block this feature's other
         tests, all of which cover the persistence layer given whatever the model
-        actually returns)."""
+        actually returns).
+
+        2026-08-18 addition: real runs showed the model's turn-1 behavior for
+        this message is genuinely non-deterministic - sometimes it captures
+        directly, sometimes it asks a clarifying question about one or more
+        specific fields first (real observed examples: whether משרד הרווחה is
+        the payer or the related matter; whether "בית משפט השלום" is what's
+        meant by the source text's "ימשפט שלום" typo) instead of calling the
+        tool at all. Uses the generic converse_until_ledger_events_captured
+        driver (tests/e2e_helpers.py) rather than ad-hoc per-test logic: it
+        sends turns and checks for real persisted events after each one,
+        stopping the moment capture happens (never sends a further turn once
+        it has - an earlier version of this test that always sent one fixed
+        follow-up unconditionally caused a genuine DOUBLE capture, 6 events
+        instead of 3, when turn 1 had already captured on its own). If no
+        capture happens, the model's own reply is matched against a
+        deterministic keyword-based ClarificationAnswerBank (no AI, no NLP -
+        this is a fixed, curated fixture message, so every field's
+        ground-truth correct value is already known; "answering the question"
+        is just "which known topic does its text touch") to compose the next
+        turn - falling back to a generic "לא הבנתי, תעשה מה שאתה מבין" reply
+        for a question that doesn't match any known topic, rather than
+        guessing wrong or blocking."""
         from denidin import handle_text_message
 
         chat_id = self._fresh_chat_id("text_multi_stage")
@@ -271,59 +333,73 @@ class TestLedgerEventCaptureTextBilled:
             "2. ⁠למידת תיק החקירה וניהול משא ומתן מול התביעה בניסיון להגיע לסדר טיעון - 20,000₪\n"
             "3. ⁠אם המשא ימתן יכשל ונאלץ לנהל הוכחות ימשפט שלום - עוד 30,000₪"
         )
-        notification = create_real_notification({
-            'typeWebhook': 'incomingMessageReceived',
-            'timestamp': 1770000500,
-            'idMessage': 'LEDGER_E2E_TEXT_MULTISTAGE_001',
-            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
-            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
-            'messageData': {
-                'typeMessage': 'textMessage',
-                'textMessageData': {'textMessage': raw_text}
-            }
-        })
+        answer_bank = ClarificationAnswerBank([
+            {
+                "topic": "payer_vs_matter",
+                "keywords": ["משלם", "גורם המשלם", "מי משלם", "גוף המשלם"],
+                "answer": "משרד הרווחה לא משלם, זה מקום העבודה/העניין של הלקוח - אין גורם משלם נפרד",
+            },
+            {
+                "topic": "court_name_typo",
+                "keywords": ["בית משפט", "בימ\"ש", "בית המשפט", "משפט שלום"],
+                "answer": "הכוונה ל'בית משפט השלום', כן",
+            },
+            {
+                "topic": "vat",
+                "keywords": ["מע\"מ", "מעמ", "כולל מעמ"],
+                "answer": "המע\"מ לא צוין באף אחד מהסכומים",
+            },
+            {
+                "topic": "client_identity",
+                "keywords": ["מי הלקוח", "שם הלקוח", "האם גיליאן"],
+                "answer": "הלקוחה היא גיליאן דוידיאן",
+            },
+        ])
 
-        # This test's message_timestamp is fixed (1770000500), not real
-        # wall-clock time - so it always targets the exact same
-        # letter+DDMMYY+HHMM event_id prefix on every run.
-        # LedgerEventManager._next_seq picks the next free seq digit by
-        # scanning REAL FILES already on disk under storage_dir for that
-        # prefix (REQ-ID-002), which is never cleaned between test runs -
-        # without cleanup here, a second run of this exact test continues an
-        # earlier run's sequence (e.g. [3,4,5]) instead of the fresh [0,1,2]
-        # this test asserts (a real, order-independent failure, 2026-08-03 -
-        # surfaced simply by running the billed suite more than once against
-        # the same test_data/, no test reordering needed to trigger it).
-        # Clean before AND after: before, so a leftover run doesn't shift our
-        # own sequence; after, so this test never leaves stale state for its
-        # own next run either.
-        fixed_local_dt = datetime.fromtimestamp(1770000500, tz=timezone.utc).astimezone(ZoneInfo("Asia/Jerusalem"))
-        stale_prefix = f"A{fixed_local_dt.strftime('%d%m%y')}{fixed_local_dt.strftime('%H%M')}"
+        MAX_TURNS = 4
+        BASE_TIMESTAMP = 1770000500
+
+        # This test's message_timestamps are fixed, not real wall-clock time -
+        # so every possible turn always targets the exact same letter+DDMMYY+
+        # HHMM event_id bucket(s) on every run. LedgerEventManager._next_seq
+        # picks the next free seq digit by scanning REAL FILES already on disk
+        # under storage_dir for that prefix (REQ-ID-002), which is never
+        # cleaned between test runs - without cleanup here, a second run of
+        # this exact test continues an earlier run's sequence instead of the
+        # fresh one this test asserts (a real, order-independent failure,
+        # 2026-08-03). Clean before AND after, across every bucket ANY of the
+        # up-to-MAX_TURNS turns could have used - not just however many
+        # actually ran this time.
+        stale_prefixes = reserve_ledger_event_bucket_prefixes(BASE_TIMESTAMP, MAX_TURNS)
 
         def _clean_stale_events():
-            for stale_file in Path(denidin_app.ai_handler.ledger_event_manager.storage_dir).glob(f"{stale_prefix}*.json"):
-                stale_file.unlink()
+            for prefix in stale_prefixes:
+                for stale_file in Path(denidin_app.ai_handler.ledger_event_manager.storage_dir).glob(f"{prefix}*.json"):
+                    stale_file.unlink()
 
         _clean_stale_events()
 
         try:
-            logger.info("GIVEN the real, unmodified גיליאן דוידיאן 3-stage message")
-            handle_text_message(notification)
-            logger.info("WHEN DeniDin processes it")
-
-            response = get_response(notification)
-            assert_response_exists(response)
-
-            events = self._assert_ledger_events_persisted(
-                denidin_app, chat_id, expected_count=3, expected_event_timestamp=1770000500
+            events, transcript = converse_until_ledger_events_captured(
+                handle_text_message=handle_text_message,
+                chat_id=chat_id,
+                first_message_text=raw_text,
+                answer_bank=answer_bank,
+                events_for_chat=lambda cid: self._events_for_chat(denidin_app, cid),
+                base_timestamp=BASE_TIMESTAMP,
+                base_id_message="LEDGER_E2E_TEXT_MULTISTAGE",
+                sender_data={'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
+                max_turns=MAX_TURNS,
+                test_logger=logger,
             )
-            logger.info(f"THEN captured {len(events)} events (persisted): {events}")
+            logger.info(f"THEN captured {len(events)} event(s) after {len(transcript)} turn(s): {events}")
 
             amounts = sorted(e.get("amount") for e in events)
             assert amounts == [8000, 20000, 30000], (
                 f"Expected 3 separate components with amounts 8000/20000/30000, got "
-                f"{amounts} - if this fails, the model did not split the message per "
-                f"component (see spec.md 'Deferred to a follow-on feature')"
+                f"{amounts} (transcript: {transcript!r}) - if this fails, the model did "
+                f"not split the message per component (see spec.md 'Deferred to a "
+                f"follow-on feature')"
             )
             for e in events:
                 assert e["source_type"] == "הסכם"
@@ -331,7 +407,8 @@ class TestLedgerEventCaptureTextBilled:
                 self._assert_message_links_back_to_event(denidin_app, chat_id, e)
 
             # each component's event_id must share the same letter+DDMMYY+HHMM prefix,
-            # with sequential seq (0,1,2), never colliding
+            # with sequential seq (0,1,2), never colliding - guaranteed by the driver
+            # only ever asserting on one turn's worth of events (never a cross-turn mix).
             prefixes = {e["event_id"][:-1] for e in events}
             assert len(prefixes) == 1, f"expected all 3 to share one letter+minute prefix, got {prefixes}"
             seqs = sorted(int(e["event_id"][-1]) for e in events)
@@ -431,9 +508,12 @@ class TestLedgerEventCaptureTextBilled:
     ):
         """Given the EXACT real single-day hourly work-log message "רן אורפני 4 שעות
         על היום", When processed, Then ONE event is captured with client_name, hours,
-        and txn_date (REQ-DATA-005) all correctly populated - txn_date must equal
-        TODAY's real local date, resolved by the model itself from its injected
-        current-date context, not copied from event_date by coincidence."""
+        and txn_date (REQ-DATA-005) all correctly populated - txn_date must equal the
+        Israel-local date of the message's OWN timestamp (every real
+        AIHandler._build_instructions call site passes today_timestamp=request.timestamp,
+        confirmed 2026-08-18 - "today" is always resolved against the message's own
+        timestamp, never real wall-clock time), not copied from event_date by
+        coincidence."""
         from denidin import handle_text_message
 
         chat_id = self._fresh_chat_id("hours_single_day")
@@ -465,9 +545,11 @@ class TestLedgerEventCaptureTextBilled:
 
         assert "רן אורפני" in (captured.get("client_name") or "")
         assert captured.get("hours") == 4.0, f"expected hours=4.0 (REQ-DATA-009), got {captured.get('hours')!r}"
-        assert captured.get("txn_date") == self._israel_date_str(0), (
-            f"expected txn_date={self._israel_date_str(0)!r} (today), got "
-            f"{captured.get('txn_date')!r}"
+        expected_txn_date = self._israel_date_str(1770002000, 0)
+        assert captured.get("txn_date") == expected_txn_date, (
+            f"expected txn_date={expected_txn_date!r} (the Israel-local date of the "
+            f"message's own timestamp - 'today' is resolved against request.timestamp, "
+            f"not real wall-clock time), got {captured.get('txn_date')!r}"
         )
         assert captured["source_type"] == "הסכם"
         self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
@@ -515,8 +597,8 @@ class TestLedgerEventCaptureTextBilled:
             self._assert_message_links_back_to_event(denidin_app, chat_id, e)
 
         by_txn_date = {e.get("txn_date"): e for e in events}
-        today_str = self._israel_date_str(0)
-        yesterday_str = self._israel_date_str(1)
+        today_str = self._israel_date_str(1770002100, 0)
+        yesterday_str = self._israel_date_str(1770002100, 1)
         assert set(by_txn_date.keys()) == {today_str, yesterday_str}, (
             f"expected txn_date values {{today={today_str!r}, yesterday={yesterday_str!r}}}, "
             f"got {set(by_txn_date.keys())!r}"
@@ -578,9 +660,260 @@ class TestLedgerEventCaptureTextBilled:
             self._assert_message_links_back_to_event(denidin_app, chat_id, e)
 
         txn_dates = {e.get("txn_date") for e in events}
-        today_str = self._israel_date_str(0)
-        yesterday_str = self._israel_date_str(1)
+        today_str = self._israel_date_str(1770002200, 0)
+        yesterday_str = self._israel_date_str(1770002200, 1)
         assert txn_dates == {today_str, yesterday_str}, (
             f"expected txn_date values {{today={today_str!r}, yesterday={yesterday_str!r}}}, "
             f"got {txn_dates!r}"
         )
+
+    # ------------------------------------------------------------------
+    # 2026-08-18 PLAYER-REVIEW FOLLOW-UP - real E2E coverage for the 10 findings
+    # from a full interactive human review (approve/correct each real capture)
+    # of a real historical export. Findings that need a real בנק image (checks,
+    # payer_name/vat_status enforcement on בנק) are NOT coverable here - this
+    # file is text-only by definition; those are covered instead by
+    # tests/expensive/test_ledger_event_capture_e2e.py's image-flow tests.
+    # ------------------------------------------------------------------
+
+    def test_given_real_conditional_fee_text_then_trigger_condition_captured(self, denidin_app):
+        """Finding #10: trigger_condition was previously hardcoded null with no
+        schema property at all - LEDGER_EVENT_TOOL never exposed it, so a
+        textbook conditional fee had nowhere to go. Given the real message that
+        surfaced this (דוד אדלר, msg 18 of the גביה TEST export review - a base
+        fee plus a second component conditional on the request being set for a
+        hearing), When processed, Then at least one persisted component carries
+        a non-null trigger_condition describing that condition."""
+        from denidin import handle_text_message
+
+        chat_id = self._fresh_chat_id("trigger_condition")
+        raw_text = (
+            "דוד אדלר\n"
+            "חיפה\n"
+            "שכר טירחה\n"
+            "כתיבה והגשה של בקשת רשות ערעור, 10,000 שח\n"
+            "אם הבקשה נקבעת לדיון עוד 5000₪"
+        )
+        notification = create_real_notification({
+            'typeWebhook': 'incomingMessageReceived',
+            'timestamp': 1770003000,
+            'idMessage': 'LEDGER_E2E_TRIGGER_CONDITION_001',
+            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
+            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
+            'messageData': {
+                'typeMessage': 'textMessage',
+                'textMessageData': {'textMessage': raw_text}
+            }
+        })
+
+        logger.info("GIVEN the real דוד אדלר conditional-fee message (bקשה נקבעת לדיון)")
+        handle_text_message(notification)
+        logger.info("WHEN DeniDin processes it")
+
+        response = get_response(notification)
+        assert_response_exists(response)
+
+        events = self._assert_ledger_events_persisted(
+            denidin_app, chat_id, expected_count=None, expected_event_timestamp=1770003000
+        )
+        logger.info(f"THEN captured {len(events)} event(s): {events}")
+
+        conditional = [e for e in events if e.get("trigger_condition")]
+        assert conditional, (
+            "expected at least one component to carry a non-null trigger_condition "
+            f"for the 'אם הבקשה נקבעת לדיון' clause - got events={events!r}"
+        )
+        assert "דיון" in conditional[0]["trigger_condition"], (
+            f"expected trigger_condition to reference the hearing condition, got "
+            f"{conditional[0]['trigger_condition']!r}"
+        )
+        for e in events:
+            assert e["source_type"] == "הסכם"
+            assert "אדלר" in (e.get("client_name") or "")
+
+    def test_given_real_addition_language_then_reference_hint_captured(self, denidin_app):
+        """Finding #9: reference_hint was missed for an explicit 'addition' message
+        ("תוספת על X ששולם") in the real review, despite it being exactly the kind
+        of prior-relating language the field exists for. Given a first message
+        establishing a paid fee, then a second message stating an addition to it
+        in the SAME conversation, When processed, Then the second capture has
+        reference_hint set (and reference resolves to the placeholder)."""
+        from denidin import handle_text_message
+
+        chat_id = self._fresh_chat_id("addition_reference")
+
+        first = create_real_notification({
+            'typeWebhook': 'incomingMessageReceived',
+            'timestamp': 1770004000,
+            'idMessage': 'LEDGER_E2E_ADDITION_BASE_001',
+            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
+            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
+            'messageData': {
+                'typeMessage': 'textMessage',
+                'textMessageData': {'textMessage': 'ליאור טדלה\nשימוע 9,000₪'}
+            }
+        })
+        logger.info("GIVEN a first message establishing a paid fee (ליאור טדלה, 9,000₪)")
+        handle_text_message(first)
+        assert_response_exists(get_response(first))
+
+        second = create_real_notification({
+            'typeWebhook': 'incomingMessageReceived',
+            'timestamp': 1770004100,
+            'idMessage': 'LEDGER_E2E_ADDITION_FOLLOWUP_001',
+            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
+            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
+            'messageData': {
+                'typeMessage': 'textMessage',
+                'textMessageData': {'textMessage': 'ליאור טדלה\n6000₪ תוספת על 9000₪ ששולם'}
+            }
+        })
+        logger.info("GIVEN a follow-up 'תוספת' (addition) message in the SAME conversation")
+        handle_text_message(second)
+        logger.info("WHEN DeniDin processes it")
+        assert_response_exists(get_response(second))
+
+        # NOTE: doesn't use _assert_ledger_events_persisted - that helper asserts
+        # every returned event shares ONE expected_event_timestamp, but this test
+        # spans two messages with two different timestamps (1770004000/…4100) by
+        # design. Read events directly instead.
+        events = self._events_for_chat(denidin_app, chat_id)
+        assert events, f"expected at least one persisted event for {chat_id}, found none"
+        addition_events = [e for e in events if e.get("amount") == 6000]
+        assert addition_events, f"expected an event with amount=6000 (the addition), got {events!r}"
+
+        addition = addition_events[0]
+        assert addition.get("reference_hint"), (
+            "expected reference_hint to be set for an explicit 'תוספת' addition "
+            f"message, got {addition.get('reference_hint')!r}"
+        )
+        assert addition.get("reference") == "צריך למצוא", (
+            f"expected reference to resolve to the placeholder given reference_hint "
+            f"was set, got {addition.get('reference')!r}"
+        )
+
+    def test_given_ambiguous_hyphenated_name_then_model_asks_clarifying_question(self, denidin_app):
+        """Finding #2: material name ambiguity (a hyphenated name that could be one
+        full name or a client+matter/payer split) should prompt a clarifying
+        question rather than a silent guess. This is a genuine test of real model
+        judgment, not persistence code - per this file's existing precedent
+        (test_given_real_gilyan_davidian...), write the strict correct assertion
+        and accept it as real, separately-actionable signal if the model doesn't
+        ask. Uses the exact real message from the player review that surfaced
+        this finding."""
+        from denidin import handle_text_message
+
+        chat_id = self._fresh_chat_id("hyphenated_name_ask")
+        notification = create_real_notification({
+            'typeWebhook': 'incomingMessageReceived',
+            'timestamp': 1770005000,
+            'idMessage': 'LEDGER_E2E_HYPHENATED_NAME_001',
+            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
+            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
+            'messageData': {
+                'typeMessage': 'textMessage',
+                'textMessageData': {'textMessage': 'ליאור - שסטוביץ\nשימוע 9,000₪'}
+            }
+        })
+
+        logger.info("GIVEN the real ambiguous hyphenated-name message (ליאור - שסטוביץ)")
+        handle_text_message(notification)
+        logger.info("WHEN DeniDin processes it")
+
+        response = get_response(notification)
+        assert_response_exists(response)
+
+        assert "?" in response, (
+            "expected the model to ask a clarifying question about whether this is "
+            "one person's full name or a client+matter/payer split - got reply: "
+            f"{response!r}"
+        )
+
+    def test_given_real_minimal_hourly_message_then_captured_not_missed(self, denidin_app):
+        """Finding #8 (real observed miss, 2026-08-17 player review): a
+        structurally normal hourly work-log message with just client+matter+hours
+        and nothing else produced ZERO ledger events in one real run. Given the
+        real message that missed ("אורית בנימין מקורות שעתיים"), When processed,
+        Then exactly one event IS captured with hours populated - locks in the
+        strengthened 'no exceptions' constitution wording as real, checkable
+        behavior, not just prompt text.
+
+        2026-08-18: a single-shot version of this test (assert-on-turn-1-only)
+        failed a real run - not because the event was missed (the original
+        finding #8 bug this test guards against), but because the model asked
+        a clarifying question first ("באיזה תאריך בוצעו שעתיים העבודה עבור אורית
+        בנימין בנושא מקורות?" - the message gives no date at all, so the model
+        reasonably wants one before capturing). That's legitimate real
+        non-determinism, same category as the גיליאן דוידיאן test above - not
+        a recurrence of finding #8 (which was a silent, unexplained skip with
+        no question asked at all). Switched to the same
+        converse_until_ledger_events_captured + ClarificationAnswerBank
+        mechanism so the test tolerates either real behavior (direct capture,
+        or ask-then-answer-then-capture) while still failing loudly if no
+        event is ever captured within max_turns - which is the actual
+        regression this test exists to catch."""
+        from denidin import handle_text_message
+
+        chat_id = self._fresh_chat_id("hourly_minimal_regression")
+        raw_text = "אורית בנימין\nמקורות\nשעתיים"
+        answer_bank = ClarificationAnswerBank([
+            {
+                "topic": "date",
+                "keywords": ["תאריך", "מתי", "באיזה יום"],
+                "answer": "היום",
+            },
+            {
+                "topic": "rate",
+                "keywords": ["תעריף", "מחיר לשעה", "שכר לשעה", "כמה לשעה"],
+                "answer": "התעריף לא צוין, תשאיר את זה ריק",
+            },
+            {
+                "topic": "matter_clarification",
+                "keywords": ["מהו הנושא", "איזה עניין", "מה זה מקורות", "מה הכוונה במקורות"],
+                "answer": "מקורות הוא שם התיק/העניין של הלקוחה אורית בנימין",
+            },
+        ])
+
+        MAX_TURNS = 4
+        BASE_TIMESTAMP = 1770006000
+
+        # Same REQ-ID-002/003 bucket-collision concern as the גיליאן דוידיאן
+        # test above - a multi-turn conversation can span more than one
+        # letter+DDMMYY+HHMM bucket, which the class-level
+        # _clean_fixed_timestamp_events fixture (single-timestamp only) does
+        # not cover.
+        stale_prefixes = reserve_ledger_event_bucket_prefixes(BASE_TIMESTAMP, MAX_TURNS)
+
+        def _clean_stale_events():
+            for prefix in stale_prefixes:
+                for stale_file in Path(denidin_app.ai_handler.ledger_event_manager.storage_dir).glob(f"{prefix}*.json"):
+                    stale_file.unlink()
+
+        _clean_stale_events()
+
+        try:
+            logger.info("GIVEN the real minimal hourly message that missed in an earlier run (אורית בנימין מקורות שעתיים)")
+            events, transcript = converse_until_ledger_events_captured(
+                handle_text_message=handle_text_message,
+                chat_id=chat_id,
+                first_message_text=raw_text,
+                answer_bank=answer_bank,
+                events_for_chat=lambda cid: self._events_for_chat(denidin_app, cid),
+                base_timestamp=BASE_TIMESTAMP,
+                base_id_message="LEDGER_E2E_HOURLY_MINIMAL",
+                sender_data={'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
+                max_turns=MAX_TURNS,
+                test_logger=logger,
+            )
+            logger.info(f"THEN captured {len(events)} event(s) after {len(transcript)} turn(s): {events}")
+
+            assert len(events) == 1, (
+                f"expected exactly 1 event (finding #8 regression - this message must "
+                f"never be silently skipped), got {len(events)} (transcript: {transcript!r})"
+            )
+            captured = events[0]
+            assert "אורית בנימין" in (captured.get("client_name") or "")
+            assert captured.get("hours") == 2.0, f"expected 'שעתיים' resolved to 2.0, got {captured.get('hours')!r}"
+            assert captured["source_type"] == "הסכם"
+        finally:
+            _clean_stale_events()

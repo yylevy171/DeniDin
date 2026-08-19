@@ -140,32 +140,36 @@ class TestAIHandlerGetResponseWithMemory:
             request,
             chat_id="chat_123",
             user_role="client",
-            sender="whatsapp_tester1",
-            recipient="AI_test"
+            sender="whatsapp_tester1",  # resolved display name
+            sender_phone="972500000001@c.us",  # 2026-08-19: the real WhatsApp JID
         )
 
         # Verify both messages were stored
         assert handler.session_manager.add_message_with_token_limit.call_count == 2
 
-        # First call: user message. Feature 039: "recipient" is no longer passed at
-        # all for user-role persistence - SessionManager forces it to None itself
-        # (redundant with role="user"), so there's nothing meaningful to pass here.
+        # First call: user message. 2026-08-19: sender/recipient are now real
+        # WhatsApp identifiers, always passed (never omitted based on role) -
+        # sender_name carries the resolved display name. own_whatsapp_number is
+        # unresolved in this test (no live Green API), so the 1:1 recipient
+        # (DeniDin's own number) is None - a real, honest value, not omitted.
         first_call = handler.session_manager.add_message_with_token_limit.call_args_list[0]
         assert first_call[1]["chat_id"] == "chat_123"
         assert first_call[1]["role"] == "user"
         assert first_call[1]["content"] == "Hello"
-        assert first_call[1]["sender"] == "whatsapp_tester1"
-        assert "recipient" not in first_call[1]
+        assert first_call[1]["sender"] == "972500000001@c.us"
+        assert first_call[1]["sender_name"] == "whatsapp_tester1"
+        assert first_call[1]["recipient"] is None
+        assert first_call[1]["recipient_name"] == "DeniDin"
 
-        # Second call: assistant message. Feature 039: "sender" is no longer passed
-        # at all for assistant-role persistence (redundant with role="assistant",
-        # the old "AI"/"AI_test" sentinel is retired) - recipient is still the
-        # original sender, so DeniDin's reply is attributed to who it was for.
+        # Second call: assistant message - sender is DeniDin's own number
+        # (None here, unresolved), recipient is the real sender's number.
         second_call = handler.session_manager.add_message_with_token_limit.call_args_list[1]
         assert second_call[1]["role"] == "assistant"
         assert second_call[1]["content"] == "Hello! How can I help you?"
-        assert "sender" not in second_call[1]
-        assert second_call[1]["recipient"] == "whatsapp_tester1"  # sender becomes recipient for AI
+        assert second_call[1]["sender"] is None
+        assert second_call[1]["sender_name"] == "DeniDin"
+        assert second_call[1]["recipient"] == "972500000001@c.us"
+        assert second_call[1]["recipient_name"] == "whatsapp_tester1"
 
 
 class TestAIHandlerConversationHistory:

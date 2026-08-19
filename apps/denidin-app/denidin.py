@@ -8,11 +8,12 @@ import logging
 import os
 import sys
 import signal
-from typing import Optional
+from typing import Any, Callable, Dict, Optional
 from whatsapp_chatbot_python import Notification
 from openai import OpenAI
 from src.models.config import AppConfiguration
 from src.utils.logger import get_logger
+from src.sources.green_api_source import GreenAPIMessageSource
 from src.utils.green_api_bot import (
     DeniDinGreenAPIBot,
     mark_message_read,
@@ -84,12 +85,6 @@ def mask_api_key(key: str) -> str:
     return f"{key[:4]}...{key[-4:]}"
 
 
-# Initialize Green API client
-bot = DeniDinGreenAPIBot(
-    config.green_api_instance_id,
-    config.green_api_token
-)
-
 # Initialize OpenAI client
 ai_client = OpenAI(
     api_key=config.ai_api_key,
@@ -101,7 +96,7 @@ ai_client = OpenAI(
 denidin_app = None
 
 
-def _fetch_own_whatsapp_number() -> str:
+def _fetch_own_whatsapp_number(green_api: Optional[Any]) -> str:
     """bugfix-024: fetch DeniDin's own WhatsApp phone number ONCE, via a real Green
     API getWaSettings call - confirmed live (2026-08-05) to return {"phone": "<bare
     digits>", ...}, e.g. "972559723730". Needed because WhatsApp's native @-mention
@@ -109,18 +104,28 @@ def _fetch_own_whatsapp_number() -> str:
     a display name (see bugfix-024's spec for the incident this fixes) - the app
     needs its own number to deterministically recognize a self-mention.
 
-    Reuses the module-level `bot` (never constructs a second GreenAPIBot - its own
-    constructor has a real side effect of draining pending incoming notifications
-    from the live Green API instance, which must only ever happen once, for the one
-    real bot instance).
+    Args:
+        green_api: the real Green API client (e.g. a live GreenAPIMessageSource's
+            `.connect().api`), constructor-injected (Feature 043 - no module-level
+            `bot` global exists anymore, see research.md R3). `None` when the caller
+            has no live Green API connection at all (e.g. a replay/player run) -
+            degrades to "" exactly like a failed/unreachable real call, via the same
+            broad except below.
 
-    Never raises - a failed/unreachable call degrades to "" (self-mention-by-number
-    detection unavailable this run, everything else unaffected), matching this
-    codebase's fail-open convention for non-critical startup data (CONSTITUTION §VI).
-    Called once per `initialize_app()` call, never per message.
+    Never raises - a failed/unreachable call, or green_api=None, degrades to ""
+    (self-mention-by-number detection unavailable this run, everything else
+    unaffected), matching this codebase's fail-open convention for non-critical
+    startup data (CONSTITUTION §VI). Called once per `initialize_app()` call, never
+    per message.
     """
+    if green_api is None:
+        logger.info(
+            "No live Green API client supplied - self-mention-by-number "
+            "detection unavailable this run"
+        )
+        return ""
     try:
-        response = bot.api.account.getWaSettings()
+        response = green_api.account.getWaSettings()
         if response.code == 200 and isinstance(response.data, dict):
             phone = response.data.get('phone', '')
             if phone:
@@ -161,6 +166,17 @@ class DeniDin:
         # feature flag, always started - see reminder_delivery_service.py).
         self.reminder_scheduler = reminder_scheduler
         self._logger = get_logger(__name__)
+        # Feature 048's typing indicator needs the live bot (bot.api.serviceMethods.
+        # sendTyping) at message-processing time, same as mark_message_read needs it
+        # at notification-received time - but Feature 043 deliberately removed the
+        # module-level `bot` global those used to close over (research.md R3). Set
+        # as a post-construction attribute in __main__, same idiom as
+        # GreenAPIMessageSource.is_blocked (see its own docstring for why this can't
+        # be a constructor param: __main__ constructs GreenAPIMessageSource, then
+        # this DeniDin instance, in that order). None here (the default) means "no
+        # live bot" - correct for tests/the player, where send_typing_indicator's own
+        # broad except degrades this to a harmless logged warning, never a crash.
+        self.green_api_bot: Optional[Any] = None
     
     def handle_message(self, chat_id: str, content: str) -> dict:
         """
@@ -202,7 +218,10 @@ class DeniDin:
         ai_response = self.ai_handler.get_response(
             ai_request,
             sender=message.sender_display_name,
-            user_phone=message.sender_id
+            user_phone=message.sender_id,
+            sender_phone=message.sender_id,
+            is_group=message.is_group,
+            chat_name=message.chat_name
         )
         
         # Get session_id from session manager
@@ -289,14 +308,23 @@ def _handle_not_initialized_error(notification: Notification, message_type: str)
         pass
 
 
-def initialize_app(config_dict: dict) -> DeniDin:
+def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDin:
     """
     Initialize DeniDin app with provided configuration.
-    Used by integration tests to create app instance programmatically.
-    
+    Used by integration tests (and, Feature 043, the WhatsApp export player) to
+    create an app instance programmatically.
+
     Args:
         config_dict: Configuration dictionary (from JSON)
-        
+        green_api: the real Green API client (e.g. a live GreenAPIMessageSource's
+            `.connect().api`), constructor-injected (Feature 043 - initialize_app
+            no longer reaches for a module-level `bot` global, see research.md R3).
+            Used only for `_fetch_own_whatsapp_number` and `GroupMembershipResolver`
+            - both already degrade gracefully (broad `except Exception`/a `None`
+            client caught at call time, never at construction) when this is `None`,
+            which is the expected/normal case for a caller with no live Green API
+            connection at all (e.g. the player - see spec.md's "player" framing).
+
     Returns:
         DeniDin instance with handle_message(), get_collection(), shutdown() APIs
     """
@@ -321,14 +349,18 @@ def initialize_app(config_dict: dict) -> DeniDin:
 
     # bugfix-024: resolve DeniDin's own WhatsApp number ONCE at startup (real Green
     # API call, never per-message) - see _fetch_own_whatsapp_number's docstring.
-    ai_handler.own_whatsapp_number = _fetch_own_whatsapp_number()
-    
+    ai_handler.own_whatsapp_number = _fetch_own_whatsapp_number(green_api)
+
     # Initialize WhatsApp handler (without media_handler initially)
     whatsapp_handler = WhatsAppHandler()
 
     # Feature 039: most-permissive-role RBAC resolution for group turns - built off
-    # the module-level bot's own Green API groups client, never a new global.
-    group_membership_resolver = GroupMembershipResolver(bot.api.groups, ai_handler.user_manager)
+    # the injected green_api's own Green API groups client (Feature 043: no longer a
+    # module-level `bot` global). GroupMembershipResolver.resolve() already degrades
+    # gracefully (falls back to sender-only RBAC) if green_api is None here.
+    group_membership_resolver = GroupMembershipResolver(
+        green_api.groups if green_api is not None else None, ai_handler.user_manager
+    )
 
     # Create DeniDin instance (will be used as context for background threads and MediaHandler)
     denidin = DeniDin(
@@ -362,28 +394,25 @@ def initialize_app(config_dict: dict) -> DeniDin:
     # Feature 054: reminder delivery scheduler is deliberately NOT started here.
     # initialize_app() is the shared bootstrap tests/integration/ calls directly
     # (a process-global denidin_app singleton, reused across test files) -
-    # starting a real APScheduler against the real `bot` object here would let
+    # starting a real APScheduler against the real bot object here would let
     # an ordinary test run reach bot.api.sending.sendMessage unattended, using
-    # config.test.json's real (not sandboxed) Green API credentials. Every
-    # OTHER real bot.api call in this codebase (mark_message_read,
-    # send_typing_indicator) is safe in tests only because its trigger point
-    # (bot.on_notification_received, fired from run_forever()'s live polling
-    # loop) is never reached by any test - they dispatch straight to router
-    # handler functions instead. The reminder scheduler follows that same
-    # discipline: wired in __main__ below, alongside bot.run_forever() itself,
-    # never inside this shared bootstrap. See tasks.md T013's note (2026-08-17)
-    # for the incident this design avoided (caught before any real send
-    # happened - test_data/reminders/reminders.db had zero rows at the time).
+    # config.test.json's real (not sandboxed) Green API credentials. This
+    # function no longer has access to the live bot instance itself anyway
+    # (Feature 043 - only `green_api`, the `.api` client, is injected) - the
+    # reminder scheduler needs the FULL live bot (send_proactive_message calls
+    # bot.api.sending.sendMessage), so it's wired in __main__ below instead,
+    # alongside message_source.start() itself, using `live_bot` directly. See
+    # tasks.md T013's note (2026-08-17) for the incident this design avoided
+    # (caught before any real send happened - test_data/reminders/reminders.db
+    # had zero rows at the time).
 
-    # Feature 045: mark every non-blocked sender's incoming message as read, as early as
-    # possible (before route_event dispatches to any handler) - see
-    # src/utils/green_api_bot.py's mark_message_read/on_notification_received.
-    def _on_notification_received(body: dict) -> None:
-        chat_id = body.get("senderData", {}).get("chatId", "")
-        is_blocked = bool(chat_id) and ai_handler.user_manager.get_user(chat_id).is_blocked
-        mark_message_read(bot, body, is_blocked=is_blocked)
-
-    bot.on_notification_received = _on_notification_received
+    # Feature 045's read-receipt hook (mark every non-blocked sender's incoming
+    # message as read) is wired by GreenAPIMessageSource.start(), not here -
+    # this function no longer has access to the live bot instance itself
+    # (Feature 043 - only `green_api`, the `.api` client, is injected), and a
+    # caller with no live Green API connection at all (e.g. the player) has no
+    # bot to mark anything read on anyway. See green_api_source.py's
+    # start()/`_build_read_receipt_hook` docstrings.
 
     return denidin
 
@@ -473,7 +502,8 @@ def _process_conversational_message(notification: Notification) -> None:
         # testing surfaced an unresolved scheduling delay; accepted limitation that the
         # indicator may lapse before the reply arrives on turns slower than ~20s.
         is_blocked = denidin_app.ai_handler.user_manager.get_user(message.sender_id).is_blocked
-        send_typing_indicator(bot, message.chat_id, is_blocked)
+        if denidin_app.green_api_bot is not None:
+            send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
         # Get AI response (with retry logic and fallbacks built-in)
         # Feature 039: pass the resolved display name (not the raw WhatsApp id) as
@@ -488,7 +518,10 @@ def _process_conversational_message(notification: Notification) -> None:
         ai_response = denidin_app.ai_handler.get_response(
             ai_request,
             sender=message.sender_display_name,
-            user_phone=group_user_phone or message.sender_id
+            user_phone=group_user_phone or message.sender_id,
+            sender_phone=message.sender_id,
+            is_group=message.is_group,
+            chat_name=message.chat_name
         )
         logger.info(
             f"{tracking} AI response generated: {ai_response.tokens_used} tokens, "
@@ -586,12 +619,12 @@ def _process_media_message(notification: Notification) -> None:
 
     message = WhatsAppMessage.from_notification(notification)
     is_blocked = denidin_app.ai_handler.user_manager.get_user(message.sender_id).is_blocked
-    send_typing_indicator(bot, message.chat_id, is_blocked)
+    if denidin_app.green_api_bot is not None:
+        send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
     denidin_app.whatsapp_handler.handle_media_message(notification)
 
 
-@bot.router.message(type_message=["textMessage", "extendedTextMessage"])
 def handle_text_message(notification: Notification) -> None:
     """
     Handle incoming text messages from WhatsApp with comprehensive error handling.
@@ -608,7 +641,6 @@ def handle_text_message(notification: Notification) -> None:
     _process_conversational_message(notification)
 
 
-@bot.router.message(type_message="contactMessage")
 def handle_contact_message(notification: Notification) -> None:
     """
     Handle a single shared WhatsApp contact card (Feature 030).
@@ -630,7 +662,6 @@ def handle_contact_message(notification: Notification) -> None:
     _process_conversational_message(notification)
 
 
-@bot.router.message(type_message="contactsArrayMessage")
 def handle_contacts_array_message(notification: Notification) -> None:
     """
     Handle multiple WhatsApp contacts shared at once (Feature 030).
@@ -653,7 +684,6 @@ def handle_contacts_array_message(notification: Notification) -> None:
     log_outbound(notification.event.get("senderData", {}).get("chatId", ""), CONTACT_CARD_ONE_AT_A_TIME, kind="text")
 
 
-@bot.router.message(type_message="imageMessage")
 def handle_image_message(notification: Notification) -> None:
     """
     Handle incoming image messages from WhatsApp.
@@ -670,7 +700,6 @@ def handle_image_message(notification: Notification) -> None:
     _process_media_message(notification)
 
 
-@bot.router.message(type_message="documentMessage")
 def handle_document_message(notification: Notification) -> None:
     """
     Handle incoming document messages from WhatsApp.
@@ -687,7 +716,6 @@ def handle_document_message(notification: Notification) -> None:
     _process_media_message(notification)
 
 
-@bot.router.message(type_message="videoMessage")
 def handle_video_message(notification: Notification) -> None:
     """
     Handle incoming video messages from WhatsApp.
@@ -704,7 +732,6 @@ def handle_video_message(notification: Notification) -> None:
     _process_media_message(notification)
 
 
-@bot.router.message(type_message="audioMessage")
 def handle_audio_message(notification: Notification) -> None:
     """
     Handle incoming audio messages from WhatsApp.
@@ -721,7 +748,6 @@ def handle_audio_message(notification: Notification) -> None:
     _process_media_message(notification)
 
 
-@bot.router.message(type_message="interactiveButtonsResponse")
 def handle_button_tap(notification: Notification) -> None:
     """
     Feature 047: handle a WhatsApp interactive-buttons tap resolving a pending
@@ -731,7 +757,12 @@ def handle_button_tap(notification: Notification) -> None:
     research.md confirmed the library's own ButtonObserver only matches the older,
     deprecated button-reply types (buttonsResponseMessage/templateButtonsReplyMessage/
     listResponseMessage), never interactiveButtonsResponse (the type a real
-    sendInteractiveButtons tap actually produces, per Gate Zero).
+    sendInteractiveButtons tap actually produces, per Gate Zero). Registration itself
+    happens via GreenAPIMessageSource's explicit message_types list in __main__
+    (Feature 043 - no module-level `bot`/decorator, see research.md R3), deliberately
+    NOT via HANDLER_REGISTRY/dispatch_notification (that dict's exact-8-types shape
+    is locked by an existing immutable test predating this feature) - dispatch_notification
+    special-cases this one type instead.
 
     Args:
         notification: Green API notification object containing the tap
@@ -781,7 +812,6 @@ def handle_button_tap(notification: Notification) -> None:
     logger.info(f"[047] Button tap resolved and response sent for chat={message.chat_id!r}")
 
 
-@bot.router.message()
 def handle_unsupported_message_default(notification: Notification) -> None:
     """
     Catch-all handler for unsupported message types.
@@ -798,6 +828,53 @@ def handle_unsupported_message_default(notification: Notification) -> None:
 
     denidin_app.whatsapp_handler.handle_unsupported_message(notification)
 
+
+# Feature 043: handler-dispatch table, replacing the module-scope
+# @bot.router.message(...) decorators that used to sit directly above each
+# handler function - those required a live `bot` object to exist at module
+# import time (see research.md R3), which this feature's MessageSource
+# abstraction (src/sources/) eliminates. Every handler function above stays
+# a plain, undecorated function; dispatch_notification() plus this registry
+# is the single source of truth for "which handler does this message type
+# route to," used identically by denidin.py's own live entry point (via
+# GreenAPIMessageSource, below) and by anything else that supplies
+# notifications through a different MessageSource (e.g. the Feature 043
+# player, player/) - both call dispatch_notification the same way.
+HANDLER_REGISTRY: Dict[str, Callable[[Notification], None]] = {
+    "textMessage": handle_text_message,
+    "extendedTextMessage": handle_text_message,
+    "contactMessage": handle_contact_message,
+    "contactsArrayMessage": handle_contacts_array_message,
+    "imageMessage": handle_image_message,
+    "documentMessage": handle_document_message,
+    "videoMessage": handle_video_message,
+    "audioMessage": handle_audio_message,
+}
+
+# Matches the old bare `@bot.router.message()` catch-all exactly - any
+# message type not present in HANDLER_REGISTRY routes here.
+CATCH_ALL_HANDLER: Callable[[Notification], None] = handle_unsupported_message_default
+
+
+def dispatch_notification(type_message: str, notification: Notification) -> None:
+    """The dispatch callable every MessageSource.start() calls - looks up
+    HANDLER_REGISTRY, falling back to CATCH_ALL_HANDLER for any type not
+    explicitly registered (same behavior the old catch-all decorator gave,
+    just explicit instead of relying on router iteration order).
+
+    interactiveButtonsResponse (Feature 047) is special-cased rather than added
+    to HANDLER_REGISTRY itself: that dict's exact-8-types shape is locked by an
+    existing immutable test (test_denidin_dispatch.py) predating Feature 047's
+    merge into this branch - widening it needs its own explicit human sign-off,
+    not a side effect of a git merge. __main__ registers this type explicitly
+    with GreenAPIMessageSource alongside HANDLER_REGISTRY's own keys, so it
+    still reaches here rather than falling through to CATCH_ALL_HANDLER.
+    """
+    if type_message == "interactiveButtonsResponse":
+        handle_button_tap(notification)
+        return
+    handler = HANDLER_REGISTRY.get(type_message, CATCH_ALL_HANDLER)
+    handler(notification)
 
 
 if __name__ == "__main__":
@@ -828,19 +905,51 @@ if __name__ == "__main__":
         'reminders': config.reminders
     }
 
+    # Feature 043: construct the live Green API bot explicitly here (via
+    # GreenAPIMessageSource.connect(), NOT at module import time - see
+    # research.md R3) and pass its real client into initialize_app(), which
+    # needs it for _fetch_own_whatsapp_number/GroupMembershipResolver before
+    # the blocking listen loop (message_source.start(), below) begins.
+    # message_types is constructor-injected (not passed to start()) so
+    # start(dispatch) has the exact same signature as PlayerExportSource's -
+    # see green_api_source.py's own docstring. interactiveButtonsResponse
+    # (Feature 047) is appended explicitly rather than folded into
+    # HANDLER_REGISTRY itself - see dispatch_notification's docstring for why.
+    message_source = GreenAPIMessageSource(
+        config, message_types=list(HANDLER_REGISTRY.keys()) + ["interactiveButtonsResponse"]
+    )
+    live_bot = message_source.connect()
+
     # Initialize app (handles memory system, cleanup thread, recovery)
-    denidin = initialize_app(config_dict)
+    denidin = initialize_app(config_dict, green_api=live_bot.api)
 
     # Set global denidin_app for WhatsApp message handler
     denidin_app = denidin
 
+    # Feature 048's typing indicator: same post-construction-attribute idiom as
+    # message_source.is_blocked below - see DeniDin.__init__'s green_api_bot
+    # docstring for why this can't be a constructor/initialize_app() arg either.
+    denidin_app.green_api_bot = live_bot
+
+    # Feature 045's read-receipt hook: set as a post-construction attribute,
+    # not a constructor/start() arg - denidin.ai_handler.user_manager doesn't
+    # exist yet at the point message_source itself had to be constructed
+    # (connect() -> initialize_app(green_api=...) -> denidin, above). See
+    # green_api_source.py's is_blocked docstring for the full reasoning.
+    message_source.is_blocked = (
+        lambda chat_id: denidin.ai_handler.user_manager.get_user(chat_id).is_blocked
+    )
+
     # Feature 054: reminder delivery scheduler - deliberately started HERE, not
     # inside initialize_app() (see that function's comment for why: this is the
-    # real, live-running app, gated the same way bot.run_forever() below is -
-    # never reachable from initialize_app()'s test-harness callers). No feature
-    # flag - unconditional, RBAC alone gates reminder *creation*.
-    run_startup_reminder_sweep(denidin, bot)
-    denidin.reminder_scheduler = start_reminder_scheduler(denidin, bot)
+    # real, live-running app, gated the same way message_source.start()'s
+    # blocking bot.run_forever() below is - never reachable from
+    # initialize_app()'s test-harness callers). Uses `live_bot` (Feature 043 -
+    # initialize_app() itself only ever receives `green_api`, the `.api`
+    # client, not the full bot object send_proactive_message needs). No
+    # feature flag - unconditional, RBAC alone gates reminder *creation*.
+    run_startup_reminder_sweep(denidin, live_bot)
+    denidin.reminder_scheduler = start_reminder_scheduler(denidin, live_bot)
     
     # Perform orphaned session recovery if memory enabled
     if denidin.ai_handler.memory_enabled:
@@ -874,12 +983,13 @@ if __name__ == "__main__":
                 denidin.cleanup_thread.stop()
 
             # Feature 054: stop the reminder delivery scheduler (unconditional -
-            # no feature flag, always started in initialize_app())
+            # no feature flag, always started in __main__ above)
             if denidin.reminder_scheduler is not None:
                 logger.info("Stopping reminder delivery scheduler...")
                 denidin.reminder_scheduler.shutdown(wait=False)
 
-            # Raise KeyboardInterrupt to break out of bot.run_forever()
+            # Raise KeyboardInterrupt to break out of message_source.start()'s
+            # blocking bot.run_forever() call, below.
             raise KeyboardInterrupt()
 
     # Register signal handlers
@@ -893,9 +1003,13 @@ if __name__ == "__main__":
     logger.info("=" * 50)
 
     try:
-        # Start the WhatsApp message listener (blocking call)
-        # Signal handlers will raise KeyboardInterrupt for graceful shutdown
-        bot.run_forever()
+        # Start the WhatsApp message listener (blocking call) - registers
+        # dispatch_notification against every message type configured at
+        # construction time (plus the catch-all) on the already-connected
+        # live_bot, wires Feature 045's read-receipt hook (is_blocked, set
+        # above), then runs live_bot.run_forever(). Signal handlers will
+        # raise KeyboardInterrupt for graceful shutdown.
+        message_source.start(dispatch_notification)
     except KeyboardInterrupt:
         # This is raised by signal handlers or user Ctrl+C
         # Message already logged by signal handler or is implicit from Ctrl+C
@@ -915,7 +1029,7 @@ if __name__ == "__main__":
     except Exception as e:
         # Catch any unexpected error to prevent crash
         logger.critical(
-            f"Fatal error in bot.run_forever(): {e}",
+            f"Fatal error in message_source.start()/bot.run_forever(): {e}",
             exc_info=True
         )
         logger.error("Application stopped due to fatal error - manual restart required")
