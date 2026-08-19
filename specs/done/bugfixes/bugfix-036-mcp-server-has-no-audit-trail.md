@@ -121,5 +121,5 @@ discarded.
 ## Related Work
 - `specs/done/018-denidin-morning-mcp-integration/` — audit logging was already listed there as
   outstanding polish. This bug is the evidence that it matters.
-- `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — A4 needs the same
+- `specs/done/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` — A4 needs the same
   response data this bug is about capturing.

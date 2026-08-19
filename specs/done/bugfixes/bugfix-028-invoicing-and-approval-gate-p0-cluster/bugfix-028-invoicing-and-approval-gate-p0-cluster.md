@@ -17,16 +17,19 @@ production; four of them, together, caused a ₪40,000 document to be approved e
 never created, with the user told nothing.
 
 ## Status
-**In Progress.** Moved from `specs/bugfixes/` to `specs/in-progress/bugfixes/` on 2026-08-10
-(this project's bugfix specs have no documented in-progress folder in CLAUDE.md/METHODOLOGY —
-this location was created for this bugfix at the user's explicit direction). All ten root
-causes approved 2026-08-09 (A3, A3b, B1, B2 as originally written; A1, A2, A4, B3, B4, B5 only
-after being reinvestigated and restated — original wording preserved below each, marked *as
-originally filed*). Test-gap analysis and the full `billed`/`expensive` test set approved the
-same day. Fixes implemented and merged across several sessions (`66f6334`, `57fbd40`, and this
-session's merge) — see [`bugfix-028-HANDOFF.md`](bugfix-028-HANDOFF.md) for the full live
-history, including the A1-T2 scenario carved out into `bugfix-038` once investigation showed it
-needed infrastructure outside this bugfix's approved scope.
+**Done.** Moved from `specs/in-progress/bugfixes/` to `specs/done/bugfixes/` on 2026-08-18.
+
+**In Progress (2026-08-09 – 2026-08-13, kept below for history).** Moved from
+`specs/bugfixes/` to `specs/in-progress/bugfixes/` on 2026-08-10 (this project's bugfix specs
+have no documented in-progress folder in CLAUDE.md/METHODOLOGY — this location was created for
+this bugfix at the user's explicit direction). All ten root causes approved 2026-08-09 (A3, A3b,
+B1, B2 as originally written; A1, A2, A4, B3, B4, B5 only after being reinvestigated and
+restated — original wording preserved below each, marked *as originally filed*). Test-gap
+analysis and the full `billed`/`expensive` test set approved the same day. Fixes implemented and
+merged across several sessions (`66f6334`, `57fbd40`, and this session's merge) — see
+[`bugfix-028-HANDOFF.md`](bugfix-028-HANDOFF.md) for the full live history, including the A1-T2
+scenario carved out into `bugfix-038` once investigation showed it needed infrastructure outside
+this bugfix's approved scope.
 
 **As of 2026-08-13**: the full `tests/billed/` sweep is finished clean (90/90, 1 obsolete test
 deliberately removed, 1 environment-dependent skip, zero known failures) and the full
@@ -36,11 +39,24 @@ left red on purpose - not this bugfix's scope). `bugfix-038`'s own spec was subs
 expanded this session (root cause + fix direction agreed, not yet implemented) after this
 sweep's own investigation surfaced that `close_transaction_account` duplicates
 `create_combo_document`'s entire payload-building logic - see that bugfix's own spec for the
-full finding. This bugfix (028) itself is not yet fully closed - remaining open items are
-tracked in the handoff's "Exact next steps" section.
+full finding.
 
-**PR #212** (opened 2026-08-13) carries this session's work (and the prior uncommitted sessions'
-work merged alongside it) to `master`.
+**PR #212** (opened 2026-08-13, merged the same day as commit `9bbec50`) carries this session's
+work (and the prior uncommitted sessions' work merged alongside it) to `master`.
+
+**Closed 2026-08-18**: with PR #212 merged, all ten approved root causes (A1-A4, B1-B5, plus the
+bundled P2) are fixed and live on `master`, and the `billed`/`expensive` regression sweep is
+clean except for the one test explicitly carved out into `bugfix-038` (itself now closed, see
+`specs/done/bugfixes/bugfix-038-group-b-approval-missing-reference-data.md`). Two minor,
+non-blocking gaps from the handoff's last "Exact next steps" were never separately tracked and
+are accepted as-is rather than reopening this bugfix: (1) a test-assertion-only bug in
+`test_create_document_for_existing_client_happy_path` (and four sibling sites) that can spuriously
+fail when a randomly-drawn sandbox client name contains an apostrophe, because the assertion
+compares the raw name against Morning's own geresh-normalized formatted output — not a production
+defect, Morning's normalization itself is correct pre-existing behavior; (2) roughly 31 of the
+denidin-app "List A" billed tests and all "List B" billed tests were never swept in this specific
+session (the full `tests/billed/` suite reported clean as of 2026-08-13 above, via a separate,
+later full run, superseding the partial List-A/B sweep referenced in the handoff).
 
 ## Date Opened
 2026-08-09
