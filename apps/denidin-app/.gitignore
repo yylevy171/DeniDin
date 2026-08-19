@@ -23,6 +23,12 @@ config/config.prod.json
 # runtime). Untracked to avoid committing them, mirroring apps/morning-mcp-app's
 # treatment of its own config.test.json (see that app's tasks.md T021 history).
 config/config.test.json
+# Feature 043 (2026-08-19): a real-credentials copy of config.dev.json used
+# specifically for player runs against real WhatsApp export data - same
+# secrets as config.dev.json, so same treatment. mcp.morning_auth_token is
+# deliberately blanked in this copy (guarantees zero Morning MCP tool
+# attachment regardless of RBAC role - see AIHandler._build_morning_mcp_tools).
+config/config.player_prod.json
 
 # Application logs
 logs/
