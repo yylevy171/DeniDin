@@ -3,9 +3,10 @@
 **Feature Branch**: `feature/054-reminders-functionality-mgmt`
 **Created**: 2026-08-15
 **Clarified**: 2026-08-16
-**Status**: Draft — spec/user-stories/plan/data-model/contracts/research/quickstart/tasks all
-written. Not yet implemented. `speckit.analyze` not yet run. Gate Zero (live proactive send,
-`research.md`) still open and blocking before implementation of US2 can be considered done.
+**Status**: Done — implemented, tested (unit/integration/billed all green, including delivery-
+target redesign and past-date-rejection coverage added post-implementation), and manually
+verified live against a real dev WhatsApp number. Gate Zero closed 2026-08-19 (see `research.md`).
+Merged via PR #TBD.
 **Priority**: P2 (first-pass estimate, adjust if needed)
 **Input**: User description: "reminders - functionality and mgmt" (2026-08-15, placeholder), fleshed
 out via conversation 2026-08-16 (see Clarifications).

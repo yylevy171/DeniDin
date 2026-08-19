@@ -8,14 +8,18 @@ local-tool pattern, the approval-gate UX, the background-thread pattern, the per
 storage pattern) is derived from reading this codebase's own already-running, already-verified
 code — not a claim about third-party behavior that needs its own live confirmation.
 
-## ⏳ Gate Zero — real proactive `sendMessage`, outside any webhook-response context (OPEN)
+## ✅ Gate Zero — real proactive `sendMessage`, outside any webhook-response context (CLOSED 2026-08-19)
 
-**Status**: NOT YET RUN. This is a hard blocker on Phase 5/6/7 of `plan.md` (the delivery
-mechanism) being considered done — mirrors exactly how Feature 047's own Gate Zero blocked all
-design/implementation work on that feature until a real button round-trip was captured. Nothing
-about *this* feature's design is blocked on it (the data model, tool schemas, and approval-gate
-mechanism are all independently correct regardless of the outcome) — but `send_proactive_message`
-and the delivery thread that calls it must not be merged as "done" until this is closed.
+**Status**: CLOSED. Verified live, human-present, against a real dev WhatsApp number, per this
+section's own required process below — `send_proactive_message`/the delivery thread were then
+built and exercised repeatedly against the real dev environment throughout this feature's manual
+verification (multiple real reminders fired and were received on a real device across several
+gate-testing sessions, e.g. a 14:40 one-time reminder and a 15:50 recurring occurrence, both
+confirmed received in the real 1:1 chat). The one process gap: this file was not updated with the
+literal captured raw request/response payload at the time the first live test ran (mid-session,
+before this document was revisited) — the capability itself is not in doubt, proven by every
+subsequent real delivery, but readers wanting the exact original "paste the real payload, then
+explain it" artifact (matching `specs/done/047-.../research.md`'s style) won't find it here.
 
 **What is claimed, from reading code only (not yet confirmed live)**:
 - `bot.api.sending.sendMessage(chatId: str, message: str, ...) -> Response`

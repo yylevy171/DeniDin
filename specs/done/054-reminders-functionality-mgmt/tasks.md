@@ -210,12 +210,13 @@ created and persisted, even though nothing fires yet — that's US2).
   every other real `bot.api` call in this codebase is already safe in tests only because its
   trigger point is never reached by `initialize_app()`-based test bootstrapping. Full
   unit (904 passed) and integration (31 passed) suites re-verified green after the fix.
-- [ ] T014 [US2] 👤 **GATE ZERO — blocking, needs its own explicit human approval, human present**:
-  a real `bot.api.sending.sendMessage()` call, live, outside any webhook-response context, against
-  a real dev number. Capture the raw request/response in `research.md`, replacing its currently-
-  open Gate Zero section. **This story is not done until this closes.**
-- [ ] T015 [US2] 👤 **MANUAL APPROVAL GATE**: `quickstart.md` scenarios #1 (text approval + real
-  delivery), #2 (button approval), #18 (restart survives and catches up).
+- [x] T014 [US2] 👤 **GATE ZERO — CLOSED 2026-08-19**: a real `bot.api.sending.sendMessage()` call,
+  live, against a real dev number, verified working - see `research.md`'s Gate Zero section for
+  the closure note (the literal raw request/response wasn't captured into the doc at the time,
+  but the capability is proven by every real reminder delivery since).
+- [x] T015 [US2] 👤 **MANUAL APPROVAL GATE**: `quickstart.md` scenario #1 (text approval + real
+  delivery) confirmed live. #2 (button approval) confirmed complete by the human (2026-08-20).
+  #18 (restart survives and catches up) explicitly waived by the human (2026-08-20) - not tested.
 
 **Checkpoint**: US1 + US2 together deliver the MVP — create a one-time reminder, it actually
 fires.
@@ -338,10 +339,19 @@ run and Gate Zero).
   were extended. Done continuously throughout 2026-08-16/17, not just once at the end — final
   state: `tests/unit/` 937 passed / 1 skipped (the timing-regime-guarded rounding test),
   `tests/integration/` 31 passed, both 0 regressions, re-verified after every phase's changes.
-- [ ] T025 Run the remaining `quickstart.md` scenarios not yet covered by earlier gates: #3
-  (decline), #4 (past-date rejection), #5 (cap), #16 (client/blocked denial), #17 (admin acts on
-  godfather's behalf), #19 (group-chat creation still fires to 1:1).
-- [ ] T026 👤 **FINAL MANUAL APPROVAL GATE**: full `quickstart.md` run-through, end to end.
+- [x] T025 Remaining `quickstart.md` scenarios: #3 (decline), #4 (past-date rejection), #5 (cap)
+  covered by the automated billed suite (including 2 new past-date-rejection tests added
+  2026-08-20: `test_one_time_reminder_in_the_past_declined`,
+  `test_recurring_reminder_with_already_passed_time_today_skips_to_tomorrow`). #16/#17
+  (client/blocked denial, admin acts on godfather's behalf) explicitly waived by the human
+  ("I am already admin testing all this, and no clients really exist now"). #19 (group-chat
+  creation) was verified once against the ORIGINAL fixed-1:1-chat delivery design, before the
+  2026-08-19 delivery-target redesign (fires to the chat it was created in, not always 1:1) -
+  not re-verified live against the new behavior; explicitly waived by the human (2026-08-20).
+- [x] T026 👤 **FINAL MANUAL APPROVAL GATE**: human confirmed complete (2026-08-20) - not a
+  literal fresh end-to-end quickstart.md run, but explicit sign-off given the individual scenarios
+  above are each covered (verified live, covered by passing automated tests, or explicitly
+  waived).
 
 ---
 
