@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "create_receipt",
+  "type": "object",
+  "x-feature-056-note": "Relaxes original_internal_morning_id from required to optional. When present, this contract is byte-for-byte the existing post-Feature-027/bugfix-028 behavior (x-when-linked below) - unchanged. When absent, this is a NEW standalone-receipt branch (x-when-standalone below), one tool with two branches, per Clarification Q1 (spec.md) - not a separate MCP tool.",
+  "oneOf": [
+    {
+      "x-branch": "when-linked (existing, unchanged)",
+      "x-group": "B",
+      "x-client-resolution": "preserve-original-id-or-refuse",
+      "properties": {
+        "original_internal_morning_id": {"type": "string", "description": "Morning document id of the invoice being paid. Must resolve to a type-305 document whose client sub-object has a real id, or this tool refuses (REQ-INV-013/016)."},
+        "payment_date": {"type": "string", "description": "The real date the money moved, ISO YYYY-MM-DD or DD/MM/YYYY. Required (bugfix-028 A3)."},
+        "amount": {"type": "number", "minimum": 0, "description": "Optional override - defaults to the original's full total."}
+      },
+      "required": ["original_internal_morning_id", "payment_date"]
+    },
+    {
+      "x-branch": "when-standalone (NEW, Feature 056)",
+      "x-group": "A",
+      "x-client-resolution": "resolve_client_name-then-name_resolved (same architecture as create_invoice/create_transaction_account/create_combo_document, per bugfix-028's client-resolution rewrite)",
+      "properties": {
+        "client_name": {"type": "string", "description": "The client's exact, already-resolved name (caller must have called resolve_client_name first and pass name_resolved=True) - REQ-INV-015."},
+        "name_resolved": {"type": "boolean", "default": false, "description": "Must be True or this refuses immediately, attempting no Morning lookup at all - same contract as create_invoice."},
+        "amount": {"type": "number", "minimum": 0, "description": "The receipt amount (no default to derive from, since there is no original document) - REQ-INV-015."},
+        "description": {"type": "string", "description": "Free-text Hebrew description composed by the model (e.g. 'פיקדון', 'החזר הלוואה', 'מקדמה על חשבון...') - no structured reason code (REQ-INV-018, Clarification Q2)."},
+        "payment_date": {"type": "string", "description": "The real date the money moved, ISO YYYY-MM-DD or DD/MM/YYYY. Required, same _validate_payment_date reuse as every other payment-carrying tool."}
+      },
+      "required": ["client_name", "name_resolved", "amount", "description", "payment_date"],
+      "x-payload-shape": "type 400, no income/VAT line, linkedDocumentIds always [], client={self:false,id:<resolved_client.id>} - see data-model.md",
+      "x-out-of-scope": "No linkedDocumentIds correlation to a later invoice (Clarification Q3, REQ-INV-019) - the standalone receipt and any later real invoice for the same transaction are fully independent documents."
+    }
+  ],
+  "x-approval": "always",
+  "x-audit": "log_mutation on success (both branches); log_refusal when name_resolved is not True or the client doesn't resolve exactly - same pattern as every other create_* tool."
+}
