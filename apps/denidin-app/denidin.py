@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 import signal
+import time
 from typing import Any, Callable, Dict, Optional
 from whatsapp_chatbot_python import Notification
 from openai import OpenAI
@@ -874,6 +875,61 @@ HANDLER_REGISTRY: Dict[str, Callable[[Notification], None]] = {
 CATCH_ALL_HANDLER: Callable[[Notification], None] = handle_unsupported_message_default
 
 
+class RecentNotificationDeduper:
+    """In-memory, TTL-bounded de-duplication of incoming Green API webhook
+    notifications by idMessage (2026-08-20, real dev incident).
+
+    Green API's own notification queue can redeliver the same event more
+    than once if it isn't acknowledged/deleted fast enough - confirmed live
+    via [AUDIT-IN] log lines: an incomingMessageReceived notification with
+    an IDENTICAL idMessage and timestamp arrived a second time ~32s after
+    the first (that turn's own OpenAI round-trip took ~22s). The redelivery
+    landed while a reminder create_reminder approval was already pending,
+    and since the app has no concept of "I already processed this exact
+    notification," it was interpreted as a (non-affirmative) reply to that
+    pending approval - declining it, then re-processing the duplicate as a
+    brand-new request, producing a SECOND approval-buttons prompt for one
+    real user message. Not reminders-specific - this is a systemic gap in
+    incoming-message handling; the reminder approval-gate flow just made it
+    highly visible.
+
+    No disk persistence - a restart naturally starts with an empty seen-set,
+    matching GroupMembershipResolver's own in-memory-cache precedent
+    (src/managers/group_membership_resolver.py). A few minutes of TTL is
+    enough to catch a same-session redelivery; losing that window across a
+    restart is an acceptable trade, since a genuine redelivery spanning a
+    restart couldn't be caught by this mechanism anyway (the first
+    delivery's own in-progress processing state wouldn't have survived the
+    restart either).
+    """
+
+    def __init__(self, ttl_seconds: float = 600.0):
+        self._ttl_seconds = ttl_seconds
+        self._seen: Dict[str, float] = {}  # idMessage -> first-seen monotonic time
+
+    def seen_recently(self, id_message: str) -> bool:
+        """True (without re-recording) if id_message was already recorded
+        within the TTL window - the caller should skip processing entirely.
+        False (recording this call as the first sighting) otherwise.
+        Opportunistically evicts expired entries on every call, bounding
+        memory without a separate background thread/timer."""
+        now = time.monotonic()
+        expired = [key for key, seen_at in self._seen.items() if now - seen_at > self._ttl_seconds]
+        for key in expired:
+            del self._seen[key]
+
+        if id_message in self._seen:
+            return True
+        self._seen[id_message] = now
+        return False
+
+
+# Module-level singleton (mirrors denidin_app/global_context's own module-global
+# idiom) - one shared seen-set for the whole process, since redelivery can
+# happen for any message type, not just one handler's own traffic.
+_recent_notifications = RecentNotificationDeduper()
+
+
 def dispatch_notification(type_message: str, notification: Notification) -> None:
     """The dispatch callable every MessageSource.start() calls - looks up
     HANDLER_REGISTRY, falling back to CATCH_ALL_HANDLER for any type not
@@ -887,7 +943,24 @@ def dispatch_notification(type_message: str, notification: Notification) -> None
     not a side effect of a git merge. __main__ registers this type explicitly
     with GreenAPIMessageSource alongside HANDLER_REGISTRY's own keys, so it
     still reaches here rather than falling through to CATCH_ALL_HANDLER.
+
+    De-duplicates by idMessage (2026-08-20) BEFORE any handler runs - see
+    RecentNotificationDeduper's own docstring for the real incident this
+    closes. `getattr(notification, "event", None)` (rather than
+    `notification.event` directly) so a test double with no `.event`
+    attribute at all (test_denidin_dispatch.py's `fake_notification =
+    object()`) is simply never deduped, not a crash - matches
+    log_inbound/log_outbound's own "never break real processing" discipline.
     """
+    event = getattr(notification, "event", None)
+    id_message = event.get("idMessage") if isinstance(event, dict) else None
+    if id_message and _recent_notifications.seen_recently(id_message):
+        logger.info(
+            f"Duplicate notification ignored (idMessage={id_message!r}, "
+            f"type={type_message!r}) - Green API redelivery, already processed"
+        )
+        return
+
     if type_message == "interactiveButtonsResponse":
         handle_button_tap(notification)
         return
