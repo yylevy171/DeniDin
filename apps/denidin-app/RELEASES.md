@@ -47,3 +47,7 @@ WhatsApp typing indicator shown while processing a message (feature 048).
 ## denidin-app v0.4.3 — 2026-08-14
 
 WhatsApp interactive buttons (כן/לא) for the document-creation approval gate - a real button tap now resolves a pending approval alongside the existing typed-text path, with a stanza_id-based guard against a stale tap resolving the wrong (superseded) approval.
+
+## denidin-app v0.5.0 — 2026-08-19
+
+Reminders (Feature 054): create/list/modify/delete reminders via natural Hebrew conversation, godfather/admin only, one-time and recurring, with an approval gate before creation/modification and a scheduled delivery service with a per-reminder delivery target and fallback. Ledger event schema revision (Feature 043 Phase 11): bank/payment-detail fields, a unified reference mechanism, and code-side enforcement of payer_name/VAT rules for bank deposits; plus a new WhatsApp export replay tool ('player') for testing the ledger pipeline against real historical conversations, and real Message identity fields (WhatsApp JID + RBAC role, not a resolved display name). Two real bugs fixed: eliminated a double OpenAI retry layer that could turn a single rate-limited call into a 100+ second wait, and de-duplicated incoming Green API webhook notifications by idMessage (was producing duplicate approval prompts on webhook redelivery).
