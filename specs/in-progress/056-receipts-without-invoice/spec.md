@@ -3,9 +3,12 @@
 **Feature Branch**: `feature/056-receipts-without-invoice`
 **Created**: 2026-08-17
 **Clarified**: 2026-08-18
-**Status**: PLANNED — clarified and researched 2026-08-18 (direct user decision, three
+**Status**: TASKED — clarified and researched 2026-08-18 (direct user decision, three
 questions; cancellation mechanism live-confirmed), `plan.md`/`data-model.md`/`contracts/`/
-`quickstart.md` complete, ready for `speckit.tasks`.
+`quickstart.md`/`tasks.md` complete. Ready for `speckit.analyze` and/or `speckit.implement` —
+every implementation task in `tasks.md` is a TDD (test-then-implementation) pair; each test
+task needs its own explicit human approval before its implementation task may proceed, per
+METHODOLOGY §VI, and none of `tasks.md`'s test tasks have been approved/run yet.
 **Input**: User description: two related Morning (Green Invoice) accounting-rule logic changes,
 captured together as one feature ("open a feature 56 - receipts without invoice ... create a new
 feature 56 to encompass the 2 new logic changes required for accounting rules in morning").
@@ -25,7 +28,8 @@ feature 56 to encompass the 2 new logic changes required for accounting rules in
 `research.md` (present — transaction-account cancellation mechanism, live-confirmed 2026-08-18)
 ✅ · `plan.md` (present, Ready for Task Generation) ✅ · `data-model.md` (present) ✅ ·
 `contracts/` (present — `create_receipt.json` updated, `cancel_transaction_account.json` new)
-✅ · `quickstart.md` (present) ✅ · `tasks.md` (NOT STARTED — next: `speckit.tasks`).
+✅ · `quickstart.md` (present) ✅ · `tasks.md` (present — T001-T010 across 2 independent
+phases/user stories) ✅.
 
 ---
 
