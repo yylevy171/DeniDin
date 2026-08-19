@@ -55,6 +55,16 @@ def _build_config_dict(config_path: str, data_root: str) -> dict:
     instead of the player's own isolated output folder. Explicitly overriding
     both here, the same way this exact fix was already proven out in the
     Feature 043 interactive-review scratch tooling, closes that gap for good.
+
+    2026-08-20 fix: `max_retries` was loaded onto `config` by
+    AppConfiguration.from_file but never copied into the returned dict below -
+    the same silent-field-drop shape as the data_root/storage_dir gap above,
+    just for a different field (found during a master-merge impact review,
+    c375c08 - max_retries became a real, wired-through AppConfiguration field
+    that now controls the OpenAI() client's own max_retries=). Went unnoticed
+    because the dataclass default (1) happened to match this file's
+    config.player_prod.json value (also 1) - harmless today, but silent if
+    that value were ever changed. Added below alongside every other field.
     """
     from src.models.config import AppConfiguration
 
@@ -78,6 +88,7 @@ def _build_config_dict(config_path: str, data_root: str) -> dict:
         'ai_vision_model': config.ai_vision_model,
         'ai_embedding_model': config.ai_embedding_model,
         'ai_reply_max_tokens': config.ai_reply_max_tokens,
+        'max_retries': config.max_retries,
         'log_level': config.log_level,
         'data_root': data_root,
         'feature_flags': config.feature_flags,
@@ -125,6 +136,7 @@ def run_replay(
     today: Optional[date] = None,
     extract_dir: Optional[Path] = None,
     whatsapp_own_number: str = "",
+    sound_off: bool = False,
 ) -> List[Dict]:
     """
     Replays every qualifying message in `[start, end]` (clamped per
@@ -136,6 +148,11 @@ def run_replay(
     the player never has (or needs) a live Green API connection.
 
     Returns the run's per-message outcome list (PlayerExportSource.outcomes).
+
+    sound_off: when True, prints one line per dispatched message as it
+        happens (index/total, sender, a short text snippet, and the
+        resulting ledger-event count) - live progress for a long run,
+        rather than only a summary after everything finishes.
     """
     import denidin  # pylint: disable=import-outside-toplevel
 
@@ -154,13 +171,26 @@ def run_replay(
     clarification_log_path = Path(data_root) / "needs_clarification.jsonl"
 
     outcomes: List[Dict] = []
+    total = len(messages)
     with LocalMediaServer(resolved_extract_dir) as media_base_url:
-        for msg in messages:
-            outcomes.append(_dispatch_with_clarification_loop(
+        for i, msg in enumerate(messages, start=1):
+            outcome = _dispatch_with_clarification_loop(
                 denidin, msg, chat_id=chat_id, sender_map=sender_map,
                 media_base_url=media_base_url, events_dir=events_dir,
                 clarification_log_path=clarification_log_path,
-            ))
+            )
+            outcomes.append(outcome)
+            if sound_off:
+                snippet = (msg.text or "(no text)").replace("\n", " ")[:50]
+                status = outcome.get("status")
+                n_events = outcome.get("new_event_count", 0)
+                rounds = outcome.get("clarification_rounds", 0)
+                extra = f", {rounds} clarification round(s)" if rounds else ""
+                print(
+                    f"[{i}/{total}] line={msg.raw_line_no} {msg.sender_display_name!r} "
+                    f"{snippet!r} -> status={status}, {n_events} ledger event(s){extra}",
+                    flush=True,
+                )
 
     return outcomes
 
@@ -196,7 +226,19 @@ def _dispatch_with_clarification_loop(
 
     current = msg
     round_num = 0
-    while _new_event_count(events_dir, before) == 0 and round_num < MAX_CLARIFICATION_ROUNDS:
+    # 2026-08-19 fix: an unmapped-sender (or unsupported-type) message was never
+    # actually dispatched at all - PlayerExportSource.start() skipped it before
+    # ever calling denidin.dispatch_notification. Without this guard, the loop
+    # below would still fire, reading whatever the LAST REAL reply happened to
+    # be (from some earlier, unrelated dispatch) and - if that stale reply
+    # contained "?" - incorrectly treat this skipped message as needing a
+    # clarification follow-up, injecting a bogus filler "answer" to a question
+    # nobody actually just asked. Found before this exact scenario would have
+    # hit it for real: 255 "דני דין" (DeniDin's own historical replies,
+    # deliberately excluded from sender_map) messages in the 2026-07-01..today range.
+    while (outcome.get("status") == "dispatched"
+           and _new_event_count(events_dir, before) == 0
+           and round_num < MAX_CLARIFICATION_ROUNDS):
         reply_text = _last_assistant_reply(denidin_module, chat_id)
         if "?" not in reply_text:
             break  # terminal: a plain declarative reply - decided not to create one
@@ -218,6 +260,7 @@ def _dispatch_with_clarification_loop(
 
     outcome = dict(outcome)
     outcome["clarification_rounds"] = round_num
+    outcome["new_event_count"] = _new_event_count(events_dir, before)
     return outcome
 
 
@@ -239,6 +282,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
                          help="Required in addition to a data_root that resolves to 'data'")
     parser.add_argument("--start", type=str, default=None, help="YYYY-MM-DD, clamped >= 2025-09-01")
     parser.add_argument("--end", type=str, default=None, help="YYYY-MM-DD, clamped <= today")
+    parser.add_argument("--extract-dir", type=Path, default=None,
+                         help="Where to extract the export zip's media files. Defaults to "
+                              "<data_root>/_player_extracted (ephemeral, alongside session/event "
+                              "output). Pass an explicit path (e.g. a folder next to the export "
+                              "zip itself) when the extracted media should persist independently "
+                              "of data_root - e.g. surviving a `--data-root` wipe between runs, "
+                              "or living alongside a real source export outside the repo.")
+    parser.add_argument("--sound-off", action="store_true",
+                         help="Print one line per dispatched message as it happens "
+                              "(index/total, sender, text snippet, resulting ledger-event "
+                              "count) instead of only a summary after the whole run finishes.")
     return parser
 
 
@@ -264,12 +318,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         export_zip=player_config.export_zip, chat_id=player_config.chat_id,
         sender_map=player_config.sender_map, data_root=data_root,
         config_path=player_config.denidin_config, start=start, end=end,
+        extract_dir=args.extract_dir,
         whatsapp_own_number=player_config.whatsapp_own_number,
+        sound_off=args.sound_off,
     )
 
     dispatched = sum(1 for o in outcomes if o["status"] == "dispatched")
+    total_events = sum(o.get("new_event_count", 0) for o in outcomes)
     print(f"Processed {len(outcomes)} messages: {dispatched} dispatched, "
-          f"{len(outcomes) - dispatched} skipped.")
+          f"{len(outcomes) - dispatched} skipped, {total_events} ledger event(s) total.")
     for outcome in outcomes:
         print(f"  line {outcome.get('raw_line_no')}: {outcome['status']}")
     return 0
