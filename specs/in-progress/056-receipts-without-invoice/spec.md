@@ -213,6 +213,13 @@ new findings below in `research.md`.
   `apps/denidin-app`'s `ledger_event_manager.py` (Feature 033) — a plausible, related follow-up
   flagged by the original request but not part of this feature's scope; cross-reference
   `specs/backlog/025-morning-sourced-ledger-events` if picked up later.
+- Making a LATER, separate status lookup (`get_invoice_details`) correctly distinguish a
+  cancelled transaction account from a genuinely-paid one — found during T010's implementation
+  (2026-08-19): both produce Morning status code 2, which this app's shared `translate_status`
+  path renders as "שולם" (paid) regardless of cause, since nothing persists anywhere recording
+  *why* a given status-2 document was closed. REQ-INV-026 only covers the cancellation's own
+  direct confirmation (which is correct); this broader ambiguity is explicitly deferred —
+  cross-reference `specs/backlog/058-morning-docs-calculation-nuances`.
 
 ## Success Criteria
 

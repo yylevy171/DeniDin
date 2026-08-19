@@ -208,7 +208,7 @@ Per METHODOLOGY §VI.a, "TDD" now means specifically this: a **user-experience d
 written now for EACH user story (T009, T010 — no test code), with the actual test code for both
 written AND run together, once, only after Phase 1 AND Phase 2 are both fully GREEN (T011).
 
-- [ ] **T009** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** Describe (in `tasks.md`
+- [x] **T009** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** Describe (in `tasks.md`
   here, no test file, no code) the `billed`-tier acceptance scenario for US1: a godfather/admin
   sends DeniDin a natural Hebrew message asking to create a receipt for a known, existing client,
   giving an amount and a reason/description (any plausible free text — e.g. a deposit, a loan
@@ -229,22 +229,35 @@ written AND run together, once, only after Phase 1 AND Phase 2 are both fully GR
   T002a's unit-level checks or T003a's direct-call integration checks (which, being in
   `apps/morning-mcp-app`, has no such wall and DOES use a raw `MorningClient.get_invoice` call).
   This description is the target; nothing here is executable yet.
-- [ ] **T010** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** Describe (in `tasks.md`
+- [x] **T010** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** Describe (in `tasks.md`
   here, no test file, no code) the `billed`-tier acceptance scenario for US2: a godfather sends
   DeniDin a natural Hebrew message asking to cancel a real, pre-seeded, open transaction account
   → DeniDin asks for approval (never executes on the ASK turn) → the godfather replies "כן" →
   DeniDin confirms the cancellation, and the confirmation text never says the account was "paid".
   **Verification is NOT just that confirmation's reply text** — send a real SECOND turn asking
-  DeniDin to look up the account's current status (e.g. "מה המצב של חשבון העסקה הזה?"),
-  triggering a real `get_invoice_details`/`list_invoices` MCP call against the live Morning
-  sandbox, and assert on that follow-up call's own real output: the account no longer reads as
-  open, and nothing in the reply/output claims a payment was received — same real-follow-up-turn
-  verification pattern as T009 (never a raw `MorningClient` call — `denidin-app`'s app-wall).
-  Validates REQ-INV-023 (RBAC/approval-gate wiring) and REQ-INV-026 (non-"paid" wording) from the
-  real user's perspective, not just T005a's unit-level formatter check (which, being in
-  `apps/morning-mcp-app`, has no such wall). This description is the target; nothing here is
+  DeniDin what documents exist for this client (e.g. "אילו מסמכים יש לי אצל X?"), triggering a
+  real `get_invoice_details`/`list_invoices` MCP call against the live Morning sandbox, and
+  assert on that follow-up call's own real output: NO new document (receipt/credit note/combo
+  document) exists — REQ-INV-020, same real-follow-up-turn verification pattern as T009 (never a
+  raw `MorningClient` call — `denidin-app`'s app-wall). **Scope decision (2026-08-19, user)**:
+  this follow-up turn deliberately does NOT assert on status WORDING ("שולם"/"לא שולם") — a
+  separate, later `get_invoice_details` lookup goes through the shared, unmodified
+  `translate_status` path, which maps Morning's status code 2 to "paid" regardless of whether it
+  was closed by a real payment or by this feature's cancellation (Morning itself cannot
+  distinguish the two at the status-code level, and nothing persists anywhere recording which
+  happened). A known, accepted, explicitly out-of-scope gap — tracked separately as
+  `specs/backlog/058-morning-docs-calculation-nuances`, not fixed here. Only the DIRECT
+  cancellation reply (checked separately, not this follow-up turn) is required to avoid "paid"
+  wording. Validates REQ-INV-023 (RBAC/approval-gate wiring) and REQ-INV-026 (the direct reply's
+  non-"paid" wording) from the real user's perspective, not just T005a's unit-level formatter
+  check (which, being in `apps/morning-mcp-app`, has no such wall). This description is the
+  target; nothing here is
   executable yet.
-- [ ] **T011** **[TDD — WRITE + RUN, ONCE Phases 1 and 2 are both GREEN]** Turn T009's and
+- [ ] **T011** **[TDD — WRITE + RUN, ONCE Phases 1 and 2 are both GREEN]** *(2026-08-19: test
+  code written — `test_standalone_receipt_billed.py`, `test_cancel_transaction_account_billed.py`
+  — and confirmed to collect cleanly with no import errors; NOT YET RUN, since running needs its
+  own separate, explicit environment-start approval, per this task's own requirement below —
+  the checkbox stays unchecked until an actual run happens.)* Turn T009's and
   T010's descriptions into real `billed` tests in `apps/denidin-app/tests/billed/` (existing
   Morning-tool RBAC/approval files if any already cover these shapes, otherwise new files —
   e.g. `test_standalone_receipt_billed.py`, `test_cancel_transaction_account_billed.py` —
