@@ -173,8 +173,9 @@ apps/denidin-app/tests/billed/
 
 **TDD note (METHODOLOGY §VI, redefined 2026-08-18)**: "Test (TDD)" below, within Phase 1/2,
 means §VI.b's unit/integration RED→GREEN discipline (unchanged from before the redefinition).
-"TDD" proper — §VI.a's `billed`/`expensive` user-perspective tests — is defined during these
-same phases but deliberately not run until Phase 3, after both phases below are GREEN.
+"TDD" proper — §VI.a's `billed`/`expensive` user-perspective tests — is only described (in
+user-experience terms, no code) during these same phases; its actual test code is written and
+run together, once, in Phase 3, after both phases below are GREEN.
 
 ### Phase 1 — Standalone receipt (US1, P1)
 1. **Test (§VI.b)**: unit test for `_build_standalone_receipt_payload` (RED); integration tests
@@ -193,10 +194,11 @@ same phases but deliberately not run until Phase 3, after both phases below are 
 3. **RBAC wiring**: add to `APPROVAL_REQUIRED_MCP_TOOLS` in `apps/denidin-app`.
 
 ### Phase 3 — Acceptance (§VI.a — TDD proper, `billed`/`expensive`, run once)
-A `billed`-tier test (written during Phase 2, alongside its other tasks, since the contract is
-already known) proves `cancel_transaction_account`'s RBAC/approval-gate wiring end-to-end from a
-real user's perspective. It is written early but run only once, here, after Phase 1 AND Phase 2
-are both GREEN — this phase is the feature's actual acceptance proof, not a per-story gate.
+The `billed`-tier acceptance scenario (described in user-experience terms during Phase 2 —
+tasks.md's T009 — not as test code) proves `cancel_transaction_account`'s RBAC/approval-gate
+wiring end-to-end from a real user's perspective. Its actual test code is written AND run,
+together, only here, once, after Phase 1 AND Phase 2 are both GREEN — this phase is the
+feature's actual acceptance proof, not a per-story gate.
 
 ### Phase 4 — Close out
 Move spec to `specs/done/` once merged, per folder movement rules (part of the `haleluya` flow,

@@ -161,33 +161,39 @@ in every app in this monorepo (each app registers these markers independently in
 These are the tests that actually validate the feature works — end to end, from a real
 user's perspective, through the real webhook/router/handler/AI pipeline, exactly as a real
 person would trigger it. They are **defined at the start of the feature's task breakdown**
-(during `speckit.tasks`/planning, same timing as before) but are **not run during
-implementation of individual unit/integration tasks**, and do not block any of them.
+(during `speckit.tasks`/planning, same timing as before) — but "defined" means a **plain-language,
+user-experience description** of the scenario, not test code. The actual test code is written,
+and run, together, only at the end. Neither the description nor (once it exists) the code blocks
+any unit/integration task.
 
 **Workflow:**
-1. **DEFINE, at the start**: as part of the feature's task list, write out each `billed`/
-   `expensive` scenario — what real user-facing flow it exercises, which user story/success
-   criterion it validates, and its exact tier (`billed` vs `expensive` — flag `expensive`
-   explicitly, since it carries its own separate per-run approval gate). Write the actual test
-   code at this stage too, since the feature's contracts/user stories are already known — it
-   does not need to run yet, and does not need to fail-then-pass in the RED/GREEN sense.
-2. **DO NOT RUN** the `billed`/`expensive` tests defined above while unit/integration tasks for
-   the feature are still in progress — they are not a per-task gate.
-3. **RUN ONCE, at the end**, only once the whole feature is code-complete — every unit and
-   integration task (§VI.b below) finished and GREEN. This is the feature's real acceptance
-   pass: run every `billed`/`expensive` test defined in step 1 for real, against the completed
-   implementation, and fix forward on any failure (same "no premature declaring success" bar as
-   any other test).
+1. **DEFINE, at the start, in user-experience terms**: as part of the feature's task list,
+   describe each `billed`/`expensive` scenario in plain, user-facing language — what a real
+   person does (what they'd type/send), what they should see happen in response, which user
+   story/success criterion it validates, and its exact tier (`billed` vs `expensive` — flag
+   `expensive` explicitly, since it carries its own separate per-run approval gate). This is a
+   **description, not code** — no test file, no pytest function, no assertions are written at
+   this stage. It's the same kind of scenario language `quickstart.md`/`user-stories.md`
+   Acceptance Scenarios already use, not an implementation artifact.
+2. **DO NOT WRITE the actual test code, and DO NOT RUN anything**, while unit/integration tasks
+   for the feature are still in progress — the user-experience description from step 1 is the
+   only artifact that exists at this point; there is no test file to be blocked on or to skip.
+3. **IMPLEMENT AND RUN, together, only at the end** — once the whole feature is code-complete
+   (every unit and integration task, §VI.b below, finished and GREEN). At that point, turn each
+   step-1 description into real test code and run it immediately, once, against the completed
+   implementation. This is the feature's real acceptance pass — fix forward on any failure (same
+   "no premature declaring success" bar as any other test).
 4. `expensive` tests keep the full existing per-run human-approval gate, one at a time, with
    logs read before any re-run (CONSTITUTION §VII) — this discipline is unchanged by this
    redefinition. `billed` tests keep their existing no-approval-needed, run-freely status.
 
 **Rationale**: a `billed`/`expensive` test proves the feature actually works for a real user;
-running one before the feature exists just proves it fails for an obvious reason (nothing is
-implemented yet), which adds no information a unit/integration RED phase doesn't already give
-more cheaply. Concentrating them into one acceptance pass at the end avoids repeated real paid
-API calls against a moving target mid-implementation, while still defining them up front so the
-target the implementation is aiming at is explicit from day one.
+writing or running one before the feature exists just proves it fails for an obvious reason
+(nothing is implemented yet), which adds no information a unit/integration RED phase doesn't
+already give more cheaply. Defining the scenario in user-experience terms up front still fixes
+the target the implementation is aiming at from day one — without the cost/maintenance burden
+of real test code that would otherwise sit unrun (and likely drift stale against the contracts
+it was written against) for the entire implementation period.
 
 ### VI.b — Unit & integration test discipline (unchanged)
 
@@ -678,9 +684,10 @@ Saying **"haleluya"** (or any reasonable spelling variant — "halleluja", "hale
 - TDD Workflow explanation (Task A → APPROVAL → Task B)
 - Test Immutability reminder
 - Phases: Setup → Foundational → User Story N (by priority) → **Acceptance** (§VI.a — every
-  `billed`/`expensive` test defined for the feature, run once as a final pass, after every
-  earlier phase's unit/integration tasks are GREEN; not itself split into a/b, since these
-  tests are defined early but deliberately not run until this final phase)
+  `billed`/`expensive` scenario described (in user-experience terms, at the earlier phases) for
+  the feature gets its real test code written AND run, together, once, as a final pass here,
+  after every earlier phase's unit/integration tasks are GREEN; not itself split into a/b, since
+  there's no test-code artifact at all until this final phase)
 - Checkpoint markers after each phase
 - Version Control steps (VC0-VC5) per phase
 
@@ -879,9 +886,14 @@ is what actually preserves human oversight in a sequential context.
 
 ---
 
-**Version**: 2.5.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-08-18
+**Version**: 2.5.1 | **Established**: 2026-01-21 | **Last Updated**: 2026-08-18
 
 **Changelog**:
+- v2.5.1 (2026-08-18): Corrected v2.5.0 same-day, per explicit human clarification — "defined at
+  the start" for §VI.a `billed`/`expensive` tests means a **plain-language, user-experience
+  description** of the scenario (what a real person does/sees), NOT test code. Actual test code
+  is written, and run, together, only at the end — v2.5.0's wording had incorrectly said to
+  write the real test code early (just not run it), which was never the intent.
 - v2.5.0 (2026-08-18): Redefined "TDD" (§VI) per explicit human decision — TDD now refers
   specifically to `billed`/`expensive` (user-perspective, real end-to-end) tests: defined at the
   start of a feature's task breakdown same as before, but no longer run during implementation;

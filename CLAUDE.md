@@ -433,18 +433,21 @@ speckit.specify → spec.md (+ MANDATORY user-stories.md, Given-When-Then, BLOCK
   → speckit.clarify (resolve ambiguities)
   → speckit.plan → plan.md, research.md, data-model.md, contracts/, quickstart.md
   → speckit.tasks → tasks.md (per-story unit/integration tasks: Task A = tests, Task B =
-    implementation, B blocked until A approved; plus a final Acceptance phase of `billed`/
-    `expensive` tests, defined here but not run until the whole feature is code-complete)
+    implementation, B blocked until A approved; plus a final Acceptance phase whose
+    `billed`/`expensive` scenarios are described here in user-experience terms only — no test
+    code yet)
   → speckit.analyze (cross-artifact consistency check)
   → speckit.implement → incremental delivery, one user story at a time, ending with the
-    Acceptance phase's `billed`/`expensive` tests run once
+    Acceptance phase's `billed`/`expensive` tests written AND run, together, once
 ```
 **"TDD" redefinition (2026-08-18, `.github/METHODOLOGY.md` §VI)**: TDD now means specifically
-the `billed`/`expensive` tests above — real, end-to-end, user-perspective tests, defined during
-`speckit.tasks` but run only once, as a final acceptance pass, after every unit/integration task
-is GREEN. Unit/integration tests keep their prior RED→GREEN/human-approval/test-immutable
-discipline completely unchanged (now §VI.b) — only the term "TDD" and the run-once-at-the-end
-timing for `billed`/`expensive` are new.
+the `billed`/`expensive` tests above — real, end-to-end, user-perspective tests. "Defined during
+`speckit.tasks`" means a plain-language description of the scenario (what a real person does
+and sees), NOT test code — the actual test code is written, and run, together, only once, as a
+final acceptance pass, after every unit/integration task is GREEN. Unit/integration tests keep
+their prior RED→GREEN/human-approval/test-immutable discipline completely unchanged (now
+§VI.b) — only the term "TDD" and this deferred definition→code→run split for `billed`/
+`expensive` are new.
 - New/updated specs belong under `specs/in-progress/` (drafting/pre-clarification through active implementation) or `specs/backlog/` (post-clarification, not currently being worked — replaces the old `specs/P0/`/`P1/`/`P2/` split as of 2026-07-21; priority is now tracked via each spec's own `Priority` field, not by folder); `specs/done/` and `specs/obsolete/` are historical archives — never delete from them (`specs/obsolete/` also replaces the old `specs/not-doing/`, and now covers specs whose described issue no longer applies against current code, not just cancelled features). Bugfix specs go in `specs/bugfixes/bugfix-###-description.md` while open, and move to `specs/done/bugfixes/` or `specs/obsolete/bugfixes/` once resolved or found stale. `specs/not_reproducible/bugfixes/` (added 2026-07-21) is a fourth closure destination, distinct from both: use it for a bug where a root cause was investigated and a human decision was made to close it, but nothing was actually fixed — e.g. the behavior is accepted as inherent/non-deterministic model risk rather than an app-level bug (see `bugfix-013` for the first example). Don't conflate with `done/` (implies a fix landed) or `obsolete/` (implies the issue no longer applies or was rejected outright).
 - Bug fixes follow Bug-Driven Development instead: root cause → human approval → test-gap analysis → failing test → human approval → minimal fix → verify. See `.github/METHODOLOGY.md` §VII.
 - Branch naming: `feature/###-description`, `bugfix/###-description`, or `docs/`/`chore/` prefixes.

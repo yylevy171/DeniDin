@@ -203,23 +203,28 @@ approval-gate wiring itself is proven end-to-end in Phase 3 (§VI.a), not here.
 
 **Goal**: prove the feature actually works for a real user, end to end, through the real
 webhook/router/handler/AI pipeline — not just that its internal pieces pass their own tests.
-Per METHODOLOGY §VI.a, this is what "TDD" now means in this project: **defined now** (below),
-but **not run until Phase 1 AND Phase 2 are both fully GREEN**, then run once as this feature's
-real acceptance pass.
+Per METHODOLOGY §VI.a, "TDD" now means specifically this: a **user-experience description**
+written now (T009 — no test code), with the actual test code written AND run together, once,
+only after Phase 1 AND Phase 2 are both fully GREEN (T010).
 
-- [ ] **T009** [P] **[TDD — DEFINE NOW, RUN ONCE AT THE END]** Write a real-API `billed` test in
-  `apps/denidin-app/tests/billed/` (an existing Morning-tool RBAC/approval file if one already
-  covers this shape, otherwise a new `test_cancel_transaction_account_billed.py` following the
-  existing `tests/billed/test_denidin_morning_*_e2e.py` pattern): a godfather asks, in natural
-  Hebrew, to cancel a transaction account → the tool call comes back as a `mcp_approval_request`
-  (never executes on the ASK turn) → an explicit "כן" turn executes it, and the reply never says
-  the account was "paid" (REQ-INV-023, REQ-INV-026 from the real user's perspective, not just
-  the unit-level formatter check in T005a). Write the test code now; do not run it yet.
-- [ ] **T010** **[TDD — RUN, ONCE Phases 1 and 2 are both GREEN]** Run T009 for real. Needs
-  `denidin-app` dev running with Morning MCP attached — its own separate, explicit
-  environment-start approval, not implied by anything earlier in this task list. On failure: fix
-  forward (this is real acceptance validation against completed code, not a RED-phase check —
-  a failure here means the feature doesn't actually work yet, not that a test needs approval).
+- [ ] **T009** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** Describe (in `tasks.md`
+  here, no test file, no code) the `billed`-tier acceptance scenario for US2: a godfather sends
+  DeniDin a natural Hebrew message asking to cancel a transaction account → DeniDin asks for
+  approval (never executes on the ASK turn) → the godfather replies "כן" → DeniDin confirms the
+  cancellation, and the confirmation text never says the account was "paid" — validates
+  REQ-INV-023 (RBAC/approval-gate wiring) and REQ-INV-026 (non-"paid" wording) from the real
+  user's perspective, not just T005a's unit-level formatter check. This description is the
+  target; nothing here is executable yet.
+- [ ] **T010** **[TDD — WRITE + RUN, ONCE Phases 1 and 2 are both GREEN]** Turn T009's
+  description into a real `billed` test in `apps/denidin-app/tests/billed/` (an existing
+  Morning-tool RBAC/approval file if one already covers this shape, otherwise a new
+  `test_cancel_transaction_account_billed.py` following the existing
+  `tests/billed/test_denidin_morning_*_e2e.py` pattern) and run it immediately, for real — the
+  writing and the first run happen together, at this point, not before. Needs `denidin-app` dev
+  running with Morning MCP attached — its own separate, explicit environment-start approval, not
+  implied by anything earlier in this task list. On failure: fix forward (this is real
+  acceptance validation against completed code, not a RED-phase check — a failure here means the
+  feature doesn't actually work yet, not that a test needs approval).
 - [ ] **T011** 👤 **MANUAL APPROVAL GATE**: run `quickstart.md`'s full scenario set (both US1 and
   US2) for real, alongside or after T010 — needs its own explicit approval to start the dev
   environment if not already running from T010.
@@ -242,9 +247,10 @@ user's perspective. This is the feature's actual "done."
   test files, no ordering constraint between them (per plan.md's Constitution Check and
   data-model.md, confirmed no overlap). Either phase can be implemented and merged first.
 - **Phase 3 depends on BOTH Phase 1 and Phase 2 being fully complete** (T003b and T007b/T008
-  all done) — T009 (write) can be drafted early/in parallel with either phase since the
-  contracts are already known, but T010 (run) and T011 (manual gate) cannot start until every
-  earlier phase is GREEN, per §VI.a's "run once, at the end" rule.
+  all done) — T009 (the user-experience description, no code) can be written early/in parallel
+  with either phase since the scenario is already fully known, but T010 (write the actual test
+  code AND run it) and T011 (manual gate) cannot start until every earlier phase is GREEN, per
+  §VI.a's "describe now, implement and run together at the end" rule.
 
 ## Parallel Execution
 
@@ -255,9 +261,10 @@ user's perspective. This is the feature's actual "done."
 - Phase 1 and Phase 2 as a whole can be worked on in parallel by two different sessions/people,
   since they touch disjoint functions (`create_receipt` vs. a brand-new
   `cancel_transaction_account`) and disjoint test files.
-- T009 (Phase 3's `billed` test code) can be drafted in parallel with either phase's work, since
-  its contract (what US2 should do end-to-end) is already fully known from spec.md/contracts/ —
-  only its *run* (T010) is gated on both phases being GREEN.
+- T009 (Phase 3's user-experience description — no code) can be written in parallel with either
+  phase's work, since what US2 should do end-to-end is already fully known from spec.md/
+  contracts/ — its actual test code, and running it (both T010), are gated together on both
+  phases being GREEN.
 
 ## Implementation Strategy
 
