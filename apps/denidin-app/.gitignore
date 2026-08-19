@@ -41,6 +41,12 @@ data/events/
 # Test data (generated during tests)
 test_data/
 
+# Player run output (Feature 043) - dedicated data_root for player/run_player.py
+# runs, isolated from test_data/ (the real shared pytest fixture dir) - see
+# run_player.py's _build_config_dict for the data_root -> memory storage_dir
+# override that makes this isolation actually work.
+player_data/
+
 # Player run configs targeting prod (real data_root/denidin_config, and a real
 # phone number once filled in) - never tracked, unlike the *_test.json ones,
 # which use only config.test.json's own placeholder values.

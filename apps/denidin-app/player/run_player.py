@@ -10,16 +10,29 @@ This is the driver core only (US1's main loop) - no relevancy/reconciliation/
 review-queue wiring yet (later phases, per tasks.md's sequencing).
 """
 import argparse
+import json
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from player.config_safety import PlayerSafetyError, validate_data_root
-from player.export_parser import filter_date_range, parse_export
+from player.export_parser import ParsedMessage, filter_date_range, parse_export
 from player.export_source import PlayerExportSource
 from player.media_server import LocalMediaServer
 from player.player_config import PlayerConfigError, load_player_config
+
+# 2026-08-19 (explicit user instruction): whenever a dispatched message's turn
+# produces no ledger event and the model's real reply reads as a clarifying
+# question (contains "?"), the player answers with this fixed, uninformative
+# filler - never a fabricated real answer, since the player has no ground
+# truth beyond the original message - and logs the question for later human
+# review. This repeats (bounded by MAX_CLARIFICATION_ROUNDS) until the model
+# reaches a terminal outcome: a ledger event captured, or a plain declarative
+# reply with no further "?" (an explicit decision not to create one). A real
+# human, unlike the player, would give a real answer instead of this filler.
+FOLLOWUP_ANSWER_TEXT = "אין לי עוד מידע, תעשה הכי טוב שאתה מבין."
+MAX_CLARIFICATION_ROUNDS = 5
 
 
 def _build_config_dict(config_path: str, data_root: str) -> dict:
@@ -27,11 +40,36 @@ def _build_config_dict(config_path: str, data_root: str) -> dict:
     config.dev.json/a future config.player.json all work - only AI/OpenAI
     settings matter to the player) and returns initialize_app's config_dict,
     with `data_root` ALWAYS overridden to the validated --data-root value -
-    never the config file's own data_root, regardless of what it says."""
+    never the config file's own data_root, regardless of what it says.
+
+    2026-08-19 fix: `data_root` alone does NOT, by itself, control where
+    SessionManager/MemoryManager write - both read a fixed storage_dir
+    straight out of config.memory.session/.longterm, completely independent
+    of data_root (see ai_handler.py's SessionManager/MemoryManager
+    construction). This was a real, previously-unnoticed gap in this exact
+    function - it never surfaced because the one prepared example player
+    config's data_root ("test_data") happened to coincidentally match
+    config.test.json's own hardcoded memory paths. For any OTHER data_root,
+    session/long-term-memory would silently keep writing into config.test.json's
+    real storage_dir - the shared directory the actual pytest suite uses -
+    instead of the player's own isolated output folder. Explicitly overriding
+    both here, the same way this exact fix was already proven out in the
+    Feature 043 interactive-review scratch tooling, closes that gap for good.
+    """
     from src.models.config import AppConfiguration
 
     config = AppConfiguration.from_file(config_path)
     config.validate()
+
+    memory = dict(config.memory)  # never mutate the loaded config
+    session_cfg = dict(memory.get('session', {}))
+    session_cfg['storage_dir'] = str(Path(data_root) / "sessions")
+    memory['session'] = session_cfg
+
+    longterm_cfg = dict(memory.get('longterm', {}))
+    longterm_cfg['storage_dir'] = str(Path(data_root) / "memory")
+    memory['longterm'] = longterm_cfg
+
     return {
         'green_api_instance_id': config.green_api_instance_id,
         'green_api_token': config.green_api_token,
@@ -44,11 +82,36 @@ def _build_config_dict(config_path: str, data_root: str) -> dict:
         'data_root': data_root,
         'feature_flags': config.feature_flags,
         'godfather_phone': config.godfather_phone,
-        'memory': config.memory,
+        'memory': memory,
         'constitution_config': config.constitution_config,
         'user_roles': config.user_roles,
         'mcp': config.mcp,
     }
+
+
+def _last_assistant_reply(denidin_module, chat_id: str) -> str:
+    """The real model reply text just stored for this chat (SessionManager's
+    own persisted conversation history) - used only to detect "the model
+    asked a clarifying question" (a "?" in the reply), never to fabricate or
+    guess at content."""
+    session_manager = denidin_module.denidin_app.ai_handler.session_manager
+    history = session_manager.get_conversation_history(chat_id)
+    if history and history[-1]["role"] == "assistant":
+        return history[-1]["content"] or ""
+    return ""
+
+
+def _log_needs_clarification(log_path: Path, *, raw_line_no: int, round_num: int,
+                              original_text: str, model_question: str) -> None:
+    entry = {
+        "raw_line_no": raw_line_no,
+        "round": round_num,
+        "original_text": original_text,
+        "model_question": model_question,
+        "logged_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 def run_replay(
@@ -87,13 +150,75 @@ def run_replay(
     all_messages = parse_export(export_zip, resolved_extract_dir)
     messages = filter_date_range(all_messages, start, end, today)
 
-    with LocalMediaServer(resolved_extract_dir) as media_base_url:
-        source = PlayerExportSource(
-            messages, chat_id=chat_id, sender_map=sender_map, media_base_url=media_base_url,
-        )
-        source.start(denidin.dispatch_notification)
+    events_dir = Path(data_root) / "events"
+    clarification_log_path = Path(data_root) / "needs_clarification.jsonl"
 
-    return source.outcomes
+    outcomes: List[Dict] = []
+    with LocalMediaServer(resolved_extract_dir) as media_base_url:
+        for msg in messages:
+            outcomes.append(_dispatch_with_clarification_loop(
+                denidin, msg, chat_id=chat_id, sender_map=sender_map,
+                media_base_url=media_base_url, events_dir=events_dir,
+                clarification_log_path=clarification_log_path,
+            ))
+
+    return outcomes
+
+
+def _new_event_count(events_dir: Path, before: set) -> int:
+    after = set(events_dir.glob("*.json")) if events_dir.exists() else set()
+    return len(after - before)
+
+
+def _dispatch_with_clarification_loop(
+    denidin_module, msg: ParsedMessage, *, chat_id: str, sender_map: Dict[str, str],
+    media_base_url: str, events_dir: Path, clarification_log_path: Path,
+) -> Dict:
+    """Dispatches one real (or synthetic follow-up) message through the real,
+    unmodified pipeline, then - per explicit 2026-08-19 instruction - keeps
+    answering any clarifying question the model asks with a fixed,
+    uninformative filler (never a fabricated real answer) until the turn
+    reaches a terminal outcome: a ledger event captured, or a plain
+    declarative reply with no further "?" (an explicit decision not to
+    create one). Every question asked along the way is logged to
+    `clarification_log_path` for later human review - a real human, unlike
+    the player, would give a real answer instead of the filler. Bounded by
+    MAX_CLARIFICATION_ROUNDS so a model that never settles can't loop forever;
+    hitting the cap is itself logged as its own review-worthy signal."""
+    before = set(events_dir.glob("*.json")) if events_dir.exists() else set()
+    source = PlayerExportSource(
+        [msg], chat_id=chat_id, sender_map=sender_map, media_base_url=media_base_url,
+    )
+    source.start(denidin_module.dispatch_notification)
+    outcome = source.outcomes[0] if source.outcomes else {
+        "status": "unmapped-sender", "raw_line_no": msg.raw_line_no,
+    }
+
+    current = msg
+    round_num = 0
+    while _new_event_count(events_dir, before) == 0 and round_num < MAX_CLARIFICATION_ROUNDS:
+        reply_text = _last_assistant_reply(denidin_module, chat_id)
+        if "?" not in reply_text:
+            break  # terminal: a plain declarative reply - decided not to create one
+        round_num += 1
+        _log_needs_clarification(
+            clarification_log_path, raw_line_no=msg.raw_line_no, round_num=round_num,
+            original_text=current.text, model_question=reply_text,
+        )
+        current = ParsedMessage(
+            timestamp=current.timestamp + timedelta(seconds=30),
+            sender_display_name=current.sender_display_name,
+            text=FOLLOWUP_ANSWER_TEXT, attachments=[], raw_line_no=msg.raw_line_no,
+        )
+        followup_source = PlayerExportSource(
+            [current], chat_id=chat_id, sender_map=sender_map, media_base_url=media_base_url,
+        )
+        followup_source.start(denidin_module.dispatch_notification)
+        outcome = followup_source.outcomes[0] if followup_source.outcomes else outcome
+
+    outcome = dict(outcome)
+    outcome["clarification_rounds"] = round_num
+    return outcome
 
 
 def _parse_date(value: Optional[str]) -> Optional[date]:
