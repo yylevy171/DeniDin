@@ -102,7 +102,10 @@ Feature implementation MUST follow a structured phase progression with validatio
 - **Phase 0: Research** - Technical feasibility, dependency analysis, constraints
 - **Phase 1: Design** - Data models, API contracts, quickstart scenarios
 - **Phase 2: Task Generation** - Dependency-ordered, user-story-grouped task list
-- **Phase 3: Implementation** - Test-Driven Development (TDD) per user story priority
+- **Phase 3: Implementation** - unit/integration test discipline (§VI.b) per user story
+  priority, followed by a single Test-Driven Development (TDD, §VI.a) acceptance pass
+  (`billed`/`expensive` tests, defined earlier in Phase 2, run once the whole feature is
+  code-complete)
 - **Constitution & Methodology Check** MUST pass before Phase 0; re-check after Phase 1
 - No phase may begin until predecessor phase artifacts are complete and approved
 
@@ -130,43 +133,82 @@ All feature context MUST reside in structured markdown documents; code comments 
 
 ---
 
-## VI. Test-Driven Development (TDD)
+## VI. Test-Driven Development (TDD) & Unit/Integration Test Discipline
 
-All implementation MUST follow strict test-first methodology with human approval gates.
+**Redefined 2026-08-18** (explicit human decision — see Changelog): **"TDD" in this project
+now refers specifically to `billed`/`expensive` tests — the acceptance-level tests that
+validate a feature from the real **user's perspective**, through the real end-to-end pipeline
+(real OpenAI calls, real external services), as opposed to unit/integration tests, which are a
+separate, still-mandatory discipline described below but are no longer what "TDD" itself means
+in this methodology.** This replaces the prior (2026-01-21–2026-08-18) definition, under which
+"TDD" named one unified RED→GREEN workflow applied uniformly across all four test tiers.
+
+**Test tier classification (2026-07-30, Feature 029) MUST be explicit for every test written**,
+in every app in this monorepo (each app registers these markers independently in its own
+`pytest.ini`/`conftest.py`):
+- **unit**: mocked/isolated, fast, no external network calls
+- **integration**: real internal components exercised from a real external entry point
+  (webhook, HTTP request) — no mocking of internal classes/handlers/managers (§V)
+- **billed** (`@pytest.mark.billed`): real, text-only paid OpenAI API calls — cheap per
+  run; excluded from the default run but may be run freely, with NO per-run approval
+  gate and NO one-at-a-time restriction (see CONSTITUTION.md §VII)
+- **expensive** (`@pytest.mark.expensive`): real vision/image/PDF/DOCX paid OpenAI API
+  calls — costlier per run; excluded from the default run AND requires explicit human
+  approval before every single run, one at a time (see CONSTITUTION.md §VII)
+
+### VI.a — TDD proper: `billed`/`expensive` (user-perspective) tests
+
+These are the tests that actually validate the feature works — end to end, from a real
+user's perspective, through the real webhook/router/handler/AI pipeline, exactly as a real
+person would trigger it. They are **defined at the start of the feature's task breakdown**
+(during `speckit.tasks`/planning, same timing as before) but are **not run during
+implementation of individual unit/integration tasks**, and do not block any of them.
+
+**Workflow:**
+1. **DEFINE, at the start**: as part of the feature's task list, write out each `billed`/
+   `expensive` scenario — what real user-facing flow it exercises, which user story/success
+   criterion it validates, and its exact tier (`billed` vs `expensive` — flag `expensive`
+   explicitly, since it carries its own separate per-run approval gate). Write the actual test
+   code at this stage too, since the feature's contracts/user stories are already known — it
+   does not need to run yet, and does not need to fail-then-pass in the RED/GREEN sense.
+2. **DO NOT RUN** the `billed`/`expensive` tests defined above while unit/integration tasks for
+   the feature are still in progress — they are not a per-task gate.
+3. **RUN ONCE, at the end**, only once the whole feature is code-complete — every unit and
+   integration task (§VI.b below) finished and GREEN. This is the feature's real acceptance
+   pass: run every `billed`/`expensive` test defined in step 1 for real, against the completed
+   implementation, and fix forward on any failure (same "no premature declaring success" bar as
+   any other test).
+4. `expensive` tests keep the full existing per-run human-approval gate, one at a time, with
+   logs read before any re-run (CONSTITUTION §VII) — this discipline is unchanged by this
+   redefinition. `billed` tests keep their existing no-approval-needed, run-freely status.
+
+**Rationale**: a `billed`/`expensive` test proves the feature actually works for a real user;
+running one before the feature exists just proves it fails for an obvious reason (nothing is
+implemented yet), which adds no information a unit/integration RED phase doesn't already give
+more cheaply. Concentrating them into one acceptance pass at the end avoids repeated real paid
+API calls against a moving target mid-implementation, while still defining them up front so the
+target the implementation is aiming at is explicit from day one.
+
+### VI.b — Unit & integration test discipline (unchanged)
+
+The prior RED→GREEN, human-approval-gated workflow **stays exactly as it was** for `unit` and
+`integration` tests — this was explicitly reaffirmed, not touched, by the 2026-08-18
+redefinition above.
 
 **Requirements:**
-- Every implementation task MUST be split into two sub-tasks:
+- Every unit/integration implementation task MUST be split into two sub-tasks:
   - **Task A (Tests)**: Write comprehensive tests covering all acceptance criteria
   - **Task B (Implementation)**: Implement code to pass tests (BLOCKED until Task A approved)
 - Tests MUST be reviewed and approved by human before implementation begins
 - Once approved, tests are IMMUTABLE without explicit human re-approval
 - Test coverage MUST include: happy path, edge cases, error scenarios, boundary conditions
-- Manual test checkpoints (acceptance testing) serve as user story approval gates
 - No implementation code may be written until its corresponding tests exist and are approved
-- **Test tier classification (2026-07-30, Feature 029) MUST be explicit for every test written**,
-  in every app in this monorepo (each app registers these markers independently in its own
-  `pytest.ini`/`conftest.py`):
-  - **unit**: mocked/isolated, fast, no external network calls
-  - **integration**: real internal components exercised from a real external entry point
-    (webhook, HTTP request) — no mocking of internal classes/handlers/managers (§V)
-  - **billed** (`@pytest.mark.billed`): real, text-only paid OpenAI API calls — cheap per
-    run; excluded from the default run but may be run freely, with NO per-run approval
-    gate and NO one-at-a-time restriction (see CONSTITUTION.md §VII)
-  - **expensive** (`@pytest.mark.expensive`): real vision/image/PDF/DOCX paid OpenAI API
-    calls — costlier per run; excluded from the default run AND requires explicit human
-    approval before every single run, one at a time (see CONSTITUTION.md §VII)
-  - The **EXPLAIN Test Plan** step (Step 1 below) MUST state which tier(s) each new test
-    belongs to, so the human approval gate can weigh cost/approval implications before any
-    test is written — a test plan that omits tier classification is incomplete
 
-**TDD Workflow (6 Steps with Human Gates):**
+**Workflow (6 Steps with Human Gates):**
 
-1. **EXPLAIN Test Plan** (NEW MANDATORY STEP)
+1. **EXPLAIN Test Plan**
    - Describe in plain language WHAT will be tested and WHY
    - List all test cases with their purpose
-   - **Classify each test's tier**: unit / integration / billed / expensive (see
-     tier definitions above) — flag any billed/expensive tests explicitly so the
-     human can weigh cost/approval implications up front
    - Identify CHK requirements each test validates
    - Explain expected behavior and edge cases
    - **Output**: Human-readable test plan explanation
@@ -202,6 +244,9 @@ All implementation MUST follow strict test-first methodology with human approval
    - Remove duplication, improve naming
    - Run tests after each refactor to ensure they still pass
    - **Output**: Clean, tested code
+
+Manual test checkpoints (acceptance testing, e.g. `quickstart.md` scenarios) remain user story
+approval gates, run alongside or after §VI.a's acceptance pass.
 
 ---
 
@@ -632,7 +677,10 @@ Saying **"haleluya"** (or any reasonable spelling variant — "halleluja", "hale
 - Path Conventions section (project structure, relative vs absolute paths)
 - TDD Workflow explanation (Task A → APPROVAL → Task B)
 - Test Immutability reminder
-- Phases: Setup → Foundational → User Story N (by priority)
+- Phases: Setup → Foundational → User Story N (by priority) → **Acceptance** (§VI.a — every
+  `billed`/`expensive` test defined for the feature, run once as a final pass, after every
+  earlier phase's unit/integration tasks are GREEN; not itself split into a/b, since these
+  tests are defined early but deliberately not run until this final phase)
 - Checkpoint markers after each phase
 - Version Control steps (VC0-VC5) per phase
 
@@ -757,6 +805,11 @@ Development constraints and coding standards are defined in `CONSTITUTION.md`.
 
 ## XVII. AI Agent TDD Self-Check Protocol
 
+**Scope note (2026-08-18)**: this protocol governs §VI.b (unit/integration tests) — the
+Task A/Task B, blocked-until-approved pattern. It does NOT apply to §VI.a's `billed`/`expensive`
+tests, which are defined up front but deliberately are not a per-task blocking gate; they run
+once, as a single acceptance pass, after every unit/integration task below is already GREEN.
+
 Before creating any implementation task or writing any production code, the AI agent MUST verify:
 
 **Mandatory Pre-Implementation Checklist:**
@@ -826,9 +879,17 @@ is what actually preserves human oversight in a sequential context.
 
 ---
 
-**Version**: 2.4.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-08-02
+**Version**: 2.5.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-08-18
 
 **Changelog**:
+- v2.5.0 (2026-08-18): Redefined "TDD" (§VI) per explicit human decision — TDD now refers
+  specifically to `billed`/`expensive` (user-perspective, real end-to-end) tests: defined at the
+  start of a feature's task breakdown same as before, but no longer run during implementation;
+  run once, as a single acceptance pass, only once the whole feature's unit/integration work is
+  code-complete. Unit/integration tests keep their prior RED→GREEN, human-approval-gated,
+  test-immutable workflow completely unchanged, now named §VI.b to distinguish it from §VI.a
+  (the redefined "TDD"). §XVII annotated to clarify its Task A/Task B blocking pattern applies
+  to §VI.b only, not §VI.a.
 - v2.4.0 (2026-08-02): Added "Sequential-Run Stop Gates" (XVIII) after a real incident where an AI agent generalized one approved test-fix into standing permission to skip the stop-on-fail gate for later failures in the same sweep
 - v2.3.0 (2026-07-30): Feature 029 - TDD (§VI) now requires explicit test-tier classification (unit/integration/billed/expensive) as part of the EXPLAIN Test Plan step, in every app
 - v2.2.0 (2026-01-21): Added "AI Agent TDD Self-Check Protocol" (XVII) to prevent methodology violations during autonomous work
