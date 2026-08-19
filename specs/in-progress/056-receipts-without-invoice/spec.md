@@ -28,8 +28,8 @@ feature 56 to encompass the 2 new logic changes required for accounting rules in
 `research.md` (present — transaction-account cancellation mechanism, live-confirmed 2026-08-18)
 ✅ · `plan.md` (present, TASKED) ✅ · `data-model.md` (present) ✅ ·
 `contracts/` (present — `create_receipt.json` updated, `cancel_transaction_account.json` new)
-✅ · `quickstart.md` (present) ✅ · `tasks.md` (present — T001-T010 across 2 independent
-phases/user stories) ✅.
+✅ · `quickstart.md` (present) ✅ · `tasks.md` (present — T001-T012 across 2 independent
+phases/user stories plus a final acceptance phase) ✅.
 
 ---
 

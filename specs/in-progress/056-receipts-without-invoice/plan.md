@@ -3,7 +3,7 @@
 **Feature**: 056-receipts-without-invoice
 **Branch**: `feature/056-receipts-without-invoice`
 **Spec**: `./spec.md` · **User Stories**: `./user-stories.md` · **Research**: `./research.md`
-**Status**: TASKED — `tasks.md` complete (T001-T010), ready for `speckit.implement`
+**Status**: TASKED — `tasks.md` complete (T001-T012), ready for `speckit.implement`
 **Updated**: 2026-08-18
 
 **Compliance**: CONSTITUTION.md (§I no env vars — N/A, no config touched; all-Israel-local-time —
@@ -52,8 +52,9 @@ document-mutating Morning tool. Both are audit-logged via `audit.py`'s existing 
   `test_morning_sandbox_standalone_receipt.py` and
   `test_morning_sandbox_cancel_transaction_account.py`, following the existing
   `test_morning_sandbox_invoice_status_tools.py` pattern) + `apps/denidin-app`'s `tests/billed/`
-  for the RBAC/approval-gate/tool-attachment wiring (real OpenAI text calls, cheap, no
-  per-run approval needed per this app's testing rules).
+  for both user stories' real user-perspective acceptance (§VI.a — real OpenAI text calls,
+  cheap, no per-run approval needed per this app's testing rules; described now, written and
+  run once at the end).
 - **Target Platform**: `apps/morning-mcp-app` (server.py's FastMCP tool registration,
   `tools.py`) and `apps/denidin-app` (`ai_handler.py`'s `APPROVAL_REQUIRED_MCP_TOOLS`) — no
   new runtime/container, but requires the usual rebuild-and-redeploy step once merged (not part
@@ -96,7 +97,7 @@ specs/in-progress/056-receipts-without-invoice/
 ├── contracts/            # this phase — updated create_receipt.json, new
 │                          # cancel_transaction_account.json
 ├── quickstart.md         # this phase
-└── tasks.md              # done — T001-T010 (/speckit.tasks)
+└── tasks.md              # done — T001-T012 (/speckit.tasks)
 ```
 
 ### Source Code
@@ -164,9 +165,11 @@ apps/morning-mcp-app/tests/integration/
 │   # US2's 5 acceptance scenarios, real sandbox, real cancel_transaction_account calls.
 
 apps/denidin-app/tests/billed/
-├── (existing file covering Morning-tool RBAC/approval wiring, or a new one)
-│   # Real OpenAI text call confirming cancel_transaction_account is attached only for
-│   # godfather/admin and requires approval before executing (REQ-INV-023).
+├── (existing file(s) covering Morning-tool RBAC/approval wiring, or new ones — Phase 3, §VI.a)
+│   # US1: real OpenAI text call confirming a godfather can record a standalone receipt
+│   #   (deposit) end-to-end, with no invoice ever created — REQ-INV-014/015/018.
+│   # US2: real OpenAI text call confirming cancel_transaction_account is attached only for
+│   #   godfather/admin, requires approval before executing, and never says "paid" — REQ-INV-023/026.
 ```
 
 ## Phased Execution
@@ -184,6 +187,9 @@ run together, once, in Phase 3, after both phases below are GREEN.
 2. **Implement**: `_build_standalone_receipt_payload`, relax `create_receipt`'s signature and
    branch on `original_internal_morning_id is None`. Tests go GREEN.
 3. **Verify**: full existing `create_receipt` test suite still passes unchanged (REQ-INV-016).
+4. **TDD scenario (§VI.a)**: `tasks.md`'s T009 describes (in user-experience terms, not code)
+   this story's `billed`-tier acceptance scenario now — its real test code is written and run
+   only in Phase 3, alongside US2's.
 
 ### Phase 2 — Transaction account cancellation (US2, P2)
 1. **Test (§VI.b)**: unit test for the idempotency guard logic (RED); integration tests in
@@ -192,13 +198,17 @@ run together, once, in Phase 3, after both phases below are GREEN.
 2. **Implement**: `cancel_transaction_account` in `tools.py`, its dedicated formatter, its
    `server.py` MCP registration. Tests go GREEN.
 3. **RBAC wiring**: add to `APPROVAL_REQUIRED_MCP_TOOLS` in `apps/denidin-app`.
+4. **TDD scenario (§VI.a)**: `tasks.md`'s T010 describes (in user-experience terms, not code)
+   this story's `billed`-tier acceptance scenario now — its real test code is written and run
+   only in Phase 3, alongside US1's.
 
 ### Phase 3 — Acceptance (§VI.a — TDD proper, `billed`/`expensive`, run once)
-The `billed`-tier acceptance scenario (described in user-experience terms during Phase 2 —
-tasks.md's T009 — not as test code) proves `cancel_transaction_account`'s RBAC/approval-gate
-wiring end-to-end from a real user's perspective. Its actual test code is written AND run,
-together, only here, once, after Phase 1 AND Phase 2 are both GREEN — this phase is the
-feature's actual acceptance proof, not a per-story gate.
+Both stories' `billed`-tier acceptance scenarios (described in user-experience terms during
+Phase 1/Phase 2 — `tasks.md`'s T009/T010 — not as test code) prove the feature end-to-end from a
+real user's perspective: US1's standalone-receipt flow and US2's `cancel_transaction_account`
+RBAC/approval-gate wiring. Their actual test code is written AND run, together, only here, once,
+after Phase 1 AND Phase 2 are both GREEN — this phase is the feature's actual acceptance proof,
+not a per-story gate.
 
 ### Phase 4 — Close out
 Move spec to `specs/done/` once merged, per folder movement rules (part of the `haleluya` flow,
