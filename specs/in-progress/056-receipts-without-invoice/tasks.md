@@ -74,7 +74,11 @@ independently verifiable with no dependency on Phase 2.
   attempted at all; (3) `original_internal_morning_id` given (existing path) → behavior and
   Morning calls are byte-for-byte identical to before this task (REQ-INV-016) — reuse/extend the
   existing `test_create_receipt_happy_path_uses_original_and_allows_override` test's fixture
-  shape as the "unchanged" regression check rather than writing it from scratch.
+  shape as the "unchanged" regression check rather than writing it from scratch; (4) on a
+  successful standalone creation, `log_mutation` is called with the resolved client's id/name
+  (spy/capture the call, same technique already used for `create_receipt`'s existing audit
+  coverage if present, otherwise a simple call-recording fake) — REQ-INV-024's audit-logging
+  requirement, previously untested by any task in this feature.
 - [ ] **T002b** [US1] Implement the branch in `create_receipt()`
   (`apps/morning-mcp-app/src/denidin_mcp_morning/tools.py`): make
   `original_internal_morning_id: Optional[str] = None`; add `client_name`, `name_resolved:
@@ -131,26 +135,36 @@ zero new documents for that client — independently verifiable with no dependen
   never called — cancellation must never contradict a real payment document; (4) a non-type-300
   original (e.g. type 305) → raises `ValueError`, `close_invoice` never called (REQ-INV-022,
   mirrors `test_create_receipt_rejects_a_transaction_account_original`'s existing pattern for
-  the opposite direction).
+  the opposite direction); (5) on the real-cancellation path (case 1), `log_mutation` is called
+  with `client_id`/`client_name` extracted from the fetched original (same pattern as
+  `create_receipt`'s existing linked-original `log_mutation` call) — REQ-INV-024, previously
+  untested by any task in this feature; on the type-300-rejection path (case 4), `log_refusal`
+  is called instead.
 - [ ] **T004b** [US2] Implement `cancel_transaction_account(client,
   original_internal_morning_id: str) -> str` in
   `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py`: fetch via `client.get_invoice`;
   raise `ValueError` if `type != _TRANSACTION_ACCOUNT_DOCUMENT_TYPE`; if `status != 0`, return
   the no-op confirmation (T005b's formatter) without calling `close_invoice`; otherwise call
-  `client.close_invoice`, `log_mutation`, return T005b's confirmation (BLOCKED until T004a
-  approved).
+  `client.close_invoice`, then `log_mutation` with `client_id`/`client_name` extracted from the
+  already-fetched original (same pattern `create_receipt`'s existing linked path already uses —
+  REQ-INV-024), and return T005b's confirmation (BLOCKED until T004a approved).
 - [ ] **T005a** [P] [US2] Write unit tests for a new formatter (working name
   `format_transaction_account_cancelled(...)`) in
   `apps/morning-mcp-app/tests/unit/test_formatters.py`: asserts the confirmation text never
   contains "שולם" or any other paid/payment wording — this is the direct regression test for
   research.md Finding 2 (`get_invoice_details`'s existing formatter does say "שולם" for a
-  status-2 document, which is exactly the bug this new formatter must not repeat).
+  status-2 document, which is exactly the bug this new formatter must not repeat). If the
+  formatter includes any date/timestamp, it MUST come from `now_local()`
+  (`apps/morning-mcp-app/src/denidin_mcp_morning/utils/time_utils.py`) — never a bare
+  `datetime.now()` — per CLAUDE.md's Israel-local-time rule; assert this explicitly if a date
+  ends up in scope.
 - [ ] **T005b** [US2] Implement `format_transaction_account_cancelled(...)` in
   `apps/morning-mcp-app/src/denidin_mcp_morning/formatters.py` (BLOCKED until T005a approved).
 - [ ] **T006** [US2] Register `cancel_transaction_account` as a new MCP tool in
   `apps/morning-mcp-app/server.py`, mirroring how the existing `create_*`/
   `create_combo_document_as_reference` tools are registered (Feature 021's pattern) — no test
-  task on its own; exercised end-to-end by T007a/T008a below.
+  task on its own; exercised end-to-end by T007a (sandbox integration) and T009a (billed RBAC)
+  below.
 - [ ] **T007a** [P] [US2] Write real-sandbox integration test
   `apps/morning-mcp-app/tests/integration/test_morning_sandbox_cancel_transaction_account.py`,
   mirroring `test_morning_sandbox_invoice_status_tools.py`'s structure (with the propagation-lag

@@ -3,7 +3,7 @@
 **Feature**: 056-receipts-without-invoice
 **Branch**: `feature/056-receipts-without-invoice`
 **Spec**: `./spec.md` · **User Stories**: `./user-stories.md` · **Research**: `./research.md`
-**Status**: Ready for Task Generation
+**Status**: TASKED — `tasks.md` complete (T001-T010), ready for `speckit.implement`
 **Updated**: 2026-08-18
 
 **Compliance**: CONSTITUTION.md (§I no env vars — N/A, no config touched; all-Israel-local-time —
@@ -96,7 +96,7 @@ specs/in-progress/056-receipts-without-invoice/
 ├── contracts/            # this phase — updated create_receipt.json, new
 │                          # cancel_transaction_account.json
 ├── quickstart.md         # this phase
-└── tasks.md              # next — /speckit.tasks
+└── tasks.md              # done — T001-T010 (/speckit.tasks)
 ```
 
 ### Source Code
@@ -117,8 +117,10 @@ apps/morning-mcp-app/src/denidin_mcp_morning/
 │   #   2. If already status != 0 (not open - already closed/cancelled or fulfilled): idempotent
 │   #      no-op, return the current-state confirmation (REQ-INV-021, REQ-INV-025) - NEVER call
 │   #      close_invoice on a non-open document (confirmed live: raw API 400s on that).
-│   #   3. Otherwise: client.close_invoice(original_internal_morning_id); log_mutation; return a
-│   #      NEW, dedicated Hebrew confirmation (REQ-INV-026 - never "שולם"/paid wording).
+│   #   3. Otherwise: client.close_invoice(original_internal_morning_id); log_mutation (with
+│   #      client_id/client_name extracted from the already-fetched original, same pattern as
+│   #      create_receipt's linked path - REQ-INV-024); return a NEW, dedicated Hebrew
+│   #      confirmation (REQ-INV-026 - never "שולם"/paid wording).
 │   #
 │   # NEW: _build_standalone_receipt_payload(client_id, amount, description, payment_date) -> dict
 │   #   type 400, no "income"/vatType line (REQ-INV-017), no linkedDocumentIds, a payment[] line
@@ -142,13 +144,18 @@ apps/denidin-app/src/handlers/ai_handler.py
 │   no change needed there.
 
 apps/morning-mcp-app/tests/unit/
-├── test_tools.py (or similar existing file)
-│   # _build_standalone_receipt_payload: asserts no VAT/income line, no linkedDocumentIds,
-│   #   correct payment[] shape.
-│   # cancel_transaction_account: idempotency guard logic (already-closed short-circuits
-│   #   without calling client.close_invoice - use a lightweight fake/stub MorningClient here,
-│   #   same convention as this file's existing unit tests for other tools - NOT the same as
-│   #   "mocking an external service", which stays real-sandbox-only in integration/).
+├── test_tools_document_creation.py
+│   # _build_standalone_receipt_payload + create_receipt's new branch: asserts no VAT/income
+│   #   line, no linkedDocumentIds, correct payment[] shape (alongside the existing
+│   #   _build_payment_receipt_payload/create_receipt coverage already in this file).
+├── test_mark_invoice_paid.py
+│   # cancel_transaction_account: idempotency guard logic (already-closed/already-fulfilled
+│   #   short-circuits without calling client.close_invoice) - extends this file's existing
+│   #   _FakeMorningClient with a close_invoice stub, same convention as its existing
+│   #   idempotency tests for create_receipt/create_combo_document_as_reference - NOT the same
+│   #   as "mocking an external service", which stays real-sandbox-only in integration/.
+├── test_formatters.py
+│   # format_transaction_account_cancelled: asserts the confirmation never says "שולם"/paid.
 
 apps/morning-mcp-app/tests/integration/
 ├── test_morning_sandbox_standalone_receipt.py (NEW)

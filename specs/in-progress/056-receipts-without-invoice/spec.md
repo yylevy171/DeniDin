@@ -24,9 +24,9 @@ feature 56 to encompass the 2 new logic changes required for accounting rules in
   Terminology Glossary, Technology Choices, Requirement IDs (continuing the `REQ-INV-*` series
   started by Feature 027, next available number `REQ-INV-014`).
 
-**Required Files**: `user-stories.md` (present, DRAFT) ✅ · `spec.md` (this file, DRAFT) ·
+**Required Files**: `user-stories.md` (present, TASKED) ✅ · `spec.md` (this file, TASKED) ✅ ·
 `research.md` (present — transaction-account cancellation mechanism, live-confirmed 2026-08-18)
-✅ · `plan.md` (present, Ready for Task Generation) ✅ · `data-model.md` (present) ✅ ·
+✅ · `plan.md` (present, TASKED) ✅ · `data-model.md` (present) ✅ ·
 `contracts/` (present — `create_receipt.json` updated, `cancel_transaction_account.json` new)
 ✅ · `quickstart.md` (present) ✅ · `tasks.md` (present — T001-T010 across 2 independent
 phases/user stories) ✅.
@@ -47,7 +47,7 @@ Complete Given-When-Then acceptance criteria live in **`user-stories.md`**. Summ
 - **Standalone receipt**: A Morning receipt (type 400, "קבלה") created with no prior document
   to reference — as opposed to today's `create_receipt`, which always requires an
   `original_internal_morning_id` pointing at an existing type-305 tax invoice being paid.
-- **Transaction account** (חשבון עיסקה, Morning document type 300): a non-tax document already
+- **Transaction account** (חשבון עסקה, Morning document type 300): a non-tax document already
   creatable via `create_transaction_account` (Feature 021). Today it can only be *fulfilled* —
   closed as paid via `create_combo_document_as_reference` (renamed from `close_transaction_account`
   by bugfix-038), which deliberately creates a linked type-320 combo document. There is currently

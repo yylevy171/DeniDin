@@ -3,8 +3,8 @@
 **Feature**: 056-receipts-without-invoice
 **Format**: Given-When-Then (Gherkin/BDD), per METHODOLOGY.md §I — MANDATORY, blocks spec
 approval until present.
-**Status**: CLARIFIED (2026-08-18) — three open questions resolved via direct user decision
-(see spec.md's Clarifications section). Ready for `plan.md`.
+**Status**: TASKED (2026-08-18) — three open questions resolved via direct user decision (see
+spec.md's Clarifications section); `plan.md`/`tasks.md` complete. Ready for `speckit.implement`.
 
 ---
 
@@ -14,7 +14,7 @@ Two related Morning (Green Invoice) accounting-rule gaps, captured together as o
 explicit user decision (2026-08-17): (1) there is no way to record a receipt for money that
 isn't tied to any prior invoice — a deposit, a loan repayment, or an advance payment ahead of
 the real transaction — and (2) there is no way to cancel/abandon an open transaction account
-(חשבון עיסקה) without incorrectly creating a real financial document for money that never moved.
+(חשבון עסקה) without incorrectly creating a real financial document for money that never moved.
 
 ## User Story 1 — Recording a standalone receipt for a deposit, loan repayment, or advance
 payment (Priority: P1)
@@ -60,7 +60,7 @@ against the sandbox, with no dependency on User Story 2.
 
 ## User Story 2 — Cancelling a transaction account creates no document (Priority: P2)
 
-A godfather/admin has an open transaction account (חשבון עיסקה) for a deal that fell through —
+A godfather/admin has an open transaction account (חשבון עסקה) for a deal that fell through —
 no money changed hands, and nothing should be recorded as income. They ask DeniDin to cancel it.
 DeniDin asks for approval, and — once approved — marks the transaction account as
 cancelled/abandoned internally in Morning, without creating any document at all (no credit note,
