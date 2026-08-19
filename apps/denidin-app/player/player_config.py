@@ -38,6 +38,16 @@ class PlayerConfig:
     sender_map: Dict[str, str]
     data_root: str
     denidin_config: str
+    # 2026-08-19: DeniDin's own WhatsApp number (bare digits, e.g.
+    # "972501234567" - same convention as AIHandler.own_whatsapp_number,
+    # bugfix-024) - a real live app resolves this itself via a Green API
+    # getWaSettings() call at startup, but the player never touches Green
+    # API at all (research.md R3), so there's no live way to discover it.
+    # Same category as sender_map: the export/replay context can't know
+    # this on its own, the operator must supply it. Optional - defaults to
+    # "" (unresolved), matching AIHandler's own fail-open convention when
+    # this call would normally fail/be unreachable.
+    whatsapp_own_number: str = ""
 
 
 # export_zip/chat_id/data_root/denidin_config have no sensible default and
@@ -68,4 +78,5 @@ def load_player_config(path: Path) -> PlayerConfig:
         sender_map=raw.get("sender_map", {}),
         data_root=raw["data_root"],
         denidin_config=raw["denidin_config"],
+        whatsapp_own_number=raw.get("whatsapp_own_number", ""),
     )

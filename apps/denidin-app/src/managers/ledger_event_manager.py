@@ -63,6 +63,12 @@ REFERENCE_PLACEHOLDER = "צריך למצוא"
 # Safe to reset because no real persisted file has EVER carried schema_version=1 (or
 # any value) - confirmed by inspecting all 29 real files under test_data/events/, all
 # predate the field entirely (MISSING), so there is no collision with an old "v1".
+#
+# whatsapp_chat removed (2026-08-19): redundant with session_id (the session it
+# points at already carries its own whatsapp_chat) and message_id, both already
+# sufficient traceability. Stays schema_version=1 (human decision) - v1 has never
+# been deployed to real dev/prod data, same reset-safety reasoning as above still
+# applies, so this is folded into the same baseline rather than bumped.
 CURRENT_SCHEMA_VERSION = 1
 
 # Matches ש"ח / ש׳ח / שח (various quote-character renderings of "shekel chadash").
@@ -254,7 +260,6 @@ class LedgerEventManager:
     def add_ledger_event(
         self,
         session_id: str,
-        whatsapp_chat: str,
         event: Dict,
         message_id: Optional[str],
         message_timestamp: Optional[int],
@@ -264,8 +269,9 @@ class LedgerEventManager:
         Persist a captured `capture_ledger_event` result as its own file.
 
         Args:
-            session_id: source session (no longer implied by folder nesting)
-            whatsapp_chat: source chat JID, same convention as Session.whatsapp_chat
+            session_id: source session (no longer implied by folder nesting) - the
+                session itself already carries its own whatsapp_chat, so the event
+                record no longer duplicates it (2026-08-19)
             event: the parsed capture_ledger_event function-call arguments, merged
                 shared+component shape - LEDGER_EVENT_TOOL's schema; `component_count`
                 is popped separately by add_ledger_events_from_call and never reaches
@@ -453,8 +459,10 @@ class LedgerEventManager:
             "morning_document_id": None,  # reserved - future Morning-reconciliation feature
             "invoice_actual_creation_date": None,  # reserved - future Morning-reconciliation feature
             # DeniDin-internal fields, not Events.csv columns - traceability/evidence
+            # (2026-08-19: whatsapp_chat dropped - session_id already points at a
+            # session that carries its own whatsapp_chat; message_id+session_id
+            # together are already sufficient traceability, no need to duplicate it)
             "session_id": session_id,
-            "whatsapp_chat": whatsapp_chat,
             "message_id": message_id,
             "captured_at": captured_at,
             "reference_hint": event.get("reference_hint"),
@@ -479,7 +487,6 @@ class LedgerEventManager:
     def add_ledger_events_from_call(
         self,
         session_id: str,
-        whatsapp_chat: str,
         call_arguments: Dict,
         message_id: Optional[str],
         message_timestamp: Optional[int],
@@ -571,7 +578,6 @@ class LedgerEventManager:
             merged_event = {**shared_fields, **component}
             event_id = self.add_ledger_event(
                 session_id=session_id,
-                whatsapp_chat=whatsapp_chat,
                 event=merged_event,
                 message_id=message_id,
                 message_timestamp=message_timestamp,

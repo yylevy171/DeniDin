@@ -819,7 +819,7 @@ class TestFinalizeResponseThreadsLedgerEventIds:
         for message_id in session.message_ids:
             with (session_dir / "messages" / f"{message_id}.json").open(encoding="utf-8") as f:
                 msg = json.load(f)
-            if msg["role"] == "user":
+            if msg["ai_required_role"] == "user":
                 user_messages.append(msg)
 
         assert len(user_messages) == 1

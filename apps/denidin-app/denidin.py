@@ -210,7 +210,10 @@ class DeniDin:
         ai_response = self.ai_handler.get_response(
             ai_request,
             sender=message.sender_display_name,
-            user_phone=message.sender_id
+            user_phone=message.sender_id,
+            sender_phone=message.sender_id,
+            is_group=message.is_group,
+            chat_name=message.chat_name
         )
         
         # Get session_id from session manager
@@ -487,7 +490,10 @@ def _process_conversational_message(notification: Notification) -> None:
         ai_response = denidin_app.ai_handler.get_response(
             ai_request,
             sender=message.sender_display_name,
-            user_phone=group_user_phone or message.sender_id
+            user_phone=group_user_phone or message.sender_id,
+            sender_phone=message.sender_id,
+            is_group=message.is_group,
+            chat_name=message.chat_name
         )
         logger.info(
             f"{tracking} AI response generated: {ai_response.tokens_used} tokens, "
@@ -728,6 +734,9 @@ def handle_button_tap(notification: Notification) -> None:
         message_id=message.message_id,
         user_phone=message.sender_id,
         sender=message.sender_display_name,
+        is_group=message.is_group,
+        chat_name=message.chat_name,
+        sender_phone=message.sender_id,
     )
 
     if ai_response is None:

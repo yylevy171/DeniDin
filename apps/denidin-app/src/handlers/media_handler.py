@@ -77,7 +77,9 @@ class MediaHandler:
         caption: str = "",
         timestamp: Optional[int] = None,
         message_id: Optional[str] = None,
-        sender_display_name: Optional[str] = None
+        sender_display_name: Optional[str] = None,
+        is_group: bool = False,
+        chat_name: Optional[str] = None
     ) -> Dict:
         """
         Process media message through complete workflow.
@@ -105,10 +107,17 @@ class MediaHandler:
                 message (LedgerEvent.message_id).
             sender_display_name: Resolved human-readable sender name (Feature 039,
                 WhatsAppMessage.sender_display_name) - used only for the persisted
-                Message.sender/recipient values in _store_media_turn, never for
+                Message.sender_name value in _store_media_turn, never for
                 filenames (which keep using sender_phone, the raw JID, unchanged;
                 ledger events no longer persist a sender field at all - Phase 11,
                 2026-08-16). Falls back to sender_phone if not given.
+            is_group: Whether chat_id is a WhatsApp group (2026-08-19,
+                WhatsAppMessage.is_group) - drives Message.recipient/
+                .recipient_name resolution in _store_media_turn, same as the
+                text path (AIHandler._finalize_response).
+            chat_name: Green API's resolved chat display name
+                (senderData.chatName, WhatsAppMessage.chat_name) - a group's
+                real subject/name when is_group.
 
         Returns:
             {
@@ -219,7 +228,6 @@ class MediaHandler:
                     for call_arguments in ledger_events:
                         new_event_ids = self.ledger_event_manager.add_ledger_events_from_call(
                             session_id=session.session_id,
-                            whatsapp_chat=chat_id,
                             call_arguments=call_arguments,
                             message_id=message_id,
                             message_timestamp=event_timestamp,
@@ -248,8 +256,9 @@ class MediaHandler:
             # Message.extracted_text's "None when nothing extracted" contract.
             extracted_text = analysis_result.get("extracted_text") or None
             self._store_media_turn(
-                chat_id, sender_display_name or sender_phone, media_type, caption, summary,
-                ledger_event_ids, message_id, relative_image_path, extracted_text
+                chat_id, sender_phone, sender_display_name or sender_phone, media_type,
+                caption, summary, ledger_event_ids, message_id, relative_image_path,
+                extracted_text, is_group, chat_name
             )
 
             return {
@@ -269,9 +278,11 @@ class MediaHandler:
             )
 
     def _store_media_turn(
-        self, chat_id: str, sender_display: str, media_type: str, caption: str, summary: str,
-        ledger_event_ids: Optional[list] = None, message_id: Optional[str] = None,
-        image_path: Optional[str] = None, extracted_text: Optional[str] = None
+        self, chat_id: str, sender_phone: str, sender_display: str, media_type: str,
+        caption: str, summary: str, ledger_event_ids: Optional[list] = None,
+        message_id: Optional[str] = None, image_path: Optional[str] = None,
+        extracted_text: Optional[str] = None, is_group: bool = False,
+        chat_name: Optional[str] = None
     ) -> None:
         """bugfix-017: store both sides of a media turn in the session, mirroring
         AIHandler._finalize_response's user+assistant storage for text turns.
@@ -301,23 +312,47 @@ class MediaHandler:
         to the user message only, same as image_path. None when the extractor
         found no text.
 
-        sender_display (Feature 039): the resolved human-readable sender name
-        (falls back to the raw phone if unavailable) - SessionManager.add_message
-        itself now always overrides recipient=None for user messages and
-        sender=None for assistant messages regardless of what's passed here, so
-        this value only ever lands on the user message's sender and the
-        assistant reply's recipient."""
+        sender_phone / sender_display (2026-08-19): sender_phone is the real
+        WhatsApp JID (Message.sender); sender_display is the resolved display
+        name (Message.sender_name) - see AIHandler._finalize_response's own
+        docstring for the full sender/recipient design this mirrors.
+
+        is_group / chat_name (2026-08-19): drive Message.recipient/
+        .recipient_name resolution exactly like the text path - a group
+        message is addressed to the group's own JID/name, never to one
+        member or to DeniDin alone."""
+        # RBAC role: resolved here (not hardcoded "client" as before
+        # 2026-08-19) via the same UserManager the text path uses -
+        # media messages get a real role now that Message.role carries one.
+        # Falls back to "client" when RBAC is disabled, matching the text
+        # path's own RBAC-disabled fallback (AIHandler._finalize_response).
+        user_manager = self.denidin.ai_handler.user_manager
+        if self.denidin.ai_handler.rbac_enabled and user_manager and sender_phone:
+            real_role = user_manager.get_user(sender_phone).role
+        else:
+            real_role = "client"
+
+        own_number = self.denidin.ai_handler.own_whatsapp_number
+        own_number_jid = f"{own_number}@c.us" if own_number else None
+
+        user_msg_recipient = chat_id if is_group else own_number_jid
+        user_msg_recipient_name = (chat_name or chat_id) if is_group else "DeniDin"
+        assistant_msg_recipient = chat_id if is_group else sender_phone
+        assistant_msg_recipient_name = (chat_name or chat_id) if is_group else sender_display
+
         try:
             user_content = caption or f"[{media_type} sent]"
             self.session_manager.add_message(
                 chat_id=chat_id, role="user", content=user_content,
-                user_role="client", sender=sender_display,
+                user_role=real_role, sender=sender_phone, sender_name=sender_display,
+                recipient=user_msg_recipient, recipient_name=user_msg_recipient_name,
                 ledger_event_ids=ledger_event_ids, message_id=message_id,
                 image_path=image_path, extracted_text=extracted_text,
             )
             self.session_manager.add_message(
                 chat_id=chat_id, role="assistant", content=summary,
-                user_role="client", recipient=sender_display,
+                user_role=real_role, sender=own_number_jid, sender_name="DeniDin",
+                recipient=assistant_msg_recipient, recipient_name=assistant_msg_recipient_name,
             )
         except Exception as e:
             logger.error(f"Failed to store media turn in session: {e}", exc_info=True)

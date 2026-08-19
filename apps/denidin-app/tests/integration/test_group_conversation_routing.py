@@ -159,19 +159,27 @@ class TestMediaPathBypassesGroupEtiquette:
             with open(messages_dir / f"{message_id}.json", encoding='utf-8') as f:
                 stored.append(json.load(f))
 
-        user_messages = [m for m in stored if m["role"] == "user"]
+        # 2026-08-19: ai_required_role (not role, which is now the real RBAC
+        # role) is what distinguishes a human turn from DeniDin's own reply.
+        user_messages = [m for m in stored if m["ai_required_role"] == "user"]
         assistant_messages = [m for m in stored if m["role"] == "assistant"]
         assert user_messages, "Expected the media turn's user message to be stored in the session"
         assert assistant_messages, "Expected the media turn's assistant reply to be stored in the session"
 
         latest_user = user_messages[-1]
         latest_assistant = assistant_messages[-1]
-        assert latest_user["sender"] == "Admin User", (
-            f"Expected the resolved display name as sender, got: {latest_user['sender']!r}"
+        # sender_name (not sender, now a real WhatsApp JID) carries the
+        # resolved display name.
+        assert latest_user["sender_name"] == "Admin User", (
+            f"Expected the resolved display name as sender_name, got: {latest_user['sender_name']!r}"
         )
-        assert latest_user["recipient"] is None
-        assert latest_assistant["recipient"] == "Admin User"
-        assert latest_assistant["sender"] is None
+        assert latest_user["sender"] == ADMIN_SENDER_ID
+        # A group message is addressed to the group's own JID (never null,
+        # never one individual member or DeniDin alone) - same for DeniDin's
+        # reply.
+        assert latest_user["recipient"] == GROUP_CHAT_ID
+        assert latest_assistant["recipient"] == GROUP_CHAT_ID
+        assert latest_assistant["sender_name"] == "DeniDin"
 
     def test_group_image_with_named_addressee_caption_still_gets_full_reply(self, denidin_app, monkeypatch):
         """A caption that would trigger US5/US7's [[NO_REPLY]] path if it were plain

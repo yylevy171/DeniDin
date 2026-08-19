@@ -61,6 +61,7 @@ def run_replay(
     end: Optional[date] = None,
     today: Optional[date] = None,
     extract_dir: Optional[Path] = None,
+    whatsapp_own_number: str = "",
 ) -> List[Dict]:
     """
     Replays every qualifying message in `[start, end]` (clamped per
@@ -77,6 +78,10 @@ def run_replay(
 
     config_dict = _build_config_dict(config_path, str(data_root))
     denidin.denidin_app = denidin.initialize_app(config_dict, green_api=None)
+    # 2026-08-19: initialize_app's own _fetch_own_whatsapp_number(green_api=None)
+    # always resolves to "" (no live Green API to ask) - PlayerConfig.whatsapp_own_number
+    # is the operator-supplied substitute, same idea as sender_map.
+    denidin.denidin_app.ai_handler.own_whatsapp_number = whatsapp_own_number
 
     resolved_extract_dir = extract_dir or (data_root / "_player_extracted")
     all_messages = parse_export(export_zip, resolved_extract_dir)
@@ -134,6 +139,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         export_zip=player_config.export_zip, chat_id=player_config.chat_id,
         sender_map=player_config.sender_map, data_root=data_root,
         config_path=player_config.denidin_config, start=start, end=end,
+        whatsapp_own_number=player_config.whatsapp_own_number,
     )
 
     dispatched = sum(1 for o in outcomes if o["status"] == "dispatched")

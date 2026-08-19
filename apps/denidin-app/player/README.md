@@ -60,7 +60,8 @@ config file.
   "chat_id": "120363999999999999@g.us",
   "sender_map": {"display name": "phone@c.us"},
   "data_root": "test_data",
-  "denidin_config": "config/config.test.json"
+  "denidin_config": "config/config.test.json",
+  "whatsapp_own_number": "972501234567"
 }
 ```
 
@@ -73,6 +74,7 @@ config file.
 | `sender_map` | only if the export has >1 distinct sender | Maps each export sender **display name** (a chat export never carries phone numbers for saved contacts) to a real phone JID. A message from an unmapped sender is skipped with outcome `unmapped-sender`, never guessed. |
 | `data_root` | yes | Where events/sessions/media get written. **No default anywhere in code.** |
 | `denidin_config` | yes | An `AppConfiguration`-shaped JSON file (`config.test.json`/`config.dev.json`/etc.) — only its AI/OpenAI settings matter to the player; its own `data_root` is always overridden by this file's `data_root`, never used. |
+| `whatsapp_own_number` | no (defaults to `""`, unresolved) | DeniDin's own WhatsApp number, bare digits (e.g. `"972501234567"`, same convention as `AIHandler.own_whatsapp_number`, bugfix-024). A live app resolves this itself via a real Green API call at startup; the player never touches Green API at all, so there's no live way to discover it — same category as `sender_map`, operator-supplied because the replay context can't know it on its own. Left unset, every assistant-authored `Message.sender`/`.recipient_name` this run produces stays `None`/falls back to the chat JID for DeniDin's own identity, same as before this field existed. |
 
 `load_player_config` (`player_config.py`) raises a clear error and exits
 with code `2` if the file is missing, isn't valid JSON, or is missing any of

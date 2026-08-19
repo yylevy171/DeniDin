@@ -3,5 +3,6 @@
   "chat_id": "120363999999999999@g.us",
   "sender_map": {"אילה 🦋": "972501234567@c.us"},
   "data_root": "test_data",
-  "denidin_config": "config/config.test.json"
+  "denidin_config": "config/config.test.json",
+  "whatsapp_own_number": "972500000001"
 }

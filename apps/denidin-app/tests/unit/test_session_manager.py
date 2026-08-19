@@ -16,6 +16,7 @@ from unittest.mock import Mock, patch
 from src.managers.session_manager import SessionManager, Session, Message
 from src.handlers.media_handler import MediaHandler
 from src.managers.ledger_event_manager import LedgerEventManager
+from src.models.user import Role
 
 
 @pytest.fixture
@@ -82,22 +83,25 @@ class TestSessionCreation:
         assert session.message_counter == 3
 
 
-class TestSenderRecipientAISentinelRetired:
+class TestSenderRecipientRealIdentifiers:
     """
-    Feature 039 (US3/US3a): the literal "AI" sender/recipient sentinel is retired -
-    redundant with `role`, which already distinguishes user vs. assistant messages.
-    A user-role message's `recipient` and an assistant-role message's `sender` are always
-    None, regardless of what the caller passes for those arguments.
+    2026-08-19: supersedes the old "AI sentinel retirement" scheme (Feature 039),
+    which forced recipient=None for a user message and sender=None for an
+    assistant message. That's now REVERSED: sender/recipient are real WhatsApp
+    identifiers on both roles, always populated exactly as the caller passes
+    them - `add_message` no longer nulls either one out based on role.
     """
 
-    def test_user_message_recipient_is_always_none(self, session_manager):
+    def test_user_message_sender_and_recipient_both_populated(self, session_manager):
         message_id = session_manager.add_message(
             chat_id="1234567890@c.us",
             role="user",
             content="Hi",
             user_role="client",
-            sender="Godfather",
-            recipient="AI"  # caller still passes the old sentinel - must be dropped
+            sender="972501234567@c.us",
+            sender_name="Godfather",
+            recipient="972500000001@c.us",
+            recipient_name="DeniDin",
         )
         session = session_manager.get_session("1234567890@c.us")
         message_file = (
@@ -106,17 +110,21 @@ class TestSenderRecipientAISentinelRetired:
         with open(message_file) as f:
             message_data = json.load(f)
 
-        assert message_data["sender"] == "Godfather"
-        assert message_data["recipient"] is None
+        assert message_data["sender"] == "972501234567@c.us"
+        assert message_data["sender_name"] == "Godfather"
+        assert message_data["recipient"] == "972500000001@c.us"
+        assert message_data["recipient_name"] == "DeniDin"
 
-    def test_assistant_message_sender_is_always_none(self, session_manager):
+    def test_assistant_message_sender_and_recipient_both_populated(self, session_manager):
         message_id = session_manager.add_message(
             chat_id="1234567890@c.us",
             role="assistant",
             content="Reply",
             user_role="client",
-            sender="AI",  # caller still passes the old sentinel - must be dropped
-            recipient="Godfather"
+            sender="972500000001@c.us",
+            sender_name="DeniDin",
+            recipient="972501234567@c.us",
+            recipient_name="Godfather",
         )
         session = session_manager.get_session("1234567890@c.us")
         message_file = (
@@ -125,8 +133,63 @@ class TestSenderRecipientAISentinelRetired:
         with open(message_file) as f:
             message_data = json.load(f)
 
-        assert message_data["sender"] is None
-        assert message_data["recipient"] == "Godfather"
+        assert message_data["sender"] == "972500000001@c.us"
+        assert message_data["sender_name"] == "DeniDin"
+        assert message_data["recipient"] == "972501234567@c.us"
+        assert message_data["recipient_name"] == "Godfather"
+
+
+class TestRealRoleAndAiRequiredRole:
+    """2026-08-19: Message.role is now the REAL role ("admin"/"godfather"/
+    "client"/"assistant"), computed from the caller's structural role
+    ("user"/"assistant") + user_role (a Role enum, or a raw string on the
+    RBAC-disabled fallback path). Message.ai_required_role is the separately
+    derived "user"/"assistant" value OpenAI's API actually needs."""
+
+    def test_user_role_enum_becomes_real_lowercase_role(self, session_manager):
+        message_id = session_manager.add_message(
+            chat_id="1234567890@c.us", role="user", content="Hi",
+            user_role=Role.GODFATHER,
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+
+        assert message_data["role"] == "godfather"
+        assert message_data["ai_required_role"] == "user"
+
+    def test_user_role_string_fallback_becomes_real_lowercase_role(self, session_manager):
+        message_id = session_manager.add_message(
+            chat_id="1234567890@c.us", role="user", content="Hi",
+            user_role="client",
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+
+        assert message_data["role"] == "client"
+        assert message_data["ai_required_role"] == "user"
+
+    def test_assistant_role_is_always_assistant_regardless_of_user_role(self, session_manager):
+        message_id = session_manager.add_message(
+            chat_id="1234567890@c.us", role="assistant", content="Reply",
+            user_role=Role.ADMIN,  # irrelevant for an assistant turn
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+
+        assert message_data["role"] == "assistant"
+        assert message_data["ai_required_role"] == "assistant"
 
 
 class TestMessageHandling:
@@ -156,7 +219,11 @@ class TestMessageHandling:
         # Verify message content
         with open(message_file) as f:
             message_data = json.load(f)
-        assert message_data["role"] == "user"
+        # 2026-08-19: role is now the REAL role ("client", derived from
+        # user_role="client") - ai_required_role is the "user"/"assistant"
+        # value OpenAI's API needs.
+        assert message_data["role"] == "client"
+        assert message_data["ai_required_role"] == "user"
         assert message_data["content"] == "Hello, DeniDin!"
         assert message_data["session_id"] == session.session_id  # Field should be session_id, not chat_id
         assert "chat_id" not in message_data  # Ensure old field name is not present
@@ -188,9 +255,11 @@ class TestMessageHandling:
         """
         chat_id = "120363012345678901@g.us"
 
-        session_manager.add_message(chat_id, "user", "מה המצב?", "client", sender="Godfather")
+        # 2026-08-19: the group-turn prefix now comes from sender_name (the
+        # resolved display name) - `sender` itself is a real WhatsApp JID.
+        session_manager.add_message(chat_id, "user", "מה המצב?", "client", sender_name="Godfather")
         session_manager.add_message(chat_id, "assistant", "הכל טוב", "client")
-        session_manager.add_message(chat_id, "user", "תודה", "client", sender="Admin")
+        session_manager.add_message(chat_id, "user", "תודה", "client", sender_name="Admin")
 
         history = session_manager.get_conversation_history(chat_id, "client")
 
@@ -455,12 +524,19 @@ class TestImagePathStorage:
                 # this suite's real-internal-components convention, even
                 # though this specific test never exercises it directly.
                 ledger_event_manager=LedgerEventManager(storage_dir=str(tmp_path / "events")),
+                # 2026-08-19: _store_media_turn now resolves role/own-number via
+                # these - RBAC disabled here since this test is about
+                # image_path/extracted_text storage, not RBAC.
+                rbac_enabled=False,
+                user_manager=None,
+                own_whatsapp_number="",
             ),
         )
         media_handler = MediaHandler(denidin_context)
 
         media_handler._store_media_turn(
             chat_id=chat_id,
+            sender_phone=sender_phone,
             sender_display=sender_phone,
             media_type="image",
             caption="Check out this image!",
@@ -476,7 +552,9 @@ class TestImagePathStorage:
         with open(message_file) as f:
             message_data = json.load(f)
 
-        assert message_data["role"] == "user"
+        # 2026-08-19: role is the real role - "client" (RBAC disabled fallback,
+        # same as AIHandler._finalize_response's own RBAC-disabled path).
+        assert message_data["role"] == "client"
         assert message_data["image_path"] == "media/DD-1234567890-abc123.jpg"
     
     def test_image_path_optional(self, session_manager):
@@ -520,12 +598,16 @@ class TestExtractedTextStorage:
             ai_handler=SimpleNamespace(
                 session_manager=session_manager,
                 ledger_event_manager=LedgerEventManager(storage_dir=str(tmp_path / "events")),
+                rbac_enabled=False,
+                user_manager=None,
+                own_whatsapp_number="",
             ),
         )
         media_handler = MediaHandler(denidin_context)
 
         media_handler._store_media_turn(
             chat_id=chat_id,
+            sender_phone=sender_phone,
             sender_display=sender_phone,
             media_type="image",
             caption="Check out this image!",

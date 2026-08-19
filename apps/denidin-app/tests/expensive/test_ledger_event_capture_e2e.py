@@ -283,6 +283,11 @@ class TestLedgerEventCaptureE2E:
         refuses to run at all if LedgerEventManager.storage_dir is not under this
         test's isolated data_root.
         """
+        # 2026-08-19: LedgerEvent no longer carries its own whatsapp_chat (removed -
+        # redundant with session_id) - resolve session_id via SessionManager
+        # instead (safe even pre-test, when no real session exists yet: creates
+        # an empty one that matches zero real event files).
+        session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
         events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
         for f in list(events_dir.glob("*.json")):
             try:
@@ -290,7 +295,7 @@ class TestLedgerEventCaptureE2E:
                     data = json.load(fh)
             except (OSError, json.JSONDecodeError):
                 continue
-            if data.get("whatsapp_chat") == chat_id:
+            if data.get("session_id") == session_id:
                 f.unlink()
 
         session_manager = denidin_app.ai_handler.session_manager
@@ -305,13 +310,19 @@ class TestLedgerEventCaptureE2E:
         """All persisted LedgerEvent files (data/events/*.json) for this chat_id,
         sorted by captured_at - reads the real files off disk, not an in-memory
         proxy, so assertions prove the event genuinely landed in permanent storage
-        (Feature 033's whole point)."""
+        (Feature 033's whole point).
+
+        2026-08-19: LedgerEvent no longer carries its own whatsapp_chat (removed -
+        redundant with session_id, which already points at a session that carries
+        its own whatsapp_chat) - filters by session_id instead, resolved via the
+        real SessionManager for this chat_id."""
+        session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
         events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
         results = []
         for f in events_dir.glob("*.json"):
             with open(f, encoding='utf-8') as fh:
                 data = json.load(fh)
-            if data.get("whatsapp_chat") == chat_id:
+            if data.get("session_id") == session_id:
                 results.append(data)
         results.sort(key=lambda d: d["captured_at"])
         return results

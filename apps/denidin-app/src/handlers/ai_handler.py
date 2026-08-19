@@ -1230,7 +1230,9 @@ class AIHandler:
 
     def get_response(self, request: AIRequest, chat_id: Optional[str] = None,
                      user_role: str = 'client', sender: Optional[str] = None,
-                     recipient: Optional[str] = None, user_phone: Optional[str] = None) -> AIResponse:
+                     recipient: Optional[str] = None, user_phone: Optional[str] = None,
+                     is_group: bool = False, chat_name: Optional[str] = None,
+                     sender_phone: Optional[str] = None) -> AIResponse:
         """
         Get AI response for a request with error handling and fallbacks.
         Includes memory system integration for session storage.
@@ -1239,9 +1241,34 @@ class AIHandler:
             request: AI request to process
             chat_id: Optional chat ID for session management (uses request.chat_id if not provided)
             user_role: User role for token limits ('client' or 'godfather') - DEPRECATED when RBAC enabled
-            sender: WhatsApp sender ID for message storage
-            recipient: WhatsApp recipient ID for message storage
-            user_phone: User's phone number for RBAC (uses sender if not provided)
+            sender: Sender's resolved display name (2026-08-19: NOT a WhatsApp
+                ID despite this parameter's name - historical naming, kept for
+                caller compatibility. `user_phone` below carries the real
+                WhatsApp JID.
+            recipient: Historical/display-only, same caveat as `sender` -
+                superseded by the is_group/chat_name-driven recipient
+                resolution in _finalize_response for what actually gets
+                persisted on Message.recipient now.
+            user_phone: User's real WhatsApp JID (RBAC lookup AND, 2026-08-19,
+                now also the real Message.sender for a user turn) - uses
+                `sender` if not provided.
+            is_group: Whether effective_chat_id is a WhatsApp group
+                (2026-08-19) - drives Message.recipient/.recipient_name
+                resolution: a group message is addressed to the group's own
+                JID/name, never to one individual member or to DeniDin alone.
+            chat_name: Green API's resolved chat display name
+                (senderData.chatName, WhatsAppMessage.chat_name) - a group's
+                real subject/name when is_group, used for
+                Message.recipient_name.
+            sender_phone: The ACTUAL individual sender's real WhatsApp JID
+                (2026-08-19, message.sender_id) - deliberately separate from
+                `user_phone`, which for a group turn is the most-permissive
+                MEMBER's phone (Feature 039's group RBAC resolution, possibly
+                a different person entirely, chosen only for its role/token
+                limit). Message.sender must always be who actually sent this
+                specific message, never whoever's role happened to govern the
+                turn. Falls back to `user_phone` when not given (the 1:1 case,
+                where they're always the same person anyway).
 
         Returns:
             AIResponse with generated text or fallback message
@@ -1280,7 +1307,9 @@ class AIHandler:
                 f"routing to _resolve_pending_approval instead of a normal turn"
             )
             resolved = self._resolve_pending_approval(
-                pending, request, effective_chat_id, user_obj, user_role, sender, recipient
+                pending, request, effective_chat_id, user_obj, user_role, sender, recipient,
+                user_phone=user_phone, is_group=is_group, chat_name=chat_name,
+                sender_phone=sender_phone
             )
             logger.info(
                 f"[022] _resolve_pending_approval returned "
@@ -1321,7 +1350,9 @@ class AIHandler:
             response = self._call_openai_api(request, conversation_history=conversation_history, tools=tools)
 
             return self._finalize_response(
-                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools
+                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools,
+                user_phone=user_phone, is_group=is_group, chat_name=chat_name,
+                sender_phone=sender_phone
             )
 
         except APITimeoutError as e:
@@ -1531,7 +1562,6 @@ class AIHandler:
                 try:
                     new_event_ids = self.ledger_event_manager.add_ledger_events_from_call(
                         session_id=session.session_id,
-                        whatsapp_chat=effective_chat_id,
                         call_arguments=call["arguments"],
                         message_id=request.message_id,
                         message_timestamp=request.timestamp,
@@ -1575,7 +1605,10 @@ class AIHandler:
 
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
                            user_obj, user_role: str, sender: Optional[str],
-                           recipient: Optional[str], tools: Optional[List[Dict]]) -> AIResponse:
+                           recipient: Optional[str], tools: Optional[List[Dict]], *,
+                           user_phone: Optional[str] = None, is_group: bool = False,
+                           chat_name: Optional[str] = None,
+                           sender_phone: Optional[str] = None) -> AIResponse:
         """
         Shared post-API-call logic: extract mcp_calls, detect a new pending
         approval (Feature 022), store messages in session, build the final
@@ -1740,13 +1773,35 @@ class AIHandler:
         # Store messages in session if memory enabled
         if self.memory_enabled and self.session_manager and effective_chat_id:
             try:
-                # RBAC: Use token limit enforcement if enabled
-                # Feature 039: SessionManager.add_message* always forces recipient=None
-                # for role="user" and sender=None for role="assistant" (redundant with
-                # role, which already distinguishes them) - the "AI" sentinel is retired,
-                # so it's no longer passed here. `sender` (the resolved display name,
-                # threaded in from the caller) becomes the user message's sender and the
-                # assistant reply's recipient - who said it, and who it was for.
+                # 2026-08-19: real WhatsApp identifiers for Message.sender/
+                # .recipient, replacing the old Feature 039 sentinel-retirement
+                # scheme (recipient=None for role="user", sender=None for
+                # role="assistant"). `sender` (this method's own parameter) stays
+                # the resolved display name - now Message.sender_name.
+                # own_whatsapp_number is bare digits (bugfix-024's getWaSettings
+                # call) - "" when unresolved (e.g. no live Green API client, the
+                # player), same fail-open convention as everywhere else it's used.
+                own_number_jid = f"{self.own_whatsapp_number}@c.us" if self.own_whatsapp_number else None
+                # sender_phone (this method's own param) is the ACTUAL sender's
+                # JID - deliberately NOT user_phone, which for a group turn is
+                # the most-permissive MEMBER's phone (possibly someone else
+                # entirely - see get_response's docstring). Falls back to
+                # user_phone (1:1 case, always the same person), then to
+                # effective_chat_id as a last resort (Green API's own 1:1
+                # chatId IS the contact's JID - never true for a group).
+                resolved_sender_phone = sender_phone or user_phone or (
+                    effective_chat_id if not is_group else None
+                )
+                sender_name_val = sender
+                # A group message is addressed to the whole group (its own
+                # JID/name), regardless of which individual sent it or that
+                # DeniDin is replying - never to one member, never to DeniDin
+                # alone.
+                user_msg_recipient = effective_chat_id if is_group else own_number_jid
+                user_msg_recipient_name = (chat_name or effective_chat_id) if is_group else "DeniDin"
+                assistant_msg_recipient = effective_chat_id if is_group else resolved_sender_phone
+                assistant_msg_recipient_name = (chat_name or effective_chat_id) if is_group else sender_name_val
+
                 if self.rbac_enabled and user_obj:
                     # Store user message with token limit
                     self.session_manager.add_message_with_token_limit(
@@ -1755,7 +1810,10 @@ class AIHandler:
                         content=request.user_prompt,
                         user_role=user_obj.role,
                         token_limit=user_obj.token_limit,
-                        sender=sender or effective_chat_id,
+                        sender=resolved_sender_phone,
+                        sender_name=sender_name_val,
+                        recipient=user_msg_recipient,
+                        recipient_name=user_msg_recipient_name,
                         ledger_event_ids=ledger_event_ids,
                         message_id=request.message_id
                     )
@@ -1768,7 +1826,10 @@ class AIHandler:
                             content=response_text,
                             user_role=user_obj.role,
                             token_limit=user_obj.token_limit,
-                            recipient=sender or effective_chat_id
+                            sender=own_number_jid,
+                            sender_name="DeniDin",
+                            recipient=assistant_msg_recipient,
+                            recipient_name=assistant_msg_recipient_name,
                         )
                 else:
                     # Existing behavior: regular add_message without token limits
@@ -1777,7 +1838,10 @@ class AIHandler:
                         role="user",
                         content=request.user_prompt,
                         user_role=user_role or "client",
-                        sender=sender or effective_chat_id,
+                        sender=resolved_sender_phone,
+                        sender_name=sender_name_val,
+                        recipient=user_msg_recipient,
+                        recipient_name=user_msg_recipient_name,
                         ledger_event_ids=ledger_event_ids,
                         message_id=request.message_id
                     )
@@ -1789,7 +1853,10 @@ class AIHandler:
                             role="assistant",
                             content=response_text,
                             user_role=user_role or "client",
-                            recipient=sender or effective_chat_id  # Reply goes to original sender
+                            sender=own_number_jid,
+                            sender_name="DeniDin",
+                            recipient=assistant_msg_recipient,
+                            recipient_name=assistant_msg_recipient_name,
                         )
 
                 storage_note = (
@@ -2077,7 +2144,10 @@ class AIHandler:
 
     def _resolve_pending_approval(self, pending: PendingApproval, request: AIRequest,
                                   effective_chat_id: str, user_obj, user_role: str,
-                                  sender: Optional[str], recipient: Optional[str]) -> Optional[AIResponse]:
+                                  sender: Optional[str], recipient: Optional[str], *,
+                                  user_phone: Optional[str] = None, is_group: bool = False,
+                                  chat_name: Optional[str] = None,
+                                  sender_phone: Optional[str] = None) -> Optional[AIResponse]:
         """
         Resolve a pending document-creation MCP approval (Feature 022) using
         this turn's message as the yes/no reply.
@@ -2192,7 +2262,9 @@ class AIHandler:
             self.pending_approval_manager.clear(effective_chat_id)
             logger.info(f"[022] Approved and cleared pending for chat={effective_chat_id!r}")
             return self._finalize_response(
-                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools
+                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools,
+                user_phone=user_phone, is_group=is_group, chat_name=chat_name,
+                sender_phone=sender_phone
             )
 
         # Not a recognized affirmative: decline, close out OpenAI's
@@ -2218,7 +2290,9 @@ class AIHandler:
 
     def resolve_button_tap(
         self, chat_id: str, selected_id: str, stanza_id: str, message_id: str,
-        user_phone: Optional[str], sender: Optional[str],
+        user_phone: Optional[str], sender: Optional[str], *,
+        is_group: bool = False, chat_name: Optional[str] = None,
+        sender_phone: Optional[str] = None,
     ) -> Optional[AIResponse]:
         """
         Feature 047: resolves a WhatsApp interactive-button tap against chat_id's
@@ -2279,6 +2353,7 @@ class AIHandler:
         return self.get_response(
             synthetic_request, chat_id=chat_id, user_role=user_obj.role,
             sender=sender, recipient=None, user_phone=user_phone,
+            is_group=is_group, chat_name=chat_name, sender_phone=sender_phone,
         )
 
     def _create_fallback_response(self, request_id: str, message: str) -> AIResponse:
