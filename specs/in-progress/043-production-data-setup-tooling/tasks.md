@@ -267,6 +267,10 @@ before starting Phase 5.
 
 ## Phase 5: User Story 4 — No orphaned/unaccounted events (US4, feeds US1)
 
+**DEPRIORITIZED (human decision, 2026-08-19): skip for now, not needed at
+this time.** Not removed — may resume later if a real repeated-replay
+scenario makes it relevant.
+
 - [ ] T015a Write tests in `tests/unit/test_reconciliation.py`: pre-run
   snapshot correctly scoped to `[start,end]` by `event_date`; unmatched
   pre-existing files moved (never deleted) to `_to_delete/<run_id>/` with
@@ -278,6 +282,11 @@ before starting Phase 5.
 ---
 
 ## Phase 6: User Story 2 — Relevancy/reference resolution (US2)
+
+**DEPRIORITIZED (human decision, 2026-08-19): skip for now, not needed at
+this time.** Not removed — real motivating example exists (Finding B, the
+33-message run's msg 8/msg 33 unlinked payment), but user's read on that
+finding was "fine and well known," not urgent enough to build this yet.
 
 - [ ] T016a Write tests in `tests/unit/test_relevancy.py`: the 4-step
   deterministic matching heuristic (client_name exact match →
@@ -304,6 +313,9 @@ before starting Phase 5.
 
 ## Phase 7: User Story 3 — Review queue (US3)
 
+**DEPRIORITIZED (human decision, 2026-08-19): skip for now, not needed at
+this time.** Not removed.
+
 - [ ] T018a Write tests in `tests/unit/test_review_queue.py`: the notes-
   heuristic correctly flags known ambiguity-marker phrases (finalized list
   per plan.md) and does NOT flag ordinary notes text; queue `.jsonl`
@@ -319,6 +331,16 @@ before starting Phase 5.
 
 ## Phase 8: User Story 5 — Image-path replay regression (`expensive` tier)
 
+**Checked against the real 33-message run (2026-08-19) — NOT proven, despite
+that run including 15 real vision messages.** All 15 images were bank-
+deposit screenshots carrying explicit absolute dates from the bank's own UI
+(`תאריך פעולה: DD/MM/YYYY`); grepped every image's `extracted_text` across
+all 33 messages for "אתמול"/"היום" — zero matches. Phase 8's specific
+scenario (a relative-date phrase *inside an image's OCR'd text* resolving
+against the replayed message's historical timestamp via `ImageExtractor`'s
+`today_timestamp` threading) was never actually exercised by that run. The
+code path exists (built in Phase 3) but is unproven end-to-end. Still open.
+
 - [ ] T020a **Requires explicit user approval before running** (expensive
   tier, real vision calls — per project rules, one at a time, never a bare
   sweep): write a full image-path replay test in
@@ -326,13 +348,7 @@ before starting Phase 5.
   a fixture image with text mentioning a relative date ("אתמול"),
   asserting the resulting `txn_date` reflects the replayed message's
   historical date, not real wall-clock — the end-to-end regression test
-  for Phase 3's 4-hop timestamp threading. **Open decision when this phase
-  starts** (human decision, 2026-08-07: deliberately not pre-decided) —
-  same open question as T017a above: whether to follow T014a's
-  skip-synthetic-test/real-run-instead pattern, or write this test as
-  originally planned. The prepared real run against `test_data/events`
-  (Phase 4, T014b) does include 15 vision messages, so it may already
-  partially substitute — worth checking that run's actual results first.
+  for Phase 3's 4-hop timestamp threading.
 - [ ] T020b No new implementation expected — verification only (BLOCKED
   until T020a approved, and until the test has actually been run once
   with fresh approval per the expensive-test rules).
@@ -355,75 +371,18 @@ before starting Phase 5.
 
 ---
 
-## Phase 10: Player/WhatsApp ledger-event equivalence (cross-cutting verification)
-
-**Added 2026-08-07 (human decision), after Phase 4-9 were already scoped.**
-**Purpose**: prove `GreenAPIMessageSource` and `PlayerExportSource` are truly
-behaviorally interchangeable (the entire premise of Phase 2's `MessageSource`
-abstraction) by sending the *same message content* through both and asserting
-the resulting ledger event(s) match — not just "the player runs without
-crashing," a real equivalence regression test. One test per main ledger event
-type (not every variant): agreement multi-stage text, agreement multi-stage
-image, bank deposit screenshot, plus agreement update/cancellation (stubbed,
-skipped until Feature 040 — `specs/backlog/040-agreement-cancellation-modification/`
-— actually defines what an "update"/"cancellation" message looks like).
-
-**The event_id collision mechanism (by design, not a bug to route around)**:
-`LedgerEventManager._next_seq` (`src/managers/ledger_event_manager.py:223`)
-picks the smallest unused seq digit (0-9) scoped only to files already
-present in `storage_dir` for that `letter+ddmmyy+hhmm` — real wall-clock
-`datetime.now(timezone.utc)`, not the message's own `today_timestamp`. So
-two captures of the *same source_type*, run back-to-back in the same real
-minute, against the *same events dir state*, will independently land on the
-same `seq` and therefore the exact same `event_id`/filename — a genuine
-collision, not just an adjacent one. To compare the WhatsApp-path capture
-and the player-path capture apples-to-apples (same starting seq=0 for both,
-proving `LedgerEventManager` itself behaves identically either way), each
-test must: (1) run path A (e.g. WhatsApp) against a clean/isolated events
-dir, (2) move the resulting file(s) aside to a holding location (rename or
-copy elsewhere — never delete) BEFORE running path B, (3) run path B against
-the now-reset-to-empty events dir, (4) compare path A's set-aside file(s)
-against path B's file(s) field-by-field, excluding fields that are expected
-to legitimately differ (`event_id`'s own timestamp portion if the two runs
-happen to cross a real minute boundary; anything else derived from
-wall-clock capture time rather than message content).
-
-- [ ] T022a `billed`-tier: write `tests/billed/test_player_whatsapp_equivalence.py`
-  covering **agreement multi-stage text** — the same synthetic multi-message
-  fee-agreement conversation dispatched once via a real Green-API-shaped
-  notification sequence straight into `denidin.dispatch_notification`
-  (matching how existing integration tests already simulate a live webhook —
-  CONSTITUTION §V), and once via `PlayerExportSource` replaying an equivalent
-  parsed export. Asserts the resulting ledger event(s)' content fields match
-  (client_name, amounts, dates, source_type, etc.) — not exact OpenAI-response
-  byte-equality, since the model isn't perfectly deterministic even at
-  temperature 0. Establishes the shared set-aside-and-compare test helper
-  (likely `tests/billed/_equivalence_helpers.py`, test infrastructure, not
-  production code — no separate "b" task needed, same precedent as
-  `tests/billed/e2e_helpers.py`/`tests/expensive/e2e_helpers.py` elsewhere).
-- [ ] T023a `expensive`-tier (vision — per CLAUDE.md's tier split, an image
-  message is `expensive` not `billed`): same equivalence test for
-  **agreement multi-stage image** — a fixture image (via `LocalMediaServer`
-  for the player path, real `downloadUrl`-shaped notification for the
-  WhatsApp path) carrying the same fee-agreement content as T022a's text
-  version. Reuses T022a's set-aside helper.
-- [ ] T024a `expensive`-tier: same equivalence test for **bank deposit
-  screenshot** — a fixture bank-deposit receipt image. Reuses T022a's
-  set-aside helper.
-- [ ] T025a **STUBBED, skipped** (`@pytest.mark.skip(reason="blocked on
-  Feature 040")`) — **agreement update** equivalence test. Feature 040
-  (`specs/backlog/040-agreement-cancellation-modification/`) hasn't defined
-  what an update message/ledger-event shape looks like yet; write the test's
-  skeleton (imports, class, skip marker) now so the shape of what's expected
-  is on record, fill in real assertions once Feature 040 lands.
-- [ ] T026a **STUBBED, skipped** (same marker/reasoning as T025a) —
-  **agreement cancellation** equivalence test, also blocked on Feature 040.
-
-**No "b" tasks** — these tests exercise existing dispatch/capture machinery
-(Phases 2-4) rather than driving new production code; a failure here surfaces
-a real behavioral divergence between the two `MessageSource`s to fix at its
-actual source (`src/sources/`, `player/`, or `src/handlers/`), not something
-this phase itself implements.
+**Phase 10 (Player/WhatsApp ledger-event equivalence) — REMOVED (human
+decision, 2026-08-19).** Originally scoped 2026-08-07 to prove
+`GreenAPIMessageSource` and `PlayerExportSource` produce byte-equivalent
+ledger events for identical input. Dropped as fundamentally not viable: the
+model is not deterministic (confirmed directly this session — the same
+exact message text, "אורית בנימין/מקורות/שעתיים", produced two genuinely
+different real outcomes — one run asked a clarifying question about the
+date, another inferred it and captured directly — across two separate real
+runs), so an equivalence test asserting matching output between two paths
+would be asserting something that isn't reliably true even for the SAME
+path run twice. Not deprioritized like Phases 5-7 — removed as a premise
+that doesn't hold.
 
 ---
 
@@ -599,25 +558,42 @@ removed in favor of a new `Message.extracted_text` field; `trigger_condition`
 wired up; code-side enforcement added for `payer_name`/`vat_status` on `בנק`
 events; several constitution-guidance and stale-reference fixes. See
 data-model.md §1c. Phase 9 (README) also done 2026-08-16 — `player/README.md`
-written,
-documenting the actually-implemented CLI and explicitly flagging what isn't
-built yet. Phases 5 (reconciliation), 6 (relevancy), 7 (review queue), 8
-(expensive image-path regression), and 10 (player/WhatsApp ledger-event
-equivalence, added 2026-08-07) are **not started** — no
-`player/reconciliation.py`, `player/relevancy.py`, `player/review_queue.py`,
-or `tests/billed/test_player_whatsapp_equivalence.py` exist yet, and
-`run_player.py` has no `--reapply-review` mode. Phase 10's T025a/T026a are
-permanently blocked (not just "not started") until Feature 040 lands.
+written, documenting the actually-implemented CLI and explicitly flagging
+what isn't built yet.
+
+**2026-08-19 update**: the "real run against real data" this file used to
+recommend as Phase 4's next step has now actually happened twice — the
+33-message live validation run, and a real `player/run_player.py` date-range
+run (which also surfaced and fixed a real data-root isolation bug in the
+shipped player app itself; see `HANDOFF.md`). Following those runs, the
+human made explicit scope decisions on the remaining phases:
+
+- **Phase 5 (reconciliation), Phase 6 (relevancy), Phase 7 (review queue)**
+  — **deprioritized, not removed**: skip for now, not needed at this time.
+  May resume later.
+- **Phase 8 (expensive image-path regression)** — checked against the real
+  33-message run and found **not actually proven**: all 15 real image
+  messages in that run were bank screenshots with explicit absolute dates,
+  never relative-date language ("אתמול"/"היום") — Phase 3's vision-path
+  `today_timestamp` threading is built but still end-to-end unverified.
+  Still open, still needs T020a (explicit approval, expensive tier).
+- **Phase 10 (player/WhatsApp equivalence)** — **removed entirely**, not
+  deprioritized: the model's confirmed non-determinism (the same exact
+  message text produced two different real outcomes across two separate
+  runs this session) makes an equivalence assertion between two paths
+  fundamentally unreliable, not just currently low-priority.
 
 ## Next step
 
-**Recommended**: execute the prepared real run against `test_data/events`
-(Phase 4, T014b's note — 33 messages, 18 text + 15 vision; needs fresh
-explicit approval, real OpenAI cost) before starting Phase 5. It's the
-actual end-to-end proof that Phase 3's `today_timestamp` fix works, and
-Phase 5's reconciliation logic will reason about exactly the kind of
-real-run output it would produce — better to see real output first.
-
-Then begin Phase 5's test task (T015a), per METHODOLOGY.md — implementation
-(any "b" task) never starts before its paired "a" task is written AND
-explicitly approved.
+No phase is currently being actively pursued. What remains open:
+1. Phase 8 (T020a) — write and (with fresh approval) run the expensive-tier
+   image-path relative-date regression test, since the real run never
+   organically exercised this scenario.
+2. Two items outside the phase structure entirely, surfaced by the
+   33-message run and not yet acted on (see `HANDOFF.md`'s "Suggested next
+   steps"): the model-should-ask-clarifying-questions-more-often gap
+   (Findings C/D/E), and Finding A (message lost, not queued, when an
+   OpenAI/MCP call fails mid-turn). Both need their own explicit human
+   sign-off before any code/constitution change — real behavior changes to
+   production, not minor fixes.
+3. Phases 5-7, whenever/if reprioritized.

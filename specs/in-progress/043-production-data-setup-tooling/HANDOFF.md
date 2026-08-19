@@ -1,31 +1,41 @@
 # Handoff: Feature 043 — WhatsApp Export → Ledger Event "Player"
 
-**Written**: 2026-08-19 (end of session, user requested commit+push+handoff to start fresh)
+**Updated**: 2026-08-19 (continuation of the same day's session — real
+`player/run_player.py` fixes landed after the previous handoff was written)
 **Branch**: `feature/043-production-data-setup-tooling`
-**Committed and pushed this session**: commit `ab514c7` (this session's work,
-described in full below), on top of `9f844ad` (prior session's Phase 11
-follow-up, already covered by that commit's own message — not repeated
-here). `git log --oneline -5` to orient.
+**Committed and pushed this session**: `ab514c7` (Message identity-field
+redesign, `LedgerEvent.whatsapp_chat` removed — see below), `70422aa` (prior
+version of this handoff), `0f6356b` (real `run_player.py` data_root fix +
+clarification-loop mechanism — see below), on top of `9f844ad` (prior
+session's Phase 11 follow-up). `git log --oneline -6` to orient.
 
 ---
 
-## What's done (cumulative, all phases)
+## What's done (cumulative, all phases — see `tasks.md` for the authoritative task-by-task list)
 
 - **Phases 1–4** (Setup, `MessageSource` abstraction, timestamp fix, US1
-  replay-a-date-range) — done, per earlier handoffs.
+  replay-a-date-range) — done. Phase 4 in particular is now genuinely,
+  not just nominally, done: the "real run against real data" its
+  checkpoint was waiting on has now actually happened twice (the
+  33-message pass below, plus today's date-range run against the real,
+  fixed player app).
 - **Phase 9** (`player/README.md`) — done 2026-08-16, updated again this
   session (new `whatsapp_own_number` config field documented).
 - **Phase 11 + Phase 11 follow-up** (ledger schema, 10 player-review
   findings, `raw_message_excerpt`→`Message.extracted_text`) — done,
   commit `9f844ad`.
-- **This session** (2026-08-19) — commit `ab514c7`: a real Message
-  identity-field redesign (role/sender/recipient/etc.), `LedgerEvent.
-  whatsapp_chat` removed, and a full 33-message live validation run. Detail
-  below.
+- **This session** (2026-08-19) — three pieces of work, in order:
+  1. Message identity-field redesign (commit `ab514c7`).
+  2. A full 33-message live validation run (throwaway, not committed —
+     findings written up separately).
+  3. Real bugs found and fixed in the *actual* `player/run_player.py`
+     itself, plus a new clarification-loop mechanism built into it
+     (commit `0f6356b`).
+  All three detailed below.
 - **NOT started**: Phase 5 (reconciliation), Phase 6 (relevancy), Phase 7
   (review queue), Phase 8 (expensive image-path regression), Phase 10
   (player/WhatsApp equivalence tests — permanently blocked until Feature 040
-  lands).
+  lands). See "What's left" at the bottom for what each of these actually is.
 
 ## This session's work in detail
 
@@ -52,10 +62,8 @@ via a multi-round clarifying-question exchange before any code was touched.
   both are always populated now: DeniDin's own number as `sender` for its
   own replies (reused the *existing* `bugfix-024` mechanism,
   `AIHandler.own_whatsapp_number`, a real `getWaSettings()` Green API call
-  at startup — no new plumbing needed, I initially wrongly told the user
-  this didn't exist and had to correct myself), the group's own JID as
-  `recipient` for any group turn regardless of who sent it, the other
-  party's real number otherwise.
+  at startup), the group's own JID as `recipient` for any group turn
+  regardless of who sent it, the other party's real number otherwise.
 - `sender_name`/`recipient_name` (new): resolved display names, carrying
   what the old `sender` field used to hold.
 - A new `sender_phone` parameter (distinct from the pre-existing
@@ -64,151 +72,217 @@ via a multi-round clarifying-question exchange before any code was touched.
   person than whoever actually sent this specific message) threads the
   ACTUAL sender's phone through `get_response`/`_finalize_response`/
   `_resolve_pending_approval`/`resolve_button_tap`, so `Message.sender` is
-  never wrong on a group turn governed by someone else's role. This was a
-  real bug I would have introduced without catching it myself mid-design.
-- New `WhatsAppMessage.chat_name` field (Green API's `senderData.chatName`
-  — already present on every real notification, never parsed before) — a
-  group's real subject/name, feeds `recipient_name`.
+  never wrong on a group turn governed by someone else's role.
+- New `WhatsAppMessage.chat_name` field (Green API's `senderData.chatName`)
+  — a group's real subject/name, feeds `recipient_name`.
 - `MediaHandler._store_media_turn` got the same design, plus a **real RBAC
   role resolution** via `self.denidin.ai_handler.user_manager` — it was
   previously hardcoded `"client"` for every media sender regardless of
-  actual role, a latent bug that became visible (and worth fixing, low
-  cost given reachability) only once `role` started carrying real meaning.
-- Player (`player/run_player.py` AND the interactive review driver) gets a
-  new optional `PlayerConfig.whatsapp_own_number` field — same category as
-  `sender_map`: the player never touches live Green API, so
-  `own_whatsapp_number` always resolves to `""` there on its own; this is
-  the operator-supplied substitute. Documented in `player/README.md`.
+  actual role.
+- Player gets a new optional `PlayerConfig.whatsapp_own_number` field —
+  same category as `sender_map`: the player never touches live Green API,
+  so `own_whatsapp_number` always resolves to `""` there on its own; this
+  is the operator-supplied substitute. Documented in `player/README.md`.
 
 **`LedgerEvent.whatsapp_chat` removed entirely** — redundant with
-`session_id` (the session it points at already carries its own
-`whatsapp_chat`) and `message_id`, both already sufficient traceability.
-**Stays `schema_version=1`** — explicit human correction after I initially
-bumped it to 2; the reasoning (v1 has never been deployed to real dev/prod
-data, same reset-safety logic as the original Phase 11 reset) folds this
-into the same baseline rather than incrementing.
+`session_id`/`message_id`. **Stays `schema_version=1`** — explicit human
+correction after an initial (wrong) bump to 2.
 
 **Also fixed, found along the way**: `SessionManager`'s two `json.dump`
-calls (message + session persistence) never had `ensure_ascii=False` —
-unlike `LedgerEventManager`, which already did — so every persisted
-message file was unreadable via a raw `cat` (Hebrew came out as `\uXXXX`
-escapes). This is exactly what the user hit when asking to see message
-JSONs directly; fixed by adding the flag to both call sites.
+calls never had `ensure_ascii=False` — fixed (Hebrew was coming out as
+`\uXXXX` escapes on `cat`).
 
 **Test fallout, all fixed**: 11 unit tests + 1 integration test broke from
-the schema change (mostly `role == "user"` checks needing to become
-`ai_required_role == "user"`, and the old sentinel-retirement test class
-needing a full rewrite to test the *opposite* — sender/recipient always
-populated). `test_ledger_event_manager.py` needed ~85 mechanical
-`whatsapp_chat="..."` removals from call sites plus a field-count/
-schema-version test update. Full suite: **932 unit+integration tests
-pass. 12/12 billed ledger-capture tests pass** (verified — see below).
+the schema change. Full suite: **932 unit+integration tests pass. 12/12
+billed ledger-capture tests pass.**
 
-### 2. Full 33-message live validation run (not committed — throwaway)
+### 2. Full 33-message live validation run (throwaway, not committed)
 
-After the redesign, ran the *entire* `גביה TEST.zip` export sequentially,
-message 1 through 33, **exactly once each, no re-runs at all** (explicit
-user instruction, simulating real-time production — a message that fails
-stays failed, never retried). Full JSON of every persisted message +
-ledger event shown for each of the 33 messages in this session's chat
-transcript (not reproduced here — see the transcript, or re-derive by
-reading `.player_review_scratch/throwaway_data/` directly if it still
-exists — see "Lost artifacts" below).
+Ran the *entire* `גביה TEST.zip` export sequentially, message 1 through 33,
+**exactly once each, no re-runs at all** (explicit user instruction,
+simulating real-time production). Full findings write-up:
+`apps/denidin-app/.player_review_scratch/RUN_REPORT_33msgs.md` (gitignored,
+NOT committed — see "Lost artifacts / where things live" below). Summary:
 
-**Full findings write-up**: `apps/denidin-app/.player_review_scratch/
-RUN_REPORT_33msgs.md` (gitignored, NOT part of the commit — see "Lost
-artifacts"). Summary of what it contains:
-
-- **Finding A (🔴 most significant)**: a real, live Morning MCP ngrok
-  tunnel outage hit mid-run (messages 19/20/21/28, all **text** messages —
-  `openai.APIStatusError: 424 - Error retrieving tool list from MCP
-  server: 'morning-invoices'`). The consequential discovery: when this
-  exception propagates out of `get_response`, the user's message is
-  **never persisted at all** — not as a failed record, nothing. Real
-  production content (fee agreements, hourly work) is silently lost
-  unless the sender notices and manually re-sends. Image messages are
-  structurally immune (they don't attach Morning MCP tools at all) —
-  confirmed live, every image succeeded throughout the same outage
-  window. **Not fixed** — purely observed and reported per explicit
-  instruction ("no changing anything").
-- **Finding B**: `reference_hint`/`reference` linking is inconsistent on
-  "העברה נוספת" phrasing (sometimes fires, sometimes doesn't, no evident
-  distinguishing feature between cases) and **never does cross-message
-  correlation** — message 33 (בנק deposit, ₪3,000, "עדו דניאל") is almost
-  certainly message 8's actual fee-agreement payment (same amount,
-  near-identical name) but was never linked. This is a real capability
-  gap, not a bug — the constitution never asked for amount/name
-  cross-referencing across persisted events.
-- **Finding C**: name-garbling (finding #7 from the original review)
-  recurred on message 31 — three OCR name variants present, model picked
-  the worst garbled one despite a clean variant ("עופר גלברט") sitting
-  right there in the same text.
-- **Finding D/E**: minor, low-severity — punctuation drift between raw
-  OCR and persisted `client_name` (msg 27), a possibly source-truncated
-  name (msg 30).
+- **Finding A (🔴 most significant, still NOT fixed)**: a real, live Morning
+  MCP ngrok tunnel outage hit mid-run (messages 19/20/21/28, all **text**
+  messages — `openai.APIStatusError: 424 - Error retrieving tool list from
+  MCP server: 'morning-invoices'`). When this exception propagates out of
+  `AIHandler.get_response`, the user's message is **never persisted at
+  all** — not as a failed record, nothing. Image messages are structurally
+  immune (no Morning MCP tools attached on that path) — confirmed live,
+  every image succeeded throughout the same outage window.
+  **Confirmed, twice, via the real `logs/denidin.log` from this exact
+  run (not inference, not a re-run)**: a real user is NOT left with
+  silence. All 4 failures (`req_50312b26b068`/`req_06278ba4e21e`/
+  `req_7670a957d125`/`req_e606dddf27b2`, timestamps 14:26:24/14:27:02/
+  14:27:36/14:30:24) show a matching `Response sent successfully...72
+  chars` / `Response sent to אילה 🦋` line at the identical timestamp. The
+  mechanism (corrected after an initial wrong guess): the 424 is caught by
+  `AIHandler.get_response`'s **own internal** `except APIError`
+  (`ai_handler.py:1378-1386`) wrapped directly around the OpenAI call —
+  NOT `denidin.py`'s outer global exception handler (confirmed 0 log
+  matches for that handler's own log lines across the whole file). It
+  returns a normal `AIResponse` via `_create_fallback_response(request_id,
+  "Sorry, I encountered an error processing your request. Please try
+  again.")` — **English**, 72 chars (matches the log), `should_reply`
+  defaults `True` — so `WhatsAppHandler.send_response` sends it exactly
+  like any other reply. Net effect: the *user experience* gap is small (a
+  generic, English-not-Hebrew bounce, not silence); the *data* gap is the
+  real one — because this return path never reaches `_finalize_response`,
+  neither the user's message NOR this fallback reply is ever persisted,
+  and the message's real content is gone unless the sender notices and
+  resends.
+- **Finding B**: `reference_hint`/`reference` linking never does
+  cross-message correlation (msg 33's ₪3,000 בנק deposit from "עדו דניאל"
+  almost certainly = msg 8's fee agreement for "עידו דניאל", same amount,
+  near-identical name, never linked). **User's read: "fine and well
+  known"** — not pursuing.
+- **Findings C, D, E — reclassified this session, NOT independent
+  findings**: all three are really the SAME root cause — **the model
+  should have asked a clarifying question and silently guessed instead**:
+  - C: message 31, three OCR name variants present (`עו"ד גלברט עפרו ו`
+    garbled, `טירה עופר גלברט` garbled, `עופר גלברט` clean) — model
+    picked the worst garbled one instead of asking which was right.
+  - D: message 27, raw OCR has the client name punctuated two different
+    ways in the same text (`ירון,יונתן` vs `ירון-יונתן`) — model silently
+    picked one instead of asking.
+  - E: message 30, `client_name: "מלצר עפרה וד"ר מ"` reads as cut off
+    mid-word, matching the source's own truncation — model didn't flag
+    the truncation as something to ask about.
+  **User's explicit direction**: the constitution needs to push the model
+  to ask far more readily whenever something is ambiguous/garbled/
+  truncated — logged as the top real follow-up, not yet implemented (see
+  "What's left" below — this is a `runtime_constitution.md` change
+  affecting all live production traffic, out of scope for a quick fix).
 - **Confirmed working correctly in live use**: findings #2/#3/#4/#6/#9/#10
   from the original interactive review all validated for real this run —
-  most notably `payer_name`/`vat_status` forced correctly on **15/15**
-  real בנק events (was 14/15 wrong before the fix), and finding #3's check
-  handling correctly asked-then-declined rather than mis-capturing.
+  `payer_name`/`vat_status` forced correctly on **15/15** real בנק events.
+
+### 3. Real `player/run_player.py` fixes (commit `0f6356b`)
+
+While re-running a handful of messages after the 33-message run, discovered
+**the actual shipped player app has the exact same isolation bug the
+throwaway `.player_review_scratch/driver.py` had already been patched
+around**: `run_player.py`'s own `_build_config_dict` never overrode
+`config.memory.session.storage_dir`/`.longterm.storage_dir` from
+`--data-root` — so `data_root` was cosmetic, and every real player run was
+silently writing session/long-term-memory data into whatever the config
+file's own `memory` block said. With the bundled
+`player_run_gviya_test.json` + `config/config.test.json`, that happened to
+be `test_data/sessions`/`test_data/memory` — **the real, live, shared
+directory the entire pytest suite uses** (confirmed: 40 pre-existing real
+entries in `test_data/sessions` before this fix).
+
+Fixed for real, in the shipped module (not scratch tooling):
+- `_build_config_dict` now overrides both storage dirs from `data_root`,
+  same fix already proven in `driver.py`.
+- `player_run_gviya_test.json`'s `data_root` → `"player_data"` (new,
+  gitignored, dedicated to player runs — added to `.gitignore`).
+- **New clarification-loop mechanism, built directly into `run_player.py`**
+  (not the throwaway driver): after each dispatched message, if no ledger
+  event was produced and the model's reply contains "?", the player
+  answers with a fixed, uninformative filler
+  ("אין לי עוד מידע, תעשה הכי טוב שאתה מבין.") and loops — bounded at 5
+  rounds — until a terminal outcome: an event captured, or a plain
+  declarative reply with no further "?" (decided not to create one).
+  Every round is logged to `<data_root>/needs_clarification.jsonl`.
+
+**Verified live**: `python3 -m player.run_player player/player_run_gviya_test.json
+--start 2026-08-02 --end 2026-08-02` (note: player granularity is by
+calendar day, not individual message — this naturally replayed messages
+15–20, all falling on that date) dispatched 6 messages into a fresh
+`player_data/`, confirmed fully isolated from `test_data/` and from
+`.player_review_scratch/`'s own throwaway session. 10 ledger events
+captured, one clarification round logged and resolved. Real model
+non-determinism observed directly: the same message text ("אורית בנימין /
+מקורות / שעתיים") asked a clarifying question about the date in the
+33-message run's session, but was captured directly (inferring the date
+from the message's own send date) in this run — different session context,
+different outcome, neither one "wrong."
 
 ## Billed test verification — still 12/12 passing after the redesign
 
-Re-verified after the schema changes (same 12 tests as the prior
-session's sweep, `test_ledger_event_capture_billed.py` +
-`test_ledger_event_capture_text_billed.py`) — all pass. No further action
-needed here unless new tests get added.
+Re-verified after the schema changes (same 12 tests as the prior session's
+sweep) — all pass. No further action needed unless new tests get added.
 
-## Lost artifacts (informational, not blocking, but read this before hunting for files)
+## Where things live now (read this before hunting for files — locations changed this session)
 
-`.player_review_scratch/` (gitignored, in-repo, NOT `/tmp` — this was the
-whole point of moving it there in an earlier session) should still contain,
-as of end-of-session:
-- `RUN_REPORT_33msgs.md` — the full findings write-up (summarized above).
-- `throwaway_data/` — the real persisted messages/events from the 33-message
-  run (session `7d3e5293-cbda-41c3-8f92-a91d0fed808e`), useful if you want
-  to re-inspect a specific message's JSON without re-running anything.
-- `driver.py` — the one-message-at-a-time review harness, now with the
-  automated clarifying-question fallback mechanism (logs to
-  `for_review.jsonl`, answers with a fixed uninformative filler, gives the
-  model exactly one more chance, never re-asks).
-- `dispatch_and_diff.sh` — a thin wrapper around `driver.py` that also
-  diffs+prints newly-created message/event files per dispatch; used for
-  the 33-message run.
-- `for_review.jsonl` — 3 entries from the 33-message run (messages 1, 6,
-  11) where the model asked a genuine clarifying question the automated
-  filler couldn't resolve — real candidates for a human to actually answer
-  if this review continues.
-- `state.json` — sits at `{"next_index": 33}` (fully consumed) after the
-  last run in this session.
+- **`apps/denidin-app/.player_review_scratch/`** (gitignored, in-repo, NOT
+  `/tmp`) — the interactive-review scratch tooling and its own throwaway
+  output:
+  - `RUN_REPORT_33msgs.md` — the 33-message run's full findings write-up.
+  - `throwaway_data/` — real persisted messages/events from that run
+    (session `7d3e5293-cbda-41c3-8f92-a91d0fed808e`), plus 4 messages
+    (19/20/21/28) re-dispatched into the SAME session later the same day,
+    appended after message 33 in dispatch order (not re-inserted
+    chronologically) — flagged, not hidden.
+  - `driver.py` / `dispatch_and_diff.sh` / `rerun_specific.py` — one-off
+    review/rerun harnesses. **Not the production player** — see below.
+  - `for_review.jsonl` — **4 entries** (messages 1, 6, 11, 20) where the
+    model asked a genuine clarifying question during the 33-message run
+    or its follow-up reruns.
+  - `state.json` — `{"next_index": 33}` (fully consumed).
+- **`apps/denidin-app/player_data/`** (gitignored, NEW this session,
+  **not** the same thing as `.player_review_scratch/`) — output of the
+  real, fixed `player/run_player.py` (today's `--start 2026-08-02 --end
+  2026-08-02` run): `sessions/` (session
+  `beac81d4-75b0-4e7e-a335-f0468e5d31c2`), `memory/`, `events/` (10
+  events), `needs_clarification.jsonl` (1 entry, message 19). This is the
+  location any future real player run should keep using/extending — it's
+  the actual production player's own dedicated data root now, isolated
+  from `test_data/` for good.
 
-None of this is required to continue Feature 043's actual work — it's
-observational tooling and its own output, not a dependency. If it's gone
-(this machine, this clone), that's fine; the actionable findings are
-already written up in this document.
+None of `.player_review_scratch/`'s contents are required to continue
+Feature 043's real work — it's one-off review tooling. `player_data/` and
+the `run_player.py` fix, by contrast, ARE real production-code state/output
+going forward.
+
+## What's left — scope decided 2026-08-19 (see `tasks.md` for the full record)
+
+- **Phase 5 (reconciliation), Phase 6 (relevancy), Phase 7 (review
+  queue)** — **deprioritized, not removed**: skip for now, human call
+  ("not needed right now"). May resume later.
+- **Phase 8 (image-path replay regression, `expensive` tier)** —
+  **checked against the real 33-message run and found NOT actually
+  proven**, despite that run including 15 real vision messages: all 15
+  were bank screenshots with explicit absolute dates, never relative-date
+  language ("אתמול"/"היום") — grepped every image's `extracted_text`
+  across all 33 messages, zero matches. Phase 3's vision-path
+  `today_timestamp` threading is built but still end-to-end unverified.
+  **Still open** — needs `T020a` (write the test) + explicit approval to
+  actually run it (expensive tier, one at a time).
+- **Phase 10 (player/WhatsApp equivalence tests)** — **removed entirely**,
+  not deprioritized: the model's confirmed non-determinism (this exact
+  session: "אורית בנימין/מקורות/שעתיים" produced two genuinely different
+  real outcomes across two separate real runs — one asked about the date,
+  one inferred and captured directly) makes an equivalence assertion
+  between two paths fundamentally unreliable as a premise, not just
+  currently low-priority.
 
 ## Suggested next steps for a fresh session
 
-1. **Finding A (message-loss-on-exception) is the most concrete, most
-   actionable finding from this whole session** — worth deciding whether
-   it's in scope for Feature 043 or its own bugfix. At minimum, persisting
-   the user's own message *before* attempting the OpenAI call (or in a
-   try/except around just the AI call, independent of storage) would
-   close this gap. Needs human sign-off before any code change, per
-   standing discipline — this is a real behavior change to the core
-   message pipeline, not a minor fix.
-2. Findings B/C/D/E are lower-priority, mostly informational — worth
-   deciding whether any warrant constitution tweaks or are accepted as
-   inherent model variance (same "not every finding needs a fix" spirit
-   as `specs/not_reproducible/bugfixes/`).
-3. The 3 outstanding `for_review.jsonl` entries (messages 1, 6, 11) are
-   real candidates if the interactive review continues — they represent
-   genuine ambiguity a human should actually resolve, not a bug.
-4. Continue Phase 5–8, 10 whenever prioritized (unchanged — reconciliation,
-   relevancy, review queue, expensive-tier regression, Feature-040-blocked
-   equivalence tests).
-5. **Nothing should be committed/pushed/PR'd without asking** for whatever
-   comes next — this session's own work (the redesign) already IS
-   committed+pushed (`ab514c7`), per explicit request. When Feature 043 as
-   a whole is ready to close out, that's what `haleluya` is for — only
-   when explicitly invoked.
+Nothing is currently being actively pursued. What remains open:
+
+1. **Phase 8** — write `tests/expensive/test_player_image_replay.py`
+   (T020a) and, with fresh explicit approval, run it once. This is the
+   only remaining phase-tracked work item.
+2. **The model-should-ask-more-often gap (Findings C/D/E's real root
+   cause)** — outside the phase structure. A `runtime_constitution.md`
+   change, affecting all live production traffic, not just the player.
+   Needs its own explicit design pass, not a quick patch, and human
+   sign-off before any change.
+3. **Finding A (message-loss-on-exception)** — outside the phase
+   structure, still not fixed, still real. Persisting the user's own
+   message before attempting the OpenAI call (or wrapping just the AI
+   call in its own try/except) would close it. Needs human sign-off —
+   real behavior change to the core message pipeline.
+4. Finding B — user's call: "fine and well known," not pursuing.
+5. The 4 `for_review.jsonl` entries (messages 1, 6, 11, 20) and the 1
+   `player_data/needs_clarification.jsonl` entry (message 19) are real
+   candidates if a human wants to actually resolve the ambiguity behind
+   them.
+6. Phases 5-7, whenever/if reprioritized.
+7. **Nothing should be committed/pushed/PR'd without asking** for whatever
+   comes next. When Feature 043 as a whole is ready to close out, that's
+   what `haleluya` is for — only when explicitly invoked.
