@@ -1,32 +1,27 @@
 # Handoff: Feature 043 — WhatsApp Export → Ledger Event "Player"
 
-**Written**: 2026-08-18 (end of session, user requested a compact)
+**Written**: 2026-08-19 (end of session, user requested commit+push+handoff to start fresh)
 **Branch**: `feature/043-production-data-setup-tooling`
-**Nothing has been committed, pushed, or PR'd this session.** `git status`
-shows 19 modified files, all uncommitted working-tree state (list below).
-This fully supersedes the previous version of this file (dated 2026-08-07,
-now stale — Phases 9/11/11-follow-up below all happened since).
+**Committed and pushed this session**: commit `ab514c7` (this session's work,
+described in full below), on top of `9f844ad` (prior session's Phase 11
+follow-up, already covered by that commit's own message — not repeated
+here). `git log --oneline -5` to orient.
 
 ---
 
 ## What's done (cumulative, all phases)
 
 - **Phases 1–4** (Setup, `MessageSource` abstraction, timestamp fix, US1
-  replay-a-date-range) — done, per the old handoff content (still accurate,
-  not repeated here).
-- **Phase 9** (`player/README.md`) — done 2026-08-16. Documents the
-  actually-implemented CLI, explicitly flags what's aspirational
-  (`--reapply-review`, run-summary JSON) vs. real.
-- **Phase 11** (ledger event schema gap — bank/payment-detail fields,
-  T027a/b/c) — done 2026-08-16. Added `bank_number`/`bank_branch`/
-  `bank_account`; removed `message_timestamp`/`sender`/`notes`/
-  `payment_method`/`transaction_reference`/persisted `agreement_label`/
-  `replaced_event_id`/`replaces_hint`; merged `event_date`+`event_time` into
-  `event_datetime`; unified `replaced_event_id`/`reference` into one
-  `reference`+`reference_hint` mechanism. `CURRENT_SCHEMA_VERSION` reset to
-  `1` as a new baseline. See `data-model.md` §1b.
-- **Phase 11 follow-up** (this session, 2026-08-17→18) — the big one, see
-  below in detail.
+  replay-a-date-range) — done, per earlier handoffs.
+- **Phase 9** (`player/README.md`) — done 2026-08-16, updated again this
+  session (new `whatsapp_own_number` config field documented).
+- **Phase 11 + Phase 11 follow-up** (ledger schema, 10 player-review
+  findings, `raw_message_excerpt`→`Message.extracted_text`) — done,
+  commit `9f844ad`.
+- **This session** (2026-08-19) — commit `ab514c7`: a real Message
+  identity-field redesign (role/sender/recipient/etc.), `LedgerEvent.
+  whatsapp_chat` removed, and a full 33-message live validation run. Detail
+  below.
 - **NOT started**: Phase 5 (reconciliation), Phase 6 (relevancy), Phase 7
   (review queue), Phase 8 (expensive image-path regression), Phase 10
   (player/WhatsApp equivalence tests — permanently blocked until Feature 040
@@ -34,244 +29,186 @@ now stale — Phases 9/11/11-follow-up below all happened since).
 
 ## This session's work in detail
 
-### 1. Interactive human-reviewed player run (33 real messages)
-Per the user's exact protocol: dispatch ONE real message at a time through
-the real, unmodified pipeline (no mocking, no fabricating), show the
-captured ledger event JSON, human approves/corrects, log the verdict, move
-on. Used the real `גביה TEST.zip` export fixture. This produced **10
-concrete findings** (#1–#10) against the live capture behavior — full
-detail lives in throwaway review notes (`.player_review_scratch/`,
-gitignored, NOT committed — see "Lost artifacts" below) and in
-`data-model.md` §1c / `tasks.md`'s "Phase 11 follow-up" section (both ARE
-committed-ready, uncommitted currently).
+### 1. Message identity-field redesign (commit `ab514c7`)
 
-**Major trust-and-process incidents worth knowing about, not just the
-findings themselves:**
-- I was caught **abbreviating captured JSON in chat** instead of showing
-  the full record — user called this out hard ("this whole exercise is
-  about precision... what else have you been hiding from me?"). Fixed:
-  from that point on, every record shown is the full, unabbreviated file
-  content, read fresh from disk, often via raw `cat`.
-- The original `/tmp`-based scratchpad **got wiped between sessions**,
-  losing all review progress and the throwaway data root. Per user
-  instruction, the scratchpad now lives **in-repo** at
-  `apps/denidin-app/.player_review_scratch/` (gitignored — see the
-  `.gitignore` diff) specifically so this can't happen again. The review
-  had to restart from message 1 after this.
-- Model non-determinism was a recurring, load-bearing theme: the exact
-  same message, replayed multiple times, produced genuinely different
-  real outcomes (capture vs. ask-a-question; different field splits;
-  different reference_hint decisions). This is real, not a bug — see
-  "Known non-determinism" below.
+Triggered by the user directly reading persisted JSON during an interactive
+player-review session and asking pointed questions ("why is sender not the
+whatsapp number?", "where does sender_name come from?", "we don't need
+whatsapp_chat, message_id+session_id is enough"). Full design was locked in
+via a multi-round clarifying-question exchange before any code was touched.
 
-### 2. The 10 findings — all fixed same-session
-1. `reference_hint`/`reference` wrongly applied to plain new entries (no
-   correction/addition language) — constitution tightened.
-2. Model doesn't ask clarifying questions for material ambiguity (e.g. a
-   hyphenated name) — constitution given a concrete anchored example.
-3. Check-deposit images wrongly captured as `בנק` — constitution now
-   requires a clarifying question instead of silent capture/decline.
-4. `payer_name` used instead of `client_name` for `בנק` events (~50% of the
-   time, genuine coin-flip) — **code-side enforcement** added
-   (`ledger_event_manager.py`): `payer_name` forced `null` for `בנק`,
-   misplaced value rescued into `client_name` rather than discarded.
-5. `raw_message_excerpt` for image messages never held real source content,
-   only OCR'd description — **architecturally removed** (see §3 below).
-6. `vat_status` for `בנק` events wrong 14/15 times — **code-side
-   enforcement** added: `vat_status` forced `"כולל"` unconditionally for
-   every `בנק` event.
-7. OCR name-garbling on bank images — constitution guidance added (prefer
-   the clearer/labeled occurrence).
-8. A structurally normal hourly work-log message produced zero events (real
-   miss) — constitution's "always capture, no exceptions" language
-   strengthened.
-9. `reference_hint` missed for explicit "addition" language ("תוספת") —
-   added to the trigger-phrase list explicitly.
-10. `trigger_condition` field existed in the persisted schema but was
-    **hardcoded `null`** — `LEDGER_EVENT_TOOL` never exposed it at all.
-    Now a real, model-populatable component field (forced `null` for `בנק`).
+**`Message` (`session_manager.py`) — every identity field redefined:**
+- `role`: now the REAL role — `"admin"`/`"godfather"`/`"client"`/
+  `"assistant"` (was the old structural `"user"`/`"assistant"`).
+- `ai_required_role` (new): `"user"`/`"assistant"` — separately derived,
+  never caller-supplied. This, not `role`, is what
+  `get_conversation_history_for_session` puts in the dict handed to
+  OpenAI's Responses API (which only accepts literal user/assistant/
+  system/developer, never an RBAC role name — a real hard blocker
+  discovered mid-design, not guessed at).
+- `sender`/`recipient`: now real WhatsApp JIDs (were resolved display
+  names). Feature 039's old sentinel-retirement scheme (`recipient=None`
+  for a user message, `sender=None` for assistant) is **fully reversed** —
+  both are always populated now: DeniDin's own number as `sender` for its
+  own replies (reused the *existing* `bugfix-024` mechanism,
+  `AIHandler.own_whatsapp_number`, a real `getWaSettings()` Green API call
+  at startup — no new plumbing needed, I initially wrongly told the user
+  this didn't exist and had to correct myself), the group's own JID as
+  `recipient` for any group turn regardless of who sent it, the other
+  party's real number otherwise.
+- `sender_name`/`recipient_name` (new): resolved display names, carrying
+  what the old `sender` field used to hold.
+- A new `sender_phone` parameter (distinct from the pre-existing
+  `user_phone`, which for a *group* turn is the most-permissive MEMBER's
+  phone per Feature 039's group-RBAC resolution — possibly a different
+  person than whoever actually sent this specific message) threads the
+  ACTUAL sender's phone through `get_response`/`_finalize_response`/
+  `_resolve_pending_approval`/`resolve_button_tap`, so `Message.sender` is
+  never wrong on a group turn governed by someone else's role. This was a
+  real bug I would have introduced without catching it myself mid-design.
+- New `WhatsAppMessage.chat_name` field (Green API's `senderData.chatName`
+  — already present on every real notification, never parsed before) — a
+  group's real subject/name, feeds `recipient_name`.
+- `MediaHandler._store_media_turn` got the same design, plus a **real RBAC
+  role resolution** via `self.denidin.ai_handler.user_manager` — it was
+  previously hardcoded `"client"` for every media sender regardless of
+  actual role, a latent bug that became visible (and worth fixing, low
+  cost given reachability) only once `role` started carrying real meaning.
+- Player (`player/run_player.py` AND the interactive review driver) gets a
+  new optional `PlayerConfig.whatsapp_own_number` field — same category as
+  `sender_map`: the player never touches live Green API, so
+  `own_whatsapp_number` always resolves to `""` there on its own; this is
+  the operator-supplied substitute. Documented in `player/README.md`.
 
-### 3. Architecture change: `raw_message_excerpt` → `Message.extracted_text`
-Per explicit user request: the ledger event no longer duplicates source
-content — `LedgerEvent.message_id`+`session_id` is already a deterministic
-pointer to the real message file. Removed `raw_message_excerpt` entirely
-from `LEDGER_EVENT_TOOL`'s schema and `LedgerEventManager`'s persisted
-record (internal-field count 10→**9**).
+**`LedgerEvent.whatsapp_chat` removed entirely** — redundant with
+`session_id` (the session it points at already carries its own
+`whatsapp_chat`) and `message_id`, both already sufficient traceability.
+**Stays `schema_version=1`** — explicit human correction after I initially
+bumped it to 2; the reasoning (v1 has never been deployed to real dev/prod
+data, same reset-safety logic as the original Phase 11 reset) folds this
+into the same baseline rather than incrementing.
 
-New **`Message.extracted_text`** field (`session_manager.py`), populated by
-`MediaHandler` from the media extractor's own `extracted_text` output.
-**Real pre-existing bug found and fixed as part of this**: `PDFExtractor`/
-`DOCXExtractor` never actually returned an `extracted_text` key at all
-(only `raw_response`) despite their own docstrings claiming they did — only
-`ImageExtractor` genuinely had it. Both fixed to actually return it.
+**Also fixed, found along the way**: `SessionManager`'s two `json.dump`
+calls (message + session persistence) never had `ensure_ascii=False` —
+unlike `LedgerEventManager`, which already did — so every persisted
+message file was unreadable via a raw `cat` (Hebrew came out as `\uXXXX`
+escapes). This is exactly what the user hit when asking to see message
+JSONs directly; fixed by adding the flag to both call sites.
 
-### 4. Test additions/fixes (all committed-ready, none actually committed)
-- `test_ledger_event_manager.py`: new `TestPayerNameBankHandling`,
-  `TestVatStatusBankDefault`, `TestTriggerConditionField` classes; removed
-  `raw_message_excerpt` from fixtures/field-count assertions.
-- `test_ai_handler_ledger_events.py`: strict-schema invariant test added for
-  the nested `components` item schema (mirrors the existing top-level one).
-- `test_session_manager.py`: new `TestExtractedTextStorage` class.
-- `test_media_handler.py`: new `TestExtractedTextPersistence` class.
-- `test_docx_extractor.py`/`test_pdf_extractor.py`: new tests confirming
-  `extracted_text` is genuinely populated (the bug fix from §3).
-- `test_ledger_event_capture_billed.py` /
-  `test_ledger_event_capture_text_billed.py`: **fixed a real, pre-existing
-  bug** — `_assert_ledger_events_persisted` still asserted on
-  `message_timestamp`/`sender`, both removed from the schema back in the
-  original Phase 11 (2026-08-16) — would have failed the instant either
-  file actually ran. Fixed to assert `event_datetime` instead. Also added
-  new real E2E tests for findings #1/#2/#8/#9/#10 (בנק-specific findings
-  #3/#4/#6 need a real image, so aren't billed-testable — that's
-  `tests/expensive/`'s job, out of scope this session beyond the
-  `raw_message_excerpt` assertion removal there).
-- **`tests/e2e_helpers.py`** — new **generic, reusable** helpers (added at
-  the user's explicit request — "I have a feeling we will need it"):
-  - `ClarificationAnswerBank` — deterministic keyword-based composer for
-    answering a real model's clarifying question in an E2E test, NO second
-    AI call. Works because a test fixture message has a known ground truth
-    for every field; matches question text against configured topic
-    keywords, merges every matched topic's answer, falls back to a generic
-    "לא הבנתי את השאלה, תעשה מה שאתה מבין" when nothing matches.
-  - `converse_until_ledger_events_captured` — generic multi-turn driver:
-    sends a message, checks real persisted events after each turn, stops
-    the instant they exist (never sends a further turn once captured —
-    this exact bug caused a real observed DOUBLE capture, 6 events instead
-    of 3, in an earlier version), composes the next turn via the answer
-    bank otherwise, capped at `max_turns`.
-  - `reserve_ledger_event_bucket_prefixes` — cleanup helper sized to the
-    worst case.
-  - The גיליאן דוידיאן multi-component test (`test_ledger_event_capture_text_billed.py`)
-    now uses all three instead of bespoke inline logic — confirmed passing
-    across multiple real runs exercising both real model behaviors
-    (direct capture; ask-then-answer-then-capture).
+**Test fallout, all fixed**: 11 unit tests + 1 integration test broke from
+the schema change (mostly `role == "user"` checks needing to become
+`ai_required_role == "user"`, and the old sentinel-retirement test class
+needing a full rewrite to test the *opposite* — sender/recipient always
+populated). `test_ledger_event_manager.py` needed ~85 mechanical
+`whatsapp_chat="..."` removals from call sites plus a field-count/
+schema-version test update. Full suite: **932 unit+integration tests
+pass. 12/12 billed ledger-capture tests pass** (verified — see below).
 
-## Billed test verification — COMPLETE (2026-08-18)
+### 2. Full 33-message live validation run (not committed — throwaway)
 
-The user's original ask was: run all 12 tests across
-`test_ledger_event_capture_billed.py` (2 tests) +
-`test_ledger_event_capture_text_billed.py` (10 tests) with `-x`, **stop on
-first failure, no fixing, no rerunning**. The sweep was interrupted twice
-by real failures (each its own stop point, per the standing "STOP MEANS
-STOP" rule - investigated/fixed only after explicit fresh direction each
-time, never generalized into "fix-and-continue"), then resumed. **All 12
-now pass against current code.**
+After the redesign, ran the *entire* `גביה TEST.zip` export sequentially,
+message 1 through 33, **exactly once each, no re-runs at all** (explicit
+user instruction, simulating real-time production — a message that fails
+stays failed, never retried). Full JSON of every persisted message +
+ledger event shown for each of the 33 messages in this session's chat
+transcript (not reproduced here — see the transcript, or re-derive by
+reading `.player_review_scratch/throwaway_data/` directly if it still
+exists — see "Lost artifacts" below).
 
-Two real, independent bugs were found and fixed along the way (neither is
-a regression in the production code the tests exercise - both are test
-authoring bugs):
+**Full findings write-up**: `apps/denidin-app/.player_review_scratch/
+RUN_REPORT_33msgs.md` (gitignored, NOT part of the commit — see "Lost
+artifacts"). Summary of what it contains:
 
-1. **Test 3** (גיליאן דוידיאן multi-component) failed on real model
-   non-determinism - the model asked a clarifying question instead of
-   capturing directly. Fixed by building the generic
-   `ClarificationAnswerBank`/`converse_until_ledger_events_captured`
-   mechanism (`tests/e2e_helpers.py`) and switching this test to it.
-2. **Tests 6/7/8** (single-day hours, two-day hours, hours w/ payer
-   reference) failed because the shared `_israel_date_str` helper compared
-   `txn_date` against real wall-clock "today" instead of the Israel-local
-   date of the message's own fixed timestamp. Confirmed via
-   `ai_handler.py`: every real `_build_instructions` call site
-   (`ai_handler.py:1216,1906,1981,2047`) passes
-   `today_timestamp=request.timestamp` - the model always resolves
-   "היום"/"אתמול" against when the message was sent, never against
-   whenever the test happens to execute. Fixed the helper to take
-   `base_timestamp` explicitly; confirmed `captured_at` is unaffected (it's
-   genuinely real wall-clock, written via `now_local()` at persist time -
-   `ledger_event_manager.py:297` - so that field needed no fix).
-3. **Test 12** (minimal hourly message, finding #8 regression guard) failed
-   the same non-determinism way as test 3 - the model asked a date
-   clarifying question first (the fixture message gives no date at all).
-   Rewritten to use the same `converse_until_ledger_events_captured`
-   mechanism, tuned with a small answer bank (date/rate/matter topics).
+- **Finding A (🔴 most significant)**: a real, live Morning MCP ngrok
+  tunnel outage hit mid-run (messages 19/20/21/28, all **text** messages —
+  `openai.APIStatusError: 424 - Error retrieving tool list from MCP
+  server: 'morning-invoices'`). The consequential discovery: when this
+  exception propagates out of `get_response`, the user's message is
+  **never persisted at all** — not as a failed record, nothing. Real
+  production content (fee agreements, hourly work) is silently lost
+  unless the sender notices and manually re-sends. Image messages are
+  structurally immune (they don't attach Morning MCP tools at all) —
+  confirmed live, every image succeeded throughout the same outage
+  window. **Not fixed** — purely observed and reported per explicit
+  instruction ("no changing anything").
+- **Finding B**: `reference_hint`/`reference` linking is inconsistent on
+  "העברה נוספת" phrasing (sometimes fires, sometimes doesn't, no evident
+  distinguishing feature between cases) and **never does cross-message
+  correlation** — message 33 (בנק deposit, ₪3,000, "עדו דניאל") is almost
+  certainly message 8's actual fee-agreement payment (same amount,
+  near-identical name) but was never linked. This is a real capability
+  gap, not a bug — the constitution never asked for amount/name
+  cross-referencing across persisted events.
+- **Finding C**: name-garbling (finding #7 from the original review)
+  recurred on message 31 — three OCR name variants present, model picked
+  the worst garbled one despite a clean variant ("עופר גלברט") sitting
+  right there in the same text.
+- **Finding D/E**: minor, low-severity — punctuation drift between raw
+  OCR and persisted `client_name` (msg 27), a possibly source-truncated
+  name (msg 30).
+- **Confirmed working correctly in live use**: findings #2/#3/#4/#6/#9/#10
+  from the original interactive review all validated for real this run —
+  most notably `payer_name`/`vat_status` forced correctly on **15/15**
+  real בנק events (was 14/15 wrong before the fix), and finding #3's check
+  handling correctly asked-then-declined rather than mis-capturing.
 
-Full test list, in file order, final status:
-```
-test_ledger_event_capture_billed.py:
-  1. test_given_clear_fee_agreement_text_when_processed_then_ledger_event_captured  [PASSED]
-  2. test_given_ordinary_chatter_when_processed_then_no_ledger_event_captured        [PASSED]
+## Billed test verification — still 12/12 passing after the redesign
 
-test_ledger_event_capture_text_billed.py:
-  3. test_given_real_gilyan_davidian_agreement_text_when_processed_then_captured_per_component  [PASSED - rewritten around converse_until_ledger_events_captured]
-  4. test_given_new_agreement_flat_fee_then_all_fields_correctly_persisted            [PASSED]
-  5. test_given_agreement_percent_based_fee_then_percent_fields_correct               [PASSED]
-  6. test_given_real_single_day_hours_message_then_hours_and_date_correctly_persisted [PASSED - _israel_date_str bug fixed]
-  7. test_given_real_two_day_hours_message_then_split_per_day_with_correct_dates      [PASSED - _israel_date_str bug fixed]
-  8. test_given_real_hours_message_with_payer_reference_then_payer_name_captured      [PASSED - _israel_date_str bug fixed]
-  9. test_given_real_conditional_fee_text_then_trigger_condition_captured             [PASSED]
-  10. test_given_real_addition_language_then_reference_hint_captured                  [PASSED]
-  11. test_given_ambiguous_hyphenated_name_then_model_asks_clarifying_question        [PASSED]
-  12. test_given_real_minimal_hourly_message_then_captured_not_missed                 [PASSED - rewritten around converse_until_ledger_events_captured]
-```
+Re-verified after the schema changes (same 12 tests as the prior
+session's sweep, `test_ledger_event_capture_billed.py` +
+`test_ledger_event_capture_text_billed.py`) — all pass. No further action
+needed here unless new tests get added.
 
-## Known non-determinism (not a bug, just a fact to plan around)
+## Lost artifacts (informational, not blocking, but read this before hunting for files)
 
-The model's behavior on identical real messages varies run to run,
-observed repeatedly this session:
-- Same message: sometimes captures directly, sometimes asks a clarifying
-  question first, sometimes skips capture with no explanation.
-- Field-level variance: `client_name` sometimes correctly holds a name that
-  other runs put in `payer_name`; `reference_hint` sometimes set, sometimes
-  not, for the same "addition" language.
-- This is why several tests in `test_ledger_event_capture_text_billed.py`
-  already carry "this is real information if it fails" framing in their
-  own docstrings (predates this session) — not a new problem, but this
-  session's `converse_until_ledger_events_captured` mechanism is the first
-  systematic way of coping with it rather than writing single-shot
-  brittle assertions.
+`.player_review_scratch/` (gitignored, in-repo, NOT `/tmp` — this was the
+whole point of moving it there in an earlier session) should still contain,
+as of end-of-session:
+- `RUN_REPORT_33msgs.md` — the full findings write-up (summarized above).
+- `throwaway_data/` — the real persisted messages/events from the 33-message
+  run (session `7d3e5293-cbda-41c3-8f92-a91d0fed808e`), useful if you want
+  to re-inspect a specific message's JSON without re-running anything.
+- `driver.py` — the one-message-at-a-time review harness, now with the
+  automated clarifying-question fallback mechanism (logs to
+  `for_review.jsonl`, answers with a fixed uninformative filler, gives the
+  model exactly one more chance, never re-asks).
+- `dispatch_and_diff.sh` — a thin wrapper around `driver.py` that also
+  diffs+prints newly-created message/event files per dispatch; used for
+  the 33-message run.
+- `for_review.jsonl` — 3 entries from the 33-message run (messages 1, 6,
+  11) where the model asked a genuine clarifying question the automated
+  filler couldn't resolve — real candidates for a human to actually answer
+  if this review continues.
+- `state.json` — sits at `{"next_index": 33}` (fully consumed) after the
+  last run in this session.
 
-## Files changed this session (all uncommitted)
-
-```
-apps/denidin-app/.gitignore                                          (+.player_review_scratch/ ignore)
-apps/denidin-app/config/runtime_constitution.md                      (findings #1,2,3,6,7,8,9,10 + stale notes/replaces_hint refs fixed)
-apps/denidin-app/src/handlers/ai_handler.py                          (LEDGER_EVENT_TOOL: raw_message_excerpt removed, trigger_condition added, payer_name/client_name/reference_hint descriptions strengthened)
-apps/denidin-app/src/handlers/extractors/docx_extractor.py           (extracted_text now genuinely returned)
-apps/denidin-app/src/handlers/extractors/pdf_extractor.py            (extracted_text now genuinely returned, combined per-page)
-apps/denidin-app/src/handlers/media_handler.py                       (threads extracted_text into Message)
-apps/denidin-app/src/managers/ledger_event_manager.py                (raw_message_excerpt removed; payer_name/vat_status code-enforced for בנק; trigger_condition wired up)
-apps/denidin-app/src/managers/session_manager.py                     (Message.extracted_text field + add_message param)
-apps/denidin-app/tests/billed/test_ledger_event_capture_billed.py    (helper fixed; new assertions)
-apps/denidin-app/tests/billed/test_ledger_event_capture_text_billed.py (helper fixed; 4 new tests; גיליאן דוידיאן test redesigned around generic helpers)
-apps/denidin-app/tests/e2e_helpers.py                                 (NEW: ClarificationAnswerBank, converse_until_ledger_events_captured, reserve_ledger_event_bucket_prefixes)
-apps/denidin-app/tests/expensive/test_ledger_event_capture_e2e.py    (raw_message_excerpt assertions → extracted_text assertion)
-apps/denidin-app/tests/unit/test_ai_handler_ledger_events.py         (schema invariant test; SAMPLE_EVENT cleaned up)
-apps/denidin-app/tests/unit/test_docx_extractor.py                   (new extracted_text tests)
-apps/denidin-app/tests/unit/test_ledger_event_manager.py             (3 new test classes; fixture/field-count updates)
-apps/denidin-app/tests/unit/test_media_handler.py                    (new extracted_text tests)
-apps/denidin-app/tests/unit/test_pdf_extractor.py                    (new extracted_text test)
-apps/denidin-app/tests/unit/test_session_manager.py                  (new TestExtractedTextStorage)
-specs/in-progress/043-production-data-setup-tooling/data-model.md    (§1c added)
-specs/in-progress/043-production-data-setup-tooling/tasks.md         (Phase 11 follow-up section added, Status updated)
-```
-
-**Full suite status as of last full run this session**: 932/932
-unit+integration tests pass (898 unit + 34 integration). Lint 9.11–9.97/10
-across touched files (all comfortably above the 7.0 threshold). No new
-mypy errors.
-
-## Lost artifacts (informational, not blocking)
-
-The throwaway interactive-review tooling/notes
-(`apps/denidin-app/.player_review_scratch/`) is gitignored and was never
-meant to be committed — it's local-only, and may or may not still exist on
-this machine depending on what's happened since. It is NOT needed to
-continue this feature's work; everything actionable from that review
-(the 10 findings) is already captured in `data-model.md` §1c and
-`tasks.md`, and already fixed in code/constitution. Don't go looking for it
-as if it were a dependency.
+None of this is required to continue Feature 043's actual work — it's
+observational tooling and its own output, not a dependency. If it's gone
+(this machine, this clone), that's fine; the actionable findings are
+already written up in this document.
 
 ## Suggested next steps for a fresh session
 
-1. **Billed test verification is done** (see above) — all 12 pass. Consider
-   whether any `expensive`-tier tests need a real run too (the vision-flow
-   `בנק` findings #3/#4/#6 are only testable there) — needs fresh explicit
-   approval per the standing expensive-test rules, one at a time.
-2. This session's work (schema change, 10 behavioral fixes, new reusable
-   test infra, full billed-test verification) was committed and pushed
-   2026-08-18 per explicit user request - **not** via `haleluya` (no PR
-   opened/merged, spec not moved out of `in-progress/`). `haleluya` is
-   still the right next step whenever the user wants this properly closed
-   out.
-3. Continue Phase 5–8, 10 whenever prioritized (unchanged from before this
-   session — reconciliation, relevancy, review queue, expensive-tier
-   regression, and the Feature-040-blocked equivalence tests).
+1. **Finding A (message-loss-on-exception) is the most concrete, most
+   actionable finding from this whole session** — worth deciding whether
+   it's in scope for Feature 043 or its own bugfix. At minimum, persisting
+   the user's own message *before* attempting the OpenAI call (or in a
+   try/except around just the AI call, independent of storage) would
+   close this gap. Needs human sign-off before any code change, per
+   standing discipline — this is a real behavior change to the core
+   message pipeline, not a minor fix.
+2. Findings B/C/D/E are lower-priority, mostly informational — worth
+   deciding whether any warrant constitution tweaks or are accepted as
+   inherent model variance (same "not every finding needs a fix" spirit
+   as `specs/not_reproducible/bugfixes/`).
+3. The 3 outstanding `for_review.jsonl` entries (messages 1, 6, 11) are
+   real candidates if the interactive review continues — they represent
+   genuine ambiguity a human should actually resolve, not a bug.
+4. Continue Phase 5–8, 10 whenever prioritized (unchanged — reconciliation,
+   relevancy, review queue, expensive-tier regression, Feature-040-blocked
+   equivalence tests).
+5. **Nothing should be committed/pushed/PR'd without asking** for whatever
+   comes next — this session's own work (the redesign) already IS
+   committed+pushed (`ab514c7`), per explicit request. When Feature 043 as
+   a whole is ready to close out, that's what `haleluya` is for — only
+   when explicitly invoked.
