@@ -3,8 +3,9 @@
 **Feature Branch**: `feature/056-receipts-without-invoice`
 **Created**: 2026-08-17
 **Clarified**: 2026-08-18
-**Status**: DRAFT — clarified 2026-08-18 (direct user decision, three questions), ready for
-`speckit.plan`.
+**Status**: PLANNED — clarified and researched 2026-08-18 (direct user decision, three
+questions; cancellation mechanism live-confirmed), `plan.md`/`data-model.md`/`contracts/`/
+`quickstart.md` complete, ready for `speckit.tasks`.
 **Input**: User description: two related Morning (Green Invoice) accounting-rule logic changes,
 captured together as one feature ("open a feature 56 - receipts without invoice ... create a new
 feature 56 to encompass the 2 new logic changes required for accounting rules in morning").
@@ -22,8 +23,9 @@ feature 56 to encompass the 2 new logic changes required for accounting rules in
 
 **Required Files**: `user-stories.md` (present, DRAFT) ✅ · `spec.md` (this file, DRAFT) ·
 `research.md` (present — transaction-account cancellation mechanism, live-confirmed 2026-08-18)
-✅ · `plan.md` (NOT STARTED) · `data-model.md` (NOT STARTED) · `contracts/` (NOT STARTED) ·
-`quickstart.md` (NOT STARTED) · `tasks.md` (NOT STARTED).
+✅ · `plan.md` (present, Ready for Task Generation) ✅ · `data-model.md` (present) ✅ ·
+`contracts/` (present — `create_receipt.json` updated, `cancel_transaction_account.json` new)
+✅ · `quickstart.md` (present) ✅ · `tasks.md` (NOT STARTED — next: `speckit.tasks`).
 
 ---
 

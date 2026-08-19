@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "cancel_transaction_account",
+  "type": "object",
+  "x-feature": "056 (new tool)",
+  "x-group": "B",
+  "x-client-resolution": "n/a - derives everything from the fetched original document, no client_name parameter, same shape as create_credit_note/create_receipt's linked branch",
+  "x-http": {
+    "method": "POST",
+    "path": "/api/v1/documents/{id}/close",
+    "notes": "NOT a document-creation call (unlike every other Group A/B tool, which POSTs /api/v1/documents). Reuses the already-existing MorningClient.close_invoice - confirmed live, research.md (2026-08-18), to set a type-300 document's status 0 -> 2 with zero documents created and clean reversibility via the already-existing open_invoice. No new MorningClient method."
+  },
+  "properties": {
+    "original_internal_morning_id": {
+      "type": "string",
+      "description": "Morning document id of the transaction account being cancelled. Must resolve to a type-300 document or this tool refuses (REQ-INV-022, ValueError - same pattern as create_receipt's type-305-only guard)."
+    }
+  },
+  "required": ["original_internal_morning_id"],
+  "x-idempotency": "REQ-INV-021/025 - if the document's current status is not 0 (already closed/cancelled via this same path, OR already fulfilled via create_combo_document_as_reference), this is an app-side no-op: return the current-state confirmation WITHOUT calling close_invoice again. Confirmed live that Morning's raw API rejects a redundant close with a 400 (errorCode 2400, 'לא ניתן לסגור מסמך שאינו פתוח') rather than no-op'ing itself - the guard must live in this tool, not be assumed from Morning.",
+  "x-response": "REQ-INV-026 - a dedicated Hebrew confirmation, NEVER reusing get_invoice_details's existing status formatter, which renders Morning's manually-closed status (2) as 'שולם' (paid) - confirmed live to be misleading for a cancellation where no money moved.",
+  "x-approval": "always",
+  "x-audit": "log_mutation on a real close_invoice call; log_refusal on the wrong-document-type rejection - same pattern as every other tool. The idempotent no-op path is not a mutation and not a refusal; it still gets a plain confirmation reply but no audit-log mutation entry, consistent with create_receipt's/create_combo_document_as_reference's existing idempotent no-op paths (neither logs a mutation on their no-op branch either)."
+}
