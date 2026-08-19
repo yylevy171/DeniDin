@@ -103,6 +103,7 @@ APPROVAL_REQUIRED_MCP_TOOLS = (
     "create_credit_note",
     "create_receipt",
     "create_combo_document_as_reference",
+    "cancel_transaction_account",
     "add_client",
     "update_client",
 )

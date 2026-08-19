@@ -17,6 +17,7 @@ from denidin_mcp_morning.formatters import (
     format_name_not_resolved,
     format_original_not_linked_to_client,
     format_too_many_invoices_message,
+    format_transaction_account_cancelled,
     translate_document_type,
     translate_payment_type,
     translate_status,
@@ -281,3 +282,36 @@ def test_format_name_not_resolved_names_the_resolution_tool():
 
     assert "resolve_client_name" in message
     assert "name_resolved" in message
+
+
+def test_format_transaction_account_cancelled_never_says_paid():
+    """Feature 056 (REQ-INV-026): get_invoice_details' existing formatter
+    renders Morning's manually-closed status (2) as "שולם" (paid) -
+    confirmed live (research.md) to be misleading for a cancellation where
+    no money moved. This dedicated formatter must never say so, and must
+    still name the account and client."""
+    document = {
+        "id": "txn-1",
+        "number": 40371,
+        "type": 300,
+        "status": 2,
+        "client": {"id": "client-1", "name": "לקוח בדיקה"},
+    }
+
+    message = format_transaction_account_cancelled(document)
+
+    assert "שולם" not in message
+    assert "תשלום" not in message
+    assert "40371" in message
+    assert "לקוח בדיקה" in message
+
+
+def test_format_transaction_account_cancelled_omits_missing_client_name():
+    """No client name in the document shouldn't crash or leave a stray
+    label - same defensive shape as other formatters in this file."""
+    document = {"id": "txn-2", "number": 40372, "type": 300, "status": 2}
+
+    message = format_transaction_account_cancelled(document)
+
+    assert "40372" in message
+    assert "שולם" not in message

@@ -207,6 +207,29 @@ def test_build_receipt_payload_defaults_and_override():
     assert override_payload["payment"][0]["price"] == 35.0
 
 
+def test_build_standalone_receipt_payload_shape():
+    """Feature 056 (REQ-INV-017): a standalone receipt has no prior document
+    to reference - it records a pure cash movement (deposit, loan repayment,
+    or advance payment), so unlike every other document type this app
+    creates, it must carry no VAT/income line at all, and no
+    linkedDocumentIds (there's nothing to link to). Client attachment uses
+    an already-resolved client_id directly (the caller is responsible for
+    resolving it via resolve_client_name first, same as create_invoice)."""
+    payload = tools._build_standalone_receipt_payload(
+        client_id="client-9",
+        amount=250.0,
+        description="פיקדון מלקוח",
+        payment_date="2026-08-01",
+    )
+
+    assert payload["type"] == 400
+    assert "income" not in payload
+    assert "vatType" not in payload
+    assert "linkedDocumentIds" not in payload or payload["linkedDocumentIds"] == []
+    assert payload["client"] == {"self": False, "id": "client-9"}
+    assert payload["payment"] == [{"type": 1, "price": 250.0, "date": "2026-08-01"}]
+
+
 # --- Regression guards: functionality formerly reached via the removed
 # _cancel_invoice/_mark_invoice_paid (behind update_invoice_status, feature
 # 023 removed both) still works, now reached via the direct tools that
@@ -477,6 +500,64 @@ def test_create_receipt_happy_path_uses_original_and_allows_override():
     assert sent_payload["type"] == 400
     assert sent_payload["linkedDocumentIds"] == ["orig-5"]
     assert sent_payload["payment"][0]["price"] == 55.0
+
+
+# --- create_receipt's standalone branch (feature 056, REQ-INV-014/015/016/024) ---
+
+
+def test_create_receipt_standalone_branch_no_original_given(caplog):
+    """(1) original_internal_morning_id=None, name_resolved=True, a resolved
+    client -> builds the standalone shape (no income/vatType key, no
+    linkedDocumentIds) rather than the linked-original shape, and never
+    calls client.get_invoice at all (there is no original to fetch)."""
+    client = _FakeMorningClient(create_invoice_response={"id": "receipt-3", "number": "800"})
+
+    with caplog.at_level("INFO", logger="denidin_mcp_morning.audit"):
+        result = tools.create_receipt(
+            client,
+            client_name="לקוח בדיקה",
+            amount=250.0,
+            description="פיקדון מלקוח",
+            payment_date="2026-08-01",
+            name_resolved=True,
+        )
+
+    assert "800" in result
+    assert client.get_invoice_calls == [], "no original to fetch - get_invoice must never be called"
+    sent_payload = client.create_invoice_calls[0]
+    assert sent_payload["type"] == 400
+    assert "income" not in sent_payload
+    assert "vatType" not in sent_payload
+    assert "linkedDocumentIds" not in sent_payload or sent_payload["linkedDocumentIds"] == []
+    assert sent_payload["client"] == {"self": False, "id": "client-1"}
+
+    # (4) log_mutation is called with the resolved client's id/name - REQ-INV-024.
+    audit_records = [r for r in caplog.records if "AUDIT create_receipt OK" in r.message]
+    assert len(audit_records) == 1, f"expected exactly one audit log line, got: {caplog.records!r}"
+    assert "client_id=client-1" in audit_records[0].message
+    assert "client_name='לקוח בדיקה'" in audit_records[0].message
+
+
+def test_create_receipt_standalone_branch_refuses_without_name_resolved():
+    """(2) original_internal_morning_id=None, name_resolved=False (default)
+    -> refuses immediately via the same _require_resolved_client contract
+    violation create_invoice already uses, no Morning call attempted at
+    all."""
+    client = _FakeMorningClient()
+
+    with pytest.raises(tools.ClientNameNotResolvedError) as exc_info:
+        tools.create_receipt(
+            client,
+            client_name="לקוח בדיקה",
+            amount=250.0,
+            description="פיקדון מלקוח",
+            payment_date="2026-08-01",
+        )
+
+    assert "resolve_client_name" in str(exc_info.value)
+    assert client.search_clients_calls == []
+    assert client.get_invoice_calls == []
+    assert client.create_invoice_calls == []
 
 
 # --- Feature 023: _build_combo_closing_payload override support ---

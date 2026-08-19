@@ -56,7 +56,7 @@ description=..., payment_date=...)` (no `original_internal_morning_id`) against 
 sandbox creates a real type-400 document with `linkedDocumentIds == []` and no `income` key —
 independently verifiable with no dependency on Phase 2.
 
-- [ ] **T001a** [P] [US1] Write unit tests for a new payload builder
+- [x] **T001a** [P] [US1] Write unit tests for a new payload builder
   `_build_standalone_receipt_payload(client_id, amount, description, payment_date)` in
   `apps/morning-mcp-app/tests/unit/test_tools_document_creation.py` (alongside the existing
   `test_build_receipt_payload_defaults_and_override`, which covers the linked-original builder
@@ -65,10 +65,10 @@ independently verifiable with no dependency on Phase 2.
   `client == {"self": False, "id": client_id}`, and `payment == [{"type": 1, "price": amount,
   "date": <validated payment_date>}]` (reusing `_validate_payment_date`, same as every other
   payment-carrying builder). This is data-model.md's standalone-receipt shape's RED phase.
-- [ ] **T001b** [US1] Implement `_build_standalone_receipt_payload` in
+- [x] **T001b** [US1] Implement `_build_standalone_receipt_payload` in
   `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py`, next to
   `_build_payment_receipt_payload` (BLOCKED until T001a approved).
-- [ ] **T002a** [P] [US1] Write unit tests for `create_receipt`'s new branch in the same
+- [x] **T002a** [P] [US1] Write unit tests for `create_receipt`'s new branch in the same
   `test_tools_document_creation.py`, alongside the existing `test_create_receipt_*` functions
   (around line 441+): (1) `original_internal_morning_id=None`, `name_resolved=True`, a resolved
   fake client → calls `_build_standalone_receipt_payload` (T001a), not
@@ -84,7 +84,7 @@ independently verifiable with no dependency on Phase 2.
   (spy/capture the call, same technique already used for `create_receipt`'s existing audit
   coverage if present, otherwise a simple call-recording fake) — REQ-INV-024's audit-logging
   requirement, previously untested by any task in this feature.
-- [ ] **T002b** [US1] Implement the branch in `create_receipt()`
+- [x] **T002b** [US1] Implement the branch in `create_receipt()`
   (`apps/morning-mcp-app/src/denidin_mcp_morning/tools.py`): make
   `original_internal_morning_id: Optional[str] = None`; add `client_name`, `name_resolved:
   bool = False` parameters; when `original_internal_morning_id is None`, resolve via
@@ -93,7 +93,7 @@ independently verifiable with no dependency on Phase 2.
   `"הופקה קבלה מספר {receipt_number}..."` shape, dropping the `"עבור חשבונית מספר {original}"`
   clause since there is no original to name — REQ-INV-018's free-text `description` carries the
   reason instead). When given, existing code path is untouched (BLOCKED until T002a approved).
-- [ ] **T003a** [P] [US1] Write real-sandbox integration test
+- [x] **T003a** [P] [US1] Write real-sandbox integration test
   `apps/morning-mcp-app/tests/integration/test_morning_sandbox_standalone_receipt.py`, mirroring
   `test_morning_sandbox_invoice_status_tools.py`'s structure: (1) happy path — seed a real
   client, call `create_receipt` with no original, verify via `client.get_invoice` on the
@@ -105,7 +105,7 @@ independently verifiable with no dependency on Phase 2.
   pay it via the original path) still behaves identically — regression check for REQ-INV-016,
   can reuse `test_morning_sandbox_invoice_status_tools.py`'s existing fixtures/pattern directly
   rather than re-deriving it.
-- [ ] **T003b** [US1] Verify GREEN — run the new integration test file (real sandbox, no
+- [x] **T003b** [US1] Verify GREEN — run the new integration test file (real sandbox, no
   approval gate needed per CLAUDE.md's integration-test rules; `apps/morning-mcp-app` doesn't
   need a running container for this, tests run via host `pytest` directly). Confirm the full
   existing `apps/morning-mcp-app/tests/` suite (unit + integration, real sandbox) still passes
@@ -128,7 +128,7 @@ documents, with an app-side idempotency guard and a confirmation that never says
 open type-300 doc>)` against the real sandbox sets `status: 2`, `linkedDocuments` unchanged,
 zero new documents for that client — independently verifiable with no dependency on Phase 1.
 
-- [ ] **T004a** [P] [US2] Write unit tests for `cancel_transaction_account`'s idempotency guard
+- [x] **T004a** [P] [US2] Write unit tests for `cancel_transaction_account`'s idempotency guard
   in `apps/morning-mcp-app/tests/unit/test_mark_invoice_paid.py` (alongside the existing
   `test_already_closed_type_300_is_idempotent_no_op`/`test_already_closed_type_305_is_idempotent_no_op`
   pattern) — extend `_FakeMorningClient` with a `close_invoice(internal_morning_id)` stub
@@ -145,7 +145,7 @@ zero new documents for that client — independently verifiable with no dependen
   `create_receipt`'s existing linked-original `log_mutation` call) — REQ-INV-024, previously
   untested by any task in this feature; on the type-300-rejection path (case 4), `log_refusal`
   is called instead.
-- [ ] **T004b** [US2] Implement `cancel_transaction_account(client,
+- [x] **T004b** [US2] Implement `cancel_transaction_account(client,
   original_internal_morning_id: str) -> str` in
   `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py`: fetch via `client.get_invoice`;
   raise `ValueError` if `type != _TRANSACTION_ACCOUNT_DOCUMENT_TYPE`; if `status != 0`, return
@@ -153,7 +153,7 @@ zero new documents for that client — independently verifiable with no dependen
   `client.close_invoice`, then `log_mutation` with `client_id`/`client_name` extracted from the
   already-fetched original (same pattern `create_receipt`'s existing linked path already uses —
   REQ-INV-024), and return T005b's confirmation (BLOCKED until T004a approved).
-- [ ] **T005a** [P] [US2] Write unit tests for a new formatter (working name
+- [x] **T005a** [P] [US2] Write unit tests for a new formatter (working name
   `format_transaction_account_cancelled(...)`) in
   `apps/morning-mcp-app/tests/unit/test_formatters.py`: asserts the confirmation text never
   contains "שולם" or any other paid/payment wording — this is the direct regression test for
@@ -163,14 +163,14 @@ zero new documents for that client — independently verifiable with no dependen
   (`apps/morning-mcp-app/src/denidin_mcp_morning/utils/time_utils.py`) — never a bare
   `datetime.now()` — per CLAUDE.md's Israel-local-time rule; assert this explicitly if a date
   ends up in scope.
-- [ ] **T005b** [US2] Implement `format_transaction_account_cancelled(...)` in
+- [x] **T005b** [US2] Implement `format_transaction_account_cancelled(...)` in
   `apps/morning-mcp-app/src/denidin_mcp_morning/formatters.py` (BLOCKED until T005a approved).
-- [ ] **T006** [US2] Register `cancel_transaction_account` as a new MCP tool in
+- [x] **T006** [US2] Register `cancel_transaction_account` as a new MCP tool in
   `apps/morning-mcp-app/server.py`, mirroring how the existing `create_*`/
   `create_combo_document_as_reference` tools are registered (Feature 021's pattern) — no test
   task on its own; exercised end-to-end by T007a (sandbox integration) here, and by Phase 3's
   `billed` acceptance test once this phase and Phase 1 are both done.
-- [ ] **T007a** [P] [US2] Write real-sandbox integration test
+- [x] **T007a** [P] [US2] Write real-sandbox integration test
   `apps/morning-mcp-app/tests/integration/test_morning_sandbox_cancel_transaction_account.py`,
   mirroring `test_morning_sandbox_invoice_status_tools.py`'s structure (with the propagation-lag
   retry tolerance noted in Conventions above): (1) happy path — seed an open type-300 account,
@@ -185,11 +185,11 @@ zero new documents for that client — independently verifiable with no dependen
   documents change; (5) reversibility sanity check — `open_invoice` on a cancelled account still
   cleanly returns it to `status: 0` (confirms this feature doesn't accidentally change
   `open_invoice`'s existing behavior).
-- [ ] **T007b** [US2] Verify GREEN — run the new integration test file (real sandbox, no
+- [x] **T007b** [US2] Verify GREEN — run the new integration test file (real sandbox, no
   approval gate needed, same as T003b). Confirm the full existing `apps/morning-mcp-app/tests/`
   suite still passes with zero regressions (BLOCKED until T004b/T005b/T006 are implemented and
   T007a is approved).
-- [ ] **T008** [US2] Add `"cancel_transaction_account"` to `APPROVAL_REQUIRED_MCP_TOOLS` in
+- [x] **T008** [US2] Add `"cancel_transaction_account"` to `APPROVAL_REQUIRED_MCP_TOOLS` in
   `apps/denidin-app/src/handlers/ai_handler.py` (REQ-INV-023). No test-then-impl split needed on
   its own — a one-line addition to an existing tuple, verified by Phase 3's `billed` acceptance
   test rather than a dedicated unit test.
