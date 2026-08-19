@@ -506,9 +506,20 @@ def _process_conversational_message(notification: Notification) -> None:
         # to the pending approval so a later tap's stanzaId can be matched against
         # it (contracts/pending-approval-message-binding.md). None in every other
         # case (plain-text sends, no-reply, or a failed buttons send).
+        # Feature 054 bug (caught 2026-08-17 via a real billed test - a button tap
+        # was always rejected as stale): a pending approval is EITHER an MCP one
+        # (pending_approval_manager) OR a local-tool one, e.g. create/modify/delete
+        # reminder (pending_local_tool_approval_manager) - never both at once for
+        # the same chat - but this call site only ever attached to the MCP manager.
+        # attach_sent_message_id() is a documented no-op (logged, never raises) on
+        # whichever manager has nothing pending for this chat, so calling both
+        # unconditionally is safe.
         sent_id_message = denidin_app.whatsapp_handler.send_response(notification, ai_response)
         if sent_id_message is not None:
             denidin_app.ai_handler.pending_approval_manager.attach_sent_message_id(
+                message.chat_id, sent_id_message
+            )
+            denidin_app.ai_handler.pending_local_tool_approval_manager.attach_sent_message_id(
                 message.chat_id, sent_id_message
             )
         logger.info(f"{tracking} Response sent to {message.sender_name}")
@@ -746,9 +757,13 @@ def handle_button_tap(notification: Notification) -> None:
         # A resolution reply is always plain text (never offer_approval_buttons)
         # per contracts/button-tap-resolution.md, so this should never actually
         # fire - kept only for symmetry with _process_conversational_message's
-        # identical wiring, in case a future change ever chains a fresh pending
-        # approval directly off a button resolution.
+        # identical wiring (now both managers, Feature 054 - see the comment
+        # there), in case a future change ever chains a fresh pending approval
+        # directly off a button resolution.
         denidin_app.ai_handler.pending_approval_manager.attach_sent_message_id(
+            message.chat_id, sent_id_message
+        )
+        denidin_app.ai_handler.pending_local_tool_approval_manager.attach_sent_message_id(
             message.chat_id, sent_id_message
         )
     logger.info(f"[047] Button tap resolved and response sent for chat={message.chat_id!r}")

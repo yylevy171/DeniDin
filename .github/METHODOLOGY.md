@@ -155,6 +155,11 @@ All implementation MUST follow strict test-first methodology with human approval
   - **expensive** (`@pytest.mark.expensive`): real vision/image/PDF/DOCX paid OpenAI API
     calls — costlier per run; excluded from the default run AND requires explicit human
     approval before every single run, one at a time (see CONSTITUTION.md §VII)
+  - 🚨 **Run every billed/expensive test via `scripts/run_single_test.sh <node_id>`**
+    (`apps/denidin-app`, 2026-08-18) — never a raw `pytest ... | tail`/`| grep`, which can
+    silently discard the actual assertion/traceback before it's ever read (see CONSTITUTION.md
+    §VII and §XVIII below for the incident this closed). For a stop-on-first-failure sequence
+    of `billed` tests, use `scripts/run_multiple_billed_tests.sh <node_id> ...` (billed only).
   - The **EXPLAIN Test Plan** step (Step 1 below) MUST state which tier(s) each new test
     belongs to, so the human approval gate can weigh cost/approval implications before any
     test is written — a test plan that omits tier classification is incomplete
@@ -824,11 +829,155 @@ rather than a bypassed gate, until the failures compound into a fully unsupervis
 Treating every stop condition as its own gate, with no generalization across occurrences,
 is what actually preserves human oversight in a sequential context.
 
+**Tooling note (2026-08-18)**: `scripts/run_multiple_billed_tests.sh <node_id> ...`
+(`apps/denidin-app`) implements exactly this stop-on-first-failure shape mechanically for a
+`billed`-tier sequence - it runs each test one at a time via `scripts/run_single_test.sh`,
+announces PASS/FAILED as each completes, and stops (non-zero exit, no further tests run) the
+instant one fails. Using it does not relax anything in this section - a failure it reports
+still requires a full stop, a report, and fresh explicit human input before touching anything,
+exactly as if each test had been run by hand. It exists purely to prevent the OTHER real
+incident from this same day (see CONSTITUTION.md §VII): an ad-hoc `pytest ... | tail`
+silently discarding the actual assertion/traceback before it could even be read.
+
 ---
 
-**Version**: 2.4.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-08-02
+## XIX. User-Experience-Impacting Changes Require Explicit Approval
+
+Any change that alters what an end user (a WhatsApp conversation participant) sees, receives, or
+interacts with — new message formats, new interactive elements (buttons, media), altered wording
+of user-facing prompts, changed timing/frequency of proactive messages, etc. — requires the
+human's explicit approval before being built or changed, even when it's a small, well-justified,
+mechanically obvious fix to existing broken behavior.
+
+**Requirements:**
+- Before adding or changing any UX-facing behavior (not purely internal/backend logic), the AI
+  agent MUST describe the change and its user-visible effect, and wait for explicit approval,
+  before implementing it.
+- This applies even when reusing an already-approved pattern from elsewhere in the codebase (e.g.
+  extending an existing button-approval mechanism to a new feature) — reuse of the underlying
+  mechanism does not itself pre-approve applying it to a new user-facing surface.
+- This applies even when fixing a bug in already-built UX-facing behavior — a fix that changes
+  what the user experiences is still a UX decision, not a pure internal correctness fix, and
+  still needs sign-off before being applied (not just before being merged).
+
+**Real incident (2026-08-18, Feature 054 reminders)**: while running a sequential billed-test
+sweep (see §XVIII), a real bug was found: reminder approval prompts sent as WhatsApp interactive
+buttons were never wired up so a real tap on them would resolve anything — taps were always
+rejected as stale. The AI agent diagnosed the root cause and applied a fix directly to
+`denidin.py` without pausing to ask, then kicked off a verification run in the background — a
+§XVIII violation in its own right. When asked afterward why reminders used buttons at all, the
+human's decision was to keep them, but with a new standing rule volunteered on the spot:
+*"anything with this kind of user experience impact requires MY APPROVAL."*
+
+**Rationale**: this project's users interact with DeniDin entirely through WhatsApp — every UX
+decision (text vs. buttons, wording, when something gets sent, how an approval is presented) is
+directly experienced by a real person on a real device, unlike a purely internal refactor. The
+human product owner, not the AI agent, decides these tradeoffs — including when the "fix" is to
+restore previously-intended behavior rather than introduce something new.
+
+---
+
+## XX. "Show Me The Full Conversation" Means Verbatim, Both Sides, Nothing Else
+
+When a human asks to see "the conversation," "the full conversation," or equivalent phrasing —
+from a test log, a session file, wherever — the response MUST be only the literal turn-by-turn
+text both sides actually said, verbatim, in order. Not a summary, not a table, not an
+interpretation, not an analysis blended in with it.
+
+**Requirements:**
+- Give the exact words of every turn, both the human/user side and the assistant/bot side - no
+  paraphrasing, no dropped turns.
+- Verify what was actually TRANSMITTED, not an intermediate/logged value that might not match. A
+  debug log's `output_text=` (or equivalent pre-finalization snapshot) is not necessarily what the
+  user received - an exception handler downstream can silently replace it. Find and use the value
+  from the point it was actually sent (e.g. a "sending to user" log line), and confirm this
+  distinction BEFORE presenting anything as "what was said," not after being corrected for it.
+- Show multi-line replies in full - a naive single-line log-parsing approach that truncates at the
+  first `\n` is not acceptable; verify the extraction captures complete multi-line messages before
+  presenting them as complete.
+- Do not substitute something "close enough" - a bulleted paraphrase, a summarizing table, a
+  "here's the gist" - even if it seems more efficient or more informative. Additional analysis, if
+  warranted, goes in a clearly separate section AFTER the verbatim transcript, never blended into
+  it or offered instead of it.
+- If it's genuinely unclear which conversation/log/timeframe is meant, ask - but once established,
+  the plain transcript comes first, before anything else.
+
+**Real incident (2026-08-19, Feature 054 reminders investigation)**: asked for "the full
+conversation" from a failing test's log while investigating a real bug. Three consecutive
+responses each substituted something else instead - a summarized table with editorial framing, a
+transcript later found to contain a wrong value (an intermediate debug-log snapshot presented as
+what was sent, when the actual sent value was different - only caught because the human separately
+asked "why is there an empty reply, that should never happen," forcing a re-check), and a version
+that silently truncated multi-line bot replies at their first line break. The human had to ask a
+fourth time, explicitly: *"When I ask for the full conversation I mean what was said by both sides,
+and ONLY WHAT WAS SAID. Not anything else... you resisted doing that for at least 3 times even
+though I asked VERY CLEARLY."*
+
+**Rationale**: a request for the raw transcript is often itself a debugging step - the human wants
+to look at the unfiltered evidence themselves, not receive a pre-digested interpretation of it.
+Substituting analysis for the actual data undermines exactly the kind of independent verification
+the request was for, and doing it repeatedly after being asked plainly is a compliance failure, not
+a stylistic choice.
+
+---
+
+## XXI. Every New Tool-Bearing Feature Needs Explicit Constitution Boundaries
+
+A tool's own JSON-schema `description` is sufficient for the model to know it exists and how to
+call it mechanically — it is NOT sufficient to keep the model from reaching for it when confused
+about something unrelated. Every feature that attaches a new tool (or tool family) to a model turn
+MUST also get an explicit section in `config/runtime_constitution.md` (in `apps/denidin-app`, and
+the equivalent for any other app that grows a comparable mechanism) stating:
+
+- **When it applies** - the concrete triggering intent, in the user's own words/phrasing where
+  possible.
+- **When it explicitly does NOT apply** - especially: never as a fallback interpretation of an
+  ambiguous or short reply that was actually answering a DIFFERENT pending question; never mid-flow
+  in another tool-bearing context; never as a "try something" default when genuinely unsure what
+  the user wants.
+- **That ambiguity is resolved by asking, never by guessing** - if the model cannot tell what's
+  wanted, or which of several plausible tools applies, it must ask the user plainly, exactly like
+  the disambiguation rule this project already applies to Invoice Management document-type
+  resolution.
+
+**Cross-reference in both directions.** Adding the new feature's own section is not enough -
+every OTHER existing tool-bearing section must also be updated to explicitly exclude the new
+feature (mirroring the precedent already established by "Ledger Event Recognition"'s own "an
+Invoice Management action is automatically 'Neither'" bullet). A one-way boundary leaves every
+pre-existing context still able to misfire into the new tool family when its own turns are
+ambiguous - which is exactly what happened here.
+
+**Real incident (2026-08-19, Feature 054 reminders)**: reminder tools shipped attached to every
+GODFATHER/ADMIN turn with zero mentions anywhere in `runtime_constitution.md` - no scope, no
+exclusions, nothing beyond the four tools' own schema descriptions. A real billed E2E test for an
+entirely unrelated feature (Morning client management) showed the model repeatedly reaching for
+`create_reminder`/`modify_reminder` when confused by an ambiguous mid-flow reply, including
+inventing a placeholder `reminder_id='unknown'` rather than asking. The user's own framing, once
+this was traced to its actual cause: *"EVERYTHING IS BOUNDED, SO EVERYTHING NEEDS TO BE
+WELL-DEFINED in the runtime const. Not just vaguely defined or relying on the tool's hard
+definitions - it must be WELL-DEFINED."*
+
+**Rationale**: this project's tool-bearing features generally attach broadly by role (RBAC-gated,
+not conversation-topic-gated) - a GODFATHER/ADMIN turn about ANYTHING can have several unrelated
+tool families attached simultaneously (Morning invoicing, ledger events, reminders, and whatever
+comes next). Without an explicit, mutually-cross-referenced boundary for each one, that breadth of
+availability is itself the risk surface - the model has no signal about which tools are actually
+relevant to the turn it's on, only which tools it technically COULD call.
+
+---
+
+**Version**: 2.8.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-08-19
 
 **Changelog**:
+- v2.8.0 (2026-08-19): Added "Every New Tool-Bearing Feature Needs Explicit Constitution
+  Boundaries" (XXI) after Feature 054 (reminders) shipped with no runtime_constitution.md scope at
+  all, letting the model reach for reminder tools mid-flow in an unrelated feature's conversation
+- v2.7.0 (2026-08-19): Added "'Show Me The Full Conversation' Means Verbatim, Both Sides, Nothing
+  Else" (XX) after an AI agent substituted summaries/interpretations/truncated or wrong-value
+  transcripts for a plain verbatim conversation request, three times in a row, despite explicit
+  clarification each time
+- v2.6.0 (2026-08-18): Mandated `scripts/run_single_test.sh`/`scripts/run_multiple_billed_tests.sh` (§VI test-tier section, §XVIII) as the required way to run billed/expensive tests, after an AI agent's ad-hoc `pytest ... | tail -15` silently discarded the actual assertion/traceback, leading to a wrong failure report and an unapproved rerun just to recover it
+- v2.5.0 (2026-08-18): Added "User-Experience-Impacting Changes Require Explicit Approval" (XIX) after an AI agent fixed a WhatsApp interactive-button wiring bug unilaterally mid-sweep instead of pausing for approval, given the change altered real user-facing behavior
 - v2.4.0 (2026-08-02): Added "Sequential-Run Stop Gates" (XVIII) after a real incident where an AI agent generalized one approved test-fix into standing permission to skip the stop-on-fail gate for later failures in the same sweep
 - v2.3.0 (2026-07-30): Feature 029 - TDD (§VI) now requires explicit test-tier classification (unit/integration/billed/expensive) as part of the EXPLAIN Test Plan step, in every app
 - v2.2.0 (2026-01-21): Added "AI Agent TDD Self-Check Protocol" (XVII) to prevent methodology violations during autonomous work

@@ -27,13 +27,32 @@ from src.utils.green_api_bot import send_proactive_message
 
 logger = get_logger(__name__)
 
-# Generous catch-up bound for a missed sweep window (e.g. container restart) -
-# not the sweep's own tick cadence (that's the CronTrigger's minute='*/5').
+# Two different lookback bounds for the SAME shared _sweep_due_reminders
+# worker, split 2026-08-18 (user decision, after a real test failure exposed
+# the single-24h-bound design's actual tradeoff):
+#
+# - STARTUP_SWEEP_LOOKBACK (24h): used ONLY by run_startup_reminder_sweep's
+#   one-time boot call. Generous on purpose - it's the only mechanism that
+#   recovers reminders that became due while the process wasn't running at
+#   all (crash, redeploy, container restart), and downtime can genuinely
+#   span hours.
+# - PERIODIC_SWEEP_LOOKBACK (1h): used by the recurring APScheduler tick
+#   (every 5 min under normal operation). Deliberately narrow - a wide
+#   window on every single tick means that if `fired_occurrences` bookkeeping
+#   is ever wrong (a "sent" row that failed to persist correctly, for
+#   whatever reason), the same already-delivered occurrence could be
+#   silently re-picked-up and re-sent on every subsequent tick for as long
+#   as the window stays open - up to 24h of repeated resends with the old
+#   single-bound design. 1h is still generous enough to absorb a handful of
+#   missed/slow ticks (the tick cadence itself is 5 min) without ever
+#   reaching back to "yesterday."
+#
 # already_fired filtering (ReminderManager.get_due_occurrences) is what
-# actually prevents re-delivery within this window, not the window's
-# narrowness - this bound just caps how far back a single sweep query looks,
-# for cost, not correctness.
-SWEEP_LOOKBACK = timedelta(hours=24)
+# actually prevents re-delivery within either window when that bookkeeping
+# IS correct - these bounds only cap how far back a single sweep query looks,
+# and now also cap the blast radius if that bookkeeping is ever wrong.
+STARTUP_SWEEP_LOOKBACK = timedelta(hours=24)
+PERIODIC_SWEEP_LOOKBACK = timedelta(hours=1)
 
 REMINDER_SWEEP_JOB_ID = "reminder_sweep"
 
@@ -89,7 +108,8 @@ def _deliver_one_occurrence(
 
 
 def _sweep_due_reminders(
-    global_context: Any, bot: Any, log_prefix: str = "", now: Optional[datetime] = None
+    global_context: Any, bot: Any, log_prefix: str = "", now: Optional[datetime] = None,
+    lookback: timedelta = PERIODIC_SWEEP_LOOKBACK,
 ) -> None:
     """Shared worker: find every not-yet-fired due occurrence across all active
     reminders and deliver it. Shared by both the periodic APScheduler job and
@@ -110,13 +130,19 @@ def _sweep_due_reminders(
     reminder-delivery.md/tasks.md for why). This does not change what
     production runs; the real now_local() path is exercised identically to
     before whenever `now` is left unset.
+
+    `lookback` defaults to PERIODIC_SWEEP_LOOKBACK (the periodic tick's real
+    production value) - run_startup_reminder_sweep is the one caller that
+    overrides it to STARTUP_SWEEP_LOOKBACK explicitly. A test wanting to
+    simulate a startup catch-up sweep specifically (rather than an ordinary
+    periodic tick) must pass STARTUP_SWEEP_LOOKBACK explicitly too.
     """
     reminder_manager = global_context.ai_handler.reminder_manager
     config = global_context.config
 
     now = now or now_local()
     try:
-        due = reminder_manager.get_due_occurrences(now - SWEEP_LOOKBACK, now)
+        due = reminder_manager.get_due_occurrences(now - lookback, now)
     except Exception as e:  # pylint: disable=broad-except
         logger.error(f"{log_prefix}Failed to query due reminder occurrences: {e}", exc_info=True)
         return
@@ -149,9 +175,13 @@ def run_startup_reminder_sweep(global_context: Any, bot: Any) -> None:
     the periodic scheduler starts - catches anything that became due while the
     process wasn't running (container restart), mirroring
     cleanup_service.py's run_startup_cleanup precedent.
+
+    The ONE call site that uses STARTUP_SWEEP_LOOKBACK (24h) rather than the
+    periodic tick's narrower PERIODIC_SWEEP_LOOKBACK (1h) - see that
+    constant's docstring above for why the two are split.
     """
     logger.info("[054] Running startup reminder sweep (catch-up for any missed window)")
-    _sweep_due_reminders(global_context, bot, log_prefix="[STARTUP] ")
+    _sweep_due_reminders(global_context, bot, log_prefix="[STARTUP] ", lookback=STARTUP_SWEEP_LOOKBACK)
 
 
 def start_reminder_scheduler(
@@ -175,7 +205,11 @@ def start_reminder_scheduler(
     """
     scheduler = BackgroundScheduler()
     scheduler.add_job(
-        func=lambda: _sweep_due_reminders(global_context, bot),
+        # Explicit lookback=PERIODIC_SWEEP_LOOKBACK, even though it's also
+        # the parameter's own default - this is the one production call site
+        # that MUST use the periodic (1h) bound, never the startup (24h) one,
+        # so it's spelled out rather than relying on the default holding.
+        func=lambda: _sweep_due_reminders(global_context, bot, lookback=PERIODIC_SWEEP_LOOKBACK),
         trigger=trigger or CronTrigger(minute=f"*/{sweep_interval_minutes}"),
         id=REMINDER_SWEEP_JOB_ID,
         max_instances=1,  # a slow tick must not overlap the next one

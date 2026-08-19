@@ -233,11 +233,16 @@ class TestRunStartupReminderSweep:
         calls = []
         monkeypatch.setattr(
             delivery_service, "_sweep_due_reminders",
-            lambda gc, bot, log_prefix="": calls.append((gc, bot, log_prefix)),
+            lambda gc, bot, log_prefix="", **kwargs: calls.append((gc, bot, log_prefix, kwargs)),
         )
         run_startup_reminder_sweep(global_context, stub_bot)
         assert len(calls) == 1
         assert calls[0][2] == "[STARTUP] "
+        # Bug fix (2026-08-18): run_startup_reminder_sweep now explicitly passes
+        # lookback=STARTUP_SWEEP_LOOKBACK (24h) rather than relying on
+        # _sweep_due_reminders' own default (PERIODIC_SWEEP_LOOKBACK, 1h) -
+        # confirm it's actually threaded through, not silently dropped.
+        assert calls[0][3].get("lookback") == delivery_service.STARTUP_SWEEP_LOOKBACK
 
     def test_actually_catches_up_a_missed_occurrence(self, global_context, stub_bot, monkeypatch):
         send = MagicMock(return_value="wamid.1")

@@ -7,9 +7,12 @@ intent to create/list/modify/delete a reminder, (b) calls the right tool with
 correctly-extracted arguments, and (c) phrases the confirmation reply naturally
 once approved. Text-only (no vision) - all billed, none expensive.
 
-PREPARED PER THE PLAN (tasks.md T010/T018/T020/T022/T023) BUT NOT YET RUN - per
-explicit instruction, these tests are written and ready but require a separate
-go-ahead before execution (real OpenAI calls, billed tier).
+Written per the plan (tasks.md T010/T018/T020/T022/T023); most of this file has
+already run against real OpenAI as of 2026-08-18 (create/list/modify all
+verified end-to-end, several real bugs caught and fixed along the way - see
+git history), delete/RBAC/cap coverage still pending its first run. Each run
+still requires its own explicit go-ahead per this project's standing
+convention (real OpenAI calls, billed tier).
 
 NO MOCKING of internal components - only the OpenAI client is a real external
 service under test for the conversational (create/list/modify/delete) phase of
@@ -316,6 +319,33 @@ class TestReminderLifecycleBilled:
         second = self._simulate_sweep(denidin_app, monkeypatch, occ2)
         second.assert_called_once()  # only occ2 - occ1 is not re-delivered
 
+    # --- Find-by-time (2026-08-18, user-requested coverage) ----------------------
+    # list_reminders has no date/time filter parameter at all - "what do I have
+    # tomorrow" relies entirely on the model's own reasoning over the full active
+    # list (message_text + schedule) plus the current-date-and-time now injected
+    # into instructions. Never exercised by any test above (every existing
+    # reference to a reminder is either by content or immediately after creating
+    # it) - this was flagged as a real, untested gap and asked for explicitly.
+
+    def test_list_reminders_filtered_by_day_in_conversation(self, denidin_app, config):
+        phone, chat_id = self._godfather(config)
+        self._create_approved_reminder(
+            denidin_app, config, phone, chat_id,
+            "תזכיר לי מחר בשעה 15:00 להתקשר לספק החדש", "list_tomorrow_setup",
+        )
+        self._create_approved_reminder(
+            denidin_app, config, phone, chat_id,
+            "תזכיר לי בעוד שבועיים לחדש רישיון תוכנה", "list_far_setup",
+        )
+
+        n1 = self._send_text(chat_id, phone, "Test Godfather", "מה יש לי מחר?", "list_tomorrow")
+        response = self._get_response(n1)
+        assert response is not None
+        assert "ספק" in response, f"expected tomorrow's reminder (supplier) mentioned, got: {response!r}"
+        assert "רישיון" not in response, (
+            f"a reminder ~2 weeks out must NOT be listed as due tomorrow, got: {response!r}"
+        )
+
     # --- US3: modify -------------------------------------------------------------
 
     def _create_approved_reminder(self, denidin_app, config, phone, chat_id, text, label):
@@ -438,8 +468,17 @@ class TestReminderLifecycleBilled:
         n_whole_approve = self._send_text(chat_id, phone, "Test Godfather", "כן", "modify_whole_series_approve")
         assert self._get_response(n_whole_approve) is not None
 
+        # Bug fix (2026-08-18): this used to SELECT only (summary_override,
+        # dtstart_override) here while exceptions_before above selects * (6
+        # columns) - comparing a 2-key dict to a 6-key dict can never be equal
+        # regardless of whether the actual override data matches, so this
+        # assertion was structurally guaranteed to fail every time it ever ran
+        # (confirmed: the two columns it DID share had identical values both
+        # times - the real FR-012 invariant was already holding correctly, the
+        # comparison itself was just broken). Same SELECT * as exceptions_before
+        # now, for a real equality check.
         exceptions_after = conn.execute(
-            "SELECT summary_override, dtstart_override FROM reminder_exceptions WHERE reminder_id = ?",
+            "SELECT * FROM reminder_exceptions WHERE reminder_id = ?",
             (recurring["reminder_id"],),
         ).fetchall()
         assert [dict(r) for r in exceptions_after] == [dict(r) for r in exceptions_before], (
@@ -468,6 +507,53 @@ class TestReminderLifecycleBilled:
 
         detached_check = self._simulate_sweep(denidin_app, monkeypatch, detached_time)
         detached_check.assert_called_once()  # pre-existing detached occurrence survived and still fires
+
+    def test_modify_whole_series_referenced_by_schedule_only(self, denidin_app, config, monkeypatch):
+        """(2026-08-18, user-requested coverage) Every OTHER modify test above
+        references the target reminder by its content ("the gift reminder", "the
+        call-accountant one"). This one deliberately gives the model NOTHING
+        content-wise to go on - the create message uses a vague, reused-elsewhere
+        phrase ("לבדוק דואר"), and the modify message references the reminder
+        PURELY by its existing day+time ("the Wed 9:00 reminder"), proving
+        list_reminders' `schedule` field alone is enough for the model to resolve
+        the correct reminder_id - not just message_text.
+        """
+        phone, chat_id = self._godfather(config)
+        reminder_manager = denidin_app.ai_handler.reminder_manager
+        ids_before = self._active_ids(reminder_manager)
+        self._create_approved_reminder(
+            denidin_app, config, phone, chat_id,
+            "תזכיר לי כל יום רביעי בשעה 9:00 לבדוק דואר", "modify_by_schedule_setup",
+        )
+        reminder_id = self._new_reminder_id(reminder_manager, ids_before)
+        window_end = now_local() + timedelta(days=21)
+        occurrences_before = self._occurrences(reminder_manager, reminder_id, now_local(), window_end)
+        assert len(occurrences_before) >= 1
+        old_pattern_time = occurrences_before[0]["occurrence_datetime"]
+        assert old_pattern_time.weekday() == 2, "expected Wednesday (weekday()==2)"
+        assert old_pattern_time.hour == 9
+
+        n1 = self._send_text(
+            chat_id, phone, "Test Godfather",
+            "תעביר את התזכורת שקבועה ליום רביעי בשעה 9:00 ליום חמישי בשעה 20:00",
+            "modify_by_schedule",
+        )
+        proposal = self._get_response(n1)
+        assert proposal is not None
+        n2 = self._send_text(chat_id, phone, "Test Godfather", "כן", "modify_by_schedule_approve")
+        assert self._get_response(n2) is not None
+
+        occurrences_after = self._occurrences(reminder_manager, reminder_id, now_local(), window_end)
+        assert len(occurrences_after) >= 1
+        new_pattern_time = occurrences_after[0]["occurrence_datetime"]
+        assert new_pattern_time.weekday() == 3, "expected Thursday (weekday()==3)"
+        assert new_pattern_time.hour == 20
+
+        old_check = self._simulate_sweep(denidin_app, monkeypatch, old_pattern_time)
+        old_check.assert_not_called()  # old Wed-9:00 slot no longer produces an occurrence
+
+        new_check = self._simulate_sweep(denidin_app, monkeypatch, new_pattern_time)
+        new_check.assert_called_once()
 
     # --- US4: delete ---------------------------------------------------------------
 
@@ -555,8 +641,14 @@ class TestReminderLifecycleBilled:
             )
         assert len(reminder_manager.list_active()) == 20
 
+        # Bug fix (2026-08-19): the original message here ("...עוד משהו" -
+        # "...something else") was too vague content for the model to act on -
+        # it asked a clarifying question ("what should I remind you about?")
+        # instead of ever attempting create_reminder, so the cap-decline path
+        # this test exists to verify was never actually reached. Concrete
+        # content lets the model attempt the call and hit the real cap check.
         n1 = self._send_text(
-            chat_id, phone, "Test Godfather", "תזכיר לי בעוד שעה עוד משהו", "cap_declined"
+            chat_id, phone, "Test Godfather", "תזכיר לי בעוד שעה לקנות חלב", "cap_declined"
         )
         response = self._get_response(n1)
         assert response is not None

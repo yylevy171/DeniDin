@@ -67,12 +67,30 @@ For every `reminders` row with `status = 'active'`:
    `RRULE` if recurring, `DTSTART`, `SUMMARY=message_text`), plus one override VEVENT per matching
    `reminder_exceptions` row (shared `UID`, `RECURRENCE-ID`, `DTSTART`/`SUMMARY` if overridden,
    `STATUS`).
-2. Call `recurring_ical_events.of(cal).between(window_start, window_end)` for the current 5-minute
-   sweep window (`window_start` = this tick's wall-clock time, `window_end` = 5 minutes later) —
-   this resolves RRULE expansion and RECURRENCE-ID reschedule overrides; nothing about that math
-   is hand-written (see `data-model.md`). It does **not** suppress `STATUS=CANCELLED` occurrences
-   (live-verified 2026-08-16) — `ReminderManager` filters those out itself, one `if` check per
-   returned occurrence, before anything is treated as due.
+2. **Correction, caught during implementation (2026-08-17)**: the window actually implemented is
+   backward-looking, not the forward 5-minute window an earlier draft of this contract described —
+   `window_start = now - lookback`, `window_end = now` (this tick's wall-clock time) — so a sweep
+   run after any downtime (container restart) still catches anything that became due while the
+   process wasn't running, which a fixed 5-minutes-forward window could never do.
+   **Further correction (2026-08-18, user decision)**: `lookback` is NOT one constant - it's
+   `STARTUP_SWEEP_LOOKBACK` (24h), used only by `run_startup_reminder_sweep`'s one-time boot call,
+   vs. `PERIODIC_SWEEP_LOOKBACK` (1h), used by the recurring APScheduler tick. Splitting these
+   closes a real risk the single-24h-bound design had: if `fired_occurrences` bookkeeping is ever
+   wrong (a "sent" row that fails to persist correctly), a wide window on EVERY periodic tick would
+   let the same already-delivered occurrence be silently re-picked-up and re-sent on every
+   subsequent tick for up to 24h. The narrower periodic bound caps that blast radius to at most 1h
+   of repeated resends, while the startup sweep - the one mechanism actually responsible for
+   surviving real downtime - keeps the generous 24h margin.
+   `ReminderManager.get_due_occurrences(window_start, window_end)` calls
+   `recurring_ical_events.of(cal).between(...)` internally, passing `window_end + 1 microsecond` —
+   `between()` is exclusive of its own end argument (live-verified 2026-08-17), so without this an
+   occurrence due at exactly `now` would depend on incidental scheduler-vs-clock-read latency to be
+   picked up on its own tick rather than the next one; `get_due_occurrences`'s own public contract
+   is end-inclusive (`[window_start, window_end]`) precisely so callers never have to think about
+   this. This resolves RRULE expansion and RECURRENCE-ID reschedule overrides; nothing about that
+   math is hand-written (see `data-model.md`). It does **not** suppress `STATUS=CANCELLED`
+   occurrences (live-verified 2026-08-16) — `ReminderManager` filters those out itself, one `if`
+   check per returned occurrence, before anything is treated as due.
 3. For each concrete non-cancelled occurrence returned as due:
    a. `message_text = occurrence's SUMMARY` (already resolved to the override text if this
       occurrence came from a `reminder_exceptions` row, else the master's `message_text`).

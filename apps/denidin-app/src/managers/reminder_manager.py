@@ -21,7 +21,7 @@ argument shape). Resolving concrete due occurrences from it (via `icalendar`/
 
 import sqlite3
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
@@ -56,6 +56,13 @@ class ReminderNotFoundError(ReminderError):
 
 class InvalidRecurrenceError(ReminderError):
     """Raised when a recurrence dict (or the one_time/recurring shape itself) is malformed."""
+
+
+class OccurrenceNotFoundError(ReminderError):
+    """Raised when occurrence_date_hint (single-occurrence modify/delete) does not match
+    exactly one real occurrence this reminder's own RRULE actually generates - either zero
+    (bad hint, or the occurrence already fired and rolled off) or, defensively, more than
+    one (should be structurally impossible - see resolve_occurrence_datetime)."""
 
 
 def round_to_five_minutes(dt: datetime) -> datetime:
@@ -419,10 +426,17 @@ class ReminderManager:
     def get_due_occurrences(
         self, window_start: datetime, window_end: datetime
     ) -> List[Dict[str, Any]]:
-        """Occurrences due in [window_start, window_end) across all active reminders,
-        excluding any that have already fired (see record_occurrence_fired) - this is
-        what makes it safe for the delivery sweep to use a generous lookback window
+        """Occurrences due in [window_start, window_end] (inclusive of BOTH ends) across all
+        active reminders, excluding any that have already fired (see record_occurrence_fired) -
+        this is what makes it safe for the delivery sweep to use a generous lookback window
         (catching up on a missed sweep) without re-delivering something already sent.
+
+        End-inclusivity matters: an occurrence due at exactly window_end must not depend on
+        incidental scheduler-vs-clock-read latency to be picked up by the sweep tick whose
+        `now` equals that exact due time (live-verified 2026-08-17 -
+        recurring_ical_events.between() is exclusive of its own end argument, so this method
+        passes it window_end + 1 microsecond internally to make its own public contract
+        end-inclusive instead).
 
         Each result is {"reminder_id", "occurrence_datetime", "message_text"}.
         recurring_ical_events does NOT suppress STATUS=CANCELLED occurrences on its own
@@ -440,7 +454,9 @@ class ReminderManager:
                 ).fetchall()
             }
             cal = self._reconstruct_calendar(row)
-            for occ in recurring_ical_events.of(cal).between(window_start, window_end):
+            for occ in recurring_ical_events.of(cal).between(
+                window_start, window_end + timedelta(microseconds=1)
+            ):
                 if str(occ.get("STATUS", "")) == "CANCELLED":
                     continue
                 occurrence_dt = occ["DTSTART"].dt
@@ -535,6 +551,36 @@ class ReminderManager:
             (reminder_id, recurrence_id_iso),
         ).fetchone()
         dtstart_override_iso = dtstart_override.isoformat() if dtstart_override else None
+        # DEBUG (2026-08-18, root-causing a real billed-test failure): this
+        # recurrence_id MUST exactly match one of the master RRULE's own
+        # generated DTSTART instances for recurring_ical_events to treat this
+        # as an override of that occurrence rather than an orphaned, silently
+        # ignored extra VEVENT - logging the candidate set here to compare.
+        window_start = recurrence_id - timedelta(days=2)
+        window_end = recurrence_id + timedelta(days=2)
+        master_row = self._conn.execute(
+            "SELECT * FROM reminders WHERE reminder_id = ?", (reminder_id,)
+        ).fetchone()
+        real_occurrences = []
+        if master_row is not None:
+            master_only_cal = icalendar.Calendar()
+            master_only = icalendar.Event()
+            master_only.add("UID", master_row["reminder_id"])
+            master_only.add("SUMMARY", master_row["message_text"])
+            master_only.add("DTSTART", _parse_local_no_micros(master_row["dtstart"]))
+            if master_row["rrule"]:
+                master_only.add("RRULE", icalendar.vRecur.from_ical(master_row["rrule"]))
+            master_only_cal.add_component(master_only)
+            real_occurrences = [
+                occ["DTSTART"].dt
+                for occ in recurring_ical_events.of(master_only_cal).between(window_start, window_end)
+            ]
+        logger.debug(
+            f"[054] _upsert_exception: reminder_id={reminder_id!r}, "
+            f"recurrence_id_iso={recurrence_id_iso!r} (exact match required), "
+            f"real master-rule occurrences within +/-2d={[o.isoformat() for o in real_occurrences]!r}, "
+            f"exact_match={recurrence_id_iso in [o.isoformat() for o in real_occurrences]!r}"
+        )
         if existing:
             self._conn.execute(
                 "UPDATE reminder_exceptions SET dtstart_override = ?, summary_override = ?, "
@@ -549,6 +595,76 @@ class ReminderManager:
                 (reminder_id, recurrence_id_iso, dtstart_override_iso, summary_override, status),
             )
         self._conn.commit()
+
+    def resolve_occurrence_datetime(
+        self, reminder_id: str, row: Any, occurrence_date_hint: str
+    ) -> datetime:
+        # `row` accepts anything index-by-key (sqlite3.Row from the internal
+        # modify/delete callers below, or a plain dict from get_reminder() -
+        # used by ai_handler's proposal-time pre-validation, which only ever
+        # sees the dict shape).
+        """Resolve occurrence_date_hint (whatever shape the model supplied - a bare
+        date like '2026-08-19' or a full datetime) to the EXACT real occurrence
+        datetime this reminder's own RRULE actually generates for that calendar
+        date - never the hint's own parsed value used directly as a RECURRENCE-ID.
+
+        Bug fixed here (2026-08-18, root-caused via a real billed-test failure):
+        a bare-date hint parses (via _parse_local_no_micros) as midnight, and
+        using that directly as RECURRENCE-ID silently fails to link to the real
+        occurrence (e.g. 09:00) - recurring_ical_events requires an EXACT
+        datetime match to treat an override VEVENT as replacing a specific
+        instance (see _upsert_exception's debug logging, added while
+        root-causing this). The override then becomes a silently orphaned,
+        unlinked VEVENT and the original occurrence keeps firing unmodified -
+        exactly what the failing test observed, even though the model's own
+        confirmation text claimed success.
+
+        Matches by calendar DATE only, deliberately ignoring any time-of-day the
+        hint itself carries - trusting the hint's time is exactly what caused
+        the bug above. A single reminder's RRULE can produce AT MOST ONE
+        occurrence per calendar date under this system's recurrence schema (one
+        fixed DTSTART time-of-day; WEEKLY's `weekdays` can only ever match a
+        given calendar date once, since a date is only one weekday) - so the
+        date alone is always sufficient to identify the occurrence
+        unambiguously, confirmed against the actual RRULE-building code
+        (2026-08-18) before relying on it here.
+
+        Raises OccurrenceNotFoundError on zero matches (bad hint, or an
+        occurrence that already fired and rolled off) or - defensively, should
+        never actually happen given the guarantee above - more than one match,
+        rather than ever silently guessing.
+        """
+        hint_date = _parse_local_no_micros(occurrence_date_hint).date()
+        window_start = datetime(
+            hint_date.year, hint_date.month, hint_date.day, tzinfo=LOCAL_TZ
+        ) - timedelta(days=1)
+        window_end = window_start + timedelta(days=3)
+
+        master_only_cal = icalendar.Calendar()
+        master_only = icalendar.Event()
+        master_only.add("UID", row["reminder_id"])
+        master_only.add("SUMMARY", row["message_text"])
+        master_only.add("DTSTART", _parse_local_no_micros(row["dtstart"]))
+        if row["rrule"]:
+            master_only.add("RRULE", icalendar.vRecur.from_ical(row["rrule"]))
+        master_only_cal.add_component(master_only)
+
+        matches = [
+            occ["DTSTART"].dt
+            for occ in recurring_ical_events.of(master_only_cal).between(window_start, window_end)
+            if occ["DTSTART"].dt.date() == hint_date
+        ]
+        logger.debug(
+            f"[054] resolve_occurrence_datetime: reminder_id={reminder_id!r}, "
+            f"occurrence_date_hint={occurrence_date_hint!r}, resolved_date={hint_date.isoformat()!r}, "
+            f"matches={[m.isoformat() for m in matches]!r}"
+        )
+        if len(matches) != 1:
+            raise OccurrenceNotFoundError(
+                f"occurrence_date_hint={occurrence_date_hint!r} (resolved date={hint_date.isoformat()}) "
+                f"matched {len(matches)} real occurrence(s) of reminder {reminder_id!r}, expected exactly 1"
+            )
+        return matches[0]
 
     def modify_single_occurrence(
         self,
@@ -568,7 +684,7 @@ class ReminderManager:
             raise InvalidRecurrenceError(
                 "single-occurrence modify only applies to a recurring reminder"
             )
-        recurrence_id_dt = _parse_local_no_micros(occurrence_date_hint)
+        recurrence_id_dt = self.resolve_occurrence_datetime(reminder_id, row, occurrence_date_hint)
 
         dtstart_override = None
         if new_due_at is not None:
@@ -617,7 +733,7 @@ class ReminderManager:
             raise InvalidRecurrenceError(
                 "single-occurrence delete only applies to a recurring reminder"
             )
-        recurrence_id_dt = _parse_local_no_micros(occurrence_date_hint)
+        recurrence_id_dt = self.resolve_occurrence_datetime(reminder_id, row, occurrence_date_hint)
         self._upsert_exception(
             reminder_id, recurrence_id_dt,
             dtstart_override=None, summary_override=None, status="CANCELLED",

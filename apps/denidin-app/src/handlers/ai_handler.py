@@ -34,7 +34,7 @@ from src.managers.pending_approval_manager import (
 )
 from src.managers.reminder_manager import (
     ReminderManager, ReminderPastDateError, ReminderCapExceededError, ReminderNotFoundError,
-    InvalidRecurrenceError,
+    InvalidRecurrenceError, OccurrenceNotFoundError,
 )
 from src.managers.pending_local_tool_approval_manager import (
     PendingLocalToolApprovalManager, PendingLocalToolApproval,
@@ -649,18 +649,33 @@ CREATE_REMINDER_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "create_reminder",
     "description": (
+        "ONLY call this when the user's own message explicitly asks to be "
+        "reminded of something at a future time (e.g. \"תזכיר לי...\", a "
+        "recurring cadence like \"כל יום/שבוע\"). NEVER call this to interpret "
+        "a confirmation reply (\"כן\"/\"לא\"), an ambiguous message, or any "
+        "message about clients, invoices, or documents - those are handled by "
+        "entirely separate tools and this one is never a fallback for them. "
         "Propose creating a new reminder, after gathering the message text and "
         "either a one-time date/time or a full recurrence rule through conversation. "
         "This call itself does NOT persist anything - it is presented to the user as "
         "an approval summary (with the actual time shown AFTER rounding to the "
         "nearest 5 minutes); the reminder is only created if the user then "
-        "explicitly approves (yes/no gate, same as document creation)."
+        "explicitly approves."
     ),
     "strict": True,
     "parameters": {
         "type": "object",
         "properties": {
-            "message_text": {"type": "string"},
+            "message_text": {
+                "type": "string",
+                "description": (
+                    "The actual thing to be reminded about, in the user's own words - "
+                    "taken directly from what they said. Never a placeholder "
+                    "(\"תזכורת\", \"בדיקה\", \"test\", or similar) - if the user's message "
+                    "doesn't actually contain something to be reminded about, do not "
+                    "call this tool at all."
+                ),
+            },
             "schedule_type": {"type": "string", "enum": ["one_time", "recurring"]},
             "one_time_due_at": {
                 "type": ["string", "null"],
@@ -730,6 +745,11 @@ LIST_REMINDERS_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "list_reminders",
     "description": (
+        "ONLY call this when the user's own message explicitly asks about their "
+        "reminders (e.g. \"מה יש לי מחר\", or as a precursor to an explicit modify/"
+        "delete request). NEVER call this to interpret a confirmation reply "
+        "(\"כן\"/\"לא\"), an ambiguous message, or any message about clients, "
+        "invoices, or documents - those are handled by entirely separate tools. "
         "Returns the current active reminder list (message text + human-readable schedule) "
         "so you can resolve a user's natural-language description of a reminder to a concrete "
         "reminder_id before calling modify_reminder or delete_reminder. Never guess a "
@@ -748,6 +768,11 @@ MODIFY_REMINDER_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "modify_reminder",
     "description": (
+        "ONLY call this when the user's own message explicitly asks to change an "
+        "existing reminder (e.g. \"תעדכן/תדחה את התזכורת...\"). NEVER call this to "
+        "interpret a confirmation reply (\"כן\"/\"לא\"), an ambiguous message, or any "
+        "message about clients, invoices, or documents - those are handled by "
+        "entirely separate tools and this one is never a fallback for them. "
         "Propose a modification to an existing reminder already identified via "
         "list_reminders or earlier conversation - never a guessed reminder_id. Does not "
         "persist anything - presented as an approval summary first, with any new time "
@@ -767,7 +792,14 @@ MODIFY_REMINDER_TOOL: Dict[str, Any] = {
                     "scope=single_occurrence."
                 ),
             },
-            "new_message_text": {"type": ["string", "null"]},
+            "new_message_text": {
+                "type": ["string", "null"],
+                "description": (
+                    "The new text, in the user's own words, if they're changing what the "
+                    "reminder is about; null if only the schedule is changing. Never a "
+                    "placeholder (\"תזכורת\", \"בדיקה\", \"test\", or similar)."
+                ),
+            },
             "new_due_at": {
                 "type": ["string", "null"],
                 "description": (
@@ -796,6 +828,11 @@ DELETE_REMINDER_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "delete_reminder",
     "description": (
+        "ONLY call this when the user's own message explicitly asks to cancel an "
+        "existing reminder (e.g. \"תבטל את התזכורת...\"). NEVER call this to "
+        "interpret a confirmation reply (\"כן\"/\"לא\"), an ambiguous message, or any "
+        "message about clients, invoices, or documents - those are handled by "
+        "entirely separate tools and this one is never a fallback for them. "
         "Propose deleting a reminder (single occurrence or whole series), already identified "
         "via list_reminders or earlier conversation - never a guessed reminder_id. Does not "
         "persist anything - presented as an approval summary first."
@@ -1360,7 +1397,14 @@ class AIHandler:
         tools this call"."""
         morning_tools = self._build_morning_mcp_tools(user_obj, correlation_id) if self.rbac_enabled else None
         reminder_tools = self._build_reminder_tools(user_obj) if self.rbac_enabled else []
-        combined = (morning_tools or []) + reminder_tools + self._build_ledger_event_tool()
+        # Reminder tools deliberately go LAST (2026-08-19, user decision after a
+        # real cross-feature confusion incident): Morning's tools are one opaque
+        # `mcp` entry needing runtime discovery, so reminder tools - individually
+        # inlined `function` entries - were the most directly-visible tools in the
+        # list whenever they came right after it. Position isn't the only fix
+        # (see the tool descriptions' own explicit negative scoping above), but
+        # reduces whatever residual bias position/primacy contributes.
+        combined = (morning_tools or []) + self._build_ledger_event_tool() + reminder_tools
         return combined or None
 
     def _build_instructions(self, constitution: str) -> str:
@@ -1379,18 +1423,27 @@ class AIHandler:
         caller with just a constitution string - not necessarily a full
         request object - can build the same instructions.
         """
-        # Give the model the actual current date. It has no clock of its own —
-        # its training cutoff makes it default to a stale "current year", which
-        # produced real wrong-year invoice lookups (e.g. resolving "7 בפברואר"
-        # to 2023). This is appended at reply time, computed per call in UTC
-        # (CONSTITUTION §II) — NOT templated into the constitution file.
-        today = now_local().strftime("%Y-%m-%d")
+        # Give the model the actual current date AND time. It has no clock of
+        # its own — its training cutoff makes it default to a stale "current
+        # year", which produced real wrong-year invoice lookups (e.g.
+        # resolving "7 בפברואר" to 2023). Time-of-day was added for Feature
+        # 054 (reminders) — without it the model cannot resolve a relative
+        # clock offset ("תזכיר לי בעוד שעה") and has to ask the user for the
+        # current time instead of just computing it, confirmed via a real
+        # billed-test failure. This is appended at reply time, computed per
+        # call in Israel local time (bugfix-037 — NOT UTC) — NOT templated
+        # into the constitution file.
+        now = now_local()
+        today = now.strftime("%Y-%m-%d")
+        current_time = now.strftime("%H:%M")
         return (
             f"{constitution}\n\n---\n"
-            f"THE CURRENT DATE IS {today} (UTC). Treat this as the authoritative "
-            f"\"today\" when resolving any relative or partial date the user gives "
-            f"(a day/month with no year, \"היום\", \"אתמול\", etc.) — never fall "
-            f"back on a year from your training data.\n"
+            f"THE CURRENT DATE AND TIME IS {today} {current_time} (Asia/Jerusalem, "
+            f"Israel local time). Treat this as the authoritative \"now\" when "
+            f"resolving any relative or partial date/time the user gives (a "
+            f"day/month with no year, \"היום\", \"אתמול\", \"בעוד שעה\", \"בעוד "
+            f"חצי שעה\", etc.) — never fall back on a year from your training "
+            f"data, and never ask the user what time it is now.\n"
             f"YOUR CURRENT VERSION IS {self._app_version}. If asked what version you are "
             f"running (in any language), state this exact value."
         )
@@ -1930,6 +1983,12 @@ class AIHandler:
         self, tool_name: str, args: Dict[str, Any], request: AIRequest, response,
         effective_chat_id: str,
     ) -> "tuple[Optional[str], bool]":
+        # DEBUG (2026-08-18, root-causing a real billed-test failure): the raw
+        # function_call arguments exactly as the model supplied them, before any
+        # parsing/validation - occurrence_date_hint in particular, since it must
+        # exactly match a real generated occurrence datetime downstream
+        # (ReminderManager._upsert_exception logs the actual candidate set).
+        logger.debug(f"[054] {tool_name} raw args from model: {args!r}")
         reminder_id = args.get("reminder_id")
         scope = args.get("scope")
         if scope not in ("single_occurrence", "whole_series"):
@@ -1953,6 +2012,16 @@ class AIHandler:
         # persisted; re-validated for real at approval time (TOCTOU-closing, see
         # contracts/local-tool-approval-gate.md).
         try:
+            if scope == "single_occurrence":
+                # Bug fix (2026-08-18): validate occurrence_date_hint resolves to
+                # exactly one real occurrence NOW, at proposal time, rather than
+                # only discovering a bad/mismatched hint at approval time (or
+                # worse, silently succeeding at approval time with an orphaned
+                # exception that never actually overrides anything - the original
+                # bug, root-caused via a real billed-test failure).
+                self.reminder_manager.resolve_occurrence_datetime(
+                    cast(str, reminder_id), current, cast(str, args.get("occurrence_date_hint"))
+                )
             if tool_name == MODIFY_REMINDER_TOOL["name"]:
                 if scope == "single_occurrence" and args.get("new_due_at"):
                     self.reminder_manager.resolve_schedule("one_time", args["new_due_at"], None)
@@ -1966,6 +2035,9 @@ class AIHandler:
             return REMINDER_PAST_DATE_REJECTED, False
         except InvalidRecurrenceError as e:
             logger.warning(f"[054] {tool_name} proposal rejected (invalid recurrence): {e}")
+            return REMINDER_ACTION_FAILED_TRY_AGAIN, False
+        except OccurrenceNotFoundError as e:
+            logger.warning(f"[054] {tool_name} proposal rejected (occurrence_date_hint mismatch): {e}")
             return REMINDER_ACTION_FAILED_TRY_AGAIN, False
 
         pending = PendingLocalToolApproval(
@@ -2073,6 +2145,19 @@ class AIHandler:
             completion_tokens += list_reminders_followup.usage.output_tokens
             usage_response = list_reminders_followup
 
+        # Bug fix (2026-08-18, caught by a real billed test): when list_reminders
+        # was called this turn, the model - now knowing the reminder_id - very
+        # often calls create/modify/delete_reminder in the SAME follow-up
+        # response, not the original one. create/modify/delete detection below
+        # MUST inspect that follow-up response in that case, never the original
+        # (pre-list_reminders) `response` - otherwise the follow-up's function_call
+        # is invisible to this code, response_text stays '' (list_reminders_followup's
+        # own output_text, empty for the same function_call-OR-message reason),
+        # and AIResponse.__post_init__ correctly rejects the empty reply.
+        reminder_tool_response = (
+            list_reminders_followup if list_reminders_followup is not None else response
+        )
+
         # Reminders (Feature 054): a create_reminder call produces empty
         # output_text too (same reasoning-model function_call-OR-message
         # limitation as ledger events), but unlike ledger capture, this NEVER
@@ -2080,7 +2165,7 @@ class AIHandler:
         # response_text is replaced with a deterministic summary (no second
         # OpenAI round-trip needed at proposal time, unlike the ledger path).
         reminder_details, new_local_tool_pending_created = self._handle_reminder_creation_proposal(
-            request, response, effective_chat_id
+            request, reminder_tool_response, effective_chat_id
         )
         if reminder_details is not None:
             response_text = reminder_details
@@ -2091,7 +2176,9 @@ class AIHandler:
         # one reminder tool in practice).
         if not new_local_tool_pending_created:
             modify_delete_details, modify_delete_pending_created = (
-                self._handle_reminder_modify_or_delete_proposal(request, response, effective_chat_id)
+                self._handle_reminder_modify_or_delete_proposal(
+                    request, reminder_tool_response, effective_chat_id
+                )
             )
             if modify_delete_details is not None:
                 response_text = modify_delete_details
@@ -2809,7 +2896,7 @@ class AIHandler:
                     f"unresolvable pending tool_name/scope: {pending.tool_name!r}/{scope!r}"
                 )
         except (ReminderPastDateError, ReminderCapExceededError, ReminderNotFoundError,
-                InvalidRecurrenceError) as e:
+                InvalidRecurrenceError, OccurrenceNotFoundError) as e:
             logger.error(
                 f"[054] Approved reminder action failed at persist time for chat="
                 f"{effective_chat_id!r}, tool={pending.tool_name!r}: {e}", exc_info=True
