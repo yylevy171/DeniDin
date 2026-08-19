@@ -171,8 +171,13 @@ apps/denidin-app/tests/billed/
 
 ## Phased Execution
 
+**TDD note (METHODOLOGY §VI, redefined 2026-08-18)**: "Test (TDD)" below, within Phase 1/2,
+means §VI.b's unit/integration RED→GREEN discipline (unchanged from before the redefinition).
+"TDD" proper — §VI.a's `billed`/`expensive` user-perspective tests — is defined during these
+same phases but deliberately not run until Phase 3, after both phases below are GREEN.
+
 ### Phase 1 — Standalone receipt (US1, P1)
-1. **Test (TDD)**: unit test for `_build_standalone_receipt_payload` (RED); integration tests
+1. **Test (§VI.b)**: unit test for `_build_standalone_receipt_payload` (RED); integration tests
    in `test_morning_sandbox_standalone_receipt.py` covering US1's 5 acceptance scenarios (RED,
    real sandbox).
 2. **Implement**: `_build_standalone_receipt_payload`, relax `create_receipt`'s signature and
@@ -180,15 +185,20 @@ apps/denidin-app/tests/billed/
 3. **Verify**: full existing `create_receipt` test suite still passes unchanged (REQ-INV-016).
 
 ### Phase 2 — Transaction account cancellation (US2, P2)
-1. **Test (TDD)**: unit test for the idempotency guard logic (RED); integration tests in
+1. **Test (§VI.b)**: unit test for the idempotency guard logic (RED); integration tests in
    `test_morning_sandbox_cancel_transaction_account.py` covering US2's 5 acceptance scenarios
    (RED, real sandbox — reuses this session's live research.md findings directly).
 2. **Implement**: `cancel_transaction_account` in `tools.py`, its dedicated formatter, its
    `server.py` MCP registration. Tests go GREEN.
-3. **RBAC wiring**: add to `APPROVAL_REQUIRED_MCP_TOOLS` in `apps/denidin-app`; a `billed`-tier
-   test confirms attachment/approval behavior end to end.
+3. **RBAC wiring**: add to `APPROVAL_REQUIRED_MCP_TOOLS` in `apps/denidin-app`.
 
-### Phase 3 — Close out
+### Phase 3 — Acceptance (§VI.a — TDD proper, `billed`/`expensive`, run once)
+A `billed`-tier test (written during Phase 2, alongside its other tasks, since the contract is
+already known) proves `cancel_transaction_account`'s RBAC/approval-gate wiring end-to-end from a
+real user's perspective. It is written early but run only once, here, after Phase 1 AND Phase 2
+are both GREEN — this phase is the feature's actual acceptance proof, not a per-story gate.
+
+### Phase 4 — Close out
 Move spec to `specs/done/` once merged, per folder movement rules (part of the `haleluya` flow,
 not run unprompted).
 
