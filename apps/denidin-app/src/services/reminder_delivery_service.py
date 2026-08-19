@@ -58,19 +58,49 @@ REMINDER_SWEEP_JOB_ID = "reminder_sweep"
 
 
 def _deliver_one_occurrence(
-    occurrence: Any, bot: Any, godfather_chat_id: str, reminder_manager: Any,
-    session_manager: Any, user_manager: Any, godfather_phone: str, log_prefix: str,
+    occurrence: Any, bot: Any, reminder_manager: Any,
+    session_manager: Any, user_manager: Any, log_prefix: str,
 ) -> None:
     """Deliver a single due occurrence: send, record the firing, persist to
     session history. Split out of _sweep_due_reminders purely to keep that
     function's local-variable count down - no independent call site.
+
+    Delivery target (2026-08-19, user decision - supersedes the original
+    fixed "always the godfather's own 1:1 chat" design): try the reminder's
+    own delivery_chat_id (the chat/group it was created from) first; only on
+    a genuine send failure (e.g. the group was exited/removed), fall back to
+    the reminder's creator's own 1:1 chat (created_by_phone). This fallback
+    is per-delivery only - it is never persisted back onto the reminder, so
+    a later occurrence of the same reminder tries delivery_chat_id again.
     """
-    message_text = occurrence["message_text"]
-    id_message = send_proactive_message(bot, godfather_chat_id, message_text)
+    # Prefixed so a delivered reminder reads unambiguously as a reminder
+    # notification (2026-08-19, user feedback after the real Gate Zero
+    # live-fire test - a bare message_text alone didn't read as one).
+    # Applied once here and used consistently for everything downstream (the
+    # actual send, the fired_occurrences audit row, and session history) so
+    # all three reflect what the user actually received, not the raw stored
+    # text.
+    message_text = f"תזכורת: {occurrence['message_text']}"
+    delivery_chat_id = occurrence["delivery_chat_id"]
+    created_by_phone = occurrence["created_by_phone"]
+    fallback_chat_id = f"{created_by_phone}@c.us"
+
+    used_chat_id = delivery_chat_id
+    id_message = send_proactive_message(bot, delivery_chat_id, message_text)
+    if id_message is None and fallback_chat_id != delivery_chat_id:
+        logger.warning(
+            f"{log_prefix}Delivery to {delivery_chat_id!r} failed for reminder "
+            f"{occurrence['reminder_id']!r} - falling back to creator's own 1:1 chat "
+            f"{fallback_chat_id!r}"
+        )
+        used_chat_id = fallback_chat_id
+        id_message = send_proactive_message(bot, fallback_chat_id, message_text)
+
     if id_message is None:
         logger.error(
             f"{log_prefix}Failed to deliver reminder {occurrence['reminder_id']!r} "
-            f"(due {occurrence['occurrence_datetime'].isoformat()}) - left pending, "
+            f"(due {occurrence['occurrence_datetime'].isoformat()}) to either "
+            f"{delivery_chat_id!r} or fallback {fallback_chat_id!r} - left pending, "
             "will retry next sweep"
         )
         return
@@ -89,11 +119,16 @@ def _deliver_one_occurrence(
 
     if session_manager is not None:
         try:
-            godfather_user = user_manager.get_user(godfather_phone)
+            # Role/token-limit for session pruning purposes come from the
+            # reminder's creator (always GODFATHER/ADMIN, since only those
+            # roles can create reminders), not from whatever chat the
+            # message actually landed in - a delivery target may be a group
+            # with no single governing role of its own.
+            creator_user = user_manager.get_user(created_by_phone)
             session_manager.add_message_with_token_limit(
-                chat_id=godfather_chat_id, role="assistant", content=message_text,
-                user_role=godfather_user.role, token_limit=godfather_user.token_limit,
-                recipient=godfather_chat_id,
+                chat_id=used_chat_id, role="assistant", content=message_text,
+                user_role=creator_user.role, token_limit=creator_user.token_limit,
+                recipient=used_chat_id,
             )
         except Exception as e:  # pylint: disable=broad-except
             logger.error(
@@ -103,7 +138,7 @@ def _deliver_one_occurrence(
 
     logger.info(
         f"{log_prefix}Delivered reminder {occurrence['reminder_id']!r} to "
-        f"{godfather_chat_id} (idMessage={id_message})"
+        f"{used_chat_id} (idMessage={id_message})"
     )
 
 
@@ -138,7 +173,6 @@ def _sweep_due_reminders(
     periodic tick) must pass STARTUP_SWEEP_LOOKBACK explicitly too.
     """
     reminder_manager = global_context.ai_handler.reminder_manager
-    config = global_context.config
 
     now = now or now_local()
     try:
@@ -150,23 +184,11 @@ def _sweep_due_reminders(
     if not due:
         return
 
-    godfather_phone = getattr(config, "godfather_phone", None)
-    if not godfather_phone:
-        logger.error(
-            f"{log_prefix}No godfather_phone configured - cannot deliver "
-            f"{len(due)} due reminder occurrence(s)"
-        )
-        return
-    # FR-008: always the godfather's own 1:1 chat, never a per-reminder field -
-    # computed here once per sweep tick, regardless of which chat/role created
-    # or last modified any given reminder.
-    godfather_chat_id = f"{godfather_phone}@c.us"
-
     for occurrence in due:
         _deliver_one_occurrence(
-            occurrence, bot, godfather_chat_id, reminder_manager,
+            occurrence, bot, reminder_manager,
             global_context.session_manager, global_context.ai_handler.user_manager,
-            godfather_phone, log_prefix,
+            log_prefix,
         )
 
 

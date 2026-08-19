@@ -18,6 +18,7 @@ from src.utils.green_api_bot import (
     mark_message_read,
     send_typing_indicator,
 )
+from src.utils.whatsapp_audit_log import log_inbound, log_outbound
 from src.constants.error_messages import (
     APP_NOT_READY_RETRY_LATER,
     UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
@@ -283,6 +284,7 @@ def _handle_not_initialized_error(notification: Notification, message_type: str)
     logger.error(f"CRITICAL: denidin_app not initialized - cannot process {message_type} messages")
     try:
         notification.answer(APP_NOT_READY_RETRY_LATER)
+        log_outbound(notification.event.get("senderData", {}).get("chatId", ""), APP_NOT_READY_RETRY_LATER, kind="text")
     except Exception:
         pass
 
@@ -543,6 +545,10 @@ def _process_conversational_message(notification: Notification) -> None:
         # Send generic fallback message to user
         try:
             notification.answer(ERROR_PROCESSING_MESSAGE_TRY_AGAIN)
+            log_outbound(
+                notification.event.get("senderData", {}).get("chatId", ""),
+                ERROR_PROCESSING_MESSAGE_TRY_AGAIN, kind="text",
+            )
             try:
                 logger.info(f"{tracking} Generic fallback message sent to user")
             except (NameError, AttributeError):
@@ -594,6 +600,7 @@ def handle_text_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "text")
         return
@@ -615,6 +622,7 @@ def handle_contact_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "contact")
         return
@@ -636,11 +644,13 @@ def handle_contacts_array_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "contacts array")
         return
 
     notification.answer(CONTACT_CARD_ONE_AT_A_TIME)
+    log_outbound(notification.event.get("senderData", {}).get("chatId", ""), CONTACT_CARD_ONE_AT_A_TIME, kind="text")
 
 
 @bot.router.message(type_message="imageMessage")
@@ -652,10 +662,11 @@ def handle_image_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing image data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "image")
         return
-    
+
     _process_media_message(notification)
 
 
@@ -668,10 +679,11 @@ def handle_document_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing document data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "document")
         return
-    
+
     _process_media_message(notification)
 
 
@@ -684,10 +696,11 @@ def handle_video_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing video data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "video")
         return
-    
+
     _process_media_message(notification)
 
 
@@ -700,10 +713,11 @@ def handle_audio_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing audio data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "audio")
         return
-    
+
     _process_media_message(notification)
 
 
@@ -722,6 +736,7 @@ def handle_button_tap(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing the tap
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "interactiveButtonsResponse")
         return
@@ -734,12 +749,9 @@ def handle_button_tap(notification: Notification) -> None:
     stanza_id = button_data.get("stanzaId", "")
 
     ai_response = denidin_app.ai_handler.resolve_button_tap(
-        chat_id=message.chat_id,
+        message=message,
         selected_id=selected_id,
         stanza_id=stanza_id,
-        message_id=message.message_id,
-        user_phone=message.sender_id,
-        sender=message.sender_display_name,
     )
 
     if ai_response is None:
@@ -779,10 +791,11 @@ def handle_unsupported_message_default(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
+    log_inbound(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "unsupported")
         return
-    
+
     denidin_app.whatsapp_handler.handle_unsupported_message(notification)
 
 

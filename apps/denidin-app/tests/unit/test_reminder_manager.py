@@ -108,16 +108,16 @@ class TestReminderManagerCore:
         manager = ReminderManager(storage_dir=str(storage_dir), max_active_reminders=2)
         manager.create_reminder(
             message_text="a", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         manager.create_reminder(
             message_text="b", schedule_type="one_time", one_time_due_at=_future(70),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         with pytest.raises(ReminderCapExceededError):
             manager.create_reminder(
                 message_text="c", schedule_type="one_time", one_time_due_at=_future(80),
-                recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+                recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
     def test_reminders_table_schema(self, manager, storage_dir):
@@ -125,7 +125,7 @@ class TestReminderManagerCore:
         cols = {row["name"] for row in conn.execute("PRAGMA table_info(reminders)")}
         assert cols == {
             "reminder_id", "message_text", "rrule", "dtstart", "status",
-            "created_at", "created_by_phone", "created_by_role",
+            "created_at", "created_by_phone", "created_by_role", "delivery_chat_id",
         }
         conn.close()
 
@@ -151,7 +151,7 @@ class TestReminderManagerCore:
         result = m1.create_reminder(
             message_text="test", schedule_type="one_time",
             one_time_due_at=_future(60), recurrence=None,
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         m2 = ReminderManager(storage_dir=str(storage_dir))
         conn = _connect(storage_dir)
@@ -212,7 +212,7 @@ class TestRounding:
         result = manager.create_reminder(
             message_text="round me", schedule_type="one_time",
             one_time_due_at=unrounded.isoformat(), recurrence=None,
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         from datetime import datetime as _dt
         parsed = _dt.fromisoformat(result["due_at"])
@@ -228,7 +228,7 @@ class TestOneTimeReminderCreation:
         result = manager.create_reminder(
             message_text="call the accountant", schedule_type="one_time",
             one_time_due_at=_future(60), recurrence=None,
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         row = conn.execute(
@@ -244,11 +244,11 @@ class TestOneTimeReminderCreation:
     def test_reminder_id_is_unique_per_call(self, manager):
         r1 = manager.create_reminder(
             message_text="a", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         r2 = manager.create_reminder(
             message_text="b", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         assert r1["reminder_id"] != r2["reminder_id"]
 
@@ -258,7 +258,7 @@ class TestOneTimeReminderCreation:
         manager.create_reminder(
             message_text=message_text, schedule_type="one_time",
             one_time_due_at=_future(60), recurrence=recurrence,
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         assert message_text == "immutable check"
         assert recurrence is None
@@ -274,7 +274,7 @@ class TestPastDateRejection:
         with pytest.raises(ReminderPastDateError):
             manager.create_reminder(
                 message_text="too late", schedule_type="one_time", one_time_due_at=past,
-                recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+                recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
     def test_no_partial_row_persisted_on_rejection(self, manager, storage_dir):
@@ -282,7 +282,7 @@ class TestPastDateRejection:
         with pytest.raises(ReminderPastDateError):
             manager.create_reminder(
                 message_text="too late", schedule_type="one_time", one_time_due_at=past,
-                recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+                recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
         conn = _connect(storage_dir)
         count = conn.execute("SELECT COUNT(*) AS c FROM reminders").fetchone()["c"]
@@ -297,7 +297,7 @@ class TestPastDateRejection:
                 recurrence=_weekly_recurrence(
                     first_occurrence_at=(now_local() - timedelta(days=1)).isoformat()
                 ),
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
     def test_recurring_until_date_in_past_rejected(self, manager):
@@ -309,7 +309,7 @@ class TestPastDateRejection:
                     end_condition="until_date",
                     end_until=(now_local() - timedelta(days=1)).date().isoformat(),
                 ),
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
 
@@ -323,12 +323,12 @@ class TestCapEnforcement:
             manager.create_reminder(
                 message_text=f"reminder {i}", schedule_type="one_time",
                 one_time_due_at=_future(60 + i), recurrence=None,
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
         with pytest.raises(ReminderCapExceededError):
             manager.create_reminder(
                 message_text="the 21st", schedule_type="one_time", one_time_due_at=_future(600),
-                recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+                recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
     def test_20th_reminder_succeeds(self, manager):
@@ -336,11 +336,11 @@ class TestCapEnforcement:
             manager.create_reminder(
                 message_text=f"reminder {i}", schedule_type="one_time",
                 one_time_due_at=_future(60 + i), recurrence=None,
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
         result = manager.create_reminder(
             message_text="the 20th", schedule_type="one_time", one_time_due_at=_future(600),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         assert result["reminder_id"]
 
@@ -350,7 +350,7 @@ class TestCapEnforcement:
             r = manager.create_reminder(
                 message_text=f"reminder {i}", schedule_type="one_time",
                 one_time_due_at=_future(60 + i), recurrence=None,
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
             ids.append(r["reminder_id"])
         # Directly cancel one (delete_whole_series is a later task - T019c; use raw SQL
@@ -362,7 +362,7 @@ class TestCapEnforcement:
         result = manager.create_reminder(
             message_text="fits because one was cancelled", schedule_type="one_time",
             one_time_due_at=_future(700), recurrence=None,
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         assert result["reminder_id"]
 
@@ -372,19 +372,19 @@ class TestCapEnforcement:
             manager.create_reminder(
                 message_text=f"godfather {i}", schedule_type="one_time",
                 one_time_due_at=_future(60 + i), recurrence=None,
-                created_by_phone="972506205541", created_by_role="GODFATHER",
+                created_by_phone="972506205541", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
         for i in range(10):
             manager.create_reminder(
                 message_text=f"admin {i}", schedule_type="one_time",
                 one_time_due_at=_future(200 + i), recurrence=None,
-                created_by_phone="972522968679", created_by_role="ADMIN",
+                created_by_phone="972522968679", created_by_role="ADMIN", delivery_chat_id="972500000000@c.us",
             )
         with pytest.raises(ReminderCapExceededError):
             manager.create_reminder(
                 message_text="21st, regardless of who", schedule_type="one_time",
                 one_time_due_at=_future(900), recurrence=None,
-                created_by_phone="972522968679", created_by_role="ADMIN",
+                created_by_phone="972522968679", created_by_role="ADMIN", delivery_chat_id="972500000000@c.us",
             )
 
 
@@ -399,7 +399,7 @@ class TestRRuleConstruction:
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None, interval=1,
                                            end_condition="never"),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         row = conn.execute(
@@ -414,7 +414,7 @@ class TestRRuleConstruction:
         result = manager.create_reminder(
             message_text="every 3 days", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None, interval=3),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         row = conn.execute(
@@ -428,7 +428,7 @@ class TestRRuleConstruction:
         result = manager.create_reminder(
             message_text="weekly MO/TH", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         row = conn.execute(
@@ -443,13 +443,13 @@ class TestRRuleConstruction:
             manager.create_reminder(
                 message_text="broken weekly", schedule_type="recurring", one_time_due_at=None,
                 recurrence=_weekly_recurrence(weekdays=None),
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
         with pytest.raises(InvalidRecurrenceError):
             manager.create_reminder(
                 message_text="broken weekly", schedule_type="recurring", one_time_due_at=None,
                 recurrence=_weekly_recurrence(weekdays=[]),
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
     def test_monthly_fixed_day(self, manager, storage_dir):
@@ -457,7 +457,7 @@ class TestRRuleConstruction:
             message_text="15th of every month", schedule_type="recurring",
             one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="monthly", weekdays=None, month_day=15),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         row = conn.execute(
@@ -475,7 +475,7 @@ class TestRRuleConstruction:
                 freq="monthly", weekdays=None,
                 month_nth_weekday={"n": 1, "weekday": "MO"},
             ),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         row = conn.execute(
@@ -493,7 +493,7 @@ class TestRRuleConstruction:
                 freq="monthly", weekdays=None,
                 month_nth_weekday={"n": -1, "weekday": "FR"},
             ),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         row = conn.execute(
@@ -508,7 +508,7 @@ class TestRRuleConstruction:
             manager.create_reminder(
                 message_text="broken monthly", schedule_type="recurring", one_time_due_at=None,
                 recurrence=_weekly_recurrence(freq="monthly", weekdays=None),
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
         # Both at once
         with pytest.raises(InvalidRecurrenceError):
@@ -518,14 +518,14 @@ class TestRRuleConstruction:
                     freq="monthly", weekdays=None, month_day=1,
                     month_nth_weekday={"n": 1, "weekday": "MO"},
                 ),
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
     def test_end_condition_after_n(self, manager, storage_dir):
         result = manager.create_reminder(
             message_text="5 times", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(end_condition="after_n", end_count=5),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         row = conn.execute(
@@ -539,13 +539,13 @@ class TestRRuleConstruction:
             manager.create_reminder(
                 message_text="broken count", schedule_type="recurring", one_time_due_at=None,
                 recurrence=_weekly_recurrence(end_condition="after_n", end_count=None),
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
         with pytest.raises(InvalidRecurrenceError):
             manager.create_reminder(
                 message_text="broken count", schedule_type="recurring", one_time_due_at=None,
                 recurrence=_weekly_recurrence(end_condition="after_n", end_count=0),
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
     def test_end_condition_until_date(self, manager, storage_dir):
@@ -553,7 +553,7 @@ class TestRRuleConstruction:
         result = manager.create_reminder(
             message_text="until autumn", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(end_condition="until_date", end_until=until),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         row = conn.execute(
@@ -567,7 +567,7 @@ class TestRRuleConstruction:
             manager.create_reminder(
                 message_text="broken until", schedule_type="recurring", one_time_due_at=None,
                 recurrence=_weekly_recurrence(end_condition="until_date", end_until=None),
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
     def test_yearly_frequency_structurally_rejected(self, manager):
@@ -576,7 +576,7 @@ class TestRRuleConstruction:
             manager.create_reminder(
                 message_text="broken yearly", schedule_type="recurring", one_time_due_at=None,
                 recurrence=_weekly_recurrence(freq="yearly", weekdays=None),
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
     def test_recurring_requires_recurrence_dict(self, manager):
@@ -584,7 +584,7 @@ class TestRRuleConstruction:
             manager.create_reminder(
                 message_text="missing recurrence", schedule_type="recurring",
                 one_time_due_at=None, recurrence=None,
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
     def test_one_time_requires_one_time_due_at(self, manager):
@@ -592,7 +592,7 @@ class TestRRuleConstruction:
             manager.create_reminder(
                 message_text="missing due_at", schedule_type="one_time",
                 one_time_due_at=None, recurrence=None,
-                created_by_phone="972500000000", created_by_role="GODFATHER",
+                created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
             )
 
 
@@ -602,11 +602,11 @@ class TestListActive:
     def test_returns_only_active_reminders(self, manager, storage_dir):
         keep = manager.create_reminder(
             message_text="keep", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         drop = manager.create_reminder(
             message_text="drop", schedule_type="one_time", one_time_due_at=_future(70),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         conn.execute("UPDATE reminders SET status = 'cancelled' WHERE reminder_id = ?", (drop["reminder_id"],))
@@ -631,7 +631,7 @@ class TestGetDueOccurrences:
         manager.create_reminder(
             message_text="one-time due", schedule_type="one_time",
             one_time_due_at=due_at.isoformat(), recurrence=None,
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         occs = manager.get_due_occurrences(rounded - timedelta(seconds=1), rounded + timedelta(minutes=5))
         assert len(occs) == 1
@@ -642,7 +642,7 @@ class TestGetDueOccurrences:
         manager.create_reminder(
             message_text="far future", schedule_type="one_time",
             one_time_due_at=_future(60 * 24 * 30), recurrence=None,
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         occs = manager.get_due_occurrences(now_local(), now_local() + timedelta(minutes=5))
         assert occs == []
@@ -651,7 +651,7 @@ class TestGetDueOccurrences:
         r = manager.create_reminder(
             message_text="will be cancelled", schedule_type="one_time",
             one_time_due_at=_future(10), recurrence=None,
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         conn.execute("UPDATE reminders SET status = 'cancelled' WHERE reminder_id = ?", (r["reminder_id"],))
@@ -666,7 +666,7 @@ class TestGetDueOccurrences:
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None,
                                            first_occurrence_at=first.isoformat()),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         occs = manager.get_due_occurrences(first - timedelta(seconds=1), first + timedelta(minutes=1))
         assert len(occs) == 1
@@ -678,7 +678,7 @@ class TestGetDueOccurrences:
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None,
                                            first_occurrence_at=first.isoformat()),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         rescheduled = first + timedelta(hours=2)
         conn = _connect(storage_dir)
@@ -704,7 +704,7 @@ class TestGetDueOccurrences:
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None,
                                            first_occurrence_at=first.isoformat()),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         conn.execute(
@@ -728,7 +728,7 @@ class TestGetDueOccurrences:
         manager.create_reminder(
             message_text="tz check", schedule_type="one_time",
             one_time_due_at=due_at.isoformat(), recurrence=None,
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         occs = manager.get_due_occurrences(rounded - timedelta(seconds=1), rounded + timedelta(minutes=5))
         assert occs[0]["occurrence_datetime"].utcoffset() == rounded.utcoffset()
@@ -739,7 +739,7 @@ class TestGetDueOccurrences:
         r = manager.create_reminder(
             message_text="one-time due", schedule_type="one_time",
             one_time_due_at=due_at.isoformat(), recurrence=None,
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         manager.record_occurrence_fired(r["reminder_id"], rounded, "one-time due")
 
@@ -752,7 +752,7 @@ class TestGetDueOccurrences:
         r = manager.create_reminder(
             message_text="one-time due", schedule_type="one_time",
             one_time_due_at=due_at.isoformat(), recurrence=None,
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         manager.record_occurrence_fired(r["reminder_id"], rounded, "one-time due (sent)")
 
@@ -773,7 +773,7 @@ class TestGetDueOccurrences:
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None,
                                            first_occurrence_at=first.isoformat()),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         manager.record_occurrence_fired(r["reminder_id"], first, "daily")
 
@@ -781,6 +781,81 @@ class TestGetDueOccurrences:
         occs = manager.get_due_occurrences(first - timedelta(hours=1), second_day + timedelta(minutes=1))
         assert len(occs) == 1
         assert occs[0]["occurrence_datetime"] == second_day
+
+    def test_one_time_reminder_marked_completed_after_firing(self, manager, storage_dir):
+        """2026-08-19, user feedback: a fired reminder must be marked as such,
+        not stay 'active' forever - a one-time reminder has exactly one
+        occurrence, ever, so firing it always exhausts it."""
+        due_at = now_local() + timedelta(minutes=10)
+        rounded = round_to_five_minutes(due_at)
+        r = manager.create_reminder(
+            message_text="one-shot", schedule_type="one_time",
+            one_time_due_at=due_at.isoformat(), recurrence=None,
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
+        )
+        manager.record_occurrence_fired(r["reminder_id"], rounded, "one-shot")
+
+        conn = _connect(storage_dir)
+        row = conn.execute(
+            "SELECT status FROM reminders WHERE reminder_id = ?", (r["reminder_id"],)
+        ).fetchone()
+        conn.close()
+        assert row["status"] == "completed"
+
+    def test_completed_reminder_excluded_from_list_active_and_cap(self, manager):
+        due_at = now_local() + timedelta(minutes=10)
+        rounded = round_to_five_minutes(due_at)
+        r = manager.create_reminder(
+            message_text="one-shot", schedule_type="one_time",
+            one_time_due_at=due_at.isoformat(), recurrence=None,
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
+        )
+        manager.record_occurrence_fired(r["reminder_id"], rounded, "one-shot")
+
+        assert manager.list_active() == []  # already-filters status='active'
+        assert manager.get_reminder(r["reminder_id"]) is None
+
+    def test_never_ending_recurring_reminder_stays_active_after_one_firing(self, manager, storage_dir):
+        """A 'never'-ending recurring reminder must NOT be marked completed
+        just because one occurrence fired - it has indefinitely more."""
+        first = round_to_five_minutes(now_local() + timedelta(minutes=5))
+        r = manager.create_reminder(
+            message_text="daily", schedule_type="recurring", one_time_due_at=None,
+            recurrence=_weekly_recurrence(freq="daily", weekdays=None,
+                                           first_occurrence_at=first.isoformat()),
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
+        )
+        manager.record_occurrence_fired(r["reminder_id"], first, "daily")
+
+        conn = _connect(storage_dir)
+        row = conn.execute(
+            "SELECT status FROM reminders WHERE reminder_id = ?", (r["reminder_id"],)
+        ).fetchone()
+        conn.close()
+        assert row["status"] == "active"
+        assert manager.list_active() != []
+
+    def test_recurring_reminder_marked_completed_when_end_count_exhausted(self, manager, storage_dir):
+        """end_condition=after_n, end_count=1 - a single-shot recurring
+        reminder (unusual but valid) must complete after its only
+        occurrence, same as a plain one-time reminder does."""
+        first = round_to_five_minutes(now_local() + timedelta(minutes=5))
+        r = manager.create_reminder(
+            message_text="just once via recurrence", schedule_type="recurring", one_time_due_at=None,
+            recurrence=_weekly_recurrence(
+                freq="daily", weekdays=None, first_occurrence_at=first.isoformat(),
+                end_condition="after_n", end_count=1,
+            ),
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
+        )
+        manager.record_occurrence_fired(r["reminder_id"], first, "just once via recurrence")
+
+        conn = _connect(storage_dir)
+        row = conn.execute(
+            "SELECT status FROM reminders WHERE reminder_id = ?", (r["reminder_id"],)
+        ).fetchone()
+        conn.close()
+        assert row["status"] == "completed"
 
     def test_microsecond_bearing_dtstart_does_not_duplicate_occurrence(self, manager, storage_dir):
         # Regression guard (2026-08-16): even if a dtstart with microseconds
@@ -796,8 +871,8 @@ class TestGetDueOccurrences:
         conn.execute(
             "INSERT INTO reminders "
             "(reminder_id, message_text, rrule, dtstart, status, created_at, "
-            " created_by_phone, created_by_role) VALUES (?, 'recurring', 'FREQ=DAILY', ?, "
-            "'active', ?, '972500000000', 'GODFATHER')",
+            " created_by_phone, created_by_role, delivery_chat_id) VALUES (?, 'recurring', 'FREQ=DAILY', ?, "
+            "'active', ?, '972500000000', 'GODFATHER', '972500000000@c.us')",
             (reminder_id, dtstart_with_micros.isoformat(), now_local().isoformat()),
         )
         conn.commit()
@@ -816,7 +891,7 @@ class TestGetDueOccurrences:
             recurrence=_weekly_recurrence(freq="daily", weekdays=None,
                                            first_occurrence_at=first.isoformat(),
                                            end_condition="never"),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         far_future = first + timedelta(days=365 * 3)
         t0 = time.perf_counter()
@@ -831,7 +906,7 @@ class TestModifyWholeSeries:
     def test_one_time_reminder_message_text_updated(self, manager, storage_dir):
         r = manager.create_reminder(
             message_text="old text", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         manager.modify_whole_series(r["reminder_id"], new_message_text="new text")
         conn = _connect(storage_dir)
@@ -842,7 +917,7 @@ class TestModifyWholeSeries:
     def test_one_time_reminder_due_at_updated(self, manager, storage_dir):
         r = manager.create_reminder(
             message_text="text", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         new_due = _future(120)
         manager.modify_whole_series(r["reminder_id"], new_due_at=new_due)
@@ -854,7 +929,7 @@ class TestModifyWholeSeries:
     def test_one_time_reminder_due_at_in_past_rejected(self, manager):
         r = manager.create_reminder(
             message_text="text", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         with pytest.raises(ReminderPastDateError):
             manager.modify_whole_series(
@@ -865,7 +940,7 @@ class TestModifyWholeSeries:
         r = manager.create_reminder(
             message_text="daily standup", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         manager.modify_whole_series(
             r["reminder_id"],
@@ -881,7 +956,7 @@ class TestModifyWholeSeries:
         r = manager.create_reminder(
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         occurrence_date = _weekly_recurrence()["first_occurrence_at"]
         manager.modify_single_occurrence(
@@ -907,7 +982,7 @@ class TestModifyWholeSeries:
     def test_cancelled_reminder_raises(self, manager, storage_dir):
         r = manager.create_reminder(
             message_text="text", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         conn = _connect(storage_dir)
         conn.execute("UPDATE reminders SET status = 'cancelled' WHERE reminder_id = ?", (r["reminder_id"],))
@@ -922,7 +997,7 @@ class TestModifySingleOccurrence:
         r = manager.create_reminder(
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         occurrence_date = _weekly_recurrence()["first_occurrence_at"]
         new_due = _future(60 * 24 * 4)
@@ -943,7 +1018,7 @@ class TestModifySingleOccurrence:
         r = manager.create_reminder(
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         original_rrule_conn = _connect(storage_dir)
         original_rrule = original_rrule_conn.execute(
@@ -962,7 +1037,7 @@ class TestModifySingleOccurrence:
     def test_rejects_one_time_reminder(self, manager):
         r = manager.create_reminder(
             message_text="text", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         with pytest.raises(InvalidRecurrenceError):
             manager.modify_single_occurrence(r["reminder_id"], occurrence_date_hint=_future(60), new_message_text="x")
@@ -971,7 +1046,7 @@ class TestModifySingleOccurrence:
         r = manager.create_reminder(
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         occurrence_date = _weekly_recurrence()["first_occurrence_at"]
         with pytest.raises(ReminderPastDateError):
@@ -984,7 +1059,7 @@ class TestModifySingleOccurrence:
         r = manager.create_reminder(
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         occurrence_date = _weekly_recurrence()["first_occurrence_at"]
         manager.modify_single_occurrence(r["reminder_id"], occurrence_date_hint=occurrence_date, new_message_text="first edit")
@@ -1005,7 +1080,7 @@ class TestDeleteWholeSeries:
     def test_marks_reminder_cancelled(self, manager, storage_dir):
         r = manager.create_reminder(
             message_text="text", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         manager.delete_whole_series(r["reminder_id"])
         conn = _connect(storage_dir)
@@ -1016,7 +1091,7 @@ class TestDeleteWholeSeries:
     def test_no_longer_counts_toward_cap(self, manager):
         r = manager.create_reminder(
             message_text="text", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         manager.delete_whole_series(r["reminder_id"])
         assert manager.list_active() == []
@@ -1025,7 +1100,7 @@ class TestDeleteWholeSeries:
         r = manager.create_reminder(
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         occurrence_date = _weekly_recurrence()["first_occurrence_at"]
         manager.modify_single_occurrence(r["reminder_id"], occurrence_date_hint=occurrence_date, new_message_text="moved")
@@ -1057,7 +1132,7 @@ class TestDeleteSingleOccurrence:
         r = manager.create_reminder(
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         occurrence_date = _weekly_recurrence()["first_occurrence_at"]
         manager.delete_single_occurrence(r["reminder_id"], occurrence_date_hint=occurrence_date)
@@ -1075,7 +1150,7 @@ class TestDeleteSingleOccurrence:
         r = manager.create_reminder(
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None, first_occurrence_at=first.isoformat()),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         manager.delete_single_occurrence(r["reminder_id"], occurrence_date_hint=first.isoformat())
 
@@ -1088,7 +1163,7 @@ class TestDeleteSingleOccurrence:
         r = manager.create_reminder(
             message_text="daily", schedule_type="recurring", one_time_due_at=None,
             recurrence=_weekly_recurrence(freq="daily", weekdays=None, first_occurrence_at=first.isoformat()),
-            created_by_phone="972500000000", created_by_role="GODFATHER",
+            created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         manager.delete_single_occurrence(r["reminder_id"], occurrence_date_hint=first.isoformat())
 
@@ -1098,7 +1173,7 @@ class TestDeleteSingleOccurrence:
     def test_rejects_one_time_reminder(self, manager):
         r = manager.create_reminder(
             message_text="text", schedule_type="one_time", one_time_due_at=_future(60),
-            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER",
+            recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
         with pytest.raises(InvalidRecurrenceError):
             manager.delete_single_occurrence(r["reminder_id"], occurrence_date_hint=_future(60))

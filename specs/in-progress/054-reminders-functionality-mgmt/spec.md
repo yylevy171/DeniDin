@@ -223,8 +223,13 @@ reminder, P3: recurring reminder cadence) and their edge cases.
   the same time → both are delivered independently by the single shared delivery mechanism; no
   ordering guarantee between them is required.
 - **Role change after creation**: whoever created/last-modified a reminder is no longer
-  godfather/admin by the time it fires → no effect — delivery is keyed to the fixed godfather 1:1
-  chat (FR-008), never to the creator's own identity or role, so there is nothing to re-validate.
+  godfather/admin by the time it fires → no effect on delivery — the delivery target
+  (`delivery_chat_id`, and the creator's own 1:1 chat as fallback, per FR-008) was already fixed at
+  creation/modification time; RBAC is enforced then, not re-checked per occurrence.
+- **Delivery target chat becomes unreachable** (group exited/removed, etc.): the sweep's send to
+  `delivery_chat_id` fails → falls back once to the reminder's creator's own 1:1 chat
+  (`created_by_phone`); if that also fails, the occurrence is left `pending` for the next sweep
+  tick, same retry behavior as any other failed delivery.
 
 ## Requirements *(mandatory)*
 
@@ -261,12 +266,13 @@ reminder, P3: recurring reminder cadence) and their edge cases.
   (e.g. "first Monday"), and an end condition of never / after N occurrences / until a specific
   date. Yearly cadence is explicitly out of scope.
 - **FR-008**: System MUST deliver a reminder's message as a proactive outbound WhatsApp message to
-  the godfather's own direct 1:1 WhatsApp chat with DeniDin (`{godfather_phone}@c.us`), at or
-  after its due date/time — **always this fixed chat**, regardless of what chat (1:1 or group) the
-  reminder was created/modified from, and regardless of whether godfather or admin performed the
-  action. Delivery MUST originate from a single shared background mechanism common to all
-  reminders — the number of active reminders MUST NOT change the number of concurrent delivery
-  mechanisms running.
+  `delivery_chat_id` — the chat/group the reminder was created from, stored per-reminder at
+  creation time — at or after its due date/time. If that send fails, the system MUST fall back
+  once to the reminder's actual creator's own direct 1:1 WhatsApp chat with DeniDin
+  (`{created_by_phone}@c.us`) — never a fixed godfather identity, and never persisted back onto the
+  reminder (the next occurrence tries `delivery_chat_id` again). Delivery MUST originate from a
+  single shared background mechanism common to all reminders — the number of active reminders MUST
+  NOT change the number of concurrent delivery mechanisms running.
 - **FR-009**: Each occurrence of a reminder MUST be tracked with its own status — `pending`,
   `fired`, or `cancelled` — set independently per occurrence, so a recurring reminder's history of
   past firings is individually inspectable regardless of the reminder's own overall state. `pending`
@@ -309,8 +315,9 @@ reminder, P3: recurring reminder cadence) and their edge cases.
 
 - **Reminder**: A record belonging to the one godfather-owned reminder list — message text,
   schedule (either a single target datetime, or a Recurrence Rule), created-at timestamp,
-  creator identity (traceability only), and overall status (active/cancelled). Delivery target is
-  never stored per-reminder — always computed at fire time from `config.godfather_phone`.
+  creator identity (used for traceability, and as the delivery fallback target), delivery target
+  chat (the chat/group it was created from, fixed at creation time), and overall status
+  (active/cancelled).
 - **Recurrence Rule**: Interval count, cadence unit (day/week/month), weekday selection (weekly
   cadence only), day-of-month-or-Nth-weekday pattern (monthly cadence only), end condition
   (never/after-N-occurrences/until-date).
@@ -321,10 +328,10 @@ reminder, P3: recurring reminder cadence) and their edge cases.
 
 ## Assumptions
 
-- **Delivery target is a fixed heuristic, not "the chat it was created from"**: every reminder
-  fires to the godfather's own direct 1:1 chat with DeniDin, always, regardless of what chat the
-  create/modify/delete conversation happened in. No capability to set a reminder that fires to an
-  arbitrary *different* chat/group — that would overlap with
+- **Delivery target is the chat/group the reminder was created from**, stored per-reminder at
+  creation time (`delivery_chat_id`), with a fallback to the reminder's creator's own 1:1 chat only
+  if delivery to that target fails. No capability yet to explicitly *redirect* a reminder to an
+  arbitrary different chat/group than the one it was created in — that would overlap with
   `013-proactive-whatsapp-messaging-core` (out of scope, see Scope section) and would need Green
   API's `getContacts()` for chat/group discovery (confirmed to exist, not live-verified) —
   considered and explicitly deferred, not built now.
@@ -337,10 +344,11 @@ reminder, P3: recurring reminder cadence) and their edge cases.
   "entire series" distinction, this feature supports only the first and third — a two-way choice.
   "This and following" (i.e. split a series at a point and apply changes only from there
   onward) is a narrower future enhancement if requested, not built here.
-- **Role re-validation at fire time**: delivery is keyed to the fixed godfather 1:1 chat
-  (FR-008), never to whoever created/last-modified the reminder — so a `created_by_phone`/
-  `created_by_role`'s role changing after the fact has no effect on delivery at all. RBAC is
-  enforced at creation/modification/deletion time only (FR-001), not re-checked per occurrence.
+- **Role re-validation at fire time**: delivery targets (`delivery_chat_id`, and the
+  `created_by_phone` fallback per FR-008) are both fixed at creation/modification time — a
+  `created_by_phone`/`created_by_role`'s role changing after the fact has no effect on delivery at
+  all. RBAC is enforced at creation/modification/deletion time only (FR-001), not re-checked per
+  occurrence.
 - **Sweep interval**: every 5 minutes, wall-clock-aligned (`:00`/`:05`/.../`:55`) — see Technology
   Choices. Reminder times are rounded to this same granularity at creation/modification time.
 

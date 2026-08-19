@@ -38,8 +38,9 @@ feature is being built now.
 | `dtstart` | `TEXT` (ISO-8601, Asia/Jerusalem) | `DTSTART` | for one-time: the single due datetime; for recurring: the first occurrence's datetime — always rounded to the nearest 5 minutes (ties round up) before storage, so the approval summary shown to the user already reflects the exact time that will fire |
 | `status` | `TEXT` (`active`\|`cancelled`) | — (DeniDin-internal) | `active` at creation; `cancelled` only via a whole-series delete |
 | `created_at` | `TEXT` (ISO-8601) | — | `time_utils.local_isoformat()` at creation |
-| `created_by_phone` | `TEXT` | — | whoever (godfather or admin) actually performed the create action — traceability only, never used for ownership/access decisions (see "Ownership" below) |
+| `created_by_phone` | `TEXT` | — | whoever (godfather or admin) actually performed the create action. Traceability, never used for ownership/access decisions (see "Ownership" below) — but IS used as the delivery sweep's fallback target if a send to `delivery_chat_id` fails (2026-08-19, user decision, see "Delivery target" below) |
 | `created_by_role` | `TEXT` (`GODFATHER`\|`ADMIN`) | — | same traceability purpose |
+| `delivery_chat_id` | `TEXT NOT NULL` | — | the chat (1:1 or group) the reminder fires into — set once at creation time from the request's `effective_chat_id`; never re-derived at delivery time, never sticky/changeable except by an explicit future request (redirect capability deferred — see "Delivery target" below) |
 
 ## Table: `reminder_exceptions` (per-occurrence override VEVENTs, sharing the master's `UID`)
 
@@ -132,15 +133,22 @@ override. `created_by_phone`/`created_by_role` record who actually performed eac
 traceability, but neither field gates access, ownership, or the FR-006 active-reminder cap — the
 cap (20) is scoped to the one reminder list as a whole, not per acting identity.
 
-**Delivery target is a fixed heuristic, not "the chat it was created from."** Every reminder
-always fires to the godfather's own direct 1:1 WhatsApp chat with DeniDin
-(`{godfather_phone}@c.us`, resolved from config), regardless of what chat (1:1 or a group) the
-create/modify/delete conversation actually happened in, and regardless of whether godfather or
-admin performed the action. No `chat_id` column exists on `reminders` — it is computed at
-delivery time from `config.godfather_phone`, never stored per-row, so a future config change to
-that value is picked up automatically rather than requiring a data migration. A general
-"let the creator pick an arbitrary target chat/group" capability (via Green API's `getContacts()`)
-was explicitly considered and deferred — not built now.
+**Delivery target IS the chat it was created from (2026-08-19, user decision — supersedes the
+"fixed godfather 1:1" heuristic this section originally described).** A reminder fires into
+`delivery_chat_id`, a plain column set once at creation time from the create request's
+`effective_chat_id` — the actual chat/group the create conversation happened in, whether that's
+the godfather's or admin's own 1:1 chat or a shared group. It is never re-derived at delivery time
+and never sticky/changeable except by an explicit future request (a general "redirect this
+reminder to a different chat/group" capability — via Green API's `getContacts()` — was considered
+and deferred, not built now).
+
+**Fallback on delivery failure**: if a send to `delivery_chat_id` fails (e.g. the group was
+exited/removed), the sweep retries once against the reminder's actual creator's own 1:1 chat
+(`f"{created_by_phone}@c.us"`) — not a fixed godfather identity; for an ADMIN-created reminder this
+is the admin's own chat, never the godfather's. This fallback is per-delivery only: it is never
+written back onto `delivery_chat_id`, so the next occurrence of the same reminder tries the
+original `delivery_chat_id` again from scratch. See `contracts/reminder-delivery.md` for the exact
+sweep-tick sequencing.
 
 ## Validation rules
 
@@ -148,8 +156,9 @@ was explicitly considered and deferred — not built now.
   independently defended against beyond birthday-bound probability).
 - `created_by_phone` MUST resolve (via `UserManager.get_user`) to role `GODFATHER` or `ADMIN` at
   creation/modification/deletion time (FR-001) — not re-validated at delivery time (role changes
-  after the fact don't affect firing — delivery is keyed to the fixed godfather chat, not to
-  whoever created the reminder).
+  after the fact don't affect firing; `created_by_phone` is only consulted at delivery time as the
+  fallback target if `delivery_chat_id` itself fails, not as a re-check of who may still act on the
+  reminder).
 - One-time reminder (`rrule IS NULL`): `dtstart` MUST NOT be in the past at creation, after
   rounding (FR-005).
 - Recurring reminder: the RRULE string MUST NOT encode a yearly frequency (`FREQ=YEARLY` is

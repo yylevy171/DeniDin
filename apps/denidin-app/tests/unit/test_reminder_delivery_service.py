@@ -34,6 +34,8 @@ from src.services.reminder_delivery_service import (
 GODFATHER_PHONE = "972506205541"
 ADMIN_PHONE = "972522968679"
 GODFATHER_CHAT_ID = f"{GODFATHER_PHONE}@c.us"
+ADMIN_CHAT_ID = f"{ADMIN_PHONE}@c.us"
+GROUP_CHAT_ID = "123456789-group@g.us"
 
 
 @pytest.fixture
@@ -61,18 +63,29 @@ def stub_bot():
 
 
 def _insert_due_reminder(reminder_manager, message_text, created_by_phone, created_by_role,
-                          due_minutes_ago=1):
+                          delivery_chat_id=None, due_minutes_ago=1):
     """Directly inserts a one-time reminder row already due (dtstart in the near
     past) - deterministic stand-in for "a reminder became due", bypassing
     create_reminder's future-only validation (which exists for the conversational
-    creation path, not relevant to exercising the sweep)."""
+    creation path, not relevant to exercising the sweep).
+
+    delivery_chat_id defaults to the creator's own 1:1 chat when not given -
+    matches this file's common case (delivery target == creator's own chat, the
+    same outcome the old "always the godfather's 1:1" design produced for a
+    godfather-created reminder). Tests exercising a delivery_chat_id distinct
+    from the creator's own chat (e.g. a group) pass it explicitly - see
+    TestDeliveryTargetAndFallback.
+    """
     reminder_id = str(uuid.uuid4())
     dtstart = (now_local() - timedelta(minutes=due_minutes_ago)).isoformat()
+    if delivery_chat_id is None:
+        delivery_chat_id = f"{created_by_phone}@c.us"
     reminder_manager._conn.execute(  # pylint: disable=protected-access
         "INSERT INTO reminders "
         "(reminder_id, message_text, rrule, dtstart, status, created_at, "
-        " created_by_phone, created_by_role) VALUES (?, ?, NULL, ?, 'active', ?, ?, ?)",
-        (reminder_id, message_text, dtstart, local_isoformat(), created_by_phone, created_by_role),
+        " created_by_phone, created_by_role, delivery_chat_id) VALUES (?, ?, NULL, ?, 'active', ?, ?, ?, ?)",
+        (reminder_id, message_text, dtstart, local_isoformat(), created_by_phone, created_by_role,
+         delivery_chat_id),
     )
     reminder_manager._conn.commit()  # pylint: disable=protected-access
     return reminder_id
@@ -99,7 +112,10 @@ class TestSweepDueReminders:
 
         send.assert_called_once()
         assert send.call_args.args[1] == GODFATHER_CHAT_ID
-        assert send.call_args.args[2] == "לקנות חלב"
+        # Bug fix (2026-08-19, user feedback after the real Gate Zero live-fire
+        # test): delivered text is now prefixed "תזכורת: " so it reads
+        # unambiguously as a reminder notification, not the raw stored text.
+        assert send.call_args.args[2] == "תזכורת: לקנות חלב"
         fired = reminder_manager._conn.execute(  # pylint: disable=protected-access
             "SELECT COUNT(*) AS c FROM fired_occurrences WHERE reminder_id = ?", (reminder_id,)
         ).fetchone()
@@ -152,47 +168,124 @@ class TestSweepDueReminders:
         reminder_manager._conn.execute(  # pylint: disable=protected-access
             "INSERT INTO reminders "
             "(reminder_id, message_text, rrule, dtstart, status, created_at, "
-            " created_by_phone, created_by_role) VALUES (?, 'recurring due', "
-            "'FREQ=DAILY', ?, 'active', ?, ?, ?)",
-            (reminder_id, due_at, local_isoformat(), GODFATHER_PHONE, "GODFATHER"),
+            " created_by_phone, created_by_role, delivery_chat_id) VALUES (?, 'recurring due', "
+            "'FREQ=DAILY', ?, 'active', ?, ?, ?, ?)",
+            (reminder_id, due_at, local_isoformat(), GODFATHER_PHONE, "GODFATHER", GODFATHER_CHAT_ID),
         )
         reminder_manager._conn.commit()  # pylint: disable=protected-access
 
         _sweep_due_reminders(global_context, stub_bot)
 
-        send.assert_called_once_with(stub_bot, GODFATHER_CHAT_ID, "recurring due")
+        send.assert_called_once_with(stub_bot, GODFATHER_CHAT_ID, "תזכורת: recurring due")
 
-    def test_delivery_target_is_always_godfather_chat_regardless_of_created_by(
-        self, global_context, stub_bot, monkeypatch
-    ):
-        """FR-008 - the rule corrected twice during design review. An ADMIN-
-        created reminder must still resolve its delivery target from
-        config.godfather_phone, never from created_by_phone."""
+    def test_delivers_to_reminder_own_delivery_chat_id(self, global_context, stub_bot, monkeypatch):
+        """Supersedes the old FR-008 "always the godfather's own 1:1 chat"
+        rule (2026-08-19, user decision): delivery goes to the chat/group the
+        reminder was created from, stored per-reminder as delivery_chat_id."""
         send = MagicMock(return_value="wamid.1")
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
         _insert_due_reminder(
-            global_context.ai_handler.reminder_manager, "admin-created", ADMIN_PHONE, "ADMIN"
+            global_context.ai_handler.reminder_manager, "group reminder",
+            GODFATHER_PHONE, "GODFATHER", delivery_chat_id=GROUP_CHAT_ID,
+        )
+
+        _sweep_due_reminders(global_context, stub_bot)
+
+        send.assert_called_once_with(stub_bot, GROUP_CHAT_ID, "תזכורת: group reminder")
+
+
+class TestDeliveryTargetAndFallback:
+    """2026-08-19 redesign: delivery targets delivery_chat_id first; only on a
+    genuine send failure does it fall back to the reminder's actual creator's
+    own 1:1 chat (created_by_phone) - never a fixed godfather identity, and
+    never persisted back onto the reminder (the next occurrence tries
+    delivery_chat_id again)."""
+
+    def test_falls_back_to_creators_own_chat_when_delivery_target_send_fails(
+        self, global_context, stub_bot, monkeypatch
+    ):
+        send = MagicMock(side_effect=[None, "wamid.fallback"])
+        monkeypatch.setattr(delivery_service, "send_proactive_message", send)
+        reminder_manager = global_context.ai_handler.reminder_manager
+        reminder_id = _insert_due_reminder(
+            reminder_manager, "group exited", GODFATHER_PHONE, "GODFATHER",
+            delivery_chat_id=GROUP_CHAT_ID,
+        )
+
+        _sweep_due_reminders(global_context, stub_bot)
+
+        assert send.call_count == 2
+        first_call, second_call = send.call_args_list
+        assert first_call.args[1] == GROUP_CHAT_ID
+        assert second_call.args[1] == GODFATHER_CHAT_ID
+        fired = reminder_manager._conn.execute(  # pylint: disable=protected-access
+            "SELECT COUNT(*) AS c FROM fired_occurrences WHERE reminder_id = ?", (reminder_id,)
+        ).fetchone()
+        assert fired["c"] == 1  # recorded once, against the fallback send that succeeded
+
+    def test_admin_created_reminder_falls_back_to_admins_own_chat_not_godfathers(
+        self, global_context, stub_bot, monkeypatch
+    ):
+        """Corrects the old assumption that any fallback is always the
+        godfather's 1:1 chat - the fallback is the actual reminder creator's
+        own chat (2026-08-19, user decision), which for an ADMIN-created
+        reminder is the admin's own chat, never the godfather's."""
+        send = MagicMock(side_effect=[None, "wamid.fallback"])
+        monkeypatch.setattr(delivery_service, "send_proactive_message", send)
+        _insert_due_reminder(
+            global_context.ai_handler.reminder_manager, "admin group reminder",
+            ADMIN_PHONE, "ADMIN", delivery_chat_id=GROUP_CHAT_ID,
+        )
+
+        _sweep_due_reminders(global_context, stub_bot)
+
+        assert send.call_count == 2
+        assert send.call_args_list[1].args[1] == ADMIN_CHAT_ID
+
+    def test_both_delivery_and_fallback_fail_leaves_occurrence_pending(
+        self, global_context, stub_bot, monkeypatch
+    ):
+        send = MagicMock(return_value=None)
+        monkeypatch.setattr(delivery_service, "send_proactive_message", send)
+        reminder_manager = global_context.ai_handler.reminder_manager
+        reminder_id = _insert_due_reminder(
+            reminder_manager, "totally unreachable", GODFATHER_PHONE, "GODFATHER",
+            delivery_chat_id=GROUP_CHAT_ID,
+        )
+
+        _sweep_due_reminders(global_context, stub_bot)
+
+        assert send.call_count == 2
+        fired = reminder_manager._conn.execute(  # pylint: disable=protected-access
+            "SELECT COUNT(*) AS c FROM fired_occurrences WHERE reminder_id = ?", (reminder_id,)
+        ).fetchone()
+        assert fired["c"] == 0
+
+    def test_no_duplicate_send_when_delivery_and_fallback_targets_are_identical(
+        self, global_context, stub_bot, monkeypatch
+    ):
+        """A reminder created in the creator's own 1:1 chat has
+        delivery_chat_id == created_by_phone's own chat - a failed send must
+        not be retried a second time against the exact same chat within the
+        same sweep tick (that would just be the identical failing call
+        twice, not a real fallback)."""
+        send = MagicMock(return_value=None)
+        monkeypatch.setattr(delivery_service, "send_proactive_message", send)
+        _insert_due_reminder(
+            global_context.ai_handler.reminder_manager, "same chat both ways",
+            GODFATHER_PHONE, "GODFATHER",  # delivery_chat_id defaults to GODFATHER_CHAT_ID
         )
 
         _sweep_due_reminders(global_context, stub_bot)
 
         send.assert_called_once()
-        assert send.call_args.args[1] == GODFATHER_CHAT_ID  # never ADMIN_PHONE's chat
 
-    def test_missing_godfather_phone_sends_nothing_and_does_not_raise(self, stub_bot, monkeypatch, tmp_path):
-        send = MagicMock()
-        monkeypatch.setattr(delivery_service, "send_proactive_message", send)
-        reminder_manager = ReminderManager(storage_dir=str(tmp_path / "reminders"))
-        _insert_due_reminder(reminder_manager, "orphaned", GODFATHER_PHONE, "GODFATHER")
-        broken_context = SimpleNamespace(
-            ai_handler=SimpleNamespace(reminder_manager=reminder_manager, user_manager=MagicMock()),
-            session_manager=MagicMock(),
-            config=SimpleNamespace(godfather_phone=None),
-        )
 
-        _sweep_due_reminders(broken_context, stub_bot)  # must not raise
-
-        send.assert_not_called()
+class TestSweepDueRemindersMisc:
+    """Grab-bag coverage unrelated to delivery-target/fallback resolution
+    itself - session-history persistence, error resilience, multi-occurrence
+    sweeps. Split from TestSweepDueReminders/TestDeliveryTargetAndFallback
+    purely for readability."""
 
     def test_session_history_persisted_on_successful_delivery(self, global_context, stub_bot, monkeypatch):
         send = MagicMock(return_value="wamid.1")
@@ -205,7 +298,7 @@ class TestSweepDueReminders:
         call_kwargs = global_context.session_manager.add_message_with_token_limit.call_args.kwargs
         assert call_kwargs["chat_id"] == GODFATHER_CHAT_ID
         assert call_kwargs["role"] == "assistant"
-        assert call_kwargs["content"] == "persist me"
+        assert call_kwargs["content"] == "תזכורת: persist me"
 
     def test_query_failure_logged_not_raised(self, global_context, stub_bot, monkeypatch):
         def broken_get_due_occurrences(*args, **kwargs):
@@ -314,4 +407,4 @@ class TestStartReminderScheduler:
 
         assert send.called, "real BackgroundScheduler never invoked the sweep within 10s"
         assert send.call_args.args[1] == GODFATHER_CHAT_ID
-        assert send.call_args.args[2] == "really fired live"
+        assert send.call_args.args[2] == "תזכורת: really fired live"

@@ -15,11 +15,11 @@ Capture the raw request/response in `research.md`.
 
 ## 1. Create a one-time reminder (text approval)
 
-As the godfather: *"remind me to call the accountant in 10 minutes"* → confirm the AI presents an
-approval summary with the **rounded** time (nearest 5 minutes) → reply `כן` → confirm a
-confirmation message, phrased naturally (not a hardcoded template) → wait for the sweep tick →
-confirm the reminder text arrives in the godfather's own 1:1 chat, and the underlying
-`fired_occurrences` row exists.
+As the godfather, from their own 1:1 chat: *"remind me to call the accountant in 10 minutes"* →
+confirm the AI presents an approval summary with the **rounded** time (nearest 5 minutes) → reply
+`כן` → confirm a confirmation message, phrased naturally (not a hardcoded template) → wait for the
+sweep tick → confirm the reminder text (prefixed "תזכורת: ") arrives in the same chat it was
+created from (`delivery_chat_id`), and the underlying `fired_occurrences` row exists.
 
 ## 2. Create a one-time reminder (button approval)
 
@@ -105,8 +105,11 @@ declined the same way other godfather/admin-only tools are.
 
 ## 17. Admin acts on the godfather's behalf
 
-From the ADMIN number, create a reminder → confirm it still fires to the **godfather's** 1:1
-chat, not the admin's own chat.
+From the ADMIN number, in the admin's own 1:1 chat, create a reminder → confirm it fires to the
+**admin's own** 1:1 chat (`delivery_chat_id` = the chat it was created from), not the godfather's.
+Then simulate a failed send to the admin's chat and confirm the fallback goes to the admin's own
+1:1 too (`created_by_phone` = the admin, not the godfather) — never the godfather's chat, since the
+admin performed the action.
 
 ## 18. Restart-survives-and-catches-up
 
@@ -114,7 +117,9 @@ With a reminder due imminently: stop the `denidin-app-dev` container just before
 past the due time, restart → confirm `run_startup_reminder_sweep()` catches it and it fires late
 rather than being silently skipped.
 
-## 19. Group-chat creation, still fires to the 1:1
+## 19. Group-chat creation fires back to the group
 
-Create a reminder from a group chat DeniDin is in (as the godfather) → confirm it still fires to
-the godfather's 1:1 chat, not the group.
+Create a reminder from a group chat DeniDin is in (as the godfather or admin) → confirm it fires
+to that **same group** (`delivery_chat_id`), not the creator's 1:1 chat. Then simulate the group
+being unreachable (e.g. temporarily block delivery) and confirm the fallback goes to the actual
+creator's own 1:1 chat.

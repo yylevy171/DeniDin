@@ -19,6 +19,7 @@ from src.constants.error_messages import (
 from src.managers.pending_approval_manager import BUTTON_ID_APPROVE, BUTTON_ID_DECLINE
 from src.models.message import WhatsAppMessage, AIResponse
 from src.utils.logger import get_logger
+from src.utils.whatsapp_audit_log import log_outbound
 
 logger = get_logger(__name__)
 
@@ -97,6 +98,7 @@ class WhatsAppHandler:
 
         try:
             notification.answer(auto_reply)
+            log_outbound(notification.event.get("senderData", {}).get("chatId", ""), auto_reply, kind="text")
             logger.debug("Unsupported message auto-reply sent successfully")
         except Exception as e:
             logger.error(f"Failed to send unsupported message auto-reply: {e}", exc_info=True)
@@ -186,6 +188,10 @@ class WhatsAppHandler:
                 f"Response sent successfully for request {response.request_id}: "
                 f"{len(response.response_text)} chars"
             )
+            log_outbound(
+                notification.event.get("senderData", {}).get("chatId", ""),
+                response.response_text, kind="text",
+            )
 
         except requests.HTTPError as e:
             # Log specific HTTP error details
@@ -268,6 +274,10 @@ class WhatsAppHandler:
             )
             try:
                 notification.answer(APPROVAL_BUTTONS_SEND_FAILED)
+                log_outbound(
+                    notification.event.get("senderData", {}).get("chatId", ""),
+                    APPROVAL_BUTTONS_SEND_FAILED, kind="text",
+                )
             except Exception as notice_error:  # pylint: disable=broad-except
                 logger.error(
                     f"Failed to send approval-buttons failure notice for request "
@@ -278,6 +288,10 @@ class WhatsAppHandler:
         logger.info(
             f"Approval buttons sent successfully for request {response.request_id}: "
             f"idMessage={id_message}"
+        )
+        log_outbound(
+            notification.event.get("senderData", {}).get("chatId", ""),
+            response.response_text, kind="buttons",
         )
         return cast(str, id_message)
 
@@ -382,9 +396,11 @@ class WhatsAppHandler:
             # Send error message to user
             logger.warning(f"Media processing failed: {result.get('error_message', 'Unknown error')}")
             notification.answer(FAILED_TO_PROCESS_FILE_DEFAULT)
+            log_outbound(chat_id, FAILED_TO_PROCESS_FILE_DEFAULT, kind="text")
             return
         
         # Send summary to user (no approval workflow - just send as reply)
         summary = result.get("summary", "")
         logger.info(f"Sending media processing summary to {sender}")
         notification.answer(summary)
+        log_outbound(chat_id, summary, kind="text")

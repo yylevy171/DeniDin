@@ -20,6 +20,7 @@ from typing import Any, Callable, Optional
 from whatsapp_chatbot_python import GreenAPIBot, GreenAPIBotError
 
 from src.utils.logger import get_logger
+from src.utils.whatsapp_audit_log import log_outbound
 
 logger = get_logger(__name__)
 
@@ -110,6 +111,7 @@ def send_proactive_message(bot: Any, chat_id: str, message: str) -> Optional[str
 
     id_message = response.data.get("idMessage")
     logger.info(f"Sent proactive message (chatId={chat_id}, idMessage={id_message})")
+    log_outbound(chat_id, message, kind="proactive")
     return id_message
 
 

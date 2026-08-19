@@ -217,7 +217,7 @@ class TestReminderCreationProposal:
         for i in range(20):
             ai_handler.reminder_manager.create_reminder(
                 message_text=f"r{i}", schedule_type="one_time", one_time_due_at=_future_iso(60 + i),
-                recurrence=None, created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER",
+                recurrence=None, created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER", delivery_chat_id=f"{GODFATHER_PHONE}@c.us",
             )
         args = _create_args(one_time_due_at=_future_iso(500))
         response = _response([_function_call_item("create_reminder", args)])
@@ -323,7 +323,7 @@ class TestResolvePendingLocalToolApproval:
         for i in range(20):
             ai_handler.reminder_manager.create_reminder(
                 message_text=f"r{i}", schedule_type="one_time", one_time_due_at=_future_iso(60 + i),
-                recurrence=None, created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER",
+                recurrence=None, created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER", delivery_chat_id=f"{GODFATHER_PHONE}@c.us",
             )
         user_obj = ai_handler.user_manager.get_user(GODFATHER_PHONE)
         request = AIRequest(user_prompt="כן", constitution="", max_tokens=500,
@@ -426,7 +426,7 @@ class TestListReminders:
         ai_handler.reminder_manager.create_reminder(
             message_text="call the accountant", schedule_type="one_time",
             one_time_due_at=_future_iso(60), recurrence=None,
-            created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER",
+            created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER", delivery_chat_id=f"{GODFATHER_PHONE}@c.us",
         )
         response = _response([_function_call_item_with_id("list_reminders", {}, "call_list_1")])
         mock_ai_client.responses.create.return_value = _followup_response("יש לך תזכורת אחת")
@@ -461,12 +461,12 @@ class TestModifyDeleteProposal:
                     "month_nth_weekday": None, "first_occurrence_at": _future_iso(60),
                     "end_condition": "never", "end_count": None, "end_until": None,
                 },
-                created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER",
+                created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER", delivery_chat_id=f"{GODFATHER_PHONE}@c.us",
             )
         return ai_handler.reminder_manager.create_reminder(
             message_text="call the accountant", schedule_type="one_time",
             one_time_due_at=_future_iso(60), recurrence=None,
-            created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER",
+            created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER", delivery_chat_id=f"{GODFATHER_PHONE}@c.us",
         )
 
     def _modify_args(self, reminder_id, **overrides):
@@ -559,7 +559,7 @@ class TestModifyDeleteResolution:
     def test_approve_modify_whole_series_updates_reminder(self, ai_handler, mock_ai_client):
         r = ai_handler.reminder_manager.create_reminder(
             message_text="old text", schedule_type="one_time", one_time_due_at=_future_iso(60),
-            recurrence=None, created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER",
+            recurrence=None, created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER", delivery_chat_id=f"{GODFATHER_PHONE}@c.us",
         )
         pending = self._propose_modify(ai_handler, r["reminder_id"])
         mock_ai_client.responses.create.return_value = _followup_response("עודכן")
@@ -578,7 +578,7 @@ class TestModifyDeleteResolution:
     def test_approve_delete_whole_series_cancels_reminder(self, ai_handler, mock_ai_client):
         r = ai_handler.reminder_manager.create_reminder(
             message_text="text", schedule_type="one_time", one_time_due_at=_future_iso(60),
-            recurrence=None, created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER",
+            recurrence=None, created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER", delivery_chat_id=f"{GODFATHER_PHONE}@c.us",
         )
         pending = self._propose_delete(ai_handler, r["reminder_id"])
         mock_ai_client.responses.create.return_value = _followup_response("נמחק")
@@ -601,7 +601,7 @@ class TestModifyDeleteResolution:
                 "month_nth_weekday": None, "first_occurrence_at": _future_iso(60),
                 "end_condition": "never", "end_count": None, "end_until": None,
             },
-            created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER",
+            created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER", delivery_chat_id=f"{GODFATHER_PHONE}@c.us",
         )
         pending = self._propose_delete(
             ai_handler, r["reminder_id"], scope="single_occurrence",
@@ -627,7 +627,7 @@ class TestModifyDeleteResolution:
         r = ai_handler.reminder_manager.create_reminder(
             message_text="godfather's reminder", schedule_type="one_time",
             one_time_due_at=_future_iso(60), recurrence=None,
-            created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER",
+            created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER", delivery_chat_id=f"{GODFATHER_PHONE}@c.us",
         )
         pending = self._propose_modify(ai_handler, r["reminder_id"], new_message_text="admin edited this")
         mock_ai_client.responses.create.return_value = _followup_response("עודכן")
@@ -648,7 +648,7 @@ class TestModifyDeleteResolution:
         r = ai_handler.reminder_manager.create_reminder(
             message_text="godfather's reminder", schedule_type="one_time",
             one_time_due_at=_future_iso(60), recurrence=None,
-            created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER",
+            created_by_phone=GODFATHER_PHONE, created_by_role="GODFATHER", delivery_chat_id=f"{GODFATHER_PHONE}@c.us",
         )
         pending = self._propose_delete(ai_handler, r["reminder_id"])
         mock_ai_client.responses.create.return_value = _followup_response("נמחק")

@@ -7,10 +7,16 @@ query-heavy in a way that pattern doesn't serve well - see
 specs/in-progress/054-reminders-functionality-mgmt/data-model.md for the full
 schema and rationale).
 
-There is conceptually ONE reminder list, owned by "the godfather" - GODFATHER and
-ADMIN both fully manage it via the existing RBAC gate (no per-user ownership
-filtering anywhere in this module). `created_by_phone`/`created_by_role` are
-traceability-only fields, never consulted for access/cap decisions.
+There is conceptually ONE reminder list - GODFATHER and ADMIN both fully manage
+it via the existing RBAC gate (no per-user ownership filtering anywhere in this
+module, and `created_by_phone`/`created_by_role` are never consulted for
+access/cap decisions). `created_by_phone`/`created_by_role` ARE consulted for
+one thing: `created_by_phone` is the delivery sweep's fallback target if a send
+to `delivery_chat_id` fails (2026-08-19, user decision - see
+reminder_delivery_service.py). `delivery_chat_id` is the chat/group the
+reminder was created from - stored per-reminder at creation time, not
+re-derived at delivery time, and never sticky/changeable except by an explicit
+future request (redirect capability deferred).
 
 Recurrence is stored as a real RFC5545 RRULE string on the `reminders` row -
 this module is responsible for CONSTRUCTING and VALIDATING that string from a
@@ -244,7 +250,8 @@ class ReminderManager:
                 status TEXT NOT NULL DEFAULT 'active',
                 created_at TEXT NOT NULL,
                 created_by_phone TEXT NOT NULL,
-                created_by_role TEXT NOT NULL
+                created_by_role TEXT NOT NULL,
+                delivery_chat_id TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS reminder_exceptions (
@@ -281,8 +288,17 @@ class ReminderManager:
         recurrence: Optional[Dict[str, Any]],
         created_by_phone: str,
         created_by_role: str,
+        delivery_chat_id: str,
     ) -> Dict[str, str]:
         """Validate, round, and persist a new reminder. Returns {"reminder_id", "due_at"}.
+
+        delivery_chat_id (2026-08-19, user decision) is the chat the reminder fires
+        into - the chat/group it was created from, stored as a plain field on the
+        reminder (not re-derived at delivery time), never sticky/changeable except
+        by an explicit future request (redirect capability deferred, see
+        contracts/reminder-delivery.md). created_by_phone is the separate fallback
+        target the delivery sweep uses if a send to delivery_chat_id itself fails
+        (e.g. the group was exited) - see reminder_delivery_service.py.
 
         Raises InvalidRecurrenceError / ReminderPastDateError / ReminderCapExceededError
         on any validation failure - no partial row is ever persisted.
@@ -298,17 +314,18 @@ class ReminderManager:
         self._conn.execute(
             "INSERT INTO reminders "
             "(reminder_id, message_text, rrule, dtstart, status, created_at, "
-            " created_by_phone, created_by_role) VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
+            " created_by_phone, created_by_role, delivery_chat_id) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)",
             (
                 reminder_id, message_text, rrule_str, dtstart.isoformat(),
-                local_isoformat(), created_by_phone, created_by_role,
+                local_isoformat(), created_by_phone, created_by_role, delivery_chat_id,
             ),
         )
         self._conn.commit()
 
         logger.info(
             f"Created reminder {reminder_id} ({'recurring' if rrule_str else 'one-time'}), "
-            f"due_at={dtstart.isoformat()}, created_by={created_by_phone!r}/{created_by_role!r}"
+            f"due_at={dtstart.isoformat()}, created_by={created_by_phone!r}/{created_by_role!r}, "
+            f"delivery_chat_id={delivery_chat_id!r}"
         )
         return {"reminder_id": reminder_id, "due_at": dtstart.isoformat()}
 
@@ -372,7 +389,8 @@ class ReminderManager:
         """
         rows = self._conn.execute(
             "SELECT reminder_id, message_text, rrule, dtstart, created_by_phone, "
-            "created_by_role FROM reminders WHERE status = 'active' ORDER BY dtstart"
+            "created_by_role, delivery_chat_id FROM reminders WHERE status = 'active' "
+            "ORDER BY dtstart"
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -384,7 +402,8 @@ class ReminderManager:
         """
         row = self._conn.execute(
             "SELECT reminder_id, message_text, rrule, dtstart, created_by_phone, "
-            "created_by_role FROM reminders WHERE reminder_id = ? AND status = 'active'",
+            "created_by_role, delivery_chat_id FROM reminders "
+            "WHERE reminder_id = ? AND status = 'active'",
             (reminder_id,),
         ).fetchone()
         return dict(row) if row else None
@@ -466,6 +485,8 @@ class ReminderManager:
                     "reminder_id": row["reminder_id"],
                     "occurrence_datetime": occurrence_dt,
                     "message_text": str(occ.get("SUMMARY", row["message_text"])),
+                    "delivery_chat_id": row["delivery_chat_id"],
+                    "created_by_phone": row["created_by_phone"],
                 })
         return results
 
@@ -477,6 +498,9 @@ class ReminderManager:
         call would insert a second row), but the caller only ever calls this once per
         successful send; get_due_occurrences' already-fired filter is what actually
         prevents re-delivery on a later sweep, not this method refusing a duplicate.
+
+        Also marks the reminder 'completed' (2026-08-19, user feedback) if this was
+        its last possible occurrence - see _mark_completed_if_no_more_occurrences.
         """
         self._conn.execute(
             "INSERT INTO fired_occurrences "
@@ -489,6 +513,46 @@ class ReminderManager:
             f"Recorded fired occurrence for reminder {reminder_id} "
             f"(occurrence_datetime={occurrence_datetime.isoformat()})"
         )
+        self._mark_completed_if_no_more_occurrences(reminder_id, to_local(occurrence_datetime))
+
+    def _mark_completed_if_no_more_occurrences(self, reminder_id: str, just_fired_at: datetime) -> None:
+        """After recording a firing, mark the reminder 'completed' (a third
+        status value, distinct from 'active' and user-initiated 'cancelled')
+        if it has no more future occurrences left - so it stops appearing as
+        active anywhere (list_active/get_reminder/get_due_occurrences/the cap
+        count all already filter status='active', so this is the only change
+        needed for all of them to correctly exclude it).
+
+        A one-time reminder is always completed the instant it fires (no
+        RRULE means exactly one occurrence, ever). A recurring reminder stays
+        active unless its own end_condition (COUNT/UNTIL) means no more
+        occurrences remain within some realistic horizon - a 'never'-ending
+        recurring reminder is never auto-completed this way, only explicit
+        cancellation (delete_whole_series) ends it.
+
+        Reuses get_due_occurrences itself (not a separate query) for this
+        check - it already does exactly the calendar reconstruction +
+        cancelled/already-fired filtering this needs, just scoped here to one
+        reminder_id and a window starting just after the occurrence that was
+        just recorded.
+        """
+        row = self._conn.execute(
+            "SELECT * FROM reminders WHERE reminder_id = ? AND status = 'active'", (reminder_id,)
+        ).fetchone()
+        if row is None:
+            return  # already cancelled/completed (or never existed) - nothing to do
+        # 10 years out is far beyond any realistic end_condition=after_n/
+        # until_date bound - if a 'never'-ending recurring reminder is still
+        # active, this window will always find its next occurrence well
+        # before the cutoff, so it never gets marked completed here.
+        far_future = just_fired_at + timedelta(days=3650)
+        remaining = self.get_due_occurrences(just_fired_at + timedelta(microseconds=1), far_future)
+        if not any(o["reminder_id"] == reminder_id for o in remaining):
+            self._conn.execute(
+                "UPDATE reminders SET status = 'completed' WHERE reminder_id = ?", (reminder_id,)
+            )
+            self._conn.commit()
+            logger.info(f"Reminder {reminder_id} has no more future occurrences - marked completed")
 
     def _get_active_reminder_row(self, reminder_id: str) -> sqlite3.Row:
         row = self._conn.execute(

@@ -92,20 +92,39 @@ For every `reminders` row with `status = 'active'`:
    occurrences (live-verified 2026-08-16) — `ReminderManager` filters those out itself, one `if`
    check per returned occurrence, before anything is treated as due.
 3. For each concrete non-cancelled occurrence returned as due:
-   a. `message_text = occurrence's SUMMARY` (already resolved to the override text if this
-      occurrence came from a `reminder_exceptions` row, else the master's `message_text`).
-   b. `id_message = send_proactive_message(bot, godfather_chat_id, message_text)` — see below.
-   c. If `id_message is not None` (send succeeded): insert a `fired_occurrences` row
-      (`occurrence_datetime`, `delivered_at=now_local()`, `message_text_sent`); call
-      `session_manager.add_message(chat_id=godfather_chat_id, role="assistant",
-      content=message_text, user_role=<godfather's resolved role>, recipient=godfather_chat_id)`
-      so the delivered reminder shows up in that chat's session history like any other assistant
-      message (mirrors `ai_handler.py`'s existing outbound-message persistence call).
-   d. If `id_message is None` (send failed): log at ERROR, do **not** insert a `fired_occurrences`
-      row — the occurrence remains due and will be picked up again on the next sweep tick (the
-      sweep interval itself is the retry cadence; no separate retry/backoff state).
-4. `godfather_chat_id` is computed once per sweep tick as `f"{config.godfather_phone}@c.us"` —
-   never read from a per-reminder field (none exists — see `data-model.md`'s Ownership section).
+   a. `message_text = "תזכורת: " + occurrence's SUMMARY` (already resolved to the override text if
+      this occurrence came from a `reminder_exceptions` row, else the master's `message_text`) —
+      the "תזכורת: " prefix (2026-08-19, user feedback after the real Gate Zero live-fire test) so
+      a delivered reminder reads unambiguously as one, not just a bare line of text.
+   b. `id_message = send_proactive_message(bot, delivery_chat_id, message_text)` — see below for
+      `delivery_chat_id`.
+   c. **Fallback (2026-08-19, user decision — supersedes the original "always
+      `config.godfather_phone`'s 1:1 chat" design below)**: if that send fails
+      (`id_message is None`) AND `fallback_chat_id != delivery_chat_id`, retry once against
+      `fallback_chat_id = f"{created_by_phone}@c.us"` — the reminder's actual creator's own 1:1
+      chat, never a fixed godfather identity. This fallback is per-delivery only: it is never
+      written back onto the reminder row, so the next occurrence of the same reminder tries
+      `delivery_chat_id` again from scratch.
+   d. If a send succeeded (either the primary or the fallback attempt): insert a
+      `fired_occurrences` row (`occurrence_datetime`, `delivered_at=now_local()`,
+      `message_text_sent`); call `session_manager.add_message(chat_id=<the chat that actually
+      received it>, role="assistant", content=message_text, user_role=<the reminder's creator's
+      resolved role>, recipient=<the chat that actually received it>)` so the delivered reminder
+      shows up in that chat's session history like any other assistant message (mirrors
+      `ai_handler.py`'s existing outbound-message persistence call). Role/token-limit for this call
+      come from `created_by_phone` (always GODFATHER/ADMIN, since only those roles can create
+      reminders) — not from the delivery chat, which may be a group with no single governing role.
+   e. If both attempts failed (or the fallback was skipped because it's identical to
+      `delivery_chat_id`, and that one send failed): log at ERROR, do **not** insert a
+      `fired_occurrences` row — the occurrence remains due and will be picked up again on the next
+      sweep tick (the sweep interval itself is the retry cadence; no separate retry/backoff state).
+4. `delivery_chat_id` and `created_by_phone` are both plain per-reminder columns (see
+   `data-model.md`), read directly off the due-occurrence row `get_due_occurrences` returns —
+   `delivery_chat_id` is the chat/group the reminder was created from (set once, at creation time,
+   from `effective_chat_id`; never re-derived at delivery time, and never sticky/changeable except
+   by an explicit future request — redirect capability deferred). This supersedes the original
+   design (`godfather_chat_id` computed once per sweep tick as `f"{config.godfather_phone}@c.us"`,
+   used for every reminder unconditionally) that this section described until 2026-08-19.
 
 One-time reminders (`rrule IS NULL`) go through the identical code path — a VEVENT with no RRULE
 is just a single-instance calendar event to `recurring_ical_events`, so there is no special-case

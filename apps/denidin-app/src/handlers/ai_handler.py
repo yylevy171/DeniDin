@@ -642,9 +642,14 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
 # machinery as LEDGER_EVENT_TOOL, but - unlike capture_ledger_event, which
 # dispatches immediately - this one creates a PendingLocalToolApproval instead
 # of executing (see _handle_reminder_creation_proposal /
-# contracts/local-tool-approval-gate.md). No owner/chat_id field anywhere: the
-# delivery target is never supplied by the model, always resolved at fire time
-# from config.godfather_phone (FR-008).
+# contracts/local-tool-approval-gate.md). No owner/chat_id field in the
+# schema itself: the model never supplies a delivery target. It's resolved by
+# the application at approval time instead (2026-08-19, user decision,
+# supersedes the original "always config.godfather_phone" FR-008 design) -
+# delivery_chat_id is set to the chat/group the request was actually made in
+# (_resolve_pending_local_tool_approval passes effective_chat_id), with a
+# fallback to the requester's own 1:1 chat only if delivery there ever fails
+# (see reminder_delivery_service.py's _deliver_one_occurrence).
 CREATE_REMINDER_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "create_reminder",
@@ -1314,7 +1319,11 @@ class AIHandler:
             # 2026-07-28), just one level upstream - exposed by strengthening this
             # feature's E2E persistence assertions to check the exact value, not
             # just truthiness.
-            timestamp=message.timestamp
+            timestamp=message.timestamp,
+            # 2026-08-19: the whole original message, not just the fields this
+            # function happened to need at the time - see AIRequest.original_message's
+            # own docstring for why (ends a real created_by_phone bug for group turns).
+            original_message=message,
         )
 
         logger.debug(f"Created AIRequest {request.request_id} for message {message.message_id}")
@@ -2860,13 +2869,35 @@ class AIHandler:
             args = pending.arguments
             scope = args.get("scope")
             if pending.tool_name == CREATE_REMINDER_TOOL["name"]:
+                # created_by_phone/role must reflect the LITERAL sender of this
+                # turn, not the RBAC-resolved user_obj/user_role - for a group
+                # turn those are Feature 039's most-permissive-member
+                # resolution (e.g. an admin, even when a lower-privileged
+                # member actually sent the message), which is correct for
+                # permissions/token-limits but wrong for traceability. Pulled
+                # from request.original_message (2026-08-19 fix - see
+                # AIRequest.original_message's docstring) rather than user_obj.
+                if request.original_message:
+                    literal_sender_phone = request.original_message.sender_id
+                    literal_sender_role = user_role
+                    if self.rbac_enabled and self.user_manager:
+                        literal_user_obj = self.user_manager.get_user(literal_sender_phone)
+                        if literal_user_obj:
+                            literal_sender_role = literal_user_obj.role
+                else:
+                    # No original_message on this request (should not happen
+                    # in production - defensive fallback only) - fall back to
+                    # the previous, RBAC-resolved behavior rather than error.
+                    literal_sender_phone = user_obj.phone if user_obj else (sender or effective_chat_id)
+                    literal_sender_role = user_obj.role if user_obj else user_role
                 result = self.reminder_manager.create_reminder(
                     message_text=cast(str, args.get("message_text")),
                     schedule_type=cast(str, args.get("schedule_type")),
                     one_time_due_at=args.get("one_time_due_at"),
                     recurrence=args.get("recurrence"),
-                    created_by_phone=user_obj.phone if user_obj else (sender or effective_chat_id),
-                    created_by_role=user_obj.role if user_obj else user_role,
+                    created_by_phone=literal_sender_phone,
+                    created_by_role=literal_sender_role,
+                    delivery_chat_id=effective_chat_id,
                 )
             elif pending.tool_name == MODIFY_REMINDER_TOOL["name"] and scope == "single_occurrence":
                 result = self.reminder_manager.modify_single_occurrence(
@@ -2969,13 +3000,13 @@ class AIHandler:
         return ai_response
 
     def resolve_button_tap(
-        self, chat_id: str, selected_id: str, stanza_id: str, message_id: str,
-        user_phone: Optional[str], sender: Optional[str],
+        self, message: WhatsAppMessage, selected_id: str, stanza_id: str,
     ) -> Optional[AIResponse]:
         """
-        Feature 047: resolves a WhatsApp interactive-button tap against chat_id's
-        pending approval (Feature 022), if the tap's stanza_id matches the message
-        it was actually sent as (contracts/pending-approval-message-binding.md).
+        Feature 047: resolves a WhatsApp interactive-button tap against
+        message.chat_id's pending approval (Feature 022), if the tap's
+        stanza_id matches the message it was actually sent as
+        (contracts/pending-approval-message-binding.md).
 
         Deliberately does NOT reimplement approve/decline resolution: once the
         stanza_id match below confirms this tap is live (not stale/superseded -
@@ -2988,12 +3019,23 @@ class AIHandler:
         decline is byte-for-byte the same experience as a typed one, per US2's
         non-interference requirement).
 
+        Takes the whole `message` (2026-08-19, user decision), not individual
+        scalar fields pulled out of it by the caller - `chat_id`/`message_id`/
+        `sender_id`/`sender_display_name` all come from it directly, and
+        AIRequest.original_message carries the same object further downstream
+        (e.g. into a reminder's created_by_phone) without yet another
+        parameter threaded through get_response/_resolve_pending_local_tool_approval.
+
         Returns:
             None if there's no pending approval, or its sent_message_id doesn't
             equal stanza_id (stale/superseded tap) - per spec.md Clarifications,
             the caller must send nothing observable at all in this case. A real
             AIResponse otherwise.
         """
+        chat_id = message.chat_id
+        user_phone = message.sender_id
+        sender = message.sender_display_name
+
         user_obj = None
         if self.rbac_enabled and self.user_manager and user_phone:
             user_obj = self.user_manager.get_user(user_phone)
@@ -3040,7 +3082,8 @@ class AIHandler:
             max_tokens=self.config.ai_reply_max_tokens,
             model=self.config.ai_model,
             chat_id=chat_id,
-            message_id=message_id,
+            message_id=message.message_id,
+            original_message=message,
         )
         return self.get_response(
             synthetic_request, chat_id=chat_id, user_role=user_obj.role,

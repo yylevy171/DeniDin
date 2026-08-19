@@ -638,6 +638,7 @@ class TestReminderLifecycleBilled:
                 message_text=f"cap filler {i}", schedule_type="one_time",
                 one_time_due_at=(now_local() + timedelta(minutes=60 + i)).isoformat(),
                 recurrence=None, created_by_phone=phone, created_by_role="GODFATHER",
+                delivery_chat_id=chat_id,
             )
         assert len(reminder_manager.list_active()) == 20
 
