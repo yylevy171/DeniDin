@@ -27,7 +27,6 @@ class TestTextMessageSynthesis:
     def test_produces_text_message_type(self):
         result = synthesize_notification(
             _text_message(), chat_id="972501234567@c.us", sender_id="972501234567@c.us",
-            idmessage_seq=1,
         )
         assert result is not None
         event, type_message = result
@@ -37,7 +36,7 @@ class TestTextMessageSynthesis:
     def test_round_trips_through_real_whatsapp_message_parsing(self):
         event, _type_message = synthesize_notification(
             _text_message(text="David Cohen, 5000 NIS"),
-            chat_id="972501234567@c.us", sender_id="972501234567@c.us", idmessage_seq=1,
+            chat_id="972501234567@c.us", sender_id="972501234567@c.us",
         )
 
         class _FakeNotification:
@@ -54,23 +53,32 @@ class TestTextMessageSynthesis:
 
     def test_real_historical_timestamp_preserved(self):
         event, _ = synthesize_notification(
-            _text_message(), chat_id="c", sender_id="s", idmessage_seq=1,
+            _text_message(), chat_id="c", sender_id="s",
         )
 
         assert event["timestamp"] == int(datetime(2025, 9, 1, 7, 30, tzinfo=timezone.utc).timestamp())
 
     def test_sender_display_name_becomes_sender_name(self):
         event, _ = synthesize_notification(
-            _text_message(sender="Ayelet \U0001F98B"), chat_id="c", sender_id="s", idmessage_seq=1,
+            _text_message(sender="Ayelet \U0001F98B"), chat_id="c", sender_id="s",
         )
 
         assert event["senderData"]["senderName"] == "Ayelet \U0001F98B"
 
-    def test_idmessage_is_unique_per_sequence_number(self):
-        event1, _ = synthesize_notification(_text_message(), chat_id="c", sender_id="s", idmessage_seq=1)
-        event2, _ = synthesize_notification(_text_message(), chat_id="c", sender_id="s", idmessage_seq=2)
+    def test_idmessage_is_a_real_uuid_unique_per_call(self):
+        """2026-08-20: idMessage is now a real random UUID (player-{uuid4}),
+        not a caller-supplied sequence number - see synthesize_notification's
+        own docstring for the real incident (denidin.py's
+        RecentNotificationDeduper) that motivated this. Two calls with
+        otherwise IDENTICAL arguments must still produce different idMessage
+        values - the old sequence-number scheme needed a differing
+        idmessage_seq to prove this; a UUID proves it unconditionally."""
+        event1, _ = synthesize_notification(_text_message(), chat_id="c", sender_id="s")
+        event2, _ = synthesize_notification(_text_message(), chat_id="c", sender_id="s")
 
         assert event1["idMessage"] != event2["idMessage"]
+        assert event1["idMessage"].startswith("player-")
+        assert event2["idMessage"].startswith("player-")
 
 
 class TestImageMessageSynthesis:
@@ -83,7 +91,7 @@ class TestImageMessageSynthesis:
 
     def test_produces_image_message_type_for_jpg(self):
         result = synthesize_notification(
-            self._image_message(), chat_id="c", sender_id="s", idmessage_seq=1,
+            self._image_message(), chat_id="c", sender_id="s",
             media_base_url="http://127.0.0.1:8000",
         )
         assert result is not None
@@ -94,7 +102,7 @@ class TestImageMessageSynthesis:
     def test_download_url_built_from_media_base_url_and_filename(self):
         event, _ = synthesize_notification(
             self._image_message(filename="IMG-0001.jpg"), chat_id="c", sender_id="s",
-            idmessage_seq=1, media_base_url="http://127.0.0.1:8000",
+            media_base_url="http://127.0.0.1:8000",
         )
 
         assert event["messageData"]["fileMessageData"]["downloadUrl"] == "http://127.0.0.1:8000/IMG-0001.jpg"
@@ -103,7 +111,7 @@ class TestImageMessageSynthesis:
     def test_caption_threaded_into_file_message_data(self):
         event, _ = synthesize_notification(
             self._image_message(caption="Signed agreement"), chat_id="c", sender_id="s",
-            idmessage_seq=1, media_base_url="http://127.0.0.1:8000",
+            media_base_url="http://127.0.0.1:8000",
         )
 
         assert event["messageData"]["fileMessageData"]["caption"] == "Signed agreement"
@@ -111,7 +119,7 @@ class TestImageMessageSynthesis:
     def test_mime_type_inferred_from_extension(self):
         event, _ = synthesize_notification(
             self._image_message(filename="photo.png"), chat_id="c", sender_id="s",
-            idmessage_seq=1, media_base_url="http://127.0.0.1:8000",
+            media_base_url="http://127.0.0.1:8000",
         )
 
         assert event["messageData"]["fileMessageData"]["mimeType"] == "image/png"
@@ -119,7 +127,7 @@ class TestImageMessageSynthesis:
     def test_round_trips_through_real_whatsapp_message_parsing(self):
         event, _ = synthesize_notification(
             self._image_message(), chat_id="972501234567@c.us", sender_id="972501234567@c.us",
-            idmessage_seq=1, media_base_url="http://127.0.0.1:8000",
+            media_base_url="http://127.0.0.1:8000",
         )
 
         class _FakeNotification:
@@ -143,7 +151,7 @@ class TestDocumentMessageSynthesis:
 
     def test_pdf_produces_document_message_type(self):
         result = synthesize_notification(
-            self._pdf_message(), chat_id="c", sender_id="s", idmessage_seq=1,
+            self._pdf_message(), chat_id="c", sender_id="s",
             media_base_url="http://127.0.0.1:8000",
         )
         assert result is not None
@@ -153,7 +161,7 @@ class TestDocumentMessageSynthesis:
     def test_docx_produces_document_message_type(self):
         result = synthesize_notification(
             self._pdf_message(filename="agreement.docx"), chat_id="c", sender_id="s",
-            idmessage_seq=1, media_base_url="http://127.0.0.1:8000",
+            media_base_url="http://127.0.0.1:8000",
         )
         assert result is not None
         _event, type_message = result
@@ -169,7 +177,7 @@ class TestUnsupportedAttachmentTypes:
         )
 
         result = synthesize_notification(
-            msg, chat_id="c", sender_id="s", idmessage_seq=1, media_base_url="http://127.0.0.1:8000",
+            msg, chat_id="c", sender_id="s", media_base_url="http://127.0.0.1:8000",
         )
 
         assert result is None
@@ -182,7 +190,7 @@ class TestUnsupportedAttachmentTypes:
         )
 
         result = synthesize_notification(
-            msg, chat_id="c", sender_id="s", idmessage_seq=1, media_base_url="http://127.0.0.1:8000",
+            msg, chat_id="c", sender_id="s", media_base_url="http://127.0.0.1:8000",
         )
 
         assert result is None

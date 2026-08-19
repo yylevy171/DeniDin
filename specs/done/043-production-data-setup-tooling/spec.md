@@ -12,8 +12,12 @@ confirmed model non-determinism). A follow-up PR #236 (2026-08-20) fixed stale
 billed/expensive test assertions against Phase 11's real schema (found via a
 full test-suite sweep, not a new phase) plus a real `max_retries` config-drop
 gap in the player's own `_build_config_dict` (found during a master-merge
-impact review) — see HANDOFF.md for detail. Feature not yet fully complete —
-stays in `specs/in-progress/`, not moved to `specs/done/`.
+impact review). A further follow-up PR #237 (same day) fixed a real,
+serious collision between the player's synthesized `idMessage` and a
+second, concurrently-landed master change (`RecentNotificationDeduper`) that
+would have silently swallowed most of a player run's dispatches — see
+HANDOFF.md for detail. Feature not yet fully complete — stays in
+`specs/in-progress/`, not moved to `specs/done/`.
 **Input**: User request, 2026-08-05/06 (see Origin + Clarifications below)
 
 ---
