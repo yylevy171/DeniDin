@@ -210,30 +210,52 @@ written AND run together, once, only after Phase 1 AND Phase 2 are both fully GR
 
 - [ ] **T009** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** Describe (in `tasks.md`
   here, no test file, no code) the `billed`-tier acceptance scenario for US1: a godfather/admin
-  sends DeniDin a natural Hebrew message describing a refundable deposit just received from a
-  known, existing client (money that isn't business income) → DeniDin resolves the real client
-  and asks for approval (never executes on the ASK turn) → the godfather replies "כן" → DeniDin
-  confirms a receipt was created, naming the client and amount, with no invoice ever mentioned
-  or created — validates REQ-INV-014/015/018 (standalone creation, required fields, free-text
-  description) and RBAC/approval-gate wiring, from the real user's perspective, not just T002a's
-  unit-level checks or T003a's direct-call integration checks. This description is the target;
-  nothing here is executable yet.
+  sends DeniDin a natural Hebrew message asking to create a receipt for a known, existing client,
+  giving an amount and a reason/description (any plausible free text — e.g. a deposit, a loan
+  repayment, an advance payment; the specific wording is flavor, not a distinct code path — the
+  mechanism under test is the standalone-creation branch itself, triggered by no invoice being
+  referenced) → DeniDin resolves the real client and asks for approval (never executes on the
+  ASK turn) → the godfather replies "כן" → DeniDin confirms a receipt was created. **Verification
+  is NOT just that first confirmation's reply text** — send a real SECOND turn asking DeniDin to
+  look up the receipt's details (e.g. "מה הפרטים של הקבלה הזאת?"), triggering a real
+  `get_invoice_details`/`list_invoices` MCP call against the live Morning sandbox, and assert on
+  that follow-up call's own real output: no invoice/tax document is ever mentioned for this
+  receipt, the amount/client match what was asked. This is `apps/denidin-app`'s established
+  `tests/billed/test_denidin_morning_*_e2e.py` convention — verification via a real follow-up
+  conversational turn's real MCP-call output, **never a raw `MorningClient` call**, since
+  `denidin-app`'s test files never import `denidin_mcp_morning`/`MorningClient` at all (the
+  "app-wall" — `denidin-app` only ever reaches Morning over the real MCP tunnel). Validates
+  REQ-INV-014/015/018 and RBAC/approval-gate wiring from the real user's perspective, not just
+  T002a's unit-level checks or T003a's direct-call integration checks (which, being in
+  `apps/morning-mcp-app`, has no such wall and DOES use a raw `MorningClient.get_invoice` call).
+  This description is the target; nothing here is executable yet.
 - [ ] **T010** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** Describe (in `tasks.md`
   here, no test file, no code) the `billed`-tier acceptance scenario for US2: a godfather sends
-  DeniDin a natural Hebrew message asking to cancel a transaction account → DeniDin asks for
-  approval (never executes on the ASK turn) → the godfather replies "כן" → DeniDin confirms the
-  cancellation, and the confirmation text never says the account was "paid" — validates
-  REQ-INV-023 (RBAC/approval-gate wiring) and REQ-INV-026 (non-"paid" wording) from the real
-  user's perspective, not just T005a's unit-level formatter check. This description is the
-  target; nothing here is executable yet.
+  DeniDin a natural Hebrew message asking to cancel a real, pre-seeded, open transaction account
+  → DeniDin asks for approval (never executes on the ASK turn) → the godfather replies "כן" →
+  DeniDin confirms the cancellation, and the confirmation text never says the account was "paid".
+  **Verification is NOT just that confirmation's reply text** — send a real SECOND turn asking
+  DeniDin to look up the account's current status (e.g. "מה המצב של חשבון העסקה הזה?"),
+  triggering a real `get_invoice_details`/`list_invoices` MCP call against the live Morning
+  sandbox, and assert on that follow-up call's own real output: the account no longer reads as
+  open, and nothing in the reply/output claims a payment was received — same real-follow-up-turn
+  verification pattern as T009 (never a raw `MorningClient` call — `denidin-app`'s app-wall).
+  Validates REQ-INV-023 (RBAC/approval-gate wiring) and REQ-INV-026 (non-"paid" wording) from the
+  real user's perspective, not just T005a's unit-level formatter check (which, being in
+  `apps/morning-mcp-app`, has no such wall). This description is the target; nothing here is
+  executable yet.
 - [ ] **T011** **[TDD — WRITE + RUN, ONCE Phases 1 and 2 are both GREEN]** Turn T009's and
   T010's descriptions into real `billed` tests in `apps/denidin-app/tests/billed/` (existing
   Morning-tool RBAC/approval files if any already cover these shapes, otherwise new files —
   e.g. `test_standalone_receipt_billed.py`, `test_cancel_transaction_account_billed.py` —
-  following the existing `tests/billed/test_denidin_morning_*_e2e.py` pattern) and run both
-  immediately, for real — the writing and the first run happen together, at this point, not
-  before. Needs `denidin-app` dev running with Morning MCP attached — its own separate, explicit
-  environment-start approval, not implied by anything earlier in this task list. On failure: fix
+  following the existing `tests/billed/test_denidin_morning_*_e2e.py` pattern, including its
+  real-API-verification convention) and run both immediately, for real — the writing and the
+  first run happen together, at this point, not before. Both tests MUST include the real
+  second-turn `get_invoice_details`/`list_invoices` verification step described in T009/T010 —
+  a test that only checks the first turn's chat reply text does not satisfy this task. Needs
+  `denidin-app` dev running
+  with Morning MCP attached — its own separate, explicit environment-start approval, not implied
+  by anything earlier in this task list. On failure: fix
   forward (this is real acceptance validation against completed code, not a RED-phase check — a
   failure here means the feature doesn't actually work yet, not that a test needs approval).
 - [ ] **T012** 👤 **MANUAL APPROVAL GATE**: run `quickstart.md`'s full scenario set (both US1 and
@@ -286,4 +308,5 @@ same PR or a separate one — spec.md's Success Criteria (SC1/SC2) are each sati
 phase alone, so partial delivery (Phase 1 only, for a while) is a legitimate, real MVP, not just
 a task-list convenience. Phase 3 (the actual "TDD" per §VI.a) is the whole feature's final
 acceptance pass — it only makes sense to run once both phases being shipped together are GREEN;
-if Phase 1 ships alone first, Phase 3's `billed` test (US2-specific) waits until Phase 2 lands.
+if Phase 1 ships alone first, T011/T012 wait until Phase 2 lands too (T009's US1 scenario can
+still be described early, but its test code isn't written/run until both stories are complete).
