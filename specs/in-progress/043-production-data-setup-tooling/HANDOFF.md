@@ -1,13 +1,109 @@
 # Handoff: Feature 043 — WhatsApp Export → Ledger Event "Player"
 
-**Updated**: 2026-08-19 (continuation of the same day's session — real
-`player/run_player.py` fixes landed after the previous handoff was written)
+**Updated**: 2026-08-20 (new session, continuing after PR #232 merged
+2026-08-19 — Phases 1–4/9/11 were already live on master when this session
+started)
 **Branch**: `feature/043-production-data-setup-tooling`
-**Committed and pushed this session**: `ab514c7` (Message identity-field
-redesign, `LedgerEvent.whatsapp_chat` removed — see below), `70422aa` (prior
-version of this handoff), `0f6356b` (real `run_player.py` data_root fix +
-clarification-loop mechanism — see below), on top of `9f844ad` (prior
-session's Phase 11 follow-up). `git log --oneline -6` to orient.
+
+---
+
+## 2026-08-20 session: billed/expensive test staleness sweep + master-merge impact review
+
+Not new feature work — a verification/hardening pass, requested explicitly:
+"go over all expensive and billed tests and adapt them to THIS feature's
+changes. Make sure assertions are not stale, new fields are asserted on,
+etc."
+
+### 1. Billed/expensive test staleness sweep (commit `883195f`)
+
+Swept every file under `tests/billed/` and `tests/expensive/` against Phase
+11's real, already-merged schema changes (`ab514c7`/`47f6fdf`/`ba5512f`/
+`9f844ad`) — not just the files that happened to already mention them. Found
+and fixed real bugs, not cosmetic staleness:
+
+- **`tests/e2e_helpers.py`'s `assert_image_path_persisted`** checked
+  `message_data["role"] == "user"` — but `role` is now the real RBAC role
+  (`"admin"`/`"godfather"`/`"client"`), never literally `"user"`. This would
+  have failed **every** billed/expensive test that calls it (every image/
+  media test across 3 files). Fixed to check `ai_required_role` (falling
+  back to `role`), matching `SessionManager`'s own switch.
+- **`tests/expensive/test_ledger_event_capture_e2e.py`**'s
+  `_assert_ledger_events_persisted` still asserted the removed
+  `message_timestamp`/`sender` fields instead of `event_datetime` — the
+  exact same bug `test_ledger_event_capture_billed.py` already caught and
+  fixed on 2026-08-18; this expensive-tier copy was missed at the time.
+- **`tests/expensive/test_group_b_reference_approval_e2e.py`** and
+  **`tests/billed/test_denidin_vcf_contact_e2e.py`** both filtered
+  persisted ledger-event files by `data.get("whatsapp_chat") == chat_id` —
+  a field removed from the schema. The condition was silently always
+  `False`, so `_clear_chat_test_data` never actually deleted anything
+  (defeating cross-run isolation for a fixed, shared chat_id) and
+  `_ledger_event_count_for_chat`'s before/after guard was a vacuous
+  `0 == 0` pass that could never have caught a real false-positive ledger
+  capture. Both fixed to resolve `session_id` instead — verified live via
+  direct filesystem check (a mid-test event file, confirmed created via
+  code-guaranteed log ordering, was confirmed gone after cleanup ran).
+
+New-field coverage added (Phase 11 fields nothing exercised at the
+persisted-record level before): `bank_number`/`bank_branch`/`bank_account`,
+forced-null `payer_name`, forced `vat_status="כולל"` on both real
+bank-deposit image tests; a new `assert_extracted_text_persisted` helper
+wired into the DOCX/PDF expensive tests (closing the coverage gap left by
+the real `PDFExtractor`/`DOCXExtractor` `extracted_text` bug Phase 11's
+follow-up found and fixed at unit level, but never proved on the live E2E
+document path).
+
+**Verified live, not just reasoned about**: all 6 `test_ledger_event_capture_e2e.py`
+tests, all 5 `test_media_e2e.py` tests, and 1/2 `test_denidin_vcf_contact_e2e.py`
+tests pass (the other's failure — a Thai-text model artifact — and
+`test_group_b_reference_approval_e2e.py`'s failure — a pre-existing
+`create_receipt` argument-population gap — were both independently confirmed
+unrelated to this work via direct log/filesystem inspection, not assumed).
+
+### 2. Master-merge impact review (merge `452e01e`, uncommitted fix below)
+
+Master had moved on significantly (Feature 054 reminders, plus a config fix)
+since PR #232. Merged clean (no conflicts) and assessed impact:
+
+- **Feature 054 (reminders)** is structurally isolated from this feature:
+  `capture_ledger_event` explicitly bypasses the new `PendingLocalToolApproval`
+  gate reminders use ("unlike `capture_ledger_event`, which dispatches
+  immediately" — confirmed in code, not assumed). The constitution's Ledger
+  Event Recognition section was confirmed to explicitly exclude
+  reminder-management messages ("automatically 'Neither'"), matching
+  `CLAUDE.md`'s bidirectional-cross-reference mandate. `ReminderManager`
+  derives its storage path from `config.data_root` directly (same
+  discipline as `LedgerEventManager`), so the player's existing
+  `data_root` override already isolates it — no new gap. The reminder
+  delivery scheduler is deliberately not started by `initialize_app()`
+  (only `__main__`), so neither tests nor the player spawn one.
+- **`c375c08`** (master) made `AppConfiguration.max_retries` a real field
+  wired into the OpenAI client's own `max_retries=`, replacing a silently-
+  dropped config value. Found (not yet fixed at merge time): `player/run_player.py`'s
+  `_build_config_dict` hand-builds its returned dict and never included
+  `max_retries` — the exact same silent-field-drop shape as the
+  `data_root`/`storage_dir` gap this file's own docstring already documents
+  fixing once. Invisible today only because the dataclass default (`1`)
+  happens to match `config/config.player_prod.json`'s own value (also `1`).
+  **Fixed** (uncommitted at merge time, committed this round): added
+  `'max_retries': config.max_retries,` to the returned dict. Verified
+  directly: `_build_config_dict(...)` → `AppConfiguration(**d)` →
+  `.validate()` succeeds with `max_retries == 1`, no longer silently
+  defaulted.
+- Merge also surfaced 3 new dependencies (`icalendar`, `recurring-ical-events`,
+  `APScheduler`) not yet installed in this clone's venv — installed;
+  confirmed 1102/1102 unit+integration tests pass post-merge.
+
+### 3. Random-sample live verification (12 tests: 10 billed + 2 expensive)
+
+Using the newly-merged `scripts/run_single_test.sh` (mandatory capture
+discipline, per `CLAUDE.md`) — 10 billed + 2 expensive tests chosen randomly
+from the full suite (one expensive re-roll, user's choice, after the first
+random draw picked an already-known-failing, already-reached-OpenAI test).
+**11/12 passed**; the one failure (`test_denidin_morning_document_creation_e2e.py::test_godfather_creates_combo_document_via_whatsapp`)
+was a Morning-sandbox test-client-seeding collision (`_seed_fresh_client`
+exhausted 5 retry attempts against real pre-existing sandbox clients) —
+unrelated to any code in this feature or this session's changes.
 
 ---
 

@@ -55,6 +55,16 @@ def _build_config_dict(config_path: str, data_root: str) -> dict:
     instead of the player's own isolated output folder. Explicitly overriding
     both here, the same way this exact fix was already proven out in the
     Feature 043 interactive-review scratch tooling, closes that gap for good.
+
+    2026-08-20 fix: `max_retries` was loaded onto `config` by
+    AppConfiguration.from_file but never copied into the returned dict below -
+    the same silent-field-drop shape as the data_root/storage_dir gap above,
+    just for a different field (found during a master-merge impact review,
+    c375c08 - max_retries became a real, wired-through AppConfiguration field
+    that now controls the OpenAI() client's own max_retries=). Went unnoticed
+    because the dataclass default (1) happened to match this file's
+    config.player_prod.json value (also 1) - harmless today, but silent if
+    that value were ever changed. Added below alongside every other field.
     """
     from src.models.config import AppConfiguration
 
@@ -78,6 +88,7 @@ def _build_config_dict(config_path: str, data_root: str) -> dict:
         'ai_vision_model': config.ai_vision_model,
         'ai_embedding_model': config.ai_embedding_model,
         'ai_reply_max_tokens': config.ai_reply_max_tokens,
+        'max_retries': config.max_retries,
         'log_level': config.log_level,
         'data_root': data_root,
         'feature_flags': config.feature_flags,
