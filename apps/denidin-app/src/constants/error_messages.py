@@ -35,3 +35,13 @@ LEDGER_FOLLOWUP_FAILED_TRY_AGAIN = "אני נתקלתי בשגיאה בעיבו�
 # text-only version of them). Clarify decision: surface an error, never a silent
 # fallback to the plain-text approval prompt.
 APPROVAL_BUTTONS_SEND_FAILED = "לא הצלחתי לשלוח את בקשת האישור עם כפתורים. אנא נסה לשלוח את הבקשה שוב."
+
+# Reminders (Feature 054) - local-tool approval-gate friendly messages.
+# REMINDER_ACTION_FAILED_TRY_AGAIN: the manager-level re-check at approval time
+# (closing the TOCTOU gap - cap/past-date re-verified, not just at proposal
+# time) failed, mirroring APPROVAL_FAILED_TRY_AGAIN's role for MCP approvals.
+REMINDER_ACTION_FAILED_TRY_AGAIN = "לא הצלחתי לבצע את פעולת התזכורת כרגע. אנא נסה שוב בעוד רגע."
+# REMINDER_PAST_DATE_REJECTED / REMINDER_CAP_EXCEEDED: proposal-time rejections
+# (FR-005/FR-006), shown immediately instead of a false approval prompt.
+REMINDER_PAST_DATE_REJECTED = "אי אפשר להגדיר תזכורת למועד שכבר עבר. אנא ציין מועד עתידי."
+REMINDER_CAP_EXCEEDED = "כבר יש 20 תזכורות פעילות - המספר המרבי המותר. יש למחוק תזכורת קיימת לפני יצירת תזכורת חדשה."

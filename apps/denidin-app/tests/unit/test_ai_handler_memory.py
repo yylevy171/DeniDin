@@ -232,7 +232,7 @@ class TestAIHandlerConversationHistory:
         # is appended to `instructions` at reply time (so the model has a
         # clock), so this is a prefix + date suffix, not an exact match.
         assert call_args["instructions"].startswith("Test system")
-        assert "THE CURRENT DATE IS" in call_args["instructions"]
+        assert "THE CURRENT DATE AND TIME IS" in call_args["instructions"]
         input_items = call_args["input"]
         assert len(input_items) == 3
         assert input_items[0] == {"role": "user", "content": "Previous question"}

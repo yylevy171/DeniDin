@@ -43,6 +43,7 @@ data/sessions/
 data/memory/
 data/media/
 data/events/
+data/reminders/
 
 # Test data (generated during tests)
 test_data/
