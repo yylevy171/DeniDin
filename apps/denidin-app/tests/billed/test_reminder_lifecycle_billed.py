@@ -216,6 +216,31 @@ class TestReminderLifecycleBilled:
         matching = [o for o in due if o["reminder_id"] == reminder_id]
         return sorted(matching, key=lambda o: o["occurrence_datetime"])
 
+    @staticmethod
+    def _occurrence_on_date(occurrences, target_date):
+        """Find the one occurrence whose calendar date matches target_date -
+        by DATE, never by list index (2026-08-20 fix). A daily reminder's
+        occurrences[0] is only "tomorrow's" if the run happens to start
+        after today's own time has already passed - a real billed-test
+        failure when a sweep ran right around midnight, where today's
+        occurrence was still upcoming and sorted first. Matching by the
+        actual calendar date is correct no matter what time of day the test
+        runs."""
+        matches = [o for o in occurrences if o["occurrence_datetime"].date() == target_date]
+        assert len(matches) == 1, (
+            f"expected exactly 1 occurrence on {target_date}, got {len(matches)}: {matches}"
+        )
+        return matches[0]["occurrence_datetime"]
+
+    @staticmethod
+    def _occurrence_after(occurrences, after_datetime):
+        """The occurrence immediately following after_datetime - used as an
+        untouched "control" occurrence, whatever calendar date it actually
+        falls on (never a hardcoded index)."""
+        later = [o["occurrence_datetime"] for o in occurrences if o["occurrence_datetime"] > after_datetime]
+        assert later, f"expected at least 1 occurrence after {after_datetime}, got none"
+        return min(later)
+
     def _simulate_sweep(self, denidin_app, monkeypatch, simulated_now):
         """Runs ONE real sweep pass as if `simulated_now` were the wall clock -
         the real ReminderManager/get_due_occurrences/record_occurrence_fired
@@ -319,6 +344,79 @@ class TestReminderLifecycleBilled:
         second = self._simulate_sweep(denidin_app, monkeypatch, occ2)
         second.assert_called_once()  # only occ2 - occ1 is not re-delivered
 
+    # --- Past-date rejection (2026-08-20, user-requested coverage) ---------------
+    # FR-005 at the conversational tier - the ReminderManager-level unit tests
+    # (TestPastDateRejection in test_reminder_manager.py) already prove the
+    # storage layer rejects an already-past first_occurrence_at if handed one
+    # directly; these prove the real conversational path (the MODEL'S OWN date
+    # reasoning, not just the storage-layer guard behind it) gets this right
+    # too, for both a one-time reminder and - the case that prompted this,
+    # raised while investigating a real time-of-day-dependent test failure -
+    # a recurring reminder whose naive same-day clock time has already
+    # passed today (e.g. asking at 23:00 for "every day at 09:00" must
+    # resolve to tomorrow's 09:00, never today's already-gone one).
+
+    def test_one_time_reminder_in_the_past_declined(self, denidin_app, config):
+        """quickstart.md scenario #4, automated: an explicitly past one-time
+        request ("yesterday") must never persist a reminder, whether the
+        model itself declines or ReminderPastDateError's friendly fallback
+        fires - "yesterday" is unambiguous at any time of day, unlike a bare
+        same-day clock time (see the recurring test below)."""
+        phone, chat_id = self._godfather(config)
+        reminder_manager = denidin_app.ai_handler.reminder_manager
+        ids_before = self._active_ids(reminder_manager)
+
+        n1 = self._send_text(
+            chat_id, phone, "Test Godfather",
+            "תזכיר לי אתמול בשעה 17:00 להתקשר לרואה חשבון", "one_time_past_declined",
+        )
+        response = self._get_response(n1)
+        assert response is not None
+
+        assert self._active_ids(reminder_manager) == ids_before, (
+            "a past-dated one-time reminder request must never actually persist a reminder"
+        )
+
+    def test_recurring_reminder_with_already_passed_time_today_skips_to_tomorrow(self, denidin_app, config):
+        """The exact real-world case that motivated this coverage: a daily
+        recurring reminder requested for a clock time already gone today
+        must schedule its first occurrence for tomorrow (or later), never
+        today's already-past slot. The reference moment is computed
+        dynamically (never a fixed offset) so this holds at any time of day
+        the test happens to run, including the one edge case - just after
+        midnight - where a naive "now minus a few minutes" would wrap back
+        into yesterday and land on a time that's actually still upcoming
+        today."""
+        phone, chat_id = self._godfather(config)
+        reminder_manager = denidin_app.ai_handler.reminder_manager
+        ids_before = self._active_ids(reminder_manager)
+
+        now = now_local()
+        past_moment = now - timedelta(minutes=1)
+        if past_moment.date() != now.date():
+            # Just after midnight - "1 minute ago" wrapped into yesterday,
+            # which would actually still be in the future today. A few
+            # seconds before `now`, same calendar date, is always safely
+            # already-past instead.
+            past_moment = now - timedelta(seconds=5)
+        hhmm = past_moment.strftime("%H:%M")
+
+        self._create_approved_reminder(
+            denidin_app, config, phone, chat_id,
+            f"תזכיר לי כל יום בשעה {hhmm} לקחת תרופה", "recurring_past_today_setup",
+        )
+        reminder_id = self._new_reminder_id(reminder_manager, ids_before)
+        row = reminder_manager.get_reminder(reminder_id)
+        assert row is not None
+        dtstart = to_local(datetime.fromisoformat(row["dtstart"]))
+
+        assert dtstart > now_local(), "the persisted first occurrence must be in the future"
+        assert dtstart.date() > past_moment.date(), (
+            f"{hhmm} has already passed today ({past_moment.date()}) - the first "
+            f"occurrence must be scheduled for a later date, not today's already-past "
+            f"slot, got {dtstart.isoformat()}"
+        )
+
     # --- Find-by-time (2026-08-18, user-requested coverage) ----------------------
     # list_reminders has no date/time filter parameter at all - "what do I have
     # tomorrow" relies entirely on the model's own reasoning over the full active
@@ -395,8 +493,14 @@ class TestReminderLifecycleBilled:
         window_end = now_local() + timedelta(days=10)
         occurrences_before = self._occurrences(reminder_manager, reminder_id, now_local(), window_end)
         assert len(occurrences_before) >= 2
-        first_before = occurrences_before[0]["occurrence_datetime"]
-        second_before = occurrences_before[1]["occurrence_datetime"]
+
+        # Found by calendar date, not list index (2026-08-20 fix - see
+        # _occurrence_on_date's own docstring for the real failure this
+        # closed): "tomorrow" only means occurrences_before[0] if today's
+        # own 9:00 has already passed by the time the test happens to run.
+        tomorrow_date = (now_local() + timedelta(days=1)).date()
+        tomorrow_before = self._occurrence_on_date(occurrences_before, tomorrow_date)
+        control_before = self._occurrence_after(occurrences_before, tomorrow_before)
 
         n1 = self._send_text(
             chat_id, phone, "Test Godfather",
@@ -407,23 +511,28 @@ class TestReminderLifecycleBilled:
         n2 = self._send_text(chat_id, phone, "Test Godfather", "כן", "modify_single_approve")
         assert self._get_response(n2) is not None
 
-        # --- Delivery: ONLY the detached occurrence's time moved; the series'
-        # next (untouched) occurrence still fires at its original time. ---
+        # --- Delivery: ONLY the detached (tomorrow's) occurrence's time
+        # moved; the series' next untouched occurrence still fires at its
+        # original time. ---
         occurrences_after = self._occurrences(reminder_manager, reminder_id, now_local(), window_end)
         assert len(occurrences_after) >= 2
-        detached = occurrences_after[0]["occurrence_datetime"]
-        assert detached != first_before, "the detached occurrence's time must have actually moved"
-        assert occurrences_after[1]["occurrence_datetime"] == second_before, (
+        tomorrow_after = self._occurrence_on_date(occurrences_after, tomorrow_date)
+        assert tomorrow_after != tomorrow_before, "the detached occurrence's time must have actually moved"
+        assert tomorrow_after.strftime("%H:%M") == "10:00", (
+            f"expected the detached occurrence at 10:00, got {tomorrow_after.strftime('%H:%M')}"
+        )
+        control_after = self._occurrence_on_date(occurrences_after, control_before.date())
+        assert control_after == control_before, (
             "the next series occurrence must be untouched by a single-occurrence edit"
         )
 
-        old_slot_check = self._simulate_sweep(denidin_app, monkeypatch, first_before)
+        old_slot_check = self._simulate_sweep(denidin_app, monkeypatch, tomorrow_before)
         old_slot_check.assert_not_called()  # detached away - no occurrence left at the old time
 
-        detached_check = self._simulate_sweep(denidin_app, monkeypatch, detached)
+        detached_check = self._simulate_sweep(denidin_app, monkeypatch, tomorrow_after)
         detached_check.assert_called_once()
 
-        next_series_check = self._simulate_sweep(denidin_app, monkeypatch, second_before)
+        next_series_check = self._simulate_sweep(denidin_app, monkeypatch, control_before)
         next_series_check.assert_called_once()  # untouched, still fires on the original schedule
 
     def test_modify_whole_series_pattern(self, denidin_app, config, monkeypatch):
