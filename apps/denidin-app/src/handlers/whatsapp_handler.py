@@ -375,7 +375,9 @@ class WhatsAppHandler:
             chat_id=chat_id,
             timestamp=timestamp,
             message_id=message_id,
-            sender_display_name=message.sender_display_name
+            sender_display_name=message.sender_display_name,
+            is_group=message.is_group,
+            chat_name=message.chat_name
         )
         
         if not result.get("success", False):

@@ -4,8 +4,12 @@
 **Feature ID**: 043-production-data-setup-tooling
 **Priority**: TBD
 **Created**: August 5, 2026
-**Status**: Draft — user-stories.md reviewed and confirmed story-by-story
-with the user, 2026-08-06; pending plan/tasks
+**Status**: In progress — Phases 1–4, 9, 11 (+ follow-up) implemented and
+merged via PR #232 (2026-08-19). Phase 8 still open (checked against a real
+33-message run and found unproven — see tasks.md/HANDOFF.md); Phases 5–7
+deprioritized, not removed; Phase 10 removed entirely (bad premise given
+confirmed model non-determinism). Feature not yet fully complete — stays in
+`specs/in-progress/`, not moved to `specs/done/`.
 **Input**: User request, 2026-08-05/06 (see Origin + Clarifications below)
 
 ---

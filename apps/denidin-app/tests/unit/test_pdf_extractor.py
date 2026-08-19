@@ -114,6 +114,46 @@ def test_extract_hebrew_multipage_pdf(pdf_extractor, mock_image_extractor):
         assert mock_image_extractor.analyze_media.call_count == 3
 
 
+def test_extracted_text_combined_from_all_pages(pdf_extractor, mock_image_extractor):
+    """Feature 043 (2026-08-18): extracted_text was previously missing entirely
+    from this extractor's return dict (only raw_response existed, despite
+    ImageExtractor - what each page delegates to - genuinely having it) - now
+    combined per-page the same way raw_response already is."""
+    pdf_media = Media.from_bytes(b"fake PDF data", "application/pdf", "test.pdf")
+
+    with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
+        mock_doc = MagicMock()
+        mock_doc.__len__.return_value = 2
+        pages = [Mock(), Mock()]
+        for i, page in enumerate(pages):
+            pixmap = Mock()
+            pixmap.tobytes.return_value = f"PNG data page {i+1}".encode()
+            pixmap.width = 612
+            pixmap.height = 792
+            page.get_pixmap.return_value = pixmap
+        mock_doc.__iter__.return_value = pages
+        mock_doc.__getitem__.side_effect = lambda x: pages[x]
+        mock_fitz.open.return_value = mock_doc
+
+        mock_image_extractor.analyze_media.side_effect = [
+            {
+                "raw_response": "עמוד ראשון",
+                "extracted_text": "טקסט עמוד ראשון",
+                "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o",
+            },
+            {
+                "raw_response": "עמוד שני",
+                "extracted_text": "טקסט עמוד שני",
+                "extraction_quality": "high", "warnings": [], "model_used": "gpt-4o",
+            },
+        ]
+
+        result = pdf_extractor.analyze_media(pdf_media)
+
+        assert "טקסט עמוד ראשון" in result["extracted_text"]
+        assert "טקסט עמוד שני" in result["extracted_text"]
+
+
 def test_extract_single_page_pdf(pdf_extractor, mock_image_extractor):
     """
     CHK010: Handle single-page PDF correctly.

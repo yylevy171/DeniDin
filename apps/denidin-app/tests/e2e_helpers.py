@@ -13,6 +13,8 @@ import logging
 from pathlib import Path
 from whatsapp_chatbot_python import Notification
 
+from src.utils.time_utils import local_from_timestamp
+
 logger = logging.getLogger(__name__)
 
 
@@ -234,3 +236,179 @@ def validate_extraction_response(response):
     assert not found, f"Response ends with filler follow-up(s) {found}\nResponse: {response}"
 
     return hebrew_ratio
+
+
+class ClarificationAnswerBank:
+    """
+    2026-08-18 (player-review follow-up): a real, curated E2E test message's
+    turn-1 model behavior can be genuinely non-deterministic - sometimes it
+    captures directly, sometimes it asks a clarifying question about one or
+    more specific fields first (real observed example: "is משרד הרווחה the
+    payer or the related matter? is 'בית משפט השלום' what's meant?"). A test
+    that only ever sends the original message can't reliably reach the
+    capture it's actually trying to assert on.
+
+    Deterministic, keyword-based answer composer for exactly this situation -
+    NO second AI call, no NLP. This works because the test fixture is fixed
+    and curated: the test author already knows the ground-truth correct value
+    for every field the model could plausibly ask about, so "answering the
+    question" reduces to "which known topic(s) does the question's own text
+    touch" (keyword matching), not actually understanding free text.
+
+    Usage:
+        bank = ClarificationAnswerBank([
+            {"topic": "payer_vs_matter", "keywords": ["משלם", "גורם המשלם"],
+             "answer": "משרד הרווחה לא משלם, זה מקום העבודה של הלקוח"},
+            {"topic": "court_name", "keywords": ["בית משפט", "משפט שלום"],
+             "answer": "הכוונה ל'בית משפט השלום', כן"},
+        ])
+        next_message, matched_topics = bank.compose_answer(model_reply_text)
+
+    If the question's text doesn't match ANY topic's keywords, compose_answer
+    returns `fallback` (default: "לא הבנתי את השאלה, תעשה מה שאתה מבין") and an
+    empty matched-topics list - lets the model proceed on its own judgment
+    rather than the test guessing wrong or getting the conversation stuck. If
+    it matches MULTIPLE topics (the model asking about more than one field at
+    once), every matched topic's answer is included, joined with "; ".
+    """
+
+    DEFAULT_FALLBACK = "לא הבנתי את השאלה, תעשה מה שאתה מבין"
+
+    def __init__(self, topics, fallback=None):
+        """
+        topics: list of {"topic": str, "keywords": [str, ...], "answer": str}
+            - one entry per field/ambiguity this test's fixture message could
+            plausibly raise a question about. Extend with a new entry the
+            moment a real run surfaces a question no existing topic matches -
+            never widen an existing topic's keywords to cover it by
+            coincidence, that risks a false match on an unrelated future
+            question.
+        fallback: sent when no topic matches; defaults to DEFAULT_FALLBACK.
+        """
+        self.topics = topics
+        self.fallback = fallback if fallback is not None else self.DEFAULT_FALLBACK
+
+    def compose_answer(self, question_text):
+        """Returns (answer_text, matched_topics) - matched_topics is [] exactly
+        when the fallback was used, so callers can log/assert on whether a
+        real match happened vs. the safety-net fired."""
+        matched_topics = []
+        matched_answers = []
+        for entry in self.topics:
+            if any(keyword in question_text for keyword in entry["keywords"]):
+                matched_topics.append(entry["topic"])
+                matched_answers.append(entry["answer"])
+        if not matched_answers:
+            return self.fallback, []
+        return "; ".join(matched_answers), matched_topics
+
+
+def converse_until_ledger_events_captured(
+    *, handle_text_message, chat_id, first_message_text, answer_bank,
+    events_for_chat, base_timestamp, base_id_message, sender_data,
+    instance_data=None, max_turns=4, turn_interval_seconds=30, test_logger=None,
+):
+    """
+    Generic multi-turn E2E driver (2026-08-18) for a real ledger-capture test
+    whose model behavior on the first turn is non-deterministic (sometimes
+    captures directly, sometimes asks a clarifying question first). Sends
+    first_message_text; after EACH turn, checks events_for_chat(chat_id) - the
+    moment it returns anything, stops and returns those events immediately
+    (never sends a further turn once real capture has happened - sending an
+    unconditional follow-up after a turn that already captured is exactly what
+    caused a real observed DOUBLE capture, 6 events instead of 3, in this
+    mechanism's first version). If still empty, treats that turn's own reply
+    as a clarifying question, runs it through answer_bank.compose_answer(),
+    and sends the composed answer as the next turn - up to max_turns total.
+
+    Args:
+        handle_text_message: the real denidin.handle_text_message callable.
+        chat_id: this conversation's chat id.
+        first_message_text: the real fixture message to send on turn 1.
+        answer_bank: a ClarificationAnswerBank instance.
+        events_for_chat: callable(chat_id) -> list of persisted ledger event
+            dicts for this chat (e.g. a test class's own _events_for_chat).
+        base_timestamp: turn 1's Green API notification timestamp (unix
+            epoch seconds, fixed not wall-clock - see REQ-ID-002/003 in any
+            caller's own bucket-cleanup code). Turn N uses
+            base_timestamp + (N-1) * turn_interval_seconds.
+        base_id_message: prefix for each turn's synthetic idMessage
+            (suffixed "_<turn_num>").
+        sender_data / instance_data: passed straight into
+            create_real_notification's senderData/instanceData - instance_data
+            defaults to the same fixed test instance every E2E test already
+            uses.
+        max_turns: safety cap - never loops forever waiting for a capture that
+            isn't coming.
+        turn_interval_seconds: spacing between synthetic turn timestamps.
+        test_logger: optional logger for GIVEN/WHEN/THEN-style progress lines
+            (falls back to this module's own logger).
+
+    Returns:
+        (events, transcript) - events is whatever events_for_chat returned the
+        turn capture was detected (never empty). transcript is
+        [{"turn": int, "sent": str, "reply": str, "matched_topics": [str,...]}]
+        in turn order, for logging/debugging - matched_topics is [] on a turn
+        that used the fallback (or on the final captured turn, which never
+        composes an answer at all).
+
+    Raises:
+        AssertionError if no events exist for chat_id after max_turns turns.
+    """
+    log = test_logger or logger
+    transcript = []
+    events = []
+    text = first_message_text
+    ts = base_timestamp
+
+    for turn_num in range(1, max_turns + 1):
+        notification = create_real_notification({
+            'typeWebhook': 'incomingMessageReceived',
+            'timestamp': ts,
+            'idMessage': f"{base_id_message}_{turn_num}",
+            'instanceData': instance_data or {
+                'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'
+            },
+            'senderData': sender_data,
+            'messageData': {
+                'typeMessage': 'textMessage',
+                'textMessageData': {'textMessage': text},
+            },
+        })
+        log.info(f"GIVEN turn {turn_num}: {text!r}")
+        handle_text_message(notification)
+        reply = get_response(notification)
+        assert_response_exists(reply)
+        log.info(f"THEN turn {turn_num} reply: {reply!r}")
+
+        events = events_for_chat(chat_id)
+        entry = {"turn": turn_num, "sent": text, "reply": reply, "matched_topics": []}
+        transcript.append(entry)
+
+        if events:
+            log.info(f"Ledger events detected after turn {turn_num} - stopping the conversation here")
+            return events, transcript
+
+        text, matched_topics = answer_bank.compose_answer(reply)
+        entry["matched_topics"] = matched_topics
+        log.info(f"No events yet - composed next turn from matched_topics={matched_topics!r}: {text!r}")
+        ts += turn_interval_seconds
+
+    raise AssertionError(
+        f"No ledger events captured for chat_id={chat_id!r} after {max_turns} turn(s) - "
+        f"transcript: {transcript!r}"
+    )
+
+
+def reserve_ledger_event_bucket_prefixes(base_timestamp, max_turns, turn_interval_seconds=30, letter="A"):
+    """The full set of event_id bucket prefixes (letter+DDMMYY+HHMM) a
+    converse_until_ledger_events_captured call COULD produce across ALL its
+    possible turns, regardless of how many turns actually run on a given real
+    run - for a caller's before/after cleanup. LedgerEventManager._next_seq
+    scans real files on disk for REQ-ID-002's collision check, never cleaned
+    automatically between test runs (a real, order-independent failure,
+    2026-08-03 - see any caller's own docstring for the incident)."""
+    return {
+        f"{letter}{local_from_timestamp(base_timestamp + i * turn_interval_seconds).strftime('%d%m%y%H%M')}"
+        for i in range(max_turns)
+    }

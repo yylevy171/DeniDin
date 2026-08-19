@@ -38,16 +38,27 @@ class MediaExtractor(ABC):
         self.ai_handler = denidin_context.ai_handler
     
     @abstractmethod
-    def analyze_media(self, media: Media, caption: str = "") -> Dict:
+    def analyze_media(self, media: Media, caption: str = "", today_timestamp: Optional[int] = None) -> Dict:
         """
         Analyze media and return AI response.
-        
+
         Must return consistent structure across all implementations.
-        
+
         Args:
             media: Media object containing file data in memory
             caption: User's message/question sent with the file (optional)
-            
+            today_timestamp: (Feature 043) Unix epoch int - the source
+                message's real historical timestamp, threaded down from
+                MediaHandler.process_media_message's own `timestamp` param.
+                Only ImageExtractor (directly, and PDFExtractor via its
+                per-page delegation to ImageExtractor) does anything with
+                this - it overrides wall-clock "today" in the ledger-event
+                classification call's date resolution (see
+                AIHandler._build_instructions/capture_ledger_events_from_text).
+                DOCXExtractor accepts but ignores it (no ledger capture on
+                that path). `None` (the default) preserves current
+                wall-clock behavior everywhere.
+
         Returns:
             {
                 "raw_response": str,                # Full unmodified AI response
