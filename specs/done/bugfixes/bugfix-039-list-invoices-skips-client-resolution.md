@@ -530,7 +530,7 @@ the same underlying gap turned out to affect document creation too (see "Session
 ## Related Work
 - `specs/done/031-fuzzy-client-lookup-by-name/` — the feature whose incomplete confirmation left
   this open; this bugfix effectively reopens its core question with cases its probes didn't cover.
-- `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` B4 — the
+- `specs/done/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md` B4 — the
   creation-tool-side client-matching defect (word-prefix matching rejecting a valid search-tool
   output); different code path, same root category (client-name matching isn't robust enough). B1
   (closed-question phrasing to avoid parser misses) directly informed this fix's confirmation
