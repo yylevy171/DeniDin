@@ -155,13 +155,23 @@ def _ledger_event_count_for_chat(denidin_app, chat_id: str) -> int:
     through the exact same conversational AIHandler pipeline (and the same always-attached
     LEDGER_EVENT_TOOL) as any text message, so nothing structurally prevents the model from
     misreading contact-card fields as fee-agreement/bank-deposit content. Same
-    before/after-count pattern as test_ledger_event_capture_e2e.py's ordinary-chatter guard."""
+    before/after-count pattern as test_ledger_event_capture_e2e.py's ordinary-chatter guard.
+
+    2026-08-20 (billed/expensive test sweep for Feature 043's Phase 11 schema
+    revision): was filtering by `data.get("whatsapp_chat") == chat_id`, but
+    whatsapp_chat was removed from the persisted schema (2026-08-19, redundant
+    with session_id) - the condition was silently always False, so this guard's
+    before/after counts were always 0 == 0, a vacuous pass that could never have
+    caught a real false positive. Fixed to resolve session_id via SessionManager
+    and filter by that instead, matching the same fix already applied to every
+    other ledger-event helper in this schema revision."""
+    session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
     storage_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
     count = 0
     for f in storage_dir.glob("*.json"):
         with open(f, encoding="utf-8") as fh:
             data = json.load(fh)
-        if data.get("whatsapp_chat") == chat_id:
+        if data.get("session_id") == session_id:
             count += 1
     return count
 

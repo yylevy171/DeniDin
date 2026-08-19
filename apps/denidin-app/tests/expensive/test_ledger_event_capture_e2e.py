@@ -330,9 +330,9 @@ class TestLedgerEventCaptureE2E:
     @staticmethod
     def _assert_ledger_events_persisted(denidin_app, chat_id, expected_count, expected_event_timestamp):
         """Asserts events were persisted for this chat, each with the bookkeeping
-        fields LedgerEventManager.add_ledger_event adds (message_timestamp = the
-        real hard pointer, sender, captured_at, message_id) present and correct.
-        Returns the events in capture order for further field-specific assertions.
+        fields LedgerEventManager.add_ledger_event adds (event_datetime = the real
+        hard pointer, captured_at, message_id) present and correct. Returns the
+        events in capture order for further field-specific assertions.
 
         expected_count: exact count required, or None to only assert >=1 (used when
         the real component split is genuinely uncertain - e.g. a multi-component
@@ -342,6 +342,16 @@ class TestLedgerEventCaptureE2E:
         expected_event_timestamp: the real Green API notification timestamp (unix
         epoch seconds) these events should be pointed at - the constitution's "hard
         pointer" requirement (never processing time, never a guess).
+
+        2026-08-20 (billed/expensive test sweep for Feature 043's Phase 11 schema
+        revision): this helper was stale in the exact same way
+        tests/billed/test_ledger_event_capture_billed.py's copy was found and fixed
+        on 2026-08-18 - `message_timestamp` and `sender` were both removed from the
+        persisted record (folded into event_datetime; see data-model.md SS1b), but
+        this expensive-tier copy still asserted on them, which would have failed
+        the very next real (billed) run of this file. Fixed to check
+        `event_datetime` (DD/MM/YYYY HH:MM, Israel local) and dropped the sender
+        assertion entirely, matching the billed helper exactly.
         """
         events = TestLedgerEventCaptureE2E._events_for_chat(denidin_app, chat_id)
         if expected_count is None:
@@ -352,20 +362,23 @@ class TestLedgerEventCaptureE2E:
                 f"found {len(events)}: {events}"
             )
 
-        # bugfix-037: message_timestamp is now persisted in Israel local time (with a
-        # real offset), not UTC - build the expected value the same way the app does.
-        expected_ts_iso = local_from_timestamp(expected_event_timestamp).isoformat()
+        # bugfix-037/Phase 11: event_datetime is Israel local time, "DD/MM/YYYY HH:MM".
+        expected_event_datetime = local_from_timestamp(expected_event_timestamp).strftime("%d/%m/%Y %H:%M")
         for record in events:
-            assert record.get("message_timestamp") == expected_ts_iso, (
-                f"message_timestamp={record.get('message_timestamp')!r} does not match the "
-                f"real notification timestamp {expected_ts_iso!r} - the constitution's 'hard "
-                f"pointer' requirement (never processing time, never a guess)"
+            assert record.get("event_datetime") == expected_event_datetime, (
+                f"event_datetime={record.get('event_datetime')!r} does not match the "
+                f"real notification timestamp {expected_event_datetime!r} - the constitution's "
+                f"'hard pointer' requirement (never processing time, never a guess)"
             )
-            assert record.get("sender"), "sender was not persisted"
             assert record.get("captured_at"), "captured_at was not persisted"
             assert record.get("message_id"), (
                 "message_id must be non-null for events captured after Feature 033 - "
                 "closes the traceability gap that motivated this feature"
+            )
+            assert "raw_message_excerpt" not in record, (
+                "raw_message_excerpt was removed from the persisted schema (2026-08-18) - "
+                "the source content now lives on the message record itself "
+                "(Message.content for text, Message.extracted_text for media)"
             )
         return events
 
@@ -439,7 +452,7 @@ class TestLedgerEventCaptureE2E:
         assert_response_exists(response)
 
         # THEN: verify against the real persisted data/events/{event_id}.json files,
-        # including message_timestamp being the real notification timestamp
+        # including event_datetime being the real notification timestamp
         # (1770000200) - NOT processing time (the bug found and fixed 2026-07-28).
         events = self._assert_ledger_events_persisted(
             denidin_app, chat_id, expected_count=3, expected_event_timestamp=1770000200
@@ -520,6 +533,22 @@ class TestLedgerEventCaptureE2E:
         assert captured["amount"] == 9440, f"expected amount normalized to int 9440, got {captured['amount']!r}"
         assert captured["event_id"].startswith("B")
         self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
+
+        # Phase 11 (2026-08-16): payer_name is a הסכם-only concept, forced null for
+        # every בנק event regardless of what the model passed - no bank_number/
+        # bank_branch/bank_account ground truth is asserted for THIS image (a
+        # "זיכוי ממס"ב" credit, visually distinct from Bank-test-image.jpg and not
+        # confirmed at the extraction layer either - see
+        # test_image_classification_e2e.py's test_kehilat_tzair_deposit_is_classified_
+        # as_a_bank_deposit, which only asserts amount for the same reason), but this
+        # payer_name/vat_status enforcement is unconditional and applies here too.
+        assert captured.get("payer_name") is None, (
+            f"payer_name must be forced null for בנק events, got {captured.get('payer_name')!r}"
+        )
+        assert captured.get("vat_status") == "כולל", (
+            f"vat_status is unconditionally כולל for בנק (money already deposited "
+            f"necessarily contains the VAT element already), got {captured.get('vat_status')!r}"
+        )
 
         # Feature 043 (2026-08-18): raw_message_excerpt was removed from the ledger
         # event itself - the source message's own extracted_text is now where this
@@ -733,13 +762,43 @@ class TestLedgerEventCaptureE2E:
         assert captured["event_id"].startswith("B"), f"malformed event_id: {captured['event_id']!r}"
         self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
 
+        # Phase 11 (2026-08-16/2026-08-20 sweep): bank_number/bank_branch/bank_account
+        # are new persisted fields (real-data-grounded schema revision), with known
+        # ground truth for this exact image already established at the extraction
+        # layer (tests/expensive/test_image_classification_e2e.py's
+        # test_bank_test_image_is_classified_as_a_bank_deposit) - this is the first
+        # real proof those fields survive all the way through to the persisted
+        # ledger event, not just the model's raw extraction.
+        assert str(captured.get("bank_number")) == "31", f"bank_number: {captured.get('bank_number')!r}"
+        assert str(captured.get("bank_branch")) == "109", f"bank_branch: {captured.get('bank_branch')!r}"
+        assert str(captured.get("bank_account")) == "105542585", (
+            f"bank_account: {captured.get('bank_account')!r}"
+        )
+
+        # Finding #4 (2026-08-18 player review) + payer_name/vat_status enforcement:
+        # payer_name is a הסכם-only concept, forced null for בנק regardless of what
+        # the model passed - the account-holder name is rescued into client_name
+        # instead (never lose a real captured name to a field-choice mistake).
+        assert captured.get("payer_name") is None, (
+            f"payer_name must be forced null for בנק events, got {captured.get('payer_name')!r}"
+        )
+        assert self.BANK_IMAGE_PAYER.split()[0] in (captured.get("client_name") or ""), (
+            f"the account-holder name (עטיה רועי מאיר) must land in client_name for "
+            f"a בנק event, got client_name={captured.get('client_name')!r}"
+        )
+        assert captured.get("vat_status") == "כולל", (
+            f"vat_status is unconditionally כולל for בנק (money already deposited "
+            f"necessarily contains the VAT element already), got {captured.get('vat_status')!r}"
+        )
+
         # ---------------- bugfix-028: the document the deposit implies ----------------
         try:
             # Asserted in the PERSISTED form, not the model's raw output: the
             # model emits ISO (per capture_ledger_event's schema) and
             # `_normalize_iso_date` converts it to this project's stored
-            # DD/MM/YYYY convention, matching `event_date` (REQ-DATA-005/007).
-            # Despite its name that helper normalizes FROM ISO, not to it.
+            # DD/MM/YYYY convention, matching `event_datetime`'s date portion
+            # (REQ-DATA-005/007). Despite its name that helper normalizes FROM
+            # ISO, not to it.
             assert captured.get("txn_date") == "12/07/2026", (
                 f"A3: the transaction date on the screenshot (12/07/2026) must be "
                 f"captured, got {captured.get('txn_date')!r} - the document date cannot "
