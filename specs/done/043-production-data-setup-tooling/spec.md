@@ -4,11 +4,8 @@
 **Feature ID**: 043-production-data-setup-tooling
 **Priority**: TBD
 **Created**: August 5, 2026
-**Status**: In progress — Phases 1–4, 9, 11 (+ follow-up) implemented and
-merged via PR #232 (2026-08-19). Phase 8 still open (checked against a real
-33-message run and found unproven — see tasks.md/HANDOFF.md); Phases 5–7
-deprioritized, not removed; Phase 10 removed entirely (bad premise given
-confirmed model non-determinism). A follow-up PR #236 (2026-08-20) fixed stale
+**Status**: Done — Phases 1–4, 9, 11 (+ follow-up) implemented and merged via
+PR #232 (2026-08-19). A follow-up PR #236 (2026-08-20) fixed stale
 billed/expensive test assertions against Phase 11's real schema (found via a
 full test-suite sweep, not a new phase) plus a real `max_retries` config-drop
 gap in the player's own `_build_config_dict` (found during a master-merge
@@ -16,8 +13,15 @@ impact review). A further follow-up PR #237 (same day) fixed a real,
 serious collision between the player's synthesized `idMessage` and a
 second, concurrently-landed master change (`RecentNotificationDeduper`) that
 would have silently swallowed most of a player run's dispatches — see
-HANDOFF.md for detail. Feature not yet fully complete — stays in
-`specs/in-progress/`, not moved to `specs/done/`.
+HANDOFF.md for detail. Moved to `specs/done/` 2026-08-20 (human decision).
+**Remaining open items are deliberately NOT blocking closure, tracked for a
+future session**: Phase 8 (image-path replay regression, checked against a
+real 33-message run and found unproven — see tasks.md/HANDOFF.md); Phases
+5–7 (reconciliation/relevancy/review-queue), deprioritized, not removed;
+Phase 10 removed entirely (bad premise given confirmed model
+non-determinism); the constitution "model should ask more often" gap
+(Findings C/D/E's root cause); Finding A (message-loss-on-exception, still
+unfixed).
 **Input**: User request, 2026-08-05/06 (see Origin + Clarifications below)
 
 ---
