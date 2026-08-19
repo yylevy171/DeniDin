@@ -52,7 +52,7 @@ class PlayerExportSource(MessageSource):
         self.outcomes: List[Dict] = []  # populated during start(), one entry per message
 
     def start(self, dispatch: Callable[[str, object], None]) -> None:
-        for idmessage_seq, msg in enumerate(self._messages, start=1):
+        for msg in self._messages:
             sender_id = self._sender_map.get(msg.sender_display_name)
             if sender_id is None:
                 self.outcomes.append({
@@ -62,9 +62,14 @@ class PlayerExportSource(MessageSource):
                 })
                 continue
 
+            # 2026-08-20: idMessage is now a real UUID, generated inside
+            # synthesize_notification itself - no per-batch sequence number to
+            # thread through here anymore (see that function's own docstring
+            # for why an enumerate()-based counter was actively dangerous once
+            # denidin.py's RecentNotificationDeduper started keying off it).
             result = synthesize_notification(
                 msg, chat_id=self._chat_id, sender_id=sender_id,
-                idmessage_seq=idmessage_seq, media_base_url=self._media_base_url,
+                media_base_url=self._media_base_url,
             )
             if result is None:
                 self.outcomes.append({

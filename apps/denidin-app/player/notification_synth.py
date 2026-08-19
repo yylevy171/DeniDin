@@ -11,6 +11,7 @@ functions (denidin.py) without ever needing a live Green API connection.
 See contracts/message-source.md for the full contract.
 """
 import mimetypes
+import uuid
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -44,7 +45,6 @@ def synthesize_notification(
     msg: ParsedMessage,
     chat_id: str,
     sender_id: str,
-    idmessage_seq: int,
     media_base_url: Optional[str] = None,
 ) -> Optional[Tuple[dict, str]]:
     """
@@ -56,10 +56,6 @@ def synthesize_notification(
             an export identifies a conversation by name only, never a JID).
         sender_id: this message's sender's JID (resolved via the operator-supplied
             --sender-map, per contracts/message-source.md - never guessed).
-        idmessage_seq: a run-unique sequence number, used only to build a
-            syntactically-plausible (but semantically unused downstream -
-            WhatsAppMessage.from_notification generates its own message_id UUID,
-            confirmed in research.md R2) `idMessage`.
         media_base_url: base URL of the player's LocalMediaServer, required
             whenever `msg` has an attachment (used to build `downloadUrl`).
 
@@ -79,7 +75,30 @@ def synthesize_notification(
     base_event = {
         "typeWebhook": "incomingMessageReceived",
         "timestamp": timestamp,
-        "idMessage": f"player-{idmessage_seq}",
+        # 2026-08-20: a real random UUID, not a caller-supplied sequence number.
+        # Used to be `f"player-{idmessage_seq}"`, a per-call-site counter that
+        # restarted at 1 for every fresh PlayerExportSource instance - harmless
+        # while idMessage was purely cosmetic/unused downstream (see below), but
+        # dangerous once denidin.py's new RecentNotificationDeduper (fa5c974,
+        # keyed on idMessage, 10-minute TTL) started actively suppressing repeat
+        # idMessage values before any handler runs: _dispatch_with_clarification_loop
+        # constructs a fresh single-message PlayerExportSource for the original
+        # dispatch AND every clarification follow-up round, so every one of them
+        # got idMessage="player-1" - collapsing an entire player run to roughly
+        # one real dispatch per 10-minute window, silently. A UUID is guaranteed-
+        # unique per call with no bookkeeping required, which is what actually
+        # matters now that idMessage is a real dedup key, not cosmetic filler.
+        #
+        # Deferred design note (2026-08-20, human decision - not implemented
+        # here): ParsedMessage.raw_line_no (export_parser.py) is the real,
+        # meaningful position of this message in its source conversation - in
+        # principle THAT, not SessionManager's own session-relative
+        # message_counter, should drive the persisted Message.order_num
+        # (session_manager.py) for a player-replayed message, so a replayed
+        # session's ordering stays traceable back to the original export. Not
+        # done now - would need SessionManager.add_message to accept an
+        # optional order_num override, a bigger change than this fix.
+        "idMessage": f"player-{uuid.uuid4()}",
         "instanceData": {"idInstance": 0, "wid": chat_id, "typeInstance": "whatsapp"},
         "senderData": sender_data,
     }

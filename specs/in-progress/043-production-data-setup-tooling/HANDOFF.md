@@ -7,6 +7,44 @@ started)
 
 ---
 
+## 2026-08-20 (later same day): player idMessage/dedup collision - found and fixed
+
+A second master merge (PR #235, `fa5c974`) landed a `RecentNotificationDeduper`
+in `denidin.py` - in-memory, TTL-bounded (600s) de-duplication of incoming
+notifications by `idMessage`, checked in `dispatch_notification` before any
+handler runs (real dev incident: a Green API webhook redelivery produced two
+approval prompts for one reminder). Caught (user's direct question, not
+something the earlier impact review found - that review predated this PR)
+that this collides badly with the player: `notification_synth.py` built
+`idMessage` from a per-call-site sequence number
+(`f"player-{idmessage_seq}"`) that `PlayerExportSource.start()` derived via
+`enumerate(self._messages, start=1)` - always restarting at 1, since
+`_dispatch_with_clarification_loop` constructs a fresh single-message
+`PlayerExportSource` for the original dispatch AND every clarification
+follow-up round. Net effect: every dispatch in an entire player run got the
+identical `idMessage="player-1"` - with the new deduper active, only the
+first would ever reach a handler; everything else within the same 10-minute
+window would be silently swallowed. Would have collapsed the AHLedger-style
+real-export replay from earlier this session to roughly one message
+processed per 10 minutes, with no error surfaced.
+
+**Fixed**: `idMessage` is now a real random UUID (`f"player-{uuid.uuid4()}"`),
+generated inside `synthesize_notification` itself - `idmessage_seq` removed
+entirely from its signature and from `PlayerExportSource.start()`. Verified
+directly (not just reasoned about): 5 calls with identical arguments now
+produce 5 genuinely distinct `idMessage` values (previously would have been
+5 identical `"player-1"`s). 41/41 relevant unit tests + 1111/1111 full
+unit+integration suite pass.
+
+**Deferred design note (not implemented, documented in
+`notification_synth.py` itself too)**: `ParsedMessage.raw_line_no` is the
+real, meaningful position of a message in its source export - in principle
+that, not `SessionManager`'s own session-relative `message_counter`, should
+drive the persisted `Message.order_num` for a player-replayed message, so a
+replayed session's ordering stays traceable back to the original export.
+Would need `SessionManager.add_message` to accept an optional `order_num`
+override - a bigger change, left for a future session.
+
 ## 2026-08-20 session: billed/expensive test staleness sweep + master-merge impact review
 
 Not new feature work — a verification/hardening pass, requested explicitly:
