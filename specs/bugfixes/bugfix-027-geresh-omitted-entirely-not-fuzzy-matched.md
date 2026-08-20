@@ -91,7 +91,7 @@ non-native sounds - roughly 11% of the shared Hebrew family-name test pool,
 - Feature 027 (`specs/in-progress/027-mandatory-client-reference-invoicing/`) - the feature
   whose real-sandbox verification surfaced case 1, fixed directly on that branch (see
   `_normalize_hebrew_geresh` in `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py`).
-- Feature 031 (`specs/done/031-fuzzy-client-lookup-by-name/`) - already-shipped, general
+- Feature 031 (`specs/done/v0.0.1/031-fuzzy-client-lookup-by-name/`) - already-shipped, general
   substring/prefix fuzzy matching (the `is_exact_match`/disclosure mechanism). Does not mention
   or address geresh/apostrophe handling at all - confirmed via a text search of its spec - so
   this bugfix is a genuinely new gap, not a regression of that feature.

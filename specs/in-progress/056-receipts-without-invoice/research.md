@@ -6,7 +6,7 @@
 mechanism for cancelling a type-300 transaction account with no document created — per
 CONSTITUTION's "NO UNVERIFIED THIRD-PARTY ASSUMPTIONS" rule. Confirmed against the real Morning
 sandbox (no mocking), plus the authoritative Green Invoice Postman collection
-(`specs/done/005-mcp-morning-green-receipt/Green Invoice Public API.postman_collection.json`).
+(`specs/done/v0.0.1/005-mcp-morning-green-receipt/Green Invoice Public API.postman_collection.json`).
 
 ## Method
 

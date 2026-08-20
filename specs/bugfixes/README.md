@@ -12,10 +12,15 @@ specs/bugfixes/
 ├── bugfix-004-data-root-ignored.md           # Bugfix spec (Not Started)
 └── bugfix-###-description.md                 # Future bugfix specs
 
-specs/done/bugfixes/
-├── bugfix-001-constitution-not-loaded.md     # ✅ Complete
-├── bugfix-002-max-retries-unused.md          # ✅ Complete
-└── bugfix-003-poll-interval-unused.md        # ✅ Complete
+specs/done/                                    # A completed bugfix lands here FLAT
+├── bugfix-001-constitution-not-loaded.md     # ✅ Complete, not yet in a cut release
+└── v0.4.0/                                    # Once a release is cut (scripts/cut_release.sh,
+    ├── 048-whatsapp-typing-indicator/         # 2026-08-20 reorganization), every flat entry
+    └── bugfix-036-mcp-server-has-no-audit-trail.md  # sitting in specs/done/ moves into that
+                                                # release's own version folder, features and
+                                                # bugfixes together, no separate bugfixes/
+                                                # subfolder anymore - see specs/done/v*/ for the
+                                                # full, versioned history.
 ```
 
 ---
@@ -66,8 +71,10 @@ git checkout -b bugfix/005-new-bug-description
 
 ### 4. Move to Done
 ```bash
-# After merge, move spec to done folder
-mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-005-new-bug-description.md
+# After merge, move spec to done folder - flat, no version subfolder yet
+# (scripts/cut_release.sh sweeps flat specs/done/ entries into a versioned
+# folder, e.g. specs/done/v0.4.4/, the next time a release is cut)
+mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfix-005-new-bug-description.md
 ```
 
 ---
@@ -129,4 +136,7 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfixes/bugfix-0
 - ALL bugfix specs MUST live in this directory (never in `specs/in-progress/`)
 - Each bugfix gets a sequential number (never reuse numbers)
 - Branch name MUST match spec file number
-- Completed bugfixes move to `specs/done/bugfixes/`
+- Completed bugfixes move to `specs/done/` flat (no subfolder), same as a finished feature -
+  `scripts/cut_release.sh` moves it into that release's own `specs/done/vX.Y.Z/` folder the next
+  time a release is cut (2026-08-20 reorganization - see `specs/done/v*/` for the versioned
+  history)

@@ -3,6 +3,17 @@
 # artifact, appends CHANGELOG.md/RELEASES.md entries, and applies a git tag. Deploys nothing
 # anywhere - see scripts/deploy_release.sh for that (Feature 034, REQ-REL-001/005).
 #
+# Also sweeps specs/done/ (2026-08-20 reorganization): every spec sitting FLAT directly under
+# specs/done/ (a finished feature or bugfix not yet in any cut release - see CLAUDE.md's
+# specs/done/ note and specs/bugfixes/README.md) moves into this release's own
+# specs/done/vVERSION/ folder, features and bugfixes together, and every repo-wide
+# cross-reference to its old flat path is rewritten to match - all in the SAME commit as the
+# version bump. Confined to this repo's own tracked files only (git grep/git mv/git ls-files,
+# never a raw recursive grep/mv over the whole working tree) - this repo may be checked out in
+# sibling clone directories nested inside this one (e.g. coder1/, coder2/), and those must never
+# be touched (CLAUDE.md's clone-confinement rule) - git's own tracked-file list can never include
+# another clone's files, so scoping every search/rewrite through it is what makes that safe.
+#
 # 🚨 HUMAN-ONLY, HARD CONSTRAINT (CLAUDE.md): <app> and <version> below must always come
 # directly from a human in that specific request. No AI agent may compute, suggest, or default
 # a version number - see REQ-REL-002.
@@ -125,8 +136,22 @@ fi
 
 RELEASE_DATE="$(date -u +%Y-%m-%d)"
 
+# Populated by the specs/done/ sweep below, read by the revert function - must be declared
+# before _revert_uncommitted_release_files so a failure during/after the sweep can undo it.
+SWEPT_SPECS=()
+POINTER_FILES_TOUCHED=()
+
 _revert_uncommitted_release_files() {
     git checkout -- "${APP_DIR}/VERSION" "${APP_DIR}/CHANGELOG.md" "${APP_DIR}/RELEASES.md"
+    if [ ${#POINTER_FILES_TOUCHED[@]} -gt 0 ]; then
+        git checkout -- "${POINTER_FILES_TOUCHED[@]}"
+    fi
+    if [ ${#SWEPT_SPECS[@]} -gt 0 ]; then
+        for name in "${SWEPT_SPECS[@]}"; do
+            git mv "${DONE_VERSION_DIR}/${name}" "specs/done/${name}"
+        done
+        rmdir "$DONE_VERSION_DIR" 2>/dev/null || true
+    fi
 }
 
 # 1. Update VERSION (uncommitted)
@@ -147,6 +172,54 @@ echo "$VERSION" > "${APP_DIR}/VERSION"
     echo ""
     echo "$SUMMARY"
 } >> "${APP_DIR}/RELEASES.md"
+
+# 3b. Sweep every FLAT specs/done/ entry (a finished feature folder or bugfix-*.md/dir with no
+#     vX.Y.Z wrapper yet - i.e. everything finished since the last cut, for either app; specs
+#     aren't strictly attributed to one app, and the two apps are cut together often enough that
+#     one shared version folder is simpler than trying to split them) into this release's own
+#     specs/done/vVERSION/ folder. If another app's cut already created this exact version folder
+#     and already swept everything flat, the loop below simply finds nothing left to move - a
+#     harmless no-op, not an error.
+DONE_VERSION_DIR="specs/done/v${VERSION}"
+if [ -d "specs/done" ]; then
+    mkdir -p "$DONE_VERSION_DIR"
+    for entry in specs/done/*; do
+        [ -e "$entry" ] || continue
+        name="$(basename "$entry")"
+        # Skip existing version folders (v0.0.1, v0.4.3, ...) and the one just created above -
+        # only sweep genuinely flat entries, never something already versioned.
+        if [[ "$name" =~ ^v[0-9] ]]; then
+            continue
+        fi
+        git mv "$entry" "$DONE_VERSION_DIR/$name"
+        SWEPT_SPECS+=("$name")
+    done
+    if [ ${#SWEPT_SPECS[@]} -gt 0 ]; then
+        echo "Swept ${#SWEPT_SPECS[@]} finished spec(s) into ${DONE_VERSION_DIR}/: ${SWEPT_SPECS[*]}"
+    fi
+fi
+
+# 3c. Rewrite repo-wide cross-references to each swept spec's now-versioned path (e.g.
+#     "specs/done/047-.../foo.md" -> "specs/done/v0.4.3/047-.../foo.md"). git grep only ever
+#     searches this repo's own tracked files - see this script's header comment for why that
+#     matters (never a raw recursive grep/sed over the whole working tree).
+if [ ${#SWEPT_SPECS[@]} -gt 0 ]; then
+    for name in "${SWEPT_SPECS[@]}"; do
+        OLD_REF="specs/done/${name}"
+        NEW_REF="${DONE_VERSION_DIR}/${name}"
+        MATCHES="$(git grep -l --fixed-strings -- "$OLD_REF" -- '*.md' '*.py' '*.sh' '*.json' 2>/dev/null || true)"
+        [ -z "$MATCHES" ] && continue
+        while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            sed -i.bak "s#${OLD_REF}#${NEW_REF}#g" "$f"
+            rm -f "${f}.bak"
+            POINTER_FILES_TOUCHED+=("$f")
+        done <<< "$MATCHES"
+    done
+    if [ ${#POINTER_FILES_TOUCHED[@]} -gt 0 ]; then
+        echo "Updated ${#POINTER_FILES_TOUCHED[@]} file(s) with a cross-reference to a swept spec."
+    fi
+fi
 
 # 4. Build the image - BEFORE any commit (see note above)
 #    Pinned to linux/amd64 (2026-08-03, Feature 035 reconciliation): this is what makes "build
@@ -179,8 +252,12 @@ if [ "$SAVE_STATUS" -ne 0 ]; then
 fi
 
 # 6. NOW commit - both docker steps already succeeded, so this commit will always have a
-#    matching artifact/tag.
+#    matching artifact/tag. Includes the specs/done/ sweep (already staged by git mv) and any
+#    pointer-file rewrites from step 3c (sed edits, not yet staged) in the SAME commit.
 git add "${APP_DIR}/VERSION" "${APP_DIR}/CHANGELOG.md" "${APP_DIR}/RELEASES.md"
+if [ ${#POINTER_FILES_TOUCHED[@]} -gt 0 ]; then
+    git add "${POINTER_FILES_TOUCHED[@]}"
+fi
 git commit -q -m "release: ${APP} v${VERSION}"
 COMMIT_SHA="$(git rev-parse HEAD)"
 

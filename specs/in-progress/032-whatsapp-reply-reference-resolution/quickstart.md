@@ -55,7 +55,7 @@ method calls into internal components for the integration tier).
 `tests/integration/test_reply_resolution.py` should cover steps 1–4 with real webhook JSON
 fixtures containing `messageData.extendedTextMessageData.quotedMessage.stanzaId`, dispatched
 through `bot.router` exactly as a real Green API notification would arrive — per
-`specs/done/001-whatsapp-chatbot-passthrough/contracts/green-api.md`'s documented shape.
+`specs/done/v0.0.1/001-whatsapp-chatbot-passthrough/contracts/green-api.md`'s documented shape.
 Step 5 (session expiry) is better covered as a `tests/unit/test_session_manager.py` case
 directly against `resolve_reply` with a pre-expired session fixture, rather than a real 24h
 wait in an integration test.

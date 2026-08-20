@@ -31,7 +31,7 @@ yaronlev171, from the 7–9 Aug 2026 production review
 > **Shared session context** — how this review was run, the read-only access paths, the full
 > map of bugfix-028…037, the triage decisions (including what was closed as *not* a bug), and
 > the open verification items:
-> [`bugfix-028` § Session Context](../done/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster.md#session-context-2026-08-09-production-review)
+> [`bugfix-028` § Session Context](../done/v0.4.1/bugfix-028-invoicing-and-approval-gate-p0-cluster/bugfix-028-invoicing-and-approval-gate-p0-cluster.md#session-context-2026-08-09-production-review)
 (moved to `specs/in-progress/bugfixes/` 2026-08-10, now In Progress).
 > All ten bugs in that set are **fix-forward only** — existing production documents are being
 > left as they are by explicit user decision.
@@ -138,5 +138,5 @@ bugfix** — it is a production data write and needs its own explicit approval.
 ## Related Work
 - Feature 033 / spec 024 — introduced `pending_ledger_events`, later moved out of the session
   (H2 is that migration's residue).
-- `specs/done/019-env-separation/` — `data_root` separation; the stuck session predates the
+- `specs/done/v0.0.1/019-env-separation/` — `data_root` separation; the stuck session predates the
   current schema.

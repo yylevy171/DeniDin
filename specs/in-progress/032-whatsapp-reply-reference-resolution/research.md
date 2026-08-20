@@ -4,7 +4,7 @@
 **Phase**: 0 (Outline & Research)
 
 All decisions below were reached by reading actual code (`apps/denidin-app/src/`) and the
-existing Green API contract doc (`specs/done/001-whatsapp-chatbot-passthrough/contracts/green-api.md`),
+existing Green API contract doc (`specs/done/v0.0.1/001-whatsapp-chatbot-passthrough/contracts/green-api.md`),
 not assumed.
 
 ## Decision 1: Feature flag or not?

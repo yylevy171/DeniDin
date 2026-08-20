@@ -35,8 +35,8 @@
 ## Notes
 
 1. **On "no implementation details"**: this project's actual house style — confirmed against
-   `specs/done/021-flexible-document-creation/`, `specs/done/027-mandatory-client-reference-invoicing/`,
-   and `specs/done/046-hebrew-approval-synonyms/` (all real precedent, not the generic SpecKit
+   `specs/done/v0.0.1/021-flexible-document-creation/`, `specs/done/v0.3.0/027-mandatory-client-reference-invoicing/`,
+   and `specs/done/v0.2.3/046-hebrew-approval-synonyms/` (all real precedent, not the generic SpecKit
    template's ideal) — deliberately grounds specs in real file/function names
    (`create_receipt`, `MorningClient`, `tools.py`) and real domain-system vocabulary (Morning
    document types 300/305/320/330/400). This is intentional given the project's own
