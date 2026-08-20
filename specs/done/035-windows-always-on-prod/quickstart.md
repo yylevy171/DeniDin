@@ -372,23 +372,48 @@ a write attempt through the mount correctly fails.
    confirmed Windows' native SFTP server (which sshfs rides) cannot
    traverse into the WSL2 filesystem at all (neither a direct UNC path
    nor an NTFS symlink pointing at one worked, both tested directly).
-   Mount, read-only: `scripts/windows_prod/mount_data.sh denidin-winprod`
-   (idempotent — a no-op if already mounted; pass a different remote
-   folder name as a second argument if you didn't use
-   `denidin-prod-data` in step 4). Equivalent to running by hand:
+   Mount, read-only, for the current session only:
+   `scripts/windows_prod/mount_data.sh denidin-winprod` (idempotent — a
+   no-op if already mounted; pass a different remote folder name as a
+   second argument if you didn't use `denidin-prod-data` in step 4).
+   Equivalent to running by hand:
    ```bash
    mkdir -p ~/denidin-winprod-data
    sshfs denidin-winprod:denidin-prod-data \
      ~/denidin-winprod-data \
      -o reconnect,ro,volname=denidin-winprod-data
    ```
-4. To unmount: `scripts/windows_prod/unmount_data.sh` (or plain macOS
-   `umount ~/denidin-winprod-data` — no special sshfs command needed).
+   **For a mount that survives sleep/wake, lid closes, and reboots
+   permanently (2026-08-20, explicit requirement — "if the Mac is on, the
+   mount should be there, always")**, install the LaunchAgent instead,
+   once per Mac: `scripts/windows_prod/install_persistent_mount.sh`. This
+   copies `com.denidin.winprod-mount.plist` to
+   `~/Library/LaunchAgents/`, loads it (`RunAtLoad` mounts immediately and
+   on every future login/reboot; `KeepAlive` re-mounts within
+   `ThrottleInterval` seconds — default 15 — whenever the underlying sshfs
+   process exits for any reason: a crash, the SSH connection dropping past
+   sshfs's own `-o reconnect` retry budget after a long sleep, or even a
+   manual `umount`). `mount_data.sh` above is still fine for a quick
+   one-off check when you don't want the always-on agent (e.g. a throwaway
+   clone), but on the Mac that's meant to always have this available, use
+   the installer instead — do this once, not the plain mount script, and
+   never both at the same time (they'd race for the same mount point).
+   Logs: `~/Library/Logs/denidin-winprod-mount.log`.
+4. To unmount: `scripts/windows_prod/unmount_data.sh` — if the LaunchAgent
+   is installed and loaded, this unloads it FIRST (otherwise a plain
+   `umount ~/denidin-winprod-data` alone gets silently re-mounted within
+   `ThrottleInterval` seconds, by design). Re-enable later with
+   `scripts/windows_prod/install_persistent_mount.sh` again, or by hand:
+   `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.denidin.winprod-mount.plist`.
 
 **Verify**: `ls ~/denidin-winprod-data` from the Mac shows the same
 contents as `ssh denidin-winprod 'ls "denidin-prod-data"'` (over a plain
 SFTP-style listing, not `wsl.exe` — see the note in step 4 about why);
-attempting to write a file into the mount fails (read-only, by design).
+attempting to write a file into the mount fails (read-only, by design). For
+the persistent-agent path, also verified live (2026-08-20): killing the
+sshfs process directly (`kill -9`) results in a fresh process (new PID) and
+a healthy mount again within `ThrottleInterval` seconds, with no manual
+action.
 
 ## 10. Cutover checklist (one-time, migration only)
 
@@ -417,10 +442,11 @@ scripts/windows_prod/tail_logs.sh denidin-winprod morning-mcp-app-prod
 # Check status/health
 scripts/windows_prod/verify_windows_prod.sh denidin-winprod
 
-# Browse/back up live production data, read-only (mount once per Mac session/reboot; see step 9a)
-scripts/windows_prod/mount_data.sh denidin-winprod    # idempotent - no-op if already mounted
+# Browse/back up live production data, read-only - permanently mounted via a
+# LaunchAgent (see step 9a) once scripts/windows_prod/install_persistent_mount.sh
+# has been run on this Mac - no per-session mount step needed.
 ls ~/denidin-winprod-data
-scripts/windows_prod/unmount_data.sh                  # when done, optional
+scripts/windows_prod/unmount_data.sh                  # stops it for good (unloads the agent too)
 ```
 
 No remote-desktop session, no physically touching the Windows box, for any

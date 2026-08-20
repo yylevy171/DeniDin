@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Keeps the read-only Windows-prod data mount (~/denidin-winprod-data)
+  permanently up on this Mac - "if the Mac is on, the mount should be
+  there, always" (explicit requirement, 2026-08-20). See
+  scripts/windows_prod/mount_data_foreground.sh for what actually runs, and
+  specs/done/035-windows-always-on-prod/quickstart.md §9a for full setup
+  instructions (this file is a template - install it per-Mac, see that doc).
+
+  RunAtLoad: mounts immediately on login/reboot, no manual step.
+  KeepAlive=true: launchd restarts mount_data_foreground.sh (i.e. re-mounts)
+    whenever the underlying sshfs process exits for ANY reason - a crash, the
+    SSH connection dropping past sshfs's own -o reconnect retry budget after
+    a long sleep, or even a manual `umount` - matching "always" literally.
+    To actually stop it for good, unload this agent first (see quickstart.md).
+  ThrottleInterval: launchd waits at least this many seconds between
+    restarts, so a persistently-unreachable host (Mac off Tailscale, box
+    down) retries steadily instead of spin-looping.
+
+  Paths below are absolute and specific to the clone this was installed
+  from - re-point ProgramArguments/log paths if installing from a different
+  clone or for a different Mac user.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.denidin.winprod-mount</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/yaron/Projects/DeniDin/coder1/scripts/windows_prod/mount_data_foreground.sh</string>
+        <string>denidin-winprod</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>15</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/yaron/Library/Logs/denidin-winprod-mount.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/yaron/Library/Logs/denidin-winprod-mount.log</string>
+</dict>
+</plist>
