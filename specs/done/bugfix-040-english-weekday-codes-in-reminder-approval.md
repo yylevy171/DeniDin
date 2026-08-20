@@ -14,9 +14,9 @@ the right days), but it's a direct, visible violation of a hard constitution rul
 user-facing approval message every recurring-by-weekday reminder produces.
 
 ## Status
-**Done - implemented and tested, merging to master.** Simple find-and-fix (not full BDD, per
-explicit user instruction) - `_format_reminder_schedule`'s `BYDAY` branch now maps each RFC5545
-weekday code to its Israeli single-letter equivalent before interpolation (see "Fix" below).
+**Done - Merged to master (PR #244).** Simple find-and-fix (not full BDD, per explicit user
+instruction) - `_format_reminder_schedule`'s `BYDAY` branch now maps each RFC5545 weekday code to
+its Israeli single-letter equivalent before interpolation (see "Fix" below).
 
 ## Date Opened
 2026-08-20
