@@ -936,7 +936,14 @@ def _format_reminder_schedule(rrule_str: Optional[str], dtstart_iso: str) -> str
 
     extra = ""
     if "BYDAY" in parts:
-        extra = f", בימים {parts['BYDAY']}"
+        byday_labels = {
+            "SU": "א", "MO": "ב", "TU": "ג", "WE": "ד",
+            "TH": "ה", "FR": "ו", "SA": "ש",
+        }
+        days_he = ",".join(
+            byday_labels.get(code, code) for code in parts["BYDAY"].split(",")
+        )
+        extra = f", בימים {days_he}"
     elif "BYMONTHDAY" in parts:
         extra = f", ביום {parts['BYMONTHDAY']} לחודש"
 
