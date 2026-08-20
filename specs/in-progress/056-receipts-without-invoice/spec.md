@@ -237,12 +237,12 @@ new findings below in `research.md`.
 ## References
 
 - `specs/in-progress/bugfixes/bugfix-028-invoicing-and-approval-gate-p0-cluster/` and
-  `specs/done/bugfixes/bugfix-038-group-b-approval-missing-reference-data.md` — the
+  `specs/done/v0.4.1/bugfix-038-group-b-approval-missing-reference-data.md` — the
   client-name-resolution architecture (`resolve_client_name`, `_require_resolved_client`) that
   every create tool including the relaxed `create_receipt` must follow.
-- `specs/done/027-mandatory-client-reference-invoicing/` — REQ-INV-001 through REQ-INV-013, the
+- `specs/done/v0.3.0/027-mandatory-client-reference-invoicing/` — REQ-INV-001 through REQ-INV-013, the
   "must be linked to a real client, or refuse" rule this feature's standalone path also follows.
-- `specs/done/021-flexible-document-creation/` — precedent for type-specific tool decisions and
+- `specs/done/v0.0.1/021-flexible-document-creation/` — precedent for type-specific tool decisions and
   the type-300/305/320/330/400 document-type scope this app operates in.
 - `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py` (`create_receipt`,
   `create_combo_document_as_reference`, `_build_payment_receipt_payload`,

@@ -82,7 +82,7 @@ Complete Given-When-Then acceptance criteria live in **`user-stories.md`**. Summ
   **This feature's entire premise is resolving a `stanzaId` back to something DeniDin already
   has internally.**
 - **`idMessage`**: Green API's own message identifier (format like
-  `"true_1234567890@c.us_ABCD1234567890"`, per `specs/done/001-whatsapp-chatbot-passthrough/contracts/green-api.md`).
+  `"true_1234567890@c.us_ABCD1234567890"`, per `specs/done/v0.0.1/001-whatsapp-chatbot-passthrough/contracts/green-api.md`).
   Not currently captured/stored anywhere in this codebase for any message DeniDin
   sends/receives.
 - **`quotedMessage`**: The Green API webhook substructure carrying the replied-to message's

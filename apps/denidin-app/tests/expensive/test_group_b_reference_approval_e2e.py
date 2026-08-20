@@ -163,9 +163,20 @@ class TestGroupBReferenceApprovalE2E:
         bugfix-028, 2026-08-09), so a shared, non-random chat_id can't collide
         across runs. Only ever touches test_data/ - the denidin_app fixture above
         already refuses to run at all if LedgerEventManager.storage_dir is not
-        under this test's isolated data_root."""
+        under this test's isolated data_root.
+
+        2026-08-20 (billed/expensive test sweep for Feature 043's Phase 11 schema
+        revision): this was filtering by `data.get("whatsapp_chat") == chat_id`,
+        but whatsapp_chat was removed from the persisted schema (2026-08-19,
+        redundant with session_id) - the condition was silently always False
+        (`.get` returning None can never equal a real chat_id), so this cleanup
+        never actually deleted anything, defeating the whole point for this
+        test's FIXED, shared godfather chat_id. Fixed to resolve session_id via
+        SessionManager and filter by that instead, matching the same fix already
+        applied in test_ledger_event_capture_e2e.py's identical helper."""
         import json as _json
 
+        session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
         events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
         for f in list(events_dir.glob("*.json")):
             try:
@@ -173,7 +184,7 @@ class TestGroupBReferenceApprovalE2E:
                     data = _json.load(fh)
             except (OSError, _json.JSONDecodeError):
                 continue
-            if data.get("whatsapp_chat") == chat_id:
+            if data.get("session_id") == session_id:
                 f.unlink()
 
         session_manager = denidin_app.ai_handler.session_manager

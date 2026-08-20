@@ -31,7 +31,7 @@ Rationale: The project mandates realistic integration and test behavior; this ab
 
 Reading a vendor's published API documentation, a schema definition, an SDK's type hints, or a client library's source is **not** confirmation. Those describe what a system is *documented* to do — not what it actually does in a real, observed interaction. Only sending or receiving a real message/call through the real system and inspecting the real, raw result counts as confirmed.
 
-**Incident that established this rule (2026-08-05, Feature 039)**: the spec for Feature 039's `"@Name"` mention-recognition design (`specs/done/039-group-conversation-support/spec.md`) stated as a settled Decision that "a real WhatsApp @-mention still inserts visible `"@DisplayName"` text into the message body" — based on reviewing Green API's documented webhook schema fields and confirming no structured mention metadata existed there. That schema review was real and correct as far as it went, but the conclusion drawn from it (what the mention text itself looks like) was never independently verified against an actual live WhatsApp message. It was wrong: a real native `@`-mention (picked via WhatsApp's own mention UI, the primary way users actually mention someone) inserts the mentioned contact's raw phone number/JID into the text, not a display name. The entire `"@Name"` text-pattern recognition mechanism — spec, constitution wording, and the billed tests' hand-typed `"@רותי"`/`"@DeniDin"` fixtures alike — was built on this single unverified assumption, and none of it could ever have caught the gap, because the test fixtures inherited the same wrong assumption instead of being derived from a real captured message. This was found live, by a human, in manual post-deploy testing — not by any part of the spec, implementation, or test process that was supposed to catch exactly this.
+**Incident that established this rule (2026-08-05, Feature 039)**: the spec for Feature 039's `"@Name"` mention-recognition design (`specs/done/v0.2.0/039-group-conversation-support/spec.md`) stated as a settled Decision that "a real WhatsApp @-mention still inserts visible `"@DisplayName"` text into the message body" — based on reviewing Green API's documented webhook schema fields and confirming no structured mention metadata existed there. That schema review was real and correct as far as it went, but the conclusion drawn from it (what the mention text itself looks like) was never independently verified against an actual live WhatsApp message. It was wrong: a real native `@`-mention (picked via WhatsApp's own mention UI, the primary way users actually mention someone) inserts the mentioned contact's raw phone number/JID into the text, not a display name. The entire `"@Name"` text-pattern recognition mechanism — spec, constitution wording, and the billed tests' hand-typed `"@רותי"`/`"@DeniDin"` fixtures alike — was built on this single unverified assumption, and none of it could ever have caught the gap, because the test fixtures inherited the same wrong assumption instead of being derived from a real captured message. This was found live, by a human, in manual post-deploy testing — not by any part of the spec, implementation, or test process that was supposed to catch exactly this.
 
 Guidelines under this rule:
 - Before a spec/plan/research document states any claim about a third-party system's actual runtime behavior (message format, field contents, response shape, timing, error behavior, etc.) as confirmed, that claim must be backed by an actual real interaction with that system, with the real raw result captured and referenced (not just "per the docs" or "per the SDK").
@@ -556,8 +556,9 @@ if config.feature_flags.get("enable_memory_system", False):
   - When reviewing test results, check this directory for detailed logs
   - Logs persist across test runs for debugging and analysis
   - Never redirect test output to `/tmp` or other ad-hoc log files — use only the app's own `logs/test_logs/` location
+- 🚨 **Run every billed/expensive test through `scripts/run_single_test.sh <node_id>` (2026-08-18, `apps/denidin-app` for now)** — never a raw `pytest ... | tail`/`| grep`/`| head`. A pipe truncates pytest's report *before* it's ever seen; the script instead writes pytest's complete, untruncated output to `logs/test_logs/pytest_results/<test>_<timestamp>.txt` and leaves the app's own per-test-file log untouched. For a sequence of `billed` tests with stop-on-first-failure behavior, use `scripts/run_multiple_billed_tests.sh <node_id> ...` (billed only, never expensive). Neither script grants run approval by itself — every invocation still needs its own fresh, explicit human go-ahead per the tier rules below.
 - **Billed tests** (`@pytest.mark.billed`, real but text-only/cheap paid API calls, `tests/billed/` in every app in this monorepo, split out of the marker formerly named `expensive` by Feature 029, 2026-07-30): can run freely. **These are NOT gated by the approval rule below — do not stop to ask before running a billed test, ever.** No per-run approval, no one-at-a-time restriction, no log-reading requirement. The approval gate below applies ONLY to `expensive`.
-- **Expensive tests** (`@pytest.mark.expensive`, real vision/image/PDF/DOCX paid API calls, costlier per run): require explicit human approval before every single run, run one at a time (never a bare `-m expensive` sweep), read existing logs before re-running, and only re-run a previously-failed one once confident a fix addresses it
+- **Expensive tests** (`@pytest.mark.expensive`, real vision/image/PDF/DOCX paid API calls, costlier per run): require explicit human approval before every single run, run one at a time (never a bare `-m expensive` sweep, never `scripts/run_multiple_billed_tests.sh`), read existing logs before re-running, and only re-run a previously-failed one once confident a fix addresses it
 - **"Stop on failure" means stop on failure, every single time, regardless of tier.** When a human gives an explicit sequential-run instruction ("run all N tests one by one, on pass continue, on fail stop"), EVERY failure is its own stop point requiring a full report and fresh explicit human input before investigating, fixing, re-running, or moving to the next test. Approval to fix-and-continue past one failure does NOT carry over to a later failure in the same sweep, even a structurally identical one. Real incident (2026-08-02, an AI agent): one approved fix got silently generalized into "fix-and-continue is now standing behavior for this sweep," and a later similar failure was fixed and re-run with no pause to report or ask. An accurate test-tracking log does not substitute for actually stopping at the gate.
 - All code-modifying operations must use CLI tools
 - **Deploying a cut release is done ONLY by running `scripts/deploy_release.sh` directly** (see CLAUDE.md's "Versioning & Release Management") — never preceded by a manual, ad-hoc pre-flight check (e.g. `tailscale status`, a manual `ssh` probe) as a substitute for the script's own built-in connectivity/health verification. The script already fails loudly and clearly if something's wrong; a manual check first is redundant, not caution.
@@ -565,15 +566,15 @@ if config.feature_flags.get("enable_memory_system", False):
 **Test Execution Efficiency**:
 - **DO NOT run tests repeatedly without code changes**
 - **Workflow**:
-  1. Run test ONCE and redirect ALL output to a log file: `pytest ... > test_output.log 2>&1`
-  2. Analyze the log file to understand failures
+  1. Run the test ONCE via `scripts/run_single_test.sh <node_id>` — it redirects pytest's ENTIRE output to a results file on disk for you (see above); never hand-roll a `pytest ... > file 2>&1` or, worse, a `pytest ... | tail`/`| grep` that can silently drop the part that matters
+  2. Analyze that results file (`logs/test_logs/pytest_results/*.txt`) to understand failures — read it, don't re-run to "see more"
   3. Make code changes based on analysis
-  4. ONLY THEN run the test again
+  4. ONLY THEN run the test again, and only with a fresh explicit approval for that specific run
 - **Rationale**: 
-  - Integration tests make expensive API calls ($0.02-0.05 per test)
+  - Billed/expensive tests make real, paid API calls
   - Running tests wastes time and money without providing new information
-  - Log files contain complete diagnostic information - use them
-  - Tests should only be re-run after code changes that might affect results
+  - The results file already contains complete diagnostic information - use it
+  - Tests should only be re-run after code changes that might affect results, never just to capture output a previous run's own pipe happened to discard
 
 **Rationale**: CLI operations are scriptable, automatable, reproducible, and work consistently across platforms.
 
@@ -1076,9 +1077,10 @@ All contributors must:
 
 ---
 
-**Version**: 2.6.0 | **Effective Date**: August 2, 2026
+**Version**: 2.7.0 | **Effective Date**: August 18, 2026
 
 **Changelog**:
+- v2.7.0 (2026-08-18): Mandated `scripts/run_single_test.sh`/`scripts/run_multiple_billed_tests.sh` (§VII) as the required way to run any single billed/expensive test or a stop-on-first-failure billed sequence, after a real incident where an AI agent's ad-hoc `pytest ... | tail -15` silently discarded the actual assertion/traceback, leading to a wrong report and an unapproved rerun just to see the missing part
 - v2.6.0 (2026-08-02): Added explicit "stop on failure means stop on failure" rule to §VII after a real incident where an AI agent generalized one approved test-fix into standing permission to skip the stop-on-fail gate for later, similarly-shaped failures in the same sequential test sweep
 - v2.5.0 (2026-07-30): Feature 029 scope correction - the billed/expensive split applies to BOTH `apps/denidin-app` and `apps/morning-mcp-app` (each app's own independent marker registration), not denidin-app alone; also made explicit that billed tests are never subject to the expensive-only approval gate (§VII)
 - v2.4.0 (2026-07-30): Feature 029 split the single `@pytest.mark.expensive` marker into `billed` (real, text-only, cheap OpenAI calls - can run freely) and `expensive` (real vision/image/PDF/DOCX calls - keeps the full approval/one-at-a-time discipline) (§VII)

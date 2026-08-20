@@ -31,6 +31,7 @@ from tests.e2e_helpers import (
     validate_response_full,
     validate_extraction_response,
     assert_image_path_persisted,
+    assert_extracted_text_persisted,
 )
 
 # Configure logging for tests
@@ -256,7 +257,14 @@ class TestWhatsAppE2E:
         # Validate response against all 4 assertions
         hebrew_ratio = validate_response_full(response)
         logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}, Has סיכום:, Has metadata bullets, No follow-up questions")
-    
+
+        # Feature 043 (2026-08-18): a real pre-existing bug meant DOCXExtractor
+        # never actually returned an extracted_text key despite its own docstring
+        # claiming it did - fixed at unit level, but this is the first real proof
+        # it lands on the persisted message record via the actual E2E document path.
+        extracted_text = assert_extracted_text_persisted(denidin_app, '972522968679@c.us')
+        logger.info(f"✅ extracted_text persisted ({len(extracted_text)} chars)")
+
     @pytest.mark.expensive
     def test_e2e_hebrew_pdf_from_you(self, denidin_app, http_server):
         """
@@ -320,7 +328,14 @@ class TestWhatsAppE2E:
         # Validate response against all 4 assertions
         hebrew_ratio = validate_extraction_response(response)
         logger.info(f"✅ SUCCESS - Hebrew ratio: {hebrew_ratio:.1%}, Has סיכום:, Has metadata bullets, No follow-up questions")
-    
+
+        # Feature 043 (2026-08-18): same real pre-existing bug as the DOCX test
+        # above - PDFExtractor never actually returned an extracted_text key
+        # either (it delegates per-page to ImageExtractor, which did). First real
+        # proof it lands on the persisted message record on the PDF path too.
+        extracted_text = assert_extracted_text_persisted(denidin_app, '972522968679@c.us')
+        logger.info(f"✅ extracted_text persisted ({len(extracted_text)} chars)")
+
     @pytest.mark.expensive
     def test_e2e_pdf_with_caption_user_question(self, denidin_app, http_server):
         """

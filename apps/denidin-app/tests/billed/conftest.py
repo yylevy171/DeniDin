@@ -71,6 +71,14 @@ def denidin_config():
     if sessions_dir.exists():
         shutil.rmtree(sessions_dir)
 
+    # Reminders (Feature 054) get the same "clean at process start" treatment,
+    # but via the directory-wide `_clean_reminders_around_every_test` autouse
+    # fixture below instead of duplicating the wipe here - that one runs before
+    # AND after EVERY test in tests/billed/ (not just once per module, and not
+    # just for tests that go through this particular fixture), which is what
+    # actually closed a real cross-test pollution incident (2026-08-18) that a
+    # module-scope-only version of this same idea, once tried here, missed.
+
     # AIHandler._load_constitution() now resolves against
     # constitution_config.base_dir (default 'config'), not data_root - the
     # constitution is shared config content, not per-environment data, so
@@ -126,3 +134,69 @@ def denidin_app(denidin_config, live_morning_tunnel):
     # existing pattern, or the router handler treats the app as uninitialized.
     denidin.denidin_app = denidin.initialize_app(config_dict)
     return denidin.denidin_app
+
+
+def _clear_reminder_tables() -> None:
+    """Reset all reminders state, however it needs to be reached right now.
+
+    Two cases, because `denidin_app` is a long-lived singleton reused across
+    every test in one pytest invocation (`if denidin.denidin_app is None:
+    initialize`), and `ReminderManager` holds ONE persistent `sqlite3.connect()`
+    for its whole lifetime once constructed:
+
+    1. No `denidin.denidin_app` constructed yet this invocation (true for every
+       test module's very first test) - a plain filesystem `shutil.rmtree` of
+       test_data/reminders/ is safe here (no connection open yet) and is the
+       ONLY thing that actually helps: it clears out a stale reminders.db left
+       behind by an EARLIER, separate pytest invocation, before the singleton
+       that's about to be constructed gets a chance to sqlite3.connect() to
+       that stale file and silently inherit its rows.
+    2. `denidin.denidin_app` already exists (every test after the first one in
+       this invocation) - deleting the underlying file out from under its
+       already-open connection would NOT give it a clean slate (the connection
+       keeps reading/writing the now-unlinked inode; the file just becomes
+       invisible to outside inspection while quietly orphaning data). A real
+       DELETE through that live connection is the only way to actually reset
+       state once the singleton exists.
+    """
+    import denidin
+
+    app = getattr(denidin, "denidin_app", None)
+    reminder_manager = getattr(getattr(app, "ai_handler", None), "reminder_manager", None)
+    if reminder_manager is None:
+        reminders_dir = DENIDIN_APP_DIR / "test_data" / "reminders"
+        if reminders_dir.exists():
+            shutil.rmtree(reminders_dir)
+        return
+    # pylint: disable=protected-access - test-only reach into the manager's
+    # connection for cleanup purposes, same convention already used by
+    # tests/billed/test_reminder_lifecycle_billed.py's _simulate_sweep for
+    # reminder_delivery_service._sweep_due_reminders.
+    reminder_manager._conn.executescript(
+        "DELETE FROM fired_occurrences; DELETE FROM reminder_exceptions; DELETE FROM reminders;"
+    )
+    reminder_manager._conn.commit()
+
+
+@pytest.fixture(autouse=True)
+def _clean_reminders_around_every_test():
+    """Feature 054 (2026-08-18): wipe all reminders state before AND after
+    EVERY billed test in this directory - not just tests/billed/conftest.py's
+    own denidin_app/denidin_config fixtures, but every test module's tests
+    regardless of which local config/denidin_app fixture it defines (pytest
+    auto-discovers conftest.py fixtures directory-wide per this file's module
+    docstring, and autouse=True applies to every test unconditionally, closing
+    the exact gap that let test_reminder_lifecycle_billed.py's OWN local
+    denidin_app fixture silently bypass the (module-scope, process-start-only)
+    reminders_dir wipe in denidin_config above).
+
+    A real leftover reminder from an earlier test polluted a LATER, unrelated
+    test's list_reminders result (2026-08-18) - "before" makes every test start
+    from zero regardless of run order or what an earlier test in the same run
+    left behind; "after" leaves the DB clean for anything inspecting it between
+    runs (e.g. a human running `sqlite3 test_data/reminders/reminders.db` by
+    hand) rather than only ever cleaning retroactively on the NEXT test's setup.
+    """
+    _clear_reminder_tables()
+    yield
+    _clear_reminder_tables()

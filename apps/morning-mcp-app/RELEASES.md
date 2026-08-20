@@ -47,3 +47,7 @@ Migrated MorningAuth to Morning's real OAuth2 client_credentials token endpoint 
 ## morning-mcp-app v0.4.3 — 2026-08-14
 
 Version sync with denidin-app v0.4.3 - no functional changes to morning-mcp-app in this release.
+
+## morning-mcp-app v0.5.0 — 2026-08-19
+
+Tool-call audit log now includes full read-tool response bodies, not just their length, matching denidin-app's own two-way audit logging added for the reminders feature.

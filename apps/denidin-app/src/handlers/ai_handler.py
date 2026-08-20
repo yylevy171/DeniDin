@@ -12,12 +12,6 @@ from pathlib import Path
 from typing import Any, cast, Optional, List, Dict
 
 from openai import OpenAI, APITimeoutError, RateLimitError, APIError
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_fixed,
-    retry_if_exception_type
-)
 from src.models.config import AppConfiguration
 from src.models.message import (
     WhatsAppMessage, AIRequest, AIResponse,
@@ -32,16 +26,29 @@ from src.managers.user_manager import UserManager
 from src.managers.pending_approval_manager import (
     PendingApprovalManager, PendingApproval, BUTTON_ID_APPROVE
 )
+from src.managers.reminder_manager import (
+    ReminderManager, ReminderPastDateError, ReminderCapExceededError, ReminderNotFoundError,
+    InvalidRecurrenceError, OccurrenceNotFoundError,
+)
+from src.managers.pending_local_tool_approval_manager import (
+    PendingLocalToolApprovalManager, PendingLocalToolApproval,
+)
 from src.models.user import Role
 from src.handlers.morning_mcp_locator import MorningMcpLocator
 from src.constants.error_messages import (
-    APPROVAL_FAILED_TRY_AGAIN, APPROVAL_POSSIBLY_DUPLICATED, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN
+    APPROVAL_FAILED_TRY_AGAIN, APPROVAL_POSSIBLY_DUPLICATED, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
+    REMINDER_ACTION_FAILED_TRY_AGAIN, REMINDER_PAST_DATE_REJECTED, REMINDER_CAP_EXCEEDED,
 )
 
 logger = get_logger(__name__)
 
 # Roles authorized to have the Morning MCP invoicing tools attached (Feature 018)
 MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
+
+# Roles authorized to have the reminder tools attached (Feature 054) - there is
+# exactly one reminder list, owned by "the godfather"; ADMIN manages it too via
+# this app's existing blanket-access pattern, not a reminder-specific rule.
+REMINDER_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 
 # Feature 039 (US4a): the model outputs this exact string as its entire response_text
 # to mean "send nothing back" (e.g. a group message clearly directed at someone else,
@@ -690,6 +697,305 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
 }
 
 
+# Reminders (Feature 054) - a local `type: "function"` tool, same shape/parsing
+# machinery as LEDGER_EVENT_TOOL, but - unlike capture_ledger_event, which
+# dispatches immediately - this one creates a PendingLocalToolApproval instead
+# of executing (see _handle_reminder_creation_proposal /
+# contracts/local-tool-approval-gate.md). No owner/chat_id field in the
+# schema itself: the model never supplies a delivery target. It's resolved by
+# the application at approval time instead (2026-08-19, user decision,
+# supersedes the original "always config.godfather_phone" FR-008 design) -
+# delivery_chat_id is set to the chat/group the request was actually made in
+# (_resolve_pending_local_tool_approval passes effective_chat_id), with a
+# fallback to the requester's own 1:1 chat only if delivery there ever fails
+# (see reminder_delivery_service.py's _deliver_one_occurrence).
+CREATE_REMINDER_TOOL: Dict[str, Any] = {
+    "type": "function",
+    "name": "create_reminder",
+    "description": (
+        "ONLY call this when the user's own message explicitly asks to be "
+        "reminded of something at a future time (e.g. \"תזכיר לי...\", a "
+        "recurring cadence like \"כל יום/שבוע\"). NEVER call this to interpret "
+        "a confirmation reply (\"כן\"/\"לא\"), an ambiguous message, or any "
+        "message about clients, invoices, or documents - those are handled by "
+        "entirely separate tools and this one is never a fallback for them. "
+        "Propose creating a new reminder, after gathering the message text and "
+        "either a one-time date/time or a full recurrence rule through conversation. "
+        "This call itself does NOT persist anything - it is presented to the user as "
+        "an approval summary (with the actual time shown AFTER rounding to the "
+        "nearest 5 minutes); the reminder is only created if the user then "
+        "explicitly approves."
+    ),
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "message_text": {
+                "type": "string",
+                "description": (
+                    "The actual thing to be reminded about, in the user's own words - "
+                    "taken directly from what they said. Never a placeholder "
+                    "(\"תזכורת\", \"בדיקה\", \"test\", or similar) - if the user's message "
+                    "doesn't actually contain something to be reminded about, do not "
+                    "call this tool at all."
+                ),
+            },
+            "schedule_type": {"type": "string", "enum": ["one_time", "recurring"]},
+            "one_time_due_at": {
+                "type": ["string", "null"],
+                "description": (
+                    "ISO-8601 local datetime (Asia/Jerusalem), required iff "
+                    "schedule_type=one_time, must be strictly in the future after "
+                    "rounding to the nearest 5 minutes."
+                ),
+            },
+            "recurrence": {
+                "type": ["object", "null"],
+                "description": "Required iff schedule_type=recurring, else null.",
+                "properties": {
+                    "interval": {"type": "integer", "description": "Every N units, minimum 1."},
+                    "freq": {"type": "string", "enum": ["daily", "weekly", "monthly"]},
+                    "weekdays": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string", "enum": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]},
+                        "description": "Required (non-empty) iff freq=weekly, else null.",
+                    },
+                    "month_day": {
+                        "type": ["integer", "null"],
+                        "description": "1-31, one of two monthly variants; null unless freq=monthly.",
+                    },
+                    "month_nth_weekday": {
+                        "type": ["object", "null"],
+                        "description": (
+                            "The other monthly variant, e.g. {n:1, weekday:'MO'} = first "
+                            "Monday; null unless freq=monthly."
+                        ),
+                        "properties": {
+                            "n": {"type": "integer", "enum": [1, 2, 3, 4, -1], "description": "-1 means 'last'."},
+                            "weekday": {"type": "string", "enum": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]},
+                        },
+                        "required": ["n", "weekday"],
+                        "additionalProperties": False,
+                    },
+                    "first_occurrence_at": {
+                        "type": "string",
+                        "description": "ISO-8601 local datetime of the FIRST occurrence, must be strictly in the future after rounding.",
+                    },
+                    "end_condition": {"type": "string", "enum": ["never", "after_n", "until_date"]},
+                    "end_count": {"type": ["integer", "null"], "description": "Required iff end_condition=after_n."},
+                    "end_until": {
+                        "type": ["string", "null"],
+                        "description": "ISO-8601 local date, required iff end_condition=until_date, must not be in the past.",
+                    },
+                },
+                "required": [
+                    "interval", "freq", "weekdays", "month_day", "month_nth_weekday",
+                    "first_occurrence_at", "end_condition", "end_count", "end_until",
+                ],
+                "additionalProperties": False,
+            },
+        },
+        "required": ["message_text", "schedule_type", "one_time_due_at", "recurrence"],
+        "additionalProperties": False,
+    },
+}
+
+# Read-only - no approval gate applies (FR-013), dispatched immediately like
+# capture_ledger_event, never creates a PendingLocalToolApproval. Lets the
+# model resolve a user's natural-language description of a reminder to a
+# concrete reminder_id before calling modify_reminder/delete_reminder - never
+# a code-level fuzzy string match, never a guessed identifier.
+LIST_REMINDERS_TOOL: Dict[str, Any] = {
+    "type": "function",
+    "name": "list_reminders",
+    "description": (
+        "ONLY call this when the user's own message explicitly asks about their "
+        "reminders (e.g. \"מה יש לי מחר\", or as a precursor to an explicit modify/"
+        "delete request). NEVER call this to interpret a confirmation reply "
+        "(\"כן\"/\"לא\"), an ambiguous message, or any message about clients, "
+        "invoices, or documents - those are handled by entirely separate tools. "
+        "Returns the current active reminder list (message text + human-readable schedule) "
+        "so you can resolve a user's natural-language description of a reminder to a concrete "
+        "reminder_id before calling modify_reminder or delete_reminder. Never guess a "
+        "reminder_id - always call this first if you don't already know it from earlier in "
+        "the conversation. Read-only: calling this never changes anything and needs no "
+        "user approval."
+    ),
+    "strict": True,
+    "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+}
+
+# modify_reminder/delete_reminder share the reminder_id+scope shape - both
+# create a PendingLocalToolApproval, never dispatch immediately, same as
+# create_reminder.
+MODIFY_REMINDER_TOOL: Dict[str, Any] = {
+    "type": "function",
+    "name": "modify_reminder",
+    "description": (
+        "ONLY call this when the user's own message explicitly asks to change an "
+        "existing reminder (e.g. \"תעדכן/תדחה את התזכורת...\"). NEVER call this to "
+        "interpret a confirmation reply (\"כן\"/\"לא\"), an ambiguous message, or any "
+        "message about clients, invoices, or documents - those are handled by "
+        "entirely separate tools and this one is never a fallback for them. "
+        "Propose a modification to an existing reminder already identified via "
+        "list_reminders or earlier conversation - never a guessed reminder_id. Does not "
+        "persist anything - presented as an approval summary first, with any new time "
+        "shown AFTER rounding to the nearest 5 minutes."
+    ),
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "reminder_id": {"type": "string"},
+            "scope": {"type": "string", "enum": ["single_occurrence", "whole_series"]},
+            "occurrence_date_hint": {
+                "type": ["string", "null"],
+                "description": (
+                    "ISO-8601 local date/datetime identifying WHICH occurrence (matched "
+                    "against the plain rule's own generated dates), required iff "
+                    "scope=single_occurrence."
+                ),
+            },
+            "new_message_text": {
+                "type": ["string", "null"],
+                "description": (
+                    "The new text, in the user's own words, if they're changing what the "
+                    "reminder is about; null if only the schedule is changing. Never a "
+                    "placeholder (\"תזכורת\", \"בדיקה\", \"test\", or similar)."
+                ),
+            },
+            "new_due_at": {
+                "type": ["string", "null"],
+                "description": (
+                    "The new due date/time - meaningful for scope=single_occurrence, or for "
+                    "scope=whole_series when the target reminder is one-time (no recurrence "
+                    "to replace); must be in the future after rounding."
+                ),
+            },
+            "new_recurrence": {
+                "type": ["object", "null"],
+                "description": "Only meaningful for scope=whole_series on a recurring reminder; same shape as create_reminder's recurrence.",
+                "properties": CREATE_REMINDER_TOOL["parameters"]["properties"]["recurrence"]["properties"],
+                "required": CREATE_REMINDER_TOOL["parameters"]["properties"]["recurrence"]["required"],
+                "additionalProperties": False,
+            },
+        },
+        "required": [
+            "reminder_id", "scope", "occurrence_date_hint",
+            "new_message_text", "new_due_at", "new_recurrence",
+        ],
+        "additionalProperties": False,
+    },
+}
+
+DELETE_REMINDER_TOOL: Dict[str, Any] = {
+    "type": "function",
+    "name": "delete_reminder",
+    "description": (
+        "ONLY call this when the user's own message explicitly asks to cancel an "
+        "existing reminder (e.g. \"תבטל את התזכורת...\"). NEVER call this to "
+        "interpret a confirmation reply (\"כן\"/\"לא\"), an ambiguous message, or any "
+        "message about clients, invoices, or documents - those are handled by "
+        "entirely separate tools and this one is never a fallback for them. "
+        "Propose deleting a reminder (single occurrence or whole series), already identified "
+        "via list_reminders or earlier conversation - never a guessed reminder_id. Does not "
+        "persist anything - presented as an approval summary first."
+    ),
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "reminder_id": {"type": "string"},
+            "scope": {"type": "string", "enum": ["single_occurrence", "whole_series"]},
+            "occurrence_date_hint": {"type": ["string", "null"], "description": "Required iff scope=single_occurrence."},
+        },
+        "required": ["reminder_id", "scope", "occurrence_date_hint"],
+        "additionalProperties": False,
+    },
+}
+
+
+def _format_reminder_schedule(rrule_str: Optional[str], dtstart_iso: str) -> str:
+    """Human-readable Hebrew summary of a reminder's schedule, for the approval
+    block (_build_reminder_approval_details). The persisted RRULE string is the
+    source of truth for actual firing (ReminderManager/recurring_ical_events) -
+    this is display-only and deliberately simple, not a full RFC5545 renderer.
+    """
+    try:
+        when = datetime.fromisoformat(dtstart_iso).strftime("%d/%m/%Y %H:%M")
+    except (TypeError, ValueError):
+        when = dtstart_iso
+
+    if not rrule_str:
+        return f"חד-פעמי, {when}"
+
+    parts = dict(p.split("=", 1) for p in rrule_str.split(";") if "=" in p)
+    freq_labels = {"DAILY": "יומי", "WEEKLY": "שבועי", "MONTHLY": "חודשי"}
+    freq_label = freq_labels.get(parts.get("FREQ", ""), parts.get("FREQ", ""))
+    interval = parts.get("INTERVAL")
+    cadence = f"כל {interval} × {freq_label}" if interval else freq_label
+
+    extra = ""
+    if "BYDAY" in parts:
+        extra = f", בימים {parts['BYDAY']}"
+    elif "BYMONTHDAY" in parts:
+        extra = f", ביום {parts['BYMONTHDAY']} לחודש"
+
+    end = ""
+    if "COUNT" in parts:
+        end = f", {parts['COUNT']} פעמים"
+    elif "UNTIL" in parts:
+        end = f", עד {parts['UNTIL'][:8]}"
+
+    return f"{cadence}{extra}, החל מ-{when}{end}"
+
+
+def _build_reminder_approval_details(
+    tool_name: str, args: Dict[str, Any], due_at_iso: Optional[str] = None,
+    rrule_str: Optional[str] = None, current_message_text: Optional[str] = None,
+) -> str:
+    """Structured approval summary for a reminder create/modify/delete proposal -
+    same "state exactly what will happen, every time" discipline as
+    _build_pending_approval_details (bugfix-028 B3/A4), not left to the model's
+    own narration. For create_reminder, due_at_iso/rrule_str are the ALREADY-
+    ROUNDED/VALIDATED values from ReminderManager.resolve_schedule - what's
+    shown here is exactly what will be persisted on approval. For modify/delete,
+    current_message_text (fetched by the caller) identifies WHICH reminder,
+    since a reminder_id is not human-readable.
+    """
+    if tool_name == "create_reminder":
+        schedule = _format_reminder_schedule(rrule_str, due_at_iso or "")
+        return (
+            f"📋 לאישור — תזכורת חדשה:\n"
+            f"טקסט: {args.get('message_text', '(חסר)')}\n"
+            f"מועד: {schedule}\n\n{APPROVAL_QUESTION}"
+        )
+
+    scope_label = "כל הסדרה" if args.get("scope") == "whole_series" else "מופע בודד"
+    reminder_label = current_message_text or "(תזכורת)"
+
+    if tool_name == "modify_reminder":
+        changes = []
+        if args.get("new_message_text"):
+            changes.append(f"טקסט חדש: {args['new_message_text']}")
+        if args.get("new_due_at"):
+            changes.append(f"מועד חדש: {_format_reminder_schedule(None, args['new_due_at'])}")
+        if args.get("new_recurrence"):
+            changes.append("תבנית חזרה חדשה")
+        changes_text = "; ".join(changes) if changes else "(לא צוינו שינויים)"
+        return (
+            f"📋 לאישור — עדכון תזכורת \"{reminder_label}\" ({scope_label}):\n"
+            f"{changes_text}\n\n{APPROVAL_QUESTION}"
+        )
+
+    if tool_name == "delete_reminder":
+        return (
+            f"📋 לאישור — מחיקת תזכורת \"{reminder_label}\" ({scope_label})\n\n{APPROVAL_QUESTION}"
+        )
+
+    return f"יש פעולת תזכורת הממתינה לאישורך.\n\n{APPROVAL_QUESTION}"
+
+
 def extract_function_call(response, tool_name: str) -> Optional[Dict]:
     """Find a `function_call` item named `tool_name` in a Responses API `response.output`
     and return its parsed arguments, or None if absent.
@@ -885,6 +1191,24 @@ class AIHandler:
         # (see PendingApprovalManager docstring for why).
         self.pending_approval_manager = PendingApprovalManager()
 
+        # Reminders (Feature 054): ReminderManager owns {data_root}/reminders/
+        # (REQ-STORE-001-style discipline, matching LedgerEventManager/
+        # MediaFileManager - composed here at construction time, never read from
+        # config internally). max_active_reminders is likewise caller-composed
+        # from config.reminders, not read by ReminderManager itself. No feature
+        # flag - RBAC (REMINDER_AUTHORIZED_ROLES) is the only gate.
+        reminders_config = getattr(config, 'reminders', {}) or {}
+        self.reminder_manager = ReminderManager(
+            storage_dir=str(Path(config.data_root) / "reminders"),
+            max_active_reminders=reminders_config.get('max_active_reminders', 20),
+        )
+        # Local-tool approval gate (create_reminder/modify_reminder/delete_reminder)
+        # - a separate, parallel manager to pending_approval_manager, never merged
+        # into it (CONSTITUTION test-immutability protects Feature 047's existing
+        # approval-gate tests; PendingApproval is structurally MCP-specific - see
+        # contracts/local-tool-approval-gate.md).
+        self.pending_local_tool_approval_manager = PendingLocalToolApprovalManager()
+
         # Most recent successful AIResponse, for observability/E2E test verification.
         self.last_response: Optional[AIResponse] = None
 
@@ -1054,7 +1378,11 @@ class AIHandler:
             # 2026-07-28), just one level upstream - exposed by strengthening this
             # feature's E2E persistence assertions to check the exact value, not
             # just truthiness.
-            timestamp=message.timestamp
+            timestamp=message.timestamp,
+            # 2026-08-19: the whole original message, not just the fields this
+            # function happened to need at the time - see AIRequest.original_message's
+            # own docstring for why (ends a real created_by_phone bug for group turns).
+            original_message=message,
         )
 
         logger.debug(f"Created AIRequest {request.request_id} for message {message.message_id}")
@@ -1119,13 +1447,32 @@ class AIHandler:
         unlike the Morning MCP tools; no remote server, unlike them either)."""
         return [LEDGER_EVENT_TOOL]
 
+    def _build_reminder_tools(self, user_obj) -> List[Dict]:
+        """Reminder tools (Feature 054), RBAC-gated the same way Morning MCP tools
+        are - only GODFATHER/ADMIN get them attached. list_reminders is read-only
+        (no approval gate); create/modify/delete all go through the
+        PendingLocalToolApproval gate.
+        """
+        if user_obj is None or user_obj.role not in REMINDER_AUTHORIZED_ROLES:
+            return []
+        return [CREATE_REMINDER_TOOL, LIST_REMINDERS_TOOL, MODIFY_REMINDER_TOOL, DELETE_REMINDER_TOOL]
+
     def _assemble_tools(self, user_obj, correlation_id: str) -> Optional[List[Dict]]:
-        """Merge the (RBAC-gated) Morning MCP tools with the (always-on) ledger-event
-        tool into one `tools` list - both can be attached in the same turn. Returns
-        None (not an empty list) when nothing applies, matching the Responses API's
-        own convention for "no tools this call"."""
+        """Merge the (RBAC-gated) Morning MCP tools, the (RBAC-gated) reminder
+        tools, and the (always-on) ledger-event tool into one `tools` list - all
+        can be attached in the same turn. Returns None (not an empty list) when
+        nothing applies, matching the Responses API's own convention for "no
+        tools this call"."""
         morning_tools = self._build_morning_mcp_tools(user_obj, correlation_id) if self.rbac_enabled else None
-        combined = (morning_tools or []) + self._build_ledger_event_tool()
+        reminder_tools = self._build_reminder_tools(user_obj) if self.rbac_enabled else []
+        # Reminder tools deliberately go LAST (2026-08-19, user decision after a
+        # real cross-feature confusion incident): Morning's tools are one opaque
+        # `mcp` entry needing runtime discovery, so reminder tools - individually
+        # inlined `function` entries - were the most directly-visible tools in the
+        # list whenever they came right after it. Position isn't the only fix
+        # (see the tool descriptions' own explicit negative scoping above), but
+        # reduces whatever residual bias position/primacy contributes.
+        combined = (morning_tools or []) + self._build_ledger_event_tool() + reminder_tools
         return combined or None
 
     def _build_instructions(self, constitution: str, today_timestamp: Optional[int] = None) -> str:
@@ -1158,36 +1505,49 @@ class AIHandler:
                 ledger field already correctly derives from the message's
                 own timestamp, never wall-clock.
         """
-        # Give the model the actual current date. It has no clock of its own —
-        # its training cutoff makes it default to a stale "current year", which
-        # produced real wrong-year invoice lookups (e.g. resolving "7 בפברואר"
-        # to 2023). This is appended at reply time, computed per call in UTC
-        # (CONSTITUTION §II) — NOT templated into the constitution file.
+        # Give the model the actual current date AND time. It has no clock of
+        # its own — its training cutoff makes it default to a stale "current
+        # year", which produced real wrong-year invoice lookups (e.g.
+        # resolving "7 בפברואר" to 2023). Time-of-day was added for Feature
+        # 054 (reminders) — without it the model cannot resolve a relative
+        # clock offset ("תזכיר לי בעוד שעה") and has to ask the user for the
+        # current time instead of just computing it, confirmed via a real
+        # billed-test failure. This is appended at reply time, computed per
+        # call in Israel local time (bugfix-037 — NOT UTC) — NOT templated
+        # into the constitution file. today_timestamp (Feature 043) overrides
+        # "now" for the WhatsApp export player's historical replay - see this
+        # method's own docstring above.
         if today_timestamp is not None:
-            today = local_from_timestamp(today_timestamp).strftime("%Y-%m-%d")
+            now = local_from_timestamp(today_timestamp)
         else:
-            today = now_local().strftime("%Y-%m-%d")
+            now = now_local()
+        today = now.strftime("%Y-%m-%d")
+        current_time = now.strftime("%H:%M")
         return (
             f"{constitution}\n\n---\n"
-            f"THE CURRENT DATE IS {today} (UTC). Treat this as the authoritative "
-            f"\"today\" when resolving any relative or partial date the user gives "
-            f"(a day/month with no year, \"היום\", \"אתמול\", etc.) — never fall "
-            f"back on a year from your training data.\n"
+            f"THE CURRENT DATE AND TIME IS {today} {current_time} (Asia/Jerusalem, "
+            f"Israel local time). Treat this as the authoritative \"now\" when "
+            f"resolving any relative or partial date/time the user gives (a "
+            f"day/month with no year, \"היום\", \"אתמול\", \"בעוד שעה\", \"בעוד "
+            f"חצי שעה\", etc.) — never fall back on a year from your training "
+            f"data, and never ask the user what time it is now.\n"
             f"YOUR CURRENT VERSION IS {self._app_version}. If asked what version you are "
             f"running (in any language), state this exact value."
         )
 
-    @retry(
-        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
-        stop=stop_after_attempt(2),  # Initial attempt + 1 retry = 2 total
-        wait=wait_fixed(1),  # 1 second wait between retries
-        reraise=True
-    )
     def _call_openai_api(self, request: AIRequest, conversation_history: Optional[List[Dict]] = None,
                          tools: Optional[List[Dict]] = None):
         """
-        Make the actual OpenAI Responses API call with retry logic.
-        Retries ONCE (max 2 attempts) on transient failures, waits 1 second.
+        Make the actual OpenAI Responses API call.
+
+        Retries on transient failures (RateLimitError/APITimeoutError/APIError)
+        are handled entirely by the OpenAI SDK's own client-level max_retries
+        (2026-08-19 - see AppConfiguration.max_retries' own docstring for why
+        this method no longer carries its own tenacity @retry decorator: it
+        used to double up with the SDK's own previously-unconfigured default
+        retry behavior, up to 6 real HTTP attempts for one logical call). The
+        SDK honors real server Retry-After guidance, which a fixed local wait
+        never did.
 
         Args:
             request: AI request to send
@@ -1198,9 +1558,9 @@ class AIHandler:
             OpenAI Responses API response
 
         Raises:
-            RateLimitError: After 2 attempts (1 retry)
-            APITimeoutError: After 2 attempts (1 retry)
-            APIError: After 2 attempts (1 retry)
+            RateLimitError: After the client's own max_retries attempts are exhausted
+            APITimeoutError: Same
+            APIError: Same
         """
         logger.debug(f"Calling OpenAI Responses API for request {request.request_id}")
 
@@ -1320,6 +1680,22 @@ class AIHandler:
                 return resolved
         else:
             logger.info(f"[022] No pending approval for chat={effective_chat_id!r} - normal turn processing")
+            # Reminders (Feature 054): checked only when there's no MCP pending
+            # approval - at most one of the two managers is ever populated for a
+            # given chat_id in practice (a user doesn't have two simultaneous
+            # approval flows), and this order is deterministic (matches
+            # contracts/local-tool-approval-gate.md).
+            local_pending = self.pending_local_tool_approval_manager.get(effective_chat_id) if user_obj else None
+            if local_pending is not None:
+                logger.info(
+                    f"[054] Pending local-tool approval FOUND for chat={effective_chat_id!r} - "
+                    "routing to _resolve_pending_local_tool_approval instead of a normal turn"
+                )
+                local_resolved = self._resolve_pending_local_tool_approval(
+                    local_pending, request, effective_chat_id, user_obj, user_role, sender, recipient
+                )
+                if local_resolved is not None:
+                    return local_resolved
 
         # Retrieve conversation history if memory enabled
         conversation_history = None
@@ -1573,6 +1949,232 @@ class AIHandler:
 
         return followup, event_ids
 
+    def _handle_reminder_creation_proposal(
+        self, request: AIRequest, response, effective_chat_id: Optional[str],
+    ) -> "tuple[Optional[str], bool]":
+        """Reminders (Feature 054): detect a `create_reminder` function_call and
+        turn it into a pending local-tool approval - never dispatched immediately
+        (unlike capture_ledger_event). Unlike the MCP approval-request path, no
+        second OpenAI round-trip happens here either: the approval summary is
+        built deterministically from the (validated, rounded) arguments, same
+        "state exactly what will happen" discipline as
+        _build_pending_approval_details (bugfix-028 B3/A4).
+
+        Returns (response_text_override, new_local_tool_pending_created).
+        response_text_override is None when no create_reminder call was made
+        this turn - the caller leaves response_text untouched in that case.
+        """
+        if effective_chat_id is None:
+            return None, False
+
+        args = extract_function_call(response, CREATE_REMINDER_TOOL["name"])
+        if args is None:
+            return None, False
+
+        try:
+            # cast: args is a Dict[Any, Any] (from json.loads), so .get() is
+            # typed Any to mypy - ReminderManager.resolve_schedule validates
+            # the actual value at runtime regardless (InvalidRecurrenceError on
+            # anything not a real "one_time"/"recurring" string), this is a
+            # type-checker signal only.
+            rrule_str, dtstart = self.reminder_manager.resolve_schedule(
+                schedule_type=cast(str, args.get("schedule_type")),
+                one_time_due_at=args.get("one_time_due_at"),
+                recurrence=args.get("recurrence"),
+            )
+        except ReminderPastDateError as e:
+            logger.info(f"[054] create_reminder proposal rejected (past date): {e}")
+            return REMINDER_PAST_DATE_REJECTED, False
+        except InvalidRecurrenceError as e:
+            logger.warning(f"[054] create_reminder proposal rejected (invalid recurrence): {e}")
+            return REMINDER_ACTION_FAILED_TRY_AGAIN, False
+
+        # Proposal-time cap check (UX: reject immediately rather than proposing
+        # something that will fail at approval time) - re-checked again at
+        # actual approval/persist time regardless (TOCTOU-closing, see
+        # contracts/local-tool-approval-gate.md), never trusted from this check
+        # alone.
+        if len(self.reminder_manager.list_active()) >= self.reminder_manager.max_active_reminders:
+            logger.info(f"[054] create_reminder proposal rejected (cap reached): chat={effective_chat_id!r}")
+            return REMINDER_CAP_EXCEEDED, False
+
+        pending = PendingLocalToolApproval(
+            tool_name=CREATE_REMINDER_TOOL["name"],
+            response_id=response.id,
+            call_id=extract_function_call_id(response, CREATE_REMINDER_TOOL["name"]) or "",
+            arguments=args,
+            created_at=now_local().isoformat(),
+        )
+        self.pending_local_tool_approval_manager.set(effective_chat_id, pending)
+        logger.info(
+            f"[054] Pending local-tool approval created for chat={effective_chat_id!r}, "
+            f"tool={CREATE_REMINDER_TOOL['name']!r}, due_at={dtstart.isoformat()}"
+        )
+        details = _build_reminder_approval_details(
+            CREATE_REMINDER_TOOL["name"], args, dtstart.isoformat(), rrule_str
+        )
+        return details, True
+
+    def _call_openai_list_reminders_followup_api(
+        self, request: AIRequest, previous_response_id: str, call_id: str,
+        reminders_summary: List[Dict[str, Any]], tools: Optional[List[Dict]] = None,
+    ):
+        """Reports list_reminders' result back as that call's function_call_output,
+        via a follow-up chained to the SAME turn's response.id - same pattern as
+        _call_openai_ledger_followup_api, but same-turn (list_reminders dispatches
+        immediately, unlike create/modify/delete_reminder, so no PendingLocalToolApproval
+        is involved and no later turn is needed).
+        """
+        output_items = [{
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps({"reminders": reminders_summary}, ensure_ascii=False),
+        }]
+        kwargs = {
+            "model": request.model,
+            "instructions": self._build_instructions(request.constitution),
+            "input": output_items,
+            "previous_response_id": previous_response_id,
+            "max_output_tokens": request.max_tokens,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        logger.info(f"[054] _call_openai_list_reminders_followup_api: call_id={call_id!r}")
+        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        return response
+
+    def _handle_list_reminders(self, request: AIRequest, response, tools: Optional[List[Dict]]):
+        """Reminders (Feature 054): list_reminders (FR-013) is read-only, dispatched
+        immediately (unlike create/modify/delete_reminder), same as
+        capture_ledger_event - needs a follow-up round-trip for the same reason
+        (reasoning models emit function_call OR message, never both in one turn).
+
+        Returns the follow-up response (whose output_text/usage should replace the
+        original response's), or None if no list_reminders call was made this turn,
+        or if the follow-up call itself failed.
+        """
+        call_id = extract_function_call_id(response, LIST_REMINDERS_TOOL["name"])
+        if call_id is None:
+            return None
+
+        reminders = self.reminder_manager.list_active()
+        summary = [
+            {
+                "reminder_id": r["reminder_id"],
+                "message_text": r["message_text"],
+                "schedule": _format_reminder_schedule(r["rrule"], r["dtstart"]),
+            }
+            for r in reminders
+        ]
+        try:
+            return self._call_openai_list_reminders_followup_api(
+                request, response.id, call_id, summary, tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[054] list_reminders follow-up call failed: {e}", exc_info=True)
+            return None
+
+    def _handle_reminder_modify_or_delete_proposal(
+        self, request: AIRequest, response, effective_chat_id: Optional[str],
+    ) -> "tuple[Optional[str], bool]":
+        """Reminders (Feature 054): detect a modify_reminder/delete_reminder
+        function_call and turn it into a pending local-tool approval - same
+        pattern as _handle_reminder_creation_proposal, covering both tools since
+        their proposal-time handling (lookup, scope validation, approval-summary
+        build) is nearly identical.
+
+        Returns (response_text_override, new_local_tool_pending_created) - same
+        contract as _handle_reminder_creation_proposal.
+        """
+        if effective_chat_id is None:
+            return None, False
+
+        for tool_name in (MODIFY_REMINDER_TOOL["name"], DELETE_REMINDER_TOOL["name"]):
+            args = extract_function_call(response, tool_name)
+            if args is not None:
+                return self._propose_reminder_modify_or_delete(
+                    tool_name, args, request, response, effective_chat_id
+                )
+        return None, False
+
+    def _propose_reminder_modify_or_delete(
+        self, tool_name: str, args: Dict[str, Any], request: AIRequest, response,
+        effective_chat_id: str,
+    ) -> "tuple[Optional[str], bool]":
+        # DEBUG (2026-08-18, root-causing a real billed-test failure): the raw
+        # function_call arguments exactly as the model supplied them, before any
+        # parsing/validation - occurrence_date_hint in particular, since it must
+        # exactly match a real generated occurrence datetime downstream
+        # (ReminderManager._upsert_exception logs the actual candidate set).
+        logger.debug(f"[054] {tool_name} raw args from model: {args!r}")
+        reminder_id = args.get("reminder_id")
+        scope = args.get("scope")
+        if scope not in ("single_occurrence", "whole_series"):
+            logger.warning(f"[054] {tool_name} proposal rejected (invalid scope): {scope!r}")
+            return REMINDER_ACTION_FAILED_TRY_AGAIN, False
+
+        current = self.reminder_manager.get_reminder(cast(str, reminder_id))
+        if current is None:
+            logger.warning(f"[054] {tool_name} proposal rejected (reminder not found): {reminder_id!r}")
+            return REMINDER_ACTION_FAILED_TRY_AGAIN, False
+
+        if scope == "single_occurrence" and not args.get("occurrence_date_hint"):
+            logger.warning(f"[054] {tool_name} proposal rejected (missing occurrence_date_hint)")
+            return REMINDER_ACTION_FAILED_TRY_AGAIN, False
+        if scope == "single_occurrence" and current["rrule"] is None:
+            logger.warning(f"[054] {tool_name} proposal rejected (single_occurrence on a one-time reminder)")
+            return REMINDER_ACTION_FAILED_TRY_AGAIN, False
+
+        # Proposal-time validation only (UX: reject immediately rather than
+        # proposing something that will fail at approval time) - discarded, not
+        # persisted; re-validated for real at approval time (TOCTOU-closing, see
+        # contracts/local-tool-approval-gate.md).
+        try:
+            if scope == "single_occurrence":
+                # Bug fix (2026-08-18): validate occurrence_date_hint resolves to
+                # exactly one real occurrence NOW, at proposal time, rather than
+                # only discovering a bad/mismatched hint at approval time (or
+                # worse, silently succeeding at approval time with an orphaned
+                # exception that never actually overrides anything - the original
+                # bug, root-caused via a real billed-test failure).
+                self.reminder_manager.resolve_occurrence_datetime(
+                    cast(str, reminder_id), current, cast(str, args.get("occurrence_date_hint"))
+                )
+            if tool_name == MODIFY_REMINDER_TOOL["name"]:
+                if scope == "single_occurrence" and args.get("new_due_at"):
+                    self.reminder_manager.resolve_schedule("one_time", args["new_due_at"], None)
+                elif scope == "whole_series":
+                    if current["rrule"] is not None and args.get("new_recurrence"):
+                        self.reminder_manager.resolve_schedule("recurring", None, args["new_recurrence"])
+                    elif current["rrule"] is None and args.get("new_due_at"):
+                        self.reminder_manager.resolve_schedule("one_time", args["new_due_at"], None)
+        except ReminderPastDateError as e:
+            logger.info(f"[054] {tool_name} proposal rejected (past date): {e}")
+            return REMINDER_PAST_DATE_REJECTED, False
+        except InvalidRecurrenceError as e:
+            logger.warning(f"[054] {tool_name} proposal rejected (invalid recurrence): {e}")
+            return REMINDER_ACTION_FAILED_TRY_AGAIN, False
+        except OccurrenceNotFoundError as e:
+            logger.warning(f"[054] {tool_name} proposal rejected (occurrence_date_hint mismatch): {e}")
+            return REMINDER_ACTION_FAILED_TRY_AGAIN, False
+
+        pending = PendingLocalToolApproval(
+            tool_name=tool_name,
+            response_id=response.id,
+            call_id=extract_function_call_id(response, tool_name) or "",
+            arguments=args,
+            created_at=now_local().isoformat(),
+        )
+        self.pending_local_tool_approval_manager.set(effective_chat_id, pending)
+        logger.info(
+            f"[054] Pending local-tool approval created for chat={effective_chat_id!r}, "
+            f"tool={tool_name!r}, reminder_id={reminder_id!r}, scope={scope!r}"
+        )
+        details = _build_reminder_approval_details(
+            tool_name, args, current_message_text=current["message_text"]
+        )
+        return details, True
+
     @staticmethod
     def _extract_mcp_error_text(call) -> str:
         """Pull human-readable failure text off a Responses API `mcp_call`
@@ -1650,6 +2252,58 @@ class AIHandler:
                 f"{request.request_id} - using generic fallback text so the user "
                 "never receives a silently empty reply."
             )
+
+        # Reminders (Feature 054): list_reminders is read-only, dispatched
+        # immediately (unlike create/modify/delete_reminder), and needs a
+        # follow-up round-trip for its reply for the same function_call-OR-
+        # message reason as ledger events. Checked first - if the model called
+        # it this turn, that follow-up's text is this turn's real content.
+        list_reminders_followup = self._handle_list_reminders(request, response, tools)
+        if list_reminders_followup is not None:
+            response_text = list_reminders_followup.output_text
+            tokens_used += list_reminders_followup.usage.total_tokens
+            prompt_tokens += list_reminders_followup.usage.input_tokens
+            completion_tokens += list_reminders_followup.usage.output_tokens
+            usage_response = list_reminders_followup
+
+        # Bug fix (2026-08-18, caught by a real billed test): when list_reminders
+        # was called this turn, the model - now knowing the reminder_id - very
+        # often calls create/modify/delete_reminder in the SAME follow-up
+        # response, not the original one. create/modify/delete detection below
+        # MUST inspect that follow-up response in that case, never the original
+        # (pre-list_reminders) `response` - otherwise the follow-up's function_call
+        # is invisible to this code, response_text stays '' (list_reminders_followup's
+        # own output_text, empty for the same function_call-OR-message reason),
+        # and AIResponse.__post_init__ correctly rejects the empty reply.
+        reminder_tool_response = (
+            list_reminders_followup if list_reminders_followup is not None else response
+        )
+
+        # Reminders (Feature 054): a create_reminder call produces empty
+        # output_text too (same reasoning-model function_call-OR-message
+        # limitation as ledger events), but unlike ledger capture, this NEVER
+        # dispatches immediately - it becomes a pending local-tool approval, and
+        # response_text is replaced with a deterministic summary (no second
+        # OpenAI round-trip needed at proposal time, unlike the ledger path).
+        reminder_details, new_local_tool_pending_created = self._handle_reminder_creation_proposal(
+            request, reminder_tool_response, effective_chat_id
+        )
+        if reminder_details is not None:
+            response_text = reminder_details
+
+        # Reminders (Feature 054): modify_reminder/delete_reminder proposals -
+        # same pending-approval pattern as create_reminder. Only checked if
+        # create_reminder didn't already claim this turn (a turn calls at most
+        # one reminder tool in practice).
+        if not new_local_tool_pending_created:
+            modify_delete_details, modify_delete_pending_created = (
+                self._handle_reminder_modify_or_delete_proposal(
+                    request, reminder_tool_response, effective_chat_id
+                )
+            )
+            if modify_delete_details is not None:
+                response_text = modify_delete_details
+                new_local_tool_pending_created = modify_delete_pending_created
 
         logger.info(
             f"[022] _finalize_response: response.id={getattr(response, 'id', None)!r}, "
@@ -1890,7 +2544,7 @@ class AIHandler:
             is_truncated=False,
             should_reply=should_reply,
             mcp_calls=mcp_calls,
-            offer_approval_buttons=new_pending_approval_created
+            offer_approval_buttons=new_pending_approval_created or new_local_tool_pending_created
         )
 
         # Check if response needs truncation for WhatsApp
@@ -1905,12 +2559,6 @@ class AIHandler:
 
         return ai_response
 
-    @retry(
-        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
-        stop=stop_after_attempt(2),
-        wait=wait_fixed(1),
-        reraise=True
-    )
     def _call_openai_ledger_followup_api(self, request: AIRequest, previous_response_id: str,
                                          ledger_calls: List[Dict],
                                          tools: Optional[List[Dict]] = None,
@@ -1991,12 +2639,44 @@ class AIHandler:
         )
         return response
 
-    @retry(
-        retry=retry_if_exception_type((RateLimitError, APITimeoutError, APIError)),
-        stop=stop_after_attempt(2),
-        wait=wait_fixed(1),
-        reraise=True
-    )
+    def _call_openai_reminder_followup_api(
+        self, request: AIRequest, pending: PendingLocalToolApproval, result: Dict[str, Any],
+    ):
+        """Reminders (Feature 054): report the concrete result of an approved
+        create_reminder/modify_reminder/delete_reminder action back as that
+        call's `function_call_output`, via a follow-up Responses API call
+        chained to the ORIGINAL proposal turn via `previous_response_id` -
+        same pattern as `_call_openai_ledger_followup_api`, just spread across
+        two separate WhatsApp turns (the proposal, and the later "כן" reply)
+        instead of one, since pending.response_id/call_id are what make that
+        possible once the original `response` object is long out of scope.
+
+        Lets the model phrase a natural Hebrew confirmation from the real
+        result, instead of a hardcoded template - confirmed as the preferred
+        approach over a template, matching capture_ledger_event's own
+        confirmatory-followup pattern (one extra billed call per approved
+        action, judged worth it for voice consistency).
+        """
+        output_items = [{
+            "type": "function_call_output",
+            "call_id": pending.call_id,
+            "output": json.dumps({"status": "success", **result}, ensure_ascii=False),
+        }]
+        kwargs = {
+            "model": request.model,
+            "instructions": self._build_instructions(request.constitution),
+            "input": output_items,
+            "previous_response_id": pending.response_id,
+            "max_output_tokens": request.max_tokens,
+        }
+        logger.info(f"[054] _call_openai_reminder_followup_api: call_id={pending.call_id!r}, result={result!r}")
+        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        logger.info(
+            f"[054] _call_openai_reminder_followup_api response: id={getattr(response, 'id', None)!r}, "
+            f"output_text={response.output_text!r}"
+        )
+        return response
+
     def capture_ledger_events_from_text(self, text: str, today_timestamp: Optional[int] = None) -> List[Dict]:
         """
         Ledger Event Recognition (Feature 024) for the image path: a separate, internal
@@ -2129,12 +2809,11 @@ class AIHandler:
         # default auto-retry-on-429 re-executing that already-approved tool
         # call a second time (two invoices created from one approval). A
         # failed attempt here must surface as a clean error to the caller,
-        # never retry itself. This method is also deliberately NOT wrapped in
-        # the @retry(...) tenacity decorator used elsewhere in this file - a
-        # bugfix-022 incident recurred even with max_retries=0 because that
-        # decorator was still transparently retrying this whole method (a
-        # second real API call) on RateLimitError/APITimeoutError/APIError.
-        # No retry of this call is ever safe, at any layer.
+        # never retry itself - explicitly overriding the client's own
+        # max_retries=config.max_retries (2026-08-19, see
+        # AppConfiguration.max_retries' own docstring) via .with_options(...)
+        # right here, rather than relying on any outer/shared retry layer to
+        # respect this. No retry of this call is ever safe, at any layer.
         response = self.client.with_options(max_retries=0).responses.create(**kwargs)  # type: ignore[call-overload]
         logger.info(
             f"[022] _call_openai_approval_api response: id={getattr(response, 'id', None)!r}, "
@@ -2289,16 +2968,190 @@ class AIHandler:
         )
         return None
 
-    def resolve_button_tap(
-        self, chat_id: str, selected_id: str, stanza_id: str, message_id: str,
-        user_phone: Optional[str], sender: Optional[str], *,
-        is_group: bool = False, chat_name: Optional[str] = None,
-        sender_phone: Optional[str] = None,
+    def _resolve_pending_local_tool_approval(
+        self, pending: PendingLocalToolApproval, request: AIRequest,
+        effective_chat_id: str, user_obj, user_role: str,
+        sender: Optional[str], recipient: Optional[str],
     ) -> Optional[AIResponse]:
         """
-        Feature 047: resolves a WhatsApp interactive-button tap against chat_id's
-        pending approval (Feature 022), if the tap's stanza_id matches the message
-        it was actually sent as (contracts/pending-approval-message-binding.md).
+        Resolve a pending local reminder tool call (Feature 054) using this
+        turn's message as the yes/no reply - the local-tool equivalent of
+        `_resolve_pending_approval`, but the approved action dispatches
+        directly to `ReminderManager` (no `mcp_approval_response` round-trip;
+        a local `function_call`'s arguments are already fully known, there is
+        no OpenAI-side server state to resolve against).
+
+        Returns:
+            The final AIResponse if approved. None if declined/unrecognized -
+            same contract as `_resolve_pending_approval`: the caller then
+            processes this same message as a normal fresh turn.
+        """
+        is_affirmative = _is_affirmative_reply(request.user_prompt)
+        logger.info(
+            f"[054] _resolve_pending_local_tool_approval: chat={effective_chat_id!r}, "
+            f"pending={pending!r}, user_prompt={request.user_prompt!r}, "
+            f"is_affirmative={is_affirmative}"
+        )
+
+        if not is_affirmative:
+            self.pending_local_tool_approval_manager.clear(effective_chat_id)
+            logger.info(
+                f"[054] Pending local-tool approval declined for chat={effective_chat_id!r} "
+                "- falling through to a fresh turn"
+            )
+            return None
+
+        # Manager-level re-check (TOCTOU-closing, not just the proposal-time
+        # check) - a slow approval flow could let a proposed future time
+        # become past, or a concurrent proposal could have already filled the
+        # cap. Cleared either way: a failed approval is never left pending for
+        # an identical retry to fail identically against (same reasoning as
+        # bugfix-028 B4(b)'s zero-execution MCP handling).
+        try:
+            # cast: pending.arguments is Dict[str, Any] (from json.loads), so
+            # .get() is typed Any to mypy - each ReminderManager method
+            # validates the actual values at runtime regardless.
+            args = pending.arguments
+            scope = args.get("scope")
+            if pending.tool_name == CREATE_REMINDER_TOOL["name"]:
+                # created_by_phone/role must reflect the LITERAL sender of this
+                # turn, not the RBAC-resolved user_obj/user_role - for a group
+                # turn those are Feature 039's most-permissive-member
+                # resolution (e.g. an admin, even when a lower-privileged
+                # member actually sent the message), which is correct for
+                # permissions/token-limits but wrong for traceability. Pulled
+                # from request.original_message (2026-08-19 fix - see
+                # AIRequest.original_message's docstring) rather than user_obj.
+                if request.original_message:
+                    literal_sender_phone = request.original_message.sender_id
+                    literal_sender_role = user_role
+                    if self.rbac_enabled and self.user_manager:
+                        literal_user_obj = self.user_manager.get_user(literal_sender_phone)
+                        if literal_user_obj:
+                            literal_sender_role = literal_user_obj.role
+                else:
+                    # No original_message on this request (should not happen
+                    # in production - defensive fallback only) - fall back to
+                    # the previous, RBAC-resolved behavior rather than error.
+                    literal_sender_phone = user_obj.phone if user_obj else (sender or effective_chat_id)
+                    literal_sender_role = user_obj.role if user_obj else user_role
+                result = self.reminder_manager.create_reminder(
+                    message_text=cast(str, args.get("message_text")),
+                    schedule_type=cast(str, args.get("schedule_type")),
+                    one_time_due_at=args.get("one_time_due_at"),
+                    recurrence=args.get("recurrence"),
+                    created_by_phone=literal_sender_phone,
+                    created_by_role=literal_sender_role,
+                    delivery_chat_id=effective_chat_id,
+                )
+            elif pending.tool_name == MODIFY_REMINDER_TOOL["name"] and scope == "single_occurrence":
+                result = self.reminder_manager.modify_single_occurrence(
+                    reminder_id=cast(str, args.get("reminder_id")),
+                    occurrence_date_hint=cast(str, args.get("occurrence_date_hint")),
+                    new_message_text=args.get("new_message_text"),
+                    new_due_at=args.get("new_due_at"),
+                )
+            elif pending.tool_name == MODIFY_REMINDER_TOOL["name"]:  # scope == "whole_series"
+                result = self.reminder_manager.modify_whole_series(
+                    reminder_id=cast(str, args.get("reminder_id")),
+                    new_message_text=args.get("new_message_text"),
+                    new_recurrence=args.get("new_recurrence"),
+                    new_due_at=args.get("new_due_at"),
+                )
+            elif pending.tool_name == DELETE_REMINDER_TOOL["name"] and scope == "single_occurrence":
+                result = self.reminder_manager.delete_single_occurrence(
+                    reminder_id=cast(str, args.get("reminder_id")),
+                    occurrence_date_hint=cast(str, args.get("occurrence_date_hint")),
+                )
+            elif pending.tool_name == DELETE_REMINDER_TOOL["name"]:  # scope == "whole_series"
+                result = self.reminder_manager.delete_whole_series(
+                    reminder_id=cast(str, args.get("reminder_id")),
+                )
+            else:
+                raise InvalidRecurrenceError(
+                    f"unresolvable pending tool_name/scope: {pending.tool_name!r}/{scope!r}"
+                )
+        except (ReminderPastDateError, ReminderCapExceededError, ReminderNotFoundError,
+                InvalidRecurrenceError, OccurrenceNotFoundError) as e:
+            logger.error(
+                f"[054] Approved reminder action failed at persist time for chat="
+                f"{effective_chat_id!r}, tool={pending.tool_name!r}: {e}", exc_info=True
+            )
+            self.pending_local_tool_approval_manager.clear(effective_chat_id)
+            return self._create_fallback_response(request.request_id, REMINDER_ACTION_FAILED_TRY_AGAIN)
+
+        self.pending_local_tool_approval_manager.clear(effective_chat_id)
+        logger.info(f"[054] Approved and cleared pending local-tool approval for chat={effective_chat_id!r}")
+
+        try:
+            followup = self._call_openai_reminder_followup_api(request, pending, result)
+            response_text = followup.output_text
+            tokens_used = followup.usage.total_tokens
+            prompt_tokens = followup.usage.input_tokens
+            completion_tokens = followup.usage.output_tokens
+            model_name = followup.model
+        except Exception as e:
+            logger.error(
+                f"[054] Reminder confirmation follow-up call failed for chat="
+                f"{effective_chat_id!r}: {e}", exc_info=True
+            )
+            response_text = ""
+            tokens_used = prompt_tokens = completion_tokens = 0
+            model_name = "error-fallback"
+
+        if not response_text.strip():
+            # Same "never leave the user with a silently empty reply" discipline
+            # as LEDGER_FOLLOWUP_FAILED_TRY_AGAIN - the follow-up round-trip
+            # failing/returning nothing must never surface as no reply at all,
+            # even though the reminder itself WAS actually created/modified/
+            # deleted successfully (unlike the ledger fallback's case).
+            response_text = REMINDER_ACTION_FAILED_TRY_AGAIN
+            logger.warning(
+                f"[054] Reminder confirmation follow-up produced no reply for chat="
+                f"{effective_chat_id!r} despite the action succeeding - using generic "
+                "fallback text so the user never receives a silently empty reply."
+            )
+
+        if self.memory_enabled and self.session_manager and effective_chat_id and self.rbac_enabled and user_obj:
+            try:
+                self.session_manager.add_message_with_token_limit(
+                    chat_id=effective_chat_id, role="user", content=request.user_prompt,
+                    user_role=user_obj.role, token_limit=user_obj.token_limit,
+                    sender=sender or effective_chat_id, message_id=request.message_id,
+                )
+                self.session_manager.add_message_with_token_limit(
+                    chat_id=effective_chat_id, role="assistant", content=response_text,
+                    user_role=user_obj.role, token_limit=user_obj.token_limit,
+                    recipient=sender or effective_chat_id,
+                )
+            except Exception as e:
+                logger.error(f"[054] Failed to store reminder-approval messages in session: {e}", exc_info=True)
+
+        ai_response = AIResponse(
+            request_id=request.request_id,
+            response_text=response_text,
+            tokens_used=tokens_used,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            model=model_name,
+            finish_reason="stop",
+            timestamp=int(time.time()),
+            is_truncated=False,
+            offer_approval_buttons=False,
+        )
+        if len(response_text) > 4000:
+            ai_response = ai_response.truncate_for_whatsapp()
+        self.last_response = ai_response
+        return ai_response
+
+    def resolve_button_tap(
+        self, message: WhatsAppMessage, selected_id: str, stanza_id: str,
+    ) -> Optional[AIResponse]:
+        """
+        Feature 047: resolves a WhatsApp interactive-button tap against
+        message.chat_id's pending approval (Feature 022), if the tap's
+        stanza_id matches the message it was actually sent as
+        (contracts/pending-approval-message-binding.md).
 
         Deliberately does NOT reimplement approve/decline resolution: once the
         stanza_id match below confirms this tap is live (not stale/superseded -
@@ -2311,12 +3164,27 @@ class AIHandler:
         decline is byte-for-byte the same experience as a typed one, per US2's
         non-interference requirement).
 
+        Takes the whole `message` (2026-08-19, user decision), not individual
+        scalar fields pulled out of it by the caller - `chat_id`/`message_id`/
+        `sender_id`/`sender_display_name`/`is_group`/`chat_name` all come from
+        it directly (including the `is_group`/`chat_name`/`sender_phone` fields
+        Feature 043's merge added to `get_response`'s own signature - derived
+        here from `message` rather than accepted as yet more threaded params),
+        and AIRequest.original_message carries the same object further
+        downstream (e.g. into a reminder's created_by_phone) without yet
+        another parameter threaded through
+        get_response/_resolve_pending_local_tool_approval.
+
         Returns:
             None if there's no pending approval, or its sent_message_id doesn't
             equal stanza_id (stale/superseded tap) - per spec.md Clarifications,
             the caller must send nothing observable at all in this case. A real
             AIResponse otherwise.
         """
+        chat_id = message.chat_id
+        user_phone = message.sender_id
+        sender = message.sender_display_name
+
         user_obj = None
         if self.rbac_enabled and self.user_manager and user_phone:
             user_obj = self.user_manager.get_user(user_phone)
@@ -2324,23 +3192,37 @@ class AIHandler:
                 logger.warning(f"[047] Blocked user attempted to resolve a button tap: {user_phone!r}")
                 return None
 
+        # Reminders (Feature 054): checked MCP-first-then-local-tool, same
+        # deterministic order as get_response's dual-check dispatch - at most
+        # one of the two managers is ever populated for a given chat_id in
+        # practice.
         pending = self.pending_approval_manager.get(chat_id) if user_obj else None
+        local_pending = None
         if pending is None or pending.sent_message_id != stanza_id:
-            logger.info(
-                f"[047] Stale button tap ignored: chat={chat_id!r}, selected_id={selected_id!r}, "
-                f"stanza_id={stanza_id!r}, pending={pending!r}"
-            )
-            return None
-        # user_obj is guaranteed non-None here: pending is only ever non-None (the
-        # branch above just confirmed it is) when user_obj was truthy, per the
-        # ternary a few lines up - explicit for mypy, which can't infer that
-        # implication across the ternary on its own.
+            pending = None
+            local_pending = self.pending_local_tool_approval_manager.get(chat_id) if user_obj else None
+            if local_pending is None or local_pending.sent_message_id != stanza_id:
+                logger.info(
+                    f"[047] Stale button tap ignored: chat={chat_id!r}, selected_id={selected_id!r}, "
+                    f"stanza_id={stanza_id!r}, mcp_pending={pending!r}, local_pending={local_pending!r}"
+                )
+                return None
+        # user_obj is guaranteed non-None here: (pending or local_pending) is only
+        # ever non-None (one of the two branches above just confirmed it is) when
+        # user_obj was truthy, per the ternaries a few lines up - explicit for
+        # mypy, which can't infer that implication across the ternary on its own.
         assert user_obj is not None
+        resolved_pending = pending or local_pending
+        # Same reasoning as the user_obj assert above: one of the two branches
+        # already confirmed (pending or local_pending) is non-None before
+        # reaching here - explicit for mypy, which can't carry that
+        # implication through the earlier if/else on its own.
+        assert resolved_pending is not None
 
         approve = selected_id == BUTTON_ID_APPROVE
         logger.info(
             f"[047] Resolving pending approval via BUTTON TAP for chat={chat_id!r}, "
-            f"tool={pending.tool_name!r}, selected_id={selected_id!r}, approve={approve}"
+            f"tool={resolved_pending.tool_name!r}, selected_id={selected_id!r}, approve={approve}"
         )
 
         synthetic_request = AIRequest(
@@ -2349,12 +3231,14 @@ class AIHandler:
             max_tokens=self.config.ai_reply_max_tokens,
             model=self.config.ai_model,
             chat_id=chat_id,
-            message_id=message_id,
+            message_id=message.message_id,
+            original_message=message,
         )
         return self.get_response(
             synthetic_request, chat_id=chat_id, user_role=user_obj.role,
             sender=sender, recipient=None, user_phone=user_phone,
-            is_group=is_group, chat_name=chat_name, sender_phone=sender_phone,
+            is_group=message.is_group, chat_name=message.chat_name,
+            sender_phone=message.sender_id,
         )
 
     def _create_fallback_response(self, request_id: str, message: str) -> AIResponse:

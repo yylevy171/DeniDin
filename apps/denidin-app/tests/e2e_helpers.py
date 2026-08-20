@@ -171,6 +171,14 @@ def assert_image_path_persisted(denidin_app, chat_id):
 
     Returns the resolved absolute Path to the image file, for further assertions
     (e.g. checking it's non-empty) if a caller wants them.
+
+    2026-08-20 (billed/expensive test sweep for Feature 043's Message identity
+    redesign, ab514c7): message_data["role"] is now the REAL role
+    ("admin"/"godfather"/"client"/"assistant"), never literally "user" for a
+    human turn - this helper's `== "user"` check was stale and would fail on
+    every real message from now on. ai_required_role is the separately-derived
+    "user"/"assistant" value this check actually means, same field
+    SessionManager.get_conversation_history_for_session already switched to.
     """
     session_manager = denidin_app.ai_handler.session_manager
     session_id = session_manager.chat_to_session[chat_id]
@@ -183,7 +191,7 @@ def assert_image_path_persisted(denidin_app, chat_id):
     for message_id in session_data["message_ids"]:
         with open(messages_dir / f"{message_id}.json", encoding='utf-8') as f:
             message_data = json.load(f)
-        if message_data["role"] == "user":
+        if message_data.get("ai_required_role", message_data.get("role")) == "user":
             last_user_message = message_data
 
     assert last_user_message is not None, (
@@ -201,6 +209,51 @@ def assert_image_path_persisted(denidin_app, chat_id):
         f"to a real file on disk (resolved: {resolved})"
     )
     return resolved
+
+
+def assert_extracted_text_persisted(denidin_app, chat_id):
+    """Feature 043 (2026-08-18): Message.extracted_text is populated by MediaHandler
+    from each extractor's own output (raw_message_excerpt's replacement on the
+    LedgerEvent side - the source content now lives on the message record itself).
+    Asserts the real, persisted-to-disk MOST RECENT `user` message for chat_id has a
+    non-empty extracted_text, same "most recent user message" scoping as
+    assert_image_path_persisted above (several tests share one chat_id/session
+    across many turns).
+
+    Added 2026-08-20 (billed/expensive test sweep): closes a real coverage gap -
+    the same commit that introduced extracted_text also found and fixed a
+    pre-existing bug where PDFExtractor/DOCXExtractor never actually returned an
+    extracted_text key despite their own docstrings claiming they did (only
+    ImageExtractor genuinely had it) - fixed at unit level
+    (test_pdf_extractor.py/test_docx_extractor.py) but never proven on the real
+    E2E document path until this helper's callers.
+
+    Returns the extracted_text string, for further assertions if a caller wants them.
+    """
+    session_manager = denidin_app.ai_handler.session_manager
+    session_id = session_manager.chat_to_session[chat_id]
+    messages_dir = Path(session_manager.storage_dir) / session_id / "messages"
+
+    with open(Path(session_manager.storage_dir) / session_id / "session.json", encoding='utf-8') as f:
+        session_data = json.load(f)
+
+    last_user_message = None
+    for message_id in session_data["message_ids"]:
+        with open(messages_dir / f"{message_id}.json", encoding='utf-8') as f:
+            message_data = json.load(f)
+        if message_data.get("ai_required_role", message_data.get("role")) == "user":
+            last_user_message = message_data
+
+    assert last_user_message is not None, (
+        f"No user session message found at all for chat_id={chat_id!r}"
+    )
+    extracted_text = last_user_message.get("extracted_text")
+    assert extracted_text, (
+        f"Most recent user session message for chat_id={chat_id!r} has no "
+        f"extracted_text (Feature 043: the extractor's own output must land on the "
+        f"message record). Message: {last_user_message}"
+    )
+    return extracted_text
 
 
 def validate_extraction_response(response):

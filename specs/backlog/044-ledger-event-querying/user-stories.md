@@ -1,7 +1,7 @@
 # User Stories: Ledger Event Querying via AI
 
 **Feature Branch**: `feature/044-ledger-event-querying`
-**Depends on**: Feature 033 (`specs/done/033-ledger-event-persistence/`) — this feature reads
+**Depends on**: Feature 033 (`specs/done/v0.2.0/033-ledger-event-persistence/`) — this feature reads
 the `{data_root}/events/*.json` records that 033 already writes; it adds no new event fields
 and does not change capture behavior.
 
