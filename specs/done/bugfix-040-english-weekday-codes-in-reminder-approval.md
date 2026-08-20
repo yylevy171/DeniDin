@@ -14,8 +14,9 @@ the right days), but it's a direct, visible violation of a hard constitution rul
 user-facing approval message every recurring-by-weekday reminder produces.
 
 ## Status
-**Open — backlogged.** No fix designed. Per Bug-Driven Development (METHODOLOGY.md §VII), next
-step is human approval of the root cause before test-gap analysis.
+**Done - Merged to master (PR #244).** Simple find-and-fix (not full BDD, per explicit user
+instruction) - `_format_reminder_schedule`'s `BYDAY` branch now maps each RFC5545 weekday code to
+its Israeli single-letter equivalent before interpolation (see "Fix" below).
 
 ## Date Opened
 2026-08-20
@@ -70,3 +71,14 @@ E.g. `BYDAY=SU,MO,TU,WE,TH,FR` (every day except Saturday) must render as `ימ�
   human-facing rendering is wrong.
 - Feature 054 (`specs/done/v0.5.0/054-reminders-functionality-mgmt/`) - the feature this
   function was built for.
+
+## Fix
+
+`apps/denidin-app/src/handlers/ai_handler.py`'s `_format_reminder_schedule`, `BYDAY` branch: adds
+a `byday_labels` dict mapping each two-letter RFC5545 weekday code to its Israeli single-letter
+Hebrew equivalent (matching the "Expected" table above exactly, including `SA` → `ש`), then joins
+the translated letters with `,` before interpolating into the Hebrew sentence - instead of
+interpolating `parts['BYDAY']` verbatim. `apps/denidin-app/tests/unit/test_ai_handler_reminders.py`'s
+`test_weekly_schedule_format` (previously asserting the buggy `"MO,TH"` output) updated to assert
+the correct `"ב,ה"` and the absence of the raw English codes. Full unit suite for the reminders
+module: 37/37 passed.
