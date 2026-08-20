@@ -11,9 +11,9 @@ streamable-HTTP) exposing 14 tools — 11 invoice-management tools
 `list_invoices`, `get_invoice_details`, `add_client`, `get_financial_summary`,
 `download_invoice_pdf`) plus 3 client-management tools added by Feature 026
 (`list_clients`, `get_client_details`, `update_client`) — backed by the real
-Morning sandbox API, per `specs/done/005-mcp-morning-green-receipt/plan.md`
-and `tasks.md`, `specs/done/021-flexible-document-creation/spec.md` for the 4
-document-type-specific `create_*` tools, `specs/done/023-reference-linked-document-creation/spec.md`
+Morning sandbox API, per `specs/done/v0.0.1/005-mcp-morning-green-receipt/plan.md`
+and `tasks.md`, `specs/done/v0.0.1/021-flexible-document-creation/spec.md` for the 4
+document-type-specific `create_*` tools, `specs/done/v0.0.1/023-reference-linked-document-creation/spec.md`
 for `create_combo_document_as_reference` (which, alongside removing the separate
 `update_invoice_status` tool entirely, replaced it), and
 `specs/in-progress/026-client-management/spec.md` for client management.
@@ -111,7 +111,7 @@ include state-changing operations).
 DNS-rebinding protection (`TransportSecuritySettings(enable_dns_rebinding_protection=False)`),
 which otherwise only allows `Host: 127.0.0.1/localhost` and 424s every request
 forwarded through a tunnel (confirmed live 2026-07-12 — see
-`specs/done/005-mcp-morning-green-receipt/tasks.md`, T021). This is
+`specs/done/v0.0.1/005-mcp-morning-green-receipt/tasks.md`, T021). This is
 safe here because `mcp.auth_token`'s bearer check, not Host-header matching, is
 this server's real access boundary — set it whenever exposing the server
 publicly.

@@ -9,7 +9,7 @@ to `master`). **Zero implementation code written.** Next step for whoever picks 
 **Session note**: after this feature's planning finished, the same session briefly switched
 to scope Feature 027 (Mandatory Reference to an Existing Client for Invoicing) before coming
 back to 032. Feature 027 ended up fully implemented and shipped in that detour (PR #201,
-merged, spec now in `specs/done/027-mandatory-client-reference-invoicing/`) — unrelated to
+merged, spec now in `specs/done/v0.3.0/027-mandatory-client-reference-invoicing/`) — unrelated to
 032's design, but explains the gap between 032's planning finishing (2026-08-04/05) and this
 handoff/in-progress move (2026-08-07). Nothing about 032 changed during that gap — this
 handoff's content is otherwise identical to the version written right after planning

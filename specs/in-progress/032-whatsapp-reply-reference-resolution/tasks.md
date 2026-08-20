@@ -137,7 +137,7 @@ chat/group.
 
 - [ ] T006a [P] [US1] Write integration test in `tests/integration/test_reply_resolution.py`:
   dispatch a real Green API webhook payload (per
-  `specs/done/001-whatsapp-chatbot-passthrough/contracts/green-api.md`'s documented shape,
+  `specs/done/v0.0.1/001-whatsapp-chatbot-passthrough/contracts/green-api.md`'s documented shape,
   with `quotedMessage.stanzaId` set) through `bot.router` for a reply to a previously-sent
   ordinary message with no ledger event; verify the reply's persisted `Message` JSON has
   `resolved_reference.content` populated with message A's content/sender/timestamp, no

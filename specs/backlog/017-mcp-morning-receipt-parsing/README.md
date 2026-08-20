@@ -2,7 +2,7 @@
 
 **Priority**: P2 (Medium)
 **Status**: Deferred — not scheduled. Placeholder only.
-**Origin**: Split out of Feature 005 (`specs/done/005-mcp-morning-green-receipt/`)
+**Origin**: Split out of Feature 005 (`specs/done/v0.0.1/005-mcp-morning-green-receipt/`)
 on 2026-07-08 to keep 005 scoped to the 8-tool **invoice-management** MCP server.
 **Moved**: `specs/in-definition/` → `specs/backlog/` on 2026-07-24 — still no `spec.md`/
 `plan.md`/`tasks.md`, so it isn't clarified/ready-for-planning yet, but `in-definition/` is

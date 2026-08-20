@@ -2,7 +2,7 @@
 
 **Status**: Feature 005 — Phases 1 & 2 complete, Phase 3 (server) complete;
 Phase 4 (polish) remaining (see
-`specs/done/005-mcp-morning-green-receipt/tasks.md`)
+`specs/done/v0.0.1/005-mcp-morning-green-receipt/tasks.md`)
 **Last Updated**: July 9, 2026
 
 ## Boundary
@@ -146,16 +146,16 @@ accident.
 | Docker `CMD` swap | ✅ Done |
 | Quickstart docs | ⬜ Not started (Phase 4) |
 
-See `specs/done/005-mcp-morning-green-receipt/tasks.md` for the full
+See `specs/done/v0.0.1/005-mcp-morning-green-receipt/tasks.md` for the full
 task-by-task checklist.
 
 ## Related documents
 
-- `specs/done/005-mcp-morning-green-receipt/spec.md` — functional
+- `specs/done/v0.0.1/005-mcp-morning-green-receipt/spec.md` — functional
   spec, the 8 tools, technology choice rationale (FastMCP/streamable-HTTP).
-- `specs/done/005-mcp-morning-green-receipt/plan.md` — technical
+- `specs/done/v0.0.1/005-mcp-morning-green-receipt/plan.md` — technical
   plan, phases, integration contracts.
-- `specs/done/005-mcp-morning-green-receipt/data-model.md` — the
+- `specs/done/v0.0.1/005-mcp-morning-green-receipt/data-model.md` — the
   Pydantic model field reference.
 - `specs/backlog/017-mcp-morning-receipt-parsing/` — a separate,
   deferred future feature (file-upload/webhook receipt parsing), split out of

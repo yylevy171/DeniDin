@@ -84,7 +84,7 @@ dismissed:
 
 ## References
 
-- Feature 054 (`specs/done/054-reminders-functionality-mgmt/`) - the session all six incidents
+- Feature 054 (`specs/done/v0.5.0/054-reminders-functionality-mgmt/`) - the session all six incidents
   above were found during, none of them Feature 054 code defects.
 - The OpenAI-retry-double-stacking bug (item 3 above) was fixed directly as part of Feature 054's
   own branch (`AppConfiguration.max_retries`, `denidin.py`'s `OpenAI(...)` construction,
