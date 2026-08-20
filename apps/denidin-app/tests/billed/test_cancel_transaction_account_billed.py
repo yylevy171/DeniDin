@@ -64,6 +64,22 @@ def test_godfather_cancels_a_transaction_account_via_whatsapp(denidin_app):
         f"given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
+    # The approval PROMPT ITSELF must be specific, not the fully generic
+    # "there's a pending action" text - found missing entirely during manual
+    # QA (2026-08-20): _build_pending_approval_details had no branch for
+    # cancel_transaction_account at all, so the ASK turn's reply named
+    # nothing - no client, no account, not even that this was a
+    # cancellation. This is the exact gap that let it ship unnoticed: every
+    # earlier assertion in this test (below) checks the outcome, never the
+    # prompt the godfather actually has to read before answering "כן".
+    assert ask_response is not None, "CRITICAL: no approval prompt at all (silent drop)"
+    assert "יש פעולה הממתינה לאישורך" not in ask_response, (
+        f"Approval prompt fell back to the fully generic text, naming nothing: {ask_response!r}"
+    )
+    assert client_name in ask_response or "עסקה" in ask_response, (
+        f"Approval prompt must name the account/action being cancelled: {ask_response!r}"
+    )
+
     cancel_calls = _calls_for(cancel_ai_response, "cancel_transaction_account")
     assert cancel_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
     assert cancel_calls and cancel_calls[0]["error"] is None, (

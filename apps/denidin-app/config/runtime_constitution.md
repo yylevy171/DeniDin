@@ -259,9 +259,12 @@ time, rather than a keyword match:
    financial document, so do it every time, not just when something seems off.
 
    🚨 **This same call is now MANDATORY, unconditionally, for every
-   `create_receipt`/`create_credit_note`/`create_combo_document_as_reference` call,
-   not only when duplication seems possible (bugfix-038).** Before
-   proposing any of these three, call `get_invoice_details` on
+   `create_receipt`/`create_credit_note`/`create_combo_document_as_reference`/
+   `cancel_transaction_account` call, not only when duplication seems possible
+   (bugfix-038; feature 056 extended this same rule to
+   `cancel_transaction_account` — it takes only `original_internal_morning_id`
+   too, and the pending-approval message needs the real account details the
+   same way).** Before proposing any of these four, call `get_invoice_details` on
    `original_internal_morning_id`, **fresh, in this SAME turn** — never rely on
    what you saw in an earlier turn or on session memory, even if you
    already know the id. **"Fresh" means re-fetching current data using the
@@ -468,8 +471,8 @@ matching document via `list_invoices`/session memory first.
      or changes anything.
 
   **Indirect references — `create_receipt`/`create_credit_note`/
-  `create_combo_document_as_reference`.** These three take `original_internal_morning_id`, not
-  a client name, so `name_resolved` does not apply to them directly — but
+  `create_combo_document_as_reference`/`cancel_transaction_account`.** These four take
+  `original_internal_morning_id`, not a client name, so `name_resolved` does not apply to them directly — but
   when the user references one of them BY a client name (e.g. "תסגור לי את
   חשבון העסקה של דנה"), resolve the client the same way first
   (`resolve_client_name`), then find the relevant invoice via
