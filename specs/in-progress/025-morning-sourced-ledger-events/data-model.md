@@ -10,15 +10,22 @@ no new storage mechanism, no new manager class for storage.
 
 ### Field changes to the persisted record
 
+**Revised 2026-08-21 (round 3)**: the field count drops from the originally-planned 5 to **4** —
+round 2's separate `accounting_document_id` (Morning's opaque internal id) and
+`accounting_document_number` (the human-visible number) collapse into **one** field,
+`accounting_document_display_number`, per user correction (`spec.md`'s round-3 Clarifications):
+*"document id... is the USER FACING display number - NOT the morning internal id."* Morning's
+internal id (`Invoice.id`) is used only transiently within a sweep tick (to call
+`get_invoice_details`) — never persisted, never its own field.
+
 | Old field (Feature 033, always `null` to date) | New field (this feature) | Population rule |
 |---|---|---|
-| `morning_document_id` | `accounting_document_id` | Morning's `Invoice.id` — the dedup key (see below) |
-| `invoice_number` | `accounting_document_number` | Morning's `Invoice.number` |
+| `morning_document_id` + `invoice_number` (merged) | `accounting_document_display_number` | Morning's real `number` field (confirmed live 2026-08-21: non-null on all 25 real dev-sandbox documents observed, across 6 distinct document types) — **the dedup key** (see "Dedup mechanism" below) |
 | `invoice_type` | `accounting_document_type` | Morning's `Invoice.type` (int), decoded to its Hebrew label via `GET /documents/types` (already confirmed live elsewhere in `morning-mcp-app` — reuse that lookup) |
 | `invoice_status` | `accounting_document_status` | Morning's `Invoice.status` (already normalized to a canonical vocabulary by the `Invoice` model) |
-| `invoice_actual_creation_date` | `accounting_document_creation_date` | Morning's `Invoice.issue_date`, formatted `DD/MM/YYYY` (same convention as `event_datetime`/`txn_date`) — **the only real timestamp `Invoice` currently exposes**; there is no separate Morning-side "system creation" timestamp distinct from the document's own issue/document date, so this is what "creation date" resolves to, not a guess pending further investigation |
+| `invoice_actual_creation_date` | `accounting_document_creation_date` | **Revised 2026-08-21**: Morning's raw `creationDate` field — a real Unix epoch integer with full second-level precision (confirmed live: e.g. `1787241168` → `2026-08-20 18:52:48` Israel local) — NOT `documentDate`/`Invoice.issue_date` (date-only) as round 1/2 assumed. Formatted `DD/MM/YYYY HH:MM` (matching `event_datetime`'s full-instant convention, not `txn_date`'s date-only one). **`apps/morning-mcp-app`'s `Invoice` model does not currently map `creationDate` at all** — this feature adds that mapping (see `tasks.md`'s new morning-mcp-app task) |
 
-All five: **non-null only when `source_type == "חשבונית"`**, forced `null` for `הסכם`/`בנק`
+All four: **non-null only when `source_type == "חשבונית"`**, forced `null` for `הסכם`/`בנק`
 regardless of what any caller passes — same defensive discipline `add_ledger_event` already
 applies to `bank_number`/`bank_branch`/`bank_account` (בנק-only) and `trigger_condition`/
 `component_label` (הסכם-only).
@@ -26,6 +33,15 @@ applies to `bank_number`/`bank_branch`/`bank_account` (בנק-only) and `trigger
 Renaming these (rather than adding new fields alongside the always-null old ones) is safe: per
 `specs/done/v0.2.0/033-ledger-event-persistence/data-model.md`, they have been `null` in **every**
 real persisted file to date — no real data to migrate.
+
+**`event_id`/`event_datetime` generation for a `חשבונית` capture**: unlike the text/image paths
+(which derive these from the source *message's* timestamp), a reconciliation capture has no real
+source message — `message_timestamp` passed into `add_ledger_event` is instead the epoch derived
+from the document's own real `creationDate` (full HH:MM precision, confirmed live — see table
+above). This means `event_id`'s `ddmmyy`/`hhmm` portion reflects the document's own real creation
+moment, not sweep processing time, which is also what makes the dedup mechanism's
+"same display number + same creation timestamp → true duplicate" comparison meaningful (see
+below).
 
 ### `source_type` enum extension
 
@@ -60,49 +76,113 @@ existing component shape (`amount` = `Invoice.total_amount` or `Invoice.amount`;
 - `source_type.enum`: `["הסכם", "בנק", "חשבונית"]`.
 - `event_subtype.enum`: `["יצירה", "הפקדה", "הפקה"]`; description updated to state the
   `חשבונית`→`הפקה` mapping alongside the existing two.
-- Five new **top-level** (shared, not per-component) properties, all `["string", "null"]`,
-  matching the naming table above, each added to `required` (strict-mode requirement) with a
-  description stating they are populated ONLY for `source_type="חשבונית"`, always `null`
-  otherwise, and — critically — that they must be copied verbatim from the structured document
-  data given in this call's own instructions, never inferred/guessed from conversation text.
+- **Four** (not five, per round 3's field merge) new **top-level** (shared, not per-component)
+  properties, all `["string", "null"]`, matching the naming table above, each added to `required`
+  (strict-mode requirement) with a description stating they are populated ONLY for
+  `source_type="חשבונית"`, always `null` otherwise, and — critically — that they must be copied
+  verbatim from the structured document data given in this call's own instructions, never
+  inferred/guessed from conversation text.
 - Tool `description` gets an added sentence distinguishing the two populate-this-tool
   situations: recognizing a fee-agreement/bank-deposit signal in free text/images (existing,
   unchanged) vs. transcribing a given Morning document's already-structured fields
   (`source_type="חשבונית"`, new) — so the two usages read as clearly different jobs to the model,
   not one blurred instruction.
 
-## Entity: `AccountingDocumentReconciliationState` (derived, not persisted — no new entity)
+## Entity: `AccountingDocumentReconciliationState` (revised 2026-08-21, round 3 — in-memory, not persisted; `pending_review.json` IS a new small persisted entity)
 
-Deliberately **not** a new persisted entity. The "since when" watermark for each poll tick is
-computed on demand by scanning existing `source_type="חשבונית"` `LedgerEvent` files for the
-maximum `accounting_document_creation_date`, with a fallback lookback constant when none exist
-yet (mirrors `reminder_delivery_service.py`'s `STARTUP_SWEEP_LOOKBACK`/`PERIODIC_SWEEP_LOOKBACK`
-split — exact values TBD in `tasks.md`, not fixed here since they're a tuning decision, not a
-data-shape one).
+**Round 1 design (superseded)**: fully re-derived by scanning every `LedgerEvent` file on every
+poll tick. **Rejected by the user** (*"ideally no reading and parsing of the ledger events is
+required per tick"*) in favor of the design below.
 
-New `LedgerEventManager` method (index/scan helper — this class currently has no by-field lookup
-across all events, only `_load_event(event_id)`):
+**Round 3 design**: `LedgerEventManager` holds an **in-process, in-memory** cache —
+`self._accounting_document_cache: Optional[Dict[str, List[datetime]]]` (`None` until first built)
+— mapping each `accounting_document_display_number` to the list of distinct
+`accounting_document_creation_date` timestamps ever seen for it (almost always exactly one; more
+than one only in the anomaly case, see "Dedup mechanism" below). Built **once** per process
+lifetime, lazily, on the first `source_type="חשבונית"` call to `add_ledger_event`:
 
 ```python
-def scan_accounting_documents(self) -> Tuple[Set[str], Optional[date]]:
-    """Scan every persisted source_type="חשבונית" event and return
-    (known_accounting_document_ids, latest_accounting_document_creation_date).
-    Both empty/None if no such event has ever been persisted. Used by the
-    reconciliation service both as the dedup guard's known-id set AND to
-    derive the next poll's "since" watermark - one scan, two answers, kept
-    in one method so both stay trivially consistent with each other."""
+def scan_accounting_documents(self) -> Dict[str, List[datetime]]:
+    """One-time disk scan (never called more than once per process - see
+    _ensure_accounting_document_cache): every persisted source_type="חשבונית"
+    event, grouped by accounting_document_display_number into the list of
+    distinct creation datetimes seen for it. Empty dict if none exist yet.
+    Malformed/unparseable JSON files are skipped with a WARNING, never
+    raise (mirrors _load_event's existing defensive-read discipline)."""
+
+def _ensure_accounting_document_cache(self) -> Dict[str, List[datetime]]:
+    """Lazy-builds self._accounting_document_cache via scan_accounting_documents()
+    on first call; every subsequent call in this process's lifetime returns
+    the already-built, in-memory-mutated cache unchanged - no re-scan."""
 ```
 
-Called once per poll tick (before the OpenAI call, to build the prompt's "since" date; and again,
-or reusing the same result, as the duplicate guard before each persist) — a full directory scan
-of `{data_root}/events/*.json`. Acceptable at current/foreseeable event volume (single-digit to
-low-hundreds of files, per Feature 033's own stated scale) — no index file, no caching, matching
-this manager's existing "flat files, no database" design throughout.
+**Tri-state duplicate/anomaly/new decision** — lives inside `add_ledger_event` itself for
+`source_type="חשבונית"` (a ledger-persistence concern, not an AI-handler one — user directive:
+*"it's clearly a ledger requirement regardless of ai"*):
 
-Implementation note (`speckit.analyze` finding L3): this signature needs imports
-`ledger_event_manager.py` doesn't currently have — `Set`/`Tuple` from `typing` (today's import
-line is `from typing import Dict, List, Optional`) and `date` from `datetime` (today's is
-`from datetime import datetime`, no bare `date`).
+```python
+def _resolve_accounting_document_status(
+    self, display_number: str, creation_dt: datetime
+) -> Literal["new", "duplicate", "anomaly"]:
+    """Consults (and does NOT itself mutate) the lazily-built cache.
+    "new": display_number not in cache.
+    "duplicate": display_number in cache AND creation_dt matches one of its
+        recorded timestamps exactly - a true re-poll of the identical
+        document. add_ledger_event silently discards (returns None, no file
+        written, cache untouched) - never trusted to a refusal/exception,
+        just a normal no-op return.
+    "anomaly": display_number in cache but creation_dt does NOT match any
+        recorded timestamp - "this should never happen" for a real Morning
+        document (per user). add_ledger_event persists this as a NEW
+        LedgerEvent (own new event_id, driven by the differing creation_dt)
+        exactly like "new", but ALSO logs a WARNING and appends an entry to
+        pending_review.json (see below), and adds creation_dt to the cache
+        entry's timestamp list (now holding 2+ timestamps for this
+        display_number)."""
+```
+
+**Pruning, every tick** (called from the reconciliation service, once per sweep, after any new
+captures for that tick): drop any cache entry whose *every* recorded timestamp is older than the
+5-day safety-cap boundary (see below) plus a ~2-day margin (7 days total) before `now_local()` —
+the forward-only watermark can never legitimately cause a document that old to be re-queried
+again. **Flagged for live confirmation** of Morning's actual `from_date` filter semantics before
+this exact margin is trusted (folds into `tasks.md`'s live-verification task) — the reasoning is
+sound in principle, not yet independently confirmed for the boundary behavior itself.
+
+**Poll watermark** is simply `max(timestamp for timestamps in cache.values() for timestamp in
+timestamps)`, or `None` if the cache is empty — no separate field, no separate file.
+
+## Entity: `pending_review.json` (new, 2026-08-21, round 3)
+
+`{data_root}/accounting_reconciliation/pending_review.json` — append-only list, one entry per
+"anomaly" detection above:
+
+```json
+{
+  "accounting_document_display_number": "40406",
+  "prior_event_id": "H2008211852...",
+  "prior_creation_date": "20/08/2026 18:52",
+  "new_event_id": "H2108210930...",
+  "new_creation_date": "21/08/2026 09:30",
+  "detected_at": "21/08/2026 09:35"
+}
+```
+
+Written by `LedgerEventManager` (same directory family as `events/`, sibling
+`accounting_reconciliation/` subdirectory of `{data_root}`) — a human reviews this file
+out-of-band, the same "capture now, review later, no notification" philosophy the rest of this
+feature already follows. No reader/consumer of this file exists yet within this feature's own
+scope (matches `REFERENCE_PLACEHOLDER`'s existing precedent of a flag meant for a *later*,
+not-yet-built review step).
+
+## Safety cap (new, 2026-08-21, round 3)
+
+5 days OR 100 not-yet-known documents since the derived watermark, whichever binds first. Checked
+by the reconciliation service directly (a plain, non-AI-mediated `list_invoices(from_date=since)`
+call solely for counting/date-checking), before ever constructing the OpenAI+MCP prompt. On
+breach: skip the entire tick (no captures, watermark unchanged), log ERROR only — no persisted
+tracker, no WhatsApp (this stays a silent, log-discoverable-only mechanism, same as the rest of
+this feature).
 
 ## Entity: `Session`/`Message` (existing — untouched by this feature)
 

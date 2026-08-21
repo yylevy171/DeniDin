@@ -133,6 +133,122 @@ with it - exactly the gap this spec should close.
   session's answer above) — this round confirmed the mechanism stays
   OpenAI-mediated even though it's not a conversational turn.
 
+### Session 2026-08-21 (round 3 — mid-`speckit.implement`, before Phase 2 code was written)
+
+- **Q: How is the poll interval configured? → A:** A new DeniDin (not
+  Morning-specific) config field, `config.accounting_ledger_update_freq`
+  (top-level, minutes, int). `0` means the feature is inactive — the
+  scheduler never starts at all. No nesting, no `config.feature_flags` gate
+  (unchanged from round 1 — schema-version bump still covers the
+  no-flag decision).
+- **Q: What happens when a sweep's gap since the watermark exceeds a safety
+  cap? → A:** A hard cap of **5 days OR 100 documents**, whichever binds
+  first, measured from the derived watermark. If exceeded, the sweep
+  **skips the entire tick** (captures nothing, does not advance the
+  watermark) rather than attempting a partial catch-up or a full backfill —
+  explicitly NOT a backfill mechanism. Logged at ERROR only; no WhatsApp
+  alert (this stays a silent background mechanism, consistent with the
+  original "no confirmation reply sent anywhere" contract). The cap check
+  itself is done by the **service directly** (a plain, non-AI-mediated
+  `list_invoices(from_date=since)` call solely to count/date-check before
+  ever invoking OpenAI) — never trusted to the model's own scoping, matching
+  this codebase's existing "never trust the AI's own math/scoping"
+  philosophy (`_normalize_amount`, `vat_status` forcing, etc. in
+  `ledger_event_manager.py`).
+- **Q: Should a duplicate `accounting_document_display_number` hard-refuse
+  the second write (round-1's original design)? → A: No — replaced
+  entirely.** The user directive: *"I don't like the hard refusal... this
+  raises a question of how to reconcile when there are clarifications
+  required... The 'since when' mechanism SHOULD NOT RELY ON A REFUSAL
+  MECHANISM."* New tri-state design (`data-model.md`/
+  `contracts/ledger-event-manager-extension.md`):
+  - Same display number + same creation timestamp seen before → **true
+    duplicate**, silently discarded (no new file).
+  - Same display number + a **different** creation timestamp than any
+    previously seen → **anomaly** (should never happen for a real Morning
+    document) → persisted as a **new** `LedgerEvent` (its own new
+    `event_id`, since the differing timestamp changes it) **and** logged
+    **and** appended to a new persisted `pending_review.json` tracker. No
+    WhatsApp.
+  - Not seen before → ordinary new capture.
+  This decision explicitly lives inside `LedgerEventManager` (a ledger
+  concern), **not** in the new `ai_handler.py` handler — user directive:
+  *"it's clearly a ledger requirement regardless of ai."*
+- **Q: Where does the "known documents" tracking data live — a new
+  persisted state file, or derived by re-scanning every tick? → A:**
+  Neither, exactly as originally proposed. **In-memory only**, built via
+  **one** disk scan at first use per process (lazy, via the existing
+  `scan_accounting_documents`), then mutated in-process — appended to on
+  each new capture, pruned each tick — never re-scanned from disk again
+  during that process's lifetime. User directive: *"ideally no reading and
+  parsing of the ledger events is required per tick... one-time built on
+  startup."* Pruning rule: an entry can be dropped once it's older than the
+  5-day cap plus a small safety margin (7 days total) before "now," since
+  the forward-only watermark can never legitimately cause it to be
+  re-queried again — **flagged for live confirmation** of Morning's
+  `from_date` filter semantics (folded into the live-verification task,
+  `tasks.md`).
+- **Q: Is `accounting_document_id` (Morning's opaque internal id) or
+  `accounting_document_number` (the human-visible number) the right dedup
+  key / persisted identity field? → A: Neither name as originally
+  proposed — collapsed into one field, `accounting_document_display_number`.**
+  User directive: *"document id... is the USER FACING display number - NOT
+  the morning internal id... rename it everywhere to
+  document_display_number."* The internal Morning id (`Invoice.id`) is used
+  only transiently within a sweep tick (to call `get_invoice_details`) and
+  is never persisted or exposed as its own field. The field count drops
+  from 5 to **4**: `accounting_document_display_number` (was the planned
+  `accounting_document_id`/`accounting_document_number` pair, now merged),
+  `accounting_document_type`, `accounting_document_status`,
+  `accounting_document_creation_date`.
+- **Q: Does every Morning document really have a full-precision creation
+  time and a non-null display number, or was round 2's `documentDate`
+  (date-only) really the best available? → A: Live-verified, real gap
+  found.** A real, read-only probe against the actual Morning **dev**
+  sandbox (25 real documents, 6 distinct document types: 300/305/320/330/
+  400) confirmed: **every** document carries a non-null `number` (the
+  display number) AND a full-precision `creationDate` (a real Unix epoch
+  integer, not just a date — e.g. `1787241168` → `2026-08-20 18:52:48`
+  Israel local). **But** `apps/morning-mcp-app`'s `Invoice` Pydantic model
+  currently maps neither field — it only maps `documentDate` (date-only).
+  This is a real, material scope addition (not present in round 1/2's
+  plan): Feature 025 now includes a small `morning-mcp-app` change — map
+  `creationDate` into a new `Invoice` field and expose it through
+  `get_invoice_details`'s tool output — landed as part of **this** feature
+  (per user decision) rather than spun off separately. Once mapped,
+  `accounting_document_creation_date` sources from `creationDate` (full
+  precision), not `documentDate` — which also resolves the
+  `event_id`-HHMM-portion question from round 1: it uses the document's own
+  real creation time directly, no midnight-fallback placeholder needed.
+
+### Session 2026-08-21 (round 4 — during `speckit.implement`, T011 planning)
+
+- **Q: The 100-document safety-cap check was designed as a direct, non-AI
+  `list_invoices` call before ever invoking OpenAI — but no direct MCP-client
+  mechanism (raw HTTP/JSON-RPC to the Morning MCP server, bypassing OpenAI's
+  `type: "mcp"` attachment) exists anywhere in `denidin-app` today, and
+  building one from scratch is real new infrastructure. How should this
+  actually work? → A: Post-hoc, not pre-hoc.** One OpenAI+MCP call as
+  already planned (the model lists/details/captures in one turn) — no new
+  client needed. **After** it completes, the service inspects the real
+  `list_invoices` `mcp_call` item's own `output` text (already embedded in
+  `response.output`, per the existing `mcp_calls` extraction pattern
+  `ai_handler.py` already uses elsewhere) for the true total count —
+  `morning-mcp-app`'s own `format_invoice_list`/`format_too_many_invoices_message`
+  always states the real total in one of a few fixed Hebrew phrasings
+  ("נמצאו {N} חשבוניות...", "מוצגות {shown} מתוך {N}...", "לא נמצאו
+  חשבוניות..."). If that parsed total exceeds 100, the **entire turn's
+  captures are discarded** (never call `_handle_accounting_reconciliation_capture`
+  at all) — same "never trust the AI's own scoping" guarantee (the code
+  reads the tool's real structured-ish output, never the AI's prose), just
+  checked after the one call instead of before. The **5-day** half of the
+  cap stays a genuine pre-check (pure local computation from the cache
+  watermark, no call needed either way). User directive: *"should use
+  'list'. verify that the total number of items is returned in the list
+  object returned to ai"* — confirmed live-in-code (not merely assumed):
+  `formatters.py`'s `format_invoice_list`/`format_too_many_invoices_message`
+  do state the real total, unconditionally, in every response shape.
+
 ## Resolved (was "Open Questions") — see `research.md`/`data-model.md`/`contracts/` for detail
 
 - Exact field mapping: **resolved**, see `data-model.md`'s field table.
@@ -144,22 +260,34 @@ with it - exactly the gap this spec should close.
 - Rolling-window/interval sizing: **deferred to `tasks.md`** (a tuning
   decision, not a data-shape one) — the startup/periodic split pattern
   itself (mirroring `reminder_delivery_service.py`) is resolved.
-- Code-side duplicate guard: **resolved, yes** — `LedgerEventManager` hard-
-  refuses a duplicate `accounting_document_id` inside `add_ledger_event`
-  itself; see `contracts/ledger-event-manager-extension.md`.
+- Code-side duplicate/mismatch handling: **resolved, revised in round 3** —
+  no hard refusal. `LedgerEventManager` maintains an in-process (not
+  disk-persisted) known-documents cache, lazily built once via one disk
+  scan, and applies the tri-state duplicate/anomaly/new logic described in
+  round 3 above. See `contracts/ledger-event-manager-extension.md`.
 - Service wiring / failure semantics: **resolved** — new
   `services/accounting_reconciliation_service.py`, started in `__main__`
   only (never `initialize_app()`, mirroring `reminder-delivery.md`'s own
-  corrected precedent); a failed tick self-corrects because the watermark
-  is derived from what's actually persisted, never a separately-advanced
-  counter. See `contracts/accounting-reconciliation-service.md`.
-- Document types / naming: **resolved**, see round 2 above.
+  corrected precedent); a failed/capped tick self-corrects because the
+  watermark is derived from the in-process cache, never a separately-
+  advanced counter. See `contracts/accounting-reconciliation-service.md`.
+- Document types / naming: **resolved**, see round 2 above; field-naming
+  (`accounting_document_display_number`, 4 fields not 5) and the
+  `creationDate`-mapping gap further resolved in round 3.
+- Poll interval/config: **resolved, round 3** —
+  `config.accounting_ledger_update_freq`, no longer deferred.
+- Safety cap on catch-up scope: **resolved, round 3** — 5 days / 100 docs,
+  whichever binds first; skip-entire-tick on breach.
 - **Still genuinely open, carried into `tasks.md`**: (1) verifying
   `source_type="חשבונית"`'s real-`Events.csv` usage (flagged above); (2)
   confirming `event_subtype="הפקה"` (proposed in `data-model.md`, not yet
   independently confirmed) reads correctly as real accounting terminology;
-  (3) exact poll interval/lookback numbers; (4) exact reconciliation-prompt
-  wording (shape is fixed by `contracts/`, literal text is not).
+  (3) live-confirming Morning's `from_date` filter semantics (drives the
+  known-documents pruning rule's safety margin, round 3); (4) exact
+  reconciliation-prompt wording (shape is fixed by `contracts/`, literal
+  text is not); (5) whether `number`/`creationDate` are guaranteed non-null
+  for every document type across Morning's full type set, not just the 6
+  types sampled live in round 3.
 
 ## Relationship to Feature 024
 

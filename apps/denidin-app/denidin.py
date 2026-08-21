@@ -38,6 +38,9 @@ from src.services.cleanup_service import SessionCleanupThread, run_startup_clean
 from src.services.reminder_delivery_service import (
     run_startup_reminder_sweep, start_reminder_scheduler,
 )
+from src.services.accounting_reconciliation_service import (
+    run_startup_accounting_reconciliation_sweep, start_accounting_reconciliation_scheduler,
+)
 
 # Configuration
 CONFIG_PATH = 'config/config.json'
@@ -159,7 +162,8 @@ class DeniDin:
     Also serves as global context for background threads (e.g., session cleanup).
     """
     def __init__(self, ai_handler, config, whatsapp_handler, cleanup_thread=None,
-                 group_membership_resolver=None, reminder_scheduler=None):
+                 group_membership_resolver=None, reminder_scheduler=None,
+                 accounting_reconciliation_scheduler=None):
         self.ai_handler = ai_handler
         self.config = config
         self.whatsapp_handler = whatsapp_handler
@@ -173,6 +177,15 @@ class DeniDin:
         # reminder delivery sweep - None until initialize_app() sets it (no
         # feature flag, always started - see reminder_delivery_service.py).
         self.reminder_scheduler = reminder_scheduler
+        # Feature 025: the single shared APScheduler instance driving the
+        # accounting-document reconciliation sweep - None until __main__ sets
+        # it (NEVER initialize_app(), unlike reminder_scheduler - see
+        # contracts/accounting-reconciliation-service.md: tests/integration/
+        # calls initialize_app() directly against a real bot, and a real
+        # background poller making real OpenAI+Morning calls there would let
+        # an ordinary test run reach live external services unattended).
+        # Also None (inactive) whenever config.accounting_ledger_update_freq == 0.
+        self.accounting_reconciliation_scheduler = accounting_reconciliation_scheduler
         self._logger = get_logger(__name__)
         # Feature 048's typing indicator needs the live bot (bot.api.serviceMethods.
         # sendTyping) at message-processing time, same as mark_message_read needs it
@@ -294,6 +307,10 @@ class DeniDin:
             self._logger.info("Stopping reminder delivery scheduler...")
             self.reminder_scheduler.shutdown(wait=False)
             self._logger.info("Reminder delivery scheduler stopped")
+        if self.accounting_reconciliation_scheduler is not None:
+            self._logger.info("Stopping accounting reconciliation scheduler...")
+            self.accounting_reconciliation_scheduler.shutdown(wait=False)
+            self._logger.info("Accounting reconciliation scheduler stopped")
         if self.memory_manager is not None:
             self._logger.info("Closing ChromaDB client...")
             self.memory_manager.client.close()
@@ -1042,7 +1059,20 @@ if __name__ == "__main__":
     # feature flag - unconditional, RBAC alone gates reminder *creation*.
     run_startup_reminder_sweep(denidin, live_bot)
     denidin.reminder_scheduler = start_reminder_scheduler(denidin, live_bot)
-    
+
+    # Feature 025: accounting-document reconciliation scheduler - same
+    # deliberate-placement rule as reminder_scheduler above (started HERE,
+    # never inside initialize_app() - see contracts/
+    # accounting-reconciliation-service.md). Gated by
+    # config.accounting_ledger_update_freq (0 = inactive - no scheduler
+    # started at all, no startup sweep either).
+    update_freq = getattr(denidin.config, "accounting_ledger_update_freq", 0)
+    if update_freq > 0:
+        run_startup_accounting_reconciliation_sweep(denidin)
+        denidin.accounting_reconciliation_scheduler = start_accounting_reconciliation_scheduler(
+            denidin, update_freq
+        )
+
     # Perform orphaned session recovery if memory enabled
     if denidin.ai_handler.memory_enabled:
         logger.info("Starting orphaned session recovery...")
@@ -1079,6 +1109,11 @@ if __name__ == "__main__":
             if denidin.reminder_scheduler is not None:
                 logger.info("Stopping reminder delivery scheduler...")
                 denidin.reminder_scheduler.shutdown(wait=False)
+
+            # Feature 025: stop the accounting reconciliation scheduler, if active
+            if denidin.accounting_reconciliation_scheduler is not None:
+                logger.info("Stopping accounting reconciliation scheduler...")
+                denidin.accounting_reconciliation_scheduler.shutdown(wait=False)
 
             # Raise KeyboardInterrupt to break out of message_source.start()'s
             # blocking bot.run_forever() call, below.
@@ -1118,6 +1153,11 @@ if __name__ == "__main__":
             if denidin.reminder_scheduler is not None:
                 logger.info("Stopping reminder delivery scheduler...")
                 denidin.reminder_scheduler.shutdown(wait=False)
+
+            # Feature 025: stop the accounting reconciliation scheduler if not already stopped
+            if denidin.accounting_reconciliation_scheduler is not None:
+                logger.info("Stopping accounting reconciliation scheduler...")
+                denidin.accounting_reconciliation_scheduler.shutdown(wait=False)
     except Exception as e:
         # Catch any unexpected error to prevent crash
         logger.critical(

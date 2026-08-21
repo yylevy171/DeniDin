@@ -26,7 +26,7 @@ for the Clarifications this behavior derives from.
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -60,8 +60,9 @@ CSV_MAPPED_FIELDS = {
     "reference", "agreement_id", "component_id", "component_label",
     "trigger_condition", "percent", "percent_base", "hours", "hourly_rate",
     "txn_date", "vat_status", "split_partner", "split_percent",
-    "due_date", "invoice_status", "invoice_number", "invoice_type",
-    "morning_document_id", "invoice_actual_creation_date",
+    "due_date", "accounting_document_display_number",
+    "accounting_document_type", "accounting_document_status",
+    "accounting_document_creation_date",
 }
 # raw_message_excerpt removed (Feature 043, 2026-08-18): the ledger event's own
 # message_id/session_id pointer is now sufficient - the source content lives on
@@ -79,10 +80,15 @@ INTERNAL_FIELDS = {
 # trigger_condition removed (Feature 043, 2026-08-18, finding #10): now wired to
 # the AI's own component-level input for הסכם (LEDGER_EVENT_TOOL exposes it) -
 # still forced null for בנק, but no longer unconditionally reserved.
+# accounting_document_display_number/_type/_status/_creation_date (renamed/
+# merged from invoice_*/morning_document_id, Feature 025 - round 3,
+# 2026-08-21, merged the originally-planned separate _id/_number fields into
+# one _display_number field) moved OUT of this always-null list (2026-08-20)
+# - they're now populated for source_type="חשבונית" and only forced null
+# for הסכם/בנק. See
+# TestAccountingDocumentFields below for their new conditional-null coverage.
 RESERVED_NULL_FIELDS = [
     "split_partner", "split_percent", "due_date",
-    "invoice_status", "invoice_number", "invoice_type",
-    "morning_document_id", "invoice_actual_creation_date",
 ]
 
 # 2026-07-28T11:06:58+00:00 UTC -> Asia/Jerusalem local (UTC+3, Israel DST in July)
@@ -919,14 +925,28 @@ class TestSchemaVersion:
         data = _read(temp_events_dir, event_id)
         assert data["schema_version"] == CURRENT_SCHEMA_VERSION
 
-    def test_current_schema_version_is_1(self):
-        """2026-08-19: whatsapp_chat removed (redundant with session_id) -
-        folded into the same v1 baseline rather than bumped, per human
-        decision (v1 has never been deployed to real dev/prod data, same
-        reset-safety reasoning as the original Phase 11 reset)."""
+    def test_current_schema_version_is_2(self):
+        """Feature 025 (2026-08-20, per spec.md's Clarifications - schema-version
+        bump used INSTEAD of a config.feature_flags gate): bumped 1->2, applying
+        globally to every new write regardless of source_type (הסכם/בנק included,
+        not just the new חשבונית source) - proven by
+        test_add_ledger_event_also_stamps_v2_for_non_accounting_source_types
+        below."""
         from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
 
-        assert CURRENT_SCHEMA_VERSION == 1
+        assert CURRENT_SCHEMA_VERSION == 2
+
+    def test_add_ledger_event_also_stamps_v2_for_non_accounting_source_types(
+        self, manager, temp_events_dir
+    ):
+        """The schema_version bump is global, not per-source_type - a plain
+        הסכם capture (no חשבונית fields involved at all) still gets
+        schema_version=2 once this feature ships."""
+        event_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        assert _read(temp_events_dir, event_id)["schema_version"] == 2
 
     def test_add_ledger_events_from_call_also_stamps_schema_version(self, manager, temp_events_dir):
         from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
@@ -1227,3 +1247,385 @@ class TestApplyReviewAnswer:
         manager.apply_review_answer(event_id, {"payer_name": "דני כהן"})
 
         assert _read(temp_events_dir, other_id) == before_other
+
+
+
+# Feature 025 (Morning-Sourced Ledger Events), round 3 (2026-08-21) - raw
+# arguments shape a reconciliation-sweep-driven capture_ledger_event call
+# carries. Unlike SAMPLE_EVENT/SAMPLE_CALL_ARGUMENTS above (recognized from
+# free-text/image signal), every accounting_document_* value here is
+# transcribed directly from a real Morning Invoice record's own structured
+# fields - never inferred - per data-model.md's LEDGER_EVENT_TOOL
+# schema-change notes. accounting_document_creation_date carries full HH:MM
+# precision (round 3 finding: Morning's real creationDate field is a genuine
+# epoch timestamp, not date-only) and message_timestamp below is the epoch
+# this same instant maps to, matching contracts/ledger-event-manager-
+# extension.md's "message_timestamp for a חשבונית capture" note.
+ACCOUNTING_DOC_TS = int(datetime(2026, 7, 28, 15, 6, 0, tzinfo=timezone.utc).timestamp())
+# 2026-07-28T15:06:00 UTC -> Asia/Jerusalem local (UTC+3) -> 2026-07-28 18:06 local
+
+SAMPLE_ACCOUNTING_EVENT = {
+    "source_type": "חשבונית",
+    "event_subtype": "הפקה",
+    "client_name": "לקוח בדיקה",
+    "payer_name": None,
+    "description": "חשבונית מס 100",
+    "amount": "1,000₪",
+    "percent": None,
+    "percent_base": None,
+    "hours": None,
+    "hourly_rate": None,
+    "txn_date": None,
+    "vat_status": "כולל",
+    "trigger_condition": None,
+    "reference_hint": None,
+    "agreement_label": None,
+    "component_label": None,
+    "accounting_document_display_number": "40406",
+    "accounting_document_type": "חשבונית מס",
+    "accounting_document_status": "שולם",
+    "accounting_document_creation_date": "2026-07-28T18:06:00",
+}
+
+ACCOUNTING_DOCUMENT_FIELDS = [
+    "accounting_document_display_number",
+    "accounting_document_type", "accounting_document_status",
+    "accounting_document_creation_date",
+]
+
+# Every field that has no meaning for a source_type="חשבונית" capture (no
+# agreement/component/conditional-fee/bank concept applies to a Morning
+# document) - mirrors the existing per-source_type forced-null lists above
+# (bank_number/etc for הסכם, agreement_id/etc for בנק).
+NON_APPLICABLE_FIELDS_FOR_ACCOUNTING_DOCUMENT = [
+    "agreement_id", "component_id", "component_label", "trigger_condition",
+    "percent", "percent_base", "hours", "hourly_rate",
+    "bank_number", "bank_branch", "bank_account", "payer_name",
+]
+
+
+def _accounting_event(**overrides):
+    """Helper: SAMPLE_ACCOUNTING_EVENT with overrides, for tests that need a
+    distinct accounting_document_display_number/_creation_date pair."""
+    return dict(SAMPLE_ACCOUNTING_EVENT, **overrides)
+
+
+class TestAccountingDocumentFields:
+    """Feature 025, T005a: the extended record shape for source_type="חשבונית"
+    (data-model.md's field-rename table, round 3 - **4 fields, not 5**):
+    accounting_document_display_number/_type/_status/_creation_date
+    populated only for חשבונית, forced null for הסכם/בנק regardless of what's
+    passed; event_subtype="הפקה" accepted; schema_version=2 globally (see
+    TestSchemaVersion above); the old reserved field names never appear in a
+    persisted record; there is no separate accounting_document_id field."""
+
+    def test_accounting_document_event_persists_all_four_fields(
+        self, manager, temp_events_dir
+    ):
+        event_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["accounting_document_display_number"] == "40406"
+        assert data["accounting_document_type"] == "חשבונית מס"
+        assert data["accounting_document_status"] == "שולם"
+        assert data["accounting_document_creation_date"] == "28/07/2026 18:06"
+
+    def test_event_subtype_hafaka_accepted_for_accounting_document(
+        self, manager, temp_events_dir
+    ):
+        event_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        assert _read(temp_events_dir, event_id)["event_subtype"] == "הפקה"
+
+    def test_event_id_uses_letter_h_for_accounting_document(self, manager):
+        event_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        assert event_id.startswith("H")
+
+    def test_accounting_document_fields_forced_null_for_agreement_source_type(
+        self, manager, temp_events_dir
+    ):
+        """Even if a caller mistakenly passes accounting_document_* values
+        alongside source_type="הסכם", they're forced null - same defensive
+        discipline as bank_number/payer_name/etc elsewhere in this file."""
+        event = dict(SAMPLE_EVENT, **{f: "should be dropped" for f in ACCOUNTING_DOCUMENT_FIELDS})
+        event_id = manager.add_ledger_event(
+            session_id="s", event=event, message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        for field in ACCOUNTING_DOCUMENT_FIELDS:
+            assert data[field] is None, f"{field} must be null for source_type='הסכם'"
+
+    def test_accounting_document_fields_forced_null_for_bank_source_type(
+        self, manager, temp_events_dir
+    ):
+        event = dict(
+            SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה",
+            **{f: "should be dropped" for f in ACCOUNTING_DOCUMENT_FIELDS},
+        )
+        event_id = manager.add_ledger_event(
+            session_id="s", event=event, message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        for field in ACCOUNTING_DOCUMENT_FIELDS:
+            assert data[field] is None, f"{field} must be null for source_type='בנק'"
+
+    def test_non_applicable_fields_forced_null_for_accounting_document(
+        self, manager, temp_events_dir
+    ):
+        """The reverse direction: agreement/component/bank/payer concepts
+        don't apply to a חשבונית capture - forced null regardless of what a
+        caller passes."""
+        event = dict(
+            SAMPLE_ACCOUNTING_EVENT,
+            agreement_label="should not matter", component_label="should be dropped",
+            trigger_condition="should be dropped", percent="50", percent_base="1000",
+            hours="3", hourly_rate="500", payer_name="should be dropped",
+        )
+        event_id = manager.add_ledger_event(
+            session_id="s", event=event, message_id="m", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        for field in NON_APPLICABLE_FIELDS_FOR_ACCOUNTING_DOCUMENT:
+            assert data[field] is None, f"{field} must be null for source_type='חשבונית'"
+
+    def test_old_reserved_field_names_no_longer_present(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        for old_name in (
+            "morning_document_id", "invoice_number", "invoice_type",
+            "invoice_status", "invoice_actual_creation_date",
+            "accounting_document_id",  # round 3: never existed as its own field
+        ):
+            assert old_name not in data
+
+
+class TestScanAccountingDocuments:
+    """Feature 025, T006a: scan_accounting_documents - the one-time (per
+    process) disk-scan bootstrap for LedgerEventManager's in-memory
+    accounting-document cache, per data-model.md's round-3
+    "AccountingDocumentReconciliationState" section. Returns
+    Dict[display_number, List[AccountingDocumentCacheEntry]] (each entry a
+    (timestamp, event_id) pair - added during implementation so an anomaly's
+    pending_review.json entry can name the real prior event_id, not just its
+    timestamp), NOT the old Tuple[Set[str],
+    Optional[date]] shape."""
+
+    def test_empty_storage_dir_returns_empty_dict(self, manager):
+        assert manager.scan_accounting_documents() == {}
+
+    def test_one_accounting_document_event_returns_its_number_and_timestamp(
+        self, manager
+    ):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        result = manager.scan_accounting_documents()
+        assert list(result.keys()) == ["40406"]
+        assert len(result["40406"]) == 1
+        assert result["40406"][0].timestamp.strftime("%d/%m/%Y %H:%M") == "28/07/2026 18:06"
+
+    def test_two_events_sharing_a_display_number_both_timestamps_present(
+        self, manager
+    ):
+        """Simulates the anomaly case having already happened once - both of
+        a display_number's distinct timestamps must be visible to a fresh
+        scan, not just the latest."""
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m1", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        later_ts = int(datetime(2026, 7, 29, 6, 0, 0, tzinfo=timezone.utc).timestamp())
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m2", message_timestamp=later_ts,
+        )
+        result = manager.scan_accounting_documents()
+        assert len(result["40406"]) == 2
+
+    def test_non_accounting_events_ignored_entirely(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה"),
+            message_id="m2", message_timestamp=FIXED_TS,
+        )
+        assert manager.scan_accounting_documents() == {}
+
+    def test_malformed_json_file_skipped_with_warning(
+        self, manager, temp_events_dir, caplog
+    ):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        bad_file = temp_events_dir / "H999999999.json"
+        bad_file.write_text("{not valid json", encoding="utf-8")
+
+        with caplog.at_level(logging.WARNING):
+            result = manager.scan_accounting_documents()
+
+        assert list(result.keys()) == ["40406"]
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+class TestAccountingDocumentCacheLazyInit:
+    """Feature 025, T006a (second half): _ensure_accounting_document_cache
+    must scan the disk AT MOST ONCE per manager instance, regardless of how
+    many add_ledger_event calls happen afterward - the "no reading and
+    parsing of the ledger events... per tick" guarantee (spec.md
+    Clarifications, round 3)."""
+
+    def test_scan_accounting_documents_called_at_most_once_across_multiple_captures(
+        self, manager, monkeypatch
+    ):
+        call_count = {"n": 0}
+        original = manager.scan_accounting_documents
+
+        def _counting_scan():
+            call_count["n"] += 1
+            return original()
+
+        monkeypatch.setattr(manager, "scan_accounting_documents", _counting_scan)
+
+        manager.add_ledger_event(
+            session_id="s", event=_accounting_event(accounting_document_display_number="1"),
+            message_id="m1", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        manager.add_ledger_event(
+            session_id="s", event=_accounting_event(accounting_document_display_number="2"),
+            message_id="m2", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        manager.add_ledger_event(
+            session_id="s", event=_accounting_event(accounting_document_display_number="3"),
+            message_id="m3", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+
+        assert call_count["n"] == 1
+
+
+class TestAccountingDocumentTriState:
+    """Feature 025, T007a: the tri-state new/duplicate/anomaly logic that
+    REPLACES the old hard-refusal design (round 3, user directive: "I don't
+    like the hard refusal... The 'since when' mechanism SHOULD NOT RELY ON A
+    REFUSAL MECHANISM"). Lives entirely inside add_ledger_event/
+    LedgerEventManager - a ledger concern, not an ai_handler.py one."""
+
+    def test_new_display_number_persists_normally(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        assert event_id is not None
+        assert len(list(temp_events_dir.glob("*.json"))) == 1
+
+    def test_same_display_number_same_timestamp_is_true_duplicate_discarded(
+        self, manager, temp_events_dir, caplog
+    ):
+        first_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m1", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        assert first_id is not None
+
+        with caplog.at_level(logging.INFO):
+            second_id = manager.add_ledger_event(
+                session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+                message_id="m2", message_timestamp=ACCOUNTING_DOC_TS,
+            )
+
+        assert second_id is None
+        assert len(list(temp_events_dir.glob("*.json"))) == 1
+        assert not any(r.levelno >= logging.WARNING for r in caplog.records), (
+            "a true duplicate is a normal re-poll, not a warning-worthy event"
+        )
+
+    def test_same_display_number_different_timestamp_is_anomaly_persisted_and_flagged(
+        self, manager, temp_events_dir, caplog
+    ):
+        first_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m1", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        later_ts = int(datetime(2026, 7, 29, 6, 0, 0, tzinfo=timezone.utc).timestamp())
+
+        with caplog.at_level(logging.WARNING):
+            second_id = manager.add_ledger_event(
+                session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+                message_id="m2", message_timestamp=later_ts,
+            )
+
+        assert second_id is not None
+        assert second_id != first_id
+        assert len(list(temp_events_dir.glob("*.json"))) == 2, (
+            "an anomaly persists a NEW event, never overwrites/drops"
+        )
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+        review_file = temp_events_dir.parent / "accounting_reconciliation" / "pending_review.json"
+        assert review_file.exists()
+        entries = json.loads(review_file.read_text(encoding="utf-8"))
+        assert len(entries) == 1
+        assert entries[0]["accounting_document_display_number"] == "40406"
+        assert entries[0]["prior_event_id"] == first_id
+        assert entries[0]["new_event_id"] == second_id
+
+    def test_guard_never_fires_for_non_accounting_source_types(self, manager, temp_events_dir):
+        """הסכם/בנק events always have accounting_document_display_number=None
+        - the guard must never treat two Nones as a collision with each
+        other."""
+        first_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        second_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT),
+            message_id="m2", message_timestamp=FIXED_TS,
+        )
+        assert first_id is not None
+        assert second_id is not None
+        assert len(list(temp_events_dir.glob("*.json"))) == 2
+
+
+class TestPruneAccountingDocumentCache:
+    """Feature 025, T008a: prune_accounting_document_cache - drops cache
+    entries older than the 5-day safety-cap boundary plus a 2-day margin (7
+    days total) before `now`, per data-model.md's "Pruning" note."""
+
+    def test_entry_older_than_boundary_is_dropped(self, manager):
+        old_ts = int(datetime(2026, 7, 1, 12, 0, 0, tzinfo=timezone.utc).timestamp())
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m", message_timestamp=old_ts,
+        )
+        now = datetime(2026, 8, 1, 12, 0, 0, tzinfo=timezone.utc)  # 31 days later
+
+        manager.prune_accounting_document_cache(now=now)
+
+        assert manager._accounting_document_cache == {}
+
+    def test_entry_within_boundary_is_kept(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
+            message_id="m", message_timestamp=ACCOUNTING_DOC_TS,
+        )
+        now = datetime(2026, 7, 29, 12, 0, 0, tzinfo=timezone.utc)  # 1 day later
+
+        manager.prune_accounting_document_cache(now=now)
+
+        assert "40406" in manager._accounting_document_cache
+
+    def test_empty_cache_is_a_no_op(self, manager):
+        manager.prune_accounting_document_cache()  # must not raise

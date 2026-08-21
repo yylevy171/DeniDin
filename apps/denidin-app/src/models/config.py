@@ -61,6 +61,14 @@ class AppConfiguration:
     # Reminders (Feature 054) - no feature flag, RBAC (GODFATHER/ADMIN) is the only gate
     reminders: Dict = field(default_factory=dict)
 
+    # Accounting document reconciliation (Feature 025) - minutes between background
+    # polls of Morning for documents created there directly. 0 = inactive (the
+    # scheduler never starts at all) - an environment that hasn't set this key yet
+    # must never accidentally start polling. Not a config.feature_flags entry (the
+    # record-shape side of this feature is gated by CURRENT_SCHEMA_VERSION instead)
+    # - this field only controls whether the background poller runs.
+    accounting_ledger_update_freq: int = 0
+
     @classmethod
     def from_file(cls, file_path: str) -> 'AppConfiguration':
         """
@@ -116,7 +124,8 @@ class AppConfiguration:
             'constitution_config': {},
             'user_roles': {},
             'mcp': {},
-            'reminders': {}
+            'reminders': {},
+            'accounting_ledger_update_freq': 0
         }
 
         # Merge with defaults

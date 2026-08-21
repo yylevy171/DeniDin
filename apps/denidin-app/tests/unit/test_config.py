@@ -232,6 +232,36 @@ class TestAppConfiguration:
 
         config.validate()  # Should not raise
 
+    def test_accounting_ledger_update_freq_defaults_to_0(self, valid_config_data):
+        """Feature 025 (round 3): a fresh environment's config that doesn't
+        yet mention this field must default to 0 (inactive) - an environment
+        must never accidentally start polling Morning just because this key
+        was never set."""
+        config = AppConfiguration(**valid_config_data)
+        assert config.accounting_ledger_update_freq == 0
+
+    def test_accounting_ledger_update_freq_loaded_from_file(self, tmp_path, valid_config_data):
+        """from_file() must actually pick up an explicit value, same
+        precedent as max_retries above."""
+        valid_config_data['accounting_ledger_update_freq'] = 60
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps(valid_config_data), encoding='utf-8')
+
+        config = AppConfiguration.from_file(str(config_path))
+
+        assert config.accounting_ledger_update_freq == 60
+
+    def test_accounting_ledger_update_freq_0_is_accepted_not_coerced(self, tmp_path, valid_config_data):
+        """0 is a real, valid, explicitly-settable value (means "inactive"),
+        not something from_file() should treat as equivalent to "unset"."""
+        valid_config_data['accounting_ledger_update_freq'] = 0
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps(valid_config_data), encoding='utf-8')
+
+        config = AppConfiguration.from_file(str(config_path))
+
+        assert config.accounting_ledger_update_freq == 0
+
     def test_log_level_validates_info_debug_only(self, valid_config_data):
         """Test that log_level only accepts INFO or DEBUG."""
         # Test valid values

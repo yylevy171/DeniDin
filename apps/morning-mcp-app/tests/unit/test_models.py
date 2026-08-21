@@ -211,3 +211,25 @@ def test_invoice_model_defaults_linked_documents_to_empty_list():
     invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
 
     assert invoice.linked_documents == []
+
+
+def test_invoice_model_maps_creation_timestamp_from_real_response():
+    """Feature 025 (denidin-app, Morning-Sourced Ledger Events), T003a: real
+    Green Invoice /documents(/search) responses carry a `creationDate` field
+    - a genuine Unix epoch integer with full second-level precision (live-
+    confirmed 2026-08-21 against the real dev sandbox: e.g. 1787241168 ->
+    2026-08-20 18:52:48 Israel local) - completely separate from
+    `documentDate`/issue_date (date-only). Until this field existed, that
+    full-precision creation time was silently unavailable to any MCP tool
+    caller, even though the real API always sends it."""
+    with_creation = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168)
+
+    invoice = Invoice.model_validate(with_creation)
+
+    assert invoice.creation_timestamp == datetime.fromtimestamp(1787241168, tz=timezone.utc)
+
+
+def test_invoice_model_creation_timestamp_defaults_to_none_when_absent():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    assert invoice.creation_timestamp is None

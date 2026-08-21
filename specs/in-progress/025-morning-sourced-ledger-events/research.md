@@ -6,18 +6,26 @@ All decisions below were made directly with the user (see spec.md's "Clarificati
 2026-08-20 session, two rounds) plus grounding investigation into the current codebase performed
 during this research pass. No open NEEDS CLARIFICATION remain.
 
-## Naming convention (resolved 2026-08-20, second clarification round)
+## Naming convention (resolved 2026-08-20, second round; revised 2026-08-21, third round)
 
 **Decision**: New/renamed fields on the persisted `LedgerEvent` record use an `accounting_document_`
 prefix, doc-type-agnostic and vendor-neutral:
 
 | Old / reserved name (Feature 033) | New name (this feature) |
 |---|---|
-| `morning_document_id` | `accounting_document_id` |
-| `invoice_number` | `accounting_document_number` |
+| `morning_document_id` / `invoice_number` | `accounting_document_display_number` (**merged**, round 3 — see below) |
 | `invoice_type` | `accounting_document_type` |
 | `invoice_status` | `accounting_document_status` |
 | `invoice_actual_creation_date` | `accounting_document_creation_date` |
+
+**Round 3 correction (2026-08-21)**: round 2 originally planned `accounting_document_id` (from
+Morning's opaque internal `Invoice.id`) as a *separate* field from `accounting_document_number`
+(from the human-visible `Invoice.number`), with `_id` doing dedup-key duty. User correction: *"document
+id... is the USER FACING display number - NOT the morning internal id... rename it everywhere to
+document_display_number."* These collapse into **one** field, `accounting_document_display_number`
+— sourced from `Invoice.number`/raw `number` — which is also the dedup key (see "Dedup mechanism"
+below). Morning's internal id (`Invoice.id`) is used only transiently within a sweep tick (to call
+`get_invoice_details`) and is never persisted or exposed as its own field. **Field count: 4, not 5.**
 
 **`source_type` stays `"חשבונית"` / letter `"H"`** (the value already reserved in
 `ledger_event_manager.py`'s `_LETTER_BY_SOURCE_TYPE` and its comment) — the user explicitly chose
@@ -60,14 +68,17 @@ built) but already structurally document-type-agnostic. **No morning-mcp-app cha
 this decision — a real, welcome scope reduction from what was flagged as a risk when the question
 was first asked.
 
-**Caveat, added by `speckit.analyze` (finding C1)**: the conclusion above is derived entirely
-from **static code reading** — no live call has actually confirmed Morning's real
-`/documents/search`/`/documents/{id}` genuinely return a non-invoice document (receipt, credit
-note, etc.) when queried this way, only that the request-building code sends no `type` filter.
-Per `CONSTITUTION.md`'s absolute "NO UNVERIFIED THIRD-PARTY ASSUMPTIONS" principle, this must not
-be treated as confirmed until it is — see `tasks.md` T020, a live-verification task against the
-real Morning dev sandbox, to be run before this scope decision is relied on by any Acceptance
-task.
+**Caveat, added by `speckit.analyze` (finding C1), partially closed 2026-08-21 (round 3)**: the
+original conclusion was derived entirely from static code reading. A real, read-only probe against
+the actual Morning **dev** sandbox (2026-08-21) confirmed `list_invoices`/`get_invoice` (called
+directly via `MorningClient`, bypassing all Pydantic mapping) return real documents spanning **6
+distinct document types** (raw `type` codes 300, 305, 320, 330, 400) from one `/documents/search`
+call with no `type` filter — direct, live confirmation that these endpoints are genuinely
+type-agnostic, not just request-code-agnostic. **Still not fully closed**: only 6 of Morning's full
+type set were observed live (whatever real documents happened to exist in the dev sandbox at probe
+time) — `tasks.md`'s live-verification task is retained to explicitly create/observe at least one
+type outside this set if practical, but the core "no new tooling needed for the search/get
+endpoints themselves" claim is now live-evidence-backed, not just inferred from code.
 
 `accounting_document_type` is populated by decoding `Invoice.type`'s int against Morning's real
 `GET /documents/types` endpoint — already confirmed live elsewhere in this codebase
@@ -75,30 +86,93 @@ task.
 'חשבונית זיכוי'"). Reuse/extend that already-verified lookup rather than re-deriving it from
 scratch or guessing codes.
 
-## Dedup mechanism (resolved 2026-08-20, first clarification round)
+**New finding, round 3 (2026-08-21) — real scope addition, not previously planned**: the same live
+probe also checked `number` (display number) and creation-time granularity. **Every one of the 25
+real documents observed, across all 6 types, had a non-null `number`** (e.g. `"40406"`, `"80645"`,
+`"52204"`, `"60444"`, `"70284"`) — confirming `accounting_document_display_number` (see "Naming
+convention" above) can be sourced reliably. **The raw response also carries a `creationDate` field
+— a genuine Unix epoch integer with full second-level precision** (e.g. `1787241168` →
+`2026-08-20 18:52:48` Israel local), not just the date-only `documentDate` round 1/2 assumed was
+the only available creation-time signal. **But `apps/morning-mcp-app`'s `Invoice` Pydantic model
+currently maps neither `number`-as-guaranteed nor `creationDate` in a way this feature can consume
+for full-precision timestamps** — it only maps `documentDate` (date-only) into `issue_date`. This
+is a real, material addition to this feature's scope (user decision, 2026-08-21: land it as part
+of Feature 025 rather than a separate PR) — see `tasks.md`'s new morning-mcp-app task(s): map
+`creationDate` into a new `Invoice` field and expose it through `get_invoice_details`'s tool
+output, so the reconciliation sweep's OpenAI+MCP call can actually see it.
 
-**Decision**: No new store. The "already known" set is derived by scanning existing persisted
-`LedgerEvent` files under `{data_root}/events/*.json` for a non-null `accounting_document_id`.
+## Dedup mechanism (resolved 2026-08-20, first round; **fully redesigned 2026-08-21, third round**)
 
-**New code-side guard** (this feature's own addition, consistent with `ledger_event_manager.py`'s
-existing "never fully trust the AI's own scoping" philosophy — see `_normalize_amount`,
-`vat_status` forcing for `בנק`, `payer_name` rescue): before persisting a new `source_type="חשבונית"`
-event, `LedgerEventManager` itself checks whether that `accounting_document_id` already exists
-among persisted events and refuses (logs, does not write) if so — a second guard beneath whatever
-date-window scoping the reconciliation prompt does on its own. This is a genuinely new method
-(`LedgerEventManager` currently has no by-field lookup across all events — `_load_event` looks up
-by `event_id` only), so it needs an index/scan helper.
+**Round 1 design (superseded — kept here for history only)**: a hard refusal inside
+`add_ledger_event`, checking against a full re-scan of `{data_root}/events/*.json` every time.
+User rejected this outright: *"I don't like the hard refusal and never asked for it. What if the
+original was a mistake?... The 'since when' mechanism SHOULD NOT RELY ON A REFUSAL MECHANISM."*
+Also rejected: re-scanning the events directory on every tick (*"ideally no reading and parsing of
+the ledger events is required per tick"*).
 
-**Poll watermark derivation**: rather than a separate persisted "last poll time" state file, the
-"since when" boundary for each poll's `list_invoices(from_date=...)` call is derived the same
-way — the latest `accounting_document_creation_date` among already-persisted `source_type="חשבונית"`
-events, with a fixed fallback lookback (to be sized in `data-model.md`/`tasks.md`, mirroring
-`reminder_delivery_service.py`'s split startup/periodic lookback pattern) for the very first poll
-ever run. This has a useful side effect: **a failed poll tick naturally does not advance anything**
-— since the watermark isn't a separate counter but is derived from what's actually been
-persisted, a tick that errors out before persisting anything simply leaves the derived watermark
-unchanged, and the next tick re-covers the same window. No separate failure/retry bookkeeping
-needed, unlike a hand-maintained watermark file would require.
+**Round 3 design (current)**: `LedgerEventManager` owns an **in-process, in-memory** cache —
+`Dict[accounting_document_display_number, Set[creation_datetime]]` — never a second persisted
+store, never rebuilt from disk more than once per process lifetime:
+
+- **Lazy one-time build**: on the first `add_ledger_event` call with `source_type="חשבונית"` in a
+  given `LedgerEventManager` instance's lifetime, the cache is built by scanning
+  `{data_root}/events/*.json` once (`scan_accounting_documents`, revised to return
+  `Dict[str, List[datetime]]` rather than the old `Tuple[Set[str], Optional[date]]` — see
+  `data-model.md`). Every subsequent call reuses the already-built in-memory cache — no re-scan.
+- **Tri-state decision** per incoming `(display_number, creation_datetime)` pair (this is a
+  ledger-persistence concern, decided **inside `LedgerEventManager`**, not the new `ai_handler.py`
+  handler — user directive: *"it's clearly a ledger requirement regardless of ai"*):
+  - `display_number` unseen → **new**: persist normally, add `creation_datetime` to the cache
+    entry for that `display_number`.
+  - `display_number` seen, and `creation_datetime` matches a timestamp already recorded for it →
+    **true duplicate** (a re-poll of the identical document) → **silently discard**, no new file,
+    cache unchanged.
+  - `display_number` seen, but `creation_datetime` does **not** match any timestamp already
+    recorded for it → **anomaly** (a real Morning document's own creation time should never
+    change across polls — "this should never happen", per user) → **persist as a new
+    `LedgerEvent`** (its own new `event_id`, driven by the differing timestamp — duplicates-by-
+    display-number are allowed to coexist as separate event files) **and** log a WARNING **and**
+    append an entry to a new persisted `{data_root}/accounting_reconciliation/pending_review.json`
+    tracker (display_number, prior event_id/timestamp, new event_id/timestamp, detected_at). No
+    WhatsApp alert — this stays a silent, log/file-discoverable mechanism.
+- **Pruning, every tick**: an entry can be dropped from the cache once its (only remaining, or
+  all) timestamp(s) are older than the 5-day safety cap (see "Capture mechanism" below) plus a
+  small margin (7 days total) before `now_local()` — the forward-only watermark can never
+  legitimately cause a document that old to be re-queried again. **Flagged for live confirmation**
+  of Morning's actual `from_date` filter semantics before this margin is trusted as exactly right
+  (folded into `tasks.md`'s live-verification task) — the reasoning is sound in principle but not
+  yet independently confirmed against how Morning's own date filtering actually behaves at the
+  boundary.
+
+**Poll watermark derivation**: still no separate persisted "last poll time" file — the "since when"
+boundary for each poll's `list_invoices(from_date=...)` call is derived from the same in-memory
+cache (the maximum `creation_datetime` across all its entries), not a re-scan. A fixed fallback
+lookback applies only when the cache is empty (first-ever poll on a fresh environment, or after
+every prior `חשבונית` event aged out of the cache's own retention — unlikely but not impossible).
+**A failed or capped-out tick naturally does not advance anything** — since the watermark is
+derived from the cache's actual contents (which only change on a successful persist), a tick that
+errors out, or is skipped entirely for exceeding the safety cap (see below), simply leaves the
+derived watermark unchanged, and the next tick re-covers the same window. No separate
+failure/retry bookkeeping needed.
+
+## Safety cap on catch-up scope (new, 2026-08-21, third round)
+
+**Decision**: this sweep is explicitly **not a backfill mechanism**. If the gap since the derived
+watermark exceeds **5 days OR would surface more than 100 not-yet-known documents**, whichever
+binds first, the sweep **skips the entire tick** — captures nothing, does not advance the
+watermark — rather than attempting a partial catch-up. Logged at ERROR; no WhatsApp alert (kept
+consistent with this sweep's existing "no confirmation reply anywhere, silent background
+mechanism" contract). Resolving a capped-out gap is an explicit admin/human action outside this
+feature's scope (the sweep's job is only to *identify* the gap via the ERROR log, not resolve it).
+
+**The cap check is done by the service directly, never trusted to the model**: before ever
+constructing the OpenAI+MCP prompt, `_sweep_accounting_documents` makes its own plain,
+non-AI-mediated `list_invoices(from_date=since)` call (via the same `MorningClient` machinery,
+just not through the OpenAI Responses API) solely to count/date-check the candidate documents.
+Only if within both bounds does it proceed to the real OpenAI+MCP-mediated capture call. This
+matches this codebase's existing "never trust the AI's own math/scoping" philosophy already
+applied elsewhere in `ledger_event_manager.py` (`_normalize_amount`, `vat_status` forcing for
+`בנק`, the `payer_name`-rescue logic).
 
 ## Schema versioning (resolved 2026-08-20, first clarification round)
 
@@ -134,8 +208,14 @@ runtime/conversational turn:
 **Scheduling**: mirrors `services/reminder_delivery_service.py`'s APScheduler
 `BackgroundScheduler` + `CronTrigger` + startup-sweep-plus-periodic-tick shape (see that file
 and `contracts/reminder-delivery.md` for the precedent this new service structurally follows).
-Exact interval/lookback sizing is a `data-model.md`/`tasks.md`-level decision, not re-litigated
-here beyond confirming the pattern to reuse.
+
+**Interval, resolved 2026-08-21 (round 3)**: a new top-level DeniDin config field —
+`config.accounting_ledger_update_freq` (minutes, int). `0` means the feature is inactive and the
+scheduler never starts at all (no job registered, no startup sweep). This is a plain
+`AppConfiguration` field like any other (no env vars, per CONSTITUTION.md), not a
+`config.feature_flags` entry — the schema-version bump (see "Schema versioning" above) remains
+the mechanism distinguishing old vs. new record shape; this config field only controls whether the
+background poller runs at all.
 
 ## `capture_ledger_event` tool schema extension
 
@@ -144,11 +224,12 @@ must be listed in `required` (nullable ones use `type: [X, "null"]`), and `addit
 False`. Adding `source_type="חשבונית"` requires:
 
 - Extending `source_type`'s enum: `["הסכם", "בנק", "חשבונית"]`.
-- New top-level (or component-level — TBD in `data-model.md`) fields for
-  `accounting_document_id`/`_number`/`_type`/`_status`/`_creation_date`, each nullable, forced
-  `null` for `source_type != "חשבונית"` at the `LedgerEventManager` layer — same defensive
-  discipline already applied to `bank_number`/`payer_name`/`trigger_condition` for their own
-  respective `source_type`s.
+- New top-level fields for `accounting_document_display_number`/`_type`/`_status`/
+  `_creation_date` (**4 fields, not 5** — round 3 collapsed the planned `_id`/`_number` pair into
+  one `_display_number` field, see "Naming convention" above), each nullable, forced `null` for
+  `source_type != "חשבונית"` at the `LedgerEventManager` layer — same defensive discipline already
+  applied to `bank_number`/`payer_name`/`trigger_condition` for their own respective
+  `source_type`s.
 - `event_subtype`'s enum needs a new value for `חשבונית` (today's enum is only
   `["יצירה", "הפקדה"]`, one per existing `source_type`) — exact value TBD in `data-model.md`.
 
@@ -184,3 +265,11 @@ Both existing behaviors are load-bearing for real, cited incidents in the conver
 they are not being weakened or removed, just not reused for a fundamentally different call
 pattern. Concrete new method name/shape (e.g. `_handle_accounting_reconciliation_capture`) is a
 `data-model.md`/`contracts/`-level decision.
+
+**Round 3 scope correction**: this new `ai_handler.py` handler owns turn-shape concerns only (no
+suppression, multi-call-per-turn allowed) — it does **not** own the duplicate/anomaly decision
+described in "Dedup mechanism" above. That decision lives entirely inside
+`LedgerEventManager.add_ledger_event` (via the in-memory cache) — the new handler is a thin
+adapter that parses each `capture_ledger_event` call and passes it straight through to
+`add_ledger_event`, exactly like every other capture path already does, trusting the manager to
+decide new/duplicate/anomaly on its own.

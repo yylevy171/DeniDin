@@ -7,6 +7,7 @@ from datetime import date
 from typing import List, Optional
 
 from .models import _DOCUMENT_TYPE_NAMES, _PAYMENT_TYPE_NAMES, Client, FinancialSummary, Invoice
+from .utils.time_utils import local_from_timestamp
 
 _STATUS_HE = {
     "paid": "שולם",
@@ -96,6 +97,15 @@ def format_invoice_details(invoice: Invoice) -> str:
 
     if invoice.issue_date:
         lines.append(f"תאריך הפקה: {format_date_il(invoice.issue_date)}")
+
+    if invoice.creation_timestamp:
+        # denidin-app's Feature 025: full HH:MM creation precision, not just
+        # the date already shown above - the only channel this tool exposes
+        # data through is this formatted text, so the reconciliation sweep's
+        # model needs it spelled out here to populate
+        # accounting_document_creation_date accurately.
+        local_dt = local_from_timestamp(invoice.creation_timestamp.timestamp())
+        lines.append(f"נוצר ב: {local_dt.strftime('%d/%m/%Y %H:%M')}")
 
     if invoice.payments:
         lines.append("תשלומים:")

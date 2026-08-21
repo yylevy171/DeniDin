@@ -2,6 +2,11 @@
 
 **Feature**: 025-morning-sourced-ledger-events · Per METHODOLOGY.md §VII format.
 
+**Revised 2026-08-21 (round 3, `spec.md`'s Clarifications)**: adds the `config.accounting_ledger_update_freq`
+config gate, a service-side (non-AI) safety-cap pre-check before ever calling OpenAI, and removes
+the hard-refusal dedup step from this file's step 5 (that decision now lives entirely inside
+`LedgerEventManager` — see `contracts/ledger-event-manager-extension.md`).
+
 ---
 
 ### Scheduling: APScheduler `BackgroundScheduler` + one `CronTrigger` job (new: `src/services/accounting_reconciliation_service.py`)
@@ -36,12 +41,14 @@ calls there would let an ordinary test run reach live external services unattend
 (`denidin.accounting_reconciliation_scheduler`, `.shutdown()` on SIGINT/SIGTERM alongside the
 existing `cleanup_thread`/`reminder_scheduler` shutdowns) — `tasks.md`.
 
-No feature-flag gate (per spec.md Clarifications — schema-version bump instead), but this is a
-real always-on background job making real OpenAI/Morning calls on every tick — `tasks.md` must
-size the interval conservatively (this is a cost/traffic concern, not a correctness one) and this
-contract does not fix a number here.
+No `config.feature_flags` gate (per spec.md Clarifications — schema-version bump covers the
+record-shape side), but there IS a plain config gate on whether the scheduler runs at all:
+`config.accounting_ledger_update_freq` (top-level, minutes, int; `0` = inactive — the scheduler is
+never started, no job registered, no startup sweep). `denidin.py`'s `__main__` wiring (T009) reads
+this value and skips `start_accounting_reconciliation_scheduler`/
+`run_startup_accounting_reconciliation_sweep` entirely when it's `0`.
 
-**Novel-mechanism risk, flagged by `speckit.analyze` (finding H1)**: step 4 below (a standalone
+**Novel-mechanism risk, flagged by `speckit.analyze` (finding H1)**: step 5 below (a standalone
 OpenAI Responses API call with no session/`chat_id`/`AIRequest`) has never been exercised
 anywhere in this codebase before — every existing Morning-MCP-authorized call goes through a real
 conversational turn. `tasks.md` T010 is a dedicated Gate-Zero task (mirroring Feature 054's own
@@ -53,12 +60,33 @@ this mechanism works live, once, cheaply, **before** the full multi-scenario Acc
 
 ### `_sweep_accounting_documents(global_context)` (shared worker, module-level function)
 
-1. `known_ids, latest_creation_date = ledger_event_manager.scan_accounting_documents()`
-   (data-model.md) — one scan answers both "what's already captured" and "since when to poll."
-2. `since = latest_creation_date or (now_local().date() - FALLBACK_LOOKBACK)` — `FALLBACK_LOOKBACK`
-   sized in `tasks.md`, used only on the very first sweep this environment ever runs (no
-   `חשבונית` events persisted yet).
-3. Build a **dedicated** prompt (NOT `runtime_constitution.md`, NOT `AIHandler._build_instructions`'s
+1. `since = ledger_event_manager.get_accounting_document_watermark()` (new small method — the max
+   timestamp across the lazily-built in-memory cache described in
+   `contracts/ledger-event-manager-extension.md`; the cache itself is built via **one** disk scan
+   on first use per process, never re-scanned per tick, per round 3). `None` if no `חשבונית`
+   event has ever been captured this process.
+2. `since = since or (now_local() - FALLBACK_LOOKBACK)` — `FALLBACK_LOOKBACK` sized in `tasks.md`,
+   used only on the very first sweep this environment ever runs (no `חשבונית` events persisted
+   yet).
+3. **Safety cap — split pre-check/post-check (revised round 4, `spec.md`'s Clarifications — no
+   direct MCP-client mechanism exists in denidin-app to do this fully pre-hoc, and building one
+   from scratch is out of scope for this one check)**:
+   - **5-day half — genuine pre-check**: if `now_local() - since > timedelta(days=5)`, **skip the
+     entire tick** before ever calling OpenAI: log ERROR, `return`. Pure local computation from
+     the cache watermark, no call needed.
+   - **100-document half — post-check, after step 5's one OpenAI+MCP call completes**: the
+     service inspects the real `list_invoices` `mcp_call` item(s) in `response.output` (same
+     `item.name`/`item.output` shape `ai_handler.py` already extracts elsewhere) and parses the
+     TRUE total count from the tool's own real output text (never the AI's summary/prose) —
+     `morning-mcp-app`'s `format_invoice_list`/`format_too_many_invoices_message` always state
+     it, in one of a few fixed phrasings. If that total exceeds 100, **discard the entire turn's
+     captures** — never call step 6's handler at all — log ERROR, `return`; the watermark stays
+     unchanged (nothing was persisted). Still never trusted to the model's own scoping (the code
+     reads the tool's real output, not AI-authored text) — just checked after the one call
+     instead of before, since no cheaper mechanism exists.
+   This is deliberately NOT a backfill mechanism (spec.md Clarifications, round 3) — a real,
+   human-resolved gap is surfaced via the ERROR log, never auto-caught-up.
+4. Build a **dedicated** prompt (NOT `runtime_constitution.md`, NOT `AIHandler._build_instructions`'s
    normal assembly) instructing the model, roughly:
    > List every Morning document created on or after `{since}` (use `list_invoices` with
    > `from_date={since}`, paginate/re-query as needed to see all of them). For each one not
@@ -69,7 +97,7 @@ this mechanism works live, once, cheaply, **before** the full multi-scenario Acc
    > other reply text — this is not a conversation.
    Exact final prompt text — `tasks.md`/implementation (this contract fixes the *shape and
    constraints*, not the literal wording).
-4. Call OpenAI Responses API directly (bypassing `AIHandler.get_response`'s normal request/
+5. Call OpenAI Responses API directly (bypassing `AIHandler.get_response`'s normal request/
    session flow entirely — no `AIRequest`, no `chat_id`, no session):
    `tools = self._build_morning_mcp_tools(...) + [LEDGER_EVENT_TOOL]` (same MCP attachment
    `_build_morning_mcp_tools` already builds — reused as-is, not reimplemented — but called with
@@ -77,30 +105,38 @@ this mechanism works live, once, cheaply, **before** the full multi-scenario Acc
    there is no per-turn `user_obj` to RBAC-check against; TBD in `tasks.md` whether this reuses
    `_build_morning_mcp_tools`'s existing signature with a synthetic authorized role, or a small
    new variant).
-5. Parse the response for `capture_ledger_event` calls via `extract_all_function_calls` (existing
+5b. **100-document cap post-check (round 4)**: before parsing anything, extract every
+   `list_invoices` `mcp_call` item from `response.output` (`item.name == "list_invoices"`,
+   `item.output` = the tool's real returned Hebrew text) and parse the true total count from it
+   (step 3's "100-document half" above). If exceeded: log ERROR, `return` immediately — step 6
+   below never runs, nothing from this turn is persisted.
+6. Parse the response for `capture_ledger_event` calls via `extract_all_function_calls` (existing
    helper, reused as-is). **This is where the sweep's handling diverges from
    `_handle_ledger_event_capture`** (see research.md's "Critical" note) — a **new** handler:
    - Does NOT suppress on same-turn `mcp_call` (the opposite of `_handle_ledger_event_capture`'s
      rule — `list_invoices`/`get_invoice_details` `mcp_call`s are expected and fine here).
    - Does NOT treat multiple `capture_ledger_event` calls in one turn as a protocol violation —
      one call per new document, in the same turn, is the normal case.
-   - For each parsed call: **hard-refuse a duplicate** — if `accounting_document_id` is already
-     in `known_ids` (step 1), log and skip (do not persist), regardless of what the model itself
-     believed was "new." This is the dedup guard's actual enforcement point (data-model.md) —
-     the prompt's own date-window framing is a courtesy to reduce redundant `capture_ledger_event`
-     calls, never the sole safeguard against a duplicate write.
-   - Otherwise: `ledger_event_manager.add_ledger_events_from_call(...)` (existing method, reused
-     as-is — same merge-components-into-flat-shape logic already handles a single-component
-     `חשבונית` call with no changes needed there).
-6. No confirmation reply is sent anywhere — no chat, no `WhatsAppHandler.send_response`, nothing
+   - For each parsed call: passes straight through to
+     `ledger_event_manager.add_ledger_events_from_call(...)` — **no dedup/anomaly logic in this
+     handler at all (round 3 revision)**. The new/duplicate/anomaly decision (including any
+     `pending_review.json` write) happens entirely inside `LedgerEventManager` itself — see
+     `contracts/ledger-event-manager-extension.md`. This handler trusts the manager exactly like
+     every other capture path already does.
+7. **After the OpenAI call/parse loop completes** (success or partial success), call
+   `ledger_event_manager.prune_accounting_document_cache()` once — the per-tick cache pruning step
+   (`contracts/ledger-event-manager-extension.md`).
+8. No confirmation reply is sent anywhere — no chat, no `WhatsAppHandler.send_response`, nothing
    user-facing. This is a silent background reconciliation; a captured event's existence is
    discoverable the same way any ledger event already is (the persisted file itself, read by a
    human/downstream tooling), not via a WhatsApp message. (If the user later wants a summary
    notification, that is a new, separate decision — not assumed here.)
-7. On any exception (OpenAI call failure, MCP unavailability, parse error): log at ERROR, do not
-   persist anything from this tick, return. Per data-model.md's watermark design, this
-   self-corrects — the next tick's `scan_accounting_documents()` naturally re-derives the same
-   `since` boundary (nothing new was persisted), so no separate retry/backoff state is needed.
+9. On any exception (OpenAI call failure, MCP unavailability, parse error): log at ERROR, do not
+   persist anything from this tick, return (skip step 7's prune for that tick — harmless to skip,
+   next successful tick's prune call catches up). Per data-model.md's watermark design, this
+   self-corrects — the next tick's `get_accounting_document_watermark()` naturally re-derives the
+   same `since` boundary (nothing new was persisted, and the in-memory cache is unchanged), so no
+   separate retry/backoff state is needed.
 
 ---
 

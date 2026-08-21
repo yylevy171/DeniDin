@@ -18,7 +18,7 @@ from src.models.message import (
     NO_REPLY_SENTINEL as _NO_REPLY_SENTINEL,
 )
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
-from src.utils.time_utils import now_local, local_from_timestamp
+from src.utils.time_utils import now_local, local_from_timestamp, LOCAL_TZ
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_manager import MemoryManager
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
@@ -480,7 +480,12 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
         "states multiple distinct fee components (different tracks/stages/conditions), "
         "list ALL of them in the components array in this ONE call - never omit any, "
         "never merge them into one component, and never make a second separate call for "
-        "the same agreement."
+        "the same agreement. "
+        "Feature 025: this tool also serves a second, different job - source_type=חשבונית "
+        "transcribes a Morning accounting document's already-structured fields verbatim "
+        "(from the document data given directly in your instructions), never inferred "
+        "from conversation text - a distinct task from recognizing a fee-agreement/bank-"
+        "deposit signal in free text or an image."
     ),
     "strict": True,
     "parameters": {
@@ -488,8 +493,14 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
         "properties": {
             "source_type": {
                 "type": "string",
-                "enum": ["הסכם", "בנק"],
-                "description": "הסכם for a fee-agreement event, בנק for a bank deposit/transfer.",
+                "enum": ["הסכם", "בנק", "חשבונית"],
+                "description": (
+                    "הסכם for a fee-agreement event, בנק for a bank deposit/transfer, "
+                    "חשבונית for a Morning-sourced accounting document (any document "
+                    "type - invoice, receipt, credit note, etc.) transcribed from "
+                    "structured document data given to you directly, never inferred "
+                    "from conversation."
+                ),
             },
             "event_subtype": {
                 "type": "string",
@@ -500,13 +511,14 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                 # agreement is captured as a fresh יצירה describing the current state
                 # instead - see runtime_constitution.md's Ledger Event Recognition
                 # section. Restore these enum values here when that capability is built.
-                "enum": ["יצירה", "הפקדה"],
+                "enum": ["יצירה", "הפקדה", "הפקה"],
                 "description": (
                     "For source_type=הסכם: always יצירה (a correction/cancellation/"
                     "payment-confirmation for an existing arrangement is still captured "
                     "as יצירה, describing the current state - see the constitution). "
-                    "For source_type=בנק: always הפקדה. Applies to the whole call - "
-                    "every component shares the same subtype."
+                    "For source_type=בנק: always הפקדה. For source_type=חשבונית: always "
+                    "הפקה. Applies to the whole call - every component shares the same "
+                    "subtype."
                 ),
             },
             "client_name": {
@@ -579,6 +591,38 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
             "bank_account": {
                 "type": ["string", "null"],
                 "description": "The bank account number, only for source_type=בנק, always null for הסכם.",
+            },
+            "accounting_document_display_number": {
+                "type": ["string", "null"],
+                "description": (
+                    "Only for source_type=חשבונית: the Morning document's user-facing "
+                    "display number (never Morning's internal id), copied verbatim from "
+                    "the structured document data you were given. ALWAYS null for הסכם/בנק."
+                ),
+            },
+            "accounting_document_type": {
+                "type": ["string", "null"],
+                "description": (
+                    "Only for source_type=חשבונית: the document's type label (e.g. "
+                    "חשבונית מס, קבלה, חשבונית זיכוי), copied verbatim from the structured "
+                    "document data you were given. ALWAYS null for הסכם/בנק."
+                ),
+            },
+            "accounting_document_status": {
+                "type": ["string", "null"],
+                "description": (
+                    "Only for source_type=חשבונית: the document's status, copied verbatim "
+                    "from the structured document data you were given. ALWAYS null for "
+                    "הסכם/בנק."
+                ),
+            },
+            "accounting_document_creation_date": {
+                "type": ["string", "null"],
+                "description": (
+                    "Only for source_type=חשבונית: the document's own real creation "
+                    "date+time (ISO-8601, e.g. 2026-08-20T18:52:48), copied verbatim from "
+                    "the structured document data you were given. ALWAYS null for הסכם/בנק."
+                ),
             },
             "component_count": {
                 "type": "integer",
@@ -689,6 +733,8 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
         "required": [
             "source_type", "event_subtype", "client_name", "payer_name", "agreement_label",
             "reference_hint", "bank_number", "bank_branch", "bank_account",
+            "accounting_document_display_number", "accounting_document_type",
+            "accounting_document_status", "accounting_document_creation_date",
             "component_count", "components",
         ],
         "additionalProperties": False,
@@ -1947,6 +1993,83 @@ class AIHandler:
                     logger.error(f"Failed to persist ledger event(s): {e}", exc_info=True)
 
         return followup, event_ids
+
+    @staticmethod
+    def _accounting_document_message_timestamp(call_arguments: Dict) -> Optional[int]:
+        """Feature 025: the reconciliation sweep has no real source message, so
+        message_timestamp (which drives event_id/event_datetime generation in
+        LedgerEventManager) is derived instead from the Morning document's own
+        real creation timestamp - given top-level on the call as
+        accounting_document_creation_date (ISO-8601, e.g.
+        "2026-08-20T18:52:00" - the exact value get_invoice_details' own
+        Hebrew "נוצר ב: DD/MM/YYYY HH:MM" line transcribes, already Israel
+        local, never UTC). Returns None (letting add_ledger_event's own
+        now_local() fallback, with its existing WARNING, take over) if
+        missing or unparseable - never guesses."""
+        raw = call_arguments.get("accounting_document_creation_date")
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=LOCAL_TZ)
+        return int(parsed.timestamp())
+
+    def _handle_accounting_reconciliation_capture(self, response) -> List[str]:
+        """Feature 025 (Morning-Sourced Ledger Events): thin adapter for the
+        accounting-document reconciliation sweep's headless OpenAI+MCP call
+        (services/accounting_reconciliation_service.py) - parses every
+        capture_ledger_event call in `response` and passes each straight
+        through to LedgerEventManager.add_ledger_events_from_call,
+        unconditionally.
+
+        Structurally separate from _handle_ledger_event_capture (which stays
+        completely UNCHANGED by this feature - see
+        contracts/ledger-event-manager-extension.md):
+        - NO same-turn-mcp_call suppression (the opposite of
+          _handle_ledger_event_capture's rule) - list_invoices/
+          get_invoice_details mcp_calls co-occurring with capture_ledger_event
+          in the same turn is the normal, expected shape here.
+        - NO one-call-per-turn limit - calling once per new document, several
+          times in the same sweep tick, is the normal case.
+        - NO dedup/anomaly decision of its own (round 3 of spec.md's
+          Clarifications: "it's clearly a ledger requirement regardless of
+          ai") - LedgerEventManager.add_ledger_event owns that entirely via
+          its own in-memory cache; this handler trusts it completely, same
+          as every other capture path.
+        - NO follow-up OpenAI round-trip, no confirmation reply - this is not
+          a conversational turn, nothing user-facing is ever produced here.
+
+        Returns the list of newly-persisted event_ids (empty if nothing was
+        captured, or everything was a true duplicate/malformed).
+        """
+        calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
+        event_ids: List[str] = []
+        for call in calls:
+            if call["arguments"] is None:
+                logger.error(
+                    "[025] Reconciliation sweep: capture_ledger_event call had "
+                    f"unparseable arguments (call_id={call['call_id']!r}) - rejected, "
+                    "not silently dropped"
+                )
+                continue
+            message_timestamp = self._accounting_document_message_timestamp(call["arguments"])
+            try:
+                new_event_ids = self.ledger_event_manager.add_ledger_events_from_call(
+                    session_id="accounting-reconciliation",
+                    call_arguments=call["arguments"],
+                    message_id=None,
+                    message_timestamp=message_timestamp,
+                )
+                event_ids.extend(new_event_ids)
+            except Exception as e:  # pylint: disable=broad-except
+                logger.error(
+                    f"[025] Failed to persist accounting-document ledger event(s): {e}",
+                    exc_info=True
+                )
+        return event_ids
 
     def _handle_reminder_creation_proposal(
         self, request: AIRequest, response, effective_chat_id: Optional[str],

@@ -176,6 +176,31 @@ def test_format_invoice_details_omits_linked_documents_section_when_absent():
     assert "מסמכים מקושרים" not in message
 
 
+def test_format_invoice_details_includes_creation_timestamp_with_full_precision():
+    """denidin-app's Feature 025 (Morning-Sourced Ledger Events), T004a: the
+    real creationDate field carries full HH:MM precision (live-confirmed
+    2026-08-21: 1787241168 -> 2026-08-20 18:52:48 Israel local) - the
+    reconciliation sweep's OpenAI+MCP call needs this in get_invoice_details'
+    own text output to populate accounting_document_creation_date accurately,
+    since that's the only channel this tool exposes data through (a Hebrew
+    formatted string, not structured JSON)."""
+    with_creation = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168)
+    invoice = Invoice.model_validate(with_creation)
+
+    message = format_invoice_details(invoice)
+
+    assert "20/08/2026" in message
+    assert "18:52" in message
+
+
+def test_format_invoice_details_omits_creation_timestamp_line_when_absent():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    message = format_invoice_details(invoice)
+
+    assert "נוצר" not in message
+
+
 # ============================================================================
 # Feature 038: format_invoice_list count line + format_too_many_invoices_message
 # ============================================================================

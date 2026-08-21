@@ -15,9 +15,9 @@ integration contract this class fulfills.
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, NamedTuple, Optional
 
 from src.utils.time_utils import LOCAL_TZ, local_from_timestamp, now_local
 
@@ -31,12 +31,34 @@ logger = logging.getLogger(__name__)
 ISRAEL_TZ = LOCAL_TZ  # retained name; the canonical definition lives in time_utils
 
 # event_id letter prefix, matches Events.csv's existing convention exactly (verified
-# by direct inspection of all 1159 rows - see research.md). "H"/חשבונית is
-# Morning-invoice-sourced and never produced by capture_ledger_event (Feature 025).
+# by direct inspection of all 1159 rows - see research.md). "H"/חשבונית IS produced
+# by capture_ledger_event as of Feature 025 (2026-08-21) - but only via the
+# accounting-document reconciliation sweep's own handler, never via the ordinary
+# conversational capture path (_handle_ledger_event_capture stays unmodified).
 _LETTER_BY_SOURCE_TYPE = {
     "הסכם": "A",
     "בנק": "B",
+    "חשבונית": "H",
 }
+
+
+class AccountingDocumentCacheEntry(NamedTuple):
+    """Feature 025 (round 3): one entry in LedgerEventManager's in-memory
+    accounting-document cache - a (creation_timestamp, event_id) pair, so an
+    "anomaly" detection can name the real prior event_id in
+    pending_review.json rather than just its timestamp."""
+    timestamp: datetime
+    event_id: str
+
+
+# Safety-cap margin (spec.md Clarifications, round 3): 5-day catch-up cap
+# (services/accounting_reconciliation_service.py's MAX_CATCHUP_LOOKBACK) plus
+# a ~2-day safety margin before prune_accounting_document_cache drops an
+# entry - the forward-only watermark can never legitimately re-reach a
+# document older than this. Flagged for live confirmation of Morning's
+# from_date filter semantics (data-model.md's "Pruning" note) before this
+# exact margin is trusted as precisely right.
+_ACCOUNTING_DOCUMENT_CACHE_RETENTION = timedelta(days=7)
 
 # Literal placeholder written into reference when reference_hint is present - signals
 # a later human/script needs to resolve the real prior event id (REQ-DATA-002).
@@ -69,7 +91,12 @@ REFERENCE_PLACEHOLDER = "צריך למצוא"
 # sufficient traceability. Stays schema_version=1 (human decision) - v1 has never
 # been deployed to real dev/prod data, same reset-safety reasoning as above still
 # applies, so this is folded into the same baseline rather than bumped.
-CURRENT_SCHEMA_VERSION = 1
+#
+# Bumped 1->2 (Feature 025, 2026-08-21, per spec.md Clarifications - no
+# config.feature_flags gate, this bump IS the gate): applies globally to every
+# new write regardless of source_type, not just חשבונית - הסכם/בנק captures get
+# schema_version=2 too, once this feature ships.
+CURRENT_SCHEMA_VERSION = 2
 
 # Matches ש"ח / ש׳ח / שח (various quote-character renderings of "shekel chadash").
 _SHEKEL_WORD_RE = re.compile(r'ש["\'״]?ח')
@@ -206,6 +233,12 @@ class LedgerEventManager:
         """
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+        # Feature 025: lazily built (see _ensure_accounting_document_cache), then
+        # mutated in-process for the rest of this instance's lifetime - never
+        # re-scanned from disk more than once per process, per spec.md's round-3
+        # Clarifications ("ideally no reading and parsing of the ledger events...
+        # per tick").
+        self._accounting_document_cache: Optional[Dict[str, List["AccountingDocumentCacheEntry"]]] = None
         logger.info(f"LedgerEventManager initialized: storage_dir={self.storage_dir}")
 
     def _resolve_local_dt(self, message_timestamp: Optional[int]):
@@ -257,6 +290,144 @@ class LedgerEventManager:
                 return seq
         return None
 
+    def scan_accounting_documents(self) -> Dict[str, List["AccountingDocumentCacheEntry"]]:
+        """Feature 025 (round 3): one-time disk-scan bootstrap for the
+        in-memory accounting-document cache (_ensure_accounting_document_cache)
+        - NEVER called more than once per process. Every persisted
+        source_type="חשבונית" event, grouped by accounting_document_display_number
+        into the list of distinct (creation_timestamp, event_id) pairs seen
+        for it (almost always exactly one; more than one only in the anomaly
+        case - see add_ledger_event; event_id is tracked so a later anomaly's
+        pending_review.json entry can name the real prior event). Empty dict
+        if none exist yet. A malformed/unparseable individual file logs a
+        WARNING and is skipped, never raises - same defensive read discipline
+        _load_event already uses.
+        """
+        result: Dict[str, List[AccountingDocumentCacheEntry]] = {}
+        for existing in sorted(self.storage_dir.glob("*.json")):
+            try:
+                with existing.open(encoding="utf-8") as f:
+                    record = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning(f"Skipping unreadable event file {existing}: {e}")
+                continue
+
+            if record.get("source_type") != "חשבונית":
+                continue
+            display_number = record.get("accounting_document_display_number")
+            creation_date_str = record.get("accounting_document_creation_date")
+            event_id = record.get("event_id")
+            if not display_number or not creation_date_str:
+                continue
+            try:
+                # tzinfo=ISRAEL_TZ: local_dt (add_ledger_event's own comparison
+                # value) is always tz-aware - a naive value here would silently
+                # never equal it (aware/naive == is always False, never raises),
+                # breaking duplicate detection entirely rather than erroring loudly.
+                creation_dt = datetime.strptime(
+                    creation_date_str, "%d/%m/%Y %H:%M"
+                ).replace(tzinfo=ISRAEL_TZ)
+            except ValueError:
+                logger.warning(
+                    f"Skipping event file {existing} with unparseable "
+                    f"accounting_document_creation_date={creation_date_str!r}"
+                )
+                continue
+            result.setdefault(display_number, []).append(
+                AccountingDocumentCacheEntry(creation_dt, event_id)
+            )
+
+        return result
+
+    def _ensure_accounting_document_cache(self) -> Dict[str, List["AccountingDocumentCacheEntry"]]:
+        """Lazy-builds self._accounting_document_cache via
+        scan_accounting_documents() on first call; every subsequent call in
+        this process's lifetime returns the already-built, in-memory-mutated
+        cache directly - no re-scan (spec.md's round-3 "no reading and
+        parsing of the ledger events... per tick" directive)."""
+        if self._accounting_document_cache is None:
+            self._accounting_document_cache = self.scan_accounting_documents()
+        return self._accounting_document_cache
+
+    def get_accounting_document_watermark(self) -> Optional[datetime]:
+        """The max timestamp across the in-memory cache, or None if empty -
+        used by the reconciliation service to derive each poll's "since"
+        boundary. Triggers the same lazy one-time build as add_ledger_event."""
+        cache = self._ensure_accounting_document_cache()
+        all_timestamps = [entry.timestamp for entries in cache.values() for entry in entries]
+        return max(all_timestamps) if all_timestamps else None
+
+    def prune_accounting_document_cache(self, now: Optional[datetime] = None) -> None:
+        """Feature 025 (round 3): drops any cache entry whose EVERY recorded
+        timestamp is older than the 5-day safety-cap boundary plus a ~2-day
+        margin (7 days total) before `now` (now_local() if not given -
+        testability seam only, same convention as
+        reminder_delivery_service.py's `now` parameter). Safe because the
+        forward-only watermark can never legitimately cause a document that
+        old to be re-queried again - see data-model.md's "Pruning" note for
+        the still-open live-verification caveat on this exact margin."""
+        cache = self._ensure_accounting_document_cache()
+        now = now or now_local()
+        boundary = now - _ACCOUNTING_DOCUMENT_CACHE_RETENTION
+        to_drop = [
+            display_number for display_number, entries in cache.items()
+            if all(self._as_aware(entry.timestamp) < boundary for entry in entries)
+        ]
+        for display_number in to_drop:
+            del cache[display_number]
+
+    @staticmethod
+    def _as_aware(value: datetime) -> datetime:
+        """scan_accounting_documents parses naive local datetimes (no tzinfo,
+        since they're re-derived from a plain "DD/MM/YYYY HH:MM" string) - a
+        freshly-captured local_dt is tz-aware (ISRAEL_TZ). Comparing the two
+        directly would raise; this normalizes a naive value to ISRAEL_TZ for
+        comparison purposes only, never mutates what's stored."""
+        return value if value.tzinfo is not None else value.replace(tzinfo=ISRAEL_TZ)
+
+    def _append_pending_review(
+        self,
+        display_number: str,
+        prior_entries: List["AccountingDocumentCacheEntry"],
+        new_timestamp: datetime,
+        new_event_id: str,
+    ) -> None:
+        """Feature 025 (round 3): appends one entry to
+        {data_root}/accounting_reconciliation/pending_review.json for the
+        "anomaly" case (same accounting_document_display_number, a genuinely
+        new creation timestamp) - a human reviews this file out-of-band, same
+        "capture now, review later, no notification" philosophy as the rest
+        of this feature. Never reads back/resolves entries - no consumer of
+        this file exists yet within this feature's own scope."""
+        review_dir = self.storage_dir.parent / "accounting_reconciliation"
+        review_dir.mkdir(parents=True, exist_ok=True)
+        review_file = review_dir / "pending_review.json"
+
+        entries = []
+        if review_file.exists():
+            try:
+                with review_file.open(encoding="utf-8") as f:
+                    entries = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                logger.error(f"pending_review.json unreadable, starting fresh: {e}")
+                entries = []
+
+        most_recent_prior = max(prior_entries, key=lambda e: e.timestamp)
+        now_str = now_local().strftime("%d/%m/%Y %H:%M")
+        entries.append({
+            "accounting_document_display_number": display_number,
+            "prior_event_id": most_recent_prior.event_id,
+            "prior_creation_date": most_recent_prior.timestamp.strftime("%d/%m/%Y %H:%M"),
+            "new_event_id": new_event_id,
+            "new_creation_date": new_timestamp.strftime("%d/%m/%Y %H:%M"),
+            "detected_at": now_str,
+        })
+
+        tmp_path = review_file.with_suffix(".json.tmp")
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(entries, f, ensure_ascii=False, indent=2)
+        tmp_path.replace(review_file)
+
     def add_ledger_event(
         self,
         session_id: str,
@@ -305,6 +476,45 @@ class LedgerEventManager:
 
         source_type = event.get("source_type")
         assert source_type is not None, "LEDGER_EVENT_TOOL's schema requires source_type"
+
+        # Feature 025 (round 3): tri-state new/duplicate/anomaly guard - REPLACES
+        # the old hard-refusal design entirely (user directive: "I don't like the
+        # hard refusal... The 'since when' mechanism SHOULD NOT RELY ON A REFUSAL
+        # MECHANISM"). Lives here (LedgerEventManager), not ai_handler.py - "it's
+        # clearly a ledger requirement regardless of ai." See
+        # contracts/ledger-event-manager-extension.md.
+        accounting_document_display_number = None
+        prior_entries_for_anomaly: List["AccountingDocumentCacheEntry"] = []
+        if source_type == "חשבונית":
+            accounting_document_display_number = event.get("accounting_document_display_number")
+            if accounting_document_display_number is not None:
+                cache = self._ensure_accounting_document_cache()
+                seen_entries = cache.get(accounting_document_display_number, [])
+                seen_timestamps = [entry.timestamp for entry in seen_entries]
+                if local_dt in seen_timestamps:
+                    logger.info(
+                        f"חשבונית re-poll: accounting_document_display_number="
+                        f"{accounting_document_display_number!r} at {local_dt!r} already "
+                        f"captured - discarding (true duplicate, no new file)"
+                    )
+                    return None
+                if seen_entries:
+                    logger.warning(
+                        f"חשבונית anomaly: accounting_document_display_number="
+                        f"{accounting_document_display_number!r} previously seen at "
+                        f"{seen_timestamps!r}, now seen at {local_dt!r} - persisting as a "
+                        f"NEW event (not overwriting) and flagging to pending_review.json "
+                        f"for human review"
+                    )
+                    # pending_review.json is written AFTER event_id exists (below) -
+                    # this only remembers that it's needed. list(...) copies -
+                    # seen_entries IS the cache's own live list object, which the
+                    # "new"/"anomaly" cache-append below mutates in place; without
+                    # this copy, the append would silently make this snapshot
+                    # point at itself (the just-appended entry), not the real
+                    # prior one.
+                    prior_entries_for_anomaly = list(seen_entries)
+
         letter = _LETTER_BY_SOURCE_TYPE[source_type]
         ddmmyy = local_dt.strftime("%d%m%y")
         hhmm = local_dt.strftime("%H%M")
@@ -413,8 +623,18 @@ class LedgerEventManager:
                 )
                 client_name = payer_name_raw
             payer_name = None
+        elif source_type == "חשבונית":
+            # No routed-payment concept applies to a Morning document capture -
+            # forced null, same discipline as בנק above (Feature 025).
+            payer_name = None
         else:
             payer_name = payer_name_raw
+
+        # Feature 025: no conditional-fee/hours-worked concept applies to a
+        # Morning document capture - percent/percent_base/hours/hourly_rate all
+        # forced null for חשבונית, same defensive discipline as the other
+        # non-applicable fields above (agreement_id/component_id/bank_number/etc).
+        is_accounting_document = source_type == "חשבונית"
 
         # vat_status is unconditionally כולל for בנק (finding #6, 2026-08-18 player
         # review: the model got this right only 1 of 15 times across a real run
@@ -444,20 +664,30 @@ class LedgerEventManager:
             # wired to the AI's own component-level input, forced null for בנק (no
             # conditional-fee concept applies there) same as component_label above.
             "trigger_condition": event.get("trigger_condition") if source_type == "הסכם" else None,
-            "percent": event.get("percent"),
-            "percent_base": event.get("percent_base"),
-            "hours": hours,
-            "hourly_rate": event.get("hourly_rate"),
+            "percent": None if is_accounting_document else event.get("percent"),
+            "percent_base": None if is_accounting_document else event.get("percent_base"),
+            "hours": None if is_accounting_document else hours,
+            "hourly_rate": None if is_accounting_document else event.get("hourly_rate"),
             "txn_date": txn_date,  # REQ-DATA-005/007 - hours-worked date (הסכם) or transaction date (בנק)
             "vat_status": vat_status,
             "split_partner": None,  # reserved - nuances feature
             "split_percent": None,  # reserved - nuances feature
             "due_date": None,  # reserved - nuances feature
-            "invoice_status": None,  # reserved - future Morning-reconciliation feature
-            "invoice_number": None,  # reserved - future Morning-reconciliation feature
-            "invoice_type": None,  # reserved - future Morning-reconciliation feature
-            "morning_document_id": None,  # reserved - future Morning-reconciliation feature
-            "invoice_actual_creation_date": None,  # reserved - future Morning-reconciliation feature
+            # Feature 025 (round 3, 2026-08-21): 4 fields, not 5 - the originally
+            # reserved invoice_id/invoice_number/invoice_type/invoice_status/
+            # invoice_actual_creation_date/morning_document_id names are gone;
+            # accounting_document_display_number merges what would have been a
+            # separate _id/_number pair. Non-null only for source_type=חשבונית.
+            "accounting_document_display_number": accounting_document_display_number,
+            "accounting_document_type": (
+                event.get("accounting_document_type") if source_type == "חשבונית" else None
+            ),
+            "accounting_document_status": (
+                event.get("accounting_document_status") if source_type == "חשבונית" else None
+            ),
+            "accounting_document_creation_date": (
+                local_dt.strftime("%d/%m/%Y %H:%M") if source_type == "חשבונית" else None
+            ),
             # DeniDin-internal fields, not Events.csv columns - traceability/evidence
             # (2026-08-19: whatsapp_chat dropped - session_id already points at a
             # session that carries its own whatsapp_chat; message_id+session_id
@@ -482,6 +712,21 @@ class LedgerEventManager:
             f"Persisted ledger event {event_id} (source_type={source_type!r}, "
             f"event_subtype={event.get('event_subtype')!r}) for session {session_id}"
         )
+
+        if source_type == "חשבונית" and accounting_document_display_number is not None:
+            # Both the "new" and "anomaly" cases fall through to here ("duplicate"
+            # already returned early, above) - record this timestamp so a future
+            # poll can tell the difference.
+            cache = self._ensure_accounting_document_cache()
+            cache.setdefault(accounting_document_display_number, []).append(
+                AccountingDocumentCacheEntry(local_dt, event_id)
+            )
+            if prior_entries_for_anomaly:
+                self._append_pending_review(
+                    accounting_document_display_number, prior_entries_for_anomaly,
+                    local_dt, event_id,
+                )
+
         return event_id
 
     def add_ledger_events_from_call(

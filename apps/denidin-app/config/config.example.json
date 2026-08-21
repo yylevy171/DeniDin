@@ -41,6 +41,7 @@
   "reminders": {
     "max_active_reminders": 20
   },
+  "accounting_ledger_update_freq": 0,
   "user_roles": {
     "godfather": {
       "max_tokens": 100000,
