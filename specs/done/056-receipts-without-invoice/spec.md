@@ -9,8 +9,7 @@ Acceptance phase's two `billed` tests (T011) and the manual `quickstart.md` walk
 both passed for real against `denidin-app-dev` and the real Morning sandbox. Manual QA surfaced
 a real gap in `cancel_transaction_account`'s approval-prompt text (fell back to a fully generic,
 data-free message) — root-caused and fixed (commit `196863a`), with new unit coverage plus a
-strengthened billed-test rerun asserting on the approval prompt's actual content. PR: TBD (filled
-in via addendum commit once opened).
+strengthened billed-test rerun asserting on the approval prompt's actual content. PR: #245.
 **Input**: User description: two related Morning (Green Invoice) accounting-rule logic changes,
 captured together as one feature ("open a feature 56 - receipts without invoice ... create a new
 feature 56 to encompass the 2 new logic changes required for accounting rules in morning").
