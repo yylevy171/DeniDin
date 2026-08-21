@@ -51,3 +51,7 @@ Version sync with denidin-app v0.4.3 - no functional changes to morning-mcp-app 
 ## morning-mcp-app v0.5.0 — 2026-08-19
 
 Tool-call audit log now includes full read-tool response bodies, not just their length, matching denidin-app's own two-way audit logging added for the reminders feature.
+
+## morning-mcp-app v0.5.1 — 2026-08-21
+
+Feature 056: create_receipt now supports a standalone call with no linked invoice (no VAT line, free-text description); new cancel_transaction_account tool cancels an open transaction account (type 300 only) with no document created as a side effect, and an idempotent no-op if already closed.
