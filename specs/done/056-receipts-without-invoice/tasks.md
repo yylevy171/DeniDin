@@ -253,11 +253,21 @@ written AND run together, once, only after Phase 1 AND Phase 2 are both fully GR
   check (which, being in `apps/morning-mcp-app`, has no such wall). This description is the
   target; nothing here is
   executable yet.
-- [ ] **T011** **[TDD — WRITE + RUN, ONCE Phases 1 and 2 are both GREEN]** *(2026-08-19: test
-  code written — `test_standalone_receipt_billed.py`, `test_cancel_transaction_account_billed.py`
-  — and confirmed to collect cleanly with no import errors; NOT YET RUN, since running needs its
-  own separate, explicit environment-start approval, per this task's own requirement below —
-  the checkbox stays unchecked until an actual run happens.)* Turn T009's and
+- [x] **T011** **[TDD — WRITE + RUN, ONCE Phases 1 and 2 are both GREEN]** *(2026-08-20/21:
+  both tests written, run for real against `denidin-app-dev` + the real Morning sandbox, and
+  confirmed PASSING — `test_standalone_receipt_billed.py::test_godfather_records_a_deposit_as_a_standalone_receipt`
+  (2026-08-20 16:59:47) and `test_cancel_transaction_account_billed.py::test_godfather_cancels_a_transaction_account_via_whatsapp`
+  (2026-08-20/21, multiple runs, most recently 2026-08-20 18:51:45). Manual QA (T012, real
+  WhatsApp) then surfaced a real gap in `cancel_transaction_account`'s approval-prompt text
+  (fell through to the fully generic "there's a pending action" string, naming nothing) — fixed
+  (commit `196863a`), covered by new unit tests, and reconfirmed GREEN via a strengthened rerun
+  of the same billed test that now asserts on the ASK-turn prompt's actual content, not just the
+  outcome. Both tests have since also hit repeatable, unrelated flakiness in the shared
+  `_seed_fresh_client` test fixture (random sandbox client names colliding with the sandbox's
+  now-large accumulated client list, exhausting its 5-attempt retry budget — bugfix-028's
+  flagged "growing risk" materializing in practice) on some reruns; this is shared
+  test-infrastructure flakiness, not a Feature 056 regression, and is not fixed as part of this
+  task.)* Turn T009's and
   T010's descriptions into real `billed` tests in `apps/denidin-app/tests/billed/` (existing
   Morning-tool RBAC/approval files if any already cover these shapes, otherwise new files —
   e.g. `test_standalone_receipt_billed.py`, `test_cancel_transaction_account_billed.py` —
@@ -271,9 +281,11 @@ written AND run together, once, only after Phase 1 AND Phase 2 are both fully GR
   by anything earlier in this task list. On failure: fix
   forward (this is real acceptance validation against completed code, not a RED-phase check — a
   failure here means the feature doesn't actually work yet, not that a test needs approval).
-- [ ] **T012** 👤 **MANUAL APPROVAL GATE**: run `quickstart.md`'s full scenario set (both US1 and
+- [x] **T012** 👤 **MANUAL APPROVAL GATE**: run `quickstart.md`'s full scenario set (both US1 and
   US2) for real, alongside or after T011 — needs its own explicit approval to start the dev
-  environment if not already running from T011.
+  environment if not already running from T011. *(2026-08-20: run for real on `denidin-app-dev`.
+  US1 (standalone receipt) approved clean on first pass. US2 (cancellation) surfaced the
+  approval-prompt gap described in T011 above — fixed and re-verified; approved after the fix.)*
 
 **Checkpoint**: the whole feature — both user stories — is proven to work end-to-end from a real
 user's perspective. This is the feature's actual "done."
