@@ -50,3 +50,7 @@ WhatsApp interactive buttons (כן/לא) for the document-creation approval gate
 ## [0.5.0] - 2026-08-19
 
 Reminders (Feature 054): create/list/modify/delete reminders via natural Hebrew conversation, godfather/admin only, one-time and recurring, with an approval gate before creation/modification and a scheduled delivery service with a per-reminder delivery target and fallback. Ledger event schema revision (Feature 043 Phase 11): bank/payment-detail fields, a unified reference mechanism, and code-side enforcement of payer_name/VAT rules for bank deposits; plus a new WhatsApp export replay tool ('player') for testing the ledger pipeline against real historical conversations, and real Message identity fields (WhatsApp JID + RBAC role, not a resolved display name). Two real bugs fixed: eliminated a double OpenAI retry layer that could turn a single rate-limited call into a 100+ second wait, and de-duplicated incoming Green API webhook notifications by idMessage (was producing duplicate approval prompts on webhook redelivery).
+
+## [0.5.1] - 2026-08-21
+
+Feature 056: standalone receipts (no linked invoice, no VAT line) and transaction-account cancellation via natural conversation, with zero documents created as a side effect and an idempotent no-op if already closed; approval prompt for cancellation now shows the real account/client data instead of a generic message. Bugfix-040: reminder approval text now translates RRULE weekday codes to Hebrew instead of showing raw English BYDAY codes.
