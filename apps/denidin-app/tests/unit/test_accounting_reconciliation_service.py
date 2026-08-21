@@ -312,6 +312,24 @@ class TestStartAccountingReconciliationScheduler:
         result = start_accounting_reconciliation_scheduler(global_context, update_freq_minutes=0)
         assert result is None
 
+    @pytest.mark.parametrize("freq", [1, 5, 59, 60, 90, 120, 1440])
+    def test_default_trigger_valid_for_any_positive_freq(self, global_context, freq):
+        """Real live-dev incident (2026-08-21): the original CronTrigger(minute=
+        f"*/{n}") pattern raised ValueError for freq=60 ("the step value (60) is
+        higher than the total range of the expression") at scheduler-start time -
+        an unhandled exception at __main__ scope that crashed the real running
+        app, with no auto-restart. Must work for every value this config field
+        can actually hold, not just the small values reminder_delivery_service.py's
+        own CronTrigger use happens to be configured with."""
+        scheduler = start_accounting_reconciliation_scheduler(
+            global_context, update_freq_minutes=freq
+        )
+        try:
+            assert scheduler is not None
+            assert len(scheduler.get_jobs()) == 1
+        finally:
+            scheduler.shutdown()
+
     def test_positive_freq_registers_exactly_one_job_with_max_instances_1(self, global_context):
         scheduler = start_accounting_reconciliation_scheduler(
             global_context, update_freq_minutes=60, trigger=IntervalTrigger(seconds=9999)

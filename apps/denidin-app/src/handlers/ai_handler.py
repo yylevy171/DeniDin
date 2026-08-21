@@ -2005,13 +2005,35 @@ class AIHandler:
         Hebrew "נוצר ב: DD/MM/YYYY HH:MM" line transcribes, already Israel
         local, never UTC). Returns None (letting add_ledger_event's own
         now_local() fallback, with its existing WARNING, take over) if
-        missing or unparseable - never guesses."""
+        missing or unparseable - never guesses.
+
+        Real live-dev incident (2026-08-21): every one of a first real
+        8-document sweep fell back to processing time instead of the
+        document's own creation time - the model's actual output format
+        was never logged anywhere at the time, so the exact cause is
+        unconfirmed, but Python 3.9's datetime.fromisoformat is notably
+        strict (no trailing "Z" UTC designator - only added in 3.11 - and
+        no space-separated "YYYY-MM-DD HH:MM:SS" variant), a real, known gap
+        against what a model asked for "ISO-8601" might plausibly produce.
+        Both are now normalized before parsing; the raw value is logged at
+        WARNING on any remaining failure so a future incident is
+        diagnosable, unlike this one."""
         raw = call_arguments.get("accounting_document_creation_date")
         if not raw:
             return None
+        normalized = raw.strip()
+        if normalized.endswith("Z"):
+            normalized = normalized[:-1] + "+00:00"
+        if len(normalized) >= 11 and normalized[10] == " ":  # "YYYY-MM-DD HH:MM..."
+            normalized = normalized[:10] + "T" + normalized[11:]
         try:
-            parsed = datetime.fromisoformat(raw)
+            parsed = datetime.fromisoformat(normalized)
         except ValueError:
+            logger.warning(
+                f"[025] Could not parse accounting_document_creation_date={raw!r} as "
+                "ISO-8601 - falling back to processing time for this event's date/time "
+                "derivation (add_ledger_event's own WARNING)"
+            )
             return None
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=LOCAL_TZ)

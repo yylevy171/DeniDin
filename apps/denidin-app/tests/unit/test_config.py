@@ -2,6 +2,8 @@
 Unit tests for AppConfiguration model.
 Tests configuration loading from JSON/YAML files and validation.
 """
+import ast
+import dataclasses
 import json
 import pytest
 import tempfile
@@ -340,5 +342,58 @@ class TestAppConfiguration:
         # Verify storage paths combine data_root + relative storage_dir
         assert config.memory['session']['storage_dir'] == 'test_data/sessions'
         assert config.memory['longterm']['storage_dir'] == 'test_data/memory'
-        
+
         os.unlink(temp_config)
+
+
+class TestMainConfigDictStaysInSyncWithAppConfiguration:
+    """Regression guard, added 2026-08-21 after a real live-dev bug (Feature
+    025): denidin.py's `__main__` block hand-builds its own `config_dict`
+    literal (a separate subset dict passed to initialize_app()) rather than
+    reusing AppConfiguration.from_file's already-loaded object directly -
+    accounting_ledger_update_freq was added to the AppConfiguration dataclass
+    (and correctly covered by from_file's own defaults/tests above) but
+    silently missing from THIS separate dict, so config.dev.json setting it
+    to 60 had zero effect - the scheduler never started, with no error
+    anywhere. Static-parses denidin.py's source (not an import - __main__
+    code isn't safely importable) to catch a future field added to one place
+    but not the other, without needing a live container to notice."""
+
+    def test_every_appconfiguration_field_appears_as_a_config_dict_key(self):
+        denidin_py_path = Path(__file__).parent.parent.parent / "denidin.py"
+        tree = ast.parse(denidin_py_path.read_text(encoding="utf-8"))
+
+        config_dict_keys = None
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "config_dict"
+                and isinstance(node.value, ast.Dict)
+            ):
+                config_dict_keys = {
+                    key.value for key in node.value.keys
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                }
+                break
+
+        assert config_dict_keys is not None, (
+            "Could not find denidin.py's __main__ config_dict = {...} literal - "
+            "this test needs updating if that code moved/was renamed, not skipped"
+        )
+
+        # `environment` is a legitimate, pre-existing exception: it's read
+        # directly from the mounted config file by watchdog.py (a separate
+        # process, outside the AppConfiguration/config_dict/initialize_app()
+        # flow entirely - see watchdog.py's own docstring), never through
+        # AppConfiguration at all. Every other field must appear.
+        known_exceptions = {"environment"}
+        dataclass_field_names = {f.name for f in dataclasses.fields(AppConfiguration)} - known_exceptions
+        missing = dataclass_field_names - config_dict_keys
+        assert not missing, (
+            f"AppConfiguration field(s) {missing} exist but are missing from denidin.py's "
+            "__main__ config_dict literal - a config value set in config.dev.json/"
+            "config.prod.json for these fields will silently have NO effect on the real "
+            "running app, exactly like accounting_ledger_update_freq did (2026-08-21)"
+        )

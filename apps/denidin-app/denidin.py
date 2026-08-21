@@ -1011,7 +1011,16 @@ if __name__ == "__main__":
         'constitution_config': config.constitution_config,
         'user_roles': config.user_roles,
         'mcp': config.mcp,
-        'reminders': config.reminders
+        'reminders': config.reminders,
+        # Feature 025: missed here originally (a real bug - AppConfiguration.
+        # from_file's own defaults/field list already covered this correctly,
+        # but this hand-maintained subset dict for initialize_app() is a
+        # separate place every new config field must also be added, same
+        # pattern max_retries' own history already warned about) - found
+        # live in dev (accounting_ledger_update_freq=60 in config.json, but
+        # the scheduler silently never started because this dict dropped it
+        # before it ever reached initialize_app()).
+        'accounting_ledger_update_freq': config.accounting_ledger_update_freq,
     }
 
     # Feature 043: construct the live Green API bot explicitly here (via

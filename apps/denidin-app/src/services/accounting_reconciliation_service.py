@@ -6,7 +6,9 @@ created directly there (with no matching DeniDin conversation) and captures
 them as LedgerEvents (source_type="חשבונית") - structurally mirrors
 services/reminder_delivery_service.py's shape (Feature 054): one shared
 worker function, called both periodically (APScheduler BackgroundScheduler +
-CronTrigger) and once at startup for catch-up. See
+IntervalTrigger - NOT CronTrigger, unlike reminder_delivery_service.py; see
+start_accounting_reconciliation_scheduler's own docstring for why) and once
+at startup for catch-up. See
 specs/in-progress/025-morning-sourced-ledger-events/contracts/
 accounting-reconciliation-service.md for the full contract this file
 implements.
@@ -25,7 +27,7 @@ from typing import Any, List, Optional
 
 # type: ignore[import-untyped] on both - no stub package exists for apscheduler
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
-from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
+from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 
 from src.handlers.ai_handler import LEDGER_EVENT_TOOL
 from src.models.user import Role
@@ -229,8 +231,23 @@ def start_accounting_reconciliation_scheduler(
     started, and this returns None (caller, denidin.py, must handle that).
     `trigger` is a testability seam only, same convention as
     reminder_delivery_service.py's start_reminder_scheduler - production
-    callers must never pass it (leaving it None yields the real wall-clock-
-    aligned CronTrigger below)."""
+    callers must never pass it (leaving it None yields the real
+    IntervalTrigger below).
+
+    Uses IntervalTrigger, NOT reminder_delivery_service.py's
+    CronTrigger(minute=f"*/{n}") pattern (real bug, found live in dev
+    2026-08-21): a cron minute field only accepts steps within 0-59 -
+    CronTrigger(minute="*/60") raises ValueError at scheduler-start time
+    ("the step value (60) is higher than the total range of the
+    expression"), which crashed the real running app (an unhandled exception
+    at module scope in denidin.py's __main__, with no auto-restart, per
+    watchdog.py's own by-design no-retry behavior). reminder_delivery_service.py's
+    own CronTrigger use is safe only because it's always configured with a
+    small value (5 minutes) - this field is user-configurable to any
+    positive integer, so it needs a trigger that's valid for any of them.
+    IntervalTrigger trades away wall-clock alignment (which correctness here
+    never depended on, unlike the reminder sweep) for correctness at every
+    valid input."""
     if update_freq_minutes <= 0:
         logger.info(
             "[025] accounting_ledger_update_freq=0 (or unset) - accounting reconciliation "
@@ -241,13 +258,10 @@ def start_accounting_reconciliation_scheduler(
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         func=lambda: _sweep_accounting_documents(global_context),
-        trigger=trigger or CronTrigger(minute=f"*/{update_freq_minutes}"),
+        trigger=trigger or IntervalTrigger(minutes=update_freq_minutes),
         id=RECONCILIATION_SWEEP_JOB_ID,
         max_instances=1,  # a slow tick must not overlap the next one
     )
     scheduler.start()
-    logger.info(
-        f"[025] Accounting reconciliation scheduler started (every {update_freq_minutes} min, "
-        "wall-clock-aligned)"
-    )
+    logger.info(f"[025] Accounting reconciliation scheduler started (every {update_freq_minutes} min)")
     return scheduler

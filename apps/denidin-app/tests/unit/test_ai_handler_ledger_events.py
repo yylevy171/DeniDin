@@ -804,6 +804,48 @@ ACCOUNTING_EVENT = {
 }
 
 
+class TestAccountingDocumentMessageTimestamp:
+    """Feature 025, regression guard added after a real live-dev incident
+    (2026-08-21): a first real 8-document sweep had EVERY event fall back to
+    processing time instead of the document's own real creation time - the
+    exact model output format was never logged at the time this happened,
+    so the fix (below) covers the known-strict gaps in Python 3.9's
+    datetime.fromisoformat rather than a single confirmed root cause, plus
+    adds the diagnostic logging this incident was missing."""
+
+    def test_plain_iso_no_timezone_parses(self):
+        ts = AIHandler._accounting_document_message_timestamp(
+            {"accounting_document_creation_date": "2026-08-20T18:52:00"}
+        )
+        assert ts is not None
+
+    def test_trailing_z_suffix_parses(self):
+        """Python 3.9's fromisoformat does NOT accept a trailing Z (only
+        added in 3.11) - a real, known gap against what a model asked for
+        'ISO-8601' output might plausibly produce."""
+        ts = AIHandler._accounting_document_message_timestamp(
+            {"accounting_document_creation_date": "2026-08-20T18:52:00Z"}
+        )
+        assert ts is not None
+
+    def test_space_separated_variant_parses(self):
+        ts = AIHandler._accounting_document_message_timestamp(
+            {"accounting_document_creation_date": "2026-08-20 18:52:00"}
+        )
+        assert ts is not None
+
+    def test_missing_field_returns_none_silently(self):
+        assert AIHandler._accounting_document_message_timestamp({}) is None
+
+    def test_genuinely_unparseable_value_returns_none_and_logs_the_raw_value(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            ts = AIHandler._accounting_document_message_timestamp(
+                {"accounting_document_creation_date": "not a date at all"}
+            )
+        assert ts is None
+        assert any("not a date at all" in r.message for r in caplog.records)
+
+
 class TestHandleAccountingReconciliationCapture:
     """Feature 025, T010a: the NEW reconciliation-capture handler
     (_handle_accounting_reconciliation_capture) - a thin adapter, structurally
