@@ -276,6 +276,32 @@ def format_original_not_linked_to_client() -> str:
     return "לא ניתן להפיק מסמך מקושר עבור חשבונית זו - היא לא מקושרת ללקוח קיים במערכת."
 
 
+def format_transaction_account_cancelled(document: dict) -> str:
+    """Friendly Hebrew confirmation for cancel_transaction_account (feature
+    056, REQ-INV-026).
+
+    Deliberately does NOT go through translate_status/format_invoice_
+    confirmation - get_invoice_details' existing formatter renders
+    Morning's manually-closed status (2) as "שולם" (paid), which
+    research.md confirmed live is actively misleading here: this account's
+    money never moved, so nothing was "paid". Used identically for both the
+    real-cancellation path and the idempotent no-op path (already
+    cancelled/already fulfilled, REQ-INV-021/025) - from the user's
+    perspective the account simply isn't open any more either way.
+
+    `document` is the raw Morning document dict - either close_invoice's
+    response (real cancellation) or the original fetched via get_invoice
+    (no-op path)."""
+    number = document.get("number") or document.get("id", "")
+    client_name = (document.get("client") or {}).get("name")
+
+    lines = []
+    if client_name:
+        lines.append(f'לקוח: "{client_name}"')
+    lines.append(f"חשבון עסקה #{number} בוטל.")
+    return "\n".join(lines)
+
+
 def format_too_many_invoices_message(total: int) -> str:
     """Hebrew message when list_invoices' real Morning total exceeds the
     fetch cap (user-stories.md US2, REQ-INVOICE-003) - states the real

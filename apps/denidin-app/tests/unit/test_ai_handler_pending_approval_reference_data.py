@@ -214,6 +214,81 @@ def test_reference_block_precedes_the_request_details_block():
     assert result.index("📄 המסמך המקושר:") < result.index("📋 לאישור:")
 
 
+# ---------------------------------------------------------------------------
+# cancel_transaction_account (feature 056) - found via manual QA 2026-08-20:
+# this tool had NO branch at all in _build_pending_approval_details, so
+# doc_label = _DOCUMENT_TYPE_LABELS.get(tool_name) was None and it fell all
+# the way through to the fully generic "there's a pending action" text -
+# not naming the account, the client, or even that this is a cancellation.
+# Unlike the other three Group B tools, cancel_transaction_account has no
+# amount/vat_included/description of its own (its only argument is
+# original_internal_morning_id) - the generic per-document-creation Part 2
+# template doesn't fit ("VAT: not specified" makes no sense for a
+# cancellation), so it gets its own dedicated Part 2 body instead of reusing
+# _DOCUMENT_TYPE_LABELS's generic shape.
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_transaction_account_renders_reference_block_when_lookup_present():
+    """The core fix: given a same-turn get_invoice_details call, the
+    approval's Part 1 must carry the account's real client name, date, and
+    amount - same bugfix-038 guarantee the other three Group B tools have."""
+    args = json.dumps({"original_internal_morning_id": _INVOICE_ID})
+    mcp_calls = [_get_invoice_details_call(_INVOICE_ID)]
+
+    result = _build_pending_approval_details("cancel_transaction_account", args, mcp_calls)
+
+    assert "📄 המסמך המקושר:" in result
+    assert "צפניה עוז" in result
+    assert "19.00" in result
+    assert "13/08/2026" in result
+    assert _INVOICE_ID not in result, "the internal Morning id must never reach the user"
+    assert result.endswith("אישור — כן/לא?")
+
+
+def test_cancel_transaction_account_names_the_action_not_a_generic_placeholder():
+    """Never the fully generic 'there's a pending action' text - REQ-INV-026's
+    'never say paid' extends to the approval prompt too, and the action must
+    be named specifically as a cancellation that creates no document."""
+    args = json.dumps({"original_internal_morning_id": _INVOICE_ID})
+    mcp_calls = [_get_invoice_details_call(_INVOICE_ID)]
+
+    result = _build_pending_approval_details("cancel_transaction_account", args, mcp_calls)
+    # Only Part 2 (the cancellation's own statement) is checked for "paid"
+    # wording - Part 1 (the reference block) may legitimately echo the
+    # account's real PRE-cancellation status ("לא שולם"/unpaid), which is
+    # accurate and not what REQ-INV-026 is about.
+    part_2 = result.split("📋 לאישור:")[1]
+
+    assert "יש פעולה הממתינה לאישורך" not in result
+    assert "שולם" not in part_2
+    assert "לבטל" in result or "ביטול" in result
+    assert "עסקה" in result
+
+
+def test_cancel_transaction_account_omits_reference_block_when_no_lookup_found():
+    """Accepted risk, same as the other three Group B tools: if the model
+    didn't look up the account in this same turn, there's nothing to
+    correlate against - falls back to naming the action with no account
+    details, never a crash, never fabricated data."""
+    args = json.dumps({"original_internal_morning_id": _INVOICE_ID})
+
+    result = _build_pending_approval_details("cancel_transaction_account", args, mcp_calls=None)
+
+    assert "📄 המסמך המקושר:" not in result
+    assert "לבטל" in result or "ביטול" in result
+    assert result.endswith("אישור — כן/לא?")
+
+
+def test_cancel_transaction_account_omits_reference_block_on_mismatched_lookup():
+    args = json.dumps({"original_internal_morning_id": _INVOICE_ID})
+    mcp_calls = [_get_invoice_details_call(_OTHER_INVOICE_ID)]
+
+    result = _build_pending_approval_details("cancel_transaction_account", args, mcp_calls)
+
+    assert "📄 המסמך המקושר:" not in result
+
+
 def test_default_mcp_calls_parameter_is_optional_backward_compatible():
     """Every existing call site that doesn't yet pass mcp_calls (if any)
     must keep working exactly as before this bugfix."""

@@ -188,7 +188,10 @@ def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> "str | Ca
 
 
 def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = None) -> FastMCP:
-    """Build a FastMCP server with all 11 tools registered, bound to one MorningClient.
+    """Build a FastMCP server with all 16 tools registered, bound to one MorningClient
+    (the "11 tools" figure in older docs/CLAUDE.md predates several later additions -
+    resolve_client_name, create_combo_document_as_reference, list_clients,
+    get_client_details, update_client - and feature 056's cancel_transaction_account).
 
     Args:
         config: Validated app config (see config.load_config).
@@ -342,26 +345,52 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
 
     @mcp.tool(structured_output=False)
     def create_receipt(
-        original_internal_morning_id: str,
-        payment_date: str,
+        original_internal_morning_id: Optional[str] = None,
+        payment_date: Optional[str] = None,
         amount: Optional[float] = None,
+        client_name: Optional[str] = None,
+        description: Optional[str] = None,
+        name_resolved: bool = False,
     ) -> str:
-        """Create a standalone receipt ("קבלה", document type 400) linked to an
-        existing document, identified by original_internal_morning_id (the Morning document
-        id of the invoice being paid - resolve this first, e.g. via list_invoices,
-        if the user only gave a client name or invoice number). Defaults to the
-        original's full total; pass amount for a partial-payment receipt. Also
-        the correct target for "mark as paid" phrasing once the referenced
-        document's type is resolved to 305, not 300 (there is no separate
-        status-update tool) - only supports type-305 originals, raises a clear
-        error for a type-300 original (use create_combo_document_as_reference instead).
+        """Create a receipt ("קבלה", document type 400) - either linked to an
+        existing document being paid, or STANDALONE, with no invoice at all
+        (feature 056: a deposit, a loan repayment, or an advance payment
+        received ahead of a not-yet-completed transaction).
 
-        REQUIRES payment_date: the real date the money moved, ISO YYYY-MM-DD.
-        "Today" is a genuinely fine answer for a verbal "mark as paid" request,
-        but only once asked and confirmed - never silently assumed. Ask the
-        user if it isn't already stated in the conversation."""
+        LINKED (original_internal_morning_id given): identified by the
+        Morning document id of the invoice being paid - resolve this first,
+        e.g. via list_invoices, if the user only gave a client name or
+        invoice number. Defaults to the original's full total; pass amount
+        for a partial-payment receipt. Also the correct target for "mark as
+        paid" phrasing once the referenced document's type is resolved to
+        305, not 300 (there is no separate status-update tool) - only
+        supports type-305 originals, raises a clear error for a type-300
+        original (use create_combo_document_as_reference instead).
+
+        STANDALONE (original_internal_morning_id omitted): for money
+        received that is NOT business income and has no invoice behind it -
+        REQUIRES client_name (call resolve_client_name FIRST and pass
+        name_resolved=True, exactly like create_invoice), amount, and
+        description (free text - what the money is, e.g. "פיקדון", "החזר
+        הלוואה", "מקדמה על עבודה עתידית" - no fixed category, just describe
+        it). No invoice is ever created or implied by this path, and a real
+        tax invoice issued later for the same transaction does NOT need to
+        reference this receipt back.
+
+        REQUIRES payment_date on both paths: the real date the money moved,
+        ISO YYYY-MM-DD. "Today" is a genuinely fine answer for a verbal
+        "mark as paid"/"received a deposit" request, but only once asked and
+        confirmed - never silently assumed. Ask the user if it isn't already
+        stated in the conversation."""
         return _call_with_error_boundary(
-            tools.create_receipt, morning_client, original_internal_morning_id, payment_date, amount
+            tools.create_receipt,
+            morning_client,
+            original_internal_morning_id,
+            payment_date,
+            amount,
+            client_name,
+            description,
+            name_resolved,
         )
 
     @mcp.tool(structured_output=False)
@@ -407,6 +436,32 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             tools.create_combo_document_as_reference, morning_client, original_internal_morning_id, payment_date,
             amount, description, vat_included, payment_method, bank_number, bank_branch,
             bank_account, transaction_reference
+        )
+
+    @mcp.tool(structured_output=False)
+    def cancel_transaction_account(original_internal_morning_id: str) -> str:
+        """Cancel an open transaction account ("חשבון עסקה", document type
+        300) - the deal fell through, no money moved, nothing should be
+        recorded as income. Creates NO document of any kind - no credit
+        note, no combo document, no receipt (feature 056).
+
+        Distinct from create_combo_document_as_reference, which deliberately
+        creates a real document because the deal WAS fulfilled and paid -
+        use cancel_transaction_account only when it was NOT.
+
+        identified by original_internal_morning_id (the Morning document id
+        of the transaction account being cancelled - resolve this first,
+        e.g. via list_invoices, if the user only gave a client name or
+        document number). Only supports type-300 originals - raises a clear
+        error for any other type (a tax invoice cannot be cancelled this
+        way; use create_credit_note instead, since Israeli law forbids
+        voiding an issued tax invoice outright).
+
+        Safe to call again on an already-cancelled or already-fulfilled
+        account - it is a no-op, never creates a duplicate mutation and
+        never contradicts a real payment document that already exists."""
+        return _call_with_error_boundary(
+            tools.cancel_transaction_account, morning_client, original_internal_morning_id
         )
 
     @mcp.tool(structured_output=False)

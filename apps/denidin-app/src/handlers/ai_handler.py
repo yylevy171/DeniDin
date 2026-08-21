@@ -110,6 +110,7 @@ APPROVAL_REQUIRED_MCP_TOOLS = (
     "create_credit_note",
     "create_receipt",
     "create_combo_document_as_reference",
+    "cancel_transaction_account",
     "add_client",
     "update_client",
 )
@@ -179,6 +180,8 @@ def _build_pending_approval_fallback_text(tool_name: str, arguments_json: str) -
             return f"להפיק קבלה עבור החשבונית שזוהתה בשיחה{_amount_suffix()} — לאשר?"
         if tool_name == "create_combo_document_as_reference":
             return f"לסגור את חשבון העסקה שזוהה בשיחה{_amount_suffix()} — לאשר?"
+        if tool_name == "cancel_transaction_account":
+            return "לבטל את חשבון העסקה שזוהה בשיחה — לא ייווצר שום מסמך — לאשר?"
         if tool_name == "add_client":
             return f"ליצור לקוח חדש: {args['name']}, {args['email']}, {args['phone']} — לאשר?"
         if tool_name == "update_client":
@@ -206,7 +209,13 @@ _DOCUMENT_TYPE_LABELS = {
 # (runtime_constitution.md) to call get_invoice_details on the original,
 # FRESH, in the SAME turn, before proposing any of these. See
 # _find_referenced_document_details below for the correlation this enables.
-_GROUP_B_REFERENCE_TOOLS = {"create_receipt", "create_credit_note", "create_combo_document_as_reference"}
+_GROUP_B_REFERENCE_TOOLS = {
+    "create_receipt", "create_credit_note", "create_combo_document_as_reference",
+    # Feature 056: cancel_transaction_account is the same shape (only takes
+    # original_internal_morning_id) - found missing during manual QA
+    # (2026-08-20), left the approval prompt with zero account details.
+    "cancel_transaction_account",
+}
 
 # The exact line format_invoice_confirmation (morning-mcp-app) always appends
 # to get_invoice_details' output - the one line that must never reach the
@@ -338,6 +347,23 @@ def _build_pending_approval_details(
                 f"{_strip_internal_morning_id_line(reference_details)}\n\n"
             )
 
+    if tool_name == "cancel_transaction_account":
+        # Feature 056: unlike the other Group B tools, this one creates NO
+        # document at all (REQ-INV-020) - the generic per-document-creation
+        # Part 2 body below (date/VAT/amount/purpose) doesn't fit a
+        # cancellation ("VAT: not specified" makes no sense here), so this
+        # gets its own dedicated body instead of a _DOCUMENT_TYPE_LABELS
+        # entry. reference_block (Part 1, above) already carries the real
+        # client/amount/date when the model looked the account up first
+        # (mandatory per runtime_constitution.md, same as the other three
+        # Group B tools) - this Part 2 only needs to state the action.
+        return (
+            reference_block
+            + "📋 לאישור:\n"
+            + "פעולה: ביטול חשבון עסקה — לא ייווצר שום מסמך, "
+            + "החשבון יסומן כמבוטל/מטופל במורנינג בלבד\n\n"
+            + APPROVAL_QUESTION
+        )
     if tool_name == "add_client":
         return (
             f"📋 לאישור — לקוח חדש:\n"

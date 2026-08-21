@@ -25,18 +25,20 @@ from datetime import timedelta
 
 import pytest
 
-from denidin_mcp_morning.tools import create_combo_document_as_reference, create_receipt
+from denidin_mcp_morning.tools import cancel_transaction_account, create_combo_document_as_reference, create_receipt
 from denidin_mcp_morning.utils.time_utils import now_local
 
 
 class _FakeMorningClient:
-    """Stands in for MorningClient.get_invoice/create_invoice - the real
-    network boundary."""
+    """Stands in for MorningClient.get_invoice/create_invoice/close_invoice -
+    the real network boundary."""
 
-    def __init__(self, original, created_response=None):
+    def __init__(self, original, created_response=None, close_invoice_response=None):
         self._original = original
         self._created_response = created_response or {"id": "closing-doc-1", "number": "400-1"}
+        self._close_invoice_response = close_invoice_response or {**original, "status": 2}
         self.create_invoice_calls = []
+        self.close_invoice_calls = []
 
     def get_invoice(self, internal_morning_id):
         return self._original
@@ -44,6 +46,10 @@ class _FakeMorningClient:
     def create_invoice(self, payload):
         self.create_invoice_calls.append(payload)
         return self._created_response
+
+    def close_invoice(self, internal_morning_id):
+        self.close_invoice_calls.append(internal_morning_id)
+        return self._close_invoice_response
 
 
 def _raw_invoice(doc_id, doc_type, status_code, total=1000, number=None):
@@ -245,3 +251,73 @@ def test_create_receipt_uses_the_given_payment_date_not_today():
     payload = client.create_invoice_calls[0]
     assert payload["payment"][0]["date"] == "2026-07-12"
     assert payload["date"] != "2026-07-12", "the document's own issue date should still be today"
+
+
+# --- cancel_transaction_account's idempotency guard (feature 056, REQ-INV-021/022/024/025) ---
+
+
+def test_cancel_transaction_account_open_original_closes_it(caplog):
+    """(1) A status-0 (open) type-300 original -> close_invoice IS called
+    exactly once, and log_mutation records the resolved client id/name -
+    REQ-INV-020/024."""
+    original = _raw_invoice("txn-open", doc_type=300, status_code=0)
+    client = _FakeMorningClient(original)
+
+    with caplog.at_level("INFO", logger="denidin_mcp_morning.audit"):
+        result = cancel_transaction_account(client, "txn-open")
+
+    assert result
+    assert client.close_invoice_calls == ["txn-open"]
+    audit_records = [r for r in caplog.records if "AUDIT cancel_transaction_account OK" in r.message]
+    assert len(audit_records) == 1, f"expected exactly one audit log line, got: {caplog.records!r}"
+    assert "client_id=client-1" in audit_records[0].message
+    assert "client_name='לקוח בדיקה'" in audit_records[0].message
+
+
+def test_cancel_transaction_account_already_cancelled_is_idempotent_no_op():
+    """(2) A status-2 (already manually closed/cancelled) original ->
+    close_invoice is NEVER called again - REQ-INV-021/025. The raw API
+    itself rejects a redundant close (research.md, live-confirmed), so this
+    guard must live in application code, not be assumed from Morning."""
+    original = _raw_invoice("txn-cancelled", doc_type=300, status_code=2)
+    client = _FakeMorningClient(original)
+
+    result = cancel_transaction_account(client, "txn-cancelled")
+
+    assert result
+    assert client.close_invoice_calls == [], "close_invoice must not be called again on an already-closed account"
+
+
+def test_cancel_transaction_account_already_fulfilled_is_idempotent_no_op():
+    """(3) A status-1 (closed via a linked payment document, i.e. already
+    fulfilled via create_combo_document_as_reference) original -> same
+    no-op, close_invoice never called - cancellation must never contradict a
+    real payment document that already exists."""
+    original = _raw_invoice("txn-fulfilled", doc_type=300, status_code=1)
+    client = _FakeMorningClient(original)
+
+    result = cancel_transaction_account(client, "txn-fulfilled")
+
+    assert result
+    assert client.close_invoice_calls == [], "close_invoice must not be called on an already-fulfilled account"
+
+
+def test_cancel_transaction_account_rejects_a_non_transaction_account_original(caplog):
+    """(4) A non-type-300 original (e.g. type 305) -> raises ValueError,
+    close_invoice never called - REQ-INV-022, mirrors
+    test_create_receipt_rejects_a_transaction_account_original's existing
+    pattern for the opposite direction. (5) log_refusal is called instead
+    of log_mutation on this path - REQ-INV-024."""
+    original = _raw_invoice("inv-305c", doc_type=305, status_code=0)
+    client = _FakeMorningClient(original)
+
+    with caplog.at_level("INFO", logger="denidin_mcp_morning.audit"):
+        with pytest.raises(ValueError) as exc_info:
+            cancel_transaction_account(client, "inv-305c")
+
+    assert "305" in str(exc_info.value)
+    assert client.close_invoice_calls == [], "No cancellation should be attempted for a rejected original type"
+    refusal_records = [r for r in caplog.records if "AUDIT cancel_transaction_account REFUSED" in r.message]
+    assert len(refusal_records) == 1, f"expected exactly one refusal log line, got: {caplog.records!r}"
+    mutation_records = [r for r in caplog.records if "AUDIT cancel_transaction_account OK" in r.message]
+    assert mutation_records == [], "a rejected original must never be logged as a successful mutation"
