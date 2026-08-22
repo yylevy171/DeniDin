@@ -249,6 +249,49 @@ with it - exactly the gap this spec should close.
   `formatters.py`'s `format_invoice_list`/`format_too_many_invoices_message`
   do state the real total, unconditionally, in every response shape.
 
+### Session 2026-08-22 (round 5 — during `speckit.implement`, after live dev testing)
+
+- **Q: Is `get_invoice_details` required at all, or is `list_invoices`
+  sufficient? → A: `list_invoices` alone is sufficient.** Measured
+  directly against the real dev sandbox: `get_invoice_details`' response
+  adds exactly **two** fields over a `/documents/search` item —
+  `linkedDocuments` and `userName` — and nothing else. The search response
+  is already a complete document object (including `creationDate` and the
+  top-level `description`); `morning-mcp-app`'s formatter was simply
+  dropping most of it before the model ever saw it. The entire round-3/4
+  two-call design (list → details×N → capture×N) was therefore solving a
+  problem that did not exist. **The shipped flow is one `list_invoices`
+  call, then one `capture_ledger_event` per document** — verified live:
+  zero `get_invoice_details` calls, 18/18 documents fully correct across 3
+  consecutive playground trials plus the deployed sweep.
+- **Q: Why did the model refuse to call `get_invoice_details` even when the
+  prompt demanded it? → A: its own tool description outranked the
+  prompt.** `get_invoice_details`' registered description scopes it to
+  status-change flows ("mark as paid", "cancel it"). Across 6 live trials
+  it was never called once, regardless of how forcefully the user-message
+  prompt demanded it. **General lesson for this codebase**: a tool's own
+  `description` is a stronger signal than any per-turn instruction — when a
+  background flow needs a tool used outside its documented purpose, fix the
+  data/tooling so the tool isn't needed, or change the tool's description;
+  do not try to out-argue it in a prompt.
+- **Q: `list_invoices` truncated at 2500 tokens (8 of 18 real documents) —
+  raise it? → A: yes, 20000.** Also found: **no** config file
+  (`dev`/`test`/`prod`) had `list_invoices_token_budget` set at all, so
+  every environment was silently running the 2500 code default. Now set
+  explicitly in `dev`/`test`/`example`; `prod` deliberately left untouched
+  (it does not run this feature yet).
+- **Q: Credit notes (`חשבונית זיכוי`) know which invoice they cancel, but
+  only as free text in `description` — capture that linkage structurally
+  in `reference`/`reference_hint`? → A: leave as-is for now (deferred, user
+  decision).** The structured linkage lives in `linkedDocuments`, which is
+  one of the only two fields `list_invoices` does not carry — capturing it
+  would mean reintroducing per-document `get_invoice_details` calls for the
+  documents that have links. Deferred deliberately rather than forgotten:
+  the linkage remains visible in `description` text, and Feature 033's
+  existing `reference`/`REFERENCE_PLACEHOLDER` mechanism was always designed
+  for a later human/script resolution pass. Revisit as its own scoped
+  change if/when the ledger needs it structurally.
+
 ## Resolved (was "Open Questions") — see `research.md`/`data-model.md`/`contracts/` for detail
 
 - Exact field mapping: **resolved**, see `data-model.md`'s field table.

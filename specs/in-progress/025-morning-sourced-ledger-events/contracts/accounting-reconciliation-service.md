@@ -86,6 +86,17 @@ this mechanism works live, once, cheaply, **before** the full multi-scenario Acc
      instead of before, since no cheaper mechanism exists.
    This is deliberately NOT a backfill mechanism (spec.md Clarifications, round 3) — a real,
    human-resolved gap is surfaced via the ERROR log, never auto-caught-up.
+**Revised again 2026-08-22 (round 5) — steps 4-6 are now a SINGLE-tool-call flow.** The
+`get_invoice_details`-per-document chaining these steps originally described is gone: measured
+live, `get_invoice_details` adds only `linkedDocuments`/`userName` over a `/documents/search`
+item, and `morning-mcp-app` now renders the creation timestamp + description in `list_invoices`'
+own output. The model makes **one** `list_invoices` call, then one `capture_ledger_event` per
+document, taking every value from that one result. See `spec.md`'s round-5 Clarifications for the
+measurement and for why the old design could never work (a tool's own description outranks the
+prompt). The prompt text below is superseded by
+`services/accounting_reconciliation_service.py`'s `_build_reconciliation_prompt` — kept here only
+as the shape/constraints record.
+
 4. Build a **dedicated** prompt (NOT `runtime_constitution.md`, NOT `AIHandler._build_instructions`'s
    normal assembly) instructing the model, roughly:
    > List every Morning document created on or after `{since}` (use `list_invoices` with
