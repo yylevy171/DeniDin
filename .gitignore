@@ -102,3 +102,7 @@ creds/DeniDin Dev Creds*.txt
 # (2026-08-16, see specs/in-progress/043-production-data-setup-tooling/
 # data-model.md §1b). Never commit - real client PII, not test fixture data.
 apps/denidin-app/tests/fixtures/whatsapp_exports/Events.csv
+
+# Feature 025 prompt-playground run artifacts (local iteration only, not source)
+specs/in-progress/025-morning-sourced-ledger-events/scripts/last_response_*.json
+specs/in-progress/025-morning-sourced-ledger-events/scripts/*.disabled

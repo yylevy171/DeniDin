@@ -42,7 +42,10 @@ logger = get_logger(__name__)
 # built once via a lazy one-time scan - see ledger_event_manager.py). One
 # fallback lookback, used only when the cache is empty (no חשבונית event
 # ever captured this process/environment yet).
-FALLBACK_LOOKBACK = timedelta(days=1)
+# Widened 1->2 days (2026-08-22, explicit user decision, live dev testing):
+# a 1-day window genuinely missed real sandbox documents once real wall-clock
+# time passed between test runs on different days.
+FALLBACK_LOOKBACK = timedelta(days=2)
 
 # Safety cap (spec.md Clarifications, round 3, user directive: "I don't want
 # this to become a backfill mechanism"): if the gap since the derived
@@ -118,18 +121,28 @@ def _build_reconciliation_prompt(since) -> str:
     assembly. `since` is an aware datetime (Israel local)."""
     since_str = since.strftime("%Y-%m-%d")
     return (
-        f"List every Morning document created on or after {since_str} (use list_invoices "
-        f"with from_date={since_str}, paginate/re-query as needed to see all of them). For "
-        "each one, call get_invoice_details to get its full fields (including its exact "
-        "creation date+time), then call capture_ledger_event with source_type=\"חשבונית\" "
-        "populated directly from that document's real fields - accounting_document_display_number "
-        "from its user-facing display number (never Morning's internal id), "
-        "accounting_document_creation_date as an ISO-8601 date+time built from the exact "
-        "date+time get_invoice_details states (e.g. \"נוצר ב: 20/08/2026 18:52\" -> "
-        "\"2026-08-20T18:52:00\") - never inferred, never guessed, never left as just a date. "
-        "Call capture_ledger_event once per document - do not skip any, do not merge multiple "
-        "documents into one call. Do not produce any other reply text - this is not a "
-        "conversation, no one will read a text reply."
+        "Automated accounting reconciliation task. Make tool calls only - never write a "
+        "text reply, no human will read one.\n\n"
+        f"STEP 1: Call list_invoices with from_date={since_str}. Its output contains every "
+        "field you need, per document.\n\n"
+        "STEP 2: For EVERY document in that output, call capture_ledger_event exactly once "
+        "- one call per document, never merged, never skipped. Take each value verbatim "
+        "from that document's own block in the list output:\n"
+        "- source_type: \"חשבונית\"\n"
+        "- event_subtype: \"הפקה\"\n"
+        "- client_name: its \"לקוח\" value\n"
+        "- accounting_document_display_number: the number after \"חשבונית #\" (never the "
+        "\"מזהה פנימי (internal_morning_id)\" value)\n"
+        "- accounting_document_type: its \"סוג מסמך\" value\n"
+        "- accounting_document_status: its \"סטטוס\" value\n"
+        "- accounting_document_creation_date: its \"נוצר ב: DD/MM/YYYY HH:MM\" value, "
+        "converted to ISO-8601 - e.g. \"נוצר ב: 20/08/2026 18:52\" becomes "
+        "\"2026-08-20T18:52:00\". Use that line's real time exactly; never substitute the "
+        "date-only \"תאריך הפקה\" value, and never invent a time such as 00:00.\n"
+        "- components: exactly one component (component_count=1), with description = its "
+        "\"תיאור\" value and amount = its \"סכום\" value.\n\n"
+        "If the list output is empty (\"לא נמצאו חשבוניות\"), make no capture_ledger_event "
+        "calls at all and stop."
     )
 
 
@@ -183,6 +196,15 @@ def _sweep_accounting_documents(global_context: Any, log_prefix: str = "") -> No
             model=ai_handler.config.ai_model,
             input=[{"role": "user", "content": prompt}],
             tools=tools,
+            # Real bug (2026-08-22): this call originally set no output cap at
+            # all - the only OpenAI call in this app that didn't - leaving it
+            # on whatever the API's own default is. A full sweep legitimately
+            # emits one capture_ledger_event call per document (~185 output
+            # tokens each; ~3.3k for 18 documents, and this feature's own
+            # safety cap allows up to 100), so an unstated default is a real
+            # truncation risk. Uses the same config value every conversational
+            # call already uses.
+            max_output_tokens=ai_handler.config.ai_reply_max_tokens,
         )
     except Exception as e:  # pylint: disable=broad-except
         logger.error(

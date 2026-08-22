@@ -69,10 +69,23 @@ def format_invoice_confirmation(invoice: Invoice) -> str:
     ]
     if invoice.type is not None:
         lines.append(f"סוג מסמך: {translate_document_type(invoice.type)}")
+    if invoice.description:
+        lines.append(f"תיאור: {invoice.description}")
     if invoice.status:
         lines.append(f"סטטוס: {translate_status(invoice.status)}")
     if invoice.issue_date:
         lines.append(f"תאריך הפקה: {format_date_il(invoice.issue_date)}")
+    if invoice.creation_timestamp:
+        # denidin-app's Feature 025 (2026-08-22): the document's REAL creation
+        # instant, full HH:MM precision - distinct from the date-only "תאריך
+        # הפקה" above. Rendered in this SHARED block (not only in
+        # format_invoice_details) specifically so list_invoices' own output
+        # carries it: /documents/search already returns creationDate for every
+        # document, and dropping it here was what forced the reconciliation
+        # sweep to chase N extra get_invoice_details calls for data the first
+        # call had already fetched.
+        local_dt = local_from_timestamp(invoice.creation_timestamp.timestamp())
+        lines.append(f"נוצר ב: {local_dt.strftime('%d/%m/%Y %H:%M')}")
     if invoice.due_date:
         lines.append(f"תאריך יעד: {format_date_il(invoice.due_date)}")
     if invoice.pdf_url:
@@ -98,14 +111,10 @@ def format_invoice_details(invoice: Invoice) -> str:
     if invoice.issue_date:
         lines.append(f"תאריך הפקה: {format_date_il(invoice.issue_date)}")
 
-    if invoice.creation_timestamp:
-        # denidin-app's Feature 025: full HH:MM creation precision, not just
-        # the date already shown above - the only channel this tool exposes
-        # data through is this formatted text, so the reconciliation sweep's
-        # model needs it spelled out here to populate
-        # accounting_document_creation_date accurately.
-        local_dt = local_from_timestamp(invoice.creation_timestamp.timestamp())
-        lines.append(f"נוצר ב: {local_dt.strftime('%d/%m/%Y %H:%M')}")
+    # No creation-timestamp line here: format_invoice_confirmation's block
+    # (embedded as lines[0] above) already carries it as of 2026-08-22, for
+    # every caller including list_invoices - printing it again here would
+    # duplicate it in get_invoice_details' output.
 
     if invoice.payments:
         lines.append("תשלומים:")

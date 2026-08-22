@@ -176,6 +176,77 @@ def test_format_invoice_details_omits_linked_documents_section_when_absent():
     assert "מסמכים מקושרים" not in message
 
 
+def test_format_invoice_confirmation_includes_creation_timestamp():
+    """denidin-app's Feature 025 (2026-08-22): the creation timestamp must be
+    visible in the SHARED per-invoice block - which means list_invoices'
+    output carries it too, not just get_invoice_details'. Root cause of the
+    original failure: /documents/search already returns creationDate for
+    every document, but the formatter dropped it, so the reconciliation
+    sweep's model never saw a real creation time from list_invoices and had
+    to be told to make N extra get_invoice_details calls to recover data the
+    first call already had."""
+    with_creation = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168)
+    invoice = Invoice.model_validate(with_creation)
+
+    message = format_invoice_confirmation(invoice)
+
+    assert "נוצר ב" in message
+    assert "20/08/2026" in message
+    assert "18:52" in message
+
+
+def test_format_invoice_confirmation_omits_creation_line_when_absent():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    assert "נוצר ב" not in format_invoice_confirmation(invoice)
+
+
+def test_format_invoice_confirmation_includes_description():
+    """Same root cause as the creation timestamp: Morning returns a top-level
+    description that was never mapped or rendered, so every reconciliation
+    capture had description=null."""
+    with_description = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, description="תחזוקה")
+    invoice = Invoice.model_validate(with_description)
+
+    message = format_invoice_confirmation(invoice)
+
+    assert "תחזוקה" in message
+
+
+def test_format_invoice_confirmation_omits_description_line_when_absent():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    assert "תיאור" not in format_invoice_confirmation(invoice)
+
+
+def test_format_invoice_list_items_carry_creation_timestamp_and_description():
+    """The decisive one for Feature 025: a single list_invoices call must be
+    sufficient on its own - every ledger field the reconciliation sweep needs
+    (display number, type, status, real creation time, amount, description)
+    present per item, so no get_invoice_details chaining is required at all."""
+    raw = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168, description="תחזוקה")
+    invoice = Invoice.model_validate(raw)
+
+    message = format_invoice_list([invoice], total_matched=1)
+
+    assert "INV-2026-001" in message      # display number
+    assert "נוצר ב" in message and "18:52" in message  # real creation time
+    assert "תחזוקה" in message            # description
+    assert "₪5,850.00" in message         # amount
+
+
+def test_format_invoice_details_does_not_duplicate_the_creation_line():
+    """format_invoice_details embeds format_invoice_confirmation's block,
+    which now carries the creation timestamp itself - it must not print a
+    second one."""
+    with_creation = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168)
+    invoice = Invoice.model_validate(with_creation)
+
+    message = format_invoice_details(invoice)
+
+    assert message.count("נוצר ב") == 1
+
+
 def test_format_invoice_details_includes_creation_timestamp_with_full_precision():
     """denidin-app's Feature 025 (Morning-Sourced Ledger Events), T004a: the
     real creationDate field carries full HH:MM precision (live-confirmed

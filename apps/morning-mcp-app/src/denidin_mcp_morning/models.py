@@ -155,6 +155,11 @@ class Invoice(BaseModel):
     # sandbox: e.g. 1787241168 -> 2026-08-20 18:52:48 Israel local) -
     # completely separate from issue_date/documentDate (date-only).
     creation_timestamp: Optional[datetime] = None
+    # denidin-app's Feature 025: Morning's own top-level document description
+    # (e.g. "תחזוקה") - live-confirmed present on real /documents(/search)
+    # responses, but never mapped here until 2026-08-22, so no MCP tool could
+    # surface it at all. Distinct from income[].description (per-line-item).
+    description: Optional[str] = None
     status: Optional[str] = None
     payments: List[Payment] = Field(default_factory=list)
     linked_documents: List[LinkedDocument] = Field(default_factory=list)

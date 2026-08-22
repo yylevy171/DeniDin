@@ -233,3 +233,23 @@ def test_invoice_model_creation_timestamp_defaults_to_none_when_absent():
     invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
 
     assert invoice.creation_timestamp is None
+
+
+def test_invoice_model_maps_top_level_description_from_real_response():
+    """denidin-app's Feature 025: real /documents(/search) responses carry a
+    top-level `description` (live-confirmed 2026-08-21: e.g. "תחזוקה") that
+    this model dropped entirely - it was never mapped, so no MCP tool could
+    ever surface it, which is exactly why the reconciliation sweep's captured
+    ledger events all had description=null. Distinct from income[].description
+    (a per-line-item field)."""
+    with_description = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, description="תחזוקה")
+
+    invoice = Invoice.model_validate(with_description)
+
+    assert invoice.description == "תחזוקה"
+
+
+def test_invoice_model_description_defaults_to_none_when_absent():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    assert invoice.description is None

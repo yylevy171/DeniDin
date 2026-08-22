@@ -171,11 +171,61 @@ class TestBuildReconciliationPrompt:
     def test_instructs_one_capture_call_per_document(self):
         prompt = _build_reconciliation_prompt(now_local())
         assert "capture_ledger_event" in prompt
-        assert "once per document" in prompt
+        # Wording updated 2026-08-22 to the live-proven text; intent unchanged
+        # (exactly one call per document, never merged, never skipped).
+        assert "one call per document" in prompt
+        assert "never merged, never skipped" in prompt
 
     def test_says_this_is_not_a_conversation(self):
         prompt = _build_reconciliation_prompt(now_local())
-        assert "not a conversation" in prompt.lower() or "no one will read" in prompt.lower()
+        assert "never write a text reply" in prompt.lower()
+        assert "no human will read one" in prompt.lower()
+
+    def test_is_a_single_tool_call_flow_never_requiring_get_invoice_details(self):
+        """Superseded the 2026-08-21 "you MUST call get_invoice_details"
+        wording (replaced 2026-08-22, user decision, after live playground
+        trials). Root cause of that whole detour: /documents/search - the call
+        list_invoices already makes - returns creationDate for every document,
+        but morning-mcp-app's formatter dropped it, so the sweep was chasing N
+        extra get_invoice_details calls to recover data the first call had
+        already fetched. Worse, get_invoice_details' own tool description
+        scopes it to status-change flows ("mark as paid"/"cancel"), which
+        outweighed any user-message instruction - it was never once called
+        across 6 live trials. Now that list_invoices' output carries the
+        creation timestamp and description, this is a one-tool-call flow:
+        proven 18/18 documents fully correct across 3 consecutive live
+        trials."""
+        prompt = _build_reconciliation_prompt(now_local())
+        assert "list_invoices" in prompt
+        assert "get_invoice_details" not in prompt, (
+            "the flow must not reference get_invoice_details at all any more"
+        )
+
+    def test_names_every_ledger_field_and_its_exact_source_line(self):
+        """Each field is mapped to the literal Hebrew label it comes from in
+        list_invoices' output - vague instructions produced null amounts and
+        descriptions in real live runs."""
+        prompt = _build_reconciliation_prompt(now_local())
+        for field in (
+            "accounting_document_display_number", "accounting_document_type",
+            "accounting_document_status", "accounting_document_creation_date",
+        ):
+            assert field in prompt
+        assert "נוצר ב" in prompt      # real creation time's source line
+        assert "תיאור" in prompt        # description's source line
+        assert "סכום" in prompt         # amount's source line
+
+    def test_forbids_the_two_specific_mistakes_seen_live(self):
+        """Both observed for real: substituting the date-only "תאריך הפקה"
+        value (yielding a fabricated 00:00 time), and using the internal
+        morning id as the display number."""
+        prompt = _build_reconciliation_prompt(now_local())
+        assert "00:00" in prompt
+        assert "internal_morning_id" in prompt
+
+    def test_handles_the_empty_list_case_explicitly(self):
+        prompt = _build_reconciliation_prompt(now_local())
+        assert "לא נמצאו חשבוניות" in prompt
 
 
 class TestSweepAccountingDocumentsWatermarkAndCap:
@@ -220,6 +270,23 @@ class TestSweepAccountingDocumentsWatermarkAndCap:
         _sweep_accounting_documents(global_context)
 
         mock_ai_client.responses.create.assert_called_once()
+
+    def test_openai_call_sets_an_explicit_max_output_tokens(
+        self, ai_handler, global_context, mock_ai_client
+    ):
+        """Real bug found live (2026-08-22): this was the ONLY OpenAI call in
+        the app that set no output cap at all, silently relying on whatever
+        the API's own default is. A full sweep emits one capture_ledger_event
+        call per document (up to this feature's own 100-document safety cap),
+        so an unstated default is a real truncation risk."""
+        mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
+            _mcp_call_item("list_invoices", "לא נמצאו חשבוניות התואמות את החיפוש."),
+        ])
+
+        _sweep_accounting_documents(global_context)
+
+        kwargs = mock_ai_client.responses.create.call_args.kwargs
+        assert kwargs["max_output_tokens"] == ai_handler.config.ai_reply_max_tokens
 
     def test_over_100_documents_discards_entire_turn_nothing_persisted(
         self, ai_handler, global_context, mock_ai_client
