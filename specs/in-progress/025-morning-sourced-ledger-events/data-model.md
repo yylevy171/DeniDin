@@ -214,6 +214,14 @@ site.
 `json.dumps` had written `\n` (content intact, escaping mangled in transit); genuinely malformed
 JSON is still rejected loudly.
 
+### `event_subtype` carries the Morning document type (2026-08-23)
+
+The document type is persisted **in `event_subtype`**, using Morning's own retrieved label:
+`חשבון עסקה` / `חשבונית מס` / `חשבונית מס / קבלה` / `חשבונית זיכוי` / `קבלה`. Derived in code from
+the JSON payload's `type_name`; whatever the model passes is overridden. **`accounting_document_type`
+is removed** — the type now lives in `event_subtype` and storing it twice would be redundant.
+`הסכם`/`בנק` keep `יצירה`/`הפקדה` unchanged.
+
 ### Persisted fields added
 
 | Field | Source | Note |
