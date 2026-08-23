@@ -384,13 +384,35 @@ document, so future queries run against the ledger instead of the Morning MCP.
 
 **Ledger field list — decided field-by-field 2026-08-23 (all 13 candidates reviewed):**
 
-CAPTURE — 4 new fields:
+CAPTURE — 2 new fields:
 | Field | Source | Why |
 |---|---|---|
 | `accounting_document_status_code` | `status` (raw int) + Morning's own label | Guards the open/closed-vs-paid/unpaid mismatch — we map `מסמך סגור`→paid, but for a proforma "closed" may mean "converted to an invoice" |
 | `accounting_document_payment_method` | `payment[].name` | `העברה בנקאית`/`מזומן`/... — otherwise the bank fields appear with no indication of what payment they belong to |
-| `accounting_document_linked_number` | `linkedDocuments[].number` | Which document a credit note cancels (#70284 → #52203), structured rather than free text |
-| `accounting_document_linked_type` | `linkedDocuments[].type` | Whether the cancelled document was a tax invoice, receipt, etc. |
+
+**Document linkage — NO new fields (user correction, 2026-08-23):** an earlier draft proposed
+`accounting_document_linked_number`/`_linked_type`. The ledger **already models this**:
+`reference_hint` (free text describing the relationship) + `reference` (the real prior
+**event_id**, or `REFERENCE_PLACEHOLDER = "צריך למצוא"` until resolved). `resolve_reference`'s own
+docstring names the case exactly: *"the real prior event id this event relates to (replaces,
+**cancels**, or otherwise references)"*. Rules, per user:
+- **`reference_hint` is ALWAYS written** when `linkedDocuments` is present, and must carry
+  **everything known**: the linked document's number AND its type **translated to Hebrew**
+  (`חשבונית מס`, never the raw `305`). Written **deterministically by code** from the JSON
+  payload, never AI-authored. `morning-mcp-app` performs the type translation when building the
+  JSON (it owns `_DOCUMENT_TYPE_NAMES`), so `denidin-app` never needs a type table.
+  ⚠️ Since the type table stays at the 5 seen types (earlier decision), a linked document of an
+  unmapped type will render as a bare number here — accepted.
+- **Resolve at capture time only** — no end-of-sweep second pass. If a ledger event already exists
+  whose `accounting_document_display_number` matches the linked number, write that event's real
+  `event_id` into `reference`.
+- **If resolution fails**, leave `reference = REFERENCE_PLACEHOLDER` (the existing machine-readable
+  "needs to be found" marker) **and note the failure explicitly in `reference_hint`**. It goes in
+  `reference_hint`, not `description`: Phase 11 removed the `notes` field and split its roles —
+  unparseable-value text appends to `description` (the component's own content), relationship
+  reasoning goes to `reference_hint`. A failed link is relationship metadata.
+  Expected to be common: the list returns newest-first, so a credit note is often captured before
+  the document it cancels (#70284 and #52203 were created in the same minute).
 
 CAPTURE — via EXISTING fields, no new field:
 - `bank_number`/`bank_branch`/`bank_account` ← `payment[].bankName/bankBranch/bankAccount`
@@ -405,19 +427,20 @@ CAPTURE — via EXISTING fields, no new field:
   capture time. Unaffected by skipping the VAT fields below: we read them from the payload without
   persisting them.
 
-SKIP — 8 candidates, deliberately not captured:
+SKIP — 8 candidates, deliberately not captured (plus linked_number/linked_type, folded into
+`reference_hint` above rather than skipped):
 `amount_open` (volatile snapshot), `amount_excl_vat` + `vat_rate` (derivable), `vat_amount`,
 `issue_date` (matched the creation date on all 5 samples), `currency` (ILS-only today),
 `morning_id` (strictest reading of "display number, never the internal id"), `issued_by`
 (constant today).
 
 **Note for the record**: this is a leaner set than the opening goal ("capture as much as
-possible") implied — 4 new fields rather than 13. The skips are coherent (derivable, constant,
+possible") implied — 2 new fields rather than 13. The skips are coherent (derivable, constant,
 volatile, or redundant), but since a skipped field cannot be backfilled once a document is
 captured, it is worth a deliberate second look before implementation begins rather than after.
 
-**Reverses the round-5 deferral**: credit-note linkage IS now captured structurally
-(`linked_number`/`linked_type`), superseding "leave as-is for now".
+**Reverses the round-5 deferral**: credit-note linkage IS now captured — via the existing
+`reference`/`reference_hint` mechanism (see above), superseding "leave as-is for now".
 
 ### Phase 9a — the 2 sweep tools
 
