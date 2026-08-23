@@ -322,6 +322,33 @@ Design decisions taken with the user, then what actually happened when built.
     this event relates to (replaces, **cancels**, or otherwise references)") —
     not new `linked_number`/`linked_type` fields.
 
+- **Q: What gates the expensive per-document fan-out? → A: the caller's
+  CONTEXT, not the output format** (user catch, 2026-08-23). The first
+  implementation gated on `output_format="json"`, which silently coupled two
+  orthogonal concerns — presentation vs cost. Since Phase 9b makes JSON the
+  format for *every* read tool, that gate would have made every ordinary
+  conversational `list_invoices` explode into N per-document GETs. Now gated
+  on **`include_full_details`**, independent of format.
+  **Refined same day:** this is a *capability*, not a context lock —
+  conversations may opt in too, whenever a question genuinely needs bank
+  details or linked documents ("which account was I paid into?"). *"There is
+  no expense in making api calls, only a bit of latency and that is
+  acceptable."* It is simply not the default, because most questions do not
+  need it; the sweep always does.
+
+- **Q: How do Morning's document types map into the ledger's own taxonomy?
+  → A: the document type IS the `event_subtype`** (user decision,
+  2026-08-23), using **Morning's own retrieved label**, never a hand-written
+  string: `300 חשבון עסקה`, `305 חשבונית מס`, `320 חשבונית מס / קבלה`,
+  `330 חשבונית זיכוי`, `400 קבלה`. This replaces the original flat mapping,
+  where all five types collapsed to `event_subtype="הפקה"` and the real type
+  survived only in a separate descriptive field — which made a credit note
+  (a cancellation) and a receipt (a payment) indistinguishable from an
+  invoice issuance in the ledger's own vocabulary. **`accounting_document_type`
+  is therefore removed**: the type is now persisted in `event_subtype`, and
+  storing it twice would be redundant. `הסכם`/`בנק` keep their existing
+  `יצירה`/`הפקדה` vocabulary untouched.
+
 **What building it actually proved:**
 
 1. **The N+1 fan-out cannot be delegated to the model — and the prompt is not
