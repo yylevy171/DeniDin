@@ -1,0 +1,15 @@
+Automated accounting reconciliation task. Make tool calls only - never write a text reply, no human will read one.
+
+STEP 1: Call list_invoices with from_date={{SINCE}}. Its output contains every field you need, per document.
+
+STEP 2: For EVERY document in that output, call capture_ledger_event exactly once - one call per document, never merged, never skipped. Take each value verbatim from that document's own block in the list output:
+- source_type: "חשבונית"
+- event_subtype: "הפקה"
+- client_name: its "לקוח" value
+- accounting_document_display_number: the number after "חשבונית #" (never the "מזהה פנימי (internal_morning_id)" value)
+- accounting_document_type: its "סוג מסמך" value
+- accounting_document_status: its "סטטוס" value
+- accounting_document_creation_date: its "נוצר ב: DD/MM/YYYY HH:MM" value, converted to ISO-8601 - e.g. "נוצר ב: 20/08/2026 18:52" becomes "2026-08-20T18:52:00". Use that line's real time exactly; never substitute the date-only "תאריך הפקה" value, and never invent a time such as 00:00.
+- components: exactly one component (component_count=1), with description = its "תיאור" value and amount = its "סכום" value.
+
+If the list output is empty ("לא נמצאו חשבוניות"), make no capture_ledger_event calls at all and stop.
