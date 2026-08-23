@@ -444,23 +444,38 @@ captured, it is worth a deliberate second look before implementation begins rath
 
 ### Phase 9a — the 2 sweep tools
 
-- [ ] T032a/b **(`morning-mcp-app`)** Fix the pre-existing `Invoice.payments` bug (raw key
+- [x] T032a/b **(`morning-mcp-app`)** Fix the pre-existing `Invoice.payments` bug (raw key
   `payment` vs field `payments`, no mapping, `Payment.invoice_id` required but absent) — it is
   dead for EVERY caller today, so `get_invoice_details`' "תשלומים:" block has never rendered for
   anyone. Add `bank_name`/`bank_branch`/`bank_account`/`payment_type`/`status` to `Payment`.
   **User approved fixing this here rather than as a separate bugfix spec.**
-- [ ] T033a/b **(`morning-mcp-app`)** Add `format="json"` to `list_invoices` +
+- [x] T033a/b **(`morning-mcp-app`)** Add `format="json"` to `list_invoices` +
   `get_invoice_details`. Default unchanged (Hebrew prose). JSON carries native types and explicit
   `null`s — the prose format's "missing is invisible" property is what produced the fabricated
   `00:00` timestamp.
-- [ ] T034a/b **(`morning-mcp-app`)** Reword `get_invoice_details`' description (see above).
-- [ ] T035a/b **(`denidin-app`)** Extend the `LEDGER_EVENT_TOOL` schema + `LedgerEventManager`
+- [x] T034a/b **(`morning-mcp-app`)** Reword `get_invoice_details`' description (see above).
+- [x] T035a/b **(`denidin-app`)** Extend the `LEDGER_EVENT_TOOL` schema + `LedgerEventManager`
   with the agreed new `accounting_document_*` fields; `schema_version` 2 → 3; lift the `בנק`-only
   bank-field restriction; derive `vat_status` in code from `vat`/`amountExcludeVat`/`amount`
   rather than asking the model.
-- [ ] T036a/b **(`denidin-app`)** Sweep consumes `format="json"`; first-`income[]`-entry-only rule
+- [x] T036a/b **(`denidin-app`)** Sweep consumes `format="json"`; first-`income[]`-entry-only rule
   with the multi-entry WARNING.
-- [ ] T037 Re-verify live in dev via `scripts/prompt_playground.py` before redeploying.
+- [x] T037 Re-verify live in dev via `scripts/prompt_playground.py` before redeploying.
+
+**Phase 9a outcome (2026-08-23, verified live against the real dev sandbox):** all 18 real
+documents captured, zero errors. v0 (pre-change) and v1 (post-change) ledger snapshots are
+committed under `artifacts/v0/` and `artifacts/v1/` for comparison, alongside the raw Morning
+payloads. Measured v0 → v1 fill rates: `status_code` 0→18, `status_label` 0→18,
+`reference`/`reference_hint` 0→8, `payment_method` 0→5, `txn_date` 0→5, bank fields 0→1.
+
+**Two implementation findings that changed the design (see `spec.md` round 6 for detail):**
+- The N+1 detail fan-out **cannot be delegated to the model**. Even after fixing
+  `get_invoice_details`' misleading description, the model called `list_invoices`, emitted two
+  captures and stopped, never once calling `get_invoice_details`. The fan-out moved
+  **server-side** into `morning-mcp-app` (deterministic code). T033b covers this.
+- A silent 17% data-loss bug: the model re-emitted the JSON payload with literal newlines where
+  `json.dumps` had written `\n`. Now parsed with `strict=False`; genuinely malformed JSON still
+  rejected loudly.
 
 ### Phase 9b — 🔜 WIDEN JSON TO ALL READ TOOLS (explicit user commitment, 2026-08-23)
 

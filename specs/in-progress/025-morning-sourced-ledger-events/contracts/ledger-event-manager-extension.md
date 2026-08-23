@@ -1,8 +1,14 @@
 # Integration Contract: LedgerEventManager Extension for `source_type="חשבונית"`
 
-**Feature**: 025-morning-sourced-ledger-events · Per METHODOLOGY.md §VII format. Extends
-`specs/done/v0.2.0/033-ledger-event-persistence/contracts/ledger-event-manager.md` (historical,
-do not edit) — this contract documents only the delta.
+**Feature**: 025-morning-sourced-ledger-events · Per METHODOLOGY.md §VII format.
+
+> **Phase 9 (2026-08-23)**: `add_ledger_event` now expands ONE
+> `accounting_document_json` payload (see `data-model.md`'s "Phase 9 final shape") instead of
+> reading four transcribed fields. `schema_version` is `3`. Bank fields are no longer `בנק`-only.
+> Linkage populates the existing `reference`/`reference_hint`.
+
+Extends `specs/done/v0.2.0/033-ledger-event-persistence/contracts/ledger-event-manager.md`
+(historical, do not edit) — this contract documents only the delta.
 
 **Revised 2026-08-21 (round 3, `spec.md`'s Clarifications)**: replaces the original hard-refusal
 duplicate guard entirely with an in-memory tri-state (new/duplicate/anomaly) design, and collapses

@@ -2,6 +2,15 @@
 
 **Feature**: 025-morning-sourced-ledger-events · Per METHODOLOGY.md §VII format.
 
+> **Phase 9 (2026-08-23) — the flow below is now a SINGLE model tool call.** The sweep asks
+> `list_invoices` for `output_format="json"` and captures one `capture_ledger_event` per returned
+> document, copying its JSON verbatim. Structured bank details and `linkedDocuments` do come from
+> the single-document GET — but **`morning-mcp-app` performs that fan-out server-side**, as
+> deterministic code. Delegating it to the model was tried live and failed: it called
+> `list_invoices`, emitted two captures and stopped, never once calling `get_invoice_details`,
+> even after that tool's misleading description was fixed. The safety-cap check now reads
+> `total_matched` from the JSON payload rather than parsing Hebrew prose.
+
 **Revised 2026-08-21 (round 3, `spec.md`'s Clarifications)**: adds the `config.accounting_ledger_update_freq`
 config gate, a service-side (non-AI) safety-cap pre-check before ever calling OpenAI, and removes
 the hard-refusal dedup step from this file's step 5 (that decision now lives entirely inside

@@ -1,7 +1,8 @@
 # Proposal: Full Morning Document Capture into the Ledger
 
-**Feature**: 025-morning-sourced-ledger-events · **Date**: 2026-08-23 · **Status**: PROPOSAL —
-awaiting human decision, nothing implemented.
+**Feature**: 025-morning-sourced-ledger-events · **Date**: 2026-08-23 · **Status**: RESOLVED and IMPLEMENTED (Phase 9a, 2026-08-23). Every §5 decision was taken
+with the user — see `spec.md`'s round-6 Clarifications for the outcomes and for the two
+implementation findings that changed the design. `tasks.md` Phase 9 is the live task list.
 
 **Goal (user, 2026-08-23)**: *"the sweep captures as much as possible into the ledger so that
 future queries are done against the ledger and not the morning mcp."* The ledger becomes a

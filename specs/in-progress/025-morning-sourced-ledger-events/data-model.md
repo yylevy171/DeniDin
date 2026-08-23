@@ -1,5 +1,10 @@
 # Phase 1 Data Model: Morning-Sourced Ledger Events
 
+> **Superseded in part by Phase 9 (2026-08-23)** — see the "Phase 9 final shape" section at the
+> bottom of this file. The field-naming and dedup design below still holds; what changed is how
+> the data reaches the ledger (one verbatim JSON payload, mapped in code) and which extra fields
+> are persisted.
+
 **Feature**: 025-morning-sourced-ledger-events · **Date**: 2026-08-20
 
 ## Entity: `LedgerEvent` (existing, `ledger_event_manager.py` — extended, not replaced)
@@ -192,3 +197,58 @@ DeniDin-internal traceability fields, unchanged shape) get sentinel values for t
 (`session_id="accounting-reconciliation"`, `message_id=None`) rather than a fabricated real-
 looking id — exact sentinel convention confirmed in `contracts/`, not invented ad hoc per call
 site.
+
+
+---
+
+## Phase 9 final shape (2026-08-23, as built)
+
+### How a `חשבונית` capture arrives
+
+`capture_ledger_event`'s four transcribed `accounting_document_*` arguments were replaced by a
+**single** argument, `accounting_document_json`: the whole document object from
+`morning-mcp-app`, copied verbatim by the model as one string.
+`LedgerEventManager._expand_accounting_document_json` parses it and derives every persisted value
+**in code** — the model copies, it never interprets. Parsed with `strict=False`: a real run lost
+3 of 18 documents silently because the model re-emitted the payload with literal newlines where
+`json.dumps` had written `\n` (content intact, escaping mangled in transit); genuinely malformed
+JSON is still rejected loudly.
+
+### Persisted fields added
+
+| Field | Source | Note |
+|---|---|---|
+| `accounting_document_status_code` | `status` (raw int) | Morning's real axis is open/closed |
+| `accounting_document_status_label` | Morning's own label | e.g. `מסמך סגור` — kept because mapping closed→"paid" is an interpretation that can be wrong for a proforma |
+| `accounting_document_payment_method` | `payment[].name` | `העברה בנקאית` / `מזומן` / … |
+
+### Existing fields reused (no new field)
+
+- `bank_number` / `bank_branch` / `bank_account` ← `payment[].bankName/bankBranch/bankAccount`.
+  The `בנק`-only force-null is **lifted**; `הסכם` still forces them null.
+- **`txn_date`** ← `payment[].date` — it already means "the transaction/value date" and persists
+  to Events.csv's `תאריך_ביצוע`.
+- **`reference` / `reference_hint`** ← `linkedDocuments[0]`. The hint is code-generated and always
+  carries the linked number **and its Hebrew type name** (never the raw code); resolution happens
+  at capture time against the in-memory cache, writing the target's real `event_id` into
+  `reference`, else leaving `REFERENCE_PLACEHOLDER` **and stating the failure in the hint**.
+- `vat_status` — derived in code from `vat_amount`; a VAT-exempt document asserts neither
+  `כולל` nor `לא כולל` (both would be false) and records `לא צוין`.
+
+### Line items
+
+Only the **first** `income[]` entry is used, with a WARNING naming how many were dropped and for
+which document. A `400`/`קבלה` has no `income[]` at all and falls back to the document-level
+description.
+
+### `schema_version` 2 → 3
+
+Applies globally to every new write regardless of `source_type`. Pre-existing records are never
+retro-updated (the established rule).
+
+### Skipped deliberately (reviewed field-by-field, 2026-08-23)
+
+`amount_open` (volatile), `amount_excl_vat` + `vat_rate` (derivable), `vat_amount`, `issue_date`
+(matched the creation date on all 5 sampled types), `currency` (ILS-only today), `morning_id`
+(display number is the identity), `issued_by` (constant today). These are read from the payload
+where needed for derivation, just not persisted.

@@ -2,7 +2,7 @@
 
 **Feature ID**: 025-morning-sourced-ledger-events
 **Priority**: P2
-**Status**: Clarified — ready for `speckit.plan` (see Clarifications, 2026-08-20)
+**Status**: Implemented through Phase 9, running in `dev` (see Clarifications rounds 1-6). Acceptance (`billed`) tests and the Phase 9b all-read-tools widening still outstanding — see `tasks.md`.
 **Created**: July 28, 2026
 
 ---
@@ -291,6 +291,60 @@ with it - exactly the gap this spec should close.
   existing `reference`/`REFERENCE_PLACEHOLDER` mechanism was always designed
   for a later human/script resolution pass. Revisit as its own scoped
   change if/when the ledger needs it structurally.
+
+### Session 2026-08-23 (round 6 — Phase 9, full document capture, implemented)
+
+Design decisions taken with the user, then what actually happened when built.
+
+- **Q: Scope? → A:** Full document capture **extends Feature 025** (not a separate
+  Feature 026) — 025 does not ship until it lands.
+- **Q: Transport? → A:** MCP read tools gain a `format="json"` parameter; the
+  **default stays Hebrew prose**, so conversational output is byte-for-byte
+  unchanged. The model copies one JSON blob verbatim;
+  `LedgerEventManager` maps and derives everything in code. Scoped to the 2
+  sweep tools now, with **all read tools committed as a follow-up phase**
+  (`tasks.md` Phase 9b) — *"I want uniformity for the whole mcp server."*
+- **Q: Line items? → A:** Use only the **first** `income[]` entry; log a WARNING
+  naming how many were dropped, so a multi-line document is never silently
+  half-captured.
+- **Q: Which fields? → A:** All 13 candidates reviewed individually; **8
+  skipped** (derivable, constant, volatile or redundant). Two genuinely new
+  fields survived, plus three mapped onto fields that already existed — see
+  `tasks.md` Phase 9 for the table and the per-field reasoning.
+- **Q: Bank details? → A:** Lift the `בנק`-only force-null and **reuse**
+  `bank_number`/`bank_branch`/`bank_account`.
+- **User corrections that removed proposed fields** (both caught by the user,
+  not by the implementer — the same class of mistake twice):
+  - `payment[].date` is **`txn_date`**, a field that already means "the
+    transaction/value date", not a new `accounting_document_payment_date`.
+  - `linkedDocuments` maps onto the existing **`reference`/`reference_hint`**
+    mechanism, whose own docstring names the case ("the real prior event id
+    this event relates to (replaces, **cancels**, or otherwise references)") —
+    not new `linked_number`/`linked_type` fields.
+
+**What building it actually proved:**
+
+1. **The N+1 fan-out cannot be delegated to the model — and the prompt is not
+   the lever.** Structured bank details and `linkedDocuments` exist ONLY on the
+   single-document GET. `get_invoice_details`' own description was first fixed
+   (it scoped itself to status-change flows, which outranked every
+   instruction). Even then, asked to chain the calls, the model called
+   `list_invoices`, emitted two captures and **stopped — never once calling
+   `get_invoice_details`**. Resolution: the fan-out moved **server-side** into
+   `morning-mcp-app`, where it is deterministic code. One model call in,
+   complete documents out. *Generalisable lesson: when a flow needs N reliable
+   tool calls, put the loop in code, not in the prompt.*
+2. **A silent 17% data-loss bug.** One run persisted 15 of 18 documents with no
+   error: the model re-emitted the payload with **literal newlines** where
+   `json.dumps` had written `\n`, so `json.loads` rejected it. The source is
+   always valid and the content intact, so parsing now uses `strict=False`
+   (tolerating mangled whitespace escaping) while genuinely malformed JSON is
+   still rejected loudly.
+3. **Two more pre-existing dropped mappings**, both silently affecting every
+   caller, not just this feature: `Invoice.payments` was always `[]` (raw key
+   `payment`, no mapping — so `get_invoice_details`' "תשלומים:" block was dead
+   code that had never rendered for anyone), and `vat_amount` was mapped only
+   from `vatAmount` when real responses spell it `vat`.
 
 ## Resolved (was "Open Questions") — see `research.md`/`data-model.md`/`contracts/` for detail
 
