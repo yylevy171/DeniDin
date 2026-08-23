@@ -381,7 +381,43 @@ document, so future queries run against the ledger instead of the Morning MCP.
   reconciliation (its current status-change-only scoping is what made the model never call it).
 - `_DOCUMENT_TYPE_NAMES`: keep **only the 5 types actually seen** (user decision) — an unmapped
   type renders as a bare number, accepted.
-- Ledger field list: TBD (being decided field-by-field).
+
+**Ledger field list — decided field-by-field 2026-08-23 (all 13 candidates reviewed):**
+
+CAPTURE — 4 new fields:
+| Field | Source | Why |
+|---|---|---|
+| `accounting_document_status_code` | `status` (raw int) + Morning's own label | Guards the open/closed-vs-paid/unpaid mismatch — we map `מסמך סגור`→paid, but for a proforma "closed" may mean "converted to an invoice" |
+| `accounting_document_payment_method` | `payment[].name` | `העברה בנקאית`/`מזומן`/... — otherwise the bank fields appear with no indication of what payment they belong to |
+| `accounting_document_linked_number` | `linkedDocuments[].number` | Which document a credit note cancels (#70284 → #52203), structured rather than free text |
+| `accounting_document_linked_type` | `linkedDocuments[].type` | Whether the cancelled document was a tax invoice, receipt, etc. |
+
+CAPTURE — via EXISTING fields, no new field:
+- `bank_number`/`bank_branch`/`bank_account` ← `payment[].bankName/bankBranch/bankAccount`
+  (requires lifting the `בנק`-only force-null, already agreed).
+- **`txn_date` ← `payment[].date`** (user insight, 2026-08-23: *"is this not txn_date in the
+  ledger?"* — confirmed: `txn_date`'s own schema is "the actual calendar date this component's
+  content refers to… for `source_type=בנק`, the transaction/value date", persisting to Events.csv's
+  `תאריך_ביצוע`. A Morning payment date is the same concept.) Add a third case to `txn_date`'s
+  tool description for `source_type=חשבונית`. Formats already align: Morning gives ISO
+  `YYYY-MM-DD`, which `_normalize_iso_date` converts to `DD/MM/YYYY`.
+- `vat_status` — still **derived in code** from the JSON's `vat`/`amountExcludeVat`/`amount` at
+  capture time. Unaffected by skipping the VAT fields below: we read them from the payload without
+  persisting them.
+
+SKIP — 8 candidates, deliberately not captured:
+`amount_open` (volatile snapshot), `amount_excl_vat` + `vat_rate` (derivable), `vat_amount`,
+`issue_date` (matched the creation date on all 5 samples), `currency` (ILS-only today),
+`morning_id` (strictest reading of "display number, never the internal id"), `issued_by`
+(constant today).
+
+**Note for the record**: this is a leaner set than the opening goal ("capture as much as
+possible") implied — 4 new fields rather than 13. The skips are coherent (derivable, constant,
+volatile, or redundant), but since a skipped field cannot be backfilled once a document is
+captured, it is worth a deliberate second look before implementation begins rather than after.
+
+**Reverses the round-5 deferral**: credit-note linkage IS now captured structurally
+(`linked_number`/`linked_type`), superseding "leave as-is for now".
 
 ### Phase 9a — the 2 sweep tools
 
