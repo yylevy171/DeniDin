@@ -63,6 +63,9 @@ CSV_MAPPED_FIELDS = {
     "due_date", "accounting_document_display_number",
     "accounting_document_type", "accounting_document_status",
     "accounting_document_creation_date",
+    # Feature 025 Phase 9 (2026-08-23)
+    "accounting_document_status_code", "accounting_document_status_label",
+    "accounting_document_payment_method",
 }
 # raw_message_excerpt removed (Feature 043, 2026-08-18): the ledger event's own
 # message_id/session_id pointer is now sufficient - the source content lives on
@@ -925,7 +928,7 @@ class TestSchemaVersion:
         data = _read(temp_events_dir, event_id)
         assert data["schema_version"] == CURRENT_SCHEMA_VERSION
 
-    def test_current_schema_version_is_2(self):
+    def test_current_schema_version_is_3(self):
         """Feature 025 (2026-08-20, per spec.md's Clarifications - schema-version
         bump used INSTEAD of a config.feature_flags gate): bumped 1->2, applying
         globally to every new write regardless of source_type (הסכם/בנק included,
@@ -934,9 +937,9 @@ class TestSchemaVersion:
         below."""
         from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
 
-        assert CURRENT_SCHEMA_VERSION == 2
+        assert CURRENT_SCHEMA_VERSION == 3
 
-    def test_add_ledger_event_also_stamps_v2_for_non_accounting_source_types(
+    def test_add_ledger_event_also_stamps_current_version_for_non_accounting_source_types(
         self, manager, temp_events_dir
     ):
         """The schema_version bump is global, not per-source_type - a plain
@@ -946,7 +949,7 @@ class TestSchemaVersion:
             session_id="s", event=dict(SAMPLE_EVENT),
             message_id="m", message_timestamp=FIXED_TS,
         )
-        assert _read(temp_events_dir, event_id)["schema_version"] == 2
+        assert _read(temp_events_dir, event_id)["schema_version"] == 3
 
     def test_add_ledger_events_from_call_also_stamps_schema_version(self, manager, temp_events_dir):
         from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
@@ -1264,28 +1267,35 @@ class TestApplyReviewAnswer:
 ACCOUNTING_DOC_TS = int(datetime(2026, 7, 28, 15, 6, 0, tzinfo=timezone.utc).timestamp())
 # 2026-07-28T15:06:00 UTC -> Asia/Jerusalem local (UTC+3) -> 2026-07-28 18:06 local
 
-SAMPLE_ACCOUNTING_EVENT = {
-    "source_type": "חשבונית",
-    "event_subtype": "הפקה",
-    "client_name": "לקוח בדיקה",
-    "payer_name": None,
-    "description": "חשבונית מס 100",
-    "amount": "1,000₪",
-    "percent": None,
-    "percent_base": None,
-    "hours": None,
-    "hourly_rate": None,
-    "txn_date": None,
-    "vat_status": "כולל",
-    "trigger_condition": None,
-    "reference_hint": None,
-    "agreement_label": None,
-    "component_label": None,
-    "accounting_document_display_number": "40406",
-    "accounting_document_type": "חשבונית מס",
-    "accounting_document_status": "שולם",
-    "accounting_document_creation_date": "2026-07-28T18:06:00",
+# Phase 9 (2026-08-23): a חשבונית capture now arrives as ONE verbatim-copied
+# JSON blob from morning-mcp-app, not as flat AI-transcribed fields. These
+# helpers keep every pre-Phase-9 test below exercising the SAME behaviour
+# (forced-null rules, dedup, cache, pruning) through the new input shape.
+_SAMPLE_DOC = {
+    "display_number": "40406",
+    "internal_morning_id": "056ee93c-77ab-4d87-a170-d357988e876c",
+    "type": 305, "type_name": "חשבונית מס",
+    "status": "paid", "status_code": 1, "status_label": "מסמך סגור",
+    "client_name": "לקוח בדיקה", "description": "חשבונית מס 100",
+    "amount": 1000, "amount_excl_vat": 1000, "vat_amount": 180, "vat_rate": 0.18,
+    "currency": "ILS", "document_date": "2026-07-28", "due_date": None,
+    "creation_date": "2026-07-28T18:06:00+03:00",
+    "payment": None, "linked_document": None,
 }
+
+
+def _accounting_event(**doc_overrides):
+    """A חשבונית capture in its Phase 9 shape. Overrides apply to the DOCUMENT
+    JSON (e.g. display_number=..., creation_date=...), not to flat event keys."""
+    doc = dict(_SAMPLE_DOC, **doc_overrides)
+    return {
+        "source_type": "חשבונית",
+        "event_subtype": "הפקה",
+        "accounting_document_json": json.dumps(doc, ensure_ascii=False),
+    }
+
+
+SAMPLE_ACCOUNTING_EVENT = _accounting_event()
 
 ACCOUNTING_DOCUMENT_FIELDS = [
     "accounting_document_display_number",
@@ -1304,10 +1314,7 @@ NON_APPLICABLE_FIELDS_FOR_ACCOUNTING_DOCUMENT = [
 ]
 
 
-def _accounting_event(**overrides):
-    """Helper: SAMPLE_ACCOUNTING_EVENT with overrides, for tests that need a
-    distinct accounting_document_display_number/_creation_date pair."""
-    return dict(SAMPLE_ACCOUNTING_EVENT, **overrides)
+
 
 
 class TestAccountingDocumentFields:
@@ -1445,10 +1452,10 @@ class TestScanAccountingDocuments:
             session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
             message_id="m1", message_timestamp=ACCOUNTING_DOC_TS,
         )
-        later_ts = int(datetime(2026, 7, 29, 6, 0, 0, tzinfo=timezone.utc).timestamp())
         manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
-            message_id="m2", message_timestamp=later_ts,
+            session_id="s",
+            event=_accounting_event(creation_date="2026-07-29T09:00:00+03:00"),
+            message_id="m2", message_timestamp=None,
         )
         result = manager.scan_accounting_documents()
         assert len(result["40406"]) == 2
@@ -1559,12 +1566,11 @@ class TestAccountingDocumentTriState:
             session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
             message_id="m1", message_timestamp=ACCOUNTING_DOC_TS,
         )
-        later_ts = int(datetime(2026, 7, 29, 6, 0, 0, tzinfo=timezone.utc).timestamp())
-
         with caplog.at_level(logging.WARNING):
             second_id = manager.add_ledger_event(
-                session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
-                message_id="m2", message_timestamp=later_ts,
+                session_id="s",
+                event=_accounting_event(creation_date="2026-07-29T09:00:00+03:00"),
+                message_id="m2", message_timestamp=None,
             )
 
         assert second_id is not None
@@ -1605,10 +1611,10 @@ class TestPruneAccountingDocumentCache:
     days total) before `now`, per data-model.md's "Pruning" note."""
 
     def test_entry_older_than_boundary_is_dropped(self, manager):
-        old_ts = int(datetime(2026, 7, 1, 12, 0, 0, tzinfo=timezone.utc).timestamp())
         manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
-            message_id="m", message_timestamp=old_ts,
+            session_id="s",
+            event=_accounting_event(creation_date="2026-07-01T15:00:00+03:00"),
+            message_id="m", message_timestamp=None,
         )
         now = datetime(2026, 8, 1, 12, 0, 0, tzinfo=timezone.utc)  # 31 days later
 
@@ -1629,3 +1635,334 @@ class TestPruneAccountingDocumentCache:
 
     def test_empty_cache_is_a_no_op(self, manager):
         manager.prune_accounting_document_cache()  # must not raise
+
+
+# ============================================================================
+# Feature 025 Phase 9: capture driven by morning-mcp-app's machine-readable
+# JSON instead of AI-transcribed prose fields.
+#
+# The model copies one JSON blob verbatim; ALL mapping and derivation happens
+# here in code. Payload shape below is real - captured from the dev sandbox
+# 2026-08-23 (see specs/.../artifacts/v0/morning_raw_all18.json).
+# ============================================================================
+
+ACCOUNTING_DOC_JSON = {
+    "display_number": "40406",
+    "internal_morning_id": "056ee93c-77ab-4d87-a170-d357988e876c",
+    "type": 300,
+    "type_name": "חשבון עסקה",
+    "status": "paid",
+    "status_code": 2,
+    "status_label": "מסמך סומן ידנית כסגור",
+    "client_name": "נאדר קרא",
+    "description": "תחזוקה",
+    "amount": 51.92,
+    "amount_excl_vat": 44,
+    "vat_amount": 7.92,
+    "vat_rate": 0.18,
+    "currency": "ILS",
+    "document_date": "2026-08-20",
+    "due_date": None,
+    "creation_date": "2026-08-20T18:52:48+03:00",
+    "payment": None,
+    "linked_document": None,
+}
+
+BANK_PAYMENT_JSON = {
+    "method": "העברה בנקאית", "type": 4, "date": "2026-07-12", "amount": 1500,
+    "bank_number": "31", "bank_branch": "109", "bank_account": "105542585",
+}
+
+
+def _json_event(**doc_overrides):
+    """A capture_ledger_event call as the sweep now makes it: the model sets
+    source_type/event_subtype and pastes the document JSON verbatim."""
+    doc = dict(ACCOUNTING_DOC_JSON, **doc_overrides)
+    return {
+        "source_type": "חשבונית",
+        "event_subtype": "הפקה",
+        "accounting_document_json": json.dumps(doc, ensure_ascii=False),
+    }
+
+
+class TestAccountingDocumentJsonCapture:
+    """Phase 9: every persisted value is derived in code from the JSON."""
+
+    def test_core_fields_derived_from_json_not_from_ai_fields(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation", event=_json_event(),
+            message_id=None, message_timestamp=None,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["accounting_document_display_number"] == "40406"
+        assert data["accounting_document_type"] == "חשבון עסקה"
+        assert data["client_name"] == "נאדר קרא"
+        assert data["description"] == "תחזוקה"
+        assert data["amount"] == 52  # normalized to int NIS by existing code
+
+    def test_creation_timestamp_comes_from_json_with_real_time(self, manager, temp_events_dir):
+        """The whole point of Phase 9's predecessor: never a fabricated 00:00."""
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation", event=_json_event(),
+            message_id=None, message_timestamp=None,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["accounting_document_creation_date"] == "20/08/2026 18:52"
+        assert data["event_datetime"] == "20/08/2026 18:52"
+        assert event_id.startswith("H2008261852")
+
+    def test_status_keeps_canonical_hebrew_plus_morning_raw_code_and_label(
+        self, manager, temp_events_dir
+    ):
+        """Morning's axis is open/closed, not paid/unpaid - keep its literal
+        words alongside our interpretation so the real value is never lost."""
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation", event=_json_event(),
+            message_id=None, message_timestamp=None,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["accounting_document_status"] == "שולם"
+        assert data["accounting_document_status_code"] == 2
+        assert data["accounting_document_status_label"] == "מסמך סומן ידנית כסגור"
+
+    def test_payment_method_and_bank_details_captured(self, manager, temp_events_dir):
+        """Bank fields were force-nulled for anything but source_type=בנק until
+        Phase 9 lifted that (user decision, 2026-08-23)."""
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation",
+            event=_json_event(payment=BANK_PAYMENT_JSON),
+            message_id=None, message_timestamp=None,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["accounting_document_payment_method"] == "העברה בנקאית"
+        assert data["bank_number"] == "31"
+        assert data["bank_branch"] == "109"
+        assert data["bank_account"] == "105542585"
+
+    def test_payment_date_maps_onto_the_existing_txn_date_field(self, manager, temp_events_dir):
+        """User's catch: this is txn_date - "the transaction/value date" - not a
+        new field. Real case: payment dated 12/07 on a document created 20/08."""
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation",
+            event=_json_event(payment=BANK_PAYMENT_JSON),
+            message_id=None, message_timestamp=None,
+        )
+        assert _read(temp_events_dir, event_id)["txn_date"] == "12/07/2026"
+
+    def test_bank_fields_stay_null_when_payment_is_cash(self, manager, temp_events_dir):
+        cash = {"method": "מזומן", "type": 1, "date": "2026-08-20", "amount": 500,
+                "bank_number": None, "bank_branch": None, "bank_account": None}
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation", event=_json_event(payment=cash),
+            message_id=None, message_timestamp=None,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["accounting_document_payment_method"] == "מזומן"
+        assert data["bank_number"] is None
+
+    def test_vat_status_derived_in_code_not_asked_of_the_model(self, manager, temp_events_dir):
+        with_vat = manager.add_ledger_event(
+            session_id="accounting-reconciliation", event=_json_event(),
+            message_id=None, message_timestamp=None,
+        )
+        assert _read(temp_events_dir, with_vat)["vat_status"] == "כולל"
+
+    def test_vat_status_is_not_asserted_when_document_has_no_vat(self, manager, temp_events_dir):
+        """A VAT-exempt document is neither inclusive nor exclusive - saying
+        either would assert something false."""
+        exempt = manager.add_ledger_event(
+            session_id="accounting-reconciliation",
+            event=_json_event(display_number="52204", vat_amount=0, amount_excl_vat=62, amount=62),
+            message_id=None, message_timestamp=None,
+        )
+        assert _read(temp_events_dir, exempt)["vat_status"] == "לא צוין"
+
+    def test_schema_version_is_3(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation", event=_json_event(),
+            message_id=None, message_timestamp=None,
+        )
+        assert _read(temp_events_dir, event_id)["schema_version"] == 3
+
+    def test_malformed_json_is_rejected_and_logged_never_half_persisted(self, manager, caplog):
+        event = {"source_type": "חשבונית", "event_subtype": "הפקה",
+                 "accounting_document_json": "{not valid json"}
+        with caplog.at_level(logging.ERROR):
+            result = manager.add_ledger_event(
+                session_id="accounting-reconciliation", event=event,
+                message_id=None, message_timestamp=None,
+            )
+        assert result is None
+        assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+
+class TestAccountingDocumentLinkage:
+    """Phase 9: linked documents map onto the EXISTING reference/reference_hint
+    mechanism (user correction) - no linked_number/linked_type fields."""
+
+    LINKED = {"number": "52203", "type": 305, "type_name": "חשבונית מס"}
+
+    def test_reference_hint_always_written_with_number_and_hebrew_type(
+        self, manager, temp_events_dir
+    ):
+        """Must carry everything known, with the type in Hebrew - never the
+        raw 305 (user decision)."""
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation",
+            event=_json_event(display_number="70284", linked_document=self.LINKED),
+            message_id=None, message_timestamp=None,
+        )
+        hint = _read(temp_events_dir, event_id)["reference_hint"]
+        assert "52203" in hint
+        assert "חשבונית מס" in hint
+        assert "305" not in hint
+
+    def test_reference_resolves_to_the_real_event_id_when_target_already_captured(
+        self, manager, temp_events_dir
+    ):
+        target_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation", event=_json_event(display_number="52203"),
+            message_id=None, message_timestamp=None,
+        )
+        credit_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation",
+            event=_json_event(display_number="70284", linked_document=self.LINKED,
+                              creation_date="2026-08-20T01:57:00+03:00"),
+            message_id=None, message_timestamp=None,
+        )
+        assert _read(temp_events_dir, credit_id)["reference"] == target_id
+
+    def test_unresolved_link_keeps_placeholder_and_notes_the_failure_in_the_hint(
+        self, manager, temp_events_dir
+    ):
+        """Expected to be common: the list is newest-first, so a credit note is
+        often captured before the document it cancels."""
+        from src.managers.ledger_event_manager import REFERENCE_PLACEHOLDER
+
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation",
+            event=_json_event(display_number="70284", linked_document=self.LINKED),
+            message_id=None, message_timestamp=None,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["reference"] == REFERENCE_PLACEHOLDER
+        assert "52203" in data["reference_hint"]
+        assert "לא אותר" in data["reference_hint"]   # failure noted, per user
+
+    def test_no_linked_document_leaves_reference_fields_null(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation", event=_json_event(),
+            message_id=None, message_timestamp=None,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["reference"] is None
+        assert data["reference_hint"] is None
+
+
+class TestAccountingDocumentLineItems:
+    """Phase 9 (user decision, 2026-08-23): "use only the 1st. log and warn if
+    the array has more elements" - a multi-line document must never be
+    silently half-captured."""
+
+    def test_single_line_item_used_without_warning(self, manager, temp_events_dir, caplog):
+        with caplog.at_level(logging.WARNING):
+            event_id = manager.add_ledger_event(
+                session_id="accounting-reconciliation",
+                event=_accounting_event(line_items=[
+                    {"description": "ייעוץ", "quantity": 1, "price": 1000, "amount": 1000},
+                ]),
+                message_id=None, message_timestamp=None,
+            )
+        assert _read(temp_events_dir, event_id)["description"] == "ייעוץ"
+        assert not any("line item" in r.message.lower() for r in caplog.records)
+
+    def test_multiple_line_items_uses_the_first_and_warns(
+        self, manager, temp_events_dir, caplog
+    ):
+        with caplog.at_level(logging.WARNING):
+            event_id = manager.add_ledger_event(
+                session_id="accounting-reconciliation",
+                event=_accounting_event(line_items=[
+                    {"description": "ייעוץ", "quantity": 1, "price": 1000, "amount": 1000},
+                    {"description": "נסיעות", "quantity": 1, "price": 250, "amount": 250},
+                    {"description": "צילומים", "quantity": 1, "price": 50, "amount": 50},
+                ]),
+                message_id=None, message_timestamp=None,
+            )
+        data = _read(temp_events_dir, event_id)
+        assert data["description"] == "ייעוץ"          # first only
+        warnings = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("3" in m and "40406" in m for m in warnings), (
+            "the warning must name how many line items were dropped, and for which document"
+        )
+
+    def test_no_line_items_falls_back_to_document_level_description(
+        self, manager, temp_events_dir
+    ):
+        """A 400/קבלה genuinely has no income[] at all."""
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation",
+            event=_accounting_event(line_items=[], description="שרותי גרירה"),
+            message_id=None, message_timestamp=None,
+        )
+        assert _read(temp_events_dir, event_id)["description"] == "שרותי גרירה"
+
+
+class TestAccountingDocumentEmptyComponents:
+    """Phase 9: the sweep sends component_count=0/components=[] because the JSON
+    payload carries everything - that must NOT trigger REQ-DATA-008's
+    "AI capture returned zero components" fallback record, which is meant for a
+    genuinely failed conversational capture."""
+
+    def test_empty_components_is_normal_for_an_accounting_document(
+        self, manager, temp_events_dir, caplog
+    ):
+        call_args = dict(_accounting_event(), component_count=0, components=[])
+        with caplog.at_level(logging.ERROR):
+            event_ids = manager.add_ledger_events_from_call(
+                session_id="accounting-reconciliation", call_arguments=call_args,
+                message_id=None, message_timestamp=None,
+            )
+        assert len(event_ids) == 1
+        data = _read(temp_events_dir, event_ids[0])
+        assert data["accounting_document_display_number"] == "40406"
+        assert "needs manual review" not in (data["description"] or "")
+        assert not any(r.levelno == logging.ERROR for r in caplog.records)
+
+
+class TestAccountingDocumentJsonRobustness:
+    """Real live finding (2026-08-23): 3 of 18 documents were silently lost
+    because the MODEL introduced literal control characters (newlines) while
+    copying the JSON - the source payload from morning-mcp-app is always valid,
+    json.dumps escapes newlines as \\n, but the copy came back with real ones.
+    Tolerating that is correct: the content is intact, only the whitespace
+    escaping was mangled in transit."""
+
+    def test_literal_newlines_inside_the_copied_json_are_tolerated(
+        self, manager, temp_events_dir
+    ):
+        doc = dict(_SAMPLE_DOC, description="ייעוץ\nמשפטי")
+        mangled = json.dumps(doc, ensure_ascii=False).replace("\\n", "\n")  # model's mistake
+        event = {"source_type": "חשבונית", "event_subtype": "הפקה",
+                 "accounting_document_json": mangled}
+
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation", event=event,
+            message_id=None, message_timestamp=None,
+        )
+
+        assert event_id is not None, "a mangled-whitespace copy must not lose the document"
+        assert _read(temp_events_dir, event_id)["accounting_document_display_number"] == "40406"
+
+    def test_genuinely_broken_json_is_still_rejected(self, manager, caplog):
+        """Tolerance is limited to whitespace escaping - real corruption must
+        still fail loudly rather than persist a half-read document."""
+        event = {"source_type": "חשבונית", "event_subtype": "הפקה",
+                 "accounting_document_json": '{"display_number": "40406", "type"'}
+        with caplog.at_level(logging.ERROR):
+            result = manager.add_ledger_event(
+                session_id="accounting-reconciliation", event=event,
+                message_id=None, message_timestamp=None,
+            )
+        assert result is None
+        assert any(r.levelno == logging.ERROR for r in caplog.records)

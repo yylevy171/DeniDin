@@ -592,36 +592,15 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                 "type": ["string", "null"],
                 "description": "The bank account number, only for source_type=בנק, always null for הסכם.",
             },
-            "accounting_document_display_number": {
+            "accounting_document_json": {
                 "type": ["string", "null"],
                 "description": (
-                    "Only for source_type=חשבונית: the Morning document's user-facing "
-                    "display number (never Morning's internal id), copied verbatim from "
-                    "the structured document data you were given. ALWAYS null for הסכם/בנק."
-                ),
-            },
-            "accounting_document_type": {
-                "type": ["string", "null"],
-                "description": (
-                    "Only for source_type=חשבונית: the document's type label (e.g. "
-                    "חשבונית מס, קבלה, חשבונית זיכוי), copied verbatim from the structured "
-                    "document data you were given. ALWAYS null for הסכם/בנק."
-                ),
-            },
-            "accounting_document_status": {
-                "type": ["string", "null"],
-                "description": (
-                    "Only for source_type=חשבונית: the document's status, copied verbatim "
-                    "from the structured document data you were given. ALWAYS null for "
-                    "הסכם/בנק."
-                ),
-            },
-            "accounting_document_creation_date": {
-                "type": ["string", "null"],
-                "description": (
-                    "Only for source_type=חשבונית: the document's own real creation "
-                    "date+time (ISO-8601, e.g. 2026-08-20T18:52:48), copied verbatim from "
-                    "the structured document data you were given. ALWAYS null for הסכם/בנק."
+                    "Only for source_type=חשבונית: the document's ENTIRE JSON object, "
+                    "copied verbatim and unmodified from the tool output you were given "
+                    "(the whole {...} object for that one document, as a single string). "
+                    "Do not summarise it, reorder it, translate it, drop fields, or fill "
+                    "anything in yourself - every value is read out of this JSON by code. "
+                    "ALWAYS null for הסכם/בנק."
                 ),
             },
             "component_count": {
@@ -733,8 +712,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
         "required": [
             "source_type", "event_subtype", "client_name", "payer_name", "agreement_label",
             "reference_hint", "bank_number", "bank_branch", "bank_account",
-            "accounting_document_display_number", "accounting_document_type",
-            "accounting_document_status", "accounting_document_creation_date",
+            "accounting_document_json",
             "component_count", "components",
         ],
         "additionalProperties": False,

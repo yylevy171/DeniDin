@@ -3,6 +3,7 @@
 Real objects, no mocking. Covers T005 from
 specs/in-definition/005-mcp-morning-green-receipt/tasks.md.
 """
+import json
 from datetime import date
 
 import pytest
@@ -13,6 +14,7 @@ from denidin_mcp_morning.formatters import (
     format_date_il,
     format_invoice_confirmation,
     format_invoice_details,
+    format_invoice_json,
     format_invoice_list,
     format_name_not_resolved,
     format_original_not_linked_to_client,
@@ -377,3 +379,113 @@ def test_format_name_not_resolved_names_the_resolution_tool():
 
     assert "resolve_client_name" in message
     assert "name_resolved" in message
+
+
+# ============================================================================
+# Feature 025 Phase 9: machine-readable JSON output (format="json")
+#
+# Rationale (see specs/.../proposal-full-document-capture.md): the Hebrew prose
+# format is lossy and ambiguous for a machine consumer - "סכום: ₪51.92" hides
+# whether VAT is included, "18:52" has dropped the seconds, and an absent field
+# is simply not printed, so the model cannot tell "no VAT" from "VAT not shown"
+# and guesses (this is what produced a fabricated 00:00 timestamp in a real
+# live run). JSON carries native types and explicit nulls.
+#
+# The prose path is the DEFAULT and stays byte-for-byte unchanged - only the
+# reconciliation sweep opts in.
+# ============================================================================
+
+REAL_BANK_TRANSFER_PAYMENT_FX = {
+    "id": "c4c52171", "date": "2026-07-12", "type": 4, "price": 1500,
+    "bankName": "31", "bankBranch": "109", "bankAccount": "105542585",
+    "name": "העברה בנקאית", "description": "בנק 31 / סניף 109", "amount": 1500,
+}
+
+
+def _json_doc(**overrides):
+    base = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168,
+                description="תחזוקה", status=1)
+    base.update(overrides)
+    return json.loads(format_invoice_json(Invoice.model_validate(base)))
+
+
+def test_json_carries_native_types_not_formatted_strings():
+    """The core reason for this format: amount is a number, not '₪5,850.00'."""
+    doc = _json_doc()
+
+    assert isinstance(doc["amount"], (int, float))
+    assert not isinstance(doc["amount"], str)
+
+
+def test_json_carries_full_precision_creation_timestamp():
+    """The prose format drops seconds; ISO-8601 keeps them."""
+    doc = _json_doc()
+
+    assert doc["creation_date"].startswith("2026-08-20T18:52:48")
+
+
+def test_json_states_absent_fields_explicitly_as_null():
+    """The decisive property vs prose: a missing field is VISIBLE as null,
+    so the model never has to guess whether it was absent or just not shown."""
+    doc = _json_doc()
+
+    assert "payment" in doc
+    assert doc["payment"] is None
+
+
+def test_json_separates_vat_inclusive_and_exclusive_amounts():
+    """'סכום: ₪51.92' alone is ambiguous about VAT; JSON is not."""
+    doc = _json_doc(amount=51.92, amountExcludeVat=44, vat=7.92, vatRate=0.18)
+
+    assert doc["amount_excl_vat"] == 44
+    assert doc["vat_amount"] == 7.92
+    assert doc["vat_rate"] == 0.18
+
+
+def test_json_carries_both_canonical_status_and_morning_literal_label():
+    doc = _json_doc(status=1)
+
+    assert doc["status"] == "paid"              # our canonical interpretation
+    assert doc["status_label"] == "מסמך סגור"    # Morning's own words
+    assert doc["status_code"] == 1
+
+
+def test_json_carries_display_number_and_internal_id_separately():
+    doc = _json_doc()
+
+    assert doc["display_number"] == "INV-2026-001"
+    assert doc["internal_morning_id"] == "5f2c1a2b-0000-4c11-9a1a-abcdef123456"
+
+
+def test_json_carries_translated_document_type_name():
+    doc = _json_doc(type=305)
+
+    assert doc["type"] == 305
+    assert doc["type_name"] == "חשבונית מס"
+
+
+def test_json_payment_block_carries_structured_bank_fields():
+    doc = _json_doc(payment=[REAL_BANK_TRANSFER_PAYMENT_FX])
+
+    assert doc["payment"]["method"] == "העברה בנקאית"
+    assert doc["payment"]["date"] == "2026-07-12"
+    assert doc["payment"]["bank_number"] == "31"
+    assert doc["payment"]["bank_branch"] == "109"
+    assert doc["payment"]["bank_account"] == "105542585"
+
+
+def test_json_linked_document_carries_number_and_hebrew_type_name():
+    """morning-mcp-app owns the type table, so it translates here - denidin-app
+    never needs one (user decision, 2026-08-23)."""
+    doc = _json_doc(linkedDocuments=[{
+        "id": "442a5f51", "type": 305, "number": 52203,
+        "documentDate": "2026-08-20", "amount": 58, "currency": "ILS",
+    }])
+
+    assert doc["linked_document"]["number"] == "52203"
+    assert doc["linked_document"]["type"] == 305
+    assert doc["linked_document"]["type_name"] == "חשבונית מס"
+
+
+def test_json_linked_document_is_null_when_absent():
+    assert _json_doc()["linked_document"] is None

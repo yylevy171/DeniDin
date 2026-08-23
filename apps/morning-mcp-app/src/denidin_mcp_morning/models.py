@@ -26,6 +26,22 @@ _MORNING_STATUS_CODES = {
     4: "cancelled",
 }
 
+# Morning's OWN literal status vocabulary, confirmed live against
+# GET /documents/statuses (2026-08-23). Deliberately kept separate from the
+# canonical paid/unpaid mapping above, which is an interpretation, not a
+# translation: Morning's real axis is open/closed, so "מסמך סגור" -> "paid" is
+# a simplification that can be wrong (for a חשבון עסקה/proforma, "closed"
+# plausibly means "converted to an invoice", not "paid"). Feature 025 Phase 9
+# records this literal label in the ledger alongside the derived one so the
+# real value is never lost.
+_MORNING_STATUS_LABELS = {
+    0: "מסמך פתוח",
+    1: "מסמך סגור",
+    2: "מסמך סומן ידנית כסגור",
+    3: "מסמך מבטל",
+    4: "מסמך שבוטל",
+}
+
 # Morning's real document type codes, confirmed live against GET
 # /documents/types (2026-07-21/22, bugfix-014) - display-only labels, not
 # used for any filtering/business-logic decision (that stays on the
@@ -88,14 +104,46 @@ class Client(BaseModel):
 
 
 class Payment(BaseModel):
-    """A single payment recorded against an invoice."""
+    """A single payment recorded against an invoice.
+
+    Reworked 2026-08-23 (Feature 025 Phase 9) after finding this model was
+    entirely unreachable: `Invoice.payments` had no mapping from the raw
+    `payment` key, and `invoice_id` was required even though the raw payment
+    object never carries one - so it would have failed validation even if the
+    mapping had existed. Field shapes below come from real dev-sandbox
+    payloads (a bank transfer and a cash payment), not from documentation.
+    """
 
     id: Optional[str] = None
-    invoice_id: str
+    # Optional (was required): the raw payment object has no invoice_id at all -
+    # it is nested inside its document, so the parent is implicit.
+    invoice_id: Optional[str] = None
     amount: float = Field(ge=0)
     currency: str = "ILS"
-    payment_date: date
-    method: Optional[str] = None
+    payment_date: Optional[date] = None
+    method: Optional[str] = None          # raw `name`, e.g. "העברה בנקאית" / "מזומן"
+    payment_type: Optional[int] = None    # raw `type`, per GET /payments/types
+    status: Optional[int] = None
+    # Structured bank details - present ONLY on get_invoice_details' response;
+    # /documents/search carries the same information merely concatenated into a
+    # Hebrew string in the payment's own `description`.
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    bank_account: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _map_morning_payment_shape(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        mapped: Dict[str, Any] = dict(data)
+        mapped.setdefault("payment_date", data.get("date"))
+        mapped.setdefault("method", data.get("name"))
+        mapped.setdefault("payment_type", data.get("type"))
+        mapped.setdefault("bank_name", data.get("bankName"))
+        mapped.setdefault("bank_branch", data.get("bankBranch"))
+        mapped.setdefault("bank_account", data.get("bankAccount"))
+        return mapped
 
 
 class LinkedDocument(BaseModel):
@@ -147,6 +195,11 @@ class Invoice(BaseModel):
     amount: float = Field(ge=0)
     total_amount: Optional[float] = None
     vat_amount: Optional[float] = None
+    # Feature 025 Phase 9: exposed so denidin-app can DERIVE vat_status in code
+    # rather than asking the model. Not persisted to the ledger themselves
+    # (user decision, 2026-08-23) - read from the payload, then discarded.
+    amount_excl_vat: Optional[float] = None
+    vat_rate: Optional[float] = None
     issue_date: Optional[date] = None
     due_date: Optional[date] = None
     # denidin-app's Feature 025 (Morning-Sourced Ledger Events): the real
@@ -161,7 +214,16 @@ class Invoice(BaseModel):
     # surface it at all. Distinct from income[].description (per-line-item).
     description: Optional[str] = None
     status: Optional[str] = None
+    # Feature 025 Phase 9: Morning's raw status int and its OWN literal label,
+    # kept alongside `status`'s canonical paid/unpaid interpretation - see
+    # _MORNING_STATUS_LABELS for why the two are not the same thing.
+    status_code: Optional[int] = None
+    status_label: Optional[str] = None
     payments: List[Payment] = Field(default_factory=list)
+    # Raw Morning line items (`income`), passed through as-is: denidin-app's
+    # ledger takes only the first and warns if there are more (user decision,
+    # 2026-08-23), which requires seeing the whole array.
+    income: List[Dict[str, Any]] = Field(default_factory=list)
     linked_documents: List[LinkedDocument] = Field(default_factory=list)
     pdf_url: Optional[str] = None
 
@@ -209,6 +271,19 @@ class Invoice(BaseModel):
         # existing callers/tests using that shape keep working.
         if "issue_date" not in mapped and ("documentDate" in data or "date" in data):
             mapped["issue_date"] = data.get("documentDate") or data.get("date")
+        # Feature 025 Phase 9: raw payment array -> payments. The raw key is
+        # `payment` (singular); without this the field was silently always []
+        # for every caller (a real, long-standing bug - see Payment's docstring).
+        if "payments" not in mapped and isinstance(data.get("payment"), list):
+            mapped["payments"] = data["payment"]
+
+        # Morning's raw status int + its own literal label, preserved alongside
+        # the canonical paid/unpaid interpretation `status` carries.
+        raw_status = data.get("status")
+        if isinstance(raw_status, int):
+            mapped.setdefault("status_code", raw_status)
+            mapped.setdefault("status_label", _MORNING_STATUS_LABELS.get(raw_status))
+
         if "creation_timestamp" not in mapped and "creationDate" in data and data["creationDate"] is not None:
             # Real API sends a Unix epoch int (confirmed live 2026-08-21) - Pydantic
             # parses an int/float datetime field as seconds-since-epoch automatically.
@@ -217,8 +292,16 @@ class Invoice(BaseModel):
             mapped["due_date"] = data["dueDate"]
         if "total_amount" not in mapped and "total" in data:
             mapped["total_amount"] = data["total"]
-        if "vat_amount" not in mapped and "vatAmount" in data:
-            mapped["vat_amount"] = data["vatAmount"]
+        # Real /documents(/search) responses spell this `vat`, not `vatAmount`
+        # (live-confirmed 2026-08-23) - the vatAmount-only mapping meant
+        # vat_amount was silently None for every real document. Prefer the real
+        # key, keep vatAmount as a fallback for existing fixtures/callers.
+        if "vat_amount" not in mapped and ("vat" in data or "vatAmount" in data):
+            mapped["vat_amount"] = data.get("vat", data.get("vatAmount"))
+        if "amount_excl_vat" not in mapped and "amountExcludeVat" in data:
+            mapped["amount_excl_vat"] = data["amountExcludeVat"]
+        if "vat_rate" not in mapped and "vatRate" in data:
+            mapped["vat_rate"] = data["vatRate"]
 
         # Real GET /documents/{id} responses include a `linkedDocuments` array
         # (confirmed live, bugfix-014) - completely absent from

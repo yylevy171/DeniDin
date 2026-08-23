@@ -294,3 +294,147 @@ def test_list_invoices_no_truncation_when_reply_fits_comfortably_within_budget()
 
     assert result.count("חשבונית #") == len(numbers)
     assert "מתוך" not in result  # untruncated reply uses the simple count line, not "shown X of Y"
+
+
+# ============================================================================
+# Feature 025 Phase 9: output_format
+# ============================================================================
+
+def test_list_invoices_defaults_to_hebrew_prose_unchanged():
+    """The default path MUST stay byte-for-byte what conversations get today -
+    only the reconciliation sweep opts into JSON."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+
+    class _StubClient:
+        def list_invoices(self, params=None):
+            return {"total": 1, "page": 1, "pages": 1, "items": [{
+                "id": "abc", "number": 40406, "type": 300, "status": 1,
+                "client": {"id": "c1", "name": "נאדר קרא"},
+                "documentDate": "2026-08-20", "creationDate": 1787241168,
+                "description": "תחזוקה", "amount": 51.92,
+            }]}
+
+    text = _tools.list_invoices(_StubClient(), from_date="2026-08-20")
+    assert "חשבונית #40406" in text
+    with pytest.raises(_json.JSONDecodeError):
+        _json.loads(text)
+
+
+def test_list_invoices_json_format_returns_parseable_machine_output():
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+
+    class _StubClient:
+        def list_invoices(self, params=None):
+            return {"total": 1, "page": 1, "pages": 1, "items": [{
+                "id": "abc", "number": 40406, "type": 300, "status": 1,
+                "client": {"id": "c1", "name": "נאדר קרא"},
+                "documentDate": "2026-08-20", "creationDate": 1787241168,
+                "description": "תחזוקה", "amount": 51.92,
+            }]}
+
+    payload = _json.loads(_tools.list_invoices(
+        _StubClient(), from_date="2026-08-20", output_format="json"))
+
+    assert payload["total_matched"] == 1
+    doc = payload["documents"][0]
+    assert doc["display_number"] == "40406"
+    assert doc["status_label"] == "מסמך סגור"
+    assert doc["creation_date"].startswith("2026-08-20T18:52:48")
+
+
+def test_list_invoices_json_is_not_token_budget_truncated():
+    """A reconciliation consumer needs EVERY match - the prose path's token
+    budget (which silently showed 8 of 18 real documents) must not apply."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+
+    many = [{
+        "id": f"id-{i}", "number": 40000 + i, "type": 300, "status": 1,
+        "client": {"id": "c1", "name": "לקוח ארוך שם מאוד לצורך בדיקה"},
+        "documentDate": "2026-08-20", "creationDate": 1787241168,
+        "description": "תיאור ארוך מאוד כדי לצרוך תקציב טוקנים" * 5,
+        "amount": 100.0,
+    } for i in range(40)]
+
+    class _StubClient:
+        def list_invoices(self, params=None):
+            return {"total": len(many), "page": 1, "pages": 1, "items": many}
+
+    payload = _json.loads(_tools.list_invoices(
+        _StubClient(), from_date="2026-08-20", output_format="json", token_budget=50))
+
+    assert payload["total_matched"] == 40
+    assert len(payload["documents"]) == 40
+
+
+def test_list_invoices_json_fans_out_to_full_details_server_side():
+    """Feature 025 Phase 9 (2026-08-23): structured bank details and
+    linkedDocuments exist ONLY on the single-document GET. Asking the MODEL to
+    chain those N calls proved unreliable - across live trials it called
+    list_invoices, emitted a couple of captures, and stopped, never making a
+    single get_invoice_details call (even after that tool's misleading
+    description was fixed).
+
+    So the fan-out moves server-side, where it is deterministic code rather
+    than model behaviour: one tool call in, complete documents out."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+
+    search_item = {
+        "id": "abc", "number": 60443, "type": 320, "status": 1,
+        "client": {"id": "c1", "name": "לקוח"}, "documentDate": "2026-08-20",
+        "creationDate": 1787178090, "description": "יועץ משפטי", "amount": 1500,
+        # search carries the bank info only as concatenated text
+        "payment": [{"date": "2026-07-12", "type": 4, "name": "העברה בנקאית",
+                     "description": "בנק 31 / סניף 109 / מס' חשבון 105542585", "amount": 1500}],
+    }
+    detail = dict(search_item, payment=[{
+        "date": "2026-07-12", "type": 4, "name": "העברה בנקאית", "amount": 1500,
+        "bankName": "31", "bankBranch": "109", "bankAccount": "105542585",
+    }], linkedDocuments=[{"id": "L1", "type": 305, "number": 52203,
+                          "documentDate": "2026-08-20", "amount": 1500}])
+
+    calls = {"get": 0}
+
+    class _StubClient:
+        def list_invoices(self, params=None):
+            return {"total": 1, "page": 1, "pages": 1, "items": [search_item]}
+        def get_invoice(self, invoice_id):
+            calls["get"] += 1
+            return detail
+
+    payload = _json.loads(_tools.list_invoices(
+        _StubClient(), from_date="2026-08-20", output_format="json"))
+
+    assert calls["get"] == 1, "one detail fetch per listed document"
+    doc = payload["documents"][0]
+    assert doc["payment"]["bank_number"] == "31"
+    assert doc["payment"]["bank_branch"] == "109"
+    assert doc["payment"]["bank_account"] == "105542585"
+    assert doc["linked_document"]["number"] == "52203"
+    assert doc["linked_document"]["type_name"] == "חשבונית מס"
+
+
+def test_list_invoices_json_survives_a_failing_detail_fetch():
+    """One unreachable document must not lose the whole sweep - fall back to
+    the search entry (complete except bank/linkage) and carry on."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+
+    item = {"id": "abc", "number": 40406, "type": 300, "status": 1,
+            "client": {"id": "c1", "name": "לקוח"}, "documentDate": "2026-08-20",
+            "creationDate": 1787241168, "description": "תחזוקה", "amount": 51.92}
+
+    class _StubClient:
+        def list_invoices(self, params=None):
+            return {"total": 1, "page": 1, "pages": 1, "items": [item]}
+        def get_invoice(self, invoice_id):
+            raise RuntimeError("boom")
+
+    payload = _json.loads(_tools.list_invoices(
+        _StubClient(), from_date="2026-08-20", output_format="json"))
+
+    assert len(payload["documents"]) == 1
+    assert payload["documents"][0]["display_number"] == "40406"

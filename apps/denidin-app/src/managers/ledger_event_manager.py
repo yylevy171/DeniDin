@@ -71,6 +71,12 @@ _ACCOUNTING_DOCUMENT_CACHE_RETENTION = timedelta(days=7)
 # one field/mechanism; the direction/multi-ref question itself stays open, deferred.
 REFERENCE_PLACEHOLDER = "צריך למצוא"
 
+# Canonical status vocabulary -> Hebrew, mirroring morning-mcp-app's own
+# formatters. Feature 025 Phase 9 keeps Morning's LITERAL label separately
+# (accounting_document_status_label) because the canonical mapping is an
+# interpretation: Morning's real axis is open/closed, not paid/unpaid.
+_STATUS_HE = {"paid": "שולם", "unpaid": "לא שולם", "cancelled": "בוטל", "overdue": "פג תוקף"}
+
 # Feature 043, US5: identifies which rule-set generation (LEDGER_EVENT_TOOL's schema +
 # this file's field-population rules) produced a given persisted record - bumped by
 # hand in the same commit as any future schema-affecting change. Written by both live
@@ -96,7 +102,7 @@ REFERENCE_PLACEHOLDER = "צריך למצוא"
 # config.feature_flags gate, this bump IS the gate): applies globally to every
 # new write regardless of source_type, not just חשבונית - הסכם/בנק captures get
 # schema_version=2 too, once this feature ships.
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 # Matches ש"ח / ש׳ח / שח (various quote-character renderings of "shekel chadash").
 _SHEKEL_WORD_RE = re.compile(r'ש["\'״]?ח')
@@ -216,6 +222,153 @@ def is_incomplete_capture(call_arguments: Dict) -> bool:
         return True
     component_count = call_arguments.get("component_count")
     return component_count is not None and len(components) != component_count
+
+
+
+def _parse_iso_local(raw: Optional[str]) -> Optional[datetime]:
+    """Feature 025 Phase 9: parse morning-mcp-app's ISO-8601 creation timestamp
+    into an aware Asia/Jerusalem datetime. Returns None (never guesses) if
+    absent or unparseable - the caller then falls back to its normal
+    message-timestamp path, which logs its own WARNING.
+
+    Python 3.9's fromisoformat is strict: it rejects a trailing "Z" (only
+    accepted from 3.11) and the space-separated variant, both of which a
+    real payload could plausibly carry."""
+    if not raw:
+        return None
+    text = raw.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    if len(text) >= 11 and text[10] == " ":
+        text = text[:10] + "T" + text[11:]
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        logger.warning(f"Could not parse accounting_document_creation_date={raw!r} as ISO-8601")
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=ISRAEL_TZ)
+    return parsed.astimezone(ISRAEL_TZ)
+
+
+def _expand_accounting_document_json(event: Dict) -> Optional[Dict]:
+    """Feature 025 Phase 9: turn morning-mcp-app's machine-readable document
+    JSON into the flat `event` shape add_ledger_event already expects.
+
+    The model's only job for a חשבונית capture is to copy this JSON verbatim
+    (see services/accounting_reconciliation_service.py's prompt) - every value
+    below is derived HERE, in code, never transcribed or interpreted by the
+    AI. That is the whole point: the prose-transcription approach it replaces
+    produced a fabricated 00:00 creation time and null amounts/descriptions in
+    real live runs.
+
+    Returns the expanded event dict, or None if the payload is missing or
+    unparseable (logged as ERROR - never half-persist a garbled document).
+    """
+    raw = event.get("accounting_document_json")
+    if not raw:
+        logger.error(
+            "חשבונית capture has no accounting_document_json payload - refusing to "
+            "persist rather than writing a half-empty record"
+        )
+        return None
+    try:
+        # strict=False tolerates literal control characters inside string
+        # values. Real live finding (2026-08-23): 3 of 18 documents were
+        # silently lost because the MODEL re-emitted the payload with real
+        # newlines where json.dumps had written \n escapes. The source from
+        # morning-mcp-app is always valid JSON, and the content is intact -
+        # only the whitespace escaping was mangled in transit, so rejecting it
+        # would discard a perfectly good document. Genuinely malformed JSON
+        # still raises and is rejected below.
+        doc = json.loads(raw, strict=False) if isinstance(raw, str) else dict(raw)
+    except (ValueError, TypeError) as e:
+        logger.error(f"Could not parse accounting_document_json ({e}): {raw!r}")
+        return None
+
+    expanded = dict(event)
+    expanded.pop("accounting_document_json", None)
+
+    payment = doc.get("payment") or {}
+    expanded.update({
+        "accounting_document_display_number": doc.get("display_number"),
+        "accounting_document_type": doc.get("type_name"),
+        "accounting_document_status": _STATUS_HE.get(doc.get("status"), doc.get("status")),
+        "accounting_document_status_code": doc.get("status_code"),
+        "accounting_document_status_label": doc.get("status_label"),
+        "accounting_document_creation_date": doc.get("creation_date"),
+        "accounting_document_payment_method": payment.get("method"),
+        "client_name": doc.get("client_name"),
+        "description": _first_line_item_description(doc),
+        # str(): the JSON carries a real number, but _normalize_amount (and the
+        # whole existing pipeline) is built for the AI's textual amounts and
+        # regex-matches its input. Stringifying here keeps one normalization
+        # path for every source rather than branching it.
+        "amount": None if doc.get("amount") is None else str(doc.get("amount")),
+        # User's catch (2026-08-23): a payment's value date IS txn_date - "the
+        # transaction/value date" the field already means for בנק - not a new
+        # field. Morning sends ISO YYYY-MM-DD, exactly what _normalize_iso_date
+        # expects.
+        "txn_date": payment.get("date"),
+        "bank_number": payment.get("bank_number"),
+        "bank_branch": payment.get("bank_branch"),
+        "bank_account": payment.get("bank_account"),
+        "vat_status": _derive_vat_status(doc),
+        "_linked_document": doc.get("linked_document"),
+    })
+    return expanded
+
+
+def _first_line_item_description(doc: Dict) -> Optional[str]:
+    """User decision (2026-08-23): "use only the 1st. log and warn if the array
+    has more elements" - a multi-line document must never be silently
+    half-captured, so the drop is loud rather than invisible.
+
+    Falls back to the document-level description when there are no line items
+    at all (a 400/קבלה genuinely has none)."""
+    lines = doc.get("line_items") or []
+    if len(lines) > 1:
+        logger.warning(
+            f"חשבונית {doc.get('display_number')}: document has {len(lines)} line items - "
+            f"capturing only the first ({lines[0].get('description')!r}); the remaining "
+            f"{len(lines) - 1} are NOT recorded in this ledger event"
+        )
+    if lines and lines[0].get("description"):
+        return lines[0]["description"]
+    return doc.get("description")
+
+
+def _derive_vat_status(doc: Dict) -> str:
+    """Derived in code, never asked of the model (same discipline as
+    _normalize_amount / בנק's forced vat_status).
+
+    A Morning document's `amount` is always the VAT-inclusive total, so a real
+    VAT component means the captured amount includes it. When VAT is zero
+    (an exempt document) neither "כולל" nor "לא כולל" is true, so we assert
+    neither rather than state something false."""
+    vat = doc.get("vat_amount")
+    if vat:
+        return "כולל"
+    return "לא צוין"
+
+
+def _format_linked_reference_hint(linked: Dict, resolved: bool) -> str:
+    """Feature 025 Phase 9 (user decision, 2026-08-23): the hint ALWAYS carries
+    everything known about the link - the linked document's number AND its type
+    translated to Hebrew (never the raw numeric code) - and, when resolution
+    failed, says so explicitly.
+
+    Code-generated, never AI-authored. A failed link is relationship metadata,
+    so it belongs here rather than in `description` (the component's own
+    content) - Phase 11 removed the old `notes` field and split its roles that
+    way."""
+    type_name = linked.get("type_name") or ""
+    number = linked.get("number")
+    label = f"{type_name} {number}".strip()
+    hint = f"מבטל/מתייחס למסמך {label}".strip()
+    if not resolved:
+        hint += " - לא אותר אירוע מתאים בליגר"
+    return hint
 
 
 class LedgerEventManager:
@@ -466,13 +619,26 @@ class LedgerEventManager:
         """
         event = dict(event)  # never mutate caller's dict
 
+        # Feature 025 Phase 9: a חשבונית capture arrives as ONE verbatim-copied
+        # JSON blob from morning-mcp-app; every field below is derived from it
+        # in code rather than transcribed by the model.
+        if event.get("source_type") == "חשבונית":
+            expanded = _expand_accounting_document_json(event)
+            if expanded is None:
+                return None
+            event = expanded
+
         # Phase 11 (schema v2->v1 reset, 2026-08-16): captured_at/event_datetime share
         # one human-readable convention (DD/MM/YYYY HH:MM) instead of ISO+offset -
         # message_timestamp/sender are no longer separately persisted at all (the
         # former is fully covered by event_datetime; the latter had no reader anywhere
         # - see data-model.md SS1b for the full real-data-grounded audit).
         captured_at = now_local().strftime("%d/%m/%Y %H:%M")
-        local_dt = self._resolve_local_dt(message_timestamp)
+        # Feature 025 Phase 9: a reconciliation capture has no source message -
+        # its event_datetime/event_id come from the document's OWN real creation
+        # instant, carried in the JSON payload with full precision.
+        accounting_created_dt = _parse_iso_local(event.get("accounting_document_creation_date"))
+        local_dt = accounting_created_dt or self._resolve_local_dt(message_timestamp)
 
         source_type = event.get("source_type")
         assert source_type is not None, "LEDGER_EVENT_TOOL's schema requires source_type"
@@ -593,7 +759,12 @@ class LedgerEventManager:
         # Bank details apply only to בנק - forced null for הסכם regardless of what the
         # caller/AI passed, same defensive discipline as component_label above (never
         # trust an inapplicable field to have been left blank on its own).
-        if source_type == "בנק":
+        # Feature 025 Phase 9 (user decision, 2026-08-23): the בנק-only
+        # restriction is LIFTED - a חשבונית document's own payment block carries
+        # the same real-world meaning (which bank account the money moved
+        # through), so it reuses these fields rather than duplicating them.
+        # הסכם still forces them null: no payment mechanics apply there.
+        if source_type in ("בנק", "חשבונית"):
             bank_number = event.get("bank_number")
             bank_branch = event.get("bank_branch")
             bank_account = event.get("bank_account")
@@ -644,6 +815,31 @@ class LedgerEventManager:
         # enforcement, not just prompt guidance, same reasoning as payer_name above).
         vat_status = "כולל" if source_type == "בנק" else event.get("vat_status")
 
+        # Feature 025 Phase 9: document linkage maps onto the EXISTING
+        # reference/reference_hint mechanism (user correction, 2026-08-23) -
+        # resolve_reference's own docstring names this exact case ("the real
+        # prior event id this event relates to (replaces, cancels, or otherwise
+        # references)"). Resolved at capture time only, against the in-memory
+        # cache; no end-of-sweep second pass.
+        linked_document = event.get("_linked_document")
+        if linked_document:
+            linked_number = str(linked_document.get("number") or "")
+            cache = self._ensure_accounting_document_cache()
+            entries = cache.get(linked_number) or []
+            resolved_event_id = max(entries, key=lambda e: e.timestamp).event_id if entries else None
+            reference = resolved_event_id or REFERENCE_PLACEHOLDER
+            reference_hint = _format_linked_reference_hint(
+                linked_document, resolved=resolved_event_id is not None
+            )
+            if resolved_event_id is None:
+                logger.warning(
+                    f"חשבונית {accounting_document_display_number}: linked document "
+                    f"{linked_number} is not in the ledger - reference left as "
+                    f"{REFERENCE_PLACEHOLDER!r} and the failure noted in reference_hint"
+                )
+        else:
+            reference_hint = event.get("reference_hint")
+
         record = {
             # CSV-mapped fields
             "event_id": event_id,
@@ -688,6 +884,19 @@ class LedgerEventManager:
             "accounting_document_creation_date": (
                 local_dt.strftime("%d/%m/%Y %H:%M") if source_type == "חשבונית" else None
             ),
+            # Feature 025 Phase 9: Morning's own raw status int and literal
+            # label, kept alongside accounting_document_status's canonical
+            # Hebrew interpretation - Morning's axis is open/closed, not
+            # paid/unpaid, so the interpretation can be wrong for a proforma.
+            "accounting_document_status_code": (
+                event.get("accounting_document_status_code") if source_type == "חשבונית" else None
+            ),
+            "accounting_document_status_label": (
+                event.get("accounting_document_status_label") if source_type == "חשבונית" else None
+            ),
+            "accounting_document_payment_method": (
+                event.get("accounting_document_payment_method") if source_type == "חשבונית" else None
+            ),
             # DeniDin-internal fields, not Events.csv columns - traceability/evidence
             # (2026-08-19: whatsapp_chat dropped - session_id already points at a
             # session that carries its own whatsapp_chat; message_id+session_id
@@ -695,7 +904,7 @@ class LedgerEventManager:
             "session_id": session_id,
             "message_id": message_id,
             "captured_at": captured_at,
-            "reference_hint": event.get("reference_hint"),
+            "reference_hint": reference_hint,
             "bank_number": bank_number,
             "bank_branch": bank_branch,
             "bank_account": bank_account,
@@ -783,7 +992,14 @@ class LedgerEventManager:
         components = call_arguments.pop("components", [])
         shared_fields = call_arguments
 
-        if not components:
+        # Feature 025 Phase 9: a חשבונית capture carries everything in its JSON
+        # payload, so the sweep legitimately sends component_count=0/components=[].
+        # That is NOT REQ-DATA-008's "AI returned zero components" failure (which
+        # means a conversational capture silently lost its content) - synthesize
+        # the single component a document always maps to, and stay quiet.
+        if not components and shared_fields.get("source_type") == "חשבונית":
+            components = [{}]
+        elif not components:
             logger.error(
                 f"capture_ledger_event call for session {session_id} claimed "
                 f"component_count={component_count!r} but components was empty (even "

@@ -76,28 +76,21 @@ def _capture_call_item(event, call_id="call_0"):
     )
 
 
+ACCOUNTING_DOC = {
+    "display_number": "40406", "internal_morning_id": "056ee93c",
+    "type": 300, "type_name": "חשבון עסקה",
+    "status": "paid", "status_code": 2, "status_label": "מסמך סומן ידנית כסגור",
+    "client_name": "לקוח בדיקה", "description": "חשבונית מס 40406",
+    "amount": 1000, "amount_excl_vat": 1000, "vat_amount": 180, "vat_rate": 0.18,
+    "currency": "ILS", "document_date": "2026-08-20", "due_date": None,
+    "creation_date": "2026-08-20T18:52:00+03:00",
+    "payment": None, "linked_document": None,
+}
+
 ACCOUNTING_EVENT = {
     "source_type": "חשבונית",
     "event_subtype": "הפקה",
-    "client_name": "לקוח בדיקה",
-    "payer_name": None,
-    "agreement_label": None,
-    "reference_hint": None,
-    "bank_number": None,
-    "bank_branch": None,
-    "bank_account": None,
-    "accounting_document_display_number": "40406",
-    "accounting_document_type": "חשבונית מס",
-    "accounting_document_status": "שולם",
-    "accounting_document_creation_date": "2026-08-20T18:52:00",
-    "component_count": 1,
-    "components": [
-        {
-            "component_label": None, "description": "חשבונית מס 40406", "amount": "1,000₪",
-            "percent": None, "percent_base": None, "hours": None, "hourly_rate": None,
-            "txn_date": None, "vat_status": "כולל", "trigger_condition": None,
-        },
-    ],
+    "accounting_document_json": json.dumps(ACCOUNTING_DOC, ensure_ascii=False),
 }
 
 
@@ -112,7 +105,7 @@ class TestParseListInvoicesTotal:
 
     def test_none_found_text_returns_zero(self):
         response = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "לא נמצאו חשבוניות התואמות את החיפוש."),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 0, "shown": 0, "documents": []})),
         ])
         assert _parse_list_invoices_total(response) == 0
 
@@ -181,7 +174,7 @@ class TestBuildReconciliationPrompt:
         assert "never write a text reply" in prompt.lower()
         assert "no human will read one" in prompt.lower()
 
-    def test_is_a_single_tool_call_flow_never_requiring_get_invoice_details(self):
+    def test_is_a_single_tool_call_flow_with_server_side_detail_fanout(self):
         """Superseded the 2026-08-21 "you MUST call get_invoice_details"
         wording (replaced 2026-08-22, user decision, after live playground
         trials). Root cause of that whole detour: /documents/search - the call
@@ -197,35 +190,36 @@ class TestBuildReconciliationPrompt:
         trials."""
         prompt = _build_reconciliation_prompt(now_local())
         assert "list_invoices" in prompt
-        assert "get_invoice_details" not in prompt, (
-            "the flow must not reference get_invoice_details at all any more"
-        )
+        # Phase 9 final shape: bank details and linkedDocuments DO come from the
+        # single-document GET, but morning-mcp-app performs that fan-out
+        # server-side, deterministically. Asking the MODEL to chain those N
+        # calls was tried live and failed - it stopped after a couple of
+        # captures without ever calling get_invoice_details, even after that
+        # tool's misleading description was fixed.
+        assert "do NOT need get_invoice_details" in prompt
+        assert "already complete" in prompt
 
-    def test_names_every_ledger_field_and_its_exact_source_line(self):
-        """Each field is mapped to the literal Hebrew label it comes from in
-        list_invoices' output - vague instructions produced null amounts and
-        descriptions in real live runs."""
+    def test_asks_for_machine_readable_output_and_verbatim_copying(self):
+        """Phase 9 (2026-08-23): the model no longer transcribes ~25 labelled
+        Hebrew fields - it requests output_format="json" and copies each
+        document's JSON object verbatim into one argument, with ALL mapping
+        and derivation done in code. Prose transcription is what produced a
+        fabricated 00:00 timestamp and null amounts in real live runs."""
         prompt = _build_reconciliation_prompt(now_local())
-        for field in (
-            "accounting_document_display_number", "accounting_document_type",
-            "accounting_document_status", "accounting_document_creation_date",
-        ):
-            assert field in prompt
-        assert "נוצר ב" in prompt      # real creation time's source line
-        assert "תיאור" in prompt        # description's source line
-        assert "סכום" in prompt         # amount's source line
+        assert 'output_format="json"' in prompt
+        assert "accounting_document_json" in prompt
+        assert "verbatim" in prompt
 
-    def test_forbids_the_two_specific_mistakes_seen_live(self):
-        """Both observed for real: substituting the date-only "תאריך הפקה"
-        value (yielding a fabricated 00:00 time), and using the internal
-        morning id as the display number."""
+    def test_forbids_the_model_altering_the_payload(self):
+        """The failure mode Phase 9 designs out: the model "helping" by
+        summarising/reformatting instead of copying."""
         prompt = _build_reconciliation_prompt(now_local())
-        assert "00:00" in prompt
-        assert "internal_morning_id" in prompt
+        for forbidden in ("summarise", "reorder", "translate", "drop fields"):
+            assert forbidden in prompt
 
     def test_handles_the_empty_list_case_explicitly(self):
         prompt = _build_reconciliation_prompt(now_local())
-        assert "לא נמצאו חשבוניות" in prompt
+        assert '"documents" is empty' in prompt
 
 
 class TestSweepAccountingDocumentsWatermarkAndCap:
@@ -233,7 +227,7 @@ class TestSweepAccountingDocumentsWatermarkAndCap:
 
     def test_no_known_events_uses_fallback_lookback(self, ai_handler, global_context, mock_ai_client):
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "לא נמצאו חשבוניות התואמות את החיפוש."),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 0, "shown": 0, "documents": []})),
         ])
 
         _sweep_accounting_documents(global_context)
@@ -247,10 +241,15 @@ class TestSweepAccountingDocumentsWatermarkAndCap:
         self, ai_handler, global_context, mock_ai_client
     ):
         """Pre-check: pure local computation, no call needed at all."""
-        stale_ts = int((now_local() - timedelta(days=10)).timestamp())
+        # Phase 9: the watermark comes from the document's OWN creation_date in
+        # the JSON payload, not from message_timestamp - so staleness is seeded
+        # there.
+        stale_doc = dict(ACCOUNTING_DOC,
+                         creation_date=(now_local() - timedelta(days=10)).isoformat())
         ai_handler.ledger_event_manager.add_ledger_event(
-            session_id="s", event=dict(ACCOUNTING_EVENT), message_id=None,
-            message_timestamp=stale_ts,
+            session_id="s",
+            event=dict(ACCOUNTING_EVENT, accounting_document_json=json.dumps(stale_doc, ensure_ascii=False)),
+            message_id=None, message_timestamp=None,
         )
 
         _sweep_accounting_documents(global_context)
@@ -264,7 +263,7 @@ class TestSweepAccountingDocumentsWatermarkAndCap:
             message_timestamp=recent_ts,
         )
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "לא נמצאו חשבוניות התואמות את החיפוש."),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 0, "shown": 0, "documents": []})),
         ])
 
         _sweep_accounting_documents(global_context)
@@ -280,7 +279,7 @@ class TestSweepAccountingDocumentsWatermarkAndCap:
         call per document (up to this feature's own 100-document safety cap),
         so an unstated default is a real truncation risk."""
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "לא נמצאו חשבוניות התואמות את החיפוש."),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 0, "shown": 0, "documents": []})),
         ])
 
         _sweep_accounting_documents(global_context)
@@ -292,7 +291,7 @@ class TestSweepAccountingDocumentsWatermarkAndCap:
         self, ai_handler, global_context, mock_ai_client
     ):
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "נמצאו 250 חשבוניות:"),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 250, "shown": 250, "documents": []})),
             _capture_call_item(ACCOUNTING_EVENT),
         ])
 
@@ -303,7 +302,7 @@ class TestSweepAccountingDocumentsWatermarkAndCap:
 
     def test_under_100_documents_persists_normally(self, ai_handler, global_context, mock_ai_client):
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "נמצאו 3 חשבוניות:"),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 3, "shown": 3, "documents": []})),
             _capture_call_item(ACCOUNTING_EVENT),
         ])
 
@@ -318,7 +317,7 @@ class TestSweepAccountingDocumentsPersistAndPrune:
         self, ai_handler, global_context, mock_ai_client
     ):
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "נמצאו 1 חשבוניות:"),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 1, "shown": 1, "documents": []})),
             _capture_call_item(ACCOUNTING_EVENT),
         ])
 
@@ -335,7 +334,7 @@ class TestSweepAccountingDocumentsPersistAndPrune:
         prune_mock = MagicMock()
         monkeypatch.setattr(ai_handler.ledger_event_manager, "prune_accounting_document_cache", prune_mock)
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "לא נמצאו חשבוניות התואמות את החיפוש."),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 0, "shown": 0, "documents": []})),
         ])
 
         _sweep_accounting_documents(global_context)
@@ -366,7 +365,7 @@ class TestSweepAccountingDocumentsPersistAndPrune:
 class TestRunStartupAccountingReconciliationSweep:
     def test_invokes_the_shared_sweep_function(self, global_context, mock_ai_client):
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "לא נמצאו חשבוניות התואמות את החיפוש."),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 0, "shown": 0, "documents": []})),
         ])
 
         run_startup_accounting_reconciliation_sweep(global_context)  # must not raise
@@ -418,7 +417,7 @@ class TestStartAccountingReconciliationScheduler:
         its own, without waiting on a real CronTrigger minute boundary."""
         import time
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "לא נמצאו חשבוניות התואמות את החיפוש."),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 0, "shown": 0, "documents": []})),
         ])
         scheduler = start_accounting_reconciliation_scheduler(
             global_context, update_freq_minutes=60, trigger=IntervalTrigger(seconds=1)
@@ -443,7 +442,7 @@ class TestUS2DedupAcrossTwoSweepTicks:
         self, ai_handler, global_context, mock_ai_client
     ):
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "נמצאו 1 חשבוניות:"),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 1, "shown": 1, "documents": []})),
             _capture_call_item(ACCOUNTING_EVENT),
         ])
         _sweep_accounting_documents(global_context)
@@ -454,7 +453,7 @@ class TestUS2DedupAcrossTwoSweepTicks:
         # SAME document again (same display_number, same creation timestamp)
         # - simulating a re-poll where nothing has actually changed in Morning.
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "נמצאו 1 חשבוניות:"),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 1, "shown": 1, "documents": []})),
             _capture_call_item(ACCOUNTING_EVENT, call_id="call_1"),
         ])
         _sweep_accounting_documents(global_context)
@@ -472,7 +471,7 @@ class TestUS2DedupAcrossTwoSweepTicks:
         nothing' - the sweep must still log that it executed."""
         import logging
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "לא נמצאו חשבוניות התואמות את החיפוש."),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 0, "shown": 0, "documents": []})),
         ])
 
         with caplog.at_level(logging.INFO):
@@ -514,7 +513,7 @@ class TestUS5WatermarkUnchangedAfterFailureOrCapSkip:
         watermark_before = ai_handler.ledger_event_manager.get_accounting_document_watermark()
 
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "נמצאו 999 חשבוניות:"),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 999, "shown": 999, "documents": []})),
             _capture_call_item(dict(ACCOUNTING_EVENT, accounting_document_display_number="99999")),
         ])
         _sweep_accounting_documents(global_context)
@@ -532,7 +531,7 @@ class TestUS5WatermarkUnchangedAfterFailureOrCapSkip:
 
         mock_ai_client.responses.create.side_effect = None
         mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
-            _mcp_call_item("list_invoices", "לא נמצאו חשבוניות התואמות את החיפוש."),
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 0, "shown": 0, "documents": []})),
         ])
         _sweep_accounting_documents(global_context)
 

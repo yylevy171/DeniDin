@@ -21,6 +21,7 @@ ledger event already is.
 Exactly one shared sweep mechanism for the whole process - not one job per
 poll target (same guardrail as reminder_delivery_service.py).
 """
+import json
 import re
 from datetime import timedelta
 from typing import Any, List, Optional
@@ -95,6 +96,19 @@ def _parse_list_invoices_total(response: Any) -> Optional[int]:
             continue
         found_any_call = True
         output_text = getattr(item, "output", None) or ""
+
+        # Phase 9: the sweep asks for output_format="json", whose payload
+        # states total_matched explicitly - far more reliable than the prose
+        # phrase-matching below, which is retained only as a fallback for a
+        # tool that answered in text anyway.
+        try:
+            payload = json.loads(output_text)
+            if isinstance(payload, dict) and "total_matched" in payload:
+                totals.append(int(payload["total_matched"]))
+                continue
+        except (ValueError, TypeError):
+            pass
+
         if _NONE_FOUND_TEXT in output_text:
             totals.append(0)
             continue
@@ -123,26 +137,20 @@ def _build_reconciliation_prompt(since) -> str:
     return (
         "Automated accounting reconciliation task. Make tool calls only - never write a "
         "text reply, no human will read one.\n\n"
-        f"STEP 1: Call list_invoices with from_date={since_str}. Its output contains every "
-        "field you need, per document.\n\n"
-        "STEP 2: For EVERY document in that output, call capture_ledger_event exactly once "
-        "- one call per document, never merged, never skipped. Take each value verbatim "
-        "from that document's own block in the list output:\n"
+        f"STEP 1: Call list_invoices with from_date={since_str} and output_format=\"json\". "
+        "It returns {\"total_matched\": N, \"documents\": [ ... ]} - every document, "
+        "already complete. You do NOT need get_invoice_details: each entry already "
+        "includes its payment and linked-document details.\n\n"
+        "STEP 2: For EVERY object in that \"documents\" array, call capture_ledger_event "
+        "exactly once - one call per document, never merged, never skipped - with:\n"
         "- source_type: \"חשבונית\"\n"
         "- event_subtype: \"הפקה\"\n"
-        "- client_name: its \"לקוח\" value\n"
-        "- accounting_document_display_number: the number after \"חשבונית #\" (never the "
-        "\"מזהה פנימי (internal_morning_id)\" value)\n"
-        "- accounting_document_type: its \"סוג מסמך\" value\n"
-        "- accounting_document_status: its \"סטטוס\" value\n"
-        "- accounting_document_creation_date: its \"נוצר ב: DD/MM/YYYY HH:MM\" value, "
-        "converted to ISO-8601 - e.g. \"נוצר ב: 20/08/2026 18:52\" becomes "
-        "\"2026-08-20T18:52:00\". Use that line's real time exactly; never substitute the "
-        "date-only \"תאריך הפקה\" value, and never invent a time such as 00:00.\n"
-        "- components: exactly one component (component_count=1), with description = its "
-        "\"תיאור\" value and amount = its \"סכום\" value.\n\n"
-        "If the list output is empty (\"לא נמצאו חשבוניות\"), make no capture_ledger_event "
-        "calls at all and stop."
+        "- accounting_document_json: that document's ENTIRE JSON object, copied verbatim "
+        "as a single string, exactly as it appeared. Do not summarise it, reorder it, "
+        "translate it, drop fields, or fill anything in yourself - every value is read "
+        "out of it by code.\n"
+        "- every other argument: null.\n\n"
+        "If \"documents\" is empty, make no capture_ledger_event calls at all and stop."
     )
 
 

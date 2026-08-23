@@ -166,16 +166,11 @@ class TestLedgerEventToolBankPaymentFields:
 
 
 class TestLedgerEventToolAccountingDocumentFields:
-    """Feature 025 (Morning-Sourced Ledger Events), T009a. New source_type
-    value "חשבונית" (round 2) + 4 new top-level fields (round 3 - merged the
-    originally-planned accounting_document_id/accounting_document_number
-    pair into one accounting_document_display_number field), matching
-    data-model.md's/contracts/ledger-event-manager-extension.md's schema."""
-
-    NEW_FIELDS = {
-        "accounting_document_display_number", "accounting_document_type",
-        "accounting_document_status", "accounting_document_creation_date",
-    }
+    """Feature 025, Phase 9 (2026-08-23): the four transcribed
+    accounting_document_* arguments are replaced by ONE verbatim-copied JSON
+    payload. The model copies; code maps and derives. Prose/field
+    transcription is what produced a fabricated 00:00 creation time and null
+    amounts/descriptions in real live runs."""
 
     def test_source_type_enum_includes_accounting_document(self):
         properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
@@ -185,45 +180,31 @@ class TestLedgerEventToolAccountingDocumentFields:
         properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
         assert "הפקה" in properties["event_subtype"]["enum"]
 
-    def test_all_four_fields_present_in_schema_properties(self):
+    def test_single_json_payload_property_replaces_the_transcribed_fields(self):
         properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
-        assert self.NEW_FIELDS <= set(properties.keys())
+        assert properties["accounting_document_json"]["type"] == ["string", "null"]
+        for retired in (
+            "accounting_document_display_number", "accounting_document_type",
+            "accounting_document_status", "accounting_document_creation_date",
+            "accounting_document_id", "accounting_document_number",
+        ):
+            assert retired not in properties, f"{retired} should no longer be transcribed"
 
-    def test_no_separate_accounting_document_id_field(self):
-        """Round 3 correction locked in: accounting_document_id was the
-        originally-planned (round 2) field name, merged into
-        accounting_document_display_number - must never reappear as a
-        separate field."""
-        properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
-        assert "accounting_document_id" not in properties
-        assert "accounting_document_number" not in properties
+    def test_json_payload_is_in_required_strict_mode(self):
+        assert "accounting_document_json" in LEDGER_EVENT_TOOL["parameters"]["required"]
 
-    def test_all_four_fields_are_nullable_strings(self):
-        properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
-        for field in self.NEW_FIELDS:
-            assert properties[field]["type"] == ["string", "null"], (
-                f"{field} must be a nullable string"
-            )
-
-    def test_all_four_fields_have_non_empty_descriptions(self):
-        properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
-        for field in self.NEW_FIELDS:
-            assert properties[field].get("description"), f"{field} needs a real description"
-
-    def test_all_four_fields_in_required_strict_mode(self):
-        required = set(LEDGER_EVENT_TOOL["parameters"]["required"])
-        assert self.NEW_FIELDS <= required
+    def test_json_payload_description_forbids_the_model_altering_it(self):
+        description = LEDGER_EVENT_TOOL["parameters"]["properties"]["accounting_document_json"]["description"]
+        assert "verbatim" in description
+        for forbidden in ("summarise", "reorder", "translate", "drop fields"):
+            assert forbidden in description
 
     def test_additional_properties_still_false(self):
         assert LEDGER_EVENT_TOOL["parameters"]["additionalProperties"] is False
 
     def test_tool_description_distinguishes_the_two_use_cases(self):
-        """research.md: recognizing a signal in free text/an image (existing)
-        vs. transcribing a given Morning document's already-structured
-        fields verbatim (source_type=חשבונית, new) must read as two
-        different jobs, not one blurred instruction."""
         description = LEDGER_EVENT_TOOL["description"]
-        assert "חשבונית" in description or "Morning" in description or "transcri" in description.lower()
+        assert "חשבונית" in description
 
 
 class TestExtractFunctionCallId:
@@ -772,36 +753,27 @@ def _mcp_call_item(name="list_invoices"):
     return SimpleNamespace(type="mcp_call", name=name)
 
 
-ACCOUNTING_EVENT = {
-    "source_type": "חשבונית",
-    "event_subtype": "הפקה",
-    "client_name": "לקוח בדיקה",
-    "payer_name": None,
-    "agreement_label": None,
-    "reference_hint": None,
-    "bank_number": None,
-    "bank_branch": None,
-    "bank_account": None,
-    "accounting_document_display_number": "40406",
-    "accounting_document_type": "חשבונית מס",
-    "accounting_document_status": "שולם",
-    "accounting_document_creation_date": "2026-08-20T18:52:00",
-    "component_count": 1,
-    "components": [
-        {
-            "component_label": None,
-            "description": "חשבונית מס 40406",
-            "amount": "1,000₪",
-            "percent": None,
-            "percent_base": None,
-            "hours": None,
-            "hourly_rate": None,
-            "txn_date": None,
-            "vat_status": "כולל",
-            "trigger_condition": None,
-        },
-    ],
+ACCOUNTING_DOC = {
+    "display_number": "40406", "internal_morning_id": "056ee93c",
+    "type": 300, "type_name": "חשבון עסקה",
+    "status": "paid", "status_code": 2, "status_label": "מסמך סומן ידנית כסגור",
+    "client_name": "לקוח בדיקה", "description": "חשבונית מס 40406",
+    "amount": 1000, "amount_excl_vat": 1000, "vat_amount": 180, "vat_rate": 0.18,
+    "currency": "ILS", "document_date": "2026-08-20", "due_date": None,
+    "creation_date": "2026-08-20T18:52:00+03:00",
+    "payment": None, "linked_document": None,
 }
+
+
+def _accounting_event(**doc_overrides):
+    doc = dict(ACCOUNTING_DOC, **doc_overrides)
+    return {
+        "source_type": "חשבונית", "event_subtype": "הפקה",
+        "accounting_document_json": json.dumps(doc, ensure_ascii=False),
+    }
+
+
+ACCOUNTING_EVENT = _accounting_event()
 
 
 class TestAccountingDocumentMessageTimestamp:
@@ -907,7 +879,7 @@ class TestHandleAccountingReconciliationCapture:
         """The opposite of _handle_ledger_event_capture's "more than one call
         = PROTOCOL VIOLATION" rule - one call per new document, several in
         the same sweep tick, is the expected shape here."""
-        event2 = dict(ACCOUNTING_EVENT, accounting_document_display_number="40407")
+        event2 = _accounting_event(display_number="40407")
         response = SimpleNamespace(output=[
             _function_call_item(
                 "capture_ledger_event", json.dumps(ACCOUNTING_EVENT), call_id="call_0"
