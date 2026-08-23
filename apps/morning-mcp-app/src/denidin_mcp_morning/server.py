@@ -418,6 +418,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         document_display_number: Optional[str] = None,
         name_resolved: bool = False,
         output_format: str = "text",
+        purpose: str = "conversation",
     ) -> str:
         """List/search invoices with optional filters (status/date range/client
         name/exact document_display_number - e.g. "51365", the human-visible
@@ -428,6 +429,13 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         Pass "json" ONLY for automated bookkeeping/reconciliation tasks that
         explicitly ask for machine-readable output; it returns every match
         untruncated, with native types and explicit nulls.
+
+        purpose: leave unset (or "conversation") whenever you are answering a
+        person - this is almost always what you want. Pass "reconciliation"
+        ONLY for an automated ledger/bookkeeping sweep that explicitly asks for
+        it: it makes this tool fetch full per-document details (payment bank
+        number/branch/account, linked documents) for EVERY matching document,
+        which is far more expensive and is never needed to answer a question.
 
         A MULTI-WORD client_name REQUIRES name_resolved=True: call
         resolve_client_name first, then pass the EXACT name it returns here,
@@ -445,6 +453,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             config.list_invoices_token_budget,
             name_resolved,
             output_format,
+            purpose,
         )
 
     @mcp.tool(structured_output=False)

@@ -369,72 +369,92 @@ def test_list_invoices_json_is_not_token_budget_truncated():
     assert len(payload["documents"]) == 40
 
 
-def test_list_invoices_json_fans_out_to_full_details_server_side():
-    """Feature 025 Phase 9 (2026-08-23): structured bank details and
-    linkedDocuments exist ONLY on the single-document GET. Asking the MODEL to
-    chain those N calls proved unreliable - across live trials it called
-    list_invoices, emitted a couple of captures, and stopped, never making a
-    single get_invoice_details call (even after that tool's misleading
-    description was fixed).
-
-    So the fan-out moves server-side, where it is deterministic code rather
-    than model behaviour: one tool call in, complete documents out."""
-    import json as _json
-    from denidin_mcp_morning import tools as _tools
-
-    search_item = {
-        "id": "abc", "number": 60443, "type": 320, "status": 1,
-        "client": {"id": "c1", "name": "לקוח"}, "documentDate": "2026-08-20",
-        "creationDate": 1787178090, "description": "יועץ משפטי", "amount": 1500,
-        # search carries the bank info only as concatenated text
-        "payment": [{"date": "2026-07-12", "type": 4, "name": "העברה בנקאית",
-                     "description": "בנק 31 / סניף 109 / מס' חשבון 105542585", "amount": 1500}],
-    }
-    detail = dict(search_item, payment=[{
-        "date": "2026-07-12", "type": 4, "name": "העברה בנקאית", "amount": 1500,
-        "bankName": "31", "bankBranch": "109", "bankAccount": "105542585",
-    }], linkedDocuments=[{"id": "L1", "type": 305, "number": 52203,
-                          "documentDate": "2026-08-20", "amount": 1500}])
-
-    calls = {"get": 0}
-
+def _stub_client_factory(calls, search_item, detail):
     class _StubClient:
         def list_invoices(self, params=None):
             return {"total": 1, "page": 1, "pages": 1, "items": [search_item]}
         def get_invoice(self, invoice_id):
             calls["get"] += 1
             return detail
+    return _StubClient()
+
+
+_SEARCH_ITEM = {
+    "id": "abc", "number": 60443, "type": 320, "status": 1,
+    "client": {"id": "c1", "name": "לקוח"}, "documentDate": "2026-08-20",
+    "creationDate": 1787178090, "description": "יועץ משפטי", "amount": 1500,
+    "payment": [{"date": "2026-07-12", "type": 4, "name": "העברה בנקאית",
+                 "description": "בנק 31 / סניף 109", "amount": 1500}],
+}
+_DETAIL = dict(_SEARCH_ITEM, payment=[{
+    "date": "2026-07-12", "type": 4, "name": "העברה בנקאית", "amount": 1500,
+    "bankName": "31", "bankBranch": "109", "bankAccount": "105542585",
+}], linkedDocuments=[{"id": "L1", "type": 305, "number": 52203,
+                      "documentDate": "2026-08-20", "amount": 1500}])
+
+
+def test_reconciliation_purpose_fans_out_to_full_details_server_side():
+    """Feature 025 Phase 9: structured bank details and linkedDocuments exist
+    ONLY on the single-document GET. Asking the MODEL to chain those N calls
+    proved unreliable (it stopped after two captures without ever calling
+    get_invoice_details), so the fan-out is deterministic server-side code."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+    calls = {"get": 0}
 
     payload = _json.loads(_tools.list_invoices(
-        _StubClient(), from_date="2026-08-20", output_format="json"))
+        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
+        from_date="2026-08-20", output_format="json", purpose="reconciliation"))
 
-    assert calls["get"] == 1, "one detail fetch per listed document"
+    assert calls["get"] == 1
     doc = payload["documents"][0]
     assert doc["payment"]["bank_number"] == "31"
-    assert doc["payment"]["bank_branch"] == "109"
-    assert doc["payment"]["bank_account"] == "105542585"
     assert doc["linked_document"]["number"] == "52203"
-    assert doc["linked_document"]["type_name"] == "חשבונית מס"
 
 
-def test_list_invoices_json_survives_a_failing_detail_fetch():
-    """One unreachable document must not lose the whole sweep - fall back to
-    the search entry (complete except bank/linkage) and carry on."""
+def test_conversation_purpose_never_fans_out_even_when_output_is_json():
+    """The decisive separation (user catch, 2026-08-23): the fan-out gate is
+    the CONTEXT (ledger reconciliation vs answering a person), NOT the output
+    format. Phase 9b will make JSON the format for every read tool - if the
+    gate were format=json, every ordinary conversational list would then
+    explode into N per-document GETs."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+    calls = {"get": 0}
+
+    payload = _json.loads(_tools.list_invoices(
+        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
+        from_date="2026-08-20", output_format="json"))   # default purpose
+
+    assert calls["get"] == 0, "a conversational call must never fan out"
+    assert payload["documents"][0]["display_number"] == "60443"
+
+
+def test_conversation_purpose_never_fans_out_in_text_mode_either():
+    from denidin_mcp_morning import tools as _tools
+    calls = {"get": 0}
+
+    text = _tools.list_invoices(
+        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL), from_date="2026-08-20")
+
+    assert calls["get"] == 0
+    assert "60443" in text
+
+
+def test_reconciliation_purpose_survives_a_failing_detail_fetch():
+    """One unreachable document must not lose the whole sweep."""
     import json as _json
     from denidin_mcp_morning import tools as _tools
 
-    item = {"id": "abc", "number": 40406, "type": 300, "status": 1,
-            "client": {"id": "c1", "name": "לקוח"}, "documentDate": "2026-08-20",
-            "creationDate": 1787241168, "description": "תחזוקה", "amount": 51.92}
-
-    class _StubClient:
+    class _Failing:
         def list_invoices(self, params=None):
-            return {"total": 1, "page": 1, "pages": 1, "items": [item]}
+            return {"total": 1, "page": 1, "pages": 1, "items": [_SEARCH_ITEM]}
         def get_invoice(self, invoice_id):
             raise RuntimeError("boom")
 
     payload = _json.loads(_tools.list_invoices(
-        _StubClient(), from_date="2026-08-20", output_format="json"))
+        _Failing(), from_date="2026-08-20", output_format="json",
+        purpose="reconciliation"))
 
     assert len(payload["documents"]) == 1
-    assert payload["documents"][0]["display_number"] == "40406"
+    assert payload["documents"][0]["display_number"] == "60443"

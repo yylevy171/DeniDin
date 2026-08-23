@@ -889,6 +889,7 @@ def list_invoices(
     token_budget: int = _LIST_INVOICES_TOKEN_BUDGET,
     name_resolved: bool = False,
     output_format: str = "text",
+    purpose: str = "conversation",
 ) -> str:
     """List/search invoices and return a Hebrew, human-readable result.
 
@@ -986,31 +987,42 @@ def list_invoices(
 
     shown_invoices = _truncate_invoices_to_token_budget(invoices, token_budget)
 
-    if output_format == "json":
-        # Feature 025 Phase 9: fan out to the single-document GET server-side.
-        # Structured bank details (payment[].bankName/bankBranch/bankAccount)
-        # and linkedDocuments exist ONLY there, and asking the MODEL to chain
-        # those N calls proved unreliable in live trials (it stopped after a
-        # couple of captures without ever calling get_invoice_details). Doing
-        # it here makes the fan-out deterministic code instead of model
-        # behaviour. A failure on one document is logged and falls back to its
-        # search entry rather than losing the whole sweep.
+    # Feature 025 Phase 9: TWO INDEPENDENT decisions, deliberately not conflated
+    # (user catch, 2026-08-23).
+    #
+    # 1. `purpose` gates the expensive per-document fan-out. The gate is the
+    #    CALLER'S CONTEXT - ledger reconciliation vs answering a person - NOT the
+    #    output format. Phase 9b will make JSON the format for every read tool;
+    #    gating on format=json would then make every ordinary conversational list
+    #    explode into N per-document GETs.
+    # 2. `output_format` gates only presentation.
+    if purpose == "reconciliation":
+        # Structured bank details (payment[].bankName/bankBranch/bankAccount) and
+        # linkedDocuments exist ONLY on the single-document GET. Asking the MODEL
+        # to chain those N calls proved unreliable in live trials (it stopped
+        # after a couple of captures without ever calling get_invoice_details),
+        # so the fan-out is deterministic code here instead. A failure on one
+        # document falls back to its search entry rather than losing the sweep.
         detailed: List[Invoice] = []
         for inv in invoices:
             try:
                 detailed.append(Invoice.model_validate(client.get_invoice(inv.id)))
             except Exception as exc:  # pylint: disable=broad-except
                 logger.warning(
-                    "list_invoices(json): detail fetch failed for %s (%s) - falling back "
-                    "to the search entry, which has no bank/linked-document data", inv.id, exc
+                    "list_invoices(reconciliation): detail fetch failed for %s (%s) - "
+                    "falling back to the search entry, which has no bank/linked-document "
+                    "data", inv.id, exc
                 )
                 detailed.append(inv)
         invoices = detailed
-        # Feature 025 Phase 9: machine-readable output for the reconciliation
-        # sweep. Not token-budget-truncated - a reconciliation consumer needs
-        # every match, and states total_matched explicitly so truncation is
-        # detectable rather than silent.
+        shown_invoices = invoices
+
+    if output_format == "json":
+        # Machine-readable output. Not token-budget-truncated: a reconciliation
+        # consumer needs every match, and total_matched is stated explicitly so
+        # truncation is detectable rather than silent.
         return format_invoice_list_json(invoices, total_matched=len(invoices))
+
     return format_invoice_list(shown_invoices, total_matched=len(invoices))
 
 

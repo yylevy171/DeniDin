@@ -10,6 +10,13 @@
 > `list_invoices`, emitted two captures and stopped, never once calling `get_invoice_details`,
 > even after that tool's misleading description was fixed. The safety-cap check now reads
 > `total_matched` from the JSON payload rather than parsing Hebrew prose.
+>
+> **Gate correction (user catch, 2026-08-23):** the fan-out is gated on
+> `purpose="reconciliation"`, **not** on `output_format="json"`. These are orthogonal —
+> presentation vs cost/context — and Phase 9b will make JSON the format for *every* read tool. Had
+> the gate been the format, every ordinary conversational `list_invoices` would then have exploded
+> into N per-document GETs. Conversations never pass `purpose`, so they never fan out, whatever
+> format they use.
 
 **Revised 2026-08-21 (round 3, `spec.md`'s Clarifications)**: adds the `config.accounting_ledger_update_freq`
 config gate, a service-side (non-AI) safety-cap pre-check before ever calling OpenAI, and removes

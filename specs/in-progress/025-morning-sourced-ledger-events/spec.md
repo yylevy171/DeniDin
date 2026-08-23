@@ -322,6 +322,15 @@ Design decisions taken with the user, then what actually happened when built.
     this event relates to (replaces, **cancels**, or otherwise references)") —
     not new `linked_number`/`linked_type` fields.
 
+- **Q: What gates the expensive per-document fan-out? → A: the caller's
+  CONTEXT, not the output format** (user catch, 2026-08-23). The first
+  implementation gated on `output_format="json"`, which silently coupled two
+  orthogonal concerns — presentation vs cost. Since Phase 9b makes JSON the
+  format for *every* read tool, that gate would have made every ordinary
+  conversational `list_invoices` explode into N per-document GETs. Now gated
+  on `purpose="reconciliation"`, which only the sweep ever passes;
+  conversations never fan out regardless of format.
+
 **What building it actually proved:**
 
 1. **The N+1 fan-out cannot be delegated to the model — and the prompt is not

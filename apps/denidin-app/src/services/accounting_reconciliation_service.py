@@ -137,7 +137,8 @@ def _build_reconciliation_prompt(since) -> str:
     return (
         "Automated accounting reconciliation task. Make tool calls only - never write a "
         "text reply, no human will read one.\n\n"
-        f"STEP 1: Call list_invoices with from_date={since_str} and output_format=\"json\". "
+        f"STEP 1: Call list_invoices with from_date={since_str}, output_format=\"json\" "
+        "and purpose=\"reconciliation\". "
         "It returns {\"total_matched\": N, \"documents\": [ ... ]} - every document, "
         "already complete. You do NOT need get_invoice_details: each entry already "
         "includes its payment and linked-document details.\n\n"
