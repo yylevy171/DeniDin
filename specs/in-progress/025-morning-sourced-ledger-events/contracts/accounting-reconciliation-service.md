@@ -12,11 +12,12 @@
 > `total_matched` from the JSON payload rather than parsing Hebrew prose.
 >
 > **Gate correction (user catch, 2026-08-23):** the fan-out is gated on
-> `purpose="reconciliation"`, **not** on `output_format="json"`. These are orthogonal —
+> `include_full_details`, **not** on `output_format="json"`. These are orthogonal —
 > presentation vs cost/context — and Phase 9b will make JSON the format for *every* read tool. Had
 > the gate been the format, every ordinary conversational `list_invoices` would then have exploded
-> into N per-document GETs. Conversations never pass `purpose`, so they never fan out, whatever
-> format they use.
+> into N per-document GETs. It is a **capability, not a context lock**: a conversation may pass
+> `include_full_details=True` itself when a question genuinely needs bank details or linked
+> documents — the only cost is latency. It is just not the default.
 
 **Revised 2026-08-21 (round 3, `spec.md`'s Clarifications)**: adds the `config.accounting_ledger_update_freq`
 config gate, a service-side (non-AI) safety-cap pre-check before ever calling OpenAI, and removes

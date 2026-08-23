@@ -516,9 +516,11 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                     "For source_type=הסכם: always יצירה (a correction/cancellation/"
                     "payment-confirmation for an existing arrangement is still captured "
                     "as יצירה, describing the current state - see the constitution). "
-                    "For source_type=בנק: always הפקדה. For source_type=חשבונית: always "
-                    "הפקה. Applies to the whole call - every component shares the same "
-                    "subtype."
+                    "For source_type=בנק: always הפקדה. For source_type=חשבונית: pass "
+                    "הפקה as a placeholder - it is IGNORED and overwritten by code with "
+                    "the document's real Morning type (e.g. חשבונית מס, חשבונית זיכוי, "
+                    "קבלה), read from the accounting_document_json payload. Applies to "
+                    "the whole call - every component shares the same subtype."
                 ),
             },
             "client_name": {

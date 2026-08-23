@@ -61,7 +61,7 @@ CSV_MAPPED_FIELDS = {
     "trigger_condition", "percent", "percent_base", "hours", "hourly_rate",
     "txn_date", "vat_status", "split_partner", "split_percent",
     "due_date", "accounting_document_display_number",
-    "accounting_document_type", "accounting_document_status",
+    "accounting_document_status",
     "accounting_document_creation_date",
     # Feature 025 Phase 9 (2026-08-23)
     "accounting_document_status_code", "accounting_document_status_label",
@@ -1298,8 +1298,7 @@ def _accounting_event(**doc_overrides):
 SAMPLE_ACCOUNTING_EVENT = _accounting_event()
 
 ACCOUNTING_DOCUMENT_FIELDS = [
-    "accounting_document_display_number",
-    "accounting_document_type", "accounting_document_status",
+    "accounting_document_display_number", "accounting_document_status",
     "accounting_document_creation_date",
 ]
 
@@ -1326,7 +1325,7 @@ class TestAccountingDocumentFields:
     TestSchemaVersion above); the old reserved field names never appear in a
     persisted record; there is no separate accounting_document_id field."""
 
-    def test_accounting_document_event_persists_all_four_fields(
+    def test_accounting_document_event_persists_its_fields(
         self, manager, temp_events_dir
     ):
         event_id = manager.add_ledger_event(
@@ -1335,18 +1334,17 @@ class TestAccountingDocumentFields:
         )
         data = _read(temp_events_dir, event_id)
         assert data["accounting_document_display_number"] == "40406"
-        assert data["accounting_document_type"] == "חשבונית מס"
         assert data["accounting_document_status"] == "שולם"
         assert data["accounting_document_creation_date"] == "28/07/2026 18:06"
 
-    def test_event_subtype_hafaka_accepted_for_accounting_document(
-        self, manager, temp_events_dir
-    ):
+    def test_event_subtype_carries_the_morning_doc_type(self, manager, temp_events_dir):
+        """Superseded "הפקה" (2026-08-23) - see
+        TestAccountingDocumentSubtypeIsTheMorningDocType."""
         event_id = manager.add_ledger_event(
             session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
             message_id="m", message_timestamp=ACCOUNTING_DOC_TS,
         )
-        assert _read(temp_events_dir, event_id)["event_subtype"] == "הפקה"
+        assert _read(temp_events_dir, event_id)["event_subtype"] == "חשבונית מס"
 
     def test_event_id_uses_letter_h_for_accounting_document(self, manager):
         event_id = manager.add_ledger_event(
@@ -1695,7 +1693,6 @@ class TestAccountingDocumentJsonCapture:
         )
         data = _read(temp_events_dir, event_id)
         assert data["accounting_document_display_number"] == "40406"
-        assert data["accounting_document_type"] == "חשבון עסקה"
         assert data["client_name"] == "נאדר קרא"
         assert data["description"] == "תחזוקה"
         assert data["amount"] == 52  # normalized to int NIS by existing code
@@ -1966,3 +1963,64 @@ class TestAccountingDocumentJsonRobustness:
             )
         assert result is None
         assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+
+class TestAccountingDocumentSubtypeIsTheMorningDocType:
+    """User decision (2026-08-23): the Morning document type is persisted in
+    `event_subtype`, using Morning's OWN label retrieved from its API - never a
+    hand-written string. That makes the separate accounting_document_type field
+    redundant, so it is removed.
+
+    Replaces the previous flat mapping, where all five document types collapsed
+    to event_subtype="הפקה" and the real type survived only in a descriptive
+    field."""
+
+    MORNING_TYPES = {
+        300: "חשבון עסקה",
+        305: "חשבונית מס",
+        320: "חשבונית מס / קבלה",
+        330: "חשבונית זיכוי",
+        400: "קבלה",
+    }
+
+    def test_event_subtype_is_the_morning_document_type_label(
+        self, manager, temp_events_dir
+    ):
+        for code, label in self.MORNING_TYPES.items():
+            event_id = manager.add_ledger_event(
+                session_id="accounting-reconciliation",
+                event=_accounting_event(display_number=f"doc-{code}", type=code, type_name=label),
+                message_id=None, message_timestamp=None,
+            )
+            assert _read(temp_events_dir, event_id)["event_subtype"] == label, f"type {code}"
+
+    def test_the_model_supplied_subtype_is_ignored_for_an_accounting_document(
+        self, manager, temp_events_dir
+    ):
+        """Code derives it from the payload - whatever the model passed is not
+        trusted, same discipline as every other Phase 9 value."""
+        event = dict(_accounting_event(type=330, type_name="חשבונית זיכוי"),
+                     event_subtype="הפקה")
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation", event=event,
+            message_id=None, message_timestamp=None,
+        )
+        assert _read(temp_events_dir, event_id)["event_subtype"] == "חשבונית זיכוי"
+
+    def test_accounting_document_type_field_is_gone(self, manager, temp_events_dir):
+        """Redundant now that the type lives in event_subtype."""
+        event_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation", event=_accounting_event(),
+            message_id=None, message_timestamp=None,
+        )
+        assert "accounting_document_type" not in _read(temp_events_dir, event_id)
+
+    def test_agreement_and_bank_subtypes_are_untouched(self, manager, temp_events_dir):
+        """Only the חשבונית path changes - הסכם/בנק keep their own vocabulary."""
+        a = manager.add_ledger_event(session_id="s", event=dict(SAMPLE_EVENT),
+                                     message_id="m", message_timestamp=FIXED_TS)
+        b = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה"),
+            message_id="m2", message_timestamp=FIXED_TS)
+        assert _read(temp_events_dir, a)["event_subtype"] == "יצירה"
+        assert _read(temp_events_dir, b)["event_subtype"] == "הפקדה"

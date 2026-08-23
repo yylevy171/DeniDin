@@ -889,7 +889,7 @@ def list_invoices(
     token_budget: int = _LIST_INVOICES_TOKEN_BUDGET,
     name_resolved: bool = False,
     output_format: str = "text",
-    purpose: str = "conversation",
+    include_full_details: bool = False,
 ) -> str:
     """List/search invoices and return a Hebrew, human-readable result.
 
@@ -990,13 +990,16 @@ def list_invoices(
     # Feature 025 Phase 9: TWO INDEPENDENT decisions, deliberately not conflated
     # (user catch, 2026-08-23).
     #
-    # 1. `purpose` gates the expensive per-document fan-out. The gate is the
-    #    CALLER'S CONTEXT - ledger reconciliation vs answering a person - NOT the
-    #    output format. Phase 9b will make JSON the format for every read tool;
-    #    gating on format=json would then make every ordinary conversational list
-    #    explode into N per-document GETs.
+    # 1. `include_full_details` gates the per-document fan-out. Deliberately NOT
+    #    tied to output_format: Phase 9b makes JSON the format for every read
+    #    tool, so a format-based gate would make every ordinary list explode.
+    #    It is a CAPABILITY the caller opts into, available in ANY context -
+    #    a conversation that genuinely needs bank details or linked documents
+    #    should ask for it too (user, 2026-08-23: the only cost is latency, and
+    #    that is acceptable). It is simply not the default, because most
+    #    questions do not need it.
     # 2. `output_format` gates only presentation.
-    if purpose == "reconciliation":
+    if include_full_details:
         # Structured bank details (payment[].bankName/bankBranch/bankAccount) and
         # linkedDocuments exist ONLY on the single-document GET. Asking the MODEL
         # to chain those N calls proved unreliable in live trials (it stopped
@@ -1009,7 +1012,7 @@ def list_invoices(
                 detailed.append(Invoice.model_validate(client.get_invoice(inv.id)))
             except Exception as exc:  # pylint: disable=broad-except
                 logger.warning(
-                    "list_invoices(reconciliation): detail fetch failed for %s (%s) - "
+                    "list_invoices(include_full_details): detail fetch failed for %s (%s) - "
                     "falling back to the search entry, which has no bank/linked-document "
                     "data", inv.id, exc
                 )

@@ -210,14 +210,14 @@ class TestBuildReconciliationPrompt:
         assert "accounting_document_json" in prompt
         assert "verbatim" in prompt
 
-    def test_asks_for_the_reconciliation_purpose_explicitly(self):
-        """The per-document fan-out is gated on purpose, NOT on output_format
-        (user catch, 2026-08-23): Phase 9b makes JSON universal, so a
-        format-based gate would make every ordinary conversational list explode
-        into N per-document GETs. The sweep is the only caller that should ask
-        for it."""
+    def test_asks_for_full_details_explicitly(self):
+        """The per-document fan-out is gated on include_full_details, NOT on
+        output_format (user catch, 2026-08-23): Phase 9b makes JSON universal,
+        so a format-based gate would make every ordinary list explode. The
+        sweep always needs the full detail (bank + linkage), so it always asks
+        for it - conversations may ask too, but only when they need it."""
         prompt = _build_reconciliation_prompt(now_local())
-        assert 'purpose="reconciliation"' in prompt
+        assert "include_full_details=true" in prompt
 
     def test_forbids_the_model_altering_the_payload(self):
         """The failure mode Phase 9 designs out: the model "helping" by

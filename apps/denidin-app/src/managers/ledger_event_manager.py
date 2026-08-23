@@ -292,7 +292,15 @@ def _expand_accounting_document_json(event: Dict) -> Optional[Dict]:
     payment = doc.get("payment") or {}
     expanded.update({
         "accounting_document_display_number": doc.get("display_number"),
-        "accounting_document_type": doc.get("type_name"),
+        # User decision (2026-08-23): the Morning document type IS the ledger's
+        # event_subtype, using Morning's own retrieved label (never a
+        # hand-written string) - e.g. "חשבונית מס", "חשבונית זיכוי", "קבלה".
+        # This replaces the previous flat mapping, where all five types
+        # collapsed to "הפקה" and the real type survived only in a separate
+        # descriptive field, which is now redundant and removed. Whatever the
+        # model passed as event_subtype is overridden here, same discipline as
+        # every other derived value.
+        "event_subtype": doc.get("type_name"),
         "accounting_document_status": _STATUS_HE.get(doc.get("status"), doc.get("status")),
         "accounting_document_status_code": doc.get("status_code"),
         "accounting_document_status_label": doc.get("status_label"),
@@ -875,9 +883,6 @@ class LedgerEventManager:
             # accounting_document_display_number merges what would have been a
             # separate _id/_number pair. Non-null only for source_type=חשבונית.
             "accounting_document_display_number": accounting_document_display_number,
-            "accounting_document_type": (
-                event.get("accounting_document_type") if source_type == "חשבונית" else None
-            ),
             "accounting_document_status": (
                 event.get("accounting_document_status") if source_type == "חשבונית" else None
             ),

@@ -418,7 +418,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         document_display_number: Optional[str] = None,
         name_resolved: bool = False,
         output_format: str = "text",
-        purpose: str = "conversation",
+        include_full_details: bool = False,
     ) -> str:
         """List/search invoices with optional filters (status/date range/client
         name/exact document_display_number - e.g. "51365", the human-visible
@@ -430,12 +430,15 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         explicitly ask for machine-readable output; it returns every match
         untruncated, with native types and explicit nulls.
 
-        purpose: leave unset (or "conversation") whenever you are answering a
-        person - this is almost always what you want. Pass "reconciliation"
-        ONLY for an automated ledger/bookkeeping sweep that explicitly asks for
-        it: it makes this tool fetch full per-document details (payment bank
-        number/branch/account, linked documents) for EVERY matching document,
-        which is far more expensive and is never needed to answer a question.
+        include_full_details: set True when you need each matching document's
+        FULL detail - its payment's bank number/branch/account, and any linked
+        documents (e.g. which invoice a credit note cancels). Those fields do
+        not exist in the plain list result. Use it whenever the question
+        genuinely needs them ("which account was I paid into?", "what does this
+        credit note cancel?"), and always for an automated ledger/bookkeeping
+        sweep. It fetches every matching document individually, so it is
+        slower - leave it unset when the plain list already answers the
+        question, which is most of the time.
 
         A MULTI-WORD client_name REQUIRES name_resolved=True: call
         resolve_client_name first, then pass the EXACT name it returns here,
@@ -453,7 +456,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             config.list_invoices_token_budget,
             name_resolved,
             output_format,
-            purpose,
+            include_full_details,
         )
 
     @mcp.tool(structured_output=False)

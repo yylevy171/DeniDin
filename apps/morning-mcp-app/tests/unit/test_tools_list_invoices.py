@@ -393,7 +393,7 @@ _DETAIL = dict(_SEARCH_ITEM, payment=[{
                       "documentDate": "2026-08-20", "amount": 1500}])
 
 
-def test_reconciliation_purpose_fans_out_to_full_details_server_side():
+def test_include_full_details_fans_out_to_full_details_server_side():
     """Feature 025 Phase 9: structured bank details and linkedDocuments exist
     ONLY on the single-document GET. Asking the MODEL to chain those N calls
     proved unreliable (it stopped after two captures without ever calling
@@ -404,7 +404,7 @@ def test_reconciliation_purpose_fans_out_to_full_details_server_side():
 
     payload = _json.loads(_tools.list_invoices(
         _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
-        from_date="2026-08-20", output_format="json", purpose="reconciliation"))
+        from_date="2026-08-20", output_format="json", include_full_details=True))
 
     assert calls["get"] == 1
     doc = payload["documents"][0]
@@ -412,12 +412,16 @@ def test_reconciliation_purpose_fans_out_to_full_details_server_side():
     assert doc["linked_document"]["number"] == "52203"
 
 
-def test_conversation_purpose_never_fans_out_even_when_output_is_json():
-    """The decisive separation (user catch, 2026-08-23): the fan-out gate is
-    the CONTEXT (ledger reconciliation vs answering a person), NOT the output
-    format. Phase 9b will make JSON the format for every read tool - if the
-    gate were format=json, every ordinary conversational list would then
-    explode into N per-document GETs."""
+def test_json_output_alone_never_fans_out():
+    """The decisive separation (user catch, 2026-08-23): the fan-out is gated on
+    include_full_details, NOT on the output format. Phase 9b makes JSON the
+    format for every read tool - a format-based gate would make every ordinary
+    list explode into N per-document GETs.
+
+    Note this is about the DEFAULT, not a prohibition: a conversation that
+    genuinely needs bank details or linked documents may pass
+    include_full_details=True itself (see the test below). The only cost is
+    latency, which is acceptable - it just should not happen unasked."""
     import json as _json
     from denidin_mcp_morning import tools as _tools
     calls = {"get": 0}
@@ -430,7 +434,7 @@ def test_conversation_purpose_never_fans_out_even_when_output_is_json():
     assert payload["documents"][0]["display_number"] == "60443"
 
 
-def test_conversation_purpose_never_fans_out_in_text_mode_either():
+def test_text_output_alone_never_fans_out():
     from denidin_mcp_morning import tools as _tools
     calls = {"get": 0}
 
@@ -441,7 +445,7 @@ def test_conversation_purpose_never_fans_out_in_text_mode_either():
     assert "60443" in text
 
 
-def test_reconciliation_purpose_survives_a_failing_detail_fetch():
+def test_include_full_details_survives_a_failing_detail_fetch():
     """One unreachable document must not lose the whole sweep."""
     import json as _json
     from denidin_mcp_morning import tools as _tools
@@ -454,7 +458,37 @@ def test_reconciliation_purpose_survives_a_failing_detail_fetch():
 
     payload = _json.loads(_tools.list_invoices(
         _Failing(), from_date="2026-08-20", output_format="json",
-        purpose="reconciliation"))
+        include_full_details=True))
 
     assert len(payload["documents"]) == 1
     assert payload["documents"][0]["display_number"] == "60443"
+
+
+def test_a_conversation_may_opt_into_full_details_too():
+    """User clarification (2026-08-23): fan-out is a capability available in ANY
+    context, not something reserved for the ledger sweep. A conversational turn
+    that needs bank details or linked documents ("which account was I paid
+    into?") can ask for them - it is simply not the default."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+    calls = {"get": 0}
+
+    payload = _json.loads(_tools.list_invoices(
+        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
+        from_date="2026-08-20", output_format="json", include_full_details=True))
+
+    assert calls["get"] == 1
+    assert payload["documents"][0]["payment"]["bank_number"] == "31"
+
+
+def test_full_details_works_in_text_mode_as_well():
+    """The two parameters are independent: a prose-answering conversation can
+    still opt into full details."""
+    from denidin_mcp_morning import tools as _tools
+    calls = {"get": 0}
+
+    _tools.list_invoices(
+        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
+        from_date="2026-08-20", include_full_details=True)
+
+    assert calls["get"] == 1
