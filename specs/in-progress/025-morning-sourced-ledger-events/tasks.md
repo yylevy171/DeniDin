@@ -363,6 +363,64 @@ failure (or a safety-cap skip), not just in theory.
 
 ---
 
+## Phase 9: Full Document Capture (added 2026-08-23 — see `proposal-full-document-capture.md`)
+
+**Decided 2026-08-23 (user)**: this EXTENDS Feature 025 rather than becoming Feature 026 — 025
+does not ship until this lands. Goal: the ledger becomes a faithful local mirror of each Morning
+document, so future queries run against the ledger instead of the Morning MCP.
+
+**Decisions already locked in (do not re-litigate):**
+- Transport: MCP read tools gain a `format="json"` parameter; **default stays today's Hebrew
+  prose**, so conversational output is byte-for-byte unchanged. Model copies JSON verbatim;
+  `LedgerEventManager` maps/derives in code.
+- Line items (`income[]`): **use only the first entry**; log a WARNING if the array has more than
+  one, so a multi-line document is never silently half-captured.
+- Bank details: **lift** `ledger_event_manager.py`'s `בנק`-only force-null and reuse the existing
+  `bank_number`/`bank_branch`/`bank_account` fields for `חשבונית` events.
+- `get_invoice_details`' tool description: **reword** to cover both status-resolution and
+  reconciliation (its current status-change-only scoping is what made the model never call it).
+- `_DOCUMENT_TYPE_NAMES`: keep **only the 5 types actually seen** (user decision) — an unmapped
+  type renders as a bare number, accepted.
+- Ledger field list: TBD (being decided field-by-field).
+
+### Phase 9a — the 2 sweep tools
+
+- [ ] T032a/b **(`morning-mcp-app`)** Fix the pre-existing `Invoice.payments` bug (raw key
+  `payment` vs field `payments`, no mapping, `Payment.invoice_id` required but absent) — it is
+  dead for EVERY caller today, so `get_invoice_details`' "תשלומים:" block has never rendered for
+  anyone. Add `bank_name`/`bank_branch`/`bank_account`/`payment_type`/`status` to `Payment`.
+  **User approved fixing this here rather than as a separate bugfix spec.**
+- [ ] T033a/b **(`morning-mcp-app`)** Add `format="json"` to `list_invoices` +
+  `get_invoice_details`. Default unchanged (Hebrew prose). JSON carries native types and explicit
+  `null`s — the prose format's "missing is invisible" property is what produced the fabricated
+  `00:00` timestamp.
+- [ ] T034a/b **(`morning-mcp-app`)** Reword `get_invoice_details`' description (see above).
+- [ ] T035a/b **(`denidin-app`)** Extend the `LEDGER_EVENT_TOOL` schema + `LedgerEventManager`
+  with the agreed new `accounting_document_*` fields; `schema_version` 2 → 3; lift the `בנק`-only
+  bank-field restriction; derive `vat_status` in code from `vat`/`amountExcludeVat`/`amount`
+  rather than asking the model.
+- [ ] T036a/b **(`denidin-app`)** Sweep consumes `format="json"`; first-`income[]`-entry-only rule
+  with the multi-entry WARNING.
+- [ ] T037 Re-verify live in dev via `scripts/prompt_playground.py` before redeploying.
+
+### Phase 9b — 🔜 WIDEN JSON TO ALL READ TOOLS (explicit user commitment, 2026-08-23)
+
+**Recorded so it is not forgotten.** The `format="json"` shape introduced in 9a is scoped to the
+2 sweep tools purely to keep 9a's blast radius small — the agreed end state is **uniformity across
+the whole MCP server**. User's words: *"I want uniformity for the whole mcp server."*
+
+- [ ] T038 Extend `format="json"` to the remaining read tools: `get_financial_summary`,
+  `list_clients`, `get_client_details`, `resolve_client_name`, `download_invoice_pdf` — reusing
+  9a's exact JSON shape/conventions, not a second dialect.
+- [ ] T039 Re-run the `billed` E2E suite for the conversational Morning flows afterwards: this
+  changes what the model sees on every existing Morning conversation, so the Hebrew replies need
+  confirming, not assuming.
+- [ ] T040 Decide (separately) whether the 6 `create_*`/`add_client`/`update_client` confirmation
+  tools also move to JSON — deliberately NOT in scope here: they feed Feature 022's approval-gate
+  flow, whose prompts quote what will happen, so they need their own verification pass.
+
+---
+
 ## Phase 8: Polish & Cross-Cutting
 
 - [x] T024 [P] Update `config/config.example.json` (already done by T002b — this task is the
