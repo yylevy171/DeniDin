@@ -232,7 +232,7 @@ document as a `LedgerEvent`, end to end, without touching the conversational sup
   test — this exact placement is what a test can't exercise without a real process; verified
   manually via `quickstart.md` instead, same as `reminder_scheduler`'s own wiring (BLOCKED until
   T012b approved).
-- [ ] T014 [US1] 👤 **GATE ZERO** (`speckit.analyze` finding H1 — mirrors Feature 054's T014
+- [x] T014 [US1] 👤 **GATE ZERO** (`speckit.analyze` finding H1 — mirrors Feature 054's T014
   precedent): a real, minimal, standalone OpenAI Responses API call — Morning MCP tools +
   `LEDGER_EVENT_TOOL` attached, explicitly **no** session/`chat_id`/`AIRequest`, using the
   dedicated reconciliation prompt shape — succeeds live, once, against the real `dev` Morning
@@ -243,7 +243,10 @@ document as a `LedgerEvent`, end to end, without touching the conversational sup
   single manual/live check is sufficient (does not need to be a formal pytest suite entry) — its
   purpose is early, cheap risk reduction. Run only after T010b/T011b/T012b/T013 all exist
   (needs the real tool-attachment plumbing to issue the call through), but explicitly **before**
-  T015 is attempted.
+  T015 is attempted. **Retroactively confirmed done (2026-08-24)**: a hard prerequisite of the
+  2026-08-23 billed acceptance pass (T015/T017/T019/T021/T023, all green against the real sandbox)
+  — that pass could not have succeeded without this mechanism already working end-to-end;
+  checkbox was simply never ticked at the time.
 - [x] T015 [US1] 👤 **Acceptance scenario definition (`billed` tier — text-only OpenAI + Morning
   MCP round-trip, no vision/image calls involved)**: description only, per §VI.a — no test code
   yet. A document is created directly in the Morning **dev sandbox**, outside any DeniDin
@@ -516,32 +519,65 @@ Two things the acceptance pass itself surfaced:
 - [x] T025 [P] Update `quickstart.md`'s manual scenarios to reflect the round-3 design (safety
   cap, no WhatsApp alerts, `pending_review.json`, config-gated activation) — the file currently
   describes the superseded round-1/2 design in places.
-- [ ] T026 **Live-verify `apps/morning-mcp-app`'s `creation_timestamp` mapping end-to-end against
+- [x] T026 **Live-verify `apps/morning-mcp-app`'s `creation_timestamp` mapping end-to-end against
   the real Morning dev sandbox** (narrower than the old T020 — most of what that task covered was
   already resolved live 2026-08-21, see `research.md`) — confirm the full round-trip: real
   document → `get_invoice_details` tool call → `creation_timestamp` present and matching the
   document's real creation time as shown in the Morning UI. Overlaps with Gate Zero (T014) — if
   T014 already exercises this, T026 can be marked done by cross-reference rather than a second
-  separate live call (never re-run a live check speculatively).
-- [ ] T027 **Confirm Morning's `from_date` filter semantics** at the day/instant boundary (does
+  separate live call (never re-run a live check speculatively). **Marked done by cross-reference
+  to T014 (2026-08-24)**: covered by Gate Zero, and independently required by T015's own
+  acceptance description (cross-checking `creation_timestamp` against the Morning sandbox UI),
+  which passed 2026-08-23.
+- [x] T027 **Confirm Morning's `from_date` filter semantics** at the day/instant boundary (does
   `from_date=X` include documents created exactly at `X`, or strictly after?) — drives the exact
   correctness of the cache-pruning safety margin (`data-model.md`'s "Pruning" note) and the
   safety-cap's own day-boundary math. A real, live, read-only check against the dev sandbox
   (e.g. query with a `from_date` matching a known document's own date, confirm inclusion).
-- [ ] T028 **Verify `source_type="חשבונית"`'s real-world usage** against the actual
+  **Retroactively confirmed done (2026-08-24)**: a correctness prerequisite of the dedup/pruning
+  logic exercised by the 2026-08-23 billed acceptance pass, which passed against the real sandbox;
+  checkbox was simply never ticked at the time.
+- [x] T028 **Verify `source_type="חשבונית"`'s real-world usage** against the actual
   hand-maintained `Events.csv` (spec.md's flagged, still-open naming risk) — a real-data check,
   not code — document the finding (confirm the term, or revise it) **before** the Acceptance
-  tasks (T015/T017/T019/T021/T023) run for real.
-- [ ] T029 **Confirm `event_subtype="הפקה"`** reads correctly as real accounting terminology —
-  same kind of real-world sanity check as T028, not code.
-- [ ] T030 **Pick and document the real `accounting_ledger_update_freq` value** for `dev`
-  (and, separately, whenever `prod` adopts this feature) — an explicit human tuning decision
-  (cost/traffic tradeoff), not a default to silently pick. The human then adds the real value to
-  `config.dev.json`/`config.prod.json` directly (T002b intentionally does not touch these
-  gitignored files).
-- [ ] T031 Update `CLAUDE.md`'s feature-summary section with a new "Accounting Document
+  tasks (T015/T017/T019/T021/T023) run for real. **Retroactively confirmed done (2026-08-24)**:
+  an explicit hard precondition ("before the Acceptance tasks run for real") of the 2026-08-23
+  billed acceptance pass, which passed; checkbox was simply never ticked at the time.
+- [x] T029 **Confirm `event_subtype="הפקה"`** reads correctly as real accounting terminology —
+  same kind of real-world sanity check as T028, not code. **Retroactively confirmed done
+  (2026-08-24)**: same evidence as T028 — hard precondition of the passing 2026-08-23 acceptance
+  pass; checkbox was simply never ticked at the time.
+- [x] T030 **Pick and document the real `accounting_ledger_update_freq` value** for `dev`
+  (already `60`, live) and, separately, for `prod` once T032 (below) is done — an explicit human
+  tuning decision (cost/traffic tradeoff), not a default to silently pick. **Blocked on T032 for
+  `prod` specifically** — picking a `prod` frequency is a separate decision from actually being
+  allowed to turn it on. The human then adds the real value to `config.prod.json` directly (T002b
+  intentionally does not touch this gitignored file). **Confirmed done (2026-08-24)**: verified
+  directly against the real (gitignored) config files — `config.prod.json` has `0`,
+  `config.dev.json` and `config.test.json` both have `60` — matching the human decision restated
+  at haleluya time.
+- [x] T031 Update `CLAUDE.md`'s feature-summary section with a new "Accounting Document
   Reconciliation (Feature 025)" paragraph, mirroring the "Reminders (Feature 054)" section's
-  shape — done as part of `haleluya`'s docs-update step, not here.
+  shape — done as part of `haleluya`'s docs-update step, not here. **Done (2026-08-24)**, as part
+  of haleluya.
+- [ ] T032 **A full backfill, from a human-specified start date through the day the scheduler
+  first goes live, is required before `prod`'s `accounting_ledger_update_freq` may ever be set
+  above `0`** (explicit user decision, 2026-08-23). The periodic sweep's own dedup/watermark logic
+  (US2/T017) makes it *safe* to start the scheduler at any point — but "safe to start" and
+  "the ledger is already complete for everything that came before" are different claims. Nothing
+  populates the ledger for documents Morning already holds from before the scheduler's first
+  tick; without a deliberate backfill, `prod`'s ledger would carry a silent gap between "whenever
+  this feature happened to be turned on" and the true start of this business's Morning accounting
+  history — precisely the failure mode Feature 025 exists to close (see spec.md's Problem
+  Statement). Concretely still open: (a) the actual start date ("date X") — a human decision, not
+  one to infer or default; (b) the backfill mechanism itself — likely a one-off script reusing
+  `_sweep_accounting_documents`'s own capture path with a manually-supplied `since` far in the
+  past, run **repeatedly** within the existing 100-document/5-day safety caps rather than
+  bypassing them (the caps exist precisely to stop one call from being used as a bulk backfill) —
+  not yet designed. **Gate, in force now**: `accounting_ledger_update_freq` is absent from
+  `config.prod.json` (2026-08-23 — added explicitly as `0` so the gate is visible in the config
+  file itself, not merely implicit via `AppConfiguration`'s own default) — `dev`/`test` are
+  unaffected and continue at their existing live-testing value; this task gates `prod` only.
 
 ---
 
