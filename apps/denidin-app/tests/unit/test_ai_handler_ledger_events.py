@@ -137,7 +137,7 @@ class TestLedgerEventToolBankPaymentFields:
     def test_all_three_fields_are_nullable_strings(self):
         """Never a bare 'string' type - always applicable-but-unstated (ask the
         user) vs. genuinely not applicable (a הסכם event) must both be
-        representable, same convention as payer_name/agreement_label."""
+        representable, same convention as payer_name/agreement_id."""
         properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
         for field in self.NEW_FIELDS:
             assert properties[field]["type"] == ["string", "null"], (
@@ -323,7 +323,7 @@ SAMPLE_EVENT = {
     "event_subtype": "יצירה",
     "client_name": "ישראל ישראלי",
     "payer_name": None,
-    "agreement_label": "תיק בדיקה",
+    "agreement_id": "0726-ישראל_ישראלי-תיק_בדיקה",
     "reference_hint": None,
     "component_count": 1,
     "components": [
@@ -585,8 +585,8 @@ class TestHandleLedgerEventCaptureWiring:
         call whose `components` array has multiple entries - not the model making N
         separate calls (proven unreliable even with a materially stronger model - see
         spec.md). All components from that ONE call must share byte-for-byte the same
-        agreement_id, computed once by add_ledger_events_from_call, with distinct
-        component_ids."""
+        agreement_id, read once by add_ledger_events_from_call from the AI-authored
+        shared_fields["agreement_id"], with distinct component_ids."""
         mock_ai_client.responses.create.return_value = _followup_response()
         multi_component_event = dict(SAMPLE_EVENT, component_count=2)
         multi_component_event["components"] = [

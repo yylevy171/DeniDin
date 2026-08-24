@@ -671,7 +671,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
             "ledger_events": [{
                 "source_type": "בנק", "event_subtype": "הפקדה",
                 "client_name": None, "payer_name": None,
-                "agreement_label": None, "reference_hint": None,
+                "agreement_id": None, "reference_hint": None,
                 "component_count": 1,
                 "components": [{
                     "component_label": None, "description": "הפקדה", "amount": "9,440₪",

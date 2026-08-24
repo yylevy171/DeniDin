@@ -403,7 +403,7 @@ class LedgerEventManager:
         logger.info(f"LedgerEventManager initialized: storage_dir={self.storage_dir}")
 
     def _resolve_local_dt(self, message_timestamp: Optional[int]):
-        """Shared by add_ledger_event and build_agreement_id: Asia/Jerusalem local
+        """Shared by add_ledger_event: Asia/Jerusalem local
         datetime for the source message, falling back to processing time (with a
         WARNING) only if message_timestamp is genuinely absent - see spec.md Edge
         Cases. Drives event_datetime/event_id generation.
@@ -419,22 +419,6 @@ class LedgerEventManager:
             "date/time derivation only; the hard pointer itself is genuinely unknown"
         )
         return now_local()
-
-    def build_agreement_id(
-        self,
-        client_name: Optional[str],
-        agreement_label: Optional[str],
-        message_timestamp: Optional[int],
-    ) -> str:
-        """REQ-DATA-004: "{MMYY}-{slugify(client_name)}-{slugify(agreement_label)}",
-        matching the real Events.csv convention exactly (verified against all 1159
-        rows, 2026-07-30). Pure/stateless - exposed so AIHandler can compute this
-        once per multi-component batch and pass the identical string into every
-        add_ledger_event call for that batch, instead of relying on the AI to repeat
-        agreement_label verbatim across separate tool calls."""
-        local_dt = self._resolve_local_dt(message_timestamp)
-        mmyy = local_dt.strftime("%m%y")
-        return f"{mmyy}-{_slugify(client_name)}-{_slugify(agreement_label)}"
 
     def _next_seq(self, letter: str, ddmmyy: str, hhmm: str) -> Optional[int]:
         """Smallest unused single digit (0-9) for this letter+date+minute, scoped
@@ -612,13 +596,17 @@ class LedgerEventManager:
             message_timestamp: Unix epoch of the source message - drives event_datetime/
                 event_id generation; falls back to processing time (WARNING logged)
                 only if None, since the hard pointer is genuinely unknown, never guessed
-            agreement_id: (REQ-DATA-004, added 2026-07-30) caller-supplied agreement_id
-                for a multi-component batch - used as-is when given, so every component
-                in that batch shares byte-for-byte the same id. When None (a standalone,
-                non-batched capture), derived fresh from this event's own
-                client_name/agreement_label via build_agreement_id. Ignored entirely
-                when event["source_type"] == "בנק" (agreement_id/component_id always
-                None for bank events - no agreement concept applies).
+            agreement_id: (REQ-DATA-004, added 2026-07-30; AI-authored since bugfix-agreement-label)
+                caller-supplied agreement_id for a multi-component batch - used as-is when
+                given, so every component in that batch shares byte-for-byte the same id.
+                When None (a standalone, non-batched capture), taken directly from
+                event["agreement_id"] as built by the AI itself, per LEDGER_EVENT_TOOL's
+                schema (it builds the id once, in the documented format, when the matter
+                is first created, and repeats the identical string for every later
+                component/message referencing that same matter) - code no longer computes
+                or slugifies any part of it. Ignored entirely when event["source_type"] ==
+                "בנק" (agreement_id/component_id always None for bank events - no
+                agreement concept applies).
 
         Returns:
             The new event_id on success, or None if REQ-ID-003's exhaustion case
@@ -748,15 +736,13 @@ class LedgerEventManager:
                     f"leaving 'תאריך_ביצוע' blank"
                 )
 
-        # agreement_label (Phase 11): stays a LEDGER_EVENT_TOOL input (stated once, used
-        # to build agreement_id below) but is no longer persisted as its own field - see
-        # data-model.md SS1b. Every component still shares the identical agreement_id.
-        agreement_label = event.get("agreement_label")
+        # agreement_id (bugfix-agreement-label): fully AI-authored per LEDGER_EVENT_TOOL's
+        # schema - no separate label field exists anywhere, and code no longer computes or
+        # slugifies any part of this id, only uses it verbatim as given (see data-model.md
+        # SS1b for the earlier Phase 11 history of this field).
         component_label = event.get("component_label")
         if source_type == "הסכם":
-            resolved_agreement_id = agreement_id or self.build_agreement_id(
-                event.get("client_name"), agreement_label, message_timestamp
-            )
+            resolved_agreement_id = agreement_id or event.get("agreement_id")
             component_id = f"{resolved_agreement_id}-{_slugify(component_label)}"
         else:
             # REQ-DATA-004: no agreement/component concept applies to בנק events
@@ -961,7 +947,7 @@ class LedgerEventManager:
 
         `call_arguments` is one `capture_ledger_event` call's full parsed arguments -
         agreement-level fields (source_type, event_subtype, client_name, payer_name,
-        agreement_label, reference_hint, bank_number/bank_branch/bank_account)
+        agreement_id, reference_hint, bank_number/bank_branch/bank_account)
         plus a `components` list (>=1 item, even for a
         single-component or בנק capture).
         Each component is merged with the shared agreement-level fields into the same
@@ -969,9 +955,9 @@ class LedgerEventManager:
         persisted individually - `add_ledger_event` itself is unchanged.
 
         All components from this ONE call share byte-for-byte the same `agreement_id`
-        (computed once here, before the loop - the batch-consistency guarantee is now
-        structural at the single-call level, simpler than the old cross-call batching
-        this replaces).
+        (read once here, before the loop, straight from the AI-authored
+        shared_fields["agreement_id"] - the batch-consistency guarantee is structural at
+        the single-call level; code does not compute or slugify any part of this id).
 
         Returns the list of persisted event_ids, in component order - may be shorter
         than the components list if any individual component hit REQ-ID-003's rare
@@ -1033,11 +1019,7 @@ class LedgerEventManager:
 
         batch_agreement_id = None
         if shared_fields.get("source_type") == "הסכם" and components:
-            batch_agreement_id = self.build_agreement_id(
-                shared_fields.get("client_name"),
-                shared_fields.get("agreement_label"),
-                message_timestamp,
-            )
+            batch_agreement_id = shared_fields.get("agreement_id")
 
         event_ids = []
         for component in components:

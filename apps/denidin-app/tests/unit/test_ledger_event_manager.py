@@ -17,7 +17,12 @@ merged into event_datetime; notes removed (merged into description/
 reference_hint); replaced_event_id/replaces_hint folded into reference/
 reference_hint (found to be the same mechanism in the real ledger); sender/
 message_timestamp removed (no reader, fully covered by event_datetime);
-agreement_label no longer persisted (only used to build agreement_id).
+agreement_label was, at that point, still a construction-only tool input used
+to build agreement_id and never persisted on its own (bugfix-agreement-label,
+2026-08-24: agreement_label is now gone entirely - the AI builds agreement_id
+itself, fully-formed, in the documented '{MMYY}-{client_slug}-{label_slug}'
+format, and it's the only thing ever supplied/persisted; code no longer
+computes or slugifies any part of it).
 
 See specs/in-progress/033-ledger-event-persistence/data-model.md for the
 original field list and specs/in-progress/033-ledger-event-persistence/spec.md
@@ -50,7 +55,7 @@ SAMPLE_EVENT = {
     "vat_status": "לא צוין",
     "trigger_condition": None,
     "reference_hint": None,
-    "agreement_label": "תיק בדיקה",
+    "agreement_id": "0726-ישראל_ישראלי-תיק_בדיקה",
     "component_label": "בסיס",
 }
 
@@ -477,9 +482,12 @@ class TestAgreementAndComponentIds:
 
     Phase 11 (2026-08-16): agreement_label itself confirmed no longer persisted
     as its own field (real-data audit found agreement_id already fully embeds
-    the (slugified) label, and every component references the SAME agreement_id
-    - never re-derived/reconstructed later, same discipline as a UUID - see
-    data-model.md §1b)."""
+    the (slugified) label - see data-model.md §1b).
+
+    bugfix-agreement-label (2026-08-24): agreement_label removed entirely, even
+    as a construction-only tool input - the AI now builds agreement_id itself,
+    fully-formed, and every component references the SAME agreement_id, never
+    re-derived/reconstructed later, same discipline as a UUID."""
 
     def test_agreement_event_gets_non_null_agreement_id_and_component_id(
         self, manager, temp_events_dir
@@ -504,29 +512,35 @@ class TestAgreementAndComponentIds:
         assert data["component_id"] is None
         assert data["component_label"] is None
 
-    def test_agreement_id_matches_real_csv_format(self, manager, temp_events_dir):
+    def test_agreement_id_is_persisted_verbatim_as_supplied(self, manager, temp_events_dir):
+        """bugfix-agreement-label (2026-08-24): agreement_id is fully AI-authored,
+        already in the documented '{MMYY}-{client_slug}-{label_slug}' format -
+        code no longer computes or slugifies any part of it, only persists
+        exactly what was given."""
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, client_name="אתי אסולין", agreement_label="ערעור לארצי"),
+            session_id="s", event=dict(
+                SAMPLE_EVENT, client_name="אתי אסולין",
+                agreement_id="0726-אתי_אסולין-ערעור_לארצי",
+            ),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
-        # FIXED_TS -> 28/07/2026 local -> MMYY "0726"
         assert data["agreement_id"] == "0726-אתי_אסולין-ערעור_לארצי"
 
-    def test_agreement_label_itself_not_persisted_as_its_own_field(
+    def test_agreement_label_is_not_a_field_anywhere(
         self, manager, temp_events_dir
     ):
-        """Phase 11 (2026-08-16, human requirement): "I never want to see the
-        label in the data except embedded in the agreement id itself" - confirms
-        agreement_label is a construction-only input, never a standalone output
-        field."""
+        """bugfix-agreement-label (2026-08-24, human requirement): "GET RID OF
+        AGREEMENT LABEL AS A FIELD" - agreement_label no longer exists as a tool
+        input, a SAMPLE_EVENT key, or a persisted field. The label lives ONLY as
+        a substring inside agreement_id, which the AI builds itself."""
+        assert "agreement_label" not in SAMPLE_EVENT
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, agreement_label="ערעור לארצי"),
+            session_id="s", event=dict(SAMPLE_EVENT),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert "agreement_label" not in data
-        assert "ערעור_לארצי" in data["agreement_id"]
 
     def test_component_id_is_agreement_id_plus_slugified_component_label(
         self, manager, temp_events_dir
@@ -538,28 +552,31 @@ class TestAgreementAndComponentIds:
         data = _read(temp_events_dir, event_id)
         assert data["component_id"] == f"{data['agreement_id']}-עדכון_ערעור_לארצי"
 
-    def test_standalone_call_without_explicit_agreement_id_derives_its_own(
+    def test_standalone_call_without_caller_supplied_agreement_id_uses_events_own(
         self, manager, temp_events_dir
     ):
+        """When add_ledger_event's own `agreement_id` kwarg is not given (a
+        standalone, non-batched capture), the persisted agreement_id comes
+        straight from the event's own AI-authored agreement_id field - never
+        derived or recomputed by code."""
         event_id = manager.add_ledger_event(
             session_id="s", event=dict(SAMPLE_EVENT),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
-        expected = manager.build_agreement_id("ישראל ישראלי", "תיק בדיקה", FIXED_TS)
-        assert data["agreement_id"] == expected
+        assert data["agreement_id"] == SAMPLE_EVENT["agreement_id"]
 
     def test_caller_supplied_agreement_id_used_as_is_for_batch_consistency(
         self, manager, temp_events_dir
     ):
         """The user's hard requirement: when a caller (AIHandler batching multiple
-        components of one agreement) supplies agreement_id explicitly, it MUST be
-        used verbatim - even if this component's own agreement_label differs
-        slightly from what would've been derived standalone. Consistency is
-        structural, never dependent on the AI repeating identical text."""
+        components of one agreement) supplies the agreement_id kwarg explicitly,
+        it MUST be used verbatim - even if this component's own event["agreement_id"]
+        differs slightly. Consistency is structural, never dependent on the AI
+        repeating identical text across separate tool-call components."""
         explicit_id = "0726-custom-batch-id"
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, agreement_label="a slightly different label"),
+            session_id="s", event=dict(SAMPLE_EVENT, agreement_id="0726-a-slightly-different-id"),
             message_id="m", message_timestamp=FIXED_TS,
             agreement_id=explicit_id,
         )
@@ -569,7 +586,7 @@ class TestAgreementAndComponentIds:
     def test_multiple_components_sharing_caller_supplied_agreement_id_are_identical(
         self, manager, temp_events_dir
     ):
-        shared_id = manager.build_agreement_id("גיליאן דוידיאן", "משרד הרווחה", FIXED_TS)
+        shared_id = "0726-גיליאן_דוידיאן-משרד_הרווחה"
         ids = []
         for i in range(3):
             event_id = manager.add_ledger_event(
@@ -580,11 +597,6 @@ class TestAgreementAndComponentIds:
             ids.append(_read(temp_events_dir, event_id)["agreement_id"])
         assert len(set(ids)) == 1, "every component of the same batch must share one identical agreement_id"
         assert ids[0] == shared_id
-
-    def test_build_agreement_id_is_pure_and_deterministic(self, manager):
-        first = manager.build_agreement_id("ישראל ישראלי", "תיק בדיקה", FIXED_TS)
-        second = manager.build_agreement_id("ישראל ישראלי", "תיק בדיקה", FIXED_TS)
-        assert first == second
 
     def test_component_label_populated_verbatim_for_agreement_events(
         self, manager, temp_events_dir
@@ -717,7 +729,7 @@ SAMPLE_CALL_ARGUMENTS = {
     "event_subtype": "יצירה",
     "client_name": "ישראל ישראלי",
     "payer_name": None,
-    "agreement_label": "תיק בדיקה",
+    "agreement_id": "0726-ישראל_ישראלי-תיק_בדיקה",
     "reference_hint": None,
     "component_count": 1,
     "components": [
@@ -814,7 +826,7 @@ class TestAddLedgerEventsFromCall:
         call_arguments = {
             "source_type": "בנק", "event_subtype": "הפקדה",
             "client_name": None, "payer_name": None,
-            "agreement_label": None, "reference_hint": None,
+            "agreement_id": None, "reference_hint": None,
             "component_count": 1,
             "components": [{
                 "component_label": None, "description": "הפקדה", "amount": "9,440₪",
@@ -1389,7 +1401,7 @@ class TestAccountingDocumentFields:
         caller passes."""
         event = dict(
             SAMPLE_ACCOUNTING_EVENT,
-            agreement_label="should not matter", component_label="should be dropped",
+            agreement_id="should not matter", component_label="should be dropped",
             trigger_condition="should be dropped", percent="50", percent_base="1000",
             hours="3", hourly_rate="500", payer_name="should be dropped",
         )
