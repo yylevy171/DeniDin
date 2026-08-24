@@ -3,10 +3,12 @@
 Responses are Hebrew by default (spec.md §REQ-I18N-001): ₪ currency,
 DD/MM/YYYY dates, Hebrew status terms.
 """
+import json
 from datetime import date
 from typing import List, Optional
 
 from .models import _DOCUMENT_TYPE_NAMES, _PAYMENT_TYPE_NAMES, Client, FinancialSummary, Invoice
+from .utils.time_utils import local_from_timestamp
 
 _STATUS_HE = {
     "paid": "שולם",
@@ -68,10 +70,23 @@ def format_invoice_confirmation(invoice: Invoice) -> str:
     ]
     if invoice.type is not None:
         lines.append(f"סוג מסמך: {translate_document_type(invoice.type)}")
+    if invoice.description:
+        lines.append(f"תיאור: {invoice.description}")
     if invoice.status:
         lines.append(f"סטטוס: {translate_status(invoice.status)}")
     if invoice.issue_date:
         lines.append(f"תאריך הפקה: {format_date_il(invoice.issue_date)}")
+    if invoice.creation_timestamp:
+        # denidin-app's Feature 025 (2026-08-22): the document's REAL creation
+        # instant, full HH:MM precision - distinct from the date-only "תאריך
+        # הפקה" above. Rendered in this SHARED block (not only in
+        # format_invoice_details) specifically so list_invoices' own output
+        # carries it: /documents/search already returns creationDate for every
+        # document, and dropping it here was what forced the reconciliation
+        # sweep to chase N extra get_invoice_details calls for data the first
+        # call had already fetched.
+        local_dt = local_from_timestamp(invoice.creation_timestamp.timestamp())
+        lines.append(f"נוצר ב: {local_dt.strftime('%d/%m/%Y %H:%M')}")
     if invoice.due_date:
         lines.append(f"תאריך יעד: {format_date_il(invoice.due_date)}")
     if invoice.pdf_url:
@@ -96,6 +111,11 @@ def format_invoice_details(invoice: Invoice) -> str:
 
     if invoice.issue_date:
         lines.append(f"תאריך הפקה: {format_date_il(invoice.issue_date)}")
+
+    # No creation-timestamp line here: format_invoice_confirmation's block
+    # (embedded as lines[0] above) already carries it as of 2026-08-22, for
+    # every caller including list_invoices - printing it again here would
+    # duplicate it in get_invoice_details' output.
 
     if invoice.payments:
         lines.append("תשלומים:")
@@ -333,3 +353,95 @@ def format_ambiguous_clients_message(candidates: List[Client]) -> str:
     lines = ["נמצאו כמה לקוחות בשם דומה, אנא ציין/י באופן מדויק יותר:"]
     lines.extend(f"- {_format_client_summary_line(c)}" for c in candidates)
     return "\n".join(lines)
+
+
+def format_invoice_json(invoice: Invoice) -> str:
+    """Machine-readable JSON view of one document (Feature 025 Phase 9).
+
+    Used ONLY by callers that pass format="json" - today, denidin-app's
+    accounting-document reconciliation sweep. The Hebrew prose formatters
+    above remain the default for every conversational caller and are
+    unchanged.
+
+    Why a second format rather than reusing the prose (see
+    specs/in-progress/025-morning-sourced-ledger-events/
+    proposal-full-document-capture.md): the prose view is lossy and ambiguous
+    for a machine consumer - "סכום: ₪51.92" hides whether VAT is included,
+    "18:52" has dropped the seconds, and an absent field is simply not
+    printed, so a model cannot distinguish "no VAT" from "VAT not shown" and
+    guesses. That is exactly what produced a fabricated 00:00 creation time in
+    a real live sweep. This format carries native types and explicit nulls, so
+    the model transcribes rather than interprets, and denidin-app's own code
+    owns every derived value.
+
+    Keys are named for what they are, not for Morning's raw spelling, and the
+    document type / linked-document type are translated here because this app
+    owns the type table - denidin-app never needs one.
+    """
+    payment = invoice.payments[0] if invoice.payments else None
+    linked = invoice.linked_documents[0] if invoice.linked_documents else None
+
+    doc = {
+        "display_number": invoice.number,
+        "internal_morning_id": invoice.id,
+        "type": invoice.type,
+        "type_name": translate_document_type(invoice.type) or None,
+        "status": invoice.status,
+        "status_code": invoice.status_code,
+        "status_label": invoice.status_label,
+        "client_name": invoice.client_name,
+        "description": invoice.description,
+        "amount": invoice.total_amount if invoice.total_amount is not None else invoice.amount,
+        "amount_excl_vat": invoice.amount_excl_vat,
+        "vat_amount": invoice.vat_amount,
+        "vat_rate": invoice.vat_rate,
+        "currency": invoice.currency,
+        "document_date": invoice.issue_date.isoformat() if invoice.issue_date else None,
+        "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+        "creation_date": (
+            local_from_timestamp(invoice.creation_timestamp.timestamp()).isoformat()
+            if invoice.creation_timestamp else None
+        ),
+        "payment": None if payment is None else {
+            "method": payment.method,
+            "type": payment.payment_type,
+            "date": payment.payment_date.isoformat() if payment.payment_date else None,
+            "amount": payment.amount,
+            "bank_number": payment.bank_name,
+            "bank_branch": payment.bank_branch,
+            "bank_account": payment.bank_account,
+        },
+        # Line items. denidin-app uses ONLY the first and warns if there are
+        # more (user decision, 2026-08-23) - surfaced as a real array rather
+        # than pre-flattened so that rule is enforceable and the extra entries
+        # are visibly there to warn about.
+        "line_items": [
+            {
+                "description": line.get("description"),
+                "quantity": line.get("quantity"),
+                "price": line.get("price"),
+                "amount": line.get("amountTotal", line.get("amount")),
+            }
+            for line in (invoice.income or [])
+        ],
+        "linked_document": None if linked is None else {
+            "number": linked.number,
+            "type": linked.type,
+            "type_name": translate_document_type(linked.type) or None,
+        },
+    }
+    return json.dumps(doc, ensure_ascii=False)
+
+
+def format_invoice_list_json(invoices: List[Invoice], total_matched: int) -> str:
+    """Machine-readable JSON view of a document list - see
+    format_invoice_json for why this format exists. `total_matched` is stated
+    explicitly so a consumer can detect truncation rather than infer it."""
+    return json.dumps(
+        {
+            "total_matched": total_matched,
+            "shown": len(invoices),
+            "documents": [json.loads(format_invoice_json(inv)) for inv in invoices],
+        },
+        ensure_ascii=False,
+    )

@@ -472,10 +472,28 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: Optional[str] = None,
         document_display_number: Optional[str] = None,
         name_resolved: bool = False,
+        output_format: str = "text",
+        include_full_details: bool = False,
     ) -> str:
         """List/search invoices with optional filters (status/date range/client
         name/exact document_display_number - e.g. "51365", the human-visible
         label - NEVER an internal_morning_id).
+
+        output_format: leave unset (or "text") for the normal Hebrew,
+        human-readable result - that is what you want when answering a person.
+        Pass "json" ONLY for automated bookkeeping/reconciliation tasks that
+        explicitly ask for machine-readable output; it returns every match
+        untruncated, with native types and explicit nulls.
+
+        include_full_details: set True when you need each matching document's
+        FULL detail - its payment's bank number/branch/account, and any linked
+        documents (e.g. which invoice a credit note cancels). Those fields do
+        not exist in the plain list result. Use it whenever the question
+        genuinely needs them ("which account was I paid into?", "what does this
+        credit note cancel?"), and always for an automated ledger/bookkeeping
+        sweep. It fetches every matching document individually, so it is
+        slower - leave it unset when the plain list already answers the
+        question, which is most of the time.
 
         A MULTI-WORD client_name REQUIRES name_resolved=True: call
         resolve_client_name first, then pass the EXACT name it returns here,
@@ -492,16 +510,37 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             document_display_number,
             config.list_invoices_token_budget,
             name_resolved,
+            output_format,
+            include_full_details,
         )
 
     @mcp.tool(structured_output=False)
-    def get_invoice_details(internal_morning_id: str) -> str:
-        """Fetch full details (status, dates, payments) for one invoice - use
-        this to resolve a document's real type/current status before deciding
-        which create_*/close_* tool to call for a status-change request
-        ("mark as paid", "cancel it") - there is no separate status-update
-        tool; only document creation."""
-        return _call_with_error_boundary(tools.get_invoice_details, morning_client, internal_morning_id)
+    def get_invoice_details(internal_morning_id: str, output_format: str = "text") -> str:
+        """Fetch full details for one document: status, dates, payments
+        (including structured bank number/branch/account for a bank transfer),
+        and any linked documents.
+
+        Use this whenever you need a document's complete data, in EITHER of
+        these situations:
+        (a) resolving a document's real type/current status before deciding
+            which create_*/close_* tool to call for a status-change request
+            ("mark as paid", "cancel it") - there is no separate status-update
+            tool, only document creation; and
+        (b) any automated bookkeeping/reconciliation task that needs a
+            document's full detail - in particular its payment and linked
+            document information, which list_invoices does not carry.
+
+        (Reworded 2026-08-23: the previous description mentioned only case (a),
+        and a real automated task consequently never called this tool at all,
+        across six live attempts, no matter how explicitly it was instructed
+        to - the tool's own description outweighed the instruction.)
+
+        output_format: leave unset (or "text") for the normal Hebrew,
+        human-readable view. Pass "json" ONLY for automated tasks that
+        explicitly ask for machine-readable output."""
+        return _call_with_error_boundary(
+            tools.get_invoice_details, morning_client, internal_morning_id, output_format
+        )
 
     @mcp.tool(structured_output=False)
     def add_client(

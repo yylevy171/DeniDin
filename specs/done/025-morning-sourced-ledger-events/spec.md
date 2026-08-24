@@ -2,7 +2,7 @@
 
 **Feature ID**: 025-morning-sourced-ledger-events
 **Priority**: P2
-**Status**: Implemented through Phase 9, running in `dev` (see Clarifications rounds 1-6). Acceptance (`billed`) tests and the Phase 9b all-read-tools widening still outstanding — see `tasks.md`.
+**Status**: Implemented and accepted (see Clarifications rounds 1-6) — all 9 `billed` acceptance tests (all 5 user stories) passing against the real `dev` Morning sandbox + real OpenAI, 2026-08-23. `accounting_ledger_update_freq` is `0` in `prod` (deliberately, pending the T032 backfill) and `60` in `dev`/`test`. Phase 9b (widening `format="json"` to the remaining Morning MCP read tools) is explicit, tracked future work, deliberately out of scope for this feature — see `tasks.md`. Shipped via [PR #250](https://github.com/yylevy171/DeniDin/pull/250).
 **Created**: July 28, 2026
 
 ---

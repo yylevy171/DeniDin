@@ -3,6 +3,7 @@
 Real objects, no mocking. Covers T005 from
 specs/in-definition/005-mcp-morning-green-receipt/tasks.md.
 """
+import json
 from datetime import date
 
 import pytest
@@ -13,6 +14,7 @@ from denidin_mcp_morning.formatters import (
     format_date_il,
     format_invoice_confirmation,
     format_invoice_details,
+    format_invoice_json,
     format_invoice_list,
     format_name_not_resolved,
     format_original_not_linked_to_client,
@@ -177,6 +179,102 @@ def test_format_invoice_details_omits_linked_documents_section_when_absent():
     assert "מסמכים מקושרים" not in message
 
 
+def test_format_invoice_confirmation_includes_creation_timestamp():
+    """denidin-app's Feature 025 (2026-08-22): the creation timestamp must be
+    visible in the SHARED per-invoice block - which means list_invoices'
+    output carries it too, not just get_invoice_details'. Root cause of the
+    original failure: /documents/search already returns creationDate for
+    every document, but the formatter dropped it, so the reconciliation
+    sweep's model never saw a real creation time from list_invoices and had
+    to be told to make N extra get_invoice_details calls to recover data the
+    first call already had."""
+    with_creation = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168)
+    invoice = Invoice.model_validate(with_creation)
+
+    message = format_invoice_confirmation(invoice)
+
+    assert "נוצר ב" in message
+    assert "20/08/2026" in message
+    assert "18:52" in message
+
+
+def test_format_invoice_confirmation_omits_creation_line_when_absent():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    assert "נוצר ב" not in format_invoice_confirmation(invoice)
+
+
+def test_format_invoice_confirmation_includes_description():
+    """Same root cause as the creation timestamp: Morning returns a top-level
+    description that was never mapped or rendered, so every reconciliation
+    capture had description=null."""
+    with_description = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, description="תחזוקה")
+    invoice = Invoice.model_validate(with_description)
+
+    message = format_invoice_confirmation(invoice)
+
+    assert "תחזוקה" in message
+
+
+def test_format_invoice_confirmation_omits_description_line_when_absent():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    assert "תיאור" not in format_invoice_confirmation(invoice)
+
+
+def test_format_invoice_list_items_carry_creation_timestamp_and_description():
+    """The decisive one for Feature 025: a single list_invoices call must be
+    sufficient on its own - every ledger field the reconciliation sweep needs
+    (display number, type, status, real creation time, amount, description)
+    present per item, so no get_invoice_details chaining is required at all."""
+    raw = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168, description="תחזוקה")
+    invoice = Invoice.model_validate(raw)
+
+    message = format_invoice_list([invoice], total_matched=1)
+
+    assert "INV-2026-001" in message      # display number
+    assert "נוצר ב" in message and "18:52" in message  # real creation time
+    assert "תחזוקה" in message            # description
+    assert "₪5,850.00" in message         # amount
+
+
+def test_format_invoice_details_does_not_duplicate_the_creation_line():
+    """format_invoice_details embeds format_invoice_confirmation's block,
+    which now carries the creation timestamp itself - it must not print a
+    second one."""
+    with_creation = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168)
+    invoice = Invoice.model_validate(with_creation)
+
+    message = format_invoice_details(invoice)
+
+    assert message.count("נוצר ב") == 1
+
+
+def test_format_invoice_details_includes_creation_timestamp_with_full_precision():
+    """denidin-app's Feature 025 (Morning-Sourced Ledger Events), T004a: the
+    real creationDate field carries full HH:MM precision (live-confirmed
+    2026-08-21: 1787241168 -> 2026-08-20 18:52:48 Israel local) - the
+    reconciliation sweep's OpenAI+MCP call needs this in get_invoice_details'
+    own text output to populate accounting_document_creation_date accurately,
+    since that's the only channel this tool exposes data through (a Hebrew
+    formatted string, not structured JSON)."""
+    with_creation = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168)
+    invoice = Invoice.model_validate(with_creation)
+
+    message = format_invoice_details(invoice)
+
+    assert "20/08/2026" in message
+    assert "18:52" in message
+
+
+def test_format_invoice_details_omits_creation_timestamp_line_when_absent():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    message = format_invoice_details(invoice)
+
+    assert "נוצר" not in message
+
+
 # ============================================================================
 # Feature 038: format_invoice_list count line + format_too_many_invoices_message
 # ============================================================================
@@ -282,6 +380,116 @@ def test_format_name_not_resolved_names_the_resolution_tool():
 
     assert "resolve_client_name" in message
     assert "name_resolved" in message
+
+
+# ============================================================================
+# Feature 025 Phase 9: machine-readable JSON output (format="json")
+#
+# Rationale (see specs/.../proposal-full-document-capture.md): the Hebrew prose
+# format is lossy and ambiguous for a machine consumer - "סכום: ₪51.92" hides
+# whether VAT is included, "18:52" has dropped the seconds, and an absent field
+# is simply not printed, so the model cannot tell "no VAT" from "VAT not shown"
+# and guesses (this is what produced a fabricated 00:00 timestamp in a real
+# live run). JSON carries native types and explicit nulls.
+#
+# The prose path is the DEFAULT and stays byte-for-byte unchanged - only the
+# reconciliation sweep opts in.
+# ============================================================================
+
+REAL_BANK_TRANSFER_PAYMENT_FX = {
+    "id": "c4c52171", "date": "2026-07-12", "type": 4, "price": 1500,
+    "bankName": "31", "bankBranch": "109", "bankAccount": "105542585",
+    "name": "העברה בנקאית", "description": "בנק 31 / סניף 109", "amount": 1500,
+}
+
+
+def _json_doc(**overrides):
+    base = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168,
+                description="תחזוקה", status=1)
+    base.update(overrides)
+    return json.loads(format_invoice_json(Invoice.model_validate(base)))
+
+
+def test_json_carries_native_types_not_formatted_strings():
+    """The core reason for this format: amount is a number, not '₪5,850.00'."""
+    doc = _json_doc()
+
+    assert isinstance(doc["amount"], (int, float))
+    assert not isinstance(doc["amount"], str)
+
+
+def test_json_carries_full_precision_creation_timestamp():
+    """The prose format drops seconds; ISO-8601 keeps them."""
+    doc = _json_doc()
+
+    assert doc["creation_date"].startswith("2026-08-20T18:52:48")
+
+
+def test_json_states_absent_fields_explicitly_as_null():
+    """The decisive property vs prose: a missing field is VISIBLE as null,
+    so the model never has to guess whether it was absent or just not shown."""
+    doc = _json_doc()
+
+    assert "payment" in doc
+    assert doc["payment"] is None
+
+
+def test_json_separates_vat_inclusive_and_exclusive_amounts():
+    """'סכום: ₪51.92' alone is ambiguous about VAT; JSON is not."""
+    doc = _json_doc(amount=51.92, amountExcludeVat=44, vat=7.92, vatRate=0.18)
+
+    assert doc["amount_excl_vat"] == 44
+    assert doc["vat_amount"] == 7.92
+    assert doc["vat_rate"] == 0.18
+
+
+def test_json_carries_both_canonical_status_and_morning_literal_label():
+    doc = _json_doc(status=1)
+
+    assert doc["status"] == "paid"              # our canonical interpretation
+    assert doc["status_label"] == "מסמך סגור"    # Morning's own words
+    assert doc["status_code"] == 1
+
+
+def test_json_carries_display_number_and_internal_id_separately():
+    doc = _json_doc()
+
+    assert doc["display_number"] == "INV-2026-001"
+    assert doc["internal_morning_id"] == "5f2c1a2b-0000-4c11-9a1a-abcdef123456"
+
+
+def test_json_carries_translated_document_type_name():
+    doc = _json_doc(type=305)
+
+    assert doc["type"] == 305
+    assert doc["type_name"] == "חשבונית מס"
+
+
+def test_json_payment_block_carries_structured_bank_fields():
+    doc = _json_doc(payment=[REAL_BANK_TRANSFER_PAYMENT_FX])
+
+    assert doc["payment"]["method"] == "העברה בנקאית"
+    assert doc["payment"]["date"] == "2026-07-12"
+    assert doc["payment"]["bank_number"] == "31"
+    assert doc["payment"]["bank_branch"] == "109"
+    assert doc["payment"]["bank_account"] == "105542585"
+
+
+def test_json_linked_document_carries_number_and_hebrew_type_name():
+    """morning-mcp-app owns the type table, so it translates here - denidin-app
+    never needs one (user decision, 2026-08-23)."""
+    doc = _json_doc(linkedDocuments=[{
+        "id": "442a5f51", "type": 305, "number": 52203,
+        "documentDate": "2026-08-20", "amount": 58, "currency": "ILS",
+    }])
+
+    assert doc["linked_document"]["number"] == "52203"
+    assert doc["linked_document"]["type"] == 305
+    assert doc["linked_document"]["type_name"] == "חשבונית מס"
+
+
+def test_json_linked_document_is_null_when_absent():
+    assert _json_doc()["linked_document"] is None
 
 
 def test_format_transaction_account_cancelled_never_says_paid():

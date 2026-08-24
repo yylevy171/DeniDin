@@ -211,3 +211,139 @@ def test_invoice_model_defaults_linked_documents_to_empty_list():
     invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
 
     assert invoice.linked_documents == []
+
+
+def test_invoice_model_maps_creation_timestamp_from_real_response():
+    """Feature 025 (denidin-app, Morning-Sourced Ledger Events), T003a: real
+    Green Invoice /documents(/search) responses carry a `creationDate` field
+    - a genuine Unix epoch integer with full second-level precision (live-
+    confirmed 2026-08-21 against the real dev sandbox: e.g. 1787241168 ->
+    2026-08-20 18:52:48 Israel local) - completely separate from
+    `documentDate`/issue_date (date-only). Until this field existed, that
+    full-precision creation time was silently unavailable to any MCP tool
+    caller, even though the real API always sends it."""
+    with_creation = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, creationDate=1787241168)
+
+    invoice = Invoice.model_validate(with_creation)
+
+    assert invoice.creation_timestamp == datetime.fromtimestamp(1787241168, tz=timezone.utc)
+
+
+def test_invoice_model_creation_timestamp_defaults_to_none_when_absent():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    assert invoice.creation_timestamp is None
+
+
+def test_invoice_model_maps_top_level_description_from_real_response():
+    """denidin-app's Feature 025: real /documents(/search) responses carry a
+    top-level `description` (live-confirmed 2026-08-21: e.g. "תחזוקה") that
+    this model dropped entirely - it was never mapped, so no MCP tool could
+    ever surface it, which is exactly why the reconciliation sweep's captured
+    ledger events all had description=null. Distinct from income[].description
+    (a per-line-item field)."""
+    with_description = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, description="תחזוקה")
+
+    invoice = Invoice.model_validate(with_description)
+
+    assert invoice.description == "תחזוקה"
+
+
+def test_invoice_model_description_defaults_to_none_when_absent():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    assert invoice.description is None
+
+
+# Real payment shapes, captured live from the dev sandbox 2026-08-23 (see
+# specs/.../025-morning-sourced-ledger-events/artifacts/). Note the raw key is
+# `payment` (singular) while the model field is `payments` (plural).
+REAL_BANK_TRANSFER_PAYMENT = {
+    "id": "c4c52171-36d0-4b0a-9ed4-aff529de96f3", "date": "2026-07-12", "type": 4,
+    "status": 1, "price": 1500, "currency": "ILS", "currencyRate": 1, "paymentStatus": 0,
+    "ref": [], "cancellable": False, "bankName": "31", "bankBranch": "109",
+    "bankAccount": "105542585", "name": "העברה בנקאית",
+    "description": "בנק 31 / סניף 109 / מס' חשבון 105542585", "amount": 1500,
+}
+REAL_CASH_PAYMENT = {
+    "id": "57100ebc-6a75-4aeb-855a-1361fca7f010", "date": "2026-08-20", "type": 1,
+    "status": 0, "price": 500, "currency": "ILS", "currencyRate": 1, "paymentStatus": 0,
+    "ref": [305], "cancellable": True, "name": "מזומן", "description": "", "amount": 500,
+}
+
+
+def test_invoice_payments_maps_from_the_raw_singular_payment_key():
+    """Pre-existing bug (found 2026-08-22, fixed 2026-08-23): the raw API key is
+    `payment` but the model field is `payments`, with NO mapping between them -
+    so Invoice.payments was ALWAYS [] for every caller, which is why
+    get_invoice_details' 'תשלומים:' block was dead code that had never rendered
+    for anyone, and why the reconciliation sweep could never see bank details."""
+    raw = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, payment=[REAL_BANK_TRANSFER_PAYMENT])
+
+    invoice = Invoice.model_validate(raw)
+
+    assert len(invoice.payments) == 1
+
+
+def test_payment_model_does_not_require_invoice_id():
+    """The raw payment object carries no invoice_id at all, so requiring it
+    meant Payment would have failed validation even once the mapping existed."""
+    payment = Payment.model_validate(REAL_CASH_PAYMENT)
+
+    assert payment.invoice_id is None
+    assert payment.amount == 500
+
+
+def test_payment_model_maps_structured_bank_fields():
+    """These exist ONLY on get_invoice_details' response - /documents/search
+    carries the same information merely concatenated into a Hebrew string."""
+    payment = Payment.model_validate(REAL_BANK_TRANSFER_PAYMENT)
+
+    assert payment.bank_name == "31"
+    assert payment.bank_branch == "109"
+    assert payment.bank_account == "105542585"
+
+
+def test_payment_model_maps_method_name_date_and_type():
+    payment = Payment.model_validate(REAL_BANK_TRANSFER_PAYMENT)
+
+    assert payment.method == "העברה בנקאית"     # raw `name`
+    assert payment.payment_type == 4             # raw `type` (4 = העברה בנקאית)
+    assert payment.payment_date == date(2026, 7, 12)
+
+
+def test_payment_model_leaves_bank_fields_none_for_a_cash_payment():
+    payment = Payment.model_validate(REAL_CASH_PAYMENT)
+
+    assert payment.bank_name is None
+    assert payment.method == "מזומן"
+
+
+def test_invoice_payments_defaults_to_empty_list_when_absent():
+    invoice = Invoice.model_validate(REAL_DOCUMENT_RESPONSE_SAMPLE)
+
+    assert invoice.payments == []
+
+
+def test_invoice_maps_morning_literal_status_label_alongside_canonical():
+    """Feature 025 Phase 9: Morning's status vocabulary is open/closed, NOT
+    paid/unpaid - we map `1 מסמך סגור` -> "paid", but for a proforma "closed"
+    plausibly means "converted to an invoice". Keep Morning's own literal label
+    so the ledger never loses the real value (confirmed live against
+    GET /documents/statuses)."""
+    invoice = Invoice.model_validate(dict(REAL_DOCUMENT_RESPONSE_SAMPLE, status=1))
+
+    assert invoice.status == "paid"                    # canonical, unchanged
+    assert invoice.status_label == "מסמך סגור"          # Morning's own words
+    assert invoice.status_code == 1                     # raw int
+
+
+def test_invoice_status_label_for_every_real_morning_status_code():
+    """All five confirmed live via GET /documents/statuses (2026-08-23)."""
+    expected = {
+        0: "מסמך פתוח", 1: "מסמך סגור", 2: "מסמך סומן ידנית כסגור",
+        3: "מסמך מבטל", 4: "מסמך שבוטל",
+    }
+    for code, label in expected.items():
+        invoice = Invoice.model_validate(dict(REAL_DOCUMENT_RESPONSE_SAMPLE, status=code))
+        assert invoice.status_label == label, f"status {code}"

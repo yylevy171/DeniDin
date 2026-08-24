@@ -27,7 +27,9 @@ from .formatters import (
     format_financial_summary,
     format_invoice_confirmation,
     format_invoice_details,
+    format_invoice_json,
     format_invoice_list,
+    format_invoice_list_json,
     format_name_not_resolved,
     format_original_not_linked_to_client,
     format_too_many_clients_message,
@@ -887,6 +889,8 @@ def list_invoices(
     document_display_number: Optional[str] = None,
     token_budget: int = _LIST_INVOICES_TOKEN_BUDGET,
     name_resolved: bool = False,
+    output_format: str = "text",
+    include_full_details: bool = False,
 ) -> str:
     """List/search invoices and return a Hebrew, human-readable result.
 
@@ -984,10 +988,51 @@ def list_invoices(
 
     shown_invoices = _truncate_invoices_to_token_budget(invoices, token_budget)
 
+    # Feature 025 Phase 9: TWO INDEPENDENT decisions, deliberately not conflated
+    # (user catch, 2026-08-23).
+    #
+    # 1. `include_full_details` gates the per-document fan-out. Deliberately NOT
+    #    tied to output_format: Phase 9b makes JSON the format for every read
+    #    tool, so a format-based gate would make every ordinary list explode.
+    #    It is a CAPABILITY the caller opts into, available in ANY context -
+    #    a conversation that genuinely needs bank details or linked documents
+    #    should ask for it too (user, 2026-08-23: the only cost is latency, and
+    #    that is acceptable). It is simply not the default, because most
+    #    questions do not need it.
+    # 2. `output_format` gates only presentation.
+    if include_full_details:
+        # Structured bank details (payment[].bankName/bankBranch/bankAccount) and
+        # linkedDocuments exist ONLY on the single-document GET. Asking the MODEL
+        # to chain those N calls proved unreliable in live trials (it stopped
+        # after a couple of captures without ever calling get_invoice_details),
+        # so the fan-out is deterministic code here instead. A failure on one
+        # document falls back to its search entry rather than losing the sweep.
+        detailed: List[Invoice] = []
+        for inv in invoices:
+            try:
+                detailed.append(Invoice.model_validate(client.get_invoice(inv.id)))
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.warning(
+                    "list_invoices(include_full_details): detail fetch failed for %s (%s) - "
+                    "falling back to the search entry, which has no bank/linked-document "
+                    "data", inv.id, exc
+                )
+                detailed.append(inv)
+        invoices = detailed
+        shown_invoices = invoices
+
+    if output_format == "json":
+        # Machine-readable output. Not token-budget-truncated: a reconciliation
+        # consumer needs every match, and total_matched is stated explicitly so
+        # truncation is detectable rather than silent.
+        return format_invoice_list_json(invoices, total_matched=len(invoices))
+
     return format_invoice_list(shown_invoices, total_matched=len(invoices))
 
 
-def get_invoice_details(client: MorningClient, internal_morning_id: str) -> str:
+def get_invoice_details(
+    client: MorningClient, internal_morning_id: str, output_format: str = "text"
+) -> str:
     """Fetch full details for one invoice and return a Hebrew, human-readable view.
 
     MCP tool: get_invoice_details (contracts/get_invoice_details.json,
@@ -1002,6 +1047,8 @@ def get_invoice_details(client: MorningClient, internal_morning_id: str) -> str:
     """
     response = client.get_invoice(internal_morning_id)
     invoice = Invoice.model_validate(response)
+    if output_format == "json":
+        return format_invoice_json(invoice)
     return format_invoice_details(invoice)
 
 

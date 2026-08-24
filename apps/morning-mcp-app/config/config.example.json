@@ -8,7 +8,7 @@
   "default_vat_rate": 0.17,
   "refresh_before_seconds": 300,
   "rate_limit_per_second": 3,
-  "list_invoices_token_budget": 2500,
+  "list_invoices_token_budget": 20000,
   "openai_api_key": "YOUR_OPENAI_API_KEY",
   "mcp": {
     "server_name": "denidin-morning-dev_or_prod",
