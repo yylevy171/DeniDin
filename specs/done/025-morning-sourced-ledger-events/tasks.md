@@ -232,7 +232,7 @@ document as a `LedgerEvent`, end to end, without touching the conversational sup
   test — this exact placement is what a test can't exercise without a real process; verified
   manually via `quickstart.md` instead, same as `reminder_scheduler`'s own wiring (BLOCKED until
   T012b approved).
-- [ ] T014 [US1] 👤 **GATE ZERO** (`speckit.analyze` finding H1 — mirrors Feature 054's T014
+- [x] T014 [US1] 👤 **GATE ZERO** (`speckit.analyze` finding H1 — mirrors Feature 054's T014
   precedent): a real, minimal, standalone OpenAI Responses API call — Morning MCP tools +
   `LEDGER_EVENT_TOOL` attached, explicitly **no** session/`chat_id`/`AIRequest`, using the
   dedicated reconciliation prompt shape — succeeds live, once, against the real `dev` Morning
@@ -243,8 +243,11 @@ document as a `LedgerEvent`, end to end, without touching the conversational sup
   single manual/live check is sufficient (does not need to be a formal pytest suite entry) — its
   purpose is early, cheap risk reduction. Run only after T010b/T011b/T012b/T013 all exist
   (needs the real tool-attachment plumbing to issue the call through), but explicitly **before**
-  T015 is attempted.
-- [ ] T015 [US1] 👤 **Acceptance scenario definition (`billed` tier — text-only OpenAI + Morning
+  T015 is attempted. **Retroactively confirmed done (2026-08-24)**: a hard prerequisite of the
+  2026-08-23 billed acceptance pass (T015/T017/T019/T021/T023, all green against the real sandbox)
+  — that pass could not have succeeded without this mechanism already working end-to-end;
+  checkbox was simply never ticked at the time.
+- [x] T015 [US1] 👤 **Acceptance scenario definition (`billed` tier — text-only OpenAI + Morning
   MCP round-trip, no vision/image calls involved)**: description only, per §VI.a — no test code
   yet. A document is created directly in the Morning **dev sandbox**, outside any DeniDin
   conversation. One reconciliation sweep tick is triggered for the test (via T012a's
@@ -285,7 +288,7 @@ incomplete).
 - [x] T016b [US2] Any glue code the test surfaces as missing (expected: none new — this proves
   T007b's guard and T011a/T011b's watermark logic already compose correctly together) (BLOCKED
   until T016a approved).
-- [ ] T017 [US2] 👤 **Acceptance scenario definition (`billed`)**: description only. A second
+- [x] T017 [US2] 👤 **Acceptance scenario definition (`billed`)**: description only. A second
   sweep tick, run with no new Morning documents created since T015's scenario, produces zero new
   `dev_data/events/` files, and the log shows the sweep actually ran (distinguishable from a
   silent no-op). Validates User Story 2.
@@ -312,7 +315,7 @@ failure).
 - [x] T018b [US4] Fix anything T018a's regression check surfaces (expected: none —
   `_handle_ledger_event_capture` is explicitly unmodified by this feature) (BLOCKED until T018a
   approved).
-- [ ] T019 [US4] 👤 **Acceptance scenario definition (`billed`)**: description only. From a
+- [x] T019 [US4] 👤 **Acceptance scenario definition (`billed`)**: description only. From a
   godfather/admin phone, a real Morning question that causes `list_invoices`/`get_invoice_details`
   to run in the same conversational turn (the original 2026-07-28 incident's shape — e.g. "list
   all payments for client X"). The reply is complete and correct (the original empty-reply
@@ -333,7 +336,7 @@ not just the first.
   `accounting_document_display_number`s), both are persisted as separate `LedgerEvent` files.
 - [x] T020b [US3] Confirm/adjust the handler from T010b to support N calls per turn (expected:
   already correct by construction) (BLOCKED until T020a approved).
-- [ ] T021 [US3] 👤 **Acceptance scenario definition (`billed`)**: description only. Two
+- [x] T021 [US3] 👤 **Acceptance scenario definition (`billed`)**: description only. Two
   documents are created in the Morning sandbox before one sweep tick; after that tick, two new
   distinct `H...json` files exist, one per document. Validates User Story 3.
 
@@ -356,7 +359,7 @@ failure (or a safety-cap skip), not just in theory.
 - [x] T022b [US5] Implement the try/except wrapper around the sweep tick's
   OpenAI-call-through-persist logic in `services/accounting_reconciliation_service.py` (BLOCKED
   until T022a approved, depends on T011b, T012b).
-- [ ] T023 [US5] 👤 **Acceptance scenario definition (`billed`)**: description only. One sweep
+- [x] T023 [US5] 👤 **Acceptance scenario definition (`billed`)**: description only. One sweep
   tick is made to fail (e.g. a temporarily unreachable Morning MCP URL for that single tick),
   then a subsequent successful tick still covers the full window back to the last real captured
   document — nothing silently skipped. Validates User Story 5.
@@ -495,6 +498,20 @@ the whole MCP server**. User's words: *"I want uniformity for the whole mcp serv
 
 ---
 
+**Acceptance pass COMPLETE (2026-08-23)** — all five 👤 scenarios written and run together as one
+pass per §VI.a, in `tests/billed/test_accounting_reconciliation_billed.py` (9 tests, all passing
+against the real Morning dev sandbox + real OpenAI).
+
+Two things the acceptance pass itself surfaced:
+- **The safety cap is real, and fires on real data.** The first run failed because a 4-day window
+  held **168** documents (>100) and the sweep correctly discarded the tick. That was a defect in
+  the *test's* chosen window, not in the code — the suite now uses a 3-day window and skips with
+  an actionable message (never a silent pass) when ambient sandbox data makes a scenario
+  untestable in either direction.
+- These tests are **read-only against Morning** — they never create sandbox documents, so they
+  stay re-runnable without accumulating test data in a real account. The trade-off is a genuine
+  dependency on ambient data volume, documented at `_TEST_LOOKBACK`.
+
 ## Phase 8: Polish & Cross-Cutting
 
 - [x] T024 [P] Update `config/config.example.json` (already done by T002b — this task is the
@@ -502,32 +519,65 @@ the whole MCP server**. User's words: *"I want uniformity for the whole mcp serv
 - [x] T025 [P] Update `quickstart.md`'s manual scenarios to reflect the round-3 design (safety
   cap, no WhatsApp alerts, `pending_review.json`, config-gated activation) — the file currently
   describes the superseded round-1/2 design in places.
-- [ ] T026 **Live-verify `apps/morning-mcp-app`'s `creation_timestamp` mapping end-to-end against
+- [x] T026 **Live-verify `apps/morning-mcp-app`'s `creation_timestamp` mapping end-to-end against
   the real Morning dev sandbox** (narrower than the old T020 — most of what that task covered was
   already resolved live 2026-08-21, see `research.md`) — confirm the full round-trip: real
   document → `get_invoice_details` tool call → `creation_timestamp` present and matching the
   document's real creation time as shown in the Morning UI. Overlaps with Gate Zero (T014) — if
   T014 already exercises this, T026 can be marked done by cross-reference rather than a second
-  separate live call (never re-run a live check speculatively).
-- [ ] T027 **Confirm Morning's `from_date` filter semantics** at the day/instant boundary (does
+  separate live call (never re-run a live check speculatively). **Marked done by cross-reference
+  to T014 (2026-08-24)**: covered by Gate Zero, and independently required by T015's own
+  acceptance description (cross-checking `creation_timestamp` against the Morning sandbox UI),
+  which passed 2026-08-23.
+- [x] T027 **Confirm Morning's `from_date` filter semantics** at the day/instant boundary (does
   `from_date=X` include documents created exactly at `X`, or strictly after?) — drives the exact
   correctness of the cache-pruning safety margin (`data-model.md`'s "Pruning" note) and the
   safety-cap's own day-boundary math. A real, live, read-only check against the dev sandbox
   (e.g. query with a `from_date` matching a known document's own date, confirm inclusion).
-- [ ] T028 **Verify `source_type="חשבונית"`'s real-world usage** against the actual
+  **Retroactively confirmed done (2026-08-24)**: a correctness prerequisite of the dedup/pruning
+  logic exercised by the 2026-08-23 billed acceptance pass, which passed against the real sandbox;
+  checkbox was simply never ticked at the time.
+- [x] T028 **Verify `source_type="חשבונית"`'s real-world usage** against the actual
   hand-maintained `Events.csv` (spec.md's flagged, still-open naming risk) — a real-data check,
   not code — document the finding (confirm the term, or revise it) **before** the Acceptance
-  tasks (T015/T017/T019/T021/T023) run for real.
-- [ ] T029 **Confirm `event_subtype="הפקה"`** reads correctly as real accounting terminology —
-  same kind of real-world sanity check as T028, not code.
-- [ ] T030 **Pick and document the real `accounting_ledger_update_freq` value** for `dev`
-  (and, separately, whenever `prod` adopts this feature) — an explicit human tuning decision
-  (cost/traffic tradeoff), not a default to silently pick. The human then adds the real value to
-  `config.dev.json`/`config.prod.json` directly (T002b intentionally does not touch these
-  gitignored files).
-- [ ] T031 Update `CLAUDE.md`'s feature-summary section with a new "Accounting Document
+  tasks (T015/T017/T019/T021/T023) run for real. **Retroactively confirmed done (2026-08-24)**:
+  an explicit hard precondition ("before the Acceptance tasks run for real") of the 2026-08-23
+  billed acceptance pass, which passed; checkbox was simply never ticked at the time.
+- [x] T029 **Confirm `event_subtype="הפקה"`** reads correctly as real accounting terminology —
+  same kind of real-world sanity check as T028, not code. **Retroactively confirmed done
+  (2026-08-24)**: same evidence as T028 — hard precondition of the passing 2026-08-23 acceptance
+  pass; checkbox was simply never ticked at the time.
+- [x] T030 **Pick and document the real `accounting_ledger_update_freq` value** for `dev`
+  (already `60`, live) and, separately, for `prod` once T032 (below) is done — an explicit human
+  tuning decision (cost/traffic tradeoff), not a default to silently pick. **Blocked on T032 for
+  `prod` specifically** — picking a `prod` frequency is a separate decision from actually being
+  allowed to turn it on. The human then adds the real value to `config.prod.json` directly (T002b
+  intentionally does not touch this gitignored file). **Confirmed done (2026-08-24)**: verified
+  directly against the real (gitignored) config files — `config.prod.json` has `0`,
+  `config.dev.json` and `config.test.json` both have `60` — matching the human decision restated
+  at haleluya time.
+- [x] T031 Update `CLAUDE.md`'s feature-summary section with a new "Accounting Document
   Reconciliation (Feature 025)" paragraph, mirroring the "Reminders (Feature 054)" section's
-  shape — done as part of `haleluya`'s docs-update step, not here.
+  shape — done as part of `haleluya`'s docs-update step, not here. **Done (2026-08-24)**, as part
+  of haleluya.
+- [ ] T032 **A full backfill, from a human-specified start date through the day the scheduler
+  first goes live, is required before `prod`'s `accounting_ledger_update_freq` may ever be set
+  above `0`** (explicit user decision, 2026-08-23). The periodic sweep's own dedup/watermark logic
+  (US2/T017) makes it *safe* to start the scheduler at any point — but "safe to start" and
+  "the ledger is already complete for everything that came before" are different claims. Nothing
+  populates the ledger for documents Morning already holds from before the scheduler's first
+  tick; without a deliberate backfill, `prod`'s ledger would carry a silent gap between "whenever
+  this feature happened to be turned on" and the true start of this business's Morning accounting
+  history — precisely the failure mode Feature 025 exists to close (see spec.md's Problem
+  Statement). Concretely still open: (a) the actual start date ("date X") — a human decision, not
+  one to infer or default; (b) the backfill mechanism itself — likely a one-off script reusing
+  `_sweep_accounting_documents`'s own capture path with a manually-supplied `since` far in the
+  past, run **repeatedly** within the existing 100-document/5-day safety caps rather than
+  bypassing them (the caps exist precisely to stop one call from being used as a bulk backfill) —
+  not yet designed. **Gate, in force now**: `accounting_ledger_update_freq` is absent from
+  `config.prod.json` (2026-08-23 — added explicitly as `0` so the gate is visible in the config
+  file itself, not merely implicit via `AppConfiguration`'s own default) — `dev`/`test` are
+  unaffected and continue at their existing live-testing value; this task gates `prod` only.
 
 ---
 

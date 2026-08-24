@@ -14,6 +14,7 @@ stand-in (external service, per CONSTITUTION SS I's testing guidance), never any
 component.
 """
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, MagicMock
@@ -162,6 +163,48 @@ class TestLedgerEventToolBankPaymentFields:
         properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
         assert "payment_method" not in properties
         assert "transaction_reference" not in properties
+
+
+class TestLedgerEventToolAccountingDocumentFields:
+    """Feature 025, Phase 9 (2026-08-23): the four transcribed
+    accounting_document_* arguments are replaced by ONE verbatim-copied JSON
+    payload. The model copies; code maps and derives. Prose/field
+    transcription is what produced a fabricated 00:00 creation time and null
+    amounts/descriptions in real live runs."""
+
+    def test_source_type_enum_includes_accounting_document(self):
+        properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
+        assert "חשבונית" in properties["source_type"]["enum"]
+
+    def test_event_subtype_enum_includes_hafaka(self):
+        properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
+        assert "הפקה" in properties["event_subtype"]["enum"]
+
+    def test_single_json_payload_property_replaces_the_transcribed_fields(self):
+        properties = LEDGER_EVENT_TOOL["parameters"]["properties"]
+        assert properties["accounting_document_json"]["type"] == ["string", "null"]
+        for retired in (
+            "accounting_document_display_number", "accounting_document_type",
+            "accounting_document_status", "accounting_document_creation_date",
+            "accounting_document_id", "accounting_document_number",
+        ):
+            assert retired not in properties, f"{retired} should no longer be transcribed"
+
+    def test_json_payload_is_in_required_strict_mode(self):
+        assert "accounting_document_json" in LEDGER_EVENT_TOOL["parameters"]["required"]
+
+    def test_json_payload_description_forbids_the_model_altering_it(self):
+        description = LEDGER_EVENT_TOOL["parameters"]["properties"]["accounting_document_json"]["description"]
+        assert "verbatim" in description
+        for forbidden in ("summarise", "reorder", "translate", "drop fields"):
+            assert forbidden in description
+
+    def test_additional_properties_still_false(self):
+        assert LEDGER_EVENT_TOOL["parameters"]["additionalProperties"] is False
+
+    def test_tool_description_distinguishes_the_two_use_cases(self):
+        description = LEDGER_EVENT_TOOL["description"]
+        assert "חשבונית" in description
 
 
 class TestExtractFunctionCallId:
@@ -635,6 +678,44 @@ class TestHandleLedgerEventCaptureWiring:
         events_dir = ai_handler.ledger_event_manager.storage_dir
         assert list(events_dir.glob("*.json")) == []
 
+    def test_accounting_document_shaped_call_still_suppressed_under_mcp_call(
+        self, ai_handler, mock_ai_client
+    ):
+        """Feature 025, T018a (User Story 4's regression check): the
+        extended LEDGER_EVENT_TOOL schema (source_type=חשבונית, round 2/3)
+        must NOT accidentally exempt a same-shaped call from
+        _handle_ledger_event_capture's existing suppression rule -
+        _handle_ledger_event_capture doesn't discriminate by source_type at
+        all, so a חשבונית-shaped call reaching THIS (old, unmodified)
+        handler alongside a real mcp_call must be suppressed exactly like
+        any other source_type, same as the 2026-07-28 incident this guards
+        against."""
+        mock_ai_client.responses.create.return_value = _followup_response()
+        accounting_shaped_call = dict(
+            SAMPLE_EVENT, source_type="חשבונית", event_subtype="הפקה",
+            accounting_document_display_number="40406",
+        )
+        items = [
+            SimpleNamespace(type="mcp_call", name="list_invoices", arguments="{}", output="{}", error=None),
+            _function_call_item(
+                "capture_ledger_event", json.dumps(accounting_shaped_call), call_id="call_0"
+            ),
+        ]
+        response = SimpleNamespace(id="resp_mcp_accounting", output=items, output_text="")
+        request = AIRequest(
+            user_prompt="show me invoices", constitution="", max_tokens=500,
+            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-mcp-accounting",
+            timestamp=1770000000,
+        )
+
+        ai_handler._handle_ledger_event_capture(
+            request, response, effective_chat_id="972500000000@c.us",
+            sender="972500000000@c.us", tools=None
+        )
+
+        events_dir = ai_handler.ledger_event_manager.storage_dir
+        assert list(events_dir.glob("*.json")) == []
+
     def test_morning_mcp_pending_approval_turn_suppressed_not_persisted(self, ai_handler, mock_ai_client):
         """Real billed incident (2026-08-02): an approval-required Morning tool
         (create_combo_document, add_client, etc.) shows up as mcp_approval_request
@@ -666,6 +747,216 @@ class TestHandleLedgerEventCaptureWiring:
 
         events_dir = ai_handler.ledger_event_manager.storage_dir
         assert list(events_dir.glob("*.json")) == []
+
+
+def _mcp_call_item(name="list_invoices"):
+    return SimpleNamespace(type="mcp_call", name=name)
+
+
+ACCOUNTING_DOC = {
+    "display_number": "40406", "internal_morning_id": "056ee93c",
+    "type": 300, "type_name": "חשבון עסקה",
+    "status": "paid", "status_code": 2, "status_label": "מסמך סומן ידנית כסגור",
+    "client_name": "לקוח בדיקה", "description": "חשבונית מס 40406",
+    "amount": 1000, "amount_excl_vat": 1000, "vat_amount": 180, "vat_rate": 0.18,
+    "currency": "ILS", "document_date": "2026-08-20", "due_date": None,
+    "creation_date": "2026-08-20T18:52:00+03:00",
+    "payment": None, "linked_document": None,
+}
+
+
+def _accounting_event(**doc_overrides):
+    doc = dict(ACCOUNTING_DOC, **doc_overrides)
+    return {
+        "source_type": "חשבונית", "event_subtype": "הפקה",
+        "accounting_document_json": json.dumps(doc, ensure_ascii=False),
+    }
+
+
+ACCOUNTING_EVENT = _accounting_event()
+
+
+class TestAccountingDocumentMessageTimestamp:
+    """Feature 025, regression guard added after a real live-dev incident
+    (2026-08-21): a first real 8-document sweep had EVERY event fall back to
+    processing time instead of the document's own real creation time - the
+    exact model output format was never logged at the time this happened,
+    so the fix (below) covers the known-strict gaps in Python 3.9's
+    datetime.fromisoformat rather than a single confirmed root cause, plus
+    adds the diagnostic logging this incident was missing."""
+
+    def test_plain_iso_no_timezone_parses(self):
+        ts = AIHandler._accounting_document_message_timestamp(
+            {"accounting_document_creation_date": "2026-08-20T18:52:00"}
+        )
+        assert ts is not None
+
+    def test_trailing_z_suffix_parses(self):
+        """Python 3.9's fromisoformat does NOT accept a trailing Z (only
+        added in 3.11) - a real, known gap against what a model asked for
+        'ISO-8601' output might plausibly produce."""
+        ts = AIHandler._accounting_document_message_timestamp(
+            {"accounting_document_creation_date": "2026-08-20T18:52:00Z"}
+        )
+        assert ts is not None
+
+    def test_space_separated_variant_parses(self):
+        ts = AIHandler._accounting_document_message_timestamp(
+            {"accounting_document_creation_date": "2026-08-20 18:52:00"}
+        )
+        assert ts is not None
+
+    def test_missing_field_returns_none_silently(self):
+        assert AIHandler._accounting_document_message_timestamp({}) is None
+
+    def test_genuinely_unparseable_value_returns_none_and_logs_the_raw_value(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            ts = AIHandler._accounting_document_message_timestamp(
+                {"accounting_document_creation_date": "not a date at all"}
+            )
+        assert ts is None
+        assert any("not a date at all" in r.message for r in caplog.records)
+
+
+class TestHandleAccountingReconciliationCapture:
+    """Feature 025, T010a: the NEW reconciliation-capture handler
+    (_handle_accounting_reconciliation_capture) - a thin adapter, structurally
+    separate from _handle_ledger_event_capture (which stays completely
+    unmodified - see TestHandleLedgerEventCaptureWiring above and
+    contracts/ledger-event-manager-extension.md's "UNCHANGED" section)."""
+
+    def test_persists_via_ledger_event_manager_even_with_mcp_call_in_same_turn(
+        self, ai_handler
+    ):
+        """The exact opposite of _handle_ledger_event_capture's suppression
+        rule - list_invoices/get_invoice_details mcp_calls co-occurring with
+        capture_ledger_event in the same turn is the NORMAL, expected shape
+        here, not a false-positive to guard against."""
+        response = SimpleNamespace(
+            output=[
+                _mcp_call_item("list_invoices"),
+                _mcp_call_item("get_invoice_details"),
+                _function_call_item(
+                    "capture_ledger_event", json.dumps(ACCOUNTING_EVENT), call_id="call_0"
+                ),
+            ],
+        )
+
+        event_ids = ai_handler._handle_accounting_reconciliation_capture(response)
+
+        assert len(event_ids) == 1
+        events_dir = ai_handler.ledger_event_manager.storage_dir
+        files = list(events_dir.glob("*.json"))
+        assert len(files) == 1
+        with files[0].open(encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["source_type"] == "חשבונית"
+        assert data["accounting_document_display_number"] == "40406"
+
+    def test_never_calls_handle_ledger_event_capture(self, ai_handler, monkeypatch):
+        """Structural proof, not just behavioral - this handler must not
+        delegate to (or otherwise invoke) _handle_ledger_event_capture at
+        all, since that method's suppression logic would defeat this
+        feature's entire purpose if it were ever reached."""
+        called = {"n": 0}
+
+        def _fail_if_called(*args, **kwargs):
+            called["n"] += 1
+            raise AssertionError("_handle_ledger_event_capture must never be called here")
+
+        monkeypatch.setattr(ai_handler, "_handle_ledger_event_capture", _fail_if_called)
+        response = SimpleNamespace(output=[
+            _function_call_item(
+                "capture_ledger_event", json.dumps(ACCOUNTING_EVENT), call_id="call_0"
+            ),
+        ])
+
+        ai_handler._handle_accounting_reconciliation_capture(response)
+
+        assert called["n"] == 0
+
+    def test_two_calls_in_one_turn_both_persisted_not_a_protocol_violation(self, ai_handler):
+        """The opposite of _handle_ledger_event_capture's "more than one call
+        = PROTOCOL VIOLATION" rule - one call per new document, several in
+        the same sweep tick, is the expected shape here."""
+        event2 = _accounting_event(display_number="40407")
+        response = SimpleNamespace(output=[
+            _function_call_item(
+                "capture_ledger_event", json.dumps(ACCOUNTING_EVENT), call_id="call_0"
+            ),
+            _function_call_item(
+                "capture_ledger_event", json.dumps(event2), call_id="call_1"
+            ),
+        ])
+
+        event_ids = ai_handler._handle_accounting_reconciliation_capture(response)
+
+        assert len(event_ids) == 2
+        events_dir = ai_handler.ledger_event_manager.storage_dir
+        assert len(list(events_dir.glob("*.json"))) == 2
+
+    def test_malformed_call_rejected_and_logged_not_silently_dropped(
+        self, ai_handler, caplog
+    ):
+        response = SimpleNamespace(output=[
+            _function_call_item("capture_ledger_event", "{not valid json", call_id="call_bad"),
+        ])
+
+        with caplog.at_level(logging.ERROR):
+            event_ids = ai_handler._handle_accounting_reconciliation_capture(response)
+
+        assert event_ids == []
+        assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+    def test_persisted_events_use_reconciliation_sentinel_ids(self, ai_handler):
+        response = SimpleNamespace(output=[
+            _function_call_item(
+                "capture_ledger_event", json.dumps(ACCOUNTING_EVENT), call_id="call_0"
+            ),
+        ])
+
+        ai_handler._handle_accounting_reconciliation_capture(response)
+
+        events_dir = ai_handler.ledger_event_manager.storage_dir
+        files = list(events_dir.glob("*.json"))
+        with files[0].open(encoding="utf-8") as f:
+            data = json.load(f)
+        assert data["session_id"] == "accounting-reconciliation"
+        assert data["message_id"] is None
+
+    def test_no_whatsapp_send_occurs_anywhere_in_this_path(self, ai_handler, monkeypatch):
+        """speckit.analyze finding M3 (Feature 025): the "no confirmation
+        reply is sent anywhere - no chat, nothing user-facing" contract
+        guarantee (contracts/accounting-reconciliation-service.md step 8)
+        had no test coverage until now."""
+        import src.utils.green_api_bot as green_api_bot_module
+
+        send_mock = MagicMock()
+        monkeypatch.setattr(green_api_bot_module, "send_proactive_message", send_mock)
+        response = SimpleNamespace(output=[
+            _function_call_item(
+                "capture_ledger_event", json.dumps(ACCOUNTING_EVENT), call_id="call_0"
+            ),
+        ])
+
+        ai_handler._handle_accounting_reconciliation_capture(response)
+
+        send_mock.assert_not_called()
+
+    def test_no_openai_call_made_by_this_handler_itself(self, ai_handler, mock_ai_client):
+        """This handler only parses an already-received response and persists
+        - it must never itself call the OpenAI client (no follow-up
+        round-trip, unlike _handle_ledger_event_capture's confirmation-reply
+        mechanism - this sweep has no user-facing text to produce)."""
+        response = SimpleNamespace(output=[
+            _function_call_item(
+                "capture_ledger_event", json.dumps(ACCOUNTING_EVENT), call_id="call_0"
+            ),
+        ])
+
+        ai_handler._handle_accounting_reconciliation_capture(response)
+
+        mock_ai_client.responses.create.assert_not_called()
 
 
 class TestMaxOutputTokensTruncationCausesEmptyReply:

@@ -294,3 +294,201 @@ def test_list_invoices_no_truncation_when_reply_fits_comfortably_within_budget()
 
     assert result.count("חשבונית #") == len(numbers)
     assert "מתוך" not in result  # untruncated reply uses the simple count line, not "shown X of Y"
+
+
+# ============================================================================
+# Feature 025 Phase 9: output_format
+# ============================================================================
+
+def test_list_invoices_defaults_to_hebrew_prose_unchanged():
+    """The default path MUST stay byte-for-byte what conversations get today -
+    only the reconciliation sweep opts into JSON."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+
+    class _StubClient:
+        def list_invoices(self, params=None):
+            return {"total": 1, "page": 1, "pages": 1, "items": [{
+                "id": "abc", "number": 40406, "type": 300, "status": 1,
+                "client": {"id": "c1", "name": "נאדר קרא"},
+                "documentDate": "2026-08-20", "creationDate": 1787241168,
+                "description": "תחזוקה", "amount": 51.92,
+            }]}
+
+    text = _tools.list_invoices(_StubClient(), from_date="2026-08-20")
+    assert "חשבונית #40406" in text
+    with pytest.raises(_json.JSONDecodeError):
+        _json.loads(text)
+
+
+def test_list_invoices_json_format_returns_parseable_machine_output():
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+
+    class _StubClient:
+        def list_invoices(self, params=None):
+            return {"total": 1, "page": 1, "pages": 1, "items": [{
+                "id": "abc", "number": 40406, "type": 300, "status": 1,
+                "client": {"id": "c1", "name": "נאדר קרא"},
+                "documentDate": "2026-08-20", "creationDate": 1787241168,
+                "description": "תחזוקה", "amount": 51.92,
+            }]}
+
+    payload = _json.loads(_tools.list_invoices(
+        _StubClient(), from_date="2026-08-20", output_format="json"))
+
+    assert payload["total_matched"] == 1
+    doc = payload["documents"][0]
+    assert doc["display_number"] == "40406"
+    assert doc["status_label"] == "מסמך סגור"
+    assert doc["creation_date"].startswith("2026-08-20T18:52:48")
+
+
+def test_list_invoices_json_is_not_token_budget_truncated():
+    """A reconciliation consumer needs EVERY match - the prose path's token
+    budget (which silently showed 8 of 18 real documents) must not apply."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+
+    many = [{
+        "id": f"id-{i}", "number": 40000 + i, "type": 300, "status": 1,
+        "client": {"id": "c1", "name": "לקוח ארוך שם מאוד לצורך בדיקה"},
+        "documentDate": "2026-08-20", "creationDate": 1787241168,
+        "description": "תיאור ארוך מאוד כדי לצרוך תקציב טוקנים" * 5,
+        "amount": 100.0,
+    } for i in range(40)]
+
+    class _StubClient:
+        def list_invoices(self, params=None):
+            return {"total": len(many), "page": 1, "pages": 1, "items": many}
+
+    payload = _json.loads(_tools.list_invoices(
+        _StubClient(), from_date="2026-08-20", output_format="json", token_budget=50))
+
+    assert payload["total_matched"] == 40
+    assert len(payload["documents"]) == 40
+
+
+def _stub_client_factory(calls, search_item, detail):
+    class _StubClient:
+        def list_invoices(self, params=None):
+            return {"total": 1, "page": 1, "pages": 1, "items": [search_item]}
+        def get_invoice(self, invoice_id):
+            calls["get"] += 1
+            return detail
+    return _StubClient()
+
+
+_SEARCH_ITEM = {
+    "id": "abc", "number": 60443, "type": 320, "status": 1,
+    "client": {"id": "c1", "name": "לקוח"}, "documentDate": "2026-08-20",
+    "creationDate": 1787178090, "description": "יועץ משפטי", "amount": 1500,
+    "payment": [{"date": "2026-07-12", "type": 4, "name": "העברה בנקאית",
+                 "description": "בנק 31 / סניף 109", "amount": 1500}],
+}
+_DETAIL = dict(_SEARCH_ITEM, payment=[{
+    "date": "2026-07-12", "type": 4, "name": "העברה בנקאית", "amount": 1500,
+    "bankName": "31", "bankBranch": "109", "bankAccount": "105542585",
+}], linkedDocuments=[{"id": "L1", "type": 305, "number": 52203,
+                      "documentDate": "2026-08-20", "amount": 1500}])
+
+
+def test_include_full_details_fans_out_to_full_details_server_side():
+    """Feature 025 Phase 9: structured bank details and linkedDocuments exist
+    ONLY on the single-document GET. Asking the MODEL to chain those N calls
+    proved unreliable (it stopped after two captures without ever calling
+    get_invoice_details), so the fan-out is deterministic server-side code."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+    calls = {"get": 0}
+
+    payload = _json.loads(_tools.list_invoices(
+        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
+        from_date="2026-08-20", output_format="json", include_full_details=True))
+
+    assert calls["get"] == 1
+    doc = payload["documents"][0]
+    assert doc["payment"]["bank_number"] == "31"
+    assert doc["linked_document"]["number"] == "52203"
+
+
+def test_json_output_alone_never_fans_out():
+    """The decisive separation (user catch, 2026-08-23): the fan-out is gated on
+    include_full_details, NOT on the output format. Phase 9b makes JSON the
+    format for every read tool - a format-based gate would make every ordinary
+    list explode into N per-document GETs.
+
+    Note this is about the DEFAULT, not a prohibition: a conversation that
+    genuinely needs bank details or linked documents may pass
+    include_full_details=True itself (see the test below). The only cost is
+    latency, which is acceptable - it just should not happen unasked."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+    calls = {"get": 0}
+
+    payload = _json.loads(_tools.list_invoices(
+        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
+        from_date="2026-08-20", output_format="json"))   # default purpose
+
+    assert calls["get"] == 0, "a conversational call must never fan out"
+    assert payload["documents"][0]["display_number"] == "60443"
+
+
+def test_text_output_alone_never_fans_out():
+    from denidin_mcp_morning import tools as _tools
+    calls = {"get": 0}
+
+    text = _tools.list_invoices(
+        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL), from_date="2026-08-20")
+
+    assert calls["get"] == 0
+    assert "60443" in text
+
+
+def test_include_full_details_survives_a_failing_detail_fetch():
+    """One unreachable document must not lose the whole sweep."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+
+    class _Failing:
+        def list_invoices(self, params=None):
+            return {"total": 1, "page": 1, "pages": 1, "items": [_SEARCH_ITEM]}
+        def get_invoice(self, invoice_id):
+            raise RuntimeError("boom")
+
+    payload = _json.loads(_tools.list_invoices(
+        _Failing(), from_date="2026-08-20", output_format="json",
+        include_full_details=True))
+
+    assert len(payload["documents"]) == 1
+    assert payload["documents"][0]["display_number"] == "60443"
+
+
+def test_a_conversation_may_opt_into_full_details_too():
+    """User clarification (2026-08-23): fan-out is a capability available in ANY
+    context, not something reserved for the ledger sweep. A conversational turn
+    that needs bank details or linked documents ("which account was I paid
+    into?") can ask for them - it is simply not the default."""
+    import json as _json
+    from denidin_mcp_morning import tools as _tools
+    calls = {"get": 0}
+
+    payload = _json.loads(_tools.list_invoices(
+        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
+        from_date="2026-08-20", output_format="json", include_full_details=True))
+
+    assert calls["get"] == 1
+    assert payload["documents"][0]["payment"]["bank_number"] == "31"
+
+
+def test_full_details_works_in_text_mode_as_well():
+    """The two parameters are independent: a prose-answering conversation can
+    still opt into full details."""
+    from denidin_mcp_morning import tools as _tools
+    calls = {"get": 0}
+
+    _tools.list_invoices(
+        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
+        from_date="2026-08-20", include_full_details=True)
+
+    assert calls["get"] == 1

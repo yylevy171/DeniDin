@@ -2,6 +2,8 @@
 Unit tests for AppConfiguration model.
 Tests configuration loading from JSON/YAML files and validation.
 """
+import ast
+import dataclasses
 import json
 import pytest
 import tempfile
@@ -232,6 +234,36 @@ class TestAppConfiguration:
 
         config.validate()  # Should not raise
 
+    def test_accounting_ledger_update_freq_defaults_to_0(self, valid_config_data):
+        """Feature 025 (round 3): a fresh environment's config that doesn't
+        yet mention this field must default to 0 (inactive) - an environment
+        must never accidentally start polling Morning just because this key
+        was never set."""
+        config = AppConfiguration(**valid_config_data)
+        assert config.accounting_ledger_update_freq == 0
+
+    def test_accounting_ledger_update_freq_loaded_from_file(self, tmp_path, valid_config_data):
+        """from_file() must actually pick up an explicit value, same
+        precedent as max_retries above."""
+        valid_config_data['accounting_ledger_update_freq'] = 60
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps(valid_config_data), encoding='utf-8')
+
+        config = AppConfiguration.from_file(str(config_path))
+
+        assert config.accounting_ledger_update_freq == 60
+
+    def test_accounting_ledger_update_freq_0_is_accepted_not_coerced(self, tmp_path, valid_config_data):
+        """0 is a real, valid, explicitly-settable value (means "inactive"),
+        not something from_file() should treat as equivalent to "unset"."""
+        valid_config_data['accounting_ledger_update_freq'] = 0
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps(valid_config_data), encoding='utf-8')
+
+        config = AppConfiguration.from_file(str(config_path))
+
+        assert config.accounting_ledger_update_freq == 0
+
     def test_log_level_validates_info_debug_only(self, valid_config_data):
         """Test that log_level only accepts INFO or DEBUG."""
         # Test valid values
@@ -310,5 +342,58 @@ class TestAppConfiguration:
         # Verify storage paths combine data_root + relative storage_dir
         assert config.memory['session']['storage_dir'] == 'test_data/sessions'
         assert config.memory['longterm']['storage_dir'] == 'test_data/memory'
-        
+
         os.unlink(temp_config)
+
+
+class TestMainConfigDictStaysInSyncWithAppConfiguration:
+    """Regression guard, added 2026-08-21 after a real live-dev bug (Feature
+    025): denidin.py's `__main__` block hand-builds its own `config_dict`
+    literal (a separate subset dict passed to initialize_app()) rather than
+    reusing AppConfiguration.from_file's already-loaded object directly -
+    accounting_ledger_update_freq was added to the AppConfiguration dataclass
+    (and correctly covered by from_file's own defaults/tests above) but
+    silently missing from THIS separate dict, so config.dev.json setting it
+    to 60 had zero effect - the scheduler never started, with no error
+    anywhere. Static-parses denidin.py's source (not an import - __main__
+    code isn't safely importable) to catch a future field added to one place
+    but not the other, without needing a live container to notice."""
+
+    def test_every_appconfiguration_field_appears_as_a_config_dict_key(self):
+        denidin_py_path = Path(__file__).parent.parent.parent / "denidin.py"
+        tree = ast.parse(denidin_py_path.read_text(encoding="utf-8"))
+
+        config_dict_keys = None
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "config_dict"
+                and isinstance(node.value, ast.Dict)
+            ):
+                config_dict_keys = {
+                    key.value for key in node.value.keys
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                }
+                break
+
+        assert config_dict_keys is not None, (
+            "Could not find denidin.py's __main__ config_dict = {...} literal - "
+            "this test needs updating if that code moved/was renamed, not skipped"
+        )
+
+        # `environment` is a legitimate, pre-existing exception: it's read
+        # directly from the mounted config file by watchdog.py (a separate
+        # process, outside the AppConfiguration/config_dict/initialize_app()
+        # flow entirely - see watchdog.py's own docstring), never through
+        # AppConfiguration at all. Every other field must appear.
+        known_exceptions = {"environment"}
+        dataclass_field_names = {f.name for f in dataclasses.fields(AppConfiguration)} - known_exceptions
+        missing = dataclass_field_names - config_dict_keys
+        assert not missing, (
+            f"AppConfiguration field(s) {missing} exist but are missing from denidin.py's "
+            "__main__ config_dict literal - a config value set in config.dev.json/"
+            "config.prod.json for these fields will silently have NO effect on the real "
+            "running app, exactly like accounting_ledger_update_freq did (2026-08-21)"
+        )
