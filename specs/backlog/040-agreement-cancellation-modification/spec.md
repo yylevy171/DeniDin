@@ -108,6 +108,83 @@ Not yet drafted — depends on Q3/Q7/Q8 above. Will follow `speckit.clarify` →
   based matching against history) — a separate, harder problem, not addressed by this feature
   or by Feature 032.
 
+## Real precedent (manual, 2026-08-23 — player review pass)
+
+A real occurrence of exactly this feature's problem statement surfaced during the interactive
+`needs_clarification.jsonl` review of the AHLedger production player replay (Feature 043),
+resolved by hand pending this feature's actual implementation — worth recording as a concrete
+example for `speckit.clarify`/`speckit.plan`, since it's real data, not a hypothetical:
+
+- Original message: "למחוק" ("delete") — a bare reply-style cancellation request with no
+  reference resolution available (Feature 032 doesn't exist yet), sent immediately after a
+  fee-agreement capture for client תומר דדוש (שימוע בעניין אנרגיה ירוקה, 9,440₪,
+  `A16072618210`).
+- The player's clarification loop (no live human to ask "cancel which record?") led the model
+  to create a **second**, separate `יצירה`-subtype event (`A17072610430`) whose only content
+  was a description explaining the record was "marked for deletion... with no way to actually
+  delete via this event" — i.e., exactly the gap this feature exists to close:
+  `capture_ledger_event` has no cancellation action, so the model worked around it by creating
+  a confusing duplicate-shaped record instead.
+- **Manual resolution applied** (by the human reviewer, confirming Q8's `event_subtype: ביטול`
+  choice is correct going forward):
+  - `A17072610430.agreement_id` changed to match `A16072618210`'s exactly (was independently
+    slug-generated and had drifted: "שימוע **בעניין** אנרגיה ירוקה" vs "שימוע **ב**אנרגיה
+    ירוקה" — same matter, different auto-generated text).
+  - `event_subtype`: `יצירה` → **`ביטול`**.
+  - `reference`: `"צריך למצוא"` placeholder → the real target event_id, `"A16072618210"`.
+  - `description`: trimmed to drop the "no way to actually delete via this event" caveat
+    (no longer true once `reference`/`event_subtype` carry the real semantics).
+  - `reference_hint`: replaced with the same trimmed text as the new `description`.
+  - `component_id` was deliberately left untouched (still embeds the old, un-migrated
+    agreement-id text) — not addressed by this manual pass, flagged as a loose end for
+    whatever this feature's real implementation does with component-level ids on a
+    cancellation event.
+- Confirms, from real data: `event_subtype: ביטול` is the right value for a cancellation event
+  (Q8), and that `reference` should point at the specific superseded `event_id` (matches the
+  already-RESOLVED Q4 from the original 032 draft).
+
+### Correction + second precedent (2026-08-23) — `ביטול` vs `מבוטל` are two different things
+
+A second real occurrence (same review pass, item 6/86) sharpened the pattern above and
+corrected an omission in it:
+
+- Original message (client מירה אבו ראס): "מירה אבו ראס / שכר טרחה 15 על ההליך + k10 על
+  החזרה. אם נגיע לפיצויים 10%. / גורס סיכומים קודמים" — a real new fee agreement (3 real
+  components: 15,000₪ fixed, 10,000₪ conditional on reinstatement, 10% of compensation if
+  reached), where **"גורס" turned out to mean "supersedes"** — this new agreement replaces a
+  prior one for the same client (`A05072614431`, "צו מניעה שני", 8,000₪), not a request to
+  literally delete anything. The model didn't know the word and left it as an unresolved,
+  confusing note wedged into one component's `description`.
+- **This is a materially different shape than the "למחוק" precedent above**: there, a bare
+  cancellation request produced a spurious extra event with nothing legitimate in it. Here,
+  the new agreement's components are all real and correct on their own — the supersession is
+  an *additional* fact layered on top of a legitimate capture, not the capture's entire
+  reason for existing.
+- **Manual resolution applied, establishing the fuller pattern**:
+  - `reference`/`reference_hint` recording the supersession go on **the single "main,
+    guaranteed" component of the new agreement** (here, `A24072611420`, the 15,000₪ ההליך
+    component) — not spread across every component, and not left on whichever component
+    happened to contain the confusing source text.
+  - **The OLD/superseded event itself gets `event_subtype` changed in place**: `יצירה` →
+    **`מבוטל`** ("cancelled/voided" — a passive status on the record that existed and is now
+    void), as opposed to `ביטול` ("cancellation" — a new event that IS the act of cancelling,
+    as `A17072610430` above). Applied to `A05072614431` here.
+  - **Retroactive correction**: `A16072618210` (the original "למחוק" precedent's superseded
+    record, left untouched in the first pass above) was updated the same way —
+    `event_subtype`: `יצירה` → `מבוטל`. The two mechanisms are complementary, not
+    alternatives: a dedicated `ביטול` event (when one naturally exists, e.g. from an explicit
+    "delete"/"cancel" request) records the act; `מבוטל` on the superseded record itself
+    records the resulting state. Both should exist together whenever both a real cancellation
+    event AND a specific known target record exist. When there's no separate cancellation
+    event (as in the מירה אבו ראס case — supersession is conveyed by `reference`/
+    `reference_hint` on the new agreement instead), `מבוטל` is still applied to the old record
+    on its own.
+- **Requirement for this feature's real implementation**: introduce `מבוטל` as a real,
+  first-class `event_subtype` value alongside `יצירה`/`הפקדה`/`ביטול` — whenever a
+  cancellation/modification/supersession is resolved (via reply-reference or otherwise) to a
+  specific existing `event_id`, that target record's own `event_subtype` must be updated to
+  `מבוטל` in place, not just referenced-at from a new event.
+
 ## Next Steps
 
 1. `speckit.clarify` — resolve Q3/Q5/Q7/Q8 above with the user.
