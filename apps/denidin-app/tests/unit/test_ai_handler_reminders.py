@@ -247,7 +247,8 @@ class TestApprovalDetailsFormatting:
     def test_weekly_schedule_format(self):
         summary = _format_reminder_schedule("FREQ=WEEKLY;BYDAY=MO,TH", "2026-08-17T10:00:00+03:00")
         assert "שבועי" in summary
-        assert "MO,TH" in summary
+        assert "ב,ה" in summary
+        assert "MO,TH" not in summary
 
     def test_create_reminder_details_contains_message_and_question(self):
         details = _build_reminder_approval_details(

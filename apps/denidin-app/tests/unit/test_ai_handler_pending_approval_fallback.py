@@ -88,6 +88,23 @@ def test_create_receipt_never_includes_the_raw_internal_morning_id():
     assert result.endswith("לאשר?")
 
 
+def test_cancel_transaction_account_never_includes_the_raw_internal_morning_id():
+    """Feature 056 (found via manual QA, 2026-08-20): cancel_transaction_account
+    had no branch here at all, so it fell all the way through to the fully
+    generic 'there's a pending action' text - not even naming the action,
+    let alone the account. Must name the action specifically (never a blank
+    generic), and never leak the raw internal id."""
+    args = json.dumps({"original_internal_morning_id": "e206dc08-a492-4279-80cf-1f098a3cf607"})
+
+    result = _build_pending_approval_fallback_text("cancel_transaction_account", args)
+
+    assert "e206dc08-a492-4279-80cf-1f098a3cf607" not in result
+    assert "יש פעולה הממתינה לאישורך" not in result, "must not fall back to the fully generic text"
+    assert "לבטל" in result or "ביטול" in result, "must name the action as a cancellation"
+    assert "עסקה" in result
+    assert result.endswith("לאשר?")
+
+
 def test_create_combo_document_as_reference_never_includes_the_raw_internal_morning_id():
     args = json.dumps({"original_internal_morning_id": "e206dc08-a492-4279-80cf-1f098a3cf607", "amount": 300})
 

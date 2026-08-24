@@ -34,6 +34,7 @@ from .formatters import (
     format_original_not_linked_to_client,
     format_too_many_clients_message,
     format_too_many_invoices_message,
+    format_transaction_account_cancelled,
 )
 from .models import _MORNING_STATUS_CODES, Client, FinancialSummary, Invoice
 from .morning_client import MorningClient
@@ -1226,6 +1227,54 @@ def _build_payment_receipt_payload(original: dict, payment_date: str, amount: Op
     }
 
 
+def _build_standalone_receipt_payload(
+    client_id: str,
+    amount: float,
+    description: str,
+    payment_date: str,
+) -> dict:
+    """Build a Morning receipt (type 400) payload for a standalone receipt -
+    one with no prior document to reference at all (feature 056).
+
+    Unlike `_build_payment_receipt_payload` (which marks an existing type-305
+    invoice paid), this records a pure cash movement that isn't business
+    income - a deposit, a loan repayment, or an advance payment ahead of a
+    transaction that hasn't completed (REQ-INV-014). It therefore carries no
+    VAT/income line at all (REQ-INV-017 - consistent with how a type-300
+    transaction account already has no VAT concept) and no
+    `linkedDocumentIds` (REQ-INV-019 - there is nothing to link to, and a
+    later real invoice for the same transaction is never required to
+    reference this receipt back).
+
+    `client_id` is a real, already-resolved Morning client_id (never a bare
+    name) - callers (create_receipt's standalone branch) MUST resolve via
+    `_require_resolved_client` first, same contract as every other create
+    tool. `description` is caller-supplied free text (REQ-INV-018 - the
+    model composes it, e.g. "פיקדון", "החזר הלוואה", "מקדמה על חשבון..."; no
+    structured reason code exists).
+
+    `payment_date` is REQUIRED and validated via `_validate_payment_date`
+    (same shared validator as every other payment-carrying builder) - the
+    money has already moved, so its real date is a fact to carry, never a
+    silent "today". The document's own top-level `date` (issue date, set
+    below) stays today regardless.
+    """
+    validated_payment_date = _validate_payment_date(payment_date)
+    today = now_local().date().isoformat()
+
+    return {
+        "type": 400,
+        "date": today,
+        "lang": "he",
+        "currency": "ILS",
+        "rounding": False,
+        "signed": True,
+        "description": description,
+        "client": {"self": False, "id": client_id},
+        "payment": [{"type": 1, "price": amount, "date": validated_payment_date}],
+    }
+
+
 def _build_combo_closing_payload(
     original: dict,
     payment_date: str,
@@ -1448,21 +1497,117 @@ def create_combo_document_as_reference(
     )
 
 
+def cancel_transaction_account(client: MorningClient, original_internal_morning_id: str) -> str:
+    """Cancel an open transaction account ("חשבון עסקה", type 300) with
+    ZERO documents created, and return a Hebrew confirmation (feature 056).
+
+    Distinct from `create_combo_document_as_reference`, which deliberately
+    creates a linked type-320 document to record fulfillment (the deal
+    happened and was paid). This is the opposite case - the deal fell
+    through, no money moved, nothing should be recorded as income
+    (REQ-INV-020).
+
+    Mechanism (research.md, live-confirmed 2026-08-18): the already-existing
+    `MorningClient.close_invoice` (POST /documents/{id}/close) sets the
+    account's status 0 -> 2 with no new document of any kind - confirmed
+    live via `linkedDocuments` staying empty and the close response's own id
+    matching the original. No new MorningClient method was needed.
+
+    Idempotency (REQ-INV-021/025): unlike `create_receipt`/
+    `create_combo_document_as_reference`, which lean on Morning's own
+    non-rejection of a duplicate document, the raw Morning API DOES reject a
+    redundant close with a 400 error ("לא ניתן לסגור מסמך שאינו פתוח" -
+    cannot close a document that is not open) - confirmed live. This guard
+    therefore lives entirely in application code: if the account is already
+    closed for ANY reason (cancelled via this same path, status 2, or
+    fulfilled via create_combo_document_as_reference, status 1),
+    `close_invoice` is never called again - cancellation must never contradict
+    a real payment document that already exists.
+
+    Args:
+        client: An authenticated MorningClient (injected).
+        original_internal_morning_id: Morning document id of the transaction
+            account being cancelled.
+
+    Returns:
+        A Hebrew confirmation string (REQ-INV-026 - never "שולם"/paid
+        wording, unlike get_invoice_details' generic status formatter),
+        identical in shape whether this call actually cancelled the account
+        or found it already closed (idempotent no-op).
+
+    Raises:
+        ValueError: If the original document's type is not 300 (transaction
+            account) — tax-invoice cancellation continues exclusively
+            through create_credit_note's existing, document-producing flow
+            (REQ-INV-022); this path is never a fallback for it.
+        Any exception raised by `client.get_invoice` if
+        `original_internal_morning_id` does not resolve to a real document
+        (propagated, not swallowed).
+    """
+    original = client.get_invoice(original_internal_morning_id)
+    original_type = original.get("type")
+    if original_type != _TRANSACTION_ACCOUNT_DOCUMENT_TYPE:
+        log_refusal(
+            "cancel_transaction_account",
+            "unsupported_document_type",
+            original_internal_morning_id=original_internal_morning_id,
+            document_type=original_type,
+        )
+        raise ValueError(
+            f"Cannot cancel as a transaction account: unsupported document type {original_type} "
+            f"(only {_TRANSACTION_ACCOUNT_DOCUMENT_TYPE} is supported - use create_credit_note "
+            f"for a {_TAX_INVOICE_DOCUMENT_TYPE} original)"
+        )
+
+    if original.get("status") != 0:
+        # Already closed - cancelled via this same path, or fulfilled via
+        # create_combo_document_as_reference. Idempotent no-op: never call
+        # close_invoice again (confirmed live, Morning's raw API rejects a
+        # redundant close with a 400, it does not no-op itself).
+        return format_transaction_account_cancelled(original)
+
+    close_response = client.close_invoice(original_internal_morning_id)
+    log_mutation(
+        "cancel_transaction_account",
+        payload={"action": "close", "internal_morning_id": original_internal_morning_id},
+        response=close_response,
+        client_id=_extract_linked_client_id(original),
+        client_name=(original.get("client") or {}).get("name"),
+    )
+
+    return format_transaction_account_cancelled(close_response)
+
+
 def create_receipt(
     client: MorningClient,
-    original_internal_morning_id: str,
-    payment_date: str,
+    original_internal_morning_id: Optional[str] = None,
+    payment_date: Optional[str] = None,
     amount: Optional[float] = None,
+    client_name: Optional[str] = None,
+    description: Optional[str] = None,
+    name_resolved: bool = False,
 ) -> str:
-    """Create a standalone receipt ("קבלה", type 400) linked to an existing
-    document, and return a Hebrew confirmation.
+    """Create a receipt ("קבלה", type 400) and return a Hebrew confirmation -
+    either linked to an existing document being paid, or standalone (feature
+    056, no prior document at all).
 
-    MCP tool: create_receipt (feature 021). Directly user-invocable and
-    supports partial-amount receipts. Feature 023 removed the separate
-    update_invoice_status tool - "mark as paid" phrasing for a type-305
-    original now dispatches straight here, decided by the model (which must
-    resolve the original's real type itself via get_invoice_details first),
-    not a status-word-matching code path.
+    MCP tool: create_receipt (feature 021; relaxed by feature 056). Directly
+    user-invocable and supports partial-amount receipts. Feature 023 removed
+    the separate update_invoice_status tool - "mark as paid" phrasing for a
+    type-305 original now dispatches straight here, decided by the model
+    (which must resolve the original's real type itself via
+    get_invoice_details first), not a status-word-matching code path.
+
+    Feature 056 (REQ-INV-014): when `original_internal_morning_id` is None,
+    this creates a STANDALONE receipt instead - for a deposit, loan
+    repayment, or advance payment that has no invoice behind it at all
+    (REQ-INV-015 through REQ-INV-019). That branch requires
+    `client_name` + `name_resolved=True` (the same resolved-client contract
+    `create_invoice` already uses - see `_require_resolved_client`),
+    `amount`, `description`, and `payment_date`, and never touches
+    `client.get_invoice` at all (there is no original to fetch). When
+    `original_internal_morning_id` IS given, every existing behavior below
+    is unchanged byte-for-byte (REQ-INV-016).
 
     Only accepts a type-305 original (feature 023) - any other type (300,
     a transaction account closed by create_combo_document_as_reference instead; 320,
@@ -1488,20 +1633,32 @@ def create_receipt(
 
     Args:
         client: An authenticated MorningClient (injected).
-        original_internal_morning_id: Morning document id of the invoice being paid.
+        original_internal_morning_id: Morning document id of the invoice
+            being paid. Omit for a standalone receipt (feature 056).
         payment_date: The real date the money moved, ISO YYYY-MM-DD (or
-            DD/MM/YYYY). Required - raises if missing, unparseable, or in
-            the future.
-        amount: Optional override — defaults to the original's full total.
+            DD/MM/YYYY). Required on both branches - raises if missing,
+            unparseable, or in the future.
+        amount: On the linked branch, an optional override (defaults to the
+            original's full total). On the standalone branch, required.
+        client_name: Standalone branch only - the client's exact,
+            already-resolved name.
+        description: Standalone branch only - free-text reason (e.g.
+            "פיקדון", "החזר הלוואה", "מקדמה על חשבון...") - REQ-INV-018, no
+            structured reason code.
+        name_resolved: Standalone branch only - must be True (asserting
+            `resolve_client_name` was already called with `client_name`) or
+            this refuses immediately, attempting no Morning lookup at all.
 
     Returns:
-        A Hebrew confirmation string with the new receipt's number, or a
-        friendly refusal message (no document created, REQ-INV-013) if the
-        original isn't linked to a real client record.
+        A Hebrew confirmation string with the new receipt's number, or (on
+        the linked branch) a friendly refusal message (no document created,
+        REQ-INV-013) if the original isn't linked to a real client record.
 
     Raises:
-        ValueError: If the original document's type is not 305 (tax
-            invoice) — e.g. 300 (transaction account, use
+        ClientNotFoundError / ClientNameNotResolvedError: standalone branch
+            only, via `_require_resolved_client` - see its own docstring.
+        ValueError: linked branch only - if the original document's type is
+            not 305 (tax invoice) — e.g. 300 (transaction account, use
             create_combo_document_as_reference instead), 320 (combo, already
             self-closed), 330/400 (a credit note/receipt is not itself
             something to pay). Strict positive check (only 305 allowed),
@@ -1514,6 +1671,26 @@ def create_receipt(
         Any exception raised by `client.get_invoice` if `original_internal_morning_id`
         does not resolve to a real document (propagated, not swallowed).
     """
+    if original_internal_morning_id is None:
+        # Feature 056: standalone receipt, no original to fetch at all.
+        if client_name:
+            client_name = _normalize_hebrew_geresh(client_name)
+        resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_receipt")
+
+        payload = _build_standalone_receipt_payload(
+            resolved_client.id, amount, description, payment_date
+        )
+        response = client.create_invoice(payload)
+        log_mutation(
+            "create_receipt",
+            payload=payload,
+            response=response,
+            client_id=resolved_client.id,
+            client_name=client_name,
+        )
+        receipt_number = response.get("number", response.get("id", ""))
+        return f"הופקה קבלה מספר {receipt_number}."
+
     original = client.get_invoice(original_internal_morning_id)
     original_type = original.get("type")
     if original_type != _TAX_INVOICE_DOCUMENT_TYPE:
