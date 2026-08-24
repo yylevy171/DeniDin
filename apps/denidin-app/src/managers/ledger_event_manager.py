@@ -15,13 +15,46 @@ integration contract this class fulfills.
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional
+
+from rapidfuzz import fuzz
 
 from src.utils.time_utils import LOCAL_TZ, local_from_timestamp, now_local
 
 logger = logging.getLogger(__name__)
+
+# Feature 044 (research.md Decision 3): fuzzy-match score thresholds
+# (rapidfuzz's 0-100 scale). Name matching uses WRatio (handles partial
+# matches/word-order variance well); free-text matching uses partial_ratio
+# (finds a close substring match within a longer field) with a looser
+# threshold since description/component_label/trigger_condition values are
+# longer and noisier than a name.
+_NAME_MATCH_THRESHOLD = 70
+_FREE_TEXT_MATCH_THRESHOLD = 60
+
+# The event fields query_events' free_text filter searches (research.md
+# Decision 1 - typo-tolerant, NOT meaning-based matching).
+# Feature 044 free-text search fields. Includes Feature 025's accounting_document_*
+# text fields (display_number/status_label/payment_method) - "implicit like any
+# other" (user, 2026-08-23): no dedicated query_events parameter for these, they're
+# just more free_text-searchable fields, same as description/component_label/
+# trigger_condition already are. accounting_document_status_code (a raw int) and
+# accounting_document_creation_date (a date, already covered by date_from/date_to)
+# are deliberately excluded - not natural free-text targets. accounting_document_type
+# is NOT in this list (2026-08-23 update, user) - Feature 025's design now folds
+# "type of accounting document" into event_subtype itself rather than a separate
+# field, and event_subtype is already a plain exact-match filter (Decision 12, no
+# enum) - no free_text coverage needed for it, and no further query_events change
+# needed either way. These fields are simply absent (never a KeyError) on any event
+# not sourced from Feature 025, so this list is safe to reference unconditionally
+# regardless of whether that feature has shipped.
+_FREE_TEXT_FIELDS = (
+    "description", "component_label", "trigger_condition",
+    "accounting_document_display_number",
+    "accounting_document_status_label", "accounting_document_payment_method",
+)
 
 # Events.csv's date/time columns are Asia/Jerusalem local time (confirmed with the
 # user 2026-07-29). As of bugfix-037 (2026-08-10) that is no longer a per-field
@@ -169,6 +202,35 @@ def _normalize_iso_date(raw: Optional[str]) -> Optional[str]:
         return None
 
 
+def _parse_query_date(raw: Optional[str]) -> Optional[date]:
+    """Feature 044 (data-model.md validation rules): parse a query_events
+    date_from/date_to argument (ISO-8601 YYYY-MM-DD). Returns None for a
+    missing OR unparseable value - callers treat both identically as "this
+    bound doesn't apply," never raise (a malformed bound is skipped, not an
+    error - see data-model.md's validation rules)."""
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _parse_event_date_field(raw: Optional[str], fmt: str) -> Optional[date]:
+    """Feature 044: parse one of a persisted event's own date-bearing fields
+    (event_datetime's "%d/%m/%Y %H:%M" or txn_date's "%d/%m/%Y") down to just
+    the calendar date, for date-range comparison. None if missing/unparseable
+    (never raises) - research.md Decision 7's "check both fields, either
+    counts" tolerates one of the two being absent/malformed on a given
+    record."""
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, fmt).date()
+    except ValueError:
+        return None
+
+
 def is_incomplete_capture(call_arguments: Dict) -> bool:
     """REQ-DATA-008 (added 2026-08-02, real incident): True when a capture_ledger_event
     call's components don't match what it itself claims - either an empty components
@@ -206,7 +268,35 @@ class LedgerEventManager:
         """
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"LedgerEventManager initialized: storage_dir={self.storage_dir}")
+
+        # Feature 044 (T001b): in-memory index of every persisted ledger event,
+        # loaded once here and kept current by add_ledger_event's own append
+        # below - so query_events (T002b onward) never re-reads every file from
+        # disk per call. A corrupt/unparseable file is skipped and logged
+        # (FR-007) rather than aborting the whole load. No lock (user directive,
+        # 2026-08-23) - Python's GIL already makes a plain list's append/
+        # iteration individually atomic, which is all the spec's own
+        # concurrency tolerance (see research.md Decision 8) relies on.
+        self._index: List[Dict] = self._load_index()
+
+        logger.info(
+            f"LedgerEventManager initialized: storage_dir={self.storage_dir}, "
+            f"index_size={len(self._index)}"
+        )
+
+    def _load_index(self) -> List[Dict]:
+        """Feature 044 (T001b): scan self.storage_dir for every *.json file and
+        parse it into the in-memory index. A file that fails to parse is
+        skipped and logged as an ERROR (FR-007) - never raises, never aborts
+        the rest of the load."""
+        index: List[Dict] = []
+        for file_path in sorted(self.storage_dir.glob("*.json")):
+            try:
+                with file_path.open(encoding="utf-8") as f:
+                    index.append(json.load(f))
+            except (json.JSONDecodeError, OSError) as e:
+                logger.error(f"Skipping unreadable ledger event file {file_path}: {e}")
+        return index
 
     def _resolve_local_dt(self, message_timestamp: Optional[int]):
         """Shared by add_ledger_event and build_agreement_id: Asia/Jerusalem local
@@ -478,6 +568,11 @@ class LedgerEventManager:
             json.dump(record, f, sort_keys=True, ensure_ascii=False, indent=2)
         tmp_path.replace(file_path)
 
+        # Feature 044 (T001b, FR-003): keep the in-memory index current the
+        # moment a new event is durably persisted - same method, no separate
+        # sync step to forget. Appended only after the write above succeeds.
+        self._index.append(record)
+
         logger.info(
             f"Persisted ledger event {event_id} (source_type={source_type!r}, "
             f"event_subtype={event.get('event_subtype')!r}) for session {session_id}"
@@ -586,6 +681,170 @@ class LedgerEventManager:
             if event_id is not None:
                 event_ids.append(event_id)
         return event_ids
+
+    def query_events(
+        self,
+        client_name: Optional[str] = None,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+        amount_min: Optional[float] = None,
+        amount_max: Optional[float] = None,
+        source_type: Optional[str] = None,
+        event_subtype: Optional[str] = None,
+        free_text: Optional[str] = None,
+    ) -> Dict:
+        """
+        Feature 044 (query_ledger_events tool's backing implementation).
+        Filters the in-memory index (self._index) against every non-null
+        argument, AND-combined - see data-model.md for the exact matching
+        rules and the three possible return shapes:
+
+        A. {"matches": [<event dict>, ...], "count": <int>} - the normal case,
+           the COMPLETE matching set (FR-005, never truncated).
+        B. {"ambiguous_field": "client_name", "candidates": [{"value": ...,
+           "event_count": ...}, ...]} - when client_name fuzzy-matches 2+
+           distinct stored client_name/payer_name strings with no clear
+           single winner (research.md Decision 4) - result multiplicity
+           itself is NEVER treated this way, only entity-identity ambiguity.
+        C. {"error": "no_search_criteria", "message": ...} - the vague-query
+           guard (research.md Decision 6): every argument was None, so no
+           search was even attempted.
+        """
+        if all(
+            v is None for v in (
+                client_name, date_from, date_to, amount_min, amount_max,
+                source_type, event_subtype, free_text,
+            )
+        ):
+            return {
+                "error": "no_search_criteria",
+                "message": (
+                    "No search criteria were given - ask the user what/who they mean "
+                    "before searching."
+                ),
+            }
+
+        if client_name is not None:
+            candidates = self._distinct_name_candidates(client_name)
+            if len(candidates) >= 2:
+                return {
+                    "ambiguous_field": "client_name",
+                    "candidates": [
+                        {
+                            "value": name,
+                            "event_count": self._count_events_for_name(name),
+                        }
+                        for name in candidates
+                    ],
+                }
+
+        parsed_date_from = _parse_query_date(date_from)
+        parsed_date_to = _parse_query_date(date_to)
+
+        matches = []
+        for event in list(self._index):  # shallow snapshot, see research.md Decision 8
+            if client_name is not None and not self._event_matches_name(event, client_name):
+                continue
+            if source_type is not None and event.get("source_type") != source_type:
+                continue
+            if event_subtype is not None and event.get("event_subtype") != event_subtype:
+                continue
+            if (amount_min is not None or amount_max is not None) and not self._event_matches_amount(
+                event, amount_min, amount_max
+            ):
+                continue
+            if (parsed_date_from is not None or parsed_date_to is not None) and not self._event_in_date_range(
+                event, parsed_date_from, parsed_date_to
+            ):
+                continue
+            if free_text is not None and not self._event_matches_free_text(event, free_text):
+                continue
+            matches.append(event)
+
+        return {"matches": matches, "count": len(matches)}
+
+    def _distinct_name_candidates(self, query_name: str) -> List[str]:
+        """Every DISTINCT stored client_name/payer_name string in the index
+        that fuzzy-matches query_name at or above _NAME_MATCH_THRESHOLD -
+        research.md Decision 4's entity-ambiguity grouping. Order is not
+        significant to callers."""
+        distinct_names = {
+            name
+            for event in self._index
+            for name in (event.get("client_name"), event.get("payer_name"))
+            if name
+        }
+        return [
+            name for name in distinct_names
+            if fuzz.WRatio(query_name, name) >= _NAME_MATCH_THRESHOLD
+        ]
+
+    def _count_events_for_name(self, exact_name: str) -> int:
+        """How many indexed events have this EXACT stored name as their
+        client_name or payer_name - used only to annotate the ambiguous-
+        candidates shape's event_count, never a fuzzy count."""
+        return sum(
+            1 for event in self._index
+            if event.get("client_name") == exact_name or event.get("payer_name") == exact_name
+        )
+
+    @staticmethod
+    def _event_matches_name(event: Dict, query_name: str) -> bool:
+        """Per-event fuzzy name check against BOTH client_name and payer_name
+        (research.md - client_name query param matches either field)."""
+        for field in ("client_name", "payer_name"):
+            value = event.get(field)
+            if value and fuzz.WRatio(query_name, value) >= _NAME_MATCH_THRESHOLD:
+                return True
+        return False
+
+    @staticmethod
+    def _event_matches_amount(
+        event: Dict, amount_min: Optional[float], amount_max: Optional[float]
+    ) -> bool:
+        amount = event.get("amount")
+        if amount is None:
+            return False
+        if amount_min is not None and amount < amount_min:
+            return False
+        if amount_max is not None and amount > amount_max:
+            return False
+        return True
+
+    @staticmethod
+    def _event_in_date_range(
+        event: Dict, date_from: Optional[date], date_to: Optional[date]
+    ) -> bool:
+        """research.md Decision 7: matches if EITHER event_datetime's OR
+        txn_date's date portion falls in [date_from, date_to] (either bound
+        may be None, meaning unbounded on that side)."""
+        candidate_dates = [
+            _parse_event_date_field(event.get("event_datetime"), "%d/%m/%Y %H:%M"),
+            _parse_event_date_field(event.get("txn_date"), "%d/%m/%Y"),
+        ]
+        for event_date in candidate_dates:
+            if event_date is None:
+                continue
+            if date_from is not None and event_date < date_from:
+                continue
+            if date_to is not None and event_date > date_to:
+                continue
+            return True
+        return False
+
+    @staticmethod
+    def _event_matches_free_text(event: Dict, query_text: str) -> bool:
+        for field in _FREE_TEXT_FIELDS:
+            value = event.get(field)
+            if not value:
+                continue
+            # Defensive str() cast: _FREE_TEXT_FIELDS includes fields this class
+            # doesn't itself populate (Feature 025's accounting_document_* fields) -
+            # a non-string value (e.g. a raw numeric display number) must never
+            # raise here, just participate in the same fuzzy match as text.
+            if fuzz.partial_ratio(query_text, str(value)) >= _FREE_TEXT_MATCH_THRESHOLD:
+                return True
+        return False
 
     def _load_event(self, event_id: str) -> Optional[Dict]:
         """Shared read helper for resolve_reference/apply_review_answer -

@@ -50,6 +50,13 @@ MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # this app's existing blanket-access pattern, not a reminder-specific rule.
 REMINDER_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 
+# Roles authorized to have the query_ledger_events tool attached (Feature 044)
+# - its own distinct constant (not a reuse of MORNING_MCP_AUTHORIZED_ROLES/
+# REMINDER_AUTHORIZED_ROLES, even though the values coincide today), matching
+# this codebase's existing per-feature-constant convention (research.md
+# Decision 9).
+LEDGER_QUERY_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
+
 # Feature 039 (US4a): the model outputs this exact string as its entire response_text
 # to mean "send nothing back" (e.g. a group message clearly directed at someone else,
 # per runtime_constitution.md's group-etiquette guidance) - double-bracketed to make
@@ -940,6 +947,98 @@ DELETE_REMINDER_TOOL: Dict[str, Any] = {
 }
 
 
+# Ledger Event Querying (Feature 044) - a local `type: "function"` tool,
+# RBAC-gated like the reminder tools (LEDGER_QUERY_AUTHORIZED_ROLES), but
+# read-only and dispatched immediately - no PendingLocalToolApproval, ever.
+# Unlike list_reminders, a single turn may legitimately contain SEVERAL calls
+# to this tool (research.md Decision 10) - see _handle_query_ledger_events.
+QUERY_LEDGER_EVENTS_TOOL: Dict[str, Any] = {
+    "type": "function",
+    "name": "query_ledger_events",
+    "description": (
+        "Search previously captured ledger events (fee agreements AND bank-deposit records) "
+        "to answer a question about past agreements, amounts, hours, or payments - without "
+        "needing the user to paste the original message again. ONLY call this when the "
+        "user's question gives you at least ONE identifying detail to search on (a client/"
+        "payer name, a date or date range, an amount or amount range, or specific matter "
+        "text) - if the question is too vague to form a real search (e.g. 'what did we "
+        "agree on' with nothing else), ASK the user for the missing detail FIRST; never "
+        "call this with every filter empty just to see what comes back. "
+        "client_name is fuzzy-matched against BOTH client_name and payer_name on file - "
+        "typos and partial names are fine, it does not need to be exact. date_from/date_to "
+        "and amount_min/amount_max are plain ranges - YOU resolve any fuzziness yourself "
+        "before calling (e.g. 'August' -> that month's first/last day; 'around 40,000, "
+        "might include VAT' -> widen the amount range yourself, e.g. try 0.8x-1.2x). "
+        "free_text is matched (typo-tolerant, NOT meaning-based) against the event's own "
+        "free-text fields (description/component/condition text, and any accounting-document "
+        "text fields like a document number/status/payment method) - it will find "
+        "similar WORDING, not a differently-phrased description of the same matter. "
+        "source_type/event_subtype are exact category matches, not a fixed list - the ledger "
+        "can hold more source types than just fee agreements and bank deposits (e.g. "
+        "accounting documents pulled from Morning); pass whatever value the question implies. "
+        "If client_name matches more than one distinct real client with no single clear "
+        "winner, this returns candidates instead of events - relay them to the user and ask "
+        "which one they meant. If they confirm more than one (or 'both'/'all'), call this "
+        "again ONCE PER confirmed exact name and combine the results yourself. An empty "
+        "result means no matching record was found - say so plainly, never fabricate an "
+        "answer. For a question needing arithmetic (a sum, a balance owed, a total across "
+        "clients/periods), use the returned events' own clean numeric fields yourself - this "
+        "tool never computes totals for you. "
+        "YOU MAY CALL THIS TOOL MULTIPLE TIMES IN THE SAME TURN - this is how to answer a "
+        "request spanning more than one name, date range, or other criterion at once (e.g. "
+        "'what was agreed with client A or client B', 'hours in August or September') - call "
+        "once per distinct name/range/criterion and combine all the results yourself when "
+        "you reply. This tool is read-only, so calling it several times is always safe. "
+        "If a single call's matches are very numerous, don't just dump every event verbatim - "
+        "use your own judgment about summarizing or asking the user to narrow further, the "
+        "same way you would for any other long answer."
+    ),
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "client_name": {
+                "type": ["string", "null"],
+                "description": "Fuzzy-matched against stored client_name/payer_name - typos and partial names are fine.",
+            },
+            "date_from": {
+                "type": ["string", "null"],
+                "description": "ISO-8601 YYYY-MM-DD, inclusive lower bound. Matches if EITHER the event's own date or its transaction date falls in range - resolve relative/approximate phrases yourself first.",
+            },
+            "date_to": {
+                "type": ["string", "null"],
+                "description": "ISO-8601 YYYY-MM-DD, inclusive upper bound. Same matching as date_from.",
+            },
+            "amount_min": {
+                "type": ["number", "null"],
+                "description": "Inclusive lower bound on the event's amount. Widen this yourself if VAT ambiguity is plausible.",
+            },
+            "amount_max": {
+                "type": ["number", "null"],
+                "description": "Inclusive upper bound on the event's amount. Same reasoning as amount_min.",
+            },
+            "source_type": {
+                "type": ["string", "null"],
+                "description": "Exact category match against the event's own source_type - הסכם for fee-agreement events, בנק for bank-deposit events, חשבונית for accounting documents pulled from Morning, or any other value that may exist. NOT a fixed list - the ledger can grow new source types over time; pass whatever value the user's own question implies. Leave null to search across every type (needed for e.g. an owed-balance question spanning agreement + payments).",
+            },
+            "event_subtype": {
+                "type": ["string", "null"],
+                "description": "Exact category match against the event's own event_subtype. Almost never worth setting - leave null unless the user specifically distinguishes subtypes. NOT a fixed list, same reasoning as source_type.",
+            },
+            "free_text": {
+                "type": ["string", "null"],
+                "description": "Typo-tolerant (NOT meaning-based) match against the event's own free-text fields (description, component_label, trigger_condition, and any accounting-document text fields like document number/status/payment method).",
+            },
+        },
+        "required": [
+            "client_name", "date_from", "date_to", "amount_min", "amount_max",
+            "source_type", "event_subtype", "free_text",
+        ],
+        "additionalProperties": False,
+    },
+}
+
+
 def _format_reminder_schedule(rrule_str: Optional[str], dtstart_iso: str) -> str:
     """Human-readable Hebrew summary of a reminder's schedule, for the approval
     block (_build_reminder_approval_details). The persisted RRULE string is the
@@ -1489,14 +1588,24 @@ class AIHandler:
             return []
         return [CREATE_REMINDER_TOOL, LIST_REMINDERS_TOOL, MODIFY_REMINDER_TOOL, DELETE_REMINDER_TOOL]
 
+    def _build_ledger_query_tools(self, user_obj) -> List[Dict]:
+        """Ledger Event Querying (Feature 044), RBAC-gated the same way the
+        reminder/Morning MCP tools are - only GODFATHER/ADMIN get
+        query_ledger_events attached. Read-only, no approval gate, ever."""
+        if user_obj is None or user_obj.role not in LEDGER_QUERY_AUTHORIZED_ROLES:
+            return []
+        return [QUERY_LEDGER_EVENTS_TOOL]
+
     def _assemble_tools(self, user_obj, correlation_id: str) -> Optional[List[Dict]]:
         """Merge the (RBAC-gated) Morning MCP tools, the (RBAC-gated) reminder
-        tools, and the (always-on) ledger-event tool into one `tools` list - all
-        can be attached in the same turn. Returns None (not an empty list) when
-        nothing applies, matching the Responses API's own convention for "no
-        tools this call"."""
+        tools, the (RBAC-gated) ledger-query tool, and the (always-on)
+        ledger-event capture tool into one `tools` list - all can be attached
+        in the same turn. Returns None (not an empty list) when nothing
+        applies, matching the Responses API's own convention for "no tools
+        this call"."""
         morning_tools = self._build_morning_mcp_tools(user_obj, correlation_id) if self.rbac_enabled else None
         reminder_tools = self._build_reminder_tools(user_obj) if self.rbac_enabled else []
+        ledger_query_tools = self._build_ledger_query_tools(user_obj) if self.rbac_enabled else []
         # Reminder tools deliberately go LAST (2026-08-19, user decision after a
         # real cross-feature confusion incident): Morning's tools are one opaque
         # `mcp` entry needing runtime discovery, so reminder tools - individually
@@ -1504,7 +1613,14 @@ class AIHandler:
         # list whenever they came right after it. Position isn't the only fix
         # (see the tool descriptions' own explicit negative scoping above), but
         # reduces whatever residual bias position/primacy contributes.
-        combined = (morning_tools or []) + self._build_ledger_event_tool() + reminder_tools
+        # query_ledger_events goes alongside reminder tools (also inlined
+        # `function` entries, same visibility reasoning) - after the ledger
+        # capture tool, before reminders (2026-08-23, no reported cross-feature
+        # confusion yet to justify a different position).
+        combined = (
+            (morning_tools or []) + self._build_ledger_event_tool()
+            + ledger_query_tools + reminder_tools
+        )
         return combined or None
 
     def _build_instructions(self, constitution: str, today_timestamp: Optional[int] = None) -> str:
@@ -2106,6 +2222,104 @@ class AIHandler:
             logger.error(f"[054] list_reminders follow-up call failed: {e}", exc_info=True)
             return None
 
+    def _call_openai_query_ledger_events_followup_api(
+        self, request: AIRequest, previous_response_id: str,
+        outputs: List[Dict[str, Any]], tools: Optional[List[Dict]] = None,
+    ):
+        """Feature 044 (research.md Decision 10): report EVERY
+        query_ledger_events call's own result back as its own
+        function_call_output, via a follow-up chained to the SAME turn's
+        response.id - mirrors _call_openai_ledger_followup_api's multi-item
+        batching exactly (a list comprehension, one output item per call_id),
+        NOT _call_openai_list_reminders_followup_api's single-item shape,
+        since a turn may contain several query_ledger_events calls at once.
+
+        outputs: list of {"call_id": str, "payload": dict} - one entry per
+        query_ledger_events call from the previous turn, in the order
+        extract_all_function_calls found them. OpenAI rejects the follow-up
+        outright if any pending call from that turn is left unresolved, so
+        EVERY call_id - a real result or a parse-failure error (data-model.md
+        shape D) - must appear here, none silently omitted.
+        """
+        output_items = [
+            {
+                "type": "function_call_output",
+                "call_id": item["call_id"],
+                "output": json.dumps(item["payload"], ensure_ascii=False),
+            }
+            for item in outputs
+        ]
+        kwargs = {
+            "model": request.model,
+            "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
+            "input": output_items,
+            "previous_response_id": previous_response_id,
+            "max_output_tokens": request.max_tokens,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        call_ids = [item["call_id"] for item in outputs]
+        logger.info(f"[044] _call_openai_query_ledger_events_followup_api: call_ids={call_ids!r}")
+        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        return response
+
+    def _handle_query_ledger_events(self, request: AIRequest, response, tools: Optional[List[Dict]]):
+        """Feature 044 (research.md Decision 10): query_ledger_events is
+        read-only, dispatched immediately (like list_reminders/
+        capture_ledger_event) - needs a follow-up round-trip for the same
+        reasoning-model function_call-OR-message limitation.
+
+        UNLIKE list_reminders (single-call), this uses
+        extract_all_function_calls: a turn may legitimately contain SEVERAL
+        query_ledger_events calls (e.g. "client A or client B" - the model
+        calls once per criterion and combines results itself). This is the
+        deliberate OPPOSITE of capture_ledger_event's bugfix-018 whole-turn
+        rejection - that rule exists because capture_ledger_event WRITES data
+        and an uncontrolled multi-call burst risks corrupting the ledger with
+        duplicates; query_ledger_events writes nothing, so every call is
+        independent and safe to execute regardless of how many others are
+        present this turn.
+
+        A call whose arguments fail to parse (truncated mid-generation, same
+        failure mode bugfix-018 guards against) gets its own isolated error
+        output (data-model.md shape D) WITHOUT affecting any other call from
+        the same turn - never a whole-turn rejection.
+
+        Returns the follow-up response (whose output_text/usage should
+        replace the original response's), or None if no query_ledger_events
+        call was made this turn, or if the follow-up call itself failed.
+        """
+        calls = extract_all_function_calls(response, QUERY_LEDGER_EVENTS_TOOL["name"])
+        if not calls:
+            return None
+
+        outputs = []
+        for call in calls:
+            if call["arguments"] is None:
+                logger.warning(
+                    f"[044] query_ledger_events call {call['call_id']!r} had unparseable "
+                    "arguments (likely truncated) - reporting an isolated error for this "
+                    "call only, other calls this turn are unaffected"
+                )
+                outputs.append({
+                    "call_id": call["call_id"],
+                    "payload": {
+                        "status": "error",
+                        "reason": "Arguments could not be parsed - do not resubmit this exact call.",
+                    },
+                })
+                continue
+            result = self.ledger_event_manager.query_events(**call["arguments"])
+            outputs.append({"call_id": call["call_id"], "payload": result})
+
+        try:
+            return self._call_openai_query_ledger_events_followup_api(
+                request, response.id, outputs, tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[044] query_ledger_events follow-up call failed: {e}", exc_info=True)
+            return None
+
     def _handle_reminder_modify_or_delete_proposal(
         self, request: AIRequest, response, effective_chat_id: Optional[str],
     ) -> "tuple[Optional[str], bool]":
@@ -2285,6 +2499,20 @@ class AIHandler:
                 "never receives a silently empty reply."
             )
 
+        # Ledger Event Querying (Feature 044): query_ledger_events is read-only,
+        # dispatched immediately (may involve SEVERAL calls in one turn - see
+        # research.md Decision 10), and needs a follow-up round-trip for its
+        # reply for the same function_call-OR-message reason as everything
+        # else in this method. Checked before list_reminders (a turn calls at
+        # most one read-only immediate-dispatch tool family in practice).
+        ledger_query_followup = self._handle_query_ledger_events(request, response, tools)
+        if ledger_query_followup is not None:
+            response_text = ledger_query_followup.output_text
+            tokens_used += ledger_query_followup.usage.total_tokens
+            prompt_tokens += ledger_query_followup.usage.input_tokens
+            completion_tokens += ledger_query_followup.usage.output_tokens
+            usage_response = ledger_query_followup
+
         # Reminders (Feature 054): list_reminders is read-only, dispatched
         # immediately (unlike create/modify/delete_reminder), and needs a
         # follow-up round-trip for its reply for the same function_call-OR-
@@ -2306,9 +2534,12 @@ class AIHandler:
         # (pre-list_reminders) `response` - otherwise the follow-up's function_call
         # is invisible to this code, response_text stays '' (list_reminders_followup's
         # own output_text, empty for the same function_call-OR-message reason),
-        # and AIResponse.__post_init__ correctly rejects the empty reply.
+        # and AIResponse.__post_init__ correctly rejects the empty reply. Same
+        # reasoning extends to a query_ledger_events follow-up (2026-08-23).
         reminder_tool_response = (
-            list_reminders_followup if list_reminders_followup is not None else response
+            list_reminders_followup if list_reminders_followup is not None
+            else ledger_query_followup if ledger_query_followup is not None
+            else response
         )
 
         # Reminders (Feature 054): a create_reminder call produces empty

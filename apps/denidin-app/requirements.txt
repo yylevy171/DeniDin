@@ -29,6 +29,9 @@ icalendar>=6.1.0
 recurring-ical-events>=3.4.0
 APScheduler>=3.10.0
 
+# Ledger Event Querying (Feature 044): fuzzy name/free-text matching
+rapidfuzz>=3.9.0
+
 # Testing
 pytest>=7.0.0
 pytest-cov>=4.0.0

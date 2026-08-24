@@ -1227,3 +1227,390 @@ class TestApplyReviewAnswer:
         manager.apply_review_answer(event_id, {"payer_name": "דני כהן"})
 
         assert _read(temp_events_dir, other_id) == before_other
+
+
+def _write_raw_event_file(events_dir, event_id, content):
+    """T001a helper: write a raw event JSON file directly to events_dir BEFORE a
+    LedgerEventManager exists over it, so construction-time index loading has
+    something real to find. `content` may be a dict (written as JSON) or a raw
+    str (written verbatim, for the deliberately-malformed-JSON case)."""
+    events_dir.mkdir(parents=True, exist_ok=True)
+    path = events_dir / f"{event_id}.json"
+    if isinstance(content, str):
+        path.write_text(content, encoding="utf-8")
+    else:
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(content, f, ensure_ascii=False)
+
+
+class TestInMemoryIndex:
+    """Feature 044, T001a: the in-memory ledger-event index - populated at
+    construction from {storage_dir}/*.json, kept current on writes.
+
+    NOTE: these tests inspect `manager._index` directly rather than going
+    through a public query method - Feature 044's actual query surface
+    (`query_events`, T002a onward) doesn't exist yet at this point in the
+    phase, and the index itself (this task's own scope) needs to be provable
+    on its own before anything is built on top of it. `_index` is this
+    class's own persisted-in-memory state, not an unrelated internal - a
+    white-box check of it here is the honest, minimal-dependency way to test
+    T001b's actual scope in isolation.
+    """
+
+    def test_construction_loads_all_existing_valid_files_into_index(
+        self, temp_events_dir
+    ):
+        _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))
+        _write_raw_event_file(temp_events_dir, "A2807261407", dict(SAMPLE_EVENT, event_id="A2807261407"))
+        _write_raw_event_file(temp_events_dir, "B2807261408", dict(SAMPLE_EVENT, event_id="B2807261408"))
+
+        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+
+        assert len(manager._index) == 3
+        assert {e["event_id"] for e in manager._index} == {
+            "A2807261406", "A2807261407", "B2807261408",
+        }
+
+    def test_construction_with_no_existing_files_yields_empty_index(self, temp_events_dir):
+        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+        assert manager._index == []
+
+    def test_corrupt_file_skipped_not_raised_others_still_load(self, temp_events_dir, caplog):
+        _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))
+        _write_raw_event_file(temp_events_dir, "A2807261407", "{not valid json at all")
+        _write_raw_event_file(temp_events_dir, "B2807261408", dict(SAMPLE_EVENT, event_id="B2807261408"))
+
+        with caplog.at_level(logging.ERROR):
+            manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+
+        # FR-007: the corrupt file never prevents the others from loading, and
+        # never crashes construction (no exception raised above).
+        assert {e["event_id"] for e in manager._index} == {"A2807261406", "B2807261408"}
+        assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+    def test_add_ledger_event_appends_to_index_immediately(self, manager, temp_events_dir):
+        assert manager._index == []
+
+        event_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT), message_id="m",
+            message_timestamp=FIXED_TS,
+        )
+
+        assert len(manager._index) == 1
+        assert manager._index[0]["event_id"] == event_id
+        # The indexed record matches exactly what was persisted to disk (FR-003 -
+        # same write, not a second, possibly-divergent copy).
+        assert manager._index[0] == _read(temp_events_dir, event_id)
+
+    def test_add_ledger_event_after_construction_from_existing_files_grows_index(
+        self, temp_events_dir
+    ):
+        _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))
+        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+        assert len(manager._index) == 1
+
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT), message_id="m",
+            message_timestamp=FIXED_TS,
+        )
+
+        assert len(manager._index) == 2
+
+
+# Feature 044 (T002a-T004a): query_events test fixtures. Two more fixed
+# timestamps for date-range testing, same convention as FIXED_TS above.
+# 2026-08-05T09:00:00 UTC -> Asia/Jerusalem local (UTC+3, Israel DST) -> 2026-08-05 12:00 local
+FIXED_TS_AUG5 = int(datetime(2026, 8, 5, 9, 0, 0, tzinfo=timezone.utc).timestamp())
+# 2026-08-20T09:00:00 UTC -> 2026-08-20 12:00 local
+FIXED_TS_AUG20 = int(datetime(2026, 8, 20, 9, 0, 0, tzinfo=timezone.utc).timestamp())
+
+
+class TestQueryEventsStructuredFilters:
+    """Feature 044, T002a: query_events' date/amount/source_type/event_subtype
+    filters - no fuzzy matching involved in this class."""
+
+    def test_date_range_matches_against_event_datetime(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT), message_id="m1",
+            message_timestamp=FIXED_TS_AUG5,
+        )
+        result = manager.query_events(date_from="2026-08-01", date_to="2026-08-10")
+        assert result["count"] == 1
+        result = manager.query_events(date_from="2026-08-06", date_to="2026-08-10")
+        assert result["count"] == 0
+
+    def test_date_range_matches_against_txn_date_when_event_datetime_is_outside(self, manager):
+        # event_datetime is Aug 20 (outside the searched range), but txn_date
+        # (the hours-worked date) is Aug 5 (inside it) - Decision 7: EITHER
+        # date-bearing field falling in range counts as a match.
+        manager.add_ledger_event(
+            session_id="s",
+            event=dict(SAMPLE_EVENT, hours="2", txn_date="2026-08-05"),
+            message_id="m1", message_timestamp=FIXED_TS_AUG20,
+        )
+        result = manager.query_events(date_from="2026-08-01", date_to="2026-08-10")
+        assert result["count"] == 1
+
+    def test_date_range_no_match_when_both_date_fields_outside_range(self, manager):
+        manager.add_ledger_event(
+            session_id="s",
+            event=dict(SAMPLE_EVENT, hours="2", txn_date="2026-08-20"),
+            message_id="m1", message_timestamp=FIXED_TS_AUG20,
+        )
+        result = manager.query_events(date_from="2026-08-01", date_to="2026-08-10")
+        assert result["count"] == 0
+
+    def test_amount_range_inclusive_bounds(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, amount="5,000₪"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        assert manager.query_events(amount_min=5000, amount_max=5000)["count"] == 1
+        assert manager.query_events(amount_min=5001, amount_max=6000)["count"] == 0
+        assert manager.query_events(amount_min=1000, amount_max=4999)["count"] == 0
+        assert manager.query_events(amount_min=1000, amount_max=5000)["count"] == 1
+
+    def test_source_type_exact_filter(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הסכם"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        assert manager.query_events(source_type="הסכם")["count"] == 1
+        assert manager.query_events(source_type="בנק")["count"] == 0
+
+    def test_event_subtype_exact_filter(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, event_subtype="יצירה"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        assert manager.query_events(event_subtype="יצירה")["count"] == 1
+        assert manager.query_events(event_subtype="הפקדה")["count"] == 0
+
+    def test_source_type_filter_accepts_any_value_not_just_known_ones(self, manager):
+        """research.md Decision 12: source_type is a plain exact-match filter,
+        NOT an enum - proves the filtering logic has no hardcoded assumption
+        about which values exist, forward-compatible with Feature 025's
+        source_type="חשבונית" (and any future source type) with zero
+        query_events code change needed. Inserted directly into the index
+        (bypassing add_ledger_event, whose OWN _LETTER_BY_SOURCE_TYPE lookup
+        is Feature 025's own concern, not this one's, and doesn't recognize
+        "חשבונית" yet since that feature's code isn't merged)."""
+        manager._index.append(dict(SAMPLE_EVENT, event_id="H_TEST_1", source_type="חשבונית"))
+        assert manager.query_events(source_type="חשבונית")["count"] == 1
+        assert manager.query_events(source_type="הסכם")["count"] == 0
+
+    def test_event_subtype_filter_accepts_any_value_not_just_known_ones(self, manager):
+        """Same reasoning as source_type above, for event_subtype."""
+        manager._index.append(dict(SAMPLE_EVENT, event_id="H_TEST_2", event_subtype="הפקה"))
+        assert manager.query_events(event_subtype="הפקה")["count"] == 1
+        assert manager.query_events(event_subtype="יצירה")["count"] == 0
+
+    def test_multiple_filters_and_combined(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הסכם", amount="5,000₪"),
+            message_id="m1", message_timestamp=FIXED_TS_AUG5,
+        )
+        # Matches on date range but not source_type -> excluded.
+        result = manager.query_events(date_from="2026-08-01", date_to="2026-08-10", source_type="בנק")
+        assert result["count"] == 0
+        # Matches on both -> included.
+        result = manager.query_events(date_from="2026-08-01", date_to="2026-08-10", source_type="הסכם")
+        assert result["count"] == 1
+
+    def test_inverted_date_range_yields_empty_not_raise(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT), message_id="m1",
+            message_timestamp=FIXED_TS_AUG5,
+        )
+        result = manager.query_events(date_from="2026-08-10", date_to="2026-08-01")
+        assert result["count"] == 0
+
+    def test_inverted_amount_range_yields_empty_not_raise(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, amount="5,000₪"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(amount_min=6000, amount_max=1000)
+        assert result["count"] == 0
+
+    def test_malformed_date_treated_as_absent_bound_not_raised(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT), message_id="m1",
+            message_timestamp=FIXED_TS_AUG5,
+        )
+        # date_from is garbage - treated as if absent, date_to still applies.
+        result = manager.query_events(date_from="not-a-date", date_to="2026-08-10")
+        assert result["count"] == 1
+
+
+class TestQueryEventsFuzzyMatching:
+    """Feature 044, T003a: query_events' fuzzy client_name/payer_name and
+    free_text matching, plus entity-ambiguity grouping."""
+
+    def test_client_name_typo_still_matches_stored_client_name(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד כהן"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(client_name="דויד כהן")  # one-letter typo
+        assert result["count"] == 1
+
+    def test_client_name_matches_stored_payer_name_too(self, manager):
+        manager.add_ledger_event(
+            session_id="s",
+            event=dict(SAMPLE_EVENT, client_name="לקוח מקורי", payer_name="חברת הביטוח"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(client_name="חברת הביטוח")
+        assert result["count"] == 1
+
+    def test_name_matching_exactly_one_distinct_candidate_returns_matches(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד כהן"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(client_name="דוד כהן")
+        assert "matches" in result
+        assert "candidates" not in result
+        assert result["count"] == 1
+
+    def test_name_matching_two_distinct_candidates_returns_ambiguous_shape(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד כהן"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד לוי"),
+            message_id="m2", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(client_name="דוד")
+        assert "candidates" in result
+        assert "matches" not in result
+        assert result["ambiguous_field"] == "client_name"
+        values = {c["value"] for c in result["candidates"]}
+        assert values == {"דוד כהן", "דוד לוי"}
+        for c in result["candidates"]:
+            assert c["event_count"] == 1
+
+    def test_name_with_no_plausible_match_returns_empty_not_ambiguous(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד כהן"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(client_name="ישות שלא קיימת לגמרי")
+        assert "matches" in result
+        assert result["count"] == 0
+
+    def test_free_text_matches_description(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, description="צו מניעה נגד השכן"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(free_text="צו מניעה")
+        assert result["count"] == 1
+
+    def test_free_text_does_not_match_a_differently_worded_paraphrase(self, manager):
+        """Documents research.md's accepted limitation: keyword/typo-tolerant
+        matching, NOT meaning-based - a completely different wording of the
+        same legal matter is NOT expected to match."""
+        manager.add_ledger_event(
+            session_id="s",
+            event=dict(SAMPLE_EVENT, description="אי הפרעה בשימוש במקרקעין"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(free_text="צו מניעה")
+        assert result["count"] == 0
+
+    def test_free_text_matches_accounting_document_display_number(self, manager):
+        """research.md Decision 12: free_text implicitly also covers Feature
+        025's accounting_document_* text fields - no dedicated query
+        parameter, same mechanism as description/component_label/
+        trigger_condition."""
+        manager._index.append(dict(
+            SAMPLE_EVENT, event_id="H_TEST_3", source_type="חשבונית",
+            accounting_document_display_number="40406",
+        ))
+        assert manager.query_events(free_text="40406")["count"] == 1
+
+    def test_free_text_matches_accounting_document_status_label(self, manager):
+        manager._index.append(dict(
+            SAMPLE_EVENT, event_id="H_TEST_4", source_type="חשבונית",
+            accounting_document_status_label="מסמך סגור",
+        ))
+        assert manager.query_events(free_text="מסמך סגור")["count"] == 1
+
+    def test_free_text_matches_accounting_document_payment_method(self, manager):
+        manager._index.append(dict(
+            SAMPLE_EVENT, event_id="H_TEST_5", source_type="חשבונית",
+            accounting_document_payment_method="העברה בנקאית",
+        ))
+        assert manager.query_events(free_text="העברה בנקאית")["count"] == 1
+
+    def test_free_text_does_not_search_accounting_document_type(self, manager):
+        """accounting_document_type is NOT a free-text field (2026-08-23 update,
+        user) - Feature 025 now folds "type of accounting document" into
+        event_subtype itself rather than a separate field. A stray
+        accounting_document_type value on an event (e.g. left over from an
+        older capture shape) must never be searched via free_text."""
+        manager._index.append(dict(
+            SAMPLE_EVENT, event_id="H_TEST_7", source_type="חשבונית",
+            accounting_document_type="חשבונית מס קבלה",
+        ))
+        assert manager.query_events(free_text="חשבונית מס קבלה")["count"] == 0
+        # event_subtype itself is still exact-match filterable, unaffected:
+        manager._index.append(dict(
+            SAMPLE_EVENT, event_id="H_TEST_8", source_type="חשבונית",
+            event_subtype="חשבונית מס קבלה",
+        ))
+        assert manager.query_events(event_subtype="חשבונית מס קבלה")["count"] == 1
+
+    def test_free_text_never_raises_on_a_raw_int_status_code_field(self, manager):
+        """accounting_document_status_code is deliberately excluded from
+        _FREE_TEXT_FIELDS (a raw int, not a natural free-text target - use
+        accounting_document_status_label instead) - but even a stray
+        non-string field value anywhere on the event must never crash
+        _event_matches_free_text (defensive str() cast)."""
+        manager._index.append(dict(
+            SAMPLE_EVENT, event_id="H_TEST_6", source_type="חשבונית",
+            accounting_document_status_code=2,
+        ))
+        result = manager.query_events(free_text="2")  # no exception raised
+        assert result["count"] == 0  # status_code itself isn't a searched field
+
+
+class TestQueryEventsVagueQueryGuard:
+    """Feature 044, T004a: query_events refuses to scan the whole ledger when
+    literally no filter was given."""
+
+    def test_all_filters_none_returns_no_search_criteria_error(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT), message_id="m1",
+            message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events()
+        assert result == {
+            "error": "no_search_criteria",
+            "message": result.get("message"),
+        }
+        assert "matches" not in result
+
+    def test_single_non_null_filter_proceeds_normally(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הסכם"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(source_type="הסכם")
+        assert "matches" in result
+        assert result["count"] == 1
+
+    def test_date_only_query_is_not_treated_as_vague(self, manager):
+        """research.md Decision 11's guard-interaction note: a date-range-only
+        query (no client name) is a real, deliberate query shape (e.g. a
+        monthly income aggregation), never blocked by the guard."""
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק"),
+            message_id="m1", message_timestamp=FIXED_TS_AUG5,
+        )
+        result = manager.query_events(date_from="2026-08-01", date_to="2026-08-10")
+        assert "matches" in result
+        assert result["count"] == 1
