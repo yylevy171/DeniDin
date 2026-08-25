@@ -87,17 +87,18 @@ if [ -n "$NGROK_AUTHTOKEN" ]; then
             ngrok http "$MCP_PORT" --log=stdout > /app/logs/ngrok.log 2>&1 &
         fi
 
-        # Poll ngrok's local API for the assigned public URL, with bounded
-        # retry (bugfix-043) - the tunnel can still be establishing for a
-        # few seconds after the process starts (confirmed live: as long as
-        # ~4-8s on a post-reboot restart), so a single early check is not
-        # sufficient to conclude it never came up. See
-        # denidin_mcp_morning.ngrok_discovery for the retry logic (tested in
-        # tests/unit/test_ngrok_discovery.py) - best-effort overall; if it
-        # still times out, the server starts normally below regardless.
+        # Give ngrok a moment to establish the tunnel, then print the
+        # assigned public URL for operator convenience (best-effort; if it
+        # fails, the server still starts normally below).
+        sleep 2
         PUBLIC_URL=$(python3 -c "
-from denidin_mcp_morning.ngrok_discovery import fetch_ngrok_public_url
-print(fetch_ngrok_public_url() or '')
+import json, urllib.request
+try:
+    with urllib.request.urlopen('http://127.0.0.1:4040/api/tunnels', timeout=5) as resp:
+        data = json.load(resp)
+    print(data['tunnels'][0]['public_url'])
+except Exception:
+    print('')
 " 2>/dev/null) || PUBLIC_URL=""
         if [ -n "$PUBLIC_URL" ]; then
             echo "ngrok public URL: $PUBLIC_URL"
