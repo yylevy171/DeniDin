@@ -1041,9 +1041,56 @@ relevant to the turn it's on, only which tools it technically COULD call.
 
 ---
 
-**Version**: 2.8.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-08-19
+## XXII. Production Incidents Require Mandatory Bug-Driven-Development Follow-Through — A Restart Is Never A Closure
+
+**Zero-incident is the standard.** Production is not allowed to be down for real clients, full stop. This doesn't mean incidents literally never happen - it means the process response to one is non-negotiable and never satisfied by "restarted it, problem gone."
+
+**Real incident (2026-08-25)**: the Windows prod host took an unattended, planned Windows Update
+reboot. Feature 035's reboot-recovery mechanism worked correctly - both containers came back up
+automatically. But a pre-existing startup race in `morning-mcp-app`'s ngrok-tunnel-to-status-file
+handshake (a one-shot check with no retry - see CONSTITUTION.md §XVIII) left the shared status
+file stuck reporting Morning as unavailable for hours, with real client-facing impact, until a
+human happened to notice and ask. The fix in the moment was a human-approved restart of both prod
+containers, which resolved the symptom immediately - but the race condition that caused it is
+still live in the code and will recur on the next reboot.
+
+**Requirements, effective for every future production incident** (a real, client-facing
+unavailability or misbehavior in `prod` - not a `dev`/`test` issue, and not merely "we noticed
+something odd in logs" with no actual user impact):
+
+- **A restart, redeploy, or any other mitigation that restores service is NOT the same thing as
+  closing the incident.** It buys time and stops active client impact - nothing more. The
+  underlying root cause is still live until a real fix lands.
+- **Every production incident MUST produce a Bug-Driven Development cycle** (§VII of this
+  document): root cause → human approval → test-gap analysis → failing test → human approval →
+  minimal fix → verify. This applies even when - especially when - the immediate symptom was
+  already resolved by a restart before the BDD cycle even starts.
+- **A production incident is never considered done at "mitigated."** It is done only once the BDD
+  fix for its root cause has landed (or a human has made an explicit, recorded decision that no
+  code fix is warranted - the `specs/not_reproducible/bugfixes/` closure path already defined
+  elsewhere in this document, used deliberately rather than by default).
+- **Reboot/restart-recovery mechanisms (Feature 035 and any future equivalent) must be verified
+  against the full external dependency chain, not just "did the container come back up.**" See
+  CLAUDE.md's "PRODUCTION INCIDENTS ARE NOT ACCEPTABLE" banner for the concrete technical
+  requirement this produced (CONSTITUTION.md §XVIII: startup-time external handshakes must retry
+  with bounded backoff, never check once and silently give up).
+
+**Rationale**: a mitigation without a mandatory follow-up fix is how the same incident recurs -
+exactly what would happen here on the very next unattended reboot if the ngrok-handshake race is
+left as-is. Treating "service is back" as equivalent to "incident closed" removes the only
+process pressure that ever gets the actual root cause fixed.
+
+---
+
+**Version**: 2.9.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-08-25
 
 **Changelog**:
+- v2.9.0 (2026-08-25): Added "Production Incidents Require Mandatory Bug-Driven-Development
+  Follow-Through" (XXII) after a real prod incident - an unattended Windows Update reboot exposed
+  a one-shot (no-retry) startup race in morning-mcp-app's ngrok-tunnel-to-status-file handshake,
+  leaving Morning invoicing silently unavailable in prod for hours with real client impact.
+  Establishes that a restart/mitigation is never sufficient to close a production incident - a BDD
+  fix for the root cause is mandatory follow-through, every time.
 - v2.8.0 (2026-08-19): Added "Every New Tool-Bearing Feature Needs Explicit Constitution
   Boundaries" (XXI) after Feature 054 (reminders) shipped with no runtime_constitution.md scope at
   all, letting the model reach for reminder tools mid-flow in an unrelated feature's conversation

@@ -1062,6 +1062,22 @@ except Exception as e:
 
 ---
 
+## XVIII. Startup-Time External Dependency Handshakes Must Retry — No One-Shot Give-Up
+
+**Principle**: Any check performed at process/container startup against a dependency that can plausibly still be initializing at that exact moment — a local tunnel-agent API, a not-yet-ready sidecar, a discovery/handshake read of any kind — MUST poll with bounded retry before concluding failure. A single check, performed once, with no retry, is not error handling; it's a race condition waiting to happen.
+
+**Real incident (2026-08-25)**: after an unattended Windows Update reboot of the prod host (Feature 035's reboot-recovery worked correctly — both containers came back up on their own), `morning-mcp-app-prod`'s startup code queried ngrok's local API for the tunnel's public URL exactly once, a few seconds too early, got nothing back, logged `Could not fetch ngrok public URL yet` — and never checked again. The tunnel itself came up cleanly moments later, but the shared status file it should have written stayed at `status: "not running"` for hours, with `denidin-app-prod` reading that same stale file on every turn and silently running with Morning invoicing unavailable. A real, client-facing capability outage, caused entirely by a missing retry loop around one local API call. See CLAUDE.md's "PRODUCTION INCIDENTS ARE NOT ACCEPTABLE" banner and METHODOLOGY.md §XXII for the full incident and process follow-through.
+
+**Requirements**:
+- **Bounded poll, not a single check**: retry the handshake/discovery check on a short interval (e.g. every 1–2s) for a generous but finite window (e.g. up to ~30s) appropriate to how long the dependency normally takes to become ready. Only after the window is exhausted may the code conclude and record "unavailable."
+- **This is distinct from §XI's request-retry policy** (which governs a single already-established connection's transient 5xx/timeout failures, retried once). A startup handshake is instead waiting for a dependency to *finish becoming ready in the first place* — a fundamentally different shape of problem, needing a poll loop keyed to typical startup latency, not a one-shot retry keyed to network transience.
+- **A status file (or equivalent shared "is this dependency up" record) must never be left in a failure state past the point where the dependency actually became ready.** If nothing re-checks and corrects it after an initial failed attempt, that's the bug — either the poll loop above prevents the false-negative from ever being written, or a background re-check corrects it afterward. Never both-absent.
+- Applies to every process in this codebase with a startup-time external/local dependency check — the ngrok/MCP status-file handshake is the incident that produced this rule, but the requirement is general.
+
+**Rationale**: a dependency that is "not ready yet" and a dependency that is "actually down" are different states with different correct responses, and conflating them by checking only once at the wrong moment turns an ordinary, expected startup race into a silent, hours-long production outage.
+
+---
+
 ## Enforcement
 
 All contributors must:
@@ -1077,9 +1093,10 @@ All contributors must:
 
 ---
 
-**Version**: 2.7.0 | **Effective Date**: August 18, 2026
+**Version**: 2.8.0 | **Effective Date**: August 25, 2026
 
 **Changelog**:
+- v2.8.0 (2026-08-25): Added **XVIII. Startup-Time External Dependency Handshakes Must Retry — No One-Shot Give-Up** after a real prod incident: `morning-mcp-app`'s ngrok-tunnel-to-status-file handshake checked once, too early, on a post-reboot restart, and never retried — leaving Morning invoicing silently unavailable in prod for hours. See METHODOLOGY.md §XXII for the mandatory incident-response follow-through this also produced.
 - v2.7.0 (2026-08-18): Mandated `scripts/run_single_test.sh`/`scripts/run_multiple_billed_tests.sh` (§VII) as the required way to run any single billed/expensive test or a stop-on-first-failure billed sequence, after a real incident where an AI agent's ad-hoc `pytest ... | tail -15` silently discarded the actual assertion/traceback, leading to a wrong report and an unapproved rerun just to see the missing part
 - v2.6.0 (2026-08-02): Added explicit "stop on failure means stop on failure" rule to §VII after a real incident where an AI agent generalized one approved test-fix into standing permission to skip the stop-on-fail gate for later, similarly-shaped failures in the same sequential test sweep
 - v2.5.0 (2026-07-30): Feature 029 scope correction - the billed/expensive split applies to BOTH `apps/denidin-app` and `apps/morning-mcp-app` (each app's own independent marker registration), not denidin-app alone; also made explicit that billed tests are never subject to the expensive-only approval gate (§VII)
