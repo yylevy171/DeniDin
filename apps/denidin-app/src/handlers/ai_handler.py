@@ -166,7 +166,19 @@ NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
 # PendingLocalToolApproval, which are NEVER auto-continued past). This cap is
 # a safety bound against a model stuck cycling tool calls, not an expected
 # depth - every scenario seen so far resolves in 1-2 rounds.
-MAX_LOCAL_TOOL_LOOP_ITERATIONS = 5
+#
+# Raised 5 -> 10 (2026-08-26, explicit user directive): a real billed run
+# (test_client_explicit_everything_request_gets_the_complete_picture) hit the
+# old cap of 5 after a legitimate list_invoices(client_name=...) call
+# succeeded, but a SECOND list_invoices(status="שולם") call came back with a
+# seemingly-contradictory empty result (see the separate tasks.md follow-up
+# to file a bug on Morning status-filtering) - the model then spent its
+# remaining iterations re-verifying via query_ledger_events instead of
+# trusting the data it already had, and ran out of budget before it could
+# settle on a final reply. This is a widening of the safety margin for that
+# kind of multi-tool back-and-forth, not a claim that looping this deep is
+# expected or desired behavior.
+MAX_LOCAL_TOOL_LOOP_ITERATIONS = 10
 
 def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
     """bugfix-024: rewrite an @-mention of DeniDin's own WhatsApp number (WhatsApp's

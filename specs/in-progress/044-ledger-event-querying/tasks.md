@@ -760,14 +760,37 @@ Phase 3 (`billed` acceptance, all three user stories) is the single final proof 
 
 ### Follow-up (not part of this feature — separate task, do not action here)
 
-**Cross-reference `specs/bugfixes/bugfix-045-refuses-to-create-new-client-despite-clear-request.md`**
-once this feature is merged: bugfix-045 (open, root cause not yet investigated as of 2026-08-25)
-describes the bot repeatedly refusing to create a new Morning client because
-`resolve_client_name` keeps returning the same "similar names found" result even after the user
-explicitly confirmed a new-client creation — structurally the same shape as this feature's
-removed identity-ambiguity gate (a code-level check with no escape valve once a human has
-already resolved the ambiguity), just in `apps/morning-mcp-app`'s `resolve_client_name` rather
-than `LedgerEventManager.query_events`. Worth a human read-through of bugfix-045 against this
-fix once this feature closes, to judge whether the same "let the model reason over real
-candidates instead of a code-level block" approach applies there too — **not investigated or
-actioned as part of Feature 044**, this is only a pointer for later.
+**DONE (2026-08-26), per explicit user decision ("yes, do all 3. bugfix is 46"):** the three
+items below are now real, filed spec files under `specs/bugfixes/` rather than loose pointers —
+this section is kept only as a historical index into them. None of the three has been
+investigated or actioned beyond filing/cross-referencing — root-cause work on all three is still
+fully separate from Feature 044, per Bug-Driven Development (METHODOLOGY.md §VII: symptom filed →
+human approval → investigation, in that order).
+
+- **`specs/bugfixes/bugfix-045-refuses-to-create-new-client-despite-clear-request.md`** — brought
+  into this branch from `origin/master` (it postdates this feature branch's fork point) and
+  extended with a "Related Occurrence (2026-08-26)" section: a second, independently-triggered
+  case of the same failure shape, found via
+  `test_godfather_creates_credit_note_against_real_invoice` during this feature's closing
+  regression sweep — a diacritic round-trip on a just-created client name (`שאדן בוגדנין` vs.
+  Morning's own `שׁאדן בוגדנין`) causes `resolve_client_name` to report "similar, not exact,"
+  and a plain "כן" cannot resolve a multi-option question. That new section also carries the
+  cross-reference to this feature's removed identity-ambiguity gate as a candidate fix direction
+  (same principle: don't force a canned "insufficient" response when real candidates exist — let
+  the model reason over them).
+
+- **`specs/bugfixes/bugfix-035-hourly-maintenance-bugs.md`** — extended with a new "H3" section:
+  `test_session_transfer.py::test_session_transfer_and_recall_after_expiration` failed during the
+  2026-08-26 random-20-billed-test sweep (`AssertionError: Archived session ID should match` — an
+  unscoped `expired_dir.rglob("*/session.json")[0]` picked up a stale, pre-existing archived
+  session instead of the one the run itself created and expired). Filed as H3 under bugfix-035 by
+  explicit user decision, alongside H1/H2, rather than as its own separate bug.
+
+- **`specs/bugfixes/bugfix-046-list-invoices-status-filter-contradicts-unfiltered-result.md`**
+  (new) — Morning's `list_invoices` status filter returns an empty/contradictory result.
+  Uncovered by `test_client_explicit_everything_request_gets_the_complete_picture` (2026-08-26
+  random-20-billed-test sweep): `list_invoices(client_name="דורית אשכנזי")` returned several
+  `שולם` (paid) invoices, but an immediately-following `list_invoices(client_name="דורית אשכנזי",
+  status="שולם")` came back with "לא נמצאו חשבוניות התואמות את החיפוש" (no matching invoices
+  found) for the exact same client. Filed with full verbatim evidence; not investigated further,
+  no root cause confirmed yet.
