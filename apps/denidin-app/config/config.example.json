@@ -11,6 +11,7 @@
   "poll_interval_seconds": 5,
   "max_retries": 1,
   "accounting_ledger_update_freq": 60,
+  "health_check_port": 0,
   "data_root": "dev_data_for_dev_or_data_for_prod",
   "godfather_phone": "YOUR_GODFATHER_PHONE_NUMBER",
   "memory": {

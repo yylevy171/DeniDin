@@ -41,6 +41,9 @@ from src.services.reminder_delivery_service import (
 from src.services.accounting_reconciliation_service import (
     run_startup_accounting_reconciliation_sweep, start_accounting_reconciliation_scheduler,
 )
+from src.services.health_server import (
+    build_health_check_fns, resolve_log_path, start_health_server, start_heartbeat_thread,
+)
 
 # Configuration
 CONFIG_PATH = 'config/config.json'
@@ -1021,6 +1024,11 @@ if __name__ == "__main__":
         # the scheduler silently never started because this dict dropped it
         # before it ever reached initialize_app()).
         'accounting_ledger_update_freq': config.accounting_ledger_update_freq,
+        # bugfix-043: same "hand-maintained subset dict, easy to forget"
+        # pattern warned about immediately above - added here explicitly so
+        # a config.dev.json/config.prod.json value doesn't silently do
+        # nothing, exactly like accounting_ledger_update_freq's own history.
+        'health_check_port': config.health_check_port,
     }
 
     # Feature 043: construct the live Green API bot explicitly here (via
@@ -1081,6 +1089,25 @@ if __name__ == "__main__":
         denidin.accounting_reconciliation_scheduler = start_accounting_reconciliation_scheduler(
             denidin, update_freq
         )
+
+    # bugfix-043: localhost-only /health server + heartbeat writer, for the
+    # prod-only external health-check prober. Same deliberate-placement rule
+    # as reminder_scheduler/accounting_reconciliation_scheduler above
+    # (started HERE, never inside initialize_app() - a real listener bound
+    # even on 127.0.0.1, plus real OpenAI/Green API/Morning-tunnel/ChromaDB
+    # calls on every probe, has no place running unattended during an
+    # ordinary test run). Gated by config.health_check_port (0 = inactive,
+    # matching accounting_ledger_update_freq's convention above).
+    if denidin.config.health_check_port > 0:
+        check_fns = build_health_check_fns(
+            ai_client=ai_client,
+            green_api=live_bot.api,
+            mcp_config=denidin.config.mcp,
+            memory_manager=denidin.memory_manager,
+            log_path=resolve_log_path(),
+        )
+        start_health_server(denidin.config.health_check_port, check_fns)
+        start_heartbeat_thread()
 
     # Perform orphaned session recovery if memory enabled
     if denidin.ai_handler.memory_enabled:

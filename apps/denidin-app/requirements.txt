@@ -24,6 +24,12 @@ PyYAML>=6.0
 # Retry logic for API calls
 tenacity>=8.0.0
 
+# Health monitoring (bugfix-043): morning_connectivity_via_tunnel's real HTTP
+# call to morning-mcp-app's /is_alive. Already an installed transitive
+# dependency (whatsapp-api-client-python pulls it in); listed explicitly now
+# that this app's own code imports it directly.
+requests>=2.31.0
+
 # Reminders (Feature 054): RFC5545 recurrence + wall-clock-aligned scheduling
 icalendar>=6.1.0
 recurring-ical-events>=3.4.0

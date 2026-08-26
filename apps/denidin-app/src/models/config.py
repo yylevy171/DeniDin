@@ -69,6 +69,13 @@ class AppConfiguration:
     # - this field only controls whether the background poller runs.
     accounting_ledger_update_freq: int = 0
 
+    # Health monitoring (bugfix-043) - localhost-only /health HTTP endpoint for
+    # the prod-only external health-check prober. 0 = disabled (no server
+    # started at all) - matches accounting_ledger_update_freq's "0 = inactive"
+    # convention above, so an environment that hasn't set this key yet never
+    # accidentally starts a new listener.
+    health_check_port: int = 0
+
     @classmethod
     def from_file(cls, file_path: str) -> 'AppConfiguration':
         """

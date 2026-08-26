@@ -27,10 +27,24 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
 HEALTH_PATH = "/health"
+# bugfix-043: a separate, deliberately minimal endpoint - no real backend
+# checks, just confirms a request reached this server end-to-end (through
+# the ngrok tunnel, from denidin-app's own /health check). See
+# health_checks.py's module docstring for why this needs to be distinct
+# from /health rather than denidin-app just calling /health directly (that
+# would double up on the real, non-free morning_connectivity check on every
+# single denidin-app health probe).
+IS_ALIVE_PATH = "/is_alive"
 
 from . import tools
 from .config import MorningMCPConfig, load_config
 from .errors import friendly_error_message
+from .health_checks import (
+    check_log_freshness,
+    check_morning_connectivity,
+    resolve_log_path,
+    start_heartbeat_thread,
+)
 from .morning_client import MorningClient
 from .utils.correlation import correlation_scope, new_correlation_id
 from .utils.logger import DEFAULT_VERSION_FILE, read_version, get_logger, reconfigure_package_log_level
@@ -56,7 +70,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         self._expected_header = f"Bearer {token}" if token else None
 
     async def dispatch(self, request: Request, call_next):
-        if request.url.path == HEALTH_PATH:
+        if request.url.path in (HEALTH_PATH, IS_ALIVE_PATH):
             return await call_next(request)
 
         if self._expected_header is None:
@@ -68,13 +82,26 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def _make_health_handler(environment: Optional[str], version: str) -> Callable[[Request], Any]:
+def _make_health_handler(
+    environment: Optional[str],
+    version: str,
+    morning_client: Optional[MorningClient] = None,
+    log_path: Optional[Path] = None,
+) -> Callable[[Request], Any]:
     """Build the /health handler, closing over this process's own declared
     `environment` (2026-07-21 incident: watchdog.py needs a caller-visible,
     at-rest AND external-tunnel way to confirm which environment a server
     is actually serving as, not just what its mounted config claims) and its
     current `version` (Feature 034, REQ-VER-002 - read once at startup, not
-    per-request, since a version can't change mid-process)."""
+    per-request, since a version can't change mid-process).
+
+    bugfix-043: also runs the deeper connectivity/logging checks used by the
+    prod-only external prober's health monitoring. `morning_client`/`log_path`
+    are optional so existing callers (watchdog.py's simple environment-match
+    check, tests/e2e_helpers.py) keep working unchanged when not supplied -
+    those checks are then simply omitted from the response, not reported as
+    failed.
+    """
 
     async def _health(_request: Request) -> JSONResponse:
         """Unauthenticated liveness probe - used by callers (e.g. the
@@ -82,9 +109,41 @@ def _make_health_handler(environment: Optional[str], version: str) -> Callable[[
         environment's watchdog.py) to confirm the server is reachable
         end-to-end without needing the bearer token, and which environment
         it's actually running as."""
-        return JSONResponse({"status": "ok", "environment": environment, "version": version})
+        checks: dict = {
+            "app_up": "success",
+            "environment": environment,
+            "version": version,
+        }
+        all_ok = True
+
+        if morning_client is not None:
+            ok = check_morning_connectivity(morning_client)
+            checks["morning_connectivity"] = "success" if ok else "fail"
+            all_ok = all_ok and ok
+
+        if log_path is not None:
+            ok = check_log_freshness(log_path)
+            checks["logs_writing"] = "success" if ok else "fail"
+            all_ok = all_ok and ok
+
+        checks["status"] = "ok" if all_ok else "fail"
+        return JSONResponse(checks, status_code=200 if all_ok else 503)
 
     return _health
+
+
+def _make_is_alive_handler() -> Callable[[Request], Any]:
+    """Build the /is_alive handler - deliberately does NO real backend
+    checks (bugfix-043). Its only purpose is confirming a request reached
+    this server end-to-end through the tunnel; denidin-app's own /health
+    check calls this (not /health) for its morning_connectivity_via_tunnel
+    check, so a probe every ~1 minute doesn't also trigger a real Morning
+    API call every time."""
+
+    async def _is_alive(_request: Request) -> JSONResponse:
+        return JSONResponse({"status": "ok"})
+
+    return _is_alive
 
 
 def build_asgi_app(
@@ -92,6 +151,8 @@ def build_asgi_app(
     auth_token: Optional[str] = None,
     environment: Optional[str] = None,
     version_file: Path = DEFAULT_VERSION_FILE,
+    morning_client: Optional[MorningClient] = None,
+    log_path: Optional[Path] = None,
 ) -> Starlette:
     """Build the MCP server's ASGI app, optionally wrapped with bearer-token auth.
 
@@ -101,12 +162,21 @@ def build_asgi_app(
 
     `version_file` (Feature 034, REQ-VER-002): defaults to this app's real VERSION file;
     tests pass a scratch path.
+
+    `morning_client`/`log_path` (bugfix-043): optional, wired into /health's
+    deeper checks when supplied (main() always supplies both for a real run;
+    tests that only care about the basic liveness shape can omit them).
     """
     app = mcp.streamable_http_app()
     version = read_version(Path(version_file))
     app.router.routes.append(
-        Route(HEALTH_PATH, _make_health_handler(environment, version), methods=["GET"])
+        Route(
+            HEALTH_PATH,
+            _make_health_handler(environment, version, morning_client=morning_client, log_path=log_path),
+            methods=["GET"],
+        )
     )
+    app.router.routes.append(Route(IS_ALIVE_PATH, _make_is_alive_handler(), methods=["GET"]))
     if auth_token:
         app.add_middleware(BearerTokenMiddleware, token=auth_token)
     return app
@@ -642,7 +712,17 @@ def main() -> None:
             "config/config.json). Set it to true to start the server."
         )
 
-    server = create_server(config)
+    # bugfix-043: built explicitly here (rather than left to create_server's
+    # own default) so the same instance can also be handed to build_asgi_app
+    # for /health's morning_connectivity check.
+    morning_client = MorningClient(
+        api_key_id=config.api_key_id,
+        api_key_secret=config.api_key_secret,
+        base_url=config.api_url,
+        auth_url=config.auth_url,
+        refresh_before_seconds=config.refresh_before_seconds,
+    )
+    server = create_server(config, client=morning_client)
     logger.info(
         "Starting %s on %s:%s (%s)%s",
         config.mcp_server_name,
@@ -652,12 +732,23 @@ def main() -> None:
         " [bearer-token auth enabled]" if config.mcp_auth_token else " [no auth configured]",
     )
 
+    # bugfix-043: periodic heartbeat log write so /health's logs_writing
+    # check has something to observe even during genuinely idle periods -
+    # see health_checks.py's module docstring.
+    start_heartbeat_thread()
+
     if config.mcp_transport == "streamable-http":
         # Bypass FastMCP.run()'s built-in uvicorn runner so the app can be
         # wrapped with BearerTokenMiddleware before serving.
         import uvicorn
 
-        app = build_asgi_app(server, auth_token=config.mcp_auth_token, environment=config.environment)
+        app = build_asgi_app(
+            server,
+            auth_token=config.mcp_auth_token,
+            environment=config.environment,
+            morning_client=morning_client,
+            log_path=resolve_log_path("logs"),
+        )
         uvicorn.run(app, host=config.mcp_host, port=config.mcp_port, log_level=config.mcp_log_level.lower())
     else:
         # stdio/sse aren't network-exposed the same way; no HTTP-level
