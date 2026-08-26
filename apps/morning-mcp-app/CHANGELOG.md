@@ -54,3 +54,7 @@ Tool-call audit log now includes full read-tool response bodies, not just their 
 ## [0.5.1] - 2026-08-21
 
 Feature 056: create_receipt now supports a standalone call with no linked invoice (no VAT line, free-text description); new cancel_transaction_account tool cancels an open transaction account (type 300 only) with no document created as a side effect, and an idempotent no-op if already closed.
+
+## [0.5.2] - 2026-08-26
+
+get_invoice_details/list_invoices expose Morning's raw creation_timestamp and gain an opt-in format="json" response shape (Feature 025 Phase 9a), enabling deterministic parsing for denidin-app's accounting document reconciliation sweep
