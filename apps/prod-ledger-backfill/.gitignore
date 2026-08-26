@@ -20,6 +20,11 @@ method2_a/
 method2_a_pretty/
 method2_b/
 
+# Backup of dev's live ledger events taken before the real dev backfill run replaced them
+# (2026-08-26/27) — contains real dev data, same "operator-machine-local, never repo content"
+# reasoning as output/ above.
+archived_dev_events_pre_backfill_20260826/
+
 # Python
 __pycache__/
 *.pyc

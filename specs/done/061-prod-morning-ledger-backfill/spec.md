@@ -2,7 +2,19 @@
 
 **Feature Branch**: `feature/061-prod-morning-ledger-backfill`
 **Created**: 2026-08-24
-**Status**: Clarified (round 4, 2026-08-25) — five-phase pipeline (Download → Method Selection →
+**Status**: **Closed 2026-08-27 (dev goal achieved, tooling completion deferred)** — Method A vs
+Method B experiment run for real (T031), Method B rejected (real AI-transcription data corruption
++ a truncation crash), Method A adopted. A real, full dev-environment ledger backfill (Jul 1 – Aug
+27 2026, ~4,067 documents, real dev/sandbox Morning data) was completed and verified: dev's ledger
+now has complete coverage, the live `accounting_reconciliation_service` watermark correctly
+resumes from the latest backfilled document, and the reconciliation sweep runs successfully
+against real data going forward. Remaining `tasks.md` items (Phase 4 load-mechanism design,
+XC-Rerun/XC-Creds regression tests, and the full acceptance-test suite T030/T032-T035) were
+deliberately NOT completed — the real prod backfill run itself is still pending and was
+explicitly deferred ("we will do prod another day," user, 2026-08-27) — see follow-up spec
+`specs/backlog/062-prod-morning-ledger-backfill-completion` for that remaining scope.
+
+Previously: Clarified (round 4, 2026-08-25) — five-phase pipeline (Download → Method Selection →
 Transform → **Validate** → Load), plus two cross-cutting requirements; ready for `speckit.plan`
 (revised).
 **Input**: User description: a one-shot, operator-run backfill that populates prod's ledger with

@@ -311,3 +311,71 @@ def test_main_aborts_on_get_invoice_failure_but_keeps_already_written_files(tmp_
     assert (output_dir / "doc-a.json").exists()
     assert not (output_dir / "doc-b.json").exists()
     assert not (output_dir / "doc-c.json").exists()
+
+
+# --- Skip-if-already-downloaded (real gap found 2026-08-26) ---------------------------------
+# A prior real dev-sandbox backfill run (709/4040 documents fetched before Morning returned a
+# live 403) proved that re-running the same command to "resume" would silently re-fetch every
+# already-downloaded document via a fresh get_invoice call before ever reaching new material —
+# wasteful, and risks re-triggering whatever rate limit caused the original failure even sooner.
+# "Dedup via overwrite-by-id" was previously true only at the file-write level, not at the
+# network-call level. Human directive (2026-08-26): "you need to know how to filter at the list
+# level and not make a get details call if we already have the data."
+
+def test_download_all_documents_skips_ids_already_downloaded():
+    single_page = {
+        "items": [{"id": "doc-a"}, {"id": "doc-b"}, {"id": "doc-c"}],
+        "total": 3, "page": 1, "pages": 1,
+    }
+    client = _FakeMorningClient([single_page])
+
+    documents = list(download.download_all_documents(
+        client, since="2025-01-01", already_downloaded_ids={"doc-b"},
+    ))
+
+    assert [doc["id"] for doc in documents] == ["doc-a", "doc-c"]
+    assert client.get_invoice_calls == ["doc-a", "doc-c"]  # doc-b never fetched
+
+
+def test_download_all_documents_default_already_downloaded_ids_is_empty(
+    fixture_search_page_1, fixture_search_page_2,
+):
+    """Omitting the new parameter must be byte-for-byte the old behavior — every prior test in
+    this file already relies on this implicitly by never passing it."""
+    client = _FakeMorningClient([fixture_search_page_1, fixture_search_page_2])
+
+    documents = list(download.download_all_documents(client, since="2025-01-01"))
+
+    assert len(documents) == 150
+    assert len(client.get_invoice_calls) == 150
+
+
+def test_main_skips_already_present_files_without_refetching(tmp_path, monkeypatch):
+    single_page = {
+        "items": [{"id": "doc-a"}, {"id": "doc-b"}],
+        "total": 2, "page": 1, "pages": 1,
+    }
+    client = _FakeMorningClient([single_page])
+    monkeypatch.setattr(download, "MorningClient", lambda **_kwargs: client)
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    # doc-a already has a local file from a prior run — its exact content must be left untouched,
+    # proving main() never re-fetched (and thus never re-wrote) it.
+    preexisting = output_dir / "doc-a.json"
+    preexisting.write_text(json.dumps({"id": "doc-a", "fetched": "from a prior run"}), encoding="utf-8")
+
+    creds_path = tmp_path / "creds.json"
+    creds_path.write_text(json.dumps({
+        "api_key_id": "x", "api_key_secret": "x", "auth_url": "https://x.invalid",
+        "base_url": "https://x.invalid",
+    }), encoding="utf-8")
+
+    exit_code = download.main([
+        "--since", "2025-01-01", "--output-dir", str(output_dir), "--creds-file", str(creds_path),
+    ])
+
+    assert exit_code == 0
+    assert client.get_invoice_calls == ["doc-b"]  # doc-a never re-fetched
+    assert json.loads(preexisting.read_text()) == {"id": "doc-a", "fetched": "from a prior run"}
+    assert json.loads((output_dir / "doc-b.json").read_text())["fetched"] is True

@@ -194,15 +194,33 @@ def paginate_document_ids(client, since: str, until: Optional[str] = None) -> It
         page += 1
 
 
-def download_all_documents(client, since: str, until: Optional[str] = None) -> Iterator[dict]:
+def download_all_documents(
+    client, since: str, until: Optional[str] = None, already_downloaded_ids=frozenset(),
+) -> Iterator[dict]:
     """
-    Yields the full raw document (via get_invoice) for every id paginate_document_ids finds.
+    Yields the full raw document (via get_invoice) for every id paginate_document_ids finds,
+    except ids already present in `already_downloaded_ids` — those are skipped entirely (no
+    get_invoice call, nothing yielded for them).
+
+    `already_downloaded_ids` defaults to empty, so omitting it is byte-for-byte the old
+    behavior (every existing caller/test relies on this implicitly).
+
+    Real gap found 2026-08-26, from an actual dev-sandbox backfill run: "dedup via
+    overwrite-by-id" (this module's own DocumentDownloadError docstring) was previously true
+    only at the file-write level — re-running the same command to "resume" after a partial
+    failure still re-fetched every already-downloaded document via a fresh get_invoice call
+    before ever reaching new material (709 wasted calls in that real run), risking
+    re-triggering whatever rate limit caused the original failure even sooner. Human directive:
+    "you need to know how to filter at the list level and not make a get details call if we
+    already have the data."
 
     Raises DocumentDownloadError, naming the failed document, if get_invoice() fails for any
     one of them — see that class's docstring for why this fails loudly rather than silently
     degrading, unlike production's own fan-out.
     """
     for doc_id in paginate_document_ids(client, since, until):
+        if doc_id in already_downloaded_ids:
+            continue
         try:
             yield client.get_invoice(doc_id)
         except Exception as exc:
@@ -240,6 +258,7 @@ def main(argv=None) -> int:
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    already_downloaded_ids = {path.stem for path in output_dir.glob("*.json")}
 
     client = MorningClient(
         api_key_id=creds["api_key_id"],
@@ -255,7 +274,9 @@ def main(argv=None) -> int:
     skipped_no_id = 0
 
     try:
-        for document in download_all_documents(client, since_str, until_str):
+        for document in download_all_documents(
+            client, since_str, until_str, already_downloaded_ids,
+        ):
             seen += 1
             out_path = _write_document(output_dir, document)
             if out_path is None:
@@ -277,6 +298,10 @@ def main(argv=None) -> int:
     print(
         f"Done. {seen} document(s) seen, {written} file(s) written to {output_dir}"
         + (f", {skipped_no_id} skipped (no id)" if skipped_no_id else "")
+        + (
+            f", {len(already_downloaded_ids)} already present locally (skipped re-fetch)"
+            if already_downloaded_ids else ""
+        )
     )
     return 0
 
