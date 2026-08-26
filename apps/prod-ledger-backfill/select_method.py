@@ -53,6 +53,19 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional
 
+# Same sys.path bootstrap conftest.py applies for the test suite — needed here too so this
+# script also runs standalone (per contracts/cli-contract.md), not only under pytest. Both
+# entries are needed: morning-mcp-app/src for method_a's denidin_mcp_morning import, and
+# denidin-app's own root for _ledger_event_manager_loader's src.utils.time_utils import.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+for _extra_path in (
+    _REPO_ROOT / "apps" / "morning-mcp-app" / "src",
+    _REPO_ROOT / "apps" / "denidin-app",
+):
+    _extra_path_str = str(_extra_path)
+    if _extra_path_str not in sys.path:
+        sys.path.insert(0, _extra_path_str)
+
 _IGNORED_FIELDS = frozenset({"event_id"})
 
 _DEFAULT_MCP_CREDS_FILE = Path(__file__).parent / "config" / "backfill_mcp_creds.local.json"

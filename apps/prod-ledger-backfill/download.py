@@ -22,6 +22,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterator, Optional
 
+# Same sys.path bootstrap conftest.py applies for the test suite — needed here too so this
+# script also runs standalone (`python3 download.py ...`, per contracts/cli-contract.md), not
+# only under pytest.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+for _extra_path in (_REPO_ROOT / "apps" / "morning-mcp-app" / "src",):
+    _extra_path_str = str(_extra_path)
+    if _extra_path_str not in sys.path:
+        sys.path.insert(0, _extra_path_str)
+
 from denidin_mcp_morning.morning_client import MorningClient
 
 _REQUIRED_CREDS_FIELDS = ("api_key_id", "api_key_secret", "auth_url", "base_url")

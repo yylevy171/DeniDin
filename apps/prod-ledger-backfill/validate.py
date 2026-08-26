@@ -31,6 +31,17 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
+# Same sys.path bootstrap conftest.py applies for the test suite — needed here too so this
+# script also runs standalone (per contracts/cli-contract.md), not only under pytest.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+for _extra_path in (
+    _REPO_ROOT / "apps" / "morning-mcp-app" / "src",
+    _REPO_ROOT / "apps" / "denidin-app",
+):
+    _extra_path_str = str(_extra_path)
+    if _extra_path_str not in sys.path:
+        sys.path.insert(0, _extra_path_str)
+
 import method_a
 from select_method import diff_ledger_events
 
