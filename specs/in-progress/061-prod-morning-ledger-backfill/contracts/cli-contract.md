@@ -20,18 +20,24 @@ python3 download.py --since 2025-01-01 --output-dir ./output/prod_2025_full --cr
 | Flag | Required | Description |
 |---|---|---|
 | `--since` | Yes (REQ-BACKFILL-001) | ISO date (`YYYY-MM-DD`), Israel-local. No default anywhere in code. |
+| `--until` | No (added 2026-08-26, user directive) | ISO date (`YYYY-MM-DD`), Israel-local, inclusive stop date. Omit for the default unbounded-forward sweep (REQ-BACKFILL-001/002's whole point for a real prod run) — exists so a bounded sandbox/experiment pull (e.g. Phase 2's ~20-doc comparison) can be scoped server-side via Morning's own `toDate` search param, instead of over-fetching and filtering locally after the fact (this session's first real Method A run needed exactly that: `--since` alone pulled 97 documents spanning a week when only one day's ~18 were wanted). |
 | `--output-dir` | Yes | Local directory for raw downloaded document files. Reused across runs for the same backfill effort (dedup, `research.md` R8) — operator's responsibility to keep stable. |
 | `--creds-file` | No | Overrides the default `config/backfill_prod_creds.local.json` path — pointed at `config/backfill_sandbox_creds.local.json` (same four-field shape, `contracts/backfill-creds-file.md`) for Phase 2's experiment instead of prod's real creds. Only one shape is ever parsed — no environment-specific branching in the creds loader. |
 
 **Preconditions checked before any real Morning API call**: `--since` parses as a valid date;
-`--output-dir` exists or can be created and is writable; the creds file exists and has all four
-required fields (`contracts/backfill-creds-file.md`) — script exits non-zero with a clear error
-otherwise, never falling back to another credential source.
+`--until`, if given, also parses as a valid date and is not earlier than `--since` (equal is
+allowed — a legitimate single-day window); `--output-dir` exists or can be created and is
+writable; the creds file exists and has all four required fields
+(`contracts/backfill-creds-file.md`) — script exits non-zero with a clear error otherwise, never
+falling back to another credential source.
 
 **Behavior**: constructs `MorningClient` directly from the creds file; paginates
-`list_invoices`/`get_invoice` with no artificial cap (`research.md` R3); writes one raw JSON file
-per document, keyed on the document's own Morning id (`data-model.md` entity 1), overwriting
-byte-identically for a document already present locally (cross-cutting re-run-safety requirement).
+`list_invoices`/`get_invoice` with no artificial cap (`research.md` R3), passing `toDate` (a real,
+confirmed-live Morning search param — same key `denidin_mcp_morning/tools.py`'s own
+`_map_list_invoices_filters` uses) only when `--until` is given, so the default unbounded-forward
+behavior is unchanged byte-for-byte when it's omitted; writes one raw JSON file per document,
+keyed on the document's own Morning id (`data-model.md` entity 1), overwriting byte-identically
+for a document already present locally (cross-cutting re-run-safety requirement).
 
 ## `select_method.py` (Phase 2 — one-time sandbox experiment, not part of the real pipeline)
 

@@ -67,6 +67,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="ISO date (YYYY-MM-DD), Israel-local. No default anywhere (REQ-BACKFILL-001).",
     )
     parser.add_argument(
+        "--until",
+        default=None,
+        help="Optional ISO date (YYYY-MM-DD), Israel-local — stop date, inclusive. Omit for the "
+             "default unbounded-forward sweep (a real prod backfill run's whole point, "
+             "REQ-BACKFILL-001/002); useful for bounding a sandbox/experiment pull to a known "
+             "window instead of over-fetching and filtering locally after the fact (2026-08-26 "
+             "user directive).",
+    )
+    parser.add_argument(
         "--output-dir",
         required=True,
         help="Local directory for raw downloaded document files. Reuse across runs for dedup.",
@@ -88,6 +97,34 @@ def parse_since_date(since_str: str):
         raise BackfillPreconditionError(
             f"--since must be an ISO date (YYYY-MM-DD), got: {since_str!r}"
         ) from exc
+
+
+def parse_until_date(until_str: Optional[str]):
+    """
+    Parses --until; None (the "no stop date" default) passes through unchanged rather than
+    raising, so callers don't need a separate "was --until even given" branch. Anything else that
+    isn't YYYY-MM-DD raises BackfillPreconditionError, same as parse_since_date.
+    """
+    if until_str is None:
+        return None
+    try:
+        return datetime.strptime(until_str, "%Y-%m-%d").date()
+    except (ValueError, TypeError) as exc:
+        raise BackfillPreconditionError(
+            f"--until must be an ISO date (YYYY-MM-DD), got: {until_str!r}"
+        ) from exc
+
+
+def validate_date_range(since_date, until_date) -> None:
+    """
+    Raises BackfillPreconditionError if --until is given and falls before --since — before any
+    network call. until_date=None (no stop date) always passes. since_date == until_date (a
+    single-day window) is explicitly allowed, not an error.
+    """
+    if until_date is not None and until_date < since_date:
+        raise BackfillPreconditionError(
+            f"--until ({until_date.isoformat()}) is before --since ({since_date.isoformat()})"
+        )
 
 
 def load_credentials(path) -> Dict[str, str]:
@@ -130,14 +167,22 @@ def _extract_items(response):
     return []
 
 
-def paginate_document_ids(client, since: str) -> Iterator[str]:
+def paginate_document_ids(client, since: str, until: Optional[str] = None) -> Iterator[str]:
     """
-    Yields every document id matching `since` forward, following the real page/pages/total
-    fields with NO artificial cap (research.md R3 — unlike tools.list_invoices's 100-item limit).
+    Yields every document id matching `since` forward (and, if given, up to `until` inclusive —
+    a real, confirmed-live Morning search param, `toDate`; same key
+    denidin_mcp_morning/tools.py's own _map_list_invoices_filters uses), following the real
+    page/pages/total fields with NO artificial cap (research.md R3 — unlike tools.list_invoices's
+    100-item limit). `until=None` omits `toDate` entirely rather than sending it as None/empty,
+    preserving the default unbounded-forward-sweep behavior byte-for-byte when not given.
     """
+    params_base = {"fromDate": since}
+    if until is not None:
+        params_base["toDate"] = until
+
     page = 1
     while True:
-        response = client.list_invoices(params={"fromDate": since, "page": page})
+        response = client.list_invoices(params={**params_base, "page": page})
         for item in _extract_items(response):
             doc_id = item.get("id") if isinstance(item, dict) else None
             if doc_id:
@@ -149,7 +194,7 @@ def paginate_document_ids(client, since: str) -> Iterator[str]:
         page += 1
 
 
-def download_all_documents(client, since: str) -> Iterator[dict]:
+def download_all_documents(client, since: str, until: Optional[str] = None) -> Iterator[dict]:
     """
     Yields the full raw document (via get_invoice) for every id paginate_document_ids finds.
 
@@ -157,7 +202,7 @@ def download_all_documents(client, since: str) -> Iterator[dict]:
     one of them — see that class's docstring for why this fails loudly rather than silently
     degrading, unlike production's own fan-out.
     """
-    for doc_id in paginate_document_ids(client, since):
+    for doc_id in paginate_document_ids(client, since, until):
         try:
             yield client.get_invoice(doc_id)
         except Exception as exc:
@@ -186,6 +231,8 @@ def main(argv=None) -> int:
 
     try:
         since_date = parse_since_date(args.since)
+        until_date = parse_until_date(args.until)
+        validate_date_range(since_date, until_date)
         creds = load_credentials(args.creds_file)
     except BackfillPreconditionError as exc:
         print(f"⚠️ {exc}", file=sys.stderr)
@@ -202,12 +249,13 @@ def main(argv=None) -> int:
     )
 
     since_str = since_date.isoformat()
+    until_str = until_date.isoformat() if until_date else None
     seen = 0
     written = 0
     skipped_no_id = 0
 
     try:
-        for document in download_all_documents(client, since_str):
+        for document in download_all_documents(client, since_str, until_str):
             seen += 1
             out_path = _write_document(output_dir, document)
             if out_path is None:

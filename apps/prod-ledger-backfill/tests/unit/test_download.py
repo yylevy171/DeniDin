@@ -41,6 +41,54 @@ def test_valid_since_parses_to_a_date():
     assert parsed.year == 2025 and parsed.month == 1 and parsed.day == 1
 
 
+# --- --until (optional stop date, 2026-08-26 — user directive) -----------------------------
+# A real prod backfill run legitimately wants "--since forward, no cap" (REQ-BACKFILL-001/002's
+# whole point) — --until stays optional, defaulting to no upper bound, so that behavior is
+# unchanged. It exists so a bounded sandbox/experiment run (Phase 2's ~20-doc comparison, or any
+# other scoped pull) doesn't have to over-fetch and filter locally after the fact, the way this
+# session's first real Method A run had to (--since 2026-08-20 alone pulled 97 documents spanning
+# a week; the operator wanted just the one day).
+
+def test_until_is_optional():
+    """No --until at all must not raise — the unbounded-forward-sweep default stays intact."""
+    parser = download.build_arg_parser()
+    args = parser.parse_args(["--since", "2025-01-01", "--output-dir", "/tmp/whatever"])
+    assert args.until is None
+
+
+def test_until_must_be_a_valid_iso_date():
+    parser = download.build_arg_parser()
+    args = parser.parse_args([
+        "--since", "2025-01-01", "--until", "not-a-date", "--output-dir", "/tmp/whatever",
+    ])
+    with pytest.raises(download.BackfillPreconditionError):
+        download.parse_until_date(args.until)
+
+
+def test_none_until_parses_to_none():
+    """parse_until_date(None) must not raise — the common "no --until given" case."""
+    assert download.parse_until_date(None) is None
+
+
+def test_valid_until_parses_to_a_date():
+    parsed = download.parse_until_date("2025-01-31")
+    assert parsed.year == 2025 and parsed.month == 1 and parsed.day == 31
+
+
+def test_until_before_since_fails_before_any_network_call():
+    with pytest.raises(download.BackfillPreconditionError, match="before"):
+        download.validate_date_range(
+            download.parse_since_date("2025-01-31"), download.parse_until_date("2025-01-01"),
+        )
+
+
+def test_until_equal_to_since_is_allowed():
+    """A single-day window (since == until) is a legitimate, common case — not an error."""
+    download.validate_date_range(
+        download.parse_since_date("2025-01-01"), download.parse_until_date("2025-01-01"),
+    )
+
+
 # --- Credentials-file validation (REQ-BACKFILL-006) -----------------------------------------
 # Every case here must fail BEFORE any MorningClient is constructed — asserted via a
 # dependency-injected constructor that raises if ever called, never via mocking internal logic.
@@ -142,6 +190,39 @@ def test_single_page_response_terminates_pagination():
     assert len(client.list_invoices_calls) == 1
 
 
+def test_until_is_passed_through_as_toDate_param():
+    """toDate is a real, confirmed-live Morning search param (denidin_mcp_morning/tools.py's
+    own _map_list_invoices_filters) — server-side date-range filtering, not a local post-fetch
+    filter, so a bounded pull never over-fetches in the first place."""
+    single_page = {"items": [{"id": "only-doc"}], "total": 1, "page": 1, "pages": 1}
+    client = _FakeMorningClient([single_page])
+
+    list(download.paginate_document_ids(client, since="2025-01-01", until="2025-01-31"))
+
+    assert client.list_invoices_calls[0]["toDate"] == "2025-01-31"
+
+
+def test_no_until_means_no_toDate_param():
+    """The unbounded-forward-sweep default (REQ-BACKFILL-002) must not send toDate at all —
+    not even an empty/None value that could be misread as "up to nothing"."""
+    single_page = {"items": [{"id": "only-doc"}], "total": 1, "page": 1, "pages": 1}
+    client = _FakeMorningClient([single_page])
+
+    list(download.paginate_document_ids(client, since="2025-01-01"))
+
+    assert "toDate" not in client.list_invoices_calls[0]
+
+
+def test_download_all_documents_also_accepts_until():
+    single_page = {"items": [{"id": "only-doc"}], "total": 1, "page": 1, "pages": 1}
+    client = _FakeMorningClient([single_page])
+
+    documents = list(download.download_all_documents(client, since="2025-01-01", until="2025-01-31"))
+
+    assert len(documents) == 1
+    assert client.list_invoices_calls[0]["toDate"] == "2025-01-31"
+
+
 # --- get_invoice() failure handling ---------------------------------------------------------
 # Real gap found 2026-08-26 (user's own scrutiny of the mcp/method-A relationship): production's
 # list_invoices(include_full_details=True) fan-out silently falls back to shallower search-page
@@ -174,6 +255,35 @@ def test_get_invoice_failure_aborts_the_run_naming_the_failed_document():
 
     with pytest.raises(download.DocumentDownloadError, match="doc-b"):
         list(download.download_all_documents(client, since="2025-01-01"))
+
+
+def test_main_rejects_until_before_since_before_any_network_call(tmp_path, monkeypatch):
+    monkeypatch.setattr(download, "MorningClient", _never_call_morning_client)
+    exit_code = download.main([
+        "--since", "2025-01-31", "--until", "2025-01-01", "--output-dir", str(tmp_path / "out"),
+        "--creds-file", str(tmp_path / "missing.json"),
+    ])
+    assert exit_code != 0
+
+
+def test_main_passes_until_through_to_the_real_pagination_call(tmp_path, monkeypatch):
+    single_page = {"items": [{"id": "only-doc"}], "total": 1, "page": 1, "pages": 1}
+    client = _FakeMorningClient([single_page])
+    monkeypatch.setattr(download, "MorningClient", lambda **_kwargs: client)
+
+    creds_path = tmp_path / "creds.json"
+    creds_path.write_text(json.dumps({
+        "api_key_id": "x", "api_key_secret": "x", "auth_url": "https://x.invalid",
+        "base_url": "https://x.invalid",
+    }), encoding="utf-8")
+
+    exit_code = download.main([
+        "--since", "2025-01-01", "--until", "2025-01-31",
+        "--output-dir", str(tmp_path / "out"), "--creds-file", str(creds_path),
+    ])
+
+    assert exit_code == 0
+    assert client.list_invoices_calls[0]["toDate"] == "2025-01-31"
 
 
 def test_main_aborts_on_get_invoice_failure_but_keeps_already_written_files(tmp_path, monkeypatch):

@@ -116,6 +116,22 @@ tests) or the real Morning sandbox/prod (Acceptance phase only).
       `DocumentDownloadError` (names the failed document id) + a try/except in
       `download_all_documents()` + clean non-zero-exit handling in `main()`. Two new RED-then-GREEN
       tests added to `test_download.py` (17/17 now green; full unit suite 34/34 green).
+- [x] **`--until` added (2026-08-26, user directive)** — this session's first real Method A run
+      against the dev sandbox showed the gap: `--since` alone pulled 97 documents spanning a week
+      (2026-08-20 through today) when only one day's ~18 were wanted, requiring a manual local
+      filter-by-`documentDate` after the fact. Rather than repeat that every time, `download.py`
+      gained an optional `--until` (inclusive stop date, defaults to `None` — the unbounded-forward
+      sweep stays the default, unchanged for a real prod run) — `parse_until_date` (parses or
+      raises `BackfillPreconditionError`, `None` passes through), `validate_date_range` (rejects
+      `--until` before `--since`; equal is allowed — a legitimate single-day window), and
+      `paginate_document_ids`/`download_all_documents` now accept `until` and pass Morning's real,
+      confirmed-live `toDate` search param (same key `denidin_mcp_morning/tools.py`'s own
+      `_map_list_invoices_filters` uses) — server-side filtering, not a local post-fetch filter, so
+      a bounded pull never over-fetches in the first place. Since both `select_method.py`'s
+      `--generate-a`/`--generate-b` and `transform.py` just iterate whatever `--input-dir` already
+      contains, bounding it once at the `download.py` step is sufficient for both methods — no
+      separate date-filtering logic needed in either generator. 11 new RED-then-GREEN tests in
+      `test_download.py` (28/28 now green; full unit suite 74/74 green).
 
 **Checkpoint**: Phase 1 unit-tested and implemented; no real network call made yet.
 
