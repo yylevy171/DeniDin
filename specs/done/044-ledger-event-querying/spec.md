@@ -2,7 +2,16 @@
 
 **Feature Branch**: `feature/044-ledger-event-querying`
 **Created**: 2026-08-06
-**Status**: Draft
+**Status**: Implemented and accepted — `query_ledger_events` (single fuzzy `criteria`/`hint`
+search, no hard filters) is wired into `AIHandler` for godfather/admin roles; Phase 1/2 unit +
+integration suites and a 29-scenario `billed` acceptance pass (T008-T011/T013-T015/T017-T029, all
+GREEN against real OpenAI) cover all three user stories, including OR/NOT/threshold reasoning,
+owed-vs-received netting, and the ledger-as-cache-over-Morning fallback rule. The
+identity-ambiguity code-level gate originally in `query_events` was removed by explicit user
+decision in favor of pure model judgment (see `tasks.md`'s 2026-08-26 addendum). T016 (manual
+`quickstart.md` WhatsApp walkthrough) was explicitly skipped at close — the automated `billed`
+coverage was judged sufficient on its own; see `tasks.md` for that decision recorded in place.
+Shipped via [PR #256](https://github.com/yylevy171/DeniDin/pull/256).
 **Input**: User description: "ledger querying from AI - allowing the AI to query past ledger
 events in the system without needing to send them all as context. perhaps using a function
 call like the one we use to write, this would be to query, and perhaps we need to keep them

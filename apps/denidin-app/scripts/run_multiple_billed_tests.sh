@@ -19,8 +19,33 @@ set -uo pipefail
 # this script stops and does NOT run any remaining tests; it exits non-zero
 # so a human/agent driving it can see failure without reading output.
 #
+# 🚨 AI AGENTS DRIVING THIS SCRIPT: SOUND OFF ON EACH TEST RESULT AS IT
+# COMES IN, NOT ONLY AFTER THE WHOLE RUN FINISHES - unless the user has
+# explicitly said otherwise for this run. This script already announces
+# each test's PASSED/FAILED individually (see above) specifically so a
+# human watching along gets live progress - don't defeat that by capturing
+# the whole run's output in one shot and reporting it only at the end.
+# Real incident (2026-08-26): an agent ran this via a backgrounded shell
+# call piped through `| tail -150`, which buffers the ENTIRE pipeline's
+# output until the process exits - so nothing streamed anywhere until the
+# full 23-test sweep had already finished, several minutes later, with the
+# user seeing silence the whole time and having to demand a status
+# ("SOUND OFF GODDAMNIT!!!") before getting anything. Don't pipe this
+# script's output through anything that buffers until EOF (`tail`, `head`,
+# a variable capture like `$(...)`, etc.) when a human is waiting on
+# progress. Instead: run it via a backgrounded call with NO buffering pipe
+# on the command itself, then poll its output file (or use Monitor) at a
+# short interval and relay each newly-completed `[N/TOTAL] PASSED/FAILED:`
+# line to the user as soon as it appears - polling/Monitor is explicitly
+# fine here, whichever is more convenient, the point is live per-test
+# results, not a single report at the end.
+#
 # Usage:
 #   scripts/run_multiple_billed_tests.sh <pytest_node_id> [<pytest_node_id> ...]
+#   (agents: poll the output file or use Monitor and relay each
+#   `[N/TOTAL] PASSED/FAILED:` line to the user as it appears - see the
+#   sound-off note above; don't wait for the whole run to finish before
+#   reporting anything, unless the user has said otherwise.)
 #
 # Example:
 #   scripts/run_multiple_billed_tests.sh \
