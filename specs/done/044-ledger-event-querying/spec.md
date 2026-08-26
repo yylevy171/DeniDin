@@ -11,7 +11,7 @@ identity-ambiguity code-level gate originally in `query_events` was removed by e
 decision in favor of pure model judgment (see `tasks.md`'s 2026-08-26 addendum). T016 (manual
 `quickstart.md` WhatsApp walkthrough) was explicitly skipped at close — the automated `billed`
 coverage was judged sufficient on its own; see `tasks.md` for that decision recorded in place.
-Shipped via [PR — number to be filled in once opened].
+Shipped via [PR #256](https://github.com/yylevy171/DeniDin/pull/256).
 **Input**: User description: "ledger querying from AI - allowing the AI to query past ledger
 events in the system without needing to send them all as context. perhaps using a function
 call like the one we use to write, this would be to query, and perhaps we need to keep them
