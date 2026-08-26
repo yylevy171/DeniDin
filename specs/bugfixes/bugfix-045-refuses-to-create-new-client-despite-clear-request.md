@@ -116,3 +116,68 @@ tool wiring — this is a hypothesis from the transcript, not a code-level findi
    above against real code — not yet done.
 3. Only after that: test-gap analysis → failing test → human approval → minimal fix → verify,
    per METHODOLOGY.md §VII.
+
+---
+
+## Related Occurrence (2026-08-26) — a second, independently-triggered case of the same shape
+
+Found in `tests/billed/test_denidin_morning_document_creation_e2e.py::test_godfather_creates_credit_note_against_real_invoice`
+during Feature 044's closing regression sweep (`specs/in-progress/044-ledger-event-querying/`)
+— a different trigger than the diacritic-free typo-collision above, but the same underlying
+failure mode: `resolve_client_name` reports a client as merely "similar," not exact, to a
+candidate that is in fact the exact client just created seconds earlier in the same
+conversation, and a plain "כן" then cannot resolve it because the bot's own question was a
+multi-option question ("did you mean one of these, or a new client?"), not a yes/no one.
+
+**Real MCP call/output pair, verbatim (per CLAUDE.md's "SHOW ME THE FULL CONVERSATION" rule):**
+```
+[assistant, prior turn] נוצר לקוח חדש: שאדן בוגדנין
+                        מייל: e2e-client-875974@example.com
+                        טלפון: 050-1234567
+
+[user] צור חשבונית ל-שאדן בוגדנין על 32 ₪ עבור עיצוב לוגו
+
+name: resolve_client_name
+arguments: {"name":"שאדן בוגדנין"}
+output: נמצאו כמה לקוחות בשם דומה, אנא ציין/י באופן מדויק יותר:
+        - שׁאדן בוגדנין (טלפון 050-1234567)
+        - שאול דיאני (טלפון 050-1234567)
+
+[assistant] מצאתי כמה לקוחות בשם דומה:
+            • שאדן בוגדנין, טלפון 050-1234567
+            • שאול דיאני, טלפון 050-1234567
+
+            האם התכוונת לאחד מהם, או ליצור לקוח חדש בשם המדויק "שאדן בוגדנין"?
+
+[user] כן
+```
+The test's scripted "כן" (a valid reply to a yes/no approval, which this superficially resembles)
+does not answer a "which of these, or a third option" question — the follow-up turn's
+`create_invoice` was never called (`ai_response.mcp_calls == []`), failing the test's seeding
+step outright.
+
+**Distinguishing detail vs. the original symptom above:** the client Morning returned as a
+"similar" (not exact) match, `שׁאדן בוגדנין`, carries a Hebrew diacritic (a shin-dot, U+05C1)
+that the plain-text name just created, `שאדן בוגדנין`, does not — i.e. Morning itself appears to
+have round-tripped the freshly-created client's name through a form that added a diacritic,
+which then defeats `resolve_client_name`'s exact-match check against the caller's diacritic-free
+query even though it is unambiguously the same client record. This is a distinct root-cause
+candidate from the original symptom's spelling-variant case (`גלית סיטבון` vs `גלית כהן`/`גלית
+אוליאל`, no diacritics involved) — both land on the same downstream failure (an explicit "כן"
+cannot get past `resolve_client_name`'s "similar, not exact" response), but the *trigger* differs
+(diacritic round-trip vs. genuine spelling similarity to a different real client). Worth
+confirming whether Morning's client storage/lookup is diacritic-sensitive as part of this bug's
+root-cause investigation, in addition to the constitution/tool-design hypotheses above.
+
+**Cross-reference — a candidate fix direction from a structurally similar, already-resolved
+case:** Feature 044 (`specs/in-progress/044-ledger-event-querying/`) removed an analogous
+code-level blocking gate from `LedgerEventManager.query_events` (a hard-coded "ambiguous
+identity" early-return with no escape valve) per explicit human decision, in favor of always
+returning real candidate matches and letting the model reason over them and ask the user
+directly when genuinely unclear. `resolve_client_name`'s "similar names found, please be more
+specific" response is a *tool output* rather than a code-level gate blocking the model outright,
+so the two are not mechanically identical — but the underlying design principle (don't force a
+canned "insufficient" response when real candidates exist; let the model present them and reason
+over an explicit user answer) may apply here too. Worth a human read-through of Feature 044's
+`query_events` fix against this bug once investigated, per the pointer already on file in that
+feature's `tasks.md`.
