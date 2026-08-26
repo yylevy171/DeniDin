@@ -200,3 +200,59 @@ def _clean_reminders_around_every_test():
     _clear_reminder_tables()
     yield
     _clear_reminder_tables()
+
+
+def _clear_ledger_events() -> None:
+    """Same two-case reasoning as _clear_reminder_tables above, but for
+    ledger events. Unlike ReminderManager's live sqlite3 connection,
+    LedgerEventManager's storage is plain per-event JSON files under
+    storage_dir plus a plain in-memory list (self._index, Feature 044) kept
+    in sync with disk - so the wipe is symmetric in both cases: always
+    delete every *.json file under the canonical test_data/events/, AND
+    also clear the in-memory _index directly whenever a live
+    LedgerEventManager already exists this invocation (deleting only the
+    files would leave already-loaded events sitting in memory, invisible to
+    a fresh construction's disk scan but still returned by query_events for
+    the rest of this process's lifetime).
+    """
+    import denidin
+
+    events_dir = DENIDIN_APP_DIR / "test_data" / "events"
+    if events_dir.exists():
+        for f in events_dir.glob("*.json"):
+            f.unlink()
+
+    app = getattr(denidin, "denidin_app", None)
+    ledger_event_manager = getattr(getattr(app, "ai_handler", None), "ledger_event_manager", None)
+    if ledger_event_manager is not None:
+        # pylint: disable=protected-access - test-only reach into the
+        # manager's in-memory index for cleanup, same convention as
+        # _clear_reminder_tables' reach into reminder_manager._conn above.
+        ledger_event_manager._index = []
+
+
+@pytest.fixture(autouse=True)
+def _clean_ledger_events_around_every_test():
+    """Wipe all persisted ledger-event state before AND after EVERY billed
+    test in this directory - mirrors _clean_reminders_around_every_test
+    above exactly, same rationale, same "before AND after" reasoning.
+
+    Real incident, 2026-08-24: test_payer_name_search
+    (test_ledger_query_billed.py) accumulated FOUR leftover identical
+    client_name='דניאל פרץ'/payer_name='מגדל'/amount=38 records across four
+    separate manual pytest invocations run over about an hour, because
+    nothing wiped test_data/events/ between runs - despite tasks.md T015's
+    own notes claiming this wipe already existed as an autouse fixture (it
+    did not; that note was wrong, this fixture is what makes it true). A
+    later run's reply then said "נמצאו 4 רשומות זהות" (4 identical records
+    found) instead of the single record that specific test actually seeded -
+    caught only because the model said so out loud in its own reply, not
+    because any assertion detected the leak. Exactly the same failure shape
+    as the 2026-08-18 reminders incident above; billed tests that seed any
+    persistent state must never leave traces, full stop (see
+    .github/METHODOLOGY.md's TDD/billed-test section for the standing rule
+    this incident produced).
+    """
+    _clear_ledger_events()
+    yield
+    _clear_ledger_events()

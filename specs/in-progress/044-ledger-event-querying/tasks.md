@@ -293,7 +293,13 @@ existing data's own "הראל" — never a fabricated "חברת X" placeholder; 
 "delete only what I seeded" to a full wipe of `test_data/events/` (disk + in-memory index)
 BEFORE AND AFTER every test via an autouse fixture — this is unit/integration-tier data, safe
 to clear unconditionally, and removes the whole class of cross-test collision risk rather than
-trying to out-clever it; (3) the two-client "A or B" multi-criterion test was replaced with a
+trying to out-clever it — **correction, 2026-08-24: this was a decision, not a completed
+implementation — no such fixture actually existed in the test file, and `test_payer_name_search`
+accumulated four leftover identical records across separate manual runs as a direct result.
+Now genuinely implemented as a directory-wide autouse fixture in `tests/billed/conftest.py`
+(`_clean_ledger_events_around_every_test`), covering this file and every other billed test in
+the directory — see `.github/METHODOLOGY.md` §VI.a point 5 for the resulting standing rule.**;
+(3) the two-client "A or B" multi-criterion test was replaced with a
 four-client version, each call ALSO carrying a date-range filter (two filter dimensions per
 call, not one); (4) a new T014 scenario added for natural-language exclusion (a fact the user
 states in conversation, not derivable from the ledger itself) — not mechanically stubbable at
@@ -376,16 +382,19 @@ scenarios should have a handful of unrelated events seeded alongside the target 
   integration tier (`test_client_role_never_receives_query_ledger_events_tool_over_the_real_route`,
   Phase 2/T007a) — that's the real, sufficient proof for this requirement. Number left as a gap
   rather than renumbering everything downstream a second time.
-- [ ] **T013** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** 20-item display cap
-  (new, 2026-08-23 — concrete/testable, distinct from the owed-balance case which stays
-  manual-only): seed MORE than 20 real matching events for a broad query (e.g. many events
-  across a wide date range) → ask a question that would match all of them → assert the reply
-  does NOT enumerate more than 20 individual events verbatim (count distinct
-  event/line-item mentions in the reply text) — it must summarize/group/state a total or ask
-  to narrow instead, per the new `runtime_constitution.md` "Ledger Event Querying" section
-  (T007c). This is a real regression test for a prompt-level rule with no code-side
-  enforcement (research.md — honest distinction from the vague-query guard, which DOES have
-  a code backstop).
+- [x] **T013** [P] ~~20-item display cap~~ **REMOVED (2026-08-26, user directive)** — its
+  `billed` test (below) reached OpenAI and failed on a real run: the model grouped 25 events
+  into five date-range buckets but still named all 25 clients individually, which the test's
+  strict "count distinct events named ≤ 20" check rejected. User's read: there's no point
+  steering the model to overcome a barrier aimed at protecting reply length, when the actual,
+  strictly-enforced backstop is the reply's own output-token budget, not a specific event
+  count. `runtime_constitution.md`'s "Ledger Event Querying" section was reworded from a fixed
+  20-event cap to general "keep it readable for WhatsApp, use your own judgment" guidance, and
+  the corresponding `billed` test was deleted outright rather than adjusted to a softer
+  assertion (see the T015 test file for the removal note). Originally added 2026-08-23
+  (concrete/testable, distinct from the owed-balance case which stays manual-only): seed MORE
+  than 20 real matching events for a broad query → ask a question that would match all of
+  them → assert the reply does not enumerate more than 20 individual events verbatim.
 - [ ] **T014** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** Natural-language
   exclusion (new, 2026-08-23, user example: *"כמה כסף חייבים לי עדיין באוגוסט חוץ מיוסי ברנע
   שאני יודע ששילם כבר"* — "how much am I still owed in August, except Yossi Barnea who I know
@@ -445,10 +454,221 @@ scenarios should have a handful of unrelated events seeded alongside the target 
   stable to assert on automatically than structured tool-call behavior) and startup index
   reload (needs its own separate, explicit approval to restart the dev environment).
 
+**Addendum, 2026-08-24 (query-engine redesign, discovered via T008.4's real failure)**: running
+T008.4 (`test_payer_name_search`) live surfaced that the query engine's actual design is wrong,
+not just that one test's prompt — real, per-field AND-combined structured filters
+(`source_type`/`event_subtype`/`amount_min`/`amount_max` alongside the two separate fuzzy
+mechanisms `client_name`/`free_text`) let the model accidentally exclude a genuine match by
+over-constraining a single call, and can't express OR/NOT/threshold reasoning at all. Agreed
+redesign (user decision, 2026-08-24), **not yet implemented** — this replaces `client_name` +
+`free_text` + `source_type`/`event_subtype`/`date_from`/`date_to`/`amount_min`/`amount_max`
+entirely with:
+- A single fuzzy `text` search reaching every field on a record, structured or not (identity,
+  description, `reference_hint`, `trigger_condition`, numbers/dates in their string form —
+  literally everything, not a hand-picked subset).
+- Each `text` value carries an optional **hint** naming a **closed group** of fields it's
+  most likely targeting (e.g. `identity` → exactly `client_name`/`payer_name`; `date` →
+  `event_datetime`/`txn_date`; other groups TBD during implementation) — a *soft* weighting
+  signal that boosts relevant fields' scoring, never a hard filter a match must satisfy. A
+  ledger field may belong to 0-N hint groups.
+- A call may carry **multiple** `(text, hint)` pairs. Retrieval happens first, broadly, THEN
+  every candidate is scored against all supplied pairs — filtering never happens before
+  retrieval. Each returned match carries a confidence/score, not just a boolean in-or-out.
+- Explicit **OR**: the model issues multiple `(text, hint)` pairs (or multiple calls, exact
+  mechanics TBD) for alternative criteria and the low-level engine (or the model over raw
+  results) combines them — never a single AND-only pass that can only narrow.
+- Explicit **NOT** / exclusion and **numeric threshold** reasoning (e.g. "amount above 100",
+  "percent above 50") are NOT expected to be solved by the retrieval layer's scoring at all —
+  the tool returns the broad, relevant candidate set (by category/hint), and the model does the
+  actual exclusion/comparison arithmetic itself over the raw returned events, same principle
+  research.md Decision 5 already established for aggregation.
+- Real embeddings (mirroring `MemoryManager`'s existing ChromaDB/OpenAI-embedding pattern) were
+  discussed and explicitly deferred, not adopted — the ledger is small and fully structured
+  (unlike free-form memory text), so a rapidfuzz-based soft scorer was chosen as the concrete
+  starting design; revisit only if the scored/weighted approach proves insufficient in practice.
+- **Full field→hint-group mapping, the exact OR/NOT calling convention, and the confidence
+  scoring formula are still open design questions** — none of this is implemented yet.
+  Phase 1/2's existing code (`query_events`, `QUERY_LEDGER_EVENTS_TOOL`, `_handle_query_ledger_events`)
+  and every already-written unit/integration test will need real rework once the design is
+  finalized — **the 11 already-written T015 `billed` tests themselves need NO changes** (user,
+  2026-08-24 — they cover real, still-valid scenarios; they were just an incomplete set, and
+  the current, wrong implementation is what would have made a broader set fail).
+
+**Redesign implementation — DONE (2026-08-24), same day as the addendum above.** All of the
+"still open" items above are resolved; see `research.md`'s "2026-08-24 Redesign" section for
+the full field→hint-group mapping (`_HINT_GROUPS`), the OR/NOT calling convention (both reuse
+existing mechanisms — multi-call dispatch for OR, "model reasons over raw events" for NOT/
+threshold — no new schema needed for either), and the confidence formula (mean of per-criterion
+scores, each of which must individually clear `_CRITERION_MATCH_FLOOR`). Concretely:
+- `LedgerEventManager.query_events(criteria: Optional[List[Dict]])` replaces the old
+  8-parameter signature entirely — `src/managers/ledger_event_manager.py`.
+- `QUERY_LEDGER_EVENTS_TOOL`'s JSON schema (`src/handlers/ai_handler.py`) now exposes
+  `criteria: [{text, hint}]` instead of the 8 old separate parameters; `_handle_query_ledger_events`'s
+  dispatch (`self.ledger_event_manager.query_events(**call["arguments"])`) needed no change —
+  it already unpacks whatever keys the model supplies.
+- `tests/unit/test_ledger_event_manager.py`'s `TestQueryEventsStructuredFilters`/
+  `TestQueryEventsFuzzyMatching`/`TestQueryEventsVagueQueryGuard` (old 8-parameter shape) were
+  replaced with `TestQueryEventsCriteriaMatching`/`TestQueryEventsIdentityAmbiguity`/
+  `TestQueryEventsVagueQueryGuard` (new `criteria` shape) — 171 tests passing.
+  `tests/unit/test_ai_handler_ledger_query.py` updated to build `criteria`-shaped call
+  arguments (`_criteria_args` helper) — 16 tests passing. `tests/integration/
+  test_ledger_query_conversation_routing.py` (6 tests) also updated to the new shape — all
+  6 passing. Full suite (`tests/unit/` + `tests/integration/`): **1274 passed**.
+- `config/runtime_constitution.md`'s "Ledger Event Querying" section rewritten to describe the
+  unified `criteria`/`hint` mechanism and the OR/NOT/threshold guidance.
+- `data-model.md`, `research.md`, and `contracts/query-ledger-events-tool.md` all updated to
+  describe the new design (the old 8-parameter shape is kept only as historical/superseded
+  context, clearly marked as such).
+- Six real scoring bugs found via empirical sanity-testing (not assumed correct) and fixed —
+  see `research.md`'s "Three scoring bugs found via empirical sanity-testing" subsection (now
+  six, despite the heading) for the full list: raising `_CRITERION_MATCH_FLOOR`, numeric-only
+  comparison for numeric queries, per-criterion-must-individually-clear-the-floor, identity
+  fields needing `_NAME_MATCH_THRESHOLD` specifically, `accounting_document_display_number`
+  needing numeric-not-fuzzy scoring, and (found last, via the integration-test rewrite) a
+  general short-stored-value gate (`_SHORT_VALUE_LENGTH_THRESHOLD`/
+  `_SHORT_VALUE_MATCH_THRESHOLD`) after short filler/categorical values (`event_subtype`,
+  `component_label`) twice produced spurious cross-matches against unrelated real names.
+
+**Still pending, NOT part of "done" above**: re-running the 11 existing T015 `billed` tests
+against the new engine (prompts unchanged, per user's explicit instruction — only the
+implementation changed) requires fresh, explicit user approval before running, per a standing
+instruction given during this same investigation ("do not rerun the test without my approval!
+only investigate") — not yet requested/granted as of this note. `test_monthly_income_aggregation`
+(T008.8)'s original failure was never root-caused (investigation was superseded by the redesign
+before returning to it) and needs re-checking against the new engine. T017-T020's actual test
+code (below) has not been written or run yet — still description-only, per this feature's
+Phase 3 convention (write+run together, once, at the very end).
+
+**New Phase 3 scenarios (2026-08-24, user directive — described now, in user-experience terms
+only, exactly like T008-T014; NOT test code yet, and depend on the redesign above actually being
+implemented first)**:
+- [ ] **T017** [P] **[TDD — code written, not yet run]** Explicit OR across two
+  distinct, unambiguous identities in ONE request (distinct from T009.2's "both/all"
+  follow-up, which is a two-turn confirm-then-merge flow after an ambiguity prompt — this is a
+  single-turn OR named up front, no ambiguity involved at all): real pre-seeded בנק/הפקדה
+  deposit events, one for "אלי אבירם" and a separate one for "דוד כרמון", both amount 100,
+  plus the usual noise events for other clients/months — "האם קיבלנו תשלום של 100 שקל מאלי
+  אבירם או מדוד כרמון?" ("did we receive a payment of 100 shekel from Eli Aviram or David
+  Carmon?") → reply correctly reports BOTH matching payments (not just one), each correctly
+  attributed to its own name.
+- [ ] **T018** [P] **[TDD — code written, not yet run]** Explicit NOT/exclusion
+  combined with a numeric threshold, over a field never exercised by any earlier scenario
+  (`percent`) — real pre-seeded percentage-based fee agreements (`percent` field populated,
+  `source_type="הסכם"`) for at least three distinct clients: one named "קרן שלו" at 60%, and
+  two or more others at values above 50% too (so the exclusion is the only thing narrowing the
+  answer, not the threshold alone), plus at least one other client at or below 50% as a
+  negative control — "מי, חוץ מקרן שלו, הסכים על אחוזים מעל 50%?" ("who, other than Keren
+  Shalev, agreed to percentages above 50%?") → reply lists the other above-50% client(s) by
+  name and correctly EXCLUDES קרן שלו even though her own agreement genuinely is above 50% —
+  proving real exclusion reasoning, not just threshold filtering.
+- [ ] **T019** [P] **[TDD — code written, not yet run]** Broad-category +
+  numeric-threshold reasoning with no name given at all (the "who owes above 100 shekel"
+  scenario from the redesign discussion itself) — real pre-seeded הסכם (agreement, i.e. owed,
+  unpaid) events for several distinct clients spanning a range of amounts, at least two above
+  100 and at least two at-or-below 100 (a real negative control, not just an absence), plus a
+  separate בנק/הפקדה deposit event for one of the above-100 clients in the SAME period (a
+  paid, not owed, control — must NOT be counted as still-owed regardless of its own amount) —
+  "מי כל הלקוחות שחייבים לי מעל 100 שקל?" ("which clients owe me more than 100 shekel?") →
+  reply correctly lists only the genuinely-still-owed clients above the threshold, by name,
+  excluding both the below-threshold clients and the one client whose amount was already paid.
+- [ ] **T020** [P] **[TDD — code written, not yet run]** Cross-category retrieval
+  for ONE identity in a single turn — two DIFFERENT facts about the same client, from two
+  different event categories, reported side by side (distinct from T016's manual-only
+  owed-balance scenario, which requires computing a subtraction/difference; this only requires
+  correctly retrieving and stating two separate numbers without conflating them, so it's
+  automatable): real pre-seeded events for "משה כהן" — one הסכם (agreement) event, amount 45
+  (what was agreed), and one separate בנק/הפקדה (deposit) event, amount 20 (what he's actually
+  paid so far, deliberately a different value so the two figures are distinguishable in the
+  reply), plus the usual noise events for other clients/months — "כמה משה כהן הסכים לשלם, וכמה
+  הוא שילם עד היום?" ("how much did Moshe Cohen agree to, and how much did he pay to date?") →
+  reply correctly states BOTH figures (45 agreed, 20 paid), each attributed to the right
+  question, not conflated into one number or only answering half the question.
+
 **Checkpoint**: the whole feature is proven to work end-to-end from a real user's
 perspective, across all three user stories. This is the feature's actual "done."
 
 ---
+
+**Addendum, 2026-08-25 (real billed-test crash → architectural loop-dispatch fix, debug
+logging, hint-group redesign)**: running `test_monthly_income_aggregation` (already-committed
+Phase 3 acceptance test) crashed with `AIResponse.__post_init__`'s "owes a reply but carries no
+text" `ValueError`. Root cause was NOT this feature's own code — `_finalize_response`
+(`ai_handler.py`) ran each local-tool handler (`capture_ledger_event`/`query_ledger_events`/
+`list_reminders`) at most ONCE against the turn's ORIGINAL response, never re-checking a
+follow-up response for a further legitimate tool call; when the model genuinely needed a
+second local-tool round-trip, nothing executed it and `output_text` stayed empty. Fixed with a
+real dispatch loop, `_run_local_tool_dispatch_loop()` (`MAX_LOCAL_TOOL_LOOP_ITERATIONS = 5`),
+replacing the old fixed one-hop chain, plus a generic empty-`response_text` safety net
+(`LEDGER_FOLLOWUP_FAILED_TRY_AGAIN`) that now also covers `query_ledger_events`/
+`list_reminders` follow-up failures, not just `capture_ledger_event`'s pre-existing one. Massive
+raw-request/response logging (`_log_outgoing_request`/`_log_raw_response`, called at all 11
+`responses.create()` call sites app-wide) and deep `[044][SCORE]`/`[044][RAWLOG]` scoring-
+internals tracing (`_score_criterion`/`query_events`) were added alongside, per explicit user
+directive ("disk space is not a constraint") — all DEBUG-gated, zero cost when DEBUG is off.
+
+Using the new logs to diagnose a subsequent live rerun surfaced a genuinely separate, real
+design gap this feature's own schema/prompting had: a time-scoped question ("how much income
+this month") could be answered with a category-only criterion, no `date` criterion at all —
+`query_events` does no date filtering of its own by design, so this is silently unsafe against
+real multi-month history (the test's own fixture happened not to catch it - see
+`research.md`/`data-model.md` for the full analysis). Fixed via explicit tool-description and
+`config/runtime_constitution.md` guidance: any time-scoped question always needs a paired
+`date`-hinted criterion.
+
+Investigating that gap triggered a full user review of `_HINT_GROUPS` itself (user: *"why are
+those in this 'category'??? They are unrelated... you cant use 'category' as a categorical enum
+value - that is way misleading"*), which found the group conflated three unrelated axes
+(event classification, VAT treatment, document lifecycle status) and that `hint`'s own JSON
+schema carried no per-value documentation at all (the mapping existed only in a separate prose
+paragraph in the tool's top-level `description`, far from the enum). Redesigned to 9 groups —
+`identity` (now also `split_partner`), `date` (now `event_datetime`/`txn_date` only), new
+`event_type` (`source_type`/`event_subtype`), new standalone `vat`, `amount`, `percentage`,
+`free_text` (renamed from `description`, `component_label` dropped from search entirely - it
+exists only to derive `component_id`, never a real search target), `document` (now also
+`accounting_document_status`/`accounting_document_status_label`), `banking` — `split` group
+eliminated (its one field moved into `identity`). Per-value documentation moved onto the `hint`
+parameter's own schema `description`, co-located with the enum.
+
+Same review also removed two fields entirely, from the persisted schema, `_HINT_GROUPS`, and
+every doc/test reference (user directive, emphatic - *"GET RID OF THIS FIELD, I DONT WANT TO
+SEE IT EVER AGAIN ANYWHERE"*): `due_date` (a dead, always-null reserved-for-later field with no
+populating code path anywhere), and `accounting_document_creation_date` (a byte-for-byte
+duplicate of `event_datetime` for every חשבונית record it ever appeared on). `event_datetime`
+is now the sole creation-date field, for every `source_type` alike. The internal mechanism that
+derives it for a reconciliation-sourced document (Morning's own real `creation_date`, never the
+capture instant) still works, now via a private, never-persisted intermediate key rather than
+a field name that also happened to leak into the schema. This also retired
+`AIHandler._accounting_document_message_timestamp` entirely - a second, independent derivation
+of the same value that, on inspection, never actually fired in real production traffic (it read
+the raw, un-expanded call arguments, which never carried this field) - its ISO-8601 robustness
+test coverage moved to a new unit-test class exercising the function that actually runs
+(`LedgerEventManager._parse_iso_local`).
+
+`CURRENT_SCHEMA_VERSION` stays **2** — a stray, since-superseded 2→3 bump from an earlier
+intermediate commit was corrected back down (user: *"I dont know who or why it was bumped. It's
+2!"*), and today's field-removal/hint-redesign change was judged not schema-affecting enough on
+its own to bump further. Every test asserting `schema_version` now compares against the
+imported `CURRENT_SCHEMA_VERSION` constant rather than a hardcoded literal (user correction:
+*"you should never assert on the sche[ma] version! what happens when it goes up?"*), so a real
+future bump needs no test edits.
+
+Full verification after all of the above: 1273/1273 unit+integration tests pass, pylint
+9.52/10 (unchanged from baseline, zero new findings), mypy shows the same 4 pre-existing
+baseline errors (zero new).
+
+**Addendum, 2026-08-26 (billed-test sweep resumed → T013 20-item cap removed)**: resuming the
+paused Phase 3 `billed` sweep, `test_twenty_item_display_cap` (T013) reached OpenAI and failed
+on a real run - the model grouped 25 seeded events into five date-range buckets in its reply
+but still named all 25 clients individually, which the test's strict "≤20 named events" check
+rejected. User's call: don't try to make the model reliably overcome an artificial numeric
+barrier when the real, strictly-enforced constraint is the reply's own output-token budget, not
+a specific event count. `runtime_constitution.md`'s "Ledger Event Querying" section was
+reworded from a fixed 20-event cap to general "this is a WhatsApp conversation, keep it
+readable, use your own judgment" guidance (no number to target), and the test was deleted
+outright (see T013's own entry above) rather than softened to a looser assertion. Sweep
+resumed from test 9 (`test_four_way_multi_criterion_with_date_range`, passed) through test 10
+(`test_twenty_item_display_cap`, failed → removed per above); tests 11-15
+(`test_natural_language_exclusion` onward) still pending a resumed run against this change.
 
 ## Dependencies
 
@@ -491,3 +711,63 @@ this feature has exactly one tool and one manager method; there is no meaningful
 it" increment. Phase 1 alone has no user-visible effect (nothing calls `query_events` yet);
 Phase 2 alone has nothing to wire to. Once both are GREEN, the feature is code-complete and
 Phase 3 (`billed` acceptance, all three user stories) is the single final proof pass.
+
+**Addendum, 2026-08-26 (owed/received semantics + T021-T029 + identity-ambiguity gate removal)**:
+
+- **"What counts as owed vs. received" — new `runtime_constitution.md` section.** Per detailed
+  user specification: owed (debit) signals are `הסכם` (agreement, may be modified/cancelled by
+  a later `הסכם` for the same client — report the CURRENT state, never sum blindly), Morning
+  type 300 (חשבון עסקה, payment request), and type 305 (חשבונית מס, tax invoice) — non-exclusive,
+  reconciled by same-client + same-amount (not date) dedup, diverging figures get a clarifying
+  question. Received (credit) signals are בנק/הפקדה and Morning type 320/400 receipts, net of
+  type 330 credit notes (which reverse a receipt, not an agreement). All joined by `client_name`.
+  A companion "Multi-round search: look, then look again" section establishes the general
+  principle (search by client name FIRST, broad, then follow up based on what comes back) that
+  underlies this reasoning.
+- **9 new `billed` tests (T021-T029)**, each seeding real data via `_seed`/a new
+  `_seed_accounting_document` helper (never a simulated capture conversation): T021 (transaction
+  account with no agreement at all), T022 (tax invoice closed by its own receipt, excluded from
+  a combined owed sum), T023 (credit note reverses a receipt, invoice stays owed), T024
+  (agreement modification reports the latest state — client renamed from אורי כספי to שלומית
+  ברגר mid-session after it fuzzy-collided with `_seed_noise`'s "אורית כרמי"), T025 (dedup of a
+  matching deposit+receipt), T026 (combined owed across two unrelated clients, proving real
+  multi-round tool use), T027 (a conditional agreement component whose trigger never confirmed
+  stays genuinely uncertain, never guessed either way), T028 (a payment recorded under a
+  different payer's name still resolves once the user clarifies the relationship), T029 (a
+  one-character client-name typo resolved or clarified, never silently dropped). All 9 pass.
+- **Identity-ambiguity CODE gate removed from `query_events`** (explicit user directive: *"why
+  is there a CODE ambiguity check?! It should all be done in the model! Remove the code check
+  for ambiguity!"*). The tool used to intercept an `identity`-hinted criterion matching 2+
+  distinct stored `client_name`/`payer_name` values and return a `{"ambiguous_field": "identity",
+  "candidates": [...]}` shape INSTEAD of real events — found, via T028, to have no escape valve:
+  every future call touching either name re-triggered the identical block, even after the user
+  had already resolved the ambiguity in conversation, stalling the model into "I can't determine
+  this from the search" instead of ever answering. Removed `_distinct_name_candidates`/
+  `_count_events_for_name` and the blocking early-return entirely; `query_events` now always
+  returns real scored matches, and recognizing/resolving multiple distinct names is the model's
+  own judgment call, per a rewritten "Ambiguous names, OR, NOT, and threshold questions"
+  constitution section. Audited for similar code-level judgment gates elsewhere in this same
+  method: `_CRITERION_MATCH_FLOOR`/the identity-specific `_NAME_MATCH_THRESHOLD` scoring gate
+  were kept (relevance/precision mechanisms, not business decisions — removing them makes
+  matching too noisy to function, confirmed via the module's own documented empirical scores);
+  the `no_search_criteria` empty-criteria guard was kept (removing it causes a real
+  `ZeroDivisionError`, not a judgment call being made on the model's behalf). Re-verified after
+  removal: `tests/unit/test_ledger_event_manager.py` (175/175), plus all three tests whose
+  behavior actually depends on this mechanism — T009 (pre-existing ambiguity test, still asks a
+  clarifying question on pure model judgment), T029 (still asks), and T028 (now resolves in ONE
+  search, one turn, no clarification loop needed — confirmed via the real reply text, not a
+  substring-match artifact).
+
+### Follow-up (not part of this feature — separate task, do not action here)
+
+**Cross-reference `specs/bugfixes/bugfix-045-refuses-to-create-new-client-despite-clear-request.md`**
+once this feature is merged: bugfix-045 (open, root cause not yet investigated as of 2026-08-25)
+describes the bot repeatedly refusing to create a new Morning client because
+`resolve_client_name` keeps returning the same "similar names found" result even after the user
+explicitly confirmed a new-client creation — structurally the same shape as this feature's
+removed identity-ambiguity gate (a code-level check with no escape valve once a human has
+already resolved the ambiguity), just in `apps/morning-mcp-app`'s `resolve_client_name` rather
+than `LedgerEventManager.query_events`. Worth a human read-through of bugfix-045 against this
+fix once this feature closes, to judge whether the same "let the model reason over real
+candidates instead of a code-level block" approach applies there too — **not investigated or
+actioned as part of Feature 044**, this is only a pointer for later.

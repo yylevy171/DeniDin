@@ -380,3 +380,182 @@ implementation, not assumed. `client_name` itself is NOT among Feature 025's for
 for `חשבונית` (only `payer_name`/`component_label`/`trigger_condition`/`agreement_id`/
 `component_id`/`percent*`/`hours*` are), so a Morning-sourced document's client is findable by
 name exactly like any other event, automatically, today.
+
+## 2026-08-24 Redesign: from 8 structured filters to a unified `criteria` list
+
+**This section documents a full architectural replacement of Decisions 1-3 and the query
+request shape from Decision 9's contract** — discovered and designed AFTER the feature's
+Phase 3 acceptance tests (`tasks.md`) were already written and largely passing. The original
+11 billed-test scenarios/prompts were NOT changed by this redesign (explicit user
+instruction: "IT DOES NOT CHANGE THE TESTS AT ALL... THE TESTS ARE ACTUALLY GOOD, but not
+complete") — only the underlying implementation, plus four NEW test scenarios (T017-T020,
+`tasks.md`) added to exercise cases the old design couldn't have passed correctly even if it
+had appeared to.
+
+### Trigger
+
+A real billed test (`test_payer_name_search`, `tests/billed/test_ledger_query_billed.py`)
+failed: a question genuinely answerable from a `payer_name="מגדל"` event came back "not
+found." Root cause: the model, following the tool description's per-field guidance, added a
+`source_type`/`event_subtype` filter inferred from the question's own phrasing ("did we
+*receive* payment from מגדל?" → the model inferred `source_type="בנק"`), which excluded the
+actual matching event (a `source_type="הסכם"` record whose `payer_name` happened to be
+`"מגדל"`). Investigating this surfaced a structural problem, not a one-off prompt bug: the
+original 8-separate-AND-filter schema forces the model to guess, per field, whether to
+constrain a call — and any wrong guess silently excludes real matches, with no way to
+recover within that same call.
+
+### The user's core correction
+
+> "no this is wrong. EVERY text search searches ALL text fields. If the match is on an
+> identity field - then we can ask for disambiguation if needed. I never agreed to this
+> separation, on the contrary - I was very adamant that the search needs to search
+> EVERYTHING. This also includes NUMBERS... So to wrap up - unify ALL these into single
+> query by 'text' which the model should interpolate from the user's request. And text
+> includes EVERYTHING. And then different matches get different treatments AFTER they
+> match, i.e. client and payer may go through an identity resolution flow, while numbers
+> may go through a range check flow."
+
+This rejects Decisions 1-3's field-type separation (name fields vs. free-text fields vs.
+structured date/amount ranges vs. exact category filters) outright — not a refinement, a
+replacement. The design that followed, worked out iteratively with the user:
+
+- **One query shape, not eight**: `criteria: List[{"text": str, "hint": Optional[str]}]`.
+  Every criterion is compared against every field on every event — never restricted to one
+  field by construction.
+- **`hint` is a soft signal, never a hard filter**: "the model giving a 'hint' to what
+  category the search is looking for... that hint does not necessarily need to be followed
+  strictly." A hint that turns out wrong must never exclude an otherwise-real match — it
+  can only ever add a scoring bonus when it turns out right.
+- **Retrieve broadly, then score — never filter then retrieve**: "the queries should try
+  the filters but only AFTER all the matches have been retrieved. The returned result
+  should have something like a confidence of a match." This inverts the original design's
+  control flow entirely (AND-filter down to a result set) into a scoring pass over every
+  event, with a `confidence` value on each returned match.
+- **Numbers are handled numerically, not as fuzzy text**: "who owes me above 100 shekel" —
+  a numeric criterion must reason about the actual numeric VALUE, not fuzzy-match a
+  number's string representation the way a name gets fuzzy-matched.
+- **Closed hint groups, not free-form**: "hints have closed groups, i.e. identity is
+  exactly one of client_name and payer_name. dates are txn_date, event_datetime, etc.
+  Ledger fields can map to 0-N of these hint groups." This became `_HINT_GROUPS` in
+  `ledger_event_manager.py` — see `data-model.md`'s field table for the authoritative
+  mapping.
+
+### OR / NOT / threshold — no new schema needed for either
+
+The user asked directly how OR and NOT/exclusion/threshold questions would work under this
+design ("did we receive 100 from Andy Acorn OR Bobby Brown?", "did anyone NOT named Cecil
+Chloe agree to percentages above 50%?", "who are all the customers who owe me above 100
+shekel?"). Both turned out to already be covered by existing mechanisms, requiring zero new
+schema:
+
+- **OR**: exactly Decision 10's existing multi-call dispatch (`extract_all_function_calls`,
+  already implemented for the old schema) — one call per alternative, results combined by
+  the model. Nothing about multi-call dispatch was tied to the old 8-field shape; it carries
+  over unchanged onto the new `criteria`-based calls.
+- **NOT / exclusion / numeric threshold**: exactly Decision 5's existing "model reasons over
+  raw returned events" principle (originally scoped only to arithmetic/aggregation) — now
+  explicitly extended to cover exclusion and threshold reasoning too. A broad, unconstrained
+  criteria call retrieves every plausibly-relevant event; the model itself then excludes or
+  thresholds by reading the returned events' own clean fields before replying. There is no
+  criteria syntax for "except" or "above/below," deliberately — adding one would reintroduce
+  exactly the over-constraining-filter risk this whole redesign exists to remove.
+
+Four new test scenarios were added to `tasks.md` (T017-T020) specifically to exercise these
+paths for the first time: T017 (OR across two identities sharing an amount), T018 (NOT +
+numeric threshold on `percent`, a field never before exercised by any test), T019 (the
+original "who owes above 100" broad-retrieval-plus-threshold example), T020 (one identity,
+two distinct cross-category figures — agreed vs. paid-to-date — without requiring subtraction,
+kept distinct from the existing owed-balance scenario).
+
+### Embeddings — discussed again, deferred again
+
+Mid-discussion, the user independently arrived at the same observation Decision 1 already
+weighed: "While writing this it is dawning on me that this is more and more like
+embedding..." Embeddings (this codebase already has a real, working precedent —
+`MemoryManager`'s OpenAI-embedding + ChromaDB semantic search) were discussed as the
+"natural" evolution of "broad retrieval, then score by relevance," but explicitly NOT
+adopted for this pass — the concrete design that shipped is a `rapidfuzz`-based soft scorer
+(broad retrieval + per-criterion fuzzy/numeric scoring + confidence), not a semantic-search
+index. This keeps Decision 1's original rationale intact (no new OpenAI-call-per-query cost/
+latency, deterministic and unit-testable thresholds) while fixing the actual structural
+problem (hard AND-filters excluding real matches) that triggered the redesign — an
+embeddings-based approach remains a plausible FUTURE direction if fuzzy scoring turns out to
+be insufficient in practice, not something rejected on principle.
+
+### Three scoring bugs found via empirical sanity-testing (not assumed correct)
+
+Implementing "retrieve broadly, then score" surfaced three real scoring-algorithm bugs,
+each found by constructing real Hebrew-name/amount test data and inspecting actual
+`rapidfuzz` scores directly — not by reasoning about the algorithm abstractly:
+
+1. **An initial low floor (`_CRITERION_MATCH_FLOOR = 30`) let unrelated events through.**
+   Two genuinely different Hebrew names scored 50/100 via `WRatio` purely by coincidental
+   character overlap, and a numeric query (`"100"`) scored 72/100 against an unrelated
+   stored `amount="38"` — also via `WRatio`, which has no concept of numeric value at all.
+   Fixed by raising the floor to 55 and adding genuinely numeric-aware scoring
+   (`_try_parse_number` + real equality) for fields in `_NUMERIC_FIELDS`.
+2. **Numeric queries still spuriously matched non-numeric fields.** Even after (1), `"100"`
+   scored 72/100 against `event_datetime="24/08/2026 16:10"` — a digit-heavy string, which
+   `WRatio` treats as meaningfully similar to any other digit-heavy string. Fixed by
+   restricting a numeric query to compare ONLY against `_NUMERIC_FIELDS`, skipping every
+   other field entirely (never fuzzy-comparing a bare number against text).
+3. **A mean-of-scores confidence gate let one perfect match "carry" an irrelevant one.**
+   Two real target events for an OR-test scenario (both genuinely `amount=100`, different
+   people) cross-matched each other: `(22 + 100) / 2 = 61`, clearing a 55 floor, where 22
+   was a raw, near-meaningless identity score between two unrelated names. Fixed by
+   requiring EVERY criterion in a call to individually clear `_CRITERION_MATCH_FLOOR` before
+   computing the mean — not just the average across criteria.
+4. **(Found later, during unit-test rewriting, same root cause as #3) An identity-hinted
+   criterion alone could still cross-match an unrelated name.** Two unrelated real Hebrew
+   names ("דוד כהן"/"שרה לוי") scored 40.7 raw via `WRatio` — safely below the 55 floor on
+   its own, but `40.7 + _HINT_MATCH_BONUS (15) = 55.7`, which DOES clear the floor once an
+   identity hint is given (the ordinary case for any name search). Fixed by requiring an
+   identity field (`client_name`/`payer_name`) to clear the separately-proven, higher
+   `_NAME_MATCH_THRESHOLD` (70) on its RAW score before it can ever become a criterion's
+   winning field — the hint bonus can still apply on top once it wins, but can no longer be
+   the deciding factor for whether it wins in the first place.
+5. **(Found via a genuine unit-test gap while rewriting test coverage) A numeric document
+   number wasn't scored numerically at all.** `accounting_document_display_number` (a
+   Morning document number, e.g. `"40406"`) lived only in the `document` hint GROUP, not in
+   `_NUMERIC_FIELDS` — so a numeric query for `"40406"` was restricted (per fix #2 above) to
+   `_NUMERIC_FIELDS` only, and this field wasn't in that set, so it silently never matched.
+   Fixed by adding it to `_NUMERIC_FIELDS` too (hint-group membership and numeric-vs-fuzzy
+   scoring are independent concerns) — consistent with the user's own framing earlier in
+   this same discussion: "the morning display number is NOT a text, it's a number."
+6. **(Found via the integration-test rewrite, two separate real cases) Short, near-universal
+   filler/categorical field values are a systemic noise source, under EITHER scorer.** A
+   query for one real name ("בני אשכנזי") spuriously matched a completely different seeded
+   event via `component_label="בסיס"` (`partial_ratio` 57/100 — short strings very easily
+   align with an unrelated longer string under a best-substring-window algorithm); a
+   separate query for another real name ("שירה מזרחי") spuriously matched three unrelated
+   events via `event_subtype="יצירה"` (`WRatio` 64/100 — same root cause, different scorer).
+   Neither was fixed by fixes #1-#4 above, because the winning field in both cases belonged
+   to non-identity hint groups (`description`/`category`), so the identity-specific
+   `_NAME_MATCH_THRESHOLD` gate never applied. Fixed generally (not as two one-off
+   field-specific patches, since the same failure shape will otherwise recur for the next
+   short field discovered) via a new `_SHORT_VALUE_LENGTH_THRESHOLD`/
+   `_SHORT_VALUE_MATCH_THRESHOLD` pair: any field whose own STORED value is short (< 8
+   chars) can only win a criterion if its score clears a near-exact bar (85), regardless of
+   which scorer produced it — legitimate short-QUERY-against-long-FIELD substring matching
+   (the actual reason `_PARTIAL_RATIO_FIELDS`/`partial_ratio` exist) is untouched, since the
+   gate only looks at the field's own length, never the query's.
+
+Each fix was verified against a standalone sanity script covering every previously-passing
+scenario plus the specific regression, before being folded into the unit test suite proper
+(`tests/unit/test_ledger_event_manager.py`'s `TestQueryEventsCriteriaMatching`/
+`TestQueryEventsIdentityAmbiguity`/`TestQueryEventsVagueQueryGuard` classes, which replaced
+the old `TestQueryEventsStructuredFilters`/`TestQueryEventsFuzzyMatching`/
+`TestQueryEventsVagueQueryGuard` classes wholesale — the old classes tested a parameter
+shape that no longer exists).
+
+### What did NOT change
+
+- The persisted `LedgerEvent` schema (Feature 033/025) — read-only feature, still additive.
+- The in-memory index (Decision 8) — still a plain `List[Dict]`, same load/append lifecycle.
+- Multi-call dispatch, per-call failure isolation, the vague-query guard's existence, and
+  entity-ambiguity detection's existence (Decisions 6/9/10) — all carried over unchanged in
+  spirit, just re-pointed at the new `criteria` shape instead of the old `client_name`
+  parameter specifically.
+- The 20-event display cap (Decision 10's "Too many results" refinement) and the RBAC
+  gate/dispatch pattern (Decision 9) — unaffected by a change to the query shape itself.

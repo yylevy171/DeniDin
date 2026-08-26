@@ -186,6 +186,27 @@ any unit/integration task.
 4. `expensive` tests keep the full existing per-run human-approval gate, one at a time, with
    logs read before any re-run (CONSTITUTION §VII) — this discipline is unchanged by this
    redefinition. `billed` tests keep their existing no-approval-needed, run-freely status.
+5. 🚨 **Any `billed`/`expensive` test that seeds persistent state (ledger events, reminders,
+   sessions, or anything else written to disk/DB under `test_data/`) MUST wipe that state
+   both BEFORE and AFTER it runs — no exceptions, and this is not optional polish added
+   later.** "Before" makes the test's own result independent of what any earlier run (in this
+   invocation OR a prior, separate one) left behind; "after" leaves a clean slate for whatever
+   runs next, including a human inspecting `test_data/` by hand between runs. The correct place
+   for this is a directory-wide `autouse=True` fixture in that test tier's own `conftest.py`
+   (see `apps/denidin-app/tests/billed/conftest.py`'s `_clean_reminders_around_every_test`/
+   `_clean_ledger_events_around_every_test` for the working pattern) — not bespoke per-file
+   partial cleanup (e.g. deleting only files matching one test's own prefix), which is easy to
+   get subtly wrong and doesn't protect tests that forget to opt in.
+   **Real incidents this rule closes**: (1) 2026-08-18, Feature 054 — a leftover reminder from
+   one billed test polluted a later, unrelated test's `list_reminders` result. (2) 2026-08-24,
+   Feature 044 — `test_payer_name_search` accumulated FOUR leftover identical ledger-event
+   records across four separate manual pytest invocations run over about an hour, because
+   nothing wiped `test_data/events/` between runs, despite that specific test file's own task
+   notes claiming an autouse wipe fixture already existed (it did not — the note was aspirational,
+   not actually implemented, and nothing caught the gap until a human manually compared the
+   model's own reply text against what was actually seeded). Both incidents have the identical
+   shape: a test seeds real persisted data, nothing guarantees it's gone afterward, and a LATER,
+   otherwise-unrelated test silently inherits it — caught only by chance, not by any assertion.
 
 **Rationale**: a `billed`/`expensive` test proves the feature actually works for a real user;
 writing or running one before the feature exists just proves it fails for an obvious reason
@@ -226,6 +247,12 @@ redefinition above.
     silently discard the actual assertion/traceback before it's ever read (see CONSTITUTION.md
     §VII and §XVIII below for the incident this closed). For a stop-on-first-failure sequence
     of `billed` tests, use `scripts/run_multiple_billed_tests.sh <node_id> ...` (billed only).
+  - 🚨 **When running that sequence script, sound off on each test's result AS IT COMPLETES —
+    not only in a single summary once the whole sequence is done — unless the human explicitly
+    says otherwise.** Never wrap the script in something that buffers its output until the
+    process exits (a trailing `| tail`, `$(...)` capture, etc.) and then report once at the
+    end; poll the output (or the per-test result files it writes) and relay each result live.
+    See CONSTITUTION.md §VII for the incident this closed.
   - The **EXPLAIN Test Plan** step (Step 1 below) MUST state which tier(s) each new test
     belongs to, so the human approval gate can weigh cost/approval implications before any
     test is written — a test plan that omits tier classification is incomplete
@@ -914,6 +941,15 @@ exactly as if each test had been run by hand. It exists purely to prevent the OT
 incident from this same day (see CONSTITUTION.md §VII): an ad-hoc `pytest ... | tail`
 silently discarding the actual assertion/traceback before it could even be read.
 
+**A second, distinct incident (2026-08-26) on the SAME script**: it announces each result live
+by design, but an agent driving it backgrounded the call behind a pipe (`| tail -150`) that
+buffers ALL output until the process exits - so nothing streamed anywhere for the several
+minutes the full sequence ran, and the human had to explicitly demand a status before getting
+anything. The script's own live announcements are worthless if the thing running it captures
+everything and reports only once at the end. **Sound off on each result AS IT COMPLETES -
+poll the output or the per-test result files, or use a `Monitor`-equivalent - unless the human
+has explicitly said a single end-of-run summary is fine for that run.**
+
 ---
 
 ## XIX. User-Experience-Impacting Changes Require Explicit Approval
@@ -1041,9 +1077,16 @@ relevant to the turn it's on, only which tools it technically COULD call.
 
 ---
 
-**Version**: 2.8.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-08-19
+**Version**: 2.9.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-08-24
 
 **Changelog**:
+- v2.9.0 (2026-08-24): Added §VI.a workflow point 5 — any `billed`/`expensive` test that seeds
+  persistent state MUST wipe it both before and after it runs, via a directory-wide autouse
+  `conftest.py` fixture, not bespoke per-file partial cleanup — after Feature 044's
+  `test_payer_name_search` accumulated four leftover identical ledger-event records across
+  separate manual runs (nothing wiped `test_data/events/` between runs, and that test file's own
+  task notes wrongly claimed the wipe already existed), the same failure shape as the 2026-08-18
+  reminders incident already referenced elsewhere in this doc.
 - v2.8.0 (2026-08-19): Added "Every New Tool-Bearing Feature Needs Explicit Constitution
   Boundaries" (XXI) after Feature 054 (reminders) shipped with no runtime_constitution.md scope at
   all, letting the model reach for reminder tools mid-flow in an unrelated feature's conversation

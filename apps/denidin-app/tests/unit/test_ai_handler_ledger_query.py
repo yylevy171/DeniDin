@@ -46,11 +46,15 @@ def _followup_response(text="נמצאו התוצאות", resp_id="resp_followup_
     )
 
 
-NO_FILTER_ARGS = {
-    "client_name": None, "date_from": None, "date_to": None,
-    "amount_min": None, "amount_max": None, "source_type": None,
-    "event_subtype": None, "free_text": None,
-}
+NO_FILTER_ARGS = {"criteria": []}
+
+
+def _criteria_args(*pairs):
+    """Build a query_ledger_events call's arguments from (text, hint) pairs -
+    the 2026-08-24 redesign's `criteria` shape (see
+    src/managers/ledger_event_manager.py's module-level _HINT_GROUPS
+    comment)."""
+    return {"criteria": [{"text": text, "hint": hint} for text, hint in pairs]}
 
 
 @pytest.fixture
@@ -156,7 +160,7 @@ class TestSingleCallDispatch:
             },
             message_id="m1", message_timestamp=1753693200,
         )
-        args = {**NO_FILTER_ARGS, "client_name": "דוד כהן"}
+        args = _criteria_args(("דוד כהן", "identity"))
         response = _response([_function_call_item("query_ledger_events", args, "call_q1")])
         mock_ai_client.responses.create.return_value = _followup_response("נמצא סכום 5,000")
 
@@ -186,6 +190,29 @@ class TestSingleCallDispatch:
         mock_ai_client.responses.create.side_effect = Exception("network error")
         assert ai_handler._handle_query_ledger_events(_request(), response, tools=None) is None
 
+    def test_numeric_criterion_matches_amount_exactly(self, ai_handler, mock_ai_client):
+        """Sanity check that the real dispatch path (not just LedgerEventManager
+        directly) also carries a number criterion through unchanged."""
+        ai_handler.ledger_event_manager.add_ledger_event(
+            session_id="s", event={
+                "source_type": "בנק", "event_subtype": "הפקדה", "client_name": "אלי אבירם",
+                "payer_name": None, "description": None, "amount": "100",
+                "percent": None, "percent_base": None, "hours": None, "hourly_rate": None,
+                "txn_date": None, "vat_status": "לא צוין", "trigger_condition": None,
+                "reference_hint": None, "agreement_label": "תיק", "component_label": "בסיס",
+            },
+            message_id="m1", message_timestamp=1753693200,
+        )
+        args = _criteria_args(("100", "amount"))
+        response = _response([_function_call_item("query_ledger_events", args, "call_q1")])
+        mock_ai_client.responses.create.return_value = _followup_response("נמצא")
+
+        ai_handler._handle_query_ledger_events(_request(), response, tools=None)
+
+        call_kwargs = mock_ai_client.responses.create.call_args.kwargs
+        payload = json.loads(call_kwargs["input"][0]["output"])
+        assert payload["count"] == 1
+
 
 class TestMultiCallDispatch:
     """research.md Decision 10: a turn may contain SEVERAL query_ledger_events
@@ -214,8 +241,8 @@ class TestMultiCallDispatch:
             },
             message_id="m2", message_timestamp=1753693200,
         )
-        args_a = {**NO_FILTER_ARGS, "client_name": "דוד כהן"}
-        args_b = {**NO_FILTER_ARGS, "client_name": "שרה לוי"}
+        args_a = _criteria_args(("דוד כהן", "identity"))
+        args_b = _criteria_args(("שרה לוי", "identity"))
         response = _response([
             _function_call_item("query_ledger_events", args_a, "call_a"),
             _function_call_item("query_ledger_events", args_b, "call_b"),
@@ -236,7 +263,7 @@ class TestMultiCallDispatch:
     def test_one_unparseable_call_does_not_poison_a_second_well_formed_call(self, ai_handler, mock_ai_client):
         """The deliberate OPPOSITE of capture_ledger_event's bugfix-018
         whole-turn rejection - per-call failure isolation only."""
-        good_args = {**NO_FILTER_ARGS, "source_type": "הסכם"}
+        good_args = _criteria_args(("הסכם", "event_type"))
         response = _response([
             SimpleNamespace(type="function_call", name="query_ledger_events",
                              arguments="{not valid json", call_id="call_bad"),

@@ -30,7 +30,7 @@ from typing import Any, List, Optional
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 
-from src.handlers.ai_handler import LEDGER_EVENT_TOOL
+from src.handlers.ai_handler import LEDGER_EVENT_TOOL, _log_outgoing_request, _log_raw_response
 from src.models.user import Role
 from src.utils.logger import get_logger
 from src.utils.time_utils import now_local
@@ -201,21 +201,24 @@ def _sweep_accounting_documents(global_context: Any, log_prefix: str = "") -> No
 
     prompt = _build_reconciliation_prompt(since)
 
+    reconciliation_kwargs = {
+        "model": ai_handler.config.ai_model,
+        "input": [{"role": "user", "content": prompt}],
+        "tools": tools,
+        # Real bug (2026-08-22): this call originally set no output cap at
+        # all - the only OpenAI call in this app that didn't - leaving it
+        # on whatever the API's own default is. A full sweep legitimately
+        # emits one capture_ledger_event call per document (~185 output
+        # tokens each; ~3.3k for 18 documents, and this feature's own
+        # safety cap allows up to 100), so an unstated default is a real
+        # truncation risk. Uses the same config value every conversational
+        # call already uses.
+        "max_output_tokens": ai_handler.config.ai_reply_max_tokens,
+    }
     try:
-        response = ai_handler.client.responses.create(
-            model=ai_handler.config.ai_model,
-            input=[{"role": "user", "content": prompt}],
-            tools=tools,
-            # Real bug (2026-08-22): this call originally set no output cap at
-            # all - the only OpenAI call in this app that didn't - leaving it
-            # on whatever the API's own default is. A full sweep legitimately
-            # emits one capture_ledger_event call per document (~185 output
-            # tokens each; ~3.3k for 18 documents, and this feature's own
-            # safety cap allows up to 100), so an unstated default is a real
-            # truncation risk. Uses the same config value every conversational
-            # call already uses.
-            max_output_tokens=ai_handler.config.ai_reply_max_tokens,
-        )
+        _log_outgoing_request(f"{log_prefix}accounting_reconciliation_sweep", reconciliation_kwargs)
+        response = ai_handler.client.responses.create(**reconciliation_kwargs)
+        _log_raw_response(f"{log_prefix}accounting_reconciliation_sweep", response)
     except Exception as e:  # pylint: disable=broad-except
         logger.error(
             f"{log_prefix}[025] Accounting reconciliation sweep failed (OpenAI/MCP call): {e}",

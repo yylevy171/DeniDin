@@ -15,9 +15,9 @@ integration contract this class fulfills.
 import json
 import logging
 import re
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from rapidfuzz import fuzz
 
@@ -25,36 +25,148 @@ from src.utils.time_utils import LOCAL_TZ, local_from_timestamp, now_local
 
 logger = logging.getLogger(__name__)
 
-# Feature 044 (research.md Decision 3): fuzzy-match score thresholds
-# (rapidfuzz's 0-100 scale). Name matching uses WRatio (handles partial
-# matches/word-order variance well); free-text matching uses partial_ratio
-# (finds a close substring match within a longer field) with a looser
-# threshold since description/component_label/trigger_condition values are
-# longer and noisier than a name.
+# Feature 044 (research.md Decision 3): fuzzy-match score threshold
+# (rapidfuzz's 0-100 scale) identity fields (client_name/payer_name) must
+# clear to ever win a criterion's scoring - see _score_criterion's own
+# docstring for why identity fields need a higher bar than the general
+# per-criterion match floor (_CRITERION_MATCH_FLOOR below). This is a
+# scoring-precision mechanism, not a business/ambiguity decision: it affects
+# which field of an event counts as its best match, never whether the event
+# itself is withheld from the model. (2026-08-26: this constant used to also
+# back a second, separate mechanism - _distinct_name_candidates - that
+# intercepted a multi-name match and returned candidates INSTEAD of real
+# events, forcing a clarifying question with no way to ever get past it.
+# That mechanism was removed entirely per explicit user directive: this
+# tool always hands back real matched events, and reasoning about whether
+# multiple distinct names appearing among them is worth asking the user
+# about is the model's own judgment call, per
+# runtime_constitution.md's "Ambiguous names, OR, NOT, and threshold
+# questions" section - not something this tool pre-empts.)
 _NAME_MATCH_THRESHOLD = 70
-_FREE_TEXT_MATCH_THRESHOLD = 60
 
-# The event fields query_events' free_text filter searches (research.md
-# Decision 1 - typo-tolerant, NOT meaning-based matching).
-# Feature 044 free-text search fields. Includes Feature 025's accounting_document_*
-# text fields (display_number/status_label/payment_method) - "implicit like any
-# other" (user, 2026-08-23): no dedicated query_events parameter for these, they're
-# just more free_text-searchable fields, same as description/component_label/
-# trigger_condition already are. accounting_document_status_code (a raw int) and
-# accounting_document_creation_date (a date, already covered by date_from/date_to)
-# are deliberately excluded - not natural free-text targets. accounting_document_type
-# is NOT in this list (2026-08-23 update, user) - Feature 025's design now folds
-# "type of accounting document" into event_subtype itself rather than a separate
-# field, and event_subtype is already a plain exact-match filter (Decision 12, no
-# enum) - no free_text coverage needed for it, and no further query_events change
-# needed either way. These fields are simply absent (never a KeyError) on any event
-# not sourced from Feature 025, so this list is safe to reference unconditionally
-# regardless of whether that feature has shipped.
-_FREE_TEXT_FIELDS = (
-    "description", "component_label", "trigger_condition",
-    "accounting_document_display_number",
-    "accounting_document_status_label", "accounting_document_payment_method",
+# Feature 044, 2026-08-24 redesign: query_events no longer takes separate
+# client_name/date_from/date_to/amount_min/amount_max/source_type/event_subtype/
+# free_text parameters. A real live billed run (test_payer_name_search) showed
+# the old AND-combined structured filters let the model accidentally exclude a
+# genuine match by over-constraining one call (adding source_type='בנק' to a
+# question that was actually about a source_type='הסכם' record), and the old
+# design had no way to express OR/NOT/threshold reasoning at all. Replaced with
+# a single `criteria` list of {"text": str, "hint": Optional[str]} pairs (user
+# decision, 2026-08-24) - see this feature's tasks.md "Addendum, 2026-08-24" for
+# the full design discussion this came out of.
+#
+# HINT GROUPS: a closed set of named field groups. `hint` is a SOFT weighting
+# signal, never a hard filter - every field is always checked regardless of
+# hint, but a match landing in the hinted group gets a confidence bonus. A
+# field may belong to 0-N groups (every field below happens to belong to
+# exactly 1, but the mechanism doesn't assume that).
+# Redesigned 2026-08-25 (user review): the old "category" group conflated three
+# unrelated axes (event classification, VAT treatment, document lifecycle status)
+# under one misleading name, "due_date" was a dead reserved-for-later field that
+# had no business being searchable, and "description" read as a synonym for one
+# specific field rather than the free-text group it actually was. split_partner
+# moved into identity (it names a person, like client_name/payer_name); document
+# status/label moved into document (they describe the accounting document, not
+# an event category); component_label was dropped entirely - it exists only to
+# derive component_id, never something a person searches by.
+_HINT_GROUPS: Dict[str, Tuple[str, ...]] = {
+    "identity": ("client_name", "payer_name", "split_partner"),
+    "date": ("event_datetime", "txn_date"),
+    "event_type": ("source_type", "event_subtype"),
+    "vat": ("vat_status",),
+    "amount": ("amount", "hourly_rate"),
+    "percentage": ("percent", "percent_base", "split_percent"),
+    "free_text": ("description", "trigger_condition", "reference_hint"),
+    "document": (
+        "accounting_document_display_number", "accounting_document_payment_method",
+        "accounting_document_status", "accounting_document_status_label",
+    ),
+    "banking": ("bank_number", "bank_branch", "bank_account"),
+}
+
+# Flat set of every field any criterion can ever match against - the union of
+# every hint group above. Deliberately excludes internal bookkeeping fields
+# that are never natural-language search targets (event_id, the fixed
+# `reference` placeholder literal, session_id, captured_at, schema_version,
+# agreement_id/component_id - generated slugs, not user-authored text) and
+# accounting_document_status_code (a raw int - accounting_document_status_label
+# is the searchable text form of the same information).
+_SEARCHABLE_FIELDS: Tuple[str, ...] = tuple(
+    field for fields in _HINT_GROUPS.values() for field in fields
 )
+
+# Fields long/prose-like enough that the query text is more often a SUBSTRING
+# of the field than the field itself (partial_ratio) - everything else is
+# short enough (a name, a category label, a number-as-string) that a
+# whole-string comparison (WRatio) is the better fit, matching the pre-2026-08-24
+# split between name-matching and free-text-matching exactly.
+_PARTIAL_RATIO_FIELDS: Tuple[str, ...] = _HINT_GROUPS["free_text"]
+
+# Fuzzy STRING matching is fundamentally the wrong tool for numbers - "100"
+# and "38" share no real content but WRatio's lenient algorithms (built for
+# word-order/partial-name variance) still find enough superficial character
+# overlap to score deceptively high (confirmed empirically: 72/100 for that
+# exact pair, well above a naive low floor). Every field genuinely numeric in
+# nature gets real numeric-aware scoring instead (_score_criterion) - parse
+# both sides as numbers and compare values, never characters.
+# accounting_document_display_number belongs here too, even though it lives
+# in the "document" hint group above (unchanged - hint-group membership and
+# numeric-vs-fuzzy scoring are independent, see _score_criterion) - a Morning
+# document display number is itself a number (user's own framing, 2026-08-24:
+# "the morning display number is NOT a text, it's a number"), so a numeric
+# query like "40406" must be able to match it via real equality, exactly like
+# amount/bank_number - a real gap caught by this feature's own unit tests.
+_NUMERIC_FIELDS: Tuple[str, ...] = (
+    "amount", "hourly_rate", "percent", "percent_base", "split_percent",
+    "bank_number", "bank_branch", "bank_account",
+    "accounting_document_display_number",
+)
+
+# Points added to a field's raw fuzzy score when it's both the best-matching
+# field for a criterion AND belongs to that criterion's stated hint group - a
+# hint that turns out right should count for more, but a hint that turns out
+# wrong must never zero out an otherwise-real match (soft, not hard).
+_HINT_MATCH_BONUS = 15
+
+# A criterion whose best-matching field (across the WHOLE event, any group)
+# scores below this contributes ~0 confidence for this event - without a
+# floor, an event with zero real relevance to a criterion would still drag
+# down (rather than exclude from) the mean, letting truly irrelevant events
+# leak into a low but nonzero confidence result. 55 (not the originally-tried
+# 30) matches empirical reality: two genuinely different real Hebrew names
+# can score up to ~50 against each other via WRatio (confirmed empirically,
+# not assumed) - a floor has to clear that noise band, and 55 is the lowest
+# value that reliably does while still admitting a real typo'd/partial name
+# (the old, separately-proven _NAME_MATCH_THRESHOLD of 70 was never this
+# permissive on its own, but it never had to survive being averaged against
+# a second criterion the way this floor does).
+_CRITERION_MATCH_FLOOR = 55
+
+# A field whose own STORED VALUE is short (below this length) can only ever
+# WIN a criterion (become best_field) if its score clears the much higher
+# _SHORT_VALUE_MATCH_THRESHOLD below - never just _CRITERION_MATCH_FLOOR.
+# Confirmed empirically necessary (2026-08-24): several of this schema's
+# fields hold short, near-universal filler/categorical values
+# (event_subtype="יצירה", component_label="בסיס", source_type="הסכם"/"בנק",
+# vat_status="כולל"/"לא צוין") - both WRatio AND partial_ratio can find
+# enough coincidental character overlap between a short value and a
+# COMPLETELY unrelated, longer query to clear the general floor (real cases
+# found: "יצירה" scored 64/100 via WRatio against an unrelated 10-character
+# name; "בסיס" scored 57/100 via partial_ratio against a different unrelated
+# name) - short strings are inherently easier to accidentally resemble.
+# Deliberately does NOT change legitimate matching: the query side can still
+# be short against a LONG field (e.g. "צו מניעה" as a genuine substring of a
+# longer description - _PARTIAL_RATIO_FIELDS' own rationale), since this
+# gate only looks at the FIELD's own value length, never the query's.
+_SHORT_VALUE_LENGTH_THRESHOLD = 8
+
+# The near-exact-match bar a short field value must clear once
+# _SHORT_VALUE_LENGTH_THRESHOLD applies - well above both real-world noise
+# scores found (57, 64) and comfortably reachable by an actual exact/typo'd
+# match (every controlled-vocabulary field's stored value is written by code
+# from a fixed, exact string, so a genuine match against it is always an
+# exact 100, never a near-miss that would need real headroom under 100).
+_SHORT_VALUE_MATCH_THRESHOLD = 85
 
 # Events.csv's date/time columns are Asia/Jerusalem local time (confirmed with the
 # user 2026-07-29). As of bugfix-037 (2026-08-10) that is no longer a per-field
@@ -135,7 +247,16 @@ _STATUS_HE = {"paid": "שולם", "unpaid": "לא שולם", "cancelled": "בו�
 # config.feature_flags gate, this bump IS the gate): applies globally to every
 # new write regardless of source_type, not just חשבונית - הסכם/בנק captures get
 # schema_version=2 too, once this feature ships.
-CURRENT_SCHEMA_VERSION = 3
+#
+# Stays 2 (Feature 044, 2026-08-25, user directive - corrects a stray 2->3 bump
+# introduced by a since-superseded intermediate commit): due_date and
+# accounting_document_creation_date removed from the persisted schema entirely
+# - due_date was a dead, always-null reserved field; accounting_document_
+# creation_date duplicated event_datetime byte-for-byte for every חשבונית
+# record. event_datetime is now the only creation-date field, for every
+# source_type alike. Not treated as schema-affecting enough on its own to
+# bump further.
+CURRENT_SCHEMA_VERSION = 2
 
 # Matches ש"ח / ש׳ח / שח (various quote-character renderings of "shekel chadash").
 _SHEKEL_WORD_RE = re.compile(r'ש["\'״]?ח')
@@ -235,33 +356,24 @@ def _normalize_iso_date(raw: Optional[str]) -> Optional[str]:
         return None
 
 
-def _parse_query_date(raw: Optional[str]) -> Optional[date]:
-    """Feature 044 (data-model.md validation rules): parse a query_events
-    date_from/date_to argument (ISO-8601 YYYY-MM-DD). Returns None for a
-    missing OR unparseable value - callers treat both identically as "this
-    bound doesn't apply," never raise (a malformed bound is skipped, not an
-    error - see data-model.md's validation rules)."""
-    if not raw:
-        return None
-    try:
-        return datetime.strptime(raw, "%Y-%m-%d").date()
-    except ValueError:
-        return None
-
-
-def _parse_event_date_field(raw: Optional[str], fmt: str) -> Optional[date]:
-    """Feature 044: parse one of a persisted event's own date-bearing fields
-    (event_datetime's "%d/%m/%Y %H:%M" or txn_date's "%d/%m/%Y") down to just
-    the calendar date, for date-range comparison. None if missing/unparseable
-    (never raises) - research.md Decision 7's "check both fields, either
-    counts" tolerates one of the two being absent/malformed on a given
-    record."""
-    if not raw:
-        return None
-    try:
-        return datetime.strptime(raw, fmt).date()
-    except ValueError:
-        return None
+def _try_parse_number(value) -> Optional[float]:
+    """Feature 044 (2026-08-24 redesign): best-effort float parse for
+    _score_criterion's numeric-field path. None (never raises) for anything
+    that isn't cleanly numeric - a query_text like "100" parses, "100 שקל" or
+    a stray currency symbol does not, and callers fall back to skipping that
+    field rather than guessing. Strips common thousands separators/whitespace
+    only - no currency-symbol stripping, since a value like "100₪" is exactly
+    the kind of not-cleanly-numeric input that should fall back, not be
+    silently coerced."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        cleaned = value.strip().replace(",", "")
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
+    return None
 
 
 def is_incomplete_capture(call_arguments: Dict) -> bool:
@@ -306,7 +418,7 @@ def _parse_iso_local(raw: Optional[str]) -> Optional[datetime]:
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError:
-        logger.warning(f"Could not parse accounting_document_creation_date={raw!r} as ISO-8601")
+        logger.warning(f"Could not parse document creation timestamp {raw!r} as ISO-8601")
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=ISRAEL_TZ)
@@ -366,7 +478,12 @@ def _expand_accounting_document_json(event: Dict) -> Optional[Dict]:
         "accounting_document_status": _STATUS_HE.get(doc.get("status"), doc.get("status")),
         "accounting_document_status_code": doc.get("status_code"),
         "accounting_document_status_label": doc.get("status_label"),
-        "accounting_document_creation_date": doc.get("creation_date"),
+        # Internal-only, consumed once below to derive event_datetime and never
+        # persisted under any name (2026-08-25: the old
+        # accounting_document_creation_date field was a byte-for-byte duplicate
+        # of event_datetime and was removed entirely - event_datetime is the
+        # only creation-date field now).
+        "_source_creation_ts_raw": doc.get("creation_date"),
         "accounting_document_payment_method": payment.get("method"),
         "client_name": doc.get("client_name"),
         "description": _first_line_item_description(doc),
@@ -567,7 +684,11 @@ class LedgerEventManager:
             if record.get("source_type") != "חשבונית":
                 continue
             display_number = record.get("accounting_document_display_number")
-            creation_date_str = record.get("accounting_document_creation_date")
+            # 2026-08-25: was accounting_document_creation_date (now removed) -
+            # that field was always byte-for-byte identical to event_datetime for
+            # every חשבונית record it ever existed on, so reading event_datetime
+            # here instead is a no-op for every already-persisted file too.
+            creation_date_str = record.get("event_datetime")
             event_id = record.get("event_id")
             if not display_number or not creation_date_str:
                 continue
@@ -582,7 +703,7 @@ class LedgerEventManager:
             except ValueError:
                 logger.warning(
                     f"Skipping event file {existing} with unparseable "
-                    f"accounting_document_creation_date={creation_date_str!r}"
+                    f"event_datetime={creation_date_str!r}"
                 )
                 continue
             result.setdefault(display_number, []).append(
@@ -735,8 +856,10 @@ class LedgerEventManager:
         captured_at = now_local().strftime("%d/%m/%Y %H:%M")
         # Feature 025 Phase 9: a reconciliation capture has no source message -
         # its event_datetime/event_id come from the document's OWN real creation
-        # instant, carried in the JSON payload with full precision.
-        accounting_created_dt = _parse_iso_local(event.get("accounting_document_creation_date"))
+        # instant, carried in the JSON payload with full precision. pop() (not
+        # get()) so this raw intermediate value is consumed once and never
+        # lingers in `event` under any name.
+        accounting_created_dt = _parse_iso_local(event.pop("_source_creation_ts_raw", None))
         local_dt = accounting_created_dt or self._resolve_local_dt(message_timestamp)
 
         source_type = event.get("source_type")
@@ -967,7 +1090,6 @@ class LedgerEventManager:
             "vat_status": vat_status,
             "split_partner": None,  # reserved - nuances feature
             "split_percent": None,  # reserved - nuances feature
-            "due_date": None,  # reserved - nuances feature
             # Feature 025 (round 3, 2026-08-21): 4 fields, not 5 - the originally
             # reserved invoice_id/invoice_number/invoice_type/invoice_status/
             # invoice_actual_creation_date/morning_document_id names are gone;
@@ -977,9 +1099,10 @@ class LedgerEventManager:
             "accounting_document_status": (
                 event.get("accounting_document_status") if source_type == "חשבונית" else None
             ),
-            "accounting_document_creation_date": (
-                local_dt.strftime("%d/%m/%Y %H:%M") if source_type == "חשבונית" else None
-            ),
+            # accounting_document_creation_date was removed 2026-08-25 (user
+            # directive) - it duplicated event_datetime above byte-for-byte for
+            # every חשבונית record and never held any other value. event_datetime
+            # is the ONLY creation-date field now, for every source_type alike.
             # Feature 025 Phase 9: Morning's own raw status int and literal
             # label, kept alongside accounting_document_status's canonical
             # Hebrew interpretation - Morning's axis is open/closed, not
@@ -1149,40 +1272,68 @@ class LedgerEventManager:
                 event_ids.append(event_id)
         return event_ids
 
-    def query_events(
-        self,
-        client_name: Optional[str] = None,
-        date_from: Optional[str] = None,
-        date_to: Optional[str] = None,
-        amount_min: Optional[float] = None,
-        amount_max: Optional[float] = None,
-        source_type: Optional[str] = None,
-        event_subtype: Optional[str] = None,
-        free_text: Optional[str] = None,
-    ) -> Dict:
+    def query_events(self, criteria: Optional[List[Dict]] = None) -> Dict:
         """
-        Feature 044 (query_ledger_events tool's backing implementation).
-        Filters the in-memory index (self._index) against every non-null
-        argument, AND-combined - see data-model.md for the exact matching
-        rules and the three possible return shapes:
+        Feature 044 (query_ledger_events tool's backing implementation),
+        redesigned 2026-08-24 (see the module-level _HINT_GROUPS comment for
+        why the old AND-combined structured-filter design was replaced).
 
-        A. {"matches": [<event dict>, ...], "count": <int>} - the normal case,
-           the COMPLETE matching set (FR-005, never truncated).
-        B. {"ambiguous_field": "client_name", "candidates": [{"value": ...,
-           "event_count": ...}, ...]} - when client_name fuzzy-matches 2+
-           distinct stored client_name/payer_name strings with no clear
-           single winner (research.md Decision 4) - result multiplicity
-           itself is NEVER treated this way, only entity-identity ambiguity.
-        C. {"error": "no_search_criteria", "message": ...} - the vague-query
-           guard (research.md Decision 6): every argument was None, so no
+        `criteria` is a list of {"text": str, "hint": Optional[str]} pairs.
+        Retrieval is broad-then-score, never filter-then-retrieve: every
+        candidate event is scored against EVERY criterion (across ALL
+        searchable fields, not just the hinted group - hint is a soft bonus,
+        never a hard requirement), and an event's overall confidence is the
+        mean of its best per-criterion scores. This is what makes OR (issue
+        multiple separate calls, same multi-call dispatch this tool already
+        had) and NOT/threshold reasoning (retrieve broadly, let the model
+        reason over the raw returned events - same principle research.md
+        Decision 5 already established for aggregation) possible without any
+        dedicated schema support for either.
+
+        Two possible return shapes (data-model.md):
+        A. {"matches": [<event dict + "confidence">, ...], "count": <int>} -
+           the normal case, sorted by confidence descending, every event
+           scoring at least _CRITERION_MATCH_FLOOR on every criterion. An
+           `identity`-hinted criterion that fuzzy-matches 2+ distinct stored
+           client_name/payer_name values is NOT intercepted here - every
+           genuinely matching event for every such name comes back as an
+           ordinary match, each carrying its own real client_name/payer_name
+           and confidence. Recognizing that more than one distinct name is
+           present, and deciding whether that's worth asking the user about,
+           is the model's own judgment call - see runtime_constitution.md's
+           "Ambiguous names, OR, NOT, and threshold questions" section - not
+           something this tool pre-empts by withholding data.
+        B. {"error": "no_search_criteria", "message": ...} - the vague-query
+           guard (research.md Decision 6): criteria was empty/None, so no
            search was even attempted.
+
+        2026-08-26 (explicit user directive): this tool used to have a THIRD
+        shape - {"ambiguous_field": "identity", "candidates": [...]} - that
+        intercepted an identity criterion matching 2+ distinct stored names
+        and returned candidates INSTEAD of real events, forcing a clarifying
+        question with no way to ever proceed past it even after the user
+        had already resolved the ambiguity in conversation (confirmed live,
+        Feature 044 billed test T028 - every retry after the user explicitly
+        clarified which name was which still hit the identical block, since
+        the check re-fires on ANY future call touching either name, with no
+        mechanism to accept an already-given resolution). Removed entirely:
+        this tool always retrieves broadly and lets the model reason over
+        real data, per the same principle already governing NOT/threshold
+        questions and aggregation in this exact tool - identity ambiguity
+        is not special enough to be the one case where code decides instead
+        of the model.
         """
-        if all(
-            v is None for v in (
-                client_name, date_from, date_to, amount_min, amount_max,
-                source_type, event_subtype, free_text,
-            )
-        ):
+        normalized = [
+            (str(c["text"]), c.get("hint") if c.get("hint") in _HINT_GROUPS else None)
+            for c in (criteria or [])
+            if c.get("text")
+        ]
+        logger.debug(
+            f"[044][RAWLOG] query_events called: raw_criteria={criteria!r} -> "
+            f"normalized={normalized!r}, index_size={len(self._index)}"
+        )
+        if not normalized:
+            logger.debug("[044][RAWLOG] query_events: no_search_criteria guard tripped")
             return {
                 "error": "no_search_criteria",
                 "message": (
@@ -1191,127 +1342,161 @@ class LedgerEventManager:
                 ),
             }
 
-        if client_name is not None:
-            candidates = self._distinct_name_candidates(client_name)
-            if len(candidates) >= 2:
-                return {
-                    "ambiguous_field": "client_name",
-                    "candidates": [
-                        {
-                            "value": name,
-                            "event_count": self._count_events_for_name(name),
-                        }
-                        for name in candidates
-                    ],
-                }
-
-        parsed_date_from = _parse_query_date(date_from)
-        parsed_date_to = _parse_query_date(date_to)
-
-        matches = []
+        trace_enabled = logger.isEnabledFor(logging.DEBUG)
+        scored = []
+        rejected_count = 0
         for event in list(self._index):  # shallow snapshot, see research.md Decision 8
-            if client_name is not None and not self._event_matches_name(event, client_name):
-                continue
-            if source_type is not None and event.get("source_type") != source_type:
-                continue
-            if event_subtype is not None and event.get("event_subtype") != event_subtype:
-                continue
-            if (amount_min is not None or amount_max is not None) and not self._event_matches_amount(
-                event, amount_min, amount_max
-            ):
-                continue
-            if (parsed_date_from is not None or parsed_date_to is not None) and not self._event_in_date_range(
-                event, parsed_date_from, parsed_date_to
-            ):
-                continue
-            if free_text is not None and not self._event_matches_free_text(event, free_text):
-                continue
-            matches.append(event)
+            pair_scores = [
+                self._score_criterion(event, text, hint) for text, hint in normalized
+            ]
+            # EVERY criterion must individually clear the floor - not just
+            # the average. Confirmed empirically this isn't optional: with a
+            # mean-of-all-scores gate, one perfect match (e.g. amount=100
+            # exact) could "carry" a near-irrelevant match on another
+            # criterion (a raw identity score of 22 between two unrelated
+            # names) past the floor via averaging (22+100)/2=61. Criteria
+            # within one call are complementary facts about the SAME target
+            # (see query_events' own docstring) - an event that doesn't
+            # genuinely satisfy ALL of them isn't the target, no matter how
+            # well it satisfies one.
+            passed = all(score >= _CRITERION_MATCH_FLOOR for score in pair_scores)
+            if passed:
+                confidence = sum(pair_scores) / len(pair_scores)
+                scored.append((confidence, event))
+            else:
+                rejected_count += 1
+            if trace_enabled:
+                logger.debug(
+                    f"[044][RAWLOG] query_events event={event.get('event_id', '<no event_id>')!r} "
+                    f"pair_scores={[round(s, 1) for s in pair_scores]!r} verdict="
+                    f"{'MATCH' if passed else 'rejected (a criterion missed the floor)'}"
+                )
 
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        matches = [
+            {**event, "confidence": round(confidence, 1)}
+            for confidence, event in scored
+        ]
+        logger.debug(
+            f"[044][RAWLOG] query_events result: {len(matches)} match(es), "
+            f"{rejected_count} event(s) scored below floor on at least one criterion, "
+            f"out of {len(self._index)} total events in index"
+        )
         return {"matches": matches, "count": len(matches)}
 
-    def _distinct_name_candidates(self, query_name: str) -> List[str]:
-        """Every DISTINCT stored client_name/payer_name string in the index
-        that fuzzy-matches query_name at or above _NAME_MATCH_THRESHOLD -
-        research.md Decision 4's entity-ambiguity grouping. Order is not
-        significant to callers."""
-        distinct_names = {
-            name
-            for event in self._index
-            for name in (event.get("client_name"), event.get("payer_name"))
-            if name
-        }
-        return [
-            name for name in distinct_names
-            if fuzz.WRatio(query_name, name) >= _NAME_MATCH_THRESHOLD
-        ]
-
-    def _count_events_for_name(self, exact_name: str) -> int:
-        """How many indexed events have this EXACT stored name as their
-        client_name or payer_name - used only to annotate the ambiguous-
-        candidates shape's event_count, never a fuzzy count."""
-        return sum(
-            1 for event in self._index
-            if event.get("client_name") == exact_name or event.get("payer_name") == exact_name
-        )
-
     @staticmethod
-    def _event_matches_name(event: Dict, query_name: str) -> bool:
-        """Per-event fuzzy name check against BOTH client_name and payer_name
-        (research.md - client_name query param matches either field)."""
-        for field in ("client_name", "payer_name"):
+    def _score_criterion(event: Dict, query_text: str, hint: Optional[str]) -> float:
+        """Best fuzzy score for one (text, hint) pair against one event,
+        across every searchable field regardless of hint - then a bonus if
+        the winning field happens to belong to the hinted group. hint never
+        excludes a field from being checked (soft signal, not a filter).
+
+        Exception, and the one place a field CAN be excluded outright: when
+        query_text itself parses as a clean number, ONLY _NUMERIC_FIELDS are
+        compared, via real numeric equality - never fuzzy string matching.
+        Confirmed empirically (not assumed) that this isn't optional: WRatio
+        scored "100" against event_datetime="24/08/2026 16:10" at 72/100
+        (dates are digit-heavy strings, so a numeric query spuriously
+        fuzzy-matches them too, same failure mode as two unrelated names
+        sharing enough characters to score ~50) - comparing a bare number
+        against non-numeric fields is never meaningful, so it's skipped
+        entirely rather than producing noise a floor has to filter out.
+
+        A second, narrower exception: a field whose own STORED VALUE is short
+        (below _SHORT_VALUE_LENGTH_THRESHOLD) can only ever WIN if its score
+        clears the much higher _SHORT_VALUE_MATCH_THRESHOLD - never just
+        _CRITERION_MATCH_FLOOR (55) plus a hint bonus. See that constant's
+        own comment for the empirical cases (a filler event_subtype value,
+        a filler component_label value) that made this necessary - a field
+        is still always CHECKED (never excluded outright), it just can't win
+        on a weak score the way a longer field's genuine match can.
+
+        A THIRD, even narrower exception on top of the second: an identity
+        field (client_name/payer_name) needs its raw score to clear
+        _NAME_MATCH_THRESHOLD (70) specifically to win - not merely the
+        general _SHORT_VALUE_MATCH_THRESHOLD (which wouldn't even apply to
+        most real names anyway, since they're rarely shorter than
+        _SHORT_VALUE_LENGTH_THRESHOLD). Confirmed empirically (2026-08-24):
+        two genuinely unrelated real Hebrew names ("דוד כהן"/"שרה לוי") scored
+        40.7 raw - safely below 55 alone, but 40.7 + _HINT_MATCH_BONUS (15) =
+        55.7, which DOES clear the general floor once an identity hint is
+        given (the ordinary case for any name search). Identity fields are
+        demonstrably noisier under WRatio than other field types (real names
+        sharing only a first or last name commonly score into the 80s), so
+        they need this same higher, separately-proven bar - unrelated to
+        the (removed 2026-08-26) identity-ambiguity block; this is purely
+        about which field wins a criterion's scoring, see _NAME_MATCH_THRESHOLD's
+        own comment."""
+        # 2026-08-25, explicit user directive (test_monthly_income_aggregation's
+        # zero-match mystery, undiagnosable from logs at the time): trace
+        # every field this criterion examines - value seen, raw score,
+        # whether a gate excluded it, and which field ultimately won -
+        # guarded by isEnabledFor so it costs nothing when DEBUG is off, but
+        # produces genuinely everything when it's on. "disk space is not a
+        # constraint" - this is deliberately verbose.
+        trace_enabled = logger.isEnabledFor(logging.DEBUG)
+        trace: List[str] = []
+        query_number = _try_parse_number(query_text)
+        fields = _NUMERIC_FIELDS if query_number is not None else _SEARCHABLE_FIELDS
+        best_field: Optional[str] = None
+        best_score = 0.0
+        for field in fields:
             value = event.get(field)
-            if value and fuzz.WRatio(query_name, value) >= _NAME_MATCH_THRESHOLD:
-                return True
-        return False
-
-    @staticmethod
-    def _event_matches_amount(
-        event: Dict, amount_min: Optional[float], amount_max: Optional[float]
-    ) -> bool:
-        amount = event.get("amount")
-        if amount is None:
-            return False
-        if amount_min is not None and amount < amount_min:
-            return False
-        if amount_max is not None and amount > amount_max:
-            return False
-        return True
-
-    @staticmethod
-    def _event_in_date_range(
-        event: Dict, date_from: Optional[date], date_to: Optional[date]
-    ) -> bool:
-        """research.md Decision 7: matches if EITHER event_datetime's OR
-        txn_date's date portion falls in [date_from, date_to] (either bound
-        may be None, meaning unbounded on that side)."""
-        candidate_dates = [
-            _parse_event_date_field(event.get("event_datetime"), "%d/%m/%Y %H:%M"),
-            _parse_event_date_field(event.get("txn_date"), "%d/%m/%Y"),
-        ]
-        for event_date in candidate_dates:
-            if event_date is None:
+            if value is None or value == "":
+                if trace_enabled:
+                    trace.append(f"{field}=<absent>")
                 continue
-            if date_from is not None and event_date < date_from:
-                continue
-            if date_to is not None and event_date > date_to:
-                continue
-            return True
-        return False
-
-    @staticmethod
-    def _event_matches_free_text(event: Dict, query_text: str) -> bool:
-        for field in _FREE_TEXT_FIELDS:
-            value = event.get(field)
-            if not value:
-                continue
-            # Defensive str() cast: _FREE_TEXT_FIELDS includes fields this class
-            # doesn't itself populate (Feature 025's accounting_document_* fields) -
-            # a non-string value (e.g. a raw numeric display number) must never
-            # raise here, just participate in the same fuzzy match as text.
-            if fuzz.partial_ratio(query_text, str(value)) >= _FREE_TEXT_MATCH_THRESHOLD:
-                return True
-        return False
+            if field in _NUMERIC_FIELDS:
+                field_number = _try_parse_number(value)
+                if query_number is None or field_number is None:
+                    if trace_enabled:
+                        trace.append(f"{field}={value!r} (not a clean number - skipped)")
+                    continue  # not a clean number on one side - no numeric comparison to make
+                # Numeric-aware, not string-fuzzy: two numbers are either the
+                # same value or they're not.
+                score = 100.0 if abs(query_number - field_number) < 0.01 else 0.0
+                if trace_enabled:
+                    trace.append(f"{field}={value!r} numeric_score={score}")
+            else:
+                # Defensive str() cast: a handful of non-numeric searchable
+                # fields may still not always be strings - never raise here.
+                str_value = str(value)
+                scorer = fuzz.partial_ratio if field in _PARTIAL_RATIO_FIELDS else fuzz.WRatio
+                score = scorer(query_text, str_value)
+                if len(str_value) < _SHORT_VALUE_LENGTH_THRESHOLD and score < _SHORT_VALUE_MATCH_THRESHOLD:
+                    if trace_enabled:
+                        trace.append(
+                            f"{field}={str_value!r} score={score:.1f} scorer={scorer.__name__} "
+                            f"GATED-OUT (short value < _SHORT_VALUE_MATCH_THRESHOLD={_SHORT_VALUE_MATCH_THRESHOLD})"
+                        )
+                    continue  # short filler/categorical value, too weak to trust - see docstring
+                if field in _HINT_GROUPS["identity"] and score < _NAME_MATCH_THRESHOLD:
+                    if trace_enabled:
+                        trace.append(
+                            f"{field}={str_value!r} score={score:.1f} scorer={scorer.__name__} "
+                            f"GATED-OUT (identity field < _NAME_MATCH_THRESHOLD={_NAME_MATCH_THRESHOLD})"
+                        )
+                    continue  # too weak a name match to ever win, see docstring
+                if trace_enabled:
+                    trace.append(f"{field}={str_value!r} score={score:.1f} scorer={scorer.__name__}")
+            if score > best_score:
+                best_score = score
+                best_field = field
+        hint_bonus_applied = False
+        if best_field is not None and hint is not None and best_field in _HINT_GROUPS[hint]:
+            best_score = min(100.0, best_score + _HINT_MATCH_BONUS)
+            hint_bonus_applied = True
+        if trace_enabled:
+            event_id = event.get("event_id", "<no event_id>")
+            logger.debug(
+                f"[044][SCORE] event={event_id!r} criterion=(text={query_text!r}, "
+                f"hint={hint!r}) query_number={query_number!r} "
+                f"fields_checked={fields!r} | " + " | ".join(trace) +
+                f" || best_field={best_field!r} best_score={best_score:.1f} "
+                f"hint_bonus_applied={hint_bonus_applied} "
+                f"clears_floor={best_score >= _CRITERION_MATCH_FLOOR}"
+            )
+        return best_score
 
     def _load_event(self, event_id: str) -> Optional[Dict]:
         """Shared read helper for resolve_reference/apply_review_answer -

@@ -35,8 +35,10 @@ month name for the same reason.
 NO MOCKING beyond data seeding - real OpenAI API calls, real ledger storage.
 """
 import calendar
+import json
 import logging
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -199,18 +201,25 @@ class TestLedgerQueryBilled:
 
     def _seed(self, denidin_app, client_name, *, payer_name=None, source_type="הסכם",
               event_subtype="יצירה", amount="10₪", hours=None, txn_date=None,
-              message_id="seed", timestamp=None):
+              percent=None, message_id="seed", timestamp=None,
+              description="תיאור", reference_hint=None, trigger_condition=None,
+              component_label="בסיס"):
         return denidin_app.ai_handler.ledger_event_manager.add_ledger_event(
             session_id="s", event={
                 "source_type": source_type, "event_subtype": event_subtype,
                 "client_name": client_name, "payer_name": payer_name,
-                "description": "תיאור", "amount": amount,
-                "percent": None, "percent_base": None, "hours": hours,
+                "description": description, "amount": amount,
+                # percent is stored verbatim (no _normalize_amount-style parsing,
+                # unlike amount) - pass a plain number STRING, no "%" sign, so
+                # it stays numeric-matchable (_try_parse_number) for anything
+                # that needs to read it back as a real number (T018).
+                "percent": percent, "percent_base": None, "hours": hours,
                 "hourly_rate": None, "txn_date": txn_date,
                 "vat_status": "כולל" if source_type == "בנק" else "לא צוין",
-                "trigger_condition": None, "reference_hint": None,
+                "reference_hint": reference_hint,
+                "trigger_condition": trigger_condition,
                 "agreement_label": "תיק" if source_type == "הסכם" else None,
-                "component_label": "בסיס" if source_type == "הסכם" else None,
+                "component_label": component_label if source_type == "הסכם" else None,
             },
             message_id=message_id, message_timestamp=timestamp or _this_month_timestamp(),
         )
@@ -230,6 +239,51 @@ class TestLedgerQueryBilled:
                 message_id=f"{label}_{i}",
                 timestamp=_last_month_timestamp(day=(i % 27) + 1),
             )
+
+    def _seed_accounting_document(
+        self, denidin_app, client_name, *, doc_type, type_name, amount,
+        status="unpaid", status_code=0, status_label="פתוח",
+        description="שירותים", display_number=None,
+        linked_document=None, timestamp=None,
+    ):
+        """Seeds a source_type=חשבונית ledger event via the REAL
+        _expand_accounting_document_json code path (a fake but structurally
+        real Morning document JSON blob, exactly as the reconciliation sweep
+        would receive it) - never hand-populates the derived
+        accounting_document_*/event_datetime fields directly, same discipline
+        as test_ledger_event_manager.py's own _accounting_event/_json_event
+        helpers. status="unpaid"/"paid" maps via LedgerEventManager's own
+        _STATUS_HE to "לא שולם"/"שולם".
+
+        doc_type/type_name pairs used by this file's new owed/received tests:
+        (300, "חשבון עסקה"), (305, "חשבונית מס"), (320, "חשבונית מס/קבלה"),
+        (400, "קבלה"), (330, "חשבונית זיכוי").
+        """
+        ts = timestamp or _this_month_timestamp()
+        display_number = display_number or f"D{uuid.uuid4().hex[:8]}"
+        creation_iso = datetime.fromtimestamp(ts, tz=now_local().tzinfo).isoformat()
+        doc = {
+            "display_number": display_number,
+            "internal_morning_id": str(uuid.uuid4()),
+            "type": doc_type, "type_name": type_name,
+            "status": status, "status_code": status_code, "status_label": status_label,
+            "client_name": client_name, "description": description,
+            "amount": amount, "amount_excl_vat": amount, "vat_amount": 0, "vat_rate": 0,
+            "currency": "ILS",
+            "document_date": _this_month_date_str(),
+            "due_date": None,
+            "creation_date": creation_iso,
+            "payment": None,
+            "linked_document": linked_document,
+        }
+        return denidin_app.ai_handler.ledger_event_manager.add_ledger_event(
+            session_id="accounting-reconciliation",
+            event={
+                "source_type": "חשבונית", "event_subtype": "הפקה",
+                "accounting_document_json": json.dumps(doc, ensure_ascii=False),
+            },
+            message_id=None, message_timestamp=ts,
+        )
 
     # ------------------------------------------------------------------
     # T008 - core lookups
@@ -287,7 +341,7 @@ class TestLedgerQueryBilled:
         )
 
         reply = self._get_response(self._send_text(
-            chat_id, phone, "Test Godfather", "האם קיבלנו תשלום ממגדל?", "t008_payer",
+            chat_id, phone, "Test Godfather", "כמה חייבים לנו ממגדל?", "t008_payer",
         ))
         assert reply is not None
         assert _reply_contains_amount(reply, 38), f"expected 38 in reply: {reply!r}"
@@ -432,29 +486,12 @@ class TestLedgerQueryBilled:
                 f"expected {name}'s amount ({amount}) reflected in reply: {reply!r}"
             )
 
-    # ------------------------------------------------------------------
-    # T013 - 20-item display cap
-    # ------------------------------------------------------------------
-
-    def test_twenty_item_display_cap(self, denidin_app, config):
-        phone = config.godfather_phone
-        chat_id = self._fresh_chat_id(config, 't013_cap')
-        distinct_names = [f"לקוח מספר {i:02d}" for i in range(25)]
-        for i, name in enumerate(distinct_names):
-            self._seed(
-                denidin_app, name, amount=f"{10 + i}₪",
-                message_id=f"t013_{i}", timestamp=_this_month_timestamp(day=(i % 27) + 1),
-            )
-
-        reply = self._get_response(self._send_text(
-            chat_id, phone, "Test Godfather", "מה כל האירועים מהחודש האחרון?", "t013_cap",
-        ))
-        assert reply is not None
-        named_count = sum(1 for name in distinct_names if name in reply)
-        assert named_count <= 20, (
-            f"reply enumerated {named_count} individual events verbatim (>20) - "
-            f"should summarize/group/ask to narrow instead: {reply!r}"
-        )
+    # T013 (20-item display cap) removed 2026-08-26 (user directive): the
+    # constitution no longer specifies a fixed numeric cap on how many events
+    # a reply may enumerate - it now just directs the model to keep replies
+    # readable for a WhatsApp conversation, using its own judgment. The real,
+    # strictly-enforced limit is the reply's own output-token budget, which
+    # this test can't meaningfully probe by seeding a specific event count.
 
     # ------------------------------------------------------------------
     # T014 - natural-language exclusion (a fact the user states, not in the ledger)
@@ -484,4 +521,532 @@ class TestLedgerQueryBilled:
         assert _reply_contains_amount(reply, 33), (
             f"expected the correctly-excluded total (33, Yossi's 55 excluded) "
             f"in reply: {reply!r}"
+        )
+
+    # ------------------------------------------------------------------
+    # T017-T020 (2026-08-24 query-engine redesign addendum) - OR, NOT +
+    # numeric threshold, broad-category + threshold, and cross-category
+    # retrieval - scenarios the OLD 8-structured-filter design could not
+    # have answered correctly even if these tests had existed sooner. See
+    # research.md's "2026-08-24 Redesign" section for the full trail.
+    # ------------------------------------------------------------------
+
+    def test_or_across_two_identities_single_turn(self, denidin_app, config):
+        """T017: explicit OR across two distinct, unambiguous identities named
+        up front in ONE request (distinct from T009's ambiguity-then-"both/
+        all" two-turn flow - no ambiguity here at all, just a direct OR)."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't017_or')
+        self._seed_noise(denidin_app, count=6, label="t017_noise")
+        self._seed(
+            denidin_app, "אלי אבירם", source_type="בנק", event_subtype="הפקדה",
+            amount="100₪", message_id="t017_a", timestamp=_this_month_timestamp(day=6),
+        )
+        self._seed(
+            denidin_app, "דוד כרמון", source_type="בנק", event_subtype="הפקדה",
+            amount="100₪", message_id="t017_b", timestamp=_this_month_timestamp(day=12),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather",
+            "האם קיבלנו תשלום של 100 שקל מאלי אבירם או מדוד כרמון?", "t017_or",
+        ))
+        assert reply is not None
+        assert "אלי אבירם" in reply and "דוד כרמון" in reply, (
+            f"expected BOTH names' payments reflected in reply, not just one: {reply!r}"
+        )
+
+    def test_exclusion_with_percent_threshold(self, denidin_app, config):
+        """T018: NOT/exclusion combined with a numeric threshold, over a field
+        never exercised by any earlier scenario (percent). Real exclusion
+        reasoning, not just threshold filtering: קרן שלו's own agreement IS
+        genuinely above 50%, so a correct reply must actively exclude her by
+        name, not merely apply the threshold."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't018_percent')
+        self._seed_noise(denidin_app, count=6, label="t018_noise")
+        self._seed(
+            denidin_app, "קרן שלו", amount=None, percent="60",
+            message_id="t018_keren", timestamp=_this_month_timestamp(day=4),
+        )
+        self._seed(
+            denidin_app, "אורי ששון", amount=None, percent="70",
+            message_id="t018_ori", timestamp=_this_month_timestamp(day=9),
+        )
+        self._seed(
+            denidin_app, "מאיה זיו", amount=None, percent="55",
+            message_id="t018_maya", timestamp=_this_month_timestamp(day=15),
+        )
+        # Negative control - below the 50% threshold, must be excluded
+        # regardless of the "except קרן שלו" clause.
+        self._seed(
+            denidin_app, "רן אלפסי", amount=None, percent="45",
+            message_id="t018_ran", timestamp=_this_month_timestamp(day=20),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather",
+            "מי, חוץ מקרן שלו, הסכים על אחוזים מעל 50%?", "t018_percent",
+        ))
+        assert reply is not None
+        assert "אורי ששון" in reply and "מאיה זיו" in reply, (
+            f"expected the other above-50% clients named in reply: {reply!r}"
+        )
+        assert "רן אלפסי" not in reply, (
+            f"the below-threshold negative control leaked into the reply: {reply!r}"
+        )
+
+    def test_broad_threshold_who_owes_above_amount(self, denidin_app, config):
+        """T019: the original "who owes above 100 shekel" example from the
+        redesign discussion - broad-category retrieval (no name given at
+        all) plus numeric-threshold reasoning, with a real already-paid
+        control (above-threshold but NOT still owed) alongside real
+        at-or-below-threshold negative controls."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't019_owed')
+        self._seed_noise(denidin_app, count=6, label="t019_noise")
+        # Above threshold, genuinely still owed (no payment on file):
+        self._seed(
+            denidin_app, "תמר כרמי", amount="150₪",
+            message_id="t019_tamar", timestamp=_this_month_timestamp(day=3),
+        )
+        self._seed(
+            denidin_app, "עומר לביא", amount="220₪",
+            message_id="t019_omer", timestamp=_this_month_timestamp(day=8),
+        )
+        # Above threshold but ALREADY PAID (a separate בנק/הפקדה event, same
+        # period) - must be excluded from "still owed," not just "agreed
+        # above 100."
+        self._seed(
+            denidin_app, "שני אור", amount="180₪",
+            message_id="t019_shani_agreement", timestamp=_this_month_timestamp(day=5),
+        )
+        self._seed(
+            denidin_app, "שני אור", source_type="בנק", event_subtype="הפקדה",
+            amount="180₪", message_id="t019_shani_payment",
+            timestamp=_this_month_timestamp(day=11),
+        )
+        # At-or-below threshold, real negative controls (absence, not just
+        # silence, is the point):
+        self._seed(
+            denidin_app, "בר אילן", amount="90₪",
+            message_id="t019_bar", timestamp=_this_month_timestamp(day=14),
+        )
+        self._seed(
+            denidin_app, "יובל שדה", amount="100₪",
+            message_id="t019_yuval", timestamp=_this_month_timestamp(day=17),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather",
+            "מי כל הלקוחות שחייבים לי מעל 100 שקל?", "t019_owed",
+        ))
+        assert reply is not None
+        assert "תמר כרמי" in reply and "עומר לביא" in reply, (
+            f"expected both genuinely-still-owed above-threshold clients in reply: {reply!r}"
+        )
+        # 2026-08-26 (user correction): שני אור being NAMED in the reply is fine -
+        # the model is allowed to (and often should) explain a close call rather
+        # than stay silent about it. What must never happen is her being LISTED
+        # as owing (the same "- name — amount" bullet shape used for the two
+        # genuinely-owed clients above) - a paid-off agreement must not be
+        # counted, whether or not it's mentioned.
+        assert "- שני אור —" not in reply and "- שני אור-" not in reply, (
+            f"שני אור already paid and must not be LISTED as still owed (mentioning "
+            f"her to explain why she's excluded is fine): {reply!r}"
+        )
+        assert "בר אילן" not in reply and "יובל שדה" not in reply, (
+            f"at-or-below-threshold clients leaked into the reply: {reply!r}"
+        )
+
+    def test_cross_category_two_figures_for_one_identity(self, denidin_app, config):
+        """T020: cross-category retrieval for ONE identity in a single turn -
+        two DIFFERENT facts from two different event categories (agreed vs.
+        paid-to-date), reported side by side. Distinct from T010's owed-
+        balance scenario (which needs a computed subtraction) - this only
+        needs both raw numbers stated correctly, without conflating them."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't020_two_figures')
+        self._seed_noise(denidin_app, count=6, label="t020_noise")
+        self._seed(
+            denidin_app, "משה כהן", amount="45₪",
+            message_id="t020_agreed", timestamp=_this_month_timestamp(day=4),
+        )
+        self._seed(
+            denidin_app, "משה כהן", source_type="בנק", event_subtype="הפקדה",
+            amount="20₪", message_id="t020_paid", timestamp=_this_month_timestamp(day=12),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather",
+            "כמה משה כהן הסכים לשלם, וכמה הוא שילם עד היום?", "t020_two_figures",
+        ))
+        assert reply is not None
+        assert _reply_contains_amount(reply, 45), (
+            f"expected the agreed amount (45) in reply: {reply!r}"
+        )
+        assert _reply_contains_amount(reply, 20), (
+            f"expected the paid-so-far amount (20) in reply: {reply!r}"
+        )
+
+    # ------------------------------------------------------------------
+    # T021-T026 (2026-08-26 addendum) - "What counts as owed vs. received"
+    # (runtime_constitution.md), covering every event type/kind the user
+    # specified: הסכם (created + modified), חשבון עסקה (300), חשבונית מס
+    # (305), בנק/הפקדה, קבלה/type-320-400 receipts, חשבונית זיכוי (330
+    # credit note), plus a genuine same-turn multi-round search. Each uses
+    # a real bought-and-paid-for SUM proof (like T014's exclusion test)
+    # rather than asserting on the ABSENCE of a name/number, since a correct
+    # model may legitimately narrate the paid-off/cancelled events too.
+    # ------------------------------------------------------------------
+
+    def test_owed_via_transaction_account_no_agreement_at_all(self, denidin_app, config):
+        """T021: a pure Morning-sourced owed signal - a type-300 חשבון עסקה
+        with no corresponding הסכם ledger event whatsoever. Proves the owed
+        model recognizes Morning-only debt, not just fee-agreement debt."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't021_txn_account')
+        self._seed_noise(denidin_app, count=6, label="t021_noise")
+        self._seed_accounting_document(
+            denidin_app, "לירז אבני", doc_type=300, type_name="חשבון עסקה",
+            amount=250, status="unpaid", status_code=0, status_label="פתוח",
+            timestamp=_this_month_timestamp(day=6),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather", "כמה לירז אבני חייבת לי?", "t021_txn_account",
+        ))
+        assert reply is not None
+        assert _reply_contains_amount(reply, 250), (
+            f"expected the open transaction-account amount (250) in reply: {reply!r}"
+        )
+
+    def test_tax_invoice_closed_by_receipt_excluded_from_owed_sum(self, denidin_app, config):
+        """T022: a type-305 חשבונית מס fully closed by a matching type-400
+        קבלה must be excluded from an owed total, proven via a two-client SUM
+        (the only way the total comes out right is if the paid-off client's
+        amount was correctly netted to zero, not just narrated)."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't022_closed_invoice')
+        self._seed_noise(denidin_app, count=6, label="t022_noise")
+        self._seed_accounting_document(
+            denidin_app, "בועז נחמיאס", doc_type=305, type_name="חשבונית מס",
+            amount=400, status="unpaid", status_code=0, status_label="פתוח",
+            display_number="D022A", timestamp=_this_month_timestamp(day=3),
+        )
+        self._seed_accounting_document(
+            denidin_app, "בועז נחמיאס", doc_type=400, type_name="קבלה",
+            amount=400, status="paid", status_code=1, status_label="מסמך סגור",
+            linked_document={"type_name": "חשבונית מס", "number": "D022A"},
+            timestamp=_this_month_timestamp(day=10),
+        )
+        self._seed_accounting_document(
+            denidin_app, "שירה בכר", doc_type=305, type_name="חשבונית מס",
+            amount=150, status="unpaid", status_code=0, status_label="פתוח",
+            timestamp=_this_month_timestamp(day=14),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather",
+            "כמה כסף חייבים לי בסך הכל מבועז נחמיאס ומשירה בכר?", "t022_closed_invoice",
+        ))
+        assert reply is not None
+        assert _reply_contains_amount(reply, 150), (
+            f"expected the correct total (150, בועז's 400 fully paid and excluded) "
+            f"in reply: {reply!r}"
+        )
+
+    def test_credit_note_reverses_a_receipt_so_invoice_stays_owed(self, denidin_app, config):
+        """T023: a type-330 חשבונית זיכוי issued against a type-400 קבלה
+        reverses that receipt - the underlying invoice must STILL count as
+        owed, not be wrongly netted to zero. Proven via the same two-client
+        SUM technique as T022 (correct total = 420 only if מאיה's invoice is
+        still counted despite having a receipt on file)."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't023_credit_note')
+        self._seed_noise(denidin_app, count=6, label="t023_noise")
+        self._seed_accounting_document(
+            denidin_app, "מאיה פלד", doc_type=305, type_name="חשבונית מס",
+            amount=300, status="unpaid", status_code=0, status_label="פתוח",
+            display_number="D023A", timestamp=_this_month_timestamp(day=2),
+        )
+        self._seed_accounting_document(
+            denidin_app, "מאיה פלד", doc_type=400, type_name="קבלה",
+            amount=300, status="paid", status_code=1, status_label="מסמך סגור",
+            display_number="D023A_R",
+            linked_document={"type_name": "חשבונית מס", "number": "D023A"},
+            timestamp=_this_month_timestamp(day=6),
+        )
+        self._seed_accounting_document(
+            denidin_app, "מאיה פלד", doc_type=330, type_name="חשבונית זיכוי",
+            amount=300, status="paid", status_code=1, status_label="מסמך סגור",
+            description="ביטול קבלה שהופקה בטעות",
+            linked_document={"type_name": "קבלה", "number": "D023A_R"},
+            timestamp=_this_month_timestamp(day=9),
+        )
+        self._seed_accounting_document(
+            denidin_app, "רועי אבן", doc_type=305, type_name="חשבונית מס",
+            amount=120, status="unpaid", status_code=0, status_label="פתוח",
+            timestamp=_this_month_timestamp(day=17),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather",
+            "כמה כסף חייבים לי בסך הכל ממאיה פלד ומרועי אבן?", "t023_credit_note",
+        ))
+        assert reply is not None
+        assert _reply_contains_amount(reply, 420), (
+            f"expected the correct total (420 = 300 + 120 - מאיה's receipt was "
+            f"reversed by the credit note, so her invoice is STILL owed) in "
+            f"reply: {reply!r}"
+        )
+
+    def test_agreement_modification_reports_the_latest_state(self, denidin_app, config):
+        """T024: a client with TWO הסכם events over time (a fee increase) -
+        'what was eventually agreed' must reflect the LATEST state (350),
+        never the original (200) alone or the naive sum (550)."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't024_modified_agreement')
+        self._seed_noise(denidin_app, count=6, label="t024_noise")
+        self._seed(
+            denidin_app, "שלומית ברגר", amount="200₪",
+            message_id="t024_original", timestamp=_this_month_timestamp(day=3),
+        )
+        self._seed(
+            denidin_app, "שלומית ברגר", amount="350₪",
+            message_id="t024_updated", timestamp=_this_month_timestamp(day=20),
+            reference_hint="מעדכן את ההסכם הקודם - העלאת שכר טרחה ל-350",
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather",
+            "כמה סוכם בסופו של דבר עם שלומית ברגר?", "t024_modified_agreement",
+        ))
+        assert reply is not None
+        assert _reply_contains_amount(reply, 350), (
+            f"expected the LATEST agreed amount (350) in reply: {reply!r}"
+        )
+        assert not _reply_contains_amount(reply, 550), (
+            f"550 (200+350, the naive un-superseded sum) must not appear as the "
+            f"final agreed figure: {reply!r}"
+        )
+
+    def test_total_paid_dedups_matching_deposit_and_receipt(self, denidin_app, config):
+        """T025: 'total paid', not 'owed' - one payment shows up as BOTH a
+        בנק/הפקדה event AND a separate matching קבלה (same client, same
+        amount = the same real payment, per runtime_constitution.md) and
+        must be counted ONCE; a second, genuinely different-amount deposit
+        is a real additional payment and must be added. Correct total = 300
+        (200 deduped once + 100), never 400 (200+200 double-counted) or 500
+        (the agreed amount, not what's been paid)."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't025_total_paid')
+        self._seed_noise(denidin_app, count=6, label="t025_noise")
+        self._seed(
+            denidin_app, "דנה עמית", amount="500₪",
+            message_id="t025_agreement", timestamp=_this_month_timestamp(day=2),
+        )
+        self._seed(
+            denidin_app, "דנה עמית", source_type="בנק", event_subtype="הפקדה",
+            amount="200₪", message_id="t025_deposit",
+            timestamp=_this_month_timestamp(day=9),
+        )
+        self._seed_accounting_document(
+            denidin_app, "דנה עמית", doc_type=400, type_name="קבלה",
+            amount=200, status="paid", status_code=1, status_label="מסמך סגור",
+            timestamp=_this_month_timestamp(day=9),
+        )
+        self._seed(
+            denidin_app, "דנה עמית", source_type="בנק", event_subtype="הפקדה",
+            amount="100₪", message_id="t025_second_deposit",
+            timestamp=_this_month_timestamp(day=21),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather",
+            "כמה דנה עמית שילמה עד היום בסך הכל?", "t025_total_paid",
+        ))
+        assert reply is not None
+        assert _reply_contains_amount(reply, 300), (
+            f"expected the correctly-deduped total paid (300 = 200 deduped once + "
+            f"100) in reply: {reply!r}"
+        )
+        assert not _reply_contains_amount(reply, 400), (
+            f"400 (200+200, double-counting the same payment's deposit AND "
+            f"receipt) must not appear as the total paid: {reply!r}"
+        )
+
+    def test_combined_owed_across_two_clients_requires_multiple_search_rounds(
+        self, denidin_app, config
+    ):
+        """T026: a genuine same-turn multi-round search, not just narration -
+        two distinct, unrelated clients each with their own agreement; no
+        single query_ledger_events call's fuzzy text can match both distinct
+        names at once (unlike T011's four-way OR, this asks for one COMBINED
+        number, proving the model actually retrieved and summed both rather
+        than just listing names). Correct total = 300 (130 + 170)."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't026_multi_round')
+        self._seed_noise(denidin_app, count=6, label="t026_noise")
+        self._seed(
+            denidin_app, "ג'ינג'י בלס", amount="130₪",
+            message_id="t026_gingi", timestamp=_this_month_timestamp(day=5),
+        )
+        self._seed(
+            denidin_app, "פאפי טריטי", amount="170₪",
+            message_id="t026_pappy", timestamp=_this_month_timestamp(day=13),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather",
+            "כמה ג'ינג'י בלס ופאפי טריטי חייבים לי ביחד?", "t026_multi_round",
+        ))
+        assert reply is not None
+        assert _reply_contains_amount(reply, 300), (
+            f"expected the combined total (300 = 130 + 170, requiring a real search "
+            f"round per client) in reply: {reply!r}"
+        )
+
+    # ------------------------------------------------------------------
+    # T027-T029 (2026-08-26 addendum, user-specified rich edge cases)
+    # ------------------------------------------------------------------
+
+    def test_conditional_component_status_stays_uncertain_not_guessed(
+        self, denidin_app, config
+    ):
+        """T027: a two-component agreement - component 1 (80, unconditional)
+        and component 2 (100, conditional on an "ערעור"/appeal materializing,
+        via trigger_condition). A matching bank deposit (80) AND a matching
+        combo-320 receipt (80) - the SAME real payment (dedup rule) - closes
+        component 1 exactly. Nothing in the ledger says whether the appeal
+        happened, so component 2's status is genuinely UNKNOWN, not owed and
+        not paid. A correct reply engages with that conditionality rather
+        than confidently asserting a firm total (180 owed, or fully settled)."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't027_conditional')
+        self._seed_noise(denidin_app, count=6, label="t027_noise")
+        self._seed(
+            denidin_app, "חווה יערי", amount="80₪", component_label="רכיב 1",
+            message_id="t027_comp1", timestamp=_this_month_timestamp(day=2),
+        )
+        self._seed(
+            denidin_app, "חווה יערי", amount="100₪", component_label="רכיב 2",
+            trigger_condition="ערעור", message_id="t027_comp2",
+            timestamp=_this_month_timestamp(day=2),
+        )
+        self._seed(
+            denidin_app, "חווה יערי", source_type="בנק", event_subtype="הפקדה",
+            amount="80₪", message_id="t027_deposit",
+            timestamp=_this_month_timestamp(day=9),
+        )
+        self._seed_accounting_document(
+            denidin_app, "חווה יערי", doc_type=320, type_name="חשבונית מס/קבלה",
+            amount=80, status="paid", status_code=1, status_label="מסמך סגור",
+            timestamp=_this_month_timestamp(day=9),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather",
+            "האם חווה יערי עוד חייבת כסף?", "t027_conditional",
+        ))
+        assert reply is not None
+        assert "ערעור" in reply, (
+            f"expected the reply to engage with component 2's own trigger "
+            f"condition (ערעור) rather than silently ignore it: {reply!r}"
+        )
+        assert not _reply_contains_amount(reply, 180), (
+            f"180 (80+100, treating the conditional component as a confirmed "
+            f"current debt) must never appear as a confident total owed: {reply!r}"
+        )
+
+    def test_payment_under_a_different_payer_name_still_resolves(self, denidin_app, config):
+        """T028: the agreement is with עוזי לנדאו, but one of the closing
+        signals is a bank deposit under a DIFFERENT name (בני לנדאו) whose
+        own description explicitly links it back to עוזי - there is no
+        separate payer_name field for a בנק event (see LEDGER_EVENT_TOOL's
+        own docs), so free text is the only place this link can live. A
+        separate combo-320 receipt under עוזי's own name independently closes
+        the same agreement.
+
+        2026-08-26: the shared surname (לנדאו) that makes this scenario
+        realistic ALSO fuzzy-collides above the app's own
+        _NAME_MATCH_THRESHOLD (WRatio("עוזי לנדאו", "בני לנדאו") = 74 >= 70),
+        so a search for "עוזי לנדאו" legitimately comes back as an
+        identity-ambiguity candidates response, not a direct answer -
+        confirmed live, this is the correct, working-as-designed behavior,
+        not a bug. The test now handles both real outcomes: if the model
+        answers directly, it must say כן; if it asks which of the two names
+        was meant (matching this file's own established T009
+        ask-then-confirm pattern), the user's own clarification is supplied
+        verbatim on the second turn, and THAT reply must say כן."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't028_different_payer')
+        self._seed_noise(denidin_app, count=6, label="t028_noise")
+        self._seed(
+            denidin_app, "עוזי לנדאו", amount="100₪",
+            message_id="t028_agreement", timestamp=_this_month_timestamp(day=3),
+        )
+        self._seed(
+            denidin_app, "בני לנדאו", source_type="בנק", event_subtype="הפקדה",
+            amount="100₪", description="מקושר ללקוח עוזי לנדאו",
+            message_id="t028_deposit", timestamp=_this_month_timestamp(day=10),
+        )
+        self._seed_accounting_document(
+            denidin_app, "עוזי לנדאו", doc_type=320, type_name="חשבונית מס/קבלה",
+            amount=100, status="paid", status_code=1, status_label="מסמך סגור",
+            timestamp=_this_month_timestamp(day=10),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather",
+            "האם עוזי לנדאו שילם הכל?", "t028_different_payer",
+        ))
+        assert reply is not None
+        if "?" in reply:
+            reply = self._get_response(self._send_text(
+                chat_id, phone, "Test Godfather",
+                "בני הוא אח של עוזי שרק שילם בשבילו. עוזי הוא הלקוח. "
+                "תשייך לעוזי גם את מה ששילם בני.",
+                "t028_clarification",
+            ))
+            assert reply is not None
+        assert "כן" in reply, (
+            f"expected an affirmative (כן) - he's paid in full via the combo-320 "
+            f"receipt alone, regardless of the differently-named deposit: {reply!r}"
+        )
+
+    def test_typo_variant_name_resolved_or_clarified_never_silently_dropped(
+        self, denidin_app, config
+    ):
+        """T029: two bank deposits for the same real person, one with a
+        single-character typo in the client_name (יוסי אביאל vs יןסי אביאל -
+        ו/ן swapped). Two acceptable outcomes: the model resolves the typo'd
+        entry as obviously the same person and sums both (150), or it asks a
+        clarifying question naming the discrepancy - either is fine. What's
+        NOT acceptable is silently answering from only one of the two events
+        (100 alone) with no acknowledgement the second exists."""
+        phone = config.godfather_phone
+        chat_id = self._fresh_chat_id(config, 't029_typo')
+        self._seed_noise(denidin_app, count=6, label="t029_noise")
+        self._seed(
+            denidin_app, "יוסי אביאל", source_type="בנק", event_subtype="הפקדה",
+            amount="100₪", message_id="t029_correct",
+            timestamp=_this_month_timestamp(day=4),
+        )
+        self._seed(
+            denidin_app, "יןסי אביאל", source_type="בנק", event_subtype="הפקדה",
+            amount="50₪", message_id="t029_typo",
+            timestamp=_this_month_timestamp(day=11),
+        )
+
+        reply = self._get_response(self._send_text(
+            chat_id, phone, "Test Godfather", "כמה שילם יוסי אביאל", "t029_typo",
+        ))
+        assert reply is not None
+        resolved_full_sum = _reply_contains_amount(reply, 150)
+        asked_clarifying_question = "?" in reply
+        assert resolved_full_sum or asked_clarifying_question, (
+            f"expected either a resolved total of 150 (typo recognized as the "
+            f"same person) or a clarifying question about the second, "
+            f"differently-spelled entry - got neither: {reply!r}"
         )

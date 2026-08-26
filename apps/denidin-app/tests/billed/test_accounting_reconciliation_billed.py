@@ -26,6 +26,7 @@ from openai import OpenAI
 
 import src.services.accounting_reconciliation_service as svc
 from src.handlers.ai_handler import AIHandler
+from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
 from src.utils.time_utils import now_local
 
 pytestmark = pytest.mark.billed
@@ -151,19 +152,20 @@ class TestUS1CapturesDocumentsNeverSeenInConversation:
             assert e["source_type"] == "חשבונית", num
             assert e["session_id"] == "accounting-reconciliation", num
             assert e["message_id"] is None, num
-            assert e["schema_version"] == 3, num
+            assert e["schema_version"] == CURRENT_SCHEMA_VERSION, num
             assert num, "every captured document must carry its display number"
 
             # The bug this feature spent the longest on: a fabricated midnight
             # timestamp, from reading the date-only field instead of the real
-            # creation instant.
-            created = e["accounting_document_creation_date"]
+            # creation instant. event_datetime is the sole creation-date field
+            # (2026-08-25: the old accounting_document_creation_date field, a
+            # byte-for-byte duplicate of this one, was removed entirely).
+            created = e["event_datetime"]
             assert created, f"{num}: no creation timestamp"
             assert not created.endswith(" 00:00"), (
                 f"{num}: creation time is exactly midnight ({created}) - the signature "
                 "of a defaulted/fabricated time rather than Morning's real one"
             )
-            assert e["event_datetime"] == created, f"{num}: event_datetime must be the document's own instant"
 
     def test_event_subtype_is_the_real_morning_document_type(
         self, denidin_config, sweep_context, clean_ledger

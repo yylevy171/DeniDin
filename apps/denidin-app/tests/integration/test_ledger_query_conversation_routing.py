@@ -220,11 +220,15 @@ class TestLedgerQueryRouting:
         monkeypatch.setattr(denidin_app.ai_handler.client.responses, 'create', fake_create)
         return captured
 
-    NO_FILTER_ARGS = {
-        "client_name": None, "date_from": None, "date_to": None,
-        "amount_min": None, "amount_max": None, "source_type": None,
-        "event_subtype": None, "free_text": None,
-    }
+    NO_FILTER_ARGS = {"criteria": []}
+
+    @staticmethod
+    def _criteria_args(*pairs):
+        """Build a query_ledger_events call's arguments from (text, hint)
+        pairs - the 2026-08-24 redesign's `criteria` shape (see
+        src/managers/ledger_event_manager.py's module-level _HINT_GROUPS
+        comment)."""
+        return {"criteria": [{"text": text, "hint": hint} for text, hint in pairs]}
 
     def test_query_ledger_events_call_dispatches_and_reply_reflects_real_result(
         self, denidin_app, monkeypatch
@@ -242,9 +246,10 @@ class TestLedgerQueryRouting:
               genuinely reachable through the real pipeline.
         """
         self._seed(denidin_app, "תומר אלוני", amount="5,000₪", message_id="seed_m1")
-        self._stub_query_ledger_events_response(denidin_app, monkeypatch, {
-            **self.NO_FILTER_ARGS, "client_name": "תומר אלוני",
-        })
+        self._stub_query_ledger_events_response(
+            denidin_app, monkeypatch,
+            self._criteria_args(("תומר אלוני", "identity")),
+        )
 
         notification = self._create_notification(
             GODFATHER_CHAT_ID, GODFATHER_SENDER, "Test Godfather",
@@ -315,7 +320,7 @@ class TestLedgerQueryRouting:
                     id="resp_payer_1",
                     output=[SimpleNamespace(
                         type="function_call", name="query_ledger_events",
-                        arguments=json.dumps({**self.NO_FILTER_ARGS, "client_name": "מגדל"}),
+                        arguments=json.dumps(self._criteria_args(("מגדל", "identity"))),
                         call_id="call_payer_1",
                     )],
                     output_text="", model="gpt-5.6-luna",
@@ -357,8 +362,8 @@ class TestLedgerQueryRouting:
         self._seed(denidin_app, "בני אשכנזי", amount="2,000₪", message_id="seed_both_m2")
 
         captured = self._stub_multi_call_response(denidin_app, monkeypatch, [
-            {**self.NO_FILTER_ARGS, "client_name": "מיכל רוזן"},
-            {**self.NO_FILTER_ARGS, "client_name": "בני אשכנזי"},
+            self._criteria_args(("מיכל רוזן", "identity")),
+            self._criteria_args(("בני אשכנזי", "identity")),
         ])
 
         notification = self._create_notification(
@@ -380,12 +385,17 @@ class TestLedgerQueryRouting:
         self, denidin_app, monkeypatch
     ):
         """T010 scenario 3 (monthly income aggregation), mechanics-only:
-        proves a date-range-only query (no client_name) with source_type=בנק
-        (research.md Decision 11 - "income" means received, not agreed)
-        correctly includes only the deposit event and excludes an
-        agreed-but-unpaid event in the SAME month - through the real
-        pipeline, including the vague-query guard NOT blocking a
-        date-only/client-less query."""
+        proves a broad, client-less, category-only query (research.md
+        Decision 11 - "income" means received, not agreed) correctly
+        includes only the deposit event and excludes an agreed-but-unpaid
+        event, through the real pipeline, including the vague-query guard
+        NOT blocking a client-less single-criterion query. Post-2026-08-24
+        redesign, there is no dedicated date-range filter any more - a
+        real "how much income in August" question is answered by a broad
+        category='בנק' retrieval (this test's own concern) plus the model
+        itself reasoning over each returned event's own date field to keep
+        only the right month (a model-reasoning concern, not exercised
+        here - see tests/billed/ for the real conversational scenario)."""
         self._seed(denidin_app, "דנה פלד", source_type="בנק", event_subtype="הפקדה",
                     amount="4,000₪", message_id="seed_income_m1", timestamp=1785920400)
         self._seed(denidin_app, "אלון שני", amount="9,000₪",
@@ -401,11 +411,7 @@ class TestLedgerQueryRouting:
                     id="resp_income_1",
                     output=[SimpleNamespace(
                         type="function_call", name="query_ledger_events",
-                        arguments=json.dumps({
-                            **self.NO_FILTER_ARGS,
-                            "date_from": "2026-08-01", "date_to": "2026-08-31",
-                            "source_type": "בנק",
-                        }),
+                        arguments=json.dumps(self._criteria_args(("בנק", "event_type"))),
                         call_id="call_income_1",
                     )],
                     output_text="", model="gpt-5.6-luna",
@@ -440,9 +446,13 @@ class TestLedgerQueryRouting:
         the real requirement is N criteria, unbounded (research.md Decision
         10 already supports this - no schema change, just N calls in one
         turn). Proves the real pipeline correctly executes and merges FOUR
-        separately-named, already-known-distinct clients, each ALSO
-        constrained by the same date range - i.e. each of the four calls
-        combines two filter dimensions at once (name AND date), not just one."""
+        separately-named, already-known-distinct clients, each call ALSO
+        carrying a second (date) criterion - i.e. each of the four calls
+        combines two dimensions at once (identity AND date), not just one.
+        Post-2026-08-24 redesign, "date" is just another ANDed {text, hint}
+        criterion (fuzzy text match against date-bearing fields), not a
+        dedicated range filter - the date text here matches every seeded
+        event's own event_datetime month/year substring."""
         clients = [
             ("נועה שדה", "2,000₪"),
             ("אבי גולן", "3,000₪"),
@@ -454,8 +464,7 @@ class TestLedgerQueryRouting:
                        timestamp=1786784400)  # 2026-08-15 local
 
         captured = self._stub_multi_call_response(denidin_app, monkeypatch, [
-            {**self.NO_FILTER_ARGS, "client_name": name,
-             "date_from": "2026-08-01", "date_to": "2026-08-31"}
+            self._criteria_args((name, "identity"), ("08/2026", "date"))
             for name, _ in clients
         ])
 

@@ -61,18 +61,25 @@
    no such tool in the turn's `tools` list at all), and DeniDin does not disclose any
    ledger data.
 
-## 8. Large result set — 20-item display cap
+## 8. Large result set — reply stays readable, no fixed cap
 
-1. Seed (or ensure) a broad query would match MORE than 20 events (e.g. many events across a
-   wide date range/multiple clients).
+(2026-08-26: this used to assert a hard 20-event cap - dropped after a real `billed` run
+showed the model reliably grouping a large result set into date-range buckets while still
+naming every client individually, which a strict numeric count can't distinguish from "didn't
+summarize at all." The real, strictly-enforced constraint is the reply's own output-token
+budget, not a specific event count - see `runtime_constitution.md`'s "Ledger Event Querying"
+section.)
+
+1. Seed (or ensure) a broad query would match many events (e.g. many events across a wide date
+   range/multiple clients).
 2. Ask a deliberately broad question that would match all of them (e.g. "מה כל האירועים
    מהחודש האחרון?").
 3. Expect: the tool itself still returns the complete matching set internally (no
    truncation — unchanged, locked at spec time; hundreds of events retrieved is fine). The
-   BOUNDARY is on DeniDin's chat reply specifically: it must never enumerate more than 20
-   individual events verbatim — past that it summarizes (counts/groupings/totals) or asks you
-   to narrow, per `runtime_constitution.md`'s "Ledger Event Querying" section. Count the
-   distinct events actually listed in the reply and confirm it's ≤ 20.
+   chat reply should stay readable for a WhatsApp conversation — some form of
+   summarizing/grouping (counts, by client, by month) or asking you to narrow, rather than a
+   long undifferentiated list — but there's no specific number to check the reply against;
+   use your own judgment reading it back.
 
 ## 9. Startup index load
 

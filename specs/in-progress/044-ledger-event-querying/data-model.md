@@ -1,6 +1,10 @@
 # Phase 1 Data Model: Ledger Event Querying via AI
 
-**Feature**: 044-ledger-event-querying · **Date**: 2026-08-22
+**Feature**: 044-ledger-event-querying · **Date**: 2026-08-22 · **Query engine redesigned**:
+2026-08-24 (see `research.md`'s "2026-08-24 Redesign" section and `tasks.md`'s "Addendum,
+2026-08-24" for the full decision trail — the original 8-separate-structured-filter query
+request shape below was replaced wholesale; the persisted-event schema and in-memory index
+sections were NOT affected by the redesign).
 
 No change to the persisted ledger event schema (Feature 033) — this feature is
 additive read access only (FR-008). This document covers the new in-memory index and the
@@ -10,32 +14,36 @@ query request/response shapes the new tool introduces.
 
 One JSON file per event under `{data_root}/events/{event_id}.json` (see
 `ledger_event_manager.py`'s `add_ledger_event` for the authoritative field list). Fields
-this feature actually searches/returns:
+this feature actually searches/returns — see `_HINT_GROUPS` in
+`src/managers/ledger_event_manager.py` for the authoritative, closed field→hint-group
+mapping (the table below is a human-readable summary of it, not a second source of truth):
 
-| Field | Type | Searchable how |
-|---|---|---|
-| `event_id` | str | returned, not searched |
-| `event_datetime` | str, `DD/MM/YYYY HH:MM` | date-range filter (see Decision 7) |
-| `source_type` | str (`"הסכם"`/`"בנק"`/`"חשבונית"`/...) | exact-text filter, NOT an enum (Decision 12) — any value the data actually carries is matchable, including source types this spec never anticipated |
-| `event_subtype` | str (`"יצירה"`/`"הפקדה"`/...) | exact-text filter, NOT an enum (Decision 12) |
-| `client_name` | str \| null | fuzzy name filter |
-| `payer_name` | str \| null | fuzzy name filter (same query param as client_name — matches either) |
-| `description` | str \| null | fuzzy free-text filter |
-| `component_label` | str \| null | fuzzy free-text filter |
-| `trigger_condition` | str \| null | fuzzy free-text filter |
-| `accounting_document_display_number` / `_status_label` / `_payment_method` (Feature 025, only non-null when `source_type="חשבונית"`) | str \| null | fuzzy free-text filter (Decision 12) — implicit, no dedicated query parameter |
-| `accounting_document_type` — **removed** (2026-08-23 update, user): Feature 025 now folds "type of accounting document" into `event_subtype` itself rather than a separate field | — | N/A — `event_subtype` is already exact-match filterable (Decision 12), no free-text coverage needed |
-| `accounting_document_status_code` (Feature 025) | int \| null | NOT free-text searchable (raw int, not a natural text target — use `_status_label` instead); returned, not searched |
-| `amount` | int \| null | amount-range filter |
-| `hours` | float \| null | returned, not directly filtered (a query narrows by client/date, then the model reads `hours` off each returned event itself — no separate hours-range filter, since none of the four representative questions need one) |
-| `txn_date` | str, `DD/MM/YYYY` \| null | date-range filter (see Decision 7) |
-| `agreement_id` / `component_id` | str \| null | returned, not searched (generated slugs, not natural-language query input) |
-| `reference` | str \| null | returned, not searched |
-| everything else (`bank_number`, `session_id`, `captured_at`, `schema_version`, `accounting_document_creation_date`, ...) | — | returned as-is, not searched (`accounting_document_creation_date` is covered indirectly — it's one of `event_datetime`/`txn_date`'s underlying sources at capture time, not searched as its own field here) |
+| Field | Type | Hint group | Scored how |
+|---|---|---|---|
+| `event_id` | str | — | returned, not searched |
+| `event_datetime` / `txn_date` | str \| null | `date` | fuzzy text (`WRatio`) — `event_datetime` is the ONLY creation-date field on any event, including `source_type="חשבונית"` records (2026-08-25: the old `accounting_document_creation_date` field, always a byte-for-byte duplicate of `event_datetime` for those records, was removed entirely) |
+| `source_type` / `event_subtype` | str \| null | `event_type` | fuzzy text (`WRatio`) — still NOT an enum (Decision 12); any value the data actually carries is matchable |
+| `vat_status` | str \| null | `vat` | fuzzy text (`WRatio`) |
+| `client_name` / `payer_name` / `split_partner` | str \| null | `identity` | fuzzy text (`WRatio`), but only wins as a criterion's best field if its raw score clears `_NAME_MATCH_THRESHOLD` (70) — see `_score_criterion`'s docstring |
+| *(all string fields, general rule)* | — | — | a field whose own stored value is short (< `_SHORT_VALUE_LENGTH_THRESHOLD`, 8 chars — covers `event_subtype`, `source_type`, `vat_status`'s typical filler values) can only win if its score clears the near-exact `_SHORT_VALUE_MATCH_THRESHOLD` (85), regardless of scorer — see `research.md`'s redesign section, bug #6 |
+| `amount` / `hourly_rate` | number \| null | `amount` | numeric equality when the query text parses as a number, else skipped entirely (never fuzzy-compared) |
+| `percent` / `percent_base` / `split_percent` | number \| null | `percentage` | numeric equality, same rule as `amount` |
+| `description` / `trigger_condition` / `reference_hint` | str \| null | `free_text` | fuzzy text, `partial_ratio` (substring-lenient, since these are the longest/prose-like fields) |
+| `accounting_document_display_number` (Feature 025, non-null only when `source_type="חשבונית"`) | str \| null | `document` | numeric equality (it's a Morning document number, i.e. a number, not free text — 2026-08-24 fix) |
+| `accounting_document_payment_method` / `accounting_document_status` / `accounting_document_status_label` | str \| null | `document` | fuzzy text (`WRatio`) |
+| `bank_number` / `bank_branch` / `bank_account` | str \| null | `banking` | numeric equality, same rule as `amount` |
+| `component_label` | str \| null | — | NOT searchable (2026-08-25: dropped from every hint group — it exists only to derive `component_id` at capture time, never a natural search target); returned, not searched |
+| `due_date` — **removed** (2026-08-25, user directive): was a dead, always-`None` reserved-for-later field with no populating code path; dropped from the persisted schema, `_HINT_GROUPS`, and every doc/test reference | — | — | N/A |
+| `hours` | float \| null | — | returned, not searched (no representative question needs to search by hours directly — the model narrows by identity/date instead, then reads `hours` off each returned event) |
+| `accounting_document_type` — **removed** (2026-08-23 update, user): Feature 025 now folds "type of accounting document" into `event_subtype` itself rather than a separate field | — | — | N/A — `event_subtype` already covers this (`event_type` group) |
+| `accounting_document_status_code` (Feature 025) | int \| null | — | NOT searchable (raw int, not a natural text/number target — use `accounting_document_status_label` instead); returned, not searched |
+| `agreement_id` / `component_id` | str \| null | — | returned, not searched (generated slugs, not natural-language query input) |
+| `reference` | str \| null | — | returned, not searched |
+| everything else (`session_id`, `captured_at`, `schema_version`, ...) | — | — | returned as-is, not searched |
 
 **NOT a field**: `agreement_label` — a `capture_ledger_event` *input* only, used once to
 help build `agreement_id` at capture time, never itself persisted (see `research.md`
-Decision correcting an earlier draft of this document). Do not add it as a query filter —
+Decision correcting an earlier draft of this document). Do not add it as a query criterion —
 there is nothing on a persisted record to match it against.
 
 ## New: in-memory ledger event index
@@ -57,43 +65,70 @@ No lock (user decision, 2026-08-23 — see research.md Decision 8's "Concurrency
 - **Never persisted itself** — rebuilt from disk on every process start, same as every other
   in-memory cache in this codebase (`GroupMembershipResolver`'s cache, `PendingApprovalManager`).
 
-## New: Query request (the `query_ledger_events` tool's arguments)
+## New: Query request (the `query_ledger_events` tool's arguments) — 2026-08-24 redesign
+
+**REPLACED the original 8-separate-structured-filter shape entirely** (that shape — one
+`client_name`, one `date_from`/`date_to` range, one `amount_min`/`amount_max` range, one
+`source_type`, one `event_subtype`, one `free_text` per call — is documented only for
+historical context in `research.md`'s pre-redesign decisions; it is no longer what the tool
+accepts). A real billed test (`test_payer_name_search`) showed the AND-combined structured
+filters let the model accidentally exclude a genuine match by over-constraining one call, and
+the design had no way to express OR/NOT/threshold reasoning at all.
+
+The current shape is a single field:
 
 | Field | Type | Matching |
 |---|---|---|
-| `client_name` | str \| null | fuzzy (rapidfuzz `WRatio` ≥ `_NAME_MATCH_THRESHOLD`) against each event's `client_name` AND `payer_name` — either counts as a match |
-| `date_from` | str (`YYYY-MM-DD`) \| null | inclusive lower bound, checked against `event_datetime` OR `txn_date` (Decision 7) |
-| `date_to` | str (`YYYY-MM-DD`) \| null | inclusive upper bound, same fields |
-| `amount_min` | number \| null | inclusive lower bound against `amount` |
-| `amount_max` | number \| null | inclusive upper bound against `amount` |
-| `source_type` | str \| null | exact match, NOT enum-constrained in the tool schema (Decision 12) — any value the ledger actually holds is a valid filter |
-| `event_subtype` | str \| null | exact match, NOT enum-constrained (Decision 12) |
-| `free_text` | str \| null | fuzzy (rapidfuzz `partial_ratio` ≥ `_FREE_TEXT_MATCH_THRESHOLD`) against every field in `_FREE_TEXT_FIELDS` — `description`, `component_label`, `trigger_condition`, plus (Decision 12) `accounting_document_display_number`/`_status_label`/`_payment_method` (NOT `_type` — folded into `event_subtype` instead, 2026-08-23) — any one counts as a match |
+| `criteria` | `List[{"text": str, "hint": str \| null}]` | see below |
 
-All fields optional/nullable; every filter given is AND-combined (an event must satisfy
-every non-null filter to match). If every field is null, the code-side vague-query guard
-(Decision 6) intercepts before any real filtering happens.
+Each `criteria` entry is scored independently against every event via `_score_criterion`
+(see the field table above for exactly how each field is compared) across **every**
+searchable field — never restricted to the entry's own `hint`. `hint` (one of `identity`,
+`date`, `category`, `amount`, `percentage`, `description`, `document`, `banking`, `split`,
+or `null`) is a **soft** signal: if the winning field for a criterion belongs to the stated
+hint's group, that criterion's score gets `_HINT_MATCH_BONUS` added — a wrong hint never
+excludes an otherwise-real match, it just withholds the bonus.
+
+Within one call, every criterion is **ANDed**: an event only counts as a match if it clears
+`_CRITERION_MATCH_FLOOR` on **every** criterion individually (not just on average — see
+`research.md`'s redesign section for the empirical finding that made "every criterion
+individually" necessary). If `criteria` is empty/null (or every entry's `text` is empty),
+the code-side vague-query guard (Decision 6, unchanged in spirit) intercepts before any real
+scoring happens.
+
+**OR/NOT/threshold reasoning carries NO dedicated schema support** — deliberately. OR is
+answered by issuing one separate call per alternative (multi-call dispatch, unchanged
+mechanism, see below). NOT/exclusion and numeric-threshold questions are answered by a
+single **broad** call (a criterion or two that retrieves every plausibly-relevant event),
+with the actual exclusion/threshold reasoning done by the model itself over the raw returned
+events — the same principle `research.md` Decision 5 already established for aggregation,
+now extended to cover ranges/exclusions too.
 
 ## New: Query result (the tool's `function_call_output`)
 
-Two distinct shapes, mutually exclusive:
+Three distinct shapes, mutually exclusive:
 
 **A. Resolved (no entity-level ambiguity)** — the normal case:
 ```json
 {
-  "matches": [ { <full event dict, every field> }, ... ],
+  "matches": [ { <full event dict, every field>, "confidence": <float> }, ... ],
   "count": <int>
 }
 ```
 `matches` is the complete matching set — never truncated/paginated (FR-005, locked at
-spec time). `count` is just `len(matches)`, included so the model doesn't need to count
-manually for a "how many events" style question.
+spec time) — sorted by `confidence` descending. `confidence` (new, 2026-08-24 redesign) is
+the mean of the event's per-criterion scores (each of which already cleared
+`_CRITERION_MATCH_FLOOR` individually); a higher confidence means a stronger match across
+the given criteria — the model uses judgment about how much to trust a borderline one.
+`count` is just `len(matches)`, included so the model doesn't need to count manually for a
+"how many events" style question.
 
-**B. Ambiguous client identity** — when `client_name` was given and fuzzy-matched ≥2
-distinct stored name strings each above threshold (Decision 4):
+**B. Ambiguous client identity** — when an `identity`-hinted criterion fuzzy-matched ≥2
+distinct stored name strings each above `_NAME_MATCH_THRESHOLD` (Decision 4, mechanism
+unchanged by the redesign — just no longer tied to a dedicated `client_name` parameter):
 ```json
 {
-  "ambiguous_field": "client_name",
+  "ambiguous_field": "identity",
   "candidates": [
     {"value": "<a distinct matched client_name/payer_name string>", "event_count": <int>},
     ...
@@ -104,7 +139,7 @@ No `matches`/`count` key present in this shape — the model must relay `candida
 user and ask which one, then re-call with the confirmed name (which — now matching only one
 distinct stored string — resolves to shape A).
 
-**C. Vague-query guard tripped** (Decision 6, every filter field null):
+**C. Vague-query guard tripped** (Decision 6, `criteria` empty/null):
 ```json
 {"error": "no_search_criteria", "message": "..."}
 ```
@@ -140,18 +175,27 @@ pending call from the prior turn unresolved, so every call_id — successful, em
 parse-failed (shape D) — MUST get an entry in that same list, none silently omitted.
 
 This is the mechanism by which arbitrarily complex requests are answered without any schema
-richer than "one client name, one date range, one amount range per call" — "client A or
-client B," "hours in [month1] or [month2]," "candidates confirmed as both/all" are all just
-N independent calls in one turn, combined by the model in its own reply.
+richer than "a list of ANDed criteria per call" — "client A or client B," "hours in
+[month1] or [month2]," "candidates confirmed as both/all" are all just N independent calls
+in one turn (one `criteria` list each), combined by the model in its own reply. OR-type
+questions are the primary reason this mechanism exists post-redesign (see Query request
+section above) — it carries no dedicated OR schema of its own precisely because this
+already covers it.
 
-## Validation rules
+## Validation rules (2026-08-24 redesign)
 
-- `date_from`/`date_to`, if both given, need not be validated `date_from <= date_to` by the
-  tool itself — an inverted range simply matches nothing (empty `matches`), which is an
-  acceptable, self-correcting outcome (the model sees zero results and can reconsider), not
-  a case requiring a distinct error path.
-- `amount_min`/`amount_max` — same reasoning; an inverted range just yields no matches.
-- Malformed `date_from`/`date_to` (not parseable `YYYY-MM-DD`) is treated as if that bound
-  were null (skip the check) rather than raising — matches this codebase's existing
-  "never trust unparseable input, degrade gracefully" convention (`_normalize_amount`/
-  `_normalize_iso_date` in `ledger_event_manager.py`).
+The original range-validation rules here (inverted `date_from`/`date_to`, inverted
+`amount_min`/`amount_max`, malformed dates treated as absent bounds) no longer apply —
+`query_events` no longer accepts ranges at all; every criterion is a single `text` value
+scored via fuzzy text or numeric equality (see the field table above), so there is no bound
+to invert or fail to parse. What replaces range-style validation:
+
+- A criterion's `text` is checked against `_try_parse_number` to decide numeric-vs-text
+  scoring (see `_score_criterion`) — this never raises; a value that doesn't parse cleanly
+  as a number simply falls through to fuzzy text scoring instead.
+- `hint`, if given, must be one of the closed `_HINT_GROUPS` keys or it's treated as if
+  absent (`None`) — an unrecognized hint string never raises and never acts as a hard
+  filter either way, consistent with hints always being soft signals.
+- A "range" or "threshold" question (e.g. "above 100 shekel", "before August") has no
+  dedicated validation because it's not expressed in `criteria` at all — see the Query
+  request section's NOT/exclusion/numeric-threshold guidance above.
