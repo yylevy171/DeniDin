@@ -325,7 +325,7 @@ to every T008-T014 scenario, not just the ones that already needed a negative co
 same-month agreed-but-unpaid event, T011's four distinct clients) — even T008's single-lookup
 scenarios should have a handful of unrelated events seeded alongside the target one.
 
-- [ ] **T008** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** US1 core lookups, in a
+- [x] **T008** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** US1 core lookups, in a
   new `apps/denidin-app/tests/billed/test_ledger_query_billed.py`: (1) explicit lookup — a
   real pre-seeded event for a known client/matter/amount, ask "כמה סוכם עם [client] על
   [matter]?" → reply states the correct amount, sourced from a real `query_ledger_events`
@@ -337,14 +337,14 @@ scenarios should have a handful of unrelated events seeded alongside the target 
   matching the schema's own `payer_name` semantics) → reply correctly finds and states it,
   proving `client_name`'s dual client_name/payer_name matching (data-model.md) works for
   real, not just at the unit level.
-- [ ] **T009** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** US1 ambiguity handling,
+- [x] **T009** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** US1 ambiguity handling,
   same file: (1) two distinct clients with names that both fuzzy-match a short/partial query
   name → reply asks which client is meant, listing both — never guesses one (US1 scenario 3 /
   Decision 4); (2) **the "both/all" follow-up** (new) — continuing scenario (1)'s
   conversation, reply "גם וגם"/"שניהם" (both) → DeniDin issues one `query_ledger_events` call
   per confirmed distinct name (assert TWO calls happened this turn, per research.md Decision
   10) and its reply reflects BOTH clients' events combined, not just one.
-- [ ] **T010** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** US2 aggregation
+- [x] **T010** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** US2 aggregation
   scenarios, same file: (1) date-ranged hours summary — several real pre-seeded hours-logged
   events for one client across a calendar month (plus a different-client/different-month
   negative control) → "כמה שעות אני צריך לחייב את [client] ב[month]?" → reply reflects only
@@ -358,7 +358,7 @@ scenarios should have a handful of unrelated events seeded alongside the target 
   (research.md Decision 11 — "income" means received, not agreed) and does not include the
   agreed-but-unpaid amount; also confirms the vague-query guard does NOT block a
   date-range-only, client-less query (Decision 11's guard-interaction note).
-- [ ] **T011** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** US1/US2 genuine
+- [x] **T011** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** US1/US2 genuine
   multi-criterion request (new, distinct from T009's typo-driven ambiguity — this is a
   request that NAMES several real, unambiguous, already-known-distinct clients directly).
   **Revised 2026-08-23 (user note): "A or B" was only an illustrative example — the real
@@ -395,7 +395,7 @@ scenarios should have a handful of unrelated events seeded alongside the target 
   (concrete/testable, distinct from the owed-balance case which stays manual-only): seed MORE
   than 20 real matching events for a broad query → ask a question that would match all of
   them → assert the reply does not enumerate more than 20 individual events verbatim.
-- [ ] **T014** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** Natural-language
+- [x] **T014** [P] **[TDD — DESCRIBE NOW, IN USER-EXPERIENCE TERMS]** Natural-language
   exclusion (new, 2026-08-23, user example: *"כמה כסף חייבים לי עדיין באוגוסט חוץ מיוסי ברנע
   שאני יודע ששילם כבר"* — "how much am I still owed in August, except Yossi Barnea who I know
   already paid"). **No schema change** — the tool has no exclusion parameter and never will;
@@ -453,6 +453,11 @@ scenarios should have a handful of unrelated events seeded alongside the target 
   (kept manual-only per user decision, 2026-08-23 — model arithmetic in free text is less
   stable to assert on automatically than structured tool-call behavior) and startup index
   reload (needs its own separate, explicit approval to restart the dev environment).
+  **Explicitly SKIPPED at feature close (2026-08-26, user decision: "skip T16, mark the rest as
+  done - go haleluya!")** — the extensive real, automated `billed` acceptance coverage
+  (T015/T017-T029, all passing against real OpenAI) was judged sufficient proof on its own;
+  this manual WhatsApp walkthrough was not performed. Left unchecked deliberately rather than
+  marked done, so this gap stays visible rather than silently implied-covered.
 
 **Addendum, 2026-08-24 (query-engine redesign, discovered via T008.4's real failure)**: running
 T008.4 (`test_payer_name_search`) live surfaced that the query engine's actual design is wrong,
@@ -542,7 +547,7 @@ Phase 3 convention (write+run together, once, at the very end).
 **New Phase 3 scenarios (2026-08-24, user directive — described now, in user-experience terms
 only, exactly like T008-T014; NOT test code yet, and depend on the redesign above actually being
 implemented first)**:
-- [ ] **T017** [P] **[TDD — code written, not yet run]** Explicit OR across two
+- [x] **T017** [P] **[TDD — written and run, GREEN]** Explicit OR across two
   distinct, unambiguous identities in ONE request (distinct from T009.2's "both/all"
   follow-up, which is a two-turn confirm-then-merge flow after an ambiguity prompt — this is a
   single-turn OR named up front, no ambiguity involved at all): real pre-seeded בנק/הפקדה
@@ -551,7 +556,7 @@ implemented first)**:
   אבירם או מדוד כרמון?" ("did we receive a payment of 100 shekel from Eli Aviram or David
   Carmon?") → reply correctly reports BOTH matching payments (not just one), each correctly
   attributed to its own name.
-- [ ] **T018** [P] **[TDD — code written, not yet run]** Explicit NOT/exclusion
+- [x] **T018** [P] **[TDD — written and run, GREEN]** Explicit NOT/exclusion
   combined with a numeric threshold, over a field never exercised by any earlier scenario
   (`percent`) — real pre-seeded percentage-based fee agreements (`percent` field populated,
   `source_type="הסכם"`) for at least three distinct clients: one named "קרן שלו" at 60%, and
@@ -561,7 +566,7 @@ implemented first)**:
   Shalev, agreed to percentages above 50%?") → reply lists the other above-50% client(s) by
   name and correctly EXCLUDES קרן שלו even though her own agreement genuinely is above 50% —
   proving real exclusion reasoning, not just threshold filtering.
-- [ ] **T019** [P] **[TDD — code written, not yet run]** Broad-category +
+- [x] **T019** [P] **[TDD — written and run, GREEN]** Broad-category +
   numeric-threshold reasoning with no name given at all (the "who owes above 100 shekel"
   scenario from the redesign discussion itself) — real pre-seeded הסכם (agreement, i.e. owed,
   unpaid) events for several distinct clients spanning a range of amounts, at least two above
@@ -571,7 +576,7 @@ implemented first)**:
   "מי כל הלקוחות שחייבים לי מעל 100 שקל?" ("which clients owe me more than 100 shekel?") →
   reply correctly lists only the genuinely-still-owed clients above the threshold, by name,
   excluding both the below-threshold clients and the one client whose amount was already paid.
-- [ ] **T020** [P] **[TDD — code written, not yet run]** Cross-category retrieval
+- [x] **T020** [P] **[TDD — written and run, GREEN]** Cross-category retrieval
   for ONE identity in a single turn — two DIFFERENT facts about the same client, from two
   different event categories, reported side by side (distinct from T016's manual-only
   owed-balance scenario, which requires computing a subtraction/difference; this only requires
