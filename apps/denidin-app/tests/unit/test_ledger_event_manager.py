@@ -922,56 +922,21 @@ class TestAddLedgerEventsFromCall:
         assert call_arguments == original
 
 
-class TestSchemaVersion:
-    """Feature 043, US5, T008a: every persisted record carries schema_version.
-    Phase 11 (2026-08-16): reset to 1 as a new baseline generation after a
-    substantial real-data-grounded revision - see data-model.md §1b and
-    ledger_event_manager.py's own CURRENT_SCHEMA_VERSION comment for why
-    resetting (rather than incrementing) is safe here (no real persisted file
-    has ever carried a schema_version value at all)."""
-
-    def test_persisted_record_has_current_schema_version(self, manager, temp_events_dir):
-        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
-
-        event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS,
-        )
-        data = _read(temp_events_dir, event_id)
-        assert data["schema_version"] == CURRENT_SCHEMA_VERSION
-
-    def test_current_schema_version_is_3(self):
-        """Feature 025 (2026-08-20, per spec.md's Clarifications - schema-version
-        bump used INSTEAD of a config.feature_flags gate): bumped 1->2, applying
-        globally to every new write regardless of source_type (הסכם/בנק included,
-        not just the new חשבונית source) - proven by
-        test_add_ledger_event_also_stamps_v2_for_non_accounting_source_types
-        below."""
-        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
-
-        assert CURRENT_SCHEMA_VERSION == 3
-
-    def test_add_ledger_event_also_stamps_current_version_for_non_accounting_source_types(
-        self, manager, temp_events_dir
-    ):
-        """The schema_version bump is global, not per-source_type - a plain
-        הסכם capture (no חשבונית fields involved at all) still gets
-        schema_version=2 once this feature ships."""
-        event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS,
-        )
-        assert _read(temp_events_dir, event_id)["schema_version"] == 3
-
-    def test_add_ledger_events_from_call_also_stamps_schema_version(self, manager, temp_events_dir):
-        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
-
-        event_ids = manager.add_ledger_events_from_call(
-            session_id="s", call_arguments=dict(SAMPLE_CALL_ARGUMENTS),
-            message_id="m", message_timestamp=FIXED_TS,
-        )
-        for eid in event_ids:
-            assert _read(temp_events_dir, eid)["schema_version"] == CURRENT_SCHEMA_VERSION
+# TestSchemaVersion class removed entirely (2026-08-26, human decision, post-incident - see
+# ledger_event_manager.py's CURRENT_SCHEMA_VERSION/SCHEMA_VERSION_HISTORY comments): every test
+# it held existed solely to assert an exact schema_version value (either hardcoded ==3, or
+# ==CURRENT_SCHEMA_VERSION), and nothing meaningful remained once that assertion was removed.
+# Policy going forward: no test anywhere may assert on schema_version's value, ever - the
+# constant itself is a human-approved governance decision (see CLAUDE.md's "LEDGER SCHEMA
+# VERSION BUMPS ARE HUMAN-ONLY" rule), not a piece of application behavior a test should pin.
+# Coverage this removed (documented here rather than silently lost):
+# - every persisted record carries a schema_version key at all
+# - a plain הסכם/בנק capture gets the same global schema_version an accounting capture does
+#   (i.e. the field is stamped globally, not per-source_type)
+# - add_ledger_events_from_call stamps schema_version on every event in a multi-component batch
+# If this coverage needs restoring, do it via a value-agnostic check (e.g. comparing two
+# freshly-persisted events' schema_version fields to each other, never to a literal number or to
+# CURRENT_SCHEMA_VERSION), decided fresh with the human next time this area is touched.
 
 
 class TestBankPaymentDetailFields:
@@ -1786,12 +1751,9 @@ class TestAccountingDocumentJsonCapture:
         )
         assert _read(temp_events_dir, exempt)["vat_status"] == "לא צוין"
 
-    def test_schema_version_is_3(self, manager, temp_events_dir):
-        event_id = manager.add_ledger_event(
-            session_id="accounting-reconciliation", event=_json_event(),
-            message_id=None, message_timestamp=None,
-        )
-        assert _read(temp_events_dir, event_id)["schema_version"] == 3
+    # test_schema_version_is_3 removed (2026-08-26, human decision, post-incident) - see
+    # TestSchemaVersion's removal comment above for the full policy rationale: no test may
+    # assert on schema_version's value, ever.
 
     def test_malformed_json_is_rejected_and_logged_never_half_persisted(self, manager, caplog):
         event = {"source_type": "חשבונית", "event_subtype": "הפקה",

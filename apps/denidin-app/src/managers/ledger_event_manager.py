@@ -102,7 +102,70 @@ _STATUS_HE = {"paid": "שולם", "unpaid": "לא שולם", "cancelled": "בו�
 # config.feature_flags gate, this bump IS the gate): applies globally to every
 # new write regardless of source_type, not just חשבונית - הסכם/בנק captures get
 # schema_version=2 too, once this feature ships.
-CURRENT_SCHEMA_VERSION = 3
+#
+# Bumped 2->3 (Feature 025 Phase 9, 2026-08-23, commit 0ed64ea), then REVERTED
+# 3->2 (2026-08-26, human decision - see CLAUDE.md's "LEDGER SCHEMA VERSION
+# BUMPS ARE HUMAN-ONLY" rule): the 2->3 bump shipped with the numeric constant
+# changed but no matching "Bumped 2->3" comment/decision record ever added - a
+# real governance gap, caught only after the fact during unrelated Feature 061
+# work. Phase 9's real new fields (accounting_document_status_code/
+# _status_label/_payment_method, etc.) are genuine and stay - this revert is
+# about the VERSION NUMBER's governance, not about removing those fields.
+# Newly-written events therefore carry schema_version=2 while actually having
+# v3's real shape; SCHEMA_VERSION_HISTORY below records this explicitly so a
+# future reader isn't misled by the number alone.
+CURRENT_SCHEMA_VERSION = 2
+
+# Every entry here is a human-approved decision, added in the SAME commit that
+# changes CURRENT_SCHEMA_VERSION above it - never after the fact.
+# _verify_schema_version_history() (below) fails loudly at import time if the
+# two ever drift apart - the exact enforcement this file was missing when the
+# undocumented 2->3 bump above happened (2026-08-26 incident).
+SCHEMA_VERSION_HISTORY = [
+    {
+        "version": 1,
+        "date": "2026-08-16",
+        "feature": "Phase 11 (043)",
+        "decision": "Reset to 1 - human decision, see the comment block above this constant.",
+    },
+    {
+        "version": 2,
+        "date": "2026-08-21",
+        "feature": "025",
+        "decision": (
+            "Bumped 1->2 per spec.md Clarifications - no config.feature_flags gate, this "
+            "bump IS the gate."
+        ),
+    },
+    {
+        "version": 2,
+        "date": "2026-08-26",
+        "feature": "025 (post-hoc correction)",
+        "decision": (
+            "REVERTED from 3 back to 2 - the 2->3 bump (commit 0ed64ea, 2026-08-23) shipped "
+            "without a matching human-approved decision record here. Phase 9's real schema "
+            "changes (accounting_document_status_code/_status_label/_payment_method, etc.) "
+            "stay unchanged; only the version NUMBER's governance is what changed."
+        ),
+    },
+]
+
+
+def _verify_schema_version_history() -> None:
+    """Fails loudly at import time if CURRENT_SCHEMA_VERSION has no matching, human-approved
+    SCHEMA_VERSION_HISTORY entry as its last item - see the constant's own comment and
+    CLAUDE.md's "LEDGER SCHEMA VERSION BUMPS ARE HUMAN-ONLY" rule for why this exists."""
+    if not SCHEMA_VERSION_HISTORY or SCHEMA_VERSION_HISTORY[-1]["version"] != CURRENT_SCHEMA_VERSION:
+        raise RuntimeError(
+            f"CURRENT_SCHEMA_VERSION={CURRENT_SCHEMA_VERSION} has no matching "
+            "SCHEMA_VERSION_HISTORY entry as its last item - every schema_version change "
+            "requires an explicit, human-approved decision recorded here, added in the same "
+            "commit that changes the constant. See CLAUDE.md's 'LEDGER SCHEMA VERSION BUMPS "
+            "ARE HUMAN-ONLY' rule."
+        )
+
+
+_verify_schema_version_history()
 
 # Matches ש"ח / ש׳ח / שח (various quote-character renderings of "shekel chadash").
 _SHEKEL_WORD_RE = re.compile(r'ש["\'״]?ח')

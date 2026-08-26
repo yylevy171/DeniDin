@@ -151,7 +151,11 @@ class TestUS1CapturesDocumentsNeverSeenInConversation:
             assert e["source_type"] == "חשבונית", num
             assert e["session_id"] == "accounting-reconciliation", num
             assert e["message_id"] is None, num
-            assert e["schema_version"] == 3, num
+            # No assertion on schema_version here (2026-08-26 policy, see
+            # ledger_event_manager.py's CURRENT_SCHEMA_VERSION comment) - a real incident
+            # showed the constant itself can legitimately change on a human decision, and
+            # tests pinned to its exact value break for reasons unrelated to what they're
+            # actually meant to verify.
             assert num, "every captured document must carry its display number"
 
             # The bug this feature spent the longest on: a fabricated midnight
