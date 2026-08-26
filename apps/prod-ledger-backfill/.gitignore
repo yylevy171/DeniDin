@@ -13,6 +13,13 @@ ledger_events/
 validation_reports/
 method_selection_report.json
 
+# Phase 2 (select_method.py) real sandbox-run artifacts — canonical JSON files + manifests from
+# actually running --generate-a/--generate-b (T031, 2026-08-26); same "operator-machine-local,
+# never repo content" reasoning as output/ above — contains real (sandbox) client names/documents.
+method2_a/
+method2_a_pretty/
+method2_b/
+
 # Python
 __pycache__/
 *.pyc

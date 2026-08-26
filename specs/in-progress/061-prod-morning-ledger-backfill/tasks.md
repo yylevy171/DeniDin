@@ -272,9 +272,10 @@ via a flag/parameter, with the real default set once the experiment concludes.
       with a new `build_capture_envelope()` function each (stops one step earlier than
       `transform()`), and `transform.py` calls that instead — this is what lets
       `LedgerEventManager`'s own real event_id generation and dedup/anomaly guard run for real
-      rather than being bypassed. Currently wired to Method A only (`_DEFAULT_BUILD_ENVELOPE_FN`)
-      — swapping to Method B once T031's real sandbox verdict is in is a one-line change
-      (`build_envelope_fn` parameter already exists for this and for testability).
+      rather than being bypassed. Wired to Method A (`_DEFAULT_BUILD_ENVELOPE_FN`) — **T031's real
+      sandbox verdict (2026-08-26) confirmed this as final: Method A adopted, Method B rejected**;
+      `build_envelope_fn` remains a parameter for testability, not because a future method swap is
+      still anticipated.
 - [x] T017 [Ph3] Verify: `test_transform.py` green (4/4); confirmed zero imports of any live
       Morning-API-calling code inside `transform.py` (`argparse`/`json`/`sys`/`pathlib`/`typing`/
       `method_a`/the ledger-event-manager loader only — no `MorningClient`, no `requests`, no
@@ -391,9 +392,22 @@ against real systems — described here in user-experience terms, not as test co
       silently dropped for exceeding a conversational fetch/token cap; assert no WhatsApp message
       is sent as a side effect (speckit.analyze finding U2, REQ-BACKFILL-008) 🚨 requires its own
       fresh, explicit human approval before running (REQ-BACKFILL-007) — real prod data
-- [ ] T031 **Acceptance — Phase 2**: the real ~20-document sandbox experiment (`select_method.py`
+- [x] T031 **Acceptance — Phase 2**: the real ~20-document sandbox experiment (`select_method.py`
       against real sandbox downloads); records the real verdict and updates `transform.py`'s default
-      method (T016) to match — no prod approval needed, sandbox only
+      method (T016) to match — no prod approval needed, sandbox only. **DONE (2026-08-26) — Method
+      A adopted, Method B rejected.** Real run against 18 real sandbox documents (2026-08-20):
+      Method A succeeded on all 18 with no incident. Method B crashed mid-run (1 document's relay
+      came back truncated by 1 character — no per-document try/except in the loop, so the whole run
+      aborted with no manifest written) and, of the 13 documents that did complete before the crash,
+      2 had real Hebrew-text corruption from the AI relay itself (a dropped geresh character in one
+      client name; a substituted look-alike letter in one description) — found via a plain local
+      diff against Method A's output, no new calls needed. User's own framing: "it actually looks
+      like the model is unreliable at simple copy passthru of data... I'm fine with method A, we
+      can ditch method B" — decision made without finishing the remaining 4/18 documents, the
+      signal was already decisive. Full narrative: `research.md` R7's "REAL VERDICT" addendum.
+      `transform.py`'s `_DEFAULT_BUILD_ENVELOPE_FN` needed no change — already wired to Method A
+      (T016) pending exactly this verdict. Method B's code (`method_b.py`, `select_method.py`'s
+      `--generate-b`) is left in place, unused by the real pipeline.
 - [ ] T032 **Acceptance — Phase 3**: run `transform.py` against Phase 1's real output (T030); assert
       correctly-shaped `LedgerEvent` files appear; assert zero live Morning API calls during this
       run and zero WhatsApp messages sent

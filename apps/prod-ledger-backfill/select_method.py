@@ -108,6 +108,26 @@ _RELAY_CANONICAL_JSON_TOOL = {
 }
 
 
+def _canonicalize_for_hashing(raw_json_str: str) -> str:
+    """
+    Re-serializes JSON content with one fixed convention (parse -> json.dumps with
+    ensure_ascii=False, sort_keys=True) before it's written to disk or hashed.
+
+    Found necessary 2026-08-26, via a real single-document live run: Method A's file and a
+    faithfully-relayed Method B response were confirmed PARSED-JSON-IDENTICAL (json.loads(a) ==
+    json.loads(b)) but NOT byte-identical — Hebrew text came back ASCII-escaped (\\u05d7...)
+    through the MCP/Responses API transport, rather than the raw UTF-8 characters
+    format_invoice_json itself writes (ensure_ascii=False). That's a transport re-serialization
+    hop neither side controls, not a fidelity difference — hashing the raw as-received bytes
+    would flag every Hebrew document as "mismatched" regardless of actual content. Both
+    generate_method_a_manifest and generate_method_b_manifest apply this identically (including
+    to the per-document file written for inspection, so its own bytes are always exactly what
+    got hashed), so a hash mismatch after this always means a genuine content difference.
+    """
+    parsed = json.loads(raw_json_str)
+    return json.dumps(parsed, ensure_ascii=False, sort_keys=True)
+
+
 def diff_ledger_events(event_a: Dict, event_b: Dict, ignore_fields=_IGNORED_FIELDS) -> Dict:
     """
     Field-by-field comparison of two LedgerEvent-shaped dicts, excluding `event_id` (capture-
@@ -155,7 +175,7 @@ def generate_method_a_manifest(input_dir, output_dir) -> Dict[str, str]:
         doc_id = raw_document.get("id")
         if not doc_id:
             continue
-        canonical_json = method_a.compute_canonical_json(raw_document)
+        canonical_json = _canonicalize_for_hashing(method_a.compute_canonical_json(raw_document))
         (output_dir / f"{doc_id}.json").write_text(canonical_json, encoding="utf-8")
         manifest[doc_id] = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
@@ -259,6 +279,20 @@ def _build_relay_prompt(doc_id: str) -> str:
     )
 
 
+# Real gap found + fixed 2026-08-26 (first live run): gpt-4o-mini (copied from method_b.py's
+# older, now-superseded local-only simulation) listed the server's tools (mcp_list_tools) and
+# then, without ever calling get_invoice_details, fabricated an entirely invented document for
+# relay_canonical_json (generic "John Doe"/"Example Client" placeholders, wrong field shapes,
+# on ALL 18 documents in the first real run) - a hallucination, not a real MCP relay of any kind.
+# The REAL production reconciliation sweep (accounting_reconciliation_service.py) uses
+# ai_handler.config.ai_model, confirmed via apps/denidin-app/config/config.dev.json to be
+# "gpt-5.6-luna" - a materially stronger model - not gpt-4o-mini. Matching that here isn't
+# cosmetic: gpt-4o-mini apparently can't reliably chain "call remote tool -> use its real result
+# -> relay via local tool", so using it invalidated the whole comparison rather than producing a
+# meaningful fidelity data point.
+_METHOD_B_MODEL = "gpt-5.6-luna"
+
+
 def _extract_relay_arguments(response) -> Optional[dict]:
     """Extracts the first relay_canonical_json call's arguments from a Responses API result."""
     for item in getattr(response, "output", None) or []:
@@ -270,15 +304,36 @@ def _extract_relay_arguments(response) -> Optional[dict]:
     return None
 
 
+def _response_actually_called_mcp_tool(response, tool_name: str) -> bool:
+    """
+    True iff the model actually invoked the given remote MCP tool (a real `mcp_call` output
+    item) - NOT just listed the server's tools (`mcp_list_tools`) or skipped straight to the
+    local relay call. Added 2026-08-26 as a direct result of the gpt-4o-mini hallucination
+    above: nothing before this caught a fabricated relay, since `_extract_relay_arguments`
+    alone can't tell a real transcription from an invented one.
+    """
+    for item in getattr(response, "output", None) or []:
+        if getattr(item, "type", None) == "mcp_call" and getattr(item, "name", None) == tool_name:
+            return True
+    return False
+
+
 def _relay_one_document_via_mcp(doc_id: str, mcp_tool: dict, openai_client) -> str:
     """One real OpenAI Responses API call for one document — see module docstring for why this
     goes through a local relay tool call rather than reading the MCP call's own output directly."""
     response = openai_client.responses.create(
-        model="gpt-4o-mini",
+        model=_METHOD_B_MODEL,
         instructions=_build_relay_prompt(doc_id),
         input="Fetch and relay this document.",
         tools=[mcp_tool, _RELAY_CANONICAL_JSON_TOOL],
     )
+
+    if not _response_actually_called_mcp_tool(response, "get_invoice_details"):
+        raise ValueError(
+            f"Method B: model relayed a value for document {doc_id!r} WITHOUT ever calling "
+            "get_invoice_details via the real MCP tool (no mcp_call item in response.output) — "
+            "refusing to accept what would be a fabricated document"
+        )
 
     args = _extract_relay_arguments(response)
     if args is None:
@@ -335,7 +390,9 @@ def generate_method_b_manifest(
         doc_id = raw_document.get("id")
         if not doc_id:
             continue
-        canonical_json = _relay_one_document_via_mcp(doc_id, mcp_tool, openai_client)
+        canonical_json = _canonicalize_for_hashing(
+            _relay_one_document_via_mcp(doc_id, mcp_tool, openai_client)
+        )
         (output_dir / f"{doc_id}.json").write_text(canonical_json, encoding="utf-8")
         manifest[doc_id] = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 

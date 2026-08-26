@@ -42,6 +42,28 @@ def _write_raw_document(input_dir, doc):
     (input_dir / f"{doc['id']}.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
 
 
+# --- _canonicalize_for_hashing (2026-08-26, real single-doc live-run finding) ---------------
+
+def test_canonicalize_normalizes_ascii_escaped_unicode_to_raw_utf8():
+    """The exact real-world case: Hebrew text came back \\u-escaped through the MCP transport
+    although format_invoice_json itself always writes raw UTF-8 (ensure_ascii=False)."""
+    escaped = '{"client_name": "\\u05d0\\u05dc\\u05d9\\u05e0\\u05d4"}'
+    result = select_method._canonicalize_for_hashing(escaped)
+    assert result == '{"client_name": "אלינה"}'
+
+
+def test_canonicalize_is_key_order_independent():
+    a = select_method._canonicalize_for_hashing('{"b": 1, "a": 2}')
+    b = select_method._canonicalize_for_hashing('{"a": 2, "b": 1}')
+    assert a == b
+
+
+def test_canonicalize_still_distinguishes_real_content_differences():
+    a = select_method._canonicalize_for_hashing('{"amount": 100}')
+    b = select_method._canonicalize_for_hashing('{"amount": 200}')
+    assert a != b
+
+
 # --- generate_method_a_manifest -------------------------------------------------------------
 
 def test_generate_method_a_manifest_writes_canonical_json_and_hash_per_document(tmp_path):
@@ -193,6 +215,17 @@ class _FakeFunctionCall:
         self.arguments = json.dumps(arguments, ensure_ascii=False)
 
 
+class _FakeMcpCall:
+    """Mimics a Responses API `mcp_call` output item — a real remote-tool invocation, as opposed
+    to just mcp_list_tools or a local function_call. Added 2026-08-26 alongside
+    _response_actually_called_mcp_tool (see select_method.py's own comment for why: gpt-4o-mini's
+    first real run fabricated a document without ever producing one of these)."""
+
+    def __init__(self, name):
+        self.type = "mcp_call"
+        self.name = name
+
+
 class _FakeResponse:
     def __init__(self, output):
         self.output = output
@@ -202,10 +235,13 @@ class _FakeOpenAIClient:
     """
     Records every responses.create() call and returns a canned relay_canonical_json call per
     document id — no real network call, matching method_b.py's existing injected-client pattern.
+    Includes a real mcp_call item by default (the honest case); set include_mcp_call=False to
+    simulate the hallucination this session actually hit in production.
     """
 
-    def __init__(self, canonical_json_by_doc_id):
+    def __init__(self, canonical_json_by_doc_id, include_mcp_call=True):
         self._canonical_json_by_doc_id = canonical_json_by_doc_id
+        self._include_mcp_call = include_mcp_call
         self.calls = []
         self.responses = self
 
@@ -217,11 +253,13 @@ class _FakeOpenAIClient:
             doc_id for doc_id in self._canonical_json_by_doc_id if doc_id in kwargs["instructions"]
         )
         canonical_json = self._canonical_json_by_doc_id[doc_id]
-        return _FakeResponse([
-            _FakeFunctionCall(
-                "relay_canonical_json", {"accounting_document_json": canonical_json}
-            )
-        ])
+        output = []
+        if self._include_mcp_call:
+            output.append(_FakeMcpCall("get_invoice_details"))
+        output.append(_FakeFunctionCall(
+            "relay_canonical_json", {"accounting_document_json": canonical_json}
+        ))
+        return _FakeResponse(output)
 
 
 @pytest.fixture
@@ -267,6 +305,37 @@ def test_generate_method_b_manifest_relays_canonical_json_per_document(tmp_path,
     assert tools[0]["server_url"] == "https://fixture.example.invalid/mcp"
     assert tools[0]["headers"]["Authorization"] == "Bearer fixture-mcp-token"
     assert tools[1]["name"] == "relay_canonical_json"
+    # 2026-08-26: gpt-4o-mini's first real run hallucinated a document instead of calling the
+    # real MCP tool — the model must match production's actual configured model
+    # (config.dev.json's ai_model), not a cheaper stand-in that can't reliably chain tool calls.
+    assert fake_client.calls[0]["model"] == "gpt-5.6-luna"
+
+
+def test_generate_method_b_manifest_rejects_a_relay_with_no_real_mcp_call(
+    tmp_path, fixture_mcp_creds_file
+):
+    """
+    Real incident, 2026-08-26: the model listed the server's tools (mcp_list_tools) and then
+    fabricated an entirely invented document for relay_canonical_json, on all 18 documents in
+    the first live run, without ever calling get_invoice_details. This must be caught and
+    refused, not silently accepted as a "relay".
+    """
+    input_dir = tmp_path / "raw"
+    output_dir = tmp_path / "folder_b"
+    input_dir.mkdir()
+    _write_raw_document(input_dir, _raw_document("doc-1"))
+
+    fake_client = _FakeOpenAIClient(
+        {"doc-1": '{"fabricated": true}'}, include_mcp_call=False,
+    )
+
+    with pytest.raises(ValueError, match="WITHOUT ever calling get_invoice_details"):
+        select_method.generate_method_b_manifest(
+            input_dir, output_dir,
+            mcp_creds_file=fixture_mcp_creds_file, openai_client=fake_client,
+        )
+    # Nothing gets written for a rejected document — no half-fabricated file left behind.
+    assert not (output_dir / "doc-1.json").exists()
 
 
 def test_generate_method_b_manifest_covers_every_document(tmp_path, fixture_mcp_creds_file):

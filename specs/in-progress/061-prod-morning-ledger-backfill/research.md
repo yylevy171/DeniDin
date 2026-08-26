@@ -246,6 +246,51 @@ total no of items and then the individual hashes."*
   Presumed harmless but not empirically confirmed against the live API — noted, not yet a decided
   action.
 
+**REAL VERDICT (2026-08-26, T031, real sandbox run against 18 real documents from 2026-08-20) —
+Method A adopted, Method B rejected. Decided.**
+
+Ran `generate_method_a_manifest`/`generate_method_b_manifest` for real against all 18 documents in
+`output/sandbox_20aug_bounded` (via `--until`, R-above). Method A: all 18 succeeded, pure local
+code, no incident. Method B (`_METHOD_B_MODEL = "gpt-5.6-luna"`, the already-fixed model + the
+`_response_actually_called_mcp_tool` safety net + `_canonicalize_for_hashing`, per the two prior
+fix rounds documented above) hit real problems on the full run, none hypothetical:
+
+- **1 of 18 crashed the run outright**: the model's relayed JSON string for one document came back
+  truncated by exactly one character (997 expected, 996 delivered) — `generate_method_b_manifest`'s
+  loop has no per-document try/except, so this aborted the whole run with `manifest.json` never
+  written (individual per-document files for the 13 already-processed documents were still on disk,
+  since those are written inside the loop before the crash). A single diagnostic re-fetch of just
+  that one document (one extra real call) came back complete and byte-identical to Method A —
+  consistent with a one-off transient clip, not a reproducible defect in the prompt/tool setup.
+- **2 of the 13 documents that DID complete had real content corruption**, discovered by a plain
+  local diff of Method A's vs Method B's output files (no new calls needed) — not formatting or
+  escaping differences, genuine character-level transcription errors, despite the prompt explicitly
+  demanding character-for-character verbatim relay:
+  - `519ad9f5-7a44-47b9-a049-ec55a170bd19` — `client_name`: Method A `אחזיה נח׳לה` vs Method B
+    `אחזיה נחלה` — the model **dropped the geresh character** (`׳`, U+05F3, Hebrew punctuation),
+    shifting the rest of the string.
+  - `72b9b07c-adb0-4bcf-9069-7dd3486f0253` — `description` (and the matching
+    `line_items[0].description`): Method A `ייעוץ` (ayin, `ע`) vs Method B `ייץוץ` (final-tsadi,
+    `ץ`) — the model **substituted a visually-similar Hebrew letter** for the correct one.
+- Net: of 13 documents that completed, 11 were byte-identical and 2 were silently corrupted; plus 1
+  outright failure that would have needed a retry. A ~15%+ per-document fidelity error rate on
+  Hebrew text, on top of an outright truncation failure, despite every mechanical safeguard already
+  in place (real model matching production, a real anti-fabrication check, transport-escaping
+  normalized away before comparison) — this is the LLM relay step itself being unreliable at a
+  simple verbatim copy, not a fixable configuration gap.
+- The remaining 4 of 18 documents were never attempted (the run aborted before reaching them in
+  sorted order) — the finding above was already decisive enough that finishing the full 18 for
+  completeness was explicitly declined by the user ("I'm fine with method A, we can ditch method
+  B").
+- **Decision (human, 2026-08-26): Method A is adopted for Phase 3's real implementation. Method B
+  is rejected and not pursued further** — no per-document API cost, no live server dependency, no
+  AI-relay fidelity risk, and it already produces byte-identical output to what a live MCP relay
+  is supposed to deliver (when it doesn't corrupt or truncate the data). `transform.py`'s existing
+  default (`_DEFAULT_BUILD_ENVELOPE_FN = method_a.build_capture_envelope`) needed no code change —
+  it was already wired to Method A pending exactly this verdict (T016). `method_b.py`/
+  `select_method.py`'s Method B code is left in place as-is (already implemented, tested, and now
+  a documented real finding) — not deleted; simply not used by the real pipeline.
+
 ## R8: Cross-run dedup — still free, via `LedgerEventManager`'s existing guard
 
 **Finding**: as long as Phase 3's local output directory is a stable, persistent path reused across

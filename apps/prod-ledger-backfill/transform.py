@@ -9,12 +9,16 @@ for real, unmodified, from that existing mechanism (research.md R7/R8) — every
 retained on disk (LedgerEventManager's own pending_review.json) for Phase 3.5 (validate.py) to
 read, not just logged and dropped.
 
-**Method A only, for now**: `research.md` R7's real sandbox comparison (Acceptance-phase T031,
-still pending) decides whether Method A (deterministic, this default) or Method B (AI-mediated)
-is what Phase 3 is really built with. `build_envelope_fn` exists specifically so that swap is a
-one-line change (or a future --method flag) rather than a rewrite — see method_a.py's/
-method_b.py's `build_capture_envelope` docstrings for why transform.py calls that function and
-not `transform()` (which is Phase 2's own, differently-shaped, comparison-only helper).
+**Method A — decided (2026-08-26, T031)**: `research.md` R7's real sandbox comparison (18 real
+documents) found Method B (AI-mediated relay) unreliable at even a simple verbatim copy — it
+crashed mid-run on a truncated relay, and 2 of the 13 documents that did complete had real
+Hebrew-text corruption (a dropped character, a substituted look-alike letter), found via a plain
+diff against Method A's output. Method A completed all 18 documents with no incident. Human
+decision: Method A adopted, Method B rejected — not pursued further. `build_envelope_fn` is kept
+as a parameter (rather than hardcoding the call inline) purely for testability, not because a
+method swap is still anticipated — see method_a.py's/method_b.py's `build_capture_envelope`
+docstrings for why transform.py calls that function and not `transform()` (which is Phase 2's
+own, differently-shaped, comparison-only helper).
 """
 import argparse
 import json
