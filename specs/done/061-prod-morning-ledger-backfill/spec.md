@@ -12,7 +12,8 @@ against real data going forward. Remaining `tasks.md` items (Phase 4 load-mechan
 XC-Rerun/XC-Creds regression tests, and the full acceptance-test suite T030/T032-T035) were
 deliberately NOT completed — the real prod backfill run itself is still pending and was
 explicitly deferred ("we will do prod another day," user, 2026-08-27) — see follow-up spec
-`specs/backlog/062-prod-morning-ledger-backfill-completion` for that remaining scope.
+`specs/backlog/062-prod-morning-ledger-backfill-completion` for that remaining scope. Merged via
+PR #258.
 
 Previously: Clarified (round 4, 2026-08-25) — five-phase pipeline (Download → Method Selection →
 Transform → **Validate** → Load), plus two cross-cutting requirements; ready for `speckit.plan`
