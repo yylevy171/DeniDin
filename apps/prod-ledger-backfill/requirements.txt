@@ -18,6 +18,12 @@ urllib3>=2.0.0      # transitively required by MorningClient's Retry-wrapped req
 pydantic>=2.0.0
 email-validator>=2.0.0   # Invoice's Client sub-model uses pydantic's EmailStr
 
+# _ledger_event_manager_loader.py loads ledger_event_manager.py directly (apps/denidin-app) for
+# _expand_accounting_document_json/LedgerEventManager reuse — as of master's Feature 044
+# (2026-08-25, merged into this branch 2026-08-26), that module itself imports rapidfuzz for
+# fuzzy client-name matching, so it's transitively required here too.
+rapidfuzz>=3.9.0
+
 # openai is deliberately NOT listed unconditionally — it's only needed if the Phase 2
 # method-selection experiment (research.md R7) selects Method B (AI-mediated transform).
 # Add `openai>=1.50.0` here once that real experiment concludes with that result; until then,

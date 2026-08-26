@@ -43,10 +43,18 @@ def test_transform_produces_a_fully_expanded_ledger_event():
     assert event["accounting_document_payment_method"] == "מזומן"
 
 
-def test_transform_derives_creation_date_from_creationDate_epoch():
+def test_transform_derives_creation_instant_from_creationDate_epoch():
+    """
+    2026-08-26 (post-merge): accounting_document_creation_date was removed from the persisted
+    schema entirely (master's Feature 044) — `transform()` stops at Stage 3's raw expansion
+    (`_expand_accounting_document_json`), which leaves the creation instant under the
+    internal-only `_source_creation_ts_raw` key, ISO/Israel-local. `add_ledger_event` (the full
+    persist path, exercised by test_transform.py instead) is what later consumes this into the
+    real `event_datetime` field ("%d/%m/%Y %H:%M") — `transform()` alone never reaches that step.
+    """
     event = method_a.transform(_real_shaped_raw_document())
     # 1737000000 is a real Unix epoch second, mapped Israel-local (research.md R1/R6).
-    assert event["accounting_document_creation_date"].startswith("2025-01-16")
+    assert event["_source_creation_ts_raw"] == "2025-01-16T06:00:00+02:00"
 
 
 def test_transform_multi_line_item_uses_only_the_first():

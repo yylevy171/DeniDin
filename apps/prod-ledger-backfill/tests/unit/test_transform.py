@@ -55,15 +55,16 @@ def test_transform_produces_correctly_shaped_ledger_events(tmp_path):
     assert len(written_files) == 1
 
     event = json.loads(written_files[0].read_text(encoding="utf-8"))
-    # CURRENT_SCHEMA_VERSION as of this writing (ledger_event_manager.py) — not hardcoded to a
-    # stale value; asserting >= 2 (Feature 025's original schema bump) rather than an exact
-    # number keeps this test from breaking every time the real app bumps its own schema further.
-    assert event["schema_version"] >= 2
+    # No assertion on schema_version's value (2026-08-26 policy — see root CLAUDE.md's "LEDGER
+    # SCHEMA VERSION BUMPS ARE HUMAN-ONLY" rule): presence only, never a literal or a comparison.
+    assert "schema_version" in event
     assert event["source_type"] == "חשבונית"
     assert event["accounting_document_display_number"] == "50001"
     assert event["event_subtype"]  # Morning's own type_name, non-empty
     assert event["client_name"] == "Test Client Ltd."
-    assert event["accounting_document_creation_date"]
+    # accounting_document_creation_date was removed from the persisted schema entirely
+    # (2026-08-26, master's Feature 044) — event_datetime is now the sole creation-date field.
+    assert event["event_datetime"]
 
 
 def test_transform_makes_no_live_network_call():

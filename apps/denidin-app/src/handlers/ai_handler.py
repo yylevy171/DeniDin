@@ -18,7 +18,7 @@ from src.models.message import (
     NO_REPLY_SENTINEL as _NO_REPLY_SENTINEL,
 )
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
-from src.utils.time_utils import now_local, local_from_timestamp, LOCAL_TZ
+from src.utils.time_utils import now_local, local_from_timestamp
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_manager import MemoryManager
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
@@ -42,6 +42,80 @@ from src.constants.error_messages import (
 
 logger = get_logger(__name__)
 
+# 2026-08-25, explicit user directive after test_monthly_income_aggregation's
+# zero-match failure was undiagnosable from logs: the OpenAI SDK's own DEBUG
+# HTTP logging (openai._base_client / httpcore) logs REQUEST OPTIONS and
+# RESPONSE HEADERS only - never a response BODY, so there was previously no
+# way to see what a model's function_call actually asked for, or what a
+# response actually contained, short of ad hoc re-instrumentation after the
+# fact. These two helpers are called at every responses.create() call site in
+# this app (and, via import, in accounting_reconciliation_service.py and
+# image_extractor.py) - deliberately verbose, deliberately everywhere: "I want
+# logs of EVERYTHING so we can get to the bottom of what is going on" (disk
+# space is explicitly not a constraint here). Never raises - a logging
+# failure must never break the actual call it's describing.
+
+def _log_outgoing_request(context: str, kwargs: Dict[str, Any]) -> None:
+    """Logs exactly what's about to be sent to responses.create(), mirroring
+    _log_raw_response for the outgoing side. `context` is a short label
+    identifying the call site (e.g. "get_response (initial call)",
+    "_call_openai_query_ledger_events_followup_api")."""
+    try:
+        tools = kwargs.get("tools") or []
+        tool_names = [
+            t.get("name") or t.get("server_label") or t.get("type") for t in tools
+        ]
+        logger.debug(
+            f"[RAWLOG] {context} >>> SENDING: model={kwargs.get('model')!r}, "
+            f"tools={tool_names!r}, input={kwargs.get('input')!r}, "
+            f"previous_response_id={kwargs.get('previous_response_id')!r}, "
+            f"instructions_len={len(kwargs.get('instructions') or '')}, "
+            f"max_output_tokens={kwargs.get('max_output_tokens')!r}"
+        )
+    except Exception as e:  # pylint: disable=broad-except
+        logger.error(f"[RAWLOG] {context} >>> SENDING: failed to log outgoing request: {e}", exc_info=True)
+
+
+def _log_raw_response(context: str, response) -> None:
+    """Logs the FULL raw content of a responses.create() result: every
+    output item verbatim (a function_call's raw, unparsed `arguments`
+    string and `call_id`; a message's full content; an mcp_call/
+    mcp_approval_request's name/arguments/output/error), plus output_text,
+    status, and usage. `context` matches the paired _log_outgoing_request
+    call for the same request."""
+    try:
+        items_repr = []
+        for item in (getattr(response, "output", None) or []):
+            item_type = getattr(item, "type", None)
+            detail: Dict[str, Any] = {"type": item_type}
+            if item_type == "function_call":
+                detail["name"] = getattr(item, "name", None)
+                detail["call_id"] = getattr(item, "call_id", None)
+                detail["arguments_raw"] = getattr(item, "arguments", None)
+            elif item_type == "message":
+                detail["content"] = getattr(item, "content", None)
+            elif item_type in ("mcp_call", "mcp_approval_request"):
+                detail["id"] = getattr(item, "id", None)
+                detail["name"] = getattr(item, "name", None)
+                detail["arguments"] = getattr(item, "arguments", None)
+                detail["output"] = getattr(item, "output", None)
+                detail["error"] = getattr(item, "error", None)
+            elif item_type == "mcp_list_tools":
+                tools_list = getattr(item, "tools", None) or []
+                detail["tool_count"] = len(tools_list)
+                detail["tool_names"] = [getattr(t, "name", None) for t in tools_list]
+            items_repr.append(detail)
+        logger.debug(
+            f"[RAWLOG] {context} <<< RECEIVED: response.id={getattr(response, 'id', None)!r}, "
+            f"status={getattr(response, 'status', None)!r}, "
+            f"incomplete_details={getattr(response, 'incomplete_details', None)!r}, "
+            f"output_text={getattr(response, 'output_text', None)!r}, "
+            f"usage={getattr(response, 'usage', None)!r}, "
+            f"output_items={items_repr!r}"
+        )
+    except Exception as e:  # pylint: disable=broad-except
+        logger.error(f"[RAWLOG] {context} <<< RECEIVED: failed to log raw response: {e}", exc_info=True)
+
 # Roles authorized to have the Morning MCP invoicing tools attached (Feature 018)
 MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 
@@ -49,6 +123,13 @@ MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # exactly one reminder list, owned by "the godfather"; ADMIN manages it too via
 # this app's existing blanket-access pattern, not a reminder-specific rule.
 REMINDER_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
+
+# Roles authorized to have the query_ledger_events tool attached (Feature 044)
+# - its own distinct constant (not a reuse of MORNING_MCP_AUTHORIZED_ROLES/
+# REMINDER_AUTHORIZED_ROLES, even though the values coincide today), matching
+# this codebase's existing per-feature-constant convention (research.md
+# Decision 9).
+LEDGER_QUERY_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 
 # Feature 039 (US4a): the model outputs this exact string as its entire response_text
 # to mean "send nothing back" (e.g. a group message clearly directed at someone else,
@@ -61,6 +142,43 @@ REMINDER_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # Re-exported here so every existing `from src.handlers.ai_handler import
 # NO_REPLY_SENTINEL` keeps working.
 NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
+
+# Architectural fix (2026-08-25): _finalize_response used to run the local-tool
+# handlers (_handle_ledger_event_capture / _handle_query_ledger_events /
+# _handle_list_reminders) exactly ONCE each, against the turn's original
+# response only - a fixed one-hop chain, not a real loop. A model that
+# legitimately wants to call a second local tool (or the same one again) from
+# inside what the code assumed was the FINAL follow-up had nowhere to go: the
+# follow-up's own output_text was empty (a function_call, not text), nothing
+# re-inspected it for further actionable items, and the turn crashed into
+# AIResponse's "owes a reply but carries no text" guard (confirmed live,
+# 2026-08-25, tests/billed/test_ledger_query_billed.py::test_monthly_income_aggregation
+# - the model correctly answered from query_ledger_events, then legitimately
+# issued a second query_ledger_events call to widen its search, and the app
+# had no way to execute that second call).
+#
+# The model is free to call any of these tools, any number of times, in
+# whatever order it needs - the fix is a real loop, not narrowing what's
+# available to it (see the same-day discussion this bound came out of). Each
+# iteration re-runs all three detectors against whatever response is current;
+# the loop only stops when a full pass makes no further progress (real text,
+# or a terminal pending-approval item - see PendingApproval/
+# PendingLocalToolApproval, which are NEVER auto-continued past). This cap is
+# a safety bound against a model stuck cycling tool calls, not an expected
+# depth - every scenario seen so far resolves in 1-2 rounds.
+#
+# Raised 5 -> 10 (2026-08-26, explicit user directive): a real billed run
+# (test_client_explicit_everything_request_gets_the_complete_picture) hit the
+# old cap of 5 after a legitimate list_invoices(client_name=...) call
+# succeeded, but a SECOND list_invoices(status="שולם") call came back with a
+# seemingly-contradictory empty result (see the separate tasks.md follow-up
+# to file a bug on Morning status-filtering) - the model then spent its
+# remaining iterations re-verifying via query_ledger_events instead of
+# trusting the data it already had, and ran out of budget before it could
+# settle on a final reply. This is a widening of the safety margin for that
+# kind of multi-tool back-and-forth, not a claim that looping this deep is
+# expected or desired behavior.
+MAX_LOCAL_TOOL_LOOP_ITERATIONS = 10
 
 def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
     """bugfix-024: rewrite an @-mention of DeniDin's own WhatsApp number (WhatsApp's
@@ -974,6 +1092,142 @@ DELETE_REMINDER_TOOL: Dict[str, Any] = {
 }
 
 
+# Ledger Event Querying (Feature 044) - a local `type: "function"` tool,
+# RBAC-gated like the reminder tools (LEDGER_QUERY_AUTHORIZED_ROLES), but
+# read-only and dispatched immediately - no PendingLocalToolApproval, ever.
+# Unlike list_reminders, a single turn may legitimately contain SEVERAL calls
+# to this tool (research.md Decision 10) - see _handle_query_ledger_events.
+QUERY_LEDGER_EVENTS_TOOL: Dict[str, Any] = {
+    "type": "function",
+    "name": "query_ledger_events",
+    "description": (
+        "Search previously captured ledger events (fee agreements, bank-deposit records, "
+        "and accounting documents pulled from Morning) to answer a question about past "
+        "agreements, amounts, hours, percentages, or payments - without needing the user "
+        "to paste the original message again. This is a synced CACHE of Morning's own "
+        "data (documents) alongside ledger-only records (fee agreements, bank deposits) "
+        "that never exist in Morning at all - for ANY query-shaped question (how much, "
+        "who, when, which document, what status, how many), prefer this over a live "
+        "Morning tool (list_invoices/get_invoice_details/get_financial_summary/etc.). "
+        "Once this has answered the question in this turn, that answer is final - do "
+        "NOT also call a Morning tool afterward to double-check; only fall back to a "
+        "live Morning tool if the ledger genuinely can't answer or the user explicitly "
+        "insists on a live check. ONLY call this when the user's question gives "
+        "you at least ONE identifying detail to search on - if the question is too vague to "
+        "form a real search (e.g. 'what did we agree on' with nothing else), ASK the user "
+        "for the missing detail FIRST; never call this with an empty criteria list just to "
+        "see what comes back. "
+        "criteria is a list of {text, hint} pairs, one per distinct fact you're searching "
+        "for. EVERY criterion searches EVERY field on every event (name, date, amount, "
+        "percent, description, document number, bank details, everything) - there is no "
+        "way to restrict a criterion to only one field. A NUMBER given as text (e.g. "
+        "'100', '40000') is compared numerically against the event's numeric fields only "
+        "(amount, hourly_rate, percent, percent_base, split_percent, bank_number, "
+        "bank_branch, bank_account) - exact value, not fuzzy string similarity, so pass the "
+        "literal number, not a description of it. Any other text is fuzzy/typo-tolerant "
+        "matched (NOT meaning-based - it finds similar WORDING, not a differently-phrased "
+        "version of the same idea) against every text field. Resolve relative/approximate "
+        "phrasing yourself before calling (e.g. 'August' -> pass a date like '2026-08', "
+        "'around 40,000, might include VAT' -> consider searching both the round number and "
+        "a VAT-adjusted figure as separate criteria if genuinely ambiguous). "
+        "hint is optional and is a SOFT signal only, never a hard filter - see the hint "
+        "parameter's own description below for the full list of groups and what each means. "
+        "If the question is scoped to a time period (this month, this week, since Monday, "
+        "etc.) always add a separate criterion with hint='date' carrying that period - this "
+        "tool applies no date filtering on its own, so without a date-hinted criterion a "
+        "time-scoped question can match events from ANY month, not just the intended one. "
+        "Multiple criteria in ONE call are ANDed - only events matching ALL of them "
+        "(individually, above a real-match confidence floor) come back. Each returned event "
+        "also carries a 'confidence' score - higher means a stronger match across the given "
+        "criteria; use your judgment about how much confidence to trust for borderline "
+        "matches. "
+        "If an 'identity'-hinted criterion matches more than one distinct real client/payer "
+        "with no single clear winner, this returns candidates instead of events - relay them "
+        "to the user and ask which one they meant. If they confirm more than one (or 'both'/"
+        "'all'), call this again ONCE PER confirmed exact name and combine the results "
+        "yourself. An empty result means no matching record was found - say so plainly, "
+        "never fabricate an answer. "
+        "For OR-type questions (spanning more than one name, date range, or other criterion "
+        "where ANY may match - e.g. 'client A or client B', 'hours in August or September'), "
+        "issue ONE SEPARATE CALL PER alternative and combine all the results yourself when "
+        "you reply - this tool is read-only, so calling it several times in the same turn is "
+        "always safe. For NOT/exclusion or numeric-threshold questions (e.g. 'everyone except "
+        "X', 'who owes more than 100'), call this with a broad criteria set that retrieves "
+        "every plausibly-relevant event (do NOT try to encode the exclusion/threshold into "
+        "criteria - there is no such filter), then apply the exclusion or threshold yourself "
+        "by reasoning over the returned events' own fields before replying. For a question "
+        "needing arithmetic (a sum, a balance owed, a total across clients/periods), use the "
+        "returned events' own clean numeric fields yourself - this tool never computes totals "
+        "for you. If a single call's matches are very numerous, don't just dump every event "
+        "verbatim - use your own judgment about summarizing or asking the user to narrow "
+        "further, the same way you would for any other long answer."
+    ),
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "criteria": {
+                "type": "array",
+                "description": (
+                    "One entry per distinct fact being searched for within this call "
+                    "(ANDed together). Use multiple calls, not multiple array entries, for "
+                    "OR-type questions - see the tool description."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": (
+                                "The literal value to search for - a name, a date, a plain "
+                                "number, or free text. Searched against every field on every "
+                                "event; see the tool description for how numbers vs. text are "
+                                "compared."
+                            ),
+                        },
+                        "hint": {
+                            "type": ["string", "null"],
+                            "enum": [
+                                "identity", "date", "event_type", "vat", "amount",
+                                "percentage", "free_text", "document", "banking", None,
+                            ],
+                            "description": (
+                                "Optional soft weighting signal - which closed field group "
+                                "this text is most likely describing. Never a hard filter: "
+                                "every field is always checked regardless, this only nudges "
+                                "scoring if the text's best match lands in the hinted group. "
+                                "Leave null if unsure. Groups: "
+                                "'identity' = client name, payer name, or split-partner name. "
+                                "'date' = the event's own date/time or a transaction date - "
+                                "use this whenever the question is scoped to a period (this "
+                                "month, this week, since Monday, etc.); pass the "
+                                "period/date as the criterion's text. "
+                                "'event_type' = source type (הסכם/בנק/חשבונית) or event "
+                                "subtype (e.g. חשבונית מס, קבלה). "
+                                "'vat' = VAT status/treatment. "
+                                "'amount' = amount or hourly rate. "
+                                "'percentage' = percent, percent base, or split percent. "
+                                "'free_text' = the free-text description, a trigger "
+                                "condition, or a reference hint - prose, not a specific field. "
+                                "'document' = the accounting document's display number, "
+                                "payment method, or its status/status label (open/paid/"
+                                "cancelled etc. - a document lifecycle fact, not the event's "
+                                "own date). "
+                                "'banking' = bank number, branch, or account."
+                            ),
+                        },
+                    },
+                    "required": ["text", "hint"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["criteria"],
+        "additionalProperties": False,
+    },
+}
+
+
 def _format_reminder_schedule(rrule_str: Optional[str], dtstart_iso: str) -> str:
     """Human-readable Hebrew summary of a reminder's schedule, for the approval
     block (_build_reminder_approval_details). The persisted RRULE string is the
@@ -1523,14 +1777,24 @@ class AIHandler:
             return []
         return [CREATE_REMINDER_TOOL, LIST_REMINDERS_TOOL, MODIFY_REMINDER_TOOL, DELETE_REMINDER_TOOL]
 
+    def _build_ledger_query_tools(self, user_obj) -> List[Dict]:
+        """Ledger Event Querying (Feature 044), RBAC-gated the same way the
+        reminder/Morning MCP tools are - only GODFATHER/ADMIN get
+        query_ledger_events attached. Read-only, no approval gate, ever."""
+        if user_obj is None or user_obj.role not in LEDGER_QUERY_AUTHORIZED_ROLES:
+            return []
+        return [QUERY_LEDGER_EVENTS_TOOL]
+
     def _assemble_tools(self, user_obj, correlation_id: str) -> Optional[List[Dict]]:
         """Merge the (RBAC-gated) Morning MCP tools, the (RBAC-gated) reminder
-        tools, and the (always-on) ledger-event tool into one `tools` list - all
-        can be attached in the same turn. Returns None (not an empty list) when
-        nothing applies, matching the Responses API's own convention for "no
-        tools this call"."""
+        tools, the (RBAC-gated) ledger-query tool, and the (always-on)
+        ledger-event capture tool into one `tools` list - all can be attached
+        in the same turn. Returns None (not an empty list) when nothing
+        applies, matching the Responses API's own convention for "no tools
+        this call"."""
         morning_tools = self._build_morning_mcp_tools(user_obj, correlation_id) if self.rbac_enabled else None
         reminder_tools = self._build_reminder_tools(user_obj) if self.rbac_enabled else []
+        ledger_query_tools = self._build_ledger_query_tools(user_obj) if self.rbac_enabled else []
         # Reminder tools deliberately go LAST (2026-08-19, user decision after a
         # real cross-feature confusion incident): Morning's tools are one opaque
         # `mcp` entry needing runtime discovery, so reminder tools - individually
@@ -1538,7 +1802,14 @@ class AIHandler:
         # list whenever they came right after it. Position isn't the only fix
         # (see the tool descriptions' own explicit negative scoping above), but
         # reduces whatever residual bias position/primacy contributes.
-        combined = (morning_tools or []) + self._build_ledger_event_tool() + reminder_tools
+        # query_ledger_events goes alongside reminder tools (also inlined
+        # `function` entries, same visibility reasoning) - after the ledger
+        # capture tool, before reminders (2026-08-23, no reported cross-feature
+        # confusion yet to justify a different position).
+        combined = (
+            (morning_tools or []) + self._build_ledger_event_tool()
+            + ledger_query_tools + reminder_tools
+        )
         return combined or None
 
     def _build_instructions(self, constitution: str, today_timestamp: Optional[int] = None) -> str:
@@ -1651,7 +1922,9 @@ class AIHandler:
         # type (dict[str, object]) never lines up with any single overload of the
         # SDK's heavily-overloaded create() - safe to ignore, the actual value
         # types are correct for the Responses API.
+        _log_outgoing_request("_call_openai_api (initial call)", kwargs)
         response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        _log_raw_response("_call_openai_api (initial call)", response)
 
         return response
 
@@ -2015,51 +2288,6 @@ class AIHandler:
 
         return followup, event_ids
 
-    @staticmethod
-    def _accounting_document_message_timestamp(call_arguments: Dict) -> Optional[int]:
-        """Feature 025: the reconciliation sweep has no real source message, so
-        message_timestamp (which drives event_id/event_datetime generation in
-        LedgerEventManager) is derived instead from the Morning document's own
-        real creation timestamp - given top-level on the call as
-        accounting_document_creation_date (ISO-8601, e.g.
-        "2026-08-20T18:52:00" - the exact value get_invoice_details' own
-        Hebrew "נוצר ב: DD/MM/YYYY HH:MM" line transcribes, already Israel
-        local, never UTC). Returns None (letting add_ledger_event's own
-        now_local() fallback, with its existing WARNING, take over) if
-        missing or unparseable - never guesses.
-
-        Real live-dev incident (2026-08-21): every one of a first real
-        8-document sweep fell back to processing time instead of the
-        document's own creation time - the model's actual output format
-        was never logged anywhere at the time, so the exact cause is
-        unconfirmed, but Python 3.9's datetime.fromisoformat is notably
-        strict (no trailing "Z" UTC designator - only added in 3.11 - and
-        no space-separated "YYYY-MM-DD HH:MM:SS" variant), a real, known gap
-        against what a model asked for "ISO-8601" might plausibly produce.
-        Both are now normalized before parsing; the raw value is logged at
-        WARNING on any remaining failure so a future incident is
-        diagnosable, unlike this one."""
-        raw = call_arguments.get("accounting_document_creation_date")
-        if not raw:
-            return None
-        normalized = raw.strip()
-        if normalized.endswith("Z"):
-            normalized = normalized[:-1] + "+00:00"
-        if len(normalized) >= 11 and normalized[10] == " ":  # "YYYY-MM-DD HH:MM..."
-            normalized = normalized[:10] + "T" + normalized[11:]
-        try:
-            parsed = datetime.fromisoformat(normalized)
-        except ValueError:
-            logger.warning(
-                f"[025] Could not parse accounting_document_creation_date={raw!r} as "
-                "ISO-8601 - falling back to processing time for this event's date/time "
-                "derivation (add_ledger_event's own WARNING)"
-            )
-            return None
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=LOCAL_TZ)
-        return int(parsed.timestamp())
-
     def _handle_accounting_reconciliation_capture(self, response) -> List[str]:
         """Feature 025 (Morning-Sourced Ledger Events): thin adapter for the
         accounting-document reconciliation sweep's headless OpenAI+MCP call
@@ -2098,13 +2326,21 @@ class AIHandler:
                     "not silently dropped"
                 )
                 continue
-            message_timestamp = self._accounting_document_message_timestamp(call["arguments"])
+            # message_timestamp=None: this sweep has no real source message, and
+            # LedgerEventManager.add_ledger_event already derives the correct
+            # event_datetime itself for source_type=חשבונית directly from the
+            # Morning document's own creation timestamp (carried inside
+            # accounting_document_json, expanded internally) - it only falls
+            # back to message_timestamp/now_local() when that's unavailable.
+            # A prior separate ai_handler-side timestamp derivation here
+            # (removed 2026-08-25) was redundant with that and, since it read
+            # the raw un-expanded call arguments, never actually fired.
             try:
                 new_event_ids = self.ledger_event_manager.add_ledger_events_from_call(
                     session_id="accounting-reconciliation",
                     call_arguments=call["arguments"],
                     message_id=None,
-                    message_timestamp=message_timestamp,
+                    message_timestamp=None,
                 )
                 event_ids.extend(new_event_ids)
             except Exception as e:  # pylint: disable=broad-except
@@ -2205,7 +2441,9 @@ class AIHandler:
         if tools:
             kwargs["tools"] = tools
         logger.info(f"[054] _call_openai_list_reminders_followup_api: call_id={call_id!r}")
+        _log_outgoing_request("_call_openai_list_reminders_followup_api", kwargs)
         response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        _log_raw_response("_call_openai_list_reminders_followup_api", response)
         return response
 
     def _handle_list_reminders(self, request: AIRequest, response, tools: Optional[List[Dict]]):
@@ -2237,6 +2475,119 @@ class AIHandler:
             )
         except Exception as e:  # pylint: disable=broad-except
             logger.error(f"[054] list_reminders follow-up call failed: {e}", exc_info=True)
+            return None
+
+    def _call_openai_query_ledger_events_followup_api(
+        self, request: AIRequest, previous_response_id: str,
+        outputs: List[Dict[str, Any]], tools: Optional[List[Dict]] = None,
+    ):
+        """Feature 044 (research.md Decision 10): report EVERY
+        query_ledger_events call's own result back as its own
+        function_call_output, via a follow-up chained to the SAME turn's
+        response.id - mirrors _call_openai_ledger_followup_api's multi-item
+        batching exactly (a list comprehension, one output item per call_id),
+        NOT _call_openai_list_reminders_followup_api's single-item shape,
+        since a turn may contain several query_ledger_events calls at once.
+
+        outputs: list of {"call_id": str, "payload": dict} - one entry per
+        query_ledger_events call from the previous turn, in the order
+        extract_all_function_calls found them. OpenAI rejects the follow-up
+        outright if any pending call from that turn is left unresolved, so
+        EVERY call_id - a real result or a parse-failure error (data-model.md
+        shape D) - must appear here, none silently omitted.
+        """
+        output_items = [
+            {
+                "type": "function_call_output",
+                "call_id": item["call_id"],
+                "output": json.dumps(item["payload"], ensure_ascii=False),
+            }
+            for item in outputs
+        ]
+        kwargs = {
+            "model": request.model,
+            "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
+            "input": output_items,
+            "previous_response_id": previous_response_id,
+            "max_output_tokens": request.max_tokens,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        call_ids = [item["call_id"] for item in outputs]
+        logger.info(f"[044] _call_openai_query_ledger_events_followup_api: call_ids={call_ids!r}")
+        logger.debug(f"[044][RAWLOG] query_events payload(s) sent back to model: {outputs!r}")
+        _log_outgoing_request("_call_openai_query_ledger_events_followup_api", kwargs)
+        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        _log_raw_response("_call_openai_query_ledger_events_followup_api", response)
+        return response
+
+    def _handle_query_ledger_events(self, request: AIRequest, response, tools: Optional[List[Dict]]):
+        """Feature 044 (research.md Decision 10): query_ledger_events is
+        read-only, dispatched immediately (like list_reminders/
+        capture_ledger_event) - needs a follow-up round-trip for the same
+        reasoning-model function_call-OR-message limitation.
+
+        UNLIKE list_reminders (single-call), this uses
+        extract_all_function_calls: a turn may legitimately contain SEVERAL
+        query_ledger_events calls (e.g. "client A or client B" - the model
+        calls once per criterion and combines results itself). This is the
+        deliberate OPPOSITE of capture_ledger_event's bugfix-018 whole-turn
+        rejection - that rule exists because capture_ledger_event WRITES data
+        and an uncontrolled multi-call burst risks corrupting the ledger with
+        duplicates; query_ledger_events writes nothing, so every call is
+        independent and safe to execute regardless of how many others are
+        present this turn.
+
+        A call whose arguments fail to parse (truncated mid-generation, same
+        failure mode bugfix-018 guards against) gets its own isolated error
+        output (data-model.md shape D) WITHOUT affecting any other call from
+        the same turn - never a whole-turn rejection.
+
+        Returns the follow-up response (whose output_text/usage should
+        replace the original response's), or None if no query_ledger_events
+        call was made this turn, or if the follow-up call itself failed.
+        """
+        calls = extract_all_function_calls(response, QUERY_LEDGER_EVENTS_TOOL["name"])
+        if not calls:
+            return None
+        logger.debug(
+            f"[044][RAWLOG] query_ledger_events calls extracted from response.id="
+            f"{getattr(response, 'id', None)!r}: {calls!r}"
+        )
+
+        outputs = []
+        for call in calls:
+            if call["arguments"] is None:
+                logger.warning(
+                    f"[044] query_ledger_events call {call['call_id']!r} had unparseable "
+                    "arguments (likely truncated) - reporting an isolated error for this "
+                    "call only, other calls this turn are unaffected"
+                )
+                outputs.append({
+                    "call_id": call["call_id"],
+                    "payload": {
+                        "status": "error",
+                        "reason": "Arguments could not be parsed - do not resubmit this exact call.",
+                    },
+                })
+                continue
+            logger.debug(
+                f"[044][RAWLOG] query_ledger_events call {call['call_id']!r} - "
+                f"calling LedgerEventManager.query_events with arguments={call['arguments']!r}"
+            )
+            result = self.ledger_event_manager.query_events(**call["arguments"])
+            logger.debug(
+                f"[044][RAWLOG] query_ledger_events call {call['call_id']!r} - "
+                f"query_events returned: {result!r}"
+            )
+            outputs.append({"call_id": call["call_id"], "payload": result})
+
+        try:
+            return self._call_openai_query_ledger_events_followup_api(
+                request, response.id, outputs, tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[044] query_ledger_events follow-up call failed: {e}", exc_info=True)
             return None
 
     def _handle_reminder_modify_or_delete_proposal(
@@ -2371,6 +2722,100 @@ class AIHandler:
                 return str(text)
         return ""
 
+    def _run_local_tool_dispatch_loop(
+        self, request: AIRequest, response, effective_chat_id: Optional[str],
+        sender: Optional[str], tools: Optional[List[Dict]],
+    ):
+        """The multi-round local-tool dispatch loop extracted out of
+        `_finalize_response` (2026-08-25 - see MAX_LOCAL_TOOL_LOOP_ITERATIONS's
+        own comment for the incident/design rationale). Repeatedly re-runs
+        `_handle_ledger_event_capture` / `_handle_query_ledger_events` /
+        `_handle_list_reminders` against whichever response is current,
+        following up whenever one of them fires, until a full pass makes no
+        further progress (real text, or a terminal pending-approval item -
+        those are never auto-continued past) or the iteration cap is hit.
+
+        Returns (final_response, extra_tokens, extra_prompt_tokens,
+        extra_completion_tokens, usage_response, ledger_event_ids) - the
+        three "extra_*" fields are deltas to ADD to the caller's own running
+        totals (which already include the turn's original response.usage),
+        never absolute totals themselves. `usage_response` is whichever
+        response's usage/finish_reason is authoritative (the last one that
+        actually produced a follow-up, or the original if none did).
+        """
+        current_response = response
+        usage_response = response
+        extra_tokens = extra_prompt_tokens = extra_completion_tokens = 0
+        ledger_event_ids: List[str] = []
+        for _loop_round in range(MAX_LOCAL_TOOL_LOOP_ITERATIONS):
+            made_progress = False
+
+            followup, new_event_ids = self._handle_ledger_event_capture(
+                request, current_response, effective_chat_id, sender, tools
+            )
+            ledger_event_ids.extend(new_event_ids)
+            if followup is not None:
+                current_response = followup
+                usage_response = followup
+                extra_tokens += followup.usage.total_tokens
+                extra_prompt_tokens += followup.usage.input_tokens
+                extra_completion_tokens += followup.usage.output_tokens
+                made_progress = True
+
+            if made_progress:
+                # Re-scan the NEW response from the top (ledger capture again
+                # first) before trying the other two this round - mirrors the
+                # old code's fixed ordering when it wasn't a loop.
+                continue
+
+            # Ledger Event Querying (Feature 044): query_ledger_events is
+            # read-only, dispatched immediately (may involve SEVERAL calls in
+            # one turn - see research.md Decision 10), and needs a follow-up
+            # round-trip for its reply for the same function_call-OR-message
+            # reason as everything else in this loop.
+            ledger_query_followup = self._handle_query_ledger_events(
+                request, current_response, tools
+            )
+            if ledger_query_followup is not None:
+                current_response = ledger_query_followup
+                usage_response = ledger_query_followup
+                extra_tokens += ledger_query_followup.usage.total_tokens
+                extra_prompt_tokens += ledger_query_followup.usage.input_tokens
+                extra_completion_tokens += ledger_query_followup.usage.output_tokens
+                made_progress = True
+                continue
+
+            # Reminders (Feature 054): list_reminders is read-only, dispatched
+            # immediately (unlike create/modify/delete_reminder), and needs a
+            # follow-up round-trip for its reply for the same function_call-
+            # OR-message reason as ledger events.
+            list_reminders_followup = self._handle_list_reminders(
+                request, current_response, tools
+            )
+            if list_reminders_followup is not None:
+                current_response = list_reminders_followup
+                usage_response = list_reminders_followup
+                extra_tokens += list_reminders_followup.usage.total_tokens
+                extra_prompt_tokens += list_reminders_followup.usage.input_tokens
+                extra_completion_tokens += list_reminders_followup.usage.output_tokens
+                made_progress = True
+                continue
+
+            break  # a full pass made no progress - current_response is final
+        else:
+            logger.error(
+                f"[LOOP] Local-tool dispatch loop hit MAX_LOCAL_TOOL_LOOP_ITERATIONS "
+                f"({MAX_LOCAL_TOOL_LOOP_ITERATIONS}) without settling for request "
+                f"{request.request_id} - forcing stop; the model may be stuck "
+                "repeatedly calling tools. Whatever current_response holds now is "
+                "used as final."
+            )
+
+        return (
+            current_response, extra_tokens, extra_prompt_tokens,
+            extra_completion_tokens, usage_response, ledger_event_ids,
+        )
+
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
                            user_obj, user_role: str, sender: Optional[str],
                            recipient: Optional[str], tools: Optional[List[Dict]], *,
@@ -2390,59 +2835,48 @@ class AIHandler:
         completion_tokens = response.usage.output_tokens
         usage_response = response  # tracks whichever call's usage/finish_reason is authoritative
 
-        followup, ledger_event_ids = self._handle_ledger_event_capture(
+        # Local-tool dispatch LOOP (2026-08-25 architectural fix - see
+        # MAX_LOCAL_TOOL_LOOP_ITERATIONS's own comment for the incident this
+        # replaced, and _run_local_tool_dispatch_loop's own docstring for the
+        # mechanics). This used to be a fixed one-hop chain: each of the three
+        # local-tool handlers ran exactly once, against the turn's ORIGINAL
+        # response only. Now they're re-run in a real loop against whichever
+        # response is current, so a model that calls a local tool, gets its
+        # result, and then legitimately calls another one (the same tool
+        # again, or a different one) keeps getting executed and followed up,
+        # instead of being silently stranded.
+        (
+            current_response, extra_tokens, extra_prompt_tokens,
+            extra_completion_tokens, usage_response, ledger_event_ids,
+        ) = self._run_local_tool_dispatch_loop(
             request, response, effective_chat_id, sender, tools
         )
-        if followup is not None:
-            response_text = followup.output_text
-            tokens_used += followup.usage.total_tokens
-            prompt_tokens += followup.usage.input_tokens
-            completion_tokens += followup.usage.output_tokens
-            usage_response = followup
-        elif not response_text.strip() and any(
-            getattr(item, "type", None) == "function_call"
-            and getattr(item, "name", None) == LEDGER_EVENT_TOOL["name"]
-            for item in (response.output or [])
-        ):
-            # bugfix-018 safety net: this turn called capture_ledger_event (so
-            # output_text was always going to be empty - see
-            # _handle_ledger_event_capture's docstring), but the follow-up
-            # round-trip that produces the real reply never came back
-            # (rejected/failed/errored). Never leave the user with a silently
-            # empty WhatsApp message just because that second call didn't
-            # succeed - same pattern as the pending-approval fallback below.
-            response_text = LEDGER_FOLLOWUP_FAILED_TRY_AGAIN
-            logger.warning(
-                f"Ledger-event follow-up did not produce a reply for request "
-                f"{request.request_id} - using generic fallback text so the user "
-                "never receives a silently empty reply."
-            )
+        tokens_used += extra_tokens
+        prompt_tokens += extra_prompt_tokens
+        completion_tokens += extra_completion_tokens
 
-        # Reminders (Feature 054): list_reminders is read-only, dispatched
-        # immediately (unlike create/modify/delete_reminder), and needs a
-        # follow-up round-trip for its reply for the same function_call-OR-
-        # message reason as ledger events. Checked first - if the model called
-        # it this turn, that follow-up's text is this turn's real content.
-        list_reminders_followup = self._handle_list_reminders(request, response, tools)
-        if list_reminders_followup is not None:
-            response_text = list_reminders_followup.output_text
-            tokens_used += list_reminders_followup.usage.total_tokens
-            prompt_tokens += list_reminders_followup.usage.input_tokens
-            completion_tokens += list_reminders_followup.usage.output_tokens
-            usage_response = list_reminders_followup
+        # `response` is reassigned (not just a new local name) so every use
+        # below this point - mcp_calls extraction, approval_requests
+        # extraction, PendingApproval.response_id, the [022] log line, the
+        # final observability retention - automatically reflects whichever
+        # response the loop above actually settled on, not the turn's
+        # original response. This also fixes a real, related gap: previously
+        # those checks only ever looked at the ORIGINAL response, so an
+        # mcp_approval_request or mcp_call that only appeared after a local-
+        # tool round (e.g. right after a query_ledger_events lookup) was
+        # invisible to them entirely.
+        response = current_response
+        response_text = response.output_text
 
         # Bug fix (2026-08-18, caught by a real billed test): when list_reminders
         # was called this turn, the model - now knowing the reminder_id - very
         # often calls create/modify/delete_reminder in the SAME follow-up
         # response, not the original one. create/modify/delete detection below
-        # MUST inspect that follow-up response in that case, never the original
-        # (pre-list_reminders) `response` - otherwise the follow-up's function_call
-        # is invisible to this code, response_text stays '' (list_reminders_followup's
-        # own output_text, empty for the same function_call-OR-message reason),
-        # and AIResponse.__post_init__ correctly rejects the empty reply.
-        reminder_tool_response = (
-            list_reminders_followup if list_reminders_followup is not None else response
-        )
+        # already sees this naturally now: `response` above IS whichever
+        # response the loop last produced, so no separate reminder_tool_response
+        # variable is needed any more (2026-08-25 - the loop generalizes what
+        # this used to special-case for exactly one pairing).
+        reminder_tool_response = response
 
         # Reminders (Feature 054): a create_reminder call produces empty
         # output_text too (same reasoning-model function_call-OR-message
@@ -2577,6 +3011,27 @@ class AIHandler:
                 f"[022] mcp_approval_request found but effective_chat_id is falsy "
                 f"({effective_chat_id!r}) - pending approval NOT stored, this request will be lost!"
             )
+
+        # Generic final safety net (2026-08-25, replaces the old ledger-only
+        # one that used to live where the local-tool loop above now is).
+        # By this point every legitimate reason response_text could still be
+        # empty has already filled it in: a pending MCP approval (block
+        # above), a pending local-tool approval (reminder_details/
+        # modify_delete_details), or the model actually producing text. The
+        # NO_REPLY sentinel is never empty-string, so it can never trip this.
+        # Anything else reaching here empty means some round-trip genuinely
+        # failed (a follow-up call raised, the loop above hit its iteration
+        # cap, or a case nobody's hit yet) - never let that surface as a
+        # silent, crash-inducing empty WhatsApp reply (see
+        # AIResponse.__post_init__'s own guard, and MAX_LOCAL_TOOL_LOOP_
+        # ITERATIONS's comment for the incident this generalizes).
+        if not response_text.strip():
+            logger.error(
+                f"[LOOP] response_text still empty for request {request.request_id} "
+                f"after all local-tool/approval handling - using generic fallback "
+                "text so the user never receives a silently empty reply or a crash."
+            )
+            response_text = LEDGER_FOLLOWUP_FAILED_TRY_AGAIN
 
         logger.info(
             f"AI response generated for request {request.request_id}: "
@@ -2796,7 +3251,9 @@ class AIHandler:
         logger.info(f"[024] _call_openai_ledger_followup_api: call_ids={call_ids!r}")
         # See _call_openai_api's comment: dynamically-built kwargs never match a
         # single create() overload.
+        _log_outgoing_request("_call_openai_ledger_followup_api", kwargs)
         response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        _log_raw_response("_call_openai_ledger_followup_api", response)
         logger.info(
             f"[024] _call_openai_ledger_followup_api response: id={getattr(response, 'id', None)!r}, "
             f"output item types={[getattr(i, 'type', None) for i in (response.output or [])]!r}, "
@@ -2835,7 +3292,9 @@ class AIHandler:
             "max_output_tokens": request.max_tokens,
         }
         logger.info(f"[054] _call_openai_reminder_followup_api: call_id={pending.call_id!r}, result={result!r}")
+        _log_outgoing_request("_call_openai_reminder_followup_api", kwargs)
         response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        _log_raw_response("_call_openai_reminder_followup_api", response)
         logger.info(
             f"[054] _call_openai_reminder_followup_api response: id={getattr(response, 'id', None)!r}, "
             f"output_text={response.output_text!r}"
@@ -2900,7 +3359,9 @@ class AIHandler:
         logger.info("[024] capture_ledger_events_from_text: classifying extracted image text")
         # See _call_openai_api's comment: dynamically-built kwargs never match a
         # single create() overload.
+        _log_outgoing_request("capture_ledger_events_from_text", kwargs)
         response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        _log_raw_response("capture_ledger_events_from_text", response)
         ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
         ledger_events = [c["arguments"] for c in ledger_calls]
         logger.info(
@@ -2931,7 +3392,9 @@ class AIHandler:
             }]
             # See _call_openai_api's comment: dynamically-built kwargs never match a
             # single create() overload.
+            _log_outgoing_request("capture_ledger_events_from_text (retry)", retry_kwargs)
             response = self.client.responses.create(**retry_kwargs)  # type: ignore[call-overload]
+            _log_raw_response("capture_ledger_events_from_text (retry)", response)
             ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
             ledger_events = [c["arguments"] for c in ledger_calls]
             logger.info(
@@ -2980,6 +3443,7 @@ class AIHandler:
         # right here, rather than relying on any outer/shared retry layer to
         # respect this. No retry of this call is ever safe, at any layer.
         response = self.client.with_options(max_retries=0).responses.create(**kwargs)  # type: ignore[call-overload]
+        _log_raw_response("_call_openai_approval_api", response)
         logger.info(
             f"[022] _call_openai_approval_api response: id={getattr(response, 'id', None)!r}, "
             f"output item types={[getattr(i, 'type', None) for i in (response.output or [])]!r}, "
@@ -3480,6 +3944,7 @@ class AIHandler:
                     input=f"Summarize this conversation, leading with facts then inferences:\n\n{conv_text}",
                     max_output_tokens=1000
                 )
+                _log_raw_response(f"transfer_to_longterm_memory (session {session.session_id})", summary_response)
 
                 summary_text = summary_response.output_text
                 logger.info(f"AI summarized session {session.session_id}: {len(summary_text)} chars")

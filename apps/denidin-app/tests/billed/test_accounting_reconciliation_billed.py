@@ -155,19 +155,23 @@ class TestUS1CapturesDocumentsNeverSeenInConversation:
             # ledger_event_manager.py's CURRENT_SCHEMA_VERSION comment) - a real incident
             # showed the constant itself can legitimately change on a human decision, and
             # tests pinned to its exact value break for reasons unrelated to what they're
-            # actually meant to verify.
+            # actually meant to verify. Master's Feature 044 independently added an assertion
+            # against the imported CURRENT_SCHEMA_VERSION constant here - removed on merge per
+            # this session's stricter, already-decided policy (see test_ledger_event_manager.py's
+            # TestSchemaVersion-removal comment: no comparison against the constant either).
             assert num, "every captured document must carry its display number"
 
             # The bug this feature spent the longest on: a fabricated midnight
             # timestamp, from reading the date-only field instead of the real
-            # creation instant.
-            created = e["accounting_document_creation_date"]
+            # creation instant. event_datetime is the sole creation-date field
+            # (2026-08-25: the old accounting_document_creation_date field, a
+            # byte-for-byte duplicate of this one, was removed entirely).
+            created = e["event_datetime"]
             assert created, f"{num}: no creation timestamp"
             assert not created.endswith(" 00:00"), (
                 f"{num}: creation time is exactly midnight ({created}) - the signature "
                 "of a defaulted/fabricated time rather than Morning's real one"
             )
-            assert e["event_datetime"] == created, f"{num}: event_datetime must be the document's own instant"
 
     def test_event_subtype_is_the_real_morning_document_type(
         self, denidin_config, sweep_context, clean_ledger

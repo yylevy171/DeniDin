@@ -54,3 +54,7 @@ Reminders (Feature 054): create/list/modify/delete reminders via natural Hebrew 
 ## [0.5.1] - 2026-08-21
 
 Feature 056: standalone receipts (no linked invoice, no VAT line) and transaction-account cancellation via natural conversation, with zero documents created as a side effect and an idempotent no-op if already closed; approval prompt for cancellation now shows the real account/client data instead of a generic message. Bugfix-040: reminder approval text now translates RRULE weekday codes to Hebrew instead of showing raw English BYDAY codes.
+
+## [0.5.2] - 2026-08-26
+
+Accounting document reconciliation completes with machine-readable capture (Feature 025 Phase 9) and natural-language ledger event querying ships (Feature 044) - AI can now look up and reason over past fee agreements/payments/reconciled documents via a new RBAC-gated query tool, with a ledger-as-cache-over-Morning fallback rule

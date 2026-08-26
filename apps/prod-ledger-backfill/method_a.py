@@ -16,8 +16,10 @@ existing, already-tested code verbatim:
   `_ledger_event_manager_loader.py`) — the exact same code-derived field expansion (never
   AI-transcribed) `LedgerEventManager.add_ledger_event` itself already depends on for every real
   field this ledger persists (`event_subtype`, `accounting_document_display_number`,
-  `accounting_document_status*`, `accounting_document_creation_date`,
-  `accounting_document_payment_method`, `client_name`, `description`, `amount`, `txn_date`,
+  `accounting_document_status*`, `event_datetime` (the sole creation-date field as of
+  2026-08-26 — `accounting_document_creation_date` was removed from the persisted schema
+  entirely, master's Feature 044), `accounting_document_payment_method`, `client_name`,
+  `description`, `amount`, `txn_date`,
   `bank_*`, `vat_status` — the REAL field list, confirmed by reading the function directly).
 
 The two apps' machine-readable-JSON contract (Feature 025 Phase 9) IS the reuse boundary: no new

@@ -72,8 +72,11 @@ def run_transform(
     persists it through LedgerEventManager.add_ledger_event — the manager's own event_id
     generation and dedup/anomaly guard run for real, never re-derived here. session_id/message_id/
     message_timestamp are synthetic placeholders (safe for חשבונית events — real event_id/
-    event_datetime are derived from the document's own accounting_document_creation_date, not
-    from these, confirmed by reading add_ledger_event directly).
+    event_datetime are derived from the document's own creation instant (Morning's raw
+    creation_date, consumed internally as _source_creation_ts_raw), not from these —
+    confirmed by reading add_ledger_event directly. accounting_document_creation_date, a
+    separate persisted field that used to duplicate this same value, was removed entirely
+    2026-08-26, master's Feature 044).
     """
     seen = written = skipped = 0
     for doc_id, raw_document in raw_documents:

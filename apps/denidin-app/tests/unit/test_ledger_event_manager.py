@@ -36,7 +36,7 @@ from pathlib import Path
 
 import pytest
 
-from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
+from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture, _parse_iso_local
 
 # Raw arguments shape capture_ledger_event's LEDGER_EVENT_TOOL produces (Phase 11
 # shape, 2026-08-16). Not every test needs every field non-null.
@@ -65,12 +65,16 @@ CSV_MAPPED_FIELDS = {
     "reference", "agreement_id", "component_id", "component_label",
     "trigger_condition", "percent", "percent_base", "hours", "hourly_rate",
     "txn_date", "vat_status", "split_partner", "split_percent",
-    "due_date", "accounting_document_display_number",
+    "accounting_document_display_number",
     "accounting_document_status",
-    "accounting_document_creation_date",
     # Feature 025 Phase 9 (2026-08-23)
     "accounting_document_status_code", "accounting_document_status_label",
     "accounting_document_payment_method",
+    # due_date removed 2026-08-25 (user directive): dead, always-null reserved
+    # field with no populating code path - dropped from the schema entirely.
+    # accounting_document_creation_date removed 2026-08-25 (user directive): was
+    # a byte-for-byte duplicate of event_datetime for every חשבונית record -
+    # event_datetime is now the only creation-date field, for every source_type.
 }
 # raw_message_excerpt removed (Feature 043, 2026-08-18): the ledger event's own
 # message_id/session_id pointer is now sufficient - the source content lives on
@@ -96,7 +100,7 @@ INTERNAL_FIELDS = {
 # for הסכם/בנק. See
 # TestAccountingDocumentFields below for their new conditional-null coverage.
 RESERVED_NULL_FIELDS = [
-    "split_partner", "split_percent", "due_date",
+    "split_partner", "split_percent",
 ]
 
 # 2026-07-28T11:06:58+00:00 UTC -> Asia/Jerusalem local (UTC+3, Israel DST in July)
@@ -135,7 +139,7 @@ class TestLedgerEventManagerCore:
         assert event_id is not None
         assert (temp_events_dir / f"{event_id}.json").exists()
 
-    def test_written_file_has_exactly_the_27_csv_fields_plus_8_internal_fields(
+    def test_written_file_has_exactly_the_26_csv_fields_plus_8_internal_fields(
         self, manager, temp_events_dir
     ):
         """Phase 11 (2026-08-16, human sign-off after a full field-by-field real-
@@ -146,7 +150,9 @@ class TestLedgerEventManagerCore:
         (self-review follow-up): raw_message_excerpt removed from internal (then
         9) - the message pointer + Message.extracted_text replace it. 2026-08-19:
         whatsapp_chat also removed (now 8) - redundant with session_id, see
-        INTERNAL_FIELDS's own comment above."""
+        INTERNAL_FIELDS's own comment above. 2026-08-25: due_date and
+        accounting_document_creation_date removed from CSV_MAPPED_FIELDS (now 26)
+        - see that constant's own comment."""
         event_id = manager.add_ledger_event(
             session_id="sess-1", event=dict(SAMPLE_EVENT), message_id="msg-1",
             message_timestamp=FIXED_TS,
@@ -937,6 +943,13 @@ class TestAddLedgerEventsFromCall:
 # If this coverage needs restoring, do it via a value-agnostic check (e.g. comparing two
 # freshly-persisted events' schema_version fields to each other, never to a literal number or to
 # CURRENT_SCHEMA_VERSION), decided fresh with the human next time this area is touched.
+#
+# Master's Feature 044 independently reached the same "never assert on schema_version" endpoint
+# for the CURRENT_SCHEMA_VERSION constant itself (both branches reverted 3->2 - see
+# ledger_event_manager.py's SCHEMA_VERSION_HISTORY), but had kept a TestSchemaVersion class
+# comparing against the imported constant rather than a literal - removed here on merge per this
+# session's stricter, already-decided policy (no comparison against CURRENT_SCHEMA_VERSION
+# either, not just no hardcoded literal).
 
 
 class TestBankPaymentDetailFields:
@@ -1229,6 +1242,343 @@ class TestApplyReviewAnswer:
         assert _read(temp_events_dir, other_id) == before_other
 
 
+def _write_raw_event_file(events_dir, event_id, content):
+    """T001a helper: write a raw event JSON file directly to events_dir BEFORE a
+    LedgerEventManager exists over it, so construction-time index loading has
+    something real to find. `content` may be a dict (written as JSON) or a raw
+    str (written verbatim, for the deliberately-malformed-JSON case)."""
+    events_dir.mkdir(parents=True, exist_ok=True)
+    path = events_dir / f"{event_id}.json"
+    if isinstance(content, str):
+        path.write_text(content, encoding="utf-8")
+    else:
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(content, f, ensure_ascii=False)
+
+
+class TestInMemoryIndex:
+    """Feature 044, T001a: the in-memory ledger-event index - populated at
+    construction from {storage_dir}/*.json, kept current on writes.
+
+    NOTE: these tests inspect `manager._index` directly rather than going
+    through a public query method - Feature 044's actual query surface
+    (`query_events`, T002a onward) doesn't exist yet at this point in the
+    phase, and the index itself (this task's own scope) needs to be provable
+    on its own before anything is built on top of it. `_index` is this
+    class's own persisted-in-memory state, not an unrelated internal - a
+    white-box check of it here is the honest, minimal-dependency way to test
+    T001b's actual scope in isolation.
+    """
+
+    def test_construction_loads_all_existing_valid_files_into_index(
+        self, temp_events_dir
+    ):
+        _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))
+        _write_raw_event_file(temp_events_dir, "A2807261407", dict(SAMPLE_EVENT, event_id="A2807261407"))
+        _write_raw_event_file(temp_events_dir, "B2807261408", dict(SAMPLE_EVENT, event_id="B2807261408"))
+
+        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+
+        assert len(manager._index) == 3
+        assert {e["event_id"] for e in manager._index} == {
+            "A2807261406", "A2807261407", "B2807261408",
+        }
+
+    def test_construction_with_no_existing_files_yields_empty_index(self, temp_events_dir):
+        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+        assert manager._index == []
+
+    def test_corrupt_file_skipped_not_raised_others_still_load(self, temp_events_dir, caplog):
+        _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))
+        _write_raw_event_file(temp_events_dir, "A2807261407", "{not valid json at all")
+        _write_raw_event_file(temp_events_dir, "B2807261408", dict(SAMPLE_EVENT, event_id="B2807261408"))
+
+        with caplog.at_level(logging.ERROR):
+            manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+
+        # FR-007: the corrupt file never prevents the others from loading, and
+        # never crashes construction (no exception raised above).
+        assert {e["event_id"] for e in manager._index} == {"A2807261406", "B2807261408"}
+        assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+    def test_add_ledger_event_appends_to_index_immediately(self, manager, temp_events_dir):
+        assert manager._index == []
+
+        event_id = manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT), message_id="m",
+            message_timestamp=FIXED_TS,
+        )
+
+        assert len(manager._index) == 1
+        assert manager._index[0]["event_id"] == event_id
+        # The indexed record matches exactly what was persisted to disk (FR-003 -
+        # same write, not a second, possibly-divergent copy).
+        assert manager._index[0] == _read(temp_events_dir, event_id)
+
+    def test_add_ledger_event_after_construction_from_existing_files_grows_index(
+        self, temp_events_dir
+    ):
+        _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))
+        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+        assert len(manager._index) == 1
+
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT), message_id="m",
+            message_timestamp=FIXED_TS,
+        )
+
+        assert len(manager._index) == 2
+
+
+# Feature 044: the old FIXED_TS_AUG5/AUG20 date-range test fixtures are gone -
+# the 2026-08-24 redesign dropped range filtering from query_events entirely
+# (see the module-level _HINT_GROUPS comment); every test below reuses the
+# shared FIXED_TS from the top of this file.
+
+
+class TestQueryEventsCriteriaMatching:
+    """Feature 044, redesigned 2026-08-24 (see the module-level _HINT_GROUPS
+    comment for why the old separate client_name/date_from/date_to/amount_min/
+    amount_max/source_type/event_subtype/free_text parameters were replaced).
+    `criteria` is a list of {"text": str, "hint": Optional[str]} pairs; every
+    criterion is searched against EVERY searchable field on EVERY event -
+    never restricted to one field, hint or no hint. A number is compared
+    numerically against numeric fields only; anything else is fuzzy/typo-
+    tolerant text matching against every field."""
+
+    def test_text_criterion_matches_client_name_with_typo(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד כהן"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "דויד כהן", "hint": "identity"}])
+        assert result["count"] == 1
+
+    def test_text_criterion_matches_payer_name_even_with_identity_hint(self, manager):
+        manager.add_ledger_event(
+            session_id="s",
+            event=dict(SAMPLE_EVENT, client_name="לקוח מקורי", payer_name="חברת הביטוח"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "חברת הביטוח", "hint": "identity"}])
+        assert result["count"] == 1
+
+    def test_text_criterion_searches_every_field_not_just_description(self, manager):
+        """The core behavior change this redesign exists for: a text criterion
+        is compared against EVERY searchable field (here, trigger_condition),
+        never just description/free-text fields - the user's explicit
+        correction ("EVERY text search searches ALL text fields")."""
+        manager.add_ledger_event(
+            session_id="s",
+            event=dict(SAMPLE_EVENT, description="דבר אחר לגמרי",
+                       trigger_condition="בכפוף לתשלום מקדמה"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "בכפוף לתשלום מקדמה", "hint": None}])
+        assert result["count"] == 1
+
+    def test_text_criterion_matches_accounting_document_display_number(self, manager):
+        manager._index.append(dict(
+            SAMPLE_EVENT, event_id="H_TEST_3", source_type="חשבונית",
+            accounting_document_display_number="40406",
+        ))
+        result = manager.query_events(criteria=[{"text": "40406", "hint": "document"}])
+        assert result["count"] == 1
+
+    def test_text_criterion_matches_accounting_document_status_label(self, manager):
+        manager._index.append(dict(
+            SAMPLE_EVENT, event_id="H_TEST_4", source_type="חשבונית",
+            accounting_document_status_label="מסמך סגור",
+        ))
+        result = manager.query_events(criteria=[{"text": "מסמך סגור", "hint": "document"}])
+        assert result["count"] == 1
+
+    def test_text_criterion_matches_accounting_document_payment_method(self, manager):
+        manager._index.append(dict(
+            SAMPLE_EVENT, event_id="H_TEST_5", source_type="חשבונית",
+            accounting_document_payment_method="העברה בנקאית",
+        ))
+        result = manager.query_events(criteria=[{"text": "העברה בנקאית", "hint": "document"}])
+        assert result["count"] == 1
+
+    def test_text_criterion_never_raises_on_a_raw_int_status_code_field(self, manager):
+        """accounting_document_status_code (a raw int, deliberately excluded
+        from _SEARCHABLE_FIELDS - accounting_document_status_label is the
+        searchable text form) must never crash _score_criterion even though
+        other events on the same index carry stray non-string field values."""
+        manager._index.append(dict(
+            SAMPLE_EVENT, event_id="H_TEST_6", source_type="חשבונית",
+            accounting_document_status_code=2,
+        ))
+        result = manager.query_events(criteria=[{"text": "2", "hint": None}])
+        assert result["count"] == 0  # status_code itself isn't a searched field
+
+    def test_numeric_criterion_matches_amount_exactly(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, amount="5,000₪"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "5000", "hint": "amount"}])
+        assert result["count"] == 1
+
+    def test_numeric_criterion_does_not_match_a_different_amount(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, amount="5,000₪"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "38", "hint": "amount"}])
+        assert result["count"] == 0
+
+    def test_numeric_criterion_never_fuzzy_matches_an_unrelated_digit_heavy_text_field(self, manager):
+        """Empirically-found bug (2026-08-24): fuzzy STRING matching between a
+        numeric query and a digit-heavy non-numeric field (e.g. a date string)
+        spuriously scores high via raw character overlap. A number criterion
+        must ONLY ever be compared against genuinely numeric fields."""
+        manager.add_ledger_event(
+            session_id="s",
+            event=dict(SAMPLE_EVENT, amount="0", txn_date="2026-08-24", hours="2"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "100", "hint": None}])
+        assert result["count"] == 0
+
+    def test_multiple_criteria_all_must_individually_match(self, manager):
+        """Two events share the same amount but only one shares the identity -
+        every criterion must clear the match floor INDIVIDUALLY, not just on
+        average (2026-08-24 regression, found via a real OR-query test: a
+        perfect amount match was "carrying" an irrelevant identity score past
+        a mean-of-scores gate)."""
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה",
+                                        client_name="אלי אבירם", amount="100"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה",
+                                        client_name="דוד כרמון", amount="100"),
+            message_id="m2", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[
+            {"text": "אלי אבירם", "hint": "identity"},
+            {"text": "100", "hint": "amount"},
+        ])
+        assert result["count"] == 1
+        assert result["matches"][0]["client_name"] == "אלי אבירם"
+
+    def test_hint_is_a_soft_bonus_not_a_hard_filter(self, manager):
+        """A wrong/mismatched hint must never exclude an otherwise-real match -
+        it only ever adds (or withholds) a scoring bonus."""
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד כהן"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "דוד כהן", "hint": "amount"}])
+        assert result["count"] == 1
+
+    def test_no_plausible_match_returns_empty_not_ambiguous(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד כהן"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(
+            criteria=[{"text": "ישות שלא קיימת לגמרי", "hint": "identity"}]
+        )
+        assert "matches" in result
+        assert result["count"] == 0
+
+    def test_differently_worded_paraphrase_does_not_match(self, manager):
+        """research.md's accepted limitation still holds after the redesign:
+        keyword/typo-tolerant matching, NOT meaning-based - a completely
+        different wording of the same legal matter is NOT expected to match."""
+        manager.add_ledger_event(
+            session_id="s",
+            event=dict(SAMPLE_EVENT, description="אי הפרעה בשימוש במקרקעין"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "צו מניעה", "hint": "free_text"}])
+        assert result["count"] == 0
+
+    def test_matches_carry_a_confidence_score_at_or_above_the_floor(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד כהן"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "דוד כהן", "hint": "identity"}])
+        assert result["matches"][0]["confidence"] >= 55
+
+
+class TestQueryEventsIdentityAmbiguity:
+    """Feature 044. 2026-08-26 (explicit user directive): the tool used to
+    intercept an `identity`-hinted criterion matching 2+ distinct stored
+    client_name/payer_name values and return a candidates shape INSTEAD of
+    real events, forcing a clarifying question with no way to ever proceed
+    past it (confirmed live: T028's billed test kept hitting the identical
+    block even after the user had already resolved the ambiguity in
+    conversation). Removed entirely - the tool always returns real matched
+    events for every distinct name that clears the floor, and reasoning
+    about whether more than one distinct name showing up is worth asking
+    the user about is the model's own job now, not this tool's."""
+
+    def test_exactly_one_distinct_candidate_returns_matches(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד כהן"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "דוד כהן", "hint": "identity"}])
+        assert "matches" in result
+        assert result["count"] == 1
+
+    def test_two_distinct_names_both_returned_as_real_matches(self, manager):
+        """A fuzzy multi-name match no longer blocks - both distinct
+        client_names come back as ordinary, separately-scored matches."""
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד כהן"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, client_name="דוד לוי"),
+            message_id="m2", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "דוד", "hint": "identity"}])
+        assert "matches" in result
+        assert "ambiguous_field" not in result
+        client_names = {m["client_name"] for m in result["matches"]}
+        assert client_names == {"דוד כהן", "דוד לוי"}
+
+
+class TestQueryEventsVagueQueryGuard:
+    """Feature 044: query_events refuses to scan the whole ledger when no
+    criteria were given at all."""
+
+    def test_empty_criteria_returns_no_search_criteria_error(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT), message_id="m1",
+            message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[])
+        assert result == {
+            "error": "no_search_criteria",
+            "message": result.get("message"),
+        }
+        assert "matches" not in result
+
+    def test_none_criteria_returns_no_search_criteria_error(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT), message_id="m1",
+            message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=None)
+        assert result["error"] == "no_search_criteria"
+
+    def test_single_criterion_proceeds_normally(self, manager):
+        manager.add_ledger_event(
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הסכם"),
+            message_id="m1", message_timestamp=FIXED_TS,
+        )
+        result = manager.query_events(criteria=[{"text": "הסכם", "hint": "event_type"}])
+        assert "matches" in result
+        assert result["count"] == 1
+
 
 # Feature 025 (Morning-Sourced Ledger Events), round 3 (2026-08-21) - raw
 # arguments shape a reconciliation-sweep-driven capture_ledger_event call
@@ -1236,7 +1586,7 @@ class TestApplyReviewAnswer:
 # free-text/image signal), every accounting_document_* value here is
 # transcribed directly from a real Morning Invoice record's own structured
 # fields - never inferred - per data-model.md's LEDGER_EVENT_TOOL
-# schema-change notes. accounting_document_creation_date carries full HH:MM
+# schema-change notes. The document's own creation_date carries full HH:MM
 # precision (round 3 finding: Morning's real creationDate field is a genuine
 # epoch timestamp, not date-only) and message_timestamp below is the epoch
 # this same instant maps to, matching contracts/ledger-event-manager-
@@ -1276,8 +1626,12 @@ SAMPLE_ACCOUNTING_EVENT = _accounting_event()
 
 ACCOUNTING_DOCUMENT_FIELDS = [
     "accounting_document_display_number", "accounting_document_status",
-    "accounting_document_creation_date",
 ]
+# accounting_document_creation_date removed 2026-08-25 (user directive): was a
+# byte-for-byte duplicate of event_datetime for every חשבונית record - dropped
+# from the persisted schema; event_datetime itself is covered separately below
+# (test_accounting_document_event_persists_its_fields), since it's populated
+# for every source_type, not conditionally forced-null like the fields above.
 
 # Every field that has no meaning for a source_type="חשבונית" capture (no
 # agreement/component/conditional-fee/bank concept applies to a Morning
@@ -1291,6 +1645,49 @@ NON_APPLICABLE_FIELDS_FOR_ACCOUNTING_DOCUMENT = [
 
 
 
+
+
+class TestParseIsoLocalRobustness:
+    """Feature 025, regression guard originally added after a real live-dev
+    incident (2026-08-21): a first real 8-document sweep had EVERY event fall
+    back to processing time instead of the document's own real creation time -
+    the exact model output format was never logged at the time this happened,
+    so the fix (below) covers the known-strict gaps in Python 3.9's
+    datetime.fromisoformat rather than a single confirmed root cause, plus
+    adds the diagnostic logging this incident was missing.
+
+    Moved here 2026-08-25 from test_ai_handler_ledger_events.py's
+    TestAccountingDocumentMessageTimestamp: that class exercised
+    AIHandler._accounting_document_message_timestamp, which read the raw,
+    un-expanded capture_ledger_event call arguments - a field that never
+    actually appeared there in real traffic, making that method dead code
+    (now removed). The real, working parsing lives here, in
+    LedgerEventManager._parse_iso_local, reached via
+    _expand_accounting_document_json's `creation_date` -> add_ledger_event's
+    `accounting_created_dt` derivation - so the robustness coverage moves with
+    it, exercising the function that actually runs in production."""
+
+    def test_plain_iso_no_timezone_parses(self):
+        assert _parse_iso_local("2026-08-20T18:52:00") is not None
+
+    def test_trailing_z_suffix_parses(self):
+        """Python 3.9's fromisoformat does NOT accept a trailing Z (only
+        added in 3.11) - a real, known gap against what Morning's own
+        creationDate field might plausibly carry."""
+        assert _parse_iso_local("2026-08-20T18:52:00Z") is not None
+
+    def test_space_separated_variant_parses(self):
+        assert _parse_iso_local("2026-08-20 18:52:00") is not None
+
+    def test_missing_value_returns_none_silently(self):
+        assert _parse_iso_local(None) is None
+        assert _parse_iso_local("") is None
+
+    def test_genuinely_unparseable_value_returns_none_and_logs_the_raw_value(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            result = _parse_iso_local("not a date at all")
+        assert result is None
+        assert any("not a date at all" in r.message for r in caplog.records)
 
 
 class TestAccountingDocumentFields:
@@ -1312,7 +1709,9 @@ class TestAccountingDocumentFields:
         data = _read(temp_events_dir, event_id)
         assert data["accounting_document_display_number"] == "40406"
         assert data["accounting_document_status"] == "שולם"
-        assert data["accounting_document_creation_date"] == "28/07/2026 18:06"
+        # event_datetime is the sole creation-date field (2026-08-25) - derived
+        # from the document's own real creation_date, not the capture instant.
+        assert data["event_datetime"] == "28/07/2026 18:06"
 
     def test_event_subtype_carries_the_morning_doc_type(self, manager, temp_events_dir):
         """Superseded "הפקה" (2026-08-23) - see
@@ -1681,7 +2080,8 @@ class TestAccountingDocumentJsonCapture:
             message_id=None, message_timestamp=None,
         )
         data = _read(temp_events_dir, event_id)
-        assert data["accounting_document_creation_date"] == "20/08/2026 18:52"
+        # accounting_document_creation_date removed 2026-08-25 - event_datetime
+        # (derived from the same real JSON creation_date) is the sole assertion now.
         assert data["event_datetime"] == "20/08/2026 18:52"
         assert event_id.startswith("H2008261852")
 
@@ -1751,9 +2151,10 @@ class TestAccountingDocumentJsonCapture:
         )
         assert _read(temp_events_dir, exempt)["vat_status"] == "לא צוין"
 
-    # test_schema_version_is_3 removed (2026-08-26, human decision, post-incident) - see
-    # TestSchemaVersion's removal comment above for the full policy rationale: no test may
-    # assert on schema_version's value, ever.
+    # test_schema_version_is_3 / test_schema_version_is_current removed (2026-08-26, human
+    # decision, post-incident) - see TestSchemaVersion's removal comment above for the full
+    # policy rationale: no test may assert on schema_version's value, ever, not even against
+    # the imported CURRENT_SCHEMA_VERSION constant.
 
     def test_malformed_json_is_rejected_and_logged_never_half_persisted(self, manager, caplog):
         event = {"source_type": "חשבונית", "event_subtype": "הפקה",

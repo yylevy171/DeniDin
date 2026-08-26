@@ -122,6 +122,38 @@ future schema change.
 
 ---
 
+## H3 · `expired/` accumulates stale sessions across runs, and nothing scopes a lookup to "this
+run's own session" *(added 2026-08-26, not yet triaged into H1/H2's priority)*
+
+`tests/billed/test_session_transfer.py::test_session_transfer_and_recall_after_expiration`
+failed during Feature 044's closing regression sweep
+(`specs/in-progress/044-ledger-event-querying/`), a run unrelated to Feature 044 itself:
+
+```python
+archived_sessions = list(expired_dir.rglob("*/session.json"))
+assert len(archived_sessions) >= 1, "Session should be archived to expired/YYYY-MM-DD/ folder"
+
+archived_session_path = archived_sessions[0]          # <-- first match, unfiltered
+...
+assert archived_data['session_id'] == session_id, "Archived session ID should match"
+```
+```
+AssertionError: Archived session ID should match
+assert 'bbc28e41-0518-41fb-a2fe-a4250ab64e82' == 'a46aa2e2-5600-4390-b72c-d93125cb2088'
+```
+The test's own `expired/` directory held more than one archived `session.json` by the time this
+assertion ran, and `rglob(...)[0]` picked up a **different, pre-existing** archived session
+instead of the one this specific run's `PHASE 2`/`PHASE 3` had just created and expired — not a
+transfer failure in the H1/H2 sense, but the same family of symptom: session lifecycle state
+(here, archived sessions on disk) accumulating unbounded and untracked between runs, this time
+surfacing as a test-isolation bug rather than a production cost/log-noise one. Not investigated
+further — no root cause confirmed yet, and it is not yet clear whether this is purely a test
+fixture gap (the test should scope its own `expired_dir` glob to sessions matching its own
+`session_id`/`chat_id`, or clean the directory before it runs) or also reflects a production-side
+gap in how `expired/YYYY-MM-DD/` is meant to be bounded/rotated over time. Logged here per
+explicit user decision to attribute this failure to bugfix-035 for a human read-through,
+alongside H1/H2, rather than as its own separate bug.
+
 ## Expected
 - Group-chat session transfer completes and marks `transferred_to_longterm`.
 - The verify step uses the same name resolution as the write (or is dropped — it adds no value
@@ -129,6 +161,9 @@ future schema change.
 - Retries are bounded, with a dead-letter and a visible signal on give-up.
 - Session deserialisation tolerates unknown persisted fields (ignore + warn, or migrate),
   rather than failing permanently.
+- (H3) Either the test suite scopes archived-session lookups to the session it itself created, or
+  a production-side bound/rotation policy for `expired/YYYY-MM-DD/` is confirmed to already exist
+  and this is purely a test-fixture gap — to be determined during root-cause investigation.
 
 ## Prod cleanup (separate, requires a write — not part of the fix)
 The 27 duplicate records in `memory_120363210094632983_at_g.us` should be purged. Sequencing
