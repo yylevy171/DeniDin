@@ -1099,7 +1099,7 @@ kind of source material — apply them the same way to a single live message:
   client's name (often its own line, e.g. a client name followed by "דרך
   הראל") — this is a strong, common real-world signal that X is the paying
   intermediary, not part of the matter/agreement description. Don't fold it
-  into `agreement_label` or `description` by default. If you genuinely can't
+  into `agreement_id`'s label component or `description` by default. If you genuinely can't
   tell whether a name refers to the client, the payer, or something else
   entirely (e.g. a referring attorney) — this is exactly the kind of
   material, one-question-resolvable ambiguity the rule above means: ask,

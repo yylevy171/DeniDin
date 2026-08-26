@@ -248,15 +248,88 @@ _STATUS_HE = {"paid": "שולם", "unpaid": "לא שולם", "cancelled": "בו�
 # new write regardless of source_type, not just חשבונית - הסכם/בנק captures get
 # schema_version=2 too, once this feature ships.
 #
-# Stays 2 (Feature 044, 2026-08-25, user directive - corrects a stray 2->3 bump
-# introduced by a since-superseded intermediate commit): due_date and
-# accounting_document_creation_date removed from the persisted schema entirely
-# - due_date was a dead, always-null reserved field; accounting_document_
+# Bumped 2->3 (Feature 025 Phase 9, 2026-08-23, commit 0ed64ea) with no matching
+# "Bumped 2->3" comment/decision record ever added - a real governance gap,
+# independently found and reverted TWICE: once on master (Feature 044,
+# 2026-08-25 - "corrects a stray 2->3 bump introduced by a since-superseded
+# intermediate commit", bundled with removing due_date and
+# accounting_document_creation_date from the persisted schema entirely -
+# due_date was a dead, always-null reserved field; accounting_document_
 # creation_date duplicated event_datetime byte-for-byte for every חשבונית
-# record. event_datetime is now the only creation-date field, for every
-# source_type alike. Not treated as schema-affecting enough on its own to
-# bump further.
+# record, so event_datetime is now the only creation-date field, for every
+# source_type alike - neither change judged schema-affecting enough on its
+# own to bump further), and again on Feature 061's branch (2026-08-26, before
+# the two branches had merged - see CLAUDE.md's "LEDGER SCHEMA VERSION BUMPS
+# ARE HUMAN-ONLY" rule, added as a direct result of finding this same gap).
+# Both reverts land on the same value (2); Feature 061's contribution kept on
+# merge is the lasting enforcement mechanism below (SCHEMA_VERSION_HISTORY +
+# _verify_schema_version_history()), which neither branch had before.
 CURRENT_SCHEMA_VERSION = 2
+
+# Every entry here is a human-approved decision, added in the SAME commit that
+# changes CURRENT_SCHEMA_VERSION above it - never after the fact.
+# _verify_schema_version_history() (below) fails loudly at import time if the
+# two ever drift apart - the exact enforcement this file was missing when the
+# undocumented 2->3 bump above happened (2026-08-26 incident).
+SCHEMA_VERSION_HISTORY = [
+    {
+        "version": 1,
+        "date": "2026-08-16",
+        "feature": "Phase 11 (043)",
+        "decision": "Reset to 1 - human decision, see the comment block above this constant.",
+    },
+    {
+        "version": 2,
+        "date": "2026-08-21",
+        "feature": "025",
+        "decision": (
+            "Bumped 1->2 per spec.md Clarifications - no config.feature_flags gate, this "
+            "bump IS the gate."
+        ),
+    },
+    {
+        "version": 2,
+        "date": "2026-08-25",
+        "feature": "044",
+        "decision": (
+            "REVERTED from 3 back to 2 - the 2->3 bump (commit 0ed64ea, 2026-08-23) shipped "
+            "without a matching human-approved decision record here. Bundled with removing "
+            "due_date/accounting_document_creation_date from the persisted schema entirely "
+            "(event_datetime is now the sole creation-date field); neither judged "
+            "schema-affecting enough on its own to bump further."
+        ),
+    },
+    {
+        "version": 2,
+        "date": "2026-08-26",
+        "feature": "061 (independent re-discovery, pre-merge)",
+        "decision": (
+            "Found and reverted the same 2->3 gap independently, on a branch that hadn't yet "
+            "merged Feature 044's fix above - same root cause, same resulting value (2). "
+            "Recorded here (rather than dropped as a duplicate) because this pass is what "
+            "added SCHEMA_VERSION_HISTORY/_verify_schema_version_history() itself, plus "
+            "CLAUDE.md's 'LEDGER SCHEMA VERSION BUMPS ARE HUMAN-ONLY' rule - the lasting "
+            "enforcement Feature 044's fix didn't add."
+        ),
+    },
+]
+
+
+def _verify_schema_version_history() -> None:
+    """Fails loudly at import time if CURRENT_SCHEMA_VERSION has no matching, human-approved
+    SCHEMA_VERSION_HISTORY entry as its last item - see the constant's own comment and
+    CLAUDE.md's "LEDGER SCHEMA VERSION BUMPS ARE HUMAN-ONLY" rule for why this exists."""
+    if not SCHEMA_VERSION_HISTORY or SCHEMA_VERSION_HISTORY[-1]["version"] != CURRENT_SCHEMA_VERSION:
+        raise RuntimeError(
+            f"CURRENT_SCHEMA_VERSION={CURRENT_SCHEMA_VERSION} has no matching "
+            "SCHEMA_VERSION_HISTORY entry as its last item - every schema_version change "
+            "requires an explicit, human-approved decision recorded here, added in the same "
+            "commit that changes the constant. See CLAUDE.md's 'LEDGER SCHEMA VERSION BUMPS "
+            "ARE HUMAN-ONLY' rule."
+        )
+
+
+_verify_schema_version_history()
 
 # Matches ש"ח / ש׳ח / שח (various quote-character renderings of "shekel chadash").
 _SHEKEL_WORD_RE = re.compile(r'ש["\'״]?ח')
@@ -611,7 +684,7 @@ class LedgerEventManager:
         return index
 
     def _resolve_local_dt(self, message_timestamp: Optional[int]):
-        """Shared by add_ledger_event and build_agreement_id: Asia/Jerusalem local
+        """Shared by add_ledger_event: Asia/Jerusalem local
         datetime for the source message, falling back to processing time (with a
         WARNING) only if message_timestamp is genuinely absent - see spec.md Edge
         Cases. Drives event_datetime/event_id generation.
@@ -627,22 +700,6 @@ class LedgerEventManager:
             "date/time derivation only; the hard pointer itself is genuinely unknown"
         )
         return now_local()
-
-    def build_agreement_id(
-        self,
-        client_name: Optional[str],
-        agreement_label: Optional[str],
-        message_timestamp: Optional[int],
-    ) -> str:
-        """REQ-DATA-004: "{MMYY}-{slugify(client_name)}-{slugify(agreement_label)}",
-        matching the real Events.csv convention exactly (verified against all 1159
-        rows, 2026-07-30). Pure/stateless - exposed so AIHandler can compute this
-        once per multi-component batch and pass the identical string into every
-        add_ledger_event call for that batch, instead of relying on the AI to repeat
-        agreement_label verbatim across separate tool calls."""
-        local_dt = self._resolve_local_dt(message_timestamp)
-        mmyy = local_dt.strftime("%m%y")
-        return f"{mmyy}-{_slugify(client_name)}-{_slugify(agreement_label)}"
 
     def _next_seq(self, letter: str, ddmmyy: str, hhmm: str) -> Optional[int]:
         """Smallest unused single digit (0-9) for this letter+date+minute, scoped
@@ -824,13 +881,17 @@ class LedgerEventManager:
             message_timestamp: Unix epoch of the source message - drives event_datetime/
                 event_id generation; falls back to processing time (WARNING logged)
                 only if None, since the hard pointer is genuinely unknown, never guessed
-            agreement_id: (REQ-DATA-004, added 2026-07-30) caller-supplied agreement_id
-                for a multi-component batch - used as-is when given, so every component
-                in that batch shares byte-for-byte the same id. When None (a standalone,
-                non-batched capture), derived fresh from this event's own
-                client_name/agreement_label via build_agreement_id. Ignored entirely
-                when event["source_type"] == "בנק" (agreement_id/component_id always
-                None for bank events - no agreement concept applies).
+            agreement_id: (REQ-DATA-004, added 2026-07-30; AI-authored since bugfix-agreement-label)
+                caller-supplied agreement_id for a multi-component batch - used as-is when
+                given, so every component in that batch shares byte-for-byte the same id.
+                When None (a standalone, non-batched capture), taken directly from
+                event["agreement_id"] as built by the AI itself, per LEDGER_EVENT_TOOL's
+                schema (it builds the id once, in the documented format, when the matter
+                is first created, and repeats the identical string for every later
+                component/message referencing that same matter) - code no longer computes
+                or slugifies any part of it. Ignored entirely when event["source_type"] ==
+                "בנק" (agreement_id/component_id always None for bank events - no
+                agreement concept applies).
 
         Returns:
             The new event_id on success, or None if REQ-ID-003's exhaustion case
@@ -962,15 +1023,13 @@ class LedgerEventManager:
                     f"leaving 'תאריך_ביצוע' blank"
                 )
 
-        # agreement_label (Phase 11): stays a LEDGER_EVENT_TOOL input (stated once, used
-        # to build agreement_id below) but is no longer persisted as its own field - see
-        # data-model.md SS1b. Every component still shares the identical agreement_id.
-        agreement_label = event.get("agreement_label")
+        # agreement_id (bugfix-agreement-label): fully AI-authored per LEDGER_EVENT_TOOL's
+        # schema - no separate label field exists anywhere, and code no longer computes or
+        # slugifies any part of this id, only uses it verbatim as given (see data-model.md
+        # SS1b for the earlier Phase 11 history of this field).
         component_label = event.get("component_label")
         if source_type == "הסכם":
-            resolved_agreement_id = agreement_id or self.build_agreement_id(
-                event.get("client_name"), agreement_label, message_timestamp
-            )
+            resolved_agreement_id = agreement_id or event.get("agreement_id")
             component_id = f"{resolved_agreement_id}-{_slugify(component_label)}"
         else:
             # REQ-DATA-004: no agreement/component concept applies to בנק events
@@ -1180,7 +1239,7 @@ class LedgerEventManager:
 
         `call_arguments` is one `capture_ledger_event` call's full parsed arguments -
         agreement-level fields (source_type, event_subtype, client_name, payer_name,
-        agreement_label, reference_hint, bank_number/bank_branch/bank_account)
+        agreement_id, reference_hint, bank_number/bank_branch/bank_account)
         plus a `components` list (>=1 item, even for a
         single-component or בנק capture).
         Each component is merged with the shared agreement-level fields into the same
@@ -1188,9 +1247,9 @@ class LedgerEventManager:
         persisted individually - `add_ledger_event` itself is unchanged.
 
         All components from this ONE call share byte-for-byte the same `agreement_id`
-        (computed once here, before the loop - the batch-consistency guarantee is now
-        structural at the single-call level, simpler than the old cross-call batching
-        this replaces).
+        (read once here, before the loop, straight from the AI-authored
+        shared_fields["agreement_id"] - the batch-consistency guarantee is structural at
+        the single-call level; code does not compute or slugify any part of this id).
 
         Returns the list of persisted event_ids, in component order - may be shorter
         than the components list if any individual component hit REQ-ID-003's rare
@@ -1252,11 +1311,7 @@ class LedgerEventManager:
 
         batch_agreement_id = None
         if shared_fields.get("source_type") == "הסכם" and components:
-            batch_agreement_id = self.build_agreement_id(
-                shared_fields.get("client_name"),
-                shared_fields.get("agreement_label"),
-                message_timestamp,
-            )
+            batch_agreement_id = shared_fields.get("agreement_id")
 
         event_ids = []
         for component in components:

@@ -1,0 +1,36 @@
+# Real credentials — never committed (spec.md REQ-BACKFILL-006, contracts/backfill-creds-file.md)
+config/backfill_prod_creds.local.json
+config/backfill_sandbox_creds.local.json
+
+# Method B's live-MCP creds (contracts/backfill-mcp-creds-file.md) — a separate, distinct file,
+# only needed for Phase 2's one-time sandbox experiment.
+config/backfill_mcp_creds.local.json
+
+# Local pipeline output — real downloaded documents / transformed ledger events / validation
+# reports are operator-machine-local artifacts, never repo content (spec.md REQ-BACKFILL-009)
+output/
+ledger_events/
+validation_reports/
+method_selection_report.json
+
+# Phase 2 (select_method.py) real sandbox-run artifacts — canonical JSON files + manifests from
+# actually running --generate-a/--generate-b (T031, 2026-08-26); same "operator-machine-local,
+# never repo content" reasoning as output/ above — contains real (sandbox) client names/documents.
+method2_a/
+method2_a_pretty/
+method2_b/
+
+# Backup of dev's live ledger events taken before the real dev backfill run replaced them
+# (2026-08-26/27) — contains real dev data, same "operator-machine-local, never repo content"
+# reasoning as output/ above.
+archived_dev_events_pre_backfill_20260826/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.egg-info/
+
+# Test logs (per-app pattern, mirrors apps/denidin-app and apps/morning-mcp-app)
+logs/

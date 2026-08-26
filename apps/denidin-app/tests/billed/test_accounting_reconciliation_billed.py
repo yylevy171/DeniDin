@@ -26,7 +26,6 @@ from openai import OpenAI
 
 import src.services.accounting_reconciliation_service as svc
 from src.handlers.ai_handler import AIHandler
-from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
 from src.utils.time_utils import now_local
 
 pytestmark = pytest.mark.billed
@@ -152,7 +151,14 @@ class TestUS1CapturesDocumentsNeverSeenInConversation:
             assert e["source_type"] == "חשבונית", num
             assert e["session_id"] == "accounting-reconciliation", num
             assert e["message_id"] is None, num
-            assert e["schema_version"] == CURRENT_SCHEMA_VERSION, num
+            # No assertion on schema_version here (2026-08-26 policy, see
+            # ledger_event_manager.py's CURRENT_SCHEMA_VERSION comment) - a real incident
+            # showed the constant itself can legitimately change on a human decision, and
+            # tests pinned to its exact value break for reasons unrelated to what they're
+            # actually meant to verify. Master's Feature 044 independently added an assertion
+            # against the imported CURRENT_SCHEMA_VERSION constant here - removed on merge per
+            # this session's stricter, already-decided policy (see test_ledger_event_manager.py's
+            # TestSchemaVersion-removal comment: no comparison against the constant either).
             assert num, "every captured document must carry its display number"
 
             # The bug this feature spent the longest on: a fabricated midnight

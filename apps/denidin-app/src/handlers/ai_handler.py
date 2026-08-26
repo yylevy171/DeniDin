@@ -684,22 +684,30 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                     "client_name (e.g. an insurer/union routing payment). Watch specifically "
                     "for 'דרך X' / 'באמצעות X' / 'via X' / 'through X' near a client's name "
                     "(often its own line right after the client name) - a strong, common "
-                    "signal that X is the payer, not part of agreement_label/description. "
+                    "signal that X is the payer, not part of the agreement_id's label "
+                    "component or description. "
                     "ALWAYS null for source_type=בנק - a bank deposit's account-holder name "
                     "goes in client_name, never here; there is no payer/client distinction "
                     "for a בנק event."
                 ),
             },
-            "agreement_label": {
+            "agreement_id": {
                 "type": ["string", "null"],
                 "description": (
-                    "Short human-readable Hebrew label for the matter/agreement as a whole "
-                    "(e.g. 'ערעור לארצי', 'תביעת נזיקין נגד מדינה') - a few words, not a full "
-                    "sentence. Required (non-null) for source_type=הסכם; always null for בנק. "
-                    "Stated ONCE, when this matter's first component(s) are created - used only "
-                    "to build agreement_id (never persisted as its own field; every later "
-                    "component/message referencing this same matter does so via agreement_id "
-                    "or reference/reference_hint, never by restating this label)."
+                    "The unique id for the matter/agreement as a whole - YOU build this "
+                    "string yourself, once, in the exact format "
+                    "'{MM}{YY}-{client_slug}-{label_slug}' (e.g. '0726-אתי_אסולין-ערעור_לארצי'): "
+                    "MM/YY are the current month/year (from today's date given to you in your "
+                    "instructions); client_slug is client_name with every run of whitespace/"
+                    "punctuation replaced by a single underscore (no leading/trailing "
+                    "underscore); label_slug is the same transform applied to a short "
+                    "human-readable Hebrew label for the matter as a whole (e.g. 'ערעור "
+                    "לארצי', 'תביעת נזיקין נגד מדינה' - a few words, not a full sentence) - "
+                    "that label exists only inside this string, never as a separate field "
+                    "anywhere. Required (non-null) for source_type=הסכם; always null for בנק. "
+                    "Build it ONCE, when this matter's first component(s) are created, then "
+                    "reuse this EXACT string verbatim for every later component/message "
+                    "referencing this SAME matter - never rebuild, reword, or vary it."
                 ),
             },
             "reference_hint": {
@@ -856,7 +864,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
             },
         },
         "required": [
-            "source_type", "event_subtype", "client_name", "payer_name", "agreement_label",
+            "source_type", "event_subtype", "client_name", "payer_name", "agreement_id",
             "reference_hint", "bank_number", "bank_branch", "bank_account",
             "accounting_document_json",
             "component_count", "components",
