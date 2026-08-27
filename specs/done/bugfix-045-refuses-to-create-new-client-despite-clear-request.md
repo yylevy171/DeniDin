@@ -19,7 +19,7 @@ the whole thing verified via a new regression test plus repeated billed-suite sw
 Cause (confirmed)", "Fix", "Over-Correction Found and Corrected", "Related Secondary Bugs Found
 and Fixed", and "Verification" below.
 
-**PR**: pending — filled in via addendum commit once opened.
+**PR**: https://github.com/yylevy171/DeniDin/pull/260
 
 ## Date Opened
 2026-08-25
