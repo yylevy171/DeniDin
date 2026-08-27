@@ -59,3 +59,7 @@ Feature 056: standalone receipts (no linked invoice, no VAT line) and transactio
 ## denidin-app v0.5.2 — 2026-08-26
 
 Accounting document reconciliation completes with machine-readable capture (Feature 025 Phase 9) and natural-language ledger event querying ships (Feature 044) - AI can now look up and reason over past fee agreements/payments/reconciled documents via a new RBAC-gated query tool, with a ledger-as-cache-over-Morning fallback rule
+
+## denidin-app v0.5.3 — 2026-08-27
+
+Feature 061: new standalone prod-ledger-backfill operator tool (apps/prod-ledger-backfill/) for populating prod's ledger with pre-existing Morning documents before the reconciliation scheduler is ever enabled there - a real, full dev-environment backfill (~4,067 documents, Jul-Aug 2026) completed and verified; the actual prod run itself deferred to Feature 062. Also adds SCHEMA_VERSION_HISTORY plus import-time verification to ledger_event_manager.py, closing the ungoverned schema-version-bump gap. Bugfix-045: add_client no longer re-blocks after the user explicitly confirms a new client, with a corrected scope limit so a bare 'add new client' request never silently skips the near-duplicate disclosure/ask step, plus two related tool-family misclassification fixes (ledger event capture, reminder creation) for the same confirmation reply.
