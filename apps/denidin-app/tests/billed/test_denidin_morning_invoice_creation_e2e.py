@@ -48,12 +48,15 @@ CLAUDE.md/CONSTITUTION §VII).
 from __future__ import annotations
 
 import logging
+import random
 import time
 
 import pytest
 
 from .denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,
+    _HEBREW_FAMILY_NAMES,
+    _HEBREW_NAME_SPELLING_VARIANTS,
     _SEED_PHONE,
     _calls_for,
     _client_name_exact_match_found,
@@ -509,6 +512,98 @@ def test_godfather_declines_add_client(denidin_app):
     )
 
 
+@pytest.mark.billed
+def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denidin_app):
+    """bugfix-045 regression guard, added 2026-08-27 - written specifically
+    because the fix for the *original* bugfix-045 deadlock (the model
+    refusing to ever create a new client once resolve_client_name returned
+    multiple ambiguous candidates) risked over-correcting into the opposite
+    failure: silently creating a near-duplicate the instant a message merely
+    SAYS "add a new client", without ever giving the godfather a chance to
+    say "wait, that's actually the same person, just spelled differently."
+
+    The whole point of resolve_client_name's courtesy check
+    (runtime_constitution.md's "Exception when the underlying request is to
+    ADD a NEW client") is to catch exactly this case - a genuinely SIMILAR
+    (not exact) existing client - and surface it before creating anything,
+    not to wave every add_client request straight through unexamined.
+
+    Uses the SAME real Hebrew male/chaser spelling-variant pool as
+    test_godfather_finds_client_via_hebrew_vowel_variant (a previously-
+    confirmed-live "similar enough for Morning's own search to surface it"
+    pair, not a synthetic worst-case) - seed a real client under one
+    spelling, then ask to add a "new" client under the other spelling of the
+    exact same name.
+    """
+    chaser_spelling, male_spelling = random.choice(_HEBREW_NAME_SPELLING_VARIANTS)
+    seed_name, _, _ = _seed_fresh_client(
+        GODFATHER_CHAT_ID,
+        id_prefix="E2E_ADD_CLIENT_NEARDUP_SEED",
+        name_factory=lambda: f"{male_spelling} {random.choice(_HEBREW_FAMILY_NAMES)}",
+    )
+    family_name = seed_name.split()[-1]
+    near_duplicate_name = f"{chaser_spelling} {family_name}"
+    seed_email = _random_seed_email()
+
+    import denidin
+
+    ask_response, ask_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=(
+            f"תוסיף לקוח חדש בשם {near_duplicate_name}, מייל {seed_email}, "
+            f"טלפון {_SEED_PHONE}"
+        ),
+        id_prefix="E2E_ADD_CLIENT_NEARDUP_ASK",
+    )
+
+    assert ask_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert not _calls_for(ask_ai_response, "add_client"), (
+        f"add_client executed (completed) on the very first turn, with no "
+        f"chance to flag the near-duplicate: "
+        f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
+    )
+    pending = denidin.denidin_app.ai_handler.pending_approval_manager.get(GODFATHER_CHAT_ID)
+    assert pending is None or pending.tool_name != "add_client", (
+        f"add_client got a pending approval immediately, with NO chance for "
+        f"the godfather to say 'that's actually the same person' about the "
+        f"just-seeded, genuinely similar client {seed_name!r} - this is "
+        f"exactly the silent-duplicate risk the courtesy check exists to "
+        f"prevent: {pending!r}"
+    )
+    assert _normalize_hebrew_geresh(seed_name) in (ask_response or ""), (
+        f"Expected the reply to explicitly name the existing similar client "
+        f"{seed_name!r} (per runtime_constitution.md's mandatory disclosure) "
+        f"before offering to create a new one under {near_duplicate_name!r} - "
+        f"got: {ask_response!r}"
+    )
+
+    # Confirming intent to create anyway (not "use the existing one") must
+    # still work - the courtesy check blocks SILENT creation, not creation
+    # itself once the godfather has actually seen and rejected the match.
+    confirm_response, confirm_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=(
+            "לא, זה לא אותו לקוח, זה אדם אחר לגמרי - אני יודע שיש לקוח עם שם "
+            "דומה, אבל אני בכל זאת רוצה ליצור לקוח חדש עם השם שנתתי."
+        ),
+        id_prefix="E2E_ADD_CLIENT_NEARDUP_CONFIRMNEW",
+    )
+    pending = denidin.denidin_app.ai_handler.pending_approval_manager.get(GODFATHER_CHAT_ID)
+    assert pending is not None and pending.tool_name == "add_client", (
+        f"After explicitly insisting on a new client despite the near-"
+        f"duplicate warning, no pending add_client approval was created. "
+        f"Reply: {confirm_response!r}, calls: "
+        f"{confirm_ai_response.mcp_calls if confirm_ai_response else None!r}"
+    )
+
+    approve_response, approve_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID, text="כן", id_prefix="E2E_ADD_CLIENT_NEARDUP_APPROVE"
+    )
+    add_calls = _calls_for(approve_ai_response, "add_client")
+    assert add_calls and add_calls[0]["error"] is None, (
+        f"add_client did not complete after explicit confirmation: "
+        f"{approve_ai_response.mcp_calls if approve_ai_response else None!r}"
+    )
 
 
 # ============================================================================

@@ -2904,6 +2904,23 @@ class AIHandler:
                 response_text = modify_delete_details
                 new_local_tool_pending_created = modify_delete_pending_created
 
+        # bugfix-045-followup (2026-08-27): this used to need its own
+        # all_output_items union of response.output + a same-turn ledger-
+        # capture followup's output, to fix the exact scenario the bugfix-045
+        # near-duplicate-name regression test exposed (a capture_ledger_event
+        # follow-up round ALSO proposing an approval-gated Morning tool, e.g.
+        # add_client, whose mcp_approval_request then went undetected).
+        # Superseded by the merge from master (2026-08-27): the
+        # `_run_local_tool_dispatch_loop` architectural fix above (2026-08-25,
+        # landed independently on master while this branch was still on the
+        # pre-loop code) already reassigns `response = current_response` to
+        # whichever response the loop actually settled on - `response.output`
+        # below is now already correct on its own, loop-followup items
+        # included, so the extra union is redundant (and would in fact be
+        # broken here, since the loop no longer exposes a same-named
+        # `followup` local variable to reference). Re-verified: the
+        # regression test still passes against this simpler, already-fixed
+        # upstream code.
         logger.info(
             f"[022] _finalize_response: response.id={getattr(response, 'id', None)!r}, "
             f"effective_chat_id={effective_chat_id!r}, "
@@ -2952,7 +2969,7 @@ class AIHandler:
             if getattr(item, "type", None) == "mcp_approval_request"
         ]
         logger.info(
-            f"[022] approval_requests found in response.output: {len(approval_requests)} "
+            f"[022] approval_requests found in this turn's output: {len(approval_requests)} "
             f"(effective_chat_id={effective_chat_id!r})"
         )
         # Feature 047: this turn creates a pending approval iff the block above will
