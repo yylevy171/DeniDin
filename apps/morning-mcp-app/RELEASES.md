@@ -59,3 +59,7 @@ Feature 056: create_receipt now supports a standalone call with no linked invoic
 ## morning-mcp-app v0.5.2 — 2026-08-26
 
 get_invoice_details/list_invoices expose Morning's raw creation_timestamp and gain an opt-in format="json" response shape (Feature 025 Phase 9a), enabling deterministic parsing for denidin-app's accounting document reconciliation sweep
+
+## morning-mcp-app v0.5.3 — 2026-08-27
+
+Version sync with denidin-app v0.5.3 - no functional changes to morning-mcp-app in this release.

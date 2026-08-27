@@ -2,7 +2,7 @@
 
 **Feature Branch**: TBD (create at pickup time, e.g. `feature/062-prod-morning-ledger-backfill-completion`)
 **Created**: 2026-08-27
-**Status**: Backlog — split off from Feature 061 (`specs/done/061-prod-morning-ledger-backfill`)
+**Status**: Backlog — split off from Feature 061 (`specs/done/v0.5.3/061-prod-morning-ledger-backfill`)
 when that feature's real, practical goal (a full dev-environment ledger backfill, Method A,
 Jul 1 – Aug 27 2026) was completed and closed out, but its tooling was deliberately left short of
 full spec completion. Priority: P2 (no urgency — prod's `accounting_ledger_update_freq` stays `0`
