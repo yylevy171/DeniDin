@@ -12,11 +12,14 @@ single misfire but a recurring pattern.
 **Not yet triaged.** Recorded as reported; no root cause investigation done yet.
 
 ## Status
-**Open — root cause NOT YET investigated.** Per Bug-Driven Development (METHODOLOGY.md §VII) and
-the corrected process from bugfix-043/044 earlier this session, this spec records only the
-reported symptom for now. No code has been read or changed for this bug. Root cause is to be
-investigated and presented for explicit human approval before any test-gap analysis or fix work
-begins.
+**Fixed — closed 2026-08-27.** Root cause confirmed, fixed in `config/runtime_constitution.md`
+(no application code change needed), an over-correction found and corrected during the same
+investigation, two related secondary misclassification bugs found and fixed along the way, and
+the whole thing verified via a new regression test plus repeated billed-suite sweeps. See "Root
+Cause (confirmed)", "Fix", "Over-Correction Found and Corrected", "Related Secondary Bugs Found
+and Fixed", and "Verification" below.
+
+**PR**: https://github.com/yylevy171/DeniDin/pull/260
 
 ## Date Opened
 2026-08-25
@@ -181,3 +184,107 @@ canned "insufficient" response when real candidates exist; let the model present
 over an explicit user answer) may apply here too. Worth a human read-through of Feature 044's
 `query_events` fix against this bug once investigated, per the pointer already on file in that
 feature's `tasks.md`.
+
+---
+
+## Root Cause (confirmed, 2026-08-27)
+
+Both occurrences above trace to the same gap in `config/runtime_constitution.md`'s "Resolving a
+client by name" section, confirmed against the actual text (the hypothesis above was correct):
+`add_client` is the one client-consuming tool whose entire purpose is to create a record that
+does NOT exist yet, so a `resolve_client_name` result that comes back non-exact (one similar
+candidate, several ambiguous candidates, or none at all) is never a real duplicate — it's a
+one-time courtesy check. But the constitution's prior wording didn't clearly separate that
+courtesy check from a real precondition, and gave the model no explicit, final "the user has now
+answered the new-vs-existing question — call `add_client` immediately, don't re-verify" rule. So
+the model kept re-running `resolve_client_name`, kept getting the same non-exact result back, and
+kept treating that as a reason to hold off — even one full turn after the user had explicitly
+said "כן" to the bot's own "create a new client named X?" proposal. `update_client` was never
+implicated — it correctly always requires a real exact-match resolution, since it mutates a
+specific existing record.
+
+## Fix
+
+`config/runtime_constitution.md`'s "Resolving a client by name" section (Invoice Management) was
+rewritten to make three things explicit, `add_client`-only (never `update_client`, which keeps
+its normal exact-match requirement with no exception):
+1. A non-exact `resolve_client_name` result for an `add_client` request is a one-time courtesy
+   duplicate-check, never a precondition or a gate — it must always be disclosed (name the
+   candidate(s), offer to create new) but never used to just block or ask the user to "be more
+   specific" with no way out.
+2. Once the user has actually answered the new-vs-existing question — a direct "כן"/"לקוח חדש"/
+   an unprompted imperative that itself carries the same concession — that decision is FINAL for
+   the rest of the request: no further "just to confirm, create a new client?" re-asking, no
+   re-running `resolve_client_name` to re-verify. `add_client` is called immediately once the
+   last required field (name/email/phone) is known, and the system's own real approval prompt
+   (the "📋 לאישור:" block) remains the one actual, mandatory checkpoint.
+3. Worked examples (RIGHT/WRONG) anchored to both real transcripts above, so the model has a
+   concrete shape to pattern-match against, not just abstract rules.
+
+No application code needed to change for the primary fix — `add_client`/`resolve_client_name`
+were already wired correctly; this was entirely a constitution/prompt-guidance gap.
+
+## Over-Correction Found and Corrected (2026-08-27)
+
+Mid-verification, explicit human review of the first version of this fix caught a real
+over-correction: as first written, it let the model treat ANY plain "add new client X" request
+(no hedge about a possible duplicate) as if the user had already answered the new-vs-existing
+question — silently skipping the disclosure/ask step entirely whenever a near-duplicate existed,
+which is a materially worse bug than the original (silent duplicate-client creation instead of a
+refusal). A dedicated regression test (`test_godfather_add_client_near_duplicate_name_is_asked_
+before_creating`, added to `tests/billed/test_denidin_morning_invoice_creation_e2e.py`) reproduced
+this 3/3 times against the pre-correction wording, using a seeded client ("אהרון פרץ") followed
+by a plain "add new client אהרן פרץ" request (a different transliteration of the same name, no
+hedge). The constitution was corrected to draw an explicit line: a bare creation request is
+**never**, by itself, "the user indicating they want the new one" — only the user's own wording
+(in this message or an earlier one) explicitly conceding "a similar client might exist and I
+want a new record regardless" licenses skipping the ask. The regression test then passed 2/2
+against the corrected wording, and the finalize-once rule above (point 2) still applies once that
+condition is genuinely met.
+
+## Related Secondary Bugs Found and Fixed (2026-08-27, same investigation)
+
+Driving the regression test above surfaced two further, real, reproducible misclassification
+bugs — the exact reply used to answer the near-duplicate disclosure question
+(`_CONFIRM_NEW_CLIENT_REPLY` in the test helpers) got misclassified as belonging to an unrelated
+tool family instead of being read as the answer to the pending `add_client` question it actually
+was:
+- **`capture_ledger_event` misfire** — the reply got captured as a ledger event, and the
+  resulting local-tool follow-up round's `mcp_approval_request` then went undetected by
+  `_finalize_response`'s output handling, crashing `AIResponse.__post_init__`'s "owes a reply but
+  carries no text" invariant. Fixed in `config/runtime_constitution.md`'s "Ledger Event
+  Recognition" Step 1 (explicit "automatically Neither" coverage for in-progress multi-turn
+  Invoice Management replies, anchored with this real incident). The `_finalize_response`
+  handling itself turned out to already be fixed more generally on `master`
+  (`_run_local_tool_dispatch_loop`, landed independently 2026-08-25) by the time this branch
+  merged from `master` — no application code change was needed here after all; see
+  `apps/denidin-app/src/handlers/ai_handler.py`'s inline comment at the relevant call site for
+  the full account of an earlier, now-reverted, redundant patch attempt.
+- **`create_reminder` misfire** — the same reply, on a different turn, got interpreted as a
+  reminder-creation request instead. Per explicit human direction ("broaden the general fix
+  now"), fixed by strengthening the "does NOT apply" bullets in both "Reminder Management" and
+  "Ledger Event Querying" with the same explicit, incident-anchored, CONVERSATION'S-CONTEXT-decides
+  wording pattern already established for "Ledger Event Recognition."
+
+## Verification
+
+- New regression test: `tests/billed/test_denidin_morning_invoice_creation_e2e.py::
+  test_godfather_add_client_near_duplicate_name_is_asked_before_creating` — reproduced the
+  over-correction 3/3 times pre-fix, passed 2/2 post-fix.
+- `tests/billed/denidin_mcp_e2e_helpers.py`'s `_seed_fresh_client` rewritten to check
+  `PendingApprovalManager` directly (never text-parsing) so it stays correct regardless of how
+  the model happens to phrase a disambiguation question.
+- 5 distinct billed tests using the shared client-seeding helper, run individually via
+  `scripts/run_single_test.sh`: all passed.
+- Full `origin/master` merge (25 commits, clean auto-merge; `ai_handler.py`'s auto-merged half
+  re-verified semantically, not just syntactically, and corrected — see its inline comment).
+- Full unit + integration suite re-run clean after the merge (1267 passed; 1 pre-existing,
+  unrelated date-fixture flake in `test_accounting_reconciliation_service.py`, out of scope).
+- A genuinely-random 10-test billed sweep (2026-08-27), run one at a time per CLAUDE.md's
+  mandatory sound-off rule: 8 passed, 0 regressions. The 2 non-passes
+  (`test_group_etiquette_billed.py::test_case7_...` permanently self-skipping;
+  `test_denidin_morning_invoice_creation_e2e.py::test_create_document_for_new_client_missing_
+  info_not_provided_stops_flow`'s final assertion failing on a name that fuzzy-collided with two
+  unrelated sandbox clients) were both investigated and confirmed to be **pre-existing
+  test-infrastructure issues, unrelated to this bugfix** — filed as items 7 and 8 under
+  `specs/backlog/059-stabilize-tests-sanity-suite/spec.md`, not fixed here.
