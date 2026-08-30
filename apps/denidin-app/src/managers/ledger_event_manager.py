@@ -189,9 +189,9 @@ _LETTER_BY_SOURCE_TYPE = {
 
 class AccountingDocumentCacheEntry(NamedTuple):
     """Feature 025 (round 3): one entry in LedgerEventManager's in-memory
-    accounting-document cache - a (creation_timestamp, event_id) pair, so an
-    "anomaly" detection can name the real prior event_id in
-    pending_review.json rather than just its timestamp."""
+    accounting-document cache - a (creation_timestamp, event_id) pair. The
+    timestamp's date drives same-date duplicate detection in add_ledger_event;
+    the event_id is retained for diagnostics/logging."""
     timestamp: datetime
     event_id: str
 
@@ -722,10 +722,9 @@ class LedgerEventManager:
         - NEVER called more than once per process. Every persisted
         source_type="חשבונית" event, grouped by accounting_document_display_number
         into the list of distinct (creation_timestamp, event_id) pairs seen
-        for it (almost always exactly one; more than one only in the anomaly
-        case - see add_ledger_event; event_id is tracked so a later anomaly's
-        pending_review.json entry can name the real prior event). Empty dict
-        if none exist yet. A malformed/unparseable individual file logs a
+        for it (normally one per date; more than one only across multiple
+        calendar dates - see add_ledger_event's same-date duplicate guard).
+        Empty dict if none exist yet. A malformed/unparseable individual file logs a
         WARNING and is skipped, never raises - same defensive read discipline
         _load_event already uses.
         """
@@ -815,48 +814,6 @@ class LedgerEventManager:
         comparison purposes only, never mutates what's stored."""
         return value if value.tzinfo is not None else value.replace(tzinfo=ISRAEL_TZ)
 
-    def _append_pending_review(
-        self,
-        display_number: str,
-        prior_entries: List["AccountingDocumentCacheEntry"],
-        new_timestamp: datetime,
-        new_event_id: str,
-    ) -> None:
-        """Feature 025 (round 3): appends one entry to
-        {data_root}/accounting_reconciliation/pending_review.json for the
-        "anomaly" case (same accounting_document_display_number, a genuinely
-        new creation timestamp) - a human reviews this file out-of-band, same
-        "capture now, review later, no notification" philosophy as the rest
-        of this feature. Never reads back/resolves entries - no consumer of
-        this file exists yet within this feature's own scope."""
-        review_dir = self.storage_dir.parent / "accounting_reconciliation"
-        review_dir.mkdir(parents=True, exist_ok=True)
-        review_file = review_dir / "pending_review.json"
-
-        entries = []
-        if review_file.exists():
-            try:
-                with review_file.open(encoding="utf-8") as f:
-                    entries = json.load(f)
-            except (OSError, json.JSONDecodeError) as e:
-                logger.error(f"pending_review.json unreadable, starting fresh: {e}")
-                entries = []
-
-        most_recent_prior = max(prior_entries, key=lambda e: e.timestamp)
-        now_str = now_local().strftime("%d/%m/%Y %H:%M")
-        entries.append({
-            "accounting_document_display_number": display_number,
-            "prior_event_id": most_recent_prior.event_id,
-            "prior_creation_date": most_recent_prior.timestamp.strftime("%d/%m/%Y %H:%M"),
-            "new_event_id": new_event_id,
-            "new_creation_date": new_timestamp.strftime("%d/%m/%Y %H:%M"),
-            "detected_at": now_str,
-        })
-
-        tmp_path = review_file.with_suffix(".json.tmp")
-        with tmp_path.open("w", encoding="utf-8") as f:
-            json.dump(entries, f, ensure_ascii=False, indent=2)
-        tmp_path.replace(review_file)
 
     def add_ledger_event(
         self,
@@ -926,43 +883,41 @@ class LedgerEventManager:
         source_type = event.get("source_type")
         assert source_type is not None, "LEDGER_EVENT_TOOL's schema requires source_type"
 
-        # Feature 025 (round 3): tri-state new/duplicate/anomaly guard - REPLACES
-        # the old hard-refusal design entirely (user directive: "I don't like the
+        # Feature 025 (round 3): duplicate guard for reconciliation re-polls -
+        # REPLACES the old hard-refusal design (user directive: "I don't like the
         # hard refusal... The 'since when' mechanism SHOULD NOT RELY ON A REFUSAL
         # MECHANISM"). Lives here (LedgerEventManager), not ai_handler.py - "it's
         # clearly a ledger requirement regardless of ai." See
         # contracts/ledger-event-manager-extension.md.
+        #
+        # bugfix-048 (2026-08-30): the dedup key is now (date, display_number),
+        # NOT (exact-timestamp, display_number). A Morning display number is
+        # globally unique across document types, and a document's creation date
+        # never changes - so a same-date re-list of a given display number is
+        # ALWAYS the identical document and must be discarded. The old
+        # exact-timestamp match silently broke across an app restart: an
+        # in-memory cache entry carries local_dt at seconds precision (parsed
+        # from Morning's ISO creation_date), but scan_accounting_documents can
+        # only rebuild it from the persisted event_datetime string at MINUTE
+        # precision - so after any restart 16:35:30 != 16:35:00, every re-seen
+        # document was misclassified and re-persisted. There is no longer an
+        # "anomaly" third state or a pending_review.json (it was write-only,
+        # never read, and by this point every entry in it was a false positive
+        # from exactly this bug).
         accounting_document_display_number = None
-        prior_entries_for_anomaly: List["AccountingDocumentCacheEntry"] = []
         if source_type == "חשבונית":
             accounting_document_display_number = event.get("accounting_document_display_number")
             if accounting_document_display_number is not None:
                 cache = self._ensure_accounting_document_cache()
                 seen_entries = cache.get(accounting_document_display_number, [])
-                seen_timestamps = [entry.timestamp for entry in seen_entries]
-                if local_dt in seen_timestamps:
+                new_date = local_dt.strftime("%d/%m/%Y")
+                if any(entry.timestamp.strftime("%d/%m/%Y") == new_date for entry in seen_entries):
                     logger.info(
                         f"חשבונית re-poll: accounting_document_display_number="
-                        f"{accounting_document_display_number!r} at {local_dt!r} already "
-                        f"captured - discarding (true duplicate, no new file)"
+                        f"{accounting_document_display_number!r} already captured for "
+                        f"{new_date} - discarding duplicate (no new file)"
                     )
                     return None
-                if seen_entries:
-                    logger.warning(
-                        f"חשבונית anomaly: accounting_document_display_number="
-                        f"{accounting_document_display_number!r} previously seen at "
-                        f"{seen_timestamps!r}, now seen at {local_dt!r} - persisting as a "
-                        f"NEW event (not overwriting) and flagging to pending_review.json "
-                        f"for human review"
-                    )
-                    # pending_review.json is written AFTER event_id exists (below) -
-                    # this only remembers that it's needed. list(...) copies -
-                    # seen_entries IS the cache's own live list object, which the
-                    # "new"/"anomaly" cache-append below mutates in place; without
-                    # this copy, the append would silently make this snapshot
-                    # point at itself (the just-appended entry), not the real
-                    # prior one.
-                    prior_entries_for_anomaly = list(seen_entries)
 
         letter = _LETTER_BY_SOURCE_TYPE[source_type]
         ddmmyy = local_dt.strftime("%d%m%y")
@@ -1206,18 +1161,12 @@ class LedgerEventManager:
         )
 
         if source_type == "חשבונית" and accounting_document_display_number is not None:
-            # Both the "new" and "anomaly" cases fall through to here ("duplicate"
-            # already returned early, above) - record this timestamp so a future
-            # poll can tell the difference.
+            # Record this capture so a future same-date re-poll of this display
+            # number is recognised as a duplicate, and so the watermark advances.
             cache = self._ensure_accounting_document_cache()
             cache.setdefault(accounting_document_display_number, []).append(
                 AccountingDocumentCacheEntry(local_dt, event_id)
             )
-            if prior_entries_for_anomaly:
-                self._append_pending_review(
-                    accounting_document_display_number, prior_entries_for_anomaly,
-                    local_dt, event_id,
-                )
 
         return event_id
 
