@@ -1,0 +1,229 @@
+{
+  "generated": "2026-08-30T09:08:31",
+  "source": "prod ledger events ~/denidin-winprod-data/events  (source_type=בנק, August 2026)",
+  "summary": {
+    "events_before": 33,
+    "duplicate_events_to_mark": 8,
+    "events_to_remove": 4,
+    "name_changes": 15,
+    "events_remaining": 21,
+    "total_before_ILS": 152110,
+    "total_after_ILS": 107327
+  },
+  "duplicates_approved": [
+    {
+      "group": "04/08 3,000",
+      "keep": "B09082606040",
+      "duplicates": [
+        "B09082606280"
+      ]
+    },
+    {
+      "group": "05/08 1,500",
+      "keep": "B05082621120",
+      "duplicates": [
+        "B09082606041",
+        "B09082606350"
+      ]
+    },
+    {
+      "group": "06/08 2,000",
+      "keep": "B09082606000",
+      "duplicates": [
+        "B09082606001",
+        "B09082606290"
+      ]
+    },
+    {
+      "group": "06/08 2,300",
+      "keep": "B09082606003",
+      "duplicates": [
+        "B09082606220"
+      ]
+    },
+    {
+      "group": "21/08 1,071",
+      "keep": "B23082606010",
+      "duplicates": [
+        "B23082606020"
+      ]
+    },
+    {
+      "group": "21/08 20,000",
+      "keep": "B23082606560",
+      "duplicates": [
+        "B23082607030"
+      ]
+    }
+  ],
+  "removals_unsupported_bit_transfers": [
+    {
+      "event_id": "B06082613310",
+      "csv_line": 6,
+      "date": "06/08/2026",
+      "amount": 3776,
+      "current_name": "רונית יעקובסון",
+      "reason": "unsupported bit transfer (status ממתין / not a confirmed deposit)"
+    },
+    {
+      "event_id": "B06082613311",
+      "csv_line": 7,
+      "date": "06/08/2026",
+      "amount": 3776,
+      "current_name": "איילה הוניגמן",
+      "reason": "unsupported bit transfer (status ממתין / not a confirmed deposit)"
+    },
+    {
+      "event_id": "B07082606400",
+      "csv_line": 10,
+      "date": "07/08/2026",
+      "amount": 2360,
+      "current_name": "[לא קריא] ועד עובדי מכס",
+      "reason": "unsupported bit transfer (status ממתין / not a confirmed deposit)"
+    },
+    {
+      "event_id": "B13082621150",
+      "csv_line": 15,
+      "date": "14/08/2026",
+      "amount": 1500,
+      "current_name": "איילה",
+      "reason": "unsupported bit transfer (status ממתין / not a confirmed deposit)"
+    }
+  ],
+  "name_changes": [
+    {
+      "csv_line": 2,
+      "event_id": "B09082606040",
+      "date": "04/08/2026",
+      "amount": 3000,
+      "from": "עזו דניאל",
+      "to": "עדו דניאל",
+      "also_apply_to_duplicates": [
+        "B09082606280"
+      ]
+    },
+    {
+      "csv_line": 4,
+      "event_id": "B06082606160",
+      "date": "05/08/2026",
+      "amount": 10620,
+      "from": "מתנ״ס נחל",
+      "to": "מתנס שורק"
+    },
+    {
+      "csv_line": 8,
+      "event_id": "B09082606000",
+      "date": "06/08/2026",
+      "amount": 2000,
+      "from": "טחה שלמה נדרי",
+      "to": "שלמה נזרי",
+      "also_apply_to_duplicates": [
+        "B09082606001",
+        "B09082606290"
+      ]
+    },
+    {
+      "csv_line": 9,
+      "event_id": "B09082606003",
+      "date": "06/08/2026",
+      "amount": 2300,
+      "from": "קרעאן טאל",
+      "to": "טלאל קרעאן",
+      "also_apply_to_duplicates": [
+        "B09082606220"
+      ]
+    },
+    {
+      "csv_line": 11,
+      "event_id": "B09082606002",
+      "date": "07/08/2026",
+      "amount": 2000,
+      "from": "דן",
+      "to": "אודליה שניידר"
+    },
+    {
+      "csv_line": 12,
+      "event_id": "B10082605310",
+      "date": "09/08/2026",
+      "amount": 5000,
+      "from": "אלדר דוד",
+      "to": "דודי אדלר"
+    },
+    {
+      "csv_line": 14,
+      "event_id": "B11082621310",
+      "date": "11/08/2026",
+      "amount": 2500,
+      "from": "כהן, אביתר",
+      "to": "אביתר כהן"
+    },
+    {
+      "csv_line": 16,
+      "event_id": "B17082605470",
+      "date": "16/08/2026",
+      "amount": 20000,
+      "from": "עמנואלי שי שמואל",
+      "to": "שי עמנואלי"
+    },
+    {
+      "csv_line": 17,
+      "event_id": "B19082606570",
+      "date": "18/08/2026",
+      "amount": 5000,
+      "from": "דן (הערת לקוח)",
+      "to": "ליאור חכם"
+    },
+    {
+      "csv_line": 18,
+      "event_id": "B19082613420",
+      "date": "19/08/2026",
+      "amount": 3000,
+      "from": "אלטשולר רומן,אלטשולר הלן",
+      "to": "רומן אלטשולר"
+    },
+    {
+      "csv_line": 21,
+      "event_id": "B23082606560",
+      "date": "21/08/2026",
+      "amount": 20000,
+      "from": "שושנה רוזן",
+      "to": "גדי רוזן",
+      "also_apply_to_duplicates": [
+        "B23082607030"
+      ]
+    },
+    {
+      "csv_line": 23,
+      "event_id": "B25082609180",
+      "date": "24/08/2026",
+      "amount": 6500,
+      "from": "סיטיבנק ישראל גי",
+      "to": "גלית סיטבון"
+    },
+    {
+      "csv_line": 24,
+      "event_id": "B27082609150",
+      "date": "25/08/2026",
+      "amount": 1500,
+      "from": "לור יעל",
+      "to": "יעל לוריא"
+    },
+    {
+      "csv_line": 25,
+      "event_id": "B27082606300",
+      "date": "27/08/2026",
+      "amount": 210,
+      "from": "דודי חיפה",
+      "to": "דודי אדלר"
+    },
+    {
+      "csv_line": 26,
+      "event_id": "B28082611200",
+      "date": "27/08/2026",
+      "amount": 4500,
+      "from": "רוני רמי בן חמו",
+      "to": "רמי בן חמו"
+    }
+  ],
+  "name_changes_count_note": "B07082606400 true name was רן סופ (was unreadable) - recorded here; event is removed as unsupported bit transfer, so not applied"
+}
