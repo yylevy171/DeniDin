@@ -1,7 +1,7 @@
 # Feature Specification: Apply August 2026 Ledger Audit Findings to Prod
 
-**Feature Branch**: audit material landed via `chore/august-ledger-audit`; implementation branch
-TBD at pickup (e.g. `feature/064-august-ledger-audit-apply`)
+**Feature Branch**: audit material landed via `chore/august-ledger-audit` (renamed 064→065, collision with pre-existing 064-bank-deposit-full-cycle); implementation branch
+TBD at pickup (e.g. `feature/065-august-ledger-audit-apply`)
 **Created**: 2026-08-30
 **Status**: Backlog — holding spec. Records the audit that was already done (2026-08-30) plus the
 concrete change-set it produced. Full `speckit.specify`/`clarify`/`plan`/`tasks` pipeline still
@@ -135,7 +135,7 @@ To be refined during `speckit.plan`. Candidate approach:
 ## Related
 
 - **Feature 062** (`specs/backlog/062-prod-morning-ledger-backfill-completion`) — Morning-sourced
-  prod ledger backfill; complementary. 064 is about the manually-captured `בנק`/`הסכם` events
+  prod ledger backfill; complementary. 065 is about the manually-captured `בנק`/`הסכם` events
   Morning can't source; 062 is about Morning-sourced accounting documents.
 - **Feature 052** (`specs/backlog/052-ledger-events-csv-export`) — ledger CSV export; the audit
   CSVs here are ad-hoc equivalents.
