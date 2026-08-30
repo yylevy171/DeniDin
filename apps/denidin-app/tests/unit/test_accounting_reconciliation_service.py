@@ -44,7 +44,13 @@ def mock_config(tmp_path):
 
 @pytest.fixture
 def mock_ai_client():
-    return MagicMock()
+    client = MagicMock()
+    # bugfix-047: the sweep now issues its call via
+    # client.with_options(timeout=..., max_retries=0).responses.create(...).
+    # Self-return so every existing `mock_ai_client.responses.create`
+    # assertion in this file keeps addressing the same call.
+    client.with_options.return_value = client
+    return client
 
 
 @pytest.fixture
@@ -76,14 +82,23 @@ def _capture_call_item(event, call_id="call_0"):
     )
 
 
+# creation_date is deliberately RELATIVE to "now", never a frozen literal:
+# the reconciliation watermark, the 5-day catch-up cap AND the ~7-day
+# cache-retention prune all key off this exact timestamp. A hardcoded date
+# silently rotted both `test_gap_within_five_days_proceeds_normally` and the
+# cross-tick dedup test the moment wall-clock time moved >7 days past it
+# (caught 2026-08-30 - the doc was pinned at 2026-08-20). ~1h ago keeps it
+# unambiguously inside every one of those windows for the whole test run.
+_ACCOUNTING_DOC_CREATION = now_local() - timedelta(hours=1)
 ACCOUNTING_DOC = {
     "display_number": "40406", "internal_morning_id": "056ee93c",
     "type": 300, "type_name": "חשבון עסקה",
     "status": "paid", "status_code": 2, "status_label": "מסמך סומן ידנית כסגור",
     "client_name": "לקוח בדיקה", "description": "חשבונית מס 40406",
     "amount": 1000, "amount_excl_vat": 1000, "vat_amount": 180, "vat_rate": 0.18,
-    "currency": "ILS", "document_date": "2026-08-20", "due_date": None,
-    "creation_date": "2026-08-20T18:52:00+03:00",
+    "currency": "ILS",
+    "document_date": _ACCOUNTING_DOC_CREATION.strftime("%Y-%m-%d"), "due_date": None,
+    "creation_date": _ACCOUNTING_DOC_CREATION.isoformat(),
     "payment": None, "linked_document": None,
 }
 
@@ -296,6 +311,24 @@ class TestSweepAccountingDocumentsWatermarkAndCap:
         kwargs = mock_ai_client.responses.create.call_args.kwargs
         assert kwargs["max_output_tokens"] == ai_handler.config.ai_reply_max_tokens
 
+    def test_openai_call_overrides_the_conversational_timeout_and_retry(
+        self, ai_handler, global_context, mock_ai_client
+    ):
+        """bugfix-047: the sweep's OpenAI+MCP turn is far heavier than a
+        conversational one and must not inherit the shared client's 30s
+        timeout / 1 retry - it issues the call via .with_options() with a
+        generous timeout and no client-level retry."""
+        mock_ai_client.responses.create.return_value = SimpleNamespace(output=[
+            _mcp_call_item("list_invoices", json.dumps({"total_matched": 0, "shown": 0, "documents": []})),
+        ])
+
+        _sweep_accounting_documents(global_context)
+
+        mock_ai_client.with_options.assert_called_once_with(
+            timeout=svc.RECONCILIATION_CALL_TIMEOUT_SECONDS, max_retries=0
+        )
+        assert svc.RECONCILIATION_CALL_TIMEOUT_SECONDS >= 300.0
+
     def test_over_100_documents_discards_entire_turn_nothing_persisted(
         self, ai_handler, global_context, mock_ai_client
     ):
@@ -465,12 +498,22 @@ class TestUS2DedupAcrossTwoSweepTicks:
             _mcp_call_item("list_invoices", json.dumps({"total_matched": 1, "shown": 1, "documents": []})),
             _capture_call_item(ACCOUNTING_EVENT, call_id="call_1"),
         ])
+        # bugfix-048: drop the in-memory dedup cache so the second tick has to
+        # rebuild it from disk - reproducing a process restart between sweeps,
+        # the exact scenario where the old exact-timestamp guard let duplicates
+        # through (seconds precision in memory vs minute precision from disk).
+        ai_handler.ledger_event_manager._accounting_document_cache = None
         _sweep_accounting_documents(global_context)
 
+        # The second tick must genuinely RUN (reach OpenAI and attempt the
+        # capture) - otherwise a watermark/cap skip would make this pass for
+        # the wrong reason and prove nothing about dedup.
+        assert mock_ai_client.responses.create.call_count == 2
         assert len(list(events_dir.glob("*.json"))) == 1, (
-            "a document already captured must never be re-captured - the tri-state "
-            "guard inside LedgerEventManager, transparently reached through the "
-            "sweep worker + reconciliation handler, must still fire"
+            "a document already captured must never be re-captured - the "
+            "(date, display_number) guard inside LedgerEventManager, transparently "
+            "reached through the sweep worker + reconciliation handler, must still "
+            "fire even after the cache is rebuilt from disk"
         )
 
     def test_sweep_actually_ran_on_second_tick_not_a_silent_noop(

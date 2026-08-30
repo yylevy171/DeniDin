@@ -66,6 +66,23 @@ MAX_CATCHUP_DOCUMENT_COUNT = 100
 
 RECONCILIATION_SWEEP_JOB_ID = "accounting_document_reconciliation_sweep"
 
+# bugfix-047: the reconciliation sweep's OpenAI+MCP call is far heavier than a
+# conversational turn - in a single turn OpenAI fetches the Morning MCP tool
+# list over the tunnel, runs list_invoices(include_full_details=true) (a
+# server-side per-document detail fan-out), then has a reasoning model emit one
+# verbose capture_ledger_event call per document. That legitimately takes
+# 30-60s+ and grows with document volume. The shared OpenAI client is built
+# with timeout=30.0 (denidin.py) for conversational turns; inheriting it here
+# made ~every dev sweep fail with APITimeoutError (2x30s with the client's
+# max_retries=1) once the sandbox held ~13+ in-window documents. This call
+# gets its own generous ceiling instead, applied via .with_options() at the
+# call site (same mechanism _call_openai_approval_api already uses for its own
+# max_retries override). max_retries=0 too: a retry re-runs the entire sweep
+# from scratch (list_invoices included) and the hourly scheduler tick is
+# already the real retry. The scheduler runs at most one sweep at a time
+# (max_instances=1), so a long-running call is harmless.
+RECONCILIATION_CALL_TIMEOUT_SECONDS = 300.0
+
 # morning-mcp-app's formatters.py always states the TRUE total count of
 # matching documents, in one of these fixed Hebrew phrasings (format_invoice_list/
 # format_too_many_invoices_message) - parsed here so the safety cap's
@@ -217,7 +234,11 @@ def _sweep_accounting_documents(global_context: Any, log_prefix: str = "") -> No
     }
     try:
         _log_outgoing_request(f"{log_prefix}accounting_reconciliation_sweep", reconciliation_kwargs)
-        response = ai_handler.client.responses.create(**reconciliation_kwargs)
+        # bugfix-047: override the shared client's conversational-turn timeout
+        # (30s) and retry (1) - see RECONCILIATION_CALL_TIMEOUT_SECONDS above.
+        response = ai_handler.client.with_options(
+            timeout=RECONCILIATION_CALL_TIMEOUT_SECONDS, max_retries=0
+        ).responses.create(**reconciliation_kwargs)
         _log_raw_response(f"{log_prefix}accounting_reconciliation_sweep", response)
     except Exception as e:  # pylint: disable=broad-except
         logger.error(

@@ -1796,9 +1796,7 @@ class TestScanAccountingDocuments:
     accounting-document cache, per data-model.md's round-3
     "AccountingDocumentReconciliationState" section. Returns
     Dict[display_number, List[AccountingDocumentCacheEntry]] (each entry a
-    (timestamp, event_id) pair - added during implementation so an anomaly's
-    pending_review.json entry can name the real prior event_id, not just its
-    timestamp), NOT the old Tuple[Set[str],
+    (timestamp, event_id) pair), NOT the old Tuple[Set[str],
     Optional[date]] shape."""
 
     def test_empty_storage_dir_returns_empty_dict(self, manager):
@@ -1819,9 +1817,8 @@ class TestScanAccountingDocuments:
     def test_two_events_sharing_a_display_number_both_timestamps_present(
         self, manager
     ):
-        """Simulates the anomaly case having already happened once - both of
-        a display_number's distinct timestamps must be visible to a fresh
-        scan, not just the latest."""
+        """A display_number captured on two distinct calendar dates - both
+        timestamps must be visible to a fresh scan, not just the latest."""
         manager.add_ledger_event(
             session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
             message_id="m1", message_timestamp=ACCOUNTING_DOC_TS,
@@ -1898,10 +1895,10 @@ class TestAccountingDocumentCacheLazyInit:
 
 
 class TestAccountingDocumentTriState:
-    """Feature 025, T007a: the tri-state new/duplicate/anomaly logic that
-    REPLACES the old hard-refusal design (round 3, user directive: "I don't
-    like the hard refusal... The 'since when' mechanism SHOULD NOT RELY ON A
-    REFUSAL MECHANISM"). Lives entirely inside add_ledger_event/
+    """Feature 025, T007a (+ bugfix-048): the (date, display_number) duplicate
+    guard that REPLACES the old hard-refusal design (round 3, user directive:
+    "I don't like the hard refusal..."), and no longer has an "anomaly" third
+    state or a pending_review.json. Lives entirely inside add_ledger_event/
     LedgerEventManager - a ledger concern, not an ai_handler.py one."""
 
     def test_new_display_number_persists_normally(self, manager, temp_events_dir):
@@ -1933,9 +1930,13 @@ class TestAccountingDocumentTriState:
             "a true duplicate is a normal re-poll, not a warning-worthy event"
         )
 
-    def test_same_display_number_different_timestamp_is_anomaly_persisted_and_flagged(
+    def test_same_display_number_different_date_persists_as_new_no_review_file(
         self, manager, temp_events_dir, caplog
     ):
+        """bugfix-048: the dedup key is (date, display_number). A different
+        calendar date for the same display number is treated as a genuinely
+        new event and persisted - with NO warning and NO pending_review.json
+        (that mechanism was removed: it was write-only and never read)."""
         first_id = manager.add_ledger_event(
             session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
             message_id="m1", message_timestamp=ACCOUNTING_DOC_TS,
@@ -1949,18 +1950,40 @@ class TestAccountingDocumentTriState:
 
         assert second_id is not None
         assert second_id != first_id
-        assert len(list(temp_events_dir.glob("*.json"))) == 2, (
-            "an anomaly persists a NEW event, never overwrites/drops"
-        )
-        assert any(r.levelno == logging.WARNING for r in caplog.records)
+        assert len(list(temp_events_dir.glob("*.json"))) == 2
+        assert not any(r.levelno >= logging.WARNING for r in caplog.records)
+        assert not (temp_events_dir.parent / "accounting_reconciliation" / "pending_review.json").exists()
 
-        review_file = temp_events_dir.parent / "accounting_reconciliation" / "pending_review.json"
-        assert review_file.exists()
-        entries = json.loads(review_file.read_text(encoding="utf-8"))
-        assert len(entries) == 1
-        assert entries[0]["accounting_document_display_number"] == "40406"
-        assert entries[0]["prior_event_id"] == first_id
-        assert entries[0]["new_event_id"] == second_id
+    def test_same_date_duplicate_survives_a_cache_rebuild_restart(
+        self, manager, temp_events_dir, caplog
+    ):
+        """bugfix-048 regression: the old guard matched on an exact timestamp,
+        which broke across a process restart - the in-memory cache carried
+        seconds precision, but a disk rebuild (scan_accounting_documents) only
+        recovers minute precision from event_datetime, so 16:35:30 != 16:35:00
+        and every re-seen document was re-persisted. Keying on the date alone
+        makes the same-day re-poll a duplicate regardless of precision."""
+        first_id = manager.add_ledger_event(
+            session_id="s",
+            event=_accounting_event(creation_date="2026-07-28T16:35:30+03:00"),
+            message_id="m1", message_timestamp=None,
+        )
+        assert first_id is not None
+
+        # Simulate a restart: drop the in-memory cache so the next add rebuilds
+        # it from disk (minute precision) instead of reusing the live entry.
+        manager._accounting_document_cache = None
+
+        with caplog.at_level(logging.INFO):
+            second_id = manager.add_ledger_event(
+                session_id="s",
+                event=_accounting_event(creation_date="2026-07-28T16:35:30+03:00"),
+                message_id="m2", message_timestamp=None,
+            )
+
+        assert second_id is None
+        assert len(list(temp_events_dir.glob("*.json"))) == 1
+        assert not any(r.levelno >= logging.WARNING for r in caplog.records)
 
     def test_guard_never_fires_for_non_accounting_source_types(self, manager, temp_events_dir):
         """הסכם/בנק events always have accounting_document_display_number=None
