@@ -19,7 +19,7 @@ document from the watermark date on each tick, so a single Morning document accu
 duplicate ledger event on every sweep following a restart.
 
 ## Status
-**Fix approved and implemented.** Root cause presented; human chose the fix directly:
+**Done — implemented, tested, validated in dev, merging to master.** Root cause presented; human chose the fix directly:
 "dedup on date+display number — since there can be multiple entries on same date, but never
 same display number. also order is never guaranteed for the listed items within a given date."
 Human also directed removal of the `pending_review` mechanism outright ("WTF is 'pending
@@ -116,3 +116,10 @@ No change to the watermark logic, the safety caps, `apps/morning-mcp-app`, or an
 - pylint / mypy: no new findings (all remaining mypy errors pre-exist on `master`).
 - Post-deploy: after the startup reconciliation sweep, confirm each 27/08 display number has
   exactly one file under `dev_data/events/` and no `pending_review.json` is recreated.
+- Dev validation (2026-08-30): 10 of the 16 27/08 חשבונית events were deleted, then both dev
+  apps were rebuilt+restarted on this branch. First startup sweep captured **12** events (the
+  10 re-listed 27/08 docs, deduped by date and re-persisted with their original timestamps +
+  2 genuinely-new sandbox docs 52246/52247). A second restart (colima recovered after a Mac
+  sleep) ran another startup sweep that captured **0** events — the disk-rebuilt cache deduped
+  every re-listed document by `(date, display_number)`. No `pending_review.json` recreated;
+  watermark advanced from `27/08 16:35` to `30/08 11:14`.

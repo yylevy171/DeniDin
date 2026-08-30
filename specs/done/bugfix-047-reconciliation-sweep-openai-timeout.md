@@ -14,7 +14,7 @@ turns — far too low for the sweep's much heavier MCP + reasoning-model turn.
 document created directly in Morning) that self-perpetuates every hour.
 
 ## Status
-**Fix approved and implemented; awaiting deploy.** Root cause investigated and presented;
+**Done — implemented, tested, validated in dev, merging to master.** Root cause investigated and presented;
 human approved fix #1 (a dedicated per-call timeout) and explicitly rejected the other four
 proposals (service-side deterministic capture, morning-mcp concurrent fan-out, watermark
 handling changes, extra failure observability) — "code must stay stupid, all the smartness in
