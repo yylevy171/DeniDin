@@ -19,7 +19,7 @@ document from the watermark date on each tick, so a single Morning document accu
 duplicate ledger event on every sweep following a restart.
 
 ## Status
-**Done — implemented, tested, validated in dev, merging to master.** Root cause presented; human chose the fix directly:
+**Done — implemented, tested, validated in dev, Merged to master (PR #267).** Root cause presented; human chose the fix directly:
 "dedup on date+display number — since there can be multiple entries on same date, but never
 same display number. also order is never guaranteed for the listed items within a given date."
 Human also directed removal of the `pending_review` mechanism outright ("WTF is 'pending
