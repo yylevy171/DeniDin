@@ -3,16 +3,17 @@
 **Feature Branch**: audit material landed via `chore/august-ledger-audit` (renamed 064→065, collision with pre-existing 064-bank-deposit-full-cycle); implementation branch
 TBD at pickup (e.g. `feature/065-august-ledger-audit-apply`)
 **Created**: 2026-08-30
-**Status**: In progress (`feature/065-august-ledger-audit-apply`, 2026-08-31) — the August prod
-mutation described below (Type 1/2/3) has been applied and independently re-verified against the
-real prod filesystem, via a temporary rw sshfs mount (torn down immediately after). Not a
-speckit-pipeline feature — explicit user decision, "we're not doing speckit here, it's a chore."
-Still open before this can move to `specs/done/`: (a) the 2 real prod duplicate pairs found
+**Status**: Done (moved to `specs/done/`, 2026-08-31, explicit user direction — "that was part of
+haleluya"). The August prod mutation described below (Type 1/2/3) has been applied and
+independently re-verified against the real prod filesystem, via a temporary rw sshfs mount (torn
+down immediately after). Not a speckit-pipeline feature — explicit user decision, "we're not
+doing speckit here, it's a chore." Three items were left unresolved when this was closed out and
+remain open, tracked here rather than blocking closure: (a) the 2 real prod duplicate pairs found
 during the copy step (`B23082606010`/`B23082606020` אתי אסולין, `B23082606560`/`B23082607030`
 גדי רוזן) only had one side copied into player/prod — the other side's dedup handling was never
 finished; (b) the אורלי גרינפלד `הסכם` (`A23082611460`) vs `בנק` (`B24082606100`) reconciliation
 was never resolved; (c) the planned July audit (see below) has not been started. See "Prod
-Mutation Applied (2026-08-31)" below for the full record of what changed. PR: #269.
+Mutation Applied (2026-08-31)" below for the full record of what changed. PR: #269, #270.
 **Priority**: P2 — no urgency. The prod `בנק`/`הסכם` ledger is a manual cache, not a source of
 truth (see `runtime_constitution.md` "cache over Morning" rule); Morning already holds the
 authoritative record of every August shekel. This feature only improves the cache's accuracy.
@@ -245,7 +246,7 @@ feature:
 ### (b) Missing data must be tracked, not silently absorbed
 
 Create a durable, human-readable "missing data" record (proposed:
-`specs/backlog/065-august-ledger-audit-apply/missing_data_august.md`, one row per gap) covering
+`specs/done/065-august-ledger-audit-apply/missing_data_august.md`, one row per gap) covering
 everything identified across both sources that is **not** going to be recovered by (a):
 
 - The 4 unmatched Category-2 pre-onboarding docs (112282/112295/112290/112289, 21,552 ₪) —
