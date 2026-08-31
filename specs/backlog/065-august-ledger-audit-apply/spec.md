@@ -3,9 +3,16 @@
 **Feature Branch**: audit material landed via `chore/august-ledger-audit` (renamed 064→065, collision with pre-existing 064-bank-deposit-full-cycle); implementation branch
 TBD at pickup (e.g. `feature/065-august-ledger-audit-apply`)
 **Created**: 2026-08-30
-**Status**: Backlog — holding spec. Records the audit that was already done (2026-08-30) plus the
-concrete change-set it produced. Full `speckit.specify`/`clarify`/`plan`/`tasks` pipeline still
-needs to run before any prod mutation.
+**Status**: In progress (`feature/065-august-ledger-audit-apply`, 2026-08-31) — the August prod
+mutation described below (Type 1/2/3) has been applied and independently re-verified against the
+real prod filesystem, via a temporary rw sshfs mount (torn down immediately after). Not a
+speckit-pipeline feature — explicit user decision, "we're not doing speckit here, it's a chore."
+Still open before this can move to `specs/done/`: (a) the 2 real prod duplicate pairs found
+during the copy step (`B23082606010`/`B23082606020` אתי אסולין, `B23082606560`/`B23082607030`
+גדי רוזן) only had one side copied into player/prod — the other side's dedup handling was never
+finished; (b) the אורלי גרינפלד `הסכם` (`A23082611460`) vs `בנק` (`B24082606100`) reconciliation
+was never resolved; (c) the planned July audit (see below) has not been started. See "Prod
+Mutation Applied (2026-08-31)" below for the full record of what changed.
 **Priority**: P2 — no urgency. The prod `בנק`/`הסכם` ledger is a manual cache, not a source of
 truth (see `runtime_constitution.md` "cache over Morning" rule); Morning already holds the
 authoritative record of every August shekel. This feature only improves the cache's accuracy.
@@ -132,6 +139,128 @@ To be refined during `speckit.plan`. Candidate approach:
 - `#112307 רומן ציקל 3,000` looks like a duplicate/mis-issue of `#112308 רומן אלטשולר` in
   Morning itself — out of scope here (Morning-side), but worth flagging to the operator.
 
+## Second source: player-replay cross-check (2026-08-30)
+
+Independently of the manual audit above, `chore/player-start-at-line-resume` re-ran the full
+July–August WhatsApp export through the Feature 043 player (real message-by-message replay
+through the actual bot pipeline, real OpenAI calls, real ledger-event capture — not a
+simulation of the audit). Its output was itself reviewed item-by-item (86
+`needs_clarification.jsonl` entries; full reasoning trail in
+`apps/denidin-app/player_data/_review_decisions.jsonl`). That review surfaced findings that
+either **corroborate** this audit or **extend** it:
+
+### Corroborating findings (independent agreement)
+
+- **`B06082613310` (רונית יעקובסון, 3,776 ₪, Bit transfer)** — the player replay captured this
+  as a ledger event and flagged it for review; the human reviewer (unaware of this audit's
+  parallel conclusion) independently marked it `מבוטל` for the same reason this audit removed
+  it: an unsupported, never-settled (`ממתין`) Bit transfer. Two separate processes, same
+  event, same call — see `specs/backlog/066-support-bit-and-paybox`.
+- The player replay reproduced the same **duplicate-capture pattern** this audit found manually
+  (repeated near-identical `העברה נוספת` deposits captured seconds/minutes apart for the same
+  underlying transaction) — e.g. player events `B09082606040`/`B09082606280` (both עדי דניאל,
+  3,000 ₪, 04/08) and `B09082606041`/`B09082606350` (both אוחנה אלעד, 1,500 ₪, 05/08) mirror
+  this audit's own keep/dup pairs for the *same* client+amount+date. Confirms the duplicate
+  mechanism is systemic (an artifact of the source WhatsApp export's own repeated forwards, not
+  an audit-time or replay-time fluke) — relevant to `060-duplicate-bank-image-detection`'s
+  general-mechanism design.
+- The `reference: "צריך למצוא"` placeholder-leak (9 events fixed to `null` during the review)
+  and the `client_name` = OCR/institution-name pattern (e.g. `"מתנ"ס נחל"`, `"סיטיבנק ישראל
+  גי"`) both independently reproduce exactly the defect classes `069-mandatory-client-
+  resolution-before-ledger-event` was opened to fix — the player replay hit the same
+  extraction-time confusion on the same underlying screenshots.
+
+### New finding: the player replay recovers most of the "pre-onboarding gap" (Category 2)
+
+**This is the most actionable new fact for "fixing August."** DeniDin was not admitted to the
+real WhatsApp group until 2026-08-05 ~18:24 — so the real prod ledger has **zero** `בנק` events
+for 2–4 Aug (this audit's Category 2, 14 Morning docs / 54,678 ₪). But the player replay was run
+against the **full WhatsApp export file**, which includes that pre-onboarding history (the
+export captures the whole chat regardless of when the live bot joined it) — so the player
+*did* generate ledger events for those dates. Matching player events (`txn_date`) to this
+audit's Category 2 Morning docs (`creationDate`, 1 day later — normal bank-to-Morning lag) by
+amount + near-identical client name:
+
+| Morning doc | date | client (Morning) | amount | matched player event | client (player capture) |
+|---|---|---|---|---|---|
+| 112285 | 03/08 | סמי כהונאי | 1,888 | `B03082614414` | כהונאי מוריס,כהונאי סמירה |
+| 112288 | 03/08 | אילן מוריץ | 3,776 | `B03082614412` | מוריץ אילן |
+| 112287 | 03/08 | עליזה בניטה | 3,776 | `B03082614411` | בניטה עליזה ויוס |
+| 112286 | 03/08 | אייל כהן | 3,776 | `B03082614410` | כהן איל |
+| 112284 | 03/08 | גל פלג | 3,776 | `B03082614413` | עובד-פלג אפרת (desc also names "פלג גל") |
+| 112283 | 03/08 | מירב יונתן דולב | 3,776 | `B03082614415` | דולב ירון,יונתן-דולב מירב |
+| 112291 | 04/08 | רוני גרינבוים זיו | 1,030 | `B04082608510` | גרינבוים די רון |
+| 112294 | 04/08 | סיגל רוטקוביץ | 3,776 | `B04082608513` | סיגל רוטקוביץ שר |
+| 112293 | 04/08 | עופר גלברט | 3,776 | `B04082608512` | עו"ד גלברט עפרו י |
+| 112292 | 04/08 | עפרה קפואה מלצר | 3,776 | `B04082608511` | מלצר עפרה וד"ר מ |
+
+**10 of 14 Category-2 documents (33,126 ₪ of the 54,678 ₪ gap) have a matching player-captured
+event**, with client names needing the same kind of normalization pass as `069` already
+proposes (the player's OCR/extraction reproduced the same messy raw names this audit corrected
+manually). The 4 that do **not** match any player event: `112282` (תניה סנקין, 4,000 ₪),
+`112295` (אפרת הלוי, 3,776 ₪), `112290` (עמליה אור, 3,776 ₪), `112289` (אור משאלי 2020,
+10,000 ₪) — genuinely unrecoverable from this source; either the underlying screenshot was
+never forwarded to the group at all, or the player's clarification-loop dropped it silently
+(needs a targeted look at the player's raw log around those dates before concluding "no data
+exists" — see Required Actions below).
+
+### Non-August findings from the same review, noted for completeness (not actioned here)
+
+The player-review also produced a Bug-Driven-Development bugfix
+(`bugfix-049-financial-status-answers-from-conversation-not-ledger.md` — model answering
+financial-existence questions from conversation memory instead of a real ledger/Morning lookup)
+and several open Category-B constitution-tuning candidates (spelling-variance policy, checks
+(`שיק`)-unsupported wording, historical name-variant inconsistency for one client) — tracked
+separately, out of scope for "fixing August" specifically.
+
+## Required Actions — what "prod Aug data is good" means
+
+Two separate, explicit deliverables, per the 2026-08-30 decision to start executing this
+feature:
+
+### (a) Ledger data must be correct
+
+1. **Apply this audit's original change-set** to the real prod ledger
+   (`~/denidin-winprod-data/events/`, via SSH/read-write path — the local mount is read-only,
+   so this requires the equivalent write path, TBD in `speckit.plan`): 8 events marked
+   duplicate-of-keep (6 groups), 4 Bit-transfer events marked `מבוטל` (with the caveat below),
+   15 client-name corrections applied (propagating to dup twins per
+   `ledger_changes_august.json`).
+2. **Revisit the 2 Bit removals with real Morning documents** (רונית יעקובסון #112297, רן סופר
+   #112299 — 6,136 ₪) — per the audit's own open decision: since `066-support-bit-and-paybox`
+   is now being scoped, decide whether to (i) leave these `מבוטל` until 066 ships and then
+   re-capture properly, or (ii) restore them now with a corrected payment-method field as an
+   interim fix. **Human decision required, not to be inferred.**
+3. **Backfill the 10 matched pre-onboarding-gap events** (table above) into the prod ledger as
+   new events (not overwriting anything — this data never existed in prod), applying the same
+   client-name normalization the other 15 corrections used. Mechanism (new events vs. some
+   other representation) is a `speckit.plan` decision, same immutability question the original
+   audit already flagged as open.
+4. **`אסולין אסתר` (`B06082606161`/554 ₪, no Morning document)** — same open question the
+   original audit raised; resolve one way or the other rather than leaving ambiguous.
+5. Immutability mechanism (rewrite-in-place vs. superseding-event vs. mark-only) — still an open
+   human decision from the original audit; must be settled before any of the above ledger
+   mutations happen, since it governs how all of them are implemented.
+
+### (b) Missing data must be tracked, not silently absorbed
+
+Create a durable, human-readable "missing data" record (proposed:
+`specs/backlog/065-august-ledger-audit-apply/missing_data_august.md`, one row per gap) covering
+everything identified across both sources that is **not** going to be recovered by (a):
+
+- The 4 unmatched Category-2 pre-onboarding docs (112282/112295/112290/112289, 21,552 ₪) —
+  pending the targeted player-log look noted above; if still unrecoverable, recorded as a
+  permanent, dated gap with the reason ("bot not yet admitted to group; no bank slip forwarded
+  or replay could not recover it").
+- Category 3 (8 Morning docs / ~53,436 ₪, real closed income with no bank-slip conversation at
+  all — e.g. נואז-טק פתרונות #112298) — these are correctly absent from the `בנק` cache by
+  design (no slip was ever sent), so the record should state that explicitly rather than imply
+  a defect.
+- `#112307 רומן ציקל 3,000` vs `#112308 רומן אלטשולר` — the original audit's flagged possible
+  Morning-side duplicate/mis-issue, out of scope to fix here but must not be dropped.
+- Any of the Category-B constitution-tuning items (above) that end up affecting future data
+  quality, cross-referenced rather than duplicated.
+
 ## Related
 
 - **Feature 062** (`specs/backlog/062-prod-morning-ledger-backfill-completion`) — Morning-sourced
@@ -144,13 +273,88 @@ To be refined during `speckit.plan`. Candidate approach:
   Morning" fallback rule the audit leans on.
 - **bugfix-023** (`ledger-tool-overeager-on-morning-query`) — related model-behavior context.
 
+## July audit (started 2026-08-30)
+
+Same cross-check methodology applied to July, from two Morning-app screenshots (partial —
+56 of 62 total July documents visible; full CSV export still needed to close this out
+exhaustively). Full results: `missing_data_july.md`.
+
+**Headline finding, confirmed by operator**: bank-deposit screenshots only started being
+forwarded to the WhatsApp group **late July** — before that, no bank slip ever existed to
+capture, so July's `בנק` cache is *expected* to cover only the last few days of the month, not
+the whole month (unlike August). The player replay's 3 July `בנק` events (28–30 July) all
+matched 1:1 against Morning documents (all posted 31/07/2026) by amount, and are staged —
+Morning name substituted, `morning_document_id` set — in `backfill_events_july/*.json`:
+
+| txn_date | Amount (₪) | Morning name | Morning doc # |
+|---|---|---|---|
+| 28/07 | 5,000 | דודי אדלר | 112280 |
+| 30/07 | 10,620 | גדי אדלר | 112281 |
+| 30/07 | 3,000 | יחיאל אוהב עמי | 130116 |
+
+The other ~30 July Morning documents have no corresponding player event, by design (no slip was
+ever sent for them) — tracked in `missing_data_july.md`, not treated as a defect.
+
+## Prod Mutation Applied (2026-08-31)
+
+`player_data/events/` (gitignored, local-only) was first corrected in place — Morning-verified
+name/status fixes from `ledger_changes_august.json`, plus fixes found only by cross-checking
+every player `בנק` event against `august_ledger_vs_morning.csv` (the real Morning export, more
+complete than the JSON audit alone) — every edit backed up to `player_data/events/_originals/`
+before mutation, same discipline used throughout this whole review. That corrected player store
+was then the source for a real prod write, done via a temporary rw sshfs mount (`scripts/
+env_lock.sh`/persistent-mount machinery untouched — this was a separate, explicitly-approved,
+task-scoped mount, torn down immediately after use):
+
+- **Type 1 — add new** (`type1_add_new_to_prod.csv`, 70 events): every player event with no prod
+  counterpart under that event_id, copied into prod's `events/` as new files.
+- **Type 2 — modify** (`type2_modify_in_prod.csv`, 26 events): prod's current file moved to
+  `events/_modified/` (history preserved), player's corrected version copied in as the new live
+  file.
+- **Type 3 — delete** (3 events: `B06082613311`, `B07082606400`, `B13082621150`): unsupported
+  Bit-transfer events with no player counterpart at all (player correctly never captured them) —
+  moved to `events/_removed/` with a reason note, not left live.
+
+Every step was independently re-verified against a fresh read of the real remote filesystem
+(not just the applying script's own in-process claim) — the rw mount was found to have silently
+died mid-run once during this work, so nothing here is reported done on trust alone. 130 macOS
+AppleDouble sidecar files (`._*`, a side effect of writing to this filesystem from a Mac) were
+found and cleaned up from prod's `events/`, `_modified/`, and `_removed/` before final
+verification.
+
+**Not yet applied** (see Status above): the 8 prod events copied into player as schema-v2 fixes
+for the "no player coverage" gaps (`copy_prod_gap_events_to_player.py`) were written to *player*
+only, as the source-of-truth correction — they were never a prod write target themselves (prod
+already had them). Two real prod duplicate pairs found along the way
+(`B23082606010`/`B23082606020`, `B23082606560`/`B23082607030`) only had one side reconciled; the
+אורלי גרינפלד `הסכם`/`בנק` split (`A23082611460` vs `B24082606100`) is unresolved.
+
 ## Files in this folder
 
 - `spec.md` — this file.
+- `missing_data_august.md` — the durable, per-gap "not recovered" record required by this
+  feature's own "missing data must be tracked" requirement.
+- `missing_data_july.md` — the July equivalent, plus the "screenshots only started late July"
+  root-cause note.
+- `backfill_events_pre_onboarding/*.json` — 10 ready-to-apply August events (Morning-verbatim
+  names), staged pending prod write.
+- `backfill_events_july/*.json` — 3 ready-to-apply July events (Morning-verbatim names), staged
+  pending prod write.
 - `ledger_changes_august.json` — the machine-readable change-set (duplicates / removals /
   name_changes). The applier's input.
 - `august_bank_deposits.csv` — the 21 refined deposits (txn_date, amount, client_name) after
   duplicates removed. Human reference.
+- `prod_events_jul_aug_reconciliation.csv` / `player_events_jul_aug_reconciliation.csv` — full
+  prod-vs-player diff (deterministic, read fresh from the live JSON files on disk every run, no
+  jsonl/history/audit-file dependency), produced by `scripts/reconcile_prod_vs_player.py`.
+- `type1_add_new_to_prod.csv` / `type2_modify_in_prod.csv` — the Type 1/Type 2 change-lists
+  actually applied to prod (see "Prod Mutation Applied" above), derived from the two
+  reconciliation CSVs by `scripts/build_type1_type2_csvs.py`.
+- `scripts/` — every script used in this review: `reconcile_prod_vs_player.py`,
+  `apply_audit_corrections_to_player.py`, `apply_csv_crosscheck_fixes.py`,
+  `copy_prod_gap_events_to_player.py`, `build_type1_type2_csvs.py`,
+  `apply_type1_add_new_to_prod.py`, `apply_type2_modify_in_prod.py`,
+  `apply_type3_delete_from_prod.py`.
 - `august_ledger_vs_morning.csv` — reconciliation: every August Morning income doc tagged
   `1_in_bank_ledger` / `2_pre_onboarding_gap` / `3_recorded_in_morning_no_bank_slip`.
 - `august_morning.csv` — **gitignored** (real client PII + signed download URLs). The raw Green
