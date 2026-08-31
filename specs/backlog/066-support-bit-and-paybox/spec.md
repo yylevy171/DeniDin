@@ -22,6 +22,13 @@ document flow.
   bank account number.
 - `ממתין` (pending) vs. settled: a pending transfer is not yet money received — the feature must
   decide whether to record provisionally, wait for a settled screenshot, or ask.
+- Independently corroborated by the `player_data/needs_clarification.jsonl` replay review
+  (2026-08-30, `chore/player-start-at-line-resume`): item 45/86 was a real PayBox deposit
+  screenshot where the model got confused and did not create a ledger event at all (reasonable,
+  since it's genuinely unsupported); item 67/86 found one player-replay event
+  (`B06082613310`, מבוטל'd during that review) matching the exact same real event 065's prod
+  audit independently flagged and removed for the same reason — two separate processes (a
+  replay review and a manual prod audit) reaching the same conclusion on the same event.
 
 ## Open questions for `speckit.clarify`
 
