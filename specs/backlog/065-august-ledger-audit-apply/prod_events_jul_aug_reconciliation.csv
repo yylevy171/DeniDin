@@ -1,0 +1,76 @@
+event_id,source_type,date,txn_date,client_name,amount,event_subtype,reference,in_player,action,detail
+A05082620170,הסכם,05/08/2026,,הסתדרות,40000,יצירה,,True,keep,identical to player
+A05082620180,הסכם,05/08/2026,,הסתדרות,40000,יצירה,,True,modify,event_subtype: 'יצירה' -> 'מבוטל'; vat_status: 'לא כולל' -> 'לא צוין'
+B05082621120,בנק,05/08/2026,05/08/2026,רלי אוחנה,1500,הפקדה,,True,modify,vat_status: 'לא צוין' -> 'כולל'
+A06082612280,הסכם,06/08/2026,06/08/2026,אורית בנימין,,יצירה,,True,keep,identical to player
+A06082618360,הסכם,06/08/2026,,אודליה שניידר,2000,יצירה,,True,keep,identical to player
+A06082620000,הסכם,06/08/2026,,עדי בן ארי,,יצירה,,True,keep,identical to player
+B06082606160,בנק,06/08/2026,05/08/2026,מתנ״ס נחל,10620,הפקדה,,True,modify,client_name: 'מתנ״ס נחל' -> 'מתנס שורק'; vat_status: 'לא צוין' -> 'כולל'
+B06082606161,בנק,06/08/2026,05/08/2026,אסולין אסתר,554,הפקדה,,True,modify,vat_status: 'לא צוין' -> 'כולל'
+B06082613310,בנק,06/08/2026,06/08/2026,רונית יעקובסון,3776,הפקדה,,True,modify,event_subtype: 'הפקדה' -> 'מבוטל'; vat_status: 'לא צוין' -> 'כולל'
+B06082613311,בנק,06/08/2026,06/08/2026,איילה הוניגמן,3776,הפקדה,,False,keep,no player counterpart with this event_id
+B07082606400,בנק,07/08/2026,07/08/2026,[לא קריא] ועד עובדי מכס,2360,הפקדה,,False,keep,no player counterpart with this event_id
+B09082606000,בנק,09/08/2026,06/08/2026,טחה שלמה נדרי,2000,הפקדה,,True,modify,client_name: 'טחה שלמה נדרי' -> 'שלמה נזרי'; vat_status: 'לא צוין' -> 'כולל'
+B09082606001,בנק,09/08/2026,06/08/2026,שלמה נדרי,2000,הפקדה,,True,modify,client_name: 'שלמה נדרי' -> 'אודליה שניידר'; txn_date: '06/08/2026' -> '07/08/2026'; vat_status: 'לא צוין' -> 'כולל'
+B09082606002,בנק,09/08/2026,07/08/2026,דן,2000,הפקדה,,False,keep,no player counterpart with this event_id
+B09082606003,בנק,09/08/2026,06/08/2026,קרעאן טאל,2300,הפקדה,,False,keep,no player counterpart with this event_id
+B09082606040,בנק,09/08/2026,04/08/2026,עזו דניאל,3000,הפקדה,,True,modify,client_name: 'עזו דניאל' -> 'עדו דניאל'; event_subtype: 'הפקדה' -> 'מבוטל'; vat_status: 'לא צוין' -> 'כולל'
+B09082606041,בנק,09/08/2026,05/08/2026,אוחנה אלעד,1500,הפקדה,,True,modify,client_name: 'אוחנה אלעד' -> 'רלי אוחנה'; event_subtype: 'הפקדה' -> 'מבוטל'; vat_status: 'לא צוין' -> 'כולל'
+B09082606220,בנק,09/08/2026,06/08/2026,קראאן טלאל,2300,הפקדה,,True,modify,client_name: 'קראאן טלאל' -> 'טלאל קרעאן'; vat_status: 'לא צוין' -> 'כולל'
+B09082606280,בנק,09/08/2026,04/08/2026,עדי דניאל,3000,הפקדה,,True,modify,client_name: 'עדי דניאל' -> 'עדו דניאל'; vat_status: 'לא צוין' -> 'כולל'
+B09082606290,בנק,09/08/2026,06/08/2026,שלמה נדרי,2000,הפקדה,,True,modify,client_name: 'שלמה נדרי' -> 'שלמה נזרי'; event_subtype: 'הפקדה' -> 'מבוטל'; vat_status: 'לא צוין' -> 'כולל'
+B09082606350,בנק,09/08/2026,05/08/2026,אוחנה אלעד,1500,הפקדה,,True,modify,client_name: 'אוחנה אלעד' -> 'רלי אוחנה'; event_subtype: 'הפקדה' -> 'מבוטל'; vat_status: 'לא צוין' -> 'כולל'
+A10082611080,הסכם,10/08/2026,,שי עמנואלי,20000,יצירה,,True,keep,identical to player
+B10082605310,בנק,10/08/2026,09/08/2026,אלדר דוד,5000,הפקדה,,True,modify,client_name: 'אלדר דוד' -> 'דודי אדלר'; vat_status: 'לא צוין' -> 'כולל'
+A11082615540,הסכם,11/08/2026,11/08/2026,ענבר,,יצירה,,True,keep,identical to player
+A11082615541,הסכם,11/08/2026,11/08/2026,ענבר,,יצירה,,False,keep,no player counterpart with this event_id
+B11082606200,בנק,11/08/2026,10/08/2026,צור זהבית,3000,הפקדה,,True,modify,client_name: 'צור זהבית' -> 'זהבית'; vat_status: 'לא צוין' -> 'כולל'
+B11082621310,בנק,11/08/2026,11/08/2026,"כהן, אביתר",2500,הפקדה,,True,modify,"client_name: 'כהן, אביתר' -> 'אביתר כהן'; vat_status: 'לא צוין' -> 'כולל'"
+B13082621150,בנק,13/08/2026,14/08/2026,איילה,1500,הפקדה,,False,keep,no player counterpart with this event_id
+A16082617410,הסכם,16/08/2026,,ליאור אדלמן,7000,יצירה,,True,keep,identical to player
+A16082620220,הסכם,16/08/2026,16/08/2026,אורית בנימין,,יצירה,,True,keep,identical to player
+A16082620221,הסכם,16/08/2026,16/08/2026,אורית בנימין,,יצירה,,False,keep,no player counterpart with this event_id
+A17082615080,הסכם,17/08/2026,,ענבר בן סימון,20000,יצירה,,True,keep,identical to player
+A17082619090,הסכם,17/08/2026,,גדי רוזן,20000,יצירה,,True,keep,identical to player
+B17082605470,בנק,17/08/2026,16/08/2026,עמנואלי שי שמואל,20000,הפקדה,,True,modify,client_name: 'עמנואלי שי שמואל' -> 'שי עמנואלי'; vat_status: 'לא צוין' -> 'כולל'
+A18082610020,הסכם,18/08/2026,,רומן אלטשולר,3000,יצירה,,True,keep,identical to player
+A18082615490,הסכם,18/08/2026,04/08/2026,דר נעים מרעי,,יצירה,,True,keep,identical to player
+A18082615491,הסכם,18/08/2026,18/08/2026,דר נעים מרעי,,יצירה,,True,keep,identical to player
+A18082615500,הסכם,18/08/2026,,עטאללה סבאג,7764,יצירה,,True,keep,identical to player
+A19082611280,הסכם,19/08/2026,,גלית סיטבון,6500,יצירה,,True,keep,identical to player
+A19082613410,הסכם,19/08/2026,,אורלי עדאס,,יצירה,,True,keep,identical to player
+B19082606570,בנק,19/08/2026,18/08/2026,דן (הערת לקוח),5000,הפקדה,,True,modify,client_name: 'דן (הערת לקוח)' -> 'ליאור חכם'; vat_status: 'לא צוין' -> 'כולל'
+B19082613420,בנק,19/08/2026,19/08/2026,"אלטשולר רומן,אלטשולר הלן",3000,הפקדה,,True,modify,"client_name: 'אלטשולר רומן,אלטשולר הלן' -> 'רומן אלטשולר'; vat_status: 'לא צוין' -> 'כולל'"
+A23082607350,הסכם,23/08/2026,,דוד אדלר,10000,יצירה,,False,keep,no player counterpart with this event_id
+A23082607351,הסכם,23/08/2026,,דוד אדלר,5000,יצירה,,False,keep,no player counterpart with this event_id
+A23082607370,הסכם,23/08/2026,,קטי בן דוד,800,יצירה,,False,keep,no player counterpart with this event_id
+A23082611460,הסכם,23/08/2026,,אורלי גרינפלד,800,יצירה,,False,keep,no player counterpart with this event_id
+B23082606010,בנק,23/08/2026,21/08/2026,אסולין אסתר,1071,הפקדה,צריך למצוא,True,modify,client_name: 'אסולין אסתר' -> 'אתי אסולין'
+B23082606020,בנק,23/08/2026,21/08/2026,אסולין אסתר,1071,הפקדה,,False,keep,no player counterpart with this event_id
+B23082606050,בנק,23/08/2026,21/08/2026,מקורות,12272,הפקדה,,True,keep,identical to player
+B23082606560,בנק,23/08/2026,21/08/2026,שושנה רוזן,20000,הפקדה,,True,modify,client_name: 'שושנה רוזן' -> 'גדי רוזן'
+B23082607030,בנק,23/08/2026,21/08/2026,שושנה רוזן,20000,הפקדה,,False,keep,no player counterpart with this event_id
+A24082615270,הסכם,24/08/2026,,מור פלומבו,7500,יצירה,,False,keep,no player counterpart with this event_id
+A24082619450,הסכם,24/08/2026,,ד״ר יעל לוריא,1500,יצירה,,False,keep,no player counterpart with this event_id
+B24082606100,בנק,24/08/2026,23/08/2026,גרינפלד אורלי,800,הפקדה,,True,modify,client_name: 'גרינפלד אורלי' -> 'אורלי גרינפלד'
+A25082610410,הסכם,25/08/2026,,אברהם מהודר,,יצירה,,False,keep,no player counterpart with this event_id
+A25082610420,הסכם,25/08/2026,,אברהם מהודר,,יצירה,צריך למצוא,False,keep,no player counterpart with this event_id
+A25082614530,הסכם,25/08/2026,,[לא קריא] פלומבו,7500,יצירה,,False,keep,no player counterpart with this event_id
+A25082614531,הסכם,25/08/2026,,[לא קריא] פלומבו,2500,יצירה,,False,keep,no player counterpart with this event_id
+A25082614532,הסכם,25/08/2026,,[לא קריא] פלומבו,,יצירה,,False,keep,no player counterpart with this event_id
+A25082615330,הסכם,25/08/2026,,מור פלומבו,7500,יצירה,,False,keep,no player counterpart with this event_id
+A25082615331,הסכם,25/08/2026,,מור פלומבו,2500,יצירה,,False,keep,no player counterpart with this event_id
+A25082615332,הסכם,25/08/2026,,מור פלומבו,,יצירה,,False,keep,no player counterpart with this event_id
+B25082609180,בנק,25/08/2026,24/08/2026,סיטיבנק ישראל גי,6500,הפקדה,,True,modify,client_name: 'סיטיבנק ישראל גי' -> 'גלית סיטבון'
+A27082609250,הסכם,27/08/2026,,אודי הניז,3000,יצירה,,False,keep,no player counterpart with this event_id
+A27082609251,הסכם,27/08/2026,,אודי הניז,,יצירה,,False,keep,no player counterpart with this event_id
+A27082615200,הסכם,27/08/2026,27/08/2026,ענבר,,יצירה,,False,keep,no player counterpart with this event_id
+A27082615201,הסכם,27/08/2026,30/08/2026,ענבר,,יצירה,,False,keep,no player counterpart with this event_id
+A27082615202,הסכם,27/08/2026,,ענבר,,יצירה,צריך למצוא,False,keep,no player counterpart with this event_id
+B27082606300,בנק,27/08/2026,27/08/2026,דודי חיפה,210,הפקדה,,True,modify,client_name: 'דודי חיפה' -> 'דודי אדלר'
+B27082609150,בנק,27/08/2026,25/08/2026,לור יעל,1500,הפקדה,,True,modify,client_name: 'לור יעל' -> 'יעל לוריא'
+B28082611200,בנק,28/08/2026,27/08/2026,רוני רמי בן חמו,4500,הפקדה,צריך למצוא,True,modify,client_name: 'רוני רמי בן חמו' -> 'רמי בן חמו'
+A30082607380,הסכם,30/08/2026,,מילי שוורצמן,9000,יצירה,,False,keep,no player counterpart with this event_id
+A30082609380,הסכם,30/08/2026,,רונן מכתייב,1500,יצירה,,False,keep,no player counterpart with this event_id
+A30082610530,הסכם,30/08/2026,,מוניר קיעאן,8000,יצירה,,False,keep,no player counterpart with this event_id
+B31082605550,בנק,31/08/2026,30/08/2026,פולומבו מור,3750,הפקדה,,False,keep,no player counterpart with this event_id
