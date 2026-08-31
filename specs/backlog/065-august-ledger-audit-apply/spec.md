@@ -12,7 +12,7 @@ during the copy step (`B23082606010`/`B23082606020` אתי אסולין, `B23082
 גדי רוזן) only had one side copied into player/prod — the other side's dedup handling was never
 finished; (b) the אורלי גרינפלד `הסכם` (`A23082611460`) vs `בנק` (`B24082606100`) reconciliation
 was never resolved; (c) the planned July audit (see below) has not been started. See "Prod
-Mutation Applied (2026-08-31)" below for the full record of what changed.
+Mutation Applied (2026-08-31)" below for the full record of what changed. PR: #269.
 **Priority**: P2 — no urgency. The prod `בנק`/`הסכם` ledger is a manual cache, not a source of
 truth (see `runtime_constitution.md` "cache over Morning" rule); Morning already holds the
 authoritative record of every August shekel. This feature only improves the cache's accuracy.
