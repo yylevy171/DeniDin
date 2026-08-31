@@ -137,7 +137,7 @@ To be refined during `speckit.plan`. Candidate approach:
 - **Feature 062** (`specs/backlog/062-prod-morning-ledger-backfill-completion`) — Morning-sourced
   prod ledger backfill; complementary. 065 is about the manually-captured `בנק`/`הסכם` events
   Morning can't source; 062 is about Morning-sourced accounting documents.
-- **Feature 052** (`specs/backlog/052-ledger-events-csv-export`) — ledger CSV export; the audit
+- **Feature 052** (`specs/low-priority/052-ledger-events-csv-export`) — ledger CSV export; the audit
   CSVs here are ad-hoc equivalents.
 - **Feature 033** (`specs/done/v0.2.0/033-ledger-event-persistence`) — event schema / immutability.
 - **Feature 044** (ledger querying) — `query_events` / `query_ledger_events`; the "cache over
