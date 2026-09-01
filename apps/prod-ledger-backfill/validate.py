@@ -15,10 +15,17 @@ under --ledger-dir (strictly read-only, REQ-BACKFILL-010). Produces a report wit
 - Surfaced anomalies: read from LedgerEventManager's own pending_review.json, which lives at
   ledger_dir.parent/"accounting_reconciliation"/pending_review.json — a SIBLING of --ledger-dir,
   not nested inside it (confirmed directly against _append_pending_review's real source).
-- Sampled field-level comparison: reuses method_a.transform() as a deterministic ground-truth
-  oracle (Method A is pure code, so it can recompute "what should this LedgerEvent look like"
-  regardless of which method Phase 3 actually used to produce the real file) and
-  select_method.diff_ledger_events() for the comparison itself — no new mapping/diff logic here.
+
+**Removed, 2026-09-01 (Feature 062 real prod run, explicit user direction)**: a third check,
+"sampled field-level comparison," used to reuse method_a.transform() as a comparison oracle
+against select_method.diff_ledger_events() — but that oracle stops one pipeline stage short of
+the real save path (add_ledger_event), so it always reported every sampled document as
+"not identical" (missing captured_at/session_id/message_id/schema_version/reference/etc. it
+never sets) regardless of whether the real data was correct — a structurally noisy, confusing
+signal, and Method A vs. B was already settled (method_a.py: "Method A — decided,
+2026-08-26, T031"), so the comparison this oracle existed for is obsolete anyway. Real content-
+field correctness (client_name/description/amount) is best verified by reading real persisted
+event files directly, not through this oracle.
 
 Sign-off itself is a separate mode (--approve --report-in <path> --signed-by <name>), never
 automatic and never inferred from the report simply existing.
@@ -42,14 +49,9 @@ for _extra_path in (
     if _extra_path_str not in sys.path:
         sys.path.insert(0, _extra_path_str)
 
-import method_a
-from select_method import diff_ledger_events
-
 from _ledger_event_manager_loader import get_ledger_event_manager_class  # noqa: F401 (loader
 # import kept for consistency with transform.py/select_method.py's import style; not otherwise
 # used here, since anomalies are read as a plain file, not via a LedgerEventManager instance)
-
-_DEFAULT_SAMPLE_SIZE = 20
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -66,10 +68,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--report-out", required=True, help="Path for this window's validation report.",
-    )
-    parser.add_argument(
-        "--sample-size", type=int, default=_DEFAULT_SAMPLE_SIZE,
-        help=f"How many matched documents to field-compare (default: {_DEFAULT_SAMPLE_SIZE}).",
     )
     return parser
 
@@ -140,31 +138,7 @@ def load_anomalies(ledger_dir: Path) -> list:
         return []
 
 
-def sample_field_comparison(
-    raw_by_number: Dict[str, dict], ledger_by_number: Dict[str, List[dict]], sample_size: int
-) -> list:
-    """
-    For up to sample_size documents that DO have a corresponding LedgerEvent, recomputes the
-    expected LedgerEvent via method_a.transform() (a deterministic ground-truth oracle,
-    independent of whichever method Phase 3 actually used) and diffs it against the real
-    persisted LedgerEvent via diff_ledger_events — reusing both already-tested functions rather
-    than writing new comparison logic a second time.
-    """
-    common_numbers = sorted(set(raw_by_number) & set(ledger_by_number))
-    results = []
-    for number in common_numbers[:sample_size]:
-        expected = method_a.transform(raw_by_number[number])
-        actual = ledger_by_number[number][0]  # multiple-per-number is an anomaly, surfaced separately
-        diff_result = diff_ledger_events(expected, actual)
-        results.append({
-            "display_number": number,
-            "identical": diff_result["identical"],
-            "differing_fields": diff_result["differing_fields"],
-        })
-    return results
-
-
-def build_report(raw_dir: Path, ledger_dir: Path, sample_size: int) -> dict:
+def build_report(raw_dir: Path, ledger_dir: Path) -> dict:
     raw_by_number = load_raw_documents_by_display_number(raw_dir)
     ledger_by_number = load_ledger_events_by_display_number(ledger_dir)
     return {
@@ -172,7 +146,6 @@ def build_report(raw_dir: Path, ledger_dir: Path, sample_size: int) -> dict:
         "ledger_dir": str(ledger_dir),
         "count_reconciliation": reconcile_counts(raw_by_number, ledger_by_number),
         "anomalies": load_anomalies(ledger_dir),
-        "sampled_field_comparison": sample_field_comparison(raw_by_number, ledger_by_number, sample_size),
         "sign_off": {"signed": False, "signed_by": None, "signed_at": None},
     }
 
@@ -185,19 +158,17 @@ def _run_validate(argv) -> int:
     ledger_dir = Path(args.ledger_dir)
     report_out = Path(args.report_out)
 
-    report = build_report(raw_dir, ledger_dir, args.sample_size)
+    report = build_report(raw_dir, ledger_dir)
 
     report_out.parent.mkdir(parents=True, exist_ok=True)
     report_out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 
     reconciliation = report["count_reconciliation"]
-    mismatches = [item for item in report["sampled_field_comparison"] if not item["identical"]]
     print(
         f"Raw: {reconciliation['raw_document_count']}, "
         f"Ledger: {reconciliation['ledger_event_count']}, "
         f"discrepancy: {reconciliation['unexplained_discrepancy']}, "
-        f"anomalies: {len(report['anomalies'])}, "
-        f"sampled mismatches: {len(mismatches)}/{len(report['sampled_field_comparison'])}"
+        f"anomalies: {len(report['anomalies'])}"
     )
     print(f"Report written to {report_out} — UNSIGNED. Review it, then run with --approve.")
     return 0
