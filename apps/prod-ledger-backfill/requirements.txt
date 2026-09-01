@@ -1,0 +1,34 @@
+# Prod Morning Ledger Backfill — standalone operator-run pipeline (Feature 061).
+#
+# This app is NOT pip-installed as a package, and does not declare a "path dependency" on
+# apps/morning-mcp-app or apps/denidin-app — neither of those apps is pip-installable either
+# (confirmed: no setup.py/pyproject.toml in either). Both are consumed the same way their own
+# test suites already consume each other's siblings-within-an-app internals: via sys.path
+# manipulation in conftest.py (see conftest.py in this directory), exactly matching
+# apps/morning-mcp-app/conftest.py's and apps/denidin-app/conftest.py's own established pattern.
+#
+# So this file lists only real, independently-installable PyPI packages:
+
+requests>=2.31.0   # transitively required by denidin_mcp_morning.morning_client.MorningClient
+urllib3>=2.0.0      # transitively required by MorningClient's Retry-wrapped requests.Session
+
+# Method A (research.md R7, corrected during implementation — see method_a.py's own docstring):
+# reuses denidin_mcp_morning.models.Invoice + .formatters.format_invoice_json verbatim, rather
+# than hand-rolling a second field mapping — both are pydantic-backed.
+pydantic>=2.0.0
+email-validator>=2.0.0   # Invoice's Client sub-model uses pydantic's EmailStr
+
+# _ledger_event_manager_loader.py loads ledger_event_manager.py directly (apps/denidin-app) for
+# _expand_accounting_document_json/LedgerEventManager reuse — as of master's Feature 044
+# (2026-08-25, merged into this branch 2026-08-26), that module itself imports rapidfuzz for
+# fuzzy client-name matching, so it's transitively required here too.
+rapidfuzz>=3.9.0
+
+# openai is deliberately NOT listed unconditionally — it's only needed if the Phase 2
+# method-selection experiment (research.md R7) selects Method B (AI-mediated transform).
+# Add `openai>=1.50.0` here once that real experiment concludes with that result; until then,
+# the real pipeline has zero OpenAI dependency, matching plan.md's Technical Context.
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0

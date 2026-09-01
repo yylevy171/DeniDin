@@ -776,6 +776,21 @@ def _seed_client_via_conversation(
     return response, ai_response
 
 
+# Feature 026's exception to "always require an exact resolved match" -
+# add_client alone (never update_client) doesn't need one, since its whole
+# purpose is to create a client that does NOT exist yet
+# (runtime_constitution.md's "Exception when the underlying request is to
+# ADD a NEW client", tightened bugfix-045). Deliberately verbose and
+# unambiguous so it reads the same regardless of whether the model's
+# preceding disambiguation question was phrased as a closed yes/no or an
+# open "X1, X2, or new?" - a bare "כן" is genuinely ambiguous against the
+# latter phrasing (bugfix-045 root cause); this sentence isn't.
+_CONFIRM_NEW_CLIENT_REPLY = (
+    "אני יודע/ת שיש אולי לקוחות עם שם דומה, אבל אני בכל זאת רוצה ליצור "
+    "לקוח חדש עם השם שנתתי, ולא אחד מהדומים."
+)
+
+
 def _seed_fresh_client(
     chat_id: str,
     id_prefix: str,
@@ -793,25 +808,30 @@ def _seed_fresh_client(
     with a random family name) while still getting the same collision-retry
     safety - see callers passing a custom factory for examples.
 
-    `resolve_client_name` has no fuzzy leniency at all - a collision here
-    means it is doing exactly its designed job of flagging a non-exact or
-    exact match. Per the 2026-08-12 constitution fix, what happens next
-    depends on which kind of match it found:
+    Reworked bugfix-045: `resolve_client_name` returns exactly one of four
+    outcomes for the seed message's name, handled deterministically -
+    never by parsing the model's own free-text question, which is exactly
+    what let the bugfix-045 regression hide inside "5 attempts exhausted"
+    across 6+ real test failures for weeks:
     - EXACT match ("שם הלקוח המדויק במורנינג") → a real pre-existing
       duplicate. The only thing on offer is updating THAT existing client -
-      never blindly say "כן" here, since that would silently mutate an
-      unrelated real sandbox client's email/phone. Draw a new name instead.
-    - Non-exact (a "did you mean X, or create a new one?" question, or a
-      candidates list) → creation is still on the table; one extra "כן" is
-      needed to say "the new one", landing on the ordinary pending-approval
-      prompt every add_client goes through (Feature 022) - then one more
-      "כן" to actually approve it. A genuinely fresh name with no match at
-      all only needs that last "כן" (the ordinary one-turn approval flow).
+      never approve here, since that would silently mutate an unrelated
+      real sandbox client's email/phone. Draw a new name instead - the
+      ONLY branch that advances to the next attempt.
+    - Zero matches, one non-exact candidate, or several ambiguous
+      candidates now all resolve the same way (the constitution's ADD-NEW
+      exception): check `PendingApprovalManager` directly, never text -
+      zero matches usually goes straight to a pending `add_client`; one or
+      more candidates first need `_CONFIRM_NEW_CLIENT_REPLY` to get there.
+      Either way, once pending, one plain "כן" approves it.
 
-    Unlike `_seed_client_via_conversation`, never asserts on a single
-    attempt's outcome - only on running out of attempts entirely. Returns
-    the (client_name, response, ai_response) actually used, since it may
-    differ from any name the caller had in mind."""
+    A non-exact-match candidate that still fails to reach a completed
+    `add_client` after one unambiguous "create new" reply and one approval
+    is now a REAL failure (raises immediately, never silently retried with
+    a new name) - that silent retry is exactly what buried the bug this
+    long."""
+    import denidin
+
     for attempt in range(1, max_attempts + 1):
         candidate = name_factory()
         seed_email = _random_seed_email()
@@ -828,25 +848,40 @@ def _seed_fresh_client(
             )
             continue
 
-        for _ in range(2):
-            add_calls = _calls_for(ai_response, "add_client")
-            if add_calls and add_calls[0]["error"] is None:
-                time.sleep(3)
-                return candidate, response, ai_response
+        if denidin.denidin_app.ai_handler.pending_approval_manager.get(chat_id) is None:
+            # No pending add_client yet - the model asked a disambiguation
+            # question (one candidate or several) instead of attempting the
+            # call directly. One unambiguous reply, regardless of exactly
+            # how that question was phrased.
             response, ai_response = _send_turn(
-                chat_id=chat_id, text="כן", id_prefix=f"{id_prefix}_SEEDCLIENT_A{attempt}_YES"
+                chat_id=chat_id, text=_CONFIRM_NEW_CLIENT_REPLY,
+                id_prefix=f"{id_prefix}_SEEDCLIENT_A{attempt}_CONFIRMNEW",
             )
 
-        add_calls = _calls_for(ai_response, "add_client")
-        if add_calls and add_calls[0]["error"] is None:
-            time.sleep(3)
-            return candidate, response, ai_response
-        logger.warning(
-            f"_seed_fresh_client: attempt {attempt} name {candidate!r} did not "
-            f"cleanly create a new client after confirmation - retrying with a "
-            f"new name. Bot reply: {response!r}"
+        assert denidin.denidin_app.ai_handler.pending_approval_manager.get(chat_id) is not None, (
+            f"_seed_fresh_client: attempt {attempt} name {candidate!r} - no pending "
+            f"add_client approval even after an unambiguous 'create new' reply. This "
+            f"is a real bug, not a name collision to retry past: "
+            f"{ai_response.mcp_calls if ai_response else None!r}"
         )
-    raise RuntimeError(f"Could not seed a genuinely fresh client after {max_attempts} attempts")
+
+        response, ai_response = _send_turn(
+            chat_id=chat_id, text="כן", id_prefix=f"{id_prefix}_SEEDCLIENT_A{attempt}_APPROVE"
+        )
+        add_calls = _calls_for(ai_response, "add_client")
+        assert add_calls and add_calls[0]["error"] is None, (
+            f"_seed_fresh_client: attempt {attempt} name {candidate!r} - add_client "
+            f"did not complete cleanly after approval. This is a real bug, not a "
+            f"name collision to retry past: "
+            f"{ai_response.mcp_calls if ai_response else None!r}"
+        )
+        time.sleep(3)
+        return candidate, response, ai_response
+
+    raise RuntimeError(
+        f"Could not seed a genuinely fresh client after {max_attempts} attempts "
+        f"(every attempt hit a real EXACT-match name collision)"
+    )
 
 
 def _complete_add_client_flow(

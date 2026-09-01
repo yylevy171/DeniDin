@@ -1,0 +1,149 @@
+# Feature Specification: Bank Deposit Full Cycle
+
+**Feature Branch**: `feature/064-bank-deposit-full-cycle`  
+**Created**: 2026-08-27  
+**Status**: Placeholder — not yet fleshed out, do not implement against this file yet  
+**Input**: User description: "When an incoming bank deposit image is received, offer to do the full cycle: add a new client if necessary, and create the invoice plus receipt combo that should follow the bank deposit."
+
+---
+
+**CRITICAL - MANDATORY REQUIREMENT**:
+🚨 **This feature MUST have a separate `user-stories.md` file** before spec approval:
+- Spec approval is BLOCKED if `user-stories.md` does not exist
+- If user stories are not provided, STOP and request them: "Please provide user stories in Given-When-Then format"
+- See example structure in this section below and in `.github/METHODOLOGY.md §I`
+
+**IMPORTANT**: This spec MUST comply with:
+- **CONSTITUTION.md** (§I-III, §V): Coding standards, UTC timestamps, version control workflow, NO environment variables, Integration tests as E2E
+- **METHODOLOGY.md** (§I, II, VIII, IX, X): Specification-first development, User stories mandatory, Terminology Glossary, Technology Choices, Requirement IDs
+
+**Required Files & Sections** (per METHODOLOGY.md):
+- ✅ **`user-stories.md`** (MANDATORY) - Given-When-Then format, end-to-end flows, router/integration requirements explicit
+- ✅ **`spec.md`** (this file) - Terminology Glossary, Technology Choices, Requirements with REQ-* identifiers
+- ✅ **`plan.md`** - Phase-based implementation plan
+- ✅ **`tasks.md`** - Dependency-ordered task list
+
+---
+
+## User Stories Reference
+
+**NOTE**: Complete user stories are defined in **`user-stories.md`** file (SEPARATE from this spec).
+
+This section is a QUICK REFERENCE ONLY. The authoritative user stories document has:
+- Complete Given-When-Then acceptance criteria
+- Explicit routing/dispatcher requirements (e.g., "@bot.router.message(type_message='imageMessage')")
+- Complete system flow descriptions (webhook → router → handler → response)
+- Integration test requirements for each story
+
+Example structure (see `user-stories.md` for full version):
+
+---
+
+## User Scenarios & Testing *(mandatory)*
+
+<!--
+  IMPORTANT: User stories should be PRIORITIZED as user journeys ordered by importance.
+  Each user story/journey must be INDEPENDENTLY TESTABLE - meaning if you implement just ONE of them,
+  you should still have a viable MVP (Minimum Viable Product) that delivers value.
+  
+  Assign priorities (P1, P2, P3, etc.) to each story, where P1 is the most critical.
+  Think of each story as a standalone slice of functionality that can be:
+  - Developed independently
+  - Tested independently
+  - Deployed independently
+  - Demonstrated to users independently
+-->
+
+### User Story 1 - [Brief Title] (Priority: P1)
+
+[Describe this user journey in plain language]
+
+**Why this priority**: [Explain the value and why it has this priority level]
+
+**Independent Test**: [Describe how this can be tested independently - e.g., "Can be fully tested by [specific action] and delivers [specific value]"]
+
+**Acceptance Scenarios**:
+
+1. **Given** [initial state], **When** [action], **Then** [expected outcome]
+2. **Given** [initial state], **When** [action], **Then** [expected outcome]
+
+---
+
+### User Story 2 - [Brief Title] (Priority: P2)
+
+[Describe this user journey in plain language]
+
+**Why this priority**: [Explain the value and why it has this priority level]
+
+**Independent Test**: [Describe how this can be tested independently]
+
+**Acceptance Scenarios**:
+
+1. **Given** [initial state], **When** [action], **Then** [expected outcome]
+
+---
+
+### User Story 3 - [Brief Title] (Priority: P3)
+
+[Describe this user journey in plain language]
+
+**Why this priority**: [Explain the value and why it has this priority level]
+
+**Independent Test**: [Describe how this can be tested independently]
+
+**Acceptance Scenarios**:
+
+1. **Given** [initial state], **When** [action], **Then** [expected outcome]
+
+---
+
+[Add more user stories as needed, each with an assigned priority]
+
+### Edge Cases
+
+<!--
+  ACTION REQUIRED: The content in this section represents placeholders.
+  Fill them out with the right edge cases.
+-->
+
+- What happens when [boundary condition]?
+- How does system handle [error scenario]?
+
+## Requirements *(mandatory)*
+
+<!--
+  ACTION REQUIRED: The content in this section represents placeholders.
+  Fill them out with the right functional requirements.
+-->
+
+### Functional Requirements
+
+- **FR-001**: System MUST [specific capability, e.g., "allow users to create accounts"]
+- **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]  
+- **FR-003**: Users MUST be able to [key interaction, e.g., "reset their password"]
+- **FR-004**: System MUST [data requirement, e.g., "persist user preferences"]
+- **FR-005**: System MUST [behavior, e.g., "log all security events"]
+
+*Example of marking unclear requirements:*
+
+- **FR-006**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
+- **FR-007**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
+
+### Key Entities *(include if feature involves data)*
+
+- **[Entity 1]**: [What it represents, key attributes without implementation]
+- **[Entity 2]**: [What it represents, relationships to other entities]
+
+## Success Criteria *(mandatory)*
+
+<!--
+  ACTION REQUIRED: Define measurable success criteria.
+  These must be technology-agnostic and measurable.
+-->
+
+### Measurable Outcomes
+
+- **SC-001**: [Measurable metric, e.g., "Users can complete account creation in under 2 minutes"]
+- **SC-002**: [Measurable metric, e.g., "System handles 1000 concurrent users without degradation"]
+- **SC-003**: [User satisfaction metric, e.g., "90% of users successfully complete primary task on first attempt"]
+- **SC-004**: [Business metric, e.g., "Reduce support tickets related to [X] by 50%"]

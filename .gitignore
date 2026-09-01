@@ -106,3 +106,9 @@ apps/denidin-app/tests/fixtures/whatsapp_exports/Events.csv
 # Feature 025 prompt-playground run artifacts (local iteration only, not source)
 specs/in-progress/025-morning-sourced-ledger-events/scripts/last_response_*.json
 specs/in-progress/025-morning-sourced-ledger-events/scripts/*.disabled
+
+# Feature 065 August ledger audit: raw Green Invoice export (~500 rows -
+# real client names, phones, emails, and signed document-download URLs).
+# Local-only audit input, same rule as Events.csv above. The committed
+# derived artifacts in that folder carry only client names + amounts.
+specs/backlog/065-august-ledger-audit-apply/august_morning.csv

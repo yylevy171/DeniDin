@@ -17,7 +17,12 @@ merged into event_datetime; notes removed (merged into description/
 reference_hint); replaced_event_id/replaces_hint folded into reference/
 reference_hint (found to be the same mechanism in the real ledger); sender/
 message_timestamp removed (no reader, fully covered by event_datetime);
-agreement_label no longer persisted (only used to build agreement_id).
+agreement_label was, at that point, still a construction-only tool input used
+to build agreement_id and never persisted on its own (bugfix-agreement-label,
+2026-08-24: agreement_label is now gone entirely - the AI builds agreement_id
+itself, fully-formed, in the documented '{MMYY}-{client_slug}-{label_slug}'
+format, and it's the only thing ever supplied/persisted; code no longer
+computes or slugifies any part of it).
 
 See specs/in-progress/033-ledger-event-persistence/data-model.md for the
 original field list and specs/in-progress/033-ledger-event-persistence/spec.md
@@ -50,7 +55,7 @@ SAMPLE_EVENT = {
     "vat_status": "לא צוין",
     "trigger_condition": None,
     "reference_hint": None,
-    "agreement_label": "תיק בדיקה",
+    "agreement_id": "0726-ישראל_ישראלי-תיק_בדיקה",
     "component_label": "בסיס",
 }
 
@@ -483,9 +488,12 @@ class TestAgreementAndComponentIds:
 
     Phase 11 (2026-08-16): agreement_label itself confirmed no longer persisted
     as its own field (real-data audit found agreement_id already fully embeds
-    the (slugified) label, and every component references the SAME agreement_id
-    - never re-derived/reconstructed later, same discipline as a UUID - see
-    data-model.md §1b)."""
+    the (slugified) label - see data-model.md §1b).
+
+    bugfix-agreement-label (2026-08-24): agreement_label removed entirely, even
+    as a construction-only tool input - the AI now builds agreement_id itself,
+    fully-formed, and every component references the SAME agreement_id, never
+    re-derived/reconstructed later, same discipline as a UUID."""
 
     def test_agreement_event_gets_non_null_agreement_id_and_component_id(
         self, manager, temp_events_dir
@@ -510,29 +518,35 @@ class TestAgreementAndComponentIds:
         assert data["component_id"] is None
         assert data["component_label"] is None
 
-    def test_agreement_id_matches_real_csv_format(self, manager, temp_events_dir):
+    def test_agreement_id_is_persisted_verbatim_as_supplied(self, manager, temp_events_dir):
+        """bugfix-agreement-label (2026-08-24): agreement_id is fully AI-authored,
+        already in the documented '{MMYY}-{client_slug}-{label_slug}' format -
+        code no longer computes or slugifies any part of it, only persists
+        exactly what was given."""
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, client_name="אתי אסולין", agreement_label="ערעור לארצי"),
+            session_id="s", event=dict(
+                SAMPLE_EVENT, client_name="אתי אסולין",
+                agreement_id="0726-אתי_אסולין-ערעור_לארצי",
+            ),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
-        # FIXED_TS -> 28/07/2026 local -> MMYY "0726"
         assert data["agreement_id"] == "0726-אתי_אסולין-ערעור_לארצי"
 
-    def test_agreement_label_itself_not_persisted_as_its_own_field(
+    def test_agreement_label_is_not_a_field_anywhere(
         self, manager, temp_events_dir
     ):
-        """Phase 11 (2026-08-16, human requirement): "I never want to see the
-        label in the data except embedded in the agreement id itself" - confirms
-        agreement_label is a construction-only input, never a standalone output
-        field."""
+        """bugfix-agreement-label (2026-08-24, human requirement): "GET RID OF
+        AGREEMENT LABEL AS A FIELD" - agreement_label no longer exists as a tool
+        input, a SAMPLE_EVENT key, or a persisted field. The label lives ONLY as
+        a substring inside agreement_id, which the AI builds itself."""
+        assert "agreement_label" not in SAMPLE_EVENT
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, agreement_label="ערעור לארצי"),
+            session_id="s", event=dict(SAMPLE_EVENT),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
         assert "agreement_label" not in data
-        assert "ערעור_לארצי" in data["agreement_id"]
 
     def test_component_id_is_agreement_id_plus_slugified_component_label(
         self, manager, temp_events_dir
@@ -544,28 +558,31 @@ class TestAgreementAndComponentIds:
         data = _read(temp_events_dir, event_id)
         assert data["component_id"] == f"{data['agreement_id']}-עדכון_ערעור_לארצי"
 
-    def test_standalone_call_without_explicit_agreement_id_derives_its_own(
+    def test_standalone_call_without_caller_supplied_agreement_id_uses_events_own(
         self, manager, temp_events_dir
     ):
+        """When add_ledger_event's own `agreement_id` kwarg is not given (a
+        standalone, non-batched capture), the persisted agreement_id comes
+        straight from the event's own AI-authored agreement_id field - never
+        derived or recomputed by code."""
         event_id = manager.add_ledger_event(
             session_id="s", event=dict(SAMPLE_EVENT),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
-        expected = manager.build_agreement_id("ישראל ישראלי", "תיק בדיקה", FIXED_TS)
-        assert data["agreement_id"] == expected
+        assert data["agreement_id"] == SAMPLE_EVENT["agreement_id"]
 
     def test_caller_supplied_agreement_id_used_as_is_for_batch_consistency(
         self, manager, temp_events_dir
     ):
         """The user's hard requirement: when a caller (AIHandler batching multiple
-        components of one agreement) supplies agreement_id explicitly, it MUST be
-        used verbatim - even if this component's own agreement_label differs
-        slightly from what would've been derived standalone. Consistency is
-        structural, never dependent on the AI repeating identical text."""
+        components of one agreement) supplies the agreement_id kwarg explicitly,
+        it MUST be used verbatim - even if this component's own event["agreement_id"]
+        differs slightly. Consistency is structural, never dependent on the AI
+        repeating identical text across separate tool-call components."""
         explicit_id = "0726-custom-batch-id"
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, agreement_label="a slightly different label"),
+            session_id="s", event=dict(SAMPLE_EVENT, agreement_id="0726-a-slightly-different-id"),
             message_id="m", message_timestamp=FIXED_TS,
             agreement_id=explicit_id,
         )
@@ -575,7 +592,7 @@ class TestAgreementAndComponentIds:
     def test_multiple_components_sharing_caller_supplied_agreement_id_are_identical(
         self, manager, temp_events_dir
     ):
-        shared_id = manager.build_agreement_id("גיליאן דוידיאן", "משרד הרווחה", FIXED_TS)
+        shared_id = "0726-גיליאן_דוידיאן-משרד_הרווחה"
         ids = []
         for i in range(3):
             event_id = manager.add_ledger_event(
@@ -586,11 +603,6 @@ class TestAgreementAndComponentIds:
             ids.append(_read(temp_events_dir, event_id)["agreement_id"])
         assert len(set(ids)) == 1, "every component of the same batch must share one identical agreement_id"
         assert ids[0] == shared_id
-
-    def test_build_agreement_id_is_pure_and_deterministic(self, manager):
-        first = manager.build_agreement_id("ישראל ישראלי", "תיק בדיקה", FIXED_TS)
-        second = manager.build_agreement_id("ישראל ישראלי", "תיק בדיקה", FIXED_TS)
-        assert first == second
 
     def test_component_label_populated_verbatim_for_agreement_events(
         self, manager, temp_events_dir
@@ -723,7 +735,7 @@ SAMPLE_CALL_ARGUMENTS = {
     "event_subtype": "יצירה",
     "client_name": "ישראל ישראלי",
     "payer_name": None,
-    "agreement_label": "תיק בדיקה",
+    "agreement_id": "0726-ישראל_ישראלי-תיק_בדיקה",
     "reference_hint": None,
     "component_count": 1,
     "components": [
@@ -820,7 +832,7 @@ class TestAddLedgerEventsFromCall:
         call_arguments = {
             "source_type": "בנק", "event_subtype": "הפקדה",
             "client_name": None, "payer_name": None,
-            "agreement_label": None, "reference_hint": None,
+            "agreement_id": None, "reference_hint": None,
             "component_count": 1,
             "components": [{
                 "component_label": None, "description": "הפקדה", "amount": "9,440₪",
@@ -916,56 +928,28 @@ class TestAddLedgerEventsFromCall:
         assert call_arguments == original
 
 
-class TestSchemaVersion:
-    """Feature 043, US5, T008a: every persisted record carries schema_version.
-    Phase 11 (2026-08-16): reset to 1 as a new baseline generation after a
-    substantial real-data-grounded revision - see data-model.md §1b and
-    ledger_event_manager.py's own CURRENT_SCHEMA_VERSION comment for why
-    resetting (rather than incrementing) is safe here (no real persisted file
-    has ever carried a schema_version value at all)."""
-
-    def test_persisted_record_has_current_schema_version(self, manager, temp_events_dir):
-        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
-
-        event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS,
-        )
-        data = _read(temp_events_dir, event_id)
-        assert data["schema_version"] == CURRENT_SCHEMA_VERSION
-
-    # A dedicated "current schema version equals literal N" test was removed
-    # 2026-08-25 (user correction): asserting a hardcoded number makes every
-    # future legitimate bump a required test edit for no real coverage gain -
-    # the constant's own value is documented in ledger_event_manager.py's
-    # CURRENT_SCHEMA_VERSION comment, not re-asserted here. Every test in this
-    # class instead compares a persisted record's schema_version against the
-    # imported CURRENT_SCHEMA_VERSION constant, so it stays correct across
-    # any future bump with no edit needed.
-
-    def test_add_ledger_event_also_stamps_current_version_for_non_accounting_source_types(
-        self, manager, temp_events_dir
-    ):
-        """The schema_version bump is global, not per-source_type - a plain
-        הסכם capture (no חשבונית fields involved at all) still gets the
-        current version once a feature ships."""
-        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
-
-        event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT),
-            message_id="m", message_timestamp=FIXED_TS,
-        )
-        assert _read(temp_events_dir, event_id)["schema_version"] == CURRENT_SCHEMA_VERSION
-
-    def test_add_ledger_events_from_call_also_stamps_schema_version(self, manager, temp_events_dir):
-        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
-
-        event_ids = manager.add_ledger_events_from_call(
-            session_id="s", call_arguments=dict(SAMPLE_CALL_ARGUMENTS),
-            message_id="m", message_timestamp=FIXED_TS,
-        )
-        for eid in event_ids:
-            assert _read(temp_events_dir, eid)["schema_version"] == CURRENT_SCHEMA_VERSION
+# TestSchemaVersion class removed entirely (2026-08-26, human decision, post-incident - see
+# ledger_event_manager.py's CURRENT_SCHEMA_VERSION/SCHEMA_VERSION_HISTORY comments): every test
+# it held existed solely to assert an exact schema_version value (either hardcoded ==3, or
+# ==CURRENT_SCHEMA_VERSION), and nothing meaningful remained once that assertion was removed.
+# Policy going forward: no test anywhere may assert on schema_version's value, ever - the
+# constant itself is a human-approved governance decision (see CLAUDE.md's "LEDGER SCHEMA
+# VERSION BUMPS ARE HUMAN-ONLY" rule), not a piece of application behavior a test should pin.
+# Coverage this removed (documented here rather than silently lost):
+# - every persisted record carries a schema_version key at all
+# - a plain הסכם/בנק capture gets the same global schema_version an accounting capture does
+#   (i.e. the field is stamped globally, not per-source_type)
+# - add_ledger_events_from_call stamps schema_version on every event in a multi-component batch
+# If this coverage needs restoring, do it via a value-agnostic check (e.g. comparing two
+# freshly-persisted events' schema_version fields to each other, never to a literal number or to
+# CURRENT_SCHEMA_VERSION), decided fresh with the human next time this area is touched.
+#
+# Master's Feature 044 independently reached the same "never assert on schema_version" endpoint
+# for the CURRENT_SCHEMA_VERSION constant itself (both branches reverted 3->2 - see
+# ledger_event_manager.py's SCHEMA_VERSION_HISTORY), but had kept a TestSchemaVersion class
+# comparing against the imported constant rather than a literal - removed here on merge per this
+# session's stricter, already-decided policy (no comparison against CURRENT_SCHEMA_VERSION
+# either, not just no hardcoded literal).
 
 
 class TestBankPaymentDetailFields:
@@ -1781,7 +1765,7 @@ class TestAccountingDocumentFields:
         caller passes."""
         event = dict(
             SAMPLE_ACCOUNTING_EVENT,
-            agreement_label="should not matter", component_label="should be dropped",
+            agreement_id="should not matter", component_label="should be dropped",
             trigger_condition="should be dropped", percent="50", percent_base="1000",
             hours="3", hourly_rate="500", payer_name="should be dropped",
         )
@@ -1812,9 +1796,7 @@ class TestScanAccountingDocuments:
     accounting-document cache, per data-model.md's round-3
     "AccountingDocumentReconciliationState" section. Returns
     Dict[display_number, List[AccountingDocumentCacheEntry]] (each entry a
-    (timestamp, event_id) pair - added during implementation so an anomaly's
-    pending_review.json entry can name the real prior event_id, not just its
-    timestamp), NOT the old Tuple[Set[str],
+    (timestamp, event_id) pair), NOT the old Tuple[Set[str],
     Optional[date]] shape."""
 
     def test_empty_storage_dir_returns_empty_dict(self, manager):
@@ -1835,9 +1817,8 @@ class TestScanAccountingDocuments:
     def test_two_events_sharing_a_display_number_both_timestamps_present(
         self, manager
     ):
-        """Simulates the anomaly case having already happened once - both of
-        a display_number's distinct timestamps must be visible to a fresh
-        scan, not just the latest."""
+        """A display_number captured on two distinct calendar dates - both
+        timestamps must be visible to a fresh scan, not just the latest."""
         manager.add_ledger_event(
             session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
             message_id="m1", message_timestamp=ACCOUNTING_DOC_TS,
@@ -1914,10 +1895,10 @@ class TestAccountingDocumentCacheLazyInit:
 
 
 class TestAccountingDocumentTriState:
-    """Feature 025, T007a: the tri-state new/duplicate/anomaly logic that
-    REPLACES the old hard-refusal design (round 3, user directive: "I don't
-    like the hard refusal... The 'since when' mechanism SHOULD NOT RELY ON A
-    REFUSAL MECHANISM"). Lives entirely inside add_ledger_event/
+    """Feature 025, T007a (+ bugfix-048): the (date, display_number) duplicate
+    guard that REPLACES the old hard-refusal design (round 3, user directive:
+    "I don't like the hard refusal..."), and no longer has an "anomaly" third
+    state or a pending_review.json. Lives entirely inside add_ledger_event/
     LedgerEventManager - a ledger concern, not an ai_handler.py one."""
 
     def test_new_display_number_persists_normally(self, manager, temp_events_dir):
@@ -1949,9 +1930,13 @@ class TestAccountingDocumentTriState:
             "a true duplicate is a normal re-poll, not a warning-worthy event"
         )
 
-    def test_same_display_number_different_timestamp_is_anomaly_persisted_and_flagged(
+    def test_same_display_number_different_date_persists_as_new_no_review_file(
         self, manager, temp_events_dir, caplog
     ):
+        """bugfix-048: the dedup key is (date, display_number). A different
+        calendar date for the same display number is treated as a genuinely
+        new event and persisted - with NO warning and NO pending_review.json
+        (that mechanism was removed: it was write-only and never read)."""
         first_id = manager.add_ledger_event(
             session_id="s", event=dict(SAMPLE_ACCOUNTING_EVENT),
             message_id="m1", message_timestamp=ACCOUNTING_DOC_TS,
@@ -1965,18 +1950,40 @@ class TestAccountingDocumentTriState:
 
         assert second_id is not None
         assert second_id != first_id
-        assert len(list(temp_events_dir.glob("*.json"))) == 2, (
-            "an anomaly persists a NEW event, never overwrites/drops"
-        )
-        assert any(r.levelno == logging.WARNING for r in caplog.records)
+        assert len(list(temp_events_dir.glob("*.json"))) == 2
+        assert not any(r.levelno >= logging.WARNING for r in caplog.records)
+        assert not (temp_events_dir.parent / "accounting_reconciliation" / "pending_review.json").exists()
 
-        review_file = temp_events_dir.parent / "accounting_reconciliation" / "pending_review.json"
-        assert review_file.exists()
-        entries = json.loads(review_file.read_text(encoding="utf-8"))
-        assert len(entries) == 1
-        assert entries[0]["accounting_document_display_number"] == "40406"
-        assert entries[0]["prior_event_id"] == first_id
-        assert entries[0]["new_event_id"] == second_id
+    def test_same_date_duplicate_survives_a_cache_rebuild_restart(
+        self, manager, temp_events_dir, caplog
+    ):
+        """bugfix-048 regression: the old guard matched on an exact timestamp,
+        which broke across a process restart - the in-memory cache carried
+        seconds precision, but a disk rebuild (scan_accounting_documents) only
+        recovers minute precision from event_datetime, so 16:35:30 != 16:35:00
+        and every re-seen document was re-persisted. Keying on the date alone
+        makes the same-day re-poll a duplicate regardless of precision."""
+        first_id = manager.add_ledger_event(
+            session_id="s",
+            event=_accounting_event(creation_date="2026-07-28T16:35:30+03:00"),
+            message_id="m1", message_timestamp=None,
+        )
+        assert first_id is not None
+
+        # Simulate a restart: drop the in-memory cache so the next add rebuilds
+        # it from disk (minute precision) instead of reusing the live entry.
+        manager._accounting_document_cache = None
+
+        with caplog.at_level(logging.INFO):
+            second_id = manager.add_ledger_event(
+                session_id="s",
+                event=_accounting_event(creation_date="2026-07-28T16:35:30+03:00"),
+                message_id="m2", message_timestamp=None,
+            )
+
+        assert second_id is None
+        assert len(list(temp_events_dir.glob("*.json"))) == 1
+        assert not any(r.levelno >= logging.WARNING for r in caplog.records)
 
     def test_guard_never_fires_for_non_accounting_source_types(self, manager, temp_events_dir):
         """הסכם/בנק events always have accounting_document_display_number=None
@@ -2167,14 +2174,10 @@ class TestAccountingDocumentJsonCapture:
         )
         assert _read(temp_events_dir, exempt)["vat_status"] == "לא צוין"
 
-    def test_schema_version_is_current(self, manager, temp_events_dir):
-        from src.managers.ledger_event_manager import CURRENT_SCHEMA_VERSION
-
-        event_id = manager.add_ledger_event(
-            session_id="accounting-reconciliation", event=_json_event(),
-            message_id=None, message_timestamp=None,
-        )
-        assert _read(temp_events_dir, event_id)["schema_version"] == CURRENT_SCHEMA_VERSION
+    # test_schema_version_is_3 / test_schema_version_is_current removed (2026-08-26, human
+    # decision, post-incident) - see TestSchemaVersion's removal comment above for the full
+    # policy rationale: no test may assert on schema_version's value, ever, not even against
+    # the imported CURRENT_SCHEMA_VERSION constant.
 
     def test_malformed_json_is_rejected_and_logged_never_half_persisted(self, manager, caplog):
         event = {"source_type": "חשבונית", "event_subtype": "הפקה",

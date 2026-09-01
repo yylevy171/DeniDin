@@ -684,22 +684,30 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                     "client_name (e.g. an insurer/union routing payment). Watch specifically "
                     "for 'דרך X' / 'באמצעות X' / 'via X' / 'through X' near a client's name "
                     "(often its own line right after the client name) - a strong, common "
-                    "signal that X is the payer, not part of agreement_label/description. "
+                    "signal that X is the payer, not part of the agreement_id's label "
+                    "component or description. "
                     "ALWAYS null for source_type=בנק - a bank deposit's account-holder name "
                     "goes in client_name, never here; there is no payer/client distinction "
                     "for a בנק event."
                 ),
             },
-            "agreement_label": {
+            "agreement_id": {
                 "type": ["string", "null"],
                 "description": (
-                    "Short human-readable Hebrew label for the matter/agreement as a whole "
-                    "(e.g. 'ערעור לארצי', 'תביעת נזיקין נגד מדינה') - a few words, not a full "
-                    "sentence. Required (non-null) for source_type=הסכם; always null for בנק. "
-                    "Stated ONCE, when this matter's first component(s) are created - used only "
-                    "to build agreement_id (never persisted as its own field; every later "
-                    "component/message referencing this same matter does so via agreement_id "
-                    "or reference/reference_hint, never by restating this label)."
+                    "The unique id for the matter/agreement as a whole - YOU build this "
+                    "string yourself, once, in the exact format "
+                    "'{MM}{YY}-{client_slug}-{label_slug}' (e.g. '0726-אתי_אסולין-ערעור_לארצי'): "
+                    "MM/YY are the current month/year (from today's date given to you in your "
+                    "instructions); client_slug is client_name with every run of whitespace/"
+                    "punctuation replaced by a single underscore (no leading/trailing "
+                    "underscore); label_slug is the same transform applied to a short "
+                    "human-readable Hebrew label for the matter as a whole (e.g. 'ערעור "
+                    "לארצי', 'תביעת נזיקין נגד מדינה' - a few words, not a full sentence) - "
+                    "that label exists only inside this string, never as a separate field "
+                    "anywhere. Required (non-null) for source_type=הסכם; always null for בנק. "
+                    "Build it ONCE, when this matter's first component(s) are created, then "
+                    "reuse this EXACT string verbatim for every later component/message "
+                    "referencing this SAME matter - never rebuild, reword, or vary it."
                 ),
             },
             "reference_hint": {
@@ -856,7 +864,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
             },
         },
         "required": [
-            "source_type", "event_subtype", "client_name", "payer_name", "agreement_label",
+            "source_type", "event_subtype", "client_name", "payer_name", "agreement_id",
             "reference_hint", "bank_number", "bank_branch", "bank_account",
             "accounting_document_json",
             "component_count", "components",
@@ -2896,6 +2904,23 @@ class AIHandler:
                 response_text = modify_delete_details
                 new_local_tool_pending_created = modify_delete_pending_created
 
+        # bugfix-045-followup (2026-08-27): this used to need its own
+        # all_output_items union of response.output + a same-turn ledger-
+        # capture followup's output, to fix the exact scenario the bugfix-045
+        # near-duplicate-name regression test exposed (a capture_ledger_event
+        # follow-up round ALSO proposing an approval-gated Morning tool, e.g.
+        # add_client, whose mcp_approval_request then went undetected).
+        # Superseded by the merge from master (2026-08-27): the
+        # `_run_local_tool_dispatch_loop` architectural fix above (2026-08-25,
+        # landed independently on master while this branch was still on the
+        # pre-loop code) already reassigns `response = current_response` to
+        # whichever response the loop actually settled on - `response.output`
+        # below is now already correct on its own, loop-followup items
+        # included, so the extra union is redundant (and would in fact be
+        # broken here, since the loop no longer exposes a same-named
+        # `followup` local variable to reference). Re-verified: the
+        # regression test still passes against this simpler, already-fixed
+        # upstream code.
         logger.info(
             f"[022] _finalize_response: response.id={getattr(response, 'id', None)!r}, "
             f"effective_chat_id={effective_chat_id!r}, "
@@ -2944,7 +2969,7 @@ class AIHandler:
             if getattr(item, "type", None) == "mcp_approval_request"
         ]
         logger.info(
-            f"[022] approval_requests found in response.output: {len(approval_requests)} "
+            f"[022] approval_requests found in this turn's output: {len(approval_requests)} "
             f"(effective_chat_id={effective_chat_id!r})"
         )
         # Feature 047: this turn creates a pending approval iff the block above will
