@@ -6,8 +6,15 @@
 handler → manager → store) and its integration-test requirement, per METHODOLOGY.md §I and
 CONSTITUTION.md §V.
 
-> **Priority key**: P1 = prerequisite bug fixes that must be correct before the new model is
-> layered on. P2 = the new memory model. P3 = one-time operational tasks (separately gated).
+> **Priority key**: P1 = the coherent new memory model (US1-US3), shipped together. P2 = one-time
+> operational tasks, each separately gated (US4 migration, US5 log-retention verification).
+
+> **Legacy defects are not their own stories.** bugfix-035 H1/H2/H3 and bugfix-044 are each either
+> *structurally eliminated* by the new architecture or *fixed inline* as the new code touches that
+> path, and each is proven by a named scenario below — see `spec.md` §"Legacy Defects and How the
+> New Model Addresses Them". This feature does **not** open Bug-Driven Development root-cause
+> approval gates for them (user direction, 2026-09-01: "I don't want to waste time fixing
+> something that is then going to be obsolete anyway").
 
 ---
 
@@ -21,13 +28,13 @@ Green API webhook
   → WhatsAppHandler.handle_* (parse → WhatsAppMessage)
   → [group only] GroupMembershipResolver (most-permissive member's role)
   → UserManager (role → token limit, memory scope)
-  → SessionManager (resolve active session for chat via chat_to_session; append message)
+  → SessionManager (resolve the chat's canonical current message store; append message)
   → AIHandler.get_response
       → MemoryManager.recall()  (semantic; daily summaries live here after this feature)
       → build instructions: constitution → recalled memories → "---" → today's date
       → build input: conversation context
-          (TODAY: current session history, capped at max_tokens_by_role via write-time prune)
-          (AFTER US4: rolling 14-day verbatim window, capped by token backstop, archive-only)
+          (FLAG OFF: current session history, capped at max_tokens_by_role via write-time prune)
+          (FLAG ON:  rolling 14-day verbatim window, capped by token backstop, archive-only)
       → OpenAI Responses API call (model gpt-5.6-luna)
       → [[NO_REPLY]] sentinel check
   → SessionManager (store assistant response)
@@ -37,186 +44,61 @@ Green API webhook
 Background jobs wired in `denidin.py`'s `initialize_app` / `__main__`:
 
 ```
-run_startup_cleanup                         (existing)
-SessionCleanupThread  (hourly)              (existing — behavior changes under US1/US6)
-recover_orphaned_sessions                   (existing — behavior changes under US3)
+run_startup_cleanup                         (existing — behavior changes under US1/US3)
+SessionCleanupThread  (hourly)              (existing — 24h-expiry→transfer→hourly-retry cycle
+                                             is RETIRED when the flag is ON; see US1 / bugfix-035 H1)
+recover_orphaned_sessions                   (existing — no longer load-bearing under US1; bugfix-044)
 reminder_delivery_service scheduler         (existing, APScheduler CronTrigger */5)
 accounting_reconciliation_service scheduler (existing, APScheduler IntervalTrigger)
-+ nightly memory roll scheduler             (NEW — US5, APScheduler CronTrigger 02:00 Israel)
-+ startup catch-up roll sweep               (NEW — US5)
++ nightly memory roll scheduler             (NEW — US2, APScheduler CronTrigger 02:00 Israel)
++ startup catch-up roll sweep               (NEW — US2)
 ```
 
 ---
 
-## US1 — Group-chat long-term memory transfer actually completes (P1)
+## US1 — The last 14 days of messages are always in verbatim context (P1)
 
-_Fixes bugfix-035 H1. Bug-Driven Development: root cause approval required first._
+**Delivers**: the MVP. Every turn's context includes every message (per chat) from the last 14
+calendar days (Israel local), verbatim, oldest-first, with Feature 039 `[sender_name]` prefixing
+preserved for group turns. No 24-hour idle expiry. A restart does not wipe context. A session
+persisted with an unknown field still loads.
 
-### Flow
-
-`SessionCleanupThread` (hourly) or `run_startup_cleanup` picks an expired session →
-`_process_session_cleanup` → STEP 2 `AIHandler.transfer_session_to_long_term_memory(session)` →
-AI summarization (1 billed call) → `MemoryManager.remember(content, collection_name, metadata)`
-→ **[BUG] post-write verify: `self.memory_manager.client.get_collection(name=collection_name)`
-with the RAW, unsanitized name** → `NotFoundError` for `@g.us` chats → broad `except` →
-`{"success": False, "reason": "transfer_error"}` → `transferred_to_longterm` never set → session
-reprocessed next hour, forever.
-
-### Scenarios
-
-1. **Given** a group chat `120363210094632983@g.us` with an expired session containing real
-   conversation content,
-   **When** the cleanup sweep runs `transfer_session_to_long_term_memory` for it,
-   **Then** the summary is written to the chat's long-term collection (resolved via the same
-   sanitization the write uses), the verify step (if kept) confirms it using that same resolution,
-   the function returns success, and the session is marked `transferred_to_longterm`.
-
-2. **Given** that session is now marked `transferred_to_longterm`,
-   **When** the next hourly sweep runs,
-   **Then** the session is skipped entirely — 0 new billed OpenAI calls, 0 new ChromaDB records.
-
-3. **Given** a `@c.us` (1:1) chat session,
-   **When** transfer runs,
-   **Then** it still succeeds exactly as before (no regression) and resolves the same collection
-   it did previously.
-
-4. **Given** a transfer whose ChromaDB write genuinely fails 3 times in a row (real failure, not
-   the verify-step false negative),
-   **When** the retry budget is exhausted,
-   **Then** the session is moved to a distinct dead-letter / failure state, a WARNING/ERROR is
-   logged once as a give-up signal (not once per hour forever), and it is not retried until that
-   state is cleared.
-
-5. **Given** a group chat that has never had a long-term collection,
-   **When** its first daily summary / transfer is written,
-   **Then** the collection is created (the create path is also sanitized) and the write succeeds.
-
-### Integration test requirement
-
-Real `SessionManager` + real `MemoryManager` (real ChromaDB, tmp `data_root`) + `AIHandler` with
-OpenAI mocked at the network boundary only (billed variant exercises the real call). Drive a real
-`imageMessage`/`textMessage` group webhook through `bot.router` to build the session; do not call
-manager methods directly to create it. Assert on `recall()` retrievability and
-`transferred_to_longterm`, and assert call-count on the OpenAI boundary across two sweeps.
-
----
-
-## US2 — A session with an unknown persisted field still loads (P1)
-
-_Fixes bugfix-035 H2. Bug-Driven Development: root cause approval required first._
-
-### Flow
-
-`SessionManager._load_sessions()` / lazy load → `Session(**data)` where `data` came from
-`session.json` → **[BUG] `__init__() got an unexpected keyword argument 'pending_ledger_events'`**
-→ `ERROR Failed to load session …` → session never loaded, never expired, never archived, never
-transferred; error re-logged every hourly sweep, every orphan-recovery pass.
-
-### Scenarios
-
-1. **Given** a `session.json` on disk containing `pending_ledger_events: []` (or any unknown
-   top-level key),
-   **When** `SessionManager` loads it,
-   **Then** it deserializes successfully, the unknown key is dropped (mirroring `denidin.py`'s
-   `valid_fields = {f.name for f in fields(AppConfiguration)}` filter), and exactly one WARNING
-   is logged — not an ERROR, not one per sweep.
-
-2. **Given** that session is loaded,
-   **When** the rolling-window builder (US4) and the nightly roll (US5) run,
-   **Then** it is processed like any other session — its messages appear in the window / the
-   day's summary, and it can be archived normally.
-
-3. **Given** a future code change removes a field from the `Session` model,
-   **When** sessions written before that change are loaded,
-   **Then** every one of them still loads (the tolerance is generic, not a one-off allowlist for
-   `pending_ledger_events`).
-
-4. **Given** the known prod poison session `0f5eaa04-...`,
-   **When** the app next starts after the fix,
-   **Then** the recurring hourly `Failed to load session 0f5eaa04` ERROR stops, and the "N
-   expired sessions" startup count can clear.
-
-### Integration test requirement
-
-Real `SessionManager`, real filesystem (tmp `data_root`). Write a `session.json` fixture with an
-extra key, load via the real manager, assert no exception + warning-level log + normal lifecycle
-participation. No mocks.
-
----
-
-## US3 — Conversation context survives an app restart (P1)
-
-_Fixes bugfix-044. Bug-Driven Development: root cause approval required first._
-
-### Flow
-
-App start → `run_startup_cleanup` → `AIHandler.recover_orphaned_sessions()` → for each active
-orphan: `short_term_sessions.append(session.session_id)` + log "Recovered active session..."
-→ **[BUG] never writes `self.chat_to_session[session.whatsapp_chat] = session.session_id`** →
-next inbound message for that chat → `SessionManager` "active session for chat?" → miss →
-`Created new session <new-uuid> for chat …` → recovered 14-message session silently abandoned.
-
-Second bug: `remove_from_index(session)` does
-`del self.chat_to_session[session.whatsapp_chat]` **without** checking
-`self.chat_to_session[chat] == session.session_id` → can evict a newer session's registration.
-
-### Scenarios
-
-1. **Given** chat `C` had an active session `S` (14 messages, `last_active` ~12 min before
-   restart) that became orphaned by a restart,
-   **When** `recover_orphaned_sessions()` runs,
-   **Then** `S` is loaded **and** registered as `C`'s active session in the lookup index.
-
-2. **Given** `S` is recovered and registered,
-   **When** the next inbound webhook for `C` is dispatched through `bot.router`,
-   **Then** the message appends to `S` (message_counter 15), and `S`'s prior 14 turns are in the
-   turn context — **no** `Created new session` log line for `C`.
-
-3. **Given** `chat_to_session[C] == S_new` (a newer session),
-   **When** `remove_from_index` is called for a stale older session `S_old` whose
-   `whatsapp_chat` is also `C`,
-   **Then** after the call `chat_to_session[C]` still equals `S_new`.
-
-4. **Given** both `run_startup_cleanup` and `recover_orphaned_sessions` run at boot,
-   **When** they complete in whatever order the fix specifies,
-   **Then** for every chat there is either a completed-and-transferred session or a registered
-   active session — never neither. The ordering is documented in `plan.md`.
-
-### Integration test requirement
-
-Build session `S` for chat `C` by dispatching real webhooks through `bot.router`. Construct a
-fresh `SessionManager`/`AIHandler` (simulating a process restart, same `data_root`). Run
-`recover_orphaned_sessions()`. Dispatch another real webhook for `C`. Assert it continued `S`.
-Separately, a focused unit test for the `remove_from_index` session-id guard. No internal mocks.
-
----
-
-## US4 — The last 14 days of messages are always in verbatim context (P2)
+**Legacy defects folded in**: bugfix-044 (restart continuity — designed out via deterministic
+on-disk lookup), bugfix-035 H2 (tolerant load — fixed inline), bugfix-035 H1 *loop* (the
+24h-expiry → per-session-transfer → hourly-retry cycle is retired, so there is nothing to loop
+on — the write itself moves to US2).
 
 ### Flow (feature flag ON)
 
-Inbound message → `AIHandler.get_response` → **NEW** rolling-window builder replaces
+Inbound message → `SessionManager` resolves the chat's **canonical current message store** by a
+**deterministic on-disk lookup** (scan for the chat's store by `whatsapp_chat`, or per-chat
+message storage — `plan.md` decides), never solely by an in-memory `chat_to_session` index →
+append message → `AIHandler.get_response` → **NEW** rolling-window builder replaces
 `get_conversation_history(...)`: gather every persisted message for the chat with Israel-local
 timestamp within the last 14 calendar days, oldest-first, apply Feature 039 `[sender_name]`
-prefixing for group user turns, apply the token backstop (US6), feed as input to the Responses
-API. No 24-hour idle expiry runs.
+prefixing for group user turns, apply the token backstop (US3), feed as input to the Responses
+API. The hourly 24h-idle-expiry sweep does not run (or is a no-op) for the chat.
+
+Session load path: `SessionManager` deserialization filters `data` to known fields (mirroring
+`denidin.py`'s `valid_fields = {f.name for f in fields(AppConfiguration)}`) and logs **one
+WARNING** per dropped key — never raises `TypeError`.
 
 ### Flow (feature flag OFF)
 
 Byte-for-byte the current path: current session history, `max_tokens_by_role` write-time prune,
-24h idle expiry.
+24h idle expiry, per-session transfer on expiry, `chat_to_session` index, orphan recovery — all
+unchanged.
 
 ### Scenarios
 
 1. **Given** chat `C` has messages timestamped 20d, 15d, 13d, 2d, and 0d ago,
    **When** a new turn for `C` is processed with the flag ON,
    **Then** the 13d/2d/0d messages are in the verbatim window (oldest-first); the 20d/15d
-   messages are not (they are represented by daily summaries via `recall()`).
+   messages are not (they are represented by daily summaries via `recall()` — US2).
 
 2. **Given** chat `C` has been idle for 3 days (well within 14),
    **When** a new message arrives,
-   **Then** the full prior conversation is in context — the bot does not behave as if the chat
-   is new.
+   **Then** the full prior conversation is in context — no "new session, no memory" behavior.
 
 3. **Given** a group chat,
    **When** the window is built,
@@ -226,46 +108,85 @@ Byte-for-byte the current path: current session history, `max_tokens_by_role` wr
 4. **Given** the feature flag is OFF,
    **When** the same message sequence is processed,
    **Then** the built context is byte-for-byte identical to the pre-feature output (golden-file
-   comparison).
+   comparison), and the 24h-expiry/transfer/orphan-recovery machinery behaves exactly as today.
 
-5. **Given** a message dated in the future (clock skew) and an unloadable H2-poison session for
-   the chat,
-   **When** the window is built,
-   **Then** it does not crash and does not return an empty window — it includes the valid recent
-   messages.
+5. **Given** an app restart with an in-progress conversation for chat `C` (e.g. 14 messages,
+   `last_active` ~12 min before the restart — the bugfix-044 shape),
+   **When** the next inbound webhook for `C` is dispatched through `bot.router`,
+   **Then** the message appends to `C`'s existing store (message_counter 15) and the prior 14
+   turns are in the turn context — **no** `Created new session` log line for `C`, and **no**
+   reliance on an orphan-recovery step having re-registered anything.
 
-6. **Given** the window is rebuilt on every turn,
+6. **Given** a `session.json` on disk containing `pending_ledger_events: []` (or any unknown
+   top-level key) **and** a future-dated (clock-skew) message,
+   **When** the rolling-window builder runs,
+   **Then** it does not crash and does not return an empty window; the unknown key is dropped
+   with exactly one WARNING (not an ERROR, not one per sweep); the session participates normally
+   in the window and in a later roll (bugfix-035 H2).
+
+7. **Given** a future code change removes a field from the `Session` model,
+   **When** sessions written before that change are loaded,
+   **Then** every one still loads — the tolerance is generic, not a one-off allowlist for
+   `pending_ledger_events`.
+
+8. **Given** the window is rebuilt on every turn,
    **When** p95 latency and per-turn token count are measured over the real prod message mix,
-   **Then** added latency ≤ 150 ms p95 and tokens are within the confirmed model budget with
-   ≥ 30% headroom (SC-007).
+   **Then** added latency ≤ 150 ms p95 and per-turn input tokens are within the confirmed
+   `gpt-5.6-luna` context budget with ≥ 30% headroom (SC-007).
+
+9. **Given** the flag is ON,
+   **When** the hourly `SessionCleanupThread` (or its replacement) runs,
+   **Then** it never re-summarizes a still-in-window chat and never loops on a chat it already
+   handled — the bugfix-035 H1 unbounded-retry cycle has no code path to execute (REQ-MEM-017).
 
 ### Integration test requirement
 
-Seed a chat's messages across the date range by dispatching real webhooks (or, where date control
-is needed, by the real `SessionManager` persistence API with explicit timestamps — still no
-mocks). Process a new turn through `bot.router`. Assert on the actual input items sent to the
-OpenAI boundary. Include a flag-OFF golden-file regression test.
+Real `SessionManager` + real `AIHandler`, tmp `data_root`, OpenAI mocked at the network boundary
+only. Seed messages across the date range by dispatching real webhooks through `bot.router`
+where possible; where explicit timestamps are needed, use the real `SessionManager` persistence
+API (still no internal mocks). For the restart scenario, construct a fresh
+`SessionManager`/`AIHandler` against the same `data_root` (simulating a process restart) and
+dispatch another real webhook — assert it continued the existing store. For the poison-session
+scenario, write a `session.json` fixture with an extra key and assert warning-level log + normal
+participation. Include a flag-OFF golden-file regression test asserting on the actual input items
+sent to the OpenAI boundary.
 
 ---
 
-## US5 — Each night the previous day is summarized into long-term memory (P2)
+## US2 — Each night the previous day is summarized into long-term memory (P1)
+
+**Delivers**: the Tier-2 half of the new model. At 02:00 Israel local, for each chat, the
+previous calendar day's messages are summarized into **exactly one** daily long-term record
+(chat + date keyed), embedded, and stored via `MemoryManager.remember()`. Empty days produce
+nothing. Idempotent per (chat, date) via a roll marker. A startup catch-up sweep rolls days
+missed while the app was down.
+
+**Legacy defect folded in**: bugfix-035 H1 bugs 1+2 (group-chat collection naming + the raw
+`client.get_collection()` verify that threw `NotFoundError` for `@g.us`) — designed out: the roll
+writes only through the sanitizing `MemoryManager.remember(collection_name=…)` path and does
+**no** raw `client.get_collection()` verify step; collection names for every chat-id shape
+resolve through one shared sanitized helper.
 
 ### Flow
 
 `initialize_app` registers an `APScheduler` `CronTrigger(hour=2, minute=0)` job (Israel local),
-flag-gated. On fire: for each known chat, compute "yesterday" (Israel local calendar day); check
-roll marker for (chat, yesterday); if absent → gather that day's messages → if non-empty:
-`AIHandler` summarize (1 billed call) → `MemoryManager.remember(summary, <sanitized collection>,
-metadata={chat, date, count, source:"daily-roll"})` → **then** write roll marker; if empty →
-write roll marker only. On app start, a catch-up sweep does the same for every un-rolled
-(chat, date) older than yesterday.
+flag-gated, roll hour a config value. On fire: for each known chat, compute "yesterday" (Israel
+local calendar day); check the roll marker for (chat, yesterday); if absent → gather that day's
+messages (from retained storage, not just the live window) → if non-empty: `AIHandler` summarize
+(1 billed call) → `MemoryManager.remember(summary, <collection via shared sanitized helper>,
+metadata={chat, date, count, source:"daily-roll"})` → **then** write the roll marker; if empty →
+write the roll marker only. On app start, a catch-up sweep does the same for every un-rolled
+(chat, date) older than yesterday, without blocking message handling indefinitely.
 
 ### Scenarios
 
-1. **Given** chat `C` has messages on calendar day `D`,
+1. **Given** chat `C` (including a `…@g.us` group) has messages on calendar day `D`,
    **When** the nightly roll runs for `D`,
-   **Then** exactly one daily summary for (`C`, `D`) is stored and retrievable via `recall()`
-   with `chat`/`date` metadata, and a roll marker for (`C`, `D`) exists.
+   **Then** exactly one daily summary for (`C`, `D`) is stored, retrievable via `recall()` with
+   `chat`/`date` metadata, and a roll marker for (`C`, `D`) exists. For the group chat
+   specifically: the collection resolves via the shared sanitized helper (no `NotFoundError`),
+   and a second roll of the same day makes 0 new billed calls and creates 0 duplicate records
+   (bugfix-035 H1).
 
 2. **Given** chat `C` had no messages on day `D`,
    **When** the roll runs for `D`,
@@ -277,7 +198,8 @@ write roll marker only. On app start, a catch-up sweep does the same for every u
 
 4. **Given** the app was down across days `D1` and `D2`,
    **When** it starts,
-   **Then** the catch-up sweep rolls (`C`, `D1`) and (`C`, `D2`) exactly once each.
+   **Then** the catch-up sweep rolls (`C`, `D1`) and (`C`, `D2`) exactly once each before normal
+   operation resumes.
 
 5. **Given** a daily summary exists for day `D` which is now outside the 14-day window,
    **When** the user asks a question whose answer is in `D`,
@@ -285,44 +207,62 @@ write roll marker only. On app start, a catch-up sweep does the same for every u
 
 6. **Given** the summarization OpenAI call fails for (`C`, `D`),
    **When** the job runs,
-   **Then** no roll marker is written for (`C`, `D`), and it is retried (bounded budget) on the
-   next run; it is only marked rolled once the summary is durably stored.
+   **Then** no roll marker is written for (`C`, `D`), it is retried with a bounded budget on the
+   next run, and one unloadable/erroring chat does not abort the roll for the other chats.
 
 7. **Given** the scheduler and a manually-run roll script both target (`C`, `D`) concurrently,
    **When** both execute,
    **Then** at most one summary is created (marker check-and-write is race-safe).
 
-8. **Given** one chat's session is an H2-poison record,
+8. **Given** one chat's session is a bugfix-035 H2 poison record,
    **When** the nightly roll iterates all chats,
-   **Then** that chat's failure is isolated and logged; every other chat's roll still completes.
+   **Then** that chat loads tolerantly (US1) and participates; if it still errors for an
+   unrelated reason, its failure is isolated and logged once, and every other chat's roll
+   completes.
+
+9. **Given** a roll night that crosses a DST transition (02:00 does not exist, or occurs twice),
+   **When** the `CronTrigger` fires,
+   **Then** it fires exactly once and "previous calendar day" is unambiguous.
 
 ### Integration test requirement
 
 Real `SessionManager` + real `MemoryManager` (real ChromaDB, tmp `data_root`), OpenAI mocked at
-the boundary (billed variant real). Seed multiple chats/days via real persistence. Invoke the
-real roll function (not the scheduler timer). Assert summary count, marker presence, `recall()`
-retrievability, and boundary call-count across a re-run. A separate test simulates downtime and
-asserts the catch-up sweep's exact coverage.
+the boundary (billed variant exercises the real call). Seed multiple chats/days — including a
+`…@g.us` group — via real persistence. Invoke the real roll function (not the scheduler timer).
+Assert summary count, marker presence, `recall()` retrievability, and boundary call-count across
+a re-run. A separate test simulates downtime and asserts the catch-up sweep's exact coverage. A
+focused test asserts the group-chat collection resolves and is created via the shared sanitized
+helper with no raw `client.get_collection()` call.
 
 ---
 
-## US6 — Raw messages are never deleted, and context never blows the token budget (P2)
+## US3 — Raw messages are never deleted, and context never blows the token budget (P1)
+
+**Delivers**: the safety property that makes the new model trustworthy. (a) A message aging past
+the 14-day window, or trimmed by the token/size backstop, is **archived** (moved on disk to a
+retained path) — never `unlink()`-ed. (b) The verbatim window is bounded by "last 14 days OR last
+N tokens, whichever is smaller"; when 14 days exceeds N, the oldest in-window messages are
+archived out of the live context (still summarized on their normal nightly schedule).
+
+**Legacy defect folded in**: bugfix-035 H3 (`expired/YYYY-MM-DD/` unbounded growth + tests
+picking `rglob(...)[0]`) — subsumed: the archive-retention policy must be an explicit documented
+decision, and tests must scope archived-session lookups to their own `session_id`.
 
 ### Flow
 
-Window builder (US4) → after selecting the 14-day set, if its token count > backstop `N`: archive
-the oldest messages (move `messages/<uuid>.json` to a retained archive path, update the session's
-in-memory view) until it fits. Aging out of 14 days → same archive move. **The
+Window builder (US1) → after selecting the 14-day set, if its token count > backstop `N`: archive
+the oldest messages (move `messages/<uuid>.json` to a retained archive path, update the in-memory
+view) until it fits. Aging out of 14 days → the same archive move. **The
 `_prune_until_under_limit` `unlink()` path is replaced by this archive-only trim when the flag is
-ON.** `archive_session` stays a `rename` (move). Nothing calls `Path.unlink` on message/session
-files in the feature's code.
+ON.** `archive_session` stays a `rename` (move). No feature code path calls `Path.unlink` /
+`os.remove` / `shutil.rmtree` on a message or session file.
 
 ### Scenarios
 
 1. **Given** a message older than 14 days,
    **When** the window is rebuilt,
    **Then** its raw file exists at a retained archive path (not deleted), and a file-integrity
-   audit still balances (live + archived counts == message_counter == id-list length).
+   audit still balances (live + archived counts == `message_counter` == id-list length).
 
 2. **Given** the 14-day window for chat `C` exceeds the token backstop `N`,
    **When** context is built,
@@ -335,43 +275,55 @@ files in the feature's code.
    not just the live window).
 
 4. **Given** the full feature codebase,
-   **When** audited for `unlink`/`os.remove`/`shutil.rmtree` against message or session paths,
+   **When** audited for `unlink` / `os.remove` / `shutil.rmtree` against message or session
+   paths,
    **Then** there are zero such calls on a live (non-flag-OFF-legacy) path.
 
 5. **Given** `expired/YYYY-MM-DD/` accumulating across many runs (bugfix-035 H3),
    **When** the retention policy is applied,
-   **Then** it follows a documented bound (which may be "retain indefinitely"), never silent
-   deletion of a message's only copy, and the test suite scopes its archived-session lookups to
-   its own `session_id` rather than `rglob(...)[0]`.
+   **Then** it follows a documented bound (which may be "retain indefinitely by design"), never
+   silent deletion of a message's only copy, and the test suite scopes its archived-session
+   lookups to its own `session_id` rather than `rglob(...)[0]`.
 
 6. **Given** the token backstop is misconfigured smaller than one day of messages,
    **When** the window is built,
    **Then** it still returns the most recent messages and terminates (no infinite archive loop).
 
+7. **Given** a message timestamped exactly on the 14-day boundary or exactly at midnight between
+   two days,
+   **When** the window-builder and the roll job both run,
+   **Then** the message belongs to exactly one day and is either in the window or summarized —
+   never both, never neither (inclusive/exclusive rules explicit and consistent).
+
 ### Integration test requirement
 
-Real `SessionManager`, tmp `data_root`, tiny configured backstop. Seed > backstop messages. Build
-context via `bot.router`. Assert live window fits `N`, every trimmed message file exists at its
-archive path, and the nightly roll for that day still includes them. Plus a static audit test /
-grep assertion that no feature module deletes message files.
+Real `SessionManager`, tmp `data_root`, a deliberately tiny configured backstop. Seed more
+in-window messages than the backstop allows. Build context via `bot.router`. Assert the live
+window fits `N`, every trimmed message file exists at its archive path, and the nightly roll for
+that day still includes them. Plus a static audit test / grep assertion that no feature module
+deletes message or session files. Plus a file-integrity audit helper asserting
+live + archived == `message_counter` == id-list length.
 
 ---
 
-## US7 — A one-time migration backfills daily summaries for pre-window history (P3)
+## US4 — A one-time migration backfills daily summaries for pre-window history (P2)
 
 _Separately gated: real prod write + real billed calls; fresh explicit approval per run._
 
 ### Flow
 
 Operator runs `scripts/…/backfill_daily_summaries.sh --env <env> --since <YYYY-MM-DD>
-[--until <YYYY-MM-DD>]` (default `--until` = today − 14d). For each chat, for each calendar day in
-range: check roll marker; if absent → gather day's messages → non-empty: summarize (billed) →
-`remember(...)` → write marker; empty: write marker. Emit a per-chat run report. Reads raw
-messages only.
+[--until <YYYY-MM-DD>]` (default `--until` = today − 14d), following the Feature 061/062
+backfill-script conventions (explicit CLI args, no hardcoded dates, idempotent, real credentials
+never committed). For each chat, for each calendar day in range: check the roll marker; if absent
+→ gather the day's messages → non-empty: summarize (billed) → `remember(...)` → write marker;
+empty: write marker. Emit a per-chat run report. Reads raw messages only — never moves, archives,
+or deletes them.
 
 ### Scenarios
 
-1. **Given** prod history 2026-08-05 → (today − 14d) for both prod chats,
+1. **Given** prod history 2026-08-05 → (today − 14d) for both prod chats
+   (`120363210094632983@g.us`, `972522968679@c.us`),
    **When** the migration runs,
    **Then** every non-empty calendar day in range has exactly one daily summary + a roll marker;
    every empty day has a roll marker only.
@@ -408,15 +360,16 @@ days.
 
 ---
 
-## US8 — Prod application logs are retained across rotation (P3)
+## US5 — Prod application logs are retained across rotation (P2)
 
 ### Flow
 
 Audit: the app's Python logging config (`logs/denidin.log` handler — plain `FileHandler` vs
-`RotatingFileHandler`/`TimedRotatingFileHandler`, `backupCount`) + `docker-compose.prod.yml` log
-driver options (`max-size`/`max-file` on `json-file`). Determine what rotates, by what trigger,
-and whether rotated segments are retained. If not retained → specify + verify the minimal config
-change.
+`RotatingFileHandler` / `TimedRotatingFileHandler`, `backupCount`) + `docker-compose.prod.yml`
+log driver options (`max-size` / `max-file` on `json-file`), and the morning-mcp-app equivalent.
+Determine what rotates, by what trigger (size/age), and whether rotated segments are retained. If
+not retained → specify + verify the minimal config change (a real prod config change goes through
+the normal deploy flow, outside this feature).
 
 ### Scenarios
 
@@ -427,7 +380,8 @@ change.
 
 2. **Given** rotation configured by size or age,
    **When** a rotation occurs,
-   **Then** the pre-rotation content persists as an on-disk file (compression allowed).
+   **Then** the pre-rotation content persists as an on-disk file (compression allowed), not
+   discarded.
 
 3. **Given** the application-log history since 2026-08-05,
    **When** any past date's log lines are requested,
@@ -442,7 +396,7 @@ change.
 ### Integration test requirement
 
 Configuration inspection + a forced-rotation verification on a non-prod instance: set a tiny
-`maxBytes`/short interval, generate enough log volume to trigger several rotations, assert the
+`maxBytes` / short interval, generate enough log volume to trigger several rotations, assert the
 rotated files all still exist on disk with their content intact. Document the finding in
 `quickstart.md` / a runbook section.
 
@@ -450,13 +404,18 @@ rotated files all still exist on disk with their content intact. Document the fi
 
 ## Cross-story acceptance (final `billed` pass — written & run once, after all unit/integration GREEN)
 
-- **AC-1 (US1+US5)**: A real group-chat conversation over 3 simulated days → nightly roll for each
-  day → ask a question answerable only from day 1 (now summarized) → the bot answers correctly
-  using the recalled daily summary. 1 billed summary call per day, 0 duplicates.
-- **AC-2 (US3+US4)**: A real conversation → simulated restart → new message → the bot continues
-  seamlessly with full pre-restart context, no manual re-priming.
-- **AC-3 (US4+US6)**: A conversation exceeding the token backstop → the bot still answers using
-  the most recent context, and a disk audit shows every trimmed message retained.
-- **AC-4 (US7)**: The dev migration run, end to end, with the run report reviewed.
-- **AC-5 (US2)**: The known poison-session shape, loaded into a running app, no longer produces
-  recurring errors and participates in a roll.
+- **AC-1 (US1+US2)**: A real group-chat (`…@g.us`) conversation over 3 simulated days → nightly
+  roll for each day → ask a question answerable only from day 1 (now summarized, outside the
+  window) → the bot answers correctly using the recalled daily summary. 1 billed summary call per
+  day, 0 duplicates, no `NotFoundError` for the group collection (bugfix-035 H1 proven fixed).
+- **AC-2 (US1)**: A real conversation → simulated process restart → new inbound message → the bot
+  continues seamlessly with full pre-restart context, no manual re-priming (bugfix-044 proven
+  designed out).
+- **AC-3 (US1+US3)**: A conversation exceeding the token backstop → the bot still answers using
+  the most recent context, and a disk audit shows every trimmed message retained at its archive
+  path.
+- **AC-4 (US4)**: The dev migration run, end to end, with the per-chat run report reviewed;
+  a follow-up nightly-roll invocation skips every migrated day.
+- **AC-5 (US1+US2)**: The known bugfix-035 H2 poison-session shape (`0f5eaa04`-style, unknown
+  `pending_ledger_events` key), loaded into a running app → no recurring hourly `Failed to load
+  session` error → the session participates in a nightly roll.
