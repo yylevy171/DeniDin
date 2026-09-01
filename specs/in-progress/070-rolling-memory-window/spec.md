@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/070-rolling-memory-window`
 **Created**: 2026-09-01
-**Status**: Draft — pending `speckit.clarify`
+**Status**: Draft — clarified 2026-09-02, ready for `speckit.plan`
 **Input**: User description: Replace the 24-hour session-expiry memory lifecycle with a rolling
 14-day verbatim short-term window plus a nightly 2am (Israel local) roll that summarizes the
 previous calendar day into long-term memory. Build the new model first; the known legacy defects
@@ -21,9 +21,15 @@ are never lost on rotation.
   DI); Israel local time everywhere (`now_local()`); `pathlib.Path`; no monkey-patching; ZERO
   MOCKING of internal components (real `SessionManager`/`MemoryManager`/`AIHandler` code paths in
   every test — OpenAI and Green API are the only mockable boundaries, and never inside
-  `tests/integration/`); NO UNVERIFIED THIRD-PARTY ASSUMPTIONS; feature-flagged new behavior
-  (`config.feature_flags`, default `false`, byte-for-byte identical path when disabled); tests
-  immutable once approved.
+  `tests/integration/`); NO UNVERIFIED THIRD-PARTY ASSUMPTIONS; tests immutable once approved.
+- **No feature flag** (clarified 2026-09-02). The new model *replaces* the 24-hour session-expiry
+  model wholesale — it is not gated behind `config.feature_flags`. The retired code paths (24h
+  idle expiry, the hourly per-session transfer/retry cycle, `_prune_until_under_limit` message
+  deletion) are **removed**, not left dormant behind a disabled branch. Tests cover the new model
+  as the default behavior; the retired behavior is not retained and not tested. The normal
+  CONSTITUTION "feature-flag new behavior" default is deliberately overridden here by explicit
+  user direction, because a half-installed dual memory model is more dangerous than a clean
+  cutover with a one-time backfill run first (see Clarifications).
 - **METHODOLOGY.md** (§I, II, VI, VIII, IX, X): spec-first; mandatory `user-stories.md`
   (Given-When-Then, separate file, spec approval BLOCKED without it); Terminology Glossary;
   Technology Choices; Requirement IDs (`REQ-MEM-*` series — a new series, since this is a
@@ -35,11 +41,13 @@ are never lost on rotation.
   each, whether it is *structurally eliminated* by the redesign or *fixed inline*, and which
   acceptance test proves it. The two bugfix specs get a status note pointing here at haleluya
   time; they are not worked as standalone bugs.
-- The root `CLAUDE.md` banners: the **one-time prod migration** (User Story 4) is its own gated
-  action requiring fresh, explicit human approval every time it is run, independent of approval to
-  build the feature; it performs a real prod data write and real billed OpenAI calls. Deploying
-  the feature or enabling its flag in any environment is likewise always a separate explicit human
-  decision.
+- The root `CLAUDE.md` banners: the **one-time prod backfill/migration** (User Story 4) is its own
+  gated action requiring fresh, explicit human approval every time it is run, independent of
+  approval to build the feature; it performs a real prod data write and real billed OpenAI calls.
+  Deploying the new model to any environment is likewise always a separate explicit human
+  decision — and (clarified 2026-09-02) the backfill MUST be run against an environment *before*
+  the new-model code is first deployed there, so the startup catch-up sweep never faces unbounded
+  historical work.
 
 **Required Files**: `user-stories.md` ✅ · `spec.md` (this file) ✅ · `checklists/requirements.md`
 ✅ · `plan.md` (later) · `tasks.md` (later).
@@ -61,6 +69,38 @@ from this spec). This section is a quick reference only.
 
 Legacy defects (bugfix-035 H1/H2/H3, bugfix-044) are addressed **within** US1-US3, not as their
 own stories — see §"Legacy Defects and How the New Model Addresses Them".
+
+---
+
+## Clarifications
+
+### Session 2026-09-02
+
+- Q: Roll-marker storage mechanism (REQ-MEM-046) — a file under `data/`, a metadata flag on the
+  daily-summary record, or a small index? → A: A small **SQLite database under `data/`** (same
+  pattern as Feature 054's `reminders.db`), with a `UNIQUE(chat, date)` constraint so the
+  check-and-write is atomic under a scheduler/script race. Empty days get a row too. Checked
+  identically by the nightly job, the catch-up sweep, and the one-time backfill.
+- Q: Token/size backstop value `N` under the 14-day window (REQ-MEM-024 / REQ-MEM-047)? → A:
+  **Reuse the acting role's existing `max_tokens_by_role` limit as `N`** — no new config key for
+  the value. The verbatim window is `min(last 14 calendar days, last max_tokens_by_role[role]
+  tokens)`. (`plan.md` must note the prompt-cache implication: in a group turn the effective
+  window size can vary with which member's role governs the turn.)
+- Q: Canonical current message store shape (REQ-MEM-014) — one long-lived `Session` per chat, or
+  per-chat message storage? → A: **Keep one long-lived `Session` per chat** — it simply never
+  expires — located by a deterministic on-disk lookup keyed on `whatsapp_chat`. Smallest blast
+  radius; reuses the existing session/message JSON, archival, and message-file code.
+- Q: Feature-flag rollout & the integration-vs-`billed` coverage split (REQ-MEM-060 / 062 /
+  SC-011)? → A: **No feature flag.** The new model replaces the old one wholesale; the retired
+  paths are deleted, not left behind a disabled branch. Tests exercise the new functionality as
+  the default behavior — the retired session-expiry behavior is not retained and not tested.
+- Q: With no flag, how is the startup catch-up sweep kept from auto-summarizing all history back
+  to go-live (2026-08-05) on the first prod boot, given REQ-MEM-048 requires the backfill to be a
+  separately-approved operator action? → A: **Operational ordering.** Run the one-time
+  backfill/migration first, against the running or stopped target environment — it writes roll
+  markers for every historical day. *Then* deploy the new-model code, so its catch-up sweep only
+  ever sees genuinely-recent un-rolled days. A bounded catch-up lookback (a `memory` config key,
+  conservative default) stays in as a safety net if that ordering is ever violated.
 
 ---
 
@@ -117,9 +157,16 @@ Structural problems with this model, all observed in real production:
   (moved on disk), never `unlink()`-ed. A token/size backstop under the window caps the verbatim
   context; trimming for the backstop also only archives.
 - **A one-time prod migration** backfills one daily summary per non-empty calendar day for all
-  history older than 14 days (bot went live 2026-08-05).
+  history older than 14 days (bot went live 2026-08-05). It is run against the target environment
+  **before** the new-model code is deployed there.
 - **Prod application logs are verified to survive rotation** — rotation by size or age is fine,
   but each rotated segment must be kept on disk.
+- **Clean cutover, no feature flag.** The new model replaces the session-expiry model outright;
+  there is no dual-path period. The retired mechanisms — 24h idle expiry, the hourly
+  per-session-transfer/retry cleanup cycle, and `_prune_until_under_limit` message deletion — are
+  removed from the codebase. The safe rollout order is: (1) approve + run the one-time backfill
+  against the target env, (2) deploy the new-model code, (3) the startup catch-up sweep and
+  nightly roll take over with only recent days left to do.
 
 Since the bot went live 2026-08-05 and there are only two prod chats ever, the end state per
 chat is: a 14-day verbatim window plus ~2-3 weeks of daily summaries, growing by one summary per
@@ -138,7 +185,7 @@ acceptance test rather than its own regression suite.
 | **bugfix-035 H1** | Group-chat Tier-2 collection name keeps raw `@`; post-write `client.get_collection()` verify with the unsanitized name throws `NotFoundError`; succeeded write reported as failed; hourly re-summarization forever. | **Structurally eliminated.** The per-expired-session transfer invoked by the hourly cleanup (`AIHandler.transfer_session_to_long_term_memory` as a cleanup step) is **retired** under the new model — there is no "expire session → summarize → mark transferred" cycle to loop on. The nightly roll writes *only* via `MemoryManager.remember(collection_name=…)`, which sanitizes on the write path, and does **no** raw `client.get_collection()` verify step (REQ-MEM-011, REQ-MEM-012). Group and 1:1 chats resolve their collection through one shared sanitized helper (REQ-MEM-013). The 27 existing duplicate records are a separate prod cleanup, out of scope (needs its own approval). | AC-1 / US2 group-chat scenario: a `…@g.us` chat's daily summary is stored and retrievable via `recall()`, and a second roll makes no new billed call. |
 | **bugfix-035 H2** | `Session(**data)` raises `TypeError` on an unknown persisted key; session permanently unloadable; hourly error log. | **Fixed inline.** The new window-builder and nightly roll both iterate persisted sessions/messages, so tolerant deserialization is on their critical path. `SessionManager` session load filters `data` to known fields (mirroring `denidin.py`'s `valid_fields = {f.name for f in fields(AppConfiguration)}` pattern) and logs one warning for dropped keys (REQ-MEM-020, REQ-MEM-021). Not a separate phase — it lands with the first task that touches session loading. | US1 poison-session scenario + AC-5: a session file with an unknown key loads with 0 `TypeError`, 1 warning, and participates in a roll. |
 | **bugfix-035 H3** | `expired/YYYY-MM-DD/` accumulates unbounded across runs; test picks `rglob(...)[0]` and matches a stale archived session. | **Subsumed into US3.** The archive-retention policy (REQ-MEM-034) must be an explicit documented decision (bound or "retain indefinitely by design"); the test suite must scope archived-session lookups to the session under test, not `rglob(...)[0]` (REQ-MEM-035). | US3 scenario 5. |
-| **bugfix-044** | Orphan recovery reloads a session and logs success but never registers it into `chat_to_session`; next message creates a new empty session. Also: `remove_from_index()` deletes a chat's entry without checking it points at the session being removed. | **Structurally eliminated (design).** The new model does not rely on an in-memory `chat_to_session` index that a recovery path can forget to populate. "Where does a new inbound message for chat C append?" is answered by a **deterministic on-disk lookup** for C's canonical current message store (`plan.md` decides: one long-lived session per chat found by scanning `whatsapp_chat`, or per-chat message storage) — so a restart cannot leave a recovered store unreferenced (REQ-MEM-014, REQ-MEM-015). The `remove_from_index` guard is included only if an index survives the redesign at all; otherwise it's moot. | US1 restart scenario + AC-2: conversation → simulated restart → next message continues with full pre-restart context, no manual re-priming. |
+| **bugfix-044** | Orphan recovery reloads a session and logs success but never registers it into `chat_to_session`; next message creates a new empty session. Also: `remove_from_index()` deletes a chat's entry without checking it points at the session being removed. | **Structurally eliminated (design).** The new model keeps **one long-lived `Session` per chat** (never expires), and "where does a new inbound message for chat C append?" is answered by a **deterministic on-disk lookup** keyed on `whatsapp_chat` — the authoritative resolution, not an in-memory index a recovery path can forget to populate (REQ-MEM-014, REQ-MEM-015). An in-memory `chat_to_session` map may still exist as a non-authoritative cache; where it does, `remove_from_index()` gains the guard that it only clears a chat's entry when that entry actually points at the session being removed (REQ-MEM-016). | US1 restart scenario + AC-2: conversation → simulated restart → next message continues with full pre-restart context, no manual re-priming. |
 
 ---
 
@@ -158,13 +205,18 @@ acceptance test rather than its own regression suite.
 - **Startup catch-up sweep**: on app start, rolls every (chat, date) pair that is now older than
   "yesterday", has no roll marker, and is not otherwise covered — days that passed while the app
   was down.
-- **Token/size backstop**: a per-chat upper bound on the verbatim window ("the last 14 days, OR
-  the last N tokens, whichever is smaller"). When the 14-day window exceeds the bound, the oldest
-  in-window messages are archived out of the live context until it fits — they are still
-  summarized by the nightly roll on their normal schedule and their raw files are retained.
-- **Canonical current message store (for a chat)**: whatever the redesign settles on as "the one
-  place a new inbound message for chat C is appended" — resolved by a deterministic on-disk
-  lookup, not a losable in-memory index. (`plan.md` decides the concrete shape.)
+- **Token/size backstop**: an upper bound on the verbatim window — "the last 14 calendar days, OR
+  the last `N` tokens, whichever is smaller", where **`N` is the acting role's existing
+  `max_tokens_by_role` limit** (no dedicated config key for the value). When the 14-day window
+  exceeds `N`, the oldest in-window messages are archived out of the live context until it fits —
+  their raw files are retained and they are still summarized by the nightly roll on their normal
+  schedule. Because the governing role in a group turn can vary (`GroupMembershipResolver` picks
+  the most-permissive member), the effective bound can vary per turn; `plan.md` settles whether
+  backstop trimming is a per-turn context exclusion or a disk archive move.
+- **Canonical current message store (for a chat)**: the single long-lived `Session` for chat C —
+  the one place a new inbound message for C is appended. It never expires. It is resolved by a
+  **deterministic on-disk lookup keyed on `whatsapp_chat`**, not a losable in-memory index (an
+  in-memory map may exist as a cache, but is never authoritative).
 - **Archive (of a message/session)**: a move on disk (`rename`) to a retained location. Never a
   delete. Raw content remains on disk and auditable indefinitely.
 - **One-time prod migration**: an operator-run, separately-approved script that creates daily
@@ -184,18 +236,22 @@ acceptance test rather than its own regression suite.
 - **Time**: the `Asia/Jerusalem`-aware helpers in `apps/denidin-app/src/utils/time_utils.py`.
   "Calendar day" and "14 days" are both evaluated in Israel local time. No UTC anywhere.
 - **Short-term storage**: the existing on-disk session/message JSON layout under `data/sessions/`.
-  The window is computed from message timestamps already persisted per message. Whether the
-  redesign keeps one long-lived `Session` per chat or moves to per-chat message storage is a
-  `plan.md` decision (see REQ-MEM-014) — but no new datastore technology either way.
+  The window is computed from message timestamps already persisted per message. The redesign
+  keeps **one long-lived `Session` per chat** (never expires), resolved by a deterministic on-disk
+  lookup keyed on `whatsapp_chat` (clarified 2026-09-02, REQ-MEM-014) — no new datastore
+  technology, no per-chat message-directory restructuring.
 - **Long-term storage**: the existing `MemoryManager` / ChromaDB collections and OpenAI
   embeddings (`config.ai_embedding_model`). Daily summaries are ordinary `remember()` writes with
   richer metadata; recall is the existing semantic `recall()` path. No `LedgerEventManager`
   schema-version change (this feature does not touch the ledger — REQ-MEM-043).
-- **Roll markers**: a durable, per-(chat, date) record. Concrete storage (a markers file under
-  `data/`, a metadata flag on the daily-summary record, or a small index) is a `plan.md`
-  decision. [NEEDS CLARIFICATION: see REQ-MEM-046.]
-- **Config**: new keys under the existing `memory` block and a `config.feature_flags` flag. No
-  env vars.
+- **Roll markers**: a small **SQLite database under `data/`** (clarified 2026-09-02), one row per
+  (chat, date) with a `UNIQUE(chat, date)` constraint so check-and-write is atomic under a
+  scheduler/script race. Same library/pattern as Feature 054's `reminders.db`. Empty days get a
+  row too. Exact path, table shape, and how it composes with the ChromaDB `data/` layout are a
+  `plan.md` decision; the datastore choice is settled.
+- **Config**: new keys under the existing `memory` block (window length, catch-up lookback, retry
+  budgets, roll hour). No `config.feature_flags` entry — there is no flag. The token backstop `N`
+  is not a new key: it reuses `max_tokens_by_role`. No env vars.
 - **Migration & log-retention verification**: standalone operator scripts under `scripts/` /
   `apps/denidin-app/scripts/`, following the Feature 061/062 backfill-script conventions
   (explicit CLI args, no hardcoded dates, idempotent, real credentials never committed).
@@ -229,23 +285,23 @@ it.
 
 **Independent Test**: Seed a chat with messages dated 20, 15, 13, 2, and 0 days ago. Build the
 turn context via the real code path. Assert the 13/2/0-day messages are present verbatim and in
-order; the 20/15-day messages are not in the verbatim window. With the feature flag OFF, assert
-the context is byte-for-byte the current session-scoped behavior.
+order; the 20/15-day messages are not in the verbatim window.
 
 **Acceptance Scenarios**:
 
-1. **Given** messages spanning 30 days for a chat, **When** a new turn is processed with the flag
-   ON, **Then** exactly the messages from the last 14 days are in the verbatim window,
-   oldest-first.
+1. **Given** messages spanning 30 days for a chat, **When** a new turn is processed, **Then**
+   exactly the messages from the last 14 days are in the verbatim window, oldest-first.
 2. **Given** a chat idle for 3 days, **When** a new message arrives, **Then** the prior
    conversation (still within 14 days) is fully in context — no "new session, no memory" behavior.
 3. **Given** a group chat, **When** the window is built, **Then** user turns carry the
    `[sender_name]` prefix exactly as today.
-4. **Given** the feature flag is OFF, **When** any turn is processed, **Then** behavior is
-   identical to the pre-feature session-scoped model (byte-for-byte golden file).
+4. **Given** the 14-day window for a chat exceeds the acting role's `max_tokens_by_role` limit,
+   **When** the turn context is built, **Then** the oldest in-window messages are held back until
+   it fits and the most recent messages are always present (token backstop; see US3).
 5. **Given** an app restart with an in-progress conversation for chat C, **When** the next inbound
-   message for C arrives, **Then** it appends to C's existing message store and the pre-restart
-   turns are in context — no new empty session, no manual re-priming (bugfix-044 designed out).
+   message for C arrives, **Then** it appends to C's existing (single long-lived) session and the
+   pre-restart turns are in context — no new empty session, no manual re-priming (bugfix-044
+   designed out).
 6. **Given** a session file with an unknown persisted key and a future-dated (clock-skew)
    message, **When** the window is built, **Then** it does not crash and does not return an empty
    window; the unknown key is dropped with one warning (bugfix-035 H2).
@@ -300,11 +356,11 @@ simulate a 2-day downtime and assert the catch-up sweep rolls exactly the missed
 
 Two guarantees. (a) A message aging past the 14-day window, or trimmed by the token/size
 backstop, is **archived** (moved on disk to a retained path) — never `unlink()`-ed. The current
-live deletion path (`_prune_until_under_limit`, which `unlink()`s message files) is replaced by
-archive-only trimming when the flag is ON. (b) The verbatim window is bounded by "last 14 days OR
-last N tokens, whichever is smaller"; when 14 days exceeds N tokens, the oldest in-window
-messages are archived out of the live context (still summarized on their normal nightly
-schedule).
+live deletion path (`_prune_until_under_limit`, which `unlink()`s message files) is **removed** —
+trimming is archive-only. (b) The verbatim window is bounded by "last 14 calendar days OR last
+`N` tokens, whichever is smaller", where `N` is the acting role's `max_tokens_by_role` limit
+(clarified 2026-09-02); when 14 days exceeds `N`, the oldest in-window messages are held out of
+the live context (still summarized on their normal nightly schedule, raw files retained).
 
 **Why this priority**: The user's explicit precondition for approving this whole feature was that
 all raw data is preserved. A rolling window that quietly deletes to stay under a token cap would
@@ -346,9 +402,13 @@ for all prod history older than 14 days (bot went live 2026-08-05), writing a ro
 each (chat, date) as it goes, so the periodic model starts with a complete Tier-2 record and the
 nightly job never re-summarizes those days.
 
-**Why this priority**: Needed exactly once, for prod, before the feature flag is turned on there.
-P2 because the feature is buildable and testable in dev without it, and it is a separately-gated
-real-prod-write action outside the normal implement flow.
+**Why this priority**: Needed exactly once, for prod, and (clarified 2026-09-02) it MUST run
+against the target environment **before** the new-model code is deployed there — so the startup
+catch-up sweep never faces unbounded historical work. P2 because the feature is buildable and
+testable in dev without it, and it is a separately-gated real-prod-write action outside the
+normal implement flow. The script therefore has to run standalone against a running *or* stopped
+environment (it writes roll markers + ChromaDB records into that env's `data/`), not as an
+in-process step of the app.
 
 **Independent Test** (dev/sandbox, real code, real billed calls): Point the script at a dev chat
 with >14 days of seeded history. Run it. Assert: one daily summary per non-empty past day; roll
@@ -363,11 +423,12 @@ unchanged by the migration.
    roll marker; every empty day has a roll marker only.
 2. **Given** the migration completed, **When** it is run again, **Then** 0 OpenAI calls, 0 new
    records.
-3. **Given** the migration completed and the flag is then enabled in prod, **When** the nightly
-   job first runs, **Then** it processes only days after the migration cutoff.
+3. **Given** the migration completed and the new-model code is then deployed to prod, **When** the
+   startup catch-up sweep and the first nightly roll run, **Then** they process only days after
+   the migration cutoff — every migrated (chat, date) is already marked and skipped.
 4. **Given** the migration is a real prod write, **When** anyone wants to run it, **Then** it
    requires fresh explicit human approval for that specific run and never runs as a side effect
-   of a deploy or of flipping the flag.
+   of a deploy.
 5. **Given** raw messages, **When** the migration runs, **Then** it only reads them — no message
    or session file is moved or deleted (before/after file-integrity check).
 6. **Given** the migration run, **When** it finishes, **Then** it prints a per-chat report (days
@@ -432,9 +493,11 @@ specify the minimal config change and verify it keeps segments after a forced ro
   disk — so this is bounded work, not a data-availability problem. *(Confirms REQ-MEM-030.)*
 - **Two rollers racing on the same (chat, date)** (scheduler + manual script). Marker
   check-and-write must be idempotent under a race.
-- **Feature flag flipped OFF after some daily summaries already exist.** Recall must not break;
-  the system falls back cleanly to session-scoped behavior without the daily summaries causing
-  errors.
+- **New-model code deployed to an environment before the one-time backfill was run there** (the
+  clarified rollout order was violated). The startup catch-up sweep MUST NOT auto-summarize all
+  history back to go-live: its bounded lookback (REQ-MEM-028) caps the automatic work, and the
+  operator still has to run the separately-approved backfill for the older range. No unbounded
+  burst of billed calls on boot.
 - **The token backstop set smaller than a single day's messages.** The window must still contain
   the most recent messages and must not loop forever archiving.
 - **An unloadable (bugfix-035 H2) session encountered mid-roll.** One poison session must not
@@ -444,19 +507,22 @@ specify the minimal config change and verify it keeps segments after a forced ro
 
 ### Functional Requirements — Rolling window (User Story 1)
 
-- **REQ-MEM-001**: With the feature flag ON, the per-turn conversation context MUST include every
-  message for the chat whose timestamp falls within the last 14 calendar days (Israel local),
-  verbatim, oldest-first, subject only to the token backstop (REQ-MEM-024).
-- **REQ-MEM-002**: With the feature flag ON, there MUST be no 24-hour idle session expiry; a chat
-  idle for up to 14 days retains full verbatim context.
+- **REQ-MEM-001**: The per-turn conversation context MUST include every message for the chat whose
+  timestamp falls within the last 14 calendar days (Israel local), verbatim, oldest-first,
+  subject only to the token backstop (REQ-MEM-024).
+- **REQ-MEM-002**: There MUST be no 24-hour idle session expiry; a chat idle for up to 14 days
+  retains full verbatim context. The `session_timeout_hours` expiry logic and the hourly
+  `SessionCleanupThread` expire/transfer cycle are removed (not disabled).
 - **REQ-MEM-003**: "Last 14 days" and "calendar day" MUST be evaluated in Israel local time via
   `time_utils`, with explicit documented inclusive/exclusive boundary rules, correct across DST,
   and consistent with the roll job's day-bucketing (REQ-MEM-011) — every message belongs to
   exactly one day and is either in the window or summarized, never both or neither.
 - **REQ-MEM-004**: Group-chat user turns in the window MUST retain the Feature 039 `[sender_name]`
   prefix.
-- **REQ-MEM-005**: With the feature flag OFF, the conversation-context code path MUST be
-  byte-for-byte identical to the pre-feature session-scoped behavior.
+- **REQ-MEM-005**: The retired mechanisms MUST be *removed* from the codebase, not left dormant
+  behind a disabled branch: the 24h idle-expiry path, the hourly per-session
+  expire→summarize→`transferred_to_longterm` cleanup cycle, and the `_prune_until_under_limit`
+  message-file deletion. Post-change, 0 references to them remain.
 - **REQ-MEM-006**: The window MUST be built from message timestamps already persisted per message;
   no new per-message datastore.
 - **REQ-MEM-007**: The window-builder MUST tolerate clock skew / future-dated messages and an
@@ -473,16 +539,18 @@ specify the minimal config change and verify it keeps segments after a forced ro
 - **REQ-MEM-011**: A tolerantly-loaded session MUST participate normally in every lifecycle step
   (window inclusion, nightly roll, archive).
 - **REQ-MEM-014**: "Where does a new inbound message for chat C append?" MUST be answered by a
-  **deterministic on-disk lookup** for C's canonical current message store — never solely by an
-  in-memory index that a recovery path can fail to populate. `plan.md` decides the concrete
-  shape (one long-lived session per chat located by `whatsapp_chat`, or per-chat message
-  storage). *(bugfix-044 designed out.)*
+  **deterministic on-disk lookup** for C's single long-lived `Session`, keyed on `whatsapp_chat`
+  — never solely by an in-memory index that a recovery path can fail to populate. There is one
+  `Session` per chat and it never expires. *(bugfix-044 designed out; clarified 2026-09-02 —
+  per-chat message storage was considered and rejected as unnecessary blast radius.)*
 - **REQ-MEM-015**: After a process restart, the next inbound message for a chat with prior
   history MUST append to that chat's existing store and see the prior turns in context — with no
   reliance on an orphan-recovery step having re-registered anything.
-- **REQ-MEM-016**: If the redesign retains any in-memory chat→store index, `remove_from_index()`
-  MUST remove a chat's entry only if it currently points at the store being removed. If no such
-  index survives, this requirement is N/A (state so in `plan.md`).
+- **REQ-MEM-016**: An in-memory `chat_to_session` map MAY be retained as a non-authoritative
+  performance cache (the deterministic on-disk lookup per REQ-MEM-014 is always the source of
+  truth). Where it is retained, `remove_from_index()` MUST clear a chat's entry only if that
+  entry currently points at the session being removed. `plan.md` states whether the cache is kept
+  at all.
 - **REQ-MEM-017**: The retirement of the 24h-expiry → per-session-transfer → hourly-retry cycle
   MUST NOT leave `SessionCleanupThread` (or its replacement) able to re-summarize an
   already-rolled day or a still-in-window session. *(bugfix-035 H1 loop designed out.)*
@@ -490,8 +558,8 @@ specify the minimal config change and verify it keeps segments after a forced ro
 ### Functional Requirements — Nightly roll (User Story 2)
 
 - **REQ-MEM-020**: A single `APScheduler` `CronTrigger` job MUST run at 02:00 Israel local time,
-  wired in `denidin.py`'s `initialize_app` alongside the existing schedulers, gated by the
-  feature flag; the roll hour MUST be a config value.
+  wired in `denidin.py`'s `initialize_app` alongside the existing schedulers; the roll hour MUST
+  be a config value.
 - **REQ-MEM-021**: For each chat, the roll MUST summarize the previous calendar day's messages
   into **exactly one** daily long-term record, embedded and stored via `MemoryManager`, with
   metadata including at least the chat id and the summarized calendar date.
@@ -503,17 +571,27 @@ specify the minimal config change and verify it keeps segments after a forced ro
   OpenAI call, and MUST still be marked rolled.
 - **REQ-MEM-024**: The roll MUST be idempotent per (chat, date) via a roll marker checked before
   any OpenAI call; a re-run or catch-up pass MUST NOT create a second summary or make a second
-  billed call for an already-rolled (chat, date).
+  billed call for an already-rolled (chat, date). *(The token-backstop value is REQ-MEM-024b, in
+  the Raw-data & token safety section — a pre-existing near-duplicate id; kept as-is to avoid
+  renumbering cross-references.)*
 - **REQ-MEM-025**: A roll marker for a non-empty (chat, date) MUST be written **only after** the
   daily summary is durably stored — a mid-roll failure MUST leave (chat, date) un-rolled for a
   bounded retry, not falsely marked done.
 - **REQ-MEM-026**: The check-and-write of a roll marker MUST be safe against concurrent rollers
-  (scheduler + manual script) — no double summary under a race.
+  (scheduler + manual script) — at most one summary and one billed call per (chat, date) under a
+  race. The roll-marker store is a SQLite DB with a `UNIQUE(chat, date)` constraint (clarified
+  2026-09-02); `plan.md` decides whether a racer claims (chat, date) with an atomic
+  insert *before* summarizing (two-phase: `claimed` → `committed`), or the constraint is only a
+  backstop that at worst leaves one duplicate record for later cleanup. Either way, no unbounded
+  re-summarization.
 - **REQ-MEM-027**: One unloadable or erroring chat/session MUST NOT abort the roll for other
   chats; per-chat failures are isolated and retried with a bounded budget.
 - **REQ-MEM-028**: A startup catch-up sweep MUST, on app start, roll every (chat, date) pair
-  older than "yesterday" with no roll marker — exactly once each — without blocking message
-  handling indefinitely.
+  within a **bounded lookback** (a `memory` config key, conservative default — e.g. ~21 days)
+  that has no roll marker — exactly once each — without blocking message handling indefinitely.
+  Days older than the lookback are **not** auto-rolled on boot; they are the one-time backfill's
+  responsibility (REQ-MEM-041, REQ-MEM-048). This bound is the safety net for the case where the
+  new-model code is deployed before the backfill was run (clarified 2026-09-02).
 - **REQ-MEM-029**: Daily summaries MUST be retrievable through the existing semantic `recall()`
   path so a question about a day now outside the 14-day window surfaces that day's summary.
 - **REQ-MEM-030**: Because raw messages are never deleted (REQ-MEM-032), the catch-up sweep after
@@ -528,12 +606,14 @@ specify the minimal config change and verify it keeps segments after a forced ro
   message or session file. Aging out of the window and token-backstop trimming MUST both be
   archive-only (move/rename to a retained path).
 - **REQ-MEM-033**: The existing live deletion path `_prune_until_under_limit` (and any other
-  `unlink()` of message files) MUST be replaced with archive-only trimming when the feature flag
-  is ON. With the flag OFF, existing behavior is unchanged (REQ-MEM-005).
-- **REQ-MEM-024b / REQ-MEM-024**: The verbatim window MUST be bounded by "last 14 days OR last N
-  tokens, whichever is smaller". When 14 days exceeds N tokens, the oldest in-window messages are
-  archived out of the live context until it fits. [NEEDS CLARIFICATION: value of N — a candidate
-  is the current godfather `max_tokens_by_role` 100000, or lower. See REQ-MEM-047.]
+  `unlink()` of message files) MUST be removed; token-backstop trimming and window aging are
+  archive-only (REQ-MEM-005, REQ-MEM-032).
+- **REQ-MEM-024b**: The verbatim window MUST be bounded by "last 14 calendar days OR last `N`
+  tokens, whichever is smaller". **`N` is the acting role's existing `max_tokens_by_role` limit**
+  (clarified 2026-09-02) — no dedicated config key for the value. When the 14-day window exceeds
+  `N`, the oldest in-window messages are held out of the live context until it fits; the most
+  recent messages are always retained. In a group turn, the governing role (and therefore `N`) is
+  the one `GroupMembershipResolver` resolves for that turn.
 - **REQ-MEM-036**: A message trimmed by the token backstop MUST still be included in its calendar
   day's nightly roll summary.
 - **REQ-MEM-037**: `gpt-5.6-luna`'s confirmed usable context window MUST be shown (against a real
@@ -561,6 +641,10 @@ specify the minimal config change and verify it keeps segments after a forced ro
   delete any message or session file.
 - **REQ-MEM-048**: Running the migration against real prod data MUST require fresh, explicit
   human approval for that specific run, independent of feature-build approval and of any deploy.
+  It MUST be run against the target environment **before** the new-model code is deployed there
+  (clarified 2026-09-02) — the deploy runbook states this ordering. The migration script MUST run
+  standalone against a running *or* stopped environment (it writes into that env's `data/` roll-
+  marker DB and ChromaDB), never as an in-process app step.
 - **REQ-MEM-049**: The migration MUST produce a written per-chat run report (days processed,
   summaries created, empty days, billed-call count) for human review.
 
@@ -582,25 +666,34 @@ specify the minimal config change and verify it keeps segments after a forced ro
 
 - **REQ-MEM-043**: This feature MUST NOT change `LedgerEventManager.CURRENT_SCHEMA_VERSION` or
   any ledger schema.
-- **REQ-MEM-046**: [NEEDS CLARIFICATION] Roll-marker storage mechanism — a dedicated markers file
-  under `data/`, a queryable flag on the daily-summary record, or a small index — decided in
-  `plan.md`. Requirement: survives restarts; checked identically by the nightly job, the catch-up
-  sweep, and the one-time migration.
-- **REQ-MEM-047**: [NEEDS CLARIFICATION] Token-backstop value N (see REQ-MEM-024). Also: does the
-  daily-summary `recall()` need a larger `top_k_results` than the current 5 to answer multi-week
-  questions, or is that out of scope? Decide in `plan.md`/`clarify`.
+- **REQ-MEM-046**: The roll-marker store MUST be a small **SQLite database under `data/`**
+  (clarified 2026-09-02), one row per (chat, date) with a `UNIQUE(chat, date)` constraint, empty
+  days included. It MUST survive restarts and be read/written identically by the nightly job, the
+  startup catch-up sweep, and the one-time backfill. Exact path, table columns, and access module
+  are a `plan.md` decision; the datastore choice is settled. Same library/pattern as Feature
+  054's `reminders.db`.
+- **REQ-MEM-047**: The token-backstop value is settled (REQ-MEM-024b — reuse `max_tokens_by_role`).
+  Whether the daily-summary `recall()` needs a larger `top_k_results` than the current 5 for
+  multi-week questions is a `plan.md` decision; it is **not assumed** here and any change stays
+  within the existing recall path (no embedding-model or prompt-block-format change — see Out of
+  Scope).
 
-### Feature-flag & config requirements
+### Config & rollout requirements
 
-- **REQ-MEM-060**: All new behavior MUST sit behind `config.feature_flags.<flag>` (name TBD in
-  plan), default `false`. Flag OFF ⇒ code path byte-for-byte identical to pre-feature.
-- **REQ-MEM-061**: New tunables (window length, token backstop N, catch-up lookback, retry
-  budgets, roll hour) MUST be config keys under the existing `memory` block with documented
-  defaults — no magic numbers, no env vars.
-- **REQ-MEM-062**: Unit tests MAY set the flag; integration tests MUST NOT (they test default
-  production behavior). Integration/acceptance coverage of the new model therefore uses dedicated
-  `billed` acceptance tests that exercise it explicitly, OR the flag becomes default-on only
-  after sign-off. Decide in `plan.md`.
+- **REQ-MEM-060**: There is **no feature flag** (clarified 2026-09-02). The new model is the
+  default and only behavior once merged. `config.feature_flags` gains no entry for this feature.
+  The safe rollout is operational, not flag-based: (1) approve + run the one-time backfill against
+  the target env, (2) deploy the new-model code, (3) sweep + nightly roll take over.
+- **REQ-MEM-061**: New tunables (window length [default 14], catch-up lookback [conservative
+  default], per-chat/per-run retry budgets, roll hour [default 2]) MUST be config keys under the
+  existing `memory` block with documented defaults — no magic numbers, no env vars. The token
+  backstop `N` is **not** among them: it reuses `max_tokens_by_role`.
+- **REQ-MEM-062**: Tests exercise the new model as the default behavior — no flag toggling
+  anywhere. Unit tests cover the window-builder, day-bucketing, tolerant load, backstop, and
+  roll-marker logic directly; integration tests drive real inbound webhooks through the real
+  `SessionManager`/`MemoryManager`/`AIHandler` with the new model live; the final `billed`
+  acceptance pass (AC-1..AC-5) exercises the end-to-end model against real OpenAI. The retired
+  session-expiry behavior is **not** retained and gets **no** regression tests.
 
 ## Key Entities
 
@@ -609,10 +702,12 @@ specify the minimal config change and verify it keeps segments after a forced ro
 - **Daily summary**: one ChromaDB record. Attributes: summary text, embedding, chat id,
   summarized calendar date, message count, created-at (Israel local), source ("daily-roll" or
   "migration"). The unit of Tier-2 memory under the new model.
-- **Roll marker**: durable per-(chat, date) record meaning "this day is rolled — do not
-  summarize again". Written by the nightly job, catch-up sweep, and migration.
-- **Canonical current message store**: per chat, the one on-disk location new messages append to,
-  found by deterministic lookup.
+- **Roll marker**: a row in a small SQLite DB under `data/`, keyed `UNIQUE(chat, date)`, meaning
+  "this day is rolled — do not summarize again". Written by the nightly job, catch-up sweep, and
+  backfill alike; empty days get a row too.
+- **Canonical current message store**: per chat, its single long-lived `Session` (never expires),
+  the one on-disk location new messages append to, found by a deterministic lookup keyed on
+  `whatsapp_chat`.
 - **Archived message / archived session**: a message or session file moved (never deleted) to a
   retained path when it ages past the window or is trimmed by the backstop.
 - **Log segment**: a rotated slice of the application log, retained on disk.
@@ -645,8 +740,10 @@ specify the minimal config change and verify it keeps segments after a forced ro
   retrievable from an on-disk file — 100% of rotations retain their prior segment.
 - **SC-010**: Re-running the nightly roll, the catch-up sweep, or the one-time migration over an
   already-rolled range produces 0 new summaries and 0 new billed calls.
-- **SC-011**: With the feature flag OFF, the full existing test suite passes unchanged and the
-  conversation-context output is byte-for-byte identical to pre-feature.
+- **SC-011**: The retired mechanisms are gone from the codebase — a static search finds 0 live
+  references to `session_timeout_hours` expiry, the hourly expire→transfer→`transferred_to_longterm`
+  cleanup cycle, or `_prune_until_under_limit` — and the test suite has no test that asserts the
+  old session-expiry behavior.
 
 ## Out of Scope
 
@@ -658,7 +755,8 @@ specify the minimal config change and verify it keeps segments after a forced ro
 - Any change to the Morning/ledger subsystems.
 - Migrating existing pre-2026-08-10 `+00:00` timestamps (they compare correctly as-is).
 - Cold-storage / offsite backup of archived messages beyond the on-disk retained path.
-- Deploying the feature or enabling the flag in any environment.
+- Deploying the new model to any environment, and running the one-time backfill against prod
+  (both are separately-gated human decisions — see the rollout order in §Problem Statement).
 - Standalone regression suites for bugfix-035 / bugfix-044 — their coverage rides on the named
   acceptance tests per §"Legacy Defects".
 
