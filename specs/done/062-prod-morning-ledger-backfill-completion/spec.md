@@ -2,8 +2,9 @@
 
 **Feature Branch**: `feature/062-prod-morning-ledger-backfill-completion`
 **Created**: 2026-08-27
-**Status**: Done — the real prod backfill this feature exists for was executed and verified
-2026-09-01 (see "Prod Backfill Executed" below). Per explicit user direction, this was run as a
+**Status**: Done — merged via PR #272. The real prod backfill this feature exists for was executed
+and verified 2026-09-01 (see "Prod Backfill Executed" below). Per explicit user direction, this was
+run as a
 **one-time chore, not a speckit feature**: no `user-stories.md`/`plan.md`/`tasks.md`, and T022–T035
 below (the regression-test suite + a real `load.py` Phase-4 mechanism) were deliberately **not**
 built — the same ad-hoc, human-supervised, temporary-rw-sshfs-mount method already used and proven
