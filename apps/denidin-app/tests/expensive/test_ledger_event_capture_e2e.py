@@ -223,36 +223,6 @@ class TestLedgerEventCaptureE2E:
     BANK_IMAGE_PAYER = "עטיה רועי מאיר"
 
     @staticmethod
-    def _ensure_client_exists(chat_id, name, id_prefix):
-        """Seed `name` as a real Morning client, but only if it isn't one already.
-
-        Idempotent on purpose: these tests can't invent a client name (it has to
-        be the one the screenshot actually shows), so a blind seed on every run
-        would pile up duplicates and eventually make the name ambiguous - at
-        which point the system would correctly start asking which one is meant
-        and the test would fail for a reason that has nothing to do with the bug.
-
-        Decided on the TOOL's output, not the model's prose - `get_client_details`
-        returning the not-found string is a fact; a sentence about it is a
-        paraphrase.
-        """
-        from tests.billed.denidin_mcp_e2e_helpers import (
-            _calls_for,
-            _seed_client_via_conversation,
-            _send_turn,
-        )
-
-        _, ai_response = _send_turn(
-            chat_id, f"תן לי את הפרטים של הלקוח {name}", id_prefix=f"{id_prefix}_LOOKUP"
-        )
-        lookups = _calls_for(ai_response, "get_client_details")
-        already_exists = bool(lookups) and "לא נמצא" not in (lookups[0]["output"] or "")
-        if already_exists:
-            logger.info(f"client {name!r} already exists - not re-seeding")
-            return
-        _seed_client_via_conversation(chat_id, name, id_prefix=f"{id_prefix}_SEED")
-
-    @staticmethod
     def _assert_no_open_invoice_for(chat_id, name, id_prefix):
         """Guard against cross-test interference: both deposit tests use the same
         payer (the one on the screenshot), and their expected outcome DIFFERS
@@ -717,6 +687,7 @@ class TestLedgerEventCaptureE2E:
         from denidin import handle_image_message
         from tests.billed.denidin_mcp_e2e_helpers import (
             _calls_for,
+            _seed_client,
             _send_turn,
             _send_turn_and_approve,
         )
@@ -810,7 +781,7 @@ class TestLedgerEventCaptureE2E:
             # request itself supplies nothing but the intent, and deliberately
             # says "חשבונית", the ordinary word a user would use, NOT a document
             # type: choosing the type is the system's job and is what A1 is about.
-            self._ensure_client_exists(chat_id, self.BANK_IMAGE_PAYER, id_prefix="B028_A1T1")
+            _seed_client(chat_id, "B028_A1T1", name=self.BANK_IMAGE_PAYER, ensure_exists=True)
             self._assert_no_open_invoice_for(chat_id, self.BANK_IMAGE_PAYER, id_prefix="B028_A1T1")
 
             logger.info("WHEN the godfather asks for an invoice for that deposit")

@@ -51,7 +51,7 @@ from src.models.message import AIResponse
 from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     GODFATHER_CHAT_ID,
     _calls_for,
-    _client_name_exact_match_found,
+    _resolve_client_name,
     create_real_notification,
     get_response,
 )
@@ -211,7 +211,9 @@ def test_godfather_shares_contact_card_complete_requires_approval(denidin_app):
         f"'Dana Cohen' fixture) - should have refused plainly, never silently "
         f"duplicated or updated: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
-    assert _client_name_exact_match_found(ask_ai_response), (
+    assert _resolve_client_name(
+        initial_result=(ask_response, ask_ai_response), drive=False
+    ).exists, (
         f"Expected resolve_client_name to report a genuine EXACT match for the "
         f"permanent 'Dana Cohen' fixture: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
@@ -294,7 +296,8 @@ def test_godfather_shares_contact_card_missing_email_is_asked_for(denidin_app):
     # never for any other reason. Check every turn's resolve_client_name calls,
     # not just the approve turn's - the exact match may have surfaced earlier.
     exact_match_found = any(
-        _client_name_exact_match_found(r) for r in (ask_ai_response, supply_ai_response, approve_ai_response)
+        _resolve_client_name(initial_result=(None, r), drive=False).exists
+        for r in (ask_ai_response, supply_ai_response, approve_ai_response)
     )
     add_failed_as_known_duplicate = bool(add_calls) and not add_succeeded and exact_match_found
 

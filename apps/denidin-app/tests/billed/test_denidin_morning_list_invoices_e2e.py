@@ -37,7 +37,7 @@ from .denidin_mcp_e2e_helpers import (
     _calls_for,
     _random_amount,
     _random_description,
-    _seed_fresh_client,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve,
 )
@@ -565,7 +565,7 @@ def test_godfather_searches_invoice_by_number_finds_it(denidin_app):
     a 'too many results' narrowing request."""
     amount = _random_amount()
     description = _random_description()
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_NUMSEARCH_SEED")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: only the invoice must be fresh
 
     _, (seed_response, seed_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,

@@ -59,16 +59,15 @@ from .denidin_mcp_e2e_helpers import (
     _HEBREW_NAME_SPELLING_VARIANTS,
     _SEED_PHONE,
     _calls_for,
-    _client_name_exact_match_found,
-    _complete_add_client_flow,
-    _fresh_nonexistent_client_name,
     _normalize_hebrew_geresh,
     _is_genuine_document_creation,
     _is_real_approval_prompt,
     _random_amount,
     _random_description,
     _random_seed_email,
-    _seed_fresh_client,
+    _resolve_client_name,
+    _seed_client,
+    pick_existing_client,
     _send_button_tap,
     _send_turn,
     _send_turn_and_approve,
@@ -127,7 +126,7 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
     """
     amount = _random_amount()
     description = _random_description()
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_CREATE")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -175,7 +174,7 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
     produces."""
     amount = _random_amount()
     description = _random_description()
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_CREATE_TAP")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
     ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -307,7 +306,7 @@ def test_godfather_approval_survives_intervening_small_talk(denidin_app):
     the user can simply re-ask and complete the approval flow normally."""
     amount = _random_amount()
     description = _random_description()
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_SMALLTALK")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
 
     _send_turn(
@@ -536,9 +535,9 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
     exact same name.
     """
     chaser_spelling, male_spelling = random.choice(_HEBREW_NAME_SPELLING_VARIANTS)
-    seed_name, _, _ = _seed_fresh_client(
+    seed_name, _, _ = _seed_client(
         GODFATHER_CHAT_ID,
-        id_prefix="E2E_ADD_CLIENT_NEARDUP_SEED",
+        "E2E_ADD_CLIENT_NEARDUP_SEED",
         name_factory=lambda: f"{male_spelling} {random.choice(_HEBREW_FAMILY_NAMES)}",
     )
     family_name = seed_name.split()[-1]
@@ -627,7 +626,7 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
     normal confirmation (a real invoice link)."""
     amount = _random_amount()
     description = _random_description()
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_027_HAPPY")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -781,7 +780,7 @@ def test_create_document_t1_single_letter_added_to_stored_name(denidin_app):
     fixture (see GROUND_TRUTH_CLIENTS.md) - not a fresh per-run seed, per
     user decision 2026-08-11 (fewer OpenAI calls; the old per-run
     add_client seed also risked colliding with sandbox residue, see
-    docstring of _fresh_nonexistent_client_name and bugfix-039's own
+    the _seed_client(create=False) docstring and bugfix-039's own
     investigation, 2026-08-07/2026-08-11). Both of this fixture's name words
     are verified absent from _unique_client_name()'s random pool (see
     GROUND_TRUTH_CLIENTS.md), so no randomly-generated test client can ever
@@ -820,7 +819,7 @@ def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
     provides full details (name/phone/email) up front -> client is created
     -> the original document request is retried and succeeds -> both the
     new client and the new document are verified via real Morning calls."""
-    client_name = _fresh_nonexistent_client_name(GODFATHER_CHAT_ID, id_prefix="E2E_027_FULLFLOW")
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_FULLFLOW", create=False)
     seed_email = _random_seed_email()
     amount = _random_amount()
     description = _random_description()
@@ -905,7 +904,7 @@ def test_create_document_for_new_client_declines_client_creation(denidin_app):
     """4. Negative case: client doesn't exist -> godfather is asked whether
     to create it -> declines -> neither the client nor the document is
     created, and the user is informed of both."""
-    client_name = _fresh_nonexistent_client_name(GODFATHER_CHAT_ID, id_prefix="E2E_027_DECLINE")
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_DECLINE", create=False)
     amount = _random_amount()
     description = _random_description()
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
@@ -939,7 +938,9 @@ def test_create_document_for_new_client_declines_client_creation(denidin_app):
         text=f"פרטים על הלקוח {client_name}",
         id_prefix="E2E_027_DECLINE_VERIFY",
     )
-    assert not _client_name_exact_match_found(details_ai_response), (
+    assert not _resolve_client_name(
+        initial_result=(details_response, details_ai_response), drive=False
+    ).exists, (
         f"Client should not exist after declining its creation, but resolve_client_name "
         f"reported a genuine exact match: {details_ai_response.mcp_calls if details_ai_response else None!r}. "
         f"Full reply: {details_response!r}"
@@ -952,7 +953,7 @@ def test_create_document_for_new_client_creates_client_but_declines_document(den
     (godfather approves add_client), but then declines the retried
     document-creation request - the client IS created (verified via
     Morning), but the document is NOT, and the user is informed."""
-    client_name = _fresh_nonexistent_client_name(GODFATHER_CHAT_ID, id_prefix="E2E_027_SEMINEG")
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_SEMINEG", create=False)
     seed_email = _random_seed_email()
     amount = _random_amount()
     description = _random_description()
@@ -1016,7 +1017,7 @@ def test_create_document_for_new_client_asked_for_missing_info_then_provided(den
     rule) rather than guessing or calling add_client incomplete -> godfather
     then provides it -> flow continues exactly like scenario 3 (client
     created, document created, both verified)."""
-    client_name = _fresh_nonexistent_client_name(GODFATHER_CHAT_ID, id_prefix="E2E_027_ASKINFO")
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_ASKINFO", create=False)
     seed_email = _random_seed_email()
     amount = _random_amount()
     description = _random_description()
@@ -1037,17 +1038,17 @@ def test_create_document_for_new_client_asked_for_missing_info_then_provided(den
     )
     assert bare_yes_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
 
-    # Now provide the missing info - _complete_add_client_flow drives this
-    # through to a real add_client success under client_name specifically,
-    # regardless of how many turns that takes (a plain approval, one extra
-    # disambiguation "כן", or a forced "create new" turn for an ambiguous
-    # candidates list) - this test only cares that a client was actually
-    # created under the requested name, not the mechanics.
-    add_response, add_ai_response = _complete_add_client_flow(
-        chat_id=GODFATHER_CHAT_ID,
+    # Now provide the missing info - _seed_client (specific-name variant with
+    # an explicit first turn) drives this through to a real add_client success
+    # under client_name specifically, regardless of how many turns that takes
+    # (a plain approval, one extra disambiguation "כן", or a forced "create
+    # new" turn for an ambiguous candidates list) - this test only cares that
+    # a client was actually created under the requested name, not the mechanics.
+    _, _, add_ai_response = _seed_client(
+        GODFATHER_CHAT_ID,
+        "E2E_027_ASKINFO",
+        name=client_name,
         text=f"מייל {seed_email}, טלפון {_SEED_PHONE}",
-        client_name=client_name,
-        id_prefix="E2E_027_ASKINFO",
         email=seed_email,
         phone=_SEED_PHONE,
     )
@@ -1078,7 +1079,7 @@ def test_create_document_for_new_client_missing_info_not_provided_stops_flow(den
     requires all three fields - runtime_constitution.md's rule, mirroring
     REQ-CLIENT-012) and must NOT create the document either. No pending
     add_client approval should ever appear."""
-    client_name = _fresh_nonexistent_client_name(GODFATHER_CHAT_ID, id_prefix="E2E_027_NOINFO")
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_NOINFO", create=False)
     amount = _random_amount()
     description = _random_description()
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"

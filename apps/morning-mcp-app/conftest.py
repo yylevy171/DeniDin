@@ -21,6 +21,55 @@ from denidin_mcp_morning.utils.logger import LOCAL_LOG_DATEFMT, LocalTimeFormatt
 _current_test_file = None
 
 
+class _RateLimitSentinelHandler(logging.Handler):
+    """Feature 059 item 3 (mirrors apps/denidin-app/conftest.py): detect a real
+    OpenAI 429 rate-limit during a billed/expensive test.
+
+    A billed/expensive test that fails only because OpenAI returned repeated
+    `429 Too Many Requests` is exhibiting rate-limit pressure, not a code
+    defect - but its result cannot be trusted either. This handler buffers,
+    per test, whether a retries-exhausted rate-limit event was logged;
+    `pytest_runtest_makereport` also inspects the test's own exception chain
+    (these tests call OpenAI directly, so the SDK re-raises RateLimitError
+    rather than anything logging it). Either way, billed/expensive results are
+    forced to FAILED (never skip/xfail) with an unmistakable banner.
+    """
+
+    _MSG_SIGNATURES = (
+        "rate limit exceeded",
+        "error code: 429",
+        "429 too many requests",
+        "ratelimiterror",
+    )
+
+    def __init__(self):
+        super().__init__(level=logging.ERROR)
+        self.tripped = False
+        self.detail = None
+
+    def reset(self):
+        self.tripped = False
+        self.detail = None
+
+    def emit(self, record):
+        if self.tripped:
+            return
+        try:
+            message = record.getMessage()
+        except Exception:  # pragma: no cover - never fail a test on logging
+            message = str(getattr(record, "msg", ""))
+        haystack = message.lower()
+        hit = any(sig in haystack for sig in self._MSG_SIGNATURES)
+        if not hit and record.exc_info and record.exc_info[0] is not None:
+            hit = record.exc_info[0].__name__ == "RateLimitError"
+        if hit:
+            self.tripped = True
+            self.detail = message
+
+
+_rate_limit_sentinel = _RateLimitSentinelHandler()
+
+
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line(
@@ -96,8 +145,68 @@ def pytest_runtest_setup(item):
     root_logger.addHandler(file_handler)
     root_logger.setLevel(logging.DEBUG)
 
+    # Feature 059 item 3: re-attach the per-test rate-limit sentinel (the loop
+    # above just stripped every root handler) and clear its buffer.
+    _rate_limit_sentinel.reset()
+    root_logger.addHandler(_rate_limit_sentinel)
+
     # Ensure all child loggers inherit from root
     for name in logging.root.manager.loggerDict:
         logger_obj = logging.getLogger(name)
         if isinstance(logger_obj, logging.Logger):
             logger_obj.propagate = True  # Ensure propagation to root logger
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Feature 059 item 3 (mirrors apps/denidin-app/conftest.py): for
+    billed/expensive tests only, if a real OpenAI 429 rate-limit occurred
+    during the `call` phase, force the result to FAILED (never skip/xfail)
+    with an unmistakable banner. The test stays FAILED on every re-run until
+    the OpenAI rate-limit window resets - the intended signal: fix nothing,
+    wait, re-run.
+    """
+    outcome = yield
+    report = outcome.get_result()
+    if report.when != "call":
+        return
+    marker_names = {m.name for m in item.iter_markers()}
+    if not marker_names & {"billed", "expensive"}:
+        return
+
+    detail = _rate_limit_sentinel.detail
+    rate_limited = _rate_limit_sentinel.tripped
+    if not rate_limited and call.excinfo is not None:
+        chain = []
+        exc = call.excinfo.value
+        while exc is not None and exc not in chain:
+            chain.append(exc)
+            exc = exc.__cause__ or exc.__context__
+        for exc in chain:
+            text = f"{type(exc).__name__}: {exc}".lower()
+            if type(exc).__name__ == "RateLimitError" or "error code: 429" in text or "429 too many requests" in text:
+                rate_limited = True
+                detail = f"{type(exc).__name__}: {exc}"
+                break
+    if not rate_limited:
+        return
+
+    banner = (
+        "\n"
+        "============== OPENAI RATE LIMIT (429) DETECTED - Feature 059 item 3 ==============\n"
+        "OpenAI returned repeated 429s during this test. That is real rate-limit pressure,\n"
+        "NOT necessarily a code defect.\n"
+        "\n"
+        "This run is marked FAILED (never skipped) on purpose: a rate-limited run is not a\n"
+        "trustworthy pass or fail.\n"
+        "\n"
+        "DO NOT investigate this as a bug yet. Wait for the OpenAI rate-limit window to\n"
+        "reset, then re-run this test unchanged.\n"
+        f"\nDetail: {detail}\n"
+        "================================================================================="
+    )
+    report.outcome = "failed"
+    if report.longrepr is None:
+        report.longrepr = banner
+    else:
+        report.sections.append(("OpenAI rate limit (Feature 059 item 3)", banner))
