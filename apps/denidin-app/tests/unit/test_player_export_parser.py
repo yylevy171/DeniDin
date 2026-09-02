@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from player.export_parser import ParsedMessage, filter_date_range, parse_export
+from player.export_parser import ParsedMessage, filter_date_range, filter_from_line, parse_export
 
 
 def _make_export_zip(tmp_path, chat_text: str, media_files=None) -> Path:
@@ -263,3 +263,32 @@ class TestFilterDateRange:
         result = filter_date_range(messages, start=None, end=None, today=date(2026, 8, 7))
 
         assert len(result) == 2
+
+
+class TestFilterFromLine:
+    def _msg(self, raw_line_no):
+        return ParsedMessage(
+            timestamp=datetime(2026, 8, 9, 12, 0, tzinfo=timezone.utc),
+            sender_display_name="Ayelet", text="x", attachments=[], raw_line_no=raw_line_no,
+        )
+
+    def test_keeps_only_messages_at_or_after_the_line(self):
+        messages = [self._msg(100), self._msg(2535), self._msg(2582)]
+
+        result = filter_from_line(messages, start_at_line=2535)
+
+        assert [m.raw_line_no for m in result] == [2535, 2582]
+
+    def test_none_returns_messages_unchanged(self):
+        messages = [self._msg(100), self._msg(2535)]
+
+        result = filter_from_line(messages, start_at_line=None)
+
+        assert result == messages
+
+    def test_line_past_every_message_returns_empty(self):
+        messages = [self._msg(100), self._msg(200)]
+
+        result = filter_from_line(messages, start_at_line=9999)
+
+        assert result == []

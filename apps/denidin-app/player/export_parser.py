@@ -250,3 +250,34 @@ def filter_date_range(
         if resolved_start <= m.timestamp.date() <= resolved_end
     ]
     return sorted(in_range, key=lambda m: m.timestamp)
+
+
+def filter_from_line(
+    messages: List[ParsedMessage],
+    start_at_line: Optional[int],
+) -> List[ParsedMessage]:
+    """
+    Filters to messages with `raw_line_no >= start_at_line` - a precise,
+    exact-message resume point for a replay interrupted mid-run (a real
+    OpenAI outage/credit exhaustion, a killed process, etc.), independent of
+    `filter_date_range`'s day-granularity `--start`/`--end` clamp: a day can
+    hold well over a hundred messages, so restarting from the start of that
+    same day would re-dispatch everything already processed earlier that day
+    (real duplicate ledger events - `LedgerEventManager` allocates a fresh
+    seq digit per capture, it does not overwrite/dedupe), while skipping to
+    the next day would silently drop the unfinished remainder of the
+    interrupted day.
+
+    Callers apply this AFTER `filter_date_range` (see run_player.py's
+    `run_replay`) - it does not itself re-sort or date-clamp.
+
+    `raw_line_no` is the export's own source line number (see
+    `ParsedMessage.raw_line_no` / a completed run's own `sound_off` output,
+    e.g. `[174/569] line=2535 ...` - the exact same number a human reads off
+    a prior run's log/summary to pick this up).
+
+    `start_at_line=None` returns `messages` unchanged (no filtering).
+    """
+    if start_at_line is None:
+        return messages
+    return [m for m in messages if m.raw_line_no >= start_at_line]

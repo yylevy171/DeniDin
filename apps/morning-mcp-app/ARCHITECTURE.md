@@ -157,6 +157,6 @@ task-by-task checklist.
   plan, phases, integration contracts.
 - `specs/done/v0.0.1/005-mcp-morning-green-receipt/data-model.md` — the
   Pydantic model field reference.
-- `specs/backlog/017-mcp-morning-receipt-parsing/` — a separate,
+- `specs/low-priority/017-mcp-morning-receipt-parsing/` — a separate,
   deferred future feature (file-upload/webhook receipt parsing), split out of
   005 to keep this app's scope to invoice management.
