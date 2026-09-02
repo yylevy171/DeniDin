@@ -83,6 +83,15 @@ for NODE_ID in "$@"; do
   "$SINGLE_RUNNER" "$NODE_ID"
   RESULT=$?
 
+  if [ "$RESULT" -eq 3 ]; then
+    # Setup problem (missing/incomplete venv) reported by run_single_test.sh -
+    # NOT a test failure. No test in this sweep actually ran; don't record it
+    # as a FAILED test result, just stop and surface the setup error.
+    echo "[$INDEX/$TOTAL] SETUP ERROR (not a test result): $NODE_ID" >&2
+    echo "Aborting the sweep - fix the venv (see the error above) and re-run." >&2
+    exit 3
+  fi
+
   if [ "$RESULT" -eq 0 ]; then
     PASSED_COUNT=$((PASSED_COUNT + 1))
     echo "[$INDEX/$TOTAL] PASSED: $NODE_ID"

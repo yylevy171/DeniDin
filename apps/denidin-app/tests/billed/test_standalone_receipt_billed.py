@@ -29,7 +29,7 @@ from .denidin_mcp_e2e_helpers import (
     _calls_for,
     _random_amount,
     _random_description,
-    _seed_fresh_client,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve_receipt,
 )
@@ -50,7 +50,7 @@ def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
     structured reason code - the specific wording here, "פיקדון", is just
     one plausible example, not a distinct code path).
     """
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_056_STANDALONE")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
     amount = _random_amount()
     description = _random_description()
 
