@@ -67,6 +67,7 @@ from .denidin_mcp_e2e_helpers import (
     _random_seed_email,
     _resolve_client_name,
     _seed_client,
+    ResolveOutcome,
     pick_existing_client,
     _send_button_tap,
     _send_turn,
@@ -1119,6 +1120,14 @@ def test_create_document_for_new_client_missing_info_not_provided_stops_flow(den
         text=f"פרטים על הלקוח {client_name}",
         id_prefix="E2E_027_NOINFO_VERIFY",
     )
-    assert "לא נמצא" in details_response or "אין" in details_response, (
-        f"Client should not exist since required info was never provided: {details_response!r}"
+    resolved = _resolve_client_name(
+        initial_result=(details_response, details_ai_response), drive=False
+    )
+    assert resolved.outcome in (
+        ResolveOutcome.SINGLE_CANDIDATE,
+        ResolveOutcome.MULTI_CANDIDATE,
+        ResolveOutcome.NONE,
+    ), (
+        f"Client should not exist since required info was never provided; "
+        f"resolve outcome was {resolved.outcome}: {details_response!r}"
     )

@@ -493,8 +493,12 @@ def _seeded_email_from(ai_response: Optional[AIResponse]) -> str:
 # resolve_client_name's FOUR outcomes - the ONE place this suite classifies    #
 # them and drives an identity-resolution question to a conclusion.             #
 #                                                                             #
-# The production resolve_client_name MCP tool already returns exactly one of   #
-# four fixed-prefix Hebrew strings (morning-mcp-app/…/formatters.py):          #
+# The production resolve_client_name MCP tool returns exactly one of four      #
+# fixed-prefix Hebrew strings (morning-mcp-app/…/formatters.py), and the       #
+# model very often echoes that same string near-verbatim in its plain-text    #
+# reply when it answers a resolution question without a fresh tool call - so   #
+# `_classify` reads the marker from the tool output OR the reply text,         #
+# whichever carries one:                                                       #
 #   EXACT            format_client_name_resolved            - the client       #
 #                    exists in Morning exactly as queried (the ONLY outcome    #
 #                    that means "exists as queried")                           #
@@ -503,12 +507,16 @@ def _seeded_email_from(ai_response: Optional[AIResponse]) -> str:
 #   MULTI_CANDIDATE  format_ambiguous_clients_message         - 2+ similar     #
 #                    clients; "כן" can NOT disambiguate - an exact name must   #
 #                    be supplied                                               #
-#   NONE             format_client_not_found                  - zero matches   #
+#   NONE             format_client_not_found / nothing looked the client up   #
+#                    and nothing named an outcome - zero confirmed matches     #
 #                                                                             #
-# A resolve_client_name call can also fail outright (Morning rejects it, or    #
-# it times out) - `_classify` maps that to ERRORED, kept DISTINCT from         #
-# NOT_ATTEMPTED (no call at all) so recovery logic can tell "the model tried   #
-# and Morning refused" from "the model never looked".                          #
+# There is NO fifth "errored"/"not attempted" bucket. A resolve_client_name    #
+# call that Morning rejected, or one whose output matches none of the four     #
+# markers, is a hard failure - `_classify` RAISES ``ResolveClientNameError``   #
+# (identity resolution must never error; in a test any unintended error is a   #
+# failure, not a state to recover from). Only a turn with no resolve call at   #
+# all and no marker in the reply is benign - that is a plain-text clarifying   #
+# question, classified NONE (nothing has confirmed the client exists).         #
 #                                                                             #
 # NOTHING else in this suite may read those markers, re-derive "does this      #
 # client exist", or decide what to reply to a resolution question - it all     #
@@ -524,27 +532,31 @@ _MULTI_CANDIDATE_MARKER = "נמצאו כמה לקוחות בשם דומה"
 _CLIENT_NOT_FOUND_MARKER = "לא נמצא לקוח בשם הזה"
 
 
+class ResolveClientNameError(AssertionError):
+    """A resolve_client_name call errored, or returned an output shape that
+    matches none of the four known markers. Identity resolution must never
+    error - in this suite that is a hard failure, never a state to recover
+    from (user, 2026-09-02: "error or junk is NOT NONE - it is an error that
+    should be raised ... any error is a failure unless we intended for it to
+    happen"). A test that deliberately provokes such an error catches this."""
+
+
 class ResolveOutcome(Enum):
-    """Which of resolve_client_name's four outcomes a turn produced - plus two
-    "no usable resolution" states that are deliberately kept DISTINCT from each
-    other:
+    """Exactly which of resolve_client_name's four outcomes a turn produced.
+    There is no "errored"/"not attempted" member - see
+    ``ResolveClientNameError`` and the comment block above:
 
-    * ``NOT_ATTEMPTED`` - the model made no resolve_client_name call at all on
-      the turn examined. Nothing was looked up.
-    * ``ERRORED`` - the model DID call resolve_client_name but the call failed
-      (an ``mcp_tool_execution_error`` / Morning rejection) or returned an
-      output shape none of the four markers match. Something was attempted; its
-      result is just unusable.
+    * ``EXACT``            - the client exists in Morning exactly as queried
+      (the ONLY outcome for which ``.exists`` is True).
+    * ``SINGLE_CANDIDATE`` - one similar but non-exact client; a bare "כן"
+      confirms it.
+    * ``MULTI_CANDIDATE``  - 2+ similar clients; an exact name is needed to
+      disambiguate.
+    * ``NONE``             - zero confirmed matches: either the not-found
+      marker, or nothing looked the client up and the reply named no outcome
+      (a plain-text clarifying question).
+    """
 
-    Both are inconclusive ("not as queried", never "confirmed does not
-    exist"), and ``.exists`` is False for both - but "did the model try to
-    resolve at all" (``.attempted``) tells them apart, and downstream recovery
-    logic depends on that distinction (a resolve call that errored still means
-    the model reached for identity resolution and a create-new nudge is
-    warranted; no call at all means it did not)."""
-
-    NOT_ATTEMPTED = "not_attempted"
-    ERRORED = "errored"
     NONE = "none"
     EXACT = "exact"
     SINGLE_CANDIDATE = "single_candidate"
@@ -562,8 +574,7 @@ class ResolveResult:
     * ``final_outcome`` - classification of the LAST turn, after any driving.
     * ``resolved_name`` - the exact / confirmed-candidate client name when one
                           is determinable (EXACT, or a SINGLE_CANDIDATE's
-                          quoted name); ``None`` for MULTI_CANDIDATE / NONE /
-                          ERRORED / NOT_ATTEMPTED.
+                          quoted name); ``None`` for MULTI_CANDIDATE / NONE.
     * ``reply`` / ``ai_response`` - the final turn's reply text and
                           ``AIResponse`` (so a caller can assert on what the
                           model did once identity was settled - a follow-up
@@ -581,25 +592,10 @@ class ResolveResult:
     def exists(self) -> bool:
         """True iff the client exists in Morning exactly as first queried -
         i.e. the FIRST resolve_client_name call was a genuine EXACT match.
-        Every other outcome (zero / single-non-exact / ambiguous / errored /
-        not even attempted) means "not as queried" (user, 2026-08-12: "WHEN AN
-        AMBIGUOUS REPLY RETURNS IT MEANS THE CLIENT AS REQUESTED DOES NOT
-        EXIST")."""
+        Every other outcome (zero / single-non-exact / ambiguous) means "not
+        as queried" (user, 2026-08-12: "WHEN AN AMBIGUOUS REPLY RETURNS IT
+        MEANS THE CLIENT AS REQUESTED DOES NOT EXIST")."""
         return self.outcome is ResolveOutcome.EXACT
-
-    @property
-    def attempted(self) -> bool:
-        """True iff the model actually made a resolve_client_name call on the
-        LAST examined turn - INCLUDING one that errored or returned an
-        unrecognized shape (``ERRORED``). Only ``NOT_ATTEMPTED`` (no call at
-        all) is False. Recovery logic that needs "did the model reach for
-        identity resolution at all" must use this, not an ``is not
-        NOT_ATTEMPTED`` check that silently also excludes ``ERRORED`` -
-        collapsing the two is the bug this property exists to prevent
-        (2026-09-02: an errored resolve was classified as NOT_ATTEMPTED,
-        skipping ``_seed_client``'s create-new nudge and dead-ending the
-        seed)."""
-        return self.final_outcome is not ResolveOutcome.NOT_ATTEMPTED
 
 
 def _resolve_client_name(
@@ -634,44 +630,61 @@ def _resolve_client_name(
         - SINGLE_CANDIDATE -> reply "כן", re-classify
         - MULTI_CANDIDATE  -> reply ``disambiguator`` (an exact name; REQUIRED
           for this outcome), re-classify
-        - NOT_ATTEMPTED / ERRORED (no resolve call and not at the approval
-          gate, or a call Morning rejected) -> nudge with ``disambiguator`` if
-          one was given, else terminal
-      Any tool error on a driven turn raises immediately (identity resolution
-      must never error). ``.outcome`` always reports what the FIRST turn was;
+        - NONE, but the model is still asking something (a plain-text
+          clarifying question, not the not-found terminal) -> nudge with
+          ``disambiguator`` if one was given, else terminal
+      Any tool error on a driven turn - or a resolve_client_name call that
+      errored / returned junk on any turn - raises (identity resolution must
+      never error). ``.outcome`` always reports what the FIRST turn was;
       ``.reply`` / ``.ai_response`` / ``.resolved_name`` reflect the final
       state.
     """
-    def _classify(turn_ai: Optional[AIResponse]) -> Tuple[ResolveOutcome, Optional[str]]:
-        """The single marker-reading step: one turn's LAST resolve_client_name
-        call -> ``(outcome, resolved_name)``. ``NOT_ATTEMPTED`` if it made no
-        call at all; ``ERRORED`` if it made one that failed or returned an
-        output shape none of the four markers match. The ONLY place any of the
+    def _match_marker(text: str) -> Optional[Tuple[ResolveOutcome, Optional[str]]]:
+        """Read one of the four fixed markers out of `text` (a tool output OR a
+        reply). ``None`` if the text carries none of them."""
+        if _EXACT_CLIENT_MATCH_MARKER in text:
+            after = text.split(_EXACT_CLIENT_MATCH_MARKER, 1)[1]
+            return ResolveOutcome.EXACT, (after.split('"')[0] or None)
+        if _SINGLE_CANDIDATE_MARKER in text:
+            after = text.split(_SINGLE_CANDIDATE_MARKER, 1)[1]
+            return ResolveOutcome.SINGLE_CANDIDATE, (after.split('"')[0] or None)
+        if _MULTI_CANDIDATE_MARKER in text:
+            return ResolveOutcome.MULTI_CANDIDATE, None
+        if _CLIENT_NOT_FOUND_MARKER in text:
+            return ResolveOutcome.NONE, None
+        return None
+
+    def _classify(
+        turn_ai: Optional[AIResponse], turn_reply: Optional[str] = None
+    ) -> Tuple[ResolveOutcome, Optional[str]]:
+        """One turn -> exactly one of the four ``ResolveOutcome`` values. The
+        marker is read from the turn's LAST resolve_client_name output if it
+        made a call, otherwise from the reply text (the model routinely quotes
+        the same fixed string when it answers in plain text). A resolve call
+        that errored, or one whose output matches no marker, RAISES
+        ``ResolveClientNameError``. A turn with no resolve call and no marker
+        in the reply is NONE - a benign plain-text clarifying question,
+        nothing has confirmed the client exists. The ONLY place any of the
         four markers is read."""
         calls = _calls_for(turn_ai, "resolve_client_name")
-        if not calls:
-            return ResolveOutcome.NOT_ATTEMPTED, None
-        last = calls[-1]
-        if last.get("error") is not None:
-            # A call WAS made - Morning just rejected it (or timed out). This
-            # is NOT the same as "no call": the model reached for identity
-            # resolution. Keep it distinct so recovery logic can tell.
-            return ResolveOutcome.ERRORED, None
-        output = last.get("output") or ""
-        if output.startswith(_EXACT_CLIENT_MATCH_MARKER):
-            return ResolveOutcome.EXACT, (output.split('"')[1] if '"' in output else None)
-        if output.startswith(_SINGLE_CANDIDATE_MARKER):
-            return ResolveOutcome.SINGLE_CANDIDATE, (
-                output.split('"')[1] if '"' in output else None
-            )
-        if _MULTI_CANDIDATE_MARKER in output:
-            return ResolveOutcome.MULTI_CANDIDATE, None
-        if _CLIENT_NOT_FOUND_MARKER in output:
-            return ResolveOutcome.NONE, None
-        # A call was made and did not error, but its output matches none of the
-        # four markers (a new/changed Morning message, or something unexpected).
-        # A call happened - so ERRORED, not NOT_ATTEMPTED.
-        return ResolveOutcome.ERRORED, None
+        if calls:
+            last = calls[-1]
+            if last.get("error") is not None:
+                raise ResolveClientNameError(
+                    f"resolve_client_name errored - identity resolution must "
+                    f"never error: {last!r}"
+                )
+            matched = _match_marker(last.get("output") or "")
+            if matched is None:
+                raise ResolveClientNameError(
+                    f"resolve_client_name returned an output matching none of "
+                    f"the four known markers: {last.get('output')!r}"
+                )
+            return matched
+        matched = _match_marker(turn_reply or "")
+        if matched is not None:
+            return matched
+        return ResolveOutcome.NONE, None
 
     if initial_result is not None:
         reply, ai_response = initial_result
@@ -684,7 +697,7 @@ def _resolve_client_name(
             chat_id, f"פרטים על הלקוח {name}", id_prefix=f"{id_prefix}_RESOLVE_PROBE"
         )
 
-    first_outcome, resolved_name = _classify(ai_response)
+    first_outcome, resolved_name = _classify(ai_response, reply)
     outcome, current_name = first_outcome, resolved_name
 
     if drive:
@@ -695,7 +708,7 @@ def _resolve_client_name(
         for round_num in range(1, max_rounds + 1):
             if _is_real_approval_prompt(reply):
                 break
-            if outcome in (ResolveOutcome.EXACT, ResolveOutcome.NONE):
+            if outcome is ResolveOutcome.EXACT:
                 break
             if outcome is ResolveOutcome.SINGLE_CANDIDATE:
                 answer = "כן"
@@ -707,12 +720,11 @@ def _resolve_client_name(
                     "multi-candidate list"
                 )
                 answer = disambiguator
-            else:  # NOT_ATTEMPTED / ERRORED - the model either made no
-                # resolve call and isn't at the approval gate (a plain-text
-                # clarifying question, most likely), or made one that Morning
-                # rejected. Nudge it with the exact name if we have one - a
-                # persistent error then trips the driven-turn error assertion
-                # below; otherwise there's nothing to drive, return as-is.
+            else:  # NONE - the confirmed not-found terminal, or the model
+                # asked a plain-text clarifying question (no resolve call, no
+                # marker). With an exact name in hand, nudge with it (it
+                # resolves a plain-text question and corrects a spurious
+                # not-found alike); without one, NONE is terminal.
                 if not disambiguator:
                     break
                 answer = disambiguator
@@ -724,7 +736,7 @@ def _resolve_client_name(
                     f"_resolve_client_name: a tool call errored while resolving "
                     f"identity (round {round_num}): {call!r}"
                 )
-            outcome, round_name = _classify(ai_response)
+            outcome, round_name = _classify(ai_response, reply)
             if round_name:
                 current_name = round_name
 
@@ -1085,23 +1097,24 @@ def _seed_client(
                 f"{ai_response.mcp_calls if ai_response else None!r}"
             )
 
-        # A SIMILAR (non-exact / ambiguous) existing client surfaced during
-        # creation, and the model is now asking rather than creating. Push the
-        # create-new intent through explicitly BY NAME (restating email/phone,
-        # which the model otherwise re-asks for) - never let a bare "כן" be
-        # read as "yes, use that existing client instead" (bugfix-045).
+        # Not an EXACT collision (handled above). The model may have surfaced a
+        # SIMILAR client (SINGLE / MULTI), reported not-found, or asked a
+        # free-text "which one / create new?" question - in EVERY one of those
+        # cases the create-new intent is pushed through the SAME single way:
+        # one explicit reply naming the new client and restating email + phone
+        # (which the model otherwise re-asks for). That one reply correctly
+        # answers a one-candidate confirmation, a multi-candidate list, and a
+        # free-text "pick 1/2/3" alike - it rejects every existing candidate BY
+        # NAME, so a bare "כן" can never be read as "yes, use that existing
+        # client instead" (bugfix-045). Sent whenever nothing has been created
+        # and no approval is pending yet - NOT gated on whether a
+        # resolve_client_name call fired (the model often disambiguates in
+        # plain text with no fresh call; gating on that dead-ended the seed -
+        # 2026-09-02).
         add_calls = _calls_for(ai_response, "add_client")
         already_succeeded = bool(add_calls and add_calls[0]["error"] is None)
         pending = denidin.denidin_app.ai_handler.pending_approval_manager.get(chat_id)
-        # The seed turn made a resolve_client_name call (EXACT is already
-        # handled above, so this is SINGLE_CANDIDATE / MULTI_CANDIDATE / NONE /
-        # ERRORED) but nothing was created and no approval is pending - the
-        # model is asking, or Morning rejected the lookup. Either way, force
-        # the create-new intent through by name. Uses `.attempted` (any resolve
-        # call, errored included), NOT an `is not NOT_ATTEMPTED` check that
-        # would silently also skip ERRORED and dead-end the seed.
-        resolve_happened = seed_res.attempted
-        if resolve_happened and not already_succeeded and pending is None:
+        if not already_succeeded and pending is None:
             force_new_text = (
                 f"לא, תוסיף לקוח חדש בשם {candidate}, מייל {seed_email}, טלפון {phone}"
             )
@@ -1124,13 +1137,23 @@ def _seed_client(
                     f"{ai_response.mcp_calls if ai_response else None!r}"
                 )
 
-        for _ in range(2):
+        for _ in range(3):
             add_calls = _calls_for(ai_response, "add_client")
             if add_calls and add_calls[0]["error"] is None:
                 time.sleep(3)
                 return candidate, response, ai_response
+            if _is_real_approval_prompt(response) or "לאישור" in (response or ""):
+                approve_text = "כן"
+            else:
+                # Still being asked to choose - restate the create-new intent
+                # by name rather than sending a bare "כן" that answers nothing.
+                approve_text = (
+                    f"לא, תוסיף לקוח חדש בשם {candidate}, מייל {seed_email}, "
+                    f"טלפון {phone}"
+                )
             response, ai_response = _send_turn(
-                chat_id=chat_id, text="כן", id_prefix=f"{id_prefix}_APPROVE_A{attempt}"
+                chat_id=chat_id, text=approve_text,
+                id_prefix=f"{id_prefix}_APPROVE_A{attempt}"
             )
 
         add_calls = _calls_for(ai_response, "add_client")

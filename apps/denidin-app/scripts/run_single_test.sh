@@ -39,7 +39,9 @@ set -euo pipefail
 #     "tests/expensive/test_pdf_extraction.py::test_something" expensive
 #
 # Exits with pytest's own exit code (0 = passed, 1 = failed, etc.) - the
-# calling agent/human can check $? without parsing any text.
+# calling agent/human can check $? without parsing any text. Exit code 3 is
+# reserved for "this clone's venv is missing or has no pytest" (see the
+# interpreter-resolution block below) - a setup problem, never a test result.
 #
 # 🚨 This script does not grant approval to run anything - every invocation
 # (billed or expensive alike) still needs its own explicit human go-ahead
@@ -68,6 +70,35 @@ fi
 # Always run from the app root, regardless of the caller's cwd.
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# --- Interpreter resolution (added 2026-09-02) -------------------------------
+# NEVER run pytest through a bare `python3` off the caller's PATH. On this
+# machine bare `python3` resolves to a standalone Python 3.14 with no pytest
+# installed, so a bare invocation produced a misleading "RESULT: FAILED"
+# (exit 1, "No module named pytest") for a test that never actually ran -
+# indistinguishable at a glance from a real test failure. Per CLAUDE.md
+# ("always resolve/activate your own clone's own venv explicitly ... verify
+# rather than assume"), this script now pins the interpreter to THIS clone's
+# own venv, unconditionally, and fails loudly with its own distinct exit
+# code (3) if that venv is missing or incomplete - it must never silently
+# fall back to whatever `python3` happens to be first on PATH.
+VENV_PY="venv/bin/python3"
+
+if [ ! -x "$VENV_PY" ]; then
+  echo "ERROR: no usable venv interpreter at $(pwd)/$VENV_PY" >&2
+  echo "       Create this clone's own venv first:" >&2
+  echo "         cd $(pwd) && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt" >&2
+  exit 3
+fi
+
+if ! "$VENV_PY" -c "import pytest" >/dev/null 2>&1; then
+  echo "ERROR: $(pwd)/$VENV_PY exists but pytest is not installed in it." >&2
+  echo "       Install this clone's test dependencies:" >&2
+  echo "         cd $(pwd) && ./venv/bin/pip install -r requirements.txt" >&2
+  exit 3
+fi
+
+echo "Interpreter: $("$VENV_PY" -c 'import sys; print(sys.executable)') ($("$VENV_PY" --version 2>&1))"
+
 RESULTS_DIR="logs/test_logs/pytest_results"
 mkdir -p "$RESULTS_DIR"
 
@@ -85,7 +116,7 @@ echo
 # pytest produces, all of it lands on disk before this script does anything
 # else with it.
 set +e
-python3 -m pytest "$NODE_ID" -v -m "$MARKER" --tb=long >"$RESULTS_FILE" 2>&1
+"$VENV_PY" -m pytest "$NODE_ID" -v -m "$MARKER" --tb=long >"$RESULTS_FILE" 2>&1
 EXIT_CODE=$?
 set -e
 
