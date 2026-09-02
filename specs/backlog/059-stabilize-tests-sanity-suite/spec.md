@@ -6,7 +6,7 @@
 branch; half 2 ("sanity testing suite") NOT yet started. Full `speckit.specify` + `speckit.clarify`
 + `user-stories.md` still owed before this can move to `specs/done/`.
 
-_Landed so far (billed/expensive stabilization, 2026-09-01 → 2026-09-02):_
+_Landed so far (billed/expensive stabilization, 2026-09-01 → 2026-09-02; commit `de5a5bd` + PR #273):_
 - `denidin_mcp_e2e_helpers.py`: 4-way `ResolveOutcome` classification consolidated into the
   single `_resolve_client_name`; `_seed_client` is the ONE client-seed/resolve flow (commit `de5a5bd`).
 - `run_single_test.sh` / `run_multiple_billed_tests.sh`: interpreter pinned to the calling
