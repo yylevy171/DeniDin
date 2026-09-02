@@ -80,8 +80,25 @@ class TestGroupEtiquetteBilled:
 
     @pytest.fixture
     def denidin_app(self, config):
+        # Feature 059 item 7: case7 needs ai_handler.own_whatsapp_number, which
+        # is only resolved when initialize_app() gets a real green_api client
+        # (a live getWaSettings() call - denidin.py:388). Feature 043 made that
+        # client constructor-injected; nothing updated the billed fixtures, so
+        # it defaulted to None and case7 self-skipped on every run. We build a
+        # bare Green API client here (same pattern as test_real_api_connectivity
+        # - no bot, no notification draining) and inject it, exercising the
+        # genuine getWaSettings path (no mock, no hardcoded number).
+        #
+        # The rebuild condition also covers `own_whatsapp_number` being unset,
+        # not just the singleton being None: all billed denidin_app fixtures
+        # share one denidin.denidin_app process-global, and if a Morning billed
+        # file constructed it first (without a green_api client) case7 would
+        # otherwise reuse that numberless instance and still skip.
         import denidin
-        if denidin.denidin_app is None:
+        from whatsapp_api_client_python.API import GreenAPI
+
+        app = denidin.denidin_app
+        if app is None or not getattr(app.ai_handler, "own_whatsapp_number", ""):
             config_dict = {
                 'green_api_instance_id': config.green_api_instance_id,
                 'green_api_token': config.green_api_token,
@@ -96,9 +113,15 @@ class TestGroupEtiquetteBilled:
                 'constitution_config': config.constitution_config,
                 'user_roles': config.user_roles
             }
-            denidin.denidin_app = denidin.initialize_app(config_dict)
+            green_api = GreenAPI(
+                config.green_api_instance_id, config.green_api_token
+            )
+            denidin.denidin_app = denidin.initialize_app(
+                config_dict, green_api=green_api
+            )
         return denidin.denidin_app
 
+    @pytest.mark.sanity
     def test_case1_default_address_gets_substantive_reply(self, denidin_app):
         """US1: a plain group message, no "@" pattern, no signal it's for someone
         else - should get a normal, substantive reply."""
@@ -114,6 +137,7 @@ class TestGroupEtiquetteBilled:
         assert response is not None, "Expected a substantive reply, got no reply at all"
         assert_hebrew_only(response)
 
+    @pytest.mark.sanity
     def test_case2_clearly_for_someone_else_gets_no_reply(self, denidin_app):
         """US5: a message clearly directed at another human by name, no "@" pattern
         - should get no reply at all (not a clarifying question). Deliberately a
@@ -220,13 +244,17 @@ class TestGroupEtiquetteBilled:
         correctly rewrites it before the model ever sees the raw digits."""
         from denidin import handle_text_message
 
+        # Feature 059 item 7: the denidin_app fixture now injects a real Green
+        # API client, so own_whatsapp_number resolving is the expected state.
+        # A miss here means the live getWaSettings call genuinely failed - a
+        # real problem to surface, not silently skip past (the whole point of
+        # item 7 was that this test skipped on literally every run).
         own_number = denidin_app.ai_handler.own_whatsapp_number
-        if not own_number:
-            pytest.skip(
-                "own_whatsapp_number not resolved this run (startup getWaSettings call "
-                "failed or was unreachable) - can't reproduce the real native-mention "
-                "shape without it"
-            )
+        assert own_number, (
+            "own_whatsapp_number was not resolved - the fixture's real Green API "
+            "getWaSettings() call failed or returned no 'phone' field. Check "
+            "config.test.json's Green API instance is authorized and reachable."
+        )
 
         notification = create_real_notification(
             _group_event(f'@{own_number} מי אתה?', case_id='case7')

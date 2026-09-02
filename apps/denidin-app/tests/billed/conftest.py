@@ -152,12 +152,27 @@ def _clear_reminder_tables() -> None:
        that's about to be constructed gets a chance to sqlite3.connect() to
        that stale file and silently inherit its rows.
     2. `denidin.denidin_app` already exists (every test after the first one in
-       this invocation) - deleting the underlying file out from under its
-       already-open connection would NOT give it a clean slate (the connection
-       keeps reading/writing the now-unlinked inode; the file just becomes
-       invisible to outside inspection while quietly orphaning data). A real
-       DELETE through that live connection is the only way to actually reset
-       state once the singleton exists.
+       this invocation, AND the very first test in any module whose own
+       module-scoped `denidin_app` fixture is instantiated before this
+       function-scoped autouse fixture runs) - deleting the underlying file
+       out from under its already-open connection would NOT give it a clean
+       slate (the connection keeps reading/writing the now-unlinked inode;
+       the file just becomes invisible to outside inspection while quietly
+       orphaning data). Resetting through that live connection is the only
+       way to actually reset state once the singleton exists.
+
+       That reset is a DROP + rebuild, not a bare `DELETE FROM` (Feature 059
+       item 2): a reminders.db file left by an earlier, separate pytest
+       invocation can predate a schema change (e.g. the `delivery_chat_id`
+       column added to `CREATE TABLE reminders`). SQLite's `CREATE TABLE IF
+       NOT EXISTS` never adds a column to an existing table, and
+       `ReminderManager` has no ALTER-based migration - so `DELETE FROM`
+       alone clears the rows but leaves the stale schema in place, and the
+       next INSERT/SELECT fails with `sqlite3.OperationalError: no such
+       column`, which looks exactly like a real regression until it's traced
+       to the local .db file (a real Feature 054 incident). Dropping the
+       tables and re-running `_init_schema()` on the live connection
+       guarantees the current schema regardless of what the file held.
     """
     import denidin
 
@@ -173,9 +188,12 @@ def _clear_reminder_tables() -> None:
     # tests/billed/test_reminder_lifecycle_billed.py's _simulate_sweep for
     # reminder_delivery_service._sweep_due_reminders.
     reminder_manager._conn.executescript(
-        "DELETE FROM fired_occurrences; DELETE FROM reminder_exceptions; DELETE FROM reminders;"
+        "DROP TABLE IF EXISTS fired_occurrences;"
+        "DROP TABLE IF EXISTS reminder_exceptions;"
+        "DROP TABLE IF EXISTS reminders;"
     )
     reminder_manager._conn.commit()
+    reminder_manager._init_schema()  # rebuild current schema on the live connection
 
 
 @pytest.fixture(autouse=True)

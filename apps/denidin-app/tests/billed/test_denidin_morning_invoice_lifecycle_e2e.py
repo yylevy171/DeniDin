@@ -31,7 +31,7 @@ from .denidin_mcp_e2e_helpers import (
     _calls_for,
     _random_amount,
     _random_description,
-    _seed_fresh_client,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_approve_receipt,
@@ -69,6 +69,7 @@ KNOWN_INVOICE_STATUS_HE = "שולם"  # paid
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
     """Godfather asks about a specific invoice by client name and date only -
     never an id. The model must resolve which invoice this is itself (via
@@ -119,22 +120,20 @@ def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
 # ============================================================================
 
 def _seed_fresh_invoice(amount: int, description: str) -> str:
-    """Seed a fresh invoice for a brand-new client via a real WhatsApp
-    exchange (create_invoice now requires explicit approval - Feature 022)
-    so the paid/cancel flow tests below mutate a fresh invoice each run,
-    never the reusable 2026-02-07 fixed set. Returns the client name
-    actually used - never an id - for later turns to reference the invoice.
+    """Seed a fresh invoice via a real WhatsApp exchange (create_invoice now
+    requires explicit approval - Feature 022) so the paid/cancel flow tests
+    below mutate a fresh invoice each run, never the reusable 2026-02-07 fixed
+    set. Returns the client name actually used - never an id - for later turns
+    to reference the invoice.
 
     Only asserts on the end state (a fresh invoice genuinely exists before
-    the real test begins), never on the seeding turns themselves:
-    `_seed_fresh_client` already retries with a new name on its own if a
-    particular draw collides with an existing real sandbox client, so by
-    the time this returns, seeding has unambiguously succeeded.
+    the real test begins), never on the seeding turns themselves.
 
-    Feature 027: create_invoice now resolves client_name against a real
-    client record before creating anything - seeds one first via the real
-    add_client conversation (the only way to do so from this E2E layer)."""
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_SEED")
+    Feature 059 item 5: the *invoice* must be fresh (marking it paid / cancelling
+    it is effectively irreversible in the sandbox), but the *client* need not be
+    - so this picks an existing sandbox client rather than paying 2-3 billed
+    turns + a sleep to seed a throwaway one (`pick_existing_client`)."""
+    client_name = pick_existing_client()["name"]
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"צור חשבונית ל-{client_name} על {amount} ₪ עבור {description}",
@@ -336,24 +335,22 @@ _RECEIPT_DOCUMENT_LABEL_HE = "קבלה"  # type 400 - deliberately NOT a substri
 
 
 def _seed_transaction_account_invoice(amount: int, description: str) -> str:
-    """Seed a fresh "חשבון עסקה" (type-300) document for a brand-new client
-    via a real, two-turn approved WhatsApp exchange (create_transaction_account
-    requires approval - Feature 022). Spec 021 added create_transaction_account
-    as its own dedicated MCP tool (not a document_type param on create_invoice,
-    which stays permanently locked to type 305) - the model is expected to
-    route this phrasing to that tool, using the real Hebrew terminology a user
-    would say ("חשבון עסקה" / "חשבונית עסקה" / "חשבון עיסקה" are all real
-    variants). Returns the client name actually used.
+    """Seed a fresh "חשבון עסקה" (type-300) document via a real, two-turn
+    approved WhatsApp exchange (create_transaction_account requires approval -
+    Feature 022). Spec 021 added create_transaction_account as its own dedicated
+    MCP tool (not a document_type param on create_invoice, which stays
+    permanently locked to type 305) - the model is expected to route this
+    phrasing to that tool, using the real Hebrew terminology a user would say
+    ("חשבון עסקה" / "חשבונית עסקה" / "חשבון עיסקה" are all real variants).
+    Returns the client name actually used.
 
     Only asserts on the end state (a fresh חשבון עסקה genuinely exists before
-    the real test begins), never on the seeding turns themselves:
-    `_seed_fresh_client` already retries with a new name on its own if a
-    particular draw collides with an existing real sandbox client, same
-    methodology as `_seed_fresh_invoice` above.
+    the real test begins), never on the seeding turns themselves.
 
-    Feature 027: create_transaction_account now resolves client_name against
-    a real client record before creating anything - seeds one first via the
-    real add_client conversation (the only way to do so from this E2E layer).
+    Feature 059 item 5: same as `_seed_fresh_invoice` above - the *document*
+    must be fresh (its paid/cancel state change is effectively irreversible in
+    the sandbox), the *client* need not be, so this picks an existing sandbox
+    client (`pick_existing_client`) rather than seeding a throwaway one.
 
     This phrasing never states VAT inclusion, so the model deterministically
     asks about it first (same mandatory rule as create_transaction_account's
@@ -362,7 +359,7 @@ def _seed_transaction_account_invoice(amount: int, description: str) -> str:
     real, deliberately different answer from the "כן"/explicit-VAT-stated
     phrasing used elsewhere in this file, to also exercise that branch.
     """
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_020_SEED_300")
+    client_name = pick_existing_client()["name"]
     ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפתח חשבון עסקה עבור {client_name} על סך {amount} שח עבור {description}",

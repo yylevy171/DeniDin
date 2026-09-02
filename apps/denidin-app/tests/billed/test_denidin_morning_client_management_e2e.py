@@ -34,11 +34,13 @@ from .denidin_mcp_e2e_helpers import (
     _HEBREW_NAME_SPELLING_VARIANTS,
     _SEED_PHONE,
     _calls_for,
-    _complete_add_client_flow,
+    _is_real_approval_prompt,
     _normalize_hebrew_geresh,
     _random_seed_email,
-    _seed_fresh_client,
+    _resolve_client_name,
+    _seed_client,
     _seeded_email_from,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_decline,
@@ -81,9 +83,10 @@ def test_godfather_lists_clients_via_whatsapp(denidin_app):
     instead of listing the seeded name directly. The assertion below adapts
     to whichever is actually true (read straight from the tool's own real
     output), rather than assuming either outcome in advance."""
-    # _seed_fresh_client already sleeps for the search-index lag (research.md
-    # Decision 8) on a successful seed - no need to sleep again here.
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_LIST_CLIENTS_SEED")
+    # Feature 059 item 5: this test only needs *a* client to exist so it shows
+    # up in (or is counted by) list_clients - freshness buys nothing. Draw one
+    # from the committed sandbox-client fixture instead of seeding a throwaway.
+    client_name = pick_existing_client()["name"]
 
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -121,13 +124,16 @@ def test_godfather_lists_clients_via_whatsapp(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_gets_client_details_via_whatsapp(denidin_app):
     """Godfather asks for a specific client's details by name - read-only,
     no approval wait (get_client_details is in NO_APPROVAL_MCP_TOOLS)."""
-    # _seed_fresh_client already sleeps for the search-index lag (research.md
-    # Decision 8) on a successful seed - no need to sleep again here.
-    client_name, _, seed_ai_response = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_CLIENT_DETAILS_SEED")
-    seed_email = _seeded_email_from(seed_ai_response)
+    # Feature 059 item 5: read-only lookup - any existing client with a known
+    # email works. Draw one from the committed sandbox-client fixture (with an
+    # email to assert round-trips) instead of seeding a throwaway.
+    _client = pick_existing_client(lambda c: bool(c["email"]))
+    client_name = _client["name"]
+    seed_email = _client["email"]
 
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -179,9 +185,9 @@ def test_godfather_updates_client_via_whatsapp(denidin_app):
        (research.md Decision 3's partial-payload guarantee, exercised here
        through the full real WhatsApp conversation, not just the sandbox
        tool call)."""
-    # _seed_fresh_client already sleeps for the search-index lag (research.md
+    # _seed_client already sleeps for the search-index lag (research.md
     # Decision 8) on a successful seed - no need to sleep again here.
-    client_name, _, seed_ai_response = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_UPDATE_CLIENT_SEED")
+    client_name, _, seed_ai_response = _seed_client(GODFATHER_CHAT_ID, "E2E_UPDATE_CLIENT_SEED")
     seed_email = _seeded_email_from(seed_ai_response)
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
@@ -235,9 +241,9 @@ def test_godfather_declines_client_update(denidin_app):
     update_client must never fire, and a follow-up get_client_details call
     must show the original phone unchanged (mirrors
     test_godfather_declines_add_client's pattern)."""
-    # _seed_fresh_client already sleeps for the search-index lag (research.md
+    # _seed_client already sleeps for the search-index lag (research.md
     # Decision 8) on a successful seed - no need to sleep again here.
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_UPDATE_DECLINE_SEED")
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_UPDATE_DECLINE_SEED")
 
     response, ai_response = _send_turn_and_decline(
         chat_id=GODFATHER_CHAT_ID,
@@ -283,27 +289,27 @@ def test_godfather_update_client_ambiguous_name_creates_no_pending_approval(deni
     name_a = f"{shared_stem} א"
     name_b = f"{shared_stem} ב"
 
-    # _complete_add_client_flow drives each seed through to a real add_client
-    # success regardless of how many turns that takes - a plain approval, or
-    # a forced "create new" turn if this literal name non-exactly collides
-    # with an unrelated real sandbox client (found live, 2026-08-12: name_a
-    # collided with a real "נעים צרפתי" and the old raw 2-turn seed here had
-    # no way to answer that disambiguation question).
+    # _seed_client (specific-name variant) drives each seed through to a real
+    # add_client success regardless of how many turns that takes - a plain
+    # approval, or a forced "create new" turn if this literal name non-exactly
+    # collides with an unrelated real sandbox client (found live, 2026-08-12:
+    # name_a collided with a real "נעים צרפתי" and the old raw 2-turn seed here
+    # had no way to answer that disambiguation question).
     email_a = _random_seed_email()
     email_b = _random_seed_email()
-    seed_a_response, seed_a_ai_response = _complete_add_client_flow(
-        chat_id=GODFATHER_CHAT_ID,
+    _, seed_a_response, seed_a_ai_response = _seed_client(
+        GODFATHER_CHAT_ID,
+        "E2E_UPDATE_AMBIG_SEED_A",
+        name=name_a,
         text=f"תוסיף לקוח חדש בשם {name_a}, מייל {email_a}, טלפון {_SEED_PHONE}",
-        client_name=name_a,
-        id_prefix="E2E_UPDATE_AMBIG_SEED_A",
         email=email_a,
         phone=_SEED_PHONE,
     )
-    seed_b_response, seed_b_ai_response = _complete_add_client_flow(
-        chat_id=GODFATHER_CHAT_ID,
+    _, seed_b_response, seed_b_ai_response = _seed_client(
+        GODFATHER_CHAT_ID,
+        "E2E_UPDATE_AMBIG_SEED_B",
+        name=name_b,
         text=f"תוסיף לקוח חדש בשם {name_b}, מייל {email_b}, טלפון {_SEED_PHONE}",
-        client_name=name_b,
-        id_prefix="E2E_UPDATE_AMBIG_SEED_B",
         email=email_b,
         phone=_SEED_PHONE,
     )
@@ -350,6 +356,7 @@ def test_godfather_update_client_ambiguous_name_creates_no_pending_approval(deni
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_finds_client_via_hebrew_vowel_variant(denidin_app):
     """Morning's real name search is a strict token-prefix match with ZERO
     typo/fuzzy tolerance (confirmed live, research.md Decision 12) - it
@@ -359,14 +366,14 @@ def test_godfather_finds_client_via_hebrew_vowel_variant(denidin_app):
     Hebrew spelling before giving up (runtime_constitution.md's new
     "strict prefix match, not fuzzy" guidance)."""
     chaser_spelling, male_spelling = random.choice(_HEBREW_NAME_SPELLING_VARIANTS)
-    # _seed_fresh_client draws the family name itself (via name_factory) and
+    # _seed_client draws the family name itself (via name_factory) and
     # retries with a new one if a particular draw collides with an existing
     # real sandbox client - never asserts on the seeding turn itself, only
     # on the end state. male_spelling is fixed (needed for the test's own
     # spelling-variant premise); only the family name is redrawn on retry.
-    seed_name, _, _ = _seed_fresh_client(
+    seed_name, _, _ = _seed_client(
         GODFATHER_CHAT_ID,
-        id_prefix="E2E_HEBREW_VARIANT_SEED",
+        "E2E_HEBREW_VARIANT_SEED",
         name_factory=lambda: f"{male_spelling} {random.choice(_HEBREW_FAMILY_NAMES)}",
     )
     family_name = seed_name.split()[-1]
@@ -386,6 +393,7 @@ def test_godfather_finds_client_via_hebrew_vowel_variant(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_get_client_details_resolves_ambiguous_first_name_prefix_after_confirmation(denidin_app):
     """client-name-resolution architecture fix (2026-08-12): get_client_details
     itself never resolves a partial/prefix reference anymore (superseding the
@@ -399,17 +407,17 @@ def test_godfather_get_client_details_resolves_ambiguous_first_name_prefix_after
     once the godfather confirms, the model must actually resolve and THEN
     retrieve the real details - proven by the seeded email appearing in the
     final reply, not just the name being echoed back."""
-    # _seed_fresh_client draws its own fresh first+family name pair and
-    # retries with a new one if a particular draw collides with an existing
-    # real sandbox client - never asserts on the seeding turn itself, only
-    # on the end state (a fresh client genuinely exists before the real test
-    # begins). A custom name_factory keeps the first name single-word (a
+    # _seed_client (drawn-name variant) draws its own fresh first+family name
+    # pair and retries with a new one if a particular draw collides with an
+    # existing real sandbox client - never asserts on the seeding turn itself,
+    # only on the end state (a fresh client genuinely exists before the real
+    # test begins). A custom name_factory keeps the first name single-word (a
     # handful of pool entries are themselves two words, e.g. "בת שבע") - this
     # test's whole premise is truncating THE first name to build a prefix,
     # which only means something for a single-word first name.
-    full_name, _, seed_ai_response = _seed_fresh_client(
+    full_name, _, seed_ai_response = _seed_client(
         GODFATHER_CHAT_ID,
-        id_prefix="E2E_RESOLVE_FIRSTNAME_SEED",
+        "E2E_RESOLVE_FIRSTNAME_SEED",
         name_factory=lambda: f"{_single_word_first_name()} {random.choice(_HEBREW_FAMILY_NAMES)}",
     )
     seed_email = _seeded_email_from(seed_ai_response)
@@ -442,22 +450,30 @@ def test_godfather_get_client_details_resolves_ambiguous_first_name_prefix_after
         f"{first_name_prefix!r} the user typed) - got: {ask_response!r}"
     )
 
-    confirm_response, confirm_ai_response = _send_turn(
-        chat_id=GODFATHER_CHAT_ID,
-        text="כן",
-        id_prefix="E2E_RESOLVE_FIRSTNAME_CONFIRM",
+    # The prefix may resolve to one similar-but-non-exact client (a yes/no
+    # confirmation) OR to several (a pick-one-of-N list) - driving whichever
+    # identity-resolution question the model asked to a conclusion is
+    # _resolve_client_name's single responsibility, not this test's: it
+    # answers "כן" to a lone candidate and the exact `full_name` to a
+    # multi-candidate list, stopping once identity is settled.
+    resolved = _resolve_client_name(
+        GODFATHER_CHAT_ID,
+        first_name_prefix,
+        "E2E_RESOLVE_FIRSTNAME_CONFIRM",
+        initial_result=(ask_response, ask_ai_response),
+        disambiguator=full_name,
     )
 
-    assert confirm_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert _calls_for(confirm_ai_response, "get_client_details"), (
+    assert resolved.reply is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    assert _calls_for(resolved.ai_response, "get_client_details"), (
         f"Model never actually retrieved the client's details once the "
         f"identity was confirmed: "
-        f"{confirm_ai_response.mcp_calls if confirm_ai_response else None!r}"
+        f"{resolved.ai_response.mcp_calls if resolved.ai_response else None!r}"
     )
-    assert seed_email in confirm_response, (
+    assert seed_email in resolved.reply, (
         f"Expected the client's own seeded email {seed_email!r} in the final "
         f"reply - proof of a genuine detail retrieval after confirmation, "
-        f"not just the name echoed back: {confirm_response!r}"
+        f"not just the name echoed back: {resolved.reply!r}"
     )
 
 
@@ -500,17 +516,17 @@ def test_godfather_update_client_resolves_ambiguous_family_name_prefix_after_con
     "כן" is finally the correct answer) - verified independently via a
     follow-up get_client_details call, not just trusted from the model's
     own claim."""
-    # _seed_fresh_client draws its own fresh first+family name pair and
-    # retries with a new one if a particular draw collides with an existing
-    # real sandbox client - never asserts on the seeding turn itself, only
-    # on the end state. A custom name_factory keeps the family name
+    # _seed_client (drawn-name variant) draws its own fresh first+family name
+    # pair and retries with a new one if a particular draw collides with an
+    # existing real sandbox client - never asserts on the seeding turn itself,
+    # only on the end state. A custom name_factory keeps the family name
     # single-word (a handful of pool entries are themselves two words, e.g.
     # "אבו ליל") - this test's whole premise is truncating THE family name
     # to build a prefix, which only means something for a single-word
     # family name.
-    full_name, _, _ = _seed_fresh_client(
+    full_name, _, _ = _seed_client(
         GODFATHER_CHAT_ID,
-        id_prefix="E2E_RESOLVE_FAMILYNAME_SEED",
+        "E2E_RESOLVE_FAMILYNAME_SEED",
         name_factory=lambda: f"{random.choice(_HEBREW_FIRST_NAMES)} {_single_word_family_name()}",
     )
     family_name = full_name.split(maxsplit=1)[1]
@@ -524,35 +540,26 @@ def test_godfather_update_client_resolves_ambiguous_family_name_prefix_after_con
         id_prefix="E2E_RESOLVE_FAMILYNAME_ASK",
     )
 
-    MAX_PRE_APPROVAL_ROUNDS = 3
-    round_num = 0
-    while not (response and "לאישור" in response and "כן" in response and "לא" in response):
-        assert response is not None, (
-            f"CRITICAL: godfather got NO RESPONSE (silent drop) on "
-            f"pre-approval round {round_num}"
-        )
-        for call in (ai_response.mcp_calls if ai_response else []):
-            assert call.get("error") is None, (
-                f"Unexpected tool error on pre-approval round {round_num}: {call!r}"
-            )
-        assert not _calls_for(ai_response, "update_client"), (
-            f"update_client executed before the real approval prompt was "
-            f"even reached (pre-approval round {round_num}): "
-            f"{ai_response.mcp_calls if ai_response else None!r}"
-        )
-        round_num += 1
-        assert round_num <= MAX_PRE_APPROVAL_ROUNDS, (
-            f"The real mutation-approval prompt (containing \"לאישור\"/\"כן\"/"
-            f"\"לא\" together) never arrived within {MAX_PRE_APPROVAL_ROUNDS} "
-            f"pre-approval rounds - last response: {response!r}"
-        )
-        response, ai_response = _send_turn(
-            chat_id=GODFATHER_CHAT_ID,
-            text=full_name,  # exact name - unambiguous whether the model
-                # asked a yes/no "did you mean X?" or a pick-one-of-N
-                # question (a bare "כן" can't answer the latter at all)
-            id_prefix=f"E2E_RESOLVE_FAMILYNAME_ROUND{round_num}",
-        )
+    # However many identity-resolution rounds it takes (a yes/no "did you
+    # mean X?", a pick-one-of-N list, or several of either in a row), driving
+    # them to a conclusion is _resolve_client_name's single responsibility -
+    # it answers each with the exact `full_name` (a valid answer to every
+    # question shape) and stops the moment the REAL mutation-approval prompt
+    # is reached ("לאישור"/"כן"/"לא" together), erroring if any tool call
+    # along the way fails.
+    resolved = _resolve_client_name(
+        GODFATHER_CHAT_ID,
+        family_name_prefix,
+        "E2E_RESOLVE_FAMILYNAME_ROUND",
+        initial_result=(response, ai_response),
+        disambiguator=full_name,
+    )
+    response, ai_response = resolved.reply, resolved.ai_response
+
+    assert _is_real_approval_prompt(response), (
+        f"The real mutation-approval prompt (containing \"לאישור\"/\"כן\"/"
+        f"\"לא\" together) never arrived - last response: {response!r}"
+    )
 
     # `response` now holds the real approval prompt itself - it must name
     # the resolved client, and must still not have executed anything.

@@ -282,6 +282,7 @@ class TestLedgerEventCaptureTextBilled:
     # this whole feature
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_given_real_gilyan_davidian_agreement_text_when_processed_then_captured_per_component(
         self, denidin_app
     ):
@@ -503,6 +504,7 @@ class TestLedgerEventCaptureTextBilled:
     # HOURS FLOW (REQ-DATA-005, real work-log messages)
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_given_real_single_day_hours_message_then_hours_and_date_correctly_persisted(
         self, denidin_app
     ):
@@ -676,6 +678,7 @@ class TestLedgerEventCaptureTextBilled:
     # tests/expensive/test_ledger_event_capture_e2e.py's image-flow tests.
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_given_real_conditional_fee_text_then_trigger_condition_captured(self, denidin_app):
         """Finding #10: trigger_condition was previously hardcoded null with no
         schema property at all - LEDGER_EVENT_TOOL never exposed it, so a

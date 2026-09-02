@@ -288,6 +288,7 @@ class TestReminderLifecycleBilled:
         again = self._simulate_sweep(denidin_app, monkeypatch, due_at)
         again.assert_not_called()  # already fired - idempotent, never re-delivered
 
+    @pytest.mark.sanity
     def test_godfather_creates_one_time_reminder_button_approval(self, denidin_app, config):
         phone, chat_id = self._godfather(config)
         n1 = self._send_text(
@@ -303,6 +304,7 @@ class TestReminderLifecycleBilled:
         confirmation = self._get_response(n2)
         assert confirmation is not None
 
+    @pytest.mark.sanity
     def test_godfather_creates_recurring_reminder(self, denidin_app, config, monkeypatch):
         phone, chat_id = self._godfather(config)
         reminder_manager = denidin_app.ai_handler.reminder_manager
@@ -481,6 +483,7 @@ class TestReminderLifecycleBilled:
         new_check = self._simulate_sweep(denidin_app, monkeypatch, new_due_at)
         new_check.assert_called_once()
 
+    @pytest.mark.sanity
     def test_modify_single_occurrence_of_recurring_reminder(self, denidin_app, config, monkeypatch):
         phone, chat_id = self._godfather(config)
         reminder_manager = denidin_app.ai_handler.reminder_manager
