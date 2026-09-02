@@ -88,6 +88,7 @@ class TestSimpleTextE2E:
         return denidin.denidin_app
     
     @pytest.mark.billed
+    @pytest.mark.sanity
     def test_e2e_simple_text_message_hebrew(self, denidin_app):
         """
         **E2E TEST**: Simple Hebrew text message - AI understanding and Hebrew response.

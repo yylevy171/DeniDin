@@ -200,6 +200,7 @@ class TestLedgerEventCaptureBilled:
             f"ledger_event_ids={message_data.get('ledger_event_ids')!r}"
         )
 
+    @pytest.mark.sanity
     def test_given_clear_fee_agreement_text_when_processed_then_ledger_event_captured(self, denidin_app):
         """Given a WhatsApp message stating a new fee agreement in the same shorthand
         style the real AHLedger source chat uses, When DeniDin processes it, Then
@@ -271,6 +272,7 @@ class TestLedgerEventCaptureBilled:
             "the hard-pointer content now that raw_message_excerpt is gone"
         )
 
+    @pytest.mark.sanity
     def test_given_ordinary_chatter_when_processed_then_no_ledger_event_captured(self, denidin_app):
         """Given an ordinary conversational message with no money/engagement content,
         When processed, Then capture_ledger_event is NOT called - no file created

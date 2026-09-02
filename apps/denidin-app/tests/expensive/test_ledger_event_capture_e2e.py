@@ -371,6 +371,7 @@ class TestLedgerEventCaptureE2E:
     # IMAGE FLOW (also exercises bugfix-017's session-linkage fix)
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_given_real_agreement_image_when_processed_then_ledger_event_captured_via_image_path(
         self, denidin_app, http_server
     ):
@@ -456,6 +457,7 @@ class TestLedgerEventCaptureE2E:
         image_path = assert_image_path_persisted(denidin_app, chat_id)
         logger.info(f"THEN image_path persisted and resolves to real file: {image_path}")
 
+    @pytest.mark.sanity
     def test_given_real_bank_deposit_screenshot_when_processed_then_captured_as_bank_deposit(
         self, denidin_app, http_server
     ):
@@ -594,6 +596,7 @@ class TestLedgerEventCaptureE2E:
     # above) - see each test's docstring for what's actually on the image.
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_given_real_multi_component_agreement_image_then_components_correctly_persisted(
         self, denidin_app, http_server
     ):
@@ -663,6 +666,7 @@ class TestLedgerEventCaptureE2E:
                 f"components, plus a 4th hourly component at 800 ₪/hr capped at 10h)"
             )
 
+    @pytest.mark.sanity
     def test_given_real_bank_deposit_image_then_full_fields_correctly_persisted(
         self, denidin_app, http_server, config
     ):
@@ -880,6 +884,7 @@ class TestLedgerEventCaptureE2E:
     # reference data), not this bugfix's approved scope. See
     # specs/bugfixes/bugfix-038-group-b-approval-missing-reference-data.md.
 
+    @pytest.mark.sanity
     def test_given_real_six_component_agreement_image_mor_ben_shaya_then_all_components_correctly_persisted(
         self, denidin_app, http_server
     ):

@@ -301,6 +301,7 @@ class TestLedgerQueryBilled:
         assert reply is not None
         assert _reply_contains_amount(reply, 45), f"expected 45 in reply: {reply!r}"
 
+    @pytest.mark.sanity
     def test_explicit_date_lookup(self, denidin_app, config):
         phone = config.godfather_phone
         chat_id = self._fresh_chat_id(config, 't008_date')
@@ -378,6 +379,7 @@ class TestLedgerQueryBilled:
     # T010 - aggregation
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_hours_by_client_this_month(self, denidin_app, config):
         phone = config.godfather_phone
         chat_id = self._fresh_chat_id(config, 't010_hours_client')
@@ -462,6 +464,7 @@ class TestLedgerQueryBilled:
     # T011 - four-way multi-criterion, name + date combined
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_four_way_multi_criterion_with_date_range(self, denidin_app, config):
         phone = config.godfather_phone
         chat_id = self._fresh_chat_id(config, 't011_four_way')
@@ -531,6 +534,7 @@ class TestLedgerQueryBilled:
     # research.md's "2026-08-24 Redesign" section for the full trail.
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_or_across_two_identities_single_turn(self, denidin_app, config):
         """T017: explicit OR across two distinct, unambiguous identities named
         up front in ONE request (distinct from T009's ambiguity-then-"both/
@@ -596,6 +600,7 @@ class TestLedgerQueryBilled:
             f"the below-threshold negative control leaked into the reply: {reply!r}"
         )
 
+    @pytest.mark.sanity
     def test_broad_threshold_who_owes_above_amount(self, denidin_app, config):
         """T019: the original "who owes above 100 shekel" example from the
         redesign discussion - broad-category retrieval (no name given at
@@ -1015,6 +1020,7 @@ class TestLedgerQueryBilled:
             f"receipt alone, regardless of the differently-named deposit: {reply!r}"
         )
 
+    @pytest.mark.sanity
     def test_typo_variant_name_resolved_or_clarified_never_silently_dropped(
         self, denidin_app, config
     ):
