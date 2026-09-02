@@ -69,6 +69,7 @@ KNOWN_INVOICE_STATUS_HE = "שולם"  # paid
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
     """Godfather asks about a specific invoice by client name and date only -
     never an id. The model must resolve which invoice this is itself (via

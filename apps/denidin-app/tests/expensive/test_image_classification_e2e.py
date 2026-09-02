@@ -122,6 +122,7 @@ def _assert_text_was_extracted(result):
     )
 
 
+@pytest.mark.sanity
 def test_bank_test_image_is_classified_as_a_bank_deposit(image_extractor):
     """The exact image that was classified inconsistently.
 
@@ -205,6 +206,7 @@ def test_multi_component_agreement_is_classified_as_an_agreement(image_extractor
     _assert_text_was_extracted(result)
 
 
+@pytest.mark.sanity
 def test_six_component_agreement_is_classified_as_an_agreement(image_extractor):
     """A real photographed fee proposal (מור בן שעיה), harder to read than the
     others - a photo rather than a clean scan."""
@@ -216,6 +218,7 @@ def test_six_component_agreement_is_classified_as_an_agreement(image_extractor):
     _assert_text_was_extracted(result)
 
 
+@pytest.mark.sanity
 def test_personal_note_is_neither_bank_nor_agreement(image_extractor):
     """A handwritten personal note, confirmed during the AHLedger project's own
     audit NOT to be a fee agreement.

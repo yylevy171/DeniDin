@@ -71,6 +71,7 @@ KNOWN_INVOICE_NUMBERS_ON_FIXED_DATE = ("60001", "60006")  # first and last of th
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_lists_invoices_via_whatsapp(denidin_app):
     """Godfather asks to see invoices from a specific day, the way a real
     person would - no year given (a real user rarely bothers), no format or
@@ -371,6 +372,7 @@ def _assert_full_picture(response, ai_response, id_prefix: str) -> None:
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_client_all_payments_gets_the_complete_picture(denidin_app):
     """Reproduction test for bugfix-014's strongest root-cause candidate:
     runtime_constitution.md's payment-word -> status="paid" rule

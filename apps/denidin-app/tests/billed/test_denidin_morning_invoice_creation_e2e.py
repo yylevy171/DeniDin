@@ -169,6 +169,7 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
     """Feature 047: identical to test_godfather_creates_invoice_via_whatsapp
     above, except the approval is given by a real WhatsApp interactive-button
@@ -350,6 +351,7 @@ def test_godfather_approval_survives_intervening_small_talk(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_add_client_requires_approval(denidin_app):
     """🚨 CONSTITUTION §VIII flagged exception (spec.md Clarifications round 1,
     explicitly human-approved): replaces test_godfather_add_client_still_
@@ -429,6 +431,7 @@ def test_godfather_add_client_requires_approval(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_add_client_missing_field_is_asked_for(denidin_app):
     """Omitting email or phone must make the model ask for it, never call
     add_client with a guessed/blank value (runtime_constitution.md's
@@ -525,6 +528,7 @@ def test_godfather_declines_add_client(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denidin_app):
     """bugfix-045 regression guard, added 2026-08-27 - written specifically
     because the fix for the *original* bugfix-045 deadlock (the model
@@ -632,6 +636,7 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_create_document_for_existing_client_happy_path(denidin_app):
     """1. Happy path: client already exists under the given name -> the
     document is created attached to that real client, verified via a real
@@ -826,6 +831,7 @@ def test_create_document_t2_single_letter_removed_from_stored_name(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
     """3. Extreme happy path: client does not exist yet -> godfather is
     asked whether to create it (via the tool's own "not found" refusal) ->
@@ -1023,6 +1029,7 @@ def test_create_document_for_new_client_creates_client_but_declines_document(den
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_create_document_for_new_client_asked_for_missing_info_then_provided(denidin_app):
     """6. Additional info required: godfather agrees to create the
     not-yet-existing client WITHOUT giving phone/email up front -> the model

@@ -52,6 +52,7 @@ class TestBotExceptionHandlingWithRealAPI:
     """Test exception handling with 1 REAL API call to prove end-to-end functionality"""
 
     @pytest.mark.billed
+    @pytest.mark.sanity
     def test_openai_error_handling_real_api(self, real_ai_handler):
         """Test AIHandler catches REAL OpenAI API error - 1 REAL API CALL"""
         # Create a real message

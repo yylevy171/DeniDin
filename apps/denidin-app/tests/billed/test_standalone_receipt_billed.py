@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
     """Feature 056 (T009): a godfather tells DeniDin about a refundable
     deposit just received from a known, existing client - money that isn't

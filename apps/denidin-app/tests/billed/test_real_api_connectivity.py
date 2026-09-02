@@ -57,6 +57,7 @@ class TestRealGreenAPIConnectivity:
             config.green_api_token
         )
     
+    @pytest.mark.sanity
     def test_greenapi_real_connection(self, green_api_client):
         """
         Tests REAL Green API connection by calling getStateInstance() API endpoint,
@@ -306,6 +307,7 @@ class TestRealEndToEndFlow:
             timeout=30.0
         )
     
+    @pytest.mark.sanity
     def test_complete_real_api_flow(self, config, green_api_client, openai_client):
         """
         Tests the complete message flow with REAL API calls:

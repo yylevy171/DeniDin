@@ -194,6 +194,7 @@ class TestGroupBReferenceApprovalBilled:
     tool - each proves the SAME core defect (blank/placeholder reference
     data) via the cheapest possible real reproduction."""
 
+    @pytest.mark.sanity
     def test_receipt_against_existing_invoice_shows_reference_data(self, denidin_app):
         """create_receipt (400) closing an existing type-305 tax invoice."""
         amount = _random_amount()
@@ -238,6 +239,7 @@ class TestGroupBReferenceApprovalBilled:
         )
         _assert_internal_id_never_leaked(approval_text, approve_ai_response)
 
+    @pytest.mark.sanity
     def test_combo_document_against_existing_transaction_account_shows_reference_data(self, denidin_app):
         """create_combo_document_as_reference (320) closing an existing type-300 חשבון
         עסקה. Uses today's tool name - will be updated to

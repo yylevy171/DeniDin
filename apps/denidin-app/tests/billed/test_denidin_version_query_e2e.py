@@ -117,6 +117,7 @@ def test_client_role_gets_accurate_version_answer(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_role_gets_accurate_version_answer(denidin_app):
     from denidin import handle_text_message
 

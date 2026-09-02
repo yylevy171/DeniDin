@@ -372,6 +372,14 @@ Two real-OpenAI-call test tiers exist (split by Feature 029, 2026-07-30, from on
 
 **Never redirect test output to `/tmp` or other ad-hoc log files.** Each app's `conftest.py` already writes per-test-file logs to `logs/test_logs/{test_file}.log` automatically (see `pytest_runtest_setup` in `apps/denidin-app/conftest.py`); read from there instead of teeing to a custom path. This applies to both apps under `apps/`.
 
+#### Sanity suite (`@pytest.mark.sanity`, Feature 059)
+
+A curated, cross-app, high-signal subset of the two tiers above — every `sanity` test is **also** `billed` or `expensive`, so it stays excluded by default and carries that tier's own run rules unchanged. It is a fast "is anything obviously broken end-to-end" pass, **not** a replacement for the full tiers and **not** CI (there is no CI here).
+
+- **`./scripts/run_sanity.sh`** (repo root) is the runner. It runs the `morning-mcp-app` gate test first (a broken tunnel/remote-MCP/Morning-sandbox path fails everything downstream), then the `denidin-app` billed sanity subset — **both through `scripts/run_multiple_billed_tests.sh`** (one test per process, stop on first failure, each `[N/TOTAL] PASSED/FAILED:` sounded off live — do not background it behind a buffering pipe). `expensive` sanity tests are **never** auto-run — the script prints them as a copy-paste checklist to run by hand, one at a time, with fresh approval each, per the `expensive` rules above.
+- `apps/morning-mcp-app/scripts/run_single_test.sh` and `run_multiple_billed_tests.sh` are **symlinks** to `apps/denidin-app/scripts/`'s — one implementation, resolved to each app's own venv via `BASH_SOURCE`.
+- The subset is defined in two places on purpose (the `@pytest.mark.sanity` decorators, authoritative for `-m sanity`; and the node-id arrays in `run_sanity.sh`, authoritative for run order/sound-off). **`./scripts/verify_sanity_lists.sh` asserts the two never drift** — run it after adding/removing any `@pytest.mark.sanity` or editing the arrays. Nothing runs it automatically.
+
 ### Lint & Type-check
 ```bash
 cd apps/denidin-app

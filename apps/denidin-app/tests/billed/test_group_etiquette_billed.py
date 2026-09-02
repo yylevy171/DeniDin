@@ -121,6 +121,7 @@ class TestGroupEtiquetteBilled:
             )
         return denidin.denidin_app
 
+    @pytest.mark.sanity
     def test_case1_default_address_gets_substantive_reply(self, denidin_app):
         """US1: a plain group message, no "@" pattern, no signal it's for someone
         else - should get a normal, substantive reply."""
@@ -136,6 +137,7 @@ class TestGroupEtiquetteBilled:
         assert response is not None, "Expected a substantive reply, got no reply at all"
         assert_hebrew_only(response)
 
+    @pytest.mark.sanity
     def test_case2_clearly_for_someone_else_gets_no_reply(self, denidin_app):
         """US5: a message clearly directed at another human by name, no "@" pattern
         - should get no reply at all (not a clarifying question). Deliberately a

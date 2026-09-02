@@ -124,6 +124,7 @@ def test_godfather_lists_clients_via_whatsapp(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_gets_client_details_via_whatsapp(denidin_app):
     """Godfather asks for a specific client's details by name - read-only,
     no approval wait (get_client_details is in NO_APPROVAL_MCP_TOOLS)."""
@@ -355,6 +356,7 @@ def test_godfather_update_client_ambiguous_name_creates_no_pending_approval(deni
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_finds_client_via_hebrew_vowel_variant(denidin_app):
     """Morning's real name search is a strict token-prefix match with ZERO
     typo/fuzzy tolerance (confirmed live, research.md Decision 12) - it
@@ -391,6 +393,7 @@ def test_godfather_finds_client_via_hebrew_vowel_variant(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_get_client_details_resolves_ambiguous_first_name_prefix_after_confirmation(denidin_app):
     """client-name-resolution architecture fix (2026-08-12): get_client_details
     itself never resolves a partial/prefix reference anymore (superseding the

@@ -118,6 +118,7 @@ _SEED_DESCRIPTIONS = ("ייעוץ", "עיצוב לוגו", "תחזוקת אתר"
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
     """Godfather asks for a non-tax transaction account ("חשבון עסקה") the
     way a real, non-technical person would - client name, amount, what it's
@@ -189,6 +190,7 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     """Godfather reports payment already received and asks for the combo
     invoice+receipt document - the natural phrasing a real person uses right
@@ -269,6 +271,7 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_credit_note_against_real_invoice(denidin_app):
     """Godfather explicitly asks for a credit note against a real, existing
     invoice by its real invoice number - exactly one such invoice exists
@@ -355,6 +358,7 @@ def test_credit_note_request_with_invalid_invoice_number_fails_gracefully(denidi
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_receipt_against_unpaid_invoice(denidin_app):
     """Godfather explicitly asks for a receipt document against a real,
     existing unpaid invoice, referenced by its real invoice number (exactly
