@@ -86,6 +86,7 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfix-005-new-bu
 | 013 | Client Name Garbling and Unrequested Date Narrowing | - | Open (documentation only) | - |
 | 014 | list_invoices Only Returns One of Many | - | Open (documentation only) | - |
 | 022 | OpenAI MCP Approval Duplicate Execution | P0 | Open (interim mitigation deployed, true prevention deferred) | feature/033-ledger-event-persistence |
+| 051 | `list_reminders` discloses a private 1:1 reminder's text into a group chat | P1 | Open (root cause documented; awaiting approval) | bugfix/051-list-reminders-cross-chat-disclosure |
 
 ## Obsolete Bugfixes (`specs/obsolete/bugfixes/`)
 
