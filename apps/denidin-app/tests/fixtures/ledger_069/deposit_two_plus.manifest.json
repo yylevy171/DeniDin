@@ -1,0 +1,27 @@
+{
+  "source_kind": "image",
+  "story": "US7c — bank-transfer photo whose payer has 2+ partial Morning matches; operator picks one → capture against that exact Morning name",
+  "source_file": "bank_transfer_grinfeld.jpg",
+  "ground_truth_note": "Same image as US7b. Payer: גרינפלד אורלי. Amount 800.00 ₪. Date 23/08/2026. Ref 3342. Bank 12 / branch 153 / account 282829. הערות: יעוץ.",
+  "seed_clients": [
+    { "id_prefix": "F069_DEP_2PA", "name": "גרינפלד אורלי הדס", "ensure_exists": true },
+    { "id_prefix": "F069_DEP_2PB", "name": "גרינפלד אורלי נועה", "ensure_exists": true }
+  ],
+  "expected_event": {
+    "source_type": "בנק",
+    "event_subtype": "הפקדה",
+    "amount": "800",
+    "txn_date": "2026-08-23",
+    "reference": "3342",
+    "bank_number": "12",
+    "bank_branch": "153",
+    "bank_account": "282829"
+  },
+  "client_resolution": {
+    "scenario": "two_plus_then_pick",
+    "operator_stated_name": "גרינפלד אורלי",
+    "operator_picks": "גרינפלד אורלי הדס",
+    "morning_name_after_resolution": "גרינפלד אורלי הדס",
+    "expects_marker_in_description": false
+  }
+}

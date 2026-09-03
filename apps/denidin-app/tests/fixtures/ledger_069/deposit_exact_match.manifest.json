@@ -1,0 +1,20 @@
+{
+  "source_kind": "image",
+  "story": "US7d — bank-deposit photo whose payer is an EXACT existing Morning client: no disambiguation question, no add_client, captured directly against the existing client",
+  "source_file": "Bank-test-image.jpg",
+  "seed_clients": [
+    { "id_prefix": "F069_DEP_EXACT", "name": "עטיה רועי מאיר", "ensure_exists": true }
+  ],
+  "expected_event": {
+    "source_type": "בנק",
+    "event_subtype": "הפקדה",
+    "amount": "1500",
+    "txn_date": "2026-07-12"
+  },
+  "client_resolution": {
+    "scenario": "exact_match",
+    "operator_stated_name": "עטיה רועי מאיר",
+    "morning_name_after_resolution": "עטיה רועי מאיר",
+    "expects_marker_in_description": false
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "source_kind": "image",
+  "story": "US7a — bank-deposit photo whose payer has ZERO Morning matches: operator supplies full name + email + phone, add_client, then capture against the new client",
+  "source_file": "bank_deposit_kehilat_tzair.jpg",
+  "expected_event": {
+    "source_type": "בנק",
+    "event_subtype": "הפקדה",
+    "amount": "9440"
+  },
+  "client_resolution": {
+    "scenario": "new_client",
+    "operator_stated_name": "קהילת צעיר",
+    "morning_name_after_resolution": "קהילת צעיר",
+    "new_client_email": "kehilat.tzair.f069@example.com",
+    "new_client_phone": "0525550991",
+    "expects_marker_in_description": false
+  }
+}

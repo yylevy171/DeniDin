@@ -1,0 +1,25 @@
+{
+  "source_kind": "text",
+  "story": "US5 — ambiguous client (2+ partial matches); operator picks one, capture proceeds against the exact picked Morning name",
+  "seed_clients": [
+    { "id_prefix": "F069_AMB_A", "name": "יעל ברקוביץ אלון" },
+    { "id_prefix": "F069_AMB_B", "name": "יעל ברקוביץ שיר" }
+  ],
+  "expected_event": {
+    "source_type": "הסכם",
+    "event_subtype": "יצירה",
+    "txn_date": "2026-04-09",
+    "components": [
+      { "kind": "fixed", "value": "8000", "description": "מקדמה קבועה עם החתימה" },
+      { "kind": "percent", "value": "12", "description": "שכר הצלחה מהסכום שייגבה בפועל" },
+      { "kind": "fixed", "value": "900", "description": "תוספת עבור כל דיון והופעה בבית המשפט" }
+    ]
+  },
+  "client_resolution": {
+    "scenario": "two_plus_then_pick",
+    "operator_stated_name": "יעל ברקוביץ'",
+    "operator_picks": "יעל ברקוביץ אלון",
+    "morning_name_after_resolution": "יעל ברקוביץ אלון",
+    "expects_marker_in_description": false
+  }
+}

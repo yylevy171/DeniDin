@@ -1,0 +1,23 @@
+{
+  "source_kind": "text",
+  "story": "US4 (new client) + US8 store-anyway variant",
+  "expected_event": {
+    "source_type": "הסכם",
+    "event_subtype": "יצירה",
+    "txn_date": "2026-03-15",
+    "payer_name": "עוזי אלגרבלי",
+    "components": [
+      { "kind": "fixed", "value": "12000", "description": "מקדמה קבועה עם חתימת ההסכם" },
+      { "kind": "percent", "value": "15", "description": "שכר הצלחה מכל סכום שייפסק או ייגבה" },
+      { "kind": "fixed", "value": "1500", "description": "שכר טרחה עבור כל ישיבת הוכחות" }
+    ]
+  },
+  "client_resolution": {
+    "scenario": "new_client",
+    "operator_stated_name": "תומר אלגרבלי",
+    "morning_name_after_resolution": "תומר אלגרבלי",
+    "new_client_email": "tomer.algarbli@example.com",
+    "new_client_phone": "0525550142",
+    "expects_marker_in_description": false
+  }
+}

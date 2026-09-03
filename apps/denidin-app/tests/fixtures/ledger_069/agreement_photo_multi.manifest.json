@@ -1,0 +1,23 @@
+{
+  "source_kind": "image",
+  "story": "US9 — photographed multi-component fee agreement; client not in Morning → resolution detour (new client) → capture every fee tier against the resolved name",
+  "source_file": "agreement_idan_shabtai.jpg",
+  "note": "Real signed fee-agreement letter — עידן שבתאי, disciplinary proceeding, three conditional fee tiers. Ground truth mirrors tests/expensive/test_ledger_event_capture_e2e.py: the three VAT-inclusive tier amounts are 23,600 / 70,800 / 9,440.",
+  "expected_event": {
+    "source_type": "הסכם",
+    "event_subtype": "יצירה",
+    "components": [
+      { "kind": "fixed", "value": "23600", "description": "שכר טרחה — מדרגה ראשונה (כולל מע\"מ)" },
+      { "kind": "fixed", "value": "70800", "description": "שכר טרחה — מדרגה שנייה (כולל מע\"מ)" },
+      { "kind": "fixed", "value": "9440", "description": "שכר טרחה — מדרגה שלישית (כולל מע\"מ)" }
+    ]
+  },
+  "client_resolution": {
+    "scenario": "new_client",
+    "operator_stated_name": "עידן שבתאי",
+    "morning_name_after_resolution": "עידן שבתאי",
+    "new_client_email": "idan.shabtai.f069@example.com",
+    "new_client_phone": "0525550773",
+    "expects_marker_in_description": false
+  }
+}

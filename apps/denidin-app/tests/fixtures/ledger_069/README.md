@@ -21,11 +21,24 @@ Each `הסכם` / `בנק` fixture ships a committed sibling manifest:
 <name>.manifest.json    its ground-truth manifest
 ```
 
-**No fixture files live here yet** — they are authored in the `tasks.md` billed/expensive
-Acceptance phase, together with the `assert_event_matches_manifest(event, manifest)` helper
-(which lives in the `tests/billed/` / `tests/expensive/` shared helper module, not here).
-This README exists now only to pin the manifest key names so an Acceptance-phase manifest is
-never written against a Hebrew stash label or a guessed field name.
+**Authored 2026-09-04** (Phase 11), alongside the shared helper
+`tests/billed/_ledger_069_acceptance.py` (`assert_event_matches_manifest`,
+`assert_event_matches_manifest_two_hop`). Status:
+
+| Fixture | Manifest | Source artifact | Notes |
+|---|---|---|---|
+| `agreement_new_client` | ✅ | ✅ `.txt` | US4 + US8 store-anyway |
+| `agreement_ambiguous` | ✅ | ✅ `.txt` | US5 — test seeds the 2 partial-match clients |
+| `agreement_doc_multi` | ✅ | ✅ `.docx` (`build_agreement_doc_multi.py`) | US10 |
+| `agreement_photo_multi` | ✅ | ↔ reuses `media/ledger_events/agreement_idan_shabtai.jpg` | US9 |
+| `deposit_exact_match` | ✅ | ↔ reuses `media/ledger_events/Bank-test-image.jpg` | US7d |
+| `deposit_zero_matches` | ✅ | ↔ reuses `media/ledger_events/bank_deposit_kehilat_tzair.jpg` | US7a |
+| `deposit_one_partial` | ✅ | ↔ reuses `media/ledger_events/bank_transfer_grinfeld.jpg` (payer גרינפלד אורלי, 800 ₪, 23/08/2026) | US7b — test seeds 1 non-exact partial |
+| `deposit_two_plus` | ✅ | ↔ reuses `media/ledger_events/bank_transfer_grinfeld.jpg` | US7c — test seeds 2 partials; shares the image with US7b (candidate count not asserted) |
+
+Manifests key against the **English snake_case** persisted-`record` field names (below); the
+helper normalises `"4000"`↔`4000` and `DD/MM/YYYY`↔`YYYY-MM-DD`, so a manifest may state
+either form.
 
 Planned fixture set (per C9):
 

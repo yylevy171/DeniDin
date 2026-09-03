@@ -1,0 +1,26 @@
+{
+  "source_kind": "document",
+  "story": "US10 — DOCX fee agreement, multi-component, near-match client name (routed as a synthetic turn; text-only post-turn recognition → billed, not expensive)",
+  "source_file": "agreement_doc_multi.docx",
+  "seed_clients": [
+    { "id_prefix": "F069_DOC_NEAR", "name": "נטלי ברנשטין" }
+  ],
+  "expected_event": {
+    "source_type": "הסכם",
+    "event_subtype": "יצירה",
+    "txn_date": "2026-05-22",
+    "payer_name": "דניאל ברנשטיין",
+    "components": [
+      { "kind": "fixed", "value": "18000", "description": "מקדמה קבועה עם חתימת ההסכם" },
+      { "kind": "percent", "value": "18", "description": "שכר הצלחה מכל סכום שייפסק או ייגבה" },
+      { "kind": "fixed", "value": "2000", "description": "שכר עבור כל ישיבת הוכחות" }
+    ]
+  },
+  "client_resolution": {
+    "scenario": "one_partial_then_pick",
+    "operator_stated_name": "נטלי ברנשטיין",
+    "morning_name_after_resolution": "נטלי ברנשטין",
+    "note": "seeded client is spelled ברנשטין (no yod); the document says ברנשטיין — single near-match, operator confirms it is the same person",
+    "expects_marker_in_description": false
+  }
+}
