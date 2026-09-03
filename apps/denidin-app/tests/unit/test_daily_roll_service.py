@@ -94,6 +94,45 @@ class TestBasicRoll:
         assert _summary_count(ctx.ai_handler.memory_manager, SOLO, y) == 1
         assert ctx.ai_handler.client.responses.calls  # real summariser calls made
 
+    def test_daily_summary_is_recallable_with_correct_metadata(self, ctx):
+        seed_message(ctx.session_manager, GROUP, "user", "פגישה חשובה מחר בבוקר", 1, sender_name="Dana")
+        svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=2)
+        y = (local_calendar_date(now_local()) - timedelta(days=1)).isoformat()
+        results = ctx.ai_handler.memory_manager.recall(
+            query="פגישה", collection_names=[svc.collection_name_for_chat(GROUP)],
+            top_k=10, min_similarity=0.0,
+        )
+        assert results, "the daily summary must be retrievable via recall()"
+        md = results[0]["metadata"]
+        assert md["type"] == "daily_summary"
+        assert md["chat"] == GROUP
+        assert md["date"] == y
+        assert md["scope"] == "PRIVATE"
+        assert md["user_phone"] == GROUP
+        assert md["source"] in ("daily-roll", "catch-up", "migration")
+        assert md["message_count"] == 1
+
+    def test_group_collection_resolves_without_raw_get_collection(self, ctx):
+        # A raw client.get_collection on the unsanitised @g.us name would raise
+        # (bugfix-035 H1). The roll path must never do that.
+        import chromadb
+        seed_message(ctx.session_manager, GROUP, "user", "hi", 1)
+        called = {"raw": 0}
+        real = chromadb.api.client.Client.get_collection
+
+        def spy(self, name, *a, **k):
+            called["raw"] += 1
+            return real(self, name, *a, **k)
+
+        chromadb.api.client.Client.get_collection = spy
+        try:
+            svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=2)
+        finally:
+            chromadb.api.client.Client.get_collection = real
+        y = (local_calendar_date(now_local()) - timedelta(days=1)).isoformat()
+        assert _summary_count(ctx.ai_handler.memory_manager, GROUP, y) == 1
+        assert called["raw"] == 0  # only get_or_create_collection is used
+
     def test_empty_day_marker_no_openai_call(self, ctx):
         seed_message(ctx.session_manager, SOLO, "user", "today only", 0)  # nothing yesterday
         svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=2)
