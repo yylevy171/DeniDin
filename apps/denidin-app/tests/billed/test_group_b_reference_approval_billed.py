@@ -49,7 +49,7 @@ from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     _is_real_approval_prompt,
     _random_amount,
     _random_description,
-    _seed_fresh_client,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve_capturing_approval,
 )
@@ -67,13 +67,16 @@ def _today_il() -> str:
 
 
 def _seed_invoice_305(amount: int, description: str) -> tuple[str, str]:
-    """Seed a fresh type-305 tax invoice for a brand-new client via a real,
-    approved WhatsApp exchange. Returns (client_name, invoice_number) - the
-    real display number, extracted from create_invoice's own confirmation
-    output, never a guess."""
+    """Seed a fresh type-305 tax invoice via a real, approved WhatsApp
+    exchange. Returns (client_name, invoice_number) - the real display number,
+    extracted from create_invoice's own confirmation output, never a guess.
+
+    Feature 059 item 5: only the invoice must be fresh - the client just has to
+    exist, so it's drawn from the committed sandbox-client fixture rather than
+    seeded conversationally (saves 2-3 billed turns + a sleep per test)."""
     from tests.billed.denidin_mcp_e2e_helpers import _send_turn_and_approve
 
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B038_BILLED_SEED")
+    client_name = pick_existing_client()["name"]
     _, (_, seed_ai) = _send_turn_and_approve(
         GODFATHER_CHAT_ID,
         f"תפיק חשבונית מס ל{client_name} על סך {amount} ₪ כולל מע״מ, עבור {description}",
@@ -97,7 +100,7 @@ def _seed_transaction_account_300(amount: int, description: str) -> tuple[str, s
     stated explicitly up front (sidesteps the model's own mandatory VAT
     question - this test is about the approval's reference-data content, not
     that separate flow). Returns (client_name, document_number)."""
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B038_BILLED_SEED300")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
     _, ai_response = _send_turn(
         GODFATHER_CHAT_ID,
         f"תפתח חשבון עסקה עבור {client_name} על סך {amount} ₪ כולל מע״מ, עבור {description}",
@@ -124,7 +127,7 @@ def _seed_transaction_account_300_with_real_id(amount: int, description: str) ->
     confirmation output, which always includes it per format_invoice_
     confirmation) - needed to prove which id a later multi-turn call
     actually used. Returns (client_name, doc_number, real_internal_morning_id)."""
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B038_BILLED_SEED300ID")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
     _, ai_response = _send_turn(
         GODFATHER_CHAT_ID,
         f"תפתח חשבון עסקה עבור {client_name} על סך {amount} ₪ כולל מע״מ, עבור {description}",
@@ -191,6 +194,7 @@ class TestGroupBReferenceApprovalBilled:
     tool - each proves the SAME core defect (blank/placeholder reference
     data) via the cheapest possible real reproduction."""
 
+    @pytest.mark.sanity
     def test_receipt_against_existing_invoice_shows_reference_data(self, denidin_app):
         """create_receipt (400) closing an existing type-305 tax invoice."""
         amount = _random_amount()
@@ -235,6 +239,7 @@ class TestGroupBReferenceApprovalBilled:
         )
         _assert_internal_id_never_leaked(approval_text, approve_ai_response)
 
+    @pytest.mark.sanity
     def test_combo_document_against_existing_transaction_account_shows_reference_data(self, denidin_app):
         """create_combo_document_as_reference (320) closing an existing type-300 חשבון
         עסקה. Uses today's tool name - will be updated to

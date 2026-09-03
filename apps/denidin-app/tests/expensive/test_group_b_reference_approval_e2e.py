@@ -137,27 +137,6 @@ class TestGroupBReferenceApprovalE2E:
     BANK_IMAGE_PAYER = "עטיה רועי מאיר"
 
     @staticmethod
-    def _ensure_client_exists(chat_id, name, id_prefix):
-        """Seed `name` as a real Morning client, but only if it isn't one already.
-        See test_ledger_event_capture_e2e.py's identical helper for the full
-        rationale (idempotent by design, decided on tool output not model prose)."""
-        from tests.billed.denidin_mcp_e2e_helpers import (
-            _calls_for,
-            _seed_client_via_conversation,
-            _send_turn,
-        )
-
-        _, ai_response = _send_turn(
-            chat_id, f"תן לי את הפרטים של הלקוח {name}", id_prefix=f"{id_prefix}_LOOKUP"
-        )
-        lookups = _calls_for(ai_response, "get_client_details")
-        already_exists = bool(lookups) and "לא נמצא" not in (lookups[0]["output"] or "")
-        if already_exists:
-            logger.info(f"client {name!r} already exists - not re-seeding")
-            return
-        _seed_client_via_conversation(chat_id, name, id_prefix=f"{id_prefix}_SEED")
-
-    @staticmethod
     def _clear_chat_test_data(denidin_app, chat_id):
         """Clear this chat's test data before AND after (user requirement,
         bugfix-028, 2026-08-09), so a shared, non-random chat_id can't collide
@@ -220,6 +199,7 @@ class TestGroupBReferenceApprovalE2E:
         from denidin import handle_image_message
         from tests.billed.denidin_mcp_e2e_helpers import (
             _calls_for,
+            _seed_client,
             _send_turn,
             _send_turn_and_approve,
         )
@@ -229,7 +209,7 @@ class TestGroupBReferenceApprovalE2E:
 
         try:
             client_name = self.BANK_IMAGE_PAYER
-            self._ensure_client_exists(chat_id, client_name, id_prefix="B038_A1T2")
+            _seed_client(chat_id, "B038_A1T2", name=client_name, ensure_exists=True)
 
             logger.info("GIVEN an existing type-305 tax invoice awaiting payment")
             _, (_, seed_ai) = _send_turn_and_approve(

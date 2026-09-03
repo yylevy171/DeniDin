@@ -2,8 +2,56 @@
 
 **Feature Branch**: `feature/059-stabilize-tests-sanity-suite`
 **Created**: 2026-08-20
-**Status**: Placeholder — not yet clarified/specced. Captured from a 2026-08-20 request;
-run `speckit.specify` + `speckit.clarify` before starting implementation.
+**Status**: In progress — half 1 ("stabilize tests") partially landed via interim PRs on this
+branch; half 2 ("sanity testing suite") — the `@pytest.mark.sanity` subset + `scripts/run_sanity.sh`
+runner — landed 2026-09-02 (50 tests: 1 morning-mcp gate + 41 denidin billed + 8 denidin expensive;
+see `scripts/run_sanity.sh`). A full end-to-end run of the assembled suite, plus `speckit.specify`
++ `speckit.clarify` + `user-stories.md`, still owed before this can move to `specs/done/`.
+
+_Landed so far (billed/expensive stabilization, 2026-09-01 → 2026-09-02; commit `de5a5bd` + PR #273):_
+- `denidin_mcp_e2e_helpers.py`: 4-way `ResolveOutcome` classification consolidated into the
+  single `_resolve_client_name`; `_seed_client` is the ONE client-seed/resolve flow (commit `de5a5bd`).
+- `run_single_test.sh` / `run_multiple_billed_tests.sh`: interpreter pinned to the calling
+  clone's venv; untruncated output capture.
+- `test_denidin_morning_invoice_creation_e2e.py`: `_unique_client_name` call sites migrated to
+  `_seed_client`; `test_godfather_creates_invoice_via_whatsapp` reworded to request a
+  חשבונית מס/קבלה (dodges the nondeterministic unstated-VAT clarifying turn); stale `"http" in
+  response` link assertion commented out pending `bugfix-050`.
+- `test_denidin_vcf_contact_e2e.py`: rewritten to route the client flow through `_seed_client`
+  (deleted the local `_send_contact_turn` / `_send_text_turn` re-implementations); ledger
+  false-positive guard asserted after every step. `test_godfather_shares_contact_card_missing_
+  email_is_asked_for` is currently RED and left so — blocked on Feature 69 (a `capture_ledger_
+  event` misfire on a plain email string routes the model past `resolve_client_name` via the
+  ledger follow-up call; documented in the test's docstring).
+- `test_ledger_event_capture_e2e.py` (expensive): the B028_A1T1 verify step asserts on the raw
+  `get_invoice_details` tool output instead of the model's nondeterministic prose retelling.
+- `apps/morning-mcp-app` `formatters.py`: `format_invoice_details` now surfaces each payment's
+  method + bank name/branch/account, so the above assertion has real data to check (+ unit test).
+- `bugfix-050` opened: Morning create-document confirmations drop `response["url"]`, so the
+  document link is missing/nondeterministic in the confirmation.
+
+_Verified green this pass (billed):_ P1 client-resolve set; the 9-test P2 client sweep (8/9,
+the 1 red is the Feature-69 blocker above); all 7 `group_etiquette` (real-Green-API-client
+fixture); one MILDLY sample per remaining P2 category.
+
+_Landed 2026-09-02 (half 2 — sanity suite):_
+- `@pytest.mark.sanity` on 50 curated tests (user-picked, file-by-file): 1 morning-mcp gate
+  (`test_openai_invokes_create_invoice_via_remote_mcp`) + 41 denidin billed + 8 denidin expensive.
+  Marker registered in both apps' `pytest.ini`; stays excluded by default (every sanity test is
+  also billed/expensive).
+- `scripts/run_sanity.sh` — gate first, then the denidin billed subset, both **through
+  `run_multiple_billed_tests.sh`** (stop-on-first-failure, live per-test sound-off, per explicit
+  user instruction). Expensive members are printed as a manual per-test-approval checklist,
+  never auto-run.
+- `apps/morning-mcp-app/scripts/run_single_test.sh` + `run_multiple_billed_tests.sh` — symlinks
+  to `apps/denidin-app/scripts/`'s (one implementation, per-app venv via `BASH_SOURCE`).
+- `scripts/verify_sanity_lists.sh` — drift guard between the decorators and `run_sanity.sh`'s
+  node-id arrays (run by hand; no CI).
+- Docs updated: `CLAUDE.md`, `.github/CONSTITUTION.md` (v2.9.0), `.github/METHODOLOGY.md`
+  (v2.11.0), `.github/quick-ref-constitution.md`.
+
+_Still owed:_ rest of P2 (MILDLY), P3 confidence sweep, a full end-to-end run of the assembled
+sanity suite, and the spec formalization.
 
 ## Input
 

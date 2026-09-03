@@ -6,7 +6,7 @@ Same entry point, fixtures, and non-technical-user conventions as this
 directory's other Morning-MCP billed E2E test modules (feature 018 and
 successors) - reuses shared fixtures/helpers rather than duplicating them
 (denidin_app via conftest.py; _send_turn, _send_turn_and_approve,
-_send_turn_and_decline, _calls_for, _seed_fresh_client, GODFATHER_CHAT_ID
+_send_turn_and_decline, _calls_for, pick_existing_client, GODFATHER_CHAT_ID
 via denidin_mcp_e2e_helpers.py). See
 test_denidin_morning_invoice_creation_e2e.py's docstring for the full
 rationale behind single-turn-only prompts for non-document-creating tools
@@ -54,7 +54,7 @@ import pytest
 from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     GODFATHER_CHAT_ID,
     _calls_for,
-    _seed_fresh_client,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_approve_receipt,
@@ -82,15 +82,14 @@ def _seed_fresh_invoice_and_get_number(amount: int, description: str) -> Tuple[s
     by name, for tests that need that instead).
 
     Only asserts on the end state (a fresh invoice genuinely exists before
-    the real test begins), never on the seeding turns themselves:
-    `_seed_fresh_client` already retries with a new name on its own if a
-    particular draw collides with an existing real sandbox client.
+    the real test begins), never on the seeding turns themselves.
 
-    Feature 027: create_invoice now resolves client_name against a real
-    client record before creating anything - seeds one first via the real
-    add_client conversation (the only way to do so from this E2E layer).
+    Feature 059 item 5: the *invoice* must be fresh (the credit-note / receipt
+    flows below consume it irreversibly in the sandbox), the *client* need not
+    be - so this picks an existing sandbox client (`pick_existing_client`)
+    rather than paying 2-3 billed turns + a sleep to seed a throwaway one.
     """
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_021_SEED")
+    client_name = pick_existing_client()["name"]
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
         text=f"צור חשבונית ל-{client_name} על {amount} ₪ עבור {description}",
@@ -119,6 +118,7 @@ _SEED_DESCRIPTIONS = ("ייעוץ", "עיצוב לוגו", "תחזוקת אתר"
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
     """Godfather asks for a non-tax transaction account ("חשבון עסקה") the
     way a real, non-technical person would - client name, amount, what it's
@@ -140,7 +140,7 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
     """
     amount = _small_random_amount()
     description = random.choice(_SEED_DESCRIPTIONS)
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_TXN_ACCT")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
 
     ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -190,6 +190,7 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     """Godfather reports payment already received and asks for the combo
     invoice+receipt document - the natural phrasing a real person uses right
@@ -204,7 +205,7 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     """
     amount = _small_random_amount()
     description = random.choice(_SEED_DESCRIPTIONS)
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_COMBO")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
 
     # Turn 1: no description given - create_combo_document requires one, so
     # the model is expected to ask for it (constitution's "ask for missing
@@ -270,6 +271,7 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_credit_note_against_real_invoice(denidin_app):
     """Godfather explicitly asks for a credit note against a real, existing
     invoice by its real invoice number - exactly one such invoice exists
@@ -356,6 +358,7 @@ def test_credit_note_request_with_invalid_invoice_number_fails_gracefully(denidi
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_receipt_against_unpaid_invoice(denidin_app):
     """Godfather explicitly asks for a receipt document against a real,
     existing unpaid invoice, referenced by its real invoice number (exactly

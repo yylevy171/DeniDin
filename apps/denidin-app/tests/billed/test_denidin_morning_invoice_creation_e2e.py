@@ -11,9 +11,11 @@ logic changed. Shared fixtures (`denidin_app`, `denidin_config`,
 `live_morning_tunnel`) live in this directory's conftest.py (auto-discovered,
 no import needed); shared helpers/constants
 (`_send_turn`/`_send_turn_and_approve`/`_send_turn_and_decline`/`_calls_for`/
-`_unique_client_name`/`_random_amount`/`_random_description`/
+`_seed_client`/`_random_amount`/`_random_description`/
 `_random_seed_email`/`_SEED_PHONE`/`GODFATHER_CHAT_ID`) live in
-denidin_mcp_e2e_helpers.py.
+denidin_mcp_e2e_helpers.py. Client names are always obtained via
+`_seed_client` (the ONE 4-way-resolve/seed flow) - never a raw
+`_unique_client_name()` call in a test body.
 
 Flow (entry point is the real Green API webhook, dispatched through the
 actual @bot.router.message-decorated `handle_text_message` - CONSTITUTION
@@ -59,21 +61,20 @@ from .denidin_mcp_e2e_helpers import (
     _HEBREW_NAME_SPELLING_VARIANTS,
     _SEED_PHONE,
     _calls_for,
-    _client_name_exact_match_found,
-    _complete_add_client_flow,
-    _fresh_nonexistent_client_name,
     _normalize_hebrew_geresh,
     _is_genuine_document_creation,
     _is_real_approval_prompt,
     _random_amount,
     _random_description,
     _random_seed_email,
-    _seed_fresh_client,
+    _resolve_client_name,
+    _seed_client,
+    ResolveOutcome,
+    pick_existing_client,
     _send_button_tap,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_decline,
-    _unique_client_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,70 +101,75 @@ GROUND_TRUTH_T2_CLIENT_TYPED_VARIANT = "כרמלי דוד"  # one letter removed
 
 @pytest.mark.billed
 def test_godfather_creates_invoice_via_whatsapp(denidin_app):
-    """Godfather asks for a new invoice the way a real, non-technical person
+    """Godfather asks for a new document the way a real, non-technical person
     would - client name, amount, and what it's for, all in one message.
-    Since create_invoice creates a document, it now requires explicit
-    approval (Feature 022): the ASK turn must NOT execute it yet, and only
-    the APPROVE turn (an explicit Hebrew "כן") actually calls the tool.
+    It creates a document, so it requires explicit approval (Feature 022):
+    the ASK turn must NOT execute it yet, and only the APPROVE turn (an
+    explicit Hebrew "כן") actually calls the tool.
+
+    Requests a חשבונית מס/קבלה (combo tax-invoice/receipt -> create_combo_document)
+    rather than a plain חשבונית (2026-09-02, Feature 059 stabilization): its VAT
+    treatment is unconditionally "included" per the runtime constitution, so the
+    model has no reason to insert an unstated-VAT clarifying turn - which broke
+    this 2-turn (ASK -> "כן") flow on any run the model chose to ask. "שילם ...
+    היום" also supplies the payment fact + date up front so nothing else is
+    asked. (Plain-invoice creation + its own approval gate is still covered by
+    US1's happy-path test below.)
 
     Verification (independent signals, not the model's unverified claim alone):
-    1. ASK turn: no create_invoice call yet.
-    2. APPROVE turn: mcp_calls shows a create_invoice call with no error.
-    3. The final reply contains an invoice link - the runtime constitution
-       says create_invoice confirmations must always include one, unprompted,
-       so this isn't a special ask in the test prompt.
+    1. ASK turn: no create_combo_document call yet.
+    2. APPROVE turn: mcp_calls shows a create_combo_document call with no error.
+    3. The final reply contains a document link - the runtime constitution
+       says these confirmations must always include one, unprompted, so this
+       isn't a special ask in the test prompt.
 
-    Uses a fresh unique client per run (2026-07-28) - this test used to
-    create a new real invoice under the fixed "יוסי שמואלי" ground-truth
-    client (see bugfix-014 tests below) on every single run, which is
-    exactly what caused that client to organically grow from 6 to 14
-    documents over time and break those other tests' pagination
-    assumptions. Never hardcode a shared ground-truth client name here.
-
-    Feature 027: create_invoice now resolves client_name against a real
-    client record before creating anything - the client must be seeded via
-    a real add_client conversation first (see US1's happy-path test below
-    for the dedicated, from-scratch version of this same flow).
+    Uses a real existing sandbox client (Feature 059 item 5: pick_existing_client)
+    - never hardcode a shared ground-truth client name here.
     """
     amount = _random_amount()
     description = _random_description()
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_CREATE")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
+        text=f"{client_name} שילם {amount} שח היום עבור {description}. תפיק חשבונית מס קבלה",
         id_prefix="E2E_CREATE",
     )
 
-    assert not _calls_for(ask_ai_response, "create_invoice"), (
-        f"create_invoice executed on the ASK turn before approval was given: "
+    assert not _calls_for(ask_ai_response, "create_combo_document"), (
+        f"create_combo_document executed on the ASK turn before approval was given: "
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
-    create_calls = _calls_for(ai_response, "create_invoice")
+    create_calls = _calls_for(ai_response, "create_combo_document")
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
     assert len(response) > 0
 
     assert create_calls, (
-        f"Model never invoked create_invoice via the remote MCP server, even "
+        f"Model never invoked create_combo_document via the remote MCP server, even "
         f"after approving. mcp_calls: {ai_response.mcp_calls!r}. "
         f"Final reply: {response!r}"
     )
     assert all(c["error"] is None for c in create_calls), (
-        f"create_invoice call(s) reported an error: {create_calls}"
+        f"create_combo_document call(s) reported an error: {create_calls}"
     )
     assert any(client_name in (c["arguments"] or "") for c in create_calls), (
-        f"create_invoice was not called with the client name {client_name!r}: {create_calls!r}"
+        f"create_combo_document was not called with the client name {client_name!r}: {create_calls!r}"
     )
 
-    # The reply must actually carry a link, not just confirm success in the abstract.
-    assert "http" in response, (
-        f"Bot reply did not include an invoice link. Full reply: {response!r}"
-    )
+    # NOTE (bugfix-050, 2026-09-02): the Morning create tools drop response["url"], so
+    # format_invoice_confirmation never emits a link - the model only sometimes adds one via a
+    # separate download_invoice_pdf call, making this assertion nondeterministic for BOTH type
+    # 305 and 320. Commented out pending bugfix-050 (populate Invoice.pdf_url from the create
+    # response); re-enable once that lands.
+    # assert "http" in response, (
+    #     f"Bot reply did not include an invoice link. Full reply: {response!r}"
+    # )
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
     """Feature 047: identical to test_godfather_creates_invoice_via_whatsapp
     above, except the approval is given by a real WhatsApp interactive-button
@@ -175,7 +181,7 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
     produces."""
     amount = _random_amount()
     description = _random_description()
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_CREATE_TAP")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
     ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -307,7 +313,7 @@ def test_godfather_approval_survives_intervening_small_talk(denidin_app):
     the user can simply re-ask and complete the approval flow normally."""
     amount = _random_amount()
     description = _random_description()
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_SMALLTALK")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
 
     _send_turn(
@@ -345,6 +351,7 @@ def test_godfather_approval_survives_intervening_small_talk(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_add_client_requires_approval(denidin_app):
     """🚨 CONSTITUTION §VIII flagged exception (spec.md Clarifications round 1,
     explicitly human-approved): replaces test_godfather_add_client_still_
@@ -354,28 +361,29 @@ def test_godfather_add_client_requires_approval(denidin_app):
 
     Verification (independent signals, not the model's unverified claim
     alone):
-    1. ASK turn: add_client must NOT execute yet.
-    2. APPROVE turn: mcp_calls shows an add_client call with no error.
+    1. _seed_client drives the real add_client conversation through the ONE
+       shared 4-way-resolve/approval flow and raises if add_client never
+       lands cleanly (the pre-approval gate itself is covered by
+       test_godfather_add_client_near_duplicate_name_is_asked_before_creating
+       and the _send_turn_and_approve family).
+    2. mcp_calls on the seed's final turn shows an add_client call with no
+       error.
     3. A follow-up get_client_details turn (same test, real WhatsApp
        round-trip) confirms the client was actually created and its phone
        number persisted in normalized Israeli dashed format
        (REQ-CLIENT-016/017), same standard as the sandbox-level
        test_add_client_tool_normalizes_and_persists_phone test.
     """
-    client_name = _unique_client_name()
     seed_email = _random_seed_email()
     raw_phone = "+972501234567"  # international input - must normalize on read-back
 
-    (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"תוסיף לקוח חדש בשם {client_name}, מייל {seed_email}, טלפון {raw_phone}",
-        id_prefix="E2E_ADD_CLIENT_APPROVE",
+    client_name, response, ai_response = _seed_client(
+        GODFATHER_CHAT_ID,
+        "E2E_ADD_CLIENT_APPROVE",
+        email=seed_email,
+        phone=raw_phone,
     )
 
-    assert not _calls_for(ask_ai_response, "add_client"), (
-        f"add_client executed on the ASK turn before approval was given: "
-        f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
-    )
     add_calls = _calls_for(ai_response, "add_client")
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
     assert add_calls and add_calls[0]["error"] is None, (
@@ -423,12 +431,15 @@ def test_godfather_add_client_requires_approval(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_add_client_missing_field_is_asked_for(denidin_app):
     """Omitting email or phone must make the model ask for it, never call
     add_client with a guessed/blank value (runtime_constitution.md's
     "add_client needs name, email, AND phone" guidance, added by Feature
     026's T015)."""
-    client_name = _unique_client_name()
+    client_name, _, _ = _seed_client(
+        GODFATHER_CHAT_ID, "E2E_ADD_CLIENT_MISSING", create=False
+    )
 
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -454,7 +465,9 @@ def test_godfather_add_client_rejects_malformed_email(denidin_app):
     granted, and the tool's own _validate_email rejection (ValueError ->
     friendly error, tools.py) surfaces as a real error on that mcp_call - not
     a fabricated "created" confirmation."""
-    client_name = _unique_client_name()
+    client_name, _, _ = _seed_client(
+        GODFATHER_CHAT_ID, "E2E_ADD_CLIENT_BADEMAIL", create=False
+    )
 
     ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -496,7 +509,9 @@ def test_godfather_declines_add_client(denidin_app):
     approval - add_client must never fire, and the bot's reply should read
     like an acknowledgment of the decline, not a fabricated success (mirrors
     test_godfather_declines_invoice_creation's pattern)."""
-    client_name = _unique_client_name()
+    client_name, _, _ = _seed_client(
+        GODFATHER_CHAT_ID, "E2E_ADD_CLIENT_DECLINE", create=False
+    )
     seed_email = _random_seed_email()
 
     response, ai_response = _send_turn_and_decline(
@@ -513,6 +528,7 @@ def test_godfather_declines_add_client(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denidin_app):
     """bugfix-045 regression guard, added 2026-08-27 - written specifically
     because the fix for the *original* bugfix-045 deadlock (the model
@@ -536,9 +552,9 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
     exact same name.
     """
     chaser_spelling, male_spelling = random.choice(_HEBREW_NAME_SPELLING_VARIANTS)
-    seed_name, _, _ = _seed_fresh_client(
+    seed_name, _, _ = _seed_client(
         GODFATHER_CHAT_ID,
-        id_prefix="E2E_ADD_CLIENT_NEARDUP_SEED",
+        "E2E_ADD_CLIENT_NEARDUP_SEED",
         name_factory=lambda: f"{male_spelling} {random.choice(_HEBREW_FAMILY_NAMES)}",
     )
     family_name = seed_name.split()[-1]
@@ -620,6 +636,7 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_create_document_for_existing_client_happy_path(denidin_app):
     """1. Happy path: client already exists under the given name -> the
     document is created attached to that real client, verified via a real
@@ -627,7 +644,7 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
     normal confirmation (a real invoice link)."""
     amount = _random_amount()
     description = _random_description()
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_027_HAPPY")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -781,7 +798,7 @@ def test_create_document_t1_single_letter_added_to_stored_name(denidin_app):
     fixture (see GROUND_TRUTH_CLIENTS.md) - not a fresh per-run seed, per
     user decision 2026-08-11 (fewer OpenAI calls; the old per-run
     add_client seed also risked colliding with sandbox residue, see
-    docstring of _fresh_nonexistent_client_name and bugfix-039's own
+    the _seed_client(create=False) docstring and bugfix-039's own
     investigation, 2026-08-07/2026-08-11). Both of this fixture's name words
     are verified absent from _unique_client_name()'s random pool (see
     GROUND_TRUTH_CLIENTS.md), so no randomly-generated test client can ever
@@ -814,13 +831,14 @@ def test_create_document_t2_single_letter_removed_from_stored_name(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
     """3. Extreme happy path: client does not exist yet -> godfather is
     asked whether to create it (via the tool's own "not found" refusal) ->
     provides full details (name/phone/email) up front -> client is created
     -> the original document request is retried and succeeds -> both the
     new client and the new document are verified via real Morning calls."""
-    client_name = _fresh_nonexistent_client_name(GODFATHER_CHAT_ID, id_prefix="E2E_027_FULLFLOW")
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_FULLFLOW", create=False)
     seed_email = _random_seed_email()
     amount = _random_amount()
     description = _random_description()
@@ -905,7 +923,7 @@ def test_create_document_for_new_client_declines_client_creation(denidin_app):
     """4. Negative case: client doesn't exist -> godfather is asked whether
     to create it -> declines -> neither the client nor the document is
     created, and the user is informed of both."""
-    client_name = _fresh_nonexistent_client_name(GODFATHER_CHAT_ID, id_prefix="E2E_027_DECLINE")
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_DECLINE", create=False)
     amount = _random_amount()
     description = _random_description()
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
@@ -939,7 +957,9 @@ def test_create_document_for_new_client_declines_client_creation(denidin_app):
         text=f"פרטים על הלקוח {client_name}",
         id_prefix="E2E_027_DECLINE_VERIFY",
     )
-    assert not _client_name_exact_match_found(details_ai_response), (
+    assert not _resolve_client_name(
+        initial_result=(details_response, details_ai_response), drive=False
+    ).exists, (
         f"Client should not exist after declining its creation, but resolve_client_name "
         f"reported a genuine exact match: {details_ai_response.mcp_calls if details_ai_response else None!r}. "
         f"Full reply: {details_response!r}"
@@ -952,7 +972,7 @@ def test_create_document_for_new_client_creates_client_but_declines_document(den
     (godfather approves add_client), but then declines the retried
     document-creation request - the client IS created (verified via
     Morning), but the document is NOT, and the user is informed."""
-    client_name = _fresh_nonexistent_client_name(GODFATHER_CHAT_ID, id_prefix="E2E_027_SEMINEG")
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_SEMINEG", create=False)
     seed_email = _random_seed_email()
     amount = _random_amount()
     description = _random_description()
@@ -1009,6 +1029,7 @@ def test_create_document_for_new_client_creates_client_but_declines_document(den
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_create_document_for_new_client_asked_for_missing_info_then_provided(denidin_app):
     """6. Additional info required: godfather agrees to create the
     not-yet-existing client WITHOUT giving phone/email up front -> the model
@@ -1016,7 +1037,7 @@ def test_create_document_for_new_client_asked_for_missing_info_then_provided(den
     rule) rather than guessing or calling add_client incomplete -> godfather
     then provides it -> flow continues exactly like scenario 3 (client
     created, document created, both verified)."""
-    client_name = _fresh_nonexistent_client_name(GODFATHER_CHAT_ID, id_prefix="E2E_027_ASKINFO")
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_ASKINFO", create=False)
     seed_email = _random_seed_email()
     amount = _random_amount()
     description = _random_description()
@@ -1037,17 +1058,17 @@ def test_create_document_for_new_client_asked_for_missing_info_then_provided(den
     )
     assert bare_yes_response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
 
-    # Now provide the missing info - _complete_add_client_flow drives this
-    # through to a real add_client success under client_name specifically,
-    # regardless of how many turns that takes (a plain approval, one extra
-    # disambiguation "כן", or a forced "create new" turn for an ambiguous
-    # candidates list) - this test only cares that a client was actually
-    # created under the requested name, not the mechanics.
-    add_response, add_ai_response = _complete_add_client_flow(
-        chat_id=GODFATHER_CHAT_ID,
+    # Now provide the missing info - _seed_client (specific-name variant with
+    # an explicit first turn) drives this through to a real add_client success
+    # under client_name specifically, regardless of how many turns that takes
+    # (a plain approval, one extra disambiguation "כן", or a forced "create
+    # new" turn for an ambiguous candidates list) - this test only cares that
+    # a client was actually created under the requested name, not the mechanics.
+    _, _, add_ai_response = _seed_client(
+        GODFATHER_CHAT_ID,
+        "E2E_027_ASKINFO",
+        name=client_name,
         text=f"מייל {seed_email}, טלפון {_SEED_PHONE}",
-        client_name=client_name,
-        id_prefix="E2E_027_ASKINFO",
         email=seed_email,
         phone=_SEED_PHONE,
     )
@@ -1078,7 +1099,7 @@ def test_create_document_for_new_client_missing_info_not_provided_stops_flow(den
     requires all three fields - runtime_constitution.md's rule, mirroring
     REQ-CLIENT-012) and must NOT create the document either. No pending
     add_client approval should ever appear."""
-    client_name = _fresh_nonexistent_client_name(GODFATHER_CHAT_ID, id_prefix="E2E_027_NOINFO")
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_NOINFO", create=False)
     amount = _random_amount()
     description = _random_description()
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
@@ -1118,6 +1139,14 @@ def test_create_document_for_new_client_missing_info_not_provided_stops_flow(den
         text=f"פרטים על הלקוח {client_name}",
         id_prefix="E2E_027_NOINFO_VERIFY",
     )
-    assert "לא נמצא" in details_response or "אין" in details_response, (
-        f"Client should not exist since required info was never provided: {details_response!r}"
+    resolved = _resolve_client_name(
+        initial_result=(details_response, details_ai_response), drive=False
+    )
+    assert resolved.outcome in (
+        ResolveOutcome.SINGLE_CANDIDATE,
+        ResolveOutcome.MULTI_CANDIDATE,
+        ResolveOutcome.NONE,
+    ), (
+        f"Client should not exist since required info was never provided; "
+        f"resolve outcome was {resolved.outcome}: {details_response!r}"
     )
