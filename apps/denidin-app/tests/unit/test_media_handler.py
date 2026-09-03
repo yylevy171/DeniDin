@@ -653,7 +653,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
         denidin = Mock()
         denidin.config.data_root = str(tmp_path)
         denidin.ai_handler.session_manager = SessionManager(
-            storage_dir=str(tmp_path / "sessions"), session_timeout_hours=24
+            storage_dir=str(tmp_path / "sessions")
         )
         denidin.ai_handler.ledger_event_manager = LedgerEventManager(
             storage_dir=str(tmp_path / "events")
@@ -786,7 +786,7 @@ class TestExtractedTextPersistence:
         denidin = Mock()
         denidin.config.data_root = str(tmp_path)
         denidin.ai_handler.session_manager = SessionManager(
-            storage_dir=str(tmp_path / "sessions"), session_timeout_hours=24
+            storage_dir=str(tmp_path / "sessions")
         )
         denidin.ai_handler.ledger_event_manager = LedgerEventManager(
             storage_dir=str(tmp_path / "events")

@@ -294,8 +294,8 @@ class TestSweepDueRemindersMisc:
 
         _sweep_due_reminders(global_context, stub_bot)
 
-        global_context.session_manager.add_message_with_token_limit.assert_called_once()
-        call_kwargs = global_context.session_manager.add_message_with_token_limit.call_args.kwargs
+        global_context.session_manager.add_message_with_tokens.assert_called_once()
+        call_kwargs = global_context.session_manager.add_message_with_tokens.call_args.kwargs
         assert call_kwargs["chat_id"] == GODFATHER_CHAT_ID
         assert call_kwargs["role"] == "assistant"
         assert call_kwargs["content"] == "תזכורת: persist me"
