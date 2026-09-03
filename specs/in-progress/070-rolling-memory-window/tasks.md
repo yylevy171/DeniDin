@@ -71,8 +71,13 @@ part of these tasks — each is a separate explicit human decision.
 
 ### T005 — Research spike (BLOCKING, gates design lock-in)
 
-- [x] T005 👤 **BILLED-CALL APPROVAL GATE** — Phase 0 research spike. One throwaway script written in the session scratchpad directory (NOT committed, deleted after the run): (a) one real `gpt-5.6-luna` `responses.create` with a synthetic ~62–70K-token 14-day-window-shaped `input` + the real `config/runtime_constitution.md` as `instructions` + the real assembled tool set — capture `response.usage` (`input_tokens`, `input_tokens_details.cached_tokens`, `output_tokens`) and whether it succeeds; (b) repeat the same prefix → confirm `cached_tokens > 0`; (c) confirm `gpt-5.6-luna` max context window + input/output token pricing against the OpenAI account/docs; (d) **prompt-shape A/B** — measure `cached_tokens` with the RECALLED MEMORIES block where it is today vs. relocated into the first `input` item, and whether the 14-day window as leading append-only `input` items caches turn-to-turn; for any placement that improves caching, run a scripted multi-turn functional check whose correct answer depends on an early / out-of-window fact.
-  **DELIVERABLE**: update `research.md` D11–D13 with the confirmed numbers, the SC-007 ≥30% headroom calculation against the real prod window size, the `cached_tokens` evidence, and the chosen prompt shape + its functional-check evidence. **If the worst-case window does not fit with ≥30% headroom → STOP, escalate** (design changes: smaller default `window_days`, or a hard token ceiling below `max_tokens_by_role`).
+- [x] T005 👤 **BILLED-CALL APPROVAL GATE** — approved & run 2026-09-03. Delivered as a **permanent tracked tool** (not a throwaway, per user): `apps/denidin-app/scripts/model_sanity_check.{sh,py}` — "run whenever `config.ai_model` changes". Checks: (a) large 14-day-window-shaped call succeeds + `usage`; (b) prompt caching engages on identical repeat; (c) prints model + a pointer to verify published context window / pricing; (d) RECALLED MEMORIES placement A/B + an out-of-window needle-recall check.
+  **RESULTS** (`logs/model_sanity_check/gpt-5.6-luna_20260903_*.txt`; recorded in `research.md` D11–D13):
+  - (a) `input_tokens=99,449` (constitution **26,618** + 66,136-token window + 6 local tools) — **call SUCCEEDS**; usable window ≥ ~100K.
+  - (b) identical repeat → `cached_tokens=99,446/99,449` (**~100% cache hit**) — D12 CONFIRMED.
+  - (c) API exposes neither max context nor pricing — **a human must confirm the published `gpt-5.6-luna` window + $/1M and record it in D11**; SC-007 ≥30%-headroom stays OPEN until then (Phase 8 re-measures against the real worst-case window).
+  - (d) **Decision: do NOT relocate the RECALLED MEMORIES block** — current placement (trailing the constitution in `instructions`) caches ~100% and the needle fact (window position 0 of 66K) is recalled correctly. Zero code change. Plan-mode decision C closed as "no change".
+  - ⚠️ constitution grew 6.6× since CLAUDE.md's stale "~4.0K tokens" note — now 26.6K, a real uncached first-turn cost.
 
 ### Shared helpers (block US1/US2/US3)
 
