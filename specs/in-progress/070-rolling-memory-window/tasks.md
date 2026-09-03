@@ -328,6 +328,53 @@ confirm summaries + markers present and raw prod messages untouched; prod is bac
 - [x] T062 [P] `.github/ARCHITECTURE.md` updated (v1.1 → v1.2): Overview memory-model paragraph; System Architecture diagram (Session Manager + the roll box replacing the cleanup thread box); §3 Session Manager (one long-lived session, `chat_index.db`, `get_rolling_window`, tolerant load, archive-move, new storage tree + metadata); §4 Memory Manager (`collection_name_for_chat`, `daily_summary` records + recall); §5 AI Handler processing flow (rolling window replaces `get_conversation_history`); §7 renamed to "Nightly Daily-Summary Roll" with the claim-first two-phase steps + `roll_markers.db` row shape; Data Flow (message + session/message lifecycle); Configuration `memory` block; Startup/Shutdown sequences; Error Recovery.
 - [ ] T063 [P] `[haleluya]` Update the root + clone `CLAUDE.md` "Architecture" section — `session_manager.py` / `memory_manager.py` bullets, the new `daily_summary_roll_service.py` / `roll_marker_store.py` / `memory_collections.py` / `summarizer.py`, and remove the `cleanup_service.py` bullet. **Deferred execution — runs as part of the haleluya flow, not Phase 11 proper.**
 
+### T064 — `get_rolling_window` must never read `archived/` (per-turn cost = O(last 14 days), flat forever)
+
+**Decision (2026-09-04, user):** the per-turn window read looks **only** at the live `messages/`
+dir, never `archived/` — not even for the token-backstop edge case (a chat exceeding
+`_BACKSTOP_TOKENS` = 100 000 tokens *within* 14 days, which has never occurred and, if it ever
+did, the slightly-shorter window is an accepted consequence). Rationale: the production caller
+(`ai_handler.py:2065`) always passes `max_tokens` = the acting role's limit, every role limit is
+≤ 100 000, so a backstop-archived message would be cut by `get_rolling_window`'s own read-only
+token pass regardless. `get_messages_for_local_date` (nightly roll / backfill — not per-turn) is
+unchanged and still reads both.
+
+- [ ] T064a Tests (RED) — 👤 approval gate, frozen after:
+  - `test_session_manager_window.py`: with messages physically in `archived/` whose local date
+    is **inside** the 14-day window (simulating a past backstop archive), `get_rolling_window`
+    does **not** return them; a `_iter_persisted_messages`-style probe / file-open counter shows
+    `archived/` is never opened during a window read.
+  - extend the existing AC-3 backstop assertion: after `archive_aged_and_backstopped_messages`
+    moves overflow, the next `get_rolling_window(max_tokens=<role limit>)` result is unchanged
+    vs. reading live-only.
+  - **SC-007 budget reverted 300 → 150 ms p95** (the fix removes the O(all-messages-ever) scan;
+    update `spec.md`/`plan.md`/`user-stories.md`/`PLAN-HANDOFF.md` amendment notes to say
+    "amended 150→300 2026-09-03, reverted to 150 2026-09-04 once T064 landed").
+- [ ] T064b 👤 APPROVAL GATE — approve T064a.
+- [ ] T064c Implementation (GREEN) — `get_rolling_window` (and only that path) iterates
+  `session.message_ids` from `messages/` only. Smallest possible diff; `_iter_persisted_messages`
+  keeps its live+archived behaviour for `get_messages_for_local_date`.
+
+### T065 — migration pipeline archives before the app ever starts (so the startup sweep is near-empty)
+
+**Decision (2026-09-04, user):** the offline migration — not the app's first startup sweep — brings
+each consolidated session to steady state. After the backfill writes every `daily_summary`, the
+migration calls `SessionManager.archive_aged_and_backstopped_messages(session, now=<migration
+time>, window_days=14)` per chat, physically moving all >14-day messages into `archived/` and
+updating `message_ids`/`archived_message_ids`. The app's `run_startup_daily_roll_sweep` then finds
+only the ≤ 2 un-rolled leftover days (backfill `--until` = today−14; live window = 14 days) and
+does almost nothing.
+
+- [ ] T065a Add the archive step to `apps/rolling-memory-backfill` (new `--archive` flag on the
+  backfill, or a distinct `finalize_migration.py` step — decide in the consolidator spec,
+  MIGRATION-CHECKLIST Stage 0.1). `--report-only` shows the projected move counts; the real run
+  asserts `assert_message_integrity` after.
+- [ ] T065b Unit + integration coverage in the sub-app (synthetic multi-day session → after the
+  step, `messages/` holds only ≤ 14 days, `archived/` holds the rest, integrity clean, idempotent
+  on a second run). Covered by MIGRATION-CHECKLIST Stage 0.4 / 0.5.
+- [ ] T065c Wire the step into every stage of MIGRATION-CHECKLIST (snapshot rehearsal, dev, prod)
+  with its own verify gate.
+
 **Feature complete** when Phase 8's acceptance pass is green and Phase 9's checkpoint holds. Phase 10
 (prod backfill) and haleluya (docs + spec move + the bugfix-035 / bugfix-044 "Superseded by Feature
 070" closure notes + PR) and deploying the new-model code anywhere are **separate** explicit human
