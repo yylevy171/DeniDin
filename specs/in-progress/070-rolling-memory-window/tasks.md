@@ -22,8 +22,8 @@ description: "Task list — Feature 070 Rolling 14-Day Memory Window"
   THIRD-PARTY ASSUMPTIONS (T004 gates design lock-in).
 - **METHODOLOGY.md §VI**: unit/integration tests are **Task A (write, RED) → 👤 HUMAN APPROVAL →
   Task B (implement, GREEN)**; approved tests are **IMMUTABLE** without fresh human re-approval.
-  The **`billed` acceptance tests** (Phase 9) are described plain-language here and coded + run
-  **once, together, at the end**, after every unit/integration task is GREEN.
+  The **`billed` acceptance tests** (Phase 8) are described plain-language here and coded + run
+  **once, together**, after every unit/integration task is GREEN.
 - **No feature flag** (spec Clarifications 2026-09-02 — deliberate, user-directed). Retired paths
   are **deleted**, not disabled.
 - **Ledger frozen** — no task touches `ledger_event_manager.py` / `CURRENT_SCHEMA_VERSION`
@@ -41,10 +41,15 @@ part of these tasks — each is a separate explicit human decision.
 | Phase 1 — US1 rolling window + tolerant load + lookup | **Phase 3** (T010–T019) |
 | Phase 2 — US2 nightly roll + roll markers + catch-up | **Phase 4** (T020–T025) |
 | Phase 3 — US3 archive-only safety + retention | **Phase 5** (T030–T032) |
-| Phase 4 — US4 one-time prod migration | **Phase 6** (T040, T045–T047) |
+| Phase 4 — US4 one-time prod migration (tool build) | **Phase 6** (T045–T047) |
 | Phase 5 — US5 log retention | **Phase 7** (T050–T053) |
-| Phase 6 — Final billed acceptance | **Phase 9** (T070–T072) |
-| (setup / shared helpers, implicit in plan) | **Phase 1** (T001–T004), **Phase 2** (T006–T009), **Phase 8** polish |
+| Phase 6 — Final billed acceptance | **Phase 8** (T070–T071) |
+| Phase 4 — US4 migration *executed* on **dev** + verified | **Phase 9** (T090a, T090b, T091, T092) |
+| Phase 4 — US4 migration *executed* on **prod**, non-intrusive checks only | **Phase 10** (T100, T101) |
+| (setup / shared helpers / polish, implicit in plan) | **Phase 1** (T001–T004), **Phase 2** (T006–T009), **Phase 11** polish (T060–T063) |
+
+**Phase order (2026-09-03, user-directed):** …7 US5 → **8 acceptance+billed** → **9 dev backfill+test** →
+**10 prod backfill (minimal non-intrusive test)** → **11 polish (always last)**.
 
 **Format**: `- [ ] [TaskID] [P?] [Story?] Description — file path`
 `[P]` = parallelisable (different files, no incomplete-task dependency). `👤` = human gate.
@@ -190,27 +195,26 @@ backstop still returns the newest message and terminates.
 
 ---
 
-## Phase 6: User Story 4 — one-time migration backfills pre-window daily summaries (P2, separately gated)
+## Phase 6: User Story 4 — build the one-time migration tool (P2, separately gated; executed in Phases 9–10)
 
 **Goal**: standalone `apps/rolling-memory-backfill/backfill_daily_summaries.py` that creates one
 daily summary per non-empty calendar day older than 14 days + a marker for every processed
 (chat, date), idempotent via the shared roll-marker DB, reads raw messages only.
 
-### Tests (RED) — 👤 approval gate
+### Acceptance test (AC-4) — described here; coded + first run in Phase 9 (the dev backfill)
 
-- [ ] T040a [P] [US4] `apps/rolling-memory-backfill/tests/test_backfill.py` — **dev/sandbox, real billed** (US4 acceptance tier / AC-4): a dev chat seeded (via the T008 seam) with > 14 days of history → one summary per non-empty past day + markers for all days incl. empty; a re-run with the same args → 0 billed calls / 0 new records; a subsequent `_sweep_daily_roll` skips every migrated day; raw message files byte-unchanged (`assert_message_integrity` before + after); the per-chat report is printed; precondition failures (`--until` inside the 14-day window, missing `sessions/`) → `⚠️` + exit 1 before any network call.
+- **T040a [US4]** `apps/rolling-memory-backfill/tests/test_backfill.py` — **dev/sandbox, real billed** (US4 acceptance tier / AC-4): a dev chat seeded (via the T008 seam) with > 14 days of history → one summary per non-empty past day + markers for all days incl. empty; a re-run with the same args → 0 billed calls / 0 new records; a subsequent `_sweep_daily_roll` skips every migrated day; raw message files byte-unchanged (`assert_message_integrity` before + after); the per-chat report is printed; precondition failures (`--until` inside the 14-day window, missing `sessions/`) → `⚠️` + exit 1 before any network call. **Coded + run in Phase 9**, not here.
 
-### 👤 APPROVAL GATE — approve T040a. (This test makes real billed calls when run — that is the acceptance tier, allowed freely once the code exists.)
-
-### Implementation (GREEN)
+### Implementation (GREEN) — build the tool, no execution against any real data
 
 - [ ] T045b [P] [US4] Fill `_denidin_loader.py` — `apps/rolling-memory-backfill/_denidin_loader.py`: put `apps/denidin-app` on `sys.path`; import + re-export the real `SessionManager` (with `get_messages_for_local_date` / the chat index), `RollMarkerStore`, `MemoryManager`, `collection_name_for_chat`, `summarize_conversation`, `assert_message_integrity`.
 - [ ] T046b [US4] Implement the CLI — `apps/rolling-memory-backfill/backfill_daily_summaries.py` per `contracts/backfill-cli.md`: `main(argv=None) -> int` / `sys.exit(main())`; `argparse` (`--data-root` req, `--config` req, `--since YYYY-MM-DD` req no default, `--until` optional default `today_local−14d`, `--chat` repeatable, `--yes`; **no** `--env`, **no** `--dry-run`); preconditions before any network call (fail closed, `⚠️` + return 1); `assert_message_integrity` before; enumerate chats from `{data_root}/sessions/*/session.json` (+ `expired/`); per (chat, date) in range → `is_rolled` skip / `try_claim(source="migration")` / gather / empty→`commit(0)` / else `summarize_conversation`→`remember(source="migration")`→`commit`; mid-run per-item failure aborts loudly; `assert_message_integrity` after; per-chat + grand-total report; typed-`yes` confirm unless `--yes`.
-- [ ] T047b [P] [US4] `apps/rolling-memory-backfill/quickstart.md` — the operator runbook (mirror `quickstart.md` Part 1): approve → stop the target container → temp read-write mount → dry-check without `--yes` → confirm estimate → run → review report → tear down mount → (separately) deploy the new-model code. Why stopping matters (two `PersistentClient`s on one path). `catchup_lookback_days` safety net. Fresh approval per prod-touching step.
+- [ ] T047b [P] [US4] `apps/rolling-memory-backfill/quickstart.md` — the operator runbook (mirror `quickstart.md` Part 1), covering **both** the dev run (Phase 9) and the prod run (Phase 10): approve → stop the target container → temp read-write mount → dry-check without `--yes` → confirm estimate → run → review report → tear down mount → (separately) deploy the new-model code. Why stopping matters (two `PersistentClient`s on one path). `catchup_lookback_days` safety net. Fresh approval per environment-touching step.
 
-**Checkpoint (US4 done)**: the dev billed test (T040a) passes end-to-end; re-run is a no-op;
-raw files unchanged. **Running against real prod is NOT part of this phase** — it is a separate,
-per-run, human-approved operation per the runbook, done before the new-model code is deployed.
+**Checkpoint (US4 tool built)**: `main(["--help"])` works; preconditions fail closed with `⚠️` + exit 1
+**before** any network call; `_denidin_loader.py` imports the real components cleanly. **No run against
+dev or prod happens in this phase** — dev execution is Phase 9, prod execution is Phase 10, each a
+separate per-run human-approved operation per the runbook.
 
 ---
 
@@ -241,22 +245,12 @@ shows the cap on all 4 service entries; `diff` of the two `logger.py` files is e
 
 ---
 
-## Phase 8: Polish & cross-cutting
-
-- [ ] T060 [P] `pylint src/ --fail-under=7.0 --rcfile=.pylintrc` + `mypy src/ --config-file=mypy.ini` clean for `apps/denidin-app`; same for `apps/morning-mcp-app` on its changed files.
-- [ ] T061 [P] Full non-billed suite green — `cd apps/denidin-app && python3 -m pytest tests/ -v` (billed + expensive excluded by default) — 0 failures, 0 errors, 0 unexpected skips; `cd apps/morning-mcp-app && python3 -m pytest tests/ -v`.
-- [ ] T062 [P] Update `.github/ARCHITECTURE.md` — the memory-flow diagram + the "Message flow" section: rolling window replaces `get_conversation_history`; nightly roll replaces the hourly cleanup cycle; note the chat index + roll-marker DB.
-- [ ] T063 [P] `[haleluya]` Update the root + clone `CLAUDE.md` "Architecture" section — `session_manager.py` / `memory_manager.py` bullets, the new `daily_summary_roll_service.py` / `roll_marker_store.py` / `memory_collections.py` / `summarizer.py`, and remove the `cleanup_service.py` bullet. **Deferred execution — runs as part of the haleluya flow, not Phase 8 proper.**
-- [ ] T064 Manual dev E2E (needs explicit env-start approval — NOT automatic): start dev, send a message, `docker restart denidin-app-dev`, send another → confirm continuity in `logs/dev/denidin.log` (no "Created new session"); trigger a catch-up sweep → one `daily_summary` per past day in dev ChromaDB + one row per (chat, date) in `roll_markers.db`.
-
----
-
-## Phase 9: Final `billed` acceptance pass (AC-1..AC-5, SC-007) — written & run ONCE, after Phases 3–8 are GREEN
+## Phase 8: Final `billed` acceptance pass (AC-1, AC-2, AC-3, AC-5, SC-007) — written & run ONCE, after Phases 3–7 are GREEN
 
 Per METHODOLOGY §VI: these are **described plain-language below**; the test code is written **here**
 (not earlier) and run **once, together**. `billed` tier — no per-run approval, `scripts/run_single_test.sh`,
 **sound off each result as it completes**. `apps/morning-mcp-app-dev` must be up for any cross-app
-scenario.
+scenario. AC-4 (backfill) is **not** here — it is Phase 9.
 
 - [ ] T070 [P] Write `apps/denidin-app/tests/billed/test_rolling_memory_billed.py` covering:
   - **AC-1 (US1+US2)** — seed a real `@g.us` conversation across 3 *simulated* days (timestamps via the T008 seam; `window_days=2` in the test config so day-1 is out of window); call `_sweep_daily_roll` with an explicit `now` per day (3 real summarization calls); ask (real OpenAI) a question answerable only from day-1 → correct answer from the recalled daily summary; assert 1 billed summary call/day, 0 duplicate records, no `NotFoundError` for the group collection.
@@ -265,12 +259,52 @@ scenario.
   - **AC-5 (US1+US2)** — load a `session.json` fixture with `pending_ledger_events` (the `0f5eaa04` shape) into a running app → one WARNING, no `TypeError`, no recurring load error on subsequent turns/sweeps → the chat participates in a `_sweep_daily_roll` (1 real summary call).
   - **SC-007** — time `get_rolling_window()` over a ~1500-message realistic window, N iterations → added p95 ≤ 150 ms; measure the worst-case window's real token count + constitution + tools → within the `gpt-5.6-luna` budget confirmed in T005 with ≥ 30% headroom.
 - [ ] T071 Run T070 scenario-by-scenario via `scripts/run_single_test.sh "tests/billed/test_rolling_memory_billed.py::..."`, sounding off each PASS/FAIL as it lands. On any failure: STOP, report, wait for explicit input (METHODOLOGY §VI / CLAUDE.md "stop on failure").
-- [ ] T072 Run the US4 acceptance — `apps/rolling-memory-backfill/tests/test_backfill.py` (T040a) end-to-end against a dev chat; review the printed per-chat report (AC-4).
 
-**Feature complete** when T071 + T072 are all green and Phases 3–8 checkpoints hold. Then: haleluya
-is a **separate** explicit request (docs + spec move + the bugfix-035 / bugfix-044 "Superseded by
-Feature 070" closure notes + PR); deploying anywhere and running the prod backfill are **separate**
-explicit human decisions.
+**Checkpoint (Phase 8 done)**: every AC-1/2/3/5 + SC-007 scenario green in one pass.
+
+---
+
+## Phase 9: US4 backfill — executed against **dev**, with full testing (AC-4)
+
+The Phase 6 tool is now run for real against dev data. `billed` tier, cross-app (`apps/morning-mcp-app-dev`
+must be up). Every environment-touching step is a **separate, explicit, per-run human approval** — the
+`run_denidin.sh dev` / container stop / mount steps are all env-start actions under CLAUDE.md.
+
+- [ ] T090a [US4] Code `apps/rolling-memory-backfill/tests/test_backfill.py` per **T040a**'s description (dev/sandbox billed): seed > 14 days into a dev chat via the T008 seam → one summary per non-empty past day + markers for every day incl. empty; same-args re-run → 0 billed calls / 0 new records; a following `_sweep_daily_roll` skips every migrated day; `assert_message_integrity` before + after; per-chat report printed; precondition failures fail closed (`⚠️` + exit 1) before any network call.
+- [ ] T090b [US4] 👤 **env-start approval** → run the real backfill against **dev** per `apps/rolling-memory-backfill/quickstart.md`: stop `denidin-app-dev`, temp read-write mount, dry-check (no `--yes`), confirm the estimate, run with `--since <dev history start>`, review the per-chat report, tear the mount down.
+- [ ] T091 [US4] Post-run dev verification: one `daily_summary` record per non-empty pre-window (chat, date) in the dev ChromaDB; one `roll_markers.db` row per (chat, date) in range, all `committed`; `assert_message_integrity` across every dev session dir clean; start `denidin-app-dev` again and confirm a normal turn still recalls a backfilled day.
+- [ ] T092 [US4] Manual dev continuity E2E (👤 env-start approval): send a message, `docker restart denidin-app-dev`, send another → `logs/dev/denidin.log` shows no "Created new session"; force a catch-up sweep → one `daily_summary` per past day + one `roll_markers.db` row per (chat, date).
+
+**Checkpoint (Phase 9 done)**: T090a green; the dev backfill ran once, is idempotent on re-run, left
+every raw message byte-unchanged; dev continuity across a real container restart confirmed.
+
+---
+
+## Phase 10: US4 backfill — executed against **prod**, minimal non-intrusive testing only
+
+Real production data. **No test seeds, no synthetic chats, no write beyond the backfill's own
+`daily_summary` + marker records.** Verification is **read-only**. This entire phase is gated on a
+fresh, explicit, prod-specific human go-ahead for **each** step; nothing here is automatic.
+
+- [ ] T100 [US4] 👤 **explicit prod approval** → run the real backfill against **prod** per `apps/rolling-memory-backfill/quickstart.md` (Windows-prod box): stop `denidin-app-prod`, temp read-write mount, dry-check (no `--yes`) and **report the estimate to the human before proceeding**, run with `--since <prod history start>` only on go-ahead, capture the per-chat report, tear the mount down, restart `denidin-app-prod`.
+- [ ] T101 [US4] Non-intrusive prod verification (read-only, no approval needed — not a start/stop): via the standing read-only `~/denidin-winprod-data` mount + `tail_logs.sh` — spot-check that new `daily_summary` records exist for a handful of known pre-window (chat, date) pairs; `roll_markers.db` row count is in the expected range and all `committed`; `denidin-app-prod` logs show a clean startup and a normal turn recalling a backfilled day; **no** message-file mtimes changed (compare against the read-only mount). No bulk re-scan, no synthetic traffic.
+
+**Checkpoint (Phase 10 done)**: prod backfill ran once under per-step approval; read-only checks
+confirm summaries + markers present and raw prod messages untouched; prod is back up.
+
+---
+
+## Phase 11: Polish & cross-cutting — always last
+
+- [ ] T060 [P] `pylint src/ --fail-under=7.0 --rcfile=.pylintrc` + `mypy src/ --config-file=mypy.ini` clean for `apps/denidin-app`; same for `apps/morning-mcp-app` on its changed files.
+- [ ] T061 [P] Full non-billed suite green — `cd apps/denidin-app && python3 -m pytest tests/ -v` (billed + expensive excluded by default) — 0 failures, 0 errors, 0 unexpected skips; `cd apps/morning-mcp-app && python3 -m pytest tests/ -v`.
+- [ ] T062 [P] Update `.github/ARCHITECTURE.md` — the memory-flow diagram + the "Message flow" section: rolling window replaces `get_conversation_history`; nightly roll replaces the hourly cleanup cycle; note the chat index + roll-marker DB.
+- [ ] T063 [P] `[haleluya]` Update the root + clone `CLAUDE.md` "Architecture" section — `session_manager.py` / `memory_manager.py` bullets, the new `daily_summary_roll_service.py` / `roll_marker_store.py` / `memory_collections.py` / `summarizer.py`, and remove the `cleanup_service.py` bullet. **Deferred execution — runs as part of the haleluya flow, not Phase 11 proper.**
+
+**Feature complete** when Phase 8's acceptance pass is green and Phase 9's checkpoint holds. Phase 10
+(prod backfill) and haleluya (docs + spec move + the bugfix-035 / bugfix-044 "Superseded by Feature
+070" closure notes + PR) and deploying the new-model code anywhere are **separate** explicit human
+decisions made after that.
 
 ---
 
@@ -287,19 +321,25 @@ Phase 4  US2  (T020-T025)  ── needs US1 (session model, chat index, collecti
       ↓
 Phase 5  US3  (T030-T032)  ── needs US1 (builder) + US2 (roll service to call the archive step)
       ↓
-Phase 6  US4  (T040, T045-T047)  ── needs US1+US2+US3 (imports the real components)   [P2 · separately gated]
+Phase 6  US4 tool build  (T045-T047)  ── needs US1+US2+US3 (imports the real components)   [P2 · separately gated]
 Phase 7  US5  (T050-T053)  ── independent of US1-US4; can run in PARALLEL with Phases 3-6   [P2]
       ↓
-Phase 8  Polish (T060-T064)
+Phase 8  Billed acceptance AC-1/2/3/5 + SC-007  (T070-T071)  ── after every unit/integration task GREEN
       ↓
-Phase 9  Billed acceptance (T070-T072)  ── after every unit/integration task GREEN
+Phase 9  US4 backfill executed on DEV + tested  (T090a, T090b, T091, T092)  ── AC-4; per-run env approval
+      ↓
+Phase 10 US4 backfill executed on PROD, non-intrusive checks only  (T100, T101)  ── separate explicit prod approval per step
+      ↓
+Phase 11 Polish (T060-T063)  ── always last
 ```
 
 - **US1 → US2 → US3** are ordered, with one nuance: `T030a/T030b` (the `archive_aged_and_backstopped_messages` method itself) need only US1 and can be built in parallel with Phase 4; only `T031b` (wiring the archive call into `_sweep_daily_roll`) actually gates on US2.
 - **US5 (Phase 7)** touches only `logger.py` (+ twin) + compose + config — no overlap with US1-US4
   files. It may be done any time after Phase 1. `[P]` at the phase level.
-- **US4 (Phase 6)** is P2 and separately gated; its *code* can be built once US1-US3 land, but
-  running it against real prod is outside these tasks.
+- **US4 tool (Phase 6)** is P2 and separately gated; its *code* can be built once US1-US3 land. It is
+  never *run* against real data until Phase 9 (dev) / Phase 10 (prod), each a separate human decision.
+- **Phase 10 (prod backfill)** is not a prerequisite for "feature complete" — Phase 8 green + Phase 9
+  checkpoint is. Phase 10 and deploying the new-model code are follow-on human-gated operations.
 
 ## Parallel opportunities
 
@@ -309,8 +349,9 @@ Phase 9  Billed acceptance (T070-T072)  ── after every unit/integration task
 - **Phase 3 tests**: T010a ∥ T011a ∥ T012a ∥ T013a ∥ T014a ∥ T015a (six different test files).
 - **Phase 4 tests**: T020a ∥ T021a ∥ T022a ∥ T023a ∥ T024a.
 - **Phase 7** runs fully parallel to Phases 3-6.
-- **Phase 8**: T060 ∥ T061 ∥ T062 ∥ T063.
-- **Phase 9**: T070 is one file; T071/T072 are sequential runs.
+- **Phase 8**: T070 is one file; T071 runs its scenarios sequentially.
+- **Phase 9**: T090a first (RED → 👤), then T090b (dev run) → T091 → T092 sequentially.
+- **Phase 11**: T060 ∥ T061 ∥ T062 ∥ T063.
 
 ## MVP scope
 
