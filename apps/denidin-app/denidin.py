@@ -40,6 +40,9 @@ from src.services.reminder_delivery_service import (
 from src.services.accounting_reconciliation_service import (
     run_startup_accounting_reconciliation_sweep, start_accounting_reconciliation_scheduler,
 )
+from src.services.daily_summary_roll_service import (
+    run_startup_daily_roll_sweep, start_daily_roll_scheduler,
+)
 
 # Configuration
 CONFIG_PATH = 'config/config.json'
@@ -162,7 +165,7 @@ class DeniDin:
     """
     def __init__(self, ai_handler, config, whatsapp_handler, cleanup_thread=None,
                  group_membership_resolver=None, reminder_scheduler=None,
-                 accounting_reconciliation_scheduler=None):
+                 accounting_reconciliation_scheduler=None, daily_roll_scheduler=None):
         self.ai_handler = ai_handler
         self.config = config
         self.whatsapp_handler = whatsapp_handler
@@ -185,6 +188,11 @@ class DeniDin:
         # an ordinary test run reach live external services unattended).
         # Also None (inactive) whenever config.accounting_ledger_update_freq == 0.
         self.accounting_reconciliation_scheduler = accounting_reconciliation_scheduler
+        # Feature 070: the single shared APScheduler instance driving the nightly
+        # 02:00 daily-summary roll - None until __main__ sets it (NEVER
+        # initialize_app(), same rule as accounting_reconciliation_scheduler -
+        # see contracts/daily-summary-roll-service.md).
+        self.daily_roll_scheduler = daily_roll_scheduler
         self._logger = get_logger(__name__)
         # Feature 048's typing indicator needs the live bot (bot.api.serviceMethods.
         # sendTyping) at message-processing time, same as mark_message_read needs it
@@ -310,6 +318,10 @@ class DeniDin:
             self._logger.info("Stopping accounting reconciliation scheduler...")
             self.accounting_reconciliation_scheduler.shutdown(wait=False)
             self._logger.info("Accounting reconciliation scheduler stopped")
+        if self.daily_roll_scheduler is not None:
+            self._logger.info("Stopping daily-summary roll scheduler...")
+            self.daily_roll_scheduler.shutdown(wait=False)
+            self._logger.info("Daily-summary roll scheduler stopped")
         if self.memory_manager is not None:
             self._logger.info("Closing ChromaDB client...")
             self.memory_manager.client.close()
@@ -1070,6 +1082,17 @@ if __name__ == "__main__":
             denidin, update_freq
         )
 
+    # Feature 070: nightly 02:00 Israel-local daily-summary roll - same
+    # deliberate-placement rule as the two schedulers above (started HERE,
+    # never inside initialize_app() - see contracts/daily-summary-roll-service.md).
+    # No feature flag; unconditional when the memory system is enabled.
+    if denidin.ai_handler.memory_enabled:
+        run_startup_daily_roll_sweep(denidin)
+        denidin.daily_roll_scheduler = start_daily_roll_scheduler(
+            denidin,
+            roll_hour=int((denidin.config.memory or {}).get("roll", {}).get("hour", 2)),
+        )
+
     logger.info("=" * 60)
     
     # Track if shutdown has been requested (to avoid duplicate logging)
@@ -1098,6 +1121,11 @@ if __name__ == "__main__":
             if denidin.accounting_reconciliation_scheduler is not None:
                 logger.info("Stopping accounting reconciliation scheduler...")
                 denidin.accounting_reconciliation_scheduler.shutdown(wait=False)
+
+            # Feature 070: stop the daily-summary roll scheduler, if active
+            if denidin.daily_roll_scheduler is not None:
+                logger.info("Stopping daily-summary roll scheduler...")
+                denidin.daily_roll_scheduler.shutdown(wait=False)
 
             # Raise KeyboardInterrupt to break out of message_source.start()'s
             # blocking bot.run_forever() call, below.
@@ -1142,6 +1170,11 @@ if __name__ == "__main__":
             if denidin.accounting_reconciliation_scheduler is not None:
                 logger.info("Stopping accounting reconciliation scheduler...")
                 denidin.accounting_reconciliation_scheduler.shutdown(wait=False)
+
+            # Feature 070: stop the daily-summary roll scheduler if not already stopped
+            if denidin.daily_roll_scheduler is not None:
+                logger.info("Stopping daily-summary roll scheduler...")
+                denidin.daily_roll_scheduler.shutdown(wait=False)
     except Exception as e:
         # Catch any unexpected error to prevent crash
         logger.critical(

@@ -32,9 +32,8 @@ class Message:
     # (DeniDin's own reply). Replaces the old structural "user"/"assistant"
     # value, which conflated "who this message is really from" with "what
     # OpenAI's API needs this turn labeled as" - see ai_required_role below
-    # for the latter. Never "blocked": a BLOCKED user's message never
-    # reaches persistence (add_message_with_token_limit raises on a 0
-    # token_limit before any Message is constructed).
+    # for the latter. Never "blocked": a BLOCKED user's message is rejected
+    # upstream at the RBAC gate before it ever reaches persistence.
     role: str
     content: str
     # 2026-08-19: derived, never caller-supplied directly - "user" for
@@ -142,7 +141,7 @@ class SessionManager:
                 (SessionManager never reads AppConfiguration). `chat_index.db`
                 lives directly under it.
 
-        Feature 070: no `session_timeout_hours` - sessions never expire.
+        Feature 070: there is no idle-expiry timeout - sessions never expire.
         """
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
@@ -389,9 +388,9 @@ class SessionManager:
         # derived role. `role`/`user_role` themselves are never persisted -
         # see this method's docstring for why they still exist as separate
         # parameters. A BLOCKED user_role should structurally never reach
-        # here (add_message_with_token_limit raises first on a 0
-        # token_limit) - normalized the same as any other value rather than
-        # special-cased, since there's no real path that exercises it.
+        # here (rejected upstream at the RBAC gate) - normalized the same as
+        # any other value rather than special-cased, since there's no real
+        # path that exercises it.
         if role == "assistant":
             real_role = "assistant"
             ai_required_role = "assistant"
@@ -680,14 +679,18 @@ class SessionManager:
         for m in live:
             if m["date"] is not None and m["date"] < lower:
                 to_archive.add(m["id"])
-        # (b) backstop: keep newest within budget, archive the older overflow
+        # (b) backstop: keep newest within budget, archive the older overflow.
+        # The single newest live message is always retained even if it alone
+        # exceeds the budget (mirrors get_rolling_window's read-only cut).
         running = 0
+        kept_one = False
         for m in reversed(live):
             if m["id"] in to_archive:
                 continue
             running += m["cost"]
-            if running > max_backstop_tokens:
+            if kept_one and running > max_backstop_tokens:
                 to_archive.add(m["id"])
+            kept_one = True
 
         if not to_archive:
             return 0

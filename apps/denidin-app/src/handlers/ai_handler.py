@@ -21,6 +21,7 @@ from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
 from src.utils.time_utils import now_local, local_from_timestamp
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_collections import collection_name_for_chat
+from src.managers.roll_marker_store import RollMarkerStore
 from src.managers.memory_manager import MemoryManager
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
 from src.managers.user_manager import UserManager
@@ -1458,6 +1459,14 @@ class AIHandler:
         # Feature 070: sessions never expire; there is no cleanup thread.
         self.session_manager = SessionManager(
             storage_dir=session_config.get('storage_dir', 'data/sessions'),
+        )
+
+        # Feature 070: idempotency ledger for the nightly daily-summary roll.
+        # Deliberately NOT under {data_root}/memory/ - ChromaDB owns that dir.
+        roll_config = (config.memory or {}).get('roll', {}) or {}
+        self.roll_marker_store = RollMarkerStore(
+            str(Path(config.data_root) / "memory_rolls"),
+            stale_claim_minutes=int(roll_config.get('stale_claim_minutes', 120)),
         )
 
         # LedgerEventManager (Feature 033): sibling to MemoryManager, own permanent

@@ -147,12 +147,10 @@ class AppConfiguration:
                 'session': {
                     'storage_dir': 'sessions',  # Relative to data_root
                     'max_tokens_by_role': {'client': 4000, 'godfather': 100000},
-                    # session_timeout_hours is retired (Feature 070 - no 24h idle
-                    # expiry). Kept in the defaults so an old config file that
-                    # still carries it loads without complaint; nothing reads it.
-                    'session_timeout_hours': 24,
                     # Feature 070: rolling verbatim window length in Israel-local
-                    # calendar days (REQ-MEM-008).
+                    # calendar days (REQ-MEM-008). There is no idle-expiry
+                    # timeout any more - the old `session_timeout_hours` key is
+                    # retired and removed from every config file.
                     'window_days': 14
                 },
                 'longterm': {
