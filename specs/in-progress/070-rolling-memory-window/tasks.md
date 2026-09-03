@@ -75,7 +75,7 @@ part of these tasks — each is a separate explicit human decision.
   **RESULTS** (`logs/model_sanity_check/gpt-5.6-luna_20260903_*.txt`; recorded in `research.md` D11–D13):
   - (a) `input_tokens=99,449` (constitution **26,618** + 66,136-token window + 6 local tools) — **call SUCCEEDS**; usable window ≥ ~100K.
   - (b) identical repeat → `cached_tokens=99,446/99,449` (**~100% cache hit**) — D12 CONFIRMED.
-  - (c) API exposes neither max context nor pricing — **a human must confirm the published `gpt-5.6-luna` window + $/1M and record it in D11**; SC-007 ≥30%-headroom stays OPEN until then (Phase 8 re-measures against the real worst-case window).
+  - (c) **CLOSED 2026-09-03** — published `gpt-5.6-luna`: context window **1,050,000** tokens, max output 128K, input $0.20 / cached $0.02 / output $1.20 per 1M (long-context surcharge only >272K input). Worst-case prompt ~130K vs 1.05M ⇒ **~88% headroom, SC-007 PASSES**. No design change; no reason to raise the 100K `max_tokens_by_role` backstop.
   - (d) **Decision: do NOT relocate the RECALLED MEMORIES block** — current placement (trailing the constitution in `instructions`) caches ~100% and the needle fact (window position 0 of 66K) is recalled correctly. Zero code change. Plan-mode decision C closed as "no change".
   - ⚠️ constitution grew 6.6× since CLAUDE.md's stale "~4.0K tokens" note — now 26.6K, a real uncached first-turn cost.
 
