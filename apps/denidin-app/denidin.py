@@ -34,7 +34,6 @@ from src.handlers.media_handler import MediaHandler
 from src.managers.session_manager import SessionManager
 from src.managers.memory_manager import MemoryManager
 from src.managers.group_membership_resolver import GroupMembershipResolver
-from src.services.cleanup_service import SessionCleanupThread, run_startup_cleanup
 from src.services.reminder_delivery_service import (
     run_startup_reminder_sweep, start_reminder_scheduler,
 )
@@ -408,24 +407,10 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
     media_handler = MediaHandler(denidin)
     whatsapp_handler.media_handler = media_handler
     
-    # Initialize memory system if enabled
-    if ai_handler.memory_enabled:
-        # Run startup cleanup using denidin as context
-        run_startup_cleanup(denidin)
-        
-        # Start cleanup thread - get interval from nested config structure
-        cleanup_interval = 3600  # Default
-        if hasattr(config, 'memory') and isinstance(config.memory, dict):
-            session_config = config.memory.get('session', {})
-            cleanup_interval = session_config.get('cleanup_interval_seconds', 3600)
-        elif hasattr(config, 'session_cleanup_interval_seconds'):
-            cleanup_interval = config.session_cleanup_interval_seconds
-        
-        cleanup_thread = SessionCleanupThread(denidin, cleanup_interval)
-        cleanup_thread.start()
-
-        # Update denidin with cleanup thread reference
-        denidin.cleanup_thread = cleanup_thread
+    # Feature 070: sessions never expire and there is no session-cleanup thread.
+    # Aged conversation is rolled to daily summaries by the nightly
+    # DailySummaryRollService, wired in __main__ only (like the Feature 054
+    # reminder scheduler below).
 
     # Feature 054: reminder delivery scheduler is deliberately NOT started here.
     # initialize_app() is the shared bootstrap tests/integration/ calls directly
@@ -1021,6 +1006,9 @@ if __name__ == "__main__":
         # the scheduler silently never started because this dict dropped it
         # before it ever reached initialize_app()).
         'accounting_ledger_update_freq': config.accounting_ledger_update_freq,
+        # Feature 070 (US5): log-retention tunables. Same "must also be listed
+        # here or it silently has no effect" rule as accounting_ledger_update_freq.
+        'logging': config.logging,
     }
 
     # Feature 043: construct the live Green API bot explicitly here (via
@@ -1082,19 +1070,6 @@ if __name__ == "__main__":
             denidin, update_freq
         )
 
-    # Perform orphaned session recovery if memory enabled
-    if denidin.ai_handler.memory_enabled:
-        logger.info("Starting orphaned session recovery...")
-        recovery_result = denidin.ai_handler.recover_orphaned_sessions()
-        
-        logger.info(
-            f"Session recovery complete: "
-            f"{recovery_result.get('total_found', 0)} found, "
-            f"{recovery_result.get('transferred_to_long_term', 0)} transferred, "
-            f"{recovery_result.get('loaded_to_short_term', 0)} loaded, "
-            f"{recovery_result.get('failed', 0)} failed"
-        )
-    
     logger.info("=" * 60)
     
     # Track if shutdown has been requested (to avoid duplicate logging)

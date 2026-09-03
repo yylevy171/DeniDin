@@ -41,24 +41,34 @@ Green API webhook
   → WhatsAppHandler.send_response (if should_reply)
 ```
 
-Background jobs wired in `denidin.py`'s `initialize_app` / `__main__`:
+Background jobs. `initialize_app` (the shared bootstrap `tests/integration/` also calls) loses
+`run_startup_cleanup`, the `SessionCleanupThread` start, and `recover_orphaned_sessions`. Every
+real scheduler + startup sweep is wired in `denidin.py`'s `__main__` **only** (`initialize_app`
+runs against a process-global singleton in tests — a real scheduler there would reach live OpenAI
+unattended; `denidin.py:430-443`):
 
 ```
-run_startup_cleanup                         (existing — behavior changes under US1/US3)
-SessionCleanupThread  (hourly)              (existing — the 24h-expiry→transfer→hourly-retry
-                                             cycle is REMOVED, not disabled; see US1 / bugfix-035 H1)
-recover_orphaned_sessions                   (existing — no longer load-bearing under US1; bugfix-044)
+-- REMOVED from initialize_app --
+run_startup_cleanup                          (deleted — behavior subsumed by US1/US3 + _reconcile_chat_index)
+SessionCleanupThread  (hourly)              (deleted — the 24h-expiry→transfer→hourly-retry cycle is
+                                             REMOVED, not disabled; see US1 / bugfix-035 H1)
+recover_orphaned_sessions                   (deleted — chat index is authoritative now; bugfix-044)
+
+-- wired in __main__ --
 reminder_delivery_service scheduler         (existing, APScheduler CronTrigger */5)
 accounting_reconciliation_service scheduler (existing, APScheduler IntervalTrigger)
-+ nightly memory roll scheduler             (NEW — US2, APScheduler CronTrigger 02:00 Israel)
-+ startup catch-up roll sweep               (NEW — US2, bounded by a `memory` catch-up-lookback
-                                             config key; older days are the US4 backfill's job)
++ startup catch-up roll sweep               (NEW — US2, synchronous, bounded by
+                                             memory.roll.catchup_lookback_days; older days are the
+                                             US4 backfill's job)
++ nightly memory roll scheduler             (NEW — US2, APScheduler CronTrigger(hour=2, minute=0,
+                                             timezone=LOCAL_TZ))
 ```
 
 There is **no feature flag** (clarified 2026-09-02). The new model replaces the 24-hour
 session-expiry model wholesale; the retired paths are deleted, not left dormant behind a
-disabled branch. Roll markers are a small **SQLite DB under `data/`** (`UNIQUE(chat, date)`,
-same pattern as Feature 054's `reminders.db`). The safe rollout is operational: run the US4
+disabled branch. Roll markers are a small **SQLite DB under `data/memory_rolls/`**
+(`PRIMARY KEY(chat, date)`, `claimed`→`committed` two-phase, same connection pattern as Feature
+054's `reminders.db`). The safe rollout is operational: run the US4
 backfill against the target env *first*, then deploy the new-model code, then the catch-up
 sweep and nightly roll take over.
 
@@ -172,16 +182,21 @@ resolve through one shared sanitized helper.
 
 ### Flow
 
-`initialize_app` registers an `APScheduler` `CronTrigger(hour=2, minute=0)` job (Israel local),
-roll hour a config value. On fire: for each known chat, compute "yesterday" (Israel local
+`denidin.py __main__` registers an `APScheduler` `CronTrigger(hour=2, minute=0, timezone=LOCAL_TZ)`
+job (not `initialize_app` — see System context above), roll hour a config value
+(`memory.roll.hour`). On fire: for each known chat, compute "yesterday" (Israel local
 calendar day); check the roll marker for (chat, yesterday) — a row in the SQLite roll-marker DB
-under `data/` (`UNIQUE(chat, date)`); if absent → gather that day's messages (from retained
-storage, not just the live window) → if non-empty: `AIHandler` summarize (1 billed call) →
-`MemoryManager.remember(summary, <collection via shared sanitized helper>, metadata={chat, date,
-count, source:"daily-roll"})` → **then** write the roll marker; if empty → write the roll marker
-only. On app start, a catch-up sweep does the same for every un-rolled (chat, date) within the
-bounded catch-up lookback (`memory` config key), without blocking message handling indefinitely;
-(chat, date) pairs older than the lookback are left to the US4 backfill.
+under `data/memory_rolls/` (`PRIMARY KEY(chat, date)`); if not `committed` → `try_claim` → gather
+that day's messages (from retained storage, live + archived, not just the live window) → if
+non-empty: summarize via `summarizer.summarize_conversation` (1 billed call) →
+`MemoryManager.remember(summary, collection_name_for_chat(chat), metadata={type:"daily_summary",
+chat, date, scope:"PRIVATE", user_phone:chat, message_count, source:"daily-roll"})` → **then**
+`commit` the roll marker; if empty → `commit` a `message_count=0` marker only, no billed call. On
+app start, a synchronous catch-up sweep does the same for every un-`committed` (chat, date) within
+`memory.roll.catchup_lookback_days` (default 21), source `"catch-up"`, without blocking message
+handling indefinitely; (chat, date) pairs older than the lookback are left to the US4 backfill. A
+failed (chat, date) is retried every subsequent tick / startup sweep until it ages past the
+lookback — no per-item retry counter (the window is the bound).
 
 ### Scenarios
 
@@ -318,17 +333,21 @@ _Separately gated: real prod write + real billed calls; fresh explicit approval 
 
 ### Flow
 
-Operator runs `scripts/…/backfill_daily_summaries.sh --env <env> --since <YYYY-MM-DD>
-[--until <YYYY-MM-DD>]` (default `--until` = today − 14d), following the Feature 061/062
-backfill-script conventions (explicit CLI args, no hardcoded dates, idempotent, real credentials
-never committed). It runs **standalone** against a running *or* stopped target environment — it
-writes directly into that env's `data/` roll-marker SQLite DB and its ChromaDB — never as an
-in-process app step, and (clarified 2026-09-02) **before** the new-model code is first deployed
-to that env, so the startup catch-up sweep only ever faces recent un-rolled days. For each chat,
-for each calendar day in range: check the roll marker (SQLite `UNIQUE(chat, date)` row); if
-absent → gather the day's messages → non-empty: summarize (billed) → `remember(...)` → write
-marker; empty: write marker. Emit a per-chat run report. Reads raw messages only — never moves,
-archives, or deletes them.
+Operator runs the standalone Python sub-app
+`apps/rolling-memory-backfill/backfill_daily_summaries.py --data-root <target env's data/>
+--config <target env's config.json> --since <YYYY-MM-DD> [--until <YYYY-MM-DD>] [--chat <id>]…
+[--yes]` (default `--until` = today − 14d), following the Feature 061/062 backfill conventions:
+explicit CLI args, **no `--env` flag** (env = which `--data-root`/`--config` you point at), **no
+`--dry-run`**, no hardcoded dates, idempotent via the shared roll-marker DB, real credentials
+never committed. See `contracts/backfill-cli.md`. It runs **standalone** against a running *or*
+stopped target environment — it writes directly into that env's `data/memory_rolls/roll_markers.db`
+and its ChromaDB under `data/memory/` — never as an in-process app step, and (clarified
+2026-09-02) **before** the new-model code is first deployed to that env, so the startup catch-up
+sweep only ever faces recent un-rolled days. For each chat,
+for each calendar day in range: `is_rolled` → skip; else `try_claim(source="migration")` → gather
+the day's messages → non-empty: summarize (billed) → `remember(...)` → `commit`; empty:
+`commit` a `message_count=0` marker. Emit a per-chat run report. Reads raw messages only — never
+moves, archives, or deletes them (`assert_message_integrity` before and after).
 
 ### Scenarios
 
@@ -428,5 +447,7 @@ rotated files all still exist on disk with their content intact. Document the fi
 - **AC-4 (US4)**: The dev migration run, end to end, with the per-chat run report reviewed;
   a follow-up nightly-roll invocation skips every migrated day.
 - **AC-5 (US1+US2)**: The known bugfix-035 H2 poison-session shape (`0f5eaa04`-style, unknown
-  `pending_ledger_events` key), loaded into a running app → no recurring hourly `Failed to load
-  session` error → the session participates in a nightly roll.
+  `pending_ledger_events` key), loaded into a running app → it loads with exactly one WARNING and
+  no `TypeError`, its chat participates normally in the per-turn window and in a nightly roll, and
+  no load error recurs on any subsequent turn or sweep (there is no longer an hourly cleanup loop
+  at all — the recurring per-hour error is designed out).

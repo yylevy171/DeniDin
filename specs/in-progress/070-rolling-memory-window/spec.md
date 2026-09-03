@@ -80,7 +80,9 @@ own stories — see §"Legacy Defects and How the New Model Addresses Them".
   daily-summary record, or a small index? → A: A small **SQLite database under `data/`** (same
   pattern as Feature 054's `reminders.db`), with a `UNIQUE(chat, date)` constraint so the
   check-and-write is atomic under a scheduler/script race. Empty days get a row too. Checked
-  identically by the nightly job, the catch-up sweep, and the one-time backfill.
+  identically by the nightly job, the catch-up sweep, and the one-time backfill. *(Refined by
+  `plan.md` 2026-09-02: implemented as `PRIMARY KEY(chat, date)` — same guarantee — with a
+  claim-first `claimed`→`committed` protocol; see REQ-MEM-026 / REQ-MEM-046.)*
 - Q: Token/size backstop value `N` under the 14-day window (REQ-MEM-024 / REQ-MEM-047)? → A:
   **Reuse the acting role's existing `max_tokens_by_role` limit as `N`** — no new config key for
   the value. The verbatim window is `min(last 14 calendar days, last max_tokens_by_role[role]
@@ -101,6 +103,30 @@ own stories — see §"Legacy Defects and How the New Model Addresses Them".
   markers for every historical day. *Then* deploy the new-model code, so its catch-up sweep only
   ever sees genuinely-recent un-rolled days. A bounded catch-up lookback (a `memory` config key,
   conservative default) stays in as a safety net if that ordering is ever violated.
+
+### Session 2026-09-02 — plan-mode decisions (recorded in `plan.md` / `research.md`)
+
+Three further decisions were taken during `/speckit.plan` (they needed no additional user input —
+each follows an existing project pattern) and are recorded here so the spec stays the single index
+of what was decided:
+
+- **Scheduler wiring — `denidin.py __main__`, not `initialize_app`.** REQ-MEM-020's wording
+  ("wired in `initialize_app` alongside the existing schedulers") is imprecise: the existing
+  reminder and accounting schedulers are deliberately wired in `__main__`, never `initialize_app`
+  (`denidin.py:430-443` — `initialize_app` is what `tests/integration/` calls against a
+  process-global singleton, so a real scheduler there would reach live OpenAI unattended). The
+  nightly roll follows the same rule. REQ-MEM-020 is read with this correction.
+- **Prompt placement is IN scope** (overrides the "Out of Scope" line below for *placement* only —
+  the RECALLED-MEMORIES block *format* stays out of scope). `plan.md` Phase 0 may relocate the
+  RECALLED MEMORIES block, and reconsider where the 14-day window sits in the prompt, to improve
+  OpenAI prompt-cache hit rate — **but every change must be verified with real billed
+  `gpt-5.6-luna` calls showing no functional regression** (a scripted multi-turn check whose
+  correct answer depends on an early / out-of-window fact). See REQ-MEM-037 and `research.md` D12.
+- **Backstop trim mechanism** (REQ-MEM-024b / US3): a **read-only per-turn context cut** (drop the
+  oldest in-window messages to fit the acting role's `N`; newest always kept) **plus** a **nightly
+  physical archive move** (`rename`, never `unlink`) of messages older than 14 days or beyond the
+  *largest* role `N` (100000). Both feed the nightly roll from live + archived storage. See
+  `research.md` D10.
 
 ---
 
@@ -182,10 +208,10 @@ acceptance test rather than its own regression suite.
 
 | Ref | Defect | Disposition under Feature 070 | Proven by |
 |---|---|---|---|
-| **bugfix-035 H1** | Group-chat Tier-2 collection name keeps raw `@`; post-write `client.get_collection()` verify with the unsanitized name throws `NotFoundError`; succeeded write reported as failed; hourly re-summarization forever. | **Structurally eliminated.** The per-expired-session transfer invoked by the hourly cleanup (`AIHandler.transfer_session_to_long_term_memory` as a cleanup step) is **retired** under the new model — there is no "expire session → summarize → mark transferred" cycle to loop on. The nightly roll writes *only* via `MemoryManager.remember(collection_name=…)`, which sanitizes on the write path, and does **no** raw `client.get_collection()` verify step (REQ-MEM-011, REQ-MEM-012). Group and 1:1 chats resolve their collection through one shared sanitized helper (REQ-MEM-013). The 27 existing duplicate records are a separate prod cleanup, out of scope (needs its own approval). | AC-1 / US2 group-chat scenario: a `…@g.us` chat's daily summary is stored and retrievable via `recall()`, and a second roll makes no new billed call. |
-| **bugfix-035 H2** | `Session(**data)` raises `TypeError` on an unknown persisted key; session permanently unloadable; hourly error log. | **Fixed inline.** The new window-builder and nightly roll both iterate persisted sessions/messages, so tolerant deserialization is on their critical path. `SessionManager` session load filters `data` to known fields (mirroring `denidin.py`'s `valid_fields = {f.name for f in fields(AppConfiguration)}` pattern) and logs one warning for dropped keys (REQ-MEM-020, REQ-MEM-021). Not a separate phase — it lands with the first task that touches session loading. | US1 poison-session scenario + AC-5: a session file with an unknown key loads with 0 `TypeError`, 1 warning, and participates in a roll. |
+| **bugfix-035 H1** | Group-chat Tier-2 collection name keeps raw `@`; post-write `client.get_collection()` verify with the unsanitized name throws `NotFoundError`; succeeded write reported as failed; hourly re-summarization forever. | **Structurally eliminated.** The per-expired-session transfer invoked by the hourly cleanup (`AIHandler.transfer_session_to_long_term_memory` as a cleanup step) is **retired** under the new model — there is no "expire session → summarize → mark transferred" cycle to loop on. The nightly roll writes *only* via `MemoryManager.remember(collection_name=…)`, which sanitizes on the write path, and does **no** raw `client.get_collection()` verify step (REQ-MEM-021, REQ-MEM-022). Group and 1:1 chats resolve their collection through one shared sanitized helper — `memory_collections.collection_name_for_chat` (REQ-MEM-022). The 27 existing duplicate records are a separate prod cleanup, out of scope (needs its own approval). | AC-1 / US2 group-chat scenario: a `…@g.us` chat's daily summary is stored and retrievable via `recall()`, and a second roll makes no new billed call. |
+| **bugfix-035 H2** | `Session(**data)` raises `TypeError` on an unknown persisted key; session permanently unloadable; hourly error log. | **Fixed inline.** The new window-builder and nightly roll both iterate persisted sessions/messages, so tolerant deserialization is on their critical path. `SessionManager` session load filters `data` to known fields (mirroring `denidin.py`'s `valid_fields = {f.name for f in fields(AppConfiguration)}` pattern) and logs one warning for dropped keys (REQ-MEM-010, REQ-MEM-011). Not a separate phase — it lands with the first task that touches session loading. | US1 poison-session scenario + AC-5: a session file with an unknown key loads with 0 `TypeError`, 1 warning, and participates in a roll. |
 | **bugfix-035 H3** | `expired/YYYY-MM-DD/` accumulates unbounded across runs; test picks `rglob(...)[0]` and matches a stale archived session. | **Subsumed into US3.** The archive-retention policy (REQ-MEM-034) must be an explicit documented decision (bound or "retain indefinitely by design"); the test suite must scope archived-session lookups to the session under test, not `rglob(...)[0]` (REQ-MEM-035). | US3 scenario 5. |
-| **bugfix-044** | Orphan recovery reloads a session and logs success but never registers it into `chat_to_session`; next message creates a new empty session. Also: `remove_from_index()` deletes a chat's entry without checking it points at the session being removed. | **Structurally eliminated (design).** The new model keeps **one long-lived `Session` per chat** (never expires), and "where does a new inbound message for chat C append?" is answered by a **deterministic on-disk lookup** keyed on `whatsapp_chat` — the authoritative resolution, not an in-memory index a recovery path can forget to populate (REQ-MEM-014, REQ-MEM-015). An in-memory `chat_to_session` map may still exist as a non-authoritative cache; where it does, `remove_from_index()` gains the guard that it only clears a chat's entry when that entry actually points at the session being removed (REQ-MEM-016). | US1 restart scenario + AC-2: conversation → simulated restart → next message continues with full pre-restart context, no manual re-priming. |
+| **bugfix-044** | Orphan recovery reloads a session and logs success but never registers it into `chat_to_session`; next message creates a new empty session. Also: `remove_from_index()` deletes a chat's entry without checking it points at the session being removed. | **Structurally eliminated (design).** The new model keeps **one long-lived `Session` per chat** (never expires), and "where does a new inbound message for chat C append?" is answered by a **deterministic on-disk lookup** keyed on `whatsapp_chat` — the authoritative resolution, not an in-memory index a recovery path can forget to populate (REQ-MEM-014, REQ-MEM-015). The in-memory `chat_to_session` map is kept only as a non-authoritative read-through cache over the new `chat_index.db` (`{data_root}/sessions/chat_index.db`, `chat TEXT PRIMARY KEY`); `_reconcile_chat_index()` rebuilds it from disk on every `SessionManager` construction (restart). Because there is no session expiry, there is no "remove a live session from the index" path — so `remove_from_index()` and the entire 4-step cleanup are **deleted**, and the REQ-MEM-016 guard is satisfied vacuously (`plan.md`/`research.md` D2/D3). | US1 restart scenario + AC-2: conversation → simulated restart → next message continues with full pre-restart context, no manual re-priming. |
 
 ---
 
@@ -230,9 +256,10 @@ acceptance test rather than its own regression suite.
 
 - **Scheduling**: the existing `APScheduler` `BackgroundScheduler` pattern
   (`services/reminder_delivery_service.py`, `services/accounting_reconciliation_service.py`). The
-  nightly roll is wall-clock-anchored → `CronTrigger(hour=2, minute=0)` in Israel local time, one
-  shared job wired in `denidin.py`'s `initialize_app` alongside the existing schedulers. No new
-  scheduling technology.
+  nightly roll is wall-clock-anchored → `CronTrigger(hour=2, minute=0, timezone=LOCAL_TZ)` in
+  Israel local time, one shared job wired in `denidin.py`'s `__main__` block alongside the existing
+  reminder + accounting schedulers (not `initialize_app` — see §Clarifications plan-mode note). No
+  new scheduling technology.
 - **Time**: the `Asia/Jerusalem`-aware helpers in `apps/denidin-app/src/utils/time_utils.py`.
   "Calendar day" and "14 days" are both evaluated in Israel local time. No UTC anywhere.
 - **Short-term storage**: the existing on-disk session/message JSON layout under `data/sessions/`.
@@ -245,16 +272,23 @@ acceptance test rather than its own regression suite.
   richer metadata; recall is the existing semantic `recall()` path. No `LedgerEventManager`
   schema-version change (this feature does not touch the ledger — REQ-MEM-043).
 - **Roll markers**: a small **SQLite database under `data/`** (clarified 2026-09-02), one row per
-  (chat, date) with a `UNIQUE(chat, date)` constraint so check-and-write is atomic under a
-  scheduler/script race. Same library/pattern as Feature 054's `reminders.db`. Empty days get a
-  row too. Exact path, table shape, and how it composes with the ChromaDB `data/` layout are a
-  `plan.md` decision; the datastore choice is settled.
+  (chat, date) with `PRIMARY KEY(chat, date)` (chosen over a bare `UNIQUE` — it is `UNIQUE` +
+  `NOT NULL` and is the natural key) so check-and-write is atomic under a scheduler/script race.
+  Same library/pattern as Feature 054's `reminders.db`. Empty days get a row too. `plan.md` settled
+  the path (`{data_root}/memory_rolls/roll_markers.db` — deliberately not under the ChromaDB
+  directory), the full schema, and a **claim-first two-phase** (`claimed` → `committed`) protocol
+  with `sqlite3.IntegrityError` as the claim-loss signal (see `research.md` D6/D7,
+  `contracts/roll-marker-store.md`).
 - **Config**: new keys under the existing `memory` block (window length, catch-up lookback, retry
   budgets, roll hour). No `config.feature_flags` entry — there is no flag. The token backstop `N`
   is not a new key: it reuses `max_tokens_by_role`. No env vars.
-- **Migration & log-retention verification**: standalone operator scripts under `scripts/` /
-  `apps/denidin-app/scripts/`, following the Feature 061/062 backfill-script conventions
-  (explicit CLI args, no hardcoded dates, idempotent, real credentials never committed).
+- **Migration**: a standalone Python sub-app `apps/rolling-memory-backfill/` (mirroring
+  `apps/prod-ledger-backfill/`, Features 061/062 — host `python3`, own
+  `requirements.txt`/`conftest.py`, `main(argv=None) -> int`), following those conventions:
+  explicit CLI args, no hardcoded dates, idempotent via the shared roll-marker DB, real
+  credentials never committed, no `--env` flag (env is chosen by `--data-root` / `--config`), no
+  `--dry-run`. See `contracts/backfill-cli.md`. **Log-retention verification** is a unit test plus
+  a documented read-only prod check (`quickstart.md` Part 2) — no operator script.
 - **Third-party behavior that MUST be verified against a real call before design is finalized**
   (CONSTITUTION "NO UNVERIFIED THIRD-PARTY ASSUMPTIONS"):
   - `gpt-5.6-luna`'s real usable context-window size and token pricing — the 14-day verbatim
@@ -514,9 +548,11 @@ specify the minimal config change and verify it keeps segments after a forced ro
   retains full verbatim context. The `session_timeout_hours` expiry logic and the hourly
   `SessionCleanupThread` expire/transfer cycle are removed (not disabled).
 - **REQ-MEM-003**: "Last 14 days" and "calendar day" MUST be evaluated in Israel local time via
-  `time_utils`, with explicit documented inclusive/exclusive boundary rules, correct across DST,
-  and consistent with the roll job's day-bucketing (REQ-MEM-011) — every message belongs to
-  exactly one day and is either in the window or summarized, never both or neither.
+  `time_utils` (the shared helpers `local_calendar_date` / `start_of_local_day` /
+  `n_calendar_days_ago` — `contracts/time-utils-daybucket.md`), with explicit documented
+  inclusive/exclusive boundary rules, correct across DST, and using the **same** day-bucketing as
+  the roll job (REQ-MEM-021, REQ-MEM-031) — every message belongs to exactly one day and is either
+  in the window or summarized, never both or neither.
 - **REQ-MEM-004**: Group-chat user turns in the window MUST retain the Feature 039 `[sender_name]`
   prefix.
 - **REQ-MEM-005**: The retired mechanisms MUST be *removed* from the codebase, not left dormant
@@ -546,11 +582,12 @@ specify the minimal config change and verify it keeps segments after a forced ro
 - **REQ-MEM-015**: After a process restart, the next inbound message for a chat with prior
   history MUST append to that chat's existing store and see the prior turns in context — with no
   reliance on an orphan-recovery step having re-registered anything.
-- **REQ-MEM-016**: An in-memory `chat_to_session` map MAY be retained as a non-authoritative
-  performance cache (the deterministic on-disk lookup per REQ-MEM-014 is always the source of
-  truth). Where it is retained, `remove_from_index()` MUST clear a chat's entry only if that
-  entry currently points at the session being removed. `plan.md` states whether the cache is kept
-  at all.
+- **REQ-MEM-016**: Settled by `plan.md` (`research.md` D2/D3): the in-memory `chat_to_session` map
+  **is retained**, purely as a non-authoritative read-through cache over `chat_index.db` (the
+  deterministic on-disk lookup per REQ-MEM-014 is always the source of truth), rebuilt from disk
+  by `_reconcile_chat_index()` on every construction. `remove_from_index()` and the whole 4-step
+  session-cleanup cycle are **deleted** (no expiry ⇒ no live-session-removal path), so the guard
+  this requirement contemplated is moot — there is nothing left that could clear the wrong entry.
 - **REQ-MEM-017**: The retirement of the 24h-expiry → per-session-transfer → hourly-retry cycle
   MUST NOT leave `SessionCleanupThread` (or its replacement) able to re-summarize an
   already-rolled day or a still-in-window session. *(bugfix-035 H1 loop designed out.)*
@@ -558,8 +595,10 @@ specify the minimal config change and verify it keeps segments after a forced ro
 ### Functional Requirements — Nightly roll (User Story 2)
 
 - **REQ-MEM-020**: A single `APScheduler` `CronTrigger` job MUST run at 02:00 Israel local time,
-  wired in `denidin.py`'s `initialize_app` alongside the existing schedulers; the roll hour MUST
-  be a config value.
+  wired in `denidin.py`'s `__main__` block alongside the existing reminder + accounting schedulers
+  (corrected 2026-09-02 — see the plan-mode decisions note in §Clarifications; a real scheduler
+  must never be started from `initialize_app`, which `tests/integration/` invokes directly); the
+  roll hour MUST be a config value.
 - **REQ-MEM-021**: For each chat, the roll MUST summarize the previous calendar day's messages
   into **exactly one** daily long-term record, embedded and stored via `MemoryManager`, with
   metadata including at least the chat id and the summarized calendar date.
@@ -574,18 +613,26 @@ specify the minimal config change and verify it keeps segments after a forced ro
   billed call for an already-rolled (chat, date). *(The token-backstop value is REQ-MEM-024b, in
   the Raw-data & token safety section — a pre-existing near-duplicate id; kept as-is to avoid
   renumbering cross-references.)*
-- **REQ-MEM-025**: A roll marker for a non-empty (chat, date) MUST be written **only after** the
-  daily summary is durably stored — a mid-roll failure MUST leave (chat, date) un-rolled for a
-  bounded retry, not falsely marked done.
+- **REQ-MEM-025**: A `committed` roll marker for a non-empty (chat, date) MUST be written **only
+  after** the daily summary is durably stored — a mid-roll failure MUST leave (chat, date)
+  un-`committed` (at most a `claimed` row, re-takeable after `memory.roll.stale_claim_minutes`),
+  not falsely marked done. **"Bounded retry" is defined as** (settled by `plan.md`): the failed
+  (chat, date) is retried on every subsequent nightly tick and every startup catch-up sweep for as
+  long as it stays within `memory.roll.catchup_lookback_days` of "today"; once it ages past that
+  window it is no longer auto-retried and becomes the one-time backfill's responsibility
+  (REQ-MEM-028). There is **no per-item retry counter** — the lookback window *is* the bound.
 - **REQ-MEM-026**: The check-and-write of a roll marker MUST be safe against concurrent rollers
-  (scheduler + manual script) — at most one summary and one billed call per (chat, date) under a
-  race. The roll-marker store is a SQLite DB with a `UNIQUE(chat, date)` constraint (clarified
-  2026-09-02); `plan.md` decides whether a racer claims (chat, date) with an atomic
-  insert *before* summarizing (two-phase: `claimed` → `committed`), or the constraint is only a
-  backstop that at worst leaves one duplicate record for later cleanup. Either way, no unbounded
-  re-summarization.
+  (scheduler + manual script, in separate processes) — at most one summary and one billed call per
+  (chat, date) under a race. **Settled by `plan.md`** (`research.md` D6): the roll-marker table has
+  `PRIMARY KEY(chat, date)` and a racer **claims (chat, date) with an atomic `INSERT` *before*
+  summarizing** (two-phase `claimed` → `committed`); `sqlite3.IntegrityError` is the claim-loss
+  signal and the losing racer skips. `max_instances=1` covers the scheduler's own ticks; the
+  primary-key `INSERT` covers scheduler-vs-standalone-script. No unbounded re-summarization, and
+  no tolerated duplicate.
 - **REQ-MEM-027**: One unloadable or erroring chat/session MUST NOT abort the roll for other
-  chats; per-chat failures are isolated and retried with a bounded budget.
+  chats; each `_roll_one_chat_day` is independently `try/except`-wrapped, the error is logged once
+  with a traceback, and the sweep continues. The failed (chat, date) is retried per REQ-MEM-025's
+  bounded-retry definition (bounded by the catch-up lookback window, no per-item counter).
 - **REQ-MEM-028**: A startup catch-up sweep MUST, on app start, roll every (chat, date) pair
   within a **bounded lookback** (a `memory` config key, conservative default — e.g. ~21 days)
   that has no roll marker — exactly once each — without blocking message handling indefinitely.
@@ -667,16 +714,20 @@ specify the minimal config change and verify it keeps segments after a forced ro
 - **REQ-MEM-043**: This feature MUST NOT change `LedgerEventManager.CURRENT_SCHEMA_VERSION` or
   any ledger schema.
 - **REQ-MEM-046**: The roll-marker store MUST be a small **SQLite database under `data/`**
-  (clarified 2026-09-02), one row per (chat, date) with a `UNIQUE(chat, date)` constraint, empty
-  days included. It MUST survive restarts and be read/written identically by the nightly job, the
-  startup catch-up sweep, and the one-time backfill. Exact path, table columns, and access module
-  are a `plan.md` decision; the datastore choice is settled. Same library/pattern as Feature
-  054's `reminders.db`.
+  (clarified 2026-09-02), one row per (chat, date) keyed `PRIMARY KEY(chat, date)` (settled by
+  `plan.md` — a natural-key primary key rather than a bare `UNIQUE`; same guarantee), empty days
+  included. It MUST survive restarts and be read/written identically by the nightly job, the
+  startup catch-up sweep, and the one-time backfill. Path
+  (`{data_root}/memory_rolls/roll_markers.db`), columns, the `claimed`/`committed` states, and the
+  `RollMarkerStore` access module are settled in `contracts/roll-marker-store.md` /
+  `data-model.md` §3. Same library/pattern as Feature 054's `reminders.db`.
 - **REQ-MEM-047**: The token-backstop value is settled (REQ-MEM-024b — reuse `max_tokens_by_role`).
-  Whether the daily-summary `recall()` needs a larger `top_k_results` than the current 5 for
-  multi-week questions is a `plan.md` decision; it is **not assumed** here and any change stays
-  within the existing recall path (no embedding-model or prompt-block-format change — see Out of
-  Scope).
+  The daily-summary `recall()` `top_k` question is **settled by `plan.md`** (`research.md` D5,
+  `contracts/ai-handler-recall.md`): a new key `memory.longterm.daily_summary_top_k` (default 10)
+  is the `top_k` for the single per-chat conversational recall call (which returns `daily_summary`
+  and legacy `session_summary` records together from the one per-chat collection); the global
+  `memory.longterm.top_k_results` (5) is untouched for any other recall. No embedding-model,
+  recall-scoring, or prompt-block-format change (see Out of Scope).
 
 ### Config & rollout requirements
 
@@ -684,10 +735,16 @@ specify the minimal config change and verify it keeps segments after a forced ro
   default and only behavior once merged. `config.feature_flags` gains no entry for this feature.
   The safe rollout is operational, not flag-based: (1) approve + run the one-time backfill against
   the target env, (2) deploy the new-model code, (3) sweep + nightly roll take over.
-- **REQ-MEM-061**: New tunables (window length [default 14], catch-up lookback [conservative
-  default], per-chat/per-run retry budgets, roll hour [default 2]) MUST be config keys under the
-  existing `memory` block with documented defaults — no magic numbers, no env vars. The token
-  backstop `N` is **not** among them: it reuses `max_tokens_by_role`.
+- **REQ-MEM-061**: New memory tunables MUST be config keys under the existing `memory` block with
+  documented defaults — no magic numbers, no env vars. Settled set (`data-model.md` §7):
+  `memory.session.window_days` (14), `memory.longterm.daily_summary_top_k` (10),
+  `memory.archive_retention_days` (0 = retain forever), `memory.roll.hour` (2),
+  `memory.roll.catchup_lookback_days` (21), `memory.roll.stale_claim_minutes` (120). There is no
+  separate "retry budget" key — the retry bound is `catchup_lookback_days` (REQ-MEM-025). The
+  token backstop `N` is **not** a key: it reuses `max_tokens_by_role`. The **log-retention**
+  tunables (`logging.rotation_when`, `logging.backup_count`) are a **new top-level `logging` dict**
+  — not under `memory` — because they belong to US5 (an operational concern) rather than the
+  memory model; still config keys, still no env vars.
 - **REQ-MEM-062**: Tests exercise the new model as the default behavior — no flag toggling
   anywhere. Unit tests cover the window-builder, day-bucketing, tolerant load, backstop, and
   roll-marker logic directly; integration tests drive real inbound webhooks through the real
@@ -700,11 +757,14 @@ specify the minimal config change and verify it keeps segments after a forced ro
 - **Rolling window**: derived, not stored. Per chat: the ordered list of messages with
   Israel-local timestamp within the last 14 calendar days, capped by the token backstop.
 - **Daily summary**: one ChromaDB record. Attributes: summary text, embedding, chat id,
-  summarized calendar date, message count, created-at (Israel local), source ("daily-roll" or
-  "migration"). The unit of Tier-2 memory under the new model.
-- **Roll marker**: a row in a small SQLite DB under `data/`, keyed `UNIQUE(chat, date)`, meaning
-  "this day is rolled — do not summarize again". Written by the nightly job, catch-up sweep, and
-  backfill alike; empty days get a row too.
+  summarized calendar date, message count, created-at (Israel local), `scope` = `PRIVATE`,
+  `user_phone` = chat id (matches the existing `session_summary` RBAC convention), `source` ∈
+  {`"daily-roll"`, `"catch-up"`, `"migration"`}. The unit of Tier-2 memory under the new model.
+  See `data-model.md` §4 for the exact metadata shape.
+- **Roll marker**: a row in a small SQLite DB under `data/`, keyed `PRIMARY KEY(chat, date)`, with
+  a `status` of `claimed` (a racer is mid-roll) or `committed` (done — do not summarize again).
+  Written by the nightly job, catch-up sweep, and backfill alike; empty days get a `committed` row
+  with `message_count = 0` and no summary.
 - **Canonical current message store**: per chat, its single long-lived `Session` (never expires),
   the one on-disk location new messages append to, found by a deterministic lookup keyed on
   `whatsapp_chat`.
@@ -747,9 +807,13 @@ specify the minimal config change and verify it keeps segments after a forced ro
 
 ## Out of Scope
 
-- Changing the embedding model or the "RECALLED MEMORIES" prompt block format. (`top_k_results`
-  adjustment for multi-week questions is an open `plan.md`/`clarify` question, REQ-MEM-047, not
-  assumed here.)
+- Changing the embedding model, the recall scoring, or the *format* of the "RECALLED MEMORIES"
+  prompt block. **Note (2026-09-02):** the *placement* of that block within the prompt **is** in
+  scope — a plan-mode decision, for OpenAI prompt-cache optimization only, gated on a real billed
+  functional-regression check (see §Clarifications plan-mode note, REQ-MEM-037). A dedicated
+  `top_k` for the daily-summary recall (`memory.longterm.daily_summary_top_k`, default 10) was
+  settled by `plan.md` (REQ-MEM-047, `contracts/ai-handler-recall.md`) and applies **only** to the
+  per-chat conversational recall call — the global `memory.longterm.top_k_results` is unchanged.
 - Purging the 27 existing duplicate records in `memory_120363210094632983_at_g.us` — a separate
   prod data write needing its own approval.
 - Any change to the Morning/ledger subsystems.

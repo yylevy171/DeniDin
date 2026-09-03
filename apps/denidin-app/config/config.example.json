@@ -13,6 +13,10 @@
   "accounting_ledger_update_freq": 60,
   "data_root": "dev_data_for_dev_or_data_for_prod",
   "godfather_phone": "YOUR_GODFATHER_PHONE_NUMBER",
+  "logging": {
+    "rotation_when": "midnight",
+    "backup_count": 0
+  },
   "memory": {
     "session": {
       "storage_dir": "MUST_MATCH_data_root_ABOVE/sessions",
@@ -20,15 +24,23 @@
         "client": 4000,
         "godfather": 100000
       },
-      "session_timeout_hours": 24
+      "session_timeout_hours": 24,
+      "window_days": 14
     },
     "longterm": {
       "enabled": true,
       "storage_dir": "MUST_MATCH_data_root_ABOVE/memory",
       "collection_name": "godfather_memory",
       "top_k_results": 5,
-      "min_similarity": 0.15
-    }
+      "min_similarity": 0.15,
+      "daily_summary_top_k": 10
+    },
+    "roll": {
+      "hour": 2,
+      "catchup_lookback_days": 21,
+      "stale_claim_minutes": 120
+    },
+    "archive_retention_days": 0
   },
   "constitution_config": {
     "file": "runtime_constitution.md"
