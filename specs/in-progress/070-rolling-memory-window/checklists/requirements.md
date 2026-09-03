@@ -14,8 +14,8 @@ user direction — no separate Bug-Driven Development track) · **Clarified**: 2
       because they are *existing* project infrastructure this feature must reuse (Technology
       Choices section, per METHODOLOGY §IX), not new design decisions. Genuinely open design
       points (exact roll-marker path/schema and race handling, backstop trim mechanism, whether
-      the in-memory `chat_to_session` cache survives, `top_k_results` for multi-week recall) are
-      explicitly deferred to `plan.md`.
+      the in-memory `chat_to_session` cache survives, `top_k_results` for multi-week recall) were
+      explicitly deferred to `plan.md` — **all now settled**, see the Notes section.
 - [x] Focused on user value: "the bot stops forgetting a conversation that paused for a day";
       "raw data is never lost"; "restart doesn't wipe context".
 - [x] Written so a non-technical stakeholder can follow the user stories and success criteria.
@@ -34,8 +34,10 @@ user direction — no separate Bug-Driven Development track) · **Clarified**: 2
       - **REQ-MEM-024b / REQ-MEM-024** — token-backstop value `N` = the acting role's existing
         `max_tokens_by_role` limit; no dedicated config key. Group turns use the role
         `GroupMembershipResolver` resolves.
-      - **REQ-MEM-047** — `N` settled (above). Whether daily-summary `recall()` needs a larger
-        `top_k_results` than 5 is a `plan.md` decision, not assumed in the spec.
+      - **REQ-MEM-047** — `N` settled (above). Daily-summary `recall()` `top_k` **settled by
+        `plan.md` 2026-09-02**: new key `memory.longterm.daily_summary_top_k` (default 10) on the
+        single per-turn conversational recall call; global `top_k_results` (5) untouched
+        (`contracts/ai-handler-recall.md`).
 - [x] Requirements are testable and unambiguous (each REQ-MEM-* maps to at least one Given-When-
       Then scenario and at least one Success Criterion).
 - [x] Success criteria are measurable (counts, percentages, p95 latency, token headroom).
@@ -104,14 +106,34 @@ user direction — no separate Bug-Driven Development track) · **Clarified**: 2
 - `/speckit.clarify` Session 2026-09-02 closed all 5 open questions (roll-marker storage = SQLite
   under `data/`; token backstop `N` = `max_tokens_by_role`; canonical store = one long-lived
   `Session` per chat; no feature flag / tests cover new behavior only; catch-up bounded by
-  running the backfill before deploying the new-model code). Recommended next step:
-  **`/speckit.plan`**.
-- `plan.md` must still settle: the exact SQLite roll-marker path/schema and race handling
-  (claim-first two-phase `claimed`→`committed` vs `UNIQUE` constraint as a backstop — REQ-MEM-026);
-  the backstop trim mechanism (per-turn context exclusion vs disk archive move — REQ-MEM-024b,
-  US3); whether the in-memory `chat_to_session` cache survives at all and therefore whether the
-  `remove_from_index` guard (REQ-MEM-016) applies; the archive-retention policy value
-  (REQ-MEM-034); `top_k_results` for multi-week recall (REQ-MEM-047); and the boot ordering of
-  `run_startup_cleanup` / catch-up sweep / message handling.
-- Not yet validated by a second reviewer / `/speckit.analyze` cross-artifact pass (no `plan.md`
-  or `tasks.md` yet).
+  running the backfill before deploying the new-model code).
+- `/speckit.plan` completed 2026-09-02 → `plan.md`, `research.md`, `data-model.md`, `contracts/`
+  (9 files), `quickstart.md`. A `/speckit.analyze` partial pass (spec ↔ plan ↔ design) ran the
+  same day: 0 CRITICAL, all findings folded back into the artifacts. **Recommended next step:
+  `/speckit.tasks`**, then re-run `/speckit.analyze` for the full task-coverage pass.
+- ~~`plan.md` must still settle:~~ **All settled by `/speckit.plan` 2026-09-02** (`plan.md`,
+  `research.md` D1–D13, `contracts/`):
+  - SQLite roll-marker path/schema/race handling → `{data_root}/memory_rolls/roll_markers.db`,
+    `PRIMARY KEY(chat, date)`, **claim-first two-phase** `claimed`→`committed` with
+    `sqlite3.IntegrityError` as the claim-loss signal, stale-claim re-take after
+    `memory.roll.stale_claim_minutes` (research D6/D7, `contracts/roll-marker-store.md`).
+  - Backstop trim mechanism → **read-only per-turn context cut** (drop oldest) **+ nightly
+    physical archive move** at the largest role N (100000); never `unlink` (research D10,
+    `contracts/session-manager-window.md`).
+  - In-memory `chat_to_session` cache → **kept as a non-authoritative read-through cache** over
+    the new `chat_index.db`; `remove_from_index` + the whole 4-step cleanup are **deleted**, so
+    the REQ-MEM-016 guard is moot (research D2/D3).
+  - Archive-retention policy → **retain forever by design**; `memory.archive_retention_days`
+    default `0` = never prune; no pruner built (research D4).
+  - `top_k` for multi-week recall → new `memory.longterm.daily_summary_top_k` (default 10) on the
+    single per-turn conversational recall call; global `top_k_results` (5) untouched (research D5,
+    `contracts/ai-handler-recall.md`).
+  - Boot ordering → `initialize_app` loses `run_startup_cleanup` / `SessionCleanupThread` /
+    `recover_orphaned_sessions`; `__main__` runs reminder + accounting sweeps, then the **NEW**
+    daily-roll catch-up sweep (bounded by `catchup_lookback_days`), then the daily-roll scheduler,
+    then `message_source.start()` (research D1/D9).
+  - "Bounded retry budget" (REQ-MEM-025/027) → the catch-up lookback window is the bound; no
+    per-item retry counter (`contracts/daily-summary-roll-service.md` §"Retry semantics").
+- `/speckit.analyze` **partial pass done 2026-09-02** (spec ↔ plan ↔ design scope — no `tasks.md`
+  yet): 0 CRITICAL, all findings resolved into the artifacts. A full task-coverage / ordering pass
+  is still pending and runs after `/speckit.tasks`.

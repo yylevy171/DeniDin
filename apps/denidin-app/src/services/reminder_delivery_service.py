@@ -125,9 +125,9 @@ def _deliver_one_occurrence(
             # message actually landed in - a delivery target may be a group
             # with no single governing role of its own.
             creator_user = user_manager.get_user(created_by_phone)
-            session_manager.add_message_with_token_limit(
+            session_manager.add_message_with_tokens(
                 chat_id=used_chat_id, role="assistant", content=message_text,
-                user_role=creator_user.role, token_limit=creator_user.token_limit,
+                user_role=creator_user.role,
                 recipient=used_chat_id,
             )
         except Exception as e:  # pylint: disable=broad-except

@@ -24,6 +24,16 @@ human approval before any test-gap analysis or fix work begins — this spec is 
 deliberately, rather than folding investigation and fix together the way bugfix-043 did (a
 process mistake corrected in real time, same session).
 
+*(2026-09-02: In progress via Feature 070 — moved from `specs/bugfixes/` to `specs/in-progress/`.
+Per explicit user direction 2026-09-01, this is NOT worked as a standalone Bug-Driven Development
+track. Feature 070 structurally eliminates the failure mode by design: one long-lived `Session`
+per chat resolved through a durable SQLite chat index (`_reconcile_chat_index` rebuilds it from
+disk on every restart), so there is no losable in-memory `chat_to_session` state and no
+orphan-recovery step to forget to populate; `remove_from_index` and the whole 4-step cleanup are
+deleted. Proven by Feature 070 US1 restart scenario + AC-2. See
+`specs/in-progress/070-rolling-memory-window/spec.md` §"Legacy Defects". Final closure status note
+is added at Feature 070 haleluya.)*
+
 ## Date Opened
 2026-08-25
 
