@@ -221,46 +221,55 @@ Per-turn cut only, no physical archival ever — rejected: `messages/` grows unb
 always-active chat (acceptable at this scale but the nightly move is cheap and keeps the live dir
 bounded to ~14 days + 100 K tokens).
 
-## D11 — `gpt-5.6-luna` usable context window · **UNVERIFIED — Phase 0 spike gates design lock**
+## D11 — `gpt-5.6-luna` usable context window · **SPIKE RUN 2026-09-03 (T005) — call succeeds; published-number confirmation still outstanding**
 
-**Assumption to verify.** The 14-day worst-case window (real prod measurement ≈ 62 K tokens *full
-life* Aug 5 – Sep 1; a 14-day slice ≈ 30 K and growing ≈ 2,200 tokens/day) plus the ~4.0 K-token
-constitution `instructions` plus the assembled MCP + local tool schemas plus reply headroom fits
-within `gpt-5.6-luna`'s real context window with ≥ 30 % headroom (SC-007, REQ-MEM-037).
+**Spike result** (`apps/denidin-app/scripts/model_sanity_check.sh --config config/config.dev.json`,
+full log under `logs/model_sanity_check/`):
 
-**Verify-before-design-lock plan.** Phase 0 throwaway script: one real Responses API call with a
-synthetic ~62–70 K-token window-shaped `input` + the real `instructions` + the real tool set;
-record `response.usage.input_tokens` and whether the call succeeds; confirm the model's published
-max context + per-token input/output pricing against the OpenAI account/docs. If the window does
-not fit with ≥ 30 % headroom → STOP, escalate (the design may need a smaller default
-`window_days` or a hard token ceiling below `max_tokens_by_role`).
+- One real `responses.create` to `gpt-5.6-luna` with a synthetic **66,136-token** 14-day-window-shaped
+  `input` + the real `runtime_constitution.md` as `instructions` + the 6 local function tools
+  (`capture_ledger_event`, `query_ledger_events`, 4× reminder) → **`input_tokens = 99,449`,
+  `output_tokens` fine, call SUCCEEDS.** So the usable window is **≥ ~100 K tokens**.
+- ⚠️ **The constitution is now 26,618 tokens / 111 KB** (`tiktoken o200k_base`), not the ~4.0 K in
+  CLAUDE.md's stale 2026-07-23 note — it has grown ~6.6× with 13 months of features. It still
+  caches (see D12) but it is a real ~26 K uncached cost on the first turn of every fresh
+  conversation / cache miss.
+- **Still open:** the OpenAI API exposes neither the model's published max context window nor its
+  pricing. The **SC-007 ≥ 30 % headroom** check therefore can't be fully closed here: at a 99.5 K
+  worst-case input, a 400 K published window = ~75 % headroom (fine); a 128 K window = ~22 %
+  (**below 30 % → escalate**: lower the default `window_days` or add a hard token ceiling below
+  `max_tokens_by_role`). **Action: a human confirms the published `gpt-5.6-luna` context window +
+  $/1M input/output against the OpenAI account/docs and records it here**; Phase 8's SC-007
+  measurement re-checks against the real (not synthetic) worst-case window.
 
-**Rationale for proceeding to plan now.** The measured prod numbers make a comfortable fit highly
-likely; the risk is bounded and the mitigation (lower `window_days` default, which is already a
-config key per REQ-MEM-008) is cheap. But CONSTITUTION forbids *locking* the design on it.
+**Design status.** Keep `window_days=14` default (already a config key, REQ-MEM-008) — the call
+works and the mitigation is cheap. Do NOT lock the ≥30 %-headroom claim until the published number
+is in.
 
-## D12 — OpenAI automatic prompt-caching on the new prompt shape · **UNVERIFIED — Phase 0 spike**
+## D12 — OpenAI automatic prompt-caching on the new prompt shape · **CONFIRMED (T005, 2026-09-03)**
 
-**Assumption to verify.** OpenAI's automatic prompt caching engages on the new prompt shape: the
-byte-stable constitution prefix is cached, and repeat turns show `input_tokens_details.cached_tokens
-> 0`. Today the RECALLED MEMORIES block sits *between* the constitution and the `---` and changes
-every turn, breaking the cache prefix at the first memory line — plan-mode decision C puts
-relocating it **in scope**.
+**Spike result.**
 
-**Verify-before-design-lock plan.** Phase 0 A/B: measure `cached_tokens` with the RECALLED MEMORIES
-block (i) where it is today vs (ii) moved into the first `input` item; and whether the 14-day
-window as leading append-only `input` items caches cleanly turn-to-turn. For any placement that
-improves caching, run a scripted multi-turn functional-regression check whose correct answer
-depends on an early message / an out-of-window recalled fact — **no placement ships without that
-check passing**. Record the chosen shape + evidence here.
+- **Caching engages, ~100 %.** Two identical back-to-back calls: first `cached_tokens = 0`, second
+  `cached_tokens = 99,446` of `99,449` input tokens (99.997 %). The byte-stable
+  constitution+memories+date prefix is fully cached; only the changing tail (the needle question)
+  is uncached on turn 2.
+- **A/B on RECALLED MEMORIES placement:** block trailing the constitution inside `instructions`
+  (**current shape**) → full caching. Block moved to the first `input` item (with the constitution
+  alone as `instructions`) → `cached_tokens = 0` and it splits the window with no demonstrated
+  benefit.
+- **Functional needle check:** a fact planted as the very first turn of the 66 K synthetic window
+  (`מספר הפרויקט הסודי הוא 74-ALPHA-9152`) is recalled **correctly** when asked at the end of the
+  window.
 
-**Rationale for proceeding.** The change is isolated to `_build_instructions` / `create_request`
-`input` assembly in `ai_handler.py`; if the spike shows no caching benefit, the fallback is "leave
-the block where it is" — zero code change. Either way the functional check is the hard gate.
+**Decision — DO NOT relocate the RECALLED MEMORIES block.** Keep it trailing the constitution in
+`instructions` (current production shape). Caching is already ~100 % there and recall of an
+early/out-of-window fact works. Plan-mode decision C's "relocation in scope" is **closed as: no
+change**. Zero code change to `_build_instructions` / `create_request`.
 
-## D13 — Nightly summarizer prompt reuse · low risk, confirm shape only
+## D13 — Nightly summarizer prompt reuse · **CONFIRMED (T005, 2026-09-03)** — call shape works at scale
 
-**Decision (pending Phase 0 confirmation of D11/D12).** `summarize_conversation(client, model,
+**Decision (D11/D12 spike confirms the call shape).** `summarize_conversation(client, model,
 messages) -> str` lifts the existing `AIHandler.transfer_session_to_long_term_memory` call shape
 verbatim: `client.responses.create(model=config.ai_model, instructions=<plain summarizer str>,
 input=f"Summarize this conversation...\n\n{conv_text}", max_output_tokens=1000)`, with the same

@@ -380,6 +380,10 @@ A curated, cross-app, high-signal subset of the two tiers above — every `sanit
 - `apps/morning-mcp-app/scripts/run_single_test.sh` and `run_multiple_billed_tests.sh` are **symlinks** to `apps/denidin-app/scripts/`'s — one implementation, resolved to each app's own venv via `BASH_SOURCE`.
 - The subset is defined in two places on purpose (the `@pytest.mark.sanity` decorators, authoritative for `-m sanity`; and the node-id arrays in `run_sanity.sh`, authoritative for run order/sound-off). **`./scripts/verify_sanity_lists.sh` asserts the two never drift** — run it after adding/removing any `@pytest.mark.sanity` or editing the arrays. Nothing runs it automatically.
 
+#### Model sanity check (`apps/denidin-app/scripts/model_sanity_check.sh`, Feature 070 T005)
+
+**Run this whenever `config.ai_model` changes** (or to evaluate a candidate model) before trusting it in dev/prod. It makes ~6 real **billed** text-only `responses.create` calls (each output capped at 200 tokens) and validates what DeniDin's prompt design leans on for that model: (a) a large ~14-day-window-shaped call *succeeds* + reports `usage`; (b) OpenAI prompt caching engages on an identical repeated prefix (`cached_tokens > 0`); (c) prints the model id + a reminder to verify its published **context window / pricing** against the OpenAI account/docs (the API exposes neither); (d) A/B on the `RECALLED MEMORIES` block placement + an out-of-window "needle" recall check. `scripts/model_sanity_check.sh --config config/config.dev.json [--model <candidate>] [--with-mcp] [--json]`; full untruncated output is teed to `logs/model_sanity_check/<model>_<timestamp>.txt`. Billed → needs its own fresh explicit go-ahead each run, same as any billed test. Not CI; not a pytest test.
+
 ### Lint & Type-check
 ```bash
 cd apps/denidin-app
