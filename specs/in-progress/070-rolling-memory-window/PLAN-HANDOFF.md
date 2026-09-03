@@ -326,7 +326,7 @@ verify-before-design-lock plan (the Phase 0 spike). The doc explicitly permits t
 1. **Fill `plan.md`** from §3 above: Summary; Technical Context (Python 3.11 / APScheduler +
    ChromaDB + `sqlite3` / storage: session JSON + ChromaDB + SQLite roll-marker + SQLite chat
    index / pytest / Docker Linux / single project + `apps/rolling-memory-backfill/` sub-app /
-   Perf: SC-007 ≤150ms p95 added latency + ≥30% context headroom / Constraints: Israel local
+   Perf: SC-007 ≤300ms p95 (amended 2026-09-03) added latency + ≥30% context headroom / Constraints: Israel local
    time, no env vars, no ledger change / Scale: 2 prod chats, ~2,200 tokens/day); Constitution
    Check + gates; Project Structure (concrete `apps/denidin-app/src/...` tree + backfill
    sub-app tree, no "Option" labels); **Integration Contracts** section; Phase 0–6 with

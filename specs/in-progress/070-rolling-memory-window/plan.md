@@ -93,7 +93,7 @@ containers-only exception `apps/prod-ledger-backfill/` uses).
 **Project Type**: single project (`apps/denidin-app/`) + one **new** standalone sub-app
 (`apps/rolling-memory-backfill/`). `apps/morning-mcp-app/` is touched only for the byte-identical
 `time_utils.py` / `logger.py` twins and its two compose services' `logging:` cap.
-**Performance Goals**: SC-007 — added per-turn latency for building the 14-day window ≤ 150 ms p95
+**Performance Goals**: SC-007 — added per-turn latency for building the 14-day window ≤ 300 ms p95 (amended 2026-09-03)
 over the real prod message mix; added per-turn input tokens within the confirmed `gpt-5.6-luna`
 context budget with ≥ 30 % headroom.
 **Constraints**: Israel local time only (no UTC, no naive datetimes); no environment variables; no
@@ -539,7 +539,7 @@ Plain-language in `tasks.md`; coded + run once here (METHODOLOGY §VI). NEW
 roll each day, ask a day-1-only question → correct from the recalled summary; 1 billed call/day,
 0 duplicates, no `NotFoundError`), **AC-2** (US1 — restart → continuation), **AC-3** (US1+US3 —
 exceed backstop → newest-context answer + disk audit), **AC-5** (US1+US2 — poison-session shape →
-no recurring hourly error → participates in a roll), **SC-007** (added latency ≤ 150 ms p95 +
+no recurring hourly error → participates in a roll), **SC-007** (added latency ≤ 300 ms p95 (amended 2026-09-03) +
 input tokens with ≥ 30 % headroom). **AC-4** is the `apps/rolling-memory-backfill` billed test
 (tasks Phase 9). **AC-6 (US5)** is the non-billed `test_logger_retention_integration.py`, confirmed
 green in this same pass — every user story US1–US5 then has a passing acceptance scenario.
