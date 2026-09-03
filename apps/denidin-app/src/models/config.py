@@ -143,7 +143,7 @@ class AppConfiguration:
         # Set memory sub-field defaults if memory key exists
         if 'memory' in config_data and config_data['memory']:
             data_root = config_data.get('data_root', 'data')
-            memory_defaults = {
+            memory_defaults: Dict[str, Dict[str, Any]] = {
                 'session': {
                     'storage_dir': 'sessions',  # Relative to data_root
                     'max_tokens_by_role': {'client': 4000, 'godfather': 100000},
