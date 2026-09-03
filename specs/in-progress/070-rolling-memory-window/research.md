@@ -221,7 +221,7 @@ Per-turn cut only, no physical archival ever — rejected: `messages/` grows unb
 always-active chat (acceptable at this scale but the nightly move is cheap and keeps the live dir
 bounded to ~14 days + 100 K tokens).
 
-## D11 — `gpt-5.6-luna` usable context window · **SPIKE RUN 2026-09-03 (T005) — call succeeds; published-number confirmation still outstanding**
+## D11 — `gpt-5.6-luna` usable context window · **CONFIRMED (T005 spike 2026-09-03 + published numbers)**
 
 **Spike result** (`apps/denidin-app/scripts/model_sanity_check.sh --config config/config.dev.json`,
 full log under `logs/model_sanity_check/`):
@@ -229,18 +229,33 @@ full log under `logs/model_sanity_check/`):
 - One real `responses.create` to `gpt-5.6-luna` with a synthetic **66,136-token** 14-day-window-shaped
   `input` + the real `runtime_constitution.md` as `instructions` + the 6 local function tools
   (`capture_ledger_event`, `query_ledger_events`, 4× reminder) → **`input_tokens = 99,449`,
-  `output_tokens` fine, call SUCCEEDS.** So the usable window is **≥ ~100 K tokens**.
-- ⚠️ **The constitution is now 26,618 tokens / 111 KB** (`tiktoken o200k_base`), not the ~4.0 K in
-  CLAUDE.md's stale 2026-07-23 note — it has grown ~6.6× with 13 months of features. It still
-  caches (see D12) but it is a real ~26 K uncached cost on the first turn of every fresh
-  conversation / cache miss.
-- **Still open:** the OpenAI API exposes neither the model's published max context window nor its
-  pricing. The **SC-007 ≥ 30 % headroom** check therefore can't be fully closed here: at a 99.5 K
-  worst-case input, a 400 K published window = ~75 % headroom (fine); a 128 K window = ~22 %
-  (**below 30 % → escalate**: lower the default `window_days` or add a hard token ceiling below
-  `max_tokens_by_role`). **Action: a human confirms the published `gpt-5.6-luna` context window +
-  $/1M input/output against the OpenAI account/docs and records it here**; Phase 8's SC-007
-  measurement re-checks against the real (not synthetic) worst-case window.
+  `output_tokens` fine, call SUCCEEDS.**
+
+**Published `gpt-5.6-luna` numbers (OpenAI docs, retrieved 2026-09-03):**
+
+| | value |
+|---|---|
+| Context window | **1,050,000 tokens** |
+| Max output | 128,000 tokens |
+| Input | $0.20 / 1M |
+| Cached input | $0.02 / 1M |
+| Output | $1.20 / 1M |
+| Long-context surcharge | >272K **input** tokens → 2× input, 1.5× output for the whole request |
+
+**SC-007 ≥ 30 % headroom — PASS with enormous margin.** Worst-case total prompt today ≈
+`constitution 26,618 + window backstop ≤ 100,000 + tool schemas + output headroom` ≈ **~130 K
+tokens** against a **1,050,000-token** window ⇒ ~**88 % headroom**. The design is nowhere near the
+ceiling, and stays well below the 272 K long-context surcharge threshold, so the ordinary
+$0.20/$0.02/$1.20 rates apply. Even the 100 K `max_tokens_by_role` backstop for godfather/admin is
+comfortable — no reason to raise it (raising it only eats headroom and buys nothing for realistic
+14-day windows, which measure ≈ 30 K today / ≈ 62 K absolute worst case).
+
+- ⚠️ **The constitution is 26,618 tokens / 111 KB** (`tiktoken o200k_base`), not the ~4.0 K in
+  CLAUDE.md's stale 2026-07-23 note — grown ~6.6× with 13 months of features. It caches at ~100 %
+  after the first turn (D12), but it is a real ~26 K uncached cost on every fresh conversation /
+  cache miss, adds latency, and dilutes instruction-following. **Optimising it is tracked as
+  backlog Feature 073 (`specs/backlog/073-optimize-runtime-constitution/`)** — not a Feature 070
+  blocker (headroom is fine), a standalone quality/cost/latency improvement.
 
 **Design status.** Keep `window_days=14` default (already a config key, REQ-MEM-008) — the call
 works and the mitigation is cheap. Do NOT lock the ≥30 %-headroom claim until the published number
