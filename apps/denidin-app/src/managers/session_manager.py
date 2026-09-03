@@ -771,46 +771,6 @@ class SessionManager:
                 except Exception as e:
                     logger.error(f"Failed to load session {session_dir.name}: {e}")
 
-    def archive_session(self, session: Session) -> bool:
-        """
-        Move session directory to dated expired folder.
-
-        Args:
-            session: Session to archive
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            session_dir = self.storage_dir / session.session_id
-            if not session_dir.exists():
-                logger.warning(f"Session directory not found: {session.session_id}")
-                return False
-
-            # Create dated subfolder
-            last_active = datetime.fromisoformat(session.last_active)
-            archive_date = last_active.strftime("%Y-%m-%d")
-            expired_base = self.storage_dir / "expired"
-            archive_dir = expired_base / archive_date
-            archive_dir.mkdir(parents=True, exist_ok=True)
-
-            # Move entire session directory
-            dest = archive_dir / session.session_id
-            session_dir.rename(dest)
-
-            # Update storage path and save to archived location (keep in index for AI transfer)
-            session.storage_path = f"expired/{archive_date}/{session.session_id}"
-            self._save_session(session)
-
-            logger.info(
-                f"Archived session {session.session_id} to expired/{archive_date}/ "
-                f"(transferred={session.transferred_to_longterm}, kept in index)"
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Failed to archive session {session.session_id}: {e}")
-            return False
-
     def count_tokens(self, text: str, model: str = "gpt-4o-mini") -> int:
         """
         Count tokens in text using tiktoken.

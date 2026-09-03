@@ -1402,14 +1402,13 @@ class AIHandler:
     Implements retry logic with exponential backoff for transient failures.
     """
 
-    def __init__(self, ai_client: OpenAI, config: AppConfiguration, cleanup_interval_seconds: Optional[int] = None):
+    def __init__(self, ai_client: OpenAI, config: AppConfiguration):
         """
         Initialize AI handler with OpenAI client and configuration.
 
         Args:
             ai_client: Configured AI client instance (OpenAI)
             config: Application configuration with AI settings
-            cleanup_interval_seconds: Optional override for session cleanup interval (for testing)
         """
         self.client = ai_client
         self.config = config
@@ -1456,9 +1455,7 @@ class AIHandler:
         # Feature 070: rolling verbatim window length (Israel-local calendar days)
         self.window_days = session_config.get('window_days', 14)
 
-        # Note: cleanup_interval_seconds moved to app-level background thread
-        # SessionManager no longer runs its own cleanup thread
-
+        # Feature 070: sessions never expire; there is no cleanup thread.
         self.session_manager = SessionManager(
             storage_dir=session_config.get('storage_dir', 'data/sessions'),
         )

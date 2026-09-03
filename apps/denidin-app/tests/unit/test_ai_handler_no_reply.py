@@ -23,8 +23,7 @@ def memory_enabled_config():
         memory={
             "session": {
                 "storage_dir": "test_data/sessions",
-                "max_tokens_by_role": {"client": 4000, "godfather": 100000},
-                "session_timeout_hours": 24
+                "max_tokens_by_role": {"client": 4000, "godfather": 100000}
             },
             "longterm": {
                 "storage_dir": "test_data/memory",
@@ -64,7 +63,7 @@ class TestNoReplySentinelDetection:
         client = MagicMock()
         client.responses.create.return_value = _mock_response(NO_REPLY_SENTINEL)
         handler = AIHandler(client, memory_enabled_config)
-        handler.session_manager.add_message_with_token_limit = Mock()
+        handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
         response = handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
@@ -76,14 +75,14 @@ class TestNoReplySentinelDetection:
         client = MagicMock()
         client.responses.create.return_value = _mock_response(NO_REPLY_SENTINEL)
         handler = AIHandler(client, memory_enabled_config)
-        handler.session_manager.add_message_with_token_limit = Mock()
+        handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
         handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
 
         # Only the user message is persisted - one call, not two.
-        assert handler.session_manager.add_message_with_token_limit.call_count == 1
-        call = handler.session_manager.add_message_with_token_limit.call_args_list[0]
+        assert handler.session_manager.add_message_with_tokens.call_count == 1
+        call = handler.session_manager.add_message_with_tokens.call_args_list[0]
         assert call[1]["role"] == "user"
 
     def test_sentinel_with_extra_whitespace_still_detected(self, memory_enabled_config):
@@ -91,7 +90,7 @@ class TestNoReplySentinelDetection:
         client = MagicMock()
         client.responses.create.return_value = _mock_response(f"  {NO_REPLY_SENTINEL}  ")
         handler = AIHandler(client, memory_enabled_config)
-        handler.session_manager.add_message_with_token_limit = Mock()
+        handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
         response = handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
@@ -104,22 +103,22 @@ class TestNoReplySentinelDetection:
         client = MagicMock()
         client.responses.create.return_value = _mock_response(f"{NO_REPLY_SENTINEL} extra text")
         handler = AIHandler(client, memory_enabled_config)
-        handler.session_manager.add_message_with_token_limit = Mock()
+        handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
         response = handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is True
-        assert handler.session_manager.add_message_with_token_limit.call_count == 2
+        assert handler.session_manager.add_message_with_tokens.call_count == 2
 
     def test_normal_response_sets_should_reply_true(self, memory_enabled_config):
         client = MagicMock()
         client.responses.create.return_value = _mock_response("Hello! How can I help?")
         handler = AIHandler(client, memory_enabled_config)
-        handler.session_manager.add_message_with_token_limit = Mock()
+        handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
         response = handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is True
-        assert handler.session_manager.add_message_with_token_limit.call_count == 2
+        assert handler.session_manager.add_message_with_tokens.call_count == 2
