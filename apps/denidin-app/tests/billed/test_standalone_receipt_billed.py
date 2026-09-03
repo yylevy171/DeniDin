@@ -20,7 +20,9 @@ CLAUDE.md/CONSTITUTION §VII).
 """
 from __future__ import annotations
 
+import json
 import logging
+import re
 
 import pytest
 
@@ -77,14 +79,35 @@ def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
         f"request: {approve_ai_response.mcp_calls if approve_ai_response else None!r}. "
         f"Final reply: {approve_response!r}"
     )
-    assert "original_internal_morning_id" not in (receipt_calls[0]["arguments"] or ""), (
-        f"Expected the STANDALONE branch (no original_internal_morning_id) to fire, "
+    # The standalone branch fires on original_internal_morning_id being None -
+    # the model may express that either by omitting the key or by passing it
+    # explicitly as null; both deserialize to None and hit the same server
+    # branch. Assert on the VALUE, not the key's textual presence in the JSON
+    # (a real UUID here would mean the model wrongly linked an invoice).
+    receipt_args = json.loads(receipt_calls[0]["arguments"] or "{}")
+    assert receipt_args.get("original_internal_morning_id") is None, (
+        f"Expected the STANDALONE branch (original_internal_morning_id None/absent) to fire, "
         f"got arguments: {receipt_calls[0]['arguments']!r}"
     )
 
-    # Verified via Morning: a real follow-up get_invoice_details/list_invoices
-    # call independently confirms a receipt exists for this client, and that
-    # no invoice/tax document was ever created alongside it.
+    # "no tax document created/attached" is proven by the create_receipt result
+    # itself: the standalone branch announces a receipt only ("קבלה"), whereas
+    # every linked/combo variant announces "חשבונית מס/קבלה". Scanning the
+    # client's whole document history for "חשבונית מס" instead is unreliable -
+    # an existing client (pick_existing_client is random) routinely already
+    # owns unrelated tax invoices from prior sandbox runs.
+    receipt_output = receipt_calls[0]["output"] or ""
+    assert "קבלה" in receipt_output and "חשבונית מס" not in receipt_output, (
+        f"Standalone create_receipt should announce a receipt only, no tax document, "
+        f"got: {receipt_output!r}"
+    )
+
+    # And a real follow-up turn independently confirms THIS receipt persisted
+    # for the client (by the number Morning assigned it).
+    receipt_number_match = re.search(r"מספר (\d+)", receipt_output)
+    assert receipt_number_match, f"Could not read the receipt number from: {receipt_output!r}"
+    receipt_number = receipt_number_match.group(1)
+
     details_response, details_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
         text=f"מה כל המסמכים שיש לי אצל {client_name}?",
@@ -95,10 +118,7 @@ def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
     )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
 
-    assert "קבלה" in combined_output, (
-        f"Expected a receipt ('קבלה') to show up for {client_name!r}, "
-        f"got tool output: {combined_output!r}"
-    )
-    assert "חשבונית מס" not in combined_output, (
-        f"A standalone receipt must never come with a tax invoice attached: {combined_output!r}"
+    assert f"#{receipt_number}" in combined_output, (
+        f"Standalone receipt #{receipt_number} did not show up in {client_name!r}'s "
+        f"document list: {combined_output!r}"
     )

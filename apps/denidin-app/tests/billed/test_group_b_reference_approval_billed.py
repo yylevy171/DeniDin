@@ -36,6 +36,7 @@ Amounts stay under 100, per this suite's sandbox convention.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -335,11 +336,25 @@ class TestGroupBReferenceApprovalBilled:
             f"{final_ai_response.mcp_calls if final_ai_response else None!r}"
         )
         for call in id_shaped_calls:
-            args = call.get("arguments") or ""
-            assert doc_number not in args, (
-                f"call used the DISPLAY number ({doc_number}) where an internal_morning_id "
-                f"was required - this is the exact bug: {call!r}"
-            )
+            try:
+                args = json.loads(call.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            # The bug is the DISPLAY number landing in an id-shaped field. Assert
+            # on those fields specifically - a whole-blob substring scan also
+            # trips on a legitimate mention of the display number in the
+            # free-text `description` ("...חשבון עסקה מספר 40445...", which is
+            # correct and natural), which is NOT the bug (2026-09-03, Feature 059
+            # triage: original_internal_morning_id was the correct GUID and the
+            # call succeeded). Stricter, too: the id field must be exactly the
+            # real resolved id, not merely "not the display number".
+            for id_field in ("internal_morning_id", "original_internal_morning_id"):
+                if args.get(id_field) is not None:
+                    assert args[id_field] == real_id, (
+                        f"{id_field} was {args[id_field]!r}, not the real resolved id "
+                        f"{real_id!r} (the display number is {doc_number}) - this is the "
+                        f"exact bug: {call!r}"
+                    )
             assert call["error"] is None, (
                 f"tool call failed - likely used a wrong/malformed id: {call!r}"
             )

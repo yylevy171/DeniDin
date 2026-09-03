@@ -232,6 +232,20 @@ def test_godfather_shares_contact_card_missing_email_is_asked_for(denidin_app):
     GROUND_TRUTH_CLIENTS.md), so `_seed_client` classifies EXACT and raises
     `ClientAlreadyExistsError` - deterministic proof no duplicate resulted. The ledger-event
     false-positive guard holds after every step.
+
+    KNOWN FAILURE - BLOCKED ON FEATURE 069 (do not "fix" here). Observed live
+    (2026-09-02 billed sweep, and again during Feature 059 triage 2026-09-03):
+    on the bare contact card the model resolves "גיל ברטל" -> EXACT and replies
+    "לקוח כבר קיים ... לא אוסיף לקוח כפול" instead of first asking for the
+    missing email (REQ-CLIENT-012 ordering). `capture_ledger_event` fires in the
+    same turn's tool activity - the misfire that reroutes the model past the
+    ordered resolve/ask flow. Feature 069
+    (`specs/backlog/069-mandatory-client-resolution-before-ledger-event`) is the
+    gate that makes client resolution run first and deterministically around any
+    ledger-relevant recognition; this test is expected to go green with it. Left
+    red on purpose until then - see
+    `specs/backlog/059-stabilize-tests-sanity-suite/sanity-failures.md` (N5) and
+    that spec's own `spec.md`.
     """
     vcard = _load_vcard("00005372-גיל ברטל .vcf")
     assert "EMAIL" not in vcard  # sanity: this fixture genuinely has no email
