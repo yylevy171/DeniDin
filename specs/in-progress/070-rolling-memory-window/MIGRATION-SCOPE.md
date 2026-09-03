@@ -6,7 +6,7 @@ data (`apps/denidin-app/dev_data`).
 
 **Bottom line**: the migration tooling shipped in Phases 1–9 assumes **≈1 session per chat**
 (research.md line 59: *"Migrates the 2 prod sessions transparently on first construction"*).
-Prod actually has **93 session directories** and **20,871 ChromaDB records**. Deploying 0.5.4
+Prod actually has **93 session directories** and **20,949 ChromaDB records** (only 84 distinct sessions — see §1.1). Deploying 0.5.4
 against prod as-is would **silently wipe the bot's working memory of everything except one day
 (2026-08-09) per chat** — no crash, no error, just amnesia. Dev only "passed" Phase 9 because the
 operator hand-consolidated dev to 2 sessions first and the discarded dev history was test junk.
@@ -24,20 +24,30 @@ operator hand-consolidated dev to 2 sessions first and the discarded dev history
 | `120363210094632983@g.us` sessions | **86 dirs, 926 messages**, 2026-08-05 … 2026-09-02. `max(message_counter)` = **118** (2026-08-09). 8 dirs have 0 messages. |
 | `972522968679@c.us` sessions | **7 dirs, 127 messages**, 2026-08-03 … 2026-09-02. `max(message_counter)` = **64** (2026-08-04). Includes the stale "active" `0f5eaa04`. |
 | Message-file integrity | Clean — every `session.json` `message_counter` equals its on-disk `messages/*.json` count; 0 `archived/`; nothing unparseable; no unexpected keys **except** `pending_ledger_events: []` on `0f5eaa04` (retired Feature-024 field — tolerant load handles it, but confirms prod carries the poison shape). |
-| `memory/` (ChromaDB) | `chroma.sqlite3` **249 MB**, actively being written. 2 collections: `memory_120363210094632983_at_g.us`, `memory_972522968679`. **20,868 `type=session_summary` + 3 `session_summary_fallback` records**, all `text-embedding-3-large`. **0 `daily_summary`.** |
+| `memory/` (ChromaDB) | `chroma.sqlite3` **249 MB**, actively being written. 2 collections: `memory_120363210094632983_at_g.us`, `memory_972522968679`. **20,946 `type=session_summary` + 3 `session_summary_fallback` records**, all `text-embedding-3-large`. **0 `daily_summary`.** |
 | `events/` | 780 ledger-event JSON files. Each carries `session_id` + `message_id` — **traceability only, never dereferenced** (verified: not in `_SEARCHABLE_FIELDS`/`_HINT_GROUPS`, no `get_session`/file lookup anywhere off them; `whatsapp_chat` was already dropped 2026-08-19 as redundant). |
 | `media/` | 38 files, named `DD-<chat_id>-<uuid>.jpg`. Chat-keyed, **no session/message reference**. Includes files for `972506205541@c.us` (Ayala's personal 1:1) — a chat with **no session dir at all**. |
 | `reminders/reminders.db` | Present. Not session-referencing. (Separately: bugfix-051 — `list_reminders` cross-chat disclosure — is open against this.) |
 | `accounting_reconciliation/pending_review.json` | Present. Feature 025 state, independent of sessions. |
 
-**The 20,868 `session_summary` records are themselves a live prod incident.** Spec §"Out of
+**The 20,949 `session_summary` records are themselves a live prod incident.** Spec §"Out of
 Scope" says *"The 27 existing duplicate records are a separate prod cleanup"* — the real number
-is **773× higher**. Root cause is almost certainly bugfix-035 H1 still active on 0.5.3: the
-group-collection post-write `client.get_collection()` verify throws `NotFoundError`, the session
-never gets marked `transferred_to_longterm`, and the hourly `SessionCleanupThread` re-summarises
-every un-marked session **every hour, forever** — burning OpenAI embedding spend and bloating
-ChromaDB the whole time. Feature 070 deletes the cleanup thread (loop stops), but the 20,871
-records **stay in the collections recall reads from**.
+is **~775× higher**. Direct inspection of the prod DB (2026-09-04):
+
+- 20,946 `session_summary` + 3 `session_summary_fallback`, across the 2 per-chat collections.
+- **Only 84 distinct `session_id` values**, and exactly **84 distinct `(session_id,
+  message_count)` pairs** — i.e. every session's content is frozen, yet each was re-summarized
+  **~250× on average** (busiest: session `17df631a` — 621 copies between 2026-08-08 and now).
+- `created_at` spans 2026-08-05 → now; `session_start` min 2026-08-03. **Nothing predates
+  go-live.** Every one of the 84 sessions still has its raw `messages/` on disk (93 dirs total:
+  1 active + 92 under `expired/`, dated Aug 4 → Sep 2).
+
+Root cause: bugfix-035 H1 still active on 0.5.3 — the group-collection post-write
+`client.get_collection()` verify throws `NotFoundError`, the session never gets marked
+`transferred_to_longterm`, and the hourly `SessionCleanupThread` re-summarises every un-marked
+session **every hour, forever** (~23 re-summaries/session/day matches the 621 count). Feature 070
+deletes the cleanup thread (loop stops), but the 20,949 records **stay in the collections recall
+reads from** until purged — hence decision #3 (purge + full backfill).
 
 ### 1.2 Dev (`apps/denidin-app/dev_data`) — current state after the Phase 9 operator cleanup
 
@@ -113,7 +123,7 @@ Containers come back automatically; watchdog (PID 1) verifies `config.environmen
 |---|---|---|---|
 | `chat_index.db.session_id` | `sessions/chat_index.db` | **Yes** — every `get_session` | N/A — it is *created* by the migration; must point at the consolidated session |
 | `roll_markers.db (chat,date)` | `memory_rolls/` | Yes — `is_rolled` | No — keyed by (chat, date), not session; survives consolidation |
-| ChromaDB `session_summary.metadata.session_id` | `memory/` (20,868 records) | **No** — recall filters by `type`/`chat`/`scope`, never `session_id` | No — but these records **pollute recall** and should be dealt with (§5.3) |
+| ChromaDB `session_summary.metadata.session_id` | `memory/` (20,949 records, 84 sessions) | **No** — recall filters by `type`/`chat`/`scope`, never `session_id` | No — but these records **pollute recall** and should be dealt with (§5.3) |
 | ChromaDB `daily_summary.metadata` | `memory/` | No (recall filters `type`/`chat`/`date`) | No |
 | `LedgerEvent.session_id` / `.message_id` | `events/*.json` (780 prod) | **No** — traceability only | Cosmetically stale (points at a pre-consolidation UUID); **no amendment required**. Optional: rewrite pointers for tidiness. |
 | media `DD-<chat>-<uuid>.jpg` | `media/` | Chat-keyed only | No |
@@ -155,7 +165,7 @@ On `0f5eaa04` (prod) and one dev fixture. Tolerant load (`_session_from_dict`, b
 drops it with a WARNING and does not crash — **but** the consolidator should strip it while
 rewriting, so the canonical session is clean and no WARNING fires on every startup.
 
-### 5.3 ChromaDB `session_summary` bloat (20,871 records)
+### 5.3 ChromaDB `session_summary` bloat (20,949 records / 84 sessions) — RESOLVED: purge + full backfill (decision #3)
 Not load-bearing (recall filters by `type`/`chat`, never `session_id`) and not a crash risk, but:
 - recall's `top_k=10` over a collection of ~10k near-duplicate summaries can crowd out the new
   `daily_summary` records for a given query;
@@ -172,17 +182,18 @@ predictable.
 
 ## 6. Failure-mode analysis
 
-### 6.1 `get_rolling_window` cost grows without bound
-`_iter_persisted_messages` reads **`message_ids` + `archived_message_ids`** every call, then
-date-filters. Archiving moves files but **not** ids out of `archived_message_ids`, and
-`archive_retention_days=0` means `archived/` is **never pruned**. So on a consolidated prod group
-session, every turn reads ~950 files today, ~1,800 in two months, forever. Amended SC-007 budget
-is 300 ms p95 at 1,500 msgs; prod crosses that inside ~3 months.
-**Mitigation options**: (a) accept and revisit (a pruner / an `order_num`+date sidecar index is
-a follow-up feature), (b) have `get_rolling_window` skip `archived_message_ids` entirely
-(archived ⟹ out of window by construction — but a same-day backstop-archived message would then
-be missing from the live window; needs care), (c) build the sidecar index now. **Not a
-blocker**, but must be a named, accepted risk before deploy.
+### 6.1 `get_rolling_window` cost grows without bound — RESOLVED (task T064)
+`_iter_persisted_messages` read **`message_ids` + `archived_message_ids`** every call, then
+date-filtered. Since archiving keeps ids in `archived_message_ids` and `archive_retention_days=0`
+means `archived/` is never pruned, per-turn cost was O(every message the chat ever had) —
+~950 files today, ~1 s/turn in a year.
+**Decision (2026-09-04):** `get_rolling_window` now reads **only** the live `messages/` dir,
+never `archived/`. A message is archived only if (a) >14 days old (out of window by definition) or
+(b) backstop overflow >100k tokens — and the production caller always passes `max_tokens` ≤ 100k,
+so case (b) would be cut by the window's own token pass anyway. The >100k-tokens-in-14-days chat
+that this theoretically shortens has never occurred; accepted consequence if it ever does.
+Per-turn cost is now O(last 14 days), flat. SC-007 budget reverts 300 → 150 ms.
+`get_messages_for_local_date` (roll / backfill, not per-turn) still reads both.
 
 ### 6.2 Consolidator fails partway
 Because it only *reads* the raw dirs and *writes* a brand-new canonical dir, a crash leaves the
@@ -271,7 +282,7 @@ read-write remount from the Mac. Each numbered step is its own human go-ahead.
 5. **Run the consolidator** for real against `data/sessions/`: writes 2 canonical active dirs,
    moves the 93 raw dirs to `sessions/_pre070_raw_<date>/`, strips `pending_ledger_events`,
    runs `assert_message_integrity` on each result. Exit non-zero aborts and leaves raw dirs put.
-6. **Run the backfill** (`apps/rolling-memory-backfill`, host `python3`) `--since 2026-08-03
+6. **Run the backfill** (`apps/rolling-memory-backfill`, host `python3`) `--since 2026-08-01
    --until <today−14>` against `data/`. Review the per-chat report (expect ~1 summary per
    non-empty pre-window day per chat).
 7. **(Decision §5.3)** Optionally purge `type IN (session_summary, session_summary_fallback)`
@@ -301,7 +312,7 @@ a lighter-weight validation and rely on a **staging copy of prod data** for the 
 - [ ] Total message count across both canonical sessions == total across the 93 raw dirs (minus deduped duplicate ids, minus empty dirs) — number stated and matched.
 - [ ] `order_num` is `1..N` contiguous per canonical session; messages sorted by real timestamp.
 - [ ] No `pending_ledger_events` key in either canonical `session.json`; `storage_path` is `null`.
-- [ ] `roll_markers.db`: one row per (chat, date) in `[2026-08-03 … today−14]`, **all `committed`**; `source='migration'`.
+- [ ] `roll_markers.db`: one row per (chat, date) in `[2026-08-01 … today−14]`, **all `committed`**; `source='migration'`.
 - [ ] ChromaDB: `daily_summary` count == number of non-empty pre-window (chat, date) pairs; every record recallable with correct metadata.
 - [ ] `_pre070_raw_<date>/` contains all 93 original dirs, byte-identical (checksum a sample).
 - [ ] `events/`, `media/`, `reminders/reminders.db` — byte-unchanged (mtimes + sample checksums).
@@ -311,20 +322,28 @@ a lighter-weight validation and rely on a **staging copy of prod data** for the 
 
 ---
 
-## 9. Decisions needed before Phase 10
+## 9. Decisions — RESOLVED 2026-09-04 (user)
 
-1. **Consolidator** — approve building it (new component: spec addendum + `data-model` for the
-   canonical-session rules + unit/integration tests + a dry-run against the prod snapshot). This
-   is the real remaining engineering work; it did not exist in the Phase 1–9 plan.
-2. **Rehearsal** — rehearse §7 end-to-end against the Mac-side prod snapshot before touching the
-   live box? (Strongly recommended.)
-3. **`session_summary` bloat (§5.3)** — leave / purge / purge+fuller-backfill. (Recommend purge
-   after backfill.)
-4. **`get_rolling_window` unbounded `archived/` read (§6.1)** — accept as a named risk with a
-   follow-up ticket, or address now (skip archived ids / build a sidecar index).
-5. **Backfill `--since`** — `2026-08-03` (earliest prod message) vs `2026-08-05` (prod go-live)
-   vs a shorter horizon. Earlier = more billed summary calls (still cheap: ≤ ~50).
-6. **Dev** — re-consolidate dev properly, or treat the prod-snapshot rehearsal as the real test.
-7. **bugfix-051** (`list_reminders` cross-chat disclosure) — independent, but if reminders are in
-   scope for a prod touch it could ride along. Currently its own branch, awaiting root-cause
-   approval.
+See `MIGRATION-CHECKLIST.md` "Decisions resolved" for the authoritative statement. Summary:
+
+1. **Consolidator** — ✅ approved. Build per `MIGRATION-CHECKLIST.md` Stage 0.
+2. **Rehearsal against the Mac-side prod snapshot** — ✅ mandatory (Stage 1).
+3. **`session_summary` bloat (§5.3)** — ✅ **purge + full backfill**. Verified: the 20,949 records
+   are only **84 distinct sessions** re-summarized ~250× each (busiest 621×) by the pre-070 hourly
+   cleanup thread, all `created_at` ≥ 2026-08-05, **all raw messages still on disk**. Nothing
+   irreplaceable → purge every `session_summary`/`_fallback` record after the backfill writes a
+   clean `daily_summary` per (chat, day). New tool: `purge_legacy_summaries.py` (Stage 0.6).
+4. **`get_rolling_window` `archived/` read (§6.1)** — ✅ **fix now, in Feature 070 (task T064)**.
+   The per-turn window read looks **only** at live `messages/`, never `archived/` — not even for
+   the >100k-token-in-14-days backstop edge case (never occurred; accepted consequence if it ever
+   does). SC-007 budget reverts 300 → 150 ms. `get_messages_for_local_date` (nightly roll /
+   backfill, not per-turn) is unchanged.
+5. **Backfill `--since`** — ✅ **`2026-08-01`** (predates go-live; earliest real message Aug 3).
+6. **Dev** — ✅ re-consolidate dev properly (Stage 2): fold `_pre070_sessions_archive_20260903/`
+   back in first, drop the Phase-9 `chat_index.db`/`memory_rolls/`, run the full pipeline.
+7. **Migration archives before the app starts** — ✅ new task **T065**: after the backfill, the
+   migration itself runs `archive_aged_and_backstopped_messages` per chat (new tool
+   `finalize_migration.py`, Stage 0.3b), so the app's first startup sweep has only ≤ 2 leftover
+   days to touch — no bulk archive on deploy.
+8. **bugfix-051** (`list_reminders` cross-chat disclosure) — stays on its own branch, not folded
+   into this migration.

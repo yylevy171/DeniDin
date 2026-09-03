@@ -16,6 +16,25 @@ STAGE 3  Prod migration                                         (live, night, do
 Each stage must be **fully green** before the next starts. Every `👤` line is its own explicit
 human go-ahead.
 
+## Decisions resolved (2026-09-04, user)
+
+1. **Build the consolidator** — approved.
+2. **Legacy `session_summary` records → purge + full backfill (Option 3).** Verified against the
+   real prod DB: 20,949 records = only **84 distinct sessions**, each re-summarized ~250× (busiest:
+   621×) by the pre-070 hourly cleanup thread, `created_at` 2026-08-05 → now. **All raw messages
+   are on disk, all from August onward — nothing irreplaceable.** So: purge all `session_summary`
+   /`session_summary_fallback` records, then backfill one clean `daily_summary` per (chat, day)
+   from the raw messages. Net: ~21k noisy vectors → ~40–50 clean summaries. Root cause of the 20k
+   is a real pre-existing bug that 070 removes outright (no expiry → no cleanup thread).
+3. **Backfill `--since 2026-08-01`** (dev + prod). Predates go-live; earliest real message is
+   Aug 3. The most recent 14 days are served from raw messages and get their `daily_summary` as
+   they roll out over the following fortnight — no gap.
+4. **`get_rolling_window` must never read `archived/`** — folded into Feature 070 as **T064**
+   (RED→approve→GREEN), SC-007 budget reverts 300→150 ms. Not a follow-up spec.
+5. **The migration archives before the app starts** — Feature 070 **T065**. After the backfill,
+   the migration itself moves all >14-day messages into `archived/` per chat, so the app's first
+   startup sweep has only ≤ 2 leftover days to touch.
+
 ---
 
 ## Working area (Mac, outside the clone)
@@ -35,6 +54,12 @@ human go-ahead.
 # STAGE 0 — Build the consolidator (no environment, synthetic data only)
 
 ### 0.1 Spec addendum for the consolidator
+- **The offline migration pipeline is four tools, run in this order** (all in
+  `apps/rolling-memory-backfill/`, all host-`python3`, all `--report-only`-capable):
+  `consolidate_sessions.py` → `backfill_daily_summaries.py` (exists) → **`finalize_migration.py`**
+  (the T065 archive step — moves all >14-day messages to `archived/`) → `purge_legacy_summaries.py`
+  (T-Stage-0.6 — deletes the 20,949 legacy `session_summary` records). Steps 0.3/0.3b/0.6 below
+  build the three new ones.
 - **Do**: add `specs/in-progress/070-rolling-memory-window/consolidator-spec.md` — the canonical-session
   rules: one active dir per chat; messages from every source dir (active + `expired/**`) merged;
   sort key = `timestamp` then `received_at` then file mtime (log which); `order_num` renumbered
@@ -102,6 +127,22 @@ human go-ahead.
 - **Test the tests**: they must be RED against an empty `consolidate_sessions.py` stub first.
 - **👤 approve the unit tests, then implement to GREEN.**
 
+### 0.3b Write `finalize_migration.py` (the T065 archive step) + tests
+- **Do**: `apps/rolling-memory-backfill/finalize_migration.py`, `main(argv) -> int`, args
+  `--data-root` / `--report-only` / `--chat` / `--now <ISO>` (test seam, default now). Per chat:
+  load the canonical `Session` via a real `SessionManager`, call
+  `session_manager.archive_aged_and_backstopped_messages(session, now=<now>, window_days=14,
+  max_backstop_tokens=100000)`, then re-assert `assert_message_integrity`. `--report-only` prints
+  the projected move count per chat, writes nothing. Must run **after** the backfill (needs every
+  pre-window day already rolled — an archived message is still summarised on its day by
+  `get_messages_for_local_date`, but running archive first would mean the backfill reads from
+  `archived/` unnecessarily and the ordering is easier to reason about post-backfill).
+- **Tests** (unit + integration, RED → 👤 → GREEN): synthetic multi-day session → after the step
+  `messages/` holds only messages whose local date is within 14 days of `--now`, `archived/` holds
+  the rest, `message_ids` / `archived_message_ids` updated, `message_counter` unchanged, integrity
+  clean, **idempotent** on a second run (0 moves). A chat entirely within 14 days → 0 moves, exit 0.
+- **👤 approve the tests, then GREEN.**
+
 ### 0.5 Integration test — real `SessionManager`, synthetic multi-session data
 - **Do**: `apps/rolling-memory-backfill/tests/integration/test_consolidate_integration.py`:
   seed (via the real `add_message_with_tokens(timestamp=…)` seam) **multiple** sessions per chat
@@ -120,10 +161,12 @@ human go-ahead.
 - **Test this step**: full non-billed sub-app suite green (`pytest -m "not billed"`).
 - **👤 approve the integration test, then GREEN.**
 
-### 0.6 (Optional, decision §5.3) `session_summary` purge tool + test
+### 0.6 `session_summary` purge tool + test — **DECIDED: yes, run it (decision #2)**
 - **Do**: `apps/rolling-memory-backfill/purge_legacy_summaries.py` — `--data-root`, `--report-only`,
   deletes `where type IN (session_summary, session_summary_fallback)` from every
-  `collection_name_for_chat(chat)` collection; prints before/after counts per collection.
+  `collection_name_for_chat(chat)` collection; prints before/after counts per collection. Refuses
+  to run (`⚠️` exit 1) unless at least one `daily_summary` record already exists per collection
+  (guards against purging before the backfill).
 - **Test this step**: integration test — seed a ChromaDB with N `session_summary` + M
   `daily_summary` via the real `MemoryManager`; purge; assert only the M `daily_summary` remain
   and `recall()` still returns them.
@@ -136,9 +179,10 @@ human go-ahead.
 - **Test this step**: part of Stage 1.
 
 ### STAGE 0 EXIT GATE
-- [ ] consolidator + (optional) purge tool: `pylint` ≥ 9.0, `mypy` clean
+- [ ] all four pipeline tools (consolidate / backfill / finalize / purge): `pylint` ≥ 9.0, `mypy` clean
+- [ ] T064 (get_rolling_window never reads `archived/`) landed in `apps/denidin-app`, SC-007 back to 150 ms
 - [ ] full non-billed sub-app suite green
-- [ ] every rule in 0.1 has a passing assertion in 0.4 / 0.5
+- [ ] every rule in 0.1 / 0.3b has a passing assertion in 0.4 / 0.5 / 0.3b
 - [ ] 👤 sign-off that Stage 1 may begin
 
 ---
@@ -204,10 +248,12 @@ PY
 <denidin venv>/python3 backfill_daily_summaries.py \
   --data-root ~/denidin-migration/rehearsal/prod-YYYYMMDD \
   --config    <a config.json with a REAL ai_api_key + text-embedding-3-large + memory block> \
-  --since 2026-08-03 --until <today−14>            # NO --yes first: read the plan
+  --since 2026-08-01 --until <today−14>            # NO --yes first: read the plan
 # then, on go-ahead:
-… --since 2026-08-03 --until <today−14> --yes  | tee ~/denidin-migration/reports/backfill-rehearsal-*.txt
+… --since 2026-08-01 --until <today−14> --yes  | tee ~/denidin-migration/reports/backfill-rehearsal-*.txt
 ```
+- `--since 2026-08-01` = full history (decision #3); `--until <today−14>` leaves the live 14-day
+  window to the app.
 - **Cost note**: this makes real OpenAI summary calls (~1 per non-empty pre-window day per
   chat, ≤ ~50 total, cheap `billed`-tier). It is the single deliberate real-OpenAI step in the
   rehearsal, and it exercises the exact call the prod run will make. **👤 go-ahead for this one
@@ -219,12 +265,29 @@ PY
   - [ ] `assert_message_integrity` still clean; raw message files byte-unchanged (checksum).
   - [ ] a **second** `--yes` run → `billed_calls=0`, `summaries=0`, exit 0.
 
-### 1.6 (If decided) purge rehearsal
+### 1.5b Finalize (archive) — move >14-day messages into `archived/` before any app start
+```bash
+<denidin venv>/python3 finalize_migration.py --data-root ~/denidin-migration/rehearsal/prod-YYYYMMDD --report-only
+… (no --report-only)  | tee ~/denidin-migration/reports/finalize-rehearsal-*.txt
+```
+- **Verify**:
+  - [ ] per canonical dir: `messages/` now holds **only** messages whose Israel-local date is
+        within the last 14 days; everything older is under `archived/`.
+  - [ ] `session.json`: `message_ids` shrunk, `archived_message_ids` populated, `message_counter`
+        unchanged (== live + archived).
+  - [ ] `assert_message_integrity` clean; every message file still present (moved, not deleted).
+  - [ ] second run → 0 moves, exit 0.
+  - [ ] a `SessionManager` + `get_rolling_window(chat, max_tokens=<godfather limit>)` returns the
+        same messages as before finalize (T064: the window read never touches `archived/`).
+
+### 1.6 Purge the legacy `session_summary` records (decision #2)
 ```bash
 <denidin venv>/python3 purge_legacy_summaries.py --data-root ~/denidin-migration/rehearsal/prod-YYYYMMDD --report-only
-… (no --report-only)
+… (no --report-only)  | tee ~/denidin-migration/reports/purge-rehearsal-*.txt
 ```
-- **Verify**: both collections drop to only `daily_summary` records; `recall()` still returns them.
+- **Verify**: report shows ~20,949 records to delete across the 2 collections; after, both
+  collections hold **only** `daily_summary` records (~40–50 total); `MemoryManager.recall()` on a
+  mid-August query still returns that day's `daily_summary`.
 
 ### 1.7 Offline "turn" simulation against the consolidated + backfilled rehearsal copy
 ```bash
@@ -264,13 +327,13 @@ rsync -a --delete ~/denidin-migration/snapshots/prod-YYYYMMDD/ ~/denidin-migrati
   `PersistentClient` opens `memory/` cleanly.
 
 ### 1.9 Time + transcript capture
-- Record wall-clock time for each of 1.2–1.7 (informs the downtime window).
+- Record wall-clock time for each of 1.2–1.7 incl. 1.5b / 1.6 (informs the downtime window).
 - Save the **exact commands that worked** into `MIGRATION-RUNBOOK-prod.md` — Stage 3 executes
   that runbook verbatim, only swapping `--data-root` and running on the Windows host.
 
 ### STAGE 1 EXIT GATE
 - [ ] every checkbox in 1.2–1.8 ticked, against real prod bytes
-- [ ] downtime estimate produced (sum of 1.3 + 1.4 + 1.5, plus deploy)
+- [ ] downtime estimate produced (sum of 1.3 + 1.4 + 1.5 + 1.5b + 1.6, plus deploy)
 - [ ] `MIGRATION-RUNBOOK-prod.md` written from the actual rehearsal transcript
 - [ ] 👤 sign-off that Stage 2 may begin
 
@@ -307,13 +370,16 @@ rsync -a --delete /Users/yaron/Projects/DeniDin/apps/denidin-app/dev_data/ ~/den
 ### 2.4 Backfill dev
 ```bash
 <venv>/python3 backfill_daily_summaries.py --data-root .../dev_data --config config/config.dev.json \
-  --since <earliest dev message date> --until <today−14> --yes
+  --since 2026-08-01 --until <today−14> --yes
 ```
 - **Test this step**: 1.5's checklist against dev; idempotent second run.
 
-### 2.5 (If decided) purge dev's `session_summary` records — same tool, same checks as 1.6.
+### 2.4b Finalize (archive) dev — `finalize_migration.py --data-root .../dev_data` — checks per 1.5b.
+
+### 2.5 Purge dev's `session_summary` records — `purge_legacy_summaries.py`, checks per 1.6.
 
 ### 2.6 Validate dev offline (the 1.4 + 1.7 scripts, dev paths) — **👤 for the billed turn sim.**
+- Also: `get_rolling_window` on the group returns the same set before/after 2.4b finalize (T064).
 
 ### 2.7 Rebuild + start dev on `feature/070`
 ```bash
@@ -375,14 +441,18 @@ Every step already run twice (snapshot + dev). **👤 for every numbered step.**
 - **Verify**: the full 1.3 checklist. **Abort and restore (3.9) if any check fails.**
 
 ### 3.5 Backfill (on the host)
-- Same as Stage 1.5, `--since 2026-08-03 --until <today−14> --yes`.
+- Same as Stage 1.5, `--since 2026-08-01 --until <today−14> --yes`.
 - **Verify**: the full 1.5 checklist.
 
-### 3.6 (If decided) purge `session_summary` — Stage 1.6, host paths.
+### 3.5b Finalize (archive) — `finalize_migration.py`, host paths. Verify per 1.5b.
+- **Abort and restore (3.9) if `assert_message_integrity` fails or a file went missing.**
+
+### 3.6 Purge `session_summary` — `purge_legacy_summaries.py`, host paths. Verify per 1.6.
 
 ### 3.7 Validate — prod still STOPPED
 - Run the 1.4 reconcile script + the **full MIGRATION-SCOPE §8 checklist** against the host
-  `data/`. Every box must tick.
+  `data/`. Every box must tick — including: `messages/` holds only ≤14 days, `archived/` holds the
+  rest, both ChromaDB collections hold only `daily_summary` records.
 
 ### 3.8 Deploy 0.5.4
 - 👤 `/haleluya` (merge Feature 070 as one PR).
@@ -395,6 +465,9 @@ Every step already run twice (snapshot + dev). **👤 for every numbered step.**
 ### 3.9 Post-deploy validation
 - Startup log: `_reconcile_chat_index` **no** WARNING; `run_startup_daily_roll_sweep` completes;
   roll scheduler armed 02:00 Asia/Jerusalem; **0** "Created new session"; MCP tunnel `running`.
+- **Because 3.5b already archived**, `run_startup_daily_roll_sweep` should roll **only the ≤2
+  un-rolled leftover days** (between `--until` and the live window) and archive nothing further —
+  confirm it is near-silent, not a bulk archive.
 - 👤 real WhatsApp turns: godfather 1:1 (recent context + a mid-August recalled day); the
   collections group (recent Sep work-hours context + a mid-August recalled day). Confirm from
   logs: `Retrieved N messages` (recent dates), `daily_summary` in `RECALLED MEMORIES`, correct
@@ -432,12 +505,14 @@ rsync -a --delete data_pre070_backup_<date>/ data/
 
 ## Summary of what runs where, in order
 
-| Tool | Synthetic (0.4/0.5) | Prod snapshot (Stage 1) | Dev live (Stage 2) | Prod live (Stage 3) |
+| Tool | Synthetic (0.3b–0.6) | Prod snapshot (Stage 1) | Dev live (Stage 2) | Prod live (Stage 3) |
 |---|:--:|:--:|:--:|:--:|
 | `consolidate_sessions.py` | ✅ unit + integ | ✅ 1.2 dry, 1.3 real | ✅ 2.3 | ✅ 3.4 |
-| `backfill_daily_summaries.py` | ✅ (T040a/T041a exist) | ✅ 1.5 (1 billed) | ✅ 2.4 | ✅ 3.5 |
-| `purge_legacy_summaries.py` *(if used)* | ✅ 0.6 | ✅ 1.6 | ✅ 2.5 | ✅ 3.6 |
+| `backfill_daily_summaries.py` (`--since 2026-08-01`) | ✅ (T040a/T041a exist) | ✅ 1.5 (1 billed) | ✅ 2.4 | ✅ 3.5 |
+| `finalize_migration.py` (archive step, T065) | ✅ 0.3b unit + integ | ✅ 1.5b | ✅ 2.4b | ✅ 3.5b |
+| `purge_legacy_summaries.py` | ✅ 0.6 | ✅ 1.6 | ✅ 2.5 | ✅ 3.6 |
 | `_reconcile_chat_index` (SessionManager) | ✅ test_consolidate_integration | ✅ 1.4 | ✅ 2.7 | ✅ 3.9 |
+| `get_rolling_window` never reads `archived/` (T064) | ✅ T064a unit | ✅ 1.5b / 1.7 | ✅ 2.6 / 2.8 | ✅ 3.9 |
 | nightly roll on migrated data | ✅ 0.5 (mocked) | ✅ 1.5 second sweep | ✅ 2.10 real 02:00 | ✅ 3.10 real 02:00 |
 | offline AIHandler turn on migrated data | — | ✅ 1.7 (billed) | ✅ 2.6/2.8 | ✅ 3.9 |
 | rollback (`rsync` restore) | — | ✅ 1.8 | ✅ 2.3/2.4 rollback | ✅ 3.9 ROLLBACK |
