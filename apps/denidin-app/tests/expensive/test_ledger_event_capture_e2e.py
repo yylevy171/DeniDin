@@ -912,7 +912,26 @@ class TestLedgerEventCaptureE2E:
         Note components 3 and 5 both state 8,000 ₪ - a real duplicate amount, not a
         test-writing mistake; the assertion below checks the full multiset, not a
         deduplicated set, specifically to catch a component silently dropped for
-        "looking like" a duplicate of another."""
+        "looking like" a duplicate of another.
+
+        KNOWN FAILURE — BLOCKED ON FEATURE 069 (do not "fix" here). Feature 059
+        triage (2026-09-03): the vision extractor reads the 6 fee components
+        perfectly but this fixture's glare band sits on the client surname, so
+        the client line comes back `מר מור בן [לא קריא]`. With no readable
+        `client_name`, `capture_ledger_events_from_text` persists nothing and the
+        model asks the operator for the name — 0 events, test wants 6. This is
+        exactly the gap Feature 069
+        (`specs/backlog/069-mandatory-client-resolution-before-ledger-event`)
+        exists to close: a ledger event must run client resolution first
+        (match against Morning's client list, or a deliberate new-client
+        decision) and ask rather than silently drop. There is currently NO
+        client-resolution step in the ledger-capture path (text-only call,
+        `LEDGER_EVENT_TOOL` only, never touches Morning), so the
+        `_seed_client` / `resolve_client_name` billed-test machinery cannot be
+        wired in here until Feature 069 builds that gate. Left red on purpose
+        until then — see
+        `specs/backlog/059-stabilize-tests-sanity-suite/sanity-failures.md`
+        (S5)."""
         from denidin import handle_image_message
 
         chat_id = self._fresh_chat_id("image_agreement_mor")

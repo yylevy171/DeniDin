@@ -386,7 +386,11 @@ def test_godfather_finds_client_via_hebrew_vowel_variant(denidin_app):
     )
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert seed_name in response, (
+    # Morning geresh-normalizes any apostrophe in a stored name (e.g. "וורובוביץ'"
+    # -> "וורובוביץ׳"); the model echoes Morning's normalized form. Compare both
+    # sides normalized - same pattern as this file's other name-in-response
+    # assertions (see _normalize_hebrew_geresh usages above).
+    assert _normalize_hebrew_geresh(seed_name) in _normalize_hebrew_geresh(response), (
         f"Expected the model to find {seed_name!r} despite being asked "
         f"about the alternate spelling {query_name!r} - got: {response!r}"
     )
