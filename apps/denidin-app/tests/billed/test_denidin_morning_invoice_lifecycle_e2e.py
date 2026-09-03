@@ -31,6 +31,7 @@ from .denidin_mcp_e2e_helpers import (
     _calls_for,
     _random_amount,
     _random_description,
+    _seed_client,
     pick_existing_client,
     _send_turn,
     _send_turn_and_approve,
@@ -147,6 +148,36 @@ def _seed_fresh_invoice(amount: int, description: str) -> str:
     return client_name
 
 
+def _seed_fresh_invoice_for_a_fresh_client(amount: int, description: str) -> str:
+    """Like `_seed_fresh_invoice`, but the invoice is created for a BRAND-NEW
+    client (so that client owns exactly one invoice and a later
+    "cancel the invoice of X" is unambiguous), and VAT treatment is stated
+    explicitly in the seed text so the mandatory "כולל מע\"מ?" question
+    (`runtime_constitution.md`) never interrupts the fixed ask->approve
+    seeding turns.
+
+    Feature 059 N1 fix (2026-09-03): `_seed_fresh_invoice` was changed on this
+    branch (commit 77868e6) from a fresh client to `pick_existing_client()`,
+    which made "בטל את החשבונית של {client}" ambiguous whenever the reused
+    client already owned another open invoice - the model then (correctly)
+    asks which one, and the 2-turn `_send_turn_and_approve` helper cannot
+    answer. Seeding a fresh client removes that ambiguity at the source.
+    VAT is stated as NOT included here purely to exercise that branch."""
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, id_prefix="E2E_CANCEL_SEED")
+    _, (response, ai_response) = _send_turn_and_approve(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"צור חשבונית ל-{client_name} על {amount} ₪ לא כולל מע\"מ עבור {description}",
+        id_prefix="E2E_CANCEL_SEED_INV",
+    )
+    create_calls = _calls_for(ai_response, "create_invoice")
+    assert create_calls and create_calls[0]["error"] is None, (
+        f"N1 seed create_invoice failed or was not called: "
+        f"{ai_response.mcp_calls if ai_response else None!r}. Reply: {response!r}"
+    )
+    logger.info(f"Seeded fresh invoice for a fresh client {client_name!r}")
+    return client_name
+
+
 @pytest.mark.billed
 def test_godfather_marks_invoice_paid_via_whatsapp(denidin_app):
     """Full invoice_paid flow: godfather creates a fresh invoice, then - in a
@@ -246,7 +277,9 @@ def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
     Issuing a credit note is a document-creating call, so it now requires
     explicit approval (Feature 022): the ASK turn must NOT execute it yet.
     """
-    client_name = _seed_fresh_invoice(_random_amount(), _random_description())
+    client_name = _seed_fresh_invoice_for_a_fresh_client(
+        _random_amount(), _random_description()
+    )
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -398,6 +431,36 @@ def _seed_transaction_account_invoice(amount: int, description: str) -> str:
     return client_name
 
 
+def _seed_transaction_account_invoice_for_a_fresh_client(amount: int, description: str) -> str:
+    """Like `_seed_transaction_account_invoice`, but the חשבון עסקה is opened
+    for a BRAND-NEW client, so that client owns exactly one type-300 and a
+    later "סמן את חשבון העסקה של X כשולם" is unambiguous.
+
+    Feature 059 N2 fix (2026-09-03): `_seed_transaction_account_invoice` was
+    changed on this branch (commit 77868e6) from a fresh client to
+    `pick_existing_client()` - same regression as `_seed_fresh_invoice` (see
+    `_seed_fresh_invoice_for_a_fresh_client`). The VAT-inclusion question is
+    still answered here with "לא" mid-seed exactly as the shared helper does."""
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, id_prefix="E2E_020_SEED_300")
+    _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"תפתח חשבון עסקה עבור {client_name} על סך {amount} שח עבור {description}",
+        id_prefix="E2E_020_SEED_300F_ASK",
+    )
+    _send_turn(chat_id=GODFATHER_CHAT_ID, text="לא", id_prefix="E2E_020_SEED_300F_VAT")
+    _, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID, text="כן", id_prefix="E2E_020_SEED_300F_APPROVE"
+    )
+    create_calls = _calls_for(ai_response, "create_transaction_account")
+    assert create_calls and create_calls[0]["error"] is None, (
+        f"N2 seed create_transaction_account (חשבון עסקה) failed or was not called: "
+        f"{ai_response.mcp_calls if ai_response else None!r}"
+    )
+    logger.info(f"Seeded fresh חשבון עסקה for a fresh client {client_name!r}")
+    time.sleep(5)  # Morning search-index lag - see _seed_transaction_account_invoice
+    return client_name
+
+
 @pytest.mark.billed
 def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_app):
     """Spec 020 / bugfix-014 Flow 4: a "חשבון עסקה" (type-300 transaction
@@ -415,17 +478,21 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
     natural WhatsApp turn asking for the invoice's details, the same way a
     real user would confirm it themselves.
     """
-    client_name = _seed_transaction_account_invoice(_random_amount(), _random_description())
+    client_name = _seed_transaction_account_invoice_for_a_fresh_client(
+        _random_amount(), _random_description()
+    )
 
     (ask_response, ask_ai_response), (paid_response, paid_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        # States VAT-inclusion explicitly (feature 023's constitution rule
-        # otherwise has the model ask "כולל מע״מ?" before calling
-        # create_combo_document_as_reference, confirmed live 2026-07-30) - this test
-        # is about the mark-as-paid dispatch itself, not the VAT-ambiguity
-        # question, so the prompt removes that ambiguity up front rather than
-        # adding a third conversational turn to answer it.
-        text=f"סמן את חשבון העסקה של {client_name} כשולם, כולל מע״מ",
+        # States VAT-inclusion AND the payment date explicitly. Feature 023's
+        # constitution rules otherwise have the model ask "כולל מע״מ?" and
+        # "האם התשלום התקבל היום?" (both confirmed live - VAT 2026-07-30, the
+        # payment_date question 2026-09-02) before calling
+        # create_combo_document_as_reference. This test is about the
+        # mark-as-paid dispatch itself, not those clarifications, so the prompt
+        # removes both up front rather than adding conversational turns the
+        # fixed ask->approve helper cannot answer.
+        text=f"סמן את חשבון העסקה של {client_name} כשולם היום, כולל מע״מ",
         id_prefix="E2E_020_PAID_300",
     )
     assert not _calls_for(ask_ai_response, "create_combo_document_as_reference"), (

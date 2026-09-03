@@ -244,12 +244,14 @@ redefinition above.
     approval before every single run, one at a time (see CONSTITUTION.md §VII)
   - **sanity** (`@pytest.mark.sanity`, Feature 059): a curated cross-app subset — each such
     test is ALSO `billed` or `expensive` and keeps that tier's rules. `./scripts/run_sanity.sh`
-    (repo root) runs the `morning-mcp-app` gate then the `denidin-app` billed subset through
-    `scripts/run_multiple_billed_tests.sh` (stop-on-first-failure, live per-test sound-off);
-    `expensive` members are printed as a manual checklist, never auto-run. A fast end-to-end
-    "is anything obviously broken" pass, not a substitute for the full tiers, and not CI.
-    `./scripts/verify_sanity_lists.sh` guards the decorators and `run_sanity.sh`'s arrays
-    against drift.
+    (repo root) runs the `morning-mcp-app` gate then the `denidin-app` billed subset **one test
+    at a time, only through `scripts/run_single_test.sh`** (never a bare `-m` batch) —
+    stop-on-first-failure, live per-test sound-off, progress tracked in `sanity_state.tsv` and
+    resumable (`--status`/`--fresh`/`--mark`). `expensive` members are printed as a manual
+    checklist, never auto-run. Known failures: `specs/backlog/059-.../sanity-failures.md`. A
+    fast end-to-end "is anything obviously broken" pass, not a substitute for the full tiers,
+    and not CI. `./scripts/verify_sanity_lists.sh` guards the decorators and `run_sanity.sh`'s
+    arrays against drift.
   - 🚨 **Run every billed/expensive test via `scripts/run_single_test.sh <node_id>`**
     (`apps/denidin-app`, 2026-08-18) — never a raw `pytest ... | tail`/`| grep`, which can
     silently discard the actual assertion/traceback before it's ever read (see CONSTITUTION.md
@@ -1129,7 +1131,7 @@ process pressure that ever gets the actual root cause fixed.
 **Version**: 2.11.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-09-02
 
 **Changelog**:
-- v2.11.0 (2026-09-02): Feature 059 added the **sanity** test tier (`@pytest.mark.sanity`) to §VI's tier list — a curated cross-app subset run together via `./scripts/run_sanity.sh` as a fast end-to-end smoke check (through `run_multiple_billed_tests.sh`, expensive members checklist-only). Not CI.
+- v2.11.0 (2026-09-02): Feature 059 added the **sanity** test tier (`@pytest.mark.sanity`) to §VI's tier list — a curated cross-app subset run via `./scripts/run_sanity.sh` as a fast end-to-end smoke check (one test at a time through `run_single_test.sh`, resumable, expensive members checklist-only). Not CI.
 - v2.10.0 (2026-08-25): Added "Production Incidents Require Mandatory Bug-Driven-Development
   Follow-Through" (XXII) after a real prod incident - an unattended Windows Update reboot exposed
   a one-shot (no-retry) startup race in morning-mcp-app's ngrok-tunnel-to-status-file handshake,

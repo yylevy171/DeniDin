@@ -96,8 +96,8 @@ pytest tests/unit/test_module.py::test_function -xvs
 
 ### Sanity Suite (`@pytest.mark.sanity`, Feature 059)
 - Curated cross-app subset; every sanity test is ALSO `billed` or `expensive` and keeps that tier's rules
-- `./scripts/run_sanity.sh` (repo root): gate (`morning-mcp-app`) then `denidin-app` billed subset, both through `run_multiple_billed_tests.sh` (stop-on-fail, live sound-off). `expensive` members are a printed checklist, never auto-run.
-- `./scripts/verify_sanity_lists.sh` - guards the decorators vs `run_sanity.sh`'s arrays against drift
+- `./scripts/run_sanity.sh` (repo root): gate (`morning-mcp-app`) then `denidin-app` billed subset, one test at a time **only through `run_single_test.sh`** (never a bare `-m` batch). Stop-on-fail, live sound-off, resumable state in `sanity_state.tsv` (`--status`/`--fresh`/`--mark`). `expensive` members are a printed checklist, never auto-run.
+- `./scripts/verify_sanity_lists.sh` - guards the decorators vs `run_sanity.sh`'s arrays against drift. Failures log: `specs/backlog/059-.../sanity-failures.md`
 - Fast "anything obviously broken end-to-end" pass. Not a substitute for the full tiers. Not CI.
 
 ### Test Standards
