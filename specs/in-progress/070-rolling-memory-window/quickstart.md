@@ -153,18 +153,44 @@ See [`contracts/logger-retention.md`](./contracts/logger-retention.md). In short
    `denidin.log.YYYY-MM-DD.gz`, **never** pruned by the app (`backupCount=0`).
    `memory.archive_retention_days`'s sibling for logs is a *documented deliberate* "retain
    forever"; a future pruner is a separate decision.
-3. **Compose `logging:` cap** — `json-file` `max-size: "10m"`, `max-file: "5"` on **both**
+3. **Compose `logging:` cap** — `json-file` `max-size: "50m"`, `max-file: "5"` on **both**
    `denidin-app-<env>` and `morning-mcp-app-<env>` in **both** `docker-compose.prod.yml` and
    `docker-compose.dev.yml`. The `docker logs` loss is now bounded and **acceptable only because
    the app file handler independently holds full history** (REQ-MEM-053b) — this dependency is
    stated here and in `docker/` review notes.
 
+### Implemented shape (confirmed against the code — T053b)
+
+- `apps/denidin-app/src/utils/logger.py` and `apps/morning-mcp-app/src/denidin_mcp_morning/
+  utils/logger.py` share an identical **core** (`_gzip_namer`, `_gzip_rotator`, `_build_file_handler`,
+  `setup_logger`, `reconfigure_file_rotation`, `get_logger`, formatter/filter). Documented per-app
+  deltas only: module docstring, `log_filename` default, `log_level` default (`INFO` for
+  morning-mcp), `DEFAULT_VERSION_FILE` depth, and morning-mcp's extra
+  `reconfigure_package_log_level`. `test_logger_retention_integration.py::TestTwinCoreIsMirrored`
+  asserts the core stays in sync.
+- `setup_logger` attaches one `TimedRotatingFileHandler(backupCount=0)` + gzip rotator + one
+  `StreamHandler` to the **root** logger, guarded by handler identity (`rotator is _gzip_rotator`)
+  so it never stacks and survives pytest's per-test root-handler churn. `_VersionFilter` is on the
+  **handlers** (not the root logger) so `%(version)s` resolves for records propagating up from
+  child loggers.
+- Every module's import-time `get_logger(__name__)` configures the root with the built-in
+  defaults; `denidin.py` then calls `reconfigure_file_rotation(config.logging[...])` right after
+  config load to apply the real values (a no-op swap when they match the defaults, the common case).
+- The gzip `rotator` is **fail-safe**: on a compression error it leaves the rotated plaintext
+  segment in place (never `os.remove`) and re-raises — a segment is never lost. Rotation is
+  lossless (within-process handler lock serialises `emit` vs `doRollover`).
+- Compose: `logging: {driver: json-file, options: {max-size: "50m", max-file: "5"}}` on all four
+  service entries (`denidin-app` + `morning-mcp-app`, dev + prod). `docker compose config` shows
+  `max-file: "5"` / `max-size: 50m` on each.
+
 ### Forced-rotation verification procedure
 
-**Non-prod** (unit test `test_logger_retention.py`, both apps): point `setup_logger` at a tmp dir
-with a sub-second `when`, emit enough lines to force ≥ 3 rotations, assert every `*.gz` segment
-exists, decompresses, and its content is intact and ordered; assert the root logger ends with
-exactly one file handler after N `get_logger` calls.
+**Non-prod** (`test_logger_retention.py`, both apps + `test_logger_retention_integration.py`):
+point `setup_logger` at a tmp dir with a sub-second `when`, emit enough lines to force ≥ 3
+rotations, assert every `*.gz` segment exists, decompresses, and its content is intact and
+ordered; assert the root logger ends with exactly one gzip file handler; assert a multi-thread
+burst spanning ≥ 2 rotations loses/duplicates zero records; assert a raising rotator keeps the
+plaintext segment.
 
 **Post-deploy prod** (read-only, via the `denidin-winprod` docker context):
 
@@ -174,5 +200,5 @@ docker --context denidin-winprod inspect denidin-app-prod --format '{{.HostConfi
 ```
 
 Expect: dated `.gz` segments accumulating one per day, chronologically ordered, ~similar sizes; and
-`map[max-file:5 max-size:10m]` from the `inspect`. `SC-009`: after the first real midnight
+`map[max-file:5 max-size:50m]` from the `inspect`. `SC-009`: after the first real midnight
 rotation, the prior day's segment is present as a `.gz` on disk.

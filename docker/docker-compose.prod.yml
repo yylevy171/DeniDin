@@ -21,6 +21,14 @@ services:
       - ./shared/mcp-status-prod:/app/mcp-status
       - ./shared/active_env.json:/app/active-env/active_env.json:ro
     restart: "no"
+    # Feature 070 (US5): bound the `docker logs` json-file stream. Lossy on
+    # purpose - full history is retained by the app's own
+    # TimedRotatingFileHandler(backupCount=0)+gzip under /app/logs.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   morning-mcp-app-prod:
     build:
@@ -33,3 +41,11 @@ services:
       - ./shared/mcp-status-prod:/app/mcp-status
       - ./shared/active_env.json:/app/active-env/active_env.json:ro
     restart: "no"
+    # Feature 070 (US5): bound the `docker logs` json-file stream. Lossy on
+    # purpose - full history is retained by the app's own
+    # TimedRotatingFileHandler(backupCount=0)+gzip under /app/logs.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
