@@ -432,7 +432,13 @@ rotated files all still exist on disk with their content intact. Document the fi
 
 ---
 
-## Cross-story acceptance (final `billed` pass — written & run once, after all unit/integration GREEN)
+## Cross-story acceptance (final pass — written & run once, after all unit/integration GREEN)
+
+Every user story US1–US5 has an acceptance scenario here. AC-1/AC-2/AC-3/AC-5 + SC-007 are `billed`
+(real OpenAI) and run once together; AC-4 is a `billed` backfill run in the dev-migration phase;
+**AC-6 is non-`billed`** (logging makes no model call) and its evidence is the US5 integration test,
+confirmed green in the same pass.
+
 
 - **AC-1 (US1+US2)**: A real group-chat (`…@g.us`) conversation over 3 simulated days → nightly
   roll for each day → ask a question answerable only from day 1 (now summarized, outside the
@@ -451,3 +457,10 @@ rotated files all still exist on disk with their content intact. Document the fi
   no `TypeError`, its chat participates normally in the per-turn window and in a nightly roll, and
   no load error recurs on any subsequent turn or sweep (there is no longer an hourly cleanup loop
   at all — the recurring per-hour error is designed out).
+- **AC-6 (US5) — non-`billed`**: Driven through the real config→`setup_logger` path used at boot,
+  on a tmp log dir with a tiny rotation interval, under enough log volume to force ≥ 3 rotations →
+  every rotated segment is retained on disk as a decompressible `*.gz` with ordered, intact content;
+  the running process has exactly one root-logger file handler (the multi-handler rotation race is
+  designed out); both compose files declare the `json-file` `max-size`/`max-file` cap on both
+  services. Evidence = the US5 integration test (`test_logger_retention_integration.py`), run green
+  in the acceptance pass. No OpenAI call — a `billed` scenario would be meaningless here.

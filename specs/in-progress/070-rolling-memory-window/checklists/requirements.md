@@ -43,7 +43,7 @@ user direction — no separate Bug-Driven Development track) · **Clarified**: 2
 - [x] Success criteria are measurable (counts, percentages, p95 latency, token headroom).
 - [x] Success criteria are technology-agnostic (phrased as observable outcomes, not code).
 - [x] All acceptance scenarios are defined in `user-stories.md`, including a final cross-story
-      `billed` acceptance pass (AC-1..AC-5) per the "TDD" redefinition (METHODOLOGY §VI).
+      acceptance pass covering every user story (billed AC-1/2/3/5 + SC-007, plus non-billed AC-6 for US5) per the "TDD" redefinition (METHODOLOGY §VI).
 - [x] Edge cases identified: DST on roll night, boundary-timestamp attribution, pre-2026-08-10
       `+00:00` timestamps, clock skew, late-night message at the cutoff, empty chats, first-ever
       collection, >14-day outage, scheduler/script race, new-model code deployed before the

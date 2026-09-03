@@ -71,7 +71,7 @@ specs get a "Superseded by Feature 070" status note at haleluya, not now.
 
 ## Technical Context
 
-**Language/Version**: Python 3.11 (both apps)
+**Language/Version**: Python 3.9.6 (both apps — 3.9-compatible syntax only: no `X | Y` unions, no `match`)
 **Primary Dependencies**: `APScheduler` (`BackgroundScheduler` + `CronTrigger`, Israel-local
 timezone) · `chromadb` (`PersistentClient`, cosine) · `sqlite3` (stdlib — roll-marker store + chat
 index) · OpenAI Python SDK (Responses API, `model=gpt-5.6-luna`, `max_retries=config.max_retries`)
@@ -140,7 +140,7 @@ further user input required.
 ```text
 specs/in-progress/070-rolling-memory-window/
 ├── spec.md                     # ✅ committed, clarified 2026-09-02
-├── user-stories.md             # ✅ committed (US1–US5 + AC-1..AC-5)
+├── user-stories.md             # ✅ committed (US1–US5 + AC-1..AC-6)
 ├── checklists/requirements.md   # ✅ committed
 ├── PLAN-HANDOFF.md              # working note — deleted/ignored at haleluya
 ├── plan.md                     # This file (/speckit.plan)
@@ -208,7 +208,7 @@ apps/denidin-app/
 │   │   ├── test_roll_marker_store.py               # NEW
 │   │   ├── test_daily_roll_service.py              # NEW
 │   │   ├── test_archive_only_maintenance.py        # NEW
-│   │   ├── test_logger_retention.py                # NEW
+│   │   ├── test_logger_retention.py                # NEW (US5 unit)
 │   │   ├── test_background_cleanup.py              # DELETED
 │   │   └── test_session_manager_tokens.py          # DELETED
 │   ├── integration/
@@ -216,16 +216,17 @@ apps/denidin-app/
 │   │   ├── test_daily_roll_integration.py          # NEW
 │   │   ├── test_recall_surfaces_daily_summary.py   # NEW
 │   │   ├── test_archive_only_integration.py        # NEW
+│   │   ├── test_logger_retention_integration.py    # NEW (US5 integration = AC-6)
 │   │   └── test_archived_session_recovery.py       # DELETED
 │   └── billed/
-│       ├── test_rolling_memory_billed.py           # NEW (Phase 6 — AC-1..AC-5, SC-007)
+│       ├── test_rolling_memory_billed.py           # NEW (tasks Phase 8 — billed AC-1/2/3/5, SC-007)
 │       └── test_session_transfer.py                # DELETED
 
 apps/morning-mcp-app/
 └── src/denidin_mcp_morning/utils/
     ├── time_utils.py                           # MOD — byte-identical twin
     └── ... logger.py                           # MOD — byte-identical twin
-apps/morning-mcp-app/tests/unit/test_logger_retention.py   # NEW (twin coverage)
+apps/morning-mcp-app/tests/unit/test_logger_retention.py   # NEW (twin unit coverage)
 
 apps/rolling-memory-backfill/                   # NEW standalone sub-app (mirrors apps/prod-ledger-backfill/)
 ├── _denidin_loader.py                          # puts apps/denidin-app on sys.path; imports the real components
@@ -233,7 +234,10 @@ apps/rolling-memory-backfill/                   # NEW standalone sub-app (mirror
 ├── requirements.txt   conftest.py   pytest.ini   .gitignore
 ├── config/                                     # gitignored creds/config target
 ├── quickstart.md                               # (canonical runbook also mirrored into the feature quickstart.md)
-└── tests/test_backfill.py                      # dev/sandbox, real billed — US4 acceptance / AC-4
+└── tests/
+    ├── unit/test_backfill_cli.py               # NEW (argparse + preconditions + decision logic, loader faked)
+    ├── integration/test_backfill_integration.py # NEW (real components, OpenAI-boundary mock, main() end-to-end)
+    └── billed/test_backfill_billed.py          # NEW — dev/sandbox real billed, US4 acceptance / AC-4 (tasks Phase 9)
 
 docker/
 ├── docker-compose.prod.yml                     # MOD — logging: {driver: json-file, options: {max-size, max-file}}
@@ -477,14 +481,25 @@ misconfigured tiny backstop still returns the newest message and terminates.
 optional default `today_local − 14d`, `--chat` repeatable default all, `--yes`; **no** `--env`,
 **no** `--dry-run` — 061/062 convention), `requirements.txt`, `conftest.py`, `pytest.ini`,
 `.gitignore`, `quickstart.md`.
-**Tests:** `apps/rolling-memory-backfill/tests/test_backfill.py` (dev/sandbox, **real billed** —
-US4 acceptance tier / AC-4): a dev chat with > 14 days seeded history; one summary per non-empty
-past day + markers for all days incl. empty; re-run → 0 billed calls / 0 new records; a subsequent
-`_sweep_daily_roll` skips every migrated day; raw files unchanged; report printed.
+**Tests (both non-billed, RED→approval→GREEN like every other unit/integration task):**
+- `tests/unit/test_backfill_cli.py` — argparse contract, every precondition failing closed before
+  any loader/network call, the typed-`yes` confirm, per-(chat, date) decision logic + call counts
+  against a faked `_denidin_loader`, mid-run abort, report lines.
+- `tests/integration/test_backfill_integration.py` — real `SessionManager` + `RollMarkerStore` +
+  `MemoryManager` + ChromaDB via the real loader, tmp `data_root`, OpenAI mocked at the network
+  boundary only: `main([...])` end to end → one `daily_summary` per non-empty pre-window (chat,
+  date) with correct metadata + one marker per (chat, date) incl. empty; `assert_message_integrity`
+  byte-identical before + after; same-args re-run → 0 boundary calls / 0 new records; a following
+  `_sweep_daily_roll` skips every migrated day; `@g.us` collection via `collection_name_for_chat`,
+  no raw `client.get_collection`.
+- **AC-4 (billed)** — `tests/billed/test_backfill_billed.py`, the real-money twin of the integration
+  test, run once against a live dev chat in the dev-migration phase (tasks Phase 9), operator report
+  reviewed.
 
-**Validation/Checkpoint**: building the script = normal test approval. Running against real prod
-data = **fresh explicit human approval per run** (never a deploy side effect). The `quickstart.md`
-runbook enforces backfill-before-deploy ordering. `assert_message_integrity` before and after.
+**Validation/Checkpoint**: the two non-billed tests are the tool's correctness gate and pass here
+(tasks Phase 6). The billed run + running against real prod data = **fresh explicit human approval
+per run** (never a deploy side effect), tasks Phases 9 (dev) / 10 (prod). The `quickstart.md` runbook
+enforces backfill-before-deploy ordering. `assert_message_integrity` before and after every run.
 
 ### Phase 5 — US5: log retention (P2, parallelisable)
 
@@ -498,9 +513,18 @@ handlers). `src/models/config.py` — new top-level `logging: Dict` (`rotation_w
 `docker/docker-compose.prod.yml` + `docker/docker-compose.dev.yml` — `logging: {driver: json-file,
 options: {max-size: "10m", max-file: "5"}}` on both `denidin-app-<env>` and
 `morning-mcp-app-<env>`.
-**Tests:** unit `test_logger_retention.py` (both apps) — tiny interval, force several rotations,
-assert every rotated (gzipped) segment exists on disk with intact content, scoped to a tmp dir;
-assert exactly one handler on the root logger after N `get_logger` calls.
+**Tests:**
+- unit `test_logger_retention.py` (both apps) — tiny interval, force several rotations, assert every
+  rotated (gzipped) segment exists on disk with intact content, scoped to a tmp dir; exactly one
+  file + one stream handler on the root logger after N `get_logger` calls; child loggers carry 0
+  handlers + `propagate is True`; `backup_count=0` deletes nothing.
+- integration `test_logger_retention_integration.py` (`apps/denidin-app`) — the spec's US5
+  "Integration test requirement" **and the US5 acceptance evidence (AC-6)**: drive the logger
+  through the real `AppConfiguration`→`setup_logger` boot path on a tmp dir, force ≥ 3 rotations
+  under load, assert `.gz` retention + ordering; assert exactly one root file handler after
+  `initialize_app`; parse both compose files and assert the `json-file` cap on both services. Runs
+  in the normal non-billed suite; confirmed green in the Phase 6 acceptance pass (no OpenAI call —
+  a billed AC-6 would be meaningless).
 
 **Validation/Checkpoint**: because `logger.py` is a shared byte-twinned core util, a short
 design-review checkpoint with the user before the refactor lands. Both apps' `test_logger_retention.py`
@@ -508,7 +532,7 @@ green. `quickstart.md` carries the written US5 audit finding (the measured prod-
 multi-handler-race explanation + the `json-file` dependency statement + the forced-rotation
 verification procedure).
 
-### Phase 6 — Final billed acceptance pass (AC-1..AC-5) · gate: billed-run approval
+### Phase 6 — Final acceptance pass, every story (billed AC-1/2/3/5 + SC-007; non-billed AC-6/US5) · gate: billed-run approval
 
 Plain-language in `tasks.md`; coded + run once here (METHODOLOGY §VI). NEW
 `tests/billed/test_rolling_memory_billed.py`: **AC-1** (US1+US2 — group `@g.us`, 3 simulated days,
@@ -517,7 +541,8 @@ roll each day, ask a day-1-only question → correct from the recalled summary; 
 exceed backstop → newest-context answer + disk audit), **AC-5** (US1+US2 — poison-session shape →
 no recurring hourly error → participates in a roll), **SC-007** (added latency ≤ 150 ms p95 +
 input tokens with ≥ 30 % headroom). **AC-4** is the `apps/rolling-memory-backfill` billed test
-(Phase 4).
+(tasks Phase 9). **AC-6 (US5)** is the non-billed `test_logger_retention_integration.py`, confirmed
+green in this same pass — every user story US1–US5 then has a passing acceptance scenario.
 
 **Validation/Checkpoint**: run each scenario via `scripts/run_single_test.sh` (billed tier — no
 per-run approval, sound off each result). All green → feature complete, ready for `/speckit.tasks`
