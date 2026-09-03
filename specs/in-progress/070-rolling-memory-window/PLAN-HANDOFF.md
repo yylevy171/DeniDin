@@ -42,7 +42,7 @@ architecture or fixed inline, proven by a named acceptance scenario. Bugfix spec
 | Artifact | Path | Status |
 |---|---|---|
 | `spec.md` | `specs/in-progress/070-rolling-memory-window/spec.md` | ✅ committed, clarified 2026-09-02 |
-| `user-stories.md` | same dir | ✅ committed (US1–US5 + AC-1..AC-5) |
+| `user-stories.md` | same dir | ✅ committed (US1–US5 + AC-1..AC-6) |
 | `checklists/requirements.md` | same dir | ✅ committed, all `[NEEDS CLARIFICATION]` resolved |
 | `plan.md` | same dir | ⬜ **still the empty 118-line template** — `setup-plan.sh` copied it, nothing filled in |
 | `research.md` | same dir | ⬜ not created |
@@ -177,7 +177,7 @@ NOT under `{data_root}/memory/` (ChromaDB owns that dir). Schema:
 3. US3 archive-only safety + retention
 4. US4 one-time prod migration
 5. US5 log retention
-6. Final billed acceptance pass (AC-1..AC-5 + SC-007)
+6. Final acceptance pass — every story (billed AC-1/2/3/5 + SC-007; non-billed AC-6/US5)
 
 ---
 

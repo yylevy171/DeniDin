@@ -746,11 +746,18 @@ specify the minimal config change and verify it keeps segments after a forced ro
   — not under `memory` — because they belong to US5 (an operational concern) rather than the
   memory model; still config keys, still no env vars.
 - **REQ-MEM-062**: Tests exercise the new model as the default behavior — no flag toggling
-  anywhere. Unit tests cover the window-builder, day-bucketing, tolerant load, backstop, and
-  roll-marker logic directly; integration tests drive real inbound webhooks through the real
-  `SessionManager`/`MemoryManager`/`AIHandler` with the new model live; the final `billed`
-  acceptance pass (AC-1..AC-5) exercises the end-to-end model against real OpenAI. The retired
-  session-expiry behavior is **not** retained and gets **no** regression tests.
+  anywhere. **Every user story (US1–US5) gets both a unit and an integration test task**, and
+  **every user story has at least one acceptance-level scenario** (AC-1..AC-6): US1 → AC-2/AC-3/
+  SC-007, US2 → AC-1, US3 → AC-3, US4 → AC-4, US5 → AC-6. Unit tests cover the window-builder,
+  day-bucketing, tolerant load, backstop, roll-marker, backfill-CLI, and logger-topology logic
+  directly; integration tests drive real inbound webhooks / real `main()` / the real config→
+  `setup_logger` path through the real `SessionManager`/`MemoryManager`/`AIHandler`/`RollMarkerStore`
+  with the new model live (OpenAI mocked at the network boundary only). The final acceptance pass
+  runs the `billed` scenarios AC-1/AC-2/AC-3/AC-5 + SC-007 against real OpenAI once, together; AC-4
+  is a `billed` backfill run in the dev-migration phase; **AC-6 (US5 log retention) is non-`billed`
+  by nature** — logging makes no model call — so its acceptance evidence is the US5 integration
+  test, confirmed green in the acceptance pass. The retired session-expiry behavior is **not**
+  retained and gets **no** regression tests.
 
 ## Key Entities
 
