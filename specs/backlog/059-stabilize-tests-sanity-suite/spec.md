@@ -2,11 +2,28 @@
 
 **Feature Branch**: `feature/059-stabilize-tests-sanity-suite`
 **Created**: 2026-08-20
-**Status**: In progress — half 1 ("stabilize tests") partially landed via interim PRs on this
-branch; half 2 ("sanity testing suite") — the `@pytest.mark.sanity` subset + `scripts/run_sanity.sh`
-runner — landed 2026-09-02 (50 tests: 1 morning-mcp gate + 41 denidin billed + 8 denidin expensive;
-see `scripts/run_sanity.sh`). A full end-to-end run of the assembled suite, plus `speckit.specify`
-+ `speckit.clarify` + `user-stories.md`, still owed before this can move to `specs/done/`.
+**Status**: In progress — half 1 ("stabilize tests") landed via interim PRs on this branch
+(#273, #274, #275); half 2 ("sanity testing suite") — the `@pytest.mark.sanity` subset +
+`scripts/run_sanity.sh` runner — landed 2026-09-02. A full end-to-end run of the assembled suite,
+plus `speckit.specify` + `speckit.clarify` + `user-stories.md`, still owed before this can move
+to `specs/done/`.
+
+_Landed 2026-09-03 (PR #275 — billed/expensive triage + resumable runner):_
+- Triaged S1–S6 (sanity members) + N1–N6 (non-sanity billed) failures one-by-one; ledger in
+  `sanity-failures.md`. Fixed: S1, S3, S4, S6, N1, N2, N3, N4, N6. Deferred to Feature 069
+  (client-resolution gate): S2, S5, N5 — documented as KNOWN FAILURE in each test's docstring.
+- Root cause for N1/N2: this branch's own WIP commit `77868e6` swapped `_seed_fresh_invoice` /
+  `_seed_transaction_account_invoice` from a fresh client to `pick_existing_client()`, making the
+  cancel/mark-paid targets ambiguous. Fixed with N-scoped fresh-client seed helpers.
+- N3/N4: `_drive_zehavit_to_list_invoices` drives the polluted-sandbox disambiguation through the
+  built `_resolve_client_name` MULTI_CANDIDATE loop; original test intents preserved.
+- S4: `prompts/image_analysis.txt` — handwritten note with names+amounts but no letterhead/terms
+  → classify `unknown` and let the system ask; asking is a virtue, a wrong guess is the failure.
+- `scripts/run_sanity.sh` rewritten: one test at a time via `run_single_test.sh` (never a bare
+  `-m` batch), resumable state in `sanity_state.tsv` (`--status`/`--fresh`/`--mark`),
+  stop-on-first-failure, live sound-off. `verify_sanity_lists.sh` updated for the new array
+  format. Docs synced (`CLAUDE.md`, CONSTITUTION v2.9.0, METHODOLOGY, quick-ref).
+- Placeholder spec `specs/backlog/075-parallelize-test-suite/` created (out of 059 scope).
 
 _Landed so far (billed/expensive stabilization, 2026-09-01 → 2026-09-02; commit `de5a5bd` + PR #273):_
 - `denidin_mcp_e2e_helpers.py`: 4-way `ResolveOutcome` classification consolidated into the

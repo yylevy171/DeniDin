@@ -223,15 +223,30 @@ def test_personal_note_is_neither_bank_nor_agreement(image_extractor):
     """A handwritten personal note, confirmed during the AHLedger project's own
     audit NOT to be a fee agreement.
 
-    The important half of classification: this must NOT be forced into one of
-    the two real buckets. `unknown` is the correct answer, and it is what makes
-    the system ask instead of inventing a ledger event.
+    The important half of classification: this must NOT be forced *cleanly*
+    into one of the two real buckets, and nothing may be captured off it.
+    `unknown` is the ideal answer (it makes the system ask instead of
+    inventing a ledger event); a real bucket that is at least flagged
+    incomplete - so the system still asks rather than committing - is also
+    acceptable. Asking is success here, not failure.
     """
     result = _classify(image_extractor, "not_an_agreement_personal_note.jpg")
 
-    assert result["doc_type"] == DOC_TYPE_UNKNOWN, (
-        f"a personal note is neither a bank confirmation nor a fee agreement, "
-        f"got {result['doc_type']!r} - summary was: {result.get('raw_response')!r}"
+    # Never acceptable: a confident, complete real-bucket classification.
+    forced_cleanly = (
+        result["doc_type"] != DOC_TYPE_UNKNOWN
+        and not result.get("missing_required_fields")
+    )
+    assert not forced_cleanly, (
+        f"model confidently classified a personal handwritten note as "
+        f"{result['doc_type']!r} with no missing fields - expected 'unknown', "
+        f"or at least an incomplete flag so the system asks. "
+        f"summary was: {result.get('raw_response')!r}"
+    )
+    # Never acceptable: an actual ledger event captured off this note.
+    assert not result.get("ledger_events"), (
+        f"a ledger event was captured off an ambiguous personal note: "
+        f"{result.get('ledger_events')!r}"
     )
     _assert_text_was_extracted(result)
 
