@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Optional
 from whatsapp_chatbot_python import Notification
 from openai import OpenAI
 from src.models.config import AppConfiguration
-from src.utils.logger import get_logger
+from src.utils.logger import get_logger, reconfigure_file_rotation
 from src.sources.green_api_source import GreenAPIMessageSource
 from src.utils.green_api_bot import (
     DeniDinGreenAPIBot,
@@ -72,6 +72,15 @@ except Exception as e:
 # level set here, or those modules would silently fall back to Python's
 # built-in root default (WARNING) instead of honoring config.log_level.
 logging.getLogger().setLevel(getattr(logging, config.log_level))
+# Feature 070 (US5): every module created its logger at import time (above) with
+# logger.py's built-in rotation defaults, before config was loaded. Now that we
+# have config.logging, rebuild the root file handler with the real values (a
+# no-op when they match the defaults, the common case).
+reconfigure_file_rotation(
+    rotation_when=config.logging.get('rotation_when', 'midnight'),
+    backup_count=config.logging.get('backup_count', 0),
+    log_level=config.log_level,
+)
 logger = get_logger(__name__, log_level=config.log_level)
 
 

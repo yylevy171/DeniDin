@@ -55,13 +55,32 @@ before the last cascade is lost. Docker's `json-file` driver has `Opts=map[]` �
     logging:
       driver: json-file
       options:
-        max-size: "10m"
+        max-size: "50m"
         max-file: "5"
 ```
 
-The `docker logs` stream is now bounded (~50 MB/container) and **lossy** — acceptable only because
+The `docker logs` stream is now bounded (~250 MB/container) and **lossy** — acceptable only because
 the app file handler retains full history independently (REQ-MEM-053b). The runbook states this
 dependency.
+
+### 4. Rotation is lossless (user requirement, 2026-09-03)
+
+No log record emitted **during** a rollover may be dropped:
+
+- Within one process, `logging`'s handler lock already serialises `emit` against `doRollover`, so
+  a concurrent `logger.info(...)` blocks until the swap completes and then writes to the fresh
+  base file — never to a closed fd.
+- The gzip `rotator` must be **fail-safe**: if gzip raises for any reason, it leaves the rotated
+  **plaintext** segment in place (does NOT `unlink` it) and re-raises after logging — a segment is
+  never deleted before its compressed copy exists and is readable. `backupCount=0` guarantees the
+  handler itself never prunes.
+- Net invariant: for any burst of N records spanning ≥1 rotation, all N appear exactly once across
+  `{active file} ∪ {*.gz} ∪ {any leftover *.log.<date> plaintext}` — none lost, none duplicated.
+
+**Unit test (both apps)** — spawn several threads emitting a known, countable sequence continuously
+while `when="S"` forces ≥2 rotations under load; then decompress every `.gz` + read the active file
+(+ any plaintext leftover), parse the sequence numbers, assert the full set `1..N` is present with
+no gaps and no dupes.
 
 ## Config
 
