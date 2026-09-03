@@ -91,6 +91,20 @@ python3 backfill_daily_summaries.py \
    decision). The startup catch-up sweep + nightly roll take over from there and
    skip everything the backfill committed.
 
+### Executed run — dev, 2026-09-04
+
+- **Cleanup first**: dev `sessions/` had 1 active + 10 `expired/` dirs. 8 stale test sessions
+  for `972522968679@c.us` (reconcile would pick the 240-msg one over the live 22-msg one), a
+  test number, and a 2-emoji group dir — all moved to
+  `dev_data/_pre070_sessions_archive_20260903/` (kept). The real user+Ayala group session
+  (`504112c0`, `120363410226011645@g.us`) promoted from `expired/2026-08-19/` to an active dir,
+  stale `storage_path` cleared. End state: exactly 2 persistent chats.
+- **Run**: `--since 2026-08-19 --until 2026-08-21` → 1 summary (group Aug 19), 5 empty markers,
+  1 billed call, integrity held before + after.
+- **Post-deploy**: dev rebuilt on `feature/070`; startup catch-up sweep produced 12 daily
+  summaries total, 21 committed markers/chat, 0 "Created new session"; a real `docker restart`
+  showed the startup sweep fully idempotent (0 calls, 1 s).
+
 ## Part 2 — Prod backfill (Phase 10)
 
 Same as Part 1 but against the prod `data/` root
