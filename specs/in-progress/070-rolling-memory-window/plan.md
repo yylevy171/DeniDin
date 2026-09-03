@@ -464,7 +464,12 @@ no-`unlink` audit across all feature modules; archived-session lookups scoped to
 static audit finds 0 deletions of message/session files in feature modules (SC-004, SC-011); a
 misconfigured tiny backstop still returns the newest message and terminates.
 
-### Phase 4 — US4: one-time prod migration (P2, separately gated)
+### Phase 4 — US4: one-time migration (P2, separately gated)
+
+> **Execution split (tasks.md, 2026-09-03 user-directed):** building this tool is tasks.md **Phase 6**;
+> *running* it is separated by environment — **Phase 9** executes + fully tests it against **dev**
+> (AC-4), **Phase 10** executes it against **prod** with **read-only, non-intrusive** verification only.
+> tasks.md **Phase 8** is the AC-1/2/3/5 + SC-007 billed acceptance pass; **Phase 11** is polish, always last.
 
 **New:** `apps/rolling-memory-backfill/` mirroring `apps/prod-ledger-backfill/` —
 `_denidin_loader.py`, `backfill_daily_summaries.py` (`main(argv=None) -> int`; `argparse`:
