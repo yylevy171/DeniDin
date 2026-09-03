@@ -55,6 +55,7 @@ def mock_config(tmp_path):
     config.user_roles = {"admin_phones": [ADMIN_PHONE], "blocked_phones": []}
     config.godfather_phone = GODFATHER_PHONE
     config.reminders = {"max_active_reminders": 20}
+    config.ledger_recognition_context_window_hours = 1.0
     return config
 
 
@@ -285,7 +286,7 @@ class TestInputAssemblyAndIsolation:
         blob += "\n" + str(kwargs.get("instructions", ""))
         return blob, kwargs
 
-    def test_input_includes_reply_mcp_calls_and_constitution(self, ai_handler, session):
+    def test_input_includes_reply_mcp_calls_and_recognition_prompt(self, ai_handler, session):
         ai_handler.client.responses.create.return_value = _no_call_response()
         turn_mcp_calls = [{
             "name": "list_invoices", "error": None, "arguments": {"client_name": "דנה כהן"},
@@ -295,17 +296,24 @@ class TestInputAssemblyAndIsolation:
 
         ai_handler.recognize_ledger_event(
             session=session.session, reply_text="REPLY-MARKER-abc",
-            turn_mcp_calls=turn_mcp_calls, constitution_text="CONSTITUTION-MARKER-xyz")
+            turn_mcp_calls=turn_mcp_calls)
 
         blob, kwargs = self._stringify_call(ai_handler.client.responses.create)
         assert "REPLY-MARKER-abc" in blob
         assert "UNIQ-MARKER-777" in blob          # mcp call result carried verbatim
-        assert "CONSTITUTION-MARKER-xyz" in blob
-        # text-only: no MCP / hosted tool wired onto this call
+        # Feature 069 decision #11: the dedicated recognition prompt drives this
+        # call, not the full constitution.
+        assert "post-turn recognition prompt" in blob
+        assert RECOGNITION_TOOL_NAME in blob
+        # text-only for Morning: no MCP / hosted tool wired onto this call
+        # (query_ledger_events is a local read-only function tool, not an MCP one)
         assert not any(
             isinstance(t, dict) and t.get("type") == "mcp"
             for t in (kwargs.get("tools") or [])
         )
+        tool_names = {t.get("name") for t in (kwargs.get("tools") or []) if isinstance(t, dict)}
+        assert RECOGNITION_TOOL_NAME in tool_names
+        assert "query_ledger_events" in tool_names
 
     def test_verdict_output_never_appended_to_session(self, ai_handler, session):
         before = list(session.session.message_ids)

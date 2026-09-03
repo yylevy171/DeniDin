@@ -636,10 +636,15 @@ class TestMediaHandlerErrorHandling:
 
 
 class TestLedgerEventPersistenceViaMediaHandler:
-    """T010a (Feature 033): MediaHandler must persist captured ledger events via the
-    real LedgerEventManager (the same instance AIHandler uses), with message_id
-    threaded, and the resulting event_id(s) linked into the stored media-turn
-    message - capture happening BEFORE _store_media_turn, not patched in after."""
+    """T024a (Feature 069): MediaHandler NO LONGER persists ledger events directly.
+    A recognised fee-agreement / bank-deposit image (or DOCX) instead surfaces a
+    structured `ledger_stash` on the result dict; denidin.py routes that as a
+    synthetic conversational turn, and the post-turn recognition step is what
+    actually persists (with the client resolved). So the media turn's own
+    message must be left with an EMPTY ledger_event_ids, and nothing is written
+    to the events dir by MediaHandler itself.
+
+    (Was T010a/Feature 033: MediaHandler persisted directly via LedgerEventManager.)"""
 
     @pytest.fixture
     def real_denidin_context(self, tmp_path):
@@ -660,7 +665,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
         )
         return denidin
 
-    def test_captured_ledger_event_persisted_with_message_id_and_linked_to_message(
+    def test_recognised_bank_image_surfaces_stash_and_does_not_persist(
         self, real_denidin_context, tmp_path
     ):
         handler = MediaHandler(real_denidin_context)
@@ -697,14 +702,14 @@ class TestLedgerEventPersistenceViaMediaHandler:
         )
 
         assert result["success"] is True
+
+        # Feature 069: a structured stash is surfaced for routing, NOT persisted here.
+        assert result["ledger_stash"]
+        assert result["ledger_stash_source_type"] == "בנק"
+        assert "9,440" in result["ledger_stash"]
+
         events_dir = real_denidin_context.ai_handler.ledger_event_manager.storage_dir
-        files = list(events_dir.glob("*.json"))
-        assert len(files) == 1
-        with files[0].open(encoding="utf-8") as f:
-            event = json.load(f)
-        assert event["message_id"] == "media-msg-1"
-        assert event["source_type"] == "בנק"
-        assert event["event_id"].startswith("B")
+        assert list(events_dir.glob("*.json")) == []
 
         session_manager = real_denidin_context.ai_handler.session_manager
         session = session_manager.get_session("972500000000@c.us")
@@ -716,11 +721,8 @@ class TestLedgerEventPersistenceViaMediaHandler:
             if msg["ai_required_role"] == "user":
                 user_messages.append(msg)
         assert len(user_messages) == 1
-        assert user_messages[0]["ledger_event_ids"] == [event["event_id"]]
+        assert user_messages[0]["ledger_event_ids"] == []
 
-        # Confirmed design (2026-07-30): message_id must be identical across the
-        # persisted message's own field, its filename, the session's
-        # message_ids entry, and LedgerEvent.message_id.
         assert user_messages[0]["message_id"] == "media-msg-1"
         assert "media-msg-1" in session.message_ids
         assert (session_dir / "messages" / "media-msg-1.json").exists()
@@ -729,6 +731,38 @@ class TestLedgerEventPersistenceViaMediaHandler:
         # the message itself, replacing raw_message_excerpt's old per-ledger-event
         # duplication of the same content (see LedgerEventManager's own removal).
         assert user_messages[0]["extracted_text"] == "בנק - הפקדה של 9,440 ₪"
+
+    def test_recognised_agreement_docx_surfaces_document_stash(
+        self, real_denidin_context, tmp_path
+    ):
+        handler = MediaHandler(real_denidin_context)
+        handler.docx_extractor = Mock()
+        handler.docx_extractor.analyze_media = Mock(return_value={
+            "raw_response": "מסמך: הסכם שכר טרחה עם רון לוי.",
+            "extracted_text": "הסכם שכר טרחה בין עו\"ד לבין רון לוי ...",
+            "document_analysis": {"document_type": "הסכם", "summary": "", "key_points": []},
+            "extraction_quality": "high", "warnings": [], "model_used": "python-docx",
+        })
+        handler.media_file_manager = Mock()
+        handler.media_file_manager.download_file = Mock(return_value=(b"data", True))
+        handler.media_file_manager.validate_file_size = Mock(return_value=None)
+        handler.media_file_manager.validate_format = Mock(return_value="docx")
+        handler.media_file_manager.create_storage_path = Mock(return_value=tmp_path / "media")
+        handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-a.docx")
+
+        result = handler.process_media_message(
+            file_url="https://example.com/agreement.docx", filename="agreement.docx",
+            mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            file_size=1000, sender_phone="972500000002@c.us", chat_id="972500000002@c.us",
+            timestamp=1770000500, message_id="media-msg-3",
+        )
+
+        assert result["success"] is True
+        assert result["ledger_stash_source_type"] == "הסכם"
+        assert "התקבל קובץ מסמך (DOCX)" in result["ledger_stash"]
+        assert "מהמסמך (מילה במילה)" in result["ledger_stash"]
+        events_dir = real_denidin_context.ai_handler.ledger_event_manager.storage_dir
+        assert list(events_dir.glob("*.json")) == []
 
     def test_no_ledger_event_leaves_message_ledger_event_ids_empty(
         self, real_denidin_context, tmp_path

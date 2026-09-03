@@ -35,10 +35,10 @@ direction).*
 
 ### C3b — routing signal (no new AI call)
 
-| medium | classification signal (already produced today) | routed when |
+| medium | classification signal | routed when |
 |---|---|---|
-| image | `ImageExtractor`'s existing vision-classify `source_type` on `analysis_result["ledger_events"][0]` | `source_type` ∈ {`בנק`, `הסכם`} |
-| `docx` | `DOCXExtractor`'s existing `document_analysis.document_type` | document type is `הסכם` (per `bugfix-028` a `docx` is always `הסכם` or unknown — never `בנק`) |
+| image | `ImageExtractor`'s existing vision-classify `source_type` on an entry in `analysis_result["ledger_events"]` | `source_type` ∈ {`בנק`, `הסכם`} |
+| `docx` | `DOCXExtractor.document_analysis.document_type` — **as built 2026-09-03** this is a new deterministic keyword classmethod `_classify_document_type` (no OpenAI call); the field previously did not exist on `analyze_media`'s return and `_analyze_document` hardcoded `"generic"` | document type is `הסכם` (per `bugfix-028` a `docx` is always `הסכם` or unknown — never `בנק`) |
 | `pdf` | — | **never** (FR-069-047 — Feature 071 rewrites `PDFExtractor` to a single-call extraction; it then routes here with no further 069 work) |
 
 `source_medium` ∈ `{"image", "document"}`: `ImageExtractor` → `"image"`; `DOCXExtractor` →
@@ -59,12 +59,20 @@ When the routing signal fires, the media path:
      `📄`/"מהמסמך").
    - Missing/None value → `לא זוהה`. Multiple events → one labelled block each, prefixed
      `אירוע N מתוך M`.
-2. Constructs a synthetic `AIRequest` — the **Feature 030 contact-card pattern**:
-   - `text_content` = the stash text.
-   - `chat_id`, `sender` (resolved display name), `phone_number` (resolved phone for RBAC),
-     `is_group`, `chat_name`, `message_id`, timestamp = the same values Step 10 uses today
-     (the real media message's Green API notification timestamp — this becomes the
-     recognition call's `trigger_message_id` source for `event_datetime`).
+2. Re-enters the conversational pipeline as a **synthetic text turn** (the Feature 030
+   contact-card pattern, mechanically): `denidin.py`'s `_process_media_message` rewrites the
+   inbound notification's `messageData` in place to a `textMessage` shape whose body is the
+   stash text, keeping the original `senderData` (chat id, sender, resolved name) and
+   notification timestamp, then calls `_process_conversational_message(notification)`. That
+   path parses it through the same `WhatsAppMessage.from_notification` → `create_request`
+   flow a real typed turn uses, so `chat_id` / RBAC phone / `is_group` / `chat_name` /
+   `message_id` all resolve identically.
+   - **Dating note (decision #10):** the media notification timestamp is **not** the
+     `event_datetime` source. The synthetic turn persists its own user + assistant messages;
+     the ledgerer dates `הסכם` / `בנק` from the **completing** message (the assistant reply
+     that closes the round, whichever turn that is — the same turn for a silent exact match,
+     a later turn after a resolution detour). `trigger_message_id` in the verdict stays
+     informational.
 3. Routes it through the **shared conversational path** (`_process_conversational_message`) —
    the same one typed turns use. That path already:
    - attaches Morning MCP tools (`resolve_client_name`, `add_client`, `create_*`) +
@@ -111,11 +119,14 @@ existing block in `_process_conversational_message` (denidin.py ~588-595) that (
 `pending_local_tool_approval_manager.attach_sent_message_id(...)` must run for the media
 ledger path too.
 
-**Chosen approach (R1)**: extract that block into a thin module-level helper in `denidin.py`
-— `_send_ai_response_and_attach(chat_id, ai_response, answer_fn)` — called by both
-`_process_conversational_message` and the media routing path. Written once, no duplication.
-It MUST preserve today's conversational-path behavior byte-for-byte (verified by existing
-tests staying green).
+**Chosen approach (R1, as built 2026-09-03)**: that block was extracted into the thin
+module-level helper `_send_ai_response_and_attach(notification, chat_id, ai_response)` in
+`denidin.py` (Phase 2 / T007b). The media routing path does **not** call it directly and
+does **not** add a second media-specific routing helper — instead `_process_media_message`
+rewrites the notification to a `textMessage` and calls `_process_conversational_message(...)`
+(see step 2 above), which already runs `_send_ai_response_and_attach` **and**
+`_run_post_turn_ledger_recognition`. One code path, no duplication; the conversational
+path's behavior is unchanged byte-for-byte (existing tests green).
 
 ## Tests
 
@@ -125,12 +136,15 @@ tests staying green).
   + one line per fee component; `source_medium="image"` → `📸`/"מהתמונה"; `source_medium=
   "document"` → `📄`/"מהמסמך"; missing value → `לא זוהה`; multi-event → labelled blocks.
 - **unit** `test_media_handler.py`: a recognized `בנק` image, a recognized `הסכם` image, and
-  a `docx` with `document_type == "הסכם"` → a synthetic conversational turn is routed with
-  the right `text_content` / `chat_id` / phone / timestamp / `source_medium`, and
-  `add_ledger_events_from_call` is **not** called; an exception in routing → friendly notice,
-  nothing persisted, no fallback; no ledger classification → routed as an ordinary media
-  turn (unchanged), no stash. **No** assertion about a new `DOCXExtractor` OpenAI call
-  (there isn't one).
+  a `docx` with `document_type == "הסכם"` → `result["ledger_stash"]` /
+  `["ledger_stash_source_type"]` are set and `add_ledger_events_from_call` is **not** called,
+  the media turn's `Message.ledger_event_ids` stays empty; no ledger classification → routed
+  as an ordinary media turn (unchanged), no stash. **No** assertion about a new
+  `DOCXExtractor` OpenAI call (there isn't one).
+- **unit** `test_denidin_media_ledger_routing.py`: `_process_media_message` rewrites the
+  notification `messageData` to a `textMessage` carrying the stash (keeping `senderData` /
+  `timestamp` / `idMessage`) and calls `_process_conversational_message`; a no-stash or
+  `None` result → no synthetic turn.
 - **integration** `test_ledger_client_resolution_routing.py`: real `imageMessage` /
   `documentMessage` webhook JSON → router → (OpenAI stubbed: exact-match reply, then a
   `complete` recognition verdict) → exactly one `LedgerEvent` file with the resolved name,

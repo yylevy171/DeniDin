@@ -2,10 +2,23 @@
 
 **Phase 1** | **Plan**: [plan.md](./plan.md) | **Research**: [research.md](./research.md)
 
-This feature adds **no persisted schema** and **no config keys**. It adds two transient
-in-memory shapes (the recognition-call output; the media-ledger stash), three app-log line
-formats, and one fixed marker phrase. `LedgerEvent`'s persisted record and
-`CURRENT_SCHEMA_VERSION` are **unchanged** (human decision 2026-08-31).
+This feature adds **no persisted schema**. It adds **one config key**
+(`ledger_recognition_context_window_hours`, float, default 1.0 — design-thread decision #2,
+2026-09-03; supersedes the "no config keys" line), two transient in-memory shapes (the
+recognition-call output; the media-ledger stash), several app-log line formats, and two fixed
+marker phrases (`[לקוח לא אומת במורנינג]` store-anyway; `[רישום חלקי — חסר: …]` incomplete —
+decision #12). `LedgerEvent`'s persisted record and `CURRENT_SCHEMA_VERSION` are
+**unchanged** (human decision 2026-08-31).
+
+> **DESIGN-THREAD ADDENDUM (2026-09-03).** Decisions 1–12 refined the mechanism after this
+> file was written — see **tasks.md → "DESIGN-THREAD ADDENDUM"** for the authoritative list.
+> Key deltas to this file: dating for `הסכם`/`בנק` is the **completing** message, not the
+> trigger/economic-content message (#10); the recognition call sees only the **past 1h**
+> window with `[✓ captured as …]` markers + persisted `Message.mcp_calls` (#2, #6); it
+> attaches `query_ledger_events` and always queries the client's history once up front (#9);
+> the ledgerer runs a **content-fingerprint dedup** (#4) and a **completeness re-check →
+> persist-flagged-incomplete** (#12); the recognition prompt is a **separate file**,
+> `config/ledger_recognition_prompt.md`, not the constitution (#11).
 
 > **Redesign note (2026-09-01).** An earlier version of this file modelled an inline
 > `record_unresolved_ledger_capture` function tool (§4). The redesign removes all inline
@@ -93,9 +106,11 @@ disk, no manager field.
     "reference": "<event_id|null>",            // established in conversation via query_ledger_events
     "reference_hint": "<str|null>"
   },
-  "trigger_message_id": "<session message id>" // the message that first introduced the event's
-                                               // core economic content — the ledgerer reads its
-                                               // Green API notification timestamp for event_datetime
+  "trigger_message_id": "<session message id>" // INFORMATIONAL ONLY (audit breadcrumb): the
+                                               // message that first introduced the event's core
+                                               // economic content. NOT used for dating — the
+                                               // ledgerer dates הסכם/בנק from the COMPLETING
+                                               // message it is handed (decision #10).
 }
 ```
 
@@ -138,14 +153,18 @@ disk, no manager field.
 Morning / ledger lookup (FR-069-004).
 
 On **`complete`**:
-1. Look up the message named by `verdict["trigger_message_id"]` in the session; parse its
-   persisted `Message.timestamp` (an Asia/Jerusalem ISO string) →
-   `event_datetime = <parsed dt>.strftime("%d/%m/%Y %H:%M")`. **Never** `now_local()`,
-   **never** the recognition-call clock — this is the "hard pointer" every hardcoded
-   acceptance-test expectation depends on. (Resolved 2026-09-02, option A: the Green API
-   notification epoch is not persisted anywhere; the message's own processing-time ISO
-   timestamp is used, differing by sub-second-to-seconds latency — immaterial at minute
-   precision. No `local_from_timestamp` call on this path.)
+1. `event_datetime` — the ledgerer is handed `completing_message_id` (3rd positional arg;
+   `denidin.py` passes `session.message_ids[-1]`). `_message_epoch(session,
+   completing_message_id)` looks that message up and parses its persisted `Message.timestamp`
+   (an Asia/Jerusalem ISO string) → `event_datetime = <parsed dt>.strftime("%d/%m/%Y %H:%M")`.
+   **Never** `now_local()`, **never** the recognition-call clock, **never**
+   `verdict["trigger_message_id"]` (informational only — for a resolution detour or an
+   amendment the completing message is *later* than the trigger; decision #10). This is the
+   "hard pointer" every hardcoded acceptance-test expectation depends on. (Resolved
+   2026-09-02/2026-09-03: the Green API notification epoch is not persisted anywhere; the
+   message's own processing-time ISO timestamp is used, differing by sub-second-to-seconds
+   latency — immaterial at minute precision. No `local_from_timestamp` call on this path.)
+   `חשבונית` instead dates from the Morning document datetime in the tool result.
 2. `captured_at = now_local()`.
 3. Mint `event_id` — source-type prefix (`A`=`הסכם`, `B`=`בנק`; `חשבונית` uses the existing
    accounting prefix) + `DDMMYY` + `HHMM` (from `event_datetime`) + a same-minute sequence

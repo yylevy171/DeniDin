@@ -51,6 +51,24 @@ GODFATHER_CHAT_ID = "972501234567@c.us"
 GODFATHER_SENDER = "972501234567@c.us"
 
 
+def _is_post_turn_recognition_call(kwargs) -> bool:
+    """Feature 069: every godfather/admin turn now ends with a text-only
+    `recognize_ledger_event` call (tools=[report_ledger_recognition]). These tests
+    exercise the `query_ledger_events` main-turn route, not recognition - let each
+    stub short-circuit that trailing call to an inert `none` verdict so it neither
+    advances the stub's own call counter nor clobbers a captured-kwargs slot."""
+    return any(
+        isinstance(t, dict) and t.get("name") == "report_ledger_recognition"
+        for t in (kwargs.get("tools") or [])
+    )
+
+
+_RECOGNITION_NOOP = SimpleNamespace(
+    id="resp_recognition_noop", output=[], output_text="", model="gpt-5.6-luna",
+    usage=SimpleNamespace(total_tokens=1, input_tokens=1, output_tokens=0),
+)
+
+
 @pytest.mark.integration
 class TestLedgerQueryRouting:
 
@@ -88,7 +106,14 @@ class TestLedgerQueryRouting:
             }
             denidin_module.denidin_app = denidin_module.initialize_app(config_dict)
 
-        return denidin_module.denidin_app
+        app = denidin_module.denidin_app
+        # Stop the background session-cleanup thread: it makes its own
+        # client.responses.create calls (session summarization) that race these
+        # tests' stubbed OpenAI client and desync their call counters.
+        if getattr(app, "cleanup_thread", None) is not None:
+            app.cleanup_thread.stop()
+            app.cleanup_thread = None
+        return app
 
     def _wipe_events(self, denidin_app):
         manager = denidin_app.ai_handler.ledger_event_manager
@@ -173,6 +198,8 @@ class TestLedgerQueryRouting:
         calls = {"n": 0}
 
         def fake_create(**kwargs):
+            if _is_post_turn_recognition_call(kwargs):
+                return _RECOGNITION_NOOP
             calls["n"] += 1
             return first_response if calls["n"] == 1 else followup_response
 
@@ -211,6 +238,8 @@ class TestLedgerQueryRouting:
         calls = {"n": 0}
 
         def fake_create(**kwargs):
+            if _is_post_turn_recognition_call(kwargs):
+                return _RECOGNITION_NOOP
             calls["n"] += 1
             if calls["n"] == 1:
                 return first_response
@@ -276,6 +305,8 @@ class TestLedgerQueryRouting:
         captured_kwargs = {}
 
         def capture_and_respond(**kwargs):
+            if _is_post_turn_recognition_call(kwargs):
+                return _RECOGNITION_NOOP
             captured_kwargs.update(kwargs)
             return SimpleNamespace(
                 id="resp_client_ledger_query_1", output=[], output_text="בסדר",
@@ -314,6 +345,8 @@ class TestLedgerQueryRouting:
         calls = {"n": 0}
 
         def fake_create(**kwargs):
+            if _is_post_turn_recognition_call(kwargs):
+                return _RECOGNITION_NOOP
             calls["n"] += 1
             if calls["n"] == 1:
                 return SimpleNamespace(
@@ -405,6 +438,8 @@ class TestLedgerQueryRouting:
         calls = {"n": 0}
 
         def fake_create(**kwargs):
+            if _is_post_turn_recognition_call(kwargs):
+                return _RECOGNITION_NOOP
             calls["n"] += 1
             if calls["n"] == 1:
                 return SimpleNamespace(

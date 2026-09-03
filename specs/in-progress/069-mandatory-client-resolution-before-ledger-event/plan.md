@@ -12,6 +12,19 @@ multi-component), §XIX (UX-impacting → approval), §XXI (tool-boundary consti
 Ledger `CURRENT_SCHEMA_VERSION` is **not** bumped (stays 2) — CLAUDE.md "LEDGER SCHEMA
 VERSION BUMPS ARE HUMAN-ONLY".
 
+> **DESIGN-THREAD ADDENDUM (2026-09-03, decisions 1–12 — see tasks.md for the full table).**
+> After this plan was written, an extended design thread refined the recognition mechanism:
+> a **1-hour context window** with a new config key `ledger_recognition_context_window_hours`
+> (the feature's only config key — supersedes "no config keys" in Complexity Tracking);
+> **completing-message dating** for `הסכם`/`בנק` (not the economic-content message);
+> `Message.mcp_calls` **persisted**; the recognition call **attaches `query_ledger_events`**
+> and always pulls the client's ledger history once up front (bounded loop, cap 3);
+> **content-fingerprint dedup** + a **completeness re-check (persist-flagged-incomplete)** in
+> the ledgerer; and the recognition prompt moved to its **own file**
+> `config/ledger_recognition_prompt.md` (`_load_recognition_prompt()`), leaving the
+> constitution with only the conversational side. All of this landed in the Phase 2–8 code on
+> 2026-09-03 (full unit+integration suite green).
+
 ---
 
 ## Summary

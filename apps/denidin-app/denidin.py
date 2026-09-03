@@ -482,6 +482,65 @@ def _resolve_group_user_phone(message) -> Optional[str]:
     return resolution.phone if resolution else None
 
 
+def _send_ai_response_and_attach(notification: Notification, chat_id: str, ai_response) -> None:
+    """Send this turn's AI reply, then - when it carried a freshly-created pending
+    approval sent as interactive buttons (Feature 047/054) - bind the returned
+    idMessage to whichever pending-approval manager has something outstanding for
+    this chat. `attach_sent_message_id` is a documented no-op on whichever manager
+    has nothing pending, so calling both unconditionally is safe.
+
+    Extracted verbatim from `_process_conversational_message` (Feature 069) so the
+    post-turn ledger-recognition hook has a clean seam to run after.
+    """
+    sent_id_message = denidin_app.whatsapp_handler.send_response(notification, ai_response)
+    if sent_id_message is not None:
+        denidin_app.ai_handler.pending_approval_manager.attach_sent_message_id(
+            chat_id, sent_id_message
+        )
+        denidin_app.ai_handler.pending_local_tool_approval_manager.attach_sent_message_id(
+            chat_id, sent_id_message
+        )
+
+
+def _run_post_turn_ledger_recognition(
+    *, chat_id: str, sender_phone: Optional[str], reply_text: str, turn_mcp_calls
+) -> None:
+    """Feature 069 (mechanism move): after a godfather/admin conversational turn's
+    reply has been sent, run the ONE text-only recognition call + the zero-AI
+    ledgerer. Gated by the same RBAC predicate that gates `query_ledger_events`.
+
+    Best-effort and fully self-contained: any failure is logged and swallowed
+    (FR-069-006) - the operator's reply is already out and must not change by one
+    byte because ledger bookkeeping hit a problem.
+    """
+    try:
+        from src.handlers.ai_handler import LEDGER_QUERY_AUTHORIZED_ROLES
+
+        ai_handler = denidin_app.ai_handler
+        user = ai_handler.user_manager.get_user(sender_phone) if sender_phone else None
+        if user is None or user.role not in LEDGER_QUERY_AUTHORIZED_ROLES:
+            return
+
+        session = ai_handler.session_manager.get_session(chat_id)
+        if not session.message_ids:
+            return
+        completing_message_id = session.message_ids[-1]
+
+        verdict = ai_handler.recognize_ledger_event(
+            session=session,
+            reply_text=reply_text,
+            turn_mcp_calls=turn_mcp_calls or [],
+        )
+        ai_handler.ledger_event_manager.persist_recognized_event(
+            verdict, session, completing_message_id
+        )
+    except Exception as exc:  # noqa: BLE001 - deliberate: never surface to the operator
+        logger.error(
+            f"[069] post-turn ledger recognition failed (swallowed): {exc}",
+            exc_info=True,
+        )
+
+
 def _process_conversational_message(notification: Notification) -> None:
     """
     Shared turn-processing logic for any message type that flows into the conversational
@@ -585,15 +644,18 @@ def _process_conversational_message(notification: Notification) -> None:
         # attach_sent_message_id() is a documented no-op (logged, never raises) on
         # whichever manager has nothing pending for this chat, so calling both
         # unconditionally is safe.
-        sent_id_message = denidin_app.whatsapp_handler.send_response(notification, ai_response)
-        if sent_id_message is not None:
-            denidin_app.ai_handler.pending_approval_manager.attach_sent_message_id(
-                message.chat_id, sent_id_message
-            )
-            denidin_app.ai_handler.pending_local_tool_approval_manager.attach_sent_message_id(
-                message.chat_id, sent_id_message
-            )
+        _send_ai_response_and_attach(notification, message.chat_id, ai_response)
         logger.info(f"{tracking} Response sent to {message.sender_name}")
+
+        # Feature 069 (mechanism move): ledger capture is a post-turn recognition
+        # step now - it runs LAST, after the operator's reply is already out, "like
+        # a finally block", and never changes that reply. Best-effort/self-contained.
+        _run_post_turn_ledger_recognition(
+            chat_id=message.chat_id,
+            sender_phone=group_user_phone or message.sender_id,
+            reply_text=ai_response.response_text,
+            turn_mcp_calls=ai_response.mcp_calls,
+        )
 
     except Exception as e:
         # Global exception handler - catches anything not handled by specific handlers
@@ -658,7 +720,26 @@ def _process_media_message(notification: Notification) -> None:
     if denidin_app.green_api_bot is not None:
         send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
-    denidin_app.whatsapp_handler.handle_media_message(notification)
+    result = denidin_app.whatsapp_handler.handle_media_message(notification)
+
+    # Feature 069 (Phase 9/10): a fee-agreement / bank-deposit image or DOCX was
+    # recognised. Instead of replying with the plain extraction summary,
+    # re-enter the conversational pipeline with a synthetic textMessage carrying
+    # the structured "ledger stash" - so the operator gets a real turn (client
+    # resolution question / confirmation), and the post-turn ledger recognition
+    # step runs over it exactly as it would for a typed message.
+    if isinstance(result, dict) and result.get("ledger_stash"):
+        stash_text = result["ledger_stash"]
+        logger.info(
+            f"[069] routing recognised media ledger event "
+            f"(source_type={result.get('ledger_stash_source_type')!r}) as a synthetic "
+            f"conversational turn"
+        )
+        message_data = notification.event.setdefault("messageData", {})
+        message_data.clear()
+        message_data["typeMessage"] = "textMessage"
+        message_data["textMessageData"] = {"textMessage": stash_text}
+        _process_conversational_message(notification)
 
 
 def handle_text_message(notification: Notification) -> None:
@@ -847,6 +928,17 @@ def handle_button_tap(notification: Notification) -> None:
         )
     logger.info(f"[047] Button tap resolved and response sent for chat={message.chat_id!r}")
 
+    # Feature 069: a button tap that resolved an approval (e.g. an add_client or a
+    # create_* document) is a real turn - run the same post-turn ledger recognition
+    # the typed-reply path runs, so a חשבונית/הסכם/בנק completed via a tap is
+    # captured identically. Best-effort/self-contained (see the function's docstring).
+    _run_post_turn_ledger_recognition(
+        chat_id=message.chat_id,
+        sender_phone=message.sender_id,
+        reply_text=ai_response.response_text,
+        turn_mcp_calls=ai_response.mcp_calls,
+    )
+
 
 def handle_unsupported_message_default(notification: Notification) -> None:
     """
@@ -1021,6 +1113,8 @@ if __name__ == "__main__":
         # the scheduler silently never started because this dict dropped it
         # before it ever reached initialize_app()).
         'accounting_ledger_update_freq': config.accounting_ledger_update_freq,
+        # Feature 069: context-window size for the post-turn ledger recognition call.
+        'ledger_recognition_context_window_hours': config.ledger_recognition_context_window_hours,
     }
 
     # Feature 043: construct the live Green API bot explicitly here (via

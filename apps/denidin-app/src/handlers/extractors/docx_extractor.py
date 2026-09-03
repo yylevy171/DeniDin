@@ -24,7 +24,24 @@ logger = logging.getLogger(__name__)
 
 class DOCXExtractor(MediaExtractor):
     """Extract text from DOCX files and optionally analyze with AI."""
-    
+
+    # Feature 069 (Phase 10): deterministic fee-agreement classification - a
+    # keyword scan, no OpenAI call. A DOCX whose body contains any of these
+    # phrases is routed as a `הסכם` synthetic conversational turn.
+    _FEE_AGREEMENT_MARKERS = (
+        "הסכם שכר טרחה",
+        "שכר טרחה",
+        "הסכם התקשרות",
+        "הסכם ייצוג",
+    )
+
+    @classmethod
+    def _classify_document_type(cls, text: str) -> str:
+        blob = text or ""
+        if any(marker in blob for marker in cls._FEE_AGREEMENT_MARKERS):
+            return "הסכם"
+        return "generic"
+
     def __init__(self, denidin_context):
         """
         Initialize with DeniDin global context.
@@ -46,9 +63,14 @@ class DOCXExtractor(MediaExtractor):
         CHK010: Preserve paragraph structure.
 
         today_timestamp (Feature 043) is accepted for interface parity
-        with MediaExtractor.analyze_media but unused here - DOCXExtractor
-        never calls capture_ledger_events_from_text (no ledger capture on
-        this path).
+        with MediaExtractor.analyze_media but unused here.
+
+        Feature 069 (Phase 10): ledger capture for a DOCX fee agreement is now a
+        POST-TURN recognition step, not something this extractor does. All this
+        path contributes is a deterministic (no OpenAI call)
+        `document_analysis.document_type == "הסכם"` signal, from a keyword scan of
+        the extracted text, so MediaHandler can route the doc as a synthetic
+        conversational turn (see MediaHandler step 10 / build_ledger_stash_text).
 
         Args:
             media: Media object containing DOCX data in memory
@@ -105,6 +127,13 @@ class DOCXExtractor(MediaExtractor):
             
             return {
                 "raw_response": raw_response,
+                # Feature 069 (Phase 10): deterministic doc-type signal (no AI) so
+                # MediaHandler can route a fee agreement as a synthetic turn.
+                "document_analysis": {
+                    "document_type": self._classify_document_type(extracted_text),
+                    "summary": "See raw_response",
+                    "key_points": [],
+                },
                 # Feature 043 (2026-08-18): the deterministic python-docx text itself
                 # (paragraphs + table cells), distinct from raw_response (the AI's
                 # analysis OF that text, empty when analyze=False) - this is what

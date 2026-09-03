@@ -59,6 +59,20 @@ known), populated from every successful `resolve_client_name` / `list_clients` /
   resolution flow — the mechanism is the same `resolve_client_name` call.
 - Feature 069 ships **without** this — one `resolve_client_name` call per recognized event,
   conversation-scoped caching only. 072 removes that per-event cost.
+- **NEW motivation (2026-09-03, from Feature 069 design review — the user referred to this
+  as "feature 74"; same feature, kept as 072):** Feature 069's post-turn recognition call
+  determines "client is resolved" **only** from Morning tool evidence in its 1-hour context
+  window (a `resolve_client_name` exact match / `add_client` / `create_*` success). If the
+  conversational model never calls `resolve_client_name` (it's confident it knows the
+  client, or resolved them more than an hour earlier), the recognition call sees no
+  evidence → returns `none` → **the `הסכם` / `בנק` event is silently never recorded.**
+  Feature 069 accepts this hole (decision: strict MCP-evidence-only, plus a relentless
+  constitution rule that every `הסכם`/`בנק` requires an explicit `resolve_client_name`
+  call). A durable clients cache **closes the hole**: the recognition call (zero-AI-tunnel,
+  text-only) can consult the cache directly to confirm a stated name is an exact known
+  Morning client, with no conversational tool call and no live tunnel hop required. This
+  makes "the recognition step can read the cache" an explicit capability of this feature,
+  not just "the conversational model's resolution is faster."
 - Interaction with the Morning-tunnel-down edge case: with a cache, a previously-seen
   client could still resolve while the tunnel is down. Whether Feature 069's "capture
   nothing if resolution can't complete" rule should relax for a cache hit is an open
@@ -73,6 +87,11 @@ known), populated from every successful `resolve_client_name` / `list_clients` /
   periodic reconciliation against live Morning required to trust it?
 - Should `add_client` write-through immediately, and should a rename in Morning (done
   outside DeniDin) ever be detected?
+- **Does the Feature 069 recognition call get direct read access to the cache** (a plain
+  in-process lookup, no tool call), or does it stay strictly evidence-from-the-window and
+  only the *conversational* model's resolution benefits? The former is what closes 069's
+  silent-loss hole; it also means the recognition call trusts the cache as a resolution
+  authority, which raises the reconciliation-trust question above.
 
 ---
 

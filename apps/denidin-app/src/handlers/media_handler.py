@@ -8,7 +8,7 @@ Since extractors (Phase 4) already return document_analysis, MediaHandler
 formats the extractor's analysis into user-friendly summaries.
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from pathlib import Path
 from datetime import datetime
 
@@ -20,6 +20,7 @@ from src.handlers.extractors.docx_extractor import DOCXExtractor
 from src.managers.media_file_manager import MediaFileManager
 from src.utils.logger import get_logger
 from src.utils.time_utils import now_local
+from src.handlers.ai_handler import build_ledger_stash_text
 
 logger = get_logger(__name__)
 
@@ -215,26 +216,45 @@ class MediaHandler:
             # redesign, see LedgerEventManager.add_ledger_events_from_call, which owns
             # the flatten + batch-agreement_id + persist-each-component logic); this
             # loop just handles the now-rare case of multiple SEPARATE calls.
-            ledger_event_ids = []
-            ledger_events = analysis_result.get("ledger_events", [])
-            if ledger_events:
-                try:
-                    if timestamp is not None:
-                        event_timestamp = timestamp
-                    else:
-                        event_timestamp = int(now_local().timestamp())
-                    session = self.session_manager.get_session(chat_id)
-
-                    for call_arguments in ledger_events:
-                        new_event_ids = self.ledger_event_manager.add_ledger_events_from_call(
-                            session_id=session.session_id,
-                            call_arguments=call_arguments,
-                            message_id=message_id,
-                            message_timestamp=event_timestamp,
-                        )
-                        ledger_event_ids.extend(new_event_ids)
-                except Exception as e:
-                    logger.error(f"Failed to persist ledger event(s) for media message: {e}", exc_info=True)
+            # Feature 069 (Phase 9/10): a fee-agreement (`הסכם`) or bank-deposit
+            # (`בנק`) recognised off an image/DOCX no longer persists a LedgerEvent
+            # directly here. Instead it builds a structured "stash" of every
+            # extracted field + the verbatim text, and the caller
+            # (denidin.py `_process_media_message`) routes that as a synthetic
+            # conversational turn - so `resolve_client_name` / `add_client` / the
+            # approval gate / multi-turn history run, and the SAME post-turn
+            # recognition call (`AIHandler.recognize_ledger_event`) is what actually
+            # writes the event, with its client resolved. `add_ledger_events_from_call`
+            # is never called on this path anymore.
+            ledger_event_ids: List[str] = []
+            ledger_stash: Optional[str] = None
+            ledger_stash_source_type: Optional[str] = None
+            try:
+                ledger_events = analysis_result.get("ledger_events") or []
+                doc_analysis = analysis_result.get("document_analysis") or {}
+                image_event = next(
+                    (e for e in ledger_events if e.get("source_type") in ("בנק", "הסכם")),
+                    None,
+                )
+                if image_event is not None:
+                    ledger_stash_source_type = image_event["source_type"]
+                    ledger_stash = build_ledger_stash_text(
+                        analysis_result.get("extracted_text"),
+                        image_event,
+                        ledger_stash_source_type,
+                        source_medium="image",
+                    )
+                elif media_type == "docx" and doc_analysis.get("document_type") == "הסכם":
+                    ledger_stash_source_type = "הסכם"
+                    ledger_stash = build_ledger_stash_text(
+                        analysis_result.get("extracted_text"),
+                        None,
+                        "הסכם",
+                        source_medium="document",
+                    )
+            except Exception as e:
+                logger.error(f"Failed to build ledger stash for media message: {e}", exc_info=True)
+                ledger_stash = None
 
             # Step 11 (bugfix-017): link this turn to the session, mirroring
             # AIHandler._finalize_response's user+assistant storage for text turns -
@@ -265,7 +285,11 @@ class MediaHandler:
                 "success": True,
                 "summary": summary,
                 "media_attachment": attachment,
-                "error_message": None
+                "error_message": None,
+                # Feature 069: when non-None, the caller must route this as a
+                # synthetic conversational turn instead of sending `summary`.
+                "ledger_stash": ledger_stash,
+                "ledger_stash_source_type": ledger_stash_source_type,
             }
             
         except ValueError as e:

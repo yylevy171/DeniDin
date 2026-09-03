@@ -21,6 +21,7 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from rapidfuzz import fuzz
 
+from src.utils.ledger_audit_log import log_ledger_event_created
 from src.utils.time_utils import LOCAL_TZ, local_from_timestamp, now_local
 
 logger = logging.getLogger(__name__)
@@ -634,7 +635,7 @@ def _format_linked_reference_hint(linked: Dict, resolved: bool) -> str:
 class LedgerEventManager:
     """Owns {data_root}/events/ - one flat JSON file per persisted ledger event."""
 
-    def __init__(self, storage_dir: str):
+    def __init__(self, storage_dir: str, session_manager=None):
         """
         Initialize LedgerEventManager.
 
@@ -643,9 +644,15 @@ class LedgerEventManager:
                 this from AppConfiguration.data_root at construction time
                 (Path(config.data_root) / "events"), matching MediaFileManager's
                 pattern exactly - never a hardcoded absolute path (REQ-STORE-001).
+            session_manager: (Feature 069) the SessionManager the ledgerer
+                (persist_recognized_event) uses to read the trigger message's
+                persisted timestamp and to back-link new event ids onto the
+                completing message. Optional so existing construction sites and
+                tests can wire it after the fact (`manager.session_manager = sm`).
         """
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+        self.session_manager = session_manager
 
         # Feature 044 (T001b): in-memory index of every persisted ledger event,
         # loaded once here and kept current by add_ledger_event's own append
@@ -822,6 +829,7 @@ class LedgerEventManager:
         message_id: Optional[str],
         message_timestamp: Optional[int],
         agreement_id: Optional[str] = None,
+        reference_override: Optional[str] = None,
     ) -> Optional[str]:
         """
         Persist a captured `capture_ledger_event` result as its own file.
@@ -857,10 +865,15 @@ class LedgerEventManager:
         """
         event = dict(event)  # never mutate caller's dict
 
-        # Feature 025 Phase 9: a חשבונית capture arrives as ONE verbatim-copied
-        # JSON blob from morning-mcp-app; every field below is derived from it
-        # in code rather than transcribed by the model.
-        if event.get("source_type") == "חשבונית":
+        # Feature 025 Phase 9: a reconciliation-sourced חשבונית capture arrives as
+        # ONE verbatim-copied machine-readable JSON blob from morning-mcp-app;
+        # every field is derived from it in code rather than transcribed.
+        # Feature 069: a *synchronous* חשבונית capture (a create_* that succeeded
+        # in-conversation) instead arrives already flat - the post-turn recognition
+        # call mapped the real create_* response into the schema fields directly,
+        # since it is text-only and cannot re-fetch the document. Detected by the
+        # absence of the accounting_document_json blob; used as-is.
+        if event.get("source_type") == "חשבונית" and event.get("accounting_document_json"):
             expanded = _expand_accounting_document_json(event)
             if expanded is None:
                 return None
@@ -954,6 +967,12 @@ class LedgerEventManager:
         # replaced_event_id one-directional, reference bidirectional - merged into one
         # field/direction question deferred).
         reference = REFERENCE_PLACEHOLDER if event.get("reference_hint") else None
+        # Feature 069: the recognition call may carry an already-decided prior
+        # event_id in `reference` (the conversation established the linkage via
+        # query_ledger_events) - the ledgerer passes it here verbatim; this is
+        # formatting/denormalization, never a decision about whether to link.
+        if reference_override is not None:
+            reference = reference_override
 
         hours_raw = event.get("hours")
         hours = _normalize_hours(hours_raw)
@@ -1159,6 +1178,10 @@ class LedgerEventManager:
             f"Persisted ledger event {event_id} (source_type={source_type!r}, "
             f"event_subtype={event.get('event_subtype')!r}) for session {session_id}"
         )
+        # Feature 069: one audit line per persisted event, carrying its full JSON -
+        # the single greppable record of exactly what reached the ledger, from
+        # either the post-turn recognition ledgerer or the Feature 025 sweep.
+        log_ledger_event_created(record)
 
         if source_type == "חשבונית" and accounting_document_display_number is not None:
             # Record this capture so a future same-date re-poll of this display
@@ -1176,6 +1199,7 @@ class LedgerEventManager:
         call_arguments: Dict,
         message_id: Optional[str],
         message_timestamp: Optional[int],
+        reference_override: Optional[str] = None,
     ) -> List[str]:
         """
         Persist every component of one `capture_ledger_event` call (2026-07-30,
@@ -1271,10 +1295,303 @@ class LedgerEventManager:
                 message_id=message_id,
                 message_timestamp=message_timestamp,
                 agreement_id=batch_agreement_id,
+                reference_override=reference_override,
             )
             if event_id is not None:
                 event_ids.append(event_id)
         return event_ids
+
+    # ------------------------------------------------------------------ #
+    # Feature 069 - THE LEDGERER (zero-AI consumer of the recognition verdict)
+    # ------------------------------------------------------------------ #
+
+    _TYPE_TOKEN_BY_SOURCE = {"בנק": "deposit", "הסכם": "agreement", "חשבונית": "invoice"}
+
+    # --- Feature 069 content-fingerprint dedup + completeness validation ---
+
+    @staticmethod
+    def _mandatory_field_gaps(source_type: Optional[str], event: Dict) -> List[str]:
+        """Deterministic completeness re-check over the fully-assembled recognition
+        `event` (Feature 069, decision #3.5). Returns the Hebrew field labels that
+        are still missing for this source_type - empty list = complete. The caller
+        persists ANYWAY on a non-empty result, flagged incomplete."""
+        def _blank(v) -> bool:
+            return v is None or (isinstance(v, str) and not v.strip())
+
+        gaps: List[str] = []
+        if source_type == "הסכם":
+            if _blank(event.get("client_name")):
+                gaps.append("שם לקוח")
+            if _blank(event.get("description")):
+                gaps.append("תיאור")
+            components = event.get("components") or []
+            has_priced = any(
+                (_normalize_amount(c.get("amount")) or 0) > 0 or not _blank(c.get("percent"))
+                for c in components
+            )
+            if not components or not (has_priced or not _blank(event.get("hours"))):
+                gaps.append("רכיב מתומחר או שעות")
+        elif source_type == "בנק":
+            # vat_status is deliberately NOT checked here - add_ledger_event
+            # force-sets it to `כולל` for every בנק component unconditionally.
+            for key, label in (
+                ("client_name", "שם לקוח"), ("txn_date", "תאריך עסקה"),
+                ("amount", "סכום"), ("description", "תיאור"),
+            ):
+                if _blank(event.get(key)):
+                    gaps.append(label)
+        elif source_type == "חשבונית":
+            for key, label in (
+                ("client_name", "שם לקוח"), ("txn_date", "תאריך"),
+                ("event_subtype", "סוג מסמך"), ("amount", "סכום"),
+                ("accounting_document_display_number", "מספר מסמך"),
+            ):
+                if _blank(event.get(key)):
+                    gaps.append(label)
+        return gaps
+
+    @staticmethod
+    def _content_fingerprint(source_type: Optional[str], event: Dict, date_str: str) -> Optional[str]:
+        """A stable hash of an event's semantically-meaningful content + its date
+        (Feature 069, decision #4). Same content same day = duplicate (skip); any
+        content change = a new record (amendment). Excludes event_id / captured_at /
+        time-of-day. Amounts are normalized first (#9) so "4,000" == "4000"."""
+        def amt(v):
+            # v may be a raw string ("4,000 ₪") from a recognition verdict OR an
+            # already-normalized number from a persisted stored event - coerce to
+            # str so _normalize_amount (regex-based) never sees a bare int/float.
+            if v is None:
+                return None
+            return _normalize_amount(str(v))
+
+        if source_type == "בנק":
+            parts = [
+                "בנק", (event.get("client_name") or "").strip(), event.get("txn_date") or "",
+                str(amt(event.get("amount"))),
+                event.get("bank_number") or "", event.get("bank_branch") or "",
+                event.get("bank_account") or "", date_str,
+            ]
+        elif source_type == "הסכם":
+            comps = sorted(
+                json.dumps({
+                    "amount": amt(c.get("amount")),
+                    "percent": (str(c.get("percent")).strip() if c.get("percent") is not None else None),
+                    "trigger_condition": (c.get("trigger_condition") or "").strip(),
+                    "vat_status": (c.get("vat_status") or "").strip(),
+                }, ensure_ascii=False, sort_keys=True)
+                for c in (event.get("components") or [])
+            )
+            parts = [
+                "הסכם", event.get("agreement_id") or "",
+                (event.get("payer_name") or "").strip(),
+                (event.get("vat_status") or "").strip(),
+                "|".join(comps), date_str,
+            ]
+        else:
+            return None
+        return "␟".join(parts)
+
+    def _is_duplicate_recognized_event(
+        self, source_type: Optional[str], event: Dict, date_str: str
+    ) -> bool:
+        """True when the ledger index already holds an event with this exact
+        content fingerprint (Feature 069). חשבונית keeps its own (date,
+        display_number) guard in add_ledger_event and is not handled here."""
+        fp = self._content_fingerprint(source_type, event, date_str)
+        if fp is None:
+            return False
+        for record in self._index:
+            if record.get("source_type") != source_type:
+                continue
+            rec_date = (record.get("event_datetime") or "").split(" ")[0]
+            if source_type == "בנק":
+                rec_event = {
+                    "client_name": record.get("client_name"),
+                    "txn_date": record.get("txn_date"),
+                    "amount": record.get("amount"),
+                    "bank_number": record.get("bank_number"),
+                    "bank_branch": record.get("bank_branch"),
+                    "bank_account": record.get("bank_account"),
+                }
+                if self._content_fingerprint("בנק", rec_event, rec_date) == fp:
+                    return True
+            elif source_type == "הסכם" and record.get("agreement_id") == event.get("agreement_id"):
+                # הסכם is exploded per component - reassemble this agreement_id's
+                # persisted components and fingerprint the group.
+                group = [
+                    r for r in self._index
+                    if r.get("agreement_id") == event.get("agreement_id")
+                    and (r.get("event_datetime") or "").split(" ")[0] == rec_date
+                ]
+                rec_event = {
+                    "agreement_id": record.get("agreement_id"),
+                    "payer_name": record.get("payer_name"),
+                    "vat_status": record.get("vat_status"),
+                    "components": [
+                        {
+                            "amount": r.get("amount"),
+                            "percent": r.get("percent"),
+                            "trigger_condition": r.get("trigger_condition"),
+                            "vat_status": r.get("vat_status"),
+                        }
+                        for r in group
+                    ],
+                }
+                if self._content_fingerprint("הסכם", rec_event, rec_date) == fp:
+                    return True
+        return False
+
+    def _message_epoch(self, session, message_id: Optional[str]) -> Optional[int]:
+        """The recorded-date pointer (Feature 069, decision #10): a message's OWN
+        persisted `Message.timestamp` (an Asia/Jerusalem ISO string) as a Unix
+        epoch, so it flows through the existing add_ledger_event date derivation
+        unchanged. For `הסכם`/`בנק` the caller passes the COMPLETING message id (the
+        message that completed the event this round), not the economic-content
+        message. None (→ processing-time fallback, WARNING) only if the message or
+        its timestamp is genuinely unavailable - never `now_local()` by choice."""
+        if not (self.session_manager and message_id):
+            return None
+        message = self.session_manager.load_message(session, message_id)
+        if message is None or not message.timestamp:
+            return None
+        try:
+            # minute precision is all event_datetime / event_id need
+            return int(datetime.fromisoformat(message.timestamp).timestamp())
+        except ValueError:
+            logger.warning(
+                f"[069] message {message_id} has an unparseable "
+                f"timestamp {message.timestamp!r} - falling back to processing time"
+            )
+            return None
+
+    def persist_recognized_event(
+        self, verdict: Dict, session, completing_message_id: str
+    ) -> List[str]:
+        """
+        THE LEDGERER (Feature 069, FR-069-004): the mechanical, ZERO-AI consumer of
+        `AIHandler.recognize_ledger_event`'s tri-state verdict. It mints ids, explodes
+        `הסכם` components, dedups, persists immutable JSON, keeps the in-memory index
+        current, and back-links the new event id(s) onto the COMPLETING message. It
+        never makes an OpenAI call, never resolves a client, never looks anything up
+        in Morning or in its own ledger index.
+
+        Returns the list of created event_ids (empty for `none` / `declined`).
+        """
+        outcome = verdict.get("verdict")
+        now_iso = now_local().isoformat()
+
+        if outcome == "declined":
+            source_type = verdict.get("source_type")
+            logger.info(
+                f"[069] ledger capture declined by operator: "
+                f"type={self._TYPE_TOKEN_BY_SOURCE.get(source_type or '', source_type)} "
+                f"name={verdict.get('client_name_stated')!r} "
+                f"session={session.session_id} "
+                f"reason={verdict.get('reason') or 'declined_by_operator'} "
+                f"time={now_iso}"
+            )
+            return []
+
+        if outcome != "complete":
+            logger.debug(f"[069] recognition verdict={outcome!r} - nothing to persist")
+            return []
+
+        event = dict(verdict.get("event") or {})
+        source_type = event.get("source_type")
+        type_token = self._TYPE_TOKEN_BY_SOURCE.get(source_type or "", source_type)
+        trigger_message_id = verdict.get("trigger_message_id")
+        # Decision #10: `הסכם`/`בנק` are dated from the COMPLETING message (the one
+        # that finished the event this round), not the economic-content message.
+        # `חשבונית` is dated from the Morning document itself (_source_creation_ts_raw
+        # below). trigger_message_id stays informational (audit breadcrumb only).
+        epoch = self._message_epoch(session, completing_message_id)
+        local_dt = local_from_timestamp(epoch) if epoch is not None else now_local()
+
+        logger.info(
+            f"[069] ledger capture recognized: type={type_token} "
+            f"session={session.session_id} chat={session.whatsapp_chat} "
+            f"trigger_message_id={trigger_message_id!r} time={now_iso}"
+        )
+
+        if source_type == "חשבונית" and not event.get("_source_creation_ts_raw"):
+            # Feature 069 synchronous חשבונית capture: the recognition verdict is
+            # flat (text-only, no accounting_document_json blob), so its txn_date
+            # IS the Morning document's creation date. Feed it through the same
+            # `_source_creation_ts_raw` slot Feature 025's reconciliation uses, so
+            # event_datetime lands on the document's real date and the
+            # (date, display_number) dedup key matches a later reconciliation pass.
+            event["_source_creation_ts_raw"] = event.get("txn_date")
+
+        if source_type == "הסכם":
+            label = event.get("description") or "הסכם"
+            event["agreement_id"] = (
+                f"{local_dt.strftime('%m%y')}-{_slugify(event.get('client_name'))}"
+                f"-{_slugify(label)}"
+            )
+            components = event.get("components") or []
+            for i, component in enumerate(components):
+                if not component.get("component_label"):
+                    component["component_label"] = (
+                        component.get("description") or f"רכיב {i + 1}"
+                    )
+            event["components"] = components
+            event["component_count"] = len(components)
+        elif not (event.get("components") or []):
+            # בנק (and any other non-component source): synthesize the single
+            # component add_ledger_events_from_call's loop always maps to, so the
+            # shared fields still flow through the one persistence path unchanged.
+            event["components"] = [{}]
+            event["component_count"] = 1
+
+        # Feature 069 decision #4: content-fingerprint dedup. Same content, same
+        # day = a duplicate the recognition call re-reported (e.g. a later
+        # unrelated turn about the same client) - skip it. Any content change is a
+        # new record (amendment), handled normally. חשבונית has its own
+        # (date, display_number) guard inside add_ledger_event.
+        date_str = local_dt.strftime("%d/%m/%Y")
+        if source_type != "חשבונית" and self._is_duplicate_recognized_event(
+            source_type, event, date_str
+        ):
+            logger.info(
+                f"[069] recognized {type_token} event is a content-fingerprint "
+                f"duplicate of an existing ledger record ({date_str}) - nothing persisted"
+            )
+            return []
+
+        # Feature 069 decision #3.5: deterministic completeness re-check over the
+        # fully-assembled event. On a gap, PERSIST ANYWAY, flagged incomplete -
+        # a marker naming the missing field(s) goes into `description` so nothing
+        # is silently lost.
+        gaps = self._mandatory_field_gaps(source_type, event)
+        if gaps:
+            marker = f"[רישום חלקי — חסר: {', '.join(gaps)}]"
+            existing_desc = event.get("description")
+            event["description"] = f"{existing_desc} {marker}".strip() if existing_desc else marker
+            logger.warning(
+                f"[069] recognized {type_token} event is incomplete "
+                f"(missing: {gaps}) - persisting flagged with {marker!r}"
+            )
+
+        created = self.add_ledger_events_from_call(
+            session_id=session.session_id,
+            call_arguments=event,
+            message_id=completing_message_id,
+            message_timestamp=epoch,
+            reference_override=event.get("reference"),
+        )
+
+        for event_id in created:
+            logger.info(
+                f"[069] ledger event written: type={type_token} event_id={event_id} "
+                f"session={session.session_id} chat={session.whatsapp_chat} time={now_local().isoformat()}"
+            )
+
+        if created and self.session_manager is not None:
+            self.session_manager.append_ledger_event_ids(
+                session, completing_message_id, created
+            )
+
+        return created
 
     def query_events(self, criteria: Optional[List[Dict]] = None) -> Dict:
         """

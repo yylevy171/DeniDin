@@ -15,11 +15,11 @@ What the ledgerer does (and only this):
     `Message.ledger_event_ids` (NOT the trigger message),
   - makes NO OpenAI call, NO client resolution, NO Morning lookup, NO ledger query.
 
-`event_datetime` is the **hard pointer** (option A, 2026-09-02): the trigger
-message's own persisted `Message.timestamp` (an Asia/Jerusalem ISO string),
-parsed and formatted `%d/%m/%Y %H:%M` — never `now_local()`, never the
-recognition-call clock, never `local_from_timestamp` off a Green API epoch that
-isn't persisted anywhere.
+`event_datetime` (Feature 069 decision #10, 2026-09-03): for `הסכם` / `בנק` it is
+the **completing** message's own persisted `Message.timestamp` (the message that
+completed the event this round), parsed and formatted `%d/%m/%Y %H:%M` — never the
+trigger/economic-content message, never `now_local()`, never the recognition-call
+clock. (`חשבונית` dates from the Morning document itself.)
 
 Real `LedgerEventManager` + real `SessionManager`. No mocks — there is no
 external service on this path.
@@ -40,7 +40,10 @@ from src.managers.session_manager import SessionManager
 from src.utils.time_utils import now_local
 
 CHAT_ID = "group-ledgerer@g.us"
-TRIGGER_TS = "2026-07-15T09:30:12.500000+03:00"
+# The economic content was stated here (earlier) ...
+TRIGGER_TS = "2026-07-14T16:05:00.000000+03:00"
+# ... but the event was COMPLETED here - decision #10 dates it from this one.
+COMPLETING_TS = "2026-07-15T09:30:12.500000+03:00"
 EXPECTED_EVENT_DATETIME = "15/07/2026 09:30"
 
 
@@ -79,6 +82,7 @@ def _build_session(sm, trigger_content="חתמנו הסכם שכר טרחה עם
         chat_id=CHAT_ID, role="assistant", content="רשמתי.", user_role="godfather")
     session = sm.get_session(CHAT_ID)
     _rewrite_timestamp(sm, session, trigger_id, TRIGGER_TS)
+    _rewrite_timestamp(sm, session, completing_id, COMPLETING_TS)
     return session, trigger_id, completing_id
 
 
@@ -167,14 +171,17 @@ class TestAgreementComplete:
         assert all(r["client_name"] == "דנה כהן" for r in records)
         assert all(r["event_id"].startswith("A") for r in records)
 
-    def test_event_datetime_is_trigger_message_timestamp_not_now(self, lem, sm):
+    def test_event_datetime_is_completing_message_timestamp_not_trigger_not_now(self, lem, sm):
         session, trigger_id, completing_id = _build_session(sm)
 
         lem.persist_recognized_event(
             _agreement_verdict(trigger_id), session, completing_id)
 
         records = _load_events(lem)
+        # dated from the COMPLETING message (15/07 09:30), not the trigger
+        # (14/07 16:05) and not now.
         assert {r["event_datetime"] for r in records} == {EXPECTED_EVENT_DATETIME}
+        assert all(not r["event_datetime"].startswith("14/07/2026") for r in records)
         today = now_local().strftime("%d/%m/%Y")
         assert all(r["captured_at"].startswith(today) for r in records)
         assert all(not r["event_datetime"].startswith(today) for r in records)

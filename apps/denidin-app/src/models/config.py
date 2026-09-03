@@ -69,6 +69,11 @@ class AppConfiguration:
     # - this field only controls whether the background poller runs.
     accounting_ledger_update_freq: int = 0
 
+    # Feature 069: how many hours of chat history the post-turn ledger-recognition
+    # call sees as its context window (float; DI only, never an env var). Older
+    # messages are excluded from the recognition input. Default 1.0.
+    ledger_recognition_context_window_hours: float = 1.0
+
     @classmethod
     def from_file(cls, file_path: str) -> 'AppConfiguration':
         """
@@ -125,7 +130,8 @@ class AppConfiguration:
             'user_roles': {},
             'mcp': {},
             'reminders': {},
-            'accounting_ledger_update_freq': 0
+            'accounting_ledger_update_freq': 0,
+            'ledger_recognition_context_window_hours': 1.0
         }
 
         # Merge with defaults
@@ -238,6 +244,15 @@ class AppConfiguration:
             max_age = self.mcp.get('url_max_age_seconds', 0)
             if not isinstance(max_age, (int, float)) or max_age < 0:
                 raise ValueError(f"mcp.url_max_age_seconds must be a non-negative number, got {max_age!r}")
+
+        # Validate ledger_recognition_context_window_hours is a positive number (Feature 069)
+        if (not isinstance(self.ledger_recognition_context_window_hours, (int, float))
+                or isinstance(self.ledger_recognition_context_window_hours, bool)
+                or self.ledger_recognition_context_window_hours <= 0):
+            raise ValueError(
+                "ledger_recognition_context_window_hours must be a positive number, "
+                f"got {self.ledger_recognition_context_window_hours!r}"
+            )
 
         # Validate reminders.max_active_reminders is a positive integer, if configured
         if self.reminders:

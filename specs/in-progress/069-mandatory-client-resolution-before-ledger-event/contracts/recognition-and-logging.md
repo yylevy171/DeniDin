@@ -3,6 +3,18 @@
 **Feature 069** | [plan.md](../plan.md) · [data-model.md](../data-model.md) §2/§3/§4 ·
 [research.md](../research.md) R3/R5 · FR-069-002/003/004/005/008/012/025/035
 
+> **DESIGN-THREAD ADDENDUM (2026-09-03, decisions 1–12 — full table in tasks.md).** The
+> recognition call now: uses a **dedicated prompt file** `config/ledger_recognition_prompt.md`
+> (not the constitution); sees a **1-hour window** (`ledger_recognition_context_window_hours`,
+> default 1.0) with `[✓ captured as …]` markers and persisted `Message.mcp_calls`; **attaches
+> `query_ledger_events`** and runs a bounded chained query loop (cap `MAX_RECOGNITION_QUERY_ROUNDS
+> = 3`), always querying the client's history once up front. The ledgerer dates `הסכם`/`בנק`
+> from the **completing message** (`_message_epoch`, renamed from `_trigger_epoch`);
+> `trigger_message_id` is informational only. Two new deterministic ledgerer steps:
+> `_content_fingerprint`/`_is_duplicate_recognized_event` (skip a same-content-same-day
+> duplicate) and `_mandatory_field_gaps` (on a gap → **persist anyway**, `[רישום חלקי — חסר:
+> …]` into `description`).
+
 > **Redesign (2026-09-01).** This contract replaces the deleted
 > `unresolved-capture-logging.md` (C5 = an inline `record_unresolved_ledger_capture` tool)
 > and `ledger-capture-suppression.md` (C4 = a "narrowed" MCP-suppression guard). Under the
@@ -94,15 +106,20 @@ Zero-AI (FR-069-004). No OpenAI call, no client resolution, no Morning lookup, n
 query. Algorithm (full detail in [data-model.md](../data-model.md) §3):
 
 **On `complete`:**
-1. `event_datetime` = the **trigger message's own persisted local timestamp**, formatted
-   `%d/%m/%Y %H:%M` — look up the message named by `verdict["trigger_message_id"]` in the
-   session and parse its persisted `Message.timestamp` (an Asia/Jerusalem ISO string written
-   at message-persist time). This is the **hard pointer**. Never `now_local()`, never the
-   recognition-call clock. (Resolved 2026-09-02, option A: the Green API notification epoch
-   is not persisted; the message's processing-time ISO timestamp differs from it by
-   sub-second-to-seconds latency, immaterial at minute precision. `local_from_timestamp` is
-   therefore not used here — a plain ISO parse is.) Every hardcoded acceptance-test
-   `event_datetime` expectation depends on this.
+1. `event_datetime` = the **completing message's own persisted local timestamp**, formatted
+   `%d/%m/%Y %H:%M` — the ledgerer receives `completing_message_id` as its third positional
+   argument (the caller in `denidin.py` passes `session.message_ids[-1]`, i.e. the assistant
+   reply that closed the round); `_message_epoch(session, completing_message_id)` looks that
+   message up and parses its persisted `Message.timestamp` (an Asia/Jerusalem ISO string
+   written at message-persist time). This is the **hard pointer**. Never `now_local()`, never
+   the recognition-call clock, and **not** `verdict["trigger_message_id"]` (that id is
+   informational only — the audit breadcrumb for which message's economic content triggered
+   the event, which for a resolution detour or an amendment is an *earlier* message than the
+   completing one — see design-thread decision #10). (Resolved 2026-09-02/2026-09-03: the
+   Green API notification epoch is not persisted; the message's processing-time ISO timestamp
+   differs from it by sub-second-to-seconds latency, immaterial at minute precision.
+   `local_from_timestamp` is therefore not used here — a plain ISO parse is.) Every hardcoded
+   acceptance-test `event_datetime` expectation depends on this.
 2. `captured_at = now_local()`.
 3. Mint `event_id` — source-type prefix (`A`=`הסכם`, `B`=`בנק`; `חשבונית` keeps the existing
    accounting prefix) + `DDMMYY` + `HHMM` + same-minute sequence digit — exactly as
@@ -175,11 +192,12 @@ for godfather/admin — how the model establishes `reference` / `reference_hint`
   failure; a `create_*` in `turn_mcp_calls` → `source_type="חשבונית"` mapped from the tool
   result, not the prose; output never appended to the session.
 - **unit** `test_ledgerer.py`: `persist_recognized_event` on a `complete` verdict →
-  `event_datetime` from `trigger_message_id`'s notification timestamp (**not** `now_local()`);
-  `captured_at` = `now_local()`; `event_id` prefix + format; `הסכם` → `agreement_id` +
-  per-component `component_id`, one file per component; `reference` denormalized into
-  `_linked_document`; `חשבונית` dedup through `_ensure_accounting_document_cache`;
-  `Message.ledger_event_ids` updated on the **completing** message, not the trigger; no
+  `event_datetime` from the **completing message's** persisted timestamp (**not**
+  `now_local()`, **not** `trigger_message_id`); `captured_at` = `now_local()`; `event_id`
+  prefix + format; `הסכם` → `agreement_id` + per-component `component_id`, one file per
+  component; `reference` denormalized into `_linked_document`; `חשבונית` dedup through
+  `_ensure_accounting_document_cache`; `Message.ledger_event_ids` updated on the
+  **completing** message, not the trigger; no
   OpenAI call, no `resolve_client_name` call, no ledger query (assert via a spy that raises);
   `declined` → nothing persisted; `none` → nothing.
 - **unit** `test_ledger_capture_breadcrumbs.py`: exact `[069]` line formats for
