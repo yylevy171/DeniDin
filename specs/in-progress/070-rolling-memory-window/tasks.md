@@ -273,14 +273,14 @@ written **here** (not earlier) and run **once, together**. `billed` tier — no 
 `scripts/run_single_test.sh`, **sound off each result as it completes**. `apps/morning-mcp-app-dev`
 must be up for any cross-app scenario. AC-4 (backfill billed run) is Phase 9.
 
-- [ ] T070 [P] Write `apps/denidin-app/tests/billed/test_rolling_memory_billed.py` covering:
+- [x] T070 [P] Write `apps/denidin-app/tests/billed/test_rolling_memory_billed.py` covering:
   - **AC-1 (US1+US2)** — seed a real `@g.us` conversation across 3 *simulated* days (timestamps via the T008 seam; `window_days=2` in the test config so day-1 is out of window); call `_sweep_daily_roll` with an explicit `now` per day (3 real summarization calls); ask (real OpenAI) a question answerable only from day-1 → correct answer from the recalled daily summary; assert 1 billed summary call/day, 0 duplicate records, no `NotFoundError` for the group collection.
   - **AC-2 (US1)** — real conversation → build a fresh `SessionManager`/`AIHandler` on the same `data_root` (restart sim) → dispatch a new webhook → the bot (real OpenAI) continues seamlessly with pre-restart context, no re-priming.
   - **AC-3 (US1+US3)** — tiny `max_tokens_by_role` in the test config; seed > that many in-window messages; the bot (real OpenAI) answers from the newest context; disk audit shows every trimmed message at its `archived/` path.
   - **AC-5 (US1+US2)** — load a `session.json` fixture with `pending_ledger_events` (the `0f5eaa04` shape) into a running app → one WARNING, no `TypeError`, no recurring load error on subsequent turns/sweeps → the chat participates in a `_sweep_daily_roll` (1 real summary call).
-  - **SC-007** — time `get_rolling_window()` over a ~1500-message realistic window, N iterations → added p95 ≤ 150 ms; measure the worst-case window's real token count + constitution + tools → within the `gpt-5.6-luna` budget confirmed in T005 with ≥ 30% headroom.
-- [ ] T071 Run T070 scenario-by-scenario via `scripts/run_single_test.sh "tests/billed/test_rolling_memory_billed.py::..."`, sounding off each PASS/FAIL as it lands. On any failure: STOP, report, wait for explicit input (METHODOLOGY §VI / CLAUDE.md "stop on failure").
-- [ ] T072 [US5] **AC-6 confirmation (non-billed)** — re-run `apps/denidin-app/tests/integration/test_logger_retention_integration.py` (T052a) as part of this pass and record it green alongside the billed results, so the acceptance report shows every user story (US1–US5) covered. No OpenAI call; no approval needed.
+  - **SC-007** — time `get_rolling_window()` over a ~1500-message realistic window, N iterations → added p95 ≤ 300 ms (amended 2026-09-03); measure the worst-case window's real token count + constitution + tools → within the `gpt-5.6-luna` budget confirmed in T005 with ≥ 30% headroom.
+- [x] T071 Run T070 scenario-by-scenario via `scripts/run_single_test.sh`, sounding off each PASS/FAIL. **All 5 green (2026-09-03):** AC-1, AC-2, AC-3, AC-5, SC-007. SC-007 latency budget amended 150→300 ms p95 (user sign-off — synthetic 1500-msg window on cold storage measured ~219 ms; real prod days ~30-60 msgs). AC-5 fixture reworked to build the session through `SessionManager` + inject `pending_ledger_events` into the real `session.json` (the hand-rolled dir was never linked to the chat index).
+- [x] T072 [US5] **AC-6 confirmation (non-billed)** — `apps/denidin-app/tests/integration/test_logger_retention_integration.py` re-run green (7 passed, 2026-09-03).
 
 **Checkpoint (Phase 8 done)**: AC-1, AC-2, AC-3, AC-5, SC-007 green in one billed pass **and** AC-6
 (T052a) green — i.e. an acceptance scenario has passed for every one of US1–US5 (US4/AC-4 lands in
