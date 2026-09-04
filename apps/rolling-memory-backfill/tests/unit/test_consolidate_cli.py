@@ -266,6 +266,15 @@ class TestMerge:
         assert (arch / "session.json").read_bytes() == before[0]
         assert (arch / "messages" / "m1.json").read_bytes() == before[1]
 
+    def test_empty_expired_folders_pruned_after_move(self, tmp_path):
+        dr = _data_root(tmp_path)
+        _mk_session(dr / "sessions", GROUP, "g1", [{"id": "m1", "ts": _BASE, "content": "a"}], expired_date="2026-08-09")
+        _mk_session(dr / "sessions", GROUP, "g2", [{"id": "m2", "ts": _BASE + timedelta(hours=1), "content": "b"}], expired_date="2026-08-10")
+        _mk_session(dr / "sessions", SOLO, "s1", [{"id": "s1m", "ts": _BASE, "content": "c"}])
+        assert cli.main(["--data-root", str(dr)]) == 0
+        # every source dir moved out -> expired/ tree gone entirely
+        assert not (dr / "sessions" / "expired").exists()
+
     def test_integrity_asserted_on_result(self, tmp_path):
         dr = _data_root(tmp_path)
         _mk_session(dr / "sessions", SOLO, "s1", [{"id": f"m{i}", "ts": _BASE + timedelta(minutes=i), "content": str(i)} for i in range(4)])

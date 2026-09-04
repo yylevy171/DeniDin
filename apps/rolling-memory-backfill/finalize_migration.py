@@ -20,7 +20,7 @@ from typing import List, Optional
 
 from _denidin_loader import SessionManager, assert_message_integrity, local_calendar_date, now_local
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s", force=True)
 logger = logging.getLogger("finalize_migration")
 
 _WINDOW_DAYS = 14
