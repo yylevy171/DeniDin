@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Copy the 595 validated/signed-off LedgerEvent files (Feature 062, prod backfill,
 --since 2025-09-01) into prod's real events/ folder, via the temporary rw sshfs mount.
-Approved 2026-09-01. Mirrors specs/done/065-august-ledger-audit-apply/scripts/
+Approved 2026-09-01. Mirrors specs/done/v0.5.4/065-august-ledger-audit-apply/scripts/
 apply_type1_add_new_to_prod.py's structure (plain byte-for-byte copy of already-
 reviewed files - no LedgerEventManager re-invocation here, so no risk of re-deriving
 different event_ids/timestamps than what was already validated and signed).

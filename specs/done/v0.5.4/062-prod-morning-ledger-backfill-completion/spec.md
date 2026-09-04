@@ -8,7 +8,7 @@ run as a
 **one-time chore, not a speckit feature**: no `user-stories.md`/`plan.md`/`tasks.md`, and T022–T035
 below (the regression-test suite + a real `load.py` Phase-4 mechanism) were deliberately **not**
 built — the same ad-hoc, human-supervised, temporary-rw-sshfs-mount method already used and proven
-by `specs/done/065-august-ledger-audit-apply` was reused instead. This closes the feature's actual
+by `specs/done/v0.5.4/065-august-ledger-audit-apply` was reused instead. This closes the feature's actual
 goal; the original "Input" scope below (T022–T035) is recorded as intentionally not pursued, not
 as work still outstanding.
 

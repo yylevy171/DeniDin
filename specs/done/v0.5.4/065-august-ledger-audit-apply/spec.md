@@ -246,7 +246,7 @@ feature:
 ### (b) Missing data must be tracked, not silently absorbed
 
 Create a durable, human-readable "missing data" record (proposed:
-`specs/done/065-august-ledger-audit-apply/missing_data_august.md`, one row per gap) covering
+`specs/done/v0.5.4/065-august-ledger-audit-apply/missing_data_august.md`, one row per gap) covering
 everything identified across both sources that is **not** going to be recovered by (a):
 
 - The 4 unmatched Category-2 pre-onboarding docs (112282/112295/112290/112289, 21,552 ₪) —
