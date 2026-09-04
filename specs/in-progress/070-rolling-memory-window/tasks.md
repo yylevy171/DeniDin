@@ -344,9 +344,11 @@ unchanged and still reads both.
   `test_session_manager_window.py` (3 tests): in-window message moved to `archived/` is NOT
   returned; window result identical before/after an aged archive; `get_messages_for_local_date`
   still reads `archived/` (roll/backfill path unaffected). SC-007 reworked to model steady state
-  (4000 archived + 840 live) and asserts **≤ 150 ms p95** — needs a `billed` run to confirm the
-  number. Amendment notes reverted to 150 ms across spec.md / plan.md / user-stories.md /
-  PLAN-HANDOFF.md. Non-billed suite 1367 passed; session_manager.py mypy clean, pylint 9.74.
+  (4000 archived + 420 live @ ~30/day real prod cadence) and asserts **≤ 150 ms p95** — **billed
+  run 2026-09-04 PASSED** (≤ 150 ms + ≥ 30 % context headroom; 840-live first attempt measured
+  233 ms → reset to realistic 30/day). Amendment notes reverted to 150 ms across spec.md /
+  plan.md / user-stories.md / PLAN-HANDOFF.md. Non-billed suite 1367 passed; session_manager.py
+  mypy clean, pylint 9.74.
 
 ### T065 — migration pipeline archives before the app ever starts (so the startup sweep is near-empty)
 
