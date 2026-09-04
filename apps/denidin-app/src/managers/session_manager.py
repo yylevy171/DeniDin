@@ -509,15 +509,26 @@ class SessionManager:
 
     # --- Feature 070: rolling 14-day window + per-day gather ------------------
 
-    def _iter_persisted_messages(self, session: Session):
+    def _iter_persisted_messages(self, session: Session, *, live_only: bool = False):
         """Yield (message_id, message_data dict) for every persisted message of
         `session` - live `messages/` first, then `archived/` - reading each file
         from disk. A missing file is skipped with a WARNING (never raises). Uses
         `.get(...)` for content/role so a pre-2026-08-19 legacy message dict
-        can't KeyError."""
+        can't KeyError.
+
+        `live_only=True` (Feature 070, task T064) reads ONLY `messages/` and never
+        touches `archived/`. `get_rolling_window` uses it so the per-turn cost is
+        O(last 14 days) instead of O(every message the chat ever had). Safe:
+        a message is in `archived/` only if it aged past the window (out of it by
+        definition) or is token-backstop overflow beyond `_BACKSTOP_TOKENS`
+        (100k) - and every acting role's `max_tokens` is <= that, so the window's
+        own read-only token pass would exclude it regardless. `get_messages_for_local_date`
+        (nightly roll / backfill, not per-turn) still reads both."""
         base = self.storage_dir / (session.storage_path or session.session_id)
-        for sub, ids in (("messages", session.message_ids),
-                         ("archived", session.archived_message_ids)):
+        sources = [("messages", session.message_ids)]
+        if not live_only:
+            sources.append(("archived", session.archived_message_ids))
+        for sub, ids in sources:
             mdir = base / sub
             for mid in ids:
                 mfile = mdir / f"{mid}.json"
@@ -572,6 +583,10 @@ class SessionManager:
         `now` is a test-only seam; production leaves it None. Never raises on a
         future-dated (clock-skew) message, an unloadable session, or a missing
         message file; an empty chat returns [].
+
+        Task T064: reads ONLY the live `messages/` dir - never `archived/` - so
+        per-turn cost is O(last 14 days), flat, regardless of how large the
+        chat's archive grows. See `_iter_persisted_messages(live_only=...)`.
         """
         try:
             session = self.get_session(whatsapp_chat)
@@ -583,7 +598,7 @@ class SessionManager:
 
         # Collect in-window messages in stored (chronological) order.
         in_window: List[Dict] = []
-        for _mid, mdata in self._iter_persisted_messages(session):
+        for _mid, mdata in self._iter_persisted_messages(session, live_only=True):
             mdate = self._message_local_date(mdata)
             # A future-dated / undatable message is kept (never excludes
             # everything because of one bad timestamp).

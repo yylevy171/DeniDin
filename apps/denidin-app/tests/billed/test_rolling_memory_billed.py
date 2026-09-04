@@ -221,24 +221,30 @@ class TestSC007:
         cfg = _config(tmp_path, SOLO, window_days=14)
         h = _handler(cfg)
         sm = h.session_manager
-        # ~1500 realistic messages spread across the 14-day window
-        for i in range(1500):
+        # Steady-state shape a long-lived chat actually reaches: a large archive
+        # + ~14 days of live messages. ~840 in-window (60/day) + 4000 older ones
+        # that the nightly archive has already moved to archived/.
+        for i in range(4000):
+            _seed(sm, SOLO, "user" if i % 2 == 0 else "assistant",
+                  f"שורת שיחה ישנה {i}: עדכון שוטף על הפרויקט.", 15 + (i % 40))
+        for i in range(840):
             _seed(sm, SOLO, "user" if i % 2 == 0 else "assistant",
                   f"שורת שיחה {i}: עדכון שוטף על הפרויקט, מספרים וסטטוסים.", i % 14)
+        session = sm.get_session(SOLO)
+        sm.archive_aged_and_backstopped_messages(session, window_days=14, max_backstop_tokens=100000)
+        assert len(session.archived_message_ids) >= 4000     # the old ones are archived
 
-        # get_rolling_window reads every persisted message file for the chat
-        # (one open()+json.loads() each) then filters to the in-window set and
-        # walks it for the token backstop — an O(messages) cost. 1500 msgs is a
-        # deliberately heavy synthetic day count (107/day for 14 days); real
-        # production days run ~30-60 messages. Budget 300 ms p95 (spec amended
-        # 2026-09-03, user sign-off).
+        # Task T064: get_rolling_window reads ONLY messages/ (the ~840 in-window
+        # files) — never the 4000-file archive. Cost is O(last 14 days), flat.
+        # Budget 150 ms p95 (T064; the pre-T064 amendment to 300 ms is withdrawn).
         samples = []
         for _ in range(30):
             t0 = time.perf_counter()
             window = sm.get_rolling_window(SOLO, window_days=14, max_tokens=100000)
             samples.append((time.perf_counter() - t0) * 1000)
         p95 = statistics.quantiles(samples, n=20)[-1]
-        assert p95 <= 300.0, f"get_rolling_window p95 = {p95:.1f} ms (budget 300)"
+        assert p95 <= 150.0, f"get_rolling_window p95 = {p95:.1f} ms (budget 150)"
+        assert len(window) <= 840                            # archived messages never resurface
 
         window = sm.get_rolling_window(SOLO, window_days=14, max_tokens=100000)
         window_tokens = sum(sm.count_tokens(i["content"]) for i in window)

@@ -85,3 +85,44 @@ class TestTokenBackstop:
         for i in range(5):
             seed_message(sm, ONE_ON_ONE, "user", f"m{i}", 1)
         assert len(sm.get_rolling_window(ONE_ON_ONE, window_days=14)) == 5
+
+
+class TestT064ArchivedNeverRead:
+    """Task T064: get_rolling_window reads ONLY messages/ — never archived/ —
+    so per-turn cost is O(last 14 days) no matter how large the archive grows."""
+
+    def test_in_window_message_moved_to_archived_is_not_returned(self, sm):
+        # 6 sizeable messages, all dated 1 day ago (all in-window).
+        for i in range(6):
+            seed_message(sm, ONE_ON_ONE, "user", f"chunk {i} " * 40, days_ago=1)
+        session = sm.get_session(ONE_ON_ONE)
+        # backstop-archive the older in-window messages (tiny budget forces it).
+        moved = sm.archive_aged_and_backstopped_messages(
+            session, window_days=14, max_backstop_tokens=60)
+        assert moved > 0 and len(session.archived_message_ids) == moved
+
+        win = sm.get_rolling_window(ONE_ON_ONE, window_days=14)   # no token cap
+        assert len(win) == 6 - moved                              # archived ones NOT re-read
+        assert len(win) == len(sm.get_session(ONE_ON_ONE).message_ids)
+
+    def test_window_result_identical_before_and_after_aged_archive(self, sm):
+        for d in (25, 20, 10, 3, 1):
+            seed_message(sm, ONE_ON_ONE, "user", f"d{d}", days_ago=d)
+        before = [m["content"] for m in sm.get_rolling_window(ONE_ON_ONE, window_days=14)]
+        sm.archive_aged_and_backstopped_messages(
+            sm.get_session(ONE_ON_ONE), window_days=14, max_backstop_tokens=100000)
+        after = [m["content"] for m in sm.get_rolling_window(ONE_ON_ONE, window_days=14)]
+        assert before == after == ["d10", "d3", "d1"]
+
+    def test_get_messages_for_local_date_still_reads_archived(self, sm):
+        # the roll / backfill path must NOT lose an archived message.
+        from datetime import timedelta
+        from src.utils.time_utils import local_calendar_date, now_local
+        seed_message(sm, ONE_ON_ONE, "user", "old day msg", days_ago=25)
+        session = sm.get_session(ONE_ON_ONE)
+        sm.archive_aged_and_backstopped_messages(
+            session, window_days=14, max_backstop_tokens=100000)
+        assert session.archived_message_ids                      # it got archived
+        target = local_calendar_date(now_local() - timedelta(days=25))
+        msgs = sm.get_messages_for_local_date(session, target)
+        assert [m["content"] for m in msgs] == ["old day msg"]
