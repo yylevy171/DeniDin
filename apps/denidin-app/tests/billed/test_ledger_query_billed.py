@@ -44,6 +44,7 @@ from pathlib import Path
 import pytest
 
 from src.models.config import AppConfiguration
+from tests.e2e_helpers import sanity_worker_data_root
 from src.utils.time_utils import now_local
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,33 @@ def _last_month_date_str(day=5):
     return now.replace(year=year, month=month, day=min(day, last_day)).strftime("%Y-%m-%d")
 
 
+def _months_ago(n):
+    """(year, month) for `n` whole calendar months before the current local month."""
+    now = now_local()
+    total = (now.year * 12 + (now.month - 1)) - n
+    return total // 12, (total % 12) + 1
+
+
+def _n_months_ago_timestamp(n, day=5, hour=9):
+    """Real epoch for a day/hour `n` whole months back - generalizes
+    _last_month_timestamp so a query about "last month" can have a decoy that
+    sits two months back, clear of the window on any run date."""
+    now = now_local()
+    year, month = _months_ago(n)
+    last_day = calendar.monthrange(year, month)[1]
+    dt = now.replace(year=year, month=month, day=min(day, last_day),
+                     hour=hour, minute=0, second=0, microsecond=0)
+    return int(dt.timestamp())
+
+
+def _n_months_ago_date_str(n, day=5):
+    """ISO date string for a day `n` whole months back (see _n_months_ago_timestamp)."""
+    now = now_local()
+    year, month = _months_ago(n)
+    last_day = calendar.monthrange(year, month)[1]
+    return now.replace(year=year, month=month, day=min(day, last_day)).strftime("%Y-%m-%d")
+
+
 def _amount_variants(amount: int):
     """The common ways a real reply might format an amount - checked as
     "any of these substrings appears", never an exact-string match (real model
@@ -111,7 +139,7 @@ class TestLedgerQueryBilled:
             pytest.skip("config.test.json not found")
         config = AppConfiguration.from_file(str(config_path))
         config.validate()
-        test_data_root = Path(__file__).parent.parent.parent / "test_data"
+        test_data_root = sanity_worker_data_root()  # per-xdist-worker under -n (Feature 075)
         config.data_root = str(test_data_root)
         config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
         config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
@@ -380,34 +408,41 @@ class TestLedgerQueryBilled:
     # ------------------------------------------------------------------
 
     @pytest.mark.sanity
-    def test_hours_by_client_this_month(self, denidin_app, config):
+    def test_hours_by_client_last_month(self, denidin_app, config):
+        # Anchored to LAST month, not "this month": a "this month so far" question
+        # is ambiguous about a seeded date that hasn't occurred yet (run the suite
+        # on the 4th with an entry dated the 10th and the model correctly declines
+        # to fold a future entry into a "so far" total - not a bug, 2026-09-04).
+        # Last month is wholly in the past on every run date, so 3 + 4 = 7 is
+        # unambiguous. Real entries on the 3rd + 14th of last month; the decoy
+        # sits two months back so it's clear of the window no matter the run day.
         phone = config.godfather_phone
         chat_id = self._fresh_chat_id(config, 't010_hours_client')
         self._seed_noise(denidin_app, count=6, label="t010_hours_client_noise")
         self._seed(
             denidin_app, "מיכל רוזן", amount=None, hours="3",
-            txn_date=_this_month_date_str(day=3),
-            message_id="t010_hc_1", timestamp=_this_month_timestamp(day=3),
+            txn_date=_last_month_date_str(day=3),
+            message_id="t010_hc_1", timestamp=_last_month_timestamp(day=3),
         )
         self._seed(
             denidin_app, "מיכל רוזן", amount=None, hours="4",
-            txn_date=_this_month_date_str(day=10),
-            message_id="t010_hc_2", timestamp=_this_month_timestamp(day=10),
+            txn_date=_last_month_date_str(day=14),
+            message_id="t010_hc_2", timestamp=_last_month_timestamp(day=14),
         )
-        # Negative control - same client, LAST month, must not be included.
+        # Negative control - same client, TWO months ago, must not be included.
         self._seed(
             denidin_app, "מיכל רוזן", amount=None, hours="99",
-            txn_date=_last_month_date_str(day=5),
-            message_id="t010_hc_decoy", timestamp=_last_month_timestamp(day=5),
+            txn_date=_n_months_ago_date_str(2, day=10),
+            message_id="t010_hc_decoy", timestamp=_n_months_ago_timestamp(2, day=10),
         )
 
         reply = self._get_response(self._send_text(
             chat_id, phone, "Test Godfather",
-            "כמה שעות אני צריך לחייב את מיכל רוזן החודש?", "t010_hours_client",
+            "כמה שעות אני צריך לחייב את מיכל רוזן בחודש שעבר?", "t010_hours_client",
         ))
         assert reply is not None
         assert "7" in reply, f"expected the correct sum (3+4=7) in reply: {reply!r}"
-        assert "99" not in reply, f"last month's decoy hours leaked into the reply: {reply!r}"
+        assert "99" not in reply, f"the two-months-ago decoy hours leaked into the reply: {reply!r}"
 
     def test_hours_by_payer_this_month(self, denidin_app, config):
         phone = config.godfather_phone

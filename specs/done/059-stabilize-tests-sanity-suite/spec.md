@@ -2,11 +2,14 @@
 
 **Feature Branch**: `feature/059-stabilize-tests-sanity-suite`
 **Created**: 2026-08-20
-**Status**: In progress — half 1 ("stabilize tests") landed via interim PRs on this branch
-(#273, #274, #275); half 2 ("sanity testing suite") — the `@pytest.mark.sanity` subset +
-`scripts/run_sanity.sh` runner — landed 2026-09-02. A full end-to-end run of the assembled suite,
-plus `speckit.specify` + `speckit.clarify` + `user-stories.md`, still owed before this can move
-to `specs/done/`.
+**Status**: Done (moved to `specs/done/` 2026-09-04, user-directed). Half 1 ("stabilize
+tests") landed via interim PRs on this branch (#273, #274, #275); half 2 ("sanity testing
+suite") — the `@pytest.mark.sanity` subset + `scripts/run_sanity.sh` runner — landed
+2026-09-02; billed/expensive triage + resumable runner landed 2026-09-03 (#275).
+Parallelising the sanity suite was split off into its own Feature 075
+(`specs/backlog/075-parallelize-test-suite`). `sanity-failures.md` (this folder) stays the
+live running log of known billed/expensive failures — several items there remain OPEN /
+blocked on Feature 069, tracked independently of this spec's status.
 
 _Landed 2026-09-03 (PR #275 — billed/expensive triage + resumable runner):_
 - Triaged S1–S6 (sanity members) + N1–N6 (non-sanity billed) failures one-by-one; ledger in

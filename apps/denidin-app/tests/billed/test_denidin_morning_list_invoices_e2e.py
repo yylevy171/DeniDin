@@ -455,7 +455,7 @@ def test_client_all_payments_gets_the_complete_picture(denidin_app):
     (`specs/backlog/069-mandatory-client-resolution-before-ledger-event`)
     reworks this exact ledger/resolution code path; the call-accounting gap is
     expected to close with it. Left red on purpose until then — see
-    `specs/backlog/059-stabilize-tests-sanity-suite/sanity-failures.md` (S2).
+    `specs/done/059-stabilize-tests-sanity-suite/sanity-failures.md` (S2).
     """
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,

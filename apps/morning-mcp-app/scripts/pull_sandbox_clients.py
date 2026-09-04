@@ -54,7 +54,8 @@ DENYLIST_EXACT = {
     "כרמלי דודי",         # invoice creation T2 - stored-name-correction premise
     "Dana Cohen",         # vcf contact fixture (complete_card_dana_cohen.vcf)
     "גיל ברטל",           # vcf contact fixture (00005372-גיל ברטל .vcf)
-    "עטיה רועי מאיר",     # expensive bank-deposit image payer (name dictated by fixture image)
+    "עטיה רועי מאיר",     # retired expensive bank-deposit payer - still used by test_group_b_reference_approval_e2e.py (Bank-test-image.jpg)
+    "אסתר אסולין",        # expensive bank-deposit image payer (Deposit_Eti.jpeg; name dictated by fixture image)
     "יוסי שמואלי",        # retired permanent fixture - documented pagination casualty
 }
 # Any client whose name starts with one of these word-prefixes is dropped: the
