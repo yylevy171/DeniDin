@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/075-parallelize-test-suite`
 **Created**: 2026-09-03
-**Status**: Done — merged in PR #TBD (Feature 059 follow-up)
+**Status**: Done — merged in PR #276 (Feature 059 follow-up)
 **Priority**: P2 (developer/agent iteration time only — there is no CI here)
 
 ## Goal
