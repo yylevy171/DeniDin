@@ -63,3 +63,7 @@ get_invoice_details/list_invoices expose Morning's raw creation_timestamp and ga
 ## morning-mcp-app v0.5.3 — 2026-08-27
 
 Version sync with denidin-app v0.5.3 - no functional changes to morning-mcp-app in this release.
+
+## morning-mcp-app v0.5.4 — 2026-09-04
+
+Parse negative-amount documents: Invoice / Payment / LinkedDocument .amount drop their Field(ge=0) lower bound, so real production type-400 receipt-cancellation documents ("ביטול חשבונית מס / קבלה ...", genuinely negative by Morning's own reversal convention) parse instead of raising a validation error - found and confirmed against 15 real prod documents during Feature 062's ledger backfill. Plus: get_invoice_details / format_invoice_details now shows each payment line's method and bank name / branch / account when Morning returns them.
