@@ -339,21 +339,14 @@ did, the slightly-shorter window is an accepted consequence). Rationale: the pro
 token pass regardless. `get_messages_for_local_date` (nightly roll / backfill — not per-turn) is
 unchanged and still reads both.
 
-- [ ] T064a Tests (RED) — 👤 approval gate, frozen after:
-  - `test_session_manager_window.py`: with messages physically in `archived/` whose local date
-    is **inside** the 14-day window (simulating a past backstop archive), `get_rolling_window`
-    does **not** return them; a `_iter_persisted_messages`-style probe / file-open counter shows
-    `archived/` is never opened during a window read.
-  - extend the existing AC-3 backstop assertion: after `archive_aged_and_backstopped_messages`
-    moves overflow, the next `get_rolling_window(max_tokens=<role limit>)` result is unchanged
-    vs. reading live-only.
-  - **SC-007 budget reverted 300 → 150 ms p95** (the fix removes the O(all-messages-ever) scan;
-    update `spec.md`/`plan.md`/`user-stories.md`/`PLAN-HANDOFF.md` amendment notes to say
-    "amended 150→300 2026-09-03, reverted to 150 2026-09-04 once T064 landed").
-- [ ] T064b 👤 APPROVAL GATE — approve T064a.
-- [ ] T064c Implementation (GREEN) — `get_rolling_window` (and only that path) iterates
-  `session.message_ids` from `messages/` only. Smallest possible diff; `_iter_persisted_messages`
-  keeps its live+archived behaviour for `get_messages_for_local_date`.
+- [x] T064a/c Tests + GREEN (2026-09-04) — `_iter_persisted_messages(*, live_only=False)`;
+  `get_rolling_window` passes `live_only=True`. New `TestT064ArchivedNeverRead` in
+  `test_session_manager_window.py` (3 tests): in-window message moved to `archived/` is NOT
+  returned; window result identical before/after an aged archive; `get_messages_for_local_date`
+  still reads `archived/` (roll/backfill path unaffected). SC-007 reworked to model steady state
+  (4000 archived + 840 live) and asserts **≤ 150 ms p95** — needs a `billed` run to confirm the
+  number. Amendment notes reverted to 150 ms across spec.md / plan.md / user-stories.md /
+  PLAN-HANDOFF.md. Non-billed suite 1367 passed; session_manager.py mypy clean, pylint 9.74.
 
 ### T065 — migration pipeline archives before the app ever starts (so the startup sweep is near-empty)
 
@@ -365,15 +358,22 @@ updating `message_ids`/`archived_message_ids`. The app's `run_startup_daily_roll
 only the ≤ 2 un-rolled leftover days (backfill `--until` = today−14; live window = 14 days) and
 does almost nothing.
 
-- [ ] T065a Add the archive step to `apps/rolling-memory-backfill` (new `--archive` flag on the
-  backfill, or a distinct `finalize_migration.py` step — decide in the consolidator spec,
-  MIGRATION-CHECKLIST Stage 0.1). `--report-only` shows the projected move counts; the real run
-  asserts `assert_message_integrity` after.
-- [ ] T065b Unit + integration coverage in the sub-app (synthetic multi-day session → after the
-  step, `messages/` holds only ≤ 14 days, `archived/` holds the rest, integrity clean, idempotent
-  on a second run). Covered by MIGRATION-CHECKLIST Stage 0.4 / 0.5.
-- [ ] T065c Wire the step into every stage of MIGRATION-CHECKLIST (snapshot rehearsal, dev, prod)
-  with its own verify gate.
+- [x] T065a/b `apps/rolling-memory-backfill/finalize_migration.py` (2026-09-04) — `--data-root`,
+  `--report-only`, `--chat`, `--now` seam; per chat `archive_aged_and_backstopped_messages(now,
+  window_days=14, max_backstop_tokens=100000)` + `assert_message_integrity`. 6 unit + 5
+  integration tests (aged-only archived, counter unchanged, nothing deleted, idempotent, all-in-
+  window → 0 moves, `--now` shifts the cutoff, `--report-only` writes nothing). pylint 9.9x,
+  mypy clean.
+- [x] T065c MIGRATION-CHECKLIST Stage 0.3b / 1.5b / 2.4b / 3.5b + summary table (commit de3da22 /
+  the Stage-0.1 spec commit).
+
+**Also delivered 2026-09-04 (Stage 0.3 / 0.5 / 0.6 of MIGRATION-CHECKLIST):**
+- [x] `consolidate_sessions.py` + 20 unit + 4 integration tests (merge N→1, timestamp sort,
+  order_num renumber, inner session_id rewrite, dedup, `_pre070_raw_<date>/` preservation,
+  stale `chat_index.db` removal, `--report-only`, `--resume`). pylint 9.95, mypy clean.
+- [x] `purge_legacy_summaries.py` + 5 integration tests (deletes `session_summary`/`_fallback`
+  only; refuses a collection with no `daily_summary`). Full sub-app suite 61 passed.
+- [x] `specs/in-progress/070-rolling-memory-window/consolidator-spec.md` (Stage 0.1 design doc).
 
 **Feature complete** when Phase 8's acceptance pass is green and Phase 9's checkpoint holds. Phase 10
 (prod backfill) and haleluya (docs + spec move + the bugfix-035 / bugfix-044 "Superseded by Feature

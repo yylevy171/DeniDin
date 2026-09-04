@@ -340,10 +340,11 @@ order; the 20/15-day messages are not in the verbatim window.
    message, **When** the window is built, **Then** it does not crash and does not return an empty
    window; the unknown key is dropped with one warning (bugfix-035 H2).
 7. **Given** the window is rebuilt on every turn, **When** p95 latency and per-turn token count
-   are measured over the real prod message mix, **Then** added latency ≤ 300 ms p95 (amended
-   2026-09-03 from 150 ms after the acceptance test measured ~219 ms p95 over a deliberately
-   heavy 1500-message synthetic window on cold storage; real prod days run ~30-60 msgs) and
-   tokens are within the confirmed model budget with ≥ 30% headroom.
+   are measured over the real prod message mix, **Then** added latency ≤ 150 ms p95 and tokens
+   are within the confirmed model budget with ≥ 30% headroom. (History: amended 2026-09-03 to
+   300 ms after the acceptance test measured ~219 ms p95 over a 1500-message synthetic window;
+   reverted to 150 ms 2026-09-04 once task T064 made `get_rolling_window` read only `messages/`
+   — never `archived/` — so per-turn cost is O(last 14 days) regardless of archive size.)
 
 ---
 
@@ -800,8 +801,9 @@ specify the minimal config change and verify it keeps segments after a forced ro
   summary retrievable via `recall()` after the migration — 0 gaps, 0 duplicates.
 - **SC-006**: A restart followed by a new inbound message continues the pre-restart conversation
   in 100% of cases (0 abandoned prior message stores).
-- **SC-007**: Added per-turn latency from building the 14-day window is ≤ 300 ms p95 over the
-  real prod message mix (amended 2026-09-03 from 150 ms — see AC 7 above); added per-turn input
+- **SC-007**: Added per-turn latency from building the 14-day window is ≤ 150 ms p95 over the
+  real prod message mix (amended 2026-09-03 to 300 ms, reverted to 150 ms 2026-09-04 once
+  task T064 made get_rolling_window skip archived/ — see AC 7 above); added per-turn input
   tokens are within the confirmed model context budget with ≥ 30% headroom.
 - **SC-008**: A session persisted with an unknown field loads with 0 `TypeError`s and exactly 1
   warning; the per-hour recurring error for the known poison session goes to 0.

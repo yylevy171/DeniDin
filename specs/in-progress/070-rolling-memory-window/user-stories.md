@@ -143,7 +143,7 @@ WARNING** per dropped key — never raises `TypeError`.
 
 8. **Given** the window is rebuilt on every turn,
    **When** p95 latency and per-turn token count are measured over the real prod message mix,
-   **Then** added latency ≤ 300 ms p95 (amended 2026-09-03) and per-turn input tokens are within the confirmed
+   **Then** added latency ≤ 150 ms p95 and per-turn input tokens are within the confirmed
    `gpt-5.6-luna` context budget with ≥ 30% headroom (SC-007).
 
 9. **Given** the new model is live,
