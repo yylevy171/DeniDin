@@ -248,7 +248,7 @@ redefinition above.
     at a time, only through `scripts/run_single_test.sh`** (never a bare `-m` batch) —
     stop-on-first-failure, live per-test sound-off, progress tracked in `sanity_state.tsv` and
     resumable (`--status`/`--fresh`/`--mark`). `expensive` members are printed as a manual
-    checklist, never auto-run. Known failures: `specs/backlog/059-.../sanity-failures.md`. A
+    checklist, never auto-run. Known failures: `specs/done/059-.../sanity-failures.md`. A
     fast end-to-end "is anything obviously broken" pass, not a substitute for the full tiers,
     and not CI. `./scripts/verify_sanity_lists.sh` guards the decorators and `run_sanity.sh`'s
     arrays against drift.

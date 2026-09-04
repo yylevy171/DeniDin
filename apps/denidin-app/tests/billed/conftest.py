@@ -27,6 +27,7 @@ from .denidin_mcp_e2e_helpers import (
     BLOCKED_ROLE_CHAT_ID,
     GODFATHER_CHAT_ID,
     NoMorningTunnelError,
+    sanity_worker_data_root,
     require_live_morning_tunnel,
 )
 
@@ -50,7 +51,7 @@ def denidin_config():
             "it must match the already-running Morning server's own mcp.auth_token"
         )
 
-    test_data_root = DENIDIN_APP_DIR / "test_data"
+    test_data_root = sanity_worker_data_root()  # per-xdist-worker under -n (Feature 075)
     config.data_root = str(test_data_root)
     sessions_dir = test_data_root / "sessions"
     config.memory['session']['storage_dir'] = str(sessions_dir)
@@ -179,7 +180,7 @@ def _clear_reminder_tables() -> None:
     app = getattr(denidin, "denidin_app", None)
     reminder_manager = getattr(getattr(app, "ai_handler", None), "reminder_manager", None)
     if reminder_manager is None:
-        reminders_dir = DENIDIN_APP_DIR / "test_data" / "reminders"
+        reminders_dir = sanity_worker_data_root() / "reminders"
         if reminders_dir.exists():
             shutil.rmtree(reminders_dir)
         return
@@ -235,7 +236,7 @@ def _clear_ledger_events() -> None:
     """
     import denidin
 
-    events_dir = DENIDIN_APP_DIR / "test_data" / "events"
+    events_dir = sanity_worker_data_root() / "events"
     if events_dir.exists():
         for f in events_dir.glob("*.json"):
             f.unlink()

@@ -244,7 +244,7 @@ def test_godfather_shares_contact_card_missing_email_is_asked_for(denidin_app):
     gate that makes client resolution run first and deterministically around any
     ledger-relevant recognition; this test is expected to go green with it. Left
     red on purpose until then - see
-    `specs/backlog/059-stabilize-tests-sanity-suite/sanity-failures.md` (N5) and
+    `specs/done/059-stabilize-tests-sanity-suite/sanity-failures.md` (N5) and
     that spec's own `spec.md`.
     """
     vcard = _load_vcard("00005372-גיל ברטל .vcf")

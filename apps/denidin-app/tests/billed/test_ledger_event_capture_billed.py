@@ -31,6 +31,7 @@ import pytest
 from src.models.config import AppConfiguration
 from src.utils.time_utils import local_from_timestamp
 from tests.e2e_helpers import (
+    sanity_worker_data_root,
     create_real_notification,
     get_response,
     assert_response_exists,
@@ -60,7 +61,7 @@ class TestLedgerEventCaptureBilled:
 
         config = AppConfiguration.from_file(str(config_path))
         config.validate()
-        test_data_root = Path(__file__).parent.parent.parent / "test_data"
+        test_data_root = sanity_worker_data_root()  # per-xdist-worker under -n (Feature 075)
         config.data_root = str(test_data_root)
         config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
         config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")

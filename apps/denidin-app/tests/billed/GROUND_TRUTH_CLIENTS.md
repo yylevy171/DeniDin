@@ -64,7 +64,9 @@ cd apps/morning-mcp-app
 That script holds its own denylist (`DENYLIST_EXACT` / `DENYLIST_PREFIX`) of
 names other tests make specific/counting/relational assertions about — every
 permanent fixture in the Registry below, the two vCard-fixture names, the
-expensive bank-deposit payer `עטיה רועי מאיר`, and the `הסתדרות כללית חדשה …`
+expensive bank-deposit payer `אסתר אסולין` (`Deposit_Eti.jpeg`; the retired
+`עטיה רועי מאיר` stays denylisted too, still used by
+`test_group_b_reference_approval_e2e.py`), and the `הסתדרות כללית חדשה …`
 ambiguity probes. **When you add a new permanent fixture to this registry, add
 its name to that script's `DENYLIST_EXACT` too** — otherwise the next
 regeneration could pull it into the random pool and a Group 2 test could create
