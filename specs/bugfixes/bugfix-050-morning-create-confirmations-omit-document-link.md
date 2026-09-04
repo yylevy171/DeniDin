@@ -81,7 +81,7 @@ string contains `קישור:` and an `https://…/documents/download` URL, with 
 would then legitimately re-add its link assertion.
 
 ## Related
-- Feature 059 (`specs/low-priority/059-stabilize-tests-sanity-suite`) — surfaced this; that
+- Feature 059 (`specs/done/059-stabilize-tests-sanity-suite`) — surfaced this; that
   feature's fix is only to comment out the nondeterministic `"http"` assertion, deferring the
   real fix here.
 - `download_invoice_pdf` (`formatters.py` ~L2629) — the current, indirect way a link is obtained.

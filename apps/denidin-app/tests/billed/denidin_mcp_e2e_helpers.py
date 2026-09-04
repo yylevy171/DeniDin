@@ -54,6 +54,11 @@ logger = logging.getLogger(__name__)
 
 DENIDIN_APP_DIR = Path(__file__).resolve().parents[2]
 
+# Feature 075: single source of truth in tests/e2e_helpers.py; re-exported here
+# so tests/billed/conftest.py and the MCP e2e modules can import it from their
+# usual helper module.
+from tests.e2e_helpers import sanity_worker_data_root  # noqa: E402,F401
+
 
 class NoMorningTunnelError(Exception):
     """Raised when the shared status file reports no live Morning MCP tunnel.

@@ -7,6 +7,7 @@ Provides common utilities for WhatsApp E2E testing:
 - Text processing utilities
 """
 
+import os
 import re
 import json
 import logging
@@ -16,6 +17,36 @@ from whatsapp_chatbot_python import Notification
 from src.utils.time_utils import local_from_timestamp
 
 logger = logging.getLogger(__name__)
+
+_DENIDIN_APP_DIR = Path(__file__).resolve().parents[1]
+
+
+def sanity_worker_data_root() -> Path:
+    """The isolated `test_data/` root a sanity-subset test uses as `config.data_root`.
+
+    Feature 075 (parallel sanity sweep): under pytest-xdist
+    (`scripts/run_sanity_parallel.sh`, `--dist loadfile`) each worker gets its
+    own `test_data/<worker>/` subtree, so concurrently-running test files never
+    corrupt each other's ChromaDB / ledger-event JSON / reminders.db / sessions,
+    and `tests/billed/conftest.py`'s autouse cleanup fixtures (which wipe before
+    AND after every test) only touch their own worker's state. Serial runs
+    (plain `pytest`, `run_single_test.sh`, `run_sanity.sh`) set no
+    `PYTEST_XDIST_WORKER`, so this stays byte-for-byte the canonical
+    `test_data/` directory.
+
+    Every sanity-subset test file that builds the shared `denidin.denidin_app`
+    singleton MUST route `config.data_root` through here - billed AND expensive
+    alike. `--dist loadfile` can land an expensive sanity file and a billed one
+    on the same worker (same Python process, same module-global
+    `denidin.denidin_app`); whichever fixture initialises it first wins, so if
+    they disagree on the root the second file's isolation guard trips
+    (`storage_dir NOT under this test's data_root`). Test infrastructure only -
+    the constitution's no-env-vars rule governs `src/`, not the test harness's
+    own plumbing.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    root = _DENIDIN_APP_DIR / "test_data"
+    return root / worker if worker else root
 
 
 def create_real_notification(event_dict):

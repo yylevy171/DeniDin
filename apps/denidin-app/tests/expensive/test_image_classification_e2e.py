@@ -1,7 +1,7 @@
 """bugfix-028 — the image-classification building block, on its own.
 
 This exists because that block was NOT consistent: on 2026-08-09 the same real
-bank screenshot (Bank-test-image.jpg) was classified as a ledger-worthy deposit
+bank screenshot was classified as a ledger-worthy deposit
 on one run and not on the next, within an hour, with no code change between
 them. The document could hardly be clearer - payer, amount, date, branch,
 account and reference all read correctly - so "the model was unsure" is not an
@@ -48,6 +48,7 @@ def config():
     """Real credentials, isolated test_data/ root - same shape as this
     directory's other expensive suites."""
     from src.models.config import AppConfiguration
+    from tests.e2e_helpers import sanity_worker_data_root
 
     config_path = Path(__file__).parent.parent.parent / "config" / "config.test.json"
     if not config_path.exists():
@@ -55,7 +56,7 @@ def config():
 
     cfg = AppConfiguration.from_file(str(config_path))
     cfg.validate()
-    test_data_root = Path(__file__).parent.parent.parent / "test_data"
+    test_data_root = sanity_worker_data_root()  # per-xdist-worker under the parallel sanity sweep (Feature 075)
     cfg.data_root = str(test_data_root)
     cfg.memory['session']['storage_dir'] = str(test_data_root / "sessions")
     cfg.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
@@ -124,44 +125,48 @@ def _assert_text_was_extracted(result):
 
 @pytest.mark.sanity
 def test_bank_test_image_is_classified_as_a_bank_deposit(image_extractor):
-    """The exact image that was classified inconsistently.
+    """A real bank-transfer confirmation screenshot.
 
-    Ground truth read directly off the image (2026-08-10), not from any model's
-    description of it - a sharp, printed Bank Hapoalim app screenshot:
+    Ground truth read directly off the image (Deposit_Eti.jpeg, 2026-09-04), not
+    from any model's description of it - a sharp, printed banking-app screenshot:
 
-        תאריך פעולה / יום ערך  12/07/2026
-        מספר אסמכתה            3263
-        שם חשבון מחויב         עטיה רועי מאיר
+        תאריך פעולה / יום ערך  05/08/2026
+        מספר אסמכתה            3317
+        שם חשבון מחויב         אסולין אסתר
         מספר בנק מחויב         31
-        מספר סניף מחויב        109
-        מספר חשבון מחויב       105542585
-        הערות                  יעוץ משפטי (הערת לקוח)
-        סכום                   ₪1,500.00
+        מספר סניף מחויב        112
+        מספר חשבון מחויב       105397180
+        הערות                  שליחות וצילום הערעור לעיריה
+        סכום                   ₪554.00
 
-    The full three-part name is asserted exactly. An earlier run returned
-    "עטה רועי מאיר" - a dropped letter - and was excused as the name being
-    blurred. It is not blurred: the name is printed twice, once in the free-text
-    header (glued to the "מ" prefix: "העברה מעטיה רועי מאיר") and once in the
-    labelled row "שם חשבון מחויב", either of which is plainly legible and which
-    cross-check each other. Accepting a partial match here would be accepting a
-    misread client name on a real financial document.
+    Both name tokens ("אסתר", "אסולין") are asserted, order-independent - the
+    name is printed twice (the free-text header "העברה מאסולין אסתר חשבון..."
+    and the labelled row "שם חשבון מחויב  אסולין אסתר"), both legible and
+    cross-checking each other, so a dropped letter is still a real failure.
+
+    NOTE: if this test starts failing after 20+ invoices accumulate in the
+    Morning sandbox for this payer (the model may refuse to create an apparent
+    duplicate), swap in a fresh bank screenshot with a new payer name, one-time
+    seed that client in Morning, and add the name to
+    tests/fixtures/morning_sandbox_clients.json.
     """
-    result = _classify(image_extractor, "Bank-test-image.jpg")
+    result = _classify(image_extractor, "Deposit_Eti.jpeg")
 
     assert result["doc_type"] == DOC_TYPE_BANK, (
         f"a bank transfer confirmation must classify as {DOC_TYPE_BANK!r}, got "
         f"{result['doc_type']!r} - extracted text was: {result.get('raw_response')!r}"
     )
     fields = result["fields"]
-    assert float(fields.get("amount")) == 1500, f"amount: {fields.get('amount')!r}"
-    assert fields.get("txn_date") == "12/07/2026", f"txn_date: {fields.get('txn_date')!r}"
-    assert fields.get("payer_name") == "עטיה רועי מאיר", (
+    assert float(fields.get("amount")) == 554, f"amount: {fields.get('amount')!r}"
+    assert fields.get("txn_date") == "05/08/2026", f"txn_date: {fields.get('txn_date')!r}"
+    payer_tokens = set(str(fields.get("payer_name") or "").split())
+    assert {"אסתר", "אסולין"} <= payer_tokens, (
         f"payer_name: {fields.get('payer_name')!r} - the name is printed twice in "
         f"this image and both copies are legible"
     )
     assert str(fields.get("bank_number")) == "31", f"bank_number: {fields.get('bank_number')!r}"
-    assert str(fields.get("bank_branch")) == "109", f"bank_branch: {fields.get('bank_branch')!r}"
-    assert str(fields.get("bank_account")) == "105542585", f"bank_account: {fields.get('bank_account')!r}"
+    assert str(fields.get("bank_branch")) == "112", f"bank_branch: {fields.get('bank_branch')!r}"
+    assert str(fields.get("bank_account")) == "105397180", f"bank_account: {fields.get('bank_account')!r}"
     assert not result["missing_required_fields"], (
         f"every required field is present in this document, yet these were "
         f"reported missing: {result['missing_required_fields']}"

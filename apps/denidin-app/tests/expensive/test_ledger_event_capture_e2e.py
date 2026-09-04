@@ -27,8 +27,8 @@ should produce):
   הוניגמן, 27.1.253) with FOUR distinct fee components (10,000 / hourly-800-capped-10h /
   15,000 / 5,000 ₪, all לא כולל מע"מ) - ground truth read directly from the image by the
   implementing agent (2026-07-29), no separate human transcript for this one.
-- Bank-test-image.jpg (T024b) = a real bank-transfer confirmation (12/07/2026, ₪1,500.00,
-  עטיה רועי מאיר, "יעוץ משפטי (הערת לקוח)") - same, ground truth read directly from the image.
+- Deposit_Eti.jpeg (T024b) = a real bank-transfer confirmation (05/08/2026, ₪554.00,
+  אסולין אסתר, "שליחות וצילום הערעור לעיריה") - same, ground truth read directly from the image.
 
 Text-flow counterpart split across two tests/billed/ files:
 - tests/billed/test_ledger_event_capture_billed.py (Feature 029's original split)
@@ -108,9 +108,11 @@ class TestLedgerEventCaptureE2E:
         if not config_path.exists():
             pytest.skip("config.test.json not found")
 
+        from tests.e2e_helpers import sanity_worker_data_root
+
         config = AppConfiguration.from_file(str(config_path))
         config.validate()
-        test_data_root = Path(__file__).parent.parent.parent / "test_data"
+        test_data_root = sanity_worker_data_root()  # per-xdist-worker under the parallel sanity sweep (Feature 075)
         config.data_root = str(test_data_root)
         config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
         config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
@@ -216,11 +218,15 @@ class TestLedgerEventCaptureE2E:
         phone = str(config.godfather_phone).lstrip("+")
         return phone if phone.endswith("@c.us") else f"{phone}@c.us"
 
-    # bugfix-028: the payer named on Bank-test-image.jpg. Both deposit->document
-    # tests must resolve this name from the IMAGE's own extracted text (user,
-    # 2026-08-09: "use the extracted text for every data"), so it has to exist as
-    # a real Morning client for either test to be able to create anything.
-    BANK_IMAGE_PAYER = "עטיה רועי מאיר"
+    # bugfix-028: the deposit->document phase must resolve the payer from the
+    # IMAGE's own extracted text (user, 2026-08-09: "use the extracted text for
+    # every data"). The image prints the account holder surname-first as
+    # "אסולין אסתר"; the real Morning sandbox client the user seeded one-time for
+    # this fixture is "אסתר אסולין". BANK_IMAGE_PAYER is the name to SEED/look up
+    # in Morning; BANK_IMAGE_PAYER_SURNAME is the stable token used for every
+    # assertion so word order never matters.
+    BANK_IMAGE_PAYER = "אסתר אסולין"
+    BANK_IMAGE_PAYER_SURNAME = "אסולין"
 
     @staticmethod
     def _assert_no_open_invoice_for(chat_id, name, id_prefix):
@@ -670,11 +676,17 @@ class TestLedgerEventCaptureE2E:
     def test_given_real_bank_deposit_image_then_full_fields_correctly_persisted(
         self, denidin_app, http_server, config
     ):
-        """Given a real bank-transfer confirmation screenshot (Bank-test-image.jpg:
-        a Bank Hapoalim-style transfer, 12/07/2026, ₪1,500.00, from account holder
-        עטיה רועי מאיר, note "יעוץ משפטי (הערת לקוח)"), When sent as a WhatsApp
+        """Given a real bank-transfer confirmation screenshot (Deposit_Eti.jpeg:
+        a banking-app transfer, 05/08/2026, ₪554.00, from account holder
+        אסולין אסתר, note "שליחות וצילום הערעור לעיריה"), When sent as a WhatsApp
         image, Then it's captured with source_type=בנק, event_subtype=הפקדה, and
-        amount normalized to the exact integer 1500 (T024b).
+        amount normalized to the exact integer 554 (T024b).
+
+        NOTE: if this test starts failing after 20+ invoices accumulate in the
+        Morning sandbox for this payer (the model may refuse an apparent
+        duplicate), swap in a fresh bank screenshot with a new payer name,
+        one-time seed that client in Morning, and add the name to
+        tests/fixtures/morning_sandbox_clients.json.
 
         **bugfix-028 (A1, A2-T3, A3-T2, A3b, B3-optionals), extended 2026-08-09
         with the user's explicit sign-off to modify an already-approved test.**
@@ -707,8 +719,8 @@ class TestLedgerEventCaptureE2E:
             'messageData': {
                 'typeMessage': 'imageMessage',
                 'fileMessageData': {
-                    'downloadUrl': f'{http_server}/Bank-test-image.jpg',
-                    'fileName': 'Bank-test-image.jpg',
+                    'downloadUrl': f'{http_server}/Deposit_Eti.jpeg',
+                    'fileName': 'Deposit_Eti.jpeg',
                     'mimeType': 'image/jpeg',
                     'caption': '',
                     'jpegThumbnail': '',
@@ -718,7 +730,7 @@ class TestLedgerEventCaptureE2E:
             }
         })
 
-        logger.info("GIVEN a real bank-transfer confirmation screenshot (₪1,500.00, עטיה רועי מאיר)")
+        logger.info("GIVEN a real bank-transfer confirmation screenshot (₪554.00, אסולין אסתר)")
         handle_image_message(notification)
         logger.info("WHEN DeniDin processes it via the image pipeline")
 
@@ -733,7 +745,7 @@ class TestLedgerEventCaptureE2E:
 
         assert captured["source_type"] == "בנק"
         assert captured["event_subtype"] == "הפקדה"
-        assert captured["amount"] == 1500, f"expected amount normalized to int 1500, got {captured['amount']!r}"
+        assert captured["amount"] == 554, f"expected amount normalized to int 554, got {captured['amount']!r}"
         assert captured["event_id"].startswith("B"), f"malformed event_id: {captured['event_id']!r}"
         self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
 
@@ -745,8 +757,8 @@ class TestLedgerEventCaptureE2E:
         # real proof those fields survive all the way through to the persisted
         # ledger event, not just the model's raw extraction.
         assert str(captured.get("bank_number")) == "31", f"bank_number: {captured.get('bank_number')!r}"
-        assert str(captured.get("bank_branch")) == "109", f"bank_branch: {captured.get('bank_branch')!r}"
-        assert str(captured.get("bank_account")) == "105542585", (
+        assert str(captured.get("bank_branch")) == "112", f"bank_branch: {captured.get('bank_branch')!r}"
+        assert str(captured.get("bank_account")) == "105397180", (
             f"bank_account: {captured.get('bank_account')!r}"
         )
 
@@ -757,8 +769,8 @@ class TestLedgerEventCaptureE2E:
         assert captured.get("payer_name") is None, (
             f"payer_name must be forced null for בנק events, got {captured.get('payer_name')!r}"
         )
-        assert self.BANK_IMAGE_PAYER.split()[0] in (captured.get("client_name") or ""), (
-            f"the account-holder name (עטיה רועי מאיר) must land in client_name for "
+        assert self.BANK_IMAGE_PAYER_SURNAME in (captured.get("client_name") or ""), (
+            f"the account-holder name (אסולין אסתר) must land in client_name for "
             f"a בנק event, got client_name={captured.get('client_name')!r}"
         )
         assert captured.get("vat_status") == "כולל", (
@@ -774,8 +786,8 @@ class TestLedgerEventCaptureE2E:
             # DD/MM/YYYY convention, matching `event_datetime`'s date portion
             # (REQ-DATA-005/007). Despite its name that helper normalizes FROM
             # ISO, not to it.
-            assert captured.get("txn_date") == "12/07/2026", (
-                f"A3: the transaction date on the screenshot (12/07/2026) must be "
+            assert captured.get("txn_date") == "05/08/2026", (
+                f"A3: the transaction date on the screenshot (05/08/2026) must be "
                 f"captured, got {captured.get('txn_date')!r} - the document date cannot "
                 f"be right if the deposit's own date was never established"
             )
@@ -797,9 +809,9 @@ class TestLedgerEventCaptureE2E:
             approval_text = ask_result[0] or ""
 
             # The payer was never typed - it can only have come from the image.
-            assert self.BANK_IMAGE_PAYER.split()[0] in approval_text, (
+            assert self.BANK_IMAGE_PAYER_SURNAME in approval_text, (
                 f"the approval doesn't name the payer the screenshot shows "
-                f"({self.BANK_IMAGE_PAYER}) - the extracted text is not being used. "
+                f"(surname {self.BANK_IMAGE_PAYER_SURNAME!r}) - the extracted text is not being used. "
                 f"Approval was: {approval_text!r}"
             )
 
@@ -818,7 +830,7 @@ class TestLedgerEventCaptureE2E:
             # B3 optionals: what the user was asked to approve must carry the
             # transaction date and the bank details, since both are known here.
             for element, needle in (
-                ("transaction date", "12/07"),
+                ("transaction date", "05/08"),
                 ("bank details", "בנק"),
             ):
                 assert needle in approval_text, (
@@ -850,20 +862,20 @@ class TestLedgerEventCaptureE2E:
                 f"{verify_ai.mcp_calls if verify_ai else None!r}"
             )
             doc = fetch_calls[0].get("output") or ""
-            # A2-T3: 1,500 arrived in the bank; 1,500 is what the fetched document
-            # holds, never inflated by 18%.
-            assert "1,770" not in doc and "1770" not in doc, (
-                f"A2: the deposited 1,500 was inflated by 18%: {doc!r}"
+            # A2-T3: 554 arrived in the bank; 554 is what the fetched document
+            # holds, never inflated by 18% (554 * 1.18 ~= 653.72).
+            assert "653" not in doc and "654" not in doc, (
+                f"A2: the deposited 554 was inflated by 18%: {doc!r}"
             )
-            assert "1,500" in doc or "1500" in doc, (
+            assert "554" in doc, (
                 f"A2: the fetched document does not hold the deposited amount: {doc!r}"
             )
-            # A3-T2: the payment carries the deposit's OWN date (12 / 07 / 26),
+            # A3-T2: the payment carries the deposit's OWN date (05 / 08 / 26),
             # not the day the document was issued. Loosened to the three date
             # components appearing in the payments section rather than one exact
             # separator style, so a dotted or ISO rendering still passes.
             payments_section = doc.split("תשלומים")[-1] if "תשלומים" in doc else doc
-            for part in ("12", "7", "26"):
+            for part in ("5", "8", "26"):
                 assert part in payments_section, (
                     f"A3: date component {part!r} missing from the fetched "
                     f"document's payments section: {doc!r}"
@@ -930,7 +942,7 @@ class TestLedgerEventCaptureE2E:
         `_seed_client` / `resolve_client_name` billed-test machinery cannot be
         wired in here until Feature 069 builds that gate. Left red on purpose
         until then — see
-        `specs/backlog/059-stabilize-tests-sanity-suite/sanity-failures.md`
+        `specs/done/059-stabilize-tests-sanity-suite/sanity-failures.md`
         (S5)."""
         from denidin import handle_image_message
 
