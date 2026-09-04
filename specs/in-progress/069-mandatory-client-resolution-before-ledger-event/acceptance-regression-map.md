@@ -28,7 +28,7 @@ store-anyway marker. These files assert the old inline call and/or an un-resolve
 |---|---|---|
 | `tests/billed/test_ledger_event_capture_text_billed.py` | 10 | drop `capture_ledger_event`-call asserts; add `live_morning_tunnel` dep; seed an exact-match client OR script the resolution detour (`ClarificationAnswerBank`); assert `client_name` == exact Morning name; move count checks to "events land post-turn". |
 | `tests/billed/test_ledger_event_capture_billed.py` | 2 | same |
-| `tests/expensive/test_ledger_event_capture_e2e.py` | 6 | image cases now route as a synthetic turn → resolution detour before capture; `עידן שבתאי` / `קהילת צעיר` are not sandbox clients, so each needs the detour or a seeded client; `expected_count` direct-persist asserts become post-turn. Overlaps heavily with the new `tests/expensive/test_e2e_media_client_resolution.py` — decide which scenarios stay here vs. move. |
+| `tests/expensive/test_ledger_event_capture_e2e.py` | 6 | image cases now route as a synthetic turn → resolution detour before capture; `עידן שבתאי` / `קהילת צעיר` / `אסתר אסולין` — check which are seeded. `expected_count` direct-persist asserts become post-turn. Overlaps the new `tests/expensive/test_e2e_media_client_resolution.py` — decide which scenarios stay vs. move. **Feature 075 merge already**: swapped `Bank-test-image.jpg` → `Deposit_Eti.jpeg` (payer `אסתר אסולין`, ₪554, 05/08/2026) because `עטיה רועי מאיר` accumulated too many sandbox invoices; and applied `sanity_worker_data_root()` to this file's `config` fixture (per-worker isolation done). |
 
 **Subtotal: 18 tests** (this is the "~16" from the earlier note, exact count 18).
 
@@ -46,6 +46,7 @@ so they should stay green; where cheap, add "exactly N `חשבונית` events /
 | File | # | Watch for |
 |---|---|---|
 | `tests/billed/test_denidin_morning_invoice_creation_e2e.py` | 18 | type-305 & type-320 creates; also the only file touching `offer_approval_buttons`/`attach_sent_message_id` → validates the `_send_ai_response_and_attach` extraction end-to-end |
+| `tests/billed/test_denidin_morning_document_flows_e2e.py` | 8 | **NEW via Feature 075 merge (2026-09-04)** — `create_*` document flows incl. new-client-then-decline-document; every turn now runs post-turn recognition |
 | `tests/billed/test_denidin_morning_document_creation_e2e.py` | 7 | the 4 Feature-021 `create_*` doc types |
 | `tests/billed/test_denidin_morning_invoice_lifecycle_e2e.py` | 7 | create → receipt; recognition on each turn |
 | `tests/billed/test_standalone_receipt_billed.py` | 1 | standalone type-400 — does it produce a `חשבונית` event? decision |
@@ -55,7 +56,7 @@ so they should stay green; where cheap, add "exactly N `חשבונית` events /
 | `tests/billed/test_denidin_approval_content_and_vat_e2e.py` | 4 | approval-content pipeline via `_send_ai_response_and_attach` |
 | `tests/billed/test_accounting_reconciliation_billed.py` | 9 | shares `LedgerEventManager` dedup tri-state index + is the sibling of `persist_recognized_event`; the `_content_fingerprint` `str()`-coercion fix changed this code; 069's synchronous `חשבונית` must dedup vs. the reconciliation tick (spec line 74) |
 
-**Subtotal: 51 tests.**
+**Subtotal: 60 tests** (59 billed + 1 expensive).
 
 ---
 
@@ -96,12 +97,45 @@ so they should stay green; where cheap, add "exactly N `חשבונית` events /
 | | billed | expensive | total |
 |---|---|---|---|
 | Tier 1 (rework) | 12 | 6 | **18** |
-| Tier 2 (run + small assert) | 50 | 1 | **51** |
+| Tier 2 (run + small assert) | 59 | 1 | **60** |
 | Tier 3 (run, no change) | 77 | 14 | **91** |
 | Tier 4 (untouched) | 8 | 0 | **8** |
-| **Pre-existing subtotal** | **147** | **21** | **168** |
-| New 069 acceptance (Phase 11) | 10 | 5 | **15** |
-| **Grand total acceptance surface** | **157** | **26** | **183** |
+| **Pre-existing subtotal** | **156** | **21** | **177** |
+| New 069 acceptance (Phase 11) | 10 (3 files) | 5 (1 file) | **15** |
+| **Grand total acceptance surface** | **166** | **26** | **192** |
+
+*Tier 2 gained `test_denidin_morning_document_flows_e2e.py` (+8) from the Feature 075 merge (2026-09-04). Counts are approximate — collect-time, pre-rework.*
+
+## Parallel execution (Feature 075 engine, non-sanity)
+
+`scripts/run_parallel_tests.sh` (added 2026-09-04) — the non-sanity sibling of
+`run_sanity_parallel.sh`: pytest-xdist, `--dist loadfile`, per-worker
+`test_data/<worker>/` isolation (already wired in `tests/billed/conftest.py` via
+`sanity_worker_data_root()`, which keys off `PYTEST_XDIST_WORKER`, not any sanity
+flag), one infra-signature retry round. No `-m sanity` filter, no gate by default.
+
+`--dist loadfile` pins each FILE to one worker (preserves within-file shared-chat
+ordering) — so parallelism = number of distinct files. The Feature 069 billed
+acceptance suite was therefore split into per-class files:
+
+| File | tests | US |
+|---|---|---|
+| `tests/billed/test_e2e_ledger_069_text_billed.py` | 8 | US1, US3a/b, US4, US5, US6, US8a/b |
+| `tests/billed/test_e2e_ledger_069_morning_create_billed.py` | 1 | US2 |
+| `tests/billed/test_e2e_ledger_069_docx_billed.py` | 1 | US10 |
+
+```
+scripts/run_parallel_tests.sh tests/billed/test_e2e_ledger_069_*_billed.py
+```
+
+Shared driver: `tests/billed/_ledger_069_post_turn_base.py`. C9 helper:
+`tests/billed/_ledger_069_acceptance.py`. The expensive suite stays one file
+(`tests/expensive/test_e2e_media_client_resolution.py`) — expensive runs
+one-at-a-time with per-test approval regardless, so file-splitting buys nothing.
+
+Requires `pytest-xdist` in the clone venv (Feature 075 added it to
+`requirements.txt`; `pip install -r requirements.txt` if missing — an absent
+xdist also makes plain `pytest` INTERNALERROR on the merged `conftest.py` hook).
 
 ## Run order for the acceptance pass
 
@@ -109,7 +143,7 @@ so they should stay green; where cheap, add "exactly N `חשבונית` events /
 2. **Tier 2** — `scripts/run_multiple_billed_tests.sh` the billed ones (stop-on-fail, sound off live); the 1 expensive (`test_group_b_reference_approval_e2e`) with its own approval.
 3. **Tier 3** — same, billed sweep + per-approval expensive.
 4. **Tier 4** — falls out of any full billed/expensive run.
-5. **New Phase 11 suite** — `test_e2e_ledger_post_turn_capture.py` (billed), then `test_e2e_media_client_resolution.py` (expensive, per-test approval). All 5 expensive scenarios have real images (`bank_transfer_grinfeld.jpg` added 2026-09-04 for US7b/US7c).
+5. **New Phase 11 suite** — `test_e2e_ledger_069_*_billed.py` (3 billed files), then `test_e2e_media_client_resolution.py` (expensive, per-test approval). All 5 expensive scenarios have real images (`bank_transfer_grinfeld.jpg` added 2026-09-04 for US7b/US7c).
 
 Every `expensive` test = its own fresh explicit approval, one at a time, STOP at every failure
 (CLAUDE.md). `billed` sweeps need no per-run approval but MUST sound off each result live.

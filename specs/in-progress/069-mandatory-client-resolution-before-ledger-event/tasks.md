@@ -408,15 +408,32 @@ All Phase 11 fixtures, helpers, and the two NEW test files are authored and comm
 billed/expensive tests in the blast radius (Tier 1 rework = **18**, not "~16"; Tier 2 = 51;
 Tier 3 = 91; Tier 4 = 8) + the 15 new = **183** total acceptance surface.
 
+### Parallel infra (operator request 2026-09-04 — "create the infra so parallel tests for non-sanity can be run")
+
+- **`scripts/run_parallel_tests.sh`** (repo root) — the non-sanity sibling of
+  `run_sanity_parallel.sh` (Feature 075). pytest-xdist, `--dist loadfile`, per-worker
+  `test_data/<worker>/` isolation (already generic — `sanity_worker_data_root()` keys off
+  `PYTEST_XDIST_WORKER`, not any sanity flag), one infra-signature retry round. Arbitrary
+  billed/expensive targets, `-m` defaults to `billed`, no gate by default. Reuses
+  `scripts/_sanity_retryable_failures.py`.
+- **The Feature 069 billed acceptance file was split** so `--dist loadfile` can parallelize it
+  (loadfile pins one file → one worker): `tests/billed/test_e2e_ledger_069_text_billed.py` (8),
+  `…_morning_create_billed.py` (1), `…_docx_billed.py` (1) + shared driver
+  `tests/billed/_ledger_069_post_turn_base.py`. `tests/billed/test_e2e_ledger_post_turn_capture.py`
+  removed.
+- **`pytest-xdist` must be in the clone venv** (Feature 075 added it to `requirements.txt`).
+  An absent xdist also makes plain `pytest` INTERNALERROR on the merged `conftest.py` hook —
+  `pip install -r requirements.txt`.
+
 ### Execution batches (operator-set 2026-09-04)
 
-1. **Batch 1** — this feature's NEW billed + expensive suite:
-   `tests/billed/test_e2e_ledger_post_turn_capture.py` (10, `run_multiple_billed_tests.sh`),
-   then `tests/expensive/test_e2e_media_client_resolution.py` (5, per-test approval).
+1. **Batch 1** — this feature's NEW suite:
+   `scripts/run_parallel_tests.sh tests/billed/test_e2e_ledger_069_*_billed.py` (10, 3 files
+   in parallel), then `tests/expensive/test_e2e_media_client_resolution.py` (5, per-test approval).
 2. **Batch 2** — Tier 1 rework (**T052**): `test_ledger_event_capture_text_billed.py` (10),
    `test_ledger_event_capture_billed.py` (2), `test_ledger_event_capture_e2e.py` (6).
-3. **Batch 3** — sanity: `./scripts/run_sanity.sh` (whatever remains of it after Batch 2's
-   reworks land — re-run `verify_sanity_lists.sh` first).
+3. **Batch 3** — sanity: `./scripts/run_sanity.sh` / `run_sanity_parallel.sh` (whatever remains
+   after Batch 2's reworks land — re-run `verify_sanity_lists.sh` first).
 4. **Then decide** about Tier 2 / Tier 3 / Tier 4 (the run-and-confirm-green remainder).
 5. **T047a** (below) — pick which of the new billed/expensive tests, if any, join `@pytest.mark.sanity`.
 
@@ -434,7 +451,7 @@ Tier 3 = 91; Tier 4 = 8) + the 15 new = **183** total acceptance surface.
 - [x] T037 Write `assert_event_matches_manifest_two_hop(extractor_output, event, manifest)` in the same module — **Hop 1**: the extractor's `analyze_media()` output (`ledger_events[0]` for images / `document_analysis` + fields for `docx`, plus `extracted_text`) contains every field in the manifest (catches OCR/vision loss before the detour; for US9/US10 this is where "the model read all ≥3 fee components off the source" is proven); **Hop 2**: the persisted `event` matches Hop 1's extracted values (catches a field dropped *in the resolution detour or the recognition call*). Used by US7 (7a/7b/7c/7d) and US9 (images), and US10 (`docx`).
 - [x] T038 Extend `tests/e2e_helpers.py` as needed for the resolution detour: reuse `ClarificationAnswerBank` / `converse_until_ledger_events_captured` / `reserve_ledger_event_bucket_prefixes` (`A` / `B` prefixes); add a `live_morning_tunnel` fixture dependency helper the acceptance tests and the reworked pre-existing tests (T049) share; add answer-bank entries for the "full name + email + phone → approve" detour.
 
-### `billed` acceptance — `tests/billed/test_e2e_ledger_post_turn_capture.py` (NEW)
+### `billed` acceptance — `tests/billed/test_e2e_ledger_069_{text,morning_create,docx}_billed.py` (NEW; split 2026-09-04 for parallelism)
 
 Real OpenAI (text-only) + real Morning sandbox. Run via `scripts/run_multiple_billed_tests.sh`
 (**sound off each result live**). Each scenario: a real webhook turn sequence; assert
@@ -450,8 +467,8 @@ event-creating scenario — `assert_event_matches_manifest` **exhaustively**.
 - [x] T044 [P] [US6] Describe + write `test_us6_exact_match_silent` — exact-match client → **zero** client-identity question, normal reply unchanged, one `הסכם` event; manifest match. (Inline text + inline expected dict, single hop.)
 - [x] T045 [P] [US8] Describe + write `test_us8_store_anyway_and_dont_store` — decline email/phone → **one** closed store-anyway question, **no** re-ask for email/phone first (assert store-anyway **not** mentioned before the single decline); "store anyway" → exactly one event, `client_name` == the operator-stated free text, `[לקוח לא אומת במורנינג]` in `description`, **no** Morning client, all other fields per the `store_anyway` manifest variant; "don't store" → **no** file + one INFO `[069] ledger capture declined by operator … reason=declined_by_operator` line; **proactive-election variant** — operator says "תרשום גם בלי אימייל וטלפון" up front → honoured directly, exactly one event, **no** "בטוח?" / "are you sure?" turn anywhere in the transcript; supply all three instead → normal `add_client` → capture, store-anyway never shown.
 - [x] T046 [P] [US10] Describe + write `test_us10_docx_multi_component_agreement` — `.docx` for a client Morning has only a **near-match** for → candidate + create-new offered, **no** file; "לקוח חדש" → full name + email + phone → approve → exactly one `הסכם` event, **two-hop** assertion (`DOCXExtractor` output vs `agreement_doc_multi.manifest.json`, then persisted event vs extractor output — **every** fee component both hops); pick the near-match instead → event against the existing client, same full payload. (`billed` — recognition is text-only.)
-- [ ] T047 Run T039–T046 via `scripts/run_multiple_billed_tests.sh <node_id> …` (stop-on-first-failure; **every** failure is its own stop → full report + fresh user input before any fix / re-run / continue). **Sound off each `[N/TOTAL] PASSED/FAILED` live.** Read `logs/test_logs/pytest_results/*.txt` for full output.
-- [ ] T047a (operator request 2026-09-04) After Batch 1 + Batch 2 are green: decide which — **if any** — of the new billed (`test_e2e_ledger_post_turn_capture.py`) / expensive (`test_e2e_media_client_resolution.py`) tests should carry `@pytest.mark.sanity` (a high-signal, fast "is anything obviously broken end-to-end" subset — every sanity test is also billed/expensive). Candidates: the flagship US4 new-client detour (billed) and one US7 image path (expensive). If any are added: update both `@pytest.mark.sanity` decorators **and** the node-id arrays in `scripts/run_sanity.sh`, then run `./scripts/verify_sanity_lists.sh`. If none — record that decision here explicitly.
+- [ ] T047 Run T039–T046. Parallel: `scripts/run_parallel_tests.sh tests/billed/test_e2e_ledger_069_*_billed.py` (3 files → 3 workers, one infra-retry round, full output in `logs/test_logs/pytest_results/_parallel_*.txt`). Serial alternative: `scripts/run_multiple_billed_tests.sh <node_id> …` (stop-on-first-failure; **every** failure is its own stop → full report + fresh user input before any fix / re-run / continue; **sound off each `[N/TOTAL] PASSED/FAILED` live**).
+- [ ] T047a (operator request 2026-09-04) After Batch 1 + Batch 2 are green: decide which — **if any** — of the new billed (`test_e2e_ledger_069_*_billed.py`) / expensive (`test_e2e_media_client_resolution.py`) tests should carry `@pytest.mark.sanity` (a high-signal, fast "is anything obviously broken end-to-end" subset — every sanity test is also billed/expensive). Candidates: the flagship US4 new-client detour (billed) and one US7 image path (expensive). If any are added: update both `@pytest.mark.sanity` decorators **and** the node-id arrays in `scripts/run_sanity.sh`, then run `./scripts/verify_sanity_lists.sh`. If none — record that decision here explicitly.
 
 ### `expensive` acceptance — `tests/expensive/test_e2e_media_client_resolution.py` (NEW)
 

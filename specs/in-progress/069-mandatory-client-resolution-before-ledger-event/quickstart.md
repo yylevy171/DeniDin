@@ -125,7 +125,7 @@ complete. `none` results produce no INFO line (DEBUG only).
   `הסכם` `docx` route through the pipeline instead of persisting directly, and the post-turn
   recognition hook fires).
 - **acceptance** (written + run once, after all unit/integration green — METHODOLOGY §VI):
-  - **billed** `tests/billed/test_e2e_ledger_post_turn_capture.py` — US1 (mechanism move),
+  - **billed** `tests/billed/test_e2e_ledger_069_*_billed.py` (split) — US1 (mechanism move),
     US2 (`חשבונית` synchronous — type-320 combo doc, VAT included, no VAT question),
     US3 (regression guard), US4 (new-client typed `הסכם`), US5 (5a/5b ambiguous),
     US6 (exact-match silent), US8 (single-ask store-anyway + don't-store + proactive

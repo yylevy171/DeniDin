@@ -382,7 +382,7 @@ tests/
 │                                                     #   longer persist directly — route through the
 │                                                     #   pipeline; the post-turn recognition hook fires
 ├── billed/
-│   └── test_e2e_ledger_post_turn_capture.py         # NEW (Acceptance) — US1, US2, US3, US4, US5
+│   └── test_e2e_ledger_069_{text,morning_create,docx}_billed.py  # NEW (Acceptance, split) — US1..US6,US8 / US2 / US10
 │                                                     #   (incl. sc.5), US6, US8, US10 (docx)
 ├── expensive/
 │   └── test_e2e_media_client_resolution.py          # NEW (Acceptance) — US7 (7a/7b/7c/7d), US9
@@ -480,7 +480,7 @@ in user-experience terms and written + run **once, together, at the end** (§VI)
   and the Acceptance phase.
 - **Acceptance phase.** Fixtures + manifests (C9, detail-rich per `user-stories.md`,
   including `agreement_doc_multi.docx`), the bidirectional / two-hop assertion helper, then
-  write **and run**: `tests/billed/test_e2e_ledger_post_turn_capture.py` (US1, US2, US3, US4,
+  write **and run**: `tests/billed/test_e2e_ledger_069_*_billed.py` (US1, US2, US3, US4,
   US5 incl. sc.5, US6, US8, **US10**) and — each with its own explicit per-run approval —
   `tests/expensive/test_e2e_media_client_resolution.py` (US7 7a/7b/7c/7d, US9). The ~16
   pre-existing billed/expensive ledger-capture tests are reworked here (operator-approved
