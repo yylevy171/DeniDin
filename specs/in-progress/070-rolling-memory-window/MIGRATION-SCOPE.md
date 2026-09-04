@@ -244,9 +244,11 @@ duplicate `daily_summary`.
 `denidin-app-prod` (running) + the backfill/consolidator (host `python3`) both open
 `PersistentClient(path=prod_data/memory)`. Same `Settings`, but ChromaDB is single-process;
 concurrent writers ⇒ `database is locked` / possible corruption of a **249 MB live** file.
-**Hard rule: prod container stopped for the entire consolidate + backfill window.** (This is also
-forced by the Mac mount being read-only — the write must happen on the Windows box or via a
-stopped-container read-write remount.)
+**Hard rule: prod container stopped for the entire consolidate + backfill window.** The migration
+runs **on the Mac** against a `data/` tree pulled from the box (`rsync`), then pushed back while
+prod is stopped — so nothing on the box, and no ChromaDB client but the Mac-side tools, ever
+touches `memory/` during the window. The standing `~/denidin-winprod-data` sshfs mount stays
+read-only; the pulled copy under `~/denidin-migration/prod-live-<date>/` is the writable one.
 
 ### 6.10 `_reconcile_chat_index` on 93 dirs every startup
 Opens & parses all 93 `session.json` files on every `SessionManager()` construction, logs the
@@ -268,8 +270,9 @@ deploy.
 
 ## 7. Proposed prod migration procedure (night, downtime OK)
 
-All steps on the Windows prod host (where `data/` is writable) or via a deliberate stopped-container
-read-write remount from the Mac. Each numbered step is its own human go-ahead.
+**Superseded by `MIGRATION-CHECKLIST.md` Stage 3** — kept here as the high-level shape. All
+migration logic runs **on the Mac** against a pulled copy of prod `data/`; the box only
+stops/starts and sends/receives the tree. Each numbered step is its own human go-ahead.
 
 1. **Announce downtime.** Confirm no active client conversation in flight (`tail_logs.sh`).
 2. **Stop prod** — `scripts/stop_all.sh prod` (denidin first, then morning-mcp). Confirm both down.

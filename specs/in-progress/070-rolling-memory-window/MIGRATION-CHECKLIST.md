@@ -1,16 +1,19 @@
 # Feature 070 — Migration Execution Checklist
 
 **Companion to `MIGRATION-SCOPE.md`.** Ordered, gated steps to migrate dev and prod to the
-rolling-memory model. **Governing rule: nothing runs against prod until the exact same tool, at
-the exact same version, has run successfully against (a) synthetic fixtures and (b) a byte-copy
-of real prod data on the Mac.** Prod is the *fourth* environment each tool touches, never the
-first.
+rolling-memory model. **Governing rules:**
+1. Nothing runs against prod data until the exact same tool, at the exact same version, has run
+   successfully against (a) synthetic fixtures and (b) a byte-copy of real prod data on the Mac.
+   Prod is the *fourth* environment each tool touches, never the first.
+2. **Every migration tool runs on the Mac** — including the live prod run. Prod `data/` is pulled
+   to the Mac, migrated + validated locally, and pushed back while prod is stopped. The Windows
+   box only stops/starts containers and sends/receives the data tree; it never runs a tool.
 
 ```
-STAGE 0  Build + unit/integration-test the consolidator        (pure local, synthetic data)
-STAGE 1  Full dress rehearsal against a PROD SNAPSHOT on the Mac (real prod bytes, offline, disposable)
-STAGE 2  Dev migration                                          (real dev data, low stakes, reversible)
-STAGE 3  Prod migration                                         (live, night, downtime, monitored)
+STAGE 0  Build + unit/integration-test the tooling             (Mac, synthetic data)
+STAGE 1  Full dress rehearsal against a PROD SNAPSHOT           (Mac, real prod bytes, offline, disposable)
+STAGE 2  Dev migration                                         (Mac tools ↔ local dev_data, low stakes)
+STAGE 3  Prod migration  — pull → migrate on Mac → push back   (live, night, downtime, monitored)
 ```
 
 Each stage must be **fully green** before the next starts. Every `👤` line is its own explicit
@@ -414,8 +417,17 @@ docker restart denidin-dev-denidin-app-dev-1
 
 # STAGE 3 — Prod migration (live, night, downtime)
 
-Executes `MIGRATION-RUNBOOK-prod.md` (written in Stage 1.9) verbatim on the Windows prod host.
-Every step already run twice (snapshot + dev). **👤 for every numbered step.**
+**All migration logic runs on the Mac** — the four pipeline tools have only ever run on the Mac
+(Stages 0–2), and the live prod run keeps it that way: pull prod `data/` to the Mac, migrate +
+validate locally, push it back. The Windows box only does **stop → back up → send data → receive
+data → deploy → start** — it never runs a migration tool. Executes `MIGRATION-RUNBOOK-prod.md`
+(written in Stage 1.9). Every step already run twice (snapshot + dev). **👤 for every numbered
+step.**
+
+**One-time, before the night**: capture the authoritative Windows-side `data/` path —
+`docker --context denidin-winprod inspect denidin-app-prod --format '{{json .Mounts}}'` (while the
+container still exists) or `docker --context denidin-winprod compose -f docker/docker-compose.prod.yml
+--project-directory . config`. Call it `$WINPROD_DATA` below.
 
 ### 3.1 Pre-flight
 - [ ] 👤 downtime window agreed (estimate from Stage 1.9 + deploy time + buffer).
@@ -431,28 +443,46 @@ Every step already run twice (snapshot + dev). **👤 for every numbered step.**
 - **Verify**: both prod containers down (`docker --context denidin-winprod ps`); watchdog not
   respawning; `shared/active_env.json` prod entry cleared.
 
-### 3.3 Snapshot prod (with prod STOPPED — this one is the rollback artifact)
-- On the host: full copy of `data/` → `data_pre070_backup_<date>/`.
-- Pull a second copy to `~/denidin-migration/snapshots/prod-<date>-COLD/` on the Mac.
-- **Verify**: file counts + `du -sh` match; `chroma.sqlite3` copied whole; 93 session dirs.
+### 3.3 Back up on the box + pull `data/` to the Mac (prod STOPPED)
+```bash
+# on the Windows box (via the denidin-winprod SSH alias): rollback artifact, STAYS on the box
+ssh denidin-winprod "cp -r '$WINPROD_DATA' '${WINPROD_DATA}_pre070_backup_<date>'"
+# pull the live tree to a WRITABLE dir on the Mac
+mkdir -p ~/denidin-migration/prod-live-<date>
+rsync -a --delete denidin-winprod:"$WINPROD_DATA"/ ~/denidin-migration/prod-live-<date>/
+```
+- **Verify**: `du -sh` + `find … | wc -l` match between box and Mac copy; `sessions/` = 93 dirs
+  (1 + `expired/`); `memory/chroma.sqlite3` present and whole (~238 MB); a read-only `sqlite3`
+  open lists both collections.
+- Also keep an immutable second copy: `cp -a ~/denidin-migration/prod-live-<date>
+  ~/denidin-migration/snapshots/prod-<date>-COLD && chmod -R a-w …/prod-<date>-COLD`.
 
-### 3.4 Consolidator — dry run, then real (on the host, against `data/`)
-- Same two commands as Stage 1.2 / 1.3, `--data-root <host data/>`.
-- **Verify**: the full 1.3 checklist. **Abort and restore (3.9) if any check fails.**
+### 3.4 Consolidator — dry run, then real (Mac, against the pulled copy)
+- Exactly Stage 1.2 / 1.3 commands, `--data-root ~/denidin-migration/prod-live-<date>`.
+- **Verify**: the full 1.3 checklist. **Abort (skip to ROLLBACK) if any check fails** — the box
+  is untouched, just discard the Mac copy.
 
-### 3.5 Backfill (on the host)
-- Same as Stage 1.5, `--since 2026-08-01 --until <today−14> --yes`.
-- **Verify**: the full 1.5 checklist.
+### 3.5 Backfill (Mac) — Stage 1.5, `--since 2026-08-01 --until <today−14> --yes`. Verify per 1.5.
 
-### 3.5b Finalize (archive) — `finalize_migration.py`, host paths. Verify per 1.5b.
-- **Abort and restore (3.9) if `assert_message_integrity` fails or a file went missing.**
+### 3.5b Finalize (Mac) — `finalize_migration.py --data-root ~/denidin-migration/prod-live-<date>`. Verify per 1.5b.
+- **Abort to ROLLBACK if `assert_message_integrity` fails or a file went missing** (box still untouched).
 
-### 3.6 Purge `session_summary` — `purge_legacy_summaries.py`, host paths. Verify per 1.6.
+### 3.6 Purge (Mac) — `purge_legacy_summaries.py --data-root ~/denidin-migration/prod-live-<date>`. Verify per 1.6.
 
-### 3.7 Validate — prod still STOPPED
-- Run the 1.4 reconcile script + the **full MIGRATION-SCOPE §8 checklist** against the host
-  `data/`. Every box must tick — including: `messages/` holds only ≤14 days, `archived/` holds the
-  rest, both ChromaDB collections hold only `daily_summary` records.
+### 3.7 Validate on the Mac — prod still STOPPED
+- Run the 1.4 reconcile script + the **full MIGRATION-SCOPE §8 checklist** against
+  `~/denidin-migration/prod-live-<date>`. Every box must tick — `messages/` holds only ≤14 days,
+  `archived/` holds the rest, both ChromaDB collections hold only `daily_summary` records,
+  `_pre070_raw_<date>/` holds all 93 originals.
+
+### 3.7b Push the migrated tree back (prod STILL STOPPED)
+```bash
+rsync -a --delete ~/denidin-migration/prod-live-<date>/ denidin-winprod:"$WINPROD_DATA"/
+```
+- **Verify on the box** (`ssh denidin-winprod` / Docker context): `sessions/` now has 2 canonical
+  dirs + `_pre070_raw_<date>/`; no `chat_index.db` yet (created on first start); `du -sh memory/`
+  dropped (~238 MB → tens of MB); `find "$WINPROD_DATA" -type f | wc -l` matches the Mac copy.
+- The `${WINPROD_DATA}_pre070_backup_<date>` from 3.3 is the rollback artifact — leave it.
 
 ### 3.8 Deploy 0.5.4
 - 👤 `/haleluya` (merge Feature 070 as one PR).
@@ -483,22 +513,25 @@ Every step already run twice (snapshot + dev). **👤 for every numbered step.**
       sweep no-op.
 
 ### 3.11 Keep the rollback artifact
-- `data_pre070_backup_<date>/` and `~/denidin-migration/snapshots/prod-<date>-COLD/` stay in
-  place indefinitely (rollback + audit). `sessions/_pre070_raw_<date>/` likewise.
+- `${WINPROD_DATA}_pre070_backup_<date>` (on the box) and
+  `~/denidin-migration/snapshots/prod-<date>-COLD/` (Mac) stay in place indefinitely (rollback +
+  audit). `sessions/_pre070_raw_<date>/` inside the migrated tree likewise.
 
-### ROLLBACK (any point in 3.4–3.7, before deploy)
-```bash
-# on the host, prod still stopped:
-rsync -a --delete data_pre070_backup_<date>/ data/
-./scripts/deploy_release.sh denidin-app prod <CURRENT 0.5.3 VERSION>   # or just start the existing 0.5.3 image
-./scripts/run_all.sh prod
-```
-- **Verify**: prod back on 0.5.3, `data/` byte-restored, a real turn works.
+### ROLLBACK (any point in 3.4–3.7b, before deploy)
+- **Before 3.7b (nothing pushed yet)**: just `rm -rf ~/denidin-migration/prod-live-<date>` — the
+  box was never touched. Start prod on 0.5.3 again (`./scripts/run_all.sh prod`).
+- **After 3.7b (migrated tree already pushed)**:
+  ```bash
+  ssh denidin-winprod "rsync -a --delete '${WINPROD_DATA}_pre070_backup_<date>'/ '$WINPROD_DATA'/"
+  ./scripts/deploy_release.sh denidin-app prod <CURRENT 0.5.3 VERSION>   # or start the existing 0.5.3 image
+  ./scripts/run_all.sh prod
+  ```
+- **Verify**: prod back on 0.5.3, `$WINPROD_DATA` byte-restored, a real turn works.
 
 ### ROLLBACK (after deploy, if 3.9 fails)
 - `scripts/deploy_release.sh denidin-app prod <0.5.3 VERSION>` (rollback is the same script),
-  then restore `data/` from `data_pre070_backup_<date>/` (0.5.3 ignores `chat_index.db` /
-  `memory_rolls/` — but restoring is cleaner), `run_all.sh prod`, verify a turn.
+  then restore `$WINPROD_DATA` from `${WINPROD_DATA}_pre070_backup_<date>` (0.5.3 ignores
+  `chat_index.db` / `memory_rolls/` — but restoring is cleaner), `run_all.sh prod`, verify a turn.
 - File a bugfix, do **not** retry the migration the same night.
 
 ---
@@ -518,4 +551,5 @@ rsync -a --delete data_pre070_backup_<date>/ data/
 | rollback (`rsync` restore) | — | ✅ 1.8 | ✅ 2.3/2.4 rollback | ✅ 3.9 ROLLBACK |
 
 **No tool's first execution is against prod.** Each has run against synthetic data, then a
-byte-copy of real prod data, then live dev, before it touches the live prod box.
+byte-copy of real prod data, then live dev, before it touches prod — and even then it runs **on
+the Mac** against a pulled copy, never on the Windows box.
