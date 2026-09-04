@@ -287,4 +287,4 @@ was:
   info_not_provided_stops_flow`'s final assertion failing on a name that fuzzy-collided with two
   unrelated sandbox clients) were both investigated and confirmed to be **pre-existing
   test-infrastructure issues, unrelated to this bugfix** — filed as items 7 and 8 under
-  `specs/done/059-stabilize-tests-sanity-suite/spec.md`, not fixed here.
+  `specs/done/v0.5.4/059-stabilize-tests-sanity-suite/spec.md`, not fixed here.

@@ -942,7 +942,7 @@ class TestLedgerEventCaptureE2E:
         `_seed_client` / `resolve_client_name` billed-test machinery cannot be
         wired in here until Feature 069 builds that gate. Left red on purpose
         until then — see
-        `specs/done/059-stabilize-tests-sanity-suite/sanity-failures.md`
+        `specs/done/v0.5.4/059-stabilize-tests-sanity-suite/sanity-failures.md`
         (S5)."""
         from denidin import handle_image_message
 
