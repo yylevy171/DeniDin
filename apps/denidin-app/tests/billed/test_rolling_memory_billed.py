@@ -222,19 +222,20 @@ class TestSC007:
         h = _handler(cfg)
         sm = h.session_manager
         # Steady-state shape a long-lived chat actually reaches: a large archive
-        # + ~14 days of live messages. ~840 in-window (60/day) + 4000 older ones
-        # that the nightly archive has already moved to archived/.
+        # + ~14 days of live messages at the real prod cadence (~30/day — prod's
+        # busiest chat is ~926 msgs across a month). 420 in-window + 4000 older
+        # ones the nightly archive has already moved to archived/.
         for i in range(4000):
             _seed(sm, SOLO, "user" if i % 2 == 0 else "assistant",
                   f"שורת שיחה ישנה {i}: עדכון שוטף על הפרויקט.", 15 + (i % 40))
-        for i in range(840):
+        for i in range(420):
             _seed(sm, SOLO, "user" if i % 2 == 0 else "assistant",
                   f"שורת שיחה {i}: עדכון שוטף על הפרויקט, מספרים וסטטוסים.", i % 14)
         session = sm.get_session(SOLO)
         sm.archive_aged_and_backstopped_messages(session, window_days=14, max_backstop_tokens=100000)
         assert len(session.archived_message_ids) >= 4000     # the old ones are archived
 
-        # Task T064: get_rolling_window reads ONLY messages/ (the ~840 in-window
+        # Task T064: get_rolling_window reads ONLY messages/ (the ~420 in-window
         # files) — never the 4000-file archive. Cost is O(last 14 days), flat.
         # Budget 150 ms p95 (T064; the pre-T064 amendment to 300 ms is withdrawn).
         samples = []
@@ -244,7 +245,7 @@ class TestSC007:
             samples.append((time.perf_counter() - t0) * 1000)
         p95 = statistics.quantiles(samples, n=20)[-1]
         assert p95 <= 150.0, f"get_rolling_window p95 = {p95:.1f} ms (budget 150)"
-        assert len(window) <= 840                            # archived messages never resurface
+        assert len(window) <= 420                            # archived messages never resurface
 
         window = sm.get_rolling_window(SOLO, window_days=14, max_tokens=100000)
         window_tokens = sum(sm.count_tokens(i["content"]) for i in window)
