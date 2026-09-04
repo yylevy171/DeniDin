@@ -25,7 +25,7 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from _denidin_loader import assert_message_integrity
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s", force=True)
 logger = logging.getLogger("consolidate_sessions")
 
 _RESERVED_DIR_PREFIXES = (".consolidate_tmp_", "_pre070_raw_", "_pre070_sessions_archive_")
@@ -385,7 +385,24 @@ def main(argv: Optional[List[str]] = None) -> int:  # pylint: disable=too-many-r
         rc = _consolidate_chat(sessions_dir, chat, by_chat[chat], raw_dir)
         if rc != 0:
             return rc
+
+    _prune_empty_expired(sessions_dir)
     return 0
+
+
+def _prune_empty_expired(sessions_dir: Path) -> None:
+    """After moving every source dir out, remove the now-empty expired/<date>/
+    folders (and expired/ itself if empty) so _reconcile_chat_index's per-startup
+    scan sees a clean tree."""
+    expired = sessions_dir / "expired"
+    if not expired.is_dir():
+        return
+    for date_folder in list(expired.iterdir()):
+        if date_folder.is_dir() and not any(date_folder.iterdir()):
+            date_folder.rmdir()
+    if not any(expired.iterdir()):
+        expired.rmdir()
+        logger.info("removed empty sessions/expired/ tree")
 
 
 if __name__ == "__main__":

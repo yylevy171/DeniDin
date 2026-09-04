@@ -27,7 +27,7 @@ from chromadb.config import Settings
 
 from _denidin_loader import collection_name_for_chat
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s", force=True)
 logger = logging.getLogger("purge_legacy_summaries")
 
 _LEGACY_TYPES = ("session_summary", "session_summary_fallback")

@@ -256,11 +256,16 @@ PY
 … --since 2026-08-01 --until <today−14> --yes  | tee ~/denidin-migration/reports/backfill-rehearsal-*.txt
 ```
 - `--since 2026-08-01` = full history (decision #3); `--until <today−14>` leaves the live 14-day
-  window to the app.
-- **Cost note**: this makes real OpenAI summary calls (~1 per non-empty pre-window day per
-  chat, ≤ ~50 total, cheap `billed`-tier). It is the single deliberate real-OpenAI step in the
-  rehearsal, and it exercises the exact call the prod run will make. **👤 go-ahead for this one
-  billed run.**
+  window to the app. For 2026-08-01..08-21 that is 21 candidate days/chat.
+- **Cost note**: real OpenAI calls — ~1 summary + 1 embedding per non-empty pre-window (chat,
+  date). Cheap `billed`-tier. **👤 go-ahead for this one billed run.**
+- **⚠️ Runs several minutes** (rehearsal 2026-09-04: ~40 non-empty days at ~10–20 s each →
+  well over the 2-min shell limit). Run it **backgrounded / in a real terminal, never behind a
+  short timeout, and do not interrupt it.** If it IS interrupted: the claim-first markers mean
+  every committed day stays committed, but the one in-flight day is left `status='claimed'` and a
+  fresh re-run within `stale_claim_minutes` (120) SKIPS it. To resume immediately, first
+  `sqlite3 <data-root>/memory_rolls/roll_markers.db "DELETE FROM roll_markers WHERE status='claimed'"`
+  then re-run — committed days are skipped, only the un-done ones roll.
 - **Verify**:
   - [ ] `memory_rolls/roll_markers.db`: one row per (chat, date) in range, **all `committed`**, `source='migration'`.
   - [ ] ChromaDB: one `daily_summary` per non-empty pre-window (chat, date); metadata correct;
@@ -335,9 +340,15 @@ rsync -a --delete ~/denidin-migration/snapshots/prod-YYYYMMDD/ ~/denidin-migrati
   that runbook verbatim, only swapping `--data-root` and running on the Windows host.
 
 ### STAGE 1 EXIT GATE
-- [ ] every checkbox in 1.2–1.8 ticked, against real prod bytes
-- [ ] downtime estimate produced (sum of 1.3 + 1.4 + 1.5 + 1.5b + 1.6, plus deploy)
-- [ ] `MIGRATION-RUNBOOK-prod.md` written from the actual rehearsal transcript
+- [x] **Executed 2026-09-04** against `~/denidin-migration/snapshots/prod-20260904/` (byte copy of
+  live prod, 517 MB, 96 session dirs, 256 MB chroma.sqlite3, ~21,678 records). Every step 1.1–1.8
+  green — see `MIGRATION-RUNBOOK-prod.md` "Rehearsal result" table. Highlights: 96 dirs → 2
+  canonical (954 + 127 msgs, Σ in == Σ out, 0 dup); **0** "maps to N session dirs" warnings; 21
+  `daily_summary` written (`text-embedding-3-large`); finalize → 395 + 26 live; purge 21,678 → 21;
+  **out-of-window Aug-05 fee agreement correctly answered from its `daily_summary`** in a real
+  billed turn; rollback `rsync` restore = byte-identical to the snapshot.
+- [x] Downtime estimate: ~30 min work + ~5 min push-back + deploy → **plan a 45-min window**.
+- [x] `MIGRATION-RUNBOOK-prod.md` written from the rehearsal transcript.
 - [ ] 👤 sign-off that Stage 2 may begin
 
 ---
