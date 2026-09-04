@@ -6,7 +6,7 @@ data (`apps/denidin-app/dev_data`).
 
 **Bottom line**: the migration tooling shipped in Phases 1–9 assumes **≈1 session per chat**
 (research.md line 59: *"Migrates the 2 prod sessions transparently on first construction"*).
-Prod actually has **93 session directories** and **20,949 ChromaDB records** (only 84 distinct sessions — see §1.1). Deploying 0.5.4
+Prod actually has **93 session directories** and **20,949 ChromaDB records** (only 84 distinct sessions — see §1.1). Deploying the 070 release (0.5.4 shipped 2026-09-04 without 070 — 070 will be the NEXT cut, likely 0.5.5)
 against prod as-is would **silently wipe the bot's working memory of everything except one day
 (2026-08-09) per chat** — no crash, no error, just amnesia. Dev only "passed" Phase 9 because the
 operator hand-consolidated dev to 2 sessions first and the discarded dev history was test junk.
@@ -169,7 +169,7 @@ rewriting, so the canonical session is clean and no WARNING fires on every start
 Not load-bearing (recall filters by `type`/`chat`, never `session_id`) and not a crash risk, but:
 - recall's `top_k=10` over a collection of ~10k near-duplicate summaries can crowd out the new
   `daily_summary` records for a given query;
-- it is ~200 MB of `chroma.sqlite3` and an ongoing embedding-spend leak **until 0.5.4 is deployed**
+- it is ~200 MB of `chroma.sqlite3` and an ongoing embedding-spend leak **until the 070 release is deployed**
   (the H1 loop stops only when the cleanup thread is deleted).
 **Decision needed** (§9): (a) leave as-is and rely on semantic ranking, (b) delete all
 `type IN (session_summary, session_summary_fallback)` records after the backfill (the daily
@@ -258,7 +258,7 @@ consolidation reduces it to 2 clean dirs. Post-consolidation the raw dirs move t
 sees only the 2 canonical sessions.
 
 ### 6.11 Container restart between consolidation and deploy
-If the 0.5.3 container is (re)started after consolidation but before the 0.5.4 deploy: 0.5.3
+If the 0.5.3 container is (re)started after consolidation but before the 070-release deploy: the running version
 does **not** read `chat_index.db` — it uses its own in-memory `chat_to_session` + `get_session`'s
 active-dir scan. It would find the new canonical dir (active, correct `whatsapp_chat`) and
 **append the next message to it**, which is fine and forward-compatible. It would also

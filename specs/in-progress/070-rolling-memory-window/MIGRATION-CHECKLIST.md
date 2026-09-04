@@ -495,7 +495,7 @@ rsync -a --delete ~/denidin-migration/prod-live-<date>/ denidin-winprod:"$WINPRO
   dropped (~238 MB → tens of MB); `find "$WINPROD_DATA" -type f | wc -l` matches the Mac copy.
 - The `${WINPROD_DATA}_pre070_backup_<date>` from 3.3 is the rollback artifact — leave it.
 
-### 3.8 Deploy 0.5.4
+### 3.8 Deploy the 070 release (HUMAN-SUPPLIED version — 0.5.4 shipped without 070)
 - 👤 `/haleluya` (merge Feature 070 as one PR).
 - 👤 `scripts/cut_release.sh denidin-app <VERSION>` — **human supplies the exact version.**
 - 👤 `scripts/cut_release.sh morning-mcp-app <VERSION>` if it changed (it did — logger).

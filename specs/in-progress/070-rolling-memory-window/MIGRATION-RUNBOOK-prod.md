@@ -88,7 +88,7 @@ wait   # ~6-8 min
 rsync -a --delete $LIVE/ denidin-winprod:"$WINPROD_DATA"/
 ssh denidin-winprod "ls '$WINPROD_DATA/sessions'"     # 2 canonical + _pre070_raw_$DATE, no chat_index.db yet
 
-# 8. deploy 0.5.4  (👤 each: /haleluya, cut_release x2 with human-supplied version, deploy_release morning then denidin)
+# 8. deploy the next version (0.5.4 shipped without 070 — likely 0.5.5, HUMAN-SUPPLIED)  (👤 each: /haleluya, cut_release x2 with human-supplied version, deploy_release morning then denidin)
 
 # 9. post-deploy: startup log has NO reconcile warning, roll scheduler armed 02:00, 0 "Created new session";
 #    real WhatsApp turns (godfather 1:1 + collections group): recent context + a mid-August recalled day;
@@ -99,9 +99,11 @@ ssh denidin-winprod "ls '$WINPROD_DATA/sessions'"     # 2 canonical + _pre070_ra
 
 ## Rollback
 
-- **Before step 7b** (nothing pushed): `rm -rf $LIVE`; `./scripts/run_all.sh prod` (0.5.3 image, untouched).
-- **After 7b, before deploy**: `ssh denidin-winprod "rsync -a --delete '${WINPROD_DATA}_pre070_backup_$DATE'/ '$WINPROD_DATA'/"` then start 0.5.3.
-- **After deploy**: `scripts/deploy_release.sh denidin-app prod <0.5.3 version>` + restore `$WINPROD_DATA` from the backup; file a bugfix, do not retry the same night.
+`$PREV` = the version prod is running right now (check before you start — likely 0.5.4).
+
+- **Before step 7b** (nothing pushed): `rm -rf $LIVE`; `./scripts/run_all.sh prod` ($PREV image, untouched).
+- **After 7b, before deploy**: `ssh denidin-winprod "rsync -a --delete '${WINPROD_DATA}_pre070_backup_$DATE'/ '$WINPROD_DATA'/"` then start $PREV.
+- **After deploy**: `scripts/deploy_release.sh denidin-app prod $PREV` + restore `$WINPROD_DATA` from the backup; file a bugfix, do not retry the same night.
 
 ## Notes from the rehearsal
 
