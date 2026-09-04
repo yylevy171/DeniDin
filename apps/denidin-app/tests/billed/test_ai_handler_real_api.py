@@ -14,6 +14,7 @@ from pathlib import Path
 from openai import OpenAI
 from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
+from tests.e2e_helpers import sanity_worker_data_root
 from src.models.message import WhatsAppMessage
 
 
@@ -27,7 +28,7 @@ def real_config():
     # tests' real API calls don't write into real production state.
     # SessionManager/MemoryManager read storage paths from
     # config.memory[...]['storage_dir'], not config.data_root.
-    test_data_root = Path(__file__).parent.parent.parent / "test_data"
+    test_data_root = sanity_worker_data_root()  # per-xdist-worker under -n (Feature 075)
     config.data_root = str(test_data_root)
     if 'session' in config.memory:
         config.memory['session']['storage_dir'] = str(test_data_root / "sessions")

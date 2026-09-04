@@ -45,6 +45,7 @@ import pytest
 
 import src.services.reminder_delivery_service as delivery_service
 from src.models.config import AppConfiguration
+from tests.e2e_helpers import sanity_worker_data_root
 from src.utils.time_utils import now_local, to_local
 from src.constants.error_messages import REMINDER_CAP_EXCEEDED
 
@@ -68,7 +69,7 @@ class TestReminderLifecycleBilled:
             pytest.skip("config.test.json not found")
         config = AppConfiguration.from_file(str(config_path))
         config.validate()
-        test_data_root = Path(__file__).parent.parent.parent / "test_data"
+        test_data_root = sanity_worker_data_root()  # per-xdist-worker under -n (Feature 075)
         config.data_root = str(test_data_root)
         config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
         config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")

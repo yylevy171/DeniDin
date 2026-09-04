@@ -201,9 +201,19 @@ class TestGroupBReferenceApprovalBilled:
         amount = _random_amount()
         client_name, invoice_number = _seed_invoice_305(amount, _random_description())
 
+        # Point at the freshly-seeded invoice as "the one I just issued"
+        # (שהרגע הפקתי / האחרונה), not just "the invoice of {client}".
+        # `pick_existing_client()` can (and does) land on a client that already
+        # carries an unpaid invoice from an earlier run - then "the invoice of
+        # X" is genuinely ambiguous and the model correctly asks which one,
+        # which the one-clarifying-turn helper can't answer (seen 2026-09-04:
+        # sandbox client מרסל אלמו still holding invoice #51816 from 2026-08-11,
+        # on top of the one this test just seeded). "הרגע" is what a real user
+        # says, uniquely picks the just-created invoice regardless of dates,
+        # and doesn't leak the number.
         approval_text, approve_ai_response = _send_turn_and_approve_capturing_approval(
             GODFATHER_CHAT_ID,
-            f"סמן את החשבונית של {client_name} כשולמה, התשלום התקבל היום",
+            f"סמן את החשבונית האחרונה של {client_name}, זו שהרגע הפקתי, כשולמה - התשלום התקבל היום",
             id_prefix="B038_BILLED_RECEIPT",
             tool_name="create_receipt",
         )

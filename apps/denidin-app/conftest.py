@@ -5,6 +5,7 @@ Automatically configures logging for all tests:
 - Production: logs/denidin.log
 - Tests: logs/test_logs/{test_file_name}.log (automatic, per test file)
 """
+import os
 import sys
 import pytest
 import logging
@@ -96,6 +97,53 @@ def pytest_configure(config):
         message=".*builtin type.*has no __module__ attribute",
         category=DeprecationWarning
     )
+
+    # Feature 075: live per-test sound-off for scripts/run_sanity_parallel.sh.
+    # pytest-xdist streams little while workers churn, so the parallel sweep sets
+    # SANITY_PARALLEL_SOUNDOFF=1 and this prints one `>>> SANITY [k/N] STATUS`
+    # line (+ a grep-friendly SANITY-PROGRESS line) per test as it finishes,
+    # mirroring run_sanity.sh's serial sound-off. Controller process only; a
+    # no-op for every other pytest invocation.
+    global _SOUNDOFF_ON
+    _SOUNDOFF_ON = (
+        os.environ.get("SANITY_PARALLEL_SOUNDOFF") == "1"
+        and not hasattr(config, "workerinput")
+    )
+
+
+_SOUNDOFF_ON = False
+_soundoff = {"done": 0, "total": 0, "ids": set()}
+
+
+def pytest_xdist_node_collection_finished(node, ids):
+    """xdist: each worker reports its collected ids - union gives the real total."""
+    if _SOUNDOFF_ON:
+        _soundoff["ids"].update(ids)
+        _soundoff["total"] = len(_soundoff["ids"])
+
+
+def pytest_collection_finish(session):
+    """Non-xdist fallback (e.g. a subset run with -n 0/1 on the controller)."""
+    if _SOUNDOFF_ON and not _soundoff["total"]:
+        _soundoff["total"] = len(getattr(session, "items", []) or [])
+
+
+def pytest_runtest_logreport(report):
+    if not _SOUNDOFF_ON:
+        return
+    # One line per test: its `call` result, or a setup that errored/skipped.
+    if report.when == "call":
+        status = report.outcome.upper()
+    elif report.when == "setup" and report.outcome in ("failed", "skipped"):
+        status = "ERROR" if report.outcome == "failed" else "SKIP"
+    else:
+        return
+    _soundoff["done"] += 1
+    n, total = _soundoff["done"], (_soundoff["total"] or "?")
+    worker = getattr(report, "worker_id", "") or getattr(report, "node", "") or ""
+    tag = f"  ({worker})" if worker else ""
+    print(f"\n>>> SANITY [{n}/{total}] {status}: {report.nodeid}{tag}", flush=True)
+    print(f"SANITY-PROGRESS done={n} total={total} status={status} node={report.nodeid}", flush=True)
 
 
 @pytest.fixture(scope="session", autouse=True)
