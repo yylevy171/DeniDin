@@ -326,7 +326,7 @@ def _report(by_chat: Dict[str, List[_Src]], targets: List[str]) -> int:
 
 # --- main ----------------------------------------------------------------
 
-def main(argv: Optional[List[str]] = None) -> int:  # pylint: disable=too-many-return-statements
+def main(argv: Optional[List[str]] = None) -> int:  # pylint: disable=too-many-return-statements,too-many-locals,too-many-branches
     """Consolidate every per-chat session dir into one canonical session. See module docstring."""
     args = _build_parser().parse_args(argv)
     data_root = Path(args.data_root)
