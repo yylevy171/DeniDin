@@ -260,13 +260,28 @@ frontend :5173 via Vite; not the containerized env — that's Story 10).
 ## Story 10 — Docker/env bundling & Cloudflare Tunnel ingress
 
 - **10A**: no automated test (infra/compose config) — verified manually per-environment at
-  deploy time, same as the existing two apps' compose changes.
-- **10B** (impl): `webapp-backend-<env>`/`webapp-frontend-<env>`/`cloudflared-<env>` services in
-  `docker/docker-compose.{dev,prod}.yml`; `run_webapp.sh`/`stop_webapp.sh dev|prod`;
-  `scripts/run_all.sh`/`stop_all.sh` extended (`morning-mcp-app → denidin-app → webapp` order);
-  **manual per-clone follow-up** (flagged, not automatable): every clone's
-  `docker-compose.{dev,prod}.local.yml` needs a new override entry for `webapp-backend-<env>`'s
-  data-volume mount.
+  deploy time, same as the existing two apps' compose changes. `docker compose config` on both
+  merged files (base + coder2 local override) parses clean; frontend `vite build` + backend
+  pytest (62) green after the config-path changes.
+- **10B** (impl — DONE 2026-09-05): `webapp-backend-<env>`/`webapp-frontend-<env>`/
+  `cloudflared-<env>` services added to `docker/docker-compose.{dev,prod}.yml`;
+  `apps/webapp/run_webapp.sh`/`stop_webapp.sh dev|prod` (mirror `run_morning_mcp.sh`, source
+  `scripts/env_lock.sh`, `env_lock_require_local_override` + `acquire`/`release`);
+  `scripts/run_all.sh`/`stop_all.sh` extended (`morning-mcp-app → denidin-app → webapp`,
+  reverse on stop). Backend `Dockerfile` rewritten to **preserve** the repo tree inside the
+  image (`/app/apps/webapp/backend/...` + `/app/apps/denidin-app/src`) so
+  `ledger_reader`/`__init__`'s `parents[4]` and `server.read_version`'s `parents[3]` resolve
+  in-container (the old flattened layout broke both). New `apps/webapp/frontend/Dockerfile`
+  (multi-stage Vite build → nginx) + `nginx.conf.template` (envsubst `${BACKEND_UPSTREAM}`,
+  `NGINX_ENVSUBST_FILTER` so nginx's own `$vars` survive) proxying `/api` + `/health` to the
+  backend, SPA fallback. Container config: committed `config/config.{dev,prod}.container.json`
+  (no secrets); `auth/password.hash` mounted read-only from host. Cloudflare Tunnel:
+  `cloudflared-<env>` container, token from gitignored `docker/cloudflared.<env>.env`
+  (`env_file` `required: false` — absent → container just stays down), `docker/cloudflared.env.example`
+  committed, `.gitignore` updated.
+  **Manual per-clone follow-up (flagged, not automatable):** every clone's gitignored
+  `docker-compose.{dev,prod}.local.yml` needs a `webapp-backend-<env>` override entry for the
+  `/app/denidin-data` mount — coder2's is done; documented in `quickstart.md`.
 
 ## Acceptance Phase (Playwright — approved FIRST, before Phases 1–10 build; run at the end)
 

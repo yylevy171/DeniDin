@@ -84,6 +84,10 @@ apps/denidin-app/.denidin.pid
 /docker/docker-compose.dev.local.yml
 /docker/docker-compose.prod.local.yml
 
+# Cloudflare Tunnel token per environment (Feature 068 webapp ingress) - real secret.
+/docker/cloudflared.dev.env
+/docker/cloudflared.prod.env
+
 # DeniDin credentials (real secrets, never commit)
 /creds/DeniDin Prod Creds.txt
 creds/DeniDin Prod Creds*.txt

@@ -1,5 +1,5 @@
 {
-  "environment": "dev",
+  "environment": "prod",
   "denidin_data_root": "/app/denidin-data",
   "denidin_src_path": "/app/apps/denidin-app/src",
   "password_hash_file": "/app/apps/webapp/backend/auth/password.hash",

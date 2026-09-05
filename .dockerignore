@@ -1,0 +1,30 @@
+# Only consulted for builds whose context is the repo root — currently just the Feature 068
+# webapp images (apps/webapp/backend/Dockerfile, apps/webapp/frontend/Dockerfile). The other
+# apps build from their own subdirectory as context, so this file does not affect them.
+.git
+**/.venv
+**/venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/dist
+**/.pytest_cache
+**/htmlcov
+**/.mypy_cache
+
+# Runtime data / logs — never belong in an image (the webapp reads data via a read-only mount).
+apps/denidin-app/dev_data
+apps/denidin-app/data
+apps/denidin-app/test_data
+apps/*/logs
+shared
+artifacts
+
+# Secrets / per-clone files
+**/config/config.dev.json
+**/config/config.prod.json
+**/config/config.test.json
+apps/webapp/backend/auth/password.hash
+creds
+docker/cloudflared.*.env
+docker/docker-compose.*.local.yml

@@ -52,3 +52,47 @@ services:
       - ./shared/mcp-status-dev:/app/mcp-status
       - ./shared/active_env.json:/app/active-env/active_env.json:ro
     restart: "no"
+
+  # Feature 068 — read-only Ledger Web UI. Reads denidin-app-dev's data root directly off
+  # disk (read-only mount), never over a network hop and never its live process. Not bundled
+  # with the WhatsApp-traffic constraint (it sends nothing), but IS bundled into the dev
+  # env-lock / run_all ordering (morning-mcp-app -> denidin-app -> webapp).
+  webapp-backend-dev:
+    build:
+      context: .
+      dockerfile: apps/webapp/backend/Dockerfile
+    ports:
+      - "8100:8100"
+    volumes:
+      - ./apps/webapp/backend/config/config.dev.container.json:/app/apps/webapp/backend/config/config.json:ro
+      - ./apps/webapp/backend/auth/password.hash:/app/apps/webapp/backend/auth/password.hash:ro
+      - ./apps/denidin-app/dev_data:/app/denidin-data:ro
+      - ./shared/active_env.json:/app/active-env/active_env.json:ro
+    restart: "no"
+
+  webapp-frontend-dev:
+    build:
+      context: .
+      dockerfile: apps/webapp/frontend/Dockerfile
+    ports:
+      - "5100:80"
+    environment:
+      BACKEND_UPSTREAM: "webapp-backend-dev:8100"
+      NGINX_ENVSUBST_FILTER: "^BACKEND_UPSTREAM$$"
+    depends_on:
+      - webapp-backend-dev
+    restart: "no"
+
+  # One Cloudflare Tunnel per environment, routed ONLY at that env's webapp-frontend — never
+  # denidin-app / morning-mcp-app. Token lives in the gitignored docker/cloudflared.dev.env
+  # (TUNNEL_TOKEN=...); until that file exists this container just fails and stays down
+  # (restart: "no"), leaving the rest of the stack unaffected. See quickstart.md "Access".
+  cloudflared-dev:
+    image: cloudflare/cloudflared:2024.10.0
+    command: tunnel --no-autoupdate run
+    env_file:
+      - path: ./docker/cloudflared.dev.env
+        required: false
+    depends_on:
+      - webapp-frontend-dev
+    restart: "no"
