@@ -1,0 +1,13 @@
+{
+  "environment": "test",
+  "denidin_data_root": "./test_data",
+  "denidin_src_path": "",
+  "password_hash_file": "./test_data/auth/password.hash",
+  "password_salt": "denidin-pw",
+  "session_expiry_hours": 168,
+  "http": {
+    "host": "127.0.0.1",
+    "port": 8199,
+    "log_level": "INFO"
+  }
+}

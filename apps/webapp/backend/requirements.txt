@@ -1,0 +1,14 @@
+# webapp-backend (Feature 068) — read-only Ledger Web UI BFF.
+# Imports apps/denidin-app/src at runtime (PYTHONPATH) to reuse LedgerEventManager /
+# SessionManager / MediaFileManager — those managers' own deps come from
+# apps/denidin-app/requirements.txt, installed alongside this file in the image.
+
+starlette>=0.37.0
+rapidfuzz>=3.0.0          # required by denidin-app's ledger_event_manager (loaded directly, see ledger_reader.py)
+uvicorn>=0.30.0
+python-multipart>=0.0.9
+httpx>=0.27.0          # required by starlette.testclient.TestClient
+
+# Testing
+pytest>=7.0.0
+pytest-cov>=4.0.0

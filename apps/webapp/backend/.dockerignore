@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+htmlcov/
+.coverage
+test_data/
+logs/
+config/config.dev.json
+config/config.prod.json

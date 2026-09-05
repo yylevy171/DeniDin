@@ -1,0 +1,11 @@
+config/config.dev.json
+config/config.prod.json
+test_data/
+logs/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+htmlcov/
+.coverage
+auth/

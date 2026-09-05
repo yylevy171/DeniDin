@@ -683,6 +683,17 @@ class LedgerEventManager:
                 logger.error(f"Skipping unreadable ledger event file {file_path}: {e}")
         return index
 
+    def list_events(self) -> List[Dict]:
+        """Feature 068: a shallow copy of every persisted ledger event's record.
+
+        Read-only view over the same in-memory ``self._index`` that ``query_events``
+        iterates - no disk re-scan, no filtering, no ordering (callers sort/filter).
+        Added for the read-only Ledger Web UI (webapp-backend), which lists events
+        by trailing-date window; kept deliberately additive so no existing caller
+        or persisted shape changes.
+        """
+        return list(self._index)
+
     def _resolve_local_dt(self, message_timestamp: Optional[int]):
         """Shared by add_ledger_event: Asia/Jerusalem local
         datetime for the source message, falling back to processing time (with a
