@@ -56,8 +56,14 @@ is a prefix search for autocomplete convenience; the actual client-name *filter*
 Apply is a separate fuzzy match against loaded events, not this endpoint).
 
 ## `GET /events/{event_id}`
-Requires bearer token. Returns the full `EventDetail` (all `LedgerEvent` fields verbatim).
-`200 EventDetail` | `404 {"error": "not_found"}`.
+Requires bearer token. Returns the **curated** right-panel view — NOT the raw record:
+`{"event_id", "source_type", "event_subtype", "fields": [{"key", "label", "value"}, ...]}`,
+where `fields` is computed server-side from `contracts/field-manifests.md` (per-type order,
+Hebrew labels, ALWAYS/IF-EXISTS/NEVER rules; internal/bookkeeping fields absent entirely).
+An unrecognised `source_type` returns `{"event_id", "source_type", "event_subtype",
+"unsupported": true, "message": "..."}` with no `fields`. `404 {"error": "not_found"}` if
+the id is unknown. (Raw records are used only internally for session/message resolution via
+`LedgerReader.raw_event`, never served.)
 
 ## `GET /events/{event_id}/context?lookback_minutes=N`
 Requires bearer token. `lookback_minutes` optional, default 10, server clamps to `[0, 60]`

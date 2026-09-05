@@ -27,6 +27,15 @@ total_tokens, transferred_to_longterm, storage_path`.
 recipient, recipient_name, timestamp, received_at, was_received, order_num, image_path,
 extracted_text, ledger_event_ids`.
 
+**On-disk message layout** (2026-09-05 — corrected after a real gap): a session's messages
+live in **two** sibling dirs — `sessions/{sid}/messages/{mid}.json` (recent, still in the live
+token window) and `sessions/{sid}/archived/{mid}.json` (pruned out of the window by
+`SessionManager`, still full session history). A ledger event's source message is usually in
+`archived/` by the time the UI looks. `context_reader` reads both (live copy wins on a
+`message_id` collision). This is distinct from whole **expired sessions** under
+`sessions/expired/{YYYY-MM-DD}/{sid}/` (which have the same `messages/` + `archived/` split
+inside).
+
 ## New: password hash file (webapp-owned, not shared with denidin-app)
 
 `apps/webapp/backend/{data_root_for_auth}/password.hash` — plain text file, one line:

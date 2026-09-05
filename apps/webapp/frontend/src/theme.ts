@@ -11,6 +11,8 @@ export interface Theme {
   textDim: string;
   accent: string;
   accentText: string;
+  accentSoft: string; // light-green fill for icon buttons
+  accentSoftText: string; // glyph colour on accentSoft
   bubbleMine: string;
   bubbleTheirs: string;
   danger: string;
@@ -30,6 +32,8 @@ export const THEMES: Record<ThemeName, Theme> = {
     textDim: "#5b6b64",
     accent: green,
     accentText: "#ffffff",
+    accentSoft: "#d6ede2",
+    accentSoftText: green,
     bubbleMine: greenSoft,
     bubbleTheirs: "#ffffff",
     danger: "#b23b3b",
@@ -44,6 +48,8 @@ export const THEMES: Record<ThemeName, Theme> = {
     textDim: "#9db1a8",
     accent: "#3fae7c",
     accentText: "#08120d",
+    accentSoft: "#294c3b",
+    accentSoftText: "#8fd8b4",
     bubbleMine: "#20402f",
     bubbleTheirs: "#1d2b24",
     danger: "#e77373",

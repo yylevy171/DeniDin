@@ -115,7 +115,7 @@ def build_app(config: AppConfig) -> Starlette:
         return JSONResponse({"clients": reader.search_client_names(prefix)})
 
     async def event_context(request: Request) -> JSONResponse:
-        record = reader.get_event_detail(request.path_params["event_id"])
+        record = reader.raw_event(request.path_params["event_id"])
         if record is None:
             return _error("not_found", "No such event.", 404)
         raw = request.query_params.get("lookback_minutes")

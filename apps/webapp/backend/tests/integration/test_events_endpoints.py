@@ -58,7 +58,11 @@ def test_events_bad_days_back_defaults(seeded_client):
 def test_event_detail_found_and_404(seeded_client):
     ok = seeded_client.get("/api/events/A1", headers=_auth(seeded_client))
     assert ok.status_code == 200
-    assert ok.json()["client_name"] == "Dana Cohen"
+    body = ok.json()
+    assert body["event_id"] == "A1"
+    client_field = next(f for f in body["fields"] if f["key"] == "client_name")
+    assert client_field["value"] == "Dana Cohen"
+    assert client_field["label"] == "שם לקוח"
 
     missing = seeded_client.get("/api/events/ZZ", headers=_auth(seeded_client))
     assert missing.status_code == 404

@@ -126,14 +126,62 @@ class TestListEventRows:
 
 
 class TestGetEventDetail:
-    def test_found_returns_full_record(self, data_root):
-        _write_event(data_root / "events", "A1", reference="X-99")
-        detail = LedgerReader(str(data_root)).get_event_detail("A1")
-        assert detail["event_id"] == "A1"
-        assert detail["reference"] == "X-99"
-
     def test_missing_returns_none(self, data_root):
         assert LedgerReader(str(data_root)).get_event_detail("nope") is None
+
+    def test_returns_curated_labelled_fields_not_raw_record(self, data_root):
+        _write_event(
+            data_root / "events", "A1",
+            source_type="הסכם", event_subtype="יצירה",
+            reference="X-99", session_id="s-1", captured_at="whenever",
+            raw_message_excerpt="lots of text", notes="internal note",
+        )
+        detail = LedgerReader(str(data_root)).get_event_detail("A1")
+        assert detail["event_id"] == "A1"
+        assert detail["source_type"] == "הסכם"
+        keys = {f["key"] for f in detail["fields"]}
+        # internal / non-manifest fields never leak
+        assert keys.isdisjoint({"session_id", "captured_at", "raw_message_excerpt", "notes",
+                                "event_id", "message_id"})
+        # every field carries a Hebrew label
+        for f in detail["fields"]:
+            assert f["label"] and any("֐" <= ch <= "ת" for ch in f["label"])
+
+    def test_common_fields_always_present_even_when_null(self, data_root):
+        p = data_root / "events" / "A2.json"
+        p.write_text(json.dumps({
+            "event_id": "A2", "source_type": "הסכם", "event_subtype": "יצירה",
+            "event_date": "01/01/2026", "event_time": "10:00",
+        }, ensure_ascii=False), encoding="utf-8")
+        detail = LedgerReader(str(data_root)).get_event_detail("A2")
+        by_key = {f["key"]: f for f in detail["fields"]}
+        for k in ("event_datetime", "source_type", "event_subtype", "client_name",
+                  "description", "amount", "txn_date"):
+            assert k in by_key
+        assert by_key["txn_date"]["value"] is None
+        # old-schema event_date/event_time synthesised into the event_datetime row
+        assert by_key["event_datetime"]["value"] == "01/01/2026 10:00"
+
+    def test_if_exists_field_dropped_when_empty(self, data_root):
+        _write_event(data_root / "events", "A3", source_type="הסכם", event_subtype="יצירה")
+        detail = LedgerReader(str(data_root)).get_event_detail("A3")
+        keys = {f["key"] for f in detail["fields"]}
+        assert "component_label" not in keys  # IF-EXISTS, no value
+
+    def test_unknown_source_type_is_flagged_not_rendered(self, data_root):
+        p = data_root / "events" / "Z1.json"
+        p.write_text(json.dumps({
+            "event_id": "Z1", "source_type": "משהו", "event_subtype": "?",
+            "event_datetime": "01/01/2026 10:00",
+        }, ensure_ascii=False), encoding="utf-8")
+        detail = LedgerReader(str(data_root)).get_event_detail("Z1")
+        assert detail["unsupported"] is True
+        assert "fields" not in detail
+
+    def test_raw_event_still_exposes_internal_fields(self, data_root):
+        _write_event(data_root / "events", "A4", session_id="s-9")
+        raw = LedgerReader(str(data_root)).raw_event("A4")
+        assert raw["session_id"] == "s-9"
 
 
 class TestSearchClientNames:

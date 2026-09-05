@@ -2,8 +2,10 @@
 plus opaque media-token resolution.
 
 Reads denidin-app's on-disk session layout directly (documented in ``data-model.md``):
-``{data_root}/sessions/{sid}/session.json`` + ``.../messages/{mid}.json``, with archived
-sessions under ``{data_root}/sessions/expired/{YYYY-MM-DD}/{sid}/``. This is a deliberate,
+``{data_root}/sessions/{sid}/session.json`` + ``.../messages/{mid}.json`` for recent messages
++ ``.../archived/{mid}.json`` for messages SessionManager has pruned out of the live token
+window (still session history — a ledger event's source message is usually here), with whole
+archived sessions under ``{data_root}/sessions/expired/{YYYY-MM-DD}/{sid}/``. This is a deliberate,
 dependency-isolated read (same spirit as ``research.md`` §5's direct ``_index`` access) —
 importing ``SessionManager`` would drag ``tiktoken`` + the model layer into a read-only app.
 """
@@ -78,14 +80,23 @@ class ContextReader:
             return {"error": "context_unavailable",
                     "message": "The conversation for this event is no longer available."}
 
-        messages_dir = session_dir / "messages"
-        raw_messages: List[Dict[str, Any]] = []
-        if messages_dir.is_dir():
-            for msg_file in messages_dir.glob("*.json"):
+        # SessionManager keeps a session's recent messages in messages/ and prunes older ones
+        # (out of the live token window) into archived/ — both are still part of the session's
+        # history. A ledger event's source message is usually old, so it's almost always in
+        # archived/; read both, live copy wins on any message_id collision.
+        by_id: Dict[str, Dict[str, Any]] = {}
+        for sub in ("archived", "messages"):
+            sub_dir = session_dir / sub
+            if not sub_dir.is_dir():
+                continue
+            for msg_file in sub_dir.glob("*.json"):
                 try:
-                    raw_messages.append(json.loads(msg_file.read_text(encoding="utf-8")))
+                    msg = json.loads(msg_file.read_text(encoding="utf-8"))
                 except (json.JSONDecodeError, OSError):
                     continue
+                mid = msg.get("message_id") or msg_file.stem
+                by_id[mid] = msg
+        raw_messages: List[Dict[str, Any]] = list(by_id.values())
 
         anchor = next((m for m in raw_messages if m.get("message_id") == message_id), None)
         if anchor is None:

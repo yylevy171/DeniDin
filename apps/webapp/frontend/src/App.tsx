@@ -18,6 +18,7 @@ import {
   DateRange,
   DetailPanel,
   Field,
+  IconButton,
   ImageOverlay,
   MultiSelect,
 } from "./ui";
@@ -194,6 +195,9 @@ export default function App() {
   const [openMenu, setOpenMenu] = useState<"type" | "sub" | "client" | null>(null);
   // sort direction — session-only (resets on reload / re-login), never persisted; default desc
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  // header toggle-all button: "expand" state shows "+" and expands all on press, then flips to
+  // "collapse" ("–", collapses all on press, flips back). Its own state, not derived.
+  const [allMode, setAllMode] = useState<"expand" | "collapse">("expand");
   // how many trailing days the currently-loaded `rows` actually cover (extended by a
   // date-range pick that reaches further back than settings.daysBack)
   // how many trailing days the currently-loaded `rows` cover. Starts at settings.daysBack;
@@ -216,6 +220,7 @@ export default function App() {
         setExpanded({});
         setSigma(null);
         setOpenMenu(null);
+        setAllMode("expand");
         // reset every filter so a load / refresh / days-back change immediately shows
         // everything just fetched (otherwise a stale `applied.from` hides the new older rows)
         const from = isoDaysAgo(settings.daysBack);
@@ -328,36 +333,145 @@ export default function App() {
   const setAllTypes = (on: boolean) => setTypeSel(on ? new Set(EVENT_TYPES) : new Set());
   const setAllSubs = (on: boolean) => setSubSel(on ? new Set(ALL_SUBTYPES) : new Set());
 
-  const toggleExpand = async (id: string) => {
-    setOpenMenu(null);
-    if (expanded[id]) {
-      const next = { ...expanded };
-      delete next[id];
-      setExpanded(next);
-      if (lightbox?.rowId === id) setLightbox(null);
-      return;
-    }
-    setExpanded({ ...expanded, [id]: { detail: null, ctx: null } });
-    try {
-      const [detail, ctx] = await Promise.all([
-        fetchEventDetail(id),
-        fetchContext(id, settings.lookback),
-      ]);
-      setExpanded((cur) => ({ ...cur, [id]: { detail, ctx } }));
-    } catch (e) {
-      onAuthErr(e);
-    }
-  };
+  const toggleExpand = useCallback(
+    async (id: string) => {
+      setOpenMenu(null);
+      if (expanded[id]) {
+        const next = { ...expanded };
+        delete next[id];
+        setExpanded(next);
+        setLightbox((lb) => (lb?.rowId === id ? null : lb));
+        return;
+      }
+      setExpanded({ ...expanded, [id]: { detail: null, ctx: null } });
+      try {
+        const [detail, ctx] = await Promise.all([
+          fetchEventDetail(id),
+          fetchContext(id, settings.lookback),
+        ]);
+        setExpanded((cur) => ({ ...cur, [id]: { detail, ctx } }));
+      } catch (e) {
+        onAuthErr(e);
+      }
+    },
+    [expanded, settings.lookback, onAuthErr]
+  );
 
   const expandAll = async () => {
     setOpenMenu(null);
-    for (const r of visible) if (!expanded[r.event_id]) await toggleExpand(r.event_id);
+    const ids = visible.map((r) => r.event_id);
+    // 1) open every row at once (one state update — not one-by-one, which also clobbered
+    //    all-but-the-last because each toggle rebuilt from a stale `expanded`)
+    setExpanded((cur) => {
+      const next = { ...cur };
+      for (const id of ids) if (!next[id]) next[id] = { detail: null, ctx: null };
+      return next;
+    });
+    // 2) load content with bounded concurrency, skipping rows that already have it
+    const need = ids.filter((id) => !expanded[id]?.detail);
+    let i = 0;
+    const worker = async () => {
+      while (i < need.length) {
+        const id = need[i++];
+        try {
+          const [detail, ctx] = await Promise.all([
+            fetchEventDetail(id),
+            fetchContext(id, settings.lookback),
+          ]);
+          setExpanded((cur) => (cur[id] ? { ...cur, [id]: { detail, ctx } } : cur));
+        } catch (e) {
+          onAuthErr(e);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, worker));
   };
   const collapseAll = () => {
     setOpenMenu(null);
     setExpanded({});
     setLightbox(null);
   };
+  const toggleAll = () => {
+    if (allMode === "expand") {
+      setAllMode("collapse"); // flip immediately — don't wait for row content to finish loading
+      void expandAll();
+    } else {
+      collapseAll();
+      setAllMode("expand");
+    }
+  };
+
+  // The rendered rows — memoised so typing in an unrelated filter field (which doesn't change
+  // `visible`) never rebuilds the whole (potentially multi-thousand-row) list.
+  const rowList = useMemo(
+    () =>
+      visible.map((r) => (
+        <View
+          key={r.event_id}
+          style={{
+            backgroundColor: theme.surface,
+            borderWidth: 1,
+            borderColor: theme.border,
+            borderRadius: 10,
+          }}
+        >
+          <Pressable onPress={() => toggleExpand(r.event_id)} style={{ padding: 10, gap: 4 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Text style={{ color: theme.accent, fontWeight: "800", width: 18, fontSize: 16 }}>
+                {expanded[r.event_id] ? "–" : "+"}
+              </Text>
+              <Cell w={82} text={r.date} theme={theme} />
+              <Cell w={78} text={r.source_type} theme={theme} />
+              <Cell w={120} text={r.event_subtype} theme={theme} />
+              <Cell w={150} text={r.client_name} theme={theme} strong />
+              <Cell
+                w={100}
+                text={r.amount != null ? `₪${r.amount.toLocaleString()}` : "—"}
+                theme={theme}
+              />
+              <View style={{ flex: 1 }} />
+            </View>
+            <Text
+              numberOfLines={2}
+              style={{ color: theme.textDim, fontSize: 12.5, textAlign: "right", paddingHorizontal: 28 }}
+            >
+              {r.description || "—"}
+            </Text>
+          </Pressable>
+
+          {expanded[r.event_id] ? (
+            <View
+              style={{
+                flexDirection: isMobile ? "column" : "row",
+                borderTopWidth: 1,
+                borderColor: theme.border,
+                height: isMobile ? undefined : 240,
+              }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  borderLeftWidth: isMobile ? 0 : 1,
+                  borderBottomWidth: isMobile ? 1 : 0,
+                  borderColor: theme.border,
+                }}
+              >
+                <DetailPanel detail={expanded[r.event_id].detail} theme={theme} />
+              </View>
+              <View style={{ flex: 1, height: isMobile ? 240 : undefined }}>
+                <ChatPanel
+                  messages={expanded[r.event_id].ctx?.messages}
+                  error={expanded[r.event_id].ctx?.error}
+                  theme={theme}
+                  onOpenImage={(url) => setLightbox({ rowId: r.event_id, url })}
+                />
+              </View>
+            </View>
+          ) : null}
+        </View>
+      )),
+    [visible, expanded, theme, isMobile, toggleExpand]
+  );
 
   const computeSigma = () => {
     setOpenMenu(null);
@@ -387,40 +501,34 @@ export default function App() {
         <Text style={{ color: theme.textDim, fontSize: 13 }}>
           {loading ? "…" : `${visible.length.toLocaleString()} רשומות`}
         </Text>
-        <Button
-          label="⚙︎"
-          variant="ghost"
+        <View style={{ flex: 1 }} />
+        <IconButton
+          icon={refreshing ? undefined : "refresh"}
+          glyph={refreshing ? "…" : undefined}
+          glyphSize={20}
           theme={theme}
+          title="רענון"
+          onPress={() => load("refresh")}
+          disabled={refreshing}
+        />
+        <IconButton
+          icon="gear"
+          glyphSize={22}
+          theme={theme}
+          title="הגדרות"
           onPress={() => {
             setOpenMenu(null);
             setShowSettings((s) => !s);
           }}
         />
-        <Button
-          label={refreshing ? "…מרענן" : "רענון"}
-          variant="ghost"
-          theme={theme}
-          onPress={() => load("refresh")}
-          disabled={refreshing}
-        />
-        <Button label="Σ" theme={theme} onPress={computeSigma} disabled={refreshing} />
-        <Button label="פתח הכל" variant="ghost" theme={theme} onPress={expandAll} />
-        <Button label="סגור הכל" variant="ghost" theme={theme} onPress={collapseAll} />
       </View>
-
-      {sigma ? (
-        <View style={{ padding: 8, backgroundColor: theme.surfaceAlt }}>
-          <Text style={{ color: theme.text, textAlign: "right", fontWeight: "700" }}>
-            Σ ({sigma.n} אירועים): ₪{sigma.total.toLocaleString()}
-          </Text>
-        </View>
-      ) : null}
 
       {showSettings ? (
         <SettingsPanel
           theme={theme}
           settings={settings}
           setSettings={setSettings}
+          onClose={() => setShowSettings(false)}
           onLogout={async () => {
             await logout();
             setAuthed(false);
@@ -497,8 +605,14 @@ export default function App() {
           <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "right" }}>חיפוש חופשי</Text>
           <Field value={globalText} onChange={setGlobalText} placeholder="חיפוש בכל השדות" theme={theme} />
         </View>
-        <View style={{ alignSelf: "flex-end" }}>
-          <Button label="חפש!" theme={theme} onPress={apply} />
+        <View style={{ alignSelf: "flex-end", flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <IconButton glyph="🔍" theme={theme} title="חיפוש" onPress={apply} />
+          <IconButton glyph="Σ" theme={theme} title="סיכום" onPress={computeSigma} disabled={refreshing} />
+          {sigma ? (
+            <Text style={{ color: theme.text, fontWeight: "700", fontSize: 13 }}>
+              {sigma.n} אירועים: ₪{sigma.total.toLocaleString()}
+            </Text>
+          ) : null}
         </View>
       </View>
 
@@ -517,6 +631,21 @@ export default function App() {
       >
         {COLUMNS.map((c, i) => {
           const isDate = c.label === "תאריך";
+          if (i === 0) {
+            return (
+              <Pressable
+                key={i}
+                onPress={toggleAll}
+                hitSlop={6}
+                style={{ width: c.w, alignItems: "center", justifyContent: "center" }}
+                {...({ title: allMode === "expand" ? "פתח הכל" : "סגור הכל" } as any)}
+              >
+                <Text style={{ color: theme.accent, fontSize: 18, fontWeight: "800" }}>
+                  {allMode === "expand" ? "+" : "–"}
+                </Text>
+              </Pressable>
+            );
+          }
           return (
             <View
               key={i}
@@ -562,71 +691,7 @@ export default function App() {
             אין אירועים להצגה.
           </Text>
         ) : null}
-        {visible.map((r) => (
-          <View
-            key={r.event_id}
-            style={{
-              backgroundColor: theme.surface,
-              borderWidth: 1,
-              borderColor: theme.border,
-              borderRadius: 10,
-            }}
-          >
-            <Pressable onPress={() => toggleExpand(r.event_id)} style={{ padding: 10, gap: 4 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <Text style={{ color: theme.accent, fontWeight: "800", width: 18, fontSize: 16 }}>
-                  {expanded[r.event_id] ? "–" : "+"}
-                </Text>
-                <Cell w={82} text={r.date} theme={theme} />
-                <Cell w={78} text={r.source_type} theme={theme} />
-                <Cell w={120} text={r.event_subtype} theme={theme} />
-                <Cell w={150} text={r.client_name} theme={theme} strong />
-                <Cell
-                  w={100}
-                  text={r.amount != null ? `₪${r.amount.toLocaleString()}` : "—"}
-                  theme={theme}
-                />
-                <View style={{ flex: 1 }} />
-              </View>
-              <Text
-                numberOfLines={2}
-                style={{ color: theme.textDim, fontSize: 12.5, textAlign: "right", paddingHorizontal: 28 }}
-              >
-                {r.description || "—"}
-              </Text>
-            </Pressable>
-
-            {expanded[r.event_id] ? (
-              <View
-                style={{
-                  flexDirection: isMobile ? "column" : "row",
-                  borderTopWidth: 1,
-                  borderColor: theme.border,
-                  height: isMobile ? undefined : 240,
-                }}
-              >
-                <View
-                  style={{
-                    flex: 1,
-                    borderLeftWidth: isMobile ? 0 : 1,
-                    borderBottomWidth: isMobile ? 1 : 0,
-                    borderColor: theme.border,
-                  }}
-                >
-                  <DetailPanel detail={expanded[r.event_id].detail} theme={theme} />
-                </View>
-                <View style={{ flex: 1, height: isMobile ? 240 : undefined }}>
-                  <ChatPanel
-                    messages={expanded[r.event_id].ctx?.messages}
-                    error={expanded[r.event_id].ctx?.error}
-                    theme={theme}
-                    onOpenImage={(url) => setLightbox({ rowId: r.event_id, url })}
-                  />
-                </View>
-              </View>
-            ) : null}
-          </View>
-        ))}
+        {rowList}
       </ScrollView>
 
       {/* click-away backdrop for open dropdowns */}
@@ -678,46 +743,92 @@ function SettingsPanel({
   theme,
   settings,
   setSettings,
+  onClose,
   onLogout,
 }: {
   theme: any;
   settings: Settings;
   setSettings: (s: Settings) => void;
+  onClose: () => void;
   onLogout: () => void;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const row = (label: string, control: any) => (
+    <View style={{ gap: 5 }}>
+      <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "right" }}>{label}</Text>
+      {control}
+    </View>
+  );
+
   return (
-    <View
-      style={{
-        padding: 12,
-        gap: 10,
-        backgroundColor: theme.surfaceAlt,
-        borderBottomWidth: 1,
-        borderColor: theme.border,
-      }}
-    >
-      <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <Text style={{ color: theme.text }}>ערכת נושא</Text>
-        <Button
-          label={settings.theme === "light" ? "בהיר" : "כהה"}
-          variant="ghost"
-          theme={theme}
-          onPress={() => setSettings({ ...settings, theme: settings.theme === "light" ? "dark" : "light" })}
-        />
-      </View>
-      <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <Text style={{ color: theme.text }}>ברירת מחדל בעלייה ראשונה (ימים)</Text>
-        <MiniNum
-          theme={theme}
-          value={settings.daysBack}
-          onChange={(n) => setSettings({ ...settings, daysBack: Math.max(1, n) })}
-        />
-        <Text style={{ color: theme.text }}>זמן סביב שיחת whatsapp (דקות)</Text>
-        <MiniNum
-          theme={theme}
-          value={settings.lookback}
-          onChange={(n) => setSettings({ ...settings, lookback: Math.min(60, Math.max(0, n)) })}
-        />
-        <View style={{ flex: 1 }} />
+    <View style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 200 }}>
+      {/* backdrop — blocks the rest of the app until closed (same as the image overlay) */}
+      <Pressable
+        onPress={onClose}
+        style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.35)" }}
+      />
+      {/* small popover anchored directly under the gear (top bar is RTL-reversed, so the
+          gear sits on the LEFT edge) */}
+      <View
+        style={{
+          position: "absolute",
+          top: 52,
+          left: 8,
+          width: 288,
+          backgroundColor: theme.surface,
+          borderWidth: 1,
+          borderColor: theme.border,
+          borderRadius: 12,
+          padding: 16,
+          gap: 14,
+          shadowColor: "#000",
+          shadowOpacity: 0.2,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
+        }}
+      >
+        <Text style={{ color: theme.text, fontWeight: "800", fontSize: 15, textAlign: "right" }}>
+          הגדרות
+        </Text>
+
+        {row(
+          "ערכת נושא",
+          <Button
+            label={settings.theme === "light" ? "בהיר" : "כהה"}
+            variant="ghost"
+            theme={theme}
+            onPress={() =>
+              setSettings({ ...settings, theme: settings.theme === "light" ? "dark" : "light" })
+            }
+          />
+        )}
+        {row(
+          "ברירת מחדל בעלייה ראשונה (ימים)",
+          <MiniNum
+            theme={theme}
+            value={settings.daysBack}
+            onChange={(n) => setSettings({ ...settings, daysBack: Math.max(1, n) })}
+          />
+        )}
+        {row(
+          "זמן סביב שיחת whatsapp (דקות)",
+          <MiniNum
+            theme={theme}
+            value={settings.lookback}
+            onChange={(n) => setSettings({ ...settings, lookback: Math.min(60, Math.max(0, n)) })}
+          />
+        )}
+
+        <View style={{ height: 1, backgroundColor: theme.border, marginVertical: 2 }} />
+
+        <Button label="שמור" theme={theme} onPress={onClose} />
         <Button label="התנתקות" variant="danger" theme={theme} onPress={onLogout} />
       </View>
     </View>
@@ -727,13 +838,20 @@ function SettingsPanel({
 function MiniNum({ theme, value, onChange }: { theme: any; value: number; onChange: (n: number) => void }) {
   const [t, setT] = useState(String(value));
   useEffect(() => setT(String(value)), [value]);
+  const commit = (raw: string) => {
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n)) onChange(n);
+  };
   return (
     <TextInput
       value={t}
-      onChangeText={setT}
+      onChangeText={(v) => {
+        setT(v);
+        commit(v); // commit live — don't rely on blur (onEndEditing is unreliable on web)
+      }}
       onEndEditing={() => {
-        const n = parseInt(t, 10);
-        onChange(Number.isFinite(n) ? n : value);
+        commit(t);
+        setT(String(value)); // snap back to the clamped/authoritative value
       }}
       keyboardType="numeric"
       style={{

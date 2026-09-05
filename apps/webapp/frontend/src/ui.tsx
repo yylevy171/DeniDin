@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createElement, useEffect, useRef, useState } from "react";
 import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { Theme } from "./theme";
 import { ContextMessage, fetchMediaObjectUrl, searchClients } from "./api";
@@ -9,12 +9,16 @@ export function Button({
   theme,
   variant = "primary",
   disabled,
+  iconSize,
+  title,
 }: {
   label: string;
   onPress: () => void;
   theme: Theme;
   variant?: "primary" | "ghost" | "danger";
   disabled?: boolean;
+  iconSize?: number; // when set, renders as a square icon button at this glyph size
+  title?: string; // hover tooltip (web)
 }) {
   const bg =
     variant === "primary" ? theme.accent : variant === "danger" ? theme.danger : "transparent";
@@ -23,17 +27,88 @@ export function Button({
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
+      {...({ title } as any)}
       style={{
-        paddingVertical: 8,
-        paddingHorizontal: 14,
+        paddingVertical: iconSize ? 6 : 8,
+        paddingHorizontal: iconSize ? 10 : 14,
         borderRadius: 8,
         backgroundColor: bg,
         borderWidth: variant === "ghost" ? 1 : 0,
         borderColor: theme.border,
         opacity: disabled ? 0.45 : 1,
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
-      <Text style={{ color, fontWeight: "600", fontSize: 14 }}>{label}</Text>
+      <Text style={{ color, fontWeight: "600", fontSize: iconSize || 14, lineHeight: (iconSize || 14) + 4 }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+// Feather-style icon paths, drawn inline as real DOM <svg> (react-native-web renders View as a
+// div, so a raw SVG element nests fine on web). currentColor picks up the wrapper's `color`.
+const ICON_PATHS: Record<string, string> = {
+  refresh:
+    '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
+  gear:
+    '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+};
+
+/** Uniform square icon button — same box, same glyph size everywhere, soft-green fill. */
+export function IconButton({
+  glyph,
+  icon,
+  onPress,
+  theme,
+  title,
+  disabled,
+  glyphSize = 17,
+}: {
+  glyph?: string;
+  icon?: keyof typeof ICON_PATHS; // preferred: a real inline SVG, perfectly centred
+  onPress: () => void;
+  theme: Theme;
+  title?: string;
+  disabled?: boolean;
+  glyphSize?: number;
+}) {
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      {...({ title } as any)}
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: 8,
+        backgroundColor: theme.accentSoft,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      {icon ? (
+        createElement("div", {
+          style: { width: glyphSize, height: glyphSize, lineHeight: 0 },
+          dangerouslySetInnerHTML: {
+            __html: `<svg width="${glyphSize}" height="${glyphSize}" viewBox="0 0 24 24" fill="none" stroke="${theme.accentSoftText}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block">${ICON_PATHS[icon]}</svg>`,
+          },
+        })
+      ) : (
+        <Text
+          selectable={false}
+          style={{
+            color: theme.accentSoftText,
+            fontSize: glyphSize,
+            lineHeight: glyphSize,
+            fontWeight: "700",
+            ...({ display: "flex", alignItems: "center", justifyContent: "center" } as any),
+          }}
+        >
+          {glyph}
+        </Text>
+      )}
     </Pressable>
   );
 }
@@ -481,6 +556,13 @@ export function ImageOverlay({
   onClose: () => void;
   theme: Theme;
 }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <View
       style={{
@@ -565,83 +647,39 @@ export function ChatPanel({
   );
 }
 
-const LABELS: Record<string, string> = {
-  event_datetime: "תאריך אירוע",
-  source_type: "סוג אירוע",
-  event_subtype: "תת-סוג",
-  client_name: "שם לקוח",
-  payer_name: "שם משלם",
-  description: "תיאור",
-  amount: "סכום",
-  txn_date: "תאריך תנועה",
-  reference: "אסמכתא",
-  reference_hint: "רמז אסמכתא",
-  component_label: "תווית רכיב",
-  trigger_condition: "תנאי הפעלה",
-  percent: "אחוז",
-  percent_base: "בסיס אחוז",
-  hours: "שעות",
-  hourly_rate: "תעריף שעתי",
-  split_partner: "שותף לפיצול",
-  split_percent: "אחוז פיצול",
-  vat_status: 'סטטוס מע"מ',
-  bank_number: "מספר בנק",
-  bank_branch: "מספר סניף",
-  bank_account: "מספר חשבון",
-  accounting_document_display_number: "מספר מסמך",
-  accounting_document_status_label: "סטטוס",
-  accounting_document_payment_method: "אמצעי תשלום",
-};
-const HIDDEN = new Set([
-  "event_id",
-  "agreement_id",
-  "component_id",
-  "session_id",
-  "message_id",
-  "captured_at",
-  "schema_version",
-  "accounting_document_status",
-  "accounting_document_status_code",
-]);
-const ALWAYS = new Set([
-  "event_datetime",
-  "source_type",
-  "event_subtype",
-  "client_name",
-  "description",
-  "amount",
-  "txn_date",
-]);
-
-const FIELD_ORDER = [
-  "event_datetime", "txn_date", "source_type", "event_subtype", "client_name", "payer_name",
-  "amount", "vat_status", "description",
-  "accounting_document_display_number", "accounting_document_status_label",
-  "accounting_document_payment_method",
-  "reference", "reference_hint", "component_label", "trigger_condition",
-  "percent", "percent_base", "hours", "hourly_rate",
-  "bank_number", "bank_branch", "bank_account", "split_partner", "split_percent",
-];
-
 const fmtVal = (v: any) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
-export function DetailPanel({ detail, theme }: { detail: Record<string, any> | null; theme: Theme }) {
+// The backend owns the field list, order, Hebrew labels, and include/exclude rules
+// (contracts/field-manifests.md). The frontend only renders what it's given.
+type DetailField = { key: string; label: string; value: any };
+type Detail = {
+  event_id: string;
+  source_type: string | null;
+  event_subtype: string | null;
+  fields?: DetailField[];
+  unsupported?: boolean;
+  message?: string;
+};
+
+export function DetailPanel({ detail, theme }: { detail: Detail | null; theme: Theme }) {
   if (!detail) return <Text style={{ color: theme.textDim, padding: 12 }}>…טוען</Text>;
-  const shown = (k: string) =>
-    !HIDDEN.has(k) && (ALWAYS.has(k) || (detail[k] !== null && detail[k] !== undefined && detail[k] !== ""));
-  const ordered = FIELD_ORDER.filter((k) => k in detail && shown(k));
-  const extra = Object.keys(detail).filter((k) => !FIELD_ORDER.includes(k) && shown(k));
-  const keys = [...ordered, ...extra];
+  if (detail.unsupported) {
+    return (
+      <Text style={{ color: theme.textDim, padding: 12, textAlign: "right" }}>
+        {detail.message || "סוג אירוע לא מוכר."}
+      </Text>
+    );
+  }
   return (
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={{ padding: 8, flexDirection: "row", flexWrap: "wrap" }}
     >
-      {keys.map((k) => (
-        <View key={k} style={{ width: "50%", paddingVertical: 3, paddingHorizontal: 6 }}>
+      {(detail.fields || []).map((f) => (
+        <View key={f.key} style={{ width: "50%", paddingVertical: 3, paddingHorizontal: 6 }}>
           <Text style={{ fontSize: 12.5, textAlign: "right" }}>
-            <Text style={{ color: theme.textDim }}>{LABELS[k] || k}: </Text>
-            <Text style={{ color: theme.text, fontWeight: "600" }}>{fmtVal(detail[k])}</Text>
+            <Text style={{ color: theme.textDim }}>{f.label}: </Text>
+            <Text style={{ color: theme.text, fontWeight: "600" }}>{fmtVal(f.value)}</Text>
           </Text>
         </View>
       ))}
