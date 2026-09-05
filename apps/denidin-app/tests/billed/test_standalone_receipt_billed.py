@@ -90,35 +90,58 @@ def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
     )
 
     # "no tax document created/attached" is proven by the create_receipt result
-    # itself: the standalone branch announces a receipt only ("קבלה"), whereas
-    # every linked/combo variant announces "חשבונית מס/קבלה". Scanning the
-    # client's whole document history for "חשבונית מס" instead is unreliable -
-    # an existing client (pick_existing_client is random) routinely already
-    # owns unrelated tax invoices from prior sandbox runs.
+    # itself: the standalone branch produces a plain receipt (type 400, "קבלה"),
+    # whereas every linked/combo variant is a "חשבונית מס / קבלה" document.
+    # Scanning the client's whole document history for "חשבונית מס" instead is
+    # unreliable - an existing client (pick_existing_client is random) routinely
+    # already owns unrelated tax invoices from prior sandbox runs.
     receipt_output = receipt_calls[0]["output"] or ""
-    assert "קבלה" in receipt_output and "חשבונית מס" not in receipt_output, (
-        f"Standalone create_receipt should announce a receipt only, no tax document, "
-        f"got: {receipt_output!r}"
+    receipt_doc = json.loads(receipt_output) if receipt_output else {}
+    assert receipt_doc.get("type") == 400 and "חשבונית מס" not in (receipt_doc.get("type_name") or ""), (
+        f"Standalone create_receipt should be a plain receipt (type 400, קבלה), not a "
+        f"tax-linked/combo document, got: {receipt_output!r}"
     )
 
     # And a real follow-up turn independently confirms THIS receipt persisted
     # for the client (by the number Morning assigned it).
-    receipt_number = json.loads(receipt_output).get("display_number") if receipt_output else None
+    receipt_number = receipt_doc.get("display_number")
     assert receipt_number, f"Could not read the receipt number from: {receipt_output!r}"
     receipt_number = str(receipt_number)
 
     details_response, details_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"מה כל המסמכים שיש לי אצל {client_name}?",
+        text=(
+            "תביא את הפרטים של הקבלה האחרונה מתוך מערכת החשבוניות ישירות. "
+            "אני רוצה לוודא שלא נפלה טעות."
+        ),
         id_prefix="E2E_056_STANDALONE_VERIFY",
     )
+    # "מתוך מערכת החשבוניות ישירות" forces a live Morning read
+    # (list_invoices / get_invoice_details), not an answer from the local
+    # ledger-event cache (query_ledger_events).
     details_calls = _calls_for(details_ai_response, "list_invoices") + _calls_for(
         details_ai_response, "get_invoice_details"
     )
+    assert details_calls, (
+        f"follow-up turn did not query Morning directly - no list_invoices/"
+        f"get_invoice_details call: "
+        f"{details_ai_response.mcp_calls if details_ai_response else None!r}"
+    )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
-    docs = [json.loads(c["output"]) for c in details_calls if c["output"]]
+    payloads = [json.loads(c["output"]) for c in details_calls if c["output"]]
+    # list_invoices returns a {"total_matched", "shown", "documents": [...]} wrapper;
+    # get_invoice_details returns a bare document. Flatten both shapes.
+    docs = [p for p in payloads if "documents" not in p] + [
+        d for p in payloads for d in p.get("documents", [])
+    ]
 
-    assert any(str(d.get("display_number")) == receipt_number for d in docs), (
-        f"Standalone receipt #{receipt_number} did not show up in {client_name!r}'s "
-        f"document list: {combined_output!r}"
+    # A real follow-up turn must re-query Morning and surface THIS receipt by
+    # the number Morning assigned it - independent confirmation that the
+    # standalone receipt actually persisted server-side.
+    assert any(
+        str(d.get("display_number")) == receipt_number and d.get("type") == 400
+        for d in docs
+    ), (
+        f"the receipt fetched live from Morning is not the standalone receipt "
+        f"#{receipt_number} (type 400) just created: {combined_output!r}"
     )

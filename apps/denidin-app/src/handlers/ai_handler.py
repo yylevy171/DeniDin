@@ -1009,16 +1009,17 @@ def build_ledger_stash_text(
     lines: List[str] = []
 
     if source_type == "בנק":
+        # A בנק event always carries exactly one component (component_count: 1);
+        # amount and txn_date live on it, not at the top level.
+        comp = (a.get("components") or [{}])[0]
         lines.append("📸 התקבלה תמונה של אסמכתת העברה/הפקדה בנקאית.")
-        lines.append(f"תת-סוג: {_stash_val(a.get('event_subtype') or 'הפקדה')}")
-        lines.append(f"סכום: {_stash_val(a.get('amount'))}")
-        lines.append(f"מטבע: {_stash_val(a.get('currency') or 'שקל')}")
-        lines.append(f"תאריך הפקדה: {_stash_val(a.get('txn_date'))}")
+        lines.append(f"פעולה: {_stash_val(a.get('event_subtype') or 'הפקדה')}")
+        lines.append(f"סכום: {_stash_val(comp.get('amount'))}")
+        lines.append(f"תאריך הפקדה: {_stash_val(comp.get('txn_date'))}")
         lines.append(f"מספר בנק: {_stash_val(a.get('bank_number'))}")
         lines.append(f"מספר סניף: {_stash_val(a.get('bank_branch'))}")
         lines.append(f"מספר חשבון: {_stash_val(a.get('bank_account'))}")
-        lines.append(f"שם על האסמכתא: {_stash_val(a.get('client_name'))}")
-        lines.append(f"מספר אסמכתא: {_stash_val(a.get('reference_number') or a.get('reference'))}")
+        lines.append(f"לקוח משלם: {_stash_val(a.get('client_name'))}")
     else:  # הסכם
         lines.append(
             "📄 התקבל קובץ מסמך (DOCX) של הסכם שכר טרחה."

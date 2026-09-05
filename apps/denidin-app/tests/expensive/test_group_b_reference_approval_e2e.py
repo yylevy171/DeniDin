@@ -250,38 +250,67 @@ class TestGroupBReferenceApprovalE2E:
             })
             handle_image_message(notification)
 
-            ask_result, (_, ai_response) = _send_turn_and_approve(
-                chat_id,
-                "תפיק חשבונית עבור זה",
-                id_prefix="B038_A1T2",
-            )
-            approval_text = ask_result[0] or ""
+            # Feature 069: a recognised deposit image arrives as a synthetic
+            # conversational turn, so the model may take an extra redirect turn
+            # (invoice -> linked receipt) before it proposes the receipt. Its
+            # caution is fine; the test follows the conversation, approving each
+            # round until create_receipt actually fires (max 3 rounds).
+            ask_response, ask_ai = _send_turn(
+                chat_id, "תפיק חשבונית עבור זה", id_prefix="B038_A1T2_ASK",
+            )  # "issue an invoice for this"
 
-            assert not _calls_for(ai_response, "create_combo_document"), (
-                f"a standalone 320 was issued while a matching 305 was open - "
-                f"the same money is now recorded twice and the original stays unpaid. "
-                f"Calls: {ai_response.mcp_calls if ai_response else None!r}"
-            )
-            receipt_calls = _calls_for(ai_response, "create_receipt")
+            seen_texts = [ask_response or ""]
+            receipt_calls: list = []
+            last_ai = ask_ai
+            for round_n in range(1, 4):
+                assert not _calls_for(last_ai, "create_combo_document"), (
+                    f"a standalone 320 was issued while a matching 305 was open - "
+                    f"the same money is recorded twice and the original stays unpaid. "
+                    f"Calls: {last_ai.mcp_calls if last_ai else None!r}"
+                )
+                receipt_calls = _calls_for(last_ai, "create_receipt")
+                if receipt_calls:
+                    break
+                approve_response, last_ai = _send_turn(
+                    chat_id, "כן", id_prefix=f"B038_A1T2_APPROVE{round_n}",
+                )  # "yes"
+                seen_texts.append(approve_response or "")
+
             assert receipt_calls, (
-                f"expected a קבלה (400) closing invoice {invoice_number}. "
-                f"Calls: {ai_response.mcp_calls if ai_response else None!r}"
+                f"no קבלה (400) closing invoice {invoice_number} after 3 approval "
+                f"rounds. Last calls: {last_ai.mcp_calls if last_ai else None!r}"
             )
             assert receipt_calls[0]["error"] is None, f"creation failed: {receipt_calls[0]!r}"
 
-            # bugfix-038's core assertion: the reference invoice's DISPLAY number
-            # must appear - never the internal original_invoice_id.
-            assert invoice_number in approval_text, (
-                f"the approval never says which invoice this receipt closes "
-                f"(expected {invoice_number}). Approval was: {approval_text!r}"
+            # bugfix-038: the reference invoice's DISPLAY number must be visible to
+            # the operator somewhere in the exchange (the approval prompt names it
+            # as "מספר מסמך: <n>") - never only the internal original_invoice_id.
+            assert any(invoice_number in t for t in seen_texts), (
+                f"the exchange never says which invoice this receipt closes "
+                f"(expected {invoice_number}). Turns seen: {seen_texts!r}"
             )
+
+            receipt_output = receipt_calls[0]["output"] or ""
+            receipt_number = str(json.loads(receipt_output).get("display_number")) if receipt_output else ""
 
             details, _ = _send_turn(
                 chat_id, f"תן לי את הפרטים המלאים של חשבונית {invoice_number}",
                 id_prefix="B038_A1T2_VERIFY",
             )
-            assert details and "שולם" in details, (
-                f"the original invoice must now read as paid: {details!r}"
+            # The original 305 must now report as closed/paid AND reference the
+            # receipt that closed it. NOTE (2026-09-06): the earlier `"שולם" in
+            # details` check was too literal - since the 2026-09-04 JSON-only
+            # contract get_invoice_details returns status/status_label and the
+            # model paraphrases (e.g. "סגורה ומשולמת"), so accept the paid/closed
+            # word family. The status-representation tangle (raw int vs "paid" vs
+            # status_label vs translate_status) is tracked separately.
+            assert details and any(w in details for w in ("שולם", "משולמת", "סגור")), (
+                f"the original invoice {invoice_number} does not report as "
+                f"closed/paid after the receipt: {details!r}"
+            )
+            assert receipt_number and receipt_number in details, (
+                f"invoice {invoice_number}'s details don't reference the closing "
+                f"receipt #{receipt_number}: {details!r}"
             )
         finally:
             self._clear_chat_test_data(denidin_app, chat_id)
