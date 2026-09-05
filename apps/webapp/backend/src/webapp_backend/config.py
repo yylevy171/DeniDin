@@ -4,12 +4,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Union
 
+# NOTE: the password salt is NOT config — it's hardcoded in auth.PASSWORD_SALT (it is not a
+# secret and changing it invalidates every password.hash). A stray "password_salt" key in a
+# config file is simply ignored.
 _APP_FIELDS = {
     "environment",
     "denidin_data_root",
     "denidin_src_path",
     "password_hash_file",
-    "password_salt",
     "session_expiry_hours",
 }
 
@@ -26,7 +28,6 @@ class AppConfig:
     environment: str
     password_hash_file: str
     denidin_data_root: str
-    password_salt: str = "denidin-pw"
     session_expiry_hours: float = 168.0
     denidin_src_path: str = ""
     http: HttpConfig = field(default_factory=HttpConfig)

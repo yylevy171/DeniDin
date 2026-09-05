@@ -24,11 +24,10 @@ import {
 
 interface Settings {
   theme: ThemeName;
-  sort: "newest" | "oldest";
   daysBack: number;
   lookback: number;
 }
-const DEFAULT_SETTINGS: Settings = { theme: "light", sort: "newest", daysBack: 7, lookback: 10 };
+const DEFAULT_SETTINGS: Settings = { theme: "light", daysBack: 7, lookback: 10 };
 const SETTINGS_KEY = "denidin_ledger_settings";
 
 // Canonical event types + subtypes (from prod data + runtime_constitution.md). The subtype
@@ -82,13 +81,14 @@ function isoDaysAgo(n: number): string {
   t.setDate(t.getDate() - n);
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
 }
-// trailing-day count needed to include the given "YYYY-MM-DD" date (padded a little)
+// trailing-day count needed for the backend fetch to include the given "YYYY-MM-DD" date
 function daysBackFor(iso: string): number {
   const ms = Date.now() - Date.parse(`${iso}T00:00:00`);
   if (!Number.isFinite(ms)) return 0;
   return Math.max(0, Math.ceil(ms / 86400000) + 1);
 }
-
+// absolute floor for the "from" date picker (never earlier than this)
+const DATE_FLOOR = "2024-01-01";
 function LoginScreen({ theme, onDone }: { theme: any; onDone: () => void }) {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -192,15 +192,18 @@ export default function App() {
   const [sigma, setSigma] = useState<{ n: number; total: number } | null>(null);
   const [lightbox, setLightbox] = useState<{ rowId: string; url: string } | null>(null);
   const [openMenu, setOpenMenu] = useState<"type" | "sub" | "client" | null>(null);
+  // sort direction — session-only (resets on reload / re-login), never persisted; default desc
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   // how many trailing days the currently-loaded `rows` actually cover (extended by a
   // date-range pick that reaches further back than settings.daysBack)
+  // how many trailing days the currently-loaded `rows` cover. Starts at settings.daysBack;
+  // grows ONLY when the user picks a "from" date earlier than what's loaded (nothing else).
   const [loadedDaysBack, setLoadedDaysBack] = useState<number>(() => loadSettings().daysBack);
 
   const onAuthErr = useCallback((e: unknown) => {
     if (e instanceof AuthError) setAuthed(false);
   }, []);
 
-  // window bounds for the date-range picker (today-daysBack .. today)
   const windowTo = useMemo(() => todayIso(), []);
 
   const load = useCallback(
@@ -213,8 +216,24 @@ export default function App() {
         setExpanded({});
         setSigma(null);
         setOpenMenu(null);
-        setDateFrom(isoDaysAgo(settings.daysBack));
-        setDateTo(todayIso());
+        // reset every filter so a load / refresh / days-back change immediately shows
+        // everything just fetched (otherwise a stale `applied.from` hides the new older rows)
+        const from = isoDaysAgo(settings.daysBack);
+        const to = todayIso();
+        setDateFrom(from);
+        setDateTo(to);
+        setTypeSel(new Set(EVENT_TYPES));
+        setSubSel(new Set(ALL_SUBTYPES));
+        setClientText("");
+        setGlobalText("");
+        setApplied({
+          type: new Set(EVENT_TYPES),
+          sub: new Set(ALL_SUBTYPES),
+          client: "",
+          global: "",
+          from,
+          to,
+        });
       } catch (e) {
         onAuthErr(e);
       } finally {
@@ -251,10 +270,10 @@ export default function App() {
     out = [...out].sort((a, b) => {
       const k = (r: EventRow) => `${(r.date || "").split("/").reverse().join("")}|${r.event_id}`;
       const cmp = k(a) < k(b) ? -1 : k(a) > k(b) ? 1 : 0;
-      return settings.sort === "newest" ? -cmp : cmp;
+      return sortDir === "desc" ? -cmp : cmp;
     });
     return out;
-  }, [rows, applied, settings.sort]);
+  }, [rows, applied, sortDir]);
 
   // subtypes not reachable from any currently-selected type → shown greyed/disabled
   const disabledSubs = useMemo(() => {
@@ -264,21 +283,19 @@ export default function App() {
     return new Set(ALL_SUBTYPES.filter((s) => !valid.has(s)));
   }, [typeSel]);
 
+  // "חפש!" — client-side filtering over the loaded rows. The ONLY thing that can pull more
+  // history is the user having moved "from" earlier than what's currently loaded; type/subtype/
+  // client-name/free-text filters never trigger a fetch (amends Component 3.6, per 2026-09-05
+  // user correction: "from" is not clamped to the window, but only the user changes it).
   const apply = async () => {
     setOpenMenu(null);
-    // Widen the loaded window when the search reaches beyond it: an explicit "from" date, or a
-    // free-text / client-name query (those are meant to search all history, not just the
-    // trailing default window). The floor matches the date picker's earliest allowed date.
-    const searchesAllHistory = !!globalText.trim() || !!clientText.trim();
-    const want = searchesAllHistory
-      ? daysBackFor("2024-01-01")
-      : Math.max(settings.daysBack, dateFrom ? daysBackFor(dateFrom) : 0);
-    if (want > loadedDaysBack) {
+    const need = daysBackFor(dateFrom);
+    if (need > loadedDaysBack) {
       setLoading(true);
       try {
-        const data = await fetchEvents(want);
+        const data = await fetchEvents(need);
         setRows(data.events);
-        setLoadedDaysBack(want);
+        setLoadedDaysBack(need);
       } catch (e) {
         onAuthErr(e);
         setLoading(false);
@@ -286,17 +303,12 @@ export default function App() {
       }
       setLoading(false);
     }
-    // an all-history search on an untouched date range should not be re-narrowed by the
-    // default "from" — drop it to the floor and reflect that in the picker
-    const from =
-      searchesAllHistory && dateFrom === isoDaysAgo(settings.daysBack) ? "2024-01-01" : dateFrom;
-    if (from !== dateFrom) setDateFrom(from);
     setApplied({
       type: new Set(typeSel),
       sub: new Set(subSel),
       client: clientText.trim(),
       global: globalText.trim(),
-      from,
+      from: dateFrom,
       to: dateTo,
     });
     setExpanded({});
@@ -372,6 +384,9 @@ export default function App() {
       >
         <Text style={{ fontSize: 17, fontWeight: "800", color: theme.accent }}>דני-דין · ארועים</Text>
         <View style={{ flex: 1 }} />
+        <Text style={{ color: theme.textDim, fontSize: 13 }}>
+          {loading ? "…" : `${visible.length.toLocaleString()} רשומות`}
+        </Text>
         <Button
           label="⚙︎"
           variant="ghost"
@@ -433,7 +448,7 @@ export default function App() {
             theme={theme}
             from={dateFrom}
             to={dateTo}
-            earliest="2024-01-01"
+            earliest={DATE_FLOOR}
             today={windowTo}
             onFrom={setDateFrom}
             onTo={setDateTo}
@@ -445,8 +460,10 @@ export default function App() {
             theme={theme}
             value={clientText}
             onChange={setClientText}
-            active={openMenu === "client"}
-            onActivate={() => setOpenMenu("client")}
+            menuOpen={openMenu === "client"}
+            onOpenMenu={() => setOpenMenu("client")}
+            onCloseMenu={() => setOpenMenu((m) => (m === "client" ? null : m))}
+            onError={onAuthErr}
           />
         </View>
         <View style={{ gap: 4 }}>
@@ -498,20 +515,40 @@ export default function App() {
           borderColor: theme.border,
         }}
       >
-        {COLUMNS.map((c, i) => (
-          <Text
-            key={i}
-            style={{
-              width: c.w,
-              color: theme.textDim,
-              fontSize: 11,
-              fontWeight: "700",
-              textAlign: "right",
-            }}
-          >
-            {c.label}
-          </Text>
-        ))}
+        {COLUMNS.map((c, i) => {
+          const isDate = c.label === "תאריך";
+          return (
+            <View
+              key={i}
+              style={{
+                width: c.w,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "flex-start",
+                gap: 3,
+              }}
+            >
+              <Text
+                style={{ color: theme.textDim, fontSize: 11, fontWeight: "700", textAlign: "right" }}
+              >
+                {c.label}
+              </Text>
+              {isDate ? (
+                <Pressable
+                  onPress={() => {
+                    setOpenMenu(null);
+                    setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+                  }}
+                  hitSlop={6}
+                >
+                  <Text style={{ color: theme.accent, fontSize: 12, fontWeight: "800" }}>
+                    {sortDir === "desc" ? "▼" : "▲"}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          );
+        })}
         <Text style={{ flex: 1, color: theme.textDim, fontSize: 11, fontWeight: "700", textAlign: "right" }}>
           תיאור
         </Text>
@@ -665,13 +702,6 @@ function SettingsPanel({
           variant="ghost"
           theme={theme}
           onPress={() => setSettings({ ...settings, theme: settings.theme === "light" ? "dark" : "light" })}
-        />
-        <Text style={{ color: theme.text }}>מיון</Text>
-        <Button
-          label={settings.sort === "newest" ? "חדש ראשון" : "ישן ראשון"}
-          variant="ghost"
-          theme={theme}
-          onPress={() => setSettings({ ...settings, sort: settings.sort === "newest" ? "oldest" : "newest" })}
         />
       </View>
       <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

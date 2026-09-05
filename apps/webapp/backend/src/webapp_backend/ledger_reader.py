@@ -38,24 +38,30 @@ _ROW_FIELDS = ("event_id", "date", "source_type", "event_subtype", "client_name"
 DEFAULT_DAYS_BACK = 7
 
 
-def _parse_event_date(record: Dict[str, Any]) -> Optional[date]:
-    """The date an event is filtered/sorted by: ``txn_date`` (ISO ``YYYY-MM-DD``) when
-    present, else the date portion of ``event_datetime`` (stored ``DD/MM/YYYY HH:MM``)."""
-    txn = record.get("txn_date")
-    if isinstance(txn, str) and txn.strip():
+def _flex_date(raw: Any) -> Optional[date]:
+    """Parse a date string in any of the shapes this codebase persists: ``DD/MM/YYYY`` and
+    ``YYYY-MM-DD`` (with or without a trailing `` HH:MM`` time part)."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    head = raw.strip().split(" ")[0]
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
         try:
-            return date.fromisoformat(txn.strip()[:10])
+            return datetime.strptime(head, fmt).date()
         except ValueError:
-            pass
-    raw = record.get("event_datetime")
-    if isinstance(raw, str) and raw.strip():
-        head = raw.strip().split(" ")[0]
-        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                return datetime.strptime(head, fmt).date()
-            except ValueError:
-                continue
+            continue
     return None
+
+
+def _parse_event_date(record: Dict[str, Any]) -> Optional[date]:
+    """The date an event is filtered/sorted by (spec.md: ``txn_date`` where present, else the
+    event's own date). ``event_datetime`` is the current-schema field; ``event_date`` is the
+    pre-Phase-11 equivalent still on older הסכם/בנק events (which have no ``event_datetime``
+    at all — that gap silently dropped every non-Morning event before this)."""
+    return (
+        _flex_date(record.get("txn_date"))
+        or _flex_date(record.get("event_datetime"))
+        or _flex_date(record.get("event_date"))
+    )
 
 
 def _fmt_ddmmyyyy(value: Optional[date]) -> Optional[str]:

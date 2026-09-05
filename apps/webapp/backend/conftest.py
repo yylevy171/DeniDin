@@ -36,34 +36,28 @@ def pytest_runtest_setup(item):
 
 
 @pytest.fixture
-def password_salt() -> str:
-    return "denidin-pw"
-
-
-@pytest.fixture
 def known_password() -> str:
     return "s3cret-pw"
 
 
 @pytest.fixture
-def password_hash_file(tmp_path, password_salt, known_password) -> Path:
+def password_hash_file(tmp_path, known_password) -> Path:
     from webapp_backend.auth import hash_password
 
     path = tmp_path / "auth" / "password.hash"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(hash_password(known_password, password_salt), encoding="utf-8")
+    path.write_text(hash_password(known_password), encoding="utf-8")
     return path
 
 
 @pytest.fixture
-def app_config(tmp_path, password_hash_file, password_salt):
+def app_config(tmp_path, password_hash_file):
     from webapp_backend.config import AppConfig
 
     return AppConfig(
         environment="test",
         password_hash_file=str(password_hash_file),
         denidin_data_root=str(tmp_path / "data"),
-        password_salt=password_salt,
         session_expiry_hours=168.0,
     )
 

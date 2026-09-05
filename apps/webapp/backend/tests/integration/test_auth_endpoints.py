@@ -80,7 +80,6 @@ def test_missing_password_file_starts_app_but_all_logins_fail(tmp_path, known_pa
         environment="test",
         password_hash_file=str(tmp_path / "nope" / "password.hash"),
         denidin_data_root=str(tmp_path),
-        password_salt="denidin-pw",
     )
     with TestClient(build_app(cfg)) as c:
         assert c.get("/health").status_code == 200

@@ -54,7 +54,9 @@ file is fixed, rather than the whole app refusing to start over just the auth ga
   "description": "..."
 }
 ```
-`date` = `txn_date` if present, else `event_datetime`'s date portion — formatted `DD/MM/YYYY`
+`date` = `txn_date` if present, else `event_datetime`'s date portion, else `event_date` (the
+pre-Phase-11 field, still on older הסכם/בנק events that have no `event_datetime`). Each is
+parsed leniently (`DD/MM/YYYY` **or** `YYYY-MM-DD`) — formatted `DD/MM/YYYY`
 server-side (backend owns date formatting, not the frontend, to keep the "always DD/MM/YYYY"
 rule enforced in one place).
 

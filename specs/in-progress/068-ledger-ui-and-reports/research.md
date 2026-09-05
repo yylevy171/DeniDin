@@ -2,7 +2,9 @@
 
 ## 1. Password hash function
 
-**Decision**: `sha256(salt + password)` with `salt = "denidin-pw"` (fixed literal, per user
+**Decision**: `sha256(salt + password)` with `salt = "denidin-pw"` — a **hardcoded module
+constant** (`webapp_backend.auth.PASSWORD_SALT`), never a config key (2026-09-05: removed from
+`AppConfig` / all config files; a stray `password_salt` key is now ignored). Fixed literal, per user
 instruction). Not PBKDF2/bcrypt/argon2.
 
 **Rationale**: this gate protects against casual/accidental access (no login system, single

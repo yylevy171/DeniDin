@@ -64,6 +64,25 @@ class TestListEventRows:
         assert [r["event_id"] for r in out["events"]] == ["A1"]
         assert out["events"][0]["date"] == (now_local().date() - timedelta(days=1)).strftime("%d/%m/%Y")
 
+    def test_txn_date_accepts_dd_mm_yyyy_not_only_iso(self, data_root):
+        recent = now_local().date() - timedelta(days=1)
+        _write_event(data_root / "events", "B1", txn_date=recent.strftime("%d/%m/%Y"))
+        out = LedgerReader(str(data_root)).list_event_rows(7)
+        assert [r["event_id"] for r in out["events"]] == ["B1"]
+
+    def test_old_schema_event_date_field_is_recognised(self, data_root):
+        # pre-Phase-11 הסכם/בנק events: no event_datetime, only event_date (DD/MM/YYYY)
+        recent = (now_local().date() - timedelta(days=2)).strftime("%d/%m/%Y")
+        p = data_root / "events" / "A9.json"
+        p.write_text(json.dumps({
+            "event_id": "A9", "source_type": "הסכם", "event_subtype": "יצירה",
+            "client_name": "פלוני", "amount": 5000, "description": "d",
+            "event_date": recent, "event_time": "14:06",
+        }, ensure_ascii=False), encoding="utf-8")
+        out = LedgerReader(str(data_root)).list_event_rows(7)
+        assert [r["event_id"] for r in out["events"]] == ["A9"]
+        assert out["events"][0]["date"] == recent
+
     def test_newest_first_with_event_id_desc_tiebreaker(self, data_root):
         same_day = f"{_ddmmyyyy(1)} 09:00"
         _write_event(data_root / "events", "A1", event_datetime=same_day)

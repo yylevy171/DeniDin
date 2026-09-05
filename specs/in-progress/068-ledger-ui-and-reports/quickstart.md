@@ -8,13 +8,17 @@
 ```
 
 - **Password**: whatever is hashed into `apps/webapp/backend/auth/password.hash`
-  (`sha256("denidin-pw" + password)`). The gitignored dev file currently corresponds to `denidin`.
+  (`sha256("denidin-pw" + password)`; the salt is hardcoded in `webapp_backend.auth.PASSWORD_SALT`,
+  never in config). The gitignored dev file currently corresponds to `denidin`.
   Rotate: `python3 -c 'import hashlib,sys;open("apps/webapp/backend/auth/password.hash","w").write(hashlib.sha256(("denidin-pw"+sys.argv[1]).encode()).hexdigest())' NEWPASS`
-- **Data source**: `apps/webapp/backend/config/config.dev.json`'s `denidin_data_root`. The dev
-  file points at `~/denidin-winprod-data` (the read-only sshfs mount of real prod data) so
-  there's something real to look at. The webapp is strictly read-only — it never writes there.
-  Point it at `apps/denidin-app/dev_data` instead for local dev data.
-- First index load globs every `events/*.json`; over the sshfs mount that's a ~10s backend
+- **Data source**: `apps/webapp/backend/config/config.dev.json`'s `denidin_data_root`.
+  **dev points at dev data, prod points at prod data — never crossed.** The dev file points at
+  the dev-data singleton `/Users/yaron/Projects/DeniDin/apps/denidin-app/dev_data` (the same
+  place the dev containers mount via `docker-compose.dev.local.yml`; a `coderN` clone's own
+  local `dev_data` is only an empty stub). Only `config.prod.json` points at
+  `~/denidin-winprod-data` (the read-only sshfs mount of real prod data). The webapp is
+  strictly read-only regardless — it never writes to either.
+- First index load globs every `events/*.json` (~4k files in dev) → a few seconds' backend
   startup.
 
 Backend tests: `cd apps/webapp/backend && ./venv/bin/python -m pytest -q` (55 pass).
@@ -30,8 +34,8 @@ cd apps/webapp/backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp config/config.example.json config/config.dev.json
-# edit config.dev.json: data_root -> ../../denidin-app/dev_data (read-only mount in Docker;
-# a plain relative path when running the BFF directly on the host for dev-loop convenience)
+# edit config.dev.json: denidin_data_root -> /Users/yaron/Projects/DeniDin/apps/denidin-app/dev_data
+# (the dev-data singleton in the root clone — NOT this clone's empty stub, and NOT the prod mount)
 python3 -m pytest tests/ -v --tb=short
 ```
 

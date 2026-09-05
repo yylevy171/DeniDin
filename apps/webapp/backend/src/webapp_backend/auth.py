@@ -24,11 +24,16 @@ except ImportError:  # pragma: no cover - defensive for odd import orders
 
 _HEX = set("0123456789abcdef")
 
+# Hardcoded on purpose (2026-09-05 decision): the salt is not a secret and must never live in
+# config — a shared string mixed into the hash so the stored digest isn't a bare sha256 of the
+# password. Changing it invalidates every existing password.hash file.
+PASSWORD_SALT = "denidin-pw"
 
-def hash_password(password: str, salt: str) -> str:
-    """``sha256(salt + password)`` as lowercase hex. Comparison is always literal — callers
-    must not trim/normalize ``password`` (2026-09-05 decision)."""
-    return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
+
+def hash_password(password: str) -> str:
+    """``sha256(PASSWORD_SALT + password)`` as lowercase hex. Comparison is always literal —
+    callers must not trim/normalize ``password`` (2026-09-05 decision)."""
+    return hashlib.sha256((PASSWORD_SALT + password).encode("utf-8")).hexdigest()
 
 
 class PasswordVerifier:
@@ -36,8 +41,7 @@ class PasswordVerifier:
     the backend still starts, ``usable`` is ``False``, and every ``verify()`` returns ``False``
     until the file is fixed (2026-09-05 decision)."""
 
-    def __init__(self, hash_file: Union[str, Path], salt: str) -> None:
-        self._salt = salt
+    def __init__(self, hash_file: Union[str, Path]) -> None:
         self._expected: Optional[str] = None
         self.load_error: Optional[str] = None
         try:
@@ -60,7 +64,7 @@ class PasswordVerifier:
     def verify(self, submitted: str) -> bool:
         if self._expected is None or not isinstance(submitted, str):
             return False
-        return secrets.compare_digest(hash_password(submitted, self._salt), self._expected)
+        return secrets.compare_digest(hash_password(submitted), self._expected)
 
 
 class SessionStore:

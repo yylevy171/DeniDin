@@ -61,7 +61,7 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
 
 
 def build_app(config: AppConfig) -> Starlette:
-    verifier = PasswordVerifier(Path(config.password_hash_file), config.password_salt)
+    verifier = PasswordVerifier(Path(config.password_hash_file))
     sessions = SessionStore(config.session_expiry_hours)
     reader = LedgerReader(config.denidin_data_root)
     context_reader = ContextReader(config.denidin_data_root)

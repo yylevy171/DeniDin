@@ -5,16 +5,14 @@ import pytest
 
 from webapp_backend.auth import PasswordVerifier, SessionStore, hash_password
 
-SALT = "denidin-pw"
 
-
-def test_hash_password_is_stable_sha256_of_salt_plus_password():
+def test_hash_password_is_stable_sha256_of_hardcoded_salt_plus_password():
     # sha256("denidin-pw" + "hunter2")
     import hashlib
 
     expected = hashlib.sha256(b"denidin-pwhunter2").hexdigest()
-    assert hash_password("hunter2", SALT) == expected
-    assert len(hash_password("x", SALT)) == 64
+    assert hash_password("hunter2") == expected
+    assert len(hash_password("x")) == 64
 
 
 class TestPasswordVerifier:
@@ -24,33 +22,33 @@ class TestPasswordVerifier:
         return p
 
     def test_correct_password_verifies(self, tmp_path):
-        v = PasswordVerifier(self._write(tmp_path, hash_password("right", SALT)), SALT)
+        v = PasswordVerifier(self._write(tmp_path, hash_password("right")))
         assert v.usable
         assert v.verify("right") is True
 
     def test_wrong_password_rejected(self, tmp_path):
-        v = PasswordVerifier(self._write(tmp_path, hash_password("right", SALT)), SALT)
+        v = PasswordVerifier(self._write(tmp_path, hash_password("right")))
         assert v.verify("wrong") is False
 
     def test_missing_file_is_not_fatal_but_unusable(self, tmp_path):
-        v = PasswordVerifier(tmp_path / "does-not-exist.hash", SALT)
+        v = PasswordVerifier(tmp_path / "does-not-exist.hash")
         assert v.usable is False
         assert v.load_error is not None
         assert v.verify("anything") is False
 
     def test_malformed_file_is_not_fatal_but_unusable(self, tmp_path):
-        v = PasswordVerifier(self._write(tmp_path, "not-a-hash"), SALT)
+        v = PasswordVerifier(self._write(tmp_path, "not-a-hash"))
         assert v.usable is False
         assert v.verify("anything") is False
 
     def test_comparison_is_literal_no_whitespace_trimming(self, tmp_path):
-        v = PasswordVerifier(self._write(tmp_path, hash_password("secret", SALT)), SALT)
+        v = PasswordVerifier(self._write(tmp_path, hash_password("secret")))
         assert v.verify("secret") is True
         assert v.verify(" secret ") is False
         assert v.verify("secret\n") is False
 
     def test_trailing_newline_in_hash_file_is_tolerated(self, tmp_path):
-        v = PasswordVerifier(self._write(tmp_path, hash_password("p", SALT) + "\n"), SALT)
+        v = PasswordVerifier(self._write(tmp_path, hash_password("p") + "\n"))
         assert v.usable
         assert v.verify("p") is True
 

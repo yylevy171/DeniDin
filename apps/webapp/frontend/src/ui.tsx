@@ -70,93 +70,102 @@ export function Field({
   );
 }
 
+type SearchStatus = "idle" | "searching" | "empty" | "results" | "error";
+
 export function ClientNameInput({
   theme,
   value,
   onChange,
-  active,
-  onActivate,
+  menuOpen,
+  onOpenMenu,
+  onCloseMenu,
+  onError,
 }: {
   theme: Theme;
   value: string;
   onChange: (v: string) => void;
-  active: boolean; // this input's dropdown is the currently-open menu
-  onActivate: () => void; // ask App to make this the open menu (closes the others)
+  menuOpen: boolean; // App: this input's dropdown is the currently-open menu
+  onOpenMenu: () => void;
+  onCloseMenu: () => void;
+  onError?: (e: unknown) => void;
 }) {
   const [suggests, setSuggests] = useState<string[]>([]);
-  const [listOpen, setListOpen] = useState(false);
+  const [status, setStatus] = useState<SearchStatus>("idle");
   const [cursor, setCursor] = useState(0);
-  const suppress = useRef(false);
-
-  // external close: another menu took over, or App cleared everything
-  useEffect(() => {
-    if (!active) setListOpen(false);
-  }, [active]);
+  const suppressNext = useRef(false);
 
   useEffect(() => {
-    if (suppress.current) {
-      suppress.current = false;
+    if (suppressNext.current) {
+      suppressNext.current = false;
       return;
     }
-    if (value.trim().length < 2) {
+    const q = value.trim();
+    if (q.length < 2) {
       setSuggests([]);
-      setListOpen(false);
+      setStatus("idle");
+      onCloseMenu();
       return;
     }
-    const h = setTimeout(() => {
-      searchClients(value)
+    let dead = false;
+    setStatus("searching");
+    onOpenMenu(); // show the "searching…" panel immediately
+    const t = setTimeout(() => {
+      searchClients(q)
         .then((list) => {
+          if (dead) return;
           setSuggests(list);
           setCursor(0);
-          if (list.length > 0) {
-            setListOpen(true);
-            onActivate();
-          } else {
-            setListOpen(false);
-          }
+          setStatus(list.length ? "results" : "empty");
+          onOpenMenu();
         })
-        .catch(() => {});
-    }, 300);
-    return () => clearTimeout(h);
+        .catch((e) => {
+          if (dead) return;
+          setSuggests([]);
+          setStatus("error");
+          onOpenMenu();
+          onError?.(e);
+        });
+    }, 250);
+    return () => {
+      dead = true;
+      clearTimeout(t);
+    };
   }, [value]); // eslint-disable-line
 
-  const open = active && listOpen;
+  const show = menuOpen && status !== "idle";
 
-  const pick = (name: string) => {
-    suppress.current = true; // don't re-search the full picked name
+  const choose = (name: string) => {
+    suppressNext.current = true; // don't re-search the picked full name
     onChange(name);
     setSuggests([]);
-    setListOpen(false);
+    onCloseMenu();
   };
 
   const onKeyDown = (e: any) => {
-    if (!open || suggests.length === 0) return;
+    if (!show) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setCursor((a) => Math.min(a + 1, suggests.length - 1));
+      setCursor((c) => Math.min(c + 1, suggests.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setCursor((a) => Math.max(a - 1, 0));
+      setCursor((c) => Math.max(c - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      pick(suggests[cursor]);
+      choose(suggests[cursor]);
     } else if (e.key === "Escape") {
-      setListOpen(false);
+      onCloseMenu();
     }
   };
 
   return (
-    <View style={{ position: "relative", zIndex: open ? 120 : 1 }}>
-      {/* plain DOM input on web — gives real onKeyDown for arrow/Enter nav */}
+    <View style={{ position: "relative", zIndex: show ? 120 : 1 }}>
+      {/* plain DOM input on web — real onKeyDown for arrow/Enter nav */}
       <input
         value={value}
         onChange={(e: any) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
         onFocus={() => {
-          if (suggests.length) {
-            setListOpen(true);
-            onActivate();
-          }
+          if (suggests.length) onOpenMenu();
         }}
         placeholder="שם לקוח"
         dir="rtl"
@@ -173,7 +182,7 @@ export function ClientNameInput({
           fontFamily: "inherit",
         }}
       />
-      {open && suggests.length ? (
+      {show ? (
         <View
           style={{
             position: "absolute",
@@ -183,28 +192,42 @@ export function ClientNameInput({
             borderWidth: 1,
             borderColor: theme.border,
             borderRadius: 8,
-            minWidth: 200,
-            maxHeight: 220,
+            minWidth: 220,
+            overflow: "hidden",
             shadowColor: "#000",
             shadowOpacity: 0.15,
             shadowRadius: 8,
             shadowOffset: { width: 0, height: 3 },
           }}
         >
-          <ScrollView>
+          {status === "searching" ? (
+            <Text style={{ color: theme.textDim, textAlign: "right", fontSize: 13, padding: 10 }}>
+              מחפש…
+            </Text>
+          ) : status === "empty" ? (
+            <Text style={{ color: theme.textDim, textAlign: "right", fontSize: 13, padding: 10 }}>
+              לא נמצאו לקוחות
+            </Text>
+          ) : status === "error" ? (
+            <Text style={{ color: theme.textDim, textAlign: "right", fontSize: 13, padding: 10 }}>
+              שגיאת חיפוש
+            </Text>
+          ) : null}
+          <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator>
             {suggests.map((s, i) => (
               <Pressable
                 key={s}
-                onPress={() => pick(s)}
+                onPress={() => choose(s)}
+                onHoverIn={() => setCursor(i)}
                 style={{
-                  paddingVertical: 8,
+                  paddingVertical: 9,
                   paddingHorizontal: 10,
-                  backgroundColor: i === active ? theme.accent : "transparent",
+                  backgroundColor: i === cursor ? theme.accent : "transparent",
                 }}
               >
                 <Text
                   style={{
-                    color: i === active ? theme.accentText : theme.text,
+                    color: i === cursor ? theme.accentText : theme.text,
                     textAlign: "right",
                     fontSize: 13,
                   }}
@@ -384,7 +407,7 @@ export function MultiSelect({
             shadowOffset: { width: 0, height: 3 },
           }}
         >
-          <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator>
+          <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator>
             {total === 0 ? (
               <Text style={{ color: theme.textDim, padding: 10, fontSize: 12 }}>אין ערכים</Text>
             ) : (

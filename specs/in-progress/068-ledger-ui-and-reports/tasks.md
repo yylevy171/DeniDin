@@ -151,6 +151,37 @@ an `active`/`onActivate` pair; (c) free-text search now matches against a server
 just the six display columns, so text in agreement descriptions / component labels / references
 is found. `LedgerReader._to_row` adds `search_blob`; `test_ledger_reader.py` updated (56 tests).
 
+**2026-09-05 config/isolation fixes**:
+- `config.dev.json` `denidin_data_root` was pointing at `~/denidin-winprod-data` (the read-only
+  prod mount) — corrected to `/Users/yaron/Projects/DeniDin/apps/denidin-app/dev_data` (the
+  dev-data singleton in the root clone; ~4170 events). **dev→dev, prod→prod, never crossed.**
+  Nothing was ever written to prod (read-only mount + no write code path), but dev must not
+  read prod. `config.prod.json` (when a prod webapp is deployed) is the only file that points
+  at `~/denidin-winprod-data`.
+- Password salt removed from config entirely — hardcoded as `webapp_backend.auth.PASSWORD_SALT`
+  (`"denidin-pw"`). Dropped from `AppConfig`, `config.example/test/dev.json`, all fixtures and
+  tests. `hash_password(pw)` / `PasswordVerifier(hash_file)` no longer take a salt arg.
+  56 backend tests green; login still works (hash file unchanged, same salt value).
+
+**2026-09-05 feedback round 5**:
+- **Non-Morning events were silently dropped (real bug).** `_parse_event_date` only understood
+  `txn_date` as ISO and `event_datetime` as `DD/MM/YYYY HH:MM`. Pre-Phase-11 הסכם/בנק events
+  have neither — they carry `event_date` (`DD/MM/YYYY`) + `event_time`, and `txn_date` in
+  `DD/MM/YYYY`. So all 6 `A` (הסכם) + 13 `B` (בנק) events in dev returned `None` and were
+  filtered out. Fixed: `_flex_date` parses both `DD/MM/YYYY` and `YYYY-MM-DD`; precedence is
+  `txn_date → event_datetime → event_date` (spec.md's txn_date-wins rule preserved). +2 unit
+  tests. dev now returns 4170 events (was 4151).
+- `client_name` search: the highlight used `i === active` where `active` was a **boolean**
+  prop — never matched, so nothing ever highlighted; the component was also over-coupled.
+  Rewrote `ClientNameInput` cleanly: `menuOpen`/`onOpenMenu`/`onCloseMenu` for App coordination,
+  internal `suggests`+`cursor`, `show = menuOpen && suggests.length>0`, highlight on
+  `i === cursor` (+ hover), ↑/↓/Enter/Esc, no re-search after pick.
+- subtype dropdown `maxHeight` 320→440 so all 10 rows fit without scrolling.
+- Sort: removed the settings toggle. A ▼/▲ control sits next to the "תאריך" column header —
+  ▼ = descending (default), ▲ = ascending. Session-only state (`sortDir`), resets on
+  reload/re-login, never persisted. `Settings.sort` removed.
+- Top bar shows the visible record count ("<n> רשומות") next to ⚙︎; recomputes on every search.
+
 **What's a first-cut, NOT yet the full test-plan spec** (Playwright not written/run yet):
 detail panel uses a simplified always/if-exists rule, not the per-subtype
 `contracts/field-manifests.md` matrix; filter matching is substring/normalized, not `fuse.js`
@@ -368,6 +399,13 @@ race conditions (typing further before a suggestion response returns discards th
 response — same stale-response guard as 2.3; rapid clear-then-retype doesn't leave a stale
 dropdown open); Apply-time fuzzy filtering (typed name need not exactly match a suggestion to
 Apply; fuzzy near-miss still narrows correctly at Apply; empty field is passthrough at Apply).
+**Suggestions are drawn from the FULL client list, all of history — never limited to clients
+present in the currently-loaded window** (clarified 2026-09-05: `GET /clients/search` scans the
+entire event index). Applying a client-name filter is still purely client-side over the loaded
+rows — a 0-result client match is a valid outcome, and the user widens "from" themselves (3.6)
+if they want to reach that client's older events; the applied filter never auto-fetches.
+On a stale-token 401 the typeahead surfaces the auth error (kicks to login), never fails
+silently.
 
 **3.5 Global free-text search** (9 tests): matches in `description`; matches in `amount`
 (numeric-as-text); matches in a date field; matches in a field not shown anywhere in the
@@ -375,12 +413,16 @@ detail/collapsed views (e.g. `bank_account`); typo/near-miss still fuzzy-matches
 returns zero cleanly; broad/common-term match doesn't error or hang; combines as AND with
 another filter; empty field is passthrough.
 
-**3.6 Date range = load window** (8 tests): initial range exactly equals the load window;
-"from" picker clamped at the window start; "to" picker clamped at today/window end; narrowing
-inward filters correctly; invalid to-before-from range prevented/auto-corrected; widening
-"days back" in settings immediately widens this filter's selectable bounds; narrowing "days
-back" clamps an out-of-range current selection back into bounds; narrowing this filter never
-triggers a new backend load.
+**3.6 Date range** (8 tests): initial range = the load window (`today - daysBack` … `today`);
+"from" picker floor is a **fixed absolute `2024-01-01`**, NOT the window start (amended
+2026-09-05, explicit user correction — "FROM is definitely NOT clamped to the window start and
+can be anything the user wants after 1/1/24. BUT THE USER NEEDS TO CHANGE IT, NOT ANYTHING
+ELSE"); "to" picker clamped at today; narrowing inward filters client-side; invalid
+to-before-from prevented/auto-corrected; changing "days back" in settings reloads and resets
+"from" to the new window start; **the user moving "from" earlier than what's currently loaded
+is the ONLY thing that triggers a wider backend fetch** — type/subtype/client-name/free-text
+filters, and pressing "חפש!" with an unchanged "from", never trigger a fetch; nothing but a
+direct user edit of the "from" field ever changes its value (no auto-jump on search).
 
 **3.7 Combined filters (AND across, OR within)** (6 tests): type(OR)+client-name AND; triple
 combination (type+subtype+client-name); date-range-narrowed+type; all five categories set to
@@ -392,12 +434,16 @@ the full loaded set; partial reset leaves remaining filters still active; a "cle
 genuinely does not exist anywhere in the UI (absence check); resetting a multi-select
 per-value/chip works the same as reopening the dropdown and unchecking each one.
 
-**Still open before this can be finalized**: 3.3's P1 (behavior when a selected subtype becomes
-invalid); the new `GET /clients/search` endpoint must exist to test 3.4 against; 3.6's exact
-clamping implementation.
+**Opens resolved 2026-09-05**: `GET /clients/search` exists (Story 2); 3.6's "clamping" →
+fixed `2024-01-01` floor + user-only "from" edits + fetch-on-earlier-from (above). Still open:
+3.3's P1 (auto-deselect of a now-invalid selected subtype).
 
-Draft Playwright code for these ~85 cases to be added to `contracts/playwright-draft.md` once
-the above opens are resolved and the endpoint exists.
+Draft Playwright code for these ~85 cases to be added to `contracts/playwright-draft.md`.
+
+**Coverage mandate (2026-09-05, user)**: the Playwright suite must cover *all* functionality
+that already exists in the VIEWABLE frontend (Stories 4–8) — not only net-new work. When the
+suite is written is the implementer's call for now, but existing behavior is in scope, not
+grandfathered out.
 
 ### Component 0 — Layout (resolved + full test enumeration, 2026-09-05, 11 tests)
 
