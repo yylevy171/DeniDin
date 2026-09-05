@@ -58,6 +58,23 @@ def test_bad_env_exits_2(scratch_deploy_repo):
     assert result.returncode == 2
 
 
+def test_bad_app_exits_2(scratch_deploy_repo):
+    result = _deploy(scratch_deploy_repo, app="not-an-app")
+    assert result.returncode == 2
+    assert "denidin-app, morning-mcp-app or webapp" in result.stderr
+
+
+def test_webapp_is_an_accepted_app(scratch_deploy_repo):
+    """`webapp` passes <app> validation - it fails later on the missing artifact (exit 1),
+    NOT on arg validation (exit 2). The full two-service deploy+verify path is covered by a
+    manual gate against real infra, same as morning-mcp-app's /health path (see module
+    docstring)."""
+    result = _deploy(scratch_deploy_repo, app="webapp", version="9.9.9")
+    assert result.returncode == 1
+    assert "no release found for webapp" in result.stderr
+    assert "must be denidin-app" not in result.stderr
+
+
 def test_missing_artifact_exits_1_no_docker_build(scratch_deploy_repo):
     result = _deploy(scratch_deploy_repo, version="9.9.9")
 

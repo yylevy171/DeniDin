@@ -16,9 +16,15 @@
 # dependency direction scripts/run_all.sh's own start order follows.
 #
 # Usage: ./scripts/deploy_release.sh <app> <env> <version> [--artifacts-root <path>] [--verify-timeout <seconds>] [--remote-host <ssh-alias>] [--remote-deploy-dir <name>] [--local]
-#   <app>     : denidin-app | morning-mcp-app
+#   <app>     : denidin-app | morning-mcp-app | webapp
 #   <env>     : dev | prod
 #   <version> : exact version already cut via scripts/cut_release.sh
+#
+# webapp is a TWO-image release (webapp-backend + webapp-frontend, one bundled tar). This
+# script loads both, retags both to their compose image names, and brings up
+# webapp-backend-<env> + webapp-frontend-<env> (+ cloudflared-<env> iff docker/cloudflared.<env>.env
+# exists). Verification polls webapp-backend-<env>'s /health for the deployed version, same
+# shape as morning-mcp-app's /health check.
 #   --artifacts-root    : optional override of the artifacts folder (test-only seam)
 #   --verify-timeout    : optional override of the verification timeout in seconds (default 30,
 #                         test-only seam)
@@ -98,11 +104,11 @@ ENV="${POSITIONAL[1]}"
 VERSION="${POSITIONAL[2]}"
 
 usage() {
-    echo "Usage: $0 <denidin-app|morning-mcp-app> <dev|prod> <version> [--artifacts-root <path>] [--verify-timeout <seconds>]" >&2
+    echo "Usage: $0 <denidin-app|morning-mcp-app|webapp> <dev|prod> <version> [--artifacts-root <path>] [--verify-timeout <seconds>]" >&2
 }
 
-if [ "$APP" != "denidin-app" ] && [ "$APP" != "morning-mcp-app" ]; then
-    echo "Error: <app> must be denidin-app or morning-mcp-app (got: '${APP}')." >&2
+if [ "$APP" != "denidin-app" ] && [ "$APP" != "morning-mcp-app" ] && [ "$APP" != "webapp" ]; then
+    echo "Error: <app> must be denidin-app, morning-mcp-app or webapp (got: '${APP}')." >&2
     usage
     exit 2
 fi
@@ -123,6 +129,47 @@ TAR_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.tar"
 MANIFEST_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.json"
 COMPOSE_FILE="docker/docker-compose.${ENV}.yml"
 SERVICE_NAME="${APP}-${ENV}"
+
+# webapp fans out to two compose services (backend + frontend) from one bundled artifact,
+# plus an optional cloudflared sidecar. Everything else is one service, unchanged.
+#   DEPLOY_SERVICES  - every service `docker compose up -d` should (re)create
+#   RUNNING_SERVICES - services that MUST end up 'running' (cloudflared is allowed to stay
+#                      down when its token file is absent, so it's excluded here)
+#   VERIFY_SERVICE   - the service whose /health (or logs) carries the version to poll for
+if [ "$APP" == "webapp" ]; then
+    IS_WEBAPP=1
+    DEPLOY_SERVICES=("webapp-backend-${ENV}" "webapp-frontend-${ENV}")
+    RUNNING_SERVICES=("webapp-backend-${ENV}" "webapp-frontend-${ENV}")
+    if [ -f "docker/cloudflared.${ENV}.env" ]; then
+        DEPLOY_SERVICES+=("cloudflared-${ENV}")
+    fi
+    VERIFY_SERVICE="webapp-backend-${ENV}"
+    VERIFY_HTTP_PORT=8100
+else
+    IS_WEBAPP=0
+    DEPLOY_SERVICES=("${SERVICE_NAME}")
+    RUNNING_SERVICES=("${SERVICE_NAME}")
+    VERIFY_SERVICE="${SERVICE_NAME}"
+    VERIFY_HTTP_PORT=8000
+fi
+
+# HTTP-poll /health for the version (morning-mcp-app + webapp); log-grep for "[vX.Y.Z]"
+# (denidin-app, which has no HTTP surface).
+if [ "$APP" == "morning-mcp-app" ] || [ "$IS_WEBAPP" -eq 1 ]; then
+    VERIFY_VIA_HTTP=1
+else
+    VERIFY_VIA_HTTP=0
+fi
+
+# Retag one loaded image ref to the compose image name its service expects. webapp's two
+# images map by their embedded repo name; single-image apps map to ${SERVICE_NAME}.
+_compose_image_for() {
+    case "$1" in
+        webapp-backend:*)  echo "${PROJECT_NAME}-webapp-backend-${ENV}:latest" ;;
+        webapp-frontend:*) echo "${PROJECT_NAME}-webapp-frontend-${ENV}:latest" ;;
+        *)                 echo "${PROJECT_NAME}-${SERVICE_NAME}:latest" ;;
+    esac
+}
 
 # --- Preconditions (fail before any side effect) ---
 
@@ -202,12 +249,13 @@ if [ "$REMOTE" -eq 1 ]; then
         exit 1
     fi
 
-    # Step R3: load the artifact on the box - no rebuild, ever (REQ-DEPLOY-001).
+    # Step R3: load the artifact on the box - no rebuild, ever (REQ-DEPLOY-001). webapp's
+    # bundled tar carries two images.
     echo "== [R3/R8] Loading ${ARTIFACT_NAME} into Docker on ${REMOTE_HOST} =="
     LOAD_OUTPUT="$(remote_run "docker load -i \"${WIN_HOME}/${ARTIFACT_NAME}\"" 2>&1)"
-    LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
-    if [ -z "$LOADED_REF" ]; then
-        echo "🚨 DEPLOY FAILED at step R3 (docker load on ${REMOTE_HOST}): could not determine the loaded image reference. Raw output was:" >&2
+    LOADED_REFS="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
+    if [ -z "$LOADED_REFS" ]; then
+        echo "🚨 DEPLOY FAILED at step R3 (docker load on ${REMOTE_HOST}): could not determine the loaded image reference(s). Raw output was:" >&2
         echo "$LOAD_OUTPUT" >&2
         exit 1
     fi
@@ -222,13 +270,18 @@ if [ "$REMOTE" -eq 1 ]; then
 
     # Step R5: retag + recreate, executed ON the box - never via a Mac-side remote Docker
     # context against this checkout's local YAML (see top-of-file comment: the box's own
-    # docker-compose.prod.local.yml is the one that must apply).
-    COMPOSE_IMAGE="${PROJECT_NAME}-${SERVICE_NAME}:latest"
-    echo "== [R5/R8] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} on ${REMOTE_HOST} =="
-    if ! remote_run "docker tag ${LOADED_REF} ${COMPOSE_IMAGE}"; then
-        echo "🚨 DEPLOY FAILED at step R5 (docker tag on ${REMOTE_HOST})." >&2
-        exit 1
-    fi
+    # docker-compose.prod.local.yml is the one that must apply). One image normally; two for
+    # webapp.
+    echo "== [R5/R8] Retagging loaded image(s) to their compose names on ${REMOTE_HOST} =="
+    while IFS= read -r _ref; do
+        [ -z "$_ref" ] && continue
+        _target="$(_compose_image_for "$_ref")"
+        echo "   ${_ref} -> ${_target}"
+        if ! remote_run "docker tag ${_ref} ${_target}"; then
+            echo "🚨 DEPLOY FAILED at step R5 (docker tag ${_ref} -> ${_target} on ${REMOTE_HOST})." >&2
+            exit 1
+        fi
+    done <<< "$LOADED_REFS"
 
     # Step R6 (bugfix-021): ensure shared/active_env.json exists as a real FILE, not a
     # directory, before `docker compose up -d`'s bind mount touches it. Docker silently
@@ -261,24 +314,37 @@ if [ "$REMOTE" -eq 1 ]; then
     fi
 
     REMOTE_COMPOSE="cd ~/${REMOTE_DEPLOY_DIR} && docker compose --project-directory . -f docker/docker-compose.prod.yml -f docker/docker-compose.prod.local.yml"
-    echo "== [R7/R8] Recreating ${SERVICE_NAME} on ${REMOTE_HOST} (docker compose up -d --no-build) =="
-    if ! remote_run "${REMOTE_COMPOSE} up -d --no-build ${SERVICE_NAME}"; then
+
+    # webapp: only include cloudflared-prod if the box actually has its token file.
+    REMOTE_DEPLOY_SERVICES=("${DEPLOY_SERVICES[@]}")
+    if [ "$IS_WEBAPP" -eq 1 ]; then
+        REMOTE_DEPLOY_SERVICES=("webapp-backend-${ENV}" "webapp-frontend-${ENV}")
+        if remote_run "test -f ~/${REMOTE_DEPLOY_DIR}/docker/cloudflared.${ENV}.env" 2>/dev/null; then
+            REMOTE_DEPLOY_SERVICES+=("cloudflared-${ENV}")
+        fi
+    fi
+
+    echo "== [R7/R8] Recreating ${REMOTE_DEPLOY_SERVICES[*]} on ${REMOTE_HOST} (docker compose up -d --no-build) =="
+    if ! remote_run "${REMOTE_COMPOSE} up -d --no-build ${REMOTE_DEPLOY_SERVICES[*]}"; then
         echo "🚨 DEPLOY FAILED at step R7 (docker compose up -d on ${REMOTE_HOST})." >&2
         exit 1
     fi
 
-    CONTAINER_NAME="${PROJECT_NAME}-${SERVICE_NAME}-1"
+    # Step R8: confirm each required container is actually running, not just that `up -d`
+    # exited 0 - compose can return success even if a container immediately crashed (restart
+    # policy is "no" repo-wide). cloudflared is excluded (allowed to stay down without a token).
+    for _svc in "${RUNNING_SERVICES[@]}"; do
+        _cname="${PROJECT_NAME}-${_svc}-1"
+        echo "== [R8/R8] Confirming ${_cname} is running on ${REMOTE_HOST} =="
+        _status="$(remote_run "docker inspect --format '{{.State.Status}}' ${_cname}" 2>&1)"
+        if [ "$_status" != "running" ]; then
+            echo "🚨 DEPLOY FAILED at step R8 (${_cname} on ${REMOTE_HOST}): expected status 'running', got '${_status}'." >&2
+            remote_run "docker logs ${_cname} --tail 20" >&2 2>&1 || true
+            exit 1
+        fi
+    done
 
-    # Step R8: confirm the container is actually running, not just that `up -d` exited 0 -
-    # compose can return success even if the container immediately crashed (restart policy is
-    # "no" repo-wide, so a crash shows as Exited, not a silent respawn-loop).
-    echo "== [R8/R8] Confirming ${CONTAINER_NAME} is running on ${REMOTE_HOST} =="
-    CONTAINER_STATUS="$(remote_run "docker inspect --format '{{.State.Status}}' ${CONTAINER_NAME}" 2>&1)"
-    if [ "$CONTAINER_STATUS" != "running" ]; then
-        echo "🚨 DEPLOY FAILED at step R8 (${CONTAINER_NAME} on ${REMOTE_HOST}): expected status 'running', got '${CONTAINER_STATUS}'." >&2
-        remote_run "docker logs ${CONTAINER_NAME} --tail 20" >&2 2>&1 || true
-        exit 1
-    fi
+    VERIFY_CONTAINER="${PROJECT_NAME}-${VERIFY_SERVICE}-1"
 
     # Final verification (REQ-DEPLOY-002): a started-but-unverified container is not a success.
     # Checked over the same kind of SSH round-trip verify_windows_prod.sh already uses.
@@ -286,15 +352,15 @@ if [ "$REMOTE" -eq 1 ]; then
     VERIFIED=0
     ELAPSED=0
     while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
-        if [ "$APP" == "morning-mcp-app" ]; then
-            HEALTH_JSON="$(remote_run "cd ~/${REMOTE_DEPLOY_DIR} && PORT=\$(docker compose -f docker/docker-compose.prod.yml port ${SERVICE_NAME} 8000 | cut -d: -f2) && curl -sf http://127.0.0.1:\$PORT/health" 2>/dev/null || echo "")"
+        if [ "$VERIFY_VIA_HTTP" -eq 1 ]; then
+            HEALTH_JSON="$(remote_run "cd ~/${REMOTE_DEPLOY_DIR} && PORT=\$(docker compose -f docker/docker-compose.prod.yml port ${VERIFY_SERVICE} ${VERIFY_HTTP_PORT} | cut -d: -f2) && curl -sf http://127.0.0.1:\$PORT/health" 2>/dev/null || echo "")"
             HEALTH_VERSION="$(echo "$HEALTH_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))" 2>/dev/null || echo "")"
             if [ "$HEALTH_VERSION" == "$VERSION" ]; then
                 VERIFIED=1
                 break
             fi
         else
-            if remote_run "docker logs ${CONTAINER_NAME} --tail 20" 2>&1 | grep -q "\[v${VERSION}\]"; then
+            if remote_run "docker logs ${VERIFY_CONTAINER} --tail 20" 2>&1 | grep -q "\[v${VERSION}\]"; then
                 VERIFIED=1
                 break
             fi
@@ -306,7 +372,7 @@ if [ "$REMOTE" -eq 1 ]; then
     if [ "$VERIFIED" -ne 1 ]; then
         echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} on ${REMOTE_HOST} within ${VERIFY_TIMEOUT}s (container is running - step R7 passed - but never reported the right version)." >&2
         echo "Last observed container state:" >&2
-        remote_run "docker logs ${CONTAINER_NAME} --tail 20" >&2 2>&1 || true
+        remote_run "docker logs ${VERIFY_CONTAINER} --tail 20" >&2 2>&1 || true
         exit 1
     fi
 
@@ -341,22 +407,26 @@ fi
 # it matches <app>:<version> - a tarball's embedded tag always wins over its filename on disk.
 echo "== [L1/L4] Loading ${TAR_PATH} into Docker (local) =="
 LOAD_OUTPUT="$(docker load -i "$TAR_PATH" 2>&1)"
-LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
-if [ -z "$LOADED_REF" ]; then
-    echo "🚨 DEPLOY FAILED at step L1 (docker load, local): could not determine the loaded image reference. Raw output was:" >&2
+LOADED_REFS="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
+if [ -z "$LOADED_REFS" ]; then
+    echo "🚨 DEPLOY FAILED at step L1 (docker load, local): could not determine the loaded image reference(s). Raw output was:" >&2
     echo "$LOAD_OUTPUT" >&2
     exit 1
 fi
 
-# Step L2: retag it to whatever docker-compose expects for this service - this is what
-# preserves the environment's existing volume mounts (config/logs/data) instead of a bare
-# `docker run` silently missing them.
-COMPOSE_IMAGE="${PROJECT_NAME}-${SERVICE_NAME}:latest"
-echo "== [L2/L4] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} (local) =="
-if ! docker tag "$LOADED_REF" "$COMPOSE_IMAGE"; then
-    echo "🚨 DEPLOY FAILED at step L2 (docker tag, local)." >&2
-    exit 1
-fi
+# Step L2: retag each loaded image to whatever docker-compose expects for its service - this
+# is what preserves the environment's existing volume mounts (config/logs/data) instead of a
+# bare `docker run` silently missing them. webapp loads two images; everything else one.
+echo "== [L2/L4] Retagging loaded image(s) to their compose names (local) =="
+while IFS= read -r _ref; do
+    [ -z "$_ref" ] && continue
+    _target="$(_compose_image_for "$_ref")"
+    echo "   ${_ref} -> ${_target}"
+    if ! docker tag "$_ref" "$_target"; then
+        echo "🚨 DEPLOY FAILED at step L2 (docker tag ${_ref} -> ${_target}, local)." >&2
+        exit 1
+    fi
+done <<< "$LOADED_REFS"
 
 # Declare intent in the shared active-env file BEFORE starting, same as run_denidin.sh - only
 # in a real repo checkout (see the env_lock.sh presence check above).
@@ -364,24 +434,28 @@ if [ -f "$SCRIPT_DIR/env_lock.sh" ]; then
     env_lock_acquire "$ENV"
 fi
 
-echo "== [L3/L4] Recreating ${SERVICE_NAME} (local, docker compose up -d --no-build) =="
-if ! docker compose "${COMPOSE_ARGS[@]}" up -d --no-build "$SERVICE_NAME"; then
+echo "== [L3/L4] Recreating ${DEPLOY_SERVICES[*]} (local, docker compose up -d --no-build) =="
+if ! docker compose "${COMPOSE_ARGS[@]}" up -d --no-build "${DEPLOY_SERVICES[@]}"; then
     echo "🚨 DEPLOY FAILED at step L3 (docker compose up -d, local)." >&2
     exit 1
 fi
 
-CONTAINER_NAME="${PROJECT_NAME}-${SERVICE_NAME}-1"
+# Step L4: confirm each required container is actually running, not just that `up -d` exited 0
+# - compose can return success even if a container immediately crashed (restart policy is "no"
+# repo-wide, so a crash shows as Exited, not a silent respawn-loop). cloudflared is NOT in
+# RUNNING_SERVICES - it's allowed to stay down when no token file is present.
+for _svc in "${RUNNING_SERVICES[@]}"; do
+    _cname="${PROJECT_NAME}-${_svc}-1"
+    echo "== [L4/L4] Confirming ${_cname} is running (local) =="
+    _status="$(docker inspect --format '{{.State.Status}}' "$_cname" 2>&1)"
+    if [ "$_status" != "running" ]; then
+        echo "🚨 DEPLOY FAILED at step L4 (${_cname}, local): expected status 'running', got '${_status}'." >&2
+        docker logs "$_cname" --tail 20 >&2 2>&1 || true
+        exit 1
+    fi
+done
 
-# Step L4: confirm the container is actually running, not just that `up -d` exited 0 - compose
-# can return success even if the container immediately crashed (restart policy is "no"
-# repo-wide, so a crash shows as Exited, not a silent respawn-loop).
-echo "== [L4/L4] Confirming ${CONTAINER_NAME} is running (local) =="
-CONTAINER_STATUS="$(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME" 2>&1)"
-if [ "$CONTAINER_STATUS" != "running" ]; then
-    echo "🚨 DEPLOY FAILED at step L4 (${CONTAINER_NAME}, local): expected status 'running', got '${CONTAINER_STATUS}'." >&2
-    docker logs "$CONTAINER_NAME" --tail 20 >&2 2>&1 || true
-    exit 1
-fi
+VERIFY_CONTAINER="${PROJECT_NAME}-${VERIFY_SERVICE}-1"
 
 # Final verification (REQ-DEPLOY-002) - block until confirmed or timeout. A container that
 # merely started, without this passing, is a FAILED deploy, not a success.
@@ -389,8 +463,8 @@ echo "== Final check: polling ${APP}'s health/version endpoint (local) until it 
 VERIFIED=0
 ELAPSED=0
 while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
-    if [ "$APP" == "morning-mcp-app" ]; then
-        HOST_PORT="$(docker compose "${COMPOSE_ARGS[@]}" port "$SERVICE_NAME" 8000 2>/dev/null | cut -d: -f2)"
+    if [ "$VERIFY_VIA_HTTP" -eq 1 ]; then
+        HOST_PORT="$(docker compose "${COMPOSE_ARGS[@]}" port "$VERIFY_SERVICE" "$VERIFY_HTTP_PORT" 2>/dev/null | cut -d: -f2)"
         HEALTH_JSON=""
         if [ -n "$HOST_PORT" ]; then
             HEALTH_JSON="$(curl -s "http://localhost:${HOST_PORT}/health" 2>/dev/null || echo "")"
@@ -401,7 +475,7 @@ while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
             break
         fi
     else
-        if docker logs "$CONTAINER_NAME" --tail 20 2>&1 | grep -q "\[v${VERSION}\]"; then
+        if docker logs "$VERIFY_CONTAINER" --tail 20 2>&1 | grep -q "\[v${VERSION}\]"; then
             VERIFIED=1
             break
         fi
@@ -413,7 +487,7 @@ done
 if [ "$VERIFIED" -ne 1 ]; then
     echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} within ${VERIFY_TIMEOUT}s (container is running - step L4 passed - but never reported the right version)." >&2
     echo "Last observed container state:" >&2
-    docker logs "$CONTAINER_NAME" --tail 20 >&2 2>&1 || true
+    docker logs "$VERIFY_CONTAINER" --tail 20 >&2 2>&1 || true
     exit 1
 fi
 

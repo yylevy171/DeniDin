@@ -249,13 +249,24 @@ frontend :5173 via Vite; not the containerized env — that's Story 10).
 
 ## Story 9 — Versioning & release tooling
 
-- **9A** (tests): unit test for `scripts/cut_release.sh`/`scripts/deploy_release.sh` accepting
-  `webapp` as a valid `<app>` (extends whatever test coverage those scripts already have, if
-  any — if none exists today, a manual dry-run script test is acceptable, flagged for human
-  confirmation of test approach).
-- **9B** (impl, blocked on 9A approval): extend `cut_release.sh`/`deploy_release.sh` to accept
-  `webapp` as a valid `<app>`, same build/tag/export/deploy/verify mechanics as the two other
-  apps. `apps/webapp/VERSION` = `0.5.4`, `CHANGELOG.md`, `RELEASES.md` seeded.
+- **9A** (tests — DONE 2026-09-06): `scripts/tests/test_cut_release.py` +
+  `test_deploy_release.py` extended. New `scratch_webapp_repo` fixture (two-Dockerfile layout).
+  `test_webapp_bundles_two_images_into_one_artifact` (full cut: both images in one tar, manifest
+  lists both, one tag, VERSION bumped), `test_webapp_recut_refuses`, `test_bad_app_exits_2`,
+  `test_webapp_is_an_accepted_app` (passes arg validation, fails on missing artifact not exit 2).
+  The full two-service deploy+verify path is left to a manual gate against real infra, exactly
+  as morning-mcp-app's `/health` path already is (see `test_deploy_release.py` docstring).
+- **9B** (impl — DONE 2026-09-06): `cut_release.sh` + `deploy_release.sh` accept `webapp`.
+  - `cut_release.sh`: `webapp` builds `webapp-backend` + `webapp-frontend` (repo-root context,
+    each its own Dockerfile), `docker save`s **both into the one** `webapp-v<version>.tar`,
+    manifest gains an `images: [...]` array, one tag `webapp-v<version>`. VERSION/CHANGELOG/
+    RELEASES at `apps/webapp/` (already seeded: VERSION `0.5.4`).
+  - `deploy_release.sh`: `webapp` loads both images, retags each to its
+    `<project>-webapp-{backend,frontend}-<env>:latest`, `up -d --no-build` both services
+    (+ `cloudflared-<env>` **iff** `docker/cloudflared.<env>.env` exists), confirms both
+    backend+frontend containers `running`, then polls `webapp-backend-<env>`'s `/health` for
+    `version == <version>` (same shape as morning-mcp-app). Both local (`dev`) and remote
+    Windows-box (`prod`, over SSH) paths handled.
 
 ## Story 10 — Docker/env bundling & Cloudflare Tunnel ingress
 

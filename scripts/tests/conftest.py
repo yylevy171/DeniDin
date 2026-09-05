@@ -68,6 +68,51 @@ def scratch_repo(tmp_path):
     }
 
 
+@pytest.fixture
+def scratch_webapp_repo(tmp_path):
+    """Like scratch_repo, but laid out for `webapp` - a TWO-image app: apps/webapp/VERSION +
+    CHANGELOG/RELEASES, plus apps/webapp/backend/Dockerfile and apps/webapp/frontend/Dockerfile
+    both built from repo-root context (mirrors the real Dockerfiles). cut_release.sh should
+    build both, bundle them into ONE artifact tar, and write one manifest + one tag."""
+    repo = tmp_path / "scratch_webapp_repo"
+    repo.mkdir()
+    _git(["init", "-q"], repo)
+    _git(["config", "user.email", "test@example.com"], repo)
+    _git(["config", "user.name", "Test"], repo)
+
+    webapp = repo / "apps" / "webapp"
+    (webapp / "backend").mkdir(parents=True)
+    (webapp / "frontend").mkdir(parents=True)
+    (webapp / "VERSION").write_text("0.5.4\n")
+    (webapp / "CHANGELOG.md").write_text("# Changelog\n")
+    (webapp / "RELEASES.md").write_text("# Releases\n")
+    # Repo-root build context (context "." in cut_release.sh's BUILD_SPECS for webapp).
+    (webapp / "backend" / "Dockerfile").write_text(TRIVIAL_DOCKERFILE)
+    (webapp / "frontend" / "Dockerfile").write_text(TRIVIAL_DOCKERFILE)
+
+    scripts_dir = repo / "scripts"
+    scripts_dir.mkdir()
+    for src in (CUT_RELEASE_SCRIPT, DEPLOY_RELEASE_SCRIPT):
+        if src.exists():
+            dest = scripts_dir / src.name
+            shutil.copy(src, dest)
+            os.chmod(dest, 0o755)
+
+    _git(["add", "-A"], repo)
+    _git(["commit", "-q", "-m", "initial"], repo)
+
+    artifacts_root = tmp_path / "artifacts"
+    (artifacts_root / "webapp").mkdir(parents=True)
+
+    return {
+        "repo": repo,
+        "webapp_dir": webapp,
+        "artifacts_root": artifacts_root,
+        "cut_script": scripts_dir / "cut_release.sh",
+        "deploy_script": scripts_dir / "deploy_release.sh",
+    }
+
+
 RUNNING_DOCKERFILE = (
     'FROM python:3.11-slim\n'
     'COPY VERSION /VERSION\n'

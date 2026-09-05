@@ -19,8 +19,13 @@
 # a version number - see REQ-REL-002.
 #
 # Usage: ./scripts/cut_release.sh <app> <version> --summary "<text>" [--artifacts-root <path>]
-#   <app>     : denidin-app | morning-mcp-app
+#   <app>     : denidin-app | morning-mcp-app | webapp
 #   <version> : exact semantic version, e.g. 1.4.2 (no leading "v")
+#
+# webapp is a TWO-image app (webapp-backend + webapp-frontend, both built from repo-root
+# context). Both images go into ONE artifact tar (`docker save img1 img2`), under one
+# manifest and one git tag (webapp-v<version>) - deploy_release.sh loads both and brings up
+# webapp-backend-<env> + webapp-frontend-<env> (+ cloudflared-<env> if its token file exists).
 #   --summary : required, human-written one-line summary for CHANGELOG.md/RELEASES.md
 #   --artifacts-root : optional override of the artifacts folder (test-only seam; real
 #                      invocations never pass this - defaults to the real shared folder)
@@ -64,11 +69,11 @@ APP="${POSITIONAL[0]}"
 VERSION="${POSITIONAL[1]}"
 
 usage() {
-    echo "Usage: $0 <denidin-app|morning-mcp-app> <version> --summary \"<text>\" [--artifacts-root <path>]" >&2
+    echo "Usage: $0 <denidin-app|morning-mcp-app|webapp> <version> --summary \"<text>\" [--artifacts-root <path>]" >&2
 }
 
-if [ "$APP" != "denidin-app" ] && [ "$APP" != "morning-mcp-app" ]; then
-    echo "Error: <app> must be denidin-app or morning-mcp-app (got: '${APP}')." >&2
+if [ "$APP" != "denidin-app" ] && [ "$APP" != "morning-mcp-app" ] && [ "$APP" != "webapp" ]; then
+    echo "Error: <app> must be denidin-app, morning-mcp-app or webapp (got: '${APP}')." >&2
     usage
     exit 2
 fi
@@ -89,6 +94,22 @@ APP_DIR="apps/${APP}"
 TAG="${APP}-v${VERSION}"
 TAR_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.tar"
 MANIFEST_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.json"
+
+# The image(s) this release builds. One for denidin-app/morning-mcp-app; two for webapp
+# (backend + frontend), bundled into the single TAR_PATH. Each entry is
+# "<tag>|<dockerfile>|<build-context>".
+if [ "$APP" == "webapp" ]; then
+    BUILD_SPECS=(
+        "webapp-backend:${VERSION}|apps/webapp/backend/Dockerfile|."
+        "webapp-frontend:${VERSION}|apps/webapp/frontend/Dockerfile|."
+    )
+else
+    BUILD_SPECS=("${APP}:${VERSION}|${APP_DIR}/Dockerfile|${APP_DIR}")
+fi
+IMAGE_TAGS=()
+for _spec in "${BUILD_SPECS[@]}"; do
+    IMAGE_TAGS+=("${_spec%%|*}")
+done
 
 # --- Preconditions (fail before any side effect) ---
 
@@ -228,20 +249,29 @@ fi
 #    setups, several of which run their VM as x86_64) this is a native build; on an arm64 Mac
 #    host it runs under Docker's transparent QEMU emulation. Either way, ONE artifact is correct
 #    for BOTH deploy targets - no per-environment rebuild, ever.
-set +e
-docker build --platform linux/amd64 -t "${APP}:${VERSION}" "${APP_DIR}" -q >/dev/null
-BUILD_STATUS=$?
-set -e
+BUILD_STATUS=0
+for _spec in "${BUILD_SPECS[@]}"; do
+    _tag="${_spec%%|*}"
+    _rest="${_spec#*|}"
+    _dockerfile="${_rest%%|*}"
+    _context="${_rest##*|}"
+    set +e
+    docker build --platform linux/amd64 -t "$_tag" -f "$_dockerfile" "$_context" -q >/dev/null
+    BUILD_STATUS=$?
+    set -e
+    [ "$BUILD_STATUS" -ne 0 ] && break
+done
 if [ "$BUILD_STATUS" -ne 0 ]; then
     echo "Error: docker build failed - reverting VERSION/CHANGELOG.md/RELEASES.md, no commit made." >&2
     _revert_uncommitted_release_files
     exit 1
 fi
 
-# 5. Export it as the durable artifact - also before any commit
+# 5. Export it as the durable artifact - also before any commit. For webapp both images go
+#    into the one tar (docker save accepts multiple image refs).
 mkdir -p "${ARTIFACTS_ROOT}/${APP}"
 set +e
-docker save "${APP}:${VERSION}" -o "$TAR_PATH"
+docker save "${IMAGE_TAGS[@]}" -o "$TAR_PATH"
 SAVE_STATUS=$?
 set -e
 if [ "$SAVE_STATUS" -ne 0 ]; then
@@ -261,15 +291,21 @@ fi
 git commit -q -m "release: ${APP} v${VERSION}"
 COMMIT_SHA="$(git rev-parse HEAD)"
 
-# 7. Write the manifest
-IMAGE_ID="$(docker inspect --format '{{.Id}}' "${APP}:${VERSION}")"
+# 7. Write the manifest. image_id is the first (only, or backend) image; webapp also records
+#    every bundled image tag under "images" so deploy has the full list without re-parsing.
+IMAGE_ID="$(docker inspect --format '{{.Id}}' "${IMAGE_TAGS[0]}")"
+_images_json=""
+for _t in "${IMAGE_TAGS[@]}"; do
+    _images_json="${_images_json:+${_images_json}, }\"${_t}\""
+done
 cat > "$MANIFEST_PATH" <<EOF
 {
   "app": "${APP}",
   "version": "${VERSION}",
   "date": "${RELEASE_DATE}",
   "git_commit": "${COMMIT_SHA}",
-  "image_id": "${IMAGE_ID}"
+  "image_id": "${IMAGE_ID}",
+  "images": [${_images_json}]
 }
 EOF
 
