@@ -50,7 +50,7 @@ path); 070 only changed what is stored, not retrieval. Per user direction 2026-0
 (chronological wholesale inclusion of daily summaries + deterministic date-anchored lookup) is
 tracked as **`specs/in-progress/077-long-term-memory-assembly/`**. The rolling 14-day verbatim
 window itself works correctly and is unaffected. Two related items also surfaced:
-`specs/bugfixes/bugfix-051-*` (a memory question misrouted to `query_ledger_events`, which then
+`specs/bugfixes/bugfix-053-*` (a memory question misrouted to `query_ledger_events`, which then
 hard-errored on context overflow).
 
 ---
