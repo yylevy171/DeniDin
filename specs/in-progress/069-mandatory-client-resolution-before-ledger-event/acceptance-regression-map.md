@@ -28,9 +28,20 @@ store-anyway marker. These files assert the old inline call and/or an un-resolve
 |---|---|---|
 | `tests/billed/test_ledger_event_capture_text_billed.py` | 10 | drop `capture_ledger_event`-call asserts; add `live_morning_tunnel` dep; seed an exact-match client OR script the resolution detour (`ClarificationAnswerBank`); assert `client_name` == exact Morning name; move count checks to "events land post-turn". |
 | `tests/billed/test_ledger_event_capture_billed.py` | 2 | same |
-| `tests/expensive/test_ledger_event_capture_e2e.py` | 6 | image cases now route as a synthetic turn → resolution detour before capture; `עידן שבתאי` / `קהילת צעיר` / `אסתר אסולין` — check which are seeded. `expected_count` direct-persist asserts become post-turn. Overlaps the new `tests/expensive/test_e2e_media_client_resolution.py` — decide which scenarios stay vs. move. **Feature 075 merge already**: swapped `Bank-test-image.jpg` → `Deposit_Eti.jpeg` (payer `אסתר אסולין`, ₪554, 05/08/2026) because `עטיה רועי מאיר` accumulated too many sandbox invoices; and applied `sanity_worker_data_root()` to this file's `config` fixture (per-worker isolation done). |
+| `tests/expensive/test_ledger_event_capture_e2e.py` | 6 → 4 | **DONE 2026-09-06 (static rework — model-behaviour asserts UNTUNED, need real runs).** `..._via_image_path` and `..._bank_deposit_screenshot_...` **DELETED** — fully superseded by Batch 1 `test_e2e_media_client_resolution.py::test_us9_...` / `::test_us7a_...` (same images, same amounts, fuller two-hop fidelity); those 2 sanity slots moved to US9/US7a. F3 (`..._multi_component_agreement_image`), F4 (`..._bank_deposit_image_then_full_fields_...`, bugfix-028), F5 (`..._six_component_..._mor_ben_shaya`) reworked: `denidin_app` fixture gained the live-tunnel check; every test runs as `_godfather_chat_id(config)` + seeds an exact-match Morning client (שחר פישר / אסתר אסולין / מור בן שעיה) + drives the resolution-detour loop (`_drive_detour_until_captured`); `_assert_ledger_events_persisted` no longer asserts `event_datetime`; F4's approval uses a 3-round loop and `_assert_no_open_invoice_for` parses `list_invoices` JSON (`status_code`/`status`); F5's "KNOWN FAILURE / blocked-on-069" block removed. F5 keeps `expected_count=6` + the fixed-amount multiset (a wrong split SHOULD fail). `test_given_non_agreement_image...` stays a Tier 3 false-positive guard (unchanged). `deposit_zero_matches.manifest.json` gained `vat_status: "כולל"` to preserve the deleted F2's one forced-field assertion. |
 
-**Subtotal: 18 tests** (this is the "~16" from the earlier note, exact count 18).
+**Subtotal: 18 → 16 tests** (2026-09-06: the 2 deleted `test_ledger_event_capture_e2e.py`
+cases drop out — superseded by Batch 1, not reworked).
+
+**B4 — Hop-1 two-hop coverage gap (`test_e2e_media_client_resolution.py`).**
+`_ledger_069_acceptance.assert_event_matches_manifest_two_hop`'s Hop-1 structured check
+(`comp0`/`ev0`) is inert: `MediaHandler` never persists the raw structured `ledger_events`
+list, so `_extractor_output_for_chat` reconstructs only the stash TEXT and `ledger_events`
+is always `[]`. Hop-1 therefore only substring-checks the stash text blob. That IS
+meaningful now that `build_ledger_stash_text` renders `סכום`/`תאריך הפקדה`/`מספר בנק`
+onto the stash (the 2026-09-06 `components[0]` fix), but it cannot catch a
+structured-vs-verbatim divergence. **Follow-up:** have `MediaHandler` persist the
+`image_event` dict onto the `Message` (new field) so Hop-1 can compare against it.
 
 ---
 

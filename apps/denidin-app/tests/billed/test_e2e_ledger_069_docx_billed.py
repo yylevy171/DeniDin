@@ -70,7 +70,8 @@ class TestLedgerPostTurnCaptureDocx:
         res = manifest["client_resolution"]
         for seed in manifest.get("seed_clients", []):
             _seed_client(GODFATHER_CHAT_ID, seed["id_prefix"], name=seed["name"],
-                         phone="0525550110")
+                         phone="0525550110",
+                         ensure_exists=bool(seed.get("ensure_exists")))
             time.sleep(2)
 
         from denidin import handle_text_message

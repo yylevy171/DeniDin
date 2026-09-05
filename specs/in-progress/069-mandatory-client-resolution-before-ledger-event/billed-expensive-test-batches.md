@@ -1,7 +1,14 @@
 # Feature 069 — Billed/Expensive Test Batches
 
+> **2026-09-06 update.** `tests/expensive/test_ledger_event_capture_e2e.py` lost 2 tests
+> (`..._via_image_path` → superseded by Batch 1 US9; `..._bank_deposit_screenshot_...` →
+> superseded by Batch 1 US7a). Those 2 sanity slots moved to US9 / US7a (now
+> `@pytest.mark.sanity`). F3/F4/F5 in that file were reworked to the mandatory-client
+> world (godfather + seeded exact-match client + resolution-detour loop; `event_datetime`
+> no longer asserted). Net: 184 → **182 tests**; sanity subset unchanged at 49.
+
 Generated 2026-09-05, on `feature/069-mandatory-client-resolution-before-ledger-event`,
-covering every `billed`/`expensive`-marked test in `apps/denidin-app` (184 tests),
+covering every `billed`/`expensive`-marked test in `apps/denidin-app` (was 184, now 182),
 each assigned to exactly one of the 4 batches below (priority order: Batch 1 >
 Batch 2 > Batch 3 > Batch 4 — a test that qualifies for more than one lands in
 the earliest-listed batch). `apps/morning-mcp-app`'s own 3 billed tests are
@@ -38,13 +45,15 @@ excluded — all 3 already run+passed 2026-09-05, before this file existed.
 - `tests/billed/test_e2e_ledger_069_morning_create_billed.py` (1):
   test_us2_morning_create_is_captured_synchronously
 - `tests/expensive/test_e2e_media_client_resolution.py` (5):
-  test_us7a_deposit_image_zero_matches_new_client,
+  test_us7a_deposit_image_zero_matches_new_client **[now @pytest.mark.sanity — replaces
+  the deleted `test_ledger_event_capture_e2e.py::..._bank_deposit_screenshot_...`]**,
   test_us7b_deposit_image_one_partial_match,
   test_us7c_deposit_image_two_plus_matches,
   test_us7d_deposit_image_exact_match_no_question,
-  test_us9_photographed_multi_component_agreement
+  test_us9_photographed_multi_component_agreement **[now @pytest.mark.sanity — replaces
+  the deleted `test_ledger_event_capture_e2e.py::..._via_image_path`]**
 
-## Batch 2 — Sanity subset (49 total)
+## Batch 2 — Sanity subset (47 total after the 2026-09-06 F1/F2 → US7a/US9 swap; 49 `@pytest.mark.sanity` overall)
 
 - `test_ai_handler_real_api.py`: test_openai_error_handling_real_api
 - `test_denidin_morning_client_management_e2e.py`: test_godfather_finds_client_via_hebrew_vowel_variant, test_godfather_get_client_details_resolves_ambiguous_first_name_prefix_after_confirmation, test_godfather_gets_client_details_via_whatsapp
@@ -64,7 +73,7 @@ excluded — all 3 already run+passed 2026-09-05, before this file existed.
 - `test_simple_text_e2e.py`: test_e2e_simple_text_message_hebrew
 - `test_standalone_receipt_billed.py`: test_godfather_records_a_deposit_as_a_standalone_receipt
 - `test_image_classification_e2e.py`: test_bank_test_image_is_classified_as_a_bank_deposit, test_personal_note_is_neither_bank_nor_agreement, test_six_component_agreement_is_classified_as_an_agreement
-- `test_ledger_event_capture_e2e.py`: test_given_real_agreement_image_when_processed_then_ledger_event_captured_via_image_path, test_given_real_bank_deposit_image_then_full_fields_correctly_persisted, test_given_real_bank_deposit_screenshot_when_processed_then_captured_as_bank_deposit, test_given_real_multi_component_agreement_image_then_components_correctly_persisted, test_given_real_six_component_agreement_image_mor_ben_shaya_then_all_components_correctly_persisted
+- `test_ledger_event_capture_e2e.py` (3, reworked 2026-09-06; was 5): test_given_real_bank_deposit_image_then_full_fields_correctly_persisted, test_given_real_multi_component_agreement_image_then_components_correctly_persisted, test_given_real_six_component_agreement_image_mor_ben_shaya_then_all_components_correctly_persisted
 
 ## Batch 3 — Pre-069 tests directly impacted, needing retest (80 total)
 
@@ -81,8 +90,8 @@ excluded — all 3 already run+passed 2026-09-05, before this file existed.
 - `test_group_b_reference_approval_billed.py` (2): test_credit_note_against_existing_invoice_shows_reference_data, test_multi_turn_clarification_uses_the_real_internal_id_not_the_display_number
 - `test_ledger_event_capture_text_billed.py` (7): test_given_agreement_percent_based_fee_then_percent_fields_correct, test_given_ambiguous_hyphenated_name_then_model_asks_clarifying_question, test_given_new_agreement_flat_fee_then_all_fields_correctly_persisted, test_given_real_addition_language_then_reference_hint_captured, test_given_real_hours_message_with_payer_reference_then_payer_name_captured, test_given_real_minimal_hourly_message_then_captured_not_missed, test_given_real_two_day_hours_message_then_split_per_day_with_correct_dates
 - `test_ledger_query_billed.py` (17): test_agreement_modification_reports_the_latest_state, test_ambiguous_name_asks_then_both_confirmed_merges, test_combined_owed_across_two_clients_requires_multiple_search_rounds, test_conditional_component_status_stays_uncertain_not_guessed, test_credit_note_reverses_a_receipt_so_invoice_stays_owed, test_cross_category_two_figures_for_one_identity, test_exclusion_with_percent_threshold, test_explicit_amount_lookup, test_hours_by_payer_this_month, test_monthly_income_aggregation, test_natural_language_exclusion, test_no_match_never_fabricates, test_owed_via_transaction_account_no_agreement_at_all, test_payer_name_search, test_payment_under_a_different_payer_name_still_resolves, test_tax_invoice_closed_by_receipt_excluded_from_owed_sum, test_total_paid_dedups_matching_deposit_and_receipt
-- `test_group_b_reference_approval_e2e.py` (1, expensive): test_given_a_deposit_matching_an_existing_tax_invoice_then_a_receipt_closes_it
-- `test_ledger_event_capture_e2e.py` (1, expensive): test_given_non_agreement_image_when_processed_then_no_ledger_event_captured
+- `test_group_b_reference_approval_e2e.py` (1, expensive): test_given_a_deposit_matching_an_existing_tax_invoice_then_a_receipt_closes_it — **reworked + passing 2026-09-06** (3-round approval loop for the 069 synthetic-turn flow; phrasing-tolerant closed/paid + linked-receipt assertions)
+- `test_ledger_event_capture_e2e.py` (1, expensive): test_given_non_agreement_image_when_processed_then_no_ledger_event_captured — false-positive guard, unchanged by 069
 
 ## Batch 4 — All remaining tests (40 total)
 
@@ -100,8 +109,9 @@ excluded — all 3 already run+passed 2026-09-05, before this file existed.
 
 | Batch | Count |
 |---|---|
-| 1 — Feature 069's own | 15 |
-| 2 — Sanity | 49 |
-| 3 — Pre-069, impacted | 80 |
-| 4 — Remaining | 40 |
-| **Grand total** | **184** |
+| 1 — Feature 069's own | 15 (US7a + US9 now also `@pytest.mark.sanity`) |
+| 2 — Sanity (not already Batch 1) | 47 (was 49; F1 + F2 deleted, US7a/US9 count under Batch 1 by the priority rule) |
+| 3 — Pre-069, impacted | 80 (unchanged) |
+| 4 — Remaining | 40 (unchanged) |
+| **Grand total** | **182** |
+| `@pytest.mark.sanity` marker count | 49 (unchanged — `verify_sanity_lists.sh` green) |

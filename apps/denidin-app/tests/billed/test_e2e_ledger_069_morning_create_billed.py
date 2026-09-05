@@ -21,9 +21,14 @@ import pytest
 from tests.billed.denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,
     _seed_client,
-    _send_turn_and_approve,
+    _send_turn,
 )
 from tests.billed._ledger_069_acceptance import ledger_events_for_chat
+
+_CREATE_TOOLS = (
+    "create_combo_document", "create_invoice", "create_transaction_account",
+    "create_credit_note", "create_receipt",
+)
 
 
 @pytest.mark.billed
@@ -35,20 +40,30 @@ class TestLedgerPostTurnCaptureMorningCreate:
         the document's own Morning number."""
         name, _, _ = _seed_client(GODFATHER_CHAT_ID, "F069_US2", phone="0525550104")
         time.sleep(2)
-        (_ask, _ask_ai), (reply, approve_ai) = _send_turn_and_approve(
+        # The model may explain / redirect once before it proposes the document
+        # (same caution Feature 069's synthetic-turn flows surface). Follow the
+        # conversation, approving each round, until a create_* actually fires.
+        _ask_reply, last_ai = _send_turn(
             GODFATHER_CHAT_ID,
             f"תפיק ל{name} חשבונית מס-קבלה על סך 1,200 ש\"ח כולל מע\"מ עבור ייעוץ משפטי. שולם היום.",
-            "F069_US2",
+            "F069_US2_ASK",
         )
-        assert approve_ai is not None
-        create_calls = [
-            c for c in approve_ai.mcp_calls
-            if c["name"] in (
-                "create_combo_document", "create_invoice", "create_transaction_account",
-                "create_credit_note", "create_receipt",
-            ) and c.get("error") is None
-        ]
-        assert create_calls, f"no successful Morning create call. reply={reply!r}"
+        create_calls = []
+        reply = _ask_reply
+        for round_n in range(1, 4):
+            create_calls = [
+                c for c in (last_ai.mcp_calls if last_ai else [])
+                if c["name"] in _CREATE_TOOLS and c.get("error") is None
+            ]
+            if create_calls:
+                break
+            reply, last_ai = _send_turn(
+                GODFATHER_CHAT_ID, "כן", f"F069_US2_APPROVE{round_n}",
+            )
+        assert create_calls, (
+            f"no successful Morning create call after 3 approval rounds. "
+            f"reply={reply!r} last_calls={last_ai.mcp_calls if last_ai else None!r}"
+        )
         events = ledger_events_for_chat(denidin_app, GODFATHER_CHAT_ID)
         invoice_events = [e for e in events if e["source_type"] == "חשבונית"]
         assert len(invoice_events) == 1, (

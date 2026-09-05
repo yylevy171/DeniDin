@@ -102,9 +102,11 @@ class TestMediaClientResolutionE2E:
         config_path = Path(__file__).parent.parent.parent / "config" / "config.test.json"
         if not config_path.exists():
             pytest.skip("config.test.json not found")
+        from tests.e2e_helpers import sanity_worker_data_root
+
         config = AppConfiguration.from_file(str(config_path))
         config.validate()
-        test_data_root = Path(__file__).parent.parent.parent / "test_data"
+        test_data_root = sanity_worker_data_root()  # per-xdist-worker isolation (Feature 075)
         config.data_root = str(test_data_root)
         config.memory["session"]["storage_dir"] = str(test_data_root / "sessions")
         config.memory["longterm"]["storage_dir"] = str(test_data_root / "memory")
@@ -158,8 +160,8 @@ class TestMediaClientResolutionE2E:
                 for f in events_dir.glob("*.json"):
                     f.unlink()
             mgr = denidin_app.ai_handler.ledger_event_manager
-            if hasattr(mgr, "_events_index"):
-                mgr._events_index.clear()  # keep in-memory index consistent with disk
+            if hasattr(mgr, "_index"):
+                mgr._index = []  # keep the in-memory index consistent with disk
 
         _wipe()
         yield
@@ -227,7 +229,18 @@ class TestMediaClientResolutionE2E:
 
     def _extractor_output_for_chat(self, denidin_app):
         """Best-effort Hop-1 payload: the synthetic media turn's stashed user
-        message text (verbatim OCR + structured fields) from session history."""
+        message text (verbatim OCR + the rendered structured fields) from
+        session history.
+
+        KNOWN LIMITATION (B4, 2026-09-06): MediaHandler does not persist the raw
+        structured `ledger_events` list anywhere, so `ledger_events` here is
+        always `[]` and Hop-1's `comp0`/`ev0` structured path is inert. It falls
+        back to a substring check of the stash text blob - which IS meaningful
+        now that `build_ledger_stash_text` renders `סכום` / `תאריך הפקדה` /
+        `מספר בנק` etc. onto the stash (the 2026-09-06 components[0] fix). To
+        make Hop-1 catch a structured-vs-verbatim divergence, MediaHandler would
+        need to persist the `image_event` dict onto the Message - tracked in
+        acceptance-regression-map.md."""
         sm = denidin_app.ai_handler.session_manager
         session = sm.get_session(GODFATHER_CHAT_ID)
         for mid in session.message_ids:
@@ -238,6 +251,7 @@ class TestMediaClientResolutionE2E:
         return {"extracted_text": "", "ledger_events": [], "document_analysis": {}}
 
     # ==================================================================== US7
+    @pytest.mark.sanity
     def test_us7a_deposit_image_zero_matches_new_client(self, denidin_app, http_server):
         """US7a — deposit slip whose payer has ZERO Morning matches. The detour
         collects full name + email + phone, `add_client` runs, and the deposit is
@@ -334,6 +348,7 @@ class TestMediaClientResolutionE2E:
         )
 
     # ==================================================================== US9
+    @pytest.mark.sanity
     def test_us9_photographed_multi_component_agreement(self, denidin_app, http_server):
         """US9 — a photographed multi-tier fee agreement (`agreement_idan_shabtai.jpg`).
         Client not in Morning → detour → `add_client` → every fee tier recorded

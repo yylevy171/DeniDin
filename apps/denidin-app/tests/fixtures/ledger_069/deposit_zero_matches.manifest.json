@@ -5,8 +5,10 @@
   "expected_event": {
     "source_type": "בנק",
     "event_subtype": "הפקדה",
-    "amount": "9440"
+    "amount": "9440",
+    "vat_status": "כולל"
   },
+  "_note_vat_status": "כולל is unconditionally forced for every בנק event (money already deposited contains the VAT element); asserted here so this manifest keeps the forced-field coverage the deleted test_ledger_event_capture_e2e.py bank-screenshot test used to carry (2026-09-06).",
   "client_resolution": {
     "scenario": "new_client",
     "operator_stated_name": "קהילת צעיר",

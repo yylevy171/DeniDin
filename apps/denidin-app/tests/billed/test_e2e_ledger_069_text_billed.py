@@ -114,7 +114,8 @@ class TestLedgerPostTurnCaptureText:
         res = manifest["client_resolution"]
         for seed in manifest["seed_clients"]:
             _seed_client(GODFATHER_CHAT_ID, seed["id_prefix"], name=seed["name"],
-                         phone="0525550102")
+                         phone="0525550102",
+                         ensure_exists=bool(seed.get("ensure_exists")))
             time.sleep(2)  # Morning search-index settle
         agreement_text = (FIX_DIR / "agreement_ambiguous.txt").read_text(encoding="utf-8")
         bank = ClarificationAnswerBank(

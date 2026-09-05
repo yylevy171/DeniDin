@@ -120,7 +120,7 @@ def _norm_percent(value: Any) -> Optional[str]:
     s = _norm(value)
     if s is None:
         return None
-    s = s.replace("%", "").replace("‏", "").strip()
+    s = s.replace("%", "").replace("\u200f", "").strip()  # strip a leading RTL mark
     return _norm(s)
 
 
@@ -165,7 +165,17 @@ def assert_event_matches_manifest(  # pylint: disable=too-many-locals,too-many-b
     resolution = manifest["client_resolution"]
     expected_components = expected.pop("components", None)
     marker = "[לקוח לא אומת במורנינג]"
-    store_anyway = bool(resolution.get("expects_marker_in_description"))
+    # store-anyway is active when the manifest declares it OR when the caller
+    # explicitly passes the operator-stated name for that branch. US4 and US8
+    # share one manifest (`agreement_new_client`) - US4 runs the normal detour
+    # (no marker), US8 elects store-anyway (marker) and signals it via
+    # `stated_name_for_store_anyway`. Without this the shared manifest's single
+    # `expects_marker_in_description: false` made US8 assert the marker was
+    # ABSENT and fail on the model's correct behaviour (2026-09-06).
+    store_anyway = (
+        bool(resolution.get("expects_marker_in_description"))
+        or stated_name_for_store_anyway is not None
+    )
 
     # ---- shared (non-component) forward check ------------------------------
     for key, exp_val in expected.items():

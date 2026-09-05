@@ -1,52 +1,74 @@
 """
-End-to-End Integration Test: Ledger Event Recognition (runtime_constitution.md) - image flow
+End-to-End Integration Test: Ledger Event Recognition - image flow (Feature 069).
 
-Tests the real OpenAI function-calling mechanism end-to-end - NOT unit-testable, since
-what's actually under test is whether the real model (a) classifies correctly (calls
-`capture_ledger_event` only when the content genuinely warrants it) and (b) extracts
-fields correctly via the real vision/image pipeline.
+Feature 069 (mandatory client resolution before a ledger event): a recognised
+fee-agreement / bank-deposit IMAGE no longer persists a LedgerEvent straight off
+the OCR. `MediaHandler` builds a structured "ledger stash"; `denidin.py`
+(`_process_media_message`) routes it as a SYNTHETIC conversational turn, so
+`resolve_client_name` / `add_client` / the approval gate all run; only then does
+the post-turn recognition call
+(`AIHandler.recognize_ledger_event` -> `LedgerEventManager.persist_recognized_event`)
+write the event, with its client resolved to an EXACT Morning name.
 
-Feature 033 (Ledger Event Persistence): events now persist as their own files under
-`{data_root}/events/{event_id}.json` via LedgerEventManager, not in session.json's
-(now-removed) `pending_ledger_events`. See
-specs/in-progress/033-ledger-event-persistence/ for the full design - data-model.md's
-migration appendix has the verbatim source text used by the multi-stage test below.
+Consequences for this file (T052, acceptance-regression-map.md Tier 1):
+- Every test runs as the godfather - the Morning client-resolution tools are
+  RBAC-gated - and depends on a live Morning tunnel (the `denidin_app` fixture
+  fails loudly, never skips, when it is down).
+- Every test seeds an exact-match Morning client first, then follows the routed
+  turn (+ any resolution detour) with a `ClarificationAnswerBank` until the
+  event lands.
+- `event_datetime` is NOT asserted against the webhook timestamp anymore - 069
+  dates `הסכם`/`בנק` from the COMPLETING (detour) message, and the Phase 11
+  acceptance helpers list `event_datetime` in `PROVENANCE_IGNORE` for exactly
+  this reason.
+
+Deleted 2026-09-06 (superseded by Feature 069's own Phase 11 acceptance suite,
+`tests/expensive/test_e2e_media_client_resolution.py`, which drives the same
+images through the full resolution detour with bidirectional-manifest fidelity):
+- `test_given_real_agreement_image_when_processed_then_ledger_event_captured_via_image_path`
+  -> US9 (`test_us9_photographed_multi_component_agreement`, manifest
+  `agreement_photo_multi`: same `agreement_idan_shabtai.jpg`, same 3 tier
+  amounts 23,600 / 70,800 / 9,440).
+- `test_given_real_bank_deposit_screenshot_when_processed_then_captured_as_bank_deposit`
+  -> US7a (`test_us7a_deposit_image_zero_matches_new_client`, manifest
+  `deposit_zero_matches`: same `bank_deposit_kehilat_tzair.jpg`, same 9,440;
+  `vat_status: "כולל"` folded into that manifest to keep this file's forced-
+  field coverage).
 
 Images are real source material from the AHLedger reconciliation project
-(tests/fixtures/media/ledger_events/), each with independently verified ground-truth
-content (see the corresponding AHLedger transcript for the exact wording each image
-should produce):
-- agreement_idan_shabtai.jpg = WhatsApp גבייה/IMG-20250925-WA0026.jpg (a real signed
-  fee-agreement letter: עידן שבתאי, disciplinary proceeding, tiered pricing 20,000/60,000/
-  8,000 ₪ + VAT)
-- bank_deposit_kehilat_tzair.jpg = bank/00000650-PHOTO-2025-10-07-20-29-27.jpg (a real
-  bank-transfer confirmation screenshot: קהילת צעיר, 9,440 ₪, "זיכוי ממס"ב")
-- not_an_agreement_personal_note.jpg = WhatsApp גבייה/IMG-20260316-WA0021.jpg (a personal
-  handwritten scratch note, confirmed NOT a fee agreement during that project's own audit)
-- Agreement-test-image.jpg (T024a) = a real fee-proposal letter (שחר פישר / עו"ד אילה
-  הוניגמן, 27.1.253) with FOUR distinct fee components (10,000 / hourly-800-capped-10h /
-  15,000 / 5,000 ₪, all לא כולל מע"מ) - ground truth read directly from the image by the
-  implementing agent (2026-07-29), no separate human transcript for this one.
-- Deposit_Eti.jpeg (T024b) = a real bank-transfer confirmation (05/08/2026, ₪554.00,
-  אסולין אסתר, "שליחות וצילום הערעור לעיריה") - same, ground truth read directly from the image.
+(tests/fixtures/media/ledger_events/), each with independently verified
+ground-truth content:
+- Agreement-test-image.jpg (F3) = a real fee-proposal letter (שחר פישר / עו"ד
+  אילה הוניגמן, 27.1.253) with FOUR distinct fee components (10,000 /
+  hourly-800-capped-10h / 15,000 / 5,000 ₪, all לא כולל מע"מ) - ground truth
+  read directly from the image by the implementing agent (2026-07-29).
+- Deposit_Eti.jpeg (F4) = a real bank-transfer confirmation (05/08/2026,
+  ₪554.00, אסולין אסתר, "שליחות וצילום הערעור לעיריה"), bank 31 / branch 112 /
+  account 105397180.
+- Agreement-mor.jpg (F5) = a real fee-proposal letter dated 3.12.24 (מור בן
+  שעיה / עו"ד אילה הוניגמן), photographed at an angle - the glare band sits on
+  the client surname, so the extracted client line comes back partial
+  (`מר מור בן [לא קריא]`). This is exactly the case Feature 069's mandatory
+  client-resolution detour exists to handle: a seeded exact-match client + a
+  confirming operator turn.
+- not_an_agreement_personal_note.jpg = a personal handwritten scratch note,
+  confirmed NOT a fee agreement during that project's own audit.
 
-Text-flow counterpart split across two tests/billed/ files:
-- tests/billed/test_ledger_event_capture_billed.py (Feature 029's original split)
-- tests/billed/test_ledger_event_capture_text_billed.py (2026-08-03: 9 more text-only
-  tests found still living here under `@pytest.mark.expensive`, despite sending plain
-  textMessage webhooks with no vision call at all - moved out during a test-tier audit)
-Only genuinely image-flow tests stay `expensive` here since they make real vision calls.
+Text-flow counterpart lives in tests/billed/test_ledger_event_capture_billed.py
+and tests/billed/test_ledger_event_capture_text_billed.py.
 
-NO MOCKING - real OpenAI API calls, real image pipeline, real session storage.
+NO MOCKING - real OpenAI, real vision pipeline, real Morning sandbox, real
+session storage.
 
 Run ONE test at a time, with fresh explicit approval each time:
-    pytest tests/expensive/test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::<name> -v -m expensive
+    scripts/run_single_test.sh \\
+      "tests/expensive/test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::<name>"
 """
 
 import json
 import logging
-import re
 import threading
+import time
 import uuid
 from pathlib import Path
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -55,8 +77,12 @@ from urllib.parse import unquote
 import pytest
 
 from src.models.config import AppConfiguration
-from src.utils.time_utils import local_from_timestamp
+from tests.billed.denidin_mcp_e2e_helpers import (
+    NoMorningTunnelError,
+    require_live_morning_tunnel,
+)
 from tests.e2e_helpers import (
+    ClarificationAnswerBank,
     create_real_notification,
     get_response,
     assert_response_exists,
@@ -66,22 +92,28 @@ from tests.e2e_helpers import (
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+_SENDER_NAME = "E2E Godfather"
+
 
 @pytest.mark.expensive
 class TestLedgerEventCaptureE2E:
     """
-    Given/When/Then E2E coverage for Ledger Event Recognition's image flow:
-    - Given an image that genuinely warrants capture, When processed, Then
-      `capture_ledger_event` is called and the result lands in its own file under
-      `data/events/`, correctly shaped per data-model.md.
-    - Given an image that doesn't, When processed, Then it is NOT called - the
+    Given/When/Then E2E coverage for Ledger Event Recognition's image flow under
+    Feature 069:
+    - Given an image that genuinely warrants capture AND a resolvable client,
+      When processed, Then it routes as a synthetic turn, the client resolves to
+      an exact Morning name, and the post-turn recognition call persists the
+      event(s) in `data/events/`.
+    - Given an image that does NOT warrant capture, When processed, Then no
+      synthetic ledger routing fires and nothing is persisted - the
       false-positive guard matters as much as the capture itself.
     """
 
+    # ------------------------------------------------------------------ infra
     @pytest.fixture(scope="class")
     def http_server(self):
-        """Local HTTP server serving tests/fixtures/media/ledger_events/, simulating
-        Green API's file download URLs (same pattern as test_media_e2e.py)."""
+        """Local HTTP server serving tests/fixtures/media/ledger_events/,
+        simulating Green API's file download URLs."""
         fixtures_dir = Path(__file__).parent.parent / "fixtures" / "media" / "ledger_events"
 
         class Handler(SimpleHTTPRequestHandler):
@@ -91,7 +123,7 @@ class TestLedgerEventCaptureE2E:
             def translate_path(self, path):
                 return super().translate_path(unquote(path))
 
-            def log_message(self, format, *args):
+            def log_message(self, format, *args):  # pylint: disable=redefined-builtin
                 pass
 
         server = HTTPServer(('127.0.0.1', 8766), Handler)
@@ -120,7 +152,20 @@ class TestLedgerEventCaptureE2E:
 
     @pytest.fixture
     def denidin_app(self, config):
-        """Initialize the full denidin app - NO MOCKING."""
+        """Initialize the full denidin app - NO MOCKING.
+
+        Feature 069: the image path now runs the mandatory client-resolution
+        detour through the live Morning tunnel, so this fixture fails LOUDLY
+        (never skips) when the tunnel is down - same contract as
+        tests/billed/conftest.py's `live_morning_tunnel`.
+        """
+        status_file_path = Path(config.mcp["morning_status_file"])
+        max_age = config.mcp.get("url_max_age_seconds", 0) or 0
+        try:
+            require_live_morning_tunnel(status_file_path, max_age)
+        except NoMorningTunnelError as exc:
+            pytest.fail(str(exc), pytrace=False)
+
         import denidin
 
         if denidin.denidin_app is None:
@@ -131,8 +176,7 @@ class TestLedgerEventCaptureE2E:
                 'ai_model': config.ai_model,
                 # Must be passed through explicitly - otherwise initialize_app falls
                 # back to AppConfiguration's gpt-4o-mini default and the image path
-                # silently exercises a different (weaker) vision model than production,
-                # which passes these same keys (see denidin.py __main__ config_dict).
+                # silently exercises a different (weaker) vision model than production.
                 'ai_vision_model': config.ai_vision_model,
                 'ai_embedding_model': config.ai_embedding_model,
                 'ai_reply_max_tokens': config.ai_reply_max_tokens,
@@ -147,122 +191,60 @@ class TestLedgerEventCaptureE2E:
             }
             denidin.denidin_app = denidin.initialize_app(config_dict)
 
-        # Safety guard, every call (not just first-init): LedgerEventManager.storage_dir
-        # MUST resolve under this test's isolated data_root (test_data/), never the real
-        # production/dev data root - a wiring mistake here would write test noise into
-        # the real financial ledger. Fails loud and immediately rather than silently
-        # polluting data/events/ or dev_data/events/.
+        # Safety guard, every call: LedgerEventManager.storage_dir MUST resolve
+        # under this test's isolated data_root (test_data/), never the real
+        # production/dev data root - a wiring mistake here would write test noise
+        # into the real financial ledger. Fails loud and immediately.
         actual_events_dir = Path(denidin.denidin_app.ai_handler.ledger_event_manager.storage_dir).resolve()
         expected_root = Path(config.data_root).resolve()
         assert actual_events_dir.is_relative_to(expected_root), (
             f"LedgerEventManager.storage_dir={actual_events_dir} is NOT under this "
-            f"test's isolated data_root={expected_root} - refusing to proceed, this "
-            f"would write into production/dev ledger data"
+            f"test's isolated data_root={expected_root} - refusing to proceed"
         )
         return denidin.denidin_app
 
-    # Fixed webhook 'timestamp' epochs used across this class's tests (mirrored
-    # from each test's own notification literal) - these are FIXED, not "now",
-    # so every run maps to the exact same LedgerEventManager event_id bucket
-    # (letter+ddmmyy+hhmm). REQ-ID-003 only allows 10 seq-digit files per
-    # bucket; without cleanup, test_data/events/ accumulates one file per run
-    # and permanently exhausts the bucket after ~10 runs - the same bug that
-    # broke tests/billed/test_ledger_event_capture_text_billed.py 2026-08-10
-    # (bugfix-028 billed run), fixed there the same way.
-    _FIXED_MESSAGE_TIMESTAMPS = (
-        1770000200, 1770000300, 1770000400, 1770001300, 1770001400, 1770001500,
-    )
-
-    @classmethod
-    def _event_id_bucket_prefixes(cls) -> set:
-        """The event_id prefix (letter+ddmmyy+hhmm, sans seq digit) each fixed
-        timestamp above maps to, computed the same way LedgerEventManager does
-        (bugfix-037: via time_utils.local_from_timestamp) - so cleanup targets
-        exactly the files these tests could have produced, nothing else in
-        test_data/events/."""
-        return {
-            f"A{local_from_timestamp(ts).strftime('%d%m%y%H%M')}"
-            for ts in cls._FIXED_MESSAGE_TIMESTAMPS
-        }
-
     @pytest.fixture(autouse=True)
-    def _clean_fixed_timestamp_events(self, config):
-        """Before AND after every test in this class: remove any previously-
-        persisted event file for this class's fixed-timestamp buckets, so
-        REQ-ID-003's 10-seq-digit cap never silently exhausts across repeated
-        runs again (see _FIXED_MESSAGE_TIMESTAMPS docstring above)."""
-        def _clean():
-            events_dir = Path(config.data_root) / "events"
-            if not events_dir.exists():
-                return
-            prefixes = self._event_id_bucket_prefixes()
-            for f in events_dir.glob("*.json"):
-                if any(f.stem.startswith(p) for p in prefixes):
+    def _clean_ledger(self, denidin_app):
+        """Wipe persisted ledger-event state before AND after every test in this
+        class - `tests/expensive/` has no directory-wide autouse of its own, and
+        Feature 069 dates events from a wall-clock detour turn (not the fixed
+        webhook epoch the old `_clean_fixed_timestamp_events` keyed off), so a
+        blanket wipe of this isolated test_data/ events dir is the only reliable
+        cleanup. Mirrors `test_e2e_media_client_resolution.py::_clean_ledger`."""
+        events_dir = Path(denidin_app.ai_handler.ledger_event_manager.storage_dir)
+
+        def _wipe():
+            if events_dir.exists():
+                for f in events_dir.glob("*.json"):
                     f.unlink()
+            mgr = denidin_app.ai_handler.ledger_event_manager
+            if hasattr(mgr, "_index"):
+                mgr._index = []  # keep the in-memory index consistent with disk
 
-        _clean()
+        _wipe()
         yield
-        _clean()
+        _wipe()
 
+    # ------------------------------------------------------------------ ids / cleanup
     @staticmethod
     def _fresh_chat_id(label: str) -> str:
-        """A unique-per-run chat_id, so re-running a single test doesn't accumulate
-        unbounded ledger events for a shared chat and confuse assertions."""
+        """A unique-per-run chat_id for the no-capture guard (no client
+        resolution needed there, so it needn't be the godfather)."""
         return f"97250{uuid.uuid4().hex[:7]}_{label}@c.us"
 
     @staticmethod
     def _godfather_chat_id(config) -> str:
-        """bugfix-028: the deposit->document tests need a chat whose role actually
-        gets the Morning tools attached (RBAC-gated to godfather/admin), so they
-        cannot use a random `_fresh_chat_id`."""
+        """Feature 069: every capture test needs a chat whose role gets the
+        Morning client-resolution tools attached (RBAC-gated to godfather/admin)."""
         phone = str(config.godfather_phone).lstrip("+")
         return phone if phone.endswith("@c.us") else f"{phone}@c.us"
 
-    # bugfix-028: the deposit->document phase must resolve the payer from the
-    # IMAGE's own extracted text (user, 2026-08-09: "use the extracted text for
-    # every data"). The image prints the account holder surname-first as
-    # "אסולין אסתר"; the real Morning sandbox client the user seeded one-time for
-    # this fixture is "אסתר אסולין". BANK_IMAGE_PAYER is the name to SEED/look up
-    # in Morning; BANK_IMAGE_PAYER_SURNAME is the stable token used for every
-    # assertion so word order never matters.
-    BANK_IMAGE_PAYER = "אסתר אסולין"
-    BANK_IMAGE_PAYER_SURNAME = "אסולין"
-
-    @staticmethod
-    def _assert_no_open_invoice_for(chat_id, name, id_prefix):
-        """Guard against cross-test interference: both deposit tests use the same
-        payer (the one on the screenshot), and their expected outcome DIFFERS
-        depending on whether an unpaid invoice for that payer already exists -
-        320 when none does, 400 when one does. A leftover open invoice from a
-        half-finished run would silently invert the expected result.
-        """
-        from tests.billed.denidin_mcp_e2e_helpers import _calls_for, _send_turn
-
-        _, ai_response = _send_turn(
-            chat_id, f"אילו חשבוניות פתוחות יש ל{name}?", id_prefix=f"{id_prefix}_PRECHECK"
-        )
-        listings = _calls_for(ai_response, "list_invoices")
-        output = (listings[0]["output"] or "") if listings else ""
-        assert "פתוח" not in output, (
-            f"precondition failed: {name!r} already has an unpaid invoice in the "
-            f"sandbox, so this deposit would correctly close it (a 400) instead of "
-            f"producing a new 320. Close it in Morning, then re-run. Listing: {output!r}"
-        )
-
     @staticmethod
     def _clear_chat_test_data(denidin_app, chat_id):
-        """bugfix-028 (user requirement, 2026-08-09): clear this chat's test data
-        before AND after, so a shared, non-random chat_id can't collide with a
-        previous run's events/session or leave duplicates behind for the next one.
-
-        Only ever touches test_data/ - the `denidin_app` fixture above already
-        refuses to run at all if LedgerEventManager.storage_dir is not under this
-        test's isolated data_root.
-        """
-        # 2026-08-19: LedgerEvent no longer carries its own whatsapp_chat (removed -
-        # redundant with session_id) - resolve session_id via SessionManager
-        # instead (safe even pre-test, when no real session exists yet: creates
-        # an empty one that matches zero real event files).
+        """Clear this chat's session + its persisted events before AND after, so
+        the fixed godfather chat_id can't collide with a previous run. Only ever
+        touches test_data/ - the `denidin_app` fixture already refuses to run if
+        LedgerEventManager.storage_dir is not under this test's data_root."""
         session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
         events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
         for f in list(events_dir.glob("*.json")):
@@ -281,17 +263,11 @@ class TestLedgerEventCaptureE2E:
             except AttributeError:
                 logger.warning("SessionManager has no clear_session - session data not cleared")
 
+    # ------------------------------------------------------------------ event readers
     @staticmethod
     def _events_for_chat(denidin_app, chat_id):
-        """All persisted LedgerEvent files (data/events/*.json) for this chat_id,
-        sorted by captured_at - reads the real files off disk, not an in-memory
-        proxy, so assertions prove the event genuinely landed in permanent storage
-        (Feature 033's whole point).
-
-        2026-08-19: LedgerEvent no longer carries its own whatsapp_chat (removed -
-        redundant with session_id, which already points at a session that carries
-        its own whatsapp_chat) - filters by session_id instead, resolved via the
-        real SessionManager for this chat_id."""
+        """All persisted LedgerEvent files for this chat_id's current session,
+        sorted by captured_at - reads the real files off disk."""
         session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
         events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
         results = []
@@ -304,30 +280,17 @@ class TestLedgerEventCaptureE2E:
         return results
 
     @staticmethod
-    def _assert_ledger_events_persisted(denidin_app, chat_id, expected_count, expected_event_timestamp):
-        """Asserts events were persisted for this chat, each with the bookkeeping
-        fields LedgerEventManager.add_ledger_event adds (event_datetime = the real
-        hard pointer, captured_at, message_id) present and correct. Returns the
-        events in capture order for further field-specific assertions.
+    def _assert_ledger_events_persisted(denidin_app, chat_id, expected_count):
+        """Assert events were persisted for this chat, each carrying the
+        bookkeeping fields `persist_recognized_event` adds.
 
-        expected_count: exact count required, or None to only assert >=1 (used when
-        the real component split is genuinely uncertain - e.g. a multi-component
-        document whose exact chunking by the model hasn't been separately agreed,
-        unlike the גיליאן דוידיאן case).
+        Feature 069: `event_datetime` is NOT asserted here - 069 dates
+        `הסכם`/`בנק` from the COMPLETING (detour) message, not the webhook, and
+        the Phase 11 acceptance helpers list `event_datetime` in
+        PROVENANCE_IGNORE for the same reason. Presence of `captured_at` /
+        `message_id` is still checked.
 
-        expected_event_timestamp: the real Green API notification timestamp (unix
-        epoch seconds) these events should be pointed at - the constitution's "hard
-        pointer" requirement (never processing time, never a guess).
-
-        2026-08-20 (billed/expensive test sweep for Feature 043's Phase 11 schema
-        revision): this helper was stale in the exact same way
-        tests/billed/test_ledger_event_capture_billed.py's copy was found and fixed
-        on 2026-08-18 - `message_timestamp` and `sender` were both removed from the
-        persisted record (folded into event_datetime; see data-model.md SS1b), but
-        this expensive-tier copy still asserted on them, which would have failed
-        the very next real (billed) run of this file. Fixed to check
-        `event_datetime` (DD/MM/YYYY HH:MM, Israel local) and dropped the sender
-        assertion entirely, matching the billed helper exactly.
+        expected_count: exact count required, or None to only assert >= 1.
         """
         events = TestLedgerEventCaptureE2E._events_for_chat(denidin_app, chat_id)
         if expected_count is None:
@@ -338,30 +301,21 @@ class TestLedgerEventCaptureE2E:
                 f"found {len(events)}: {events}"
             )
 
-        # bugfix-037/Phase 11: event_datetime is Israel local time, "DD/MM/YYYY HH:MM".
-        expected_event_datetime = local_from_timestamp(expected_event_timestamp).strftime("%d/%m/%Y %H:%M")
         for record in events:
-            assert record.get("event_datetime") == expected_event_datetime, (
-                f"event_datetime={record.get('event_datetime')!r} does not match the "
-                f"real notification timestamp {expected_event_datetime!r} - the constitution's "
-                f"'hard pointer' requirement (never processing time, never a guess)"
-            )
             assert record.get("captured_at"), "captured_at was not persisted"
             assert record.get("message_id"), (
-                "message_id must be non-null for events captured after Feature 033 - "
-                "closes the traceability gap that motivated this feature"
+                "message_id must be non-null (Feature 033 traceability) - the "
+                "completing message the recognition call fired on"
             )
             assert "raw_message_excerpt" not in record, (
-                "raw_message_excerpt was removed from the persisted schema (2026-08-18) - "
-                "the source content now lives on the message record itself "
-                "(Message.content for text, Message.extracted_text for media)"
+                "raw_message_excerpt was removed from the persisted schema (2026-08-18)"
             )
         return events
 
     @staticmethod
     def _assert_message_links_back_to_event(denidin_app, chat_id, event):
-        """Cross-checks the reverse link: the source message's ledger_event_ids
-        (Feature 033) must include this event's event_id."""
+        """The completing message's `ledger_event_ids` (Feature 033) must
+        include this event's event_id."""
         session_manager = denidin_app.ai_handler.session_manager
         session_id = session_manager.chat_to_session[chat_id]
         message_id = event["message_id"]
@@ -369,191 +323,469 @@ class TestLedgerEventCaptureE2E:
         with open(message_file, encoding='utf-8') as f:
             message_data = json.load(f)
         assert event["event_id"] in message_data["ledger_event_ids"], (
-            f"event {event['event_id']} not found in source message {message_id}'s "
+            f"event {event['event_id']} not found in completing message {message_id}'s "
             f"ledger_event_ids={message_data.get('ledger_event_ids')!r}"
         )
 
-    # ------------------------------------------------------------------
-    # IMAGE FLOW (also exercises bugfix-017's session-linkage fix)
-    # ------------------------------------------------------------------
+    @staticmethod
+    def _assert_no_open_invoice_for(chat_id, name, id_prefix):
+        """Guard against cross-test interference: the deposit test's expected
+        outcome DIFFERS depending on whether an open invoice for the payer
+        already exists - 320 when none does, 400 when one does. A leftover open
+        invoice from a half-finished run would silently invert the result.
 
-    @pytest.mark.sanity
-    def test_given_real_agreement_image_when_processed_then_ledger_event_captured_via_image_path(
-        self, denidin_app, http_server
-    ):
-        """Given a real, previously-transcribed fee-agreement document image (עידן
-        שבתאי, disciplinary-proceeding representation), When sent as a WhatsApp image,
-        Then it's captured via the image path (ImageExtractor -> MediaHandler) as
-        THREE separate components, matching the document's real structure verified
-        directly against the image (2026-07-30) - never one combined event (T017c):
-        1. שימוע + מו"מ להסדר טיעון (track א', no evidence hearing needed): 20,000 ₪
-           + VAT = 23,600 ₪.
-        2. ניהול תיק מלא עם שמיעת ראיות (track ב', if no plea deal reached): 60,000 ₪
-           + VAT = 70,800 ₪.
-        3. תוספת: שימוע אצל נציב שירות המדינה לבחינת השעיה - additive on top of
-           whichever of track א'/ב' applies: 8,000 ₪ + VAT = 9,440 ₪.
+        2026-09-06: reads the parsed `list_invoices` JSON (2026-09-04 JSON-only
+        contract) - `status_code == 0` / `status == "unpaid"` means open - not a
+        `"פתוח"` substring scan of prose that no longer exists.
+        """
+        from tests.billed.denidin_mcp_e2e_helpers import _calls_for, _send_turn
 
-        This is the same "never aggregate" principle as hourly work-log entries,
-        generalized to multi-stage/conditional fee agreements (constitution updated
-        2026-07-30 - see config/runtime_constitution.md's Ledger Event Recognition
-        Step 2). Also confirms (Feature 033) a real, non-null message_id on the
-        image path."""
+        _, ai_response = _send_turn(
+            chat_id, f"אילו חשבוניות פתוחות יש ל{name}?", id_prefix=f"{id_prefix}_PRECHECK"
+        )
+        listings = _calls_for(ai_response, "list_invoices")
+        output = (listings[0]["output"] or "") if listings else ""
+        open_docs = []
+        if output:
+            try:
+                payload = json.loads(output)
+            except json.JSONDecodeError:
+                payload = {}
+            if isinstance(payload, dict):
+                docs = payload.get("documents") or []
+            elif isinstance(payload, list):
+                docs = payload
+            else:
+                docs = []
+            open_docs = [
+                d for d in docs
+                if d.get("status_code") == 0 or d.get("status") in ("unpaid", "open")
+            ]
+        assert not open_docs, (
+            f"precondition failed: {name!r} already has an open invoice in the sandbox, "
+            f"so this deposit would correctly CLOSE it (a 400) instead of producing a new "
+            f"320. Close it in Morning, then re-run. Open docs: {open_docs!r}"
+        )
+
+    # ------------------------------------------------------------------ drivers
+    @staticmethod
+    def _send_image(http_server, filename, *, caption, chat_id, id_prefix):
+        """Send one real WhatsApp image through the real router handler and
+        return the SYNTHETIC-turn reply (Feature 069 routes the recognised
+        stash straight into the conversational pipeline)."""
         from denidin import handle_image_message
 
-        chat_id = self._fresh_chat_id("image_agreement")
         notification = create_real_notification({
             'typeWebhook': 'incomingMessageReceived',
-            'timestamp': 1770000200,
-            'idMessage': 'LEDGER_E2E_IMAGE_AGREEMENT_001',
+            'timestamp': int(time.time()),
+            'idMessage': f'{id_prefix}_IMG',
             'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
-            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
+            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': _SENDER_NAME},
             'messageData': {
                 'typeMessage': 'imageMessage',
                 'fileMessageData': {
-                    'downloadUrl': f'{http_server}/agreement_idan_shabtai.jpg',
-                    'fileName': 'agreement_idan_shabtai.jpg',
+                    'downloadUrl': f'{http_server}/{filename}',
+                    'fileName': filename,
                     'mimeType': 'image/jpeg',
-                    'caption': '',
+                    'caption': caption,
                     'jpegThumbnail': '',
                     'isForwarded': False,
                     'forwardingScore': 0,
                 }
             }
         })
-
-        logger.info("GIVEN a real fee-agreement document image (עידן שבתאי, 3 conditional fee tiers)")
         handle_image_message(notification)
-        logger.info("WHEN DeniDin processes it via the image pipeline")
+        reply = get_response(notification)
+        assert_response_exists(reply)
+        return reply
 
-        response = get_response(notification)
-        assert_response_exists(response)
-
-        # THEN: verify against the real persisted data/events/{event_id}.json files,
-        # including event_datetime being the real notification timestamp
-        # (1770000200) - NOT processing time (the bug found and fixed 2026-07-28).
-        events = self._assert_ledger_events_persisted(
-            denidin_app, chat_id, expected_count=3, expected_event_timestamp=1770000200
-        )
-        logger.info(f"THEN captured {len(events)} events (persisted): {events}")
-
-        for e in events:
-            assert e["source_type"] == "הסכם"
-            assert e["event_subtype"] == "יצירה"
-            assert "עידן" in (e.get("client_name") or "") or "שבתאי" in (e.get("client_name") or "")
-            assert e["event_id"].startswith("A")
-            # Feature 033: this is the first real proof message_id threading works on
-            # the image path end-to-end (component tests use a real object but not a
-            # real call).
-            self._assert_message_links_back_to_event(denidin_app, chat_id, e)
-
-        amounts = sorted(e.get("amount") for e in events)
-        assert amounts == [9440, 23600, 70800], (
-            f"Expected the 3 real fee-tier amounts (23,600 / 70,800 / 9,440), got "
-            f"{amounts} - if this fails, the model did not split the document per "
-            f"stage/condition despite the constitution's explicit rule for this"
-        )
-
-        # Also confirms bugfix-017: the media turn itself must be visible in the session,
-        # not just the captured ledger event.
-        session = denidin_app.ai_handler.session_manager.get_session(chat_id)
-        assert len(session.message_ids) >= 2, "bugfix-017: media turn was not stored in the session"
-
-        # bugfix-009 (reopened 2026-07-30): the media turn's user message must also
-        # carry a real image_path, not just exist.
-        image_path = assert_image_path_persisted(denidin_app, chat_id)
-        logger.info(f"THEN image_path persisted and resolves to real file: {image_path}")
-
-    @pytest.mark.sanity
-    def test_given_real_bank_deposit_screenshot_when_processed_then_captured_as_bank_deposit(
-        self, denidin_app, http_server
+    def _drive_detour_until_captured(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+        self, denidin_app, chat_id, first_reply, answer_bank, id_prefix, max_turns=6
     ):
-        """Given a real bank-transfer confirmation screenshot (קהילת צעיר, 9,440 ₪),
-        When sent as a WhatsApp image, Then it's captured with source_type=בנק, a
-        B-prefixed event_id, and normalized integer amount (T017d)."""
-        from denidin import handle_image_message
+        """After the image's synthetic turn, follow the resolution detour with
+        `answer_bank`-composed text turns until a LedgerEvent lands (or fail
+        after `max_turns`). Stops the instant capture happens - an unconditional
+        follow-up after a turn that already captured is what caused a real
+        observed double-capture in this mechanism's first version."""
+        from denidin import handle_text_message
 
-        chat_id = self._fresh_chat_id("image_bank")
-        notification = create_real_notification({
-            'typeWebhook': 'incomingMessageReceived',
-            'timestamp': 1770000300,
-            'idMessage': 'LEDGER_E2E_IMAGE_BANK_001',
-            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
-            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
-            'messageData': {
-                'typeMessage': 'imageMessage',
-                'fileMessageData': {
-                    'downloadUrl': f'{http_server}/bank_deposit_kehilat_tzair.jpg',
-                    'fileName': 'bank_deposit_kehilat_tzair.jpg',
-                    'mimeType': 'image/jpeg',
-                    'caption': '',
-                    'jpegThumbnail': '',
-                    'isForwarded': False,
-                    'forwardingScore': 0,
-                }
-            }
-        })
-
-        logger.info("GIVEN a real bank-deposit screenshot (קהילת צעיר, 9,440 ₪)")
-        handle_image_message(notification)
-        logger.info("WHEN DeniDin processes it via the image pipeline")
-
-        response = get_response(notification)
-        assert_response_exists(response)
-
-        events = self._assert_ledger_events_persisted(
-            denidin_app, chat_id, expected_count=1, expected_event_timestamp=1770000300
+        events = self._events_for_chat(denidin_app, chat_id)
+        text = first_reply
+        ts = int(time.time())
+        transcript = [{"turn": 0, "sent": "<image>", "reply": first_reply}]
+        turn = 0
+        while not events and turn < max_turns:
+            turn += 1
+            nxt, matched = answer_bank.compose_answer(text or "")
+            notification = create_real_notification({
+                'typeWebhook': 'incomingMessageReceived',
+                'timestamp': ts + turn * 30,
+                'idMessage': f'{id_prefix}_F{turn}',
+                'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
+                'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': _SENDER_NAME},
+                'messageData': {'typeMessage': 'textMessage', 'textMessageData': {'textMessage': nxt}},
+            })
+            handle_text_message(notification)
+            text = get_response(notification)
+            transcript.append({"turn": turn, "sent": nxt, "reply": text, "matched": matched})
+            events = self._events_for_chat(denidin_app, chat_id)
+        for e in transcript:
+            logger.info("TURN %s | sent=%r | reply=%r", e["turn"], e["sent"], e["reply"])
+        assert events, (
+            f"no LedgerEvent persisted for {chat_id!r} after the image + {turn} detour "
+            f"turn(s). Transcript: {transcript!r}"
         )
-        captured = events[0]
-        logger.info(f"THEN captured event (persisted): {captured}")
+        return events
 
-        assert captured["source_type"] == "בנק"
-        assert captured["event_subtype"] == "הפקדה"
-        assert captured["amount"] == 9440, f"expected amount normalized to int 9440, got {captured['amount']!r}"
-        assert captured["event_id"].startswith("B")
-        self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
+    # ==================================================================
+    # F3 - multi-component fee-agreement image, seeded exact-match client
+    # ==================================================================
+    @pytest.mark.sanity
+    def test_given_real_multi_component_agreement_image_then_components_correctly_persisted(
+        self, denidin_app, http_server, config
+    ):
+        """Given a real 4-component fee-proposal image (Agreement-test-image.jpg:
+        client שחר פישר / עו"ד אילה הוניגמן; components א. 10,000 ₪, ב. hourly
+        800 ₪/hr capped at 10h, ג. 15,000 ₪, ד. 5,000 ₪ - all לא כולל מע"מ),
+        When the godfather sends it as a WhatsApp image with שחר פישר ALREADY an
+        exact Morning client, Then the routed synthetic turn resolves the client
+        and the post-turn recognition call persists one הסכם event per fee
+        component, each against the exact Morning name.
 
-        # Phase 11 (2026-08-16): payer_name is a הסכם-only concept, forced null for
-        # every בנק event regardless of what the model passed - no bank_number/
-        # bank_branch/bank_account ground truth is asserted for THIS image (a
-        # "זיכוי ממס"ב" credit, visually distinct from Bank-test-image.jpg and not
-        # confirmed at the extraction layer either - see
-        # test_image_classification_e2e.py's test_kehilat_tzair_deposit_is_classified_
-        # as_a_bank_deposit, which only asserts amount for the same reason), but this
-        # payer_name/vat_status enforcement is unconditional and applies here too.
-        assert captured.get("payer_name") is None, (
-            f"payer_name must be forced null for בנק events, got {captured.get('payer_name')!r}"
+        The exact component split for THIS document was never separately agreed
+        (unlike US9's manifest), so this asserts real, non-placeholder
+        properties without presupposing a count: every persisted event is a
+        well-formed A-prefixed הסכם against שחר פישר, and each flat-fee amount
+        (10,000 / 15,000 / 5,000) is represented somewhere. A wrong extraction
+        SHOULD fail this.
+        """
+        from tests.billed.denidin_mcp_e2e_helpers import _seed_client
+
+        chat_id = self._godfather_chat_id(config)
+        self._clear_chat_test_data(denidin_app, chat_id)
+        try:
+            client_name = "שחר פישר"
+            _seed_client(chat_id, "LEDGER_E2E_F3", name=client_name, ensure_exists=True)
+
+            reply = self._send_image(
+                http_server, "Agreement-test-image.jpg",
+                caption="ההסכם החתום, תרשום ביומן",
+                chat_id=chat_id, id_prefix="LEDGER_E2E_IMAGE_AGREEMENT_MULTI",
+            )
+            # An exact seeded match should resolve silently; the bank only covers
+            # the model asking anyway (near-match phrasing / a VAT question).
+            bank = ClarificationAnswerBank(
+                [
+                    {"topic": "which_client",
+                     "keywords": ["מצאתי", "האם הכוונה", "התכוונת", "איזה", "לקוח", "נכון"],
+                     "answer": f"כן, {client_name}, תרשום ביומן"},
+                    {"topic": "vat", "keywords": ['מע"מ', "מעמ"],
+                     "answer": 'לא כולל מע"מ, כפי שכתוב בהסכם'},
+                ],
+                fallback=f"כן, {client_name}, תרשום ביומן",
+            )
+            self._drive_detour_until_captured(
+                denidin_app, chat_id, reply, bank, "LEDGER_E2E_F3"
+            )
+
+            events = self._assert_ledger_events_persisted(denidin_app, chat_id, expected_count=None)
+            logger.info(f"THEN captured {len(events)} event(s) (persisted): {events}")
+
+            for e in events:
+                assert e["source_type"] == "הסכם"
+                assert e["event_id"].startswith("A"), f"malformed event_id: {e['event_id']!r}"
+                assert "שחר" in (e.get("client_name") or "") or "פישר" in (e.get("client_name") or ""), (
+                    f"client_name must resolve to the seeded exact Morning name "
+                    f"{client_name!r}, got {e.get('client_name')!r}"
+                )
+                self._assert_message_links_back_to_event(denidin_app, chat_id, e)
+
+            captured_amounts = {e.get("amount") for e in events}
+            for expected_amount in (10000, 15000, 5000):
+                assert expected_amount in captured_amounts, (
+                    f"expected {expected_amount} among captured amounts {captured_amounts} "
+                    f"(document states 10,000 / 15,000 / 5,000 ₪ as its three flat-fee "
+                    f"components, plus a 4th hourly component at 800 ₪/hr capped at 10h)"
+                )
+
+            image_path = assert_image_path_persisted(denidin_app, chat_id)
+            logger.info(f"THEN image_path persisted and resolves to real file: {image_path}")
+        finally:
+            self._clear_chat_test_data(denidin_app, chat_id)
+
+    # ==================================================================
+    # F4 - bank-deposit image -> ledger event AND the document it implies
+    #      (bugfix-028), seeded exact-match payer
+    # ==================================================================
+    @pytest.mark.sanity
+    def test_given_real_bank_deposit_image_then_full_fields_correctly_persisted(  # pylint: disable=too-many-locals,too-many-statements
+        self, denidin_app, http_server, config
+    ):
+        """Given a real bank-transfer confirmation screenshot (Deposit_Eti.jpeg:
+        05/08/2026, ₪554.00, account holder אסולין אסתר, note "שליחות וצילום
+        הערעור לעיריה", bank 31 / branch 112 / account 105397180), When the
+        godfather sends it as a WhatsApp image with the payer ALREADY an exact
+        Morning client, Then:
+        1. it routes as a synthetic turn, resolves the client, and the post-turn
+           recognition call persists ONE בנק event - source_type=בנק,
+           event_subtype=הפקדה, amount normalized to the exact integer 554,
+           B-prefixed event_id, bank_number/branch/account, payer_name forced
+           null, client_name carrying the account-holder name, vat_status=כולל,
+           txn_date=05/08/2026; and
+        2. when the godfather then asks for "an invoice" for that deposit, the
+           system creates the right document type (a 320 חשבונית מס/קבלה for
+           money already received - never a bare 305), on the deposit's own
+           date, booked as a bank transfer (payment type 4), with every value
+           coming from the image's own extracted text.
+
+        **bugfix-028** (extended 2026-08-09 with the user's explicit sign-off;
+        reworked 2026-09-06 for Feature 069): capture was never the whole story -
+        this test used to stop at the ledger event, which is exactly why four
+        production invoices came out the wrong type, on the wrong date, unpaid.
+        """
+        from tests.billed.denidin_mcp_e2e_helpers import (
+            _calls_for,
+            _seed_client,
+            _send_turn,
         )
-        assert captured.get("vat_status") == "כולל", (
-            f"vat_status is unconditionally כולל for בנק (money already deposited "
-            f"necessarily contains the VAT element already), got {captured.get('vat_status')!r}"
-        )
 
-        # Feature 043 (2026-08-18): raw_message_excerpt was removed from the ledger
-        # event itself - the source message's own extracted_text is now where this
-        # content lives (real proof on the real image E2E path, not just a unit test).
-        session_manager = denidin_app.ai_handler.session_manager
-        session_id = session_manager.chat_to_session[chat_id]
-        message_file = (
-            session_manager.storage_dir / session_id / "messages" / f"{captured['message_id']}.json"
-        )
-        with open(message_file, encoding='utf-8') as f:
-            message_data = json.load(f)
-        assert message_data.get("extracted_text"), (
-            "the real vision extraction's text must land on the message record"
-        )
+        BANK_IMAGE_PAYER = "אסתר אסולין"
+        BANK_IMAGE_PAYER_SURNAME = "אסולין"
 
-        # bugfix-009 (reopened 2026-07-30): the media turn's user message must also
-        # carry a real image_path, not just exist.
-        image_path = assert_image_path_persisted(denidin_app, chat_id)
-        logger.info(f"THEN image_path persisted and resolves to real file: {image_path}")
+        chat_id = self._godfather_chat_id(config)
+        self._clear_chat_test_data(denidin_app, chat_id)
+        try:
+            # Seed FIRST - Feature 069 requires the client resolved before the
+            # בנק event can be persisted at all (not just before the document).
+            _seed_client(chat_id, "LEDGER_E2E_F4", name=BANK_IMAGE_PAYER, ensure_exists=True)
+            self._assert_no_open_invoice_for(chat_id, BANK_IMAGE_PAYER, id_prefix="LEDGER_E2E_F4")
 
+            reply = self._send_image(
+                http_server, "Deposit_Eti.jpeg",
+                caption="הפקדה שנכנסה, תרשום ביומן",
+                chat_id=chat_id, id_prefix="LEDGER_E2E_IMAGE_BANK_FULL",
+            )
+            bank = ClarificationAnswerBank(
+                [
+                    {"topic": "which_client",
+                     "keywords": ["מצאתי", "האם הכוונה", "התכוונת", "איזה", "לקוח", "נכון"],
+                     "answer": f"כן, {BANK_IMAGE_PAYER}, תרשום ביומן"},
+                ],
+                fallback=f"כן, {BANK_IMAGE_PAYER}, תרשום ביומן",
+            )
+            events = self._drive_detour_until_captured(
+                denidin_app, chat_id, reply, bank, "LEDGER_E2E_F4", max_turns=4
+            )
+            events = self._assert_ledger_events_persisted(denidin_app, chat_id, expected_count=1)
+            captured = events[0]
+            logger.info(f"THEN captured event: {captured}")
+
+            assert captured["source_type"] == "בנק"
+            assert captured["event_subtype"] == "הפקדה"
+            assert captured["amount"] == 554, (
+                f"expected amount normalized to int 554, got {captured['amount']!r}"
+            )
+            assert captured["event_id"].startswith("B"), f"malformed event_id: {captured['event_id']!r}"
+            self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
+
+            assert str(captured.get("bank_number")) == "31", f"bank_number: {captured.get('bank_number')!r}"
+            assert str(captured.get("bank_branch")) == "112", f"bank_branch: {captured.get('bank_branch')!r}"
+            assert str(captured.get("bank_account")) == "105397180", (
+                f"bank_account: {captured.get('bank_account')!r}"
+            )
+            assert captured.get("payer_name") is None, (
+                f"payer_name must be forced null for בנק events, got {captured.get('payer_name')!r}"
+            )
+            assert BANK_IMAGE_PAYER_SURNAME in (captured.get("client_name") or ""), (
+                f"the account-holder name must land in client_name for a בנק event, "
+                f"got client_name={captured.get('client_name')!r}"
+            )
+            assert captured.get("vat_status") == "כולל", (
+                f"vat_status is unconditionally כולל for בנק, got {captured.get('vat_status')!r}"
+            )
+            assert captured.get("txn_date") == "05/08/2026", (
+                f"the transaction date on the screenshot (05/08/2026) must be captured, "
+                f"got {captured.get('txn_date')!r}"
+            )
+
+            # ---------------- bugfix-028: the document the deposit implies -------------
+            # Feature 069: the image already routed as a synthetic turn, so the
+            # model may take an extra redirect turn before proposing the
+            # document. Follow the conversation, approving each round, until a
+            # create_combo_document actually fires (max 3 rounds).
+            ask_reply, ask_ai = _send_turn(
+                chat_id, "תפיק חשבונית עבור זה", id_prefix="LEDGER_E2E_F4_ASK",
+            )  # "issue an invoice for this"
+            seen_texts = [ask_reply or ""]
+            combo_calls = []
+            last_ai = ask_ai
+            for round_n in range(1, 4):
+                assert not _calls_for(last_ai, "create_invoice"), (
+                    f"A1: money already in the bank was booked as a plain tax invoice "
+                    f"(305) - it leaves the money showing as unpaid. "
+                    f"Calls: {last_ai.mcp_calls if last_ai else None!r}"
+                )
+                combo_calls = _calls_for(last_ai, "create_combo_document")
+                if combo_calls:
+                    break
+                approve_reply, last_ai = _send_turn(
+                    chat_id, "כן", id_prefix=f"LEDGER_E2E_F4_APPROVE{round_n}",
+                )  # "yes"
+                seen_texts.append(approve_reply or "")
+
+            assert combo_calls, (
+                f"A1: expected a חשבונית מס/קבלה (320) for an already-received payment "
+                f"after 3 approval rounds. Last calls: {last_ai.mcp_calls if last_ai else None!r}"
+            )
+            assert combo_calls[0]["error"] is None, f"creation failed: {combo_calls[0]!r}"
+
+            approval_text = "\n".join(seen_texts)
+            assert BANK_IMAGE_PAYER_SURNAME in approval_text, (
+                f"the exchange never names the payer the screenshot shows "
+                f"(surname {BANK_IMAGE_PAYER_SURNAME!r}). Turns seen: {seen_texts!r}"
+            )
+            for element, needle in (("transaction date", "05/08"), ("bank details", "בנק"), ("VAT treatment", "מע")):
+                assert needle in approval_text, (
+                    f"B3/A2: the exchange omits the {element} even though the screenshot "
+                    f"supplied it. Turns seen: {seen_texts!r}"
+                )
+
+            _, verify_ai = _send_turn(
+                chat_id,
+                "תן לי את הפרטים המלאים של המסמך שהופק, כולל התשלומים ותאריך התשלום",
+                id_prefix="LEDGER_E2E_F4_VERIFY",
+            )
+            fetch_calls = _calls_for(verify_ai, "get_invoice_details")
+            assert fetch_calls, (
+                f"A3/A3b: the verify turn never fetched the document from Morning "
+                f"(no get_invoice_details call). Calls: {verify_ai.mcp_calls if verify_ai else None!r}"
+            )
+            doc = fetch_calls[0].get("output") or ""
+            assert "653" not in doc and "654" not in doc, (
+                f"A2: the deposited 554 was inflated by 18%: {doc!r}"
+            )
+            assert "554" in doc, (
+                f"A2: the fetched document does not hold the deposited amount: {doc!r}"
+            )
+            payment = json.loads(doc).get("payment") or {}
+            payment_date = payment.get("date") or ""
+            for part in ("5", "8", "26"):
+                assert part in payment_date, (
+                    f"A3: date component {part!r} missing from the fetched document's "
+                    f"payment date: {doc!r}"
+                )
+            assert payment.get("type") == 4, (
+                f"A3b: a bank deposit must be booked as payment type 4 (bank transfer), "
+                f"the only type Morning stores bank details on: {doc!r}"
+            )
+        finally:
+            self._clear_chat_test_data(denidin_app, chat_id)
+
+    # ==================================================================
+    # F5 - photographed 6-component agreement with camera glare on the
+    #      client surname; seeded exact-match client + confirming turn
+    # ==================================================================
+    @pytest.mark.sanity
+    def test_given_real_six_component_agreement_image_mor_ben_shaya_then_all_components_correctly_persisted(
+        self, denidin_app, http_server, config
+    ):
+        """Given a real fee-proposal document image (Agreement-mor.jpg: a letter
+        dated 3.12.24 between client מור בן שעיה and עו"ד אילה הוניגמן,
+        photographed at an angle - the glare band sits on the client surname, so
+        the extractor reads the client line as `מר מור בן [לא קריא]` while
+        reading the six fee components perfectly), When the godfather sends it as
+        a WhatsApp image with מור בן שעיה ALREADY an exact Morning client and
+        confirms the partial match when asked, Then it's captured as SIX separate
+        components against the resolved exact Morning name:
+
+        1. ייעוץ ופנייה במכתב ראשוני - 2,000 ₪ לפני מע"מ.
+        2. ניהול מו"מ, אם לא מגיעים למתווה מוסכם - 4,000 ₪ לפני מע"מ.
+        3. ניהול מו"מ, אם מגיעים למתווה מוסכם - 8,000 ₪ לפני מע"מ.
+        4. הכנת והגשת כתב תביעה + ייצוג בשלבים מקדמיים - 10,000 ₪ לא כולל מע"מ.
+        5. הוכחות וסיכומים - 8,000 ₪ לא כולל מע"מ.
+        6. הצלחה בתביעה - 10% מהסכום שנפסק (percent-based, no fixed amount).
+
+        Components 3 and 5 both state 8,000 ₪ - a real duplicate amount; the
+        assertion checks the full multiset, to catch a component silently dropped
+        for "looking like" a duplicate.
+
+        Feature 069 is what makes this test viable: before 069 there was no
+        client-resolution step in the ledger-capture path, so an unreadable
+        `client_name` meant `capture_ledger_events_from_text` persisted nothing
+        and the model just asked the operator - 0 events, test wants 6. 069's
+        mandatory-resolution detour (seeded exact match + a confirming turn) is
+        the fix. (Historically tracked as sanity-failure S5, blocked-on-069.)
+        """
+        from tests.billed.denidin_mcp_e2e_helpers import _seed_client
+
+        chat_id = self._godfather_chat_id(config)
+        self._clear_chat_test_data(denidin_app, chat_id)
+        try:
+            client_name = "מור בן שעיה"
+            _seed_client(chat_id, "LEDGER_E2E_F5", name=client_name, ensure_exists=True)
+
+            reply = self._send_image(
+                http_server, "Agreement-mor.jpg",
+                caption="ההסכם החתום, תרשום ביומן",
+                chat_id=chat_id, id_prefix="LEDGER_E2E_IMAGE_AGREEMENT_MOR",
+            )
+            bank = ClarificationAnswerBank(
+                [
+                    {"topic": "unreadable_surname_confirm",
+                     "keywords": ["מצאתי", "האם הכוונה", "התכוונת", "איזה", "לקוח",
+                                  "שם", "לא ברור", "לא קריא", "נכון"],
+                     "answer": f"כן, הכוונה ל{client_name}, תרשום ביומן"},
+                    {"topic": "vat", "keywords": ['מע"מ', "מעמ"],
+                     "answer": 'כפי שכתוב בהסכם - חלק לפני מע"מ וחלק לא כולל מע"מ'},
+                ],
+                fallback=f"כן, {client_name}, תרשום ביומן",
+            )
+            self._drive_detour_until_captured(
+                denidin_app, chat_id, reply, bank, "LEDGER_E2E_F5", max_turns=6
+            )
+
+            events = self._assert_ledger_events_persisted(denidin_app, chat_id, expected_count=6)
+            logger.info(f"THEN captured {len(events)} events (persisted): {events}")
+
+            for e in events:
+                assert e["source_type"] == "הסכם"
+                assert e["event_id"].startswith("A"), f"malformed event_id: {e['event_id']!r}"
+                assert "מור" in (e.get("client_name") or "") or "שעיה" in (e.get("client_name") or ""), (
+                    f"client_name must resolve to the seeded exact Morning name "
+                    f"{client_name!r}, got {e.get('client_name')!r}"
+                )
+                self._assert_message_links_back_to_event(denidin_app, chat_id, e)
+
+            fixed_amounts = sorted(e.get("amount") for e in events if e.get("amount") is not None)
+            assert fixed_amounts == [2000, 4000, 8000, 8000, 10000], (
+                f"Expected the 5 real fixed-fee amounts (2,000 / 4,000 / 8,000 twice / "
+                f"10,000 - note the genuine duplicate 8,000), got {fixed_amounts}"
+            )
+
+            percent_events = [e for e in events if e.get("percent")]
+            assert len(percent_events) == 1, (
+                f"Expected exactly 1 percent-based component (the 10% success fee), "
+                f"got {len(percent_events)}: {percent_events}"
+            )
+            assert percent_events[0].get("amount") is None, (
+                "the percent-based success-fee component should have no fixed amount"
+            )
+        finally:
+            self._clear_chat_test_data(denidin_app, chat_id)
+
+    # ==================================================================
+    # False-positive guard - unchanged by Feature 069 (a personal note
+    # produces no ledger stash, so no synthetic routing fires)
+    # ==================================================================
     def test_given_non_agreement_image_when_processed_then_no_ledger_event_captured(
         self, denidin_app, http_server
     ):
-        """Given a real image that is genuinely NOT a fee agreement or bank deposit (a
-        personal handwritten note, confirmed out-of-scope during the AHLedger project's
-        own audit), When sent as a WhatsApp image, Then capture_ledger_event is NOT
-        called - no file created under data/events/ (T017e)."""
+        """Given a real image that is genuinely NOT a fee agreement or bank
+        deposit (a personal handwritten note, confirmed out-of-scope during the
+        AHLedger project's own audit), When sent as a WhatsApp image, Then no
+        ledger stash is built, no synthetic turn is routed, and nothing is
+        persisted under data/events/ (T017e). The false-positive guard for
+        Feature 069's routing signal - it must NOT fire on this."""
         from denidin import handle_image_message
 
         chat_id = self._fresh_chat_id("image_neither")
@@ -590,417 +822,5 @@ class TestLedgerEventCaptureE2E:
         logger.info(f"THEN persisted-event count before={before}, after={after}")
         assert after == before, "capture_ledger_event should NOT have been called for a non-agreement image"
 
-        # bugfix-009 (reopened 2026-07-30): even when no ledger event is captured,
-        # the media turn itself must still carry a real image_path.
         image_path = assert_image_path_persisted(denidin_app, chat_id)
         logger.info(f"THEN image_path persisted and resolves to real file: {image_path}")
-
-    # ------------------------------------------------------------------
-    # REAL-IMAGE DATA-MODEL CORRECTNESS (Feature 033) - 2 new real images (T024a/b),
-    # ground truth read directly from the images by the implementing agent (2026-07-29,
-    # no separate human transcript available for these two, unlike the three images
-    # above) - see each test's docstring for what's actually on the image.
-    # ------------------------------------------------------------------
-
-    @pytest.mark.sanity
-    def test_given_real_multi_component_agreement_image_then_components_correctly_persisted(
-        self, denidin_app, http_server
-    ):
-        """Given a real fee-proposal document image (Agreement-test-image.jpg: a
-        letter between client שחר פישר and עו"ד אילה הוניגמן, 27.1.253, with FOUR
-        distinct fee components - א. כתב הגנה+כתב תשובה מקדמי, 10,000 ₪ לא כולל
-        מע"מ; ב. גישור, שעתי 800 ₪/שעה עד 10 שעות, לא כולל מע"מ; ג. הוכחות, 15,000 ₪
-        לא כולל מע"מ; ד. סיכומים, 5,000 ₪ לא כולל מע"מ), When sent as a WhatsApp
-        image, Then it's captured via the image path with source_type=הסכם.
-
-        Unlike the גיליאן דוידיאן multi-stage test (T020a), the "correct" component
-        split for THIS specific document was not separately agreed with the user
-        before writing this test - so this asserts real, meaningful, non-placeholder
-        properties without presupposing an exact event count: every persisted event
-        for this chat has a well-formed A-prefixed event_id and source_type=הסכם
-        (T024a's "assert for some id" instruction), and the flat-fee amounts stated
-        in the document (10,000 / 15,000 / 5,000) are each represented somewhere
-        across the persisted event(s)' amount fields - proving genuine correct
-        extraction happened, not just that *something* got captured. If the model
-        doesn't extract these correctly, this SHOULD fail - that's real information,
-        not something to soften (same philosophy as T020a)."""
-        from denidin import handle_image_message
-
-        chat_id = self._fresh_chat_id("image_agreement_multi")
-        notification = create_real_notification({
-            'typeWebhook': 'incomingMessageReceived',
-            'timestamp': 1770001300,
-            'idMessage': 'LEDGER_E2E_IMAGE_AGREEMENT_MULTI_001',
-            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
-            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
-            'messageData': {
-                'typeMessage': 'imageMessage',
-                'fileMessageData': {
-                    'downloadUrl': f'{http_server}/Agreement-test-image.jpg',
-                    'fileName': 'Agreement-test-image.jpg',
-                    'mimeType': 'image/jpeg',
-                    'caption': '',
-                    'jpegThumbnail': '',
-                    'isForwarded': False,
-                    'forwardingScore': 0,
-                }
-            }
-        })
-
-        logger.info("GIVEN a real 4-component fee-proposal document image (שחר פישר / עו\"ד אילה הוניגמן)")
-        handle_image_message(notification)
-        logger.info("WHEN DeniDin processes it via the image pipeline")
-
-        response = get_response(notification)
-        assert_response_exists(response)
-
-        events = self._assert_ledger_events_persisted(
-            denidin_app, chat_id, expected_count=None, expected_event_timestamp=1770001300
-        )
-        logger.info(f"THEN captured {len(events)} event(s) (persisted): {events}")
-
-        for e in events:
-            assert e["source_type"] == "הסכם"
-            assert e["event_id"].startswith("A"), f"malformed event_id: {e['event_id']!r}"
-            self._assert_message_links_back_to_event(denidin_app, chat_id, e)
-
-        captured_amounts = {e.get("amount") for e in events}
-        for expected_amount in (10000, 15000, 5000):
-            assert expected_amount in captured_amounts, (
-                f"expected {expected_amount} among captured amounts {captured_amounts} "
-                f"(document states 10,000/15,000/5,000 ₪ as its three flat-fee "
-                f"components, plus a 4th hourly component at 800 ₪/hr capped at 10h)"
-            )
-
-    @pytest.mark.sanity
-    def test_given_real_bank_deposit_image_then_full_fields_correctly_persisted(
-        self, denidin_app, http_server, config
-    ):
-        """Given a real bank-transfer confirmation screenshot (Deposit_Eti.jpeg:
-        a banking-app transfer, 05/08/2026, ₪554.00, from account holder
-        אסולין אסתר, note "שליחות וצילום הערעור לעיריה"), When sent as a WhatsApp
-        image, Then it's captured with source_type=בנק, event_subtype=הפקדה, and
-        amount normalized to the exact integer 554 (T024b).
-
-        NOTE: if this test starts failing after 20+ invoices accumulate in the
-        Morning sandbox for this payer (the model may refuse an apparent
-        duplicate), swap in a fresh bank screenshot with a new payer name,
-        one-time seed that client in Morning, and add the name to
-        tests/fixtures/morning_sandbox_clients.json.
-
-        **bugfix-028 (A1, A2-T3, A3-T2, A3b, B3-optionals), extended 2026-08-09
-        with the user's explicit sign-off to modify an already-approved test.**
-        Capture was never the whole story: this test used to stop at the ledger
-        event and never ask for the document the deposit implies, which is exactly
-        why four production invoices came out as the wrong document type, on the
-        wrong date, unpaid. It now continues into document creation and asserts
-        what Morning actually stored.
-
-        This makes the test dependent on a live Morning tunnel and on running as
-        the godfather (the Morning tools are RBAC-gated), unlike every other test
-        in this class.
-        """
-        from denidin import handle_image_message
-        from tests.billed.denidin_mcp_e2e_helpers import (
-            _calls_for,
-            _seed_client,
-            _send_turn,
-            _send_turn_and_approve,
-        )
-
-        chat_id = self._godfather_chat_id(config)
-        self._clear_chat_test_data(denidin_app, chat_id)
-        notification = create_real_notification({
-            'typeWebhook': 'incomingMessageReceived',
-            'timestamp': 1770001400,
-            'idMessage': 'LEDGER_E2E_IMAGE_BANK_FULL_001',
-            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
-            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
-            'messageData': {
-                'typeMessage': 'imageMessage',
-                'fileMessageData': {
-                    'downloadUrl': f'{http_server}/Deposit_Eti.jpeg',
-                    'fileName': 'Deposit_Eti.jpeg',
-                    'mimeType': 'image/jpeg',
-                    'caption': '',
-                    'jpegThumbnail': '',
-                    'isForwarded': False,
-                    'forwardingScore': 0,
-                }
-            }
-        })
-
-        logger.info("GIVEN a real bank-transfer confirmation screenshot (₪554.00, אסולין אסתר)")
-        handle_image_message(notification)
-        logger.info("WHEN DeniDin processes it via the image pipeline")
-
-        response = get_response(notification)
-        assert_response_exists(response)
-
-        events = self._assert_ledger_events_persisted(
-            denidin_app, chat_id, expected_count=1, expected_event_timestamp=1770001400
-        )
-        captured = events[0]
-        logger.info(f"THEN captured event: {captured}")
-
-        assert captured["source_type"] == "בנק"
-        assert captured["event_subtype"] == "הפקדה"
-        assert captured["amount"] == 554, f"expected amount normalized to int 554, got {captured['amount']!r}"
-        assert captured["event_id"].startswith("B"), f"malformed event_id: {captured['event_id']!r}"
-        self._assert_message_links_back_to_event(denidin_app, chat_id, captured)
-
-        # Phase 11 (2026-08-16/2026-08-20 sweep): bank_number/bank_branch/bank_account
-        # are new persisted fields (real-data-grounded schema revision), with known
-        # ground truth for this exact image already established at the extraction
-        # layer (tests/expensive/test_image_classification_e2e.py's
-        # test_bank_test_image_is_classified_as_a_bank_deposit) - this is the first
-        # real proof those fields survive all the way through to the persisted
-        # ledger event, not just the model's raw extraction.
-        assert str(captured.get("bank_number")) == "31", f"bank_number: {captured.get('bank_number')!r}"
-        assert str(captured.get("bank_branch")) == "112", f"bank_branch: {captured.get('bank_branch')!r}"
-        assert str(captured.get("bank_account")) == "105397180", (
-            f"bank_account: {captured.get('bank_account')!r}"
-        )
-
-        # Finding #4 (2026-08-18 player review) + payer_name/vat_status enforcement:
-        # payer_name is a הסכם-only concept, forced null for בנק regardless of what
-        # the model passed - the account-holder name is rescued into client_name
-        # instead (never lose a real captured name to a field-choice mistake).
-        assert captured.get("payer_name") is None, (
-            f"payer_name must be forced null for בנק events, got {captured.get('payer_name')!r}"
-        )
-        assert self.BANK_IMAGE_PAYER_SURNAME in (captured.get("client_name") or ""), (
-            f"the account-holder name (אסולין אסתר) must land in client_name for "
-            f"a בנק event, got client_name={captured.get('client_name')!r}"
-        )
-        assert captured.get("vat_status") == "כולל", (
-            f"vat_status is unconditionally כולל for בנק (money already deposited "
-            f"necessarily contains the VAT element already), got {captured.get('vat_status')!r}"
-        )
-
-        # ---------------- bugfix-028: the document the deposit implies ----------------
-        try:
-            # Asserted in the PERSISTED form, not the model's raw output: the
-            # model emits ISO (per capture_ledger_event's schema) and
-            # `_normalize_iso_date` converts it to this project's stored
-            # DD/MM/YYYY convention, matching `event_datetime`'s date portion
-            # (REQ-DATA-005/007). Despite its name that helper normalizes FROM
-            # ISO, not to it.
-            assert captured.get("txn_date") == "05/08/2026", (
-                f"A3: the transaction date on the screenshot (05/08/2026) must be "
-                f"captured, got {captured.get('txn_date')!r} - the document date cannot "
-                f"be right if the deposit's own date was never established"
-            )
-
-            # Everything the document needs comes from the image's own extracted
-            # text - payer, amount, date, bank details (user, 2026-08-09). The
-            # request itself supplies nothing but the intent, and deliberately
-            # says "חשבונית", the ordinary word a user would use, NOT a document
-            # type: choosing the type is the system's job and is what A1 is about.
-            _seed_client(chat_id, "B028_A1T1", name=self.BANK_IMAGE_PAYER, ensure_exists=True)
-            self._assert_no_open_invoice_for(chat_id, self.BANK_IMAGE_PAYER, id_prefix="B028_A1T1")
-
-            logger.info("WHEN the godfather asks for an invoice for that deposit")
-            ask_result, (reply, ai_response) = _send_turn_and_approve(
-                chat_id,
-                "תפיק חשבונית עבור זה",
-                id_prefix="B028_A1T1",
-            )
-            approval_text = ask_result[0] or ""
-
-            # The payer was never typed - it can only have come from the image.
-            assert self.BANK_IMAGE_PAYER_SURNAME in approval_text, (
-                f"the approval doesn't name the payer the screenshot shows "
-                f"(surname {self.BANK_IMAGE_PAYER_SURNAME!r}) - the extracted text is not being used. "
-                f"Approval was: {approval_text!r}"
-            )
-
-            # A1: money already in the bank is never a bare 305.
-            assert not _calls_for(ai_response, "create_invoice"), (
-                f"A1: a deposit produced a plain tax invoice (305) - it leaves the "
-                f"money showing as unpaid. Calls: {ai_response.mcp_calls if ai_response else None!r}"
-            )
-            combo_calls = _calls_for(ai_response, "create_combo_document")
-            assert combo_calls, (
-                f"A1: expected a חשבונית מס/קבלה (320) for an already-received payment. "
-                f"Calls: {ai_response.mcp_calls if ai_response else None!r}"
-            )
-            assert combo_calls[0]["error"] is None, f"creation failed: {combo_calls[0]!r}"
-
-            # B3 optionals: what the user was asked to approve must carry the
-            # transaction date and the bank details, since both are known here.
-            for element, needle in (
-                ("transaction date", "05/08"),
-                ("bank details", "בנק"),
-            ):
-                assert needle in approval_text, (
-                    f"B3: the approval omits the {element} even though the screenshot "
-                    f"supplied it. Approval was: {approval_text!r}"
-                )
-
-            # A2-T3: a payment reference defaults to VAT included, stated explicitly.
-            assert "מע" in approval_text, (
-                f"A2: the VAT treatment is never stated. Approval was: {approval_text!r}"
-            )
-
-            _, verify_ai = _send_turn(
-                chat_id,
-                "תן לי את הפרטים המלאים של המסמך שהופק, כולל התשלומים ותאריך התשלום",
-                id_prefix="B028_A1T1_VERIFY",
-            )
-            # Assert on what Morning actually returned for the document (the raw
-            # get_invoice_details tool output), not on the model's prose retelling
-            # of it - the model nondeterministically restyles dates (12.07.2026 vs
-            # 12/07/2026), section headers and which fields it echoes. The verify
-            # turn's only job is to make the model FETCH the document; the fetched
-            # document is what we assert on. Same pattern as
-            # _assert_no_open_invoice_for above.
-            fetch_calls = _calls_for(verify_ai, "get_invoice_details")
-            assert fetch_calls, (
-                f"A3/A3b: the verify turn never fetched the document from Morning "
-                f"(no get_invoice_details call). Calls: "
-                f"{verify_ai.mcp_calls if verify_ai else None!r}"
-            )
-            doc = fetch_calls[0].get("output") or ""
-            # A2-T3: 554 arrived in the bank; 554 is what the fetched document
-            # holds, never inflated by 18% (554 * 1.18 ~= 653.72).
-            assert "653" not in doc and "654" not in doc, (
-                f"A2: the deposited 554 was inflated by 18%: {doc!r}"
-            )
-            assert "554" in doc, (
-                f"A2: the fetched document does not hold the deposited amount: {doc!r}"
-            )
-            # A3-T2: the payment carries the deposit's OWN date (05 / 08 / 26),
-            # not the day the document was issued. Loosened to the three date
-            # components appearing in the payment's own date field rather than
-            # one exact separator style, so a dotted or ISO rendering still passes.
-            payment = json.loads(doc).get("payment") or {}
-            payment_date = payment.get("date") or ""
-            for part in ("5", "8", "26"):
-                assert part in payment_date, (
-                    f"A3: date component {part!r} missing from the fetched "
-                    f"document's payment date: {doc!r}"
-                )
-            # A3b: booked as a bank transfer (payment type 4) - the only type
-            # Morning stores bank details on.
-            assert payment.get("type") == 4, (
-                f"A3b: a bank deposit must be booked as payment type 4 (bank transfer), "
-                f"which is the only type Morning stores bank details on: {doc!r}"
-            )
-        finally:
-            self._clear_chat_test_data(denidin_app, chat_id)
-
-    # NOTE (2026-08-10): the deposit-matching-an-existing-305 scenario (formerly
-    # A1-T2) has been MOVED to
-    # tests/expensive/test_group_b_reference_approval_e2e.py, since investigating
-    # its failure showed it depends on bugfix-038's fix (Group B approval
-    # reference data), not this bugfix's approved scope. See
-    # specs/bugfixes/bugfix-038-group-b-approval-missing-reference-data.md.
-
-    @pytest.mark.sanity
-    def test_given_real_six_component_agreement_image_mor_ben_shaya_then_all_components_correctly_persisted(
-        self, denidin_app, http_server
-    ):
-        """Given a real fee-proposal document image (Agreement-mor.jpg: a letter
-        dated 3.12.24 between client מור בן שעיה and עו"ד אילה הוניגמן, photographed
-        at an angle with real image quality issues - not a clean screenshot), When
-        sent as a WhatsApp image, Then it's captured as SIX separate components,
-        matching the document's real structure - ground truth read directly from
-        the image (2026-07-30), independent of and deliberately NOT informed by the
-        constitution wording added for the (different) עידן שבתאי document, to
-        verify the multi-stage/conditional splitting rule genuinely generalizes
-        rather than being overfit to one specific document's numbers:
-
-        1. ייעוץ ופנייה במכתב ראשוני - 2,000 ₪ לפני מע"מ.
-        2. ניהול מו"מ עד גיבוש מתווה מוסכם, במידה ולא מגיעים למתווה מוסכם - 4,000 ₪
-           לפני מע"מ.
-        3. ניהול מו"מ עד גיבוש מתווה מוסכם, במידה ומגיעים למתווה מוסכם - 8,000 ₪
-           לפני מע"מ.
-        4. הכנת והגשת כתב תביעה + ייצוג בשלבים מקדמיים (עד הוכחות) - 10,000 ₪ לא
-           כולל מע"מ.
-        5. הוכחות וסיכומים - 8,000 ₪ לא כולל מע"מ.
-        6. הצלחה בתביעה - 10% מהסכום שנפסק לטובת התובע (percent-based, no fixed
-           amount).
-
-        Note components 3 and 5 both state 8,000 ₪ - a real duplicate amount, not a
-        test-writing mistake; the assertion below checks the full multiset, not a
-        deduplicated set, specifically to catch a component silently dropped for
-        "looking like" a duplicate of another.
-
-        KNOWN FAILURE — BLOCKED ON FEATURE 069 (do not "fix" here). Feature 059
-        triage (2026-09-03): the vision extractor reads the 6 fee components
-        perfectly but this fixture's glare band sits on the client surname, so
-        the client line comes back `מר מור בן [לא קריא]`. With no readable
-        `client_name`, `capture_ledger_events_from_text` persists nothing and the
-        model asks the operator for the name — 0 events, test wants 6. This is
-        exactly the gap Feature 069
-        (`specs/backlog/069-mandatory-client-resolution-before-ledger-event`)
-        exists to close: a ledger event must run client resolution first
-        (match against Morning's client list, or a deliberate new-client
-        decision) and ask rather than silently drop. There is currently NO
-        client-resolution step in the ledger-capture path (text-only call,
-        `LEDGER_EVENT_TOOL` only, never touches Morning), so the
-        `_seed_client` / `resolve_client_name` billed-test machinery cannot be
-        wired in here until Feature 069 builds that gate. Left red on purpose
-        until then — see
-        `specs/done/059-stabilize-tests-sanity-suite/sanity-failures.md`
-        (S5)."""
-        from denidin import handle_image_message
-
-        chat_id = self._fresh_chat_id("image_agreement_mor")
-        notification = create_real_notification({
-            'typeWebhook': 'incomingMessageReceived',
-            'timestamp': 1770001500,
-            'idMessage': 'LEDGER_E2E_IMAGE_AGREEMENT_MOR_001',
-            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
-            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
-            'messageData': {
-                'typeMessage': 'imageMessage',
-                'fileMessageData': {
-                    'downloadUrl': f'{http_server}/Agreement-mor.jpg',
-                    'fileName': 'Agreement-mor.jpg',
-                    'mimeType': 'image/jpeg',
-                    'caption': '',
-                    'jpegThumbnail': '',
-                    'isForwarded': False,
-                    'forwardingScore': 0,
-                }
-            }
-        })
-
-        logger.info("GIVEN a real 6-component fee-proposal document image (מור בן שעיה / עו\"ד אילה הוניגמן)")
-        handle_image_message(notification)
-        logger.info("WHEN DeniDin processes it via the image pipeline")
-
-        response = get_response(notification)
-        assert_response_exists(response)
-
-        events = self._assert_ledger_events_persisted(
-            denidin_app, chat_id, expected_count=6, expected_event_timestamp=1770001500
-        )
-        logger.info(f"THEN captured {len(events)} events (persisted): {events}")
-
-        for e in events:
-            assert e["source_type"] == "הסכם"
-            assert e["event_id"].startswith("A"), f"malformed event_id: {e['event_id']!r}"
-            assert "מור" in (e.get("client_name") or "") or "שעיה" in (e.get("client_name") or "")
-            self._assert_message_links_back_to_event(denidin_app, chat_id, e)
-
-        fixed_amounts = sorted(e.get("amount") for e in events if e.get("amount") is not None)
-        assert fixed_amounts == [2000, 4000, 8000, 8000, 10000], (
-            f"Expected the 5 real fixed-fee amounts (2,000 / 4,000 / 8,000 twice / "
-            f"10,000 - note the genuine duplicate 8,000), got {fixed_amounts} - if "
-            f"this fails, the model did not split the document per component despite "
-            f"the constitution's multi-stage/conditional agreement rule, or dropped "
-            f"one of the two genuinely-distinct 8,000 ₪ components as a false duplicate"
-        )
-
-        percent_events = [e for e in events if e.get("percent")]
-        assert len(percent_events) == 1, (
-            f"Expected exactly 1 percent-based component (the 10% success fee), "
-            f"got {len(percent_events)}: {percent_events}"
-        )
-        assert percent_events[0].get("amount") is None, (
-            "the percent-based success-fee component should have no fixed amount"
-        )
-
