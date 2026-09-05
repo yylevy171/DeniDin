@@ -38,6 +38,21 @@ human go-ahead.
    the migration itself moves all >14-day messages into `archived/` per chat, so the app's first
    startup sweep has only ≤ 2 leftover days to touch.
 
+## Known limitation carried forward (2026-09-05) — long-term recall quality → Feature 077
+
+Stage 2 dev dogfooding showed the **long-term-recall** half of the memory system (embedding
+similarity over `daily_summary` records) does not reliably surface the correct day's summary for
+a real "what happened / who did I ask about on day X" question — the correct record scored
+similarity 0.28, rank 21 of 22, and was never shown to the model. This is **not a Feature 070
+regression** (the pre-070 `session_summary` system used the identical `MemoryManager.recall()`
+path); 070 only changed what is stored, not retrieval. Per user direction 2026-09-05:
+**Feature 070 ships with current recall as a documented limitation**; the redesign
+(chronological wholesale inclusion of daily summaries + deterministic date-anchored lookup) is
+tracked as **`specs/in-progress/077-long-term-memory-assembly/`**. The rolling 14-day verbatim
+window itself works correctly and is unaffected. Two related items also surfaced:
+`specs/bugfixes/bugfix-051-*` (a memory question misrouted to `query_ledger_events`, which then
+hard-errored on context overflow).
+
 ---
 
 ## Working area (Mac, outside the clone)
