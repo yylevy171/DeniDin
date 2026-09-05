@@ -1,7 +1,7 @@
 # Bugfix Spec: Model fails to recognize a plain memory/conversation-recall question, routes it to `query_ledger_events` instead — and that misroute then hard-errors
 
 ## Bug ID
-bugfix-051-memory-questions-misrouted-to-ledger-query
+bugfix-053-memory-questions-misrouted-to-ledger-query
 
 ## Title
 Asked a pure conversation-history question ("who did I ask you about on Aug 15") that Feature
