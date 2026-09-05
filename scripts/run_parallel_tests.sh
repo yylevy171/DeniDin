@@ -60,6 +60,11 @@ set -uo pipefail
 #                          "expensive" or "billed or expensive" as needed.
 #   --gate / --no-gate     run (or skip) the morning-mcp-app gate test first.
 #                          Default: skip.
+#   -x | --exitfirst       STOP ON THE FIRST FAILURE. Passes pytest -x (xdist
+#                          stops the session on the first failure; tests already
+#                          in flight on other workers finish, none new start) AND
+#                          disables the infra retry round entirely — a failure is
+#                          a failure, reported as-is, nothing re-run.
 #   --no-retry             single pass, no infra retry round.
 #   --retry-max-rounds N   initial round + (N-1) retry rounds. Default 2.
 #   --retry-delay S        seconds before the first retry round. Default 0.
@@ -70,6 +75,14 @@ set -uo pipefail
 # round. Exit 1 = >=1 terminal failure, or an infra failure still red after the
 # last retry round (both listed separately at the end). Exit 2 = bad args /
 # missing venv / missing xdist. Exit 3 = the gate test failed (nothing else run).
+#
+# Per-test sound-off is live and ON BY DEFAULT (no env var needed):
+# apps/denidin-app/conftest.py prints one `>>> TEST [k/N] PASSED|FAILED|SKIP:
+# <nodeid>  (gwN)` line the moment each test's result is determined — serial or
+# parallel, every pytest invocation. This is the project standard (CLAUDE.md /
+# METHODOLOGY.md §VI / CONSTITUTION.md §V); opt out only with DENIDIN_TEST_SOUNDOFF=0.
+# Whoever drives this script MUST relay each `>>> TEST` line to the user as it
+# lands — never a single summary at the end.
 # ============================================================================
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -88,6 +101,7 @@ RETRY=1
 RETRY_MAX_ROUNDS=2
 RETRY_DELAY=0
 RETRY_FACTOR="1.5"
+EXITFIRST=""
 TARGETS=()
 
 while [ "$#" -gt 0 ]; do
@@ -98,11 +112,12 @@ while [ "$#" -gt 0 ]; do
     -m*)                MARKER="${1#-m}"; shift ;;
     --gate)             RUN_GATE=1; shift ;;
     --no-gate)          RUN_GATE=0; shift ;;
+    -x|--exitfirst)     EXITFIRST="-x"; RETRY=0; shift ;;
     --no-retry)         RETRY=0; shift ;;
     --retry-max-rounds) RETRY_MAX_ROUNDS="${2:-}"; shift 2 ;;
     --retry-delay)      RETRY_DELAY="${2:-}"; shift 2 ;;
     --retry-factor)     RETRY_FACTOR="${2:-}"; shift 2 ;;
-    -h|--help)          sed -n '1,96p' "$0"; exit 0 ;;
+    -h|--help)          sed -n '1,101p' "$0"; exit 0 ;;
     -*)                 echo "unknown flag: $1 (see --help)" >&2; exit 2 ;;
     *)                  TARGETS+=("$1"); shift ;;
   esac
@@ -182,6 +197,7 @@ run_round() {
   ( cd "$DEN_DIR" && SANITY_PARALLEL_SOUNDOFF=1 "$VENV_PY" -m pytest "$@" \
       -m "$MARKER" \
       -n "$nproc" --dist loadfile \
+      ${EXITFIRST:+$EXITFIRST} \
       -p "no:cacheprovider" \
       --durations=25 --durations-min=1.0 \
       --tb=short -ra -v ) 2>&1 | tee -a "$RESULTS_FILE"

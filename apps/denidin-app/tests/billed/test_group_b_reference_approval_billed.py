@@ -89,11 +89,9 @@ def _seed_invoice_305(amount: int, description: str) -> tuple[str, str]:
         f"{seed_ai.mcp_calls if seed_ai else None!r}"
     )
     seeded_output = seed_calls[0]["output"] or ""
-    invoice_number = next(
-        (t for t in re.findall(r"\d{3,}", seeded_output) if t != str(amount)), None
-    )
+    invoice_number = json.loads(seeded_output).get("display_number") if seeded_output else None
     assert invoice_number, f"could not read the seeded invoice number from {seeded_output!r}"
-    return client_name, invoice_number
+    return client_name, str(invoice_number)
 
 
 def _seed_transaction_account_300(amount: int, description: str) -> tuple[str, str]:
@@ -115,11 +113,9 @@ def _seed_transaction_account_300(amount: int, description: str) -> tuple[str, s
         f"{ai_response.mcp_calls if ai_response else None!r}"
     )
     seeded_output = seed_calls[0]["output"] or ""
-    doc_number = next(
-        (t for t in re.findall(r"\d{3,}", seeded_output) if t != str(amount)), None
-    )
+    doc_number = json.loads(seeded_output).get("display_number") if seeded_output else None
     assert doc_number, f"could not read the seeded document number from {seeded_output!r}"
-    return client_name, doc_number
+    return client_name, str(doc_number)
 
 
 def _seed_transaction_account_300_with_real_id(amount: int, description: str) -> tuple[str, str, str]:
@@ -142,13 +138,12 @@ def _seed_transaction_account_300_with_real_id(amount: int, description: str) ->
         f"{ai_response.mcp_calls if ai_response else None!r}"
     )
     seeded_output = seed_calls[0]["output"] or ""
-    doc_number = next(
-        (t for t in re.findall(r"\d{3,}", seeded_output) if t != str(amount)), None
-    )
+    parsed = json.loads(seeded_output) if seeded_output else {}
+    doc_number = parsed.get("display_number")
     assert doc_number, f"could not read the seeded document number from {seeded_output!r}"
-    id_match = re.search(r"מזהה פנימי \(internal_morning_id\): (\S+)", seeded_output)
-    assert id_match, f"could not read the real internal_morning_id from {seeded_output!r}"
-    return client_name, doc_number, id_match.group(1)
+    real_internal_morning_id = parsed.get("internal_morning_id")
+    assert real_internal_morning_id, f"could not read the real internal_morning_id from {seeded_output!r}"
+    return client_name, str(doc_number), real_internal_morning_id
 
 
 def _assert_reference_data_present(approval_text: str, *, client_name: str, doc_number: str, amount: int):

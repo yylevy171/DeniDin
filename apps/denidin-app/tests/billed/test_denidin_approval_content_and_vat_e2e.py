@@ -25,7 +25,7 @@ RED ON CURRENT CODE:
 Amounts stay under 100, per this suite's sandbox convention.
 NO MOCKING anywhere. @pytest.mark.billed: real OpenAI billing on every run.
 """
-import re
+import json
 
 import pytest
 
@@ -74,10 +74,11 @@ def test_vat_included_transaction_account_is_stored_at_the_approved_amount(denid
         f"Morning inflated the approved 47 by 18% and the reply admits it: {reply!r}"
     )
     output = calls[0]["output"] or ""
-    assert "55.46" not in output and "55" not in re.sub(r"[^\d.]", " ", output).split(), (
+    payload = json.loads(output) if output else {}
+    assert payload.get("amount") != 55.46, (
         f"the created document is not the {AMOUNT} that was approved: {output!r}"
     )
-    assert str(AMOUNT) in output, f"the approved amount {AMOUNT} is absent from the result: {output!r}"
+    assert payload.get("amount") == AMOUNT, f"the approved amount {AMOUNT} is absent from the result: {output!r}"
 
 
 def test_unstated_vat_is_asked_about_rather_than_assumed(denidin_app):

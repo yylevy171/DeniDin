@@ -184,7 +184,7 @@ rm -rf "${DEN_DIR}/test_data/gw"* "${DEN_DIR}/test_data/master" 2>/dev/null || t
 
 echo
 echo ">>> SANITY ($SCOPE)  ->  ${RESULTS_FILE#$ROOT/}"
-echo "    (this streams little while workers run; the file has everything)"
+echo "    (per-test '>>> TEST [k/N]' sound-off streams live from conftest.py — relay each line)"
 
 # The FULL sweep is billed-only. A subset naming tests/expensive/ node ids opts
 # INTO expensive - the caller has taken on the per-test approval each still

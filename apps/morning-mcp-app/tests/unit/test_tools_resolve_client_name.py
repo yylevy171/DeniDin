@@ -14,6 +14,8 @@ search_clients contract) — this mocks a third-party API boundary, not an
 internal component (CONSTITUTION.md §I/§V), mirroring
 test_tools_client_resolution.py's existing fake.
 """
+import json
+
 import pytest
 
 from denidin_mcp_morning import tools
@@ -72,13 +74,17 @@ def test_resolve_client_name_never_mentions_client_id():
 
 
 def test_resolve_client_name_non_exact_single_match_asks_for_confirmation():
+    """2026-09-04 JSON-only contract: the tool no longer composes the Hebrew
+    "אישור - כן/לא?" question itself - it returns a structured
+    needs_confirmation status and the candidate name, and the calling model
+    composes the actual yes/no question from it."""
     record = _client_record(client_id="c-1", name="Test Client International")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    result = tools.resolve_client_name(client, "Test Client")
+    payload = json.loads(tools.resolve_client_name(client, "Test Client"))
 
-    assert "Test Client International" in result
-    assert "כן" in result and "לא" in result
+    assert payload["status"] == "needs_confirmation"
+    assert payload["candidate_name"] == "Test Client International"
 
 
 def test_resolve_client_name_ambiguous_lists_candidates():
@@ -102,7 +108,8 @@ def test_resolve_client_name_zero_matches_returns_a_string_never_raises():
     result = tools.resolve_client_name(client, "Nonexistent Client")
 
     assert isinstance(result, str)
-    assert "לא נמצא" in result
+    payload = json.loads(result)
+    assert payload["found"] is False
 
 
 def test_resolve_client_name_is_read_only_never_mutates():

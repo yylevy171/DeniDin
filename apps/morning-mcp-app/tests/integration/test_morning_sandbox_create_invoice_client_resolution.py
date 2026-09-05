@@ -18,6 +18,7 @@ still create_invoice's own job: accepting an exact match, and refusing
 
 Per CONSTITUTION §V and this app's testing policy (spec.md §Testing Strategy).
 """
+import json
 from pathlib import Path
 
 import pytest
@@ -45,22 +46,17 @@ def morning_client():
     )
 
 
-def _extract_id(confirmation_text: str) -> str:
-    return confirmation_text.split("מזהה פנימי (internal_morning_id): ")[1].splitlines()[0].strip()
-
-
 def test_create_invoice_exact_match_attaches_to_the_real_client(morning_client):
     marker = f"DENIDIN_027_RESOLVE_EXACT_{int(now_local().timestamp())}"
     client_id, client_name = seed_real_client(morning_client, marker)
 
-    confirmation = create_invoice(
+    confirmation = json.loads(create_invoice(
         morning_client, client_name=client_name, amount=10.0, description=marker, name_resolved=True
-    )
-    internal_morning_id = _extract_id(confirmation)
+    ))
+    internal_morning_id = confirmation["internal_morning_id"]
 
     created = morning_client.get_invoice(internal_morning_id)
     assert created.get("client", {}).get("id") == client_id
-    assert "מצאתי" not in confirmation  # exact match - no disclosure needed
 
 
 def test_create_invoice_not_resolved_refuses_without_any_lookup(morning_client):

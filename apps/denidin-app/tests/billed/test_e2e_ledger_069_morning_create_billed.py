@@ -37,7 +37,7 @@ class TestLedgerPostTurnCaptureMorningCreate:
         time.sleep(2)
         (_ask, _ask_ai), (reply, approve_ai) = _send_turn_and_approve(
             GODFATHER_CHAT_ID,
-            f"תפיק ל{name} חשבונית מס-קבלה על סך 1,200 ש\"ח כולל מע\"מ עבור ייעוץ משפטי.",
+            f"תפיק ל{name} חשבונית מס-קבלה על סך 1,200 ש\"ח כולל מע\"מ עבור ייעוץ משפטי. שולם היום.",
             "F069_US2",
         )
         assert approve_ai is not None

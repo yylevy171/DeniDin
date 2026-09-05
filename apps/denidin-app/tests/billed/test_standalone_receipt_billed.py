@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 
 import pytest
 
@@ -104,9 +103,9 @@ def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
 
     # And a real follow-up turn independently confirms THIS receipt persisted
     # for the client (by the number Morning assigned it).
-    receipt_number_match = re.search(r"מספר (\d+)", receipt_output)
-    assert receipt_number_match, f"Could not read the receipt number from: {receipt_output!r}"
-    receipt_number = receipt_number_match.group(1)
+    receipt_number = json.loads(receipt_output).get("display_number") if receipt_output else None
+    assert receipt_number, f"Could not read the receipt number from: {receipt_output!r}"
+    receipt_number = str(receipt_number)
 
     details_response, details_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -117,8 +116,9 @@ def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
         details_ai_response, "get_invoice_details"
     )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
+    docs = [json.loads(c["output"]) for c in details_calls if c["output"]]
 
-    assert f"#{receipt_number}" in combined_output, (
+    assert any(str(d.get("display_number")) == receipt_number for d in docs), (
         f"Standalone receipt #{receipt_number} did not show up in {client_name!r}'s "
         f"document list: {combined_output!r}"
     )

@@ -872,18 +872,19 @@ class TestLedgerEventCaptureE2E:
             )
             # A3-T2: the payment carries the deposit's OWN date (05 / 08 / 26),
             # not the day the document was issued. Loosened to the three date
-            # components appearing in the payments section rather than one exact
-            # separator style, so a dotted or ISO rendering still passes.
-            payments_section = doc.split("תשלומים")[-1] if "תשלומים" in doc else doc
+            # components appearing in the payment's own date field rather than
+            # one exact separator style, so a dotted or ISO rendering still passes.
+            payment = json.loads(doc).get("payment") or {}
+            payment_date = payment.get("date") or ""
             for part in ("5", "8", "26"):
-                assert part in payments_section, (
+                assert part in payment_date, (
                     f"A3: date component {part!r} missing from the fetched "
-                    f"document's payments section: {doc!r}"
+                    f"document's payment date: {doc!r}"
                 )
             # A3b: booked as a bank transfer (payment type 4) - the only type
             # Morning stores bank details on.
-            assert "העברה בנקאית" in doc, (
-                f"A3b: a bank deposit must be booked as העברה בנקאית (payment type 4), "
+            assert payment.get("type") == 4, (
+                f"A3b: a bank deposit must be booked as payment type 4 (bank transfer), "
                 f"which is the only type Morning stores bank details on: {doc!r}"
             )
         finally:

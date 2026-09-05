@@ -109,11 +109,26 @@ def _norm_date(value: Any) -> Optional[str]:
 
 
 _DATE_KEYS = {"txn_date"}
+_PERCENT_KEYS = {"percent", "split_percent", "percent_base"}
+
+
+def _norm_percent(value: Any) -> Optional[str]:
+    """Normalise a percentage for a fidelity compare so a manifest `"15"` matches
+    a persisted `"15%"` (the ledgerer stores percent components with the sign).
+    Strips a trailing `%`, surrounding whitespace, and a leading currency mark,
+    then reuses `_norm` for the numeric collapse (`"15.0"` → `"15"`)."""
+    s = _norm(value)
+    if s is None:
+        return None
+    s = s.replace("%", "").replace("‏", "").strip()
+    return _norm(s)
 
 
 def _values_match(expected: Any, actual: Any, key: str) -> bool:
     if key in _DATE_KEYS:
         return _norm_date(expected) == _norm_date(actual)
+    if key in _PERCENT_KEYS:
+        return _norm_percent(expected) == _norm_percent(actual)
     return _norm(expected) == _norm(actual)
 
 

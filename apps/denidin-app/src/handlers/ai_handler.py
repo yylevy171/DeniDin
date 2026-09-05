@@ -336,18 +336,12 @@ _GROUP_B_REFERENCE_TOOLS = {
     "cancel_transaction_account",
 }
 
-# The exact line format_invoice_confirmation (morning-mcp-app) always appends
-# to get_invoice_details' output - the one line that must never reach the
-# user (an internal Morning document id), even though the rest of that same
-# real output is otherwise shown verbatim as bugfix-038's Part 1.
-_INTERNAL_MORNING_ID_LINE_PREFIX = "מזהה פנימי"
-
-
 def _find_referenced_document_details(original_internal_morning_id: Optional[str], mcp_calls: List[Dict[str, Any]]) -> Optional[str]:
     """bugfix-038: find a get_invoice_details call, already executed earlier
     in this SAME turn, whose internal_morning_id argument matches original_internal_morning_id -
-    and return its real output verbatim (the referenced document's own real
-    data, as Morning returned it - client name, amount, dates, status, etc.).
+    and return its raw output (the referenced document's own real data, as
+    Morning returned it - JSON per the 2026-09-04 contract; the caller parses
+    it via `_format_referenced_document_for_approval`).
 
     Returns None if no matching lookup exists in mcp_calls - the accepted
     risk of this design (user, 2026-08-13): correctness here depends on the
@@ -375,17 +369,6 @@ def _find_referenced_document_details(original_internal_morning_id: Optional[str
             return str(output)
     return None
 
-
-def _strip_internal_morning_id_line(details_text: str) -> str:
-    """Never show the internal Morning document id to the user (constitution -
-    see bugfix-038's Origin). get_invoice_details' raw output always includes
-    it (morning-mcp-app's format_invoice_confirmation); this strips exactly
-    that one line, leaving everything else - client name, amount, dates,
-    status, linked documents - intact and unmodified."""
-    return "\n".join(
-        line for line in details_text.split("\n")
-        if not line.startswith(_INTERNAL_MORNING_ID_LINE_PREFIX)
-    )
 
 _PAYMENT_METHOD_LABELS = {
     "bank_transfer": "העברה בנקאית",
@@ -417,6 +400,40 @@ def _format_date_for_display(raw: str) -> str:
         return raw
 
 
+def _format_referenced_document_for_approval(details_json: str) -> Optional[str]:
+    """Render the referenced document as the readable Hebrew Part 1 block of a
+    Group B approval prompt (bugfix-038), from get_invoice_details' JSON output
+    (the 2026-09-04 JSON-only Morning contract - that output is machine JSON now,
+    never prose, and must never reach the user verbatim). Shows the fields the
+    prose version used to - document type, number, client, date, amount, status -
+    and never `internal_morning_id` (constitution: that id must never be shown).
+    Returns None on anything unparseable, so the caller simply omits Part 1
+    rather than showing a broken block. Never raises (response hot path)."""
+    try:
+        doc = json.loads(details_json)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(doc, dict):
+        return None
+    lines = []
+    if doc.get("type_name"):
+        lines.append(f"סוג מסמך: {doc['type_name']}")
+    if doc.get("display_number"):
+        lines.append(f"מספר מסמך: {doc['display_number']}")
+    if doc.get("client_name"):
+        lines.append(f"לקוח: {doc['client_name']}")
+    if doc.get("document_date"):
+        lines.append(f"תאריך: {_format_date_for_display(doc['document_date'])}")
+    amount = doc.get("amount")
+    if amount is not None:
+        if isinstance(amount, float) and amount.is_integer():
+            amount = int(amount)
+        lines.append(f"סכום: {amount} ₪")
+    if doc.get("status_label"):
+        lines.append(f"סטטוס: {doc['status_label']}")
+    return "\n".join(lines) if lines else None
+
+
 def _build_pending_approval_details(
     tool_name: str, arguments_json: str, mcp_calls: Optional[List[Dict[str, Any]]] = None
 ) -> str:
@@ -436,15 +453,16 @@ def _build_pending_approval_details(
     information too, and silently dropping it is how the ₪40,000 request lost
     both its purpose and its "לפני מע״מ".
 
-    bugfix-038: for the three "Group B" reference tools (`_GROUP_B_REFERENCE_
-    TOOLS`), the approval gains a PART 1 preceding the block above - the
-    referenced document's own real data (client name, document date, amount at
-    minimum; everything else get_invoice_details returns, except its internal
-    id line), found via `_find_referenced_document_details` correlating
-    `original_internal_morning_id` against a get_invoice_details call already executed
-    earlier in this SAME turn (`mcp_calls`). Absent for every other tool, and
-    absent for Group B tools too when no matching lookup is found (accepted
-    risk - see that function's docstring).
+    bugfix-038: for the "Group B" reference tools (`_GROUP_B_REFERENCE_TOOLS`),
+    the approval gains a PART 1 preceding the block above - the referenced
+    document's own real data (document type, number, client, date, amount,
+    status), rendered by `_format_referenced_document_for_approval` from the
+    get_invoice_details JSON output found via `_find_referenced_document_details`
+    correlating `original_internal_morning_id` against a get_invoice_details call
+    already executed earlier in this SAME turn (`mcp_calls`); never the internal
+    id. Absent for every other tool, and absent for Group B tools too when no
+    matching lookup is found or its output can't be parsed (accepted risk - see
+    those functions' docstrings).
 
     Never raises: it runs on the response-handling hot path.
     """
@@ -461,10 +479,9 @@ def _build_pending_approval_details(
             args.get("original_internal_morning_id"), mcp_calls or []
         )
         if reference_details:
-            reference_block = (
-                f"📄 המסמך המקושר:\n"
-                f"{_strip_internal_morning_id_line(reference_details)}\n\n"
-            )
+            formatted_reference = _format_referenced_document_for_approval(reference_details)
+            if formatted_reference:
+                reference_block = f"📄 המסמך המקושר:\n{formatted_reference}\n\n"
 
     if tool_name == "cancel_transaction_account":
         # Feature 056: unlike the other Group B tools, this one creates NO

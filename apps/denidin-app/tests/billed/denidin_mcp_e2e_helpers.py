@@ -436,6 +436,7 @@ def pick_existing_client(predicate: Optional[Callable[[dict], bool]] = None) -> 
 GODFATHER_CHAT_ID = "972500000021@c.us"  # Feature 018 E2E test godfather identity (rotated 2026-08-12, bugfix-028: 972500000018's persisted session had accumulated a long, noisy history that was confusing the model across turns)
 CLIENT_ROLE_CHAT_ID = "972500000019@c.us"  # Feature 026 US5 - defaults to Role.CLIENT (not godfather/admin/blocked)
 BLOCKED_ROLE_CHAT_ID = "972500000020@c.us"  # Feature 026 US5 - added to denidin_config's blocked_phones in conftest.py
+ADMIN_ISOLATED_CHAT_ID = "972500000022@c.us"  # bugfix-052 stop-gap: a spare admin-role chat id for an individual test that needs its own session, isolated from GODFATHER_CHAT_ID's module-wide shared one
 
 
 def _send_turn(chat_id: str, text: str, id_prefix: str) -> Tuple[Optional[str], Optional[AIResponse]]:
@@ -499,51 +500,53 @@ def _seeded_email_from(ai_response: Optional[AIResponse]) -> str:
 # them and drives an identity-resolution question to a conclusion.             #
 #                                                                             #
 # The production resolve_client_name MCP tool returns exactly one of four      #
-# fixed-prefix Hebrew strings (morning-mcp-app/…/formatters.py), and the       #
-# model very often echoes that same string near-verbatim in its plain-text    #
-# reply when it answers a resolution question without a fresh tool call - so   #
-# `_classify` reads the marker from the tool output OR the reply text,         #
-# whichever carries one:                                                       #
-#   EXACT            format_client_name_resolved            - the client       #
-#                    exists in Morning exactly as queried (the ONLY outcome    #
-#                    that means "exists as queried")                           #
-#   SINGLE_CANDIDATE format_client_name_confirmation_question - one similar     #
-#                    but non-exact client; a bare "כן" confirms it             #
-#   MULTI_CANDIDATE  format_ambiguous_clients_message         - 2+ similar     #
-#                    clients; "כן" can NOT disambiguate - an exact name must   #
-#                    be supplied                                               #
-#   NONE             format_client_not_found / nothing looked the client up   #
-#                    and nothing named an outcome - zero confirmed matches     #
+# fixed JSON shapes (morning-mcp-app/…/formatters.py, 2026-09-04 JSON-only     #
+# contract - see that module's docstring). The model composes its own fresh   #
+# Hebrew reply from this JSON and never echoes it verbatim, so `_classify`     #
+# reads the shape from the tool's raw OUTPUT only - a turn with no             #
+# resolve_client_name call at all falls straight through to NONE, it is       #
+# never inferred from reply text:                                             #
+#   EXACT            {"status": "resolved", "name": ...}          - the       #
+#                    client exists in Morning exactly as queried (the ONLY    #
+#                    outcome that means "exists as queried")                  #
+#   SINGLE_CANDIDATE {"status": "needs_confirmation",                         #
+#                     "candidate_name": ...}            - one similar but     #
+#                    non-exact client; a bare "כן" confirms it                #
+#   MULTI_CANDIDATE  {"status": "ambiguous", "candidates": [...]}  - 2+       #
+#                    similar clients; "כן" can NOT disambiguate - an exact    #
+#                    name must be supplied                                    #
+#   NONE             {"found": false} / nothing looked the client up and      #
+#                    nothing named an outcome - zero confirmed matches        #
 #                                                                             #
 # There is NO fifth "errored"/"not attempted" bucket. A resolve_client_name    #
 # call that Morning rejected, or one whose output matches none of the four     #
-# markers, is a hard failure - `_classify` RAISES ``ResolveClientNameError``   #
+# shapes, is a hard failure - `_classify` RAISES ``ResolveClientNameError``    #
 # (identity resolution must never error; in a test any unintended error is a   #
 # failure, not a state to recover from). Only a turn with no resolve call at   #
-# all and no marker in the reply is benign - that is a plain-text clarifying   #
-# question, classified NONE (nothing has confirmed the client exists).         #
+# all is benign - that is a plain-text clarifying question, classified NONE    #
+# (nothing has confirmed the client exists).                                  #
 #                                                                             #
-# NOTHING else in this suite may read those markers, re-derive "does this      #
+# NOTHING else in this suite may read this shape, re-derive "does this        #
 # client exist", or decide what to reply to a resolution question - it all     #
 # goes through `_resolve_client_name` below. Inline copies of this exact       #
 # check drifted and broke the suite twice in 2026-08 (once in the old          #
 # `_fresh_nonexistent_client_name` helper, then again via a second ad-hoc      #
-# copy in test_create_document_for_new_client_declines_client_creation). One   #
-# classifier, one driver, one place - so it can only ever be wrong in one.     #
+# copy in test_create_document_for_new_client_declines_client_creation), and   #
+# the shape itself drifted underneath this file once already (2026-09-04's    #
+# JSON-only contract change on the morning-mcp-app side, caught late - this    #
+# file wasn't updated in lockstep). One classifier, one driver, one place -    #
+# so it can only ever be wrong in one.                                        #
 # --------------------------------------------------------------------------- #
-_EXACT_CLIENT_MATCH_MARKER = 'שם הלקוח המדויק במורנינג: "'
-_SINGLE_CANDIDATE_MARKER = 'מצאתי לקוח בשם "'
-_MULTI_CANDIDATE_MARKER = "נמצאו כמה לקוחות בשם דומה"
-_CLIENT_NOT_FOUND_MARKER = "לא נמצא לקוח בשם הזה"
 
 
 class ResolveClientNameError(AssertionError):
     """A resolve_client_name call errored, or returned an output shape that
-    matches none of the four known markers. Identity resolution must never
-    error - in this suite that is a hard failure, never a state to recover
-    from (user, 2026-09-02: "error or junk is NOT NONE - it is an error that
-    should be raised ... any error is a failure unless we intended for it to
-    happen"). A test that deliberately provokes such an error catches this."""
+    matches none of the four known JSON shapes. Identity resolution must
+    never error - in this suite that is a hard failure, never a state to
+    recover from (user, 2026-09-02: "error or junk is NOT NONE - it is an
+    error that should be raised ... any error is a failure unless we intended
+    for it to happen"). A test that deliberately provokes such an error
+    catches this."""
 
 
 class ResolveOutcome(Enum):
@@ -644,52 +647,55 @@ def _resolve_client_name(
       ``.reply`` / ``.ai_response`` / ``.resolved_name`` reflect the final
       state.
     """
-    def _match_marker(text: str) -> Optional[Tuple[ResolveOutcome, Optional[str]]]:
-        """Read one of the four fixed markers out of `text` (a tool output OR a
-        reply). ``None`` if the text carries none of them."""
-        if _EXACT_CLIENT_MATCH_MARKER in text:
-            after = text.split(_EXACT_CLIENT_MATCH_MARKER, 1)[1]
-            return ResolveOutcome.EXACT, (after.split('"')[0] or None)
-        if _SINGLE_CANDIDATE_MARKER in text:
-            after = text.split(_SINGLE_CANDIDATE_MARKER, 1)[1]
-            return ResolveOutcome.SINGLE_CANDIDATE, (after.split('"')[0] or None)
-        if _MULTI_CANDIDATE_MARKER in text:
+    def _match_output(output: str) -> Optional[Tuple[ResolveOutcome, Optional[str]]]:
+        """Classify a resolve_client_name tool-call's raw JSON OUTPUT into one
+        of the four outcomes. ``None`` if `output` isn't one of the four known
+        JSON shapes (including: not valid JSON at all)."""
+        try:
+            payload = json.loads(output)
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        status = payload.get("status")
+        if status == "resolved":
+            return ResolveOutcome.EXACT, payload.get("name")
+        if status == "needs_confirmation":
+            return ResolveOutcome.SINGLE_CANDIDATE, payload.get("candidate_name")
+        if status == "ambiguous":
             return ResolveOutcome.MULTI_CANDIDATE, None
-        if _CLIENT_NOT_FOUND_MARKER in text:
+        if payload.get("found") is False:
             return ResolveOutcome.NONE, None
         return None
 
     def _classify(
         turn_ai: Optional[AIResponse], turn_reply: Optional[str] = None
     ) -> Tuple[ResolveOutcome, Optional[str]]:
-        """One turn -> exactly one of the four ``ResolveOutcome`` values. The
-        marker is read from the turn's LAST resolve_client_name output if it
-        made a call, otherwise from the reply text (the model routinely quotes
-        the same fixed string when it answers in plain text). A resolve call
-        that errored, or one whose output matches no marker, RAISES
-        ``ResolveClientNameError``. A turn with no resolve call and no marker
-        in the reply is NONE - a benign plain-text clarifying question,
-        nothing has confirmed the client exists. The ONLY place any of the
-        four markers is read."""
+        """One turn -> exactly one of the four ``ResolveOutcome`` values, read
+        from the turn's LAST resolve_client_name call's raw JSON output. A
+        resolve call that errored, or one whose output matches none of the
+        four known JSON shapes, RAISES ``ResolveClientNameError``. A turn with
+        no resolve call at all is NONE - a benign plain-text clarifying
+        question, nothing has confirmed the client exists (the model never
+        echoes this JSON verbatim in prose, so there is no reply-text
+        fallback to read here any more). ``turn_reply`` is accepted for call-
+        site compatibility but unused. The ONLY place this JSON is read."""
         calls = _calls_for(turn_ai, "resolve_client_name")
-        if calls:
-            last = calls[-1]
-            if last.get("error") is not None:
-                raise ResolveClientNameError(
-                    f"resolve_client_name errored - identity resolution must "
-                    f"never error: {last!r}"
-                )
-            matched = _match_marker(last.get("output") or "")
-            if matched is None:
-                raise ResolveClientNameError(
-                    f"resolve_client_name returned an output matching none of "
-                    f"the four known markers: {last.get('output')!r}"
-                )
-            return matched
-        matched = _match_marker(turn_reply or "")
-        if matched is not None:
-            return matched
-        return ResolveOutcome.NONE, None
+        if not calls:
+            return ResolveOutcome.NONE, None
+        last = calls[-1]
+        if last.get("error") is not None:
+            raise ResolveClientNameError(
+                f"resolve_client_name errored - identity resolution must "
+                f"never error: {last!r}"
+            )
+        matched = _match_output(last.get("output") or "")
+        if matched is None:
+            raise ResolveClientNameError(
+                f"resolve_client_name returned an output matching none of "
+                f"the four known JSON shapes: {last.get('output')!r}"
+            )
+        return matched
 
     if initial_result is not None:
         reply, ai_response = initial_result
@@ -791,17 +797,19 @@ def _is_genuine_document_creation(call: dict) -> bool:
     mcp_call actually created a document, vs. refused (bugfix-039, caught in a
     post-merge sweep 2026-08-12).
 
-    `call["error"] is None` is NOT sufficient on its own: bugfix-039's
-    refuse-and-ask-for-confirmation on a non-exact client match (and the
-    ambiguous/ - not-found refusal messages) are ALL ordinary string returns,
-    same as a genuine success - `error` stays None either way, since none of
-    those paths raise (only a true zero-candidate match raises
-    ClientNotFoundError, and even that gets caught and turned into an
-    ordinary string by server.py's error boundary - see errors.py). The one
-    reliable signal is the output's own shape: format_invoice_confirmation
-    always starts with "חשבונית #", which no refusal/confirmation-question/
-    ambiguous-candidates message ever does."""
-    return bool(call.get("error") is None and (call.get("output") or "").startswith("חשבונית #"))
+    `call["error"] is None` is NOT sufficient on its own: a name_resolved=False
+    refusal (format_name_not_resolved) is an ordinary JSON string return, same
+    as a genuine success - `error` stays None either way, since that path
+    doesn't raise. The one reliable signal is the output's own shape
+    (2026-09-04 JSON-only contract): format_invoice_json always carries a
+    `display_number` key, which no refusal shape ever does."""
+    if call.get("error") is not None:
+        return False
+    try:
+        payload = json.loads(call.get("output") or "")
+    except (ValueError, TypeError):
+        return False
+    return isinstance(payload, dict) and "display_number" in payload
 
 
 def _send_turn_and_approve(

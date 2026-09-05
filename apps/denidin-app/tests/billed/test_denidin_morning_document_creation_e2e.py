@@ -44,8 +44,8 @@ invoices existing for the same client name in the same sandbox.
 
 NO MOCKING anywhere. @pytest.mark.billed: real OpenAI billing on every run.
 """
+import json
 import random
-import re
 import time
 from typing import Tuple
 
@@ -92,7 +92,7 @@ def _seed_fresh_invoice_and_get_number(amount: int, description: str) -> Tuple[s
     client_name = pick_existing_client()["name"]
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"צור חשבונית ל-{client_name} על {amount} ₪ עבור {description}",
+        text=f"צור חשבונית ל-{client_name} על {amount} ₪ לא כולל מע״מ עבור {description}",
         id_prefix="E2E_021_SEED",
     )
     create_calls = _calls_for(ai_response, "create_invoice")
@@ -100,14 +100,14 @@ def _seed_fresh_invoice_and_get_number(amount: int, description: str) -> Tuple[s
         f"Seed create_invoice failed or was not called: {ai_response.mcp_calls!r}"
     )
     output = create_calls[0]["output"] or ""
-    match = re.search(r"#(\d+)", output)
-    assert match, f"Could not extract invoice number from create_invoice output: {output!r}"
+    display_number = json.loads(output).get("display_number") if output else None
+    assert display_number, f"Could not extract invoice number from create_invoice output: {output!r}"
     time.sleep(3)  # search-index lag (research.md Decision 8) - a caller that immediately
     # list_invoices/get_invoice_details's for this just-seeded invoice would otherwise race
     # the sandbox's own indexing (a real, billed failure: 2026-07-31,
     # test_receipt_request_for_already_paid_invoice_handled_sensibly - the freshly-created
     # invoice was missing from list_invoices' results for the first ~10s after creation)
-    return client_name, match.group(1)
+    return client_name, str(display_number)
 
 
 _SEED_DESCRIPTIONS = ("ייעוץ", "עיצוב לוגו", "תחזוקת אתר", "צילום")

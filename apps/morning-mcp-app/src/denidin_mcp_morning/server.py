@@ -472,18 +472,17 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: Optional[str] = None,
         document_display_number: Optional[str] = None,
         name_resolved: bool = False,
-        output_format: str = "text",
         include_full_details: bool = False,
     ) -> str:
         """List/search invoices with optional filters (status/date range/client
         name/exact document_display_number - e.g. "51365", the human-visible
         label - NEVER an internal_morning_id).
 
-        output_format: leave unset (or "text") for the normal Hebrew,
-        human-readable result - that is what you want when answering a person.
-        Pass "json" ONLY for automated bookkeeping/reconciliation tasks that
-        explicitly ask for machine-readable output; it returns every match
-        untruncated, with native types and explicit nulls.
+        Returns a JSON result (every match, untruncated, native types, explicit
+        nulls) - never Hebrew prose. Compose your own Hebrew, bullet-style
+        reply for the user from it; never show raw JSON to them (2026-09-04
+        JSON-only contract - see denidin_mcp_morning.formatters module
+        docstring for the full rationale).
 
         include_full_details: set True when you need each matching document's
         FULL detail - its payment's bank number/branch/account, and any linked
@@ -508,14 +507,12 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             to_date,
             client_name,
             document_display_number,
-            config.list_invoices_token_budget,
             name_resolved,
-            output_format,
             include_full_details,
         )
 
     @mcp.tool(structured_output=False)
-    def get_invoice_details(internal_morning_id: str, output_format: str = "text") -> str:
+    def get_invoice_details(internal_morning_id: str) -> str:
         """Fetch full details for one document: status, dates, payments
         (including structured bank number/branch/account for a bank transfer),
         and any linked documents.
@@ -535,11 +532,11 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         across six live attempts, no matter how explicitly it was instructed
         to - the tool's own description outweighed the instruction.)
 
-        output_format: leave unset (or "text") for the normal Hebrew,
-        human-readable view. Pass "json" ONLY for automated tasks that
-        explicitly ask for machine-readable output."""
+        Returns a JSON result - never Hebrew prose. Compose your own Hebrew,
+        bullet-style reply for the user from it; never show raw JSON to them
+        (2026-09-04 JSON-only contract)."""
         return _call_with_error_boundary(
-            tools.get_invoice_details, morning_client, internal_morning_id, output_format
+            tools.get_invoice_details, morning_client, internal_morning_id
         )
 
     @mcp.tool(structured_output=False)

@@ -19,8 +19,8 @@ CLAUDE.md/CONSTITUTION §VII).
 """
 from __future__ import annotations
 
+import json
 import random
-import re
 import time
 
 import pytest
@@ -105,12 +105,13 @@ def test_godfather_lists_clients_via_whatsapp(denidin_app):
     )
 
     tool_output = list_calls[0]["output"]
-    if "יותר מדי" in tool_output or "צמצם" in tool_output:
+    payload = json.loads(tool_output)
+    if payload.get("status") == "too_many":
         # Real client count currently exceeds the display cap - correct,
         # intended behavior is to report the real total and ask to narrow,
         # not to list the seeded name among hundreds of others.
-        assert re.search(r"\d{2,}", tool_output), (
-            f"Expected a real (2+ digit) total in the too-many response: {tool_output!r}"
+        assert payload.get("total", 0) >= 10, (
+            f"Expected a real (10+) total in the too-many response: {tool_output!r}"
         )
     else:
         assert client_name in response, (

@@ -13,6 +13,7 @@ covered by test_morning_sandbox_invoice_status_tools.py, and REQ-INV-016's
 regression guarantee (unchanged byte-for-byte) is proven by that file
 continuing to pass unchanged, not by duplicating it in this one.
 """
+import json
 import time
 from pathlib import Path
 
@@ -109,7 +110,9 @@ def test_standalone_receipt_does_not_require_a_later_invoice_to_link_back(mornin
         f"עבודה שהושלמה - {marker}",
         name_resolved=True,
     )
-    assert "חשבונית" in invoice_result and "מזהה פנימי" in invoice_result
+    invoice_payload = json.loads(invoice_result)
+    assert invoice_payload["internal_morning_id"]
+    assert invoice_payload["amount"] == 100.0
 
     resolved_client, _ = _resolve_client_by_name(morning_client, client_name)
     invoice_docs = _poll_for_document_type(morning_client, resolved_client.id, 305)

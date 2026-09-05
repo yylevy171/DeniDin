@@ -8,6 +8,7 @@ human-readable, Hebrew-formatted string.
 """
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime
 from typing import Any, Dict, List, NoReturn, Optional, Set, Tuple
@@ -25,10 +26,7 @@ from .formatters import (
     format_client_name_resolved,
     format_client_not_found,
     format_financial_summary,
-    format_invoice_confirmation,
-    format_invoice_details,
     format_invoice_json,
-    format_invoice_list,
     format_invoice_list_json,
     format_name_not_resolved,
     format_original_not_linked_to_client,
@@ -298,15 +296,28 @@ def _read_back_stored_total(client: MorningClient, doc_id: str) -> Optional[floa
     return float(total) if isinstance(total, (int, float)) else None
 
 
-def _amount_mismatch_warning(requested: float, stored: Optional[float]) -> str:
-    """bugfix-028 A4: if what Morning stored differs from what the user approved,
-    say so, show both numbers, and ask - never silently reconcile."""
+def _amount_mismatch_info(requested: float, stored: Optional[float]) -> Optional[dict]:
+    """bugfix-028 A4: if what Morning stored differs from what the operator
+    approved, surface both numbers so the model can say so and ask - never
+    silently reconcile. Returns a dict merged into the JSON document result
+    (2026-09-04 JSON-only contract change - this used to be a prepended
+    prose warning; a JSON tool result can't be prefixed with free text and
+    stay valid JSON, so the mismatch is now a real field the model reads and
+    turns into its own warning to the operator)."""
     if stored is None or abs(stored - requested) < 0.01:
-        return ""
-    return (
-        f"⚠️ שים לב: אישרת {requested:,.2f} ₪ אבל המסמך נוצר בפועל על סך "
-        f"{stored:,.2f} ₪. מה תרצה שאעשה?\n\n"
-    )
+        return None
+    return {"requested_amount": requested, "actual_amount": stored}
+
+
+def _with_amount_mismatch(invoice_json: str, requested: float, stored: Optional[float]) -> str:
+    """Merge `_amount_mismatch_info` into an already-built `format_invoice_json`
+    result, if a mismatch exists; returns `invoice_json` unchanged otherwise."""
+    mismatch = _amount_mismatch_info(requested, stored)
+    if mismatch is None:
+        return invoice_json
+    doc = json.loads(invoice_json)
+    doc["amount_mismatch"] = mismatch
+    return json.dumps(doc, ensure_ascii=False)
 
 
 def _build_transaction_account_payload(
@@ -453,7 +464,7 @@ def create_transaction_account(
         status=response.get("status"),
         type=_TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
     )
-    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
+    return _with_amount_mismatch(format_invoice_json(invoice), amount, stored_total)
 
 
 def _build_combo_document_core_payload(
@@ -696,7 +707,7 @@ def create_combo_document(
         status=response.get("status"),
         type=_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
     )
-    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
+    return _with_amount_mismatch(format_invoice_json(invoice), amount, stored_total)
 
 
 def create_invoice(
@@ -780,7 +791,7 @@ def create_invoice(
         due_date=due_date,
         status=response.get("status"),
     )
-    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
+    return _with_amount_mismatch(format_invoice_json(invoice), amount, stored_total)
 
 
 def _map_list_invoices_filters(
@@ -862,22 +873,10 @@ def _matches_status(item: dict, status: Optional[str]) -> bool:
     return item_status in _STATUS_ALIASES.get(status, {status})
 
 
-def _truncate_invoices_to_token_budget(
-    invoices: List[Invoice], token_budget: int
-) -> List[Invoice]:
-    """Return the largest prefix of `invoices` whose formatted blocks fit
-    within `token_budget` (reserving headroom for the count line/closing
-    note - REQ-INVOICE-008, research.md Decision 6/7)."""
-    item_budget = token_budget - _LIST_INVOICES_TOKEN_BUDGET_RESERVE
-    shown: List[Invoice] = []
-    cumulative_tokens = 0
-    for invoice in invoices:
-        block_tokens = len(_TOKEN_ENCODING.encode(format_invoice_confirmation(invoice)))
-        if cumulative_tokens + block_tokens > item_budget:
-            break
-        cumulative_tokens += block_tokens
-        shown.append(invoice)
-    return shown
+# 2026-09-04 JSON-only contract change: list_invoices no longer truncates its
+# result to a token budget (the JSON reply is always the complete match set,
+# with total_matched stated explicitly) - _truncate_invoices_to_token_budget
+# and the token-budget machinery it used were removed as dead code.
 
 
 def list_invoices(
@@ -887,12 +886,18 @@ def list_invoices(
     to_date: Optional[str] = None,
     client_name: Optional[str] = None,
     document_display_number: Optional[str] = None,
-    token_budget: int = _LIST_INVOICES_TOKEN_BUDGET,
     name_resolved: bool = False,
-    output_format: str = "text",
     include_full_details: bool = False,
 ) -> str:
-    """List/search invoices and return a Hebrew, human-readable result.
+    """List/search invoices and return a JSON result.
+
+    2026-09-04 JSON-only contract change: this tool used to also support an
+    `output_format="text"` mode returning Hebrew prose, truncated to fit a
+    token budget. That mode is abandoned entirely - the caller (DeniDin's
+    model) is now responsible for reading this JSON and composing its own
+    Hebrew, bullet-style reply. Since the JSON result is not token-budget-
+    truncated (a reconciliation/automation consumer needs every match), the
+    old `token_budget` parameter and its truncation helper are dead here too.
 
     MCP tool: list_invoices (contracts/list_invoices.json, user-stories.md
     US1/US2/US3). Real-pagination fetch cap ported from list_clients
@@ -919,18 +924,12 @@ def list_invoices(
             - the real Morning API's own `number` search field (bugfix,
             2026-08-07), previously never wired up here. Non-numeric values
             are ignored.
-        token_budget: Max estimated tiktoken size of the formatted reply
-            before truncation (REQ-INVOICE-010: config-driven in
-            production via MorningMCPConfig.list_invoices_token_budget,
-            passed in by server.py - this default is only used by direct
-            calls that don't thread a config value through).
-
     Returns:
-        A Hebrew string listing matching invoices (a token-budget-limited
-        prefix if the complete set doesn't fit), a friendly "no results"
-        message if a resolved/unfiltered/number/single-word search finds
-        nothing, a "too many, narrow your search" message if the real
-        total exceeds the fetch cap, or a plain procedural refusal if a
+        A JSON string (`format_invoice_list_json`) listing every matching
+        invoice, with `total_matched` stated explicitly, a friendly
+        "no results" JSON if a resolved/unfiltered/number/single-word
+        search finds nothing, a "too many, narrow your search" JSON if the
+        real total exceeds the fetch cap, or a plain procedural refusal if a
         multi-word `client_name` is given without `name_resolved=True`
         (architecture fix, 2026-08-12 - disambiguation/confirmation-
         question handling for a non-exact multi-word name now lives
@@ -986,20 +985,12 @@ def list_invoices(
         except ValidationError as exc:
             logger.warning("Skipping unparseable invoice in list_invoices result: %s", exc)
 
-    shown_invoices = _truncate_invoices_to_token_budget(invoices, token_budget)
-
-    # Feature 025 Phase 9: TWO INDEPENDENT decisions, deliberately not conflated
-    # (user catch, 2026-08-23).
-    #
-    # 1. `include_full_details` gates the per-document fan-out. Deliberately NOT
-    #    tied to output_format: Phase 9b makes JSON the format for every read
-    #    tool, so a format-based gate would make every ordinary list explode.
-    #    It is a CAPABILITY the caller opts into, available in ANY context -
-    #    a conversation that genuinely needs bank details or linked documents
-    #    should ask for it too (user, 2026-08-23: the only cost is latency, and
-    #    that is acceptable). It is simply not the default, because most
-    #    questions do not need it.
-    # 2. `output_format` gates only presentation.
+    # Feature 025 Phase 9 / 2026-09-04 JSON-only contract: `include_full_details`
+    # gates the per-document fan-out. It is a CAPABILITY the caller opts into,
+    # available in ANY context - a conversation that genuinely needs bank
+    # details or linked documents should ask for it too (user, 2026-08-23: the
+    # only cost is latency, and that is acceptable). It is simply not the
+    # default, because most questions do not need it.
     if include_full_details:
         # Structured bank details (payment[].bankName/bankBranch/bankAccount) and
         # linkedDocuments exist ONLY on the single-document GET. Asking the MODEL
@@ -1019,21 +1010,16 @@ def list_invoices(
                 )
                 detailed.append(inv)
         invoices = detailed
-        shown_invoices = invoices
 
-    if output_format == "json":
-        # Machine-readable output. Not token-budget-truncated: a reconciliation
-        # consumer needs every match, and total_matched is stated explicitly so
-        # truncation is detectable rather than silent.
-        return format_invoice_list_json(invoices, total_matched=len(invoices))
-
-    return format_invoice_list(shown_invoices, total_matched=len(invoices))
+    # Machine-readable output, always. Not token-budget-truncated: the caller
+    # (DeniDin's model) needs every match to compose an accurate reply, and
+    # total_matched is stated explicitly so truncation is detectable rather
+    # than silent.
+    return format_invoice_list_json(invoices, total_matched=len(invoices))
 
 
-def get_invoice_details(
-    client: MorningClient, internal_morning_id: str, output_format: str = "text"
-) -> str:
-    """Fetch full details for one invoice and return a Hebrew, human-readable view.
+def get_invoice_details(client: MorningClient, internal_morning_id: str) -> str:
+    """Fetch full details for one invoice and return a JSON result.
 
     MCP tool: get_invoice_details (contracts/get_invoice_details.json,
     user-stories.md US3).
@@ -1043,13 +1029,14 @@ def get_invoice_details(
         internal_morning_id: Morning document id.
 
     Returns:
-        A Hebrew string with status, dates, and any recorded payments.
+        A JSON string (`format_invoice_json`) with status, dates, and any
+        recorded payments. 2026-09-04 JSON-only contract change: this tool
+        used to also support an `output_format="text"` Hebrew-prose mode -
+        abandoned entirely, see module docstring.
     """
     response = client.get_invoice(internal_morning_id)
     invoice = Invoice.model_validate(response)
-    if output_format == "json":
-        return format_invoice_json(invoice)
-    return format_invoice_details(invoice)
+    return format_invoice_json(invoice)
 
 
 def _build_cancellation_payload(
@@ -1166,12 +1153,12 @@ def create_credit_note(
         client_name=(original.get("client") or {}).get("name"),
     )
 
-    original_number = original.get("number", original_internal_morning_id)
-    credit_number = credit_response.get("number", credit_response.get("id", ""))
-
-    return (
-        f"הופקה חשבונית זיכוי מספר {credit_number} עבור חשבונית מספר {original_number}."
-    )
+    # bugfix-028 A4's lesson (see _read_back_stored_total): POST /documents
+    # returns only a minimal echo (id/number/client/type/...), never amount/
+    # total - format_invoice_json needs the full document, so re-fetch it
+    # rather than validating the bare creation response.
+    new_id = str(credit_response.get("id") or credit_response.get("documentId") or "")
+    return format_invoice_json(Invoice.model_validate(client.get_invoice(new_id)))
 
 
 _CLOSED_STATUS_CODES = {1, 2}  # closed (via payment) / manually closed — see models._MORNING_STATUS_CODES
@@ -1456,7 +1443,7 @@ def create_combo_document_as_reference(
 
     if amount is None and original.get("status") in _CLOSED_STATUS_CODES:
         # Already closed — idempotent no-op, avoid creating a duplicate closing document.
-        return format_invoice_confirmation(Invoice.model_validate(original))
+        return format_invoice_json(Invoice.model_validate(original))
 
     if _extract_linked_client_id(original) is None:
         # Pre-feature, bare-name-only original - refuse rather than fall
@@ -1489,12 +1476,11 @@ def create_combo_document_as_reference(
         client_name=(original.get("client") or {}).get("name"),
     )
 
-    original_number = original.get("number", original_internal_morning_id)
-    combo_number = combo_response.get("number", combo_response.get("id", ""))
-
-    return (
-        f"הופקה חשבונית מס/קבלה מספר {combo_number} לסגירת חשבון עסקה מספר {original_number}."
-    )
+    # bugfix-028 A4's lesson (see _read_back_stored_total): POST /documents
+    # returns only a minimal echo, never amount/total - re-fetch the full
+    # document rather than validating the bare creation response.
+    new_id = str(combo_response.get("id") or combo_response.get("documentId") or "")
+    return format_invoice_json(Invoice.model_validate(client.get_invoice(new_id)))
 
 
 def cancel_transaction_account(client: MorningClient, original_internal_morning_id: str) -> str:
@@ -1688,8 +1674,11 @@ def create_receipt(
             client_id=resolved_client.id,
             client_name=client_name,
         )
-        receipt_number = response.get("number", response.get("id", ""))
-        return f"הופקה קבלה מספר {receipt_number}."
+        # bugfix-028 A4's lesson (see _read_back_stored_total): POST
+        # /documents returns only a minimal echo - re-fetch the full
+        # document rather than validating the bare creation response.
+        new_id = str(response.get("id") or response.get("documentId") or "")
+        return format_invoice_json(Invoice.model_validate(client.get_invoice(new_id)))
 
     original = client.get_invoice(original_internal_morning_id)
     original_type = original.get("type")
@@ -1704,7 +1693,7 @@ def create_receipt(
         # Already paid — idempotent no-op, avoid creating a duplicate receipt.
         # payment_date is deliberately never inspected here - nothing is
         # actually being recorded on this path.
-        return format_invoice_confirmation(Invoice.model_validate(original))
+        return format_invoice_json(Invoice.model_validate(original))
 
     if _extract_linked_client_id(original) is None:
         # Pre-feature, bare-name-only original - refuse rather than fall
@@ -1726,10 +1715,11 @@ def create_receipt(
         client_name=(original.get("client") or {}).get("name"),
     )
 
-    original_number = original.get("number", original_internal_morning_id)
-    receipt_number = receipt_response.get("number", receipt_response.get("id", ""))
-
-    return f"הופקה קבלה מספר {receipt_number} עבור חשבונית מספר {original_number}."
+    # bugfix-028 A4's lesson (see _read_back_stored_total): POST /documents
+    # returns only a minimal echo - re-fetch the full document rather than
+    # validating the bare creation response.
+    new_id = str(receipt_response.get("id") or receipt_response.get("documentId") or "")
+    return format_invoice_json(Invoice.model_validate(client.get_invoice(new_id)))
 
 
 _ISRAELI_PHONE_MOBILE_LENGTH = 10  # 0 + 3-digit prefix + 7 digits, e.g. 050-1234567
@@ -2118,7 +2108,16 @@ def _require_resolved_client(
     """
     if not name_resolved:
         log_refusal(tool_name, "name_not_resolved", client_name=client_name)
-        raise ClientNameNotResolvedError(format_name_not_resolved())
+        # This exception's message is surfaced verbatim by errors.py's
+        # friendly_error_message - a real, plain-text procedural instruction,
+        # NOT a tool-call return value, so it is deliberately NOT
+        # format_name_not_resolved()'s JSON (2026-09-04 JSON-only contract
+        # applies to tool results, not to exception messages read by
+        # errors.py).
+        raise ClientNameNotResolvedError(
+            "יש לקרוא ל-resolve_client_name עם שם הלקוח קודם, להשתמש בשם המדויק "
+            "שהוא מחזיר, ולנסות שוב עם name_resolved=true"
+        )
     resolved = _resolve_exact_client_name(client, client_name)
     if resolved is None:
         _raise_client_not_found(tool_name, client_name)
@@ -2173,7 +2172,12 @@ def _raise_client_not_found(tool_name: str, client_name: str) -> NoReturn:
     user-facing message regardless of which tool was called.
     """
     log_refusal(tool_name, "client_not_found", client_name=client_name)
-    raise ClientNotFoundError(f"{format_client_not_found()} ({client_name})")
+    # This exception's message is surfaced verbatim by errors.py's
+    # friendly_error_message - real, plain-text Hebrew, NOT a tool-call
+    # return value, so it is deliberately NOT format_client_not_found()'s
+    # JSON (2026-09-04 JSON-only contract applies to tool results, not to
+    # exception messages read by errors.py).
+    raise ClientNotFoundError(f'לא נמצא לקוח בשם "{client_name}"')
 
 
 def _extract_linked_client_id(original: dict) -> Optional[str]:
@@ -2387,7 +2391,16 @@ def add_client(
         client_id=(response or {}).get("id") if isinstance(response, dict) else None,
         client_name=normalized_name,
     )
-    return f"נוצר לקוח חדש: {normalized_name}"
+    return json.dumps(
+        {
+            "status": "created",
+            "client": {
+                "name": normalized_name, "email": validated_email,
+                "phone": normalized_phone, "tax_id": tax_id,
+            },
+        },
+        ensure_ascii=False,
+    )
 
 
 def _build_update_client_payload(
@@ -2480,7 +2493,16 @@ def update_client(
     )
 
     display_name = normalized_new_name or name
-    return f"עודכנו פרטי הלקוח: {display_name}"
+    return json.dumps(
+        {
+            "status": "updated",
+            "client": {
+                "name": display_name, "email": validated_email,
+                "phone": normalized_phone, "tax_id": tax_id,
+            },
+        },
+        ensure_ascii=False,
+    )
 
 
 def _resolve_period_dates(
@@ -2632,4 +2654,6 @@ def download_invoice_pdf(client: MorningClient, internal_morning_id: str, lang: 
         raise ValueError(f"No PDF download URL available for invoice {internal_morning_id!r}.")
 
     invoice_number = original.get("number", internal_morning_id)
-    return f"קישור להורדת חשבונית מספר {invoice_number}:\n{pdf_url}"
+    return json.dumps(
+        {"display_number": invoice_number, "pdf_url": pdf_url}, ensure_ascii=False
+    )

@@ -28,8 +28,8 @@ Run ONE test at a time, with fresh explicit approval each time:
     pytest tests/expensive/test_group_b_reference_approval_e2e.py::TestGroupBReferenceApprovalE2E::<name> -v -m expensive
 """
 
+import json
 import logging
-import re
 import threading
 import uuid
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -223,10 +223,9 @@ class TestGroupBReferenceApprovalE2E:
                 f"{seed_ai.mcp_calls if seed_ai else None!r}"
             )
             seeded_output = seed_calls[0]["output"] or ""
-            invoice_number = next(
-                (t for t in re.findall(r"\d{3,}", seeded_output) if t != "1500"), None
-            )
+            invoice_number = json.loads(seeded_output).get("display_number") if seeded_output else None
             assert invoice_number, f"could not read the seeded invoice number from {seeded_output!r}"
+            invoice_number = str(invoice_number)
 
             logger.info("WHEN the deposit screenshot for that same payment arrives")
             notification = create_real_notification({

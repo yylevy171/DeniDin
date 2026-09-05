@@ -12,6 +12,8 @@ Uses a fake MorningClient (dependency-injected, matching the real
 create_invoice/get_invoice contracts) — this mocks a third-party API
 boundary, not an internal component (CONSTITUTION.md §I/§V).
 """
+import json
+
 import pytest
 
 from denidin_mcp_morning import tools
@@ -27,10 +29,24 @@ class _FakeMorningClient:
     `search_clients` before creating anything - `search_clients_response`
     lets tests control that resolution (default: a single match on
     "לקוח בדיקה", client_id "client-1", so existing happy-path tests keep
-    passing unchanged in spirit)."""
+    passing unchanged in spirit).
 
-    def __init__(self, get_invoice_response=None, create_invoice_response=None, search_clients_response=None):
+    2026-09-04 JSON-only contract: every create_* Group B tool now re-fetches
+    the just-created document via get_invoice (bugfix-028 A4's lesson - POST
+    /documents returns only a minimal echo, never amount/total) before
+    building its JSON reply - so `get_invoice` must be able to return a
+    DIFFERENT response for the newly-created document's id than for the
+    original's id. `get_invoice_responses` maps id -> response for that;
+    `get_invoice_response` remains the single-response fallback (used for
+    the original document lookup, and reused for the created document's
+    fetch if no id-specific response is registered)."""
+
+    def __init__(
+        self, get_invoice_response=None, create_invoice_response=None, search_clients_response=None,
+        get_invoice_responses=None,
+    ):
         self._get_invoice_response = get_invoice_response
+        self._get_invoice_responses = dict(get_invoice_responses or {})
         self._create_invoice_response = create_invoice_response or {"id": "new-doc-1", "number": "1001"}
         self._search_clients_response = search_clients_response or {
             "items": [_client_record()],
@@ -42,6 +58,8 @@ class _FakeMorningClient:
 
     def get_invoice(self, internal_morning_id):
         self.get_invoice_calls.append(internal_morning_id)
+        if internal_morning_id in self._get_invoice_responses:
+            return self._get_invoice_responses[internal_morning_id]
         if self._get_invoice_response is None:
             raise LookupError(f"no such invoice: {internal_morning_id}")
         return self._get_invoice_response
@@ -241,15 +259,16 @@ def test_full_cancellation_still_works_via_create_credit_note():
     create_credit_note already fully subsumes it; this guards that the
     behavior _cancel_invoice used to provide is not lost."""
     original = _original_invoice(doc_id="orig-2", number="600")
+    created = _original_invoice(doc_id="credit-1", number="700", doc_type=330)
     client = _FakeMorningClient(
         get_invoice_response=original,
         create_invoice_response={"id": "credit-1", "number": "700"},
+        get_invoice_responses={"credit-1": created},
     )
 
-    result = tools.create_credit_note(client, "orig-2")
+    result = json.loads(tools.create_credit_note(client, "orig-2"))
 
-    assert "600" in result
-    assert "700" in result
+    assert result["display_number"] == "700"
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 330
     assert sent_payload["linkedDocumentIds"] == ["orig-2"]
@@ -262,11 +281,12 @@ def test_full_payment_still_works_via_create_receipt():
     is not lost."""
     original = _original_invoice(doc_id="orig-3", number="601")
     original["status"] = None  # not yet paid
-    client = _FakeMorningClient(get_invoice_response=original)
+    created = _original_invoice(doc_id="new-doc-1", number="1001", doc_type=400)
+    client = _FakeMorningClient(get_invoice_response=original, get_invoice_responses={"new-doc-1": created})
 
-    result = tools.create_receipt(client, "orig-3", payment_date="2026-07-12")
+    result = json.loads(tools.create_receipt(client, "orig-3", payment_date="2026-07-12"))
 
-    assert "601" in result
+    assert result["display_number"] == "1001"
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 400
     assert sent_payload["linkedDocumentIds"] == ["orig-3"]
@@ -447,14 +467,16 @@ def test_create_credit_note_refuses_when_original_has_no_client_id():
 
 def test_create_credit_note_happy_path_uses_original_and_allows_override():
     original = _original_invoice(doc_id="orig-4", number="602")
+    created = _original_invoice(doc_id="credit-2", number="701", amount=28.0, doc_type=330)
     client = _FakeMorningClient(
         get_invoice_response=original,
         create_invoice_response={"id": "credit-2", "number": "701"},
+        get_invoice_responses={"credit-2": created},
     )
 
-    result = tools.create_credit_note(client, "orig-4", amount=28.0)
+    result = json.loads(tools.create_credit_note(client, "orig-4", amount=28.0))
 
-    assert "701" in result
+    assert result["display_number"] == "701"
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 330
     assert sent_payload["linkedDocumentIds"] == ["orig-4"]
@@ -488,14 +510,16 @@ def test_create_receipt_refuses_when_original_has_no_client_id():
 
 def test_create_receipt_happy_path_uses_original_and_allows_override():
     original = _original_invoice(doc_id="orig-5", number="603")
+    created = _original_invoice(doc_id="receipt-2", number="702", amount=55.0, doc_type=400)
     client = _FakeMorningClient(
         get_invoice_response=original,
         create_invoice_response={"id": "receipt-2", "number": "702"},
+        get_invoice_responses={"receipt-2": created},
     )
 
-    result = tools.create_receipt(client, "orig-5", payment_date="2026-07-12", amount=55.0)
+    result = json.loads(tools.create_receipt(client, "orig-5", payment_date="2026-07-12", amount=55.0))
 
-    assert "702" in result
+    assert result["display_number"] == "702"
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 400
     assert sent_payload["linkedDocumentIds"] == ["orig-5"]
@@ -508,22 +532,27 @@ def test_create_receipt_happy_path_uses_original_and_allows_override():
 def test_create_receipt_standalone_branch_no_original_given(caplog):
     """(1) original_internal_morning_id=None, name_resolved=True, a resolved
     client -> builds the standalone shape (no income/vatType key, no
-    linkedDocumentIds) rather than the linked-original shape, and never
-    calls client.get_invoice at all (there is no original to fetch)."""
-    client = _FakeMorningClient(create_invoice_response={"id": "receipt-3", "number": "800"})
+    linkedDocumentIds) rather than the linked-original shape. There is no
+    ORIGINAL to fetch, but the 2026-09-04 JSON-only contract does re-fetch
+    the just-created document itself once (bugfix-028 A4's lesson - POST
+    /documents returns no amount/total) to build its JSON reply."""
+    created = _original_invoice(doc_id="receipt-3", number="800", amount=250.0, doc_type=400)
+    client = _FakeMorningClient(
+        create_invoice_response={"id": "receipt-3", "number": "800"},
+        get_invoice_responses={"receipt-3": created},
+    )
 
     with caplog.at_level("INFO", logger="denidin_mcp_morning.audit"):
-        result = tools.create_receipt(
+        result = json.loads(tools.create_receipt(
             client,
             client_name="לקוח בדיקה",
             amount=250.0,
             description="פיקדון מלקוח",
             payment_date="2026-08-01",
             name_resolved=True,
-        )
+        ))
 
-    assert "800" in result
-    assert client.get_invoice_calls == [], "no original to fetch - get_invoice must never be called"
+    assert result["display_number"] == "800"
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 400
     assert "income" not in sent_payload
@@ -655,15 +684,16 @@ def test_create_combo_document_as_reference_refuses_when_original_has_no_client_
 def test_create_combo_document_as_reference_happy_path_full_amount():
     """US1: close an existing type-300 document with a full-amount combo document."""
     original = _original_invoice(doc_id="orig-6", number="604", amount=145.0, doc_type=300)
+    created = _original_invoice(doc_id="combo-2", number="703", amount=145.0, doc_type=320)
     client = _FakeMorningClient(
         get_invoice_response=original,
         create_invoice_response={"id": "combo-2", "number": "703"},
+        get_invoice_responses={"combo-2": created},
     )
 
-    result = tools.create_combo_document_as_reference(client, "orig-6", payment_date="2026-07-12")
+    result = json.loads(tools.create_combo_document_as_reference(client, "orig-6", payment_date="2026-07-12"))
 
-    assert "703" in result
-    assert "604" in result
+    assert result["display_number"] == "703"
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 320
     assert sent_payload["linkedDocumentIds"] == ["orig-6"]
@@ -675,14 +705,18 @@ def test_create_combo_document_as_reference_happy_path_full_amount():
 def test_create_combo_document_as_reference_happy_path_partial_amount():
     """US2: close an existing type-300 document with a partial-amount combo document."""
     original = _original_invoice(doc_id="orig-7", number="605", amount=145.0, doc_type=300)
+    created = _original_invoice(doc_id="combo-3", number="704", amount=45.0, doc_type=320)
     client = _FakeMorningClient(
         get_invoice_response=original,
         create_invoice_response={"id": "combo-3", "number": "704"},
+        get_invoice_responses={"combo-3": created},
     )
 
-    result = tools.create_combo_document_as_reference(client, "orig-7", payment_date="2026-07-12", amount=45.0)
+    result = json.loads(tools.create_combo_document_as_reference(
+        client, "orig-7", payment_date="2026-07-12", amount=45.0
+    ))
 
-    assert "704" in result
+    assert result["display_number"] == "704"
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 320
     assert sent_payload["payment"][0]["price"] == 45.0
@@ -704,9 +738,11 @@ def test_create_combo_document_as_reference_rejects_non_transaction_account_orig
 
 def test_create_combo_document_as_reference_description_override():
     original = _original_invoice(doc_id="orig-9", number="607", doc_type=300)
+    created = _original_invoice(doc_id="combo-4", number="705", doc_type=320)
     client = _FakeMorningClient(
         get_invoice_response=original,
         create_invoice_response={"id": "combo-4", "number": "705"},
+        get_invoice_responses={"combo-4": created},
     )
 
     tools.create_combo_document_as_reference(
@@ -728,11 +764,12 @@ def test_create_combo_document_as_reference_still_works_after_vat_included_param
     original.get("vatType", 1) inference - see feature 023's spec.md)."""
     original = _original_invoice(doc_id="orig-10", number="608", amount=60.0, doc_type=300)
     original["status"] = None  # not yet paid
-    client = _FakeMorningClient(get_invoice_response=original)
+    created = _original_invoice(doc_id="new-doc-1", number="1001", amount=60.0, doc_type=320)
+    client = _FakeMorningClient(get_invoice_response=original, get_invoice_responses={"new-doc-1": created})
 
-    result = tools.create_combo_document_as_reference(client, "orig-10", payment_date="2026-07-12")
+    result = json.loads(tools.create_combo_document_as_reference(client, "orig-10", payment_date="2026-07-12"))
 
-    assert "608" in result
+    assert result["display_number"] == "1001"
     sent_payload = client.create_invoice_calls[0]
     assert sent_payload["type"] == 320
     assert sent_payload["linkedDocumentIds"] == ["orig-10"]

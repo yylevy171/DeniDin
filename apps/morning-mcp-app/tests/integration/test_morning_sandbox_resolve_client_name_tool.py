@@ -4,6 +4,7 @@
 No mocks: drives denidin_mcp_morning.tools.resolve_client_name against the
 live sandbox, per CONSTITUTION §V and this app's testing policy.
 """
+import json
 import time
 from pathlib import Path
 
@@ -67,11 +68,12 @@ def test_resolve_client_name_exact_match_discloses_the_stored_name(morning_clien
     add_client(morning_client, name=name, email=f"{marker}@example.com", phone="050-1234567")
 
     result = _poll_until(
-        lambda r: r.startswith("שם הלקוח המדויק"), lambda: resolve_client_name(morning_client, name)
+        lambda r: json.loads(r).get("status") == "resolved", lambda: resolve_client_name(morning_client, name)
     )
 
-    assert name in result
-    assert "כן" not in result and "לא" not in result  # not a confirmation question
+    payload = json.loads(result)
+    assert payload["status"] == "resolved"
+    assert payload["name"] == name
 
 
 def test_resolve_client_name_never_includes_raw_client_id(morning_client):
@@ -92,6 +94,7 @@ def test_resolve_client_name_never_includes_raw_client_id(morning_client):
     result = resolve_client_name(morning_client, name)
 
     assert client_id not in result
+    json.loads(result)  # sanity: still valid JSON
 
 
 def test_resolve_client_name_non_exact_single_match_asks_for_confirmation(morning_client):
@@ -107,8 +110,9 @@ def test_resolve_client_name_non_exact_single_match_asks_for_confirmation(mornin
         lambda r: real_name in r, lambda: resolve_client_name(morning_client, typed_name)
     )
 
-    assert real_name in result
-    assert "כן" in result and "לא" in result
+    payload = json.loads(result)
+    assert payload["status"] == "needs_confirmation"
+    assert payload["candidate_name"] == real_name
 
 
 def test_resolve_client_name_single_letter_added_to_stored_name_asks_for_confirmation(morning_client):
@@ -130,8 +134,9 @@ def test_resolve_client_name_single_letter_added_to_stored_name_asks_for_confirm
 
     result = _poll_until(lambda r: real_name in r, lambda: resolve_client_name(morning_client, typed_name))
 
-    assert real_name in result  # names the real candidate
-    assert "כן" in result and "לא" in result
+    payload = json.loads(result)
+    assert payload["status"] == "needs_confirmation"
+    assert payload["candidate_name"] == real_name  # names the real candidate
 
 
 def test_resolve_client_name_single_letter_removed_from_stored_name_asks_for_confirmation(morning_client):
@@ -152,8 +157,9 @@ def test_resolve_client_name_single_letter_removed_from_stored_name_asks_for_con
 
     result = _poll_until(lambda r: real_name in r, lambda: resolve_client_name(morning_client, typed_name))
 
-    assert real_name in result  # names the real candidate
-    assert "כן" in result and "לא" in result
+    payload = json.loads(result)
+    assert payload["status"] == "needs_confirmation"
+    assert payload["candidate_name"] == real_name  # names the real candidate
 
 
 def test_resolve_client_name_zero_matches_returns_a_not_found_string_never_raises(morning_client):
@@ -171,4 +177,4 @@ def test_resolve_client_name_zero_matches_returns_a_not_found_string_never_raise
     result = resolve_client_name(morning_client, name)
 
     assert isinstance(result, str)
-    assert "לא נמצא" in result
+    assert json.loads(result) == {"found": False}

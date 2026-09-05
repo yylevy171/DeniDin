@@ -20,8 +20,8 @@ CLAUDE.md/CONSTITUTION §VII).
 """
 from __future__ import annotations
 
+import json
 import logging
-import re
 import time
 
 import pytest
@@ -349,7 +349,8 @@ def test_godfather_declines_invoice_cancellation(denidin_app):
         details_ai_response, "list_invoices"
     )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
-    assert "בוטל" not in combined_output, (
+    docs = [json.loads(c["output"]) for c in details_calls if c["output"]]
+    assert not any(d.get("status_code") == 4 for d in docs), (
         f"Invoice shows as cancelled despite the decline: {combined_output!r}. "
         f"Bot reply: {details_response!r}"
     )
@@ -519,8 +520,9 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
     details_calls = _calls_for(details_ai_response, "get_invoice_details")
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
 
-    assert "מסמכים מקושרים" in combined_output, (
-        f"Expected a linked-documents section in the invoice details reply, "
+    docs = [json.loads(c["output"]) for c in details_calls if c["output"]]
+    assert any(d.get("linked_document") for d in docs), (
+        f"Expected a linked document in the invoice details reply, "
         f"got tool output: {combined_output!r}"
     )
     assert _COMBO_DOCUMENT_LABEL_HE in combined_output, (
@@ -569,7 +571,8 @@ def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app
         details_ai_response, "list_invoices"
     )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
-    assert "לא שולם" in combined_output, (
+    docs = [json.loads(c["output"]) for c in details_calls if c["output"]]
+    assert any(d.get("status_code") == 0 for d in docs), (
         f"Expected the חשבון עסקה to still be unpaid after the decline: "
         f"{combined_output!r}. Bot reply: {details_response!r}"
     )
@@ -602,9 +605,9 @@ def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin
         f"Setup cancellation failed or was not called: {cancel_ai_response.mcp_calls!r}"
     )
     credit_output = cancel_calls[0]["output"] or ""
-    match = re.search(r"חשבונית זיכוי מספר (\S+)", credit_output)
-    assert match, f"Could not find the credit invoice number in cancel output: {credit_output!r}"
-    credit_number = match.group(1)
+    credit_number = json.loads(credit_output).get("display_number") if credit_output else None
+    assert credit_number, f"Could not find the credit invoice number in cancel output: {credit_output!r}"
+    credit_number = str(credit_number)
 
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,

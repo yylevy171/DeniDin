@@ -98,17 +98,21 @@ def pytest_configure(config):
         category=DeprecationWarning
     )
 
-    # Feature 075: live per-test sound-off for scripts/run_sanity_parallel.sh.
-    # pytest-xdist streams little while workers churn, so the parallel sweep sets
-    # SANITY_PARALLEL_SOUNDOFF=1 and this prints one `>>> SANITY [k/N] STATUS`
-    # line (+ a grep-friendly SANITY-PROGRESS line) per test as it finishes,
-    # mirroring run_sanity.sh's serial sound-off. Controller process only; a
-    # no-op for every other pytest invocation.
+    # Live per-test sound-off — ON BY DEFAULT for every pytest invocation
+    # (CLAUDE.md / METHODOLOGY.md §VI / CONSTITUTION.md §V: an individual
+    # PASS/FAIL/ERROR/SKIP line MUST be emitted the moment each test's result is
+    # determined — serial or parallel, sanity or not, one test or a thousand).
+    # Prints one `>>> TEST [k/N] STATUS: <nodeid>` line plus a grep-friendly
+    # `TEST-PROGRESS ...` line per test as it finishes. pytest-xdist otherwise
+    # streams almost nothing while workers churn, which is exactly the case this
+    # guards against. Controller process only (xdist workers stay quiet so the
+    # controller is the single voice). Opt OUT only with DENIDIN_TEST_SOUNDOFF=0.
+    # SANITY_PARALLEL_SOUNDOFF=1 is still honoured as a forcing alias.
     global _SOUNDOFF_ON
     _SOUNDOFF_ON = (
-        os.environ.get("SANITY_PARALLEL_SOUNDOFF") == "1"
-        and not hasattr(config, "workerinput")
-    )
+        os.environ.get("DENIDIN_TEST_SOUNDOFF", "1") != "0"
+        or os.environ.get("SANITY_PARALLEL_SOUNDOFF") == "1"
+    ) and not hasattr(config, "workerinput")
 
 
 _SOUNDOFF_ON = False
@@ -142,8 +146,8 @@ def pytest_runtest_logreport(report):
     n, total = _soundoff["done"], (_soundoff["total"] or "?")
     worker = getattr(report, "worker_id", "") or getattr(report, "node", "") or ""
     tag = f"  ({worker})" if worker else ""
-    print(f"\n>>> SANITY [{n}/{total}] {status}: {report.nodeid}{tag}", flush=True)
-    print(f"SANITY-PROGRESS done={n} total={total} status={status} node={report.nodeid}", flush=True)
+    print(f"\n>>> TEST [{n}/{total}] {status}: {report.nodeid}{tag}", flush=True)
+    print(f"TEST-PROGRESS done={n} total={total} status={status} node={report.nodeid}", flush=True)
 
 
 @pytest.fixture(scope="session", autouse=True)

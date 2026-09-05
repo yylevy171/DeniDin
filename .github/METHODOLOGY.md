@@ -257,12 +257,22 @@ redefinition above.
     silently discard the actual assertion/traceback before it's ever read (see CONSTITUTION.md
     §VII and §XVIII below for the incident this closed). For a stop-on-first-failure sequence
     of `billed` tests, use `scripts/run_multiple_billed_tests.sh <node_id> ...` (billed only).
-  - 🚨 **When running that sequence script, sound off on each test's result AS IT COMPLETES —
-    not only in a single summary once the whole sequence is done — unless the human explicitly
-    says otherwise.** Never wrap the script in something that buffers its output until the
-    process exits (a trailing `| tail`, `$(...)` capture, etc.) and then report once at the
-    end; poll the output (or the per-test result files it writes) and relay each result live.
-    See CONSTITUTION.md §VII for the incident this closed.
+  - 🚨🚨 **INDIVIDUAL PER-TEST SOUND-OFF IS THE PERMANENT DEFAULT FOR EVERY TEST RUN — never
+    something the human should have to ask for or re-confirm.** The instant *any* test's
+    result is determined (pass / fail / error / skip), relay it as its own line, immediately.
+    This covers every run path with no exception: `run_single_test.sh` (looped or single),
+    `run_multiple_billed_tests.sh`, `run_parallel_tests.sh`, `run_sanity.sh`,
+    `run_sanity_parallel.sh`, a bare `pytest` / `make test`, unit, integration, billed,
+    expensive. Both apps' `conftest.py` emit a `>>> TEST [k/N] STATUS: <nodeid>` line per
+    test **by default** (disable only with `DENIDIN_TEST_SOUNDOFF=0` — never done in practice);
+    the person/agent driving the run MUST surface each of those lines to the human as it lands.
+    Never wrap a test run in anything that buffers its output until the process exits
+    (trailing `| tail`/`| grep`/`| head`, a `$(...)` capture, an unfiltered redirect read
+    only at the end) and report once at the end — use a `Monitor`/`tail -f` on the `>>> TEST`
+    lines, or poll the per-test result files under `logs/test_logs/pytest_results/`, and speak
+    each result the moment it appears. Real incidents 2026-08-26 and 2026-09-04: multi-test
+    sweeps ran with nothing streaming for minutes until the human demanded a status in caps.
+    See CONSTITUTION.md §VII for the enforcement detail.
   - The **EXPLAIN Test Plan** step (Step 1 below) MUST state which tier(s) each new test
     belongs to, so the human approval gate can weigh cost/approval implications before any
     test is written — a test plan that omits tier classification is incomplete
@@ -1128,9 +1138,10 @@ process pressure that ever gets the actual root cause fixed.
 
 ---
 
-**Version**: 2.11.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-09-02
+**Version**: 2.12.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-09-04
 
 **Changelog**:
+- v2.12.0 (2026-09-04): §VI — **individual per-test sound-off is now the permanent, code-enforced default for every test run** (serial, parallel, sanity, bare `pytest`, every tier). Both apps' `conftest.py` emit a `>>> TEST [k/N] STATUS: <nodeid>` line per test by default; the run driver relays each as it lands. Generalised from the prior `run_multiple_billed_tests.sh`-only rule. See CONSTITUTION.md §VII (v2.10.0) and CLAUDE.md.
 - v2.11.0 (2026-09-02): Feature 059 added the **sanity** test tier (`@pytest.mark.sanity`) to §VI's tier list — a curated cross-app subset run via `./scripts/run_sanity.sh` as a fast end-to-end smoke check (one test at a time through `run_single_test.sh`, resumable, expensive members checklist-only). Not CI.
 - v2.10.0 (2026-08-25): Added "Production Incidents Require Mandatory Bug-Driven-Development
   Follow-Through" (XXII) after a real prod incident - an unattended Windows Update reboot exposed

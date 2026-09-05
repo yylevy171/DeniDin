@@ -84,6 +84,10 @@ pytest tests/unit/ -v
 pytest tests/unit/test_module.py::test_function -xvs
 ```
 
+### 🚨 Per-test sound-off — the permanent default for EVERY test run
+- Every test's result (pass/fail/error/skip) is relayed to the human as its **own line, the moment it lands** — serial, parallel, sanity, bare `pytest`, every tier. Never a single end-of-run summary. Never something the human should have to ask for.
+- Enforced in code: both apps' `conftest.py` print `>>> TEST [k/N] STATUS: <nodeid>` per test by default (opt out only `DENIDIN_TEST_SOUNDOFF=0` — never done). Driver must surface each line live (`Monitor`/`tail -f`, or poll `logs/test_logs/pytest_results/`) — never background a run behind `| tail`/`| grep`/`$(...)` and report at the end. CONSTITUTION §VII, METHODOLOGY §VI.
+
 ### Billed Tests (both apps, real text-only OpenAI calls - `tests/billed/`, `@pytest.mark.billed`)
 - Cheap per run - **can run freely**, no per-run approval or one-at-a-time restriction
 - **Never stop to ask before running one** - the approval gate below is `expensive`-only

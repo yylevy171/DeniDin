@@ -17,12 +17,14 @@ can be run freely - no per-run approval (see CLAUDE.md/CONSTITUTION §VII).
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 
 import pytest
 
 from .denidin_mcp_e2e_helpers import (
+    ADMIN_ISOLATED_CHAT_ID,
     GODFATHER_CHAT_ID,
     _SEED_PHONE,
     _calls_for,
@@ -75,8 +77,12 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
     description = _random_description()
     client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
+    # bugfix-052 stop-gap: this test's own isolated chat id (not the module-wide
+    # GODFATHER_CHAT_ID shared by every other test in this file) - its VERIFY turn
+    # below depends on the model actually calling get_invoice_details/list_invoices
+    # rather than answering from stale session memory left by an unrelated test.
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
+        chat_id=ADMIN_ISOLATED_CHAT_ID,
         text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
         id_prefix="E2E_027_HAPPY",
     )
@@ -101,16 +107,24 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
 
     # Verified via Morning: a real follow-up get_invoice_details call
     # independently confirms the document exists and names this client.
+    # Asking specifically for the CURRENT PAYMENT STATUS (never stated in the
+    # creation confirmation above) forces a fresh Morning lookup - the model
+    # cannot answer this from its own in-session memory of the creation turn.
     details_response, details_ai_response = _send_turn(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"מה הפרטים של החשבונית של {client_name}?",
+        chat_id=ADMIN_ISOLATED_CHAT_ID,
+        text=f"תבדוק מול מורנינג - מה הסטטוס העדכני של החשבונית של {client_name}? שולמה או לא?",
         id_prefix="E2E_027_HAPPY_VERIFY",
     )
     details_calls = _calls_for(details_ai_response, "get_invoice_details") + _calls_for(
         details_ai_response, "list_invoices"
     )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
-    assert _normalize_hebrew_geresh(client_name) in combined_output, (
+    payloads = [json.loads(c["output"]) for c in details_calls if c["output"]]
+    docs = [p for p in payloads if "documents" not in p] + [
+        d for p in payloads for d in p.get("documents", [])
+    ]
+    client_names = [_normalize_hebrew_geresh(d.get("client_name") or "") for d in docs]
+    assert _normalize_hebrew_geresh(client_name) in client_names, (
         f"Follow-up real Morning lookup did not confirm the invoice for "
         f"{client_name!r}: {combined_output!r}. Bot reply: {details_response!r}"
     )

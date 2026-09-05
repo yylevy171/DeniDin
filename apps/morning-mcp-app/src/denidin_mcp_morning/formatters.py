@@ -1,7 +1,26 @@
-"""Hebrew/₪/VAT/date formatting helpers for MCP tool responses.
+"""₪/VAT/date value helpers + the machine-readable JSON response shapes for
+every MCP tool.
 
-Responses are Hebrew by default (spec.md §REQ-I18N-001): ₪ currency,
-DD/MM/YYYY dates, Hebrew status terms.
+**JSON-only contract (2026-09-04)**: every tool in this app returns a single
+machine-readable JSON object/array as its result string - there is no prose
+format any more, and no `format`/`output_format` parameter anywhere. The
+calling model (denidin-app) is responsible for composing whatever
+Hebrew, bullet-style reply the operator actually sees; nothing in this file
+is user-facing text. This replaces the old dual "prose is the default,
+`format='json'` is an opt-in for automated tasks" contract (Feature 025
+Phase 9) - abandoned rather than kept alongside prose so there is exactly
+ONE way every tool's result is shaped, not "some tools like this, others
+like that" (2026-09-04 user decision, made while investigating Feature 069's
+US2 gap: create_combo_document's old prose output could not be
+deterministically translated into a ledger event the way get_invoice_details'
+`format="json"` output already was).
+
+Values remain ₪/DD-MM-YYYY-formatted *inside informational fields* only
+where that's genuinely the value's home representation (e.g.
+`format_currency_ils` is still used to build display strings embedded in a
+JSON field where relevant); dates in the JSON shapes themselves are ISO
+8601, translated Hebrew labels (status/document type) are still resolved
+here since this app owns those tables, per spec.md §REQ-I18N-001.
 """
 import json
 from datetime import date
@@ -59,327 +78,179 @@ def translate_payment_type(payment_type_code: Optional[int]) -> str:
     return _PAYMENT_TYPE_NAMES.get(payment_type_code, str(payment_type_code))
 
 
-def format_invoice_confirmation(invoice: Invoice) -> str:
-    """Build a Hebrew, human-readable confirmation message for an invoice."""
-    display_amount = invoice.total_amount if invoice.total_amount is not None else invoice.amount
-
-    lines = [
-        f"חשבונית #{invoice.number or invoice.id}",
-        f'לקוח: "{invoice.client_name}"',
-        f"סכום: {format_currency_ils(display_amount)}",
-    ]
-    if invoice.type is not None:
-        lines.append(f"סוג מסמך: {translate_document_type(invoice.type)}")
-    if invoice.description:
-        lines.append(f"תיאור: {invoice.description}")
-    if invoice.status:
-        lines.append(f"סטטוס: {translate_status(invoice.status)}")
-    if invoice.issue_date:
-        lines.append(f"תאריך הפקה: {format_date_il(invoice.issue_date)}")
-    if invoice.creation_timestamp:
-        # denidin-app's Feature 025 (2026-08-22): the document's REAL creation
-        # instant, full HH:MM precision - distinct from the date-only "תאריך
-        # הפקה" above. Rendered in this SHARED block (not only in
-        # format_invoice_details) specifically so list_invoices' own output
-        # carries it: /documents/search already returns creationDate for every
-        # document, and dropping it here was what forced the reconciliation
-        # sweep to chase N extra get_invoice_details calls for data the first
-        # call had already fetched.
-        local_dt = local_from_timestamp(invoice.creation_timestamp.timestamp())
-        lines.append(f"נוצר ב: {local_dt.strftime('%d/%m/%Y %H:%M')}")
-    if invoice.due_date:
-        lines.append(f"תאריך יעד: {format_date_il(invoice.due_date)}")
-    if invoice.pdf_url:
-        lines.append(f"קישור: {invoice.pdf_url}")
-
-    # Internal Morning documentId (GUID) - distinct from the human-readable
-    # invoice number above. Without this, an MCP client (e.g. an LLM) that
-    # just created/looked up an invoice has no legitimate way to pass the
-    # right id to internal_morning_id-keyed tools (download_invoice_pdf,
-    # get_invoice_details, create_receipt, create_credit_note,
-    # create_combo_document_as_reference) later in the same conversation - it would
-    # otherwise only ever see the friendly number.
-    lines.append(f"מזהה פנימי (internal_morning_id): {invoice.id}")
-
-    return "\n".join(lines)
-
-
-def format_invoice_details(invoice: Invoice) -> str:
-    """Build a full Hebrew details view (user-stories.md US3): status, dates,
-    payments, in addition to the base confirmation fields."""
-    lines = [format_invoice_confirmation(invoice)]
-
-    if invoice.issue_date:
-        lines.append(f"תאריך הפקה: {format_date_il(invoice.issue_date)}")
-
-    # No creation-timestamp line here: format_invoice_confirmation's block
-    # (embedded as lines[0] above) already carries it as of 2026-08-22, for
-    # every caller including list_invoices - printing it again here would
-    # duplicate it in get_invoice_details' output.
-
-    if invoice.payments:
-        lines.append("תשלומים:")
-        for payment in invoice.payments:
-            method = payment.method or translate_payment_type(payment.payment_type)
-            method_suffix = f" - {method}" if method else ""
-            lines.append(
-                f"  - {format_currency_ils(payment.amount)} "
-                f"({format_date_il(payment.payment_date)}){method_suffix}"
-            )
-            bank_bits = [
-                bit
-                for bit in (
-                    f"בנק {payment.bank_name}" if payment.bank_name else None,
-                    f"סניף {payment.bank_branch}" if payment.bank_branch else None,
-                    f"חשבון {payment.bank_account}" if payment.bank_account else None,
-                )
-                if bit
-            ]
-            if bank_bits:
-                lines.append(f"    {' / '.join(bank_bits)}")
-
-    if invoice.linked_documents:
-        # Real, structured, bidirectional linkage (bugfix-014) - a receipt or
-        # credit invoice linked to this document. Exposed so the model can
-        # net paid/owed itself per runtime_constitution.md's flow guidance,
-        # rather than treating each linked document as an independent charge
-        # (the exact double-counting mistake this bugfix addresses).
-        lines.append("מסמכים מקושרים:")
-        for linked in invoice.linked_documents:
-            label = translate_document_type(linked.type)
-            date_str = f" ({format_date_il(linked.document_date)})" if linked.document_date else ""
-            lines.append(f"  - {label} #{linked.number or linked.id}: {format_currency_ils(linked.amount)}{date_str}")
-
-    return "\n".join(lines)
+def _client_dict(client: Client) -> dict:
+    """The one canonical machine-readable shape for a client - never includes
+    the internal client_id (REQ-CLIENT-018): unlike invoices, client tools
+    resolve by name, so there's no legitimate reason to surface it."""
+    return {
+        "name": client.name,
+        "email": client.email,
+        "phone": client.phone,
+        "tax_id": client.tax_id,
+    }
 
 
 def format_financial_summary(summary: FinancialSummary) -> str:
-    """Build a Hebrew, human-readable financial summary (user-stories.md US5)."""
-    return "\n".join(
-        [
-            f"סיכום כספי: {format_date_il(summary.period_start)} - {format_date_il(summary.period_end)}",
-            f"סה\"כ הופק: {format_currency_ils(summary.total_invoiced)}",
-            f"שולם: {format_currency_ils(summary.total_paid)}",
-            f"לא שולם: {format_currency_ils(summary.total_unpaid)}",
-            f"מספר חשבוניות: {summary.invoice_count} "
-            f"({summary.paid_invoice_count} שולמו, {summary.unpaid_invoice_count} לא שולמו)",
-            f"ממוצע לחשבונית: {format_currency_ils(summary.average_invoice_amount)}",
-        ]
+    """Machine-readable JSON view of a financial summary (2026-09-04 JSON-only
+    contract change - see the module docstring). The model composes the
+    Hebrew bullet-style reply the operator sees from these fields; nothing
+    here is shown to a person verbatim."""
+    return json.dumps(
+        {
+            "period_start": summary.period_start.isoformat(),
+            "period_end": summary.period_end.isoformat(),
+            "total_invoiced": summary.total_invoiced,
+            "total_paid": summary.total_paid,
+            "total_unpaid": summary.total_unpaid,
+            "invoice_count": summary.invoice_count,
+            "paid_invoice_count": summary.paid_invoice_count,
+            "unpaid_invoice_count": summary.unpaid_invoice_count,
+            "average_invoice_amount": summary.average_invoice_amount,
+        },
+        ensure_ascii=False,
     )
 
 
-def format_invoice_list(invoices: List[Invoice], total_matched: int) -> str:
-    """Build a Hebrew, human-readable list of invoices (user-stories.md US1/US3).
-
-    Feature 038: the caller (`tools.list_invoices`) has already fetched the
-    complete, status-filtered result set (bounded by the fetch cap) and
-    decided how much of it fits within the token budget - `invoices` here
-    is that possibly-token-budget-truncated list, `total_matched` is always
-    the true post-status-filter count (equal to `len(invoices)` when
-    nothing was truncated).
-
-    Args:
-        invoices: The invoices to display (a prefix of the full match set
-            when token-budget truncation occurred).
-        total_matched: The true total number of matching invoices.
-
-    Returns:
-        A Hebrew multi-line string; a friendly "no results" message if empty.
-    """
-    if not invoices:
-        return "לא נמצאו חשבוניות התואמות את החיפוש."
-
-    blocks = [format_invoice_confirmation(invoice) for invoice in invoices]
-    shown = len(invoices)
-
-    if shown < total_matched:
-        header = f"מוצגות {shown} מתוך {total_matched} חשבוניות שנמצאו:"
-        message = header + "\n\n" + "\n\n".join(blocks)
-        message += (
-            "\n\nיש תוצאות נוספות שלא הוצגו כי ההודעה ארוכה מדי - "
-            "אנא צמצם/י את החיפוש (למשל לפי טווח תאריכים, לקוח, או סטטוס)."
-        )
-        return message
-
-    header = f"נמצאו {shown} חשבוניות:"
-    return header + "\n\n" + "\n\n".join(blocks)
-
-
-def _format_client_summary_line(client: Client) -> str:
-    """One-line summary for format_client_list: name + identifying detail.
-
-    Never includes the internal client_id (REQ-CLIENT-018) - unlike invoices,
-    client tools resolve by name, so there's no legitimate reason to surface it.
-    """
-    details = []
-    if client.tax_id:
-        details.append(f"ח.פ {client.tax_id}")
-    if client.phone:
-        details.append(f"טלפון {client.phone}")
-    if details:
-        return f"{client.name} ({', '.join(details)})"
-    return client.name
-
-
 def format_client_list(clients: List[Client]) -> str:
-    """Build a Hebrew, human-readable list of clients (user-stories.md US1)."""
-    if not clients:
-        return "אין לך לקוחות רשומים כרגע."
-
-    return "\n".join(_format_client_summary_line(c) for c in clients)
+    """Machine-readable JSON view of a client list (2026-09-04 JSON-only
+    contract change)."""
+    return json.dumps(
+        {"count": len(clients), "clients": [_client_dict(c) for c in clients]},
+        ensure_ascii=False,
+    )
 
 
 def format_client_details(client: Client, is_exact_match: bool = True) -> str:
-    """Build a full Hebrew details view for a single client (user-stories.md US2).
-
-    Never includes the internal client_id (REQ-CLIENT-018).
-
-    Args:
-        client: The resolved client to display.
-        is_exact_match: Whether the search query was an exact (case-
-            insensitive) match of the stored name. When False, the client
-            was resolved via a partial/prefix reference - the opening line
-            explicitly discloses which client was found, rather than
-            silently presenting details as if the reference were certain.
-    """
-    if is_exact_match:
-        lines = [f"לקוח: {client.name}"]
-    else:
-        lines = [f"מצאתי את הלקוח הבא: {client.name}"]
-    if client.email:
-        lines.append(f"מייל: {client.email}")
-    if client.phone:
-        lines.append(f"טלפון: {client.phone}")
-    if client.tax_id:
-        lines.append(f"ח.פ: {client.tax_id}")
-    return "\n".join(lines)
+    """Machine-readable JSON view of one client (2026-09-04 JSON-only
+    contract change). `is_exact_match` tells the model whether the name it
+    passed in was resolved via a partial/prefix reference - it must then say
+    so explicitly to the operator rather than presenting the details as
+    certain, exactly as the prose version used to."""
+    return json.dumps(
+        {"client": _client_dict(client), "exact_match": is_exact_match},
+        ensure_ascii=False,
+    )
 
 
 def format_client_not_found() -> str:
-    """Friendly Hebrew message when a name lookup matches zero clients."""
-    return "לא נמצא לקוח בשם הזה."
+    """Machine-readable JSON for a zero-match client lookup (2026-09-04
+    JSON-only contract change)."""
+    return json.dumps({"found": False}, ensure_ascii=False)
 
 
 def format_client_name_confirmation_question(candidate_name: str) -> str:
-    """Hebrew confirmation question (bugfix-039, expanded 2026-08-11 per
-    user decision) for ANY tool - read or write - that resolves a
-    client_name to exactly one real client whose stored name isn't the
-    literal spelling given. Never silently proceed under the guessed name
-    (a write tool would create a real Morning document against a possibly-
-    wrong client before the user ever sees which one was picked) and never
-    silently refuse "not found" either - ask, and let the model re-invoke
-    the same tool with the now-confirmed exact name once the user answers.
-
-    A closed yes/no question (bugfix-028 B1: open-ended phrasing like a bare
-    "לאשר?" gets misparsed - always end "אישור - כן/לא?" so the parser has
-    something reliable to match), not a request for the user to retype
-    anything themselves."""
-    return f'מצאתי לקוח בשם "{candidate_name}" - האם לזה התכוונת? אישור - כן/לא?'
+    """Machine-readable JSON (2026-09-04 JSON-only contract change) for ANY
+    tool - read or write - that resolves a client_name to exactly one real
+    client whose stored name isn't the literal spelling given. The model
+    must compose a closed yes/no question from `candidate_name` (ending
+    "אישור - כן/לא?" so a later reply parses reliably, per bugfix-028 B1) -
+    never silently proceed under the guessed name (a write tool would create
+    a real Morning document against a possibly-wrong client before the
+    operator ever sees which one was picked) and never silently refuse
+    "not found" either."""
+    return json.dumps(
+        {"status": "needs_confirmation", "candidate_name": candidate_name},
+        ensure_ascii=False,
+    )
 
 
 def format_client_name_resolved(resolved_name: str) -> str:
-    """Hebrew confirmation for resolve_client_name's EXACT-match case
-    (client-name-resolution architecture fix, bugfix-028 sub-piece) - the
-    model should copy resolved_name verbatim into whichever tool it calls
-    next, together with name_resolved=True. Deliberately plain/short (no
-    client_id, REQ-CLIENT-018) - quoted, matching the existing convention
-    (format_invoice_confirmation's 'לקוח: "..."') that names appear in
-    "quotes" specifically so the model can spot-and-copy them as one atomic
-    token (see runtime_constitution.md's "reuse an id AND name" rule)."""
-    return f'שם הלקוח המדויק במורנינג: "{resolved_name}"'
+    """Machine-readable JSON (2026-09-04 JSON-only contract change) for
+    resolve_client_name's EXACT-match case - the model should copy
+    `resolved_name` verbatim into whichever tool it calls next, together
+    with name_resolved=True."""
+    return json.dumps({"status": "resolved", "name": resolved_name}, ensure_ascii=False)
 
 
 def format_name_not_resolved() -> str:
-    """Hebrew message when a client-resolving tool is called with
-    name_resolved not True (client-name-resolution architecture fix,
-    bugfix-028 sub-piece). Returned as ORDINARY tool output, never raised -
-    this is a procedural instruction for the calling model to act on
-    immediately in the same turn (call resolve_client_name, then retry),
-    not a domain question meant for the end user to see."""
-    return (
-        "יש לפנות תחילה לכלי resolve_client_name עם שם הלקוח, לוודא שם מדויק "
-        "התואם למאוחסן במורנינג, ולקרוא לכלי הזה שוב עם name_resolved=true "
-        "והשם המדויק שהוחזר."
+    """Machine-readable JSON (2026-09-04 JSON-only contract change) for a
+    client-resolving tool called with name_resolved not True. This is a
+    PROCEDURAL instruction for the calling model to act on immediately in
+    the same turn (call resolve_client_name, then retry) - never shown to
+    the operator."""
+    return json.dumps(
+        {
+            "status": "error",
+            "reason": "name_not_resolved",
+            "instruction": (
+                "call resolve_client_name with the client's name first, use the exact "
+                "name it returns, then retry this tool with name_resolved=true"
+            ),
+        },
+        ensure_ascii=False,
     )
 
 
 def format_original_not_linked_to_client() -> str:
-    """Friendly Hebrew message when a Group B tool's linked original document
-    has no real client attached (feature 027, REQ-INV-013) - a pre-feature,
-    bare-name-only document. Deliberately does not imply a fix exists (no
-    "try again" phrasing) - this feature builds no remediation path
-    (spec.md Clarifications 2026-08-06)."""
-    return "לא ניתן להפיק מסמך מקושר עבור חשבונית זו - היא לא מקושרת ללקוח קיים במערכת."
+    """Machine-readable JSON (2026-09-04 JSON-only contract change) for a
+    Group B tool whose linked original document has no real client attached
+    (feature 027, REQ-INV-013) - a pre-feature, bare-name-only document. No
+    remediation path exists (spec.md Clarifications 2026-08-06) - the model
+    must not imply one when composing its reply."""
+    return json.dumps(
+        {"status": "error", "reason": "original_not_linked_to_client"}, ensure_ascii=False
+    )
 
 
 def format_transaction_account_cancelled(document: dict) -> str:
-    """Friendly Hebrew confirmation for cancel_transaction_account (feature
-    056, REQ-INV-026).
+    """Machine-readable JSON confirmation for cancel_transaction_account
+    (feature 056, REQ-INV-026; 2026-09-04 JSON-only contract change).
 
-    Deliberately does NOT go through translate_status/format_invoice_
-    confirmation - get_invoice_details' existing formatter renders
-    Morning's manually-closed status (2) as "שולם" (paid), which
-    research.md confirmed live is actively misleading here: this account's
-    money never moved, so nothing was "paid". Used identically for both the
+    Deliberately carries its own `status: "cancelled"` rather than Morning's
+    raw status code - get_invoice_details' status translation renders
+    Morning's manually-closed status (2) as "שולם" (paid), which research.md
+    confirmed live is actively misleading here: this account's money never
+    moved, so nothing was "paid". The model must not say "paid" when
+    composing its reply from this. Used identically for both the
     real-cancellation path and the idempotent no-op path (already
-    cancelled/already fulfilled, REQ-INV-021/025) - from the user's
-    perspective the account simply isn't open any more either way.
+    cancelled/already fulfilled, REQ-INV-021/025).
 
     `document` is the raw Morning document dict - either close_invoice's
     response (real cancellation) or the original fetched via get_invoice
     (no-op path)."""
     number = document.get("number") or document.get("id", "")
     client_name = (document.get("client") or {}).get("name")
-
-    lines = []
-    if client_name:
-        lines.append(f'לקוח: "{client_name}"')
-    lines.append(f"חשבון עסקה #{number} בוטל.")
-    return "\n".join(lines)
+    return json.dumps(
+        {"status": "cancelled", "display_number": number, "client_name": client_name},
+        ensure_ascii=False,
+    )
 
 
 def format_too_many_invoices_message(total: int) -> str:
-    """Hebrew message when list_invoices' real Morning total exceeds the
-    fetch cap (user-stories.md US2, REQ-INVOICE-003) - states the real
-    total (never silently truncated) and asks for a narrower search rather
-    than fetching further pages or dumping a huge, unusable reply. Mirrors
-    format_too_many_clients_message's structure and tone."""
-    return (
-        f"נמצאו {total} חשבוניות התואמות את החיפוש - יותר מדי להצגה כרשימה אחת. "
-        f"אנא צמצם/י את החיפוש (למשל לפי טווח תאריכים, לקוח, או סטטוס)."
-    )
+    """Machine-readable JSON (2026-09-04 JSON-only contract change) when
+    list_invoices' real Morning total exceeds the fetch cap (user-stories.md
+    US2, REQ-INVOICE-003) - the real total is always stated (never silently
+    truncated); the model must ask the operator to narrow the search rather
+    than fetching further pages or dumping a huge, unusable reply."""
+    return json.dumps({"status": "too_many", "total": total, "kind": "invoices"}, ensure_ascii=False)
 
 
 def format_too_many_clients_message(total: int) -> str:
-    """Hebrew message when a client search/list matches more results than
-    can reasonably be displayed - states the real total (never silently
-    truncated) and asks for a narrower search rather than dumping a huge,
-    unusable reply."""
-    return (
-        f"נמצאו {total} לקוחות התואמים את החיפוש - יותר מדי להצגה כרשימה אחת. "
-        f"אנא צמצם/י את החיפוש (למשל לפי חלק מהשם)."
-    )
+    """Machine-readable JSON (2026-09-04 JSON-only contract change) when a
+    client search/list matches more results than can reasonably be
+    returned - the real total is always stated; the model must ask the
+    operator to narrow the search."""
+    return json.dumps({"status": "too_many", "total": total, "kind": "clients"}, ensure_ascii=False)
 
 
 def format_ambiguous_clients_message(candidates: List[Client]) -> str:
-    """Build a Hebrew disambiguation message when a name lookup matches more
-    than one client (REQ-CLIENT-003/007) - lists each candidate's
-    name/tax_id/phone (never the internal client_id, REQ-CLIENT-018) and asks
-    the user to be more specific, without disclosing full details for either."""
-    lines = ["נמצאו כמה לקוחות בשם דומה, אנא ציין/י באופן מדויק יותר:"]
-    lines.extend(f"- {_format_client_summary_line(c)}" for c in candidates)
-    return "\n".join(lines)
+    """Machine-readable JSON (2026-09-04 JSON-only contract change) when a
+    name lookup matches more than one client (REQ-CLIENT-003/007) - lists
+    each candidate (never the internal client_id, REQ-CLIENT-018). The
+    model must ask the operator to be more specific, without disclosing
+    full details for either candidate."""
+    return json.dumps(
+        {"status": "ambiguous", "candidates": [_client_dict(c) for c in candidates]},
+        ensure_ascii=False,
+    )
 
 
 def format_invoice_json(invoice: Invoice) -> str:
-    """Machine-readable JSON view of one document (Feature 025 Phase 9).
+    """Machine-readable JSON view of one document (Feature 025 Phase 9; the
+    canonical shape every document-returning tool now uses unconditionally,
+    per the 2026-09-04 JSON-only contract - see this module's docstring).
 
-    Used ONLY by callers that pass format="json" - today, denidin-app's
-    accounting-document reconciliation sweep. The Hebrew prose formatters
-    above remain the default for every conversational caller and are
-    unchanged.
-
-    Why a second format rather than reusing the prose (see
+    Why JSON rather than prose (see
     specs/in-progress/025-morning-sourced-ledger-events/
     proposal-full-document-capture.md): the prose view is lossy and ambiguous
     for a machine consumer - "סכום: ₪51.92" hides whether VAT is included,

@@ -221,6 +221,40 @@ general financial question. The create/update/cancel tools below are
 unaffected by this — an actual write action always goes through Morning
 directly, never the ledger.
 
+### Every Morning tool returns JSON — never show it to the operator (2026-09-04)
+
+As of 2026-09-04, **every** Morning MCP tool — every `create_*`/`cancel_*`
+write tool and every `list_*`/`get_*` read tool alike, with no exceptions —
+returns a machine-readable JSON string. There is no more "text" mode; the
+old `format`/`output_format` parameter some tools used to accept is gone
+entirely. This is a single, unconditional contract — never assume a tool
+call returned prose, and never pass or expect a format parameter.
+
+This means **you** are always responsible for turning that JSON into the
+reply a person actually sees:
+- **Never paste, quote, or otherwise show raw JSON to the user** — not a
+  fragment, not "here's the technical detail," never. A JSON tool result is
+  input for you to read, not output for them to read.
+- Compose a natural, bullet-style Hebrew reply from the JSON's fields —
+  the same tone and shape you already used for invoice confirmations,
+  document details, and client lookups before this change. The underlying
+  data hasn't changed, only its wire format; what the operator experiences
+  should read exactly as it always did.
+- If a JSON result carries an `amount_mismatch` field (requested vs. actual
+  amount Morning actually stored), say so plainly and ask the operator to
+  confirm — never silently reconcile the difference yourself.
+- A tool's own internal id fields (e.g. `internal_morning_id`) are for you
+  to use in follow-up tool calls, never to surface to the operator — always
+  speak in terms of the human-visible `display_number` instead.
+
+This is also what makes the synchronous ledger capture of Morning-created
+documents (see "Ledger Event Recognition" below) actually work: the ledger
+event's `accounting_document_*` fields are populated by copying a
+`create_*`/`get_invoice_details` JSON result's own field names verbatim —
+if you paraphrase or reformat that JSON into prose before it's captured,
+the capture has nothing structured to read and the event's fields come back
+empty.
+
 When talking with a Godfather or Admin user, you may have access to invoicing
 tools backed by Morning (Green Invoice): `resolve_client_name` (call this
 FIRST whenever a client is referenced by name — see "Resolving a client by
