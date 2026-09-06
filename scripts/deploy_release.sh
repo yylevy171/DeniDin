@@ -291,26 +291,37 @@ if [ "$REMOTE" -eq 1 ]; then
     # watchdog.py's env-mismatch safety check on both apps. Same schema/intent as
     # env_lock.sh's env_lock_acquire, which the LOCAL (dev) path already gets for free via
     # env_lock_acquire below - prod is never owner-locked (CLAUDE.md), so owner is always null.
-    echo "== [R6/R8] Ensuring shared/active_env.json is a real file on ${REMOTE_HOST} (bugfix-021) =="
-    ACTIVE_ENV_STATE="$(remote_run "cd ~/${REMOTE_DEPLOY_DIR} && mkdir -p shared && if [ -d shared/active_env.json ]; then if [ -z \"\$(ls -A shared/active_env.json)\" ]; then rmdir shared/active_env.json && echo REMOVED_EMPTY_DIR; else echo NONEMPTY_DIR; fi; else echo OK; fi" 2>&1)"
-    if echo "$ACTIVE_ENV_STATE" | grep -q "NONEMPTY_DIR"; then
-        echo "🚨 DEPLOY FAILED at step R6 (shared/active_env.json on ${REMOTE_HOST}): it's a NON-EMPTY directory, not the expected file - refusing to remove it automatically. Investigate by hand before retrying." >&2
-        exit 1
-    fi
-    if ! echo "$ACTIVE_ENV_STATE" | grep -qE "OK|REMOVED_EMPTY_DIR"; then
-        echo "🚨 DEPLOY FAILED at step R6 (checking shared/active_env.json state on ${REMOTE_HOST}): unexpected output:" >&2
-        echo "$ACTIVE_ENV_STATE" >&2
-        exit 1
-    fi
-    UPDATED_AT="$(date -u +%Y-%m-%dT%H:%M:%S+00:00)"
-    if ! remote_run "printf '{\"active_env\": \"prod\", \"owner\": null, \"updated_at\": \"${UPDATED_AT}\"}\n' > ~/${REMOTE_DEPLOY_DIR}/shared/active_env.json"; then
-        echo "🚨 DEPLOY FAILED at step R6 (writing shared/active_env.json on ${REMOTE_HOST})." >&2
-        exit 1
-    fi
-    ACTIVE_ENV_VERIFY="$(remote_run "test -f ~/${REMOTE_DEPLOY_DIR}/shared/active_env.json && echo FILE || echo NOTFILE")"
-    if [ "$ACTIVE_ENV_VERIFY" != "FILE" ]; then
-        echo "🚨 DEPLOY FAILED at step R6 (verifying shared/active_env.json is a file on ${REMOTE_HOST}): got '${ACTIVE_ENV_VERIFY}'." >&2
-        exit 1
+    #
+    # webapp has NO watchdog and never reads active_env.json (its compose services don't mount
+    # it) - so this step is skipped for webapp. It also stays UNCHANGED for denidin-app /
+    # morning-mcp-app rather than being "fixed" here: the printf below still writes the
+    # pre-2026-08-05 scalar shape ({"active_env": ...}) which newer watchdogs read as "no
+    # active_envs key -> skip the check". Correcting that is its own change for those apps, not
+    # something to fold into a webapp deploy.
+    if [ "$IS_WEBAPP" -ne 1 ]; then
+        echo "== [R6/R8] Ensuring shared/active_env.json is a real file on ${REMOTE_HOST} (bugfix-021) =="
+        ACTIVE_ENV_STATE="$(remote_run "cd ~/${REMOTE_DEPLOY_DIR} && mkdir -p shared && if [ -d shared/active_env.json ]; then if [ -z \"\$(ls -A shared/active_env.json)\" ]; then rmdir shared/active_env.json && echo REMOVED_EMPTY_DIR; else echo NONEMPTY_DIR; fi; else echo OK; fi" 2>&1)"
+        if echo "$ACTIVE_ENV_STATE" | grep -q "NONEMPTY_DIR"; then
+            echo "🚨 DEPLOY FAILED at step R6 (shared/active_env.json on ${REMOTE_HOST}): it's a NON-EMPTY directory, not the expected file - refusing to remove it automatically. Investigate by hand before retrying." >&2
+            exit 1
+        fi
+        if ! echo "$ACTIVE_ENV_STATE" | grep -qE "OK|REMOVED_EMPTY_DIR"; then
+            echo "🚨 DEPLOY FAILED at step R6 (checking shared/active_env.json state on ${REMOTE_HOST}): unexpected output:" >&2
+            echo "$ACTIVE_ENV_STATE" >&2
+            exit 1
+        fi
+        UPDATED_AT="$(date -u +%Y-%m-%dT%H:%M:%S+00:00)"
+        if ! remote_run "printf '{\"active_env\": \"prod\", \"owner\": null, \"updated_at\": \"${UPDATED_AT}\"}\n' > ~/${REMOTE_DEPLOY_DIR}/shared/active_env.json"; then
+            echo "🚨 DEPLOY FAILED at step R6 (writing shared/active_env.json on ${REMOTE_HOST})." >&2
+            exit 1
+        fi
+        ACTIVE_ENV_VERIFY="$(remote_run "test -f ~/${REMOTE_DEPLOY_DIR}/shared/active_env.json && echo FILE || echo NOTFILE")"
+        if [ "$ACTIVE_ENV_VERIFY" != "FILE" ]; then
+            echo "🚨 DEPLOY FAILED at step R6 (verifying shared/active_env.json is a file on ${REMOTE_HOST}): got '${ACTIVE_ENV_VERIFY}'." >&2
+            exit 1
+        fi
+    else
+        echo "== [R6/R8] Skipped for webapp (no watchdog, no active_env.json mount) =="
     fi
 
     REMOTE_COMPOSE="cd ~/${REMOTE_DEPLOY_DIR} && docker compose --project-directory . -f docker/docker-compose.prod.yml -f docker/docker-compose.prod.local.yml"

@@ -67,7 +67,6 @@ services:
       - ./apps/webapp/backend/config/config.dev.container.json:/app/apps/webapp/backend/config/config.json:ro
       - ./apps/webapp/backend/auth/password.hash:/app/apps/webapp/backend/auth/password.hash:ro
       - ./apps/denidin-app/dev_data:/app/denidin-data:ro
-      - ./shared/active_env.json:/app/active-env/active_env.json:ro
     restart: "no"
 
   webapp-frontend-dev:
