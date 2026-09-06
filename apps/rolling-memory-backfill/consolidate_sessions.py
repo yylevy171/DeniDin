@@ -8,7 +8,7 @@ so Feature 070's ``SessionManager._reconcile_chat_index`` finds exactly one dir
 per chat and nothing is silently dropped.
 
 Pipeline position: **step 1** of consolidate → backfill → finalize → purge.
-See ``specs/in-progress/070-rolling-memory-window/consolidator-spec.md`` §1.
+See ``specs/done/070-rolling-memory-window/consolidator-spec.md`` §1.
 
 ``main(argv=None) -> int``; ``sys.exit(main())``. Preconditions fail closed
 (``⚠️`` + ``return 1``) before any write. ``--report-only`` writes nothing.

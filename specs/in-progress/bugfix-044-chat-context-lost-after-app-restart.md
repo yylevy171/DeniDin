@@ -31,7 +31,7 @@ per chat resolved through a durable SQLite chat index (`_reconcile_chat_index` r
 disk on every restart), so there is no losable in-memory `chat_to_session` state and no
 orphan-recovery step to forget to populate; `remove_from_index` and the whole 4-step cleanup are
 deleted. Proven by Feature 070 US1 restart scenario + AC-2. See
-`specs/in-progress/070-rolling-memory-window/spec.md` §"Legacy Defects". Final closure status note
+`specs/done/070-rolling-memory-window/spec.md` §"Legacy Defects". Final closure status note
 is added at Feature 070 haleluya.)*
 
 ## Date Opened

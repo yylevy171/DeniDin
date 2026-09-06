@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/070-rolling-memory-window`
 **Created**: 2026-09-01
-**Status**: Draft — clarified 2026-09-02, ready for `speckit.plan`
+**Status**: Done — implemented, tested (1367 non-billed + billed acceptance AC-1/2/3/5/SC-007), released as **0.5.4-70** (both apps, cut from this branch), and **migrated + deployed to prod 2026-09-06** (verified live: rolling window + date-anchored `daily_summary` recall on real WhatsApp turns, 0 "Created new session", roll scheduler armed). Merging to master.
 **Input**: User description: Replace the 24-hour session-expiry memory lifecycle with a rolling
 14-day verbatim short-term window plus a nightly 2am (Israel local) roll that summarizes the
 previous calendar day into long-term memory. Build the new model first; the known legacy defects

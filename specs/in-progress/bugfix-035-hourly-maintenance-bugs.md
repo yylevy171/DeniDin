@@ -25,7 +25,7 @@ step is human approval of the root causes before test-gap analysis.
 Per explicit user direction 2026-09-01, H1/H2/H3 are NOT worked as a standalone Bug-Driven
 Development track; each is structurally eliminated by the Feature 070 redesign or fixed inline,
 proven by a named acceptance scenario — H1 → Feature 070 AC-1 / US2 group-chat scenario, H2 →
-US1 sc.6 + AC-5, H3 → US3 sc.5. See `specs/in-progress/070-rolling-memory-window/spec.md`
+US1 sc.6 + AC-5, H3 → US3 sc.5. See `specs/done/070-rolling-memory-window/spec.md`
 §"Legacy Defects and How the New Model Addresses Them". This spec's final closure status note is
 added at Feature 070 haleluya.)*
 

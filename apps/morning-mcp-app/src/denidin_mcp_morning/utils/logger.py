@@ -11,7 +11,7 @@ rotation race: previously each module attached its OWN
 `RotatingFileHandler(10MB, backupCount=5)` to the same file with
 `propagate=False`, so a rollover in one handler tripped stale-fd cascades in the
 others -> tiny out-of-order fragments, history lost. See
-`specs/in-progress/070-rolling-memory-window/contracts/logger-retention.md`.
+`specs/done/070-rolling-memory-window/contracts/logger-retention.md`.
 
 Rotation: `TimedRotatingFileHandler(when=<rotation_when>, backupCount=<backup_count>)`.
 `backup_count=0` (the default) => the handler NEVER prunes a rotated segment.

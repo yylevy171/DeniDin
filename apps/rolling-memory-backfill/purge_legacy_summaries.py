@@ -14,7 +14,7 @@ Single-writer ChromaDB — the app MUST be stopped and ``--data-root`` must be
 read-write (runs on the host / a pulled copy, never the read-only prod mount).
 
 ``main(argv=None) -> int``; ``sys.exit(main())``. ``--report-only`` writes nothing.
-See ``specs/in-progress/070-rolling-memory-window/consolidator-spec.md`` §3.
+See ``specs/done/070-rolling-memory-window/consolidator-spec.md`` §3.
 """
 import argparse
 import logging
