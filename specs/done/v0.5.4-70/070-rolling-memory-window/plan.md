@@ -1,7 +1,7 @@
 # Implementation Plan: Rolling 14-Day Short-Term Memory Window with Nightly Daily-Summary Roll
 
 **Branch**: `feature/070-rolling-memory-window` (speckit id `070-rolling-memory-window`) | **Date**: 2026-09-02 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `specs/in-progress/070-rolling-memory-window/spec.md` (+ [user-stories.md](./user-stories.md), [checklists/requirements.md](./checklists/requirements.md))
+**Input**: Feature specification from `specs/done/v0.5.4-70/070-rolling-memory-window/spec.md` (+ [user-stories.md](./user-stories.md), [checklists/requirements.md](./checklists/requirements.md))
 
 ---
 
@@ -138,7 +138,7 @@ further user input required.
 ### Documentation (this feature)
 
 ```text
-specs/in-progress/070-rolling-memory-window/
+specs/done/v0.5.4-70/070-rolling-memory-window/
 ├── spec.md                     # ✅ committed, clarified 2026-09-02
 ├── user-stories.md             # ✅ committed (US1–US5 + AC-1..AC-6)
 ├── checklists/requirements.md   # ✅ committed

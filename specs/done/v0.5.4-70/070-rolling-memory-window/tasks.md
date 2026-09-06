@@ -4,7 +4,7 @@ description: "Task list — Feature 070 Rolling 14-Day Memory Window"
 
 # Tasks: Rolling 14-Day Short-Term Memory Window with Nightly Daily-Summary Roll
 
-**Input**: `specs/in-progress/070-rolling-memory-window/` — [plan.md](./plan.md), [spec.md](./spec.md),
+**Input**: `specs/done/v0.5.4-70/070-rolling-memory-window/` — [plan.md](./plan.md), [spec.md](./spec.md),
 [user-stories.md](./user-stories.md), [research.md](./research.md), [data-model.md](./data-model.md),
 [contracts/](./contracts/) (9), [quickstart.md](./quickstart.md)
 
@@ -375,7 +375,7 @@ does almost nothing.
   stale `chat_index.db` removal, `--report-only`, `--resume`). pylint 9.95, mypy clean.
 - [x] `purge_legacy_summaries.py` + 5 integration tests (deletes `session_summary`/`_fallback`
   only; refuses a collection with no `daily_summary`). Full sub-app suite 61 passed.
-- [x] `specs/in-progress/070-rolling-memory-window/consolidator-spec.md` (Stage 0.1 design doc).
+- [x] `specs/done/v0.5.4-70/070-rolling-memory-window/consolidator-spec.md` (Stage 0.1 design doc).
 
 **Feature complete** when Phase 8's acceptance pass is green and Phase 9's checkpoint holds. Phase 10
 (prod backfill) and haleluya (docs + spec move + the bugfix-035 / bugfix-044 "Superseded by Feature

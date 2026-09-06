@@ -784,7 +784,7 @@ human approval → investigation, in that order).
   (same principle: don't force a canned "insufficient" response when real candidates exist — let
   the model reason over them).
 
-- **`specs/bugfixes/bugfix-035-hourly-maintenance-bugs.md`** — extended with a new "H3" section:
+- **`specs/done/v0.5.4-70/bugfix-035-hourly-maintenance-bugs.md`** — extended with a new "H3" section:
   `test_session_transfer.py::test_session_transfer_and_recall_after_expiration` failed during the
   2026-08-26 random-20-billed-test sweep (`AssertionError: Archived session ID should match` — an
   unscoped `expired_dir.rglob("*/session.json")[0]` picked up a stale, pre-existing archived

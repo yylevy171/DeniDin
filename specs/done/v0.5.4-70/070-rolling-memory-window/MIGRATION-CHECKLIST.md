@@ -78,7 +78,7 @@ hard-errored on context overflow).
   (the T065 archive step — moves all >14-day messages to `archived/`) → `purge_legacy_summaries.py`
   (T-Stage-0.6 — deletes the 20,949 legacy `session_summary` records). Steps 0.3/0.3b/0.6 below
   build the three new ones.
-- **Do**: add `specs/in-progress/070-rolling-memory-window/consolidator-spec.md` — the canonical-session
+- **Do**: add `specs/done/v0.5.4-70/070-rolling-memory-window/consolidator-spec.md` — the canonical-session
   rules: one active dir per chat; messages from every source dir (active + `expired/**`) merged;
   sort key = `timestamp` then `received_at` then file mtime (log which); `order_num` renumbered
   `1..N`; `message_ids` rebuilt in that order; `message_counter = N`; `archived_message_ids = []`;

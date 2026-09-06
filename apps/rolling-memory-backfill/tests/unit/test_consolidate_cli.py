@@ -3,7 +3,7 @@
 
 RED against the `consolidate_sessions.py` stub (its `main` / `_discover_source_sessions`
 raise NotImplementedError). GREEN once the merge is implemented per
-`specs/done/070-rolling-memory-window/consolidator-spec.md` §1.
+`specs/done/v0.5.4-70/070-rolling-memory-window/consolidator-spec.md` §1.
 """
 import json
 from datetime import datetime, timedelta

@@ -41,7 +41,7 @@ architecture or fixed inline, proven by a named acceptance scenario. Bugfix spec
 
 | Artifact | Path | Status |
 |---|---|---|
-| `spec.md` | `specs/in-progress/070-rolling-memory-window/spec.md` | ✅ committed, clarified 2026-09-02 |
+| `spec.md` | `specs/done/v0.5.4-70/070-rolling-memory-window/spec.md` | ✅ committed, clarified 2026-09-02 |
 | `user-stories.md` | same dir | ✅ committed (US1–US5 + AC-1..AC-6) |
 | `checklists/requirements.md` | same dir | ✅ committed, all `[NEEDS CLARIFICATION]` resolved |
 | `plan.md` | same dir | ⬜ **still the empty 118-line template** — `setup-plan.sh` copied it, nothing filled in |

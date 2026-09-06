@@ -98,7 +98,7 @@ user direction — no separate Bug-Driven Development track) · **Clarified**: 2
 - [x] The one-time prod migration is gated as its own explicit-approval action (REQ-MEM-048),
       separate from feature-build approval and from any deploy, and (clarified 2026-09-02) runs
       standalone against the target env *before* the new-model code is deployed there.
-- [x] `specs/` placement: spec lives under `specs/in-progress/070-rolling-memory-window/` while
+- [x] `specs/` placement: spec lives under `specs/done/v0.5.4-70/070-rolling-memory-window/` while
       being worked (per CLAUDE.md); branch is `feature/070-rolling-memory-window`.
 
 ## Notes
