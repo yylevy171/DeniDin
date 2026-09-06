@@ -52,13 +52,27 @@ def scratch_env_repo(tmp_path):
         ("dev", 8100, 8000, "scratch-env-dev"), ("prod", 8101, 8001, "scratch-env-prod"),
     ):
         (repo / "apps" / "denidin-app" / "config" / f"config.{env}.json").write_text(
-            json.dumps({"health_check_port": denidin_port})
+            json.dumps({"health_check_port": 8100})  # container-internal port, same across envs
         )
         (repo / "apps" / "morning-mcp-app" / "config" / f"config.{env}.json").write_text(
-            json.dumps({"mcp": {"port": morning_port}})
+            json.dumps({"mcp": {"port": 8000}})  # container-internal port, same across envs
         )
         (repo / "docker").mkdir(exist_ok=True)
-        (repo / "docker" / f"docker-compose.{env}.yml").write_text(f"name: {project}\nservices: {{}}\n")
+        # 2026-09-06 fix: prober_paths.sh now resolves the HOST-reachable port
+        # straight from this compose file's own `ports:` mapping (not from
+        # config.json, which only ever reflects the container's internal
+        # port) - see prober_paths.sh's own comment for why. denidin_port/
+        # morning_port here are deliberately the HOST-side numbers.
+        (repo / "docker" / f"docker-compose.{env}.yml").write_text(
+            f"name: {project}\n"
+            "services:\n"
+            f"  denidin-app-{env}:\n"
+            "    ports:\n"
+            f'      - "{denidin_port}:8100"\n'
+            f"  morning-mcp-app-{env}:\n"
+            "    ports:\n"
+            f'      - "{morning_port}:8000"\n'
+        )
 
     shutil.copy(PROBER_PATHS_SCRIPT, repo / "scripts" / "health_monitoring" / "prober_paths.sh")
     shutil.copy(RUN_PROBER_SCRIPT, repo / "scripts" / "health_monitoring" / "run_prober_for_env.sh")

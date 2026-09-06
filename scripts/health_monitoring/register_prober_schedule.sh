@@ -53,6 +53,22 @@ _darwin() {
     case "$ACTION" in
         enable)
             mkdir -p "$plist_dir"
+            # 2026-09-06 fix (found via a real dev deploy dry run): a LaunchAgent's
+            # ProgramArguments run with launchd's own minimal default PATH
+            # (no /usr/local/bin), NOT the interactive shell's PATH from
+            # .zshrc/.bash_profile - so `docker` (installed under
+            # /usr/local/bin or /opt/homebrew/bin, never one of launchd's
+            # defaults) was unresolvable, and every scheduled tick's
+            # stop_all.sh/run_all.sh call silently failed with "docker:
+            # command not found" straight to launchd.err.log. The prober
+            # itself ran fine every 60s and correctly decided "bootstrap"
+            # every time (denidin-app's /health was unreachable - a
+            # separate, since-fixed issue) - but the restart action it
+            # dispatched never actually executed, so the same broken
+            # container sat there for ~20 minutes with zero visible
+            # symptoms in the prober's own JSON log (which only records the
+            # decision, not whether the subprocess it spawned could run at
+            # all). Explicit EnvironmentVariables/PATH below fixes this.
             cat > "$plist_path" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -66,6 +82,11 @@ _darwin() {
     </array>
     <key>StartInterval</key><integer>60</integer>
     <key>RunAtLoad</key><true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
     <key>StandardOutPath</key><string>${REPO_ROOT}/logs/health_monitoring/${ENV}/launchd.out.log</string>
     <key>StandardErrorPath</key><string>${REPO_ROOT}/logs/health_monitoring/${ENV}/launchd.err.log</string>
 </dict>

@@ -13,6 +13,14 @@ services:
   denidin-app-prod:
     build:
       context: ./apps/denidin-app
+    ports:
+      # 2026-09-06 (bugfix-043): host-published health_check_port so the
+      # host-level prober can actually reach GET /health - see
+      # docker-compose.dev.yml's matching comment for the full incident
+      # this fixes. Distinct host port from dev's (8100:8100) so dev+prod
+      # can run concurrently without a collision, same pattern as
+      # morning-mcp-app-dev/-prod below.
+      - "8101:8100"
     volumes:
       - ./apps/denidin-app/config/config.prod.json:/app/config/config.json:ro
       - ./apps/denidin-app/config/runtime_constitution.md:/app/config/runtime_constitution.md:ro

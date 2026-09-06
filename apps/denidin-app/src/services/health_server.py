@@ -201,13 +201,27 @@ def _make_handler_class(check_fns: Dict[str, Callable[[], bool]]) -> type:
 
 
 def start_health_server(port: int, check_fns: Dict[str, Callable[[], bool]]) -> ThreadingHTTPServer:
-    """Starts the /health server bound to 127.0.0.1 only (bugfix-043 design:
-    "local http health endpoint available only at localhost") in a daemon
-    background thread, and returns the server object (tests/callers that
-    need to shut it down explicitly can call .shutdown())."""
+    """Starts the /health server in a daemon background thread, and returns
+    the server object (tests/callers that need to shut it down explicitly
+    can call .shutdown()).
+
+    Bound to 0.0.0.0 (2026-09-06, bugfix-043 revision) - originally bound to
+    127.0.0.1 only ("local http health endpoint available only at
+    localhost"), but binding to the loopback interface *inside the
+    container's own network namespace* means Docker's published-port NAT
+    (docker-compose.<env>.yml's `ports:` mapping) can never actually reach
+    it from the host - traffic arrives on the container's external
+    interface, not its 127.0.0.1. This was found live: the host-level
+    health-monitoring prober (this same bugfix) could never reach
+    denidin-app's /health at all, so it perpetually treated it as unhealthy
+    and soft-restarted the container in an endless ~3-minute loop. /health
+    returns only a boolean-per-check status (see _HealthHandler above) - no
+    secrets, no internal state - so widening it to 0.0.0.0 carries no
+    meaningful new exposure, and matches morning-mcp-app's own /health
+    (already 0.0.0.0-bound and host-published)."""
     handler_cls = _make_handler_class(check_fns)
-    server = ThreadingHTTPServer(("127.0.0.1", port), handler_cls)
+    server = ThreadingHTTPServer(("0.0.0.0", port), handler_cls)
     thread = threading.Thread(target=server.serve_forever, name="health-server", daemon=True)
     thread.start()
-    logger.info("Health check server listening on 127.0.0.1:%s", port)
+    logger.info("Health check server listening on 0.0.0.0:%s", port)
     return server

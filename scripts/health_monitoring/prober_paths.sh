@@ -39,23 +39,55 @@ prober_morning_container() {
     echo "$(_prober_project_name "$1")-morning-mcp-app-$1-1"
 }
 
-# Reads config.<env>.json's health_check_port / mcp.port via python3 (already
-# a hard dependency of this repo, no new tooling) rather than duplicating the
-# port numbers as bash literals - these are real app config, not ops-script
-# constants, and must never drift from what the app itself is actually bound
-# to.
+# 2026-09-06 fix: the HOST-reachable port for a service is NOT the same
+# thing as the app's own config.<env>.json port field, and must never be
+# resolved from it - config.json's port is the container's *internal*
+# listen port, which stays identical across dev/prod by design (the two
+# environments are otherwise-isolated containers, not two ports on one
+# process), while the HOST port they're published under differs per env
+# purely via docker-compose.<env>.yml's own `ports:` mapping (e.g.
+# morning-mcp-app: container port 8000 in both envs, published as host
+# 8000 for dev / host 8001 for prod, so dev+prod can run concurrently
+# without colliding - see docker-compose.prod.yml). The old
+# config.json-based resolution was silently wrong for morning-mcp-app prod
+# (it would have resolved to dev's own host port 8000) and made
+# denidin-app's health check entirely unreachable in both envs (no `ports:`
+# entry existed for it at all until this fix) - the prober's escalation
+# logic then saw denidin-app as permanently "unhealthy" and soft-restarted
+# it in an endless ~3-minute loop, confirmed live against a real dev
+# deploy. The compose file's own `ports:` mapping is the only true source
+# of what's actually reachable from the host, so that's what's parsed here
+# instead - config.json is no longer consulted for this at all.
+_prober_host_port() {
+    local env="$1" service="$2"
+    local compose_file="${REPO_ROOT}/docker/docker-compose.$env.yml"
+    awk -v svc="  ${service}:" '
+        $0 == svc { in_service = 1; next }
+        in_service && /^  [A-Za-z]/ { in_service = 0 }
+        in_service && /^    ports:/ { in_ports = 1; next }
+        in_ports && (/^[[:space:]]*#/ || /^[[:space:]]*$/) { next }
+        in_ports && /^      - / {
+            line = $0
+            gsub(/^      - ["'"'"']?/, "", line)
+            gsub(/["'"'"']?[[:space:]]*$/, "", line)
+            split(line, parts, ":")
+            print parts[1]
+            exit
+        }
+        in_ports { in_ports = 0 }
+    ' "$compose_file"
+}
+
 prober_denidin_health_url() {
     local env="$1"
-    local config_path="${REPO_ROOT}/apps/denidin-app/config/config.${env}.json"
     local port
-    port="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('health_check_port', 0))" "$config_path")"
+    port="$(_prober_host_port "$env" "denidin-app-$env")"
     echo "http://127.0.0.1:${port}/health"
 }
 
 prober_morning_health_url() {
     local env="$1"
-    local config_path="${REPO_ROOT}/apps/morning-mcp-app/config/config.${env}.json"
     local port
-    port="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('mcp', {}).get('port', 8000))" "$config_path")"
+    port="$(_prober_host_port "$env" "morning-mcp-app-$env")"
     echo "http://127.0.0.1:${port}/health"
 }

@@ -271,6 +271,8 @@ def scratch_deploy_repo(tmp_path):
         "    build:\n"
         "      context: ./apps/denidin-app\n"
         '    restart: "no"\n'
+        "    ports:\n"
+        '      - "18100:8100"\n'
         "  morning-mcp-app-dev:\n"
         "    build:\n"
         "      context: ./apps/morning-mcp-app\n"
@@ -347,6 +349,11 @@ def scratch_deploy_repo(tmp_path):
     # this bugfix actually cares about is still exercised end-to-end; only the launchd/schtasks
     # mechanics themselves are stubbed out (and those are separately, fully covered against real
     # launchd - with safe, unique, throwaway labels - by test_env_scripts.py).
+    #
+    # 2026-09-06 fix: run_env.sh no longer calls `trigger-once` separately from `enable` (that
+    # extra call raced enable's own RunAtLoad-driven bootstrap against a real LaunchAgent - see
+    # run_env.sh's own comment). So THIS stub's `enable` branch is now what actually runs the
+    # probe (simulating RunAtLoad firing on a real `launchctl load`), not `trigger-once`.
     register_stub = repo / "scripts" / "health_monitoring" / "register_prober_schedule.sh"
     register_stub.write_text(
         "#!/bin/bash\n"
@@ -355,7 +362,7 @@ def scratch_deploy_repo(tmp_path):
         'ENV="$1"\n'
         'ACTION="$2"\n'
         'case "$ACTION" in\n'
-        "    enable) echo \"(stub) would enable prober schedule for ${ENV}\" ;;\n"
+        '    enable) "$SCRIPT_DIR/run_prober_for_env.sh" "$ENV" ;;\n'
         "    disable) echo \"(stub) would disable prober schedule for ${ENV}\" ;;\n"
         '    trigger-once) "$SCRIPT_DIR/run_prober_for_env.sh" "$ENV" ;;\n'
         "esac\n"
