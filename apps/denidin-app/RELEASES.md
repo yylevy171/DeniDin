@@ -75,3 +75,7 @@ Rolling 14-day short-term memory window with nightly daily-summary roll; retires
 ## denidin-app v0.5.4-b43 — 2026-09-06
 
 bugfix-043: admin stop/start owns the prober; deploy_release.sh no longer races it
+
+## denidin-app v0.5.4-b43v2 — 2026-09-06
+
+bugfix-043: fix prober requests dependency, run_env.sh double-trigger race, denidin-app health reachability (compose ports + 0.0.0.0 bind), and prober host-port resolution
