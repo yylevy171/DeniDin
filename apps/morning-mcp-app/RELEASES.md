@@ -75,3 +75,7 @@ Lockstep version bump for the both-apps 0.5.4-70 deploy — no code change from 
 ## morning-mcp-app v0.5.4-b43 — 2026-09-06
 
 bugfix-043: admin stop/start owns the prober; deploy_release.sh no longer races it
+
+## morning-mcp-app v0.5.4-b43v2 — 2026-09-06
+
+bugfix-043: no code change, re-cut to keep both apps' versions aligned with denidin-app 0.5.4-b43v2 for this dev test round
