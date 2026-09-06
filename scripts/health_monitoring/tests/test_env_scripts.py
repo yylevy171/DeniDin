@@ -273,16 +273,21 @@ class TestStopEnvRunEnvOrdering:
                                  capture_output=True, text=True)
         assert result.returncode != 0
 
-    def test_run_env_enables_then_triggers(self, scratch_ops_repo):
+    def test_run_env_enables_only_no_separate_trigger(self, scratch_ops_repo):
+        """2026-09-06 fix: run_env.sh must call `enable` and nothing else -
+        `enable`'s own `load` (RunAtLoad=true) is what bootstraps the apps.
+        A separate explicit `trigger-once` call used to run concurrently
+        with that RunAtLoad-driven run and raced it (see run_env.sh's own
+        comment for the real incident this caused)."""
         repo, call_log = scratch_ops_repo
         result = subprocess.run([str(repo / "scripts" / "run_env.sh"), "dev"],
                                  capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
 
         calls = call_log.read_text().splitlines()
-        enable_idx = next(i for i, c in enumerate(calls) if "register_prober_schedule.sh dev enable" in c)
-        trigger_idx = next(i for i, c in enumerate(calls) if "register_prober_schedule.sh dev trigger-once" in c)
-        assert enable_idx < trigger_idx, f"expected enable before trigger-once, got: {calls}"
+        assert any("register_prober_schedule.sh dev enable" in c for c in calls), calls
+        assert not any("register_prober_schedule.sh dev trigger-once" in c for c in calls), \
+            f"run_env.sh must not call trigger-once separately from enable, got: {calls}"
 
     def test_run_env_rejects_bad_env(self, scratch_ops_repo):
         repo, _call_log = scratch_ops_repo
