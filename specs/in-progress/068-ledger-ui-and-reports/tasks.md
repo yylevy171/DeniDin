@@ -294,6 +294,78 @@ frontend :5173 via Vite; not the containerized env — that's Story 10).
   `docker-compose.{dev,prod}.local.yml` needs a `webapp-backend-<env>` override entry for the
   `/app/denidin-data` mount — coder2's is done; documented in `quickstart.md`.
 
+## Follow-ups (deferred — not blocking)
+
+- **cut_release.sh build vs. colima-keepalive race** (found 2026-09-06 cutting
+  `webapp-v0.0.1-webapp`): `~/bin/colima-keepalive.sh` runs every 2 min via launchd; its
+  `daemon_ok()` health check (`docker info`, 15s timeout) times out while a heavy `docker build`
+  is loading context / running `pip install`, so the keepalive concludes the daemon is wedged
+  and does `pkill -9 limactl` + `colima start` — hard-killing the in-progress build. Every
+  `cut_release.sh webapp ...` retry hit the same ~2-min guillotine (`EOF` / "Cannot connect to
+  the Docker daemon"). **FIXED 2026-09-06** in `cut_release.sh`: it now `launchctl unload`s the
+  keepalive (best-effort; only when `--artifacts-root` is not overridden, i.e. not in tests)
+  right before the build loop and `launchctl load`s it back the moment `docker save` succeeds,
+  with an `EXIT` trap as the safety net. Not a webapp-specific bug (any large build is exposed),
+  but surfaced by webapp's two repo-root-context images. A keepalive-side hardening (skip the
+  restart while a `docker build` is active) is still worth doing but is out of this feature's
+  scope — `~/bin/colima-keepalive.sh` is not in the repo.
+- **deploy_release.sh R5 retags only the first of webapp's two images over SSH** (found
+  2026-09-06 deploying `webapp-v0.0.1-webapp` to the Windows box): R3's remote `docker load`
+  loads both images fine (both present in `docker images` on the box afterward), but
+  `LOADED_REFS` came back with only the `webapp-backend` "Loaded image:" line, so R5 retagged
+  just the backend and R7 died with `No such image: denidin-prod-webapp-frontend-prod:latest`.
+  Likely the `wsl_ssh_run` base64/ssh transport collapsing `docker load`'s multi-line stdout.
+  Worked around by manually `docker tag`-ing the frontend on the box + `docker compose up -d
+  --no-build` + verifying by hand — deploy is live and healthy. Real fix: retag from the
+  manifest's authoritative `images: [...]` list instead of parsing `docker load` stdout (also
+  removes a fragile grep). The local (`dev`) path may have the same latent bug.
+  **FIXED 2026-09-06** in `deploy_release.sh`: retag list now comes from the manifest's
+  `images: [...]` array (`MANIFEST_IMAGES`), not from parsing `docker load` stdout;
+  `_verify_loaded_matches_manifest` still checks the load output but only to reject a tar
+  containing an image the manifest doesn't list (swapped/corrupt bytes), and each manifest
+  image's real presence is confirmed by `docker image inspect` at the retag step (both R3 and
+  L1/L2). `cut_release.sh` also fixed: pauses `~/bin/colima-keepalive.sh` (launchctl
+  unload/load, best-effort, skipped under `--artifacts-root`) around build+save so the
+  keepalive's 2-min `docker info` probe can't hard-restart colima mid-build. 20/20
+  `scripts/tests/` green.
+- **context/conversation + images empty in prod (found 2026-09-06, right after the
+  `webapp-v0.0.1-webapp` prod deploy)** — NOT a deploy bug and NOT caused by this feature.
+  The live prod `denidin-app` is running an unreleased pre-release, **`0.5.4-70`**, which this
+  morning (~10:08, before the webapp went up) **restructured prod's on-disk session store**:
+  the entire old tree was moved to `{data_root}/sessions/_pre070_raw_20260906/{active,expired}/`
+  (3 active + 96 expired sessions) and the new top-level `sessions/` now holds only 2
+  carried-forward sessions + a new `chat_index.db`, with **no top-level `sessions/expired/`**.
+  `webapp-backend`'s `context_reader.ContextReader._find_session_dir` only knows the
+  pre-`-70` layout (`sessions/{sid}/` and `sessions/expired/{YYYY-MM-DD}/{sid}/`), so it
+  resolves almost every ledger event's `session_id` to nothing → the endpoint returns
+  `{"error":"context_unavailable"}` (HTTP 200, error body) → the UI shows no conversation, and
+  since media tokens are only minted from messages found during that walk, no images either.
+  **FIXED 2026-09-06** — `context_reader.py` rewritten to resolve **by `message_id`, not
+  `session_id`** (via a lazily-built, miss-rebuilt `message_id → session dir` index). The
+  index spans the canonical post-070 layout (`sessions/{sid}/{messages,archived}/`), the
+  legacy `sessions/expired/{day}/{sid}/`, and the Feature 070 raw backup
+  (`sessions/_pre070_raw_<date>/` incl. `active/` and `expired/{day}/`), canonical winning on
+  collision. `/context` now also returns `event_session_id` (the stale stored value) alongside
+  the resolved real `session_id`. Events with no conversation at all (accounting-reconciliation
+  sweep — `message_id` null, sentinel `session_id`) return `no_conversation: true` with a
+  distinct message rather than a generic "no longer available". 6 new unit tests in
+  `test_context_reader.py::TestFeature070Layout`; full backend suite 68 green. Verified against
+  real prod data + **live on prod** (event `A04092615200` → 4-msg window in canonical session
+  `12e158e2…`; `B06092608250` → 16 msgs incl. 1 image). Still worth confirming with the team
+  why an unreleased `-70` build is live in prod.
+- **Deployed to prod outside the release mechanism (2026-09-06, user-directed "no release,
+  just put it there")**: `webapp-backend` rebuilt locally as `webapp-backend:ctxfix2` (VERSION
+  temporarily set to `0.0.1-webapp-ctxfix2` for the build, then reverted — nothing committed),
+  `docker save` → scp → `docker load` on the box → retag to
+  `denidin-prod-webapp-{backend,frontend}-prod:latest` → `docker compose up -d --no-build`.
+  Same manual path used for the Honigman logo (frontend `webapp-frontend:logo1`). `/health`
+  reports `0.0.1-webapp-ctxfix2`. This code is NOT in any cut release or git tag — a real
+  release still needs a human-supplied version + `cut_release.sh`/`deploy_release.sh`.
+- **Honigman Law logo (2026-09-06)**: `apps/webapp/frontend/public/honigman-law-logo.png`
+  (moved from a loose drop at `apps/webapp/`). Shown top-right (rightmost in the RTL top bar,
+  before "דני-דין · ארועים") as a 34×40 contained `<Image>` in `App.tsx`; also the favicon
+  (`<link rel="icon">` in `index.html`). Live on prod.
+
 ## Acceptance Phase (Playwright — approved FIRST, before Phases 1–10 build; run at the end)
 
 **Ordering note (2026-09-05)**: unlike the original plan, the scenarios/assertions below (and

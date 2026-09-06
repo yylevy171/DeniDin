@@ -36,6 +36,17 @@ token window) and `sessions/{sid}/archived/{mid}.json` (pruned out of the window
 `sessions/expired/{YYYY-MM-DD}/{sid}/` (which have the same `messages/` + `archived/` split
 inside).
 
+**Resolution is by `message_id`, not `session_id`** (2026-09-06, after Feature 070). Feature
+070's session **consolidator** merges every historical session for a chat into one canonical
+`sessions/{sid}/` dir and moves the originals under `sessions/_pre070_raw_<YYYYMMDD>/` (also
+`_pre070_sessions_archive_<date>/` on dev), so an event's stored `session_id` is usually stale
+after migration. `message_id` is stable and the message is carried into whichever session now
+owns it. `context_reader` builds a `message_id → session dir` index across: canonical
+`sessions/{sid}/`, legacy `sessions/expired/{day}/{sid}/`, and the raw backup
+`sessions/_pre070_raw_<date>/` (dirs directly, or under `active/` / `expired/{day}/`) —
+canonical wins on collision. The `/context` response returns `session_id` = the resolved
+(real) session and `event_session_id` = the event's original stored value.
+
 ## New: password hash file (webapp-owned, not shared with denidin-app)
 
 `apps/webapp/backend/{data_root_for_auth}/password.hash` — plain text file, one line:

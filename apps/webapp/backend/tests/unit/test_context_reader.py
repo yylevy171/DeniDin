@@ -93,6 +93,84 @@ class TestBuildContext:
         assert "media_url" not in out["messages"][0]
 
 
+def _msg_in(sdir: Path, sub: str, mid, role, content, ts, image_path=None):
+    (sdir / sub).mkdir(parents=True, exist_ok=True)
+    (sdir / sub / f"{mid}.json").write_text(json.dumps({
+        "message_id": mid, "role": role, "content": content, "timestamp": ts,
+        "sender": "someone", "image_path": image_path,
+    }), encoding="utf-8")
+
+
+class TestFeature070Layout:
+    """After the Feature 070 session consolidator runs, a ledger event's stored session_id is
+    stale — the message lives in the chat's single canonical session (messages/ or archived/),
+    with every original dir preserved under sessions/_pre070_raw_<date>/. Resolution is by
+    message_id, so all of these still work."""
+
+    def test_stale_session_id_message_now_in_a_different_canonical_session(self, root):
+        canon = root / "sessions" / "canonical-sid"
+        (canon).mkdir(parents=True)
+        (canon / "session.json").write_text(json.dumps({"session_id": "canonical-sid"}), encoding="utf-8")
+        _msg_in(canon, "messages", "m-trigger", "admin", "book it", "2026-09-04T15:20:00+03:00")
+        _msg_in(canon, "messages", "m-reply", "assistant", "done", "2026-09-04T15:21:00+03:00")
+
+        # event points at the pre-consolidation session id, which no longer exists as a dir
+        out = ContextReader(str(root)).build_context("OLD-fragment-sid", "m-trigger", 10)
+        assert [m["message_id"] for m in out["messages"]] == ["m-trigger", "m-reply"]
+        assert out["session_id"] == "canonical-sid"
+        assert out["event_session_id"] == "OLD-fragment-sid"
+
+    def test_anchor_in_archived_of_consolidated_session(self, root):
+        canon = root / "sessions" / "c1"
+        canon.mkdir(parents=True)
+        (canon / "session.json").write_text(json.dumps({"session_id": "c1"}), encoding="utf-8")
+        _msg_in(canon, "archived", "old-anchor", "admin", "fee agreed", "2026-08-10T09:00:00+03:00")
+        _msg_in(canon, "archived", "old-next", "assistant", "noted", "2026-08-10T09:01:00+03:00")
+        out = ContextReader(str(root)).build_context(None, "old-anchor", 10)
+        assert [m["message_id"] for m in out["messages"]] == ["old-anchor", "old-next"]
+
+    def test_message_only_in_pre070_raw_backup_is_still_found(self, root):
+        raw = root / "sessions" / "_pre070_raw_20260906" / "expired" / "2026-09-04" / "frag-sid"
+        raw.mkdir(parents=True)
+        (raw / "session.json").write_text(json.dumps({"session_id": "frag-sid"}), encoding="utf-8")
+        _msg_in(raw, "messages", "bk-1", "admin", "hi", "2026-09-04T12:00:00+03:00")
+        out = ContextReader(str(root)).build_context("frag-sid", "bk-1", 10)
+        assert out["messages"][0]["message_id"] == "bk-1"
+        assert out["session_id"] == "frag-sid"
+
+    def test_canonical_wins_over_raw_backup_on_message_id_collision(self, root):
+        canon = root / "sessions" / "c1"
+        canon.mkdir(parents=True)
+        (canon / "session.json").write_text(json.dumps({"session_id": "c1"}), encoding="utf-8")
+        _msg_in(canon, "archived", "dup", "admin", "CANONICAL COPY", "2026-09-04T12:00:00+03:00")
+
+        raw = root / "sessions" / "_pre070_raw_20260906" / "active" / "frag"
+        raw.mkdir(parents=True)
+        (raw / "session.json").write_text(json.dumps({"session_id": "frag"}), encoding="utf-8")
+        _msg_in(raw, "messages", "dup", "admin", "STALE COPY", "2026-09-04T12:00:00+03:00")
+
+        out = ContextReader(str(root)).build_context("frag", "dup", 10)
+        assert out["session_id"] == "c1"
+        assert out["messages"][0]["content"] == "CANONICAL COPY"
+
+    def test_reconciliation_event_with_no_message_id_reports_no_conversation(self, root):
+        out = ContextReader(str(root)).build_context("accounting-reconciliation", None, 10)
+        assert out["error"] == "context_unavailable"
+        assert out["no_conversation"] is True
+
+    def test_index_rebuilds_when_message_written_after_first_lookup(self, root):
+        canon = root / "sessions" / "c1"
+        canon.mkdir(parents=True)
+        (canon / "session.json").write_text(json.dumps({"session_id": "c1"}), encoding="utf-8")
+        _msg_in(canon, "messages", "first", "admin", "a", "2026-09-04T12:00:00+03:00")
+        reader = ContextReader(str(root))
+        assert reader.build_context(None, "first", 10)["messages"][0]["message_id"] == "first"
+        # a new message lands after the index was built
+        _msg_in(canon, "messages", "second", "admin", "b", "2026-09-04T12:02:00+03:00")
+        out = reader.build_context(None, "second", 10)
+        assert out["messages"][-1]["message_id"] == "second"
+
+
 class TestResolveMedia:
     def test_unknown_token_returns_none(self, root):
         assert ContextReader(str(root)).resolve_media("nope") is None
