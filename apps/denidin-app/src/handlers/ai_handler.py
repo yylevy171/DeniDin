@@ -20,6 +20,8 @@ from src.models.message import (
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
 from src.utils.time_utils import now_local, local_from_timestamp
 from src.managers.session_manager import SessionManager, Session
+from src.managers.memory_collections import collection_name_for_chat
+from src.managers.roll_marker_store import RollMarkerStore
 from src.managers.memory_manager import MemoryManager
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
 from src.managers.user_manager import UserManager
@@ -1401,14 +1403,13 @@ class AIHandler:
     Implements retry logic with exponential backoff for transient failures.
     """
 
-    def __init__(self, ai_client: OpenAI, config: AppConfiguration, cleanup_interval_seconds: Optional[int] = None):
+    def __init__(self, ai_client: OpenAI, config: AppConfiguration):
         """
         Initialize AI handler with OpenAI client and configuration.
 
         Args:
             ai_client: Configured AI client instance (OpenAI)
             config: Application configuration with AI settings
-            cleanup_interval_seconds: Optional override for session cleanup interval (for testing)
         """
         self.client = ai_client
         self.config = config
@@ -1452,13 +1453,20 @@ class AIHandler:
 
         # Initialize SessionManager
         session_config = config.memory.get('session', {})
+        # Feature 070: rolling verbatim window length (Israel-local calendar days)
+        self.window_days = session_config.get('window_days', 14)
 
-        # Note: cleanup_interval_seconds moved to app-level background thread
-        # SessionManager no longer runs its own cleanup thread
-
+        # Feature 070: sessions never expire; there is no cleanup thread.
         self.session_manager = SessionManager(
             storage_dir=session_config.get('storage_dir', 'data/sessions'),
-            session_timeout_hours=session_config.get('session_timeout_hours', 24)
+        )
+
+        # Feature 070: idempotency ledger for the nightly daily-summary roll.
+        # Deliberately NOT under {data_root}/memory/ - ChromaDB owns that dir.
+        roll_config = (config.memory or {}).get('roll', {}) or {}
+        self.roll_marker_store = RollMarkerStore(
+            str(Path(config.data_root) / "memory_rolls"),
+            stale_claim_minutes=int(roll_config.get('stale_claim_minutes', 120)),
         )
 
         # LedgerEventManager (Feature 033): sibling to MemoryManager, own permanent
@@ -1488,6 +1496,10 @@ class AIHandler:
             # Store collection name and query params for later use
             self.memory_collection_name = longterm_config.get('collection_name', 'godfather_memory')
             self.memory_top_k = longterm_config.get('top_k_results', 5)
+            # Feature 070: the single per-turn recall must surface enough
+            # daily_summary records to cover the pre-window history - see
+            # contracts/ai-handler-recall.md.
+            self.daily_summary_top_k = longterm_config.get('daily_summary_top_k', 10)
             self.memory_min_similarity = longterm_config.get('min_similarity', 0.7)
 
             logger.info(f"MemoryManager initialized with collection: {self.memory_collection_name}")
@@ -1647,7 +1659,7 @@ class AIHandler:
         if self.memory_enabled and self.memory_manager:
             try:
                 # Recall relevant long-term memories
-                collection_name = f"memory_{effective_chat_id.replace('@c.us', '')}"
+                collection_name = collection_name_for_chat(effective_chat_id)
 
                 # RBAC: Use RBAC-filtered recall if enabled
                 if self.rbac_enabled and self.user_manager:
@@ -1660,7 +1672,7 @@ class AIHandler:
                         user_phone=effective_user_phone,
                         allowed_scopes=user.allowed_memory_scopes,
                         can_see_all_memories=user.can_see_all_memories,
-                        top_k=self.memory_top_k,
+                        top_k=self.daily_summary_top_k,
                         min_similarity=self.memory_min_similarity
                     )
                 else:
@@ -1668,7 +1680,7 @@ class AIHandler:
                     recalled_memories = self.memory_manager.recall(
                         query=user_prompt,
                         collection_names=[collection_name],
-                        top_k=self.memory_top_k,
+                        top_k=self.daily_summary_top_k,
                         min_similarity=self.memory_min_similarity
                     )
 
@@ -2047,9 +2059,13 @@ class AIHandler:
                     # Existing behavior: use role-based token limits
                     max_tokens = self.max_tokens_by_role.get(user_role, 4000)
 
-                conversation_history = self.session_manager.get_conversation_history(
-                    whatsapp_chat=effective_chat_id,
-                    max_tokens=max_tokens
+                # Feature 070: rolling 14-day verbatim window with a read-only
+                # per-turn token backstop (drops oldest, keeps newest, moves
+                # nothing on disk).
+                conversation_history = self.session_manager.get_rolling_window(
+                    effective_chat_id,
+                    window_days=self.window_days,
+                    max_tokens=max_tokens,
                 )
                 if conversation_history:
                     logger.info(f"Retrieved {len(conversation_history)} messages from session history")
@@ -3096,12 +3112,11 @@ class AIHandler:
 
                 if self.rbac_enabled and user_obj:
                     # Store user message with token limit
-                    self.session_manager.add_message_with_token_limit(
+                    self.session_manager.add_message_with_tokens(
                         chat_id=effective_chat_id,
                         role="user",
                         content=request.user_prompt,
                         user_role=user_obj.role,
-                        token_limit=user_obj.token_limit,
                         sender=resolved_sender_phone,
                         sender_name=sender_name_val,
                         recipient=user_msg_recipient,
@@ -3112,12 +3127,11 @@ class AIHandler:
 
                     if should_reply:
                         # Store AI response with token limit
-                        self.session_manager.add_message_with_token_limit(
+                        self.session_manager.add_message_with_tokens(
                             chat_id=effective_chat_id,
                             role="assistant",
                             content=response_text,
                             user_role=user_obj.role,
-                            token_limit=user_obj.token_limit,
                             sender=own_number_jid,
                             sender_name="DeniDin",
                             recipient=assistant_msg_recipient,
@@ -3760,14 +3774,14 @@ class AIHandler:
 
         if self.memory_enabled and self.session_manager and effective_chat_id and self.rbac_enabled and user_obj:
             try:
-                self.session_manager.add_message_with_token_limit(
+                self.session_manager.add_message_with_tokens(
                     chat_id=effective_chat_id, role="user", content=request.user_prompt,
-                    user_role=user_obj.role, token_limit=user_obj.token_limit,
+                    user_role=user_obj.role,
                     sender=sender or effective_chat_id, message_id=request.message_id,
                 )
-                self.session_manager.add_message_with_token_limit(
+                self.session_manager.add_message_with_tokens(
                     chat_id=effective_chat_id, role="assistant", content=response_text,
-                    user_role=user_obj.role, token_limit=user_obj.token_limit,
+                    user_role=user_obj.role,
                     recipient=sender or effective_chat_id,
                 )
             except Exception as e:
@@ -3910,178 +3924,3 @@ class AIHandler:
             is_truncated=False
         )
 
-    # Memory System Integration Methods (Feature 002+007)
-
-    def transfer_session_to_long_term_memory(self, session: Session) -> Dict:
-        """
-        Transfer an expired session to long-term memory.
-
-        Workflow:
-        1. Retrieve conversation history from session
-        2. Ask AI to summarize the conversation
-        3. Store summary in ChromaDB with metadata
-        4. NO FILTERING - store ALL sessions regardless of length
-        5. Graceful degradation: if AI fails, store raw conversation
-
-        Args:
-            session: Session object to transfer
-
-        Returns:
-            Dict with transfer status and details
-        """
-        if not self.memory_enabled or not self.memory_manager:
-            logger.warning(f"Transfer requested but memory system disabled: {session.session_id}")
-            return {"success": False, "reason": "memory_disabled"}
-
-        try:
-            # Get conversation history directly from session object
-            conversation = self.session_manager.get_conversation_history_for_session(session)
-            if not conversation:
-                logger.warning(f"No conversation history for session {session.session_id}")
-                return {"success": False, "reason": "empty_conversation"}
-
-            # Try to summarize with AI
-            summary_text = None
-            used_fallback = False
-
-            try:
-                # Build summarization prompt
-                conv_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation])
-                summarizer_instructions = (
-                    "You are a conversation summarizer that extracts both explicit and implicit "
-                    "information. Start your summary by listing key facts as bullet points (e.g., "
-                    "names, preferences, decisions, entities mentioned). Then provide context, "
-                    "relationships, and logical deductions. Make information easily retrievable "
-                    "for future questions. Keep summaries under 500 words."
-                )
-
-                summary_response = self.client.responses.create(
-                    model=self.config.ai_model,
-                    instructions=summarizer_instructions,
-                    input=f"Summarize this conversation, leading with facts then inferences:\n\n{conv_text}",
-                    max_output_tokens=1000
-                )
-                _log_raw_response(f"transfer_to_longterm_memory (session {session.session_id})", summary_response)
-
-                summary_text = summary_response.output_text
-                logger.info(f"AI summarized session {session.session_id}: {len(summary_text)} chars")
-
-            except Exception as e:
-                # Graceful degradation: use raw conversation
-                logger.error(f"AI summarization failed for {session.session_id}: {e}. Using raw conversation fallback.")
-                summary_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation])
-                used_fallback = True
-
-            # Store in ChromaDB
-            collection_name = f"memory_{session.whatsapp_chat.replace('@c.us', '')}"
-            logger.info(f"Starting ChromaDB storage for session {session.session_id} in collection {collection_name}")
-
-            # Use whatsapp_chat directly as user_phone for RBAC filtering (includes @c.us)
-            user_phone = session.whatsapp_chat
-
-            metadata = {
-                "type": "session_summary_fallback" if used_fallback else "session_summary",
-                "session_id": session.session_id,
-                "whatsapp_chat": session.whatsapp_chat,
-                "user_phone": user_phone,  # Required for RBAC filtering (must match sender_id format)
-                "session_start": session.created_at,
-                "session_end": session.last_active,
-                "message_count": len(session.message_ids),
-                "summarization_failed": used_fallback
-            }
-
-            memory_id = self.memory_manager.remember(
-                content=summary_text,
-                collection_name=collection_name,
-                metadata=metadata
-            )
-
-            logger.info(f"ChromaDB storage completed for session {session.session_id}: memory_id={memory_id}")
-
-            # Verify storage
-            collection = self.memory_manager.client.get_collection(name=collection_name)
-            count = collection.count()
-            logger.info(f"ChromaDB collection '{collection_name}' now has {count} item(s)")
-
-            logger.info(f"Session {session.session_id} transferred to long-term memory: {memory_id}")
-
-            return {
-                "success": True,
-                "memory_id": memory_id,
-                "used_fallback": used_fallback,
-                "summary_length": len(summary_text)
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to transfer session {session.session_id}: {e}", exc_info=True)
-            return {"success": False, "reason": "transfer_error", "error": str(e)}
-
-    def recover_orphaned_sessions(self) -> Dict:
-        """
-        STARTUP PROCEDURE: Recover sessions not transferred due to crashes/shutdowns.
-
-        Scans for active sessions, checks expiration status:
-        - Expired (>24h inactive) → transfer to long-term memory
-        - Active (<24h inactive) → load to short-term memory
-
-        Returns:
-            Dict with recovery summary
-        """
-        if not self.memory_enabled or not self.session_manager:
-            logger.info("Session recovery skipped: memory system disabled")
-            return {"total_found": 0, "transferred_to_long_term": 0, "loaded_to_short_term": 0}
-
-        try:
-            orphaned_sessions = self.session_manager.find_orphaned_sessions()
-
-            if not orphaned_sessions:
-                logger.info("No orphaned sessions found - clean startup")
-                return {"total_found": 0, "transferred_to_long_term": 0, "loaded_to_short_term": 0}
-
-            logger.info(f"Found {len(orphaned_sessions)} orphaned sessions - starting recovery")
-
-            long_term_sessions = []
-            short_term_sessions = []
-            failed_sessions = []
-
-            for session in orphaned_sessions:
-                try:
-                    is_expired = self.session_manager.is_session_expired(session)
-
-                    if is_expired:
-                        # Transfer to long-term memory
-                        result = self.transfer_session_to_long_term_memory(session)
-
-                        if result.get("success"):
-                            long_term_sessions.append(session.session_id)
-                            logger.info(f"Recovered expired session to long-term: {session.session_id}")
-                        else:
-                            failed_sessions.append(session.session_id)
-                            logger.error(f"Failed to transfer expired session: {session.session_id}")
-                    else:
-                        # Load to short-term memory (still active)
-                        short_term_sessions.append(session.session_id)
-                        logger.info(f"Recovered active session to short-term: {session.session_id}")
-
-                except Exception as e:
-                    logger.error(f"Error recovering session {session.session_id}: {e}", exc_info=True)
-                    failed_sessions.append(session.session_id)
-
-            logger.info(
-                f"Session recovery complete: {len(long_term_sessions)} transferred, "
-                f"{len(short_term_sessions)} loaded, {len(failed_sessions)} failed"
-            )
-
-            return {
-                "total_found": len(orphaned_sessions),
-                "transferred_to_long_term": len(long_term_sessions),
-                "loaded_to_short_term": len(short_term_sessions),
-                "failed": len(failed_sessions),
-                "long_term_sessions": long_term_sessions,
-                "short_term_sessions": short_term_sessions,
-                "failed_sessions": failed_sessions
-            }
-
-        except Exception as e:
-            logger.error(f"Session recovery failed: {e}", exc_info=True)
-            return {"total_found": 0, "transferred_to_long_term": 0, "loaded_to_short_term": 0, "error": str(e)}
