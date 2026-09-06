@@ -5,3 +5,7 @@ One entry per release, newest first. Written only by `scripts/cut_release.sh` â€
 
 <!-- No release cut yet. Feature 068 (Ledger Web UI) is the first; VERSION is seeded at 0.5.4
      to align with denidin-app's current version, per the Feature 068 plan. -->
+
+## [0.0.1-webapp] - 2026-09-06
+
+Feature 068 Ledger Web UI â€” read-only password-gated web UI over LedgerEvent data (backend BFF + frontend SPA). Test-only pre-release from feature/068-ledger-ui-and-reports; not merged to master.
