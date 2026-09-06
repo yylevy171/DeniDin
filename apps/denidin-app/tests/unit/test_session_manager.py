@@ -32,7 +32,6 @@ def session_manager(temp_session_dir):
     """Create SessionManager instance for testing."""
     manager = SessionManager(
         storage_dir=str(temp_session_dir),
-        session_timeout_hours=24
     )
     yield manager
 
@@ -140,19 +139,21 @@ class TestSenderRecipientRealIdentifiers:
 
 
 class TestSourceTimestamp:
-    """Feature 069: Message.timestamp is the time the event actually happened.
-    An inbound turn passes the Green API notification epoch (source_timestamp) -
-    which the WhatsApp-export player injects as the message's ORIGINAL
-    conversation time - and it must be persisted verbatim (as local ISO),
-    NOT replaced with processing time. received_at stays processing time.
+    """Feature 069 (converged onto Feature 070's `timestamp` seam on merge):
+    Message.timestamp is the time the event actually happened. An inbound turn
+    passes an explicit `timestamp` (AIHandler/MediaHandler derive it from the
+    Green API notification epoch - the WhatsApp-export player injects the
+    message's ORIGINAL conversation time) and it must be persisted verbatim,
+    NOT replaced with processing time. received_at always stays processing time.
     """
 
-    def test_source_timestamp_is_persisted_as_message_timestamp(self, session_manager):
+    def test_explicit_timestamp_is_persisted_as_message_timestamp(self, session_manager):
+        from src.utils.time_utils import local_from_timestamp
         # 2026-01-15 09:30:00 +02:00  ->  epoch 1736926200
-        epoch = 1736926200
+        source = local_from_timestamp(1736926200)
         message_id = session_manager.add_message(
             chat_id="1234567890@c.us", role="user", content="Hi", user_role="client",
-            source_timestamp=epoch,
+            timestamp=source,
         )
         session = session_manager.get_session("1234567890@c.us")
         message_file = (
@@ -161,12 +162,11 @@ class TestSourceTimestamp:
         with open(message_file) as f:
             message_data = json.load(f)
 
-        from src.utils.time_utils import local_from_timestamp
-        assert message_data["timestamp"] == local_from_timestamp(epoch).isoformat()
-        # received_at is still "now", not the source epoch
+        assert message_data["timestamp"] == source.isoformat()
+        # received_at is still "now", not the source time
         assert message_data["received_at"] != message_data["timestamp"]
 
-    def test_absent_source_timestamp_falls_back_to_processing_time(self, session_manager):
+    def test_absent_timestamp_falls_back_to_processing_time(self, session_manager):
         message_id = session_manager.add_message(
             chat_id="1234567890@c.us", role="assistant", content="Reply", user_role="client",
         )
@@ -178,12 +178,13 @@ class TestSourceTimestamp:
             message_data = json.load(f)
         assert message_data["timestamp"] == message_data["received_at"]
 
-    def test_source_timestamp_survives_token_limit_path(self, session_manager):
+    def test_explicit_timestamp_survives_token_counting_path(self, session_manager):
         from src.models.user import Role
-        epoch = 1736926200
-        session_manager.add_message_with_token_limit(
+        from src.utils.time_utils import local_from_timestamp
+        source = local_from_timestamp(1736926200)
+        session_manager.add_message_with_tokens(
             chat_id="1234567890@c.us", role="user", content="Hi", user_role=Role.GODFATHER,
-            token_limit=100000, source_timestamp=epoch,
+            timestamp=source,
         )
         session = session_manager.get_session("1234567890@c.us")
         mid = session.message_ids[-1]
@@ -192,8 +193,7 @@ class TestSourceTimestamp:
         )
         with open(message_file) as f:
             message_data = json.load(f)
-        from src.utils.time_utils import local_from_timestamp
-        assert message_data["timestamp"] == local_from_timestamp(epoch).isoformat()
+        assert message_data["timestamp"] == source.isoformat()
 
 
 class TestRealRoleAndAiRequiredRole:
@@ -400,136 +400,10 @@ class TestPersistence:
         assert history[0]["content"] == "Persisted message"
 
 
-class TestSessionExpiration:
-    """Test session timeout and expiration."""
-    
-    def test_session_moved_to_expired_folder_by_date(self, session_manager, temp_session_dir):
-        """Test expired sessions moved to expired/YYYY-MM-DD/ folder, not deleted."""
-        chat_id = "1234567890@c.us"
-        
-        # Create session with message
-        session_manager.add_message(chat_id, "user", "Test message", "client")
-        session = session_manager.get_session(chat_id)
-        session_id = session.session_id
-        
-        # Manually set old timestamp
-        old_time = datetime.now(timezone.utc) - timedelta(hours=25)
-        session.last_active = old_time.isoformat()
-        session_manager._save_session(session)
-        
-        # Trigger archival (simulates what background cleanup does)
-        session_manager.archive_session(session)
-        
-        # Session directory should be moved to expired/YYYY-MM-DD/
-        active_dir = Path(temp_session_dir) / session_id
-        # Expected date folder based on when session last_active date
-        expected_date = old_time.strftime("%Y-%m-%d")
-        expired_dir = Path(temp_session_dir) / "expired" / expected_date / session_id
-        
-        assert not active_dir.exists()
-        assert expired_dir.exists()
-        
-        # Verify expired session content preserved
-        session_file = expired_dir / "session.json"
-        assert session_file.exists()
-        with open(session_file) as f:
-            data = json.load(f)
-        assert data["session_id"] == session_id
-        assert data["whatsapp_chat"] == chat_id
-    
-    def test_expired_session_messages_also_moved(self, session_manager, temp_session_dir):
-        """Test messages from expired sessions moved with session directory."""
-        chat_id = "1234567890@c.us"
-        
-        # Create session with messages
-        msg_id_1 = session_manager.add_message(chat_id, "user", "Message 1", "client")
-        msg_id_2 = session_manager.add_message(chat_id, "assistant", "Response 1", "client")
-        
-        session = session_manager.get_session(chat_id)
-        session_id = session.session_id
-        old_time = datetime.now(timezone.utc) - timedelta(hours=25)
-        session.last_active = old_time.isoformat()
-        session_manager._save_session(session)
-        
-        # Trigger archival (simulates what background cleanup does)
-        session_manager.archive_session(session)
-        
-        # Entire session directory should be moved to dated subfolder
-        active_dir = Path(temp_session_dir) / session_id
-        expected_date = old_time.strftime("%Y-%m-%d")
-        expired_dir = Path(temp_session_dir) / "expired" / expected_date / session_id
-        
-        assert not active_dir.exists()
-        assert expired_dir.exists()
-        
-        # Messages should be in expired session directory
-        expired_msg_1 = expired_dir / "messages" / f"{msg_id_1}.json"
-        expired_msg_2 = expired_dir / "messages" / f"{msg_id_2}.json"
-        
-        assert expired_msg_1.exists()
-        assert expired_msg_2.exists()
-    
-    def test_expired_session_not_in_index(self, session_manager):
-        """Test expired sessions removed from chat_to_session mapping."""
-        chat_id = "1234567890@c.us"
-        
-        # Create and expire session
-        session_manager.add_message(chat_id, "user", "Old message", "client")
-        session = session_manager.get_session(chat_id)
-        old_session_id = session.session_id
-        
-        # Verify session is in index
-        assert session_manager.chat_to_session.get(chat_id) == old_session_id
-        
-        # Expire and cleanup
-        session.last_active = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
-        session_manager._save_session(session)
-        session_manager.archive_session(session)
-        session_manager.remove_from_index(session)
-        
-        # Verify session removed from index
-        assert chat_id not in session_manager.chat_to_session
-    
-    def test_new_session_created_after_expiration(self, session_manager):
-        """Test accessing expired session creates new session."""
-        chat_id = "1234567890@c.us"
-        
-        # Create and expire session
-        session_manager.add_message(chat_id, "user", "Old message", "client")
-        old_session_id = session_manager.get_session(chat_id).session_id
-        
-        session = session_manager.get_session(chat_id)
-        session.last_active = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
-        session_manager._save_session(session)
-        
-        # Cleanup (simulates what background cleanup does)
-        session_manager.archive_session(session)
-        session_manager.remove_from_index(session)
-        
-        # Get session again - should create new one
-        new_session = session_manager.get_session(chat_id)
-        assert new_session.session_id != old_session_id
-        assert len(new_session.message_ids) == 0  # Fresh session
-
 
 class TestSessionManagement:
     """Test session lifecycle management."""
     
-    def test_clear_session(self, session_manager):
-        """Test session cleared completely."""
-        chat_id = "1234567890@c.us"
-        
-        # Add messages
-        session_manager.add_message(chat_id, "user", "Message 1", "client")
-        session_manager.add_message(chat_id, "user", "Message 2", "client")
-        
-        # Clear session
-        session_manager.clear_session(chat_id)
-        
-        # Verify cleared
-        session = session_manager.get_session(chat_id)
-        assert len(session.message_ids) == 0
-        assert session.total_tokens == 0
     
     def test_multiple_sessions_isolated(self, session_manager):
         """Test different chats have isolated sessions."""
@@ -758,7 +632,7 @@ class TestMessageLedgerEventIds:
         session = session_manager.get_session(chat_id)
         session_dir = session_manager.storage_dir / session.session_id
 
-        reloaded_manager = SessionManager(storage_dir=str(temp_session_dir), session_timeout_hours=24)
+        reloaded_manager = SessionManager(storage_dir=str(temp_session_dir))
         with open(session_dir / "messages" / f"{message_id}.json", encoding="utf-8") as f:
             data = json.load(f)
         assert data["ledger_event_ids"] == ["B28072614260"]
@@ -806,10 +680,3 @@ class TestAddMessageIdOverride:
         )
         assert returned_id == "supplied-id-2"
 
-    def test_add_message_with_token_limit_threads_supplied_message_id(self, session_manager):
-        chat_id = "1234567890@c.us"
-        returned_id = session_manager.add_message_with_token_limit(
-            chat_id=chat_id, role="user", content="hello",
-            user_role="client", token_limit=4000, message_id="supplied-id-3",
-        )
-        assert returned_id == "supplied-id-3"

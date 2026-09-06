@@ -319,18 +319,19 @@ class TestInputAssemblyAndIsolation:
         """Player replay: a conversation whose messages carry real (weeks-old)
         timestamps must still land in the recognition transcript. The window is
         measured back from the newest message in the session, not `now`."""
+        from datetime import timedelta
         from src.utils.time_utils import now_local
 
         ai_handler.client.responses.create.return_value = _no_call_response()
         chat_id = "player-replay@g.us"
         sm = ai_handler.session_manager
-        base = int(now_local().timestamp()) - 30 * 24 * 3600  # 30 days ago
+        base = now_local() - timedelta(days=30)  # 30 days ago
         sm.add_message(chat_id=chat_id, role="user",
                        content="OLD-TURN-MARKER חתמנו הסכם עם דנה כהן",
                        user_role="godfather", sender="972500000002",
-                       source_timestamp=base)
+                       timestamp=base)
         sm.add_message(chat_id=chat_id, role="assistant", content="רשמתי.",
-                       user_role="godfather", source_timestamp=base + 120)
+                       user_role="godfather", timestamp=base + timedelta(seconds=120))
 
         ai_handler.recognize_ledger_event(
             session=sm.get_session(chat_id), reply_text="רשמתי.", turn_mcp_calls=[])

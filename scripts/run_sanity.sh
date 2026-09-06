@@ -57,7 +57,7 @@ DEN_SINGLE="${ROOT}/apps/denidin-app/scripts/run_single_test.sh"
 MM_SINGLE="${ROOT}/apps/morning-mcp-app/scripts/run_single_test.sh"
 STATE_DIR="${ROOT}/apps/denidin-app/logs/test_logs"
 STATE_FILE="${STATE_DIR}/sanity_state.tsv"
-FAIL_FILE="${ROOT}/specs/done/059-stabilize-tests-sanity-suite/sanity-failures.md"
+FAIL_FILE="${ROOT}/specs/done/v0.5.4/059-stabilize-tests-sanity-suite/sanity-failures.md"
 
 # ---- ordered test lists.  entry = "<app>|<nodeid>"  (app = mm | den) -------
 GATE=(

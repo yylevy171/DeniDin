@@ -1,59 +1,70 @@
 {
+  "accounting_ledger_update_freq": 60,
+  "ai_api_key": "YOUR_OPENAI_API_KEY",
+  "ai_embedding_model": "text-embedding-3-large",
+  "ai_model": "gpt-5.6-luna",
+  "ai_reply_max_tokens": 20000,
+  "ai_vision_model": "gpt-5.6-luna",
+  "constitution_config": {
+    "file": "runtime_constitution.md"
+  },
+  "data_root": "dev_data_for_dev_or_data_for_prod",
+  "environment": "dev",
+  "godfather_phone": "YOUR_GODFATHER_PHONE_NUMBER",
   "green_api_instance_id": "YOUR_GREEN_API_INSTANCE_ID",
   "green_api_token": "YOUR_GREEN_API_TOKEN",
-  "ai_api_key": "YOUR_OPENAI_API_KEY",
-  "environment": "dev",
-  "ai_model": "gpt-5.6-luna",
-  "ai_vision_model": "gpt-5.6-luna",
-  "ai_embedding_model": "text-embedding-3-large",
-  "ai_reply_max_tokens": 20000,
   "log_level": "DEBUG_for_dev_or_INFO_for_prod",
-  "poll_interval_seconds": 5,
+  "logging": {
+    "backup_count": 0,
+    "rotation_when": "midnight"
+  },
   "max_retries": 1,
-  "accounting_ledger_update_freq": 60,
-  "data_root": "dev_data_for_dev_or_data_for_prod",
-  "godfather_phone": "YOUR_GODFATHER_PHONE_NUMBER",
+  "mcp": {
+    "morning_auth_token": "MUST_MATCH_MORNING_APP_MCP_AUTH_TOKEN_FOR_THIS_ENV",
+    "morning_server_label": "morning-invoices",
+    "morning_status_file": "/app/mcp-status/morning_mcp_status.dev_or_prod.json",
+    "url_max_age_seconds": 0
+  },
   "memory": {
+    "archive_retention_days": 0,
+    "longterm": {
+      "collection_name": "godfather_memory",
+      "daily_summary_top_k": 10,
+      "enabled": true,
+      "min_similarity": 0.15,
+      "storage_dir": "MUST_MATCH_data_root_ABOVE/memory",
+      "top_k_results": 5
+    },
+    "roll": {
+      "catchup_lookback_days": 21,
+      "hour": 2,
+      "stale_claim_minutes": 120
+    },
     "session": {
-      "storage_dir": "MUST_MATCH_data_root_ABOVE/sessions",
       "max_tokens_by_role": {
         "client": 4000,
         "godfather": 100000
       },
-      "session_timeout_hours": 24
-    },
-    "longterm": {
-      "enabled": true,
-      "storage_dir": "MUST_MATCH_data_root_ABOVE/memory",
-      "collection_name": "godfather_memory",
-      "top_k_results": 5,
-      "min_similarity": 0.15
+      "storage_dir": "MUST_MATCH_data_root_ABOVE/sessions",
+      "window_days": 14
     }
   },
-  "constitution_config": {
-    "file": "runtime_constitution.md"
-  },
-  "mcp": {
-    "morning_auth_token": "MUST_MATCH_MORNING_APP_MCP_AUTH_TOKEN_FOR_THIS_ENV",
-    "morning_status_file": "/app/mcp-status/morning_mcp_status.dev_or_prod.json",
-    "morning_server_label": "morning-invoices",
-    "url_max_age_seconds": 0
-  },
+  "poll_interval_seconds": 5,
   "reminders": {
     "max_active_reminders": 20
   },
   "user_roles": {
-    "godfather": {
-      "max_tokens": 100000,
-      "can_access_memory": true,
-      "max_context_memories": 10
-    },
-    "client": {
-      "max_tokens": 4000,
-      "can_access_memory": true,
-      "max_context_memories": 3
-    },
     "admin_phones": [],
-    "blocked_phones": []
+    "blocked_phones": [],
+    "client": {
+      "can_access_memory": true,
+      "max_context_memories": 3,
+      "max_tokens": 4000
+    },
+    "godfather": {
+      "can_access_memory": true,
+      "max_context_memories": 10,
+      "max_tokens": 100000
+    }
   }
 }

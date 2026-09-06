@@ -62,3 +62,11 @@ Accounting document reconciliation completes with machine-readable capture (Feat
 ## [0.5.3] - 2026-08-27
 
 Feature 061: new standalone prod-ledger-backfill operator tool (apps/prod-ledger-backfill/) for populating prod's ledger with pre-existing Morning documents before the reconciliation scheduler is ever enabled there - a real, full dev-environment backfill (~4,067 documents, Jul-Aug 2026) completed and verified; the actual prod run itself deferred to Feature 062. Also adds SCHEMA_VERSION_HISTORY plus import-time verification to ledger_event_manager.py, closing the ungoverned schema-version-bump gap. Bugfix-045: add_client no longer re-blocks after the user explicitly confirms a new client, with a corrected scope limit so a bare 'add new client' request never silently skips the near-duplicate disclosure/ask step, plus two related tool-family misclassification fixes (ledger event capture, reminder creation) for the same confirmation reply.
+
+## [0.5.4] - 2026-09-04
+
+Accounting-reconciliation sweep reliability: bugfix-047 gives the sweep its own 300s OpenAI timeout (was inheriting the 30s conversational-turn ceiling and timing out once the sandbox held ~13+ in-window documents), bugfix-048 switches its dedup key to (date, display_number) so already-captured Morning documents are no longer re-flagged as anomalies after every app restart. Also: prod Morning ledger backfill completed from 2025-09-01 (Feature 062), August 2026 ledger audit findings applied to prod (Feature 065), parallel sanity test sweep (Feature 075), and cross-app sanity-suite stabilization (Feature 059).
+
+## [0.5.4-70] - 2026-09-06
+
+Rolling 14-day short-term memory window with nightly daily-summary roll; retires 24h session expiry and the hourly cleanup thread.

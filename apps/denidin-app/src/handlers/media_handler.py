@@ -19,7 +19,7 @@ from src.handlers.extractors.pdf_extractor import PDFExtractor
 from src.handlers.extractors.docx_extractor import DOCXExtractor
 from src.managers.media_file_manager import MediaFileManager
 from src.utils.logger import get_logger
-from src.utils.time_utils import now_local
+from src.utils.time_utils import local_from_timestamp, now_local
 from src.handlers.ai_handler import build_ledger_stash_text
 
 logger = get_logger(__name__)
@@ -372,7 +372,10 @@ class MediaHandler:
                 recipient=user_msg_recipient, recipient_name=user_msg_recipient_name,
                 ledger_event_ids=ledger_event_ids, message_id=message_id,
                 image_path=image_path, extracted_text=extracted_text,
-                source_timestamp=source_timestamp,
+                timestamp=(
+                    local_from_timestamp(source_timestamp)
+                    if source_timestamp is not None else None
+                ),
             )
             self.session_manager.add_message(
                 chat_id=chat_id, role="assistant", content=summary,

@@ -46,7 +46,7 @@ class TestAIHandlerRBACInitialization:
         ai_client = MagicMock()
         
         # Act
-        handler = AIHandler(ai_client, config, cleanup_interval_seconds=3600)
+        handler = AIHandler(ai_client, config)
         
         # Assert
         mock_user_manager_class.assert_called_once_with(
@@ -104,7 +104,7 @@ class TestAIHandlerRBACMemoryRecall:
         mock_memory_manager_class.return_value = mock_memory_manager
         
         ai_client = MagicMock()
-        handler = AIHandler(ai_client, config, cleanup_interval_seconds=3600)
+        handler = AIHandler(ai_client, config)
         
         message = WhatsAppMessage(
             message_id="test-msg-1",
@@ -177,7 +177,7 @@ class TestAIHandlerRBACMemoryRecall:
         mock_memory_manager_class.return_value = mock_memory_manager
         
         ai_client = MagicMock()
-        handler = AIHandler(ai_client, config, cleanup_interval_seconds=3600)
+        handler = AIHandler(ai_client, config)
         
         message = WhatsAppMessage(
             message_id="test-msg-1",
@@ -245,7 +245,7 @@ class TestAIHandlerRBACTokenLimits:
         mock_completion.model = "gpt-4o-mini"
         ai_client.chat.completions.create.return_value = mock_completion
         
-        handler = AIHandler(ai_client, config, cleanup_interval_seconds=3600)
+        handler = AIHandler(ai_client, config)
         
         request = AIRequest(
             user_prompt="Test prompt",
@@ -269,11 +269,11 @@ class TestAIHandlerRBACTokenLimits:
         # UserManager.get_user() should be called
         mock_user_manager.get_user.assert_called_once_with("+972501111111")
         
-        # SessionManager.add_message_with_token_limit() should be called with CLIENT limit
-        assert mock_session_manager.add_message_with_token_limit.called
+        # SessionManager.get_rolling_window() should be called with the CLIENT token budget
+        assert mock_session_manager.get_rolling_window.called
         # Check that token_limit=4000 was passed
-        calls = mock_session_manager.add_message_with_token_limit.call_args_list
-        assert any(call.kwargs.get('token_limit') == 4000 for call in calls)
+        calls = mock_session_manager.get_rolling_window.call_args_list
+        assert any(call.kwargs.get('max_tokens') == 4000 for call in calls)
     
     @patch('src.handlers.ai_handler.UserManager')
     @patch('src.handlers.ai_handler.SessionManager')
@@ -320,7 +320,7 @@ class TestAIHandlerRBACTokenLimits:
         mock_completion.model = "gpt-4o-mini"
         ai_client.chat.completions.create.return_value = mock_completion
         
-        handler = AIHandler(ai_client, config, cleanup_interval_seconds=3600)
+        handler = AIHandler(ai_client, config)
         
         request = AIRequest(
             user_prompt="Test prompt",
@@ -343,10 +343,10 @@ class TestAIHandlerRBACTokenLimits:
         # Assert
         mock_user_manager.get_user.assert_called_once_with("+972501234567")
         
-        # SessionManager.add_message_with_token_limit() should be called with GODFATHER limit
-        assert mock_session_manager.add_message_with_token_limit.called
-        calls = mock_session_manager.add_message_with_token_limit.call_args_list
-        assert any(call.kwargs.get('token_limit') == 100000 for call in calls)
+        # SessionManager.get_rolling_window() should be called with the GODFATHER token budget
+        assert mock_session_manager.get_rolling_window.called
+        calls = mock_session_manager.get_rolling_window.call_args_list
+        assert any(call.kwargs.get('max_tokens') == 100000 for call in calls)
 
 
 class TestAIHandlerRBACBlockedUsers:
@@ -380,7 +380,7 @@ class TestAIHandlerRBACBlockedUsers:
         mock_user_manager_class.return_value = mock_user_manager
         
         ai_client = MagicMock()
-        handler = AIHandler(ai_client, config, cleanup_interval_seconds=3600)
+        handler = AIHandler(ai_client, config)
         
         message = WhatsAppMessage(
             message_id="test-msg-1",
@@ -424,7 +424,7 @@ class TestAIHandlerRBACBlockedUsers:
         mock_user_manager_class.return_value = mock_user_manager
         
         ai_client = MagicMock()
-        handler = AIHandler(ai_client, config, cleanup_interval_seconds=3600)
+        handler = AIHandler(ai_client, config)
         
         request = AIRequest(
             user_prompt="Test prompt",
@@ -445,77 +445,3 @@ class TestAIHandlerRBACBlockedUsers:
                 recipient="AI"
             )
 
-
-class TestAIHandlerRBACLongTermMemory:
-    """Test that long-term memory transfer respects RBAC scopes."""
-    
-    @patch('src.handlers.ai_handler.UserManager')
-    @patch('src.handlers.ai_handler.SessionManager')
-    @patch('src.handlers.ai_handler.MemoryManager')
-    def test_transfer_session_stores_with_private_scope(
-        self, mock_memory_manager_class, mock_session_manager_class, mock_user_manager_class
-    ):
-        """When transferring to long-term memory, should default to PRIVATE scope."""
-        # Arrange
-        config = AppConfiguration(
-            ai_api_key="test-key",
-            
-            
-            green_api_instance_id="test-instance",
-            green_api_token="test-token",
-            godfather_phone="+972501234567",
-            user_roles={"admin_phones": [], "blocked_phones": []},
-            feature_flags={'enable_memory_system': True, 'enable_rbac': True},
-            memory={
-                'session': {'storage_dir': 'test_data/sessions'},
-                'longterm': {
-                    'enabled': True,
-                    'storage_dir': 'test_data/memory',
-                    'collection_name': 'test_memory'
-                }
-            }
-        )
-        
-        # Mock UserManager
-        mock_user_manager = Mock()
-        mock_user_manager_class.return_value = mock_user_manager
-        
-        # Mock SessionManager
-        mock_session = Mock()
-        mock_session.session_id = "test-session-123"
-        mock_session.whatsapp_chat = "1234567890@c.us"
-        mock_session.created_at = "2024-01-01T00:00:00Z"
-        mock_session.last_active = "2024-01-01T01:00:00Z"
-        mock_session.message_ids = ["msg1", "msg2"]
-        mock_session.storage_path = "active/test-session-123"  # Add storage_path
-        
-        mock_session_manager = Mock()
-        mock_session_manager.get_session.return_value = mock_session
-        mock_session_manager.get_conversation_history_for_session.return_value = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there"}
-        ]
-        mock_session_manager_class.return_value = mock_session_manager
-        
-        # Mock MemoryManager
-        mock_memory_manager = Mock()
-        mock_memory_manager.remember.return_value = "mem-123"
-        mock_memory_manager_class.return_value = mock_memory_manager
-        
-        # Mock AI client for summarization
-        ai_client = MagicMock()
-        mock_completion = Mock()
-        mock_completion.choices = [Mock(message=Mock(content="Summary of conversation"))]
-        ai_client.chat.completions.create.return_value = mock_completion
-        
-        handler = AIHandler(ai_client, config, cleanup_interval_seconds=3600)
-        
-        # Act
-        result = handler.transfer_session_to_long_term_memory(mock_session)
-        
-        # Assert
-        assert result['success'] is True
-        
-        # MemoryManager.remember() should be called
-        # Scope enforcement tested in test_memory_manager_rbac.py
-        mock_memory_manager.remember.assert_called_once()

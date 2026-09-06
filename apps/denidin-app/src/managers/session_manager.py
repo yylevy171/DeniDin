@@ -6,9 +6,10 @@ Supports UUID-based architecture with separate file storage for messages.
 """
 
 import json
+import sqlite3
 import uuid
-from dataclasses import dataclass, asdict, field
-from datetime import datetime, timedelta
+from dataclasses import dataclass, asdict, field, fields
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict
 
@@ -16,7 +17,11 @@ import tiktoken
 
 from src.models.user import Role
 from src.utils.logger import get_logger
-from src.utils.time_utils import now_local, local_from_timestamp
+from src.utils.time_utils import (
+    local_calendar_date,
+    n_calendar_days_ago,
+    now_local,
+)
 
 logger = get_logger(__name__)
 
@@ -31,9 +36,8 @@ class Message:
     # (DeniDin's own reply). Replaces the old structural "user"/"assistant"
     # value, which conflated "who this message is really from" with "what
     # OpenAI's API needs this turn labeled as" - see ai_required_role below
-    # for the latter. Never "blocked": a BLOCKED user's message never
-    # reaches persistence (add_message_with_token_limit raises on a 0
-    # token_limit before any Message is constructed).
+    # for the latter. Never "blocked": a BLOCKED user's message is rejected
+    # upstream at the RBAC gate before it ever reaches persistence.
     role: str
     content: str
     # 2026-08-19: derived, never caller-supplied directly - "user" for
@@ -101,7 +105,12 @@ class Message:
 
 @dataclass
 class Session:
-    """Chat session with conversation history."""
+    """Chat session with conversation history.
+
+    Feature 070: one long-lived Session per chat - it never expires. The chat ->
+    session mapping is authoritative in `chat_index.db` (see SessionManager); the
+    in-memory `chat_to_session` dict is a read-through cache over it.
+    """
     session_id: str
     whatsapp_chat: str
     message_ids: List[str]
@@ -109,8 +118,16 @@ class Session:
     created_at: str = ""
     last_active: str = ""
     total_tokens: int = 0
+    # Dead under Feature 070 (no expire->transfer cycle). Kept on the dataclass
+    # so an old session.json that still carries it loads without a warning;
+    # nothing reads or writes it.
     transferred_to_longterm: bool = False
     storage_path: Optional[str] = None
+    # Feature 070 (US3): ids of messages physically moved to
+    # {session_dir}/archived/ by the nightly archive step (aged past the 14-day
+    # window, or beyond the largest role token limit). Disjoint from
+    # message_ids; message_counter == len(message_ids) + len(archived_message_ids).
+    archived_message_ids: List[str] = field(default_factory=list)
 
 
 class SessionManager:
@@ -127,27 +144,137 @@ class SessionManager:
     def __init__(
         self,
         storage_dir: str = "data/sessions",
-        session_timeout_hours: int = 24
     ):
         """
         Initialize SessionManager.
 
         Args:
-            storage_dir: Directory for session storage
-            session_timeout_hours: Hours before session expires
+            storage_dir: Directory for session storage. The caller composes this
+                (SessionManager never reads AppConfiguration). `chat_index.db`
+                lives directly under it.
+
+        Feature 070: there is no idle-expiry timeout - sessions never expire.
         """
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
-        self.session_timeout_hours = session_timeout_hours
-
-        # In-memory index: whatsapp_chat -> session_id
+        # In-memory index: whatsapp_chat -> session_id. NON-AUTHORITATIVE cache
+        # (Feature 070, REQ-MEM-016) - a read-through over chat_index.db, which
+        # is the source of truth. bugfix-044 was caused by this map being the
+        # only record and a code path forgetting to populate it.
         self.chat_to_session: Dict[str, str] = {}
 
-        # Load existing sessions from disk
-        self._load_sessions()
+        # Feature 070: durable chat -> session index (REQ-MEM-014). Same
+        # long-lived-connection idiom as ReminderManager.
+        self._index_db_path = self.storage_dir / "chat_index.db"
+        self._index_conn = sqlite3.connect(str(self._index_db_path), check_same_thread=False)
+        self._index_conn.row_factory = sqlite3.Row
+        self._init_chat_index_schema()
 
-        logger.info(f"SessionManager initialized: timeout={session_timeout_hours}h")
+        # Load existing sessions from disk (populates the cache) then reconcile
+        # the durable index against what's actually on disk.
+        self._load_sessions()
+        self._reconcile_chat_index()
+
+        logger.info("SessionManager initialized (Feature 070: rolling window, no expiry)")
+
+    def _init_chat_index_schema(self) -> None:
+        self._index_conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                chat        TEXT PRIMARY KEY,
+                session_id  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
+            );
+            """
+        )
+        self._index_conn.commit()
+
+    def _index_lookup(self, chat_id: str) -> Optional[str]:
+        row = self._index_conn.execute(
+            "SELECT session_id FROM chat_sessions WHERE chat = ?", (chat_id,)
+        ).fetchone()
+        return row["session_id"] if row else None
+
+    def _index_upsert(self, chat_id: str, session_id: str) -> None:
+        self._index_conn.execute(
+            "INSERT INTO chat_sessions (chat, session_id, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(chat) DO UPDATE SET updated_at = excluded.updated_at",
+            (chat_id, session_id, now_local().isoformat()),
+        )
+        self._index_conn.commit()
+
+    def _reconcile_chat_index(self) -> None:
+        """Once per construction: make the durable index reflect every session
+        actually on disk (active + expired/). INSERT OR IGNORE so an existing
+        mapping is never overwritten. A chat that resolves to more than one
+        directory keeps the one with the greatest message_counter, logs one
+        WARNING, and deletes nothing (REQ-MEM-014)."""
+        by_chat: Dict[str, List[Session]] = {}
+
+        def _collect(session_json: Path) -> None:
+            try:
+                with open(session_json, encoding="utf-8") as f:
+                    data = json.load(f)
+                sess = self._session_from_dict(data)
+            except Exception as e:  # pylint: disable=broad-except
+                logger.error(f"reconcile: failed to read {session_json}: {e}")
+                return
+            by_chat.setdefault(sess.whatsapp_chat, []).append(sess)
+
+        if self.storage_dir.exists():
+            for session_dir in self.storage_dir.iterdir():
+                if session_dir.is_dir() and session_dir.name != "expired":
+                    sj = session_dir / "session.json"
+                    if sj.exists():
+                        _collect(sj)
+            expired_base = self.storage_dir / "expired"
+            if expired_base.exists():
+                for date_folder in expired_base.iterdir():
+                    if date_folder.is_dir():
+                        for session_dir in date_folder.iterdir():
+                            sj = session_dir / "session.json"
+                            if session_dir.is_dir() and sj.exists():
+                                _collect(sj)
+
+        for chat, sessions in by_chat.items():
+            if len(sessions) > 1:
+                winner = max(sessions, key=lambda s: s.message_counter)
+                logger.warning(
+                    "reconcile: chat %s maps to %d session dirs %s - keeping %s "
+                    "(highest message_counter=%d), deleting nothing",
+                    chat, len(sessions), [s.session_id for s in sessions],
+                    winner.session_id, winner.message_counter,
+                )
+            else:
+                winner = sessions[0]
+            self._index_conn.execute(
+                "INSERT OR IGNORE INTO chat_sessions (chat, session_id, updated_at) VALUES (?, ?, ?)",
+                (chat, winner.session_id, now_local().isoformat()),
+            )
+        self._index_conn.commit()
+
+        # Refresh the in-memory cache from the durable index.
+        self.chat_to_session = {
+            r["chat"]: r["session_id"]
+            for r in self._index_conn.execute("SELECT chat, session_id FROM chat_sessions")
+        }
+
+    @staticmethod
+    def _session_from_dict(data: dict) -> Session:
+        """Tolerant Session deserialization (Feature 070, REQ-MEM-010, bugfix-035
+        H2). Drops any persisted key the current Session model doesn't have and
+        logs ONE warning - never raises TypeError. Generic: not an allowlist for
+        `pending_ledger_events`, so a future field removal can't strand older
+        session.json files either."""
+        valid = {f.name for f in fields(Session)}
+        unknown = sorted(k for k in data if k not in valid)
+        if unknown:
+            logger.warning(
+                "Session %s: dropping unknown persisted field(s) %s on load",
+                data.get("session_id", "<unknown>"), unknown,
+            )
+        return Session(**{k: v for k, v in data.items() if k in valid})
 
     def get_session(self, chat_id: str) -> Session:
         """
@@ -159,13 +286,16 @@ class SessionManager:
         Returns:
             Session object
         """
-        # Check if session exists in index
-        if chat_id in self.chat_to_session:
-            session_id = self.chat_to_session[chat_id]
-            session = self._load_session(session_id)
-            return session
+        # Feature 070: resolve via the durable index (authoritative), falling
+        # back to the in-memory cache only as a fast path. One long-lived
+        # session per chat - it is never recreated once it exists.
+        session_id = self._index_lookup(chat_id) or self.chat_to_session.get(chat_id)
+        if session_id:
+            self.chat_to_session[chat_id] = session_id
+            self._index_upsert(chat_id, session_id)
+            return self._load_session(session_id)
 
-        # Create new session
+        # Create new session (the ONLY path that creates one).
         session_id = str(uuid.uuid4())
         now = now_local().isoformat()
 
@@ -179,9 +309,9 @@ class SessionManager:
             total_tokens=0
         )
 
-        # Save to disk and index
         self._save_session(session)
         self.chat_to_session[chat_id] = session_id
+        self._index_upsert(chat_id, session_id)
 
         logger.info(f"Created new session {session_id} for chat {chat_id}")
         return session
@@ -201,7 +331,7 @@ class SessionManager:
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None,
         mcp_calls: Optional[List[Dict]] = None,
-        source_timestamp: Optional[int] = None
+        timestamp: Optional[datetime] = None
     ) -> str:
         """
         Add message to session.
@@ -258,29 +388,28 @@ class SessionManager:
         # Increment message counter
         session.message_counter += 1
 
-        # Create message
+        # Create message. `timestamp` is a Feature 070 testability seam: a
+        # production caller always leaves it None (-> now_local()); tests pass
+        # an explicit past datetime to seed a dated conversation through the
+        # real persistence API. `received_at` always stays the real wall-clock
+        # time this row was written.
         message_id = message_id or str(uuid.uuid4())
-        now = now_local().isoformat()
-        # Feature 069: Message.timestamp is the time the event actually
-        # happened, not when we persisted it. For an inbound turn the caller
-        # passes the Green API notification epoch (source_timestamp) - which
-        # the WhatsApp-export player injects as the message's ORIGINAL
-        # conversation time (player/notification_synth.py) and which
-        # WhatsAppMessage.from_notification already surfaces. Falls back to
-        # processing time only when genuinely absent (assistant replies,
-        # synthetic internal turns). received_at stays processing time.
-        event_ts = (
-            local_from_timestamp(source_timestamp).isoformat()
-            if source_timestamp is not None else now
-        )
+        # Feature 069: for a replayed/inbound turn the caller passes an
+        # explicit `timestamp` (the Green API notification's own wall-clock
+        # time - the WhatsApp-export player injects the message's ORIGINAL
+        # conversation time, surfaced by WhatsAppMessage.from_notification).
+        # Production live turns leave it None (-> now_local()). `received_at`
+        # always stays the real processing time.
+        now = (timestamp or now_local()).isoformat()
+        received_at = now_local().isoformat()
 
         # 2026-08-19: compute the real, persisted role + the OpenAI-safe
         # derived role. `role`/`user_role` themselves are never persisted -
         # see this method's docstring for why they still exist as separate
         # parameters. A BLOCKED user_role should structurally never reach
-        # here (add_message_with_token_limit raises first on a 0
-        # token_limit) - normalized the same as any other value rather than
-        # special-cased, since there's no real path that exercises it.
+        # here (rejected upstream at the RBAC gate) - normalized the same as
+        # any other value rather than special-cased, since there's no real
+        # path that exercises it.
         if role == "assistant":
             real_role = "assistant"
             ai_required_role = "assistant"
@@ -300,8 +429,8 @@ class SessionManager:
             sender_name=sender_name,
             recipient=recipient,
             recipient_name=recipient_name,
-            timestamp=event_ts,
-            received_at=now,
+            timestamp=now,
+            received_at=received_at,
             was_received=True,
             order_num=session.message_counter,
             image_path=image_path,
@@ -325,8 +454,9 @@ class SessionManager:
 
         # Update session
         session.message_ids.append(message_id)
-        session.last_active = now
+        session.last_active = received_at
         self._save_session(session)
+        self._index_upsert(session.whatsapp_chat, session.session_id)
 
         logger.debug(f"Added message {message_id} to session {session.session_id}")
         return message_id
@@ -443,29 +573,230 @@ class SessionManager:
             f"(session {session.session_id})"
         )
 
-    def clear_session(self, chat_id: str):
+    # --- Feature 070: rolling 14-day window + per-day gather ------------------
+
+    def _iter_persisted_messages(self, session: Session, *, live_only: bool = False):
+        """Yield (message_id, message_data dict) for every persisted message of
+        `session` - live `messages/` first, then `archived/` - reading each file
+        from disk. A missing file is skipped with a WARNING (never raises). Uses
+        `.get(...)` for content/role so a pre-2026-08-19 legacy message dict
+        can't KeyError.
+
+        `live_only=True` (Feature 070, task T064) reads ONLY `messages/` and never
+        touches `archived/`. `get_rolling_window` uses it so the per-turn cost is
+        O(last 14 days) instead of O(every message the chat ever had). Safe:
+        a message is in `archived/` only if it aged past the window (out of it by
+        definition) or is token-backstop overflow beyond `_BACKSTOP_TOKENS`
+        (100k) - and every acting role's `max_tokens` is <= that, so the window's
+        own read-only token pass would exclude it regardless. `get_messages_for_local_date`
+        (nightly roll / backfill, not per-turn) still reads both."""
+        base = self.storage_dir / (session.storage_path or session.session_id)
+        sources = [("messages", session.message_ids)]
+        if not live_only:
+            sources.append(("archived", session.archived_message_ids))
+        for sub, ids in sources:
+            mdir = base / sub
+            for mid in ids:
+                mfile = mdir / f"{mid}.json"
+                if not mfile.exists():
+                    logger.warning(
+                        "session %s: message file %s missing on disk - skipped",
+                        session.session_id, mfile,
+                    )
+                    continue
+                with open(mfile, encoding="utf-8") as f:
+                    yield mid, json.load(f)
+
+    @staticmethod
+    def _message_local_date(message_data: dict):
+        raw = message_data.get("timestamp") or message_data.get("received_at")
+        if not raw:
+            return None
+        try:
+            return local_calendar_date(datetime.fromisoformat(raw))
+        except (TypeError, ValueError):
+            return None
+
+    def _render_history_item(self, session: Session, message_data: dict) -> Dict:
+        """The exact dict shape get_conversation_history_for_session produces:
+        {"role": <ai_required_role|role>, "content": <content, group-prefixed>}."""
+        content = message_data.get("content", "")
+        is_group = "@g.us" in session.whatsapp_chat
+        if (is_group and message_data.get("ai_required_role") == "user"
+                and message_data.get("sender_name")):
+            content = f"[{message_data['sender_name']}] {content}"
+        role = (message_data.get("ai_required_role")
+                or message_data.get("role") or "user")
+        return {"role": role, "content": content}
+
+    def get_rolling_window(
+        self,
+        whatsapp_chat: str,
+        *,
+        now: Optional[datetime] = None,
+        window_days: int = 14,
+        max_tokens: Optional[int] = None,
+    ) -> List[Dict]:
+        """The per-turn conversation context under Feature 070 (REQ-MEM-001).
+
+        Every message for the chat whose Israel-local calendar date is within
+        the last `window_days` calendar days, verbatim, oldest-first, with the
+        Feature 039 `[sender_name]` prefix for group user turns - then, if
+        `max_tokens` is given, the OLDEST in-window messages are excluded (read
+        only - nothing is moved) until the running token total fits. The single
+        newest message is always returned even if it alone exceeds `max_tokens`.
+
+        `now` is a test-only seam; production leaves it None. Never raises on a
+        future-dated (clock-skew) message, an unloadable session, or a missing
+        message file; an empty chat returns [].
+
+        Task T064: reads ONLY the live `messages/` dir - never `archived/` - so
+        per-turn cost is O(last 14 days), flat, regardless of how large the
+        chat's archive grows. See `_iter_persisted_messages(live_only=...)`.
         """
-        Clear all messages from a session.
+        try:
+            session = self.get_session(whatsapp_chat)
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("get_rolling_window: could not resolve session for %s: %s", whatsapp_chat, e)
+            return []
 
-        Args:
-            chat_id: WhatsApp chat ID
+        lower = n_calendar_days_ago(max(window_days - 1, 0), now)
+
+        # Collect in-window messages in stored (chronological) order.
+        in_window: List[Dict] = []
+        for _mid, mdata in self._iter_persisted_messages(session, live_only=True):
+            mdate = self._message_local_date(mdata)
+            # A future-dated / undatable message is kept (never excludes
+            # everything because of one bad timestamp).
+            if mdate is not None and mdate < lower:
+                continue
+            item = self._render_history_item(session, mdata)
+            item["_order"] = mdata.get("order_num", 0)
+            in_window.append(item)
+
+        in_window.sort(key=lambda d: d["_order"])
+        for d in in_window:
+            d.pop("_order", None)
+
+        if max_tokens is None or not in_window:
+            return in_window
+
+        # Walk newest -> oldest, keep while it fits; drop the oldest.
+        kept_reversed: List[Dict] = []
+        running = 0
+        for item in reversed(in_window):
+            cost = self.count_tokens(item["content"])
+            if kept_reversed and running + cost > max_tokens:
+                break
+            kept_reversed.append(item)
+            running += cost
+        return list(reversed(kept_reversed))
+
+    def get_messages_for_local_date(self, session: Session, date) -> List[Dict]:
+        """Every message of `session` whose Israel-local calendar date == `date`
+        (live + archived), oldest-first, same item shape as get_rolling_window.
+        Used by the nightly roll and the backfill so a backstop-archived message
+        is still summarised on its normal schedule (REQ-MEM-036)."""
+        items: List[Dict] = []
+        for _mid, mdata in self._iter_persisted_messages(session):
+            if self._message_local_date(mdata) == date:
+                item = self._render_history_item(session, mdata)
+                item["_order"] = mdata.get("order_num", 0)
+                items.append(item)
+        items.sort(key=lambda d: d["_order"])
+        for d in items:
+            d.pop("_order", None)
+        return items
+
+    def known_chats(self) -> List[str]:
+        """Every chat that has a session on disk (from the durable index)."""
+        return [
+            r["chat"]
+            for r in self._index_conn.execute("SELECT chat FROM chat_sessions ORDER BY chat")
+        ]
+
+    def archive_aged_and_backstopped_messages(
+        self,
+        session: Session,
+        *,
+        now: Optional[datetime] = None,
+        window_days: int = 14,
+        max_backstop_tokens: int = 100000,
+    ) -> int:
+        """Physically move (rename, NEVER unlink) out of `messages/` and into
+        `{session_dir}/archived/` (Feature 070, US3, REQ-MEM-032):
+          (a) messages older than the `window_days` cutoff, and
+          (b) in-window messages beyond `max_backstop_tokens` counting
+              newest->oldest (caller passes the LARGEST role limit, 100000, so
+              the on-disk state is deterministic regardless of who spoke last).
+        Returns the number of files moved. Idempotent.
         """
-        session = self.get_session(chat_id)
+        base = self.storage_dir / (session.storage_path or session.session_id)
+        live_dir = base / "messages"
+        arch_dir = base / "archived"
+        if not live_dir.exists():
+            return 0
 
-        # Delete message files
-        session_dir = self.storage_dir / session.session_id
-        messages_dir = session_dir / "messages"
+        lower = n_calendar_days_ago(max(window_days - 1, 0), now)
 
-        if messages_dir.exists():
-            for message_file in messages_dir.glob("*.json"):
-                message_file.unlink()
+        # Load live messages in chronological order with their dates + token cost.
+        live: List[dict] = []
+        for mid in list(session.message_ids):
+            mfile = live_dir / f"{mid}.json"
+            if not mfile.exists():
+                continue
+            with open(mfile, encoding="utf-8") as f:
+                mdata = json.load(f)
+            live.append({
+                "id": mid,
+                "order": mdata.get("order_num", 0),
+                "date": self._message_local_date(mdata),
+                "cost": self.count_tokens(mdata.get("content", "")),
+            })
+        live.sort(key=lambda d: d["order"])
 
-        # Reset session
-        session.message_ids = []
-        session.total_tokens = 0
-        self._save_session(session)
+        to_archive = set()
+        # (a) aged out of the window
+        for m in live:
+            if m["date"] is not None and m["date"] < lower:
+                to_archive.add(m["id"])
+        # (b) backstop: keep newest within budget, archive the older overflow.
+        # The single newest live message is always retained even if it alone
+        # exceeds the budget (mirrors get_rolling_window's read-only cut).
+        running = 0
+        kept_one = False
+        for m in reversed(live):
+            if m["id"] in to_archive:
+                continue
+            running += m["cost"]
+            if kept_one and running > max_backstop_tokens:
+                to_archive.add(m["id"])
+            kept_one = True
 
-        logger.info(f"Cleared session {session.session_id}")
+        if not to_archive:
+            return 0
+
+        arch_dir.mkdir(parents=True, exist_ok=True)
+        moved = 0
+        for m in live:
+            if m["id"] not in to_archive:
+                continue
+            src = live_dir / f"{m['id']}.json"
+            dst = arch_dir / f"{m['id']}.json"
+            if src.exists():
+                src.rename(dst)  # move, never unlink
+                moved += 1
+            session.message_ids.remove(m["id"])
+            if m["id"] not in session.archived_message_ids:
+                session.archived_message_ids.append(m["id"])
+
+        if moved:
+            self._save_session(session)
+            logger.info(
+                "session %s: archived %d aged/backstopped message(s) to archived/",
+                session.session_id, moved,
+            )
+        return moved
 
     def _save_session(self, session: Session):
         """Save session metadata to disk."""
@@ -504,10 +835,10 @@ class SessionManager:
         with open(session_file, encoding='utf-8') as f:
             data = json.load(f)
 
-        return Session(**data)
+        return self._session_from_dict(data)
 
     def _load_sessions(self):
-        """Load all sessions from disk into memory index."""
+        """Load all sessions from disk into the in-memory cache."""
         if not self.storage_dir.exists():
             return
 
@@ -523,220 +854,6 @@ class SessionManager:
                     logger.debug(f"Loaded session {session.session_id}")
                 except Exception as e:
                     logger.error(f"Failed to load session {session_dir.name}: {e}")
-
-    def find_expired_active_sessions(self) -> List[Session]:
-        """
-        Find active sessions that have expired and need archival.
-
-        Scans the active sessions directory (not expired/) for sessions
-        whose last_active timestamp is older than session_timeout_hours.
-
-        Returns:
-            List of expired Session objects from active directory
-        """
-        now = now_local()
-        cutoff = now - timedelta(hours=self.session_timeout_hours)
-        expired = []
-
-        for session_dir in self.storage_dir.iterdir():
-            if not session_dir.is_dir() or session_dir.name == "expired":
-                continue
-
-            session_file = session_dir / "session.json"
-            if not session_file.exists():
-                continue
-
-            try:
-                session = self._load_session(session_dir.name)
-                last_active = datetime.fromisoformat(session.last_active)
-
-                if last_active < cutoff:
-                    expired.append(session)
-            except Exception as e:
-                logger.error(f"Failed to check session {session_dir.name}: {e}")
-
-        return expired
-
-    def find_untransferred_archived_sessions(self) -> List[Session]:
-        """
-        Find archived sessions that were not transferred to long-term memory.
-
-        Scans the expired/ folder for sessions with transferred_to_longterm=False.
-        This recovers sessions from interrupted cleanup operations.
-
-        Returns:
-            List of Session objects in expired/ with transferred_to_longterm=False
-        """
-        untransferred: List[Session] = []
-        expired_base = self.storage_dir / "expired"
-
-        if not expired_base.exists():
-            return untransferred
-
-        # Scan all date folders in expired/
-        for date_folder in expired_base.iterdir():
-            if not date_folder.is_dir():
-                continue
-
-            # Scan all session folders in each date folder
-            for session_dir in date_folder.iterdir():
-                if not session_dir.is_dir():
-                    continue
-
-                session_file = session_dir / "session.json"
-                if not session_file.exists():
-                    continue
-
-                try:
-                    with open(session_file, encoding='utf-8') as f:
-                        data = json.load(f)
-
-                    # Only include if not yet transferred
-                    if not data.get('transferred_to_longterm', False):
-                        session = Session(**data)
-                        untransferred.append(session)
-                        logger.debug(
-                            f"Found untransferred archived session {session.session_id} "
-                            f"in {date_folder.name}"
-                        )
-                except Exception as e:
-                    logger.error(f"Failed to check archived session {session_dir.name}: {e}")
-
-        return untransferred
-
-    def get_sessions_needing_cleanup(self) -> List[Session]:
-        """
-        Find all sessions that need cleanup processing.
-
-        Combines:
-        1. Active sessions that have expired (need archival + transfer)
-        2. Archived sessions not yet transferred (need transfer completion)
-
-        Returns:
-            List of Session objects requiring cleanup
-        """
-        expired_active = self.find_expired_active_sessions()
-        untransferred_archived = self.find_untransferred_archived_sessions()
-
-        all_sessions = expired_active + untransferred_archived
-
-        if expired_active:
-            logger.info(f"Found {len(expired_active)} expired active sessions")
-        if untransferred_archived:
-            logger.info(f"Found {len(untransferred_archived)} untransferred archived sessions")
-
-        return all_sessions
-
-    def get_expired_sessions(self) -> List[Session]:
-        """
-        DEPRECATED: Use get_sessions_needing_cleanup() instead.
-
-        Find all sessions that need cleanup processing.
-        Maintained for backward compatibility.
-
-        Returns:
-            List of Session objects requiring cleanup
-        """
-        return self.get_sessions_needing_cleanup()
-
-    def archive_session(self, session: Session) -> bool:
-        """
-        Move session directory to dated expired folder.
-
-        Args:
-            session: Session to archive
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            session_dir = self.storage_dir / session.session_id
-            if not session_dir.exists():
-                logger.warning(f"Session directory not found: {session.session_id}")
-                return False
-
-            # Create dated subfolder
-            last_active = datetime.fromisoformat(session.last_active)
-            archive_date = last_active.strftime("%Y-%m-%d")
-            expired_base = self.storage_dir / "expired"
-            archive_dir = expired_base / archive_date
-            archive_dir.mkdir(parents=True, exist_ok=True)
-
-            # Move entire session directory
-            dest = archive_dir / session.session_id
-            session_dir.rename(dest)
-
-            # Update storage path and save to archived location (keep in index for AI transfer)
-            session.storage_path = f"expired/{archive_date}/{session.session_id}"
-            self._save_session(session)
-
-            logger.info(
-                f"Archived session {session.session_id} to expired/{archive_date}/ "
-                f"(transferred={session.transferred_to_longterm}, kept in index)"
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Failed to archive session {session.session_id}: {e}")
-            return False
-
-    def remove_from_index(self, session: Session) -> bool:
-        """
-        Remove session from in-memory index after AI transfer.
-
-        Args:
-            session: Session to remove
-
-        Returns:
-            True if removed, False if not found
-        """
-        if session.whatsapp_chat in self.chat_to_session:
-            del self.chat_to_session[session.whatsapp_chat]
-            logger.info(f"Removed session {session.session_id} from index")
-            return True
-        return False
-
-    def is_session_expired(self, session: Session) -> bool:
-        """
-        Check if a session has expired based on last_active timestamp.
-
-        Args:
-            session: Session object to check
-
-        Returns:
-            True if session is expired, False otherwise
-        """
-        now = now_local()
-        cutoff = now - timedelta(hours=self.session_timeout_hours)
-        last_active = datetime.fromisoformat(session.last_active)
-
-        return last_active < cutoff
-
-    def find_orphaned_sessions(self) -> List[Session]:
-        """
-        Find all sessions that exist on disk but are not in memory index.
-        Used for startup recovery.
-
-        Returns:
-            List of Session objects found on disk
-        """
-        orphaned_sessions = []
-
-        for session_dir in self.storage_dir.iterdir():
-            if not session_dir.is_dir() or session_dir.name == "expired":
-                continue
-
-            session_file = session_dir / "session.json"
-            if not session_file.exists():
-                continue
-
-            try:
-                session = self._load_session(session_dir.name)
-                orphaned_sessions.append(session)
-                logger.debug(f"Found orphaned session: {session.session_id}")
-            except Exception as e:
-                logger.error(f"Failed to load orphaned session {session_dir.name}: {e}")
-
-        return orphaned_sessions
 
     def count_tokens(self, text: str, model: str = "gpt-4o-mini") -> int:
         """
@@ -765,10 +882,15 @@ class SessionManager:
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None,
         mcp_calls: Optional[List[Dict]] = None,
-        source_timestamp: Optional[int] = None
+        timestamp: Optional[datetime] = None
     ) -> str:
         """
         Add message and update session token count.
+
+        Feature 070: `timestamp` is a testability seam (see add_message). There
+        is NO write-time pruning any more - the rolling-window builder caps the
+        live context read-only, and the nightly roll physically archives
+        (never deletes) aged messages.
 
         Args:
             chat_id: WhatsApp chat ID
@@ -796,7 +918,7 @@ class SessionManager:
             sender=sender, sender_name=sender_name,
             recipient=recipient, recipient_name=recipient_name,
             ledger_event_ids=ledger_event_ids, message_id=message_id,
-            mcp_calls=mcp_calls, source_timestamp=source_timestamp
+            mcp_calls=mcp_calls, timestamp=timestamp
         )
 
         # Count and add tokens
@@ -806,74 +928,6 @@ class SessionManager:
         self._save_session(session)
 
         return message_id
-
-    def add_message_with_token_limit(
-        self,
-        chat_id: str,
-        role: str,
-        content: str,
-        user_role: Role,
-        token_limit: int,
-        sender: Optional[str] = None,
-        sender_name: Optional[str] = None,
-        recipient: Optional[str] = None,
-        recipient_name: Optional[str] = None,
-        ledger_event_ids: Optional[List[str]] = None,
-        message_id: Optional[str] = None,
-        mcp_calls: Optional[List[Dict]] = None,
-        source_timestamp: Optional[int] = None
-    ) -> str:
-        """
-        Add message with token limit enforcement and auto-pruning.
-
-        Args:
-            chat_id: WhatsApp chat ID
-            role: Structural turn role ("user" or "assistant") - see
-                add_message's docstring for what this and user_role actually
-                compute.
-            content: Message content
-            user_role: The real role for a "user" turn - see add_message's
-                docstring.
-            token_limit: Maximum tokens allowed for this role
-            sender: Message sender's real WhatsApp JID (optional)
-            sender_name: Sender's resolved display name (optional)
-            recipient: Message recipient's real WhatsApp JID (optional)
-            recipient_name: Recipient's resolved display name (optional)
-            ledger_event_ids: id(s) of any LedgerEvent(s) captured from this message
-                (Feature 033, optional)
-            message_id: The id decided at message-arrival time (Feature 033) - see
-                add_message's docstring.
-
-        Returns:
-            Message UUID
-
-        Raises:
-            ValueError: If token limit is exceeded and cannot prune
-        """
-        # Count tokens for new message
-        new_tokens = self.count_tokens(content)
-
-        # Check if blocked user (0 token limit)
-        if token_limit == 0:
-            raise ValueError("Token limit exceeded: BLOCKED users cannot add messages")
-
-        # Get current session
-        session = self.get_session(chat_id)
-        current_tokens = session.total_tokens
-
-        # Check if adding this message would exceed limit
-        if current_tokens + new_tokens > token_limit:
-            # Prune oldest messages until we're under limit
-            self._prune_until_under_limit(chat_id, token_limit, new_tokens)
-
-        # Add message with token tracking
-        return self.add_message_with_tokens(
-            chat_id, role, content, user_role,
-            sender=sender, sender_name=sender_name,
-            recipient=recipient, recipient_name=recipient_name,
-            ledger_event_ids=ledger_event_ids, message_id=message_id,
-            mcp_calls=mcp_calls, source_timestamp=source_timestamp
-        )
 
     def calculate_session_tokens(self, chat_id: str) -> int:
         """
@@ -912,59 +966,3 @@ class SessionManager:
         session = self.get_session(chat_id)
         return session.total_tokens
 
-    def prune_to_limit(self, chat_id: str, keep_count: int):
-        """
-        Prune session to keep only specified number of most recent messages.
-
-        Args:
-            chat_id: WhatsApp chat ID
-            keep_count: Number of messages to keep
-        """
-        session = self.get_session(chat_id)
-
-        if len(session.message_ids) <= keep_count:
-            return
-
-        # Calculate how many to remove
-        remove_count = len(session.message_ids) - keep_count
-
-        # Remove oldest messages
-        session_dir = self.storage_dir / session.session_id
-        messages_dir = session_dir / "messages"
-
-        for _ in range(remove_count):
-            message_id = session.message_ids.pop(0)
-            message_file = messages_dir / f"{message_id}.json"
-            if message_file.exists():
-                message_file.unlink()
-
-        # Recalculate tokens
-        session.total_tokens = self.calculate_session_tokens(chat_id)
-        self._save_session(session)
-
-    def _prune_until_under_limit(self, chat_id: str, token_limit: int, new_message_tokens: int):
-        """
-        Remove oldest messages until session is under limit with room for new message.
-
-        Args:
-            chat_id: WhatsApp chat ID
-            token_limit: Maximum allowed tokens
-            new_message_tokens: Tokens in message to be added
-        """
-        session = self.get_session(chat_id)
-        session_dir = self.storage_dir / session.session_id
-        messages_dir = session_dir / "messages"
-
-        while session.total_tokens + new_message_tokens > token_limit and session.message_ids:
-            # Remove oldest message
-            message_id = session.message_ids.pop(0)
-            message_file = messages_dir / f"{message_id}.json"
-
-            if message_file.exists():
-                with open(message_file, encoding='utf-8') as f:
-                    message_data = json.load(f)
-                # Subtract tokens from total
-                session.total_tokens -= self.count_tokens(message_data["content"])
-                message_file.unlink()
-
-        self._save_session(session)
