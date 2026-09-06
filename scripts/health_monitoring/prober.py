@@ -68,10 +68,10 @@ import json
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Optional
-
-import requests
 
 # Escalation thresholds, in seconds since the last all-checks-passed moment.
 SOFT_RESTART_THRESHOLD_SECONDS = 180   # 3 minutes
@@ -84,11 +84,19 @@ def probe_health(url: str, timeout: float = PROBE_TIMEOUT_SECONDS) -> bool:
     """True iff `url` (a /health endpoint) responds with HTTP 200 - both
     apps' /health handlers already return 200 only when every check they
     know about succeeded, and a non-200 (5xx) or any transport failure both
-    correctly count as "not healthy" here."""
+    correctly count as "not healthy" here.
+
+    Uses only the standard library (urllib), deliberately - this script is
+    designed to run as a bare host-level script (LaunchAgent/Task
+    Scheduler/cron), invoked as plain `python3 prober.py`, with no
+    guarantee any app's venv (where a third-party `requests` install would
+    otherwise live) is active. See bugfix-043's 2026-09-06 fix note: a real
+    `dev` deploy failed with `ModuleNotFoundError: No module named
+    'requests'` for exactly this reason."""
     try:
-        response = requests.get(url, timeout=timeout)
-        return response.status_code == 200
-    except requests.RequestException:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            return response.status == 200
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
         return False
 
 
