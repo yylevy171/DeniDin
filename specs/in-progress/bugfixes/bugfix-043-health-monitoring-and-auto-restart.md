@@ -21,6 +21,15 @@ recurs on every future restart/reboot until a fix lands.
 merged current with master and re-verified passing 2026-09-06. Never had a PR, never merged to
 master. No prod wiring (Windows Task Scheduler) or live demo performed yet.**
 
+- **2026-09-06 (same day, later): admin stop/start + deploy-race redesign.** A design review
+  surfaced that the original "prober skips if the env is intentionally down" proposal relied on a
+  separately-maintained flag file — exactly the class of bug that caused this bugfix's own
+  original incident. Replaced with: the prober's own OS-level schedule registration IS the
+  on/off signal, driven directly by two new human-facing entry points, `scripts/stop_env.sh`/
+  `scripts/run_env.sh` (see "Shared ops-scripts bundling" section below for what ships them to
+  prod). Full detail in the new "Admin-initiated stop/start" and "Deploy race with the prober"
+  sections below. All new/changed code re-verified: 61/61 `scripts/` tests passing.
+
 - Code written and committed 2026-08-26 (`ee252ca`), pushed to origin.
 - **2026-09-01**: merged current `master` into the branch — clean, zero conflicts (130 files,
   +9819/-323, all upstream unrelated work). Re-ran every test this branch added against the
@@ -226,6 +235,104 @@ original writeup above).
   `deploy_release.sh`** (same gap as the rest of that path, per `test_deploy_release.py`'s own
   docstring) — relies on a manual gate against real infrastructure, same as everything else on
   that path.
+
+## Admin-initiated stop/start (2026-09-06)
+
+**Problem surfaced during design review**: could an admin's deliberate decision to take `dev` or
+`prod` down (for any reason, at any time) be confused with a real outage, and get "helpfully"
+fought by the prober's own auto-restart? A first proposal — have the prober check a persisted
+"intentionally down" flag before escalating — was explicitly rejected: relying on a
+separately-maintained flag that has to be kept correct by hand is exactly the class of bug that
+caused this bugfix's own original incident (a one-shot check nobody re-verified). The approved
+design instead ties the prober's own on/off state directly to the same two actions an admin
+already uses to stop/start an environment:
+
+- **`scripts/stop_env.sh <env>`** — the ONE sanctioned way to stop an environment now. Order
+  matters: (1) disable the prober's OS-level schedule for `<env>` first, so it can't race with
+  what follows; (2) archive the prober's state file (`prober.py --archive-state` — renamed with a
+  `_stopped_<timestamp>` suffix, never silently deleted, so the last-known-up history survives);
+  (3) `stop_all.sh <env> -force`.
+- **`scripts/run_env.sh <env>`** — the ONE sanctioned way to start an environment now. It
+  (re-)enables the prober's schedule (idempotent) and triggers one immediate probe — and
+  deliberately does **not** call `run_all.sh` itself. The probe sees no state file (archived, or a
+  genuinely fresh install) → `decide_action` returns a new `"bootstrap"` action (approved change
+  to previously-documented behavior — a missing baseline used to mean "do nothing"; now it means
+  "start it now via the proper channel", functionally identical to `"soft"`) → the prober itself
+  calls `run_all.sh`. This means run_env.sh's own bring-up code path is exercised on **every**
+  kind of start — fresh install, admin-requested, crash recovery, reboot recovery alike — not
+  just during a rare real crash, which is exactly the confidence a health-monitoring mechanism
+  needs to be trustworthy.
+- **"No per-app games"**: both scripts operate on the whole environment (both apps together),
+  matching the prober's own existing behavior — stopping/starting either app's deploy briefly
+  stops/starts both (see "Deploy race with the prober" below for where this matters again).
+- New supporting scripts: `scripts/health_monitoring/prober_paths.sh` (shared argument
+  resolution — ports/container names/state+log paths derived from this repo's own config, never
+  duplicated as separate literals), `run_prober_for_env.sh` (the actual scheduled runner),
+  `register_prober_schedule.sh` (platform dispatch: a real macOS LaunchAgent, load/unload/trigger
+  via `launchctl`, fully tested against real launchd with safe throwaway labels; a Windows
+  Scheduled Task via `schtasks.exe`/`wsl.exe` interop for prod, no automated coverage — same as
+  every other real-prod-only path in this repo, relies on a manual gate).
+- **Bug fix found along the way**: `prober_paths.sh`'s container-name resolution was originally
+  hardcoded to `"denidin-<env>-..."` — the real repo's own compose project name. Since a
+  scratch/test environment deliberately uses a *different* project name (so it can never collide
+  with a real dev/prod on the same machine), a hardcoded prefix would have made the prober target
+  the wrong (potentially real) container the moment it ran against anything but the real repo.
+  Fixed to derive the project name from the compose file's own `name:` field, the same way
+  `deploy_release.sh` already does for its `PROJECT_NAME`.
+- All 5 new/changed scripts added to the release-scripts bundle manifest so prod actually
+  receives them.
+- Tests: `scripts/health_monitoring/tests/test_prober.py` (+8: `archive_state_file`, the
+  `bootstrap` decision, the `--archive-state` CLI mode), `test_env_scripts.py` (+12: real
+  `prober_paths.sh` resolution, `run_prober_for_env.sh` argument construction, real macOS
+  LaunchAgent enable/disable/trigger-once against real `launchd`, and `stop_env.sh`/`run_env.sh`
+  call ordering via stubbed sibling scripts).
+
+## Deploy race with the prober (2026-09-06)
+
+**Problem surfaced by explicit user question**: `deploy_release.sh` talked to `docker compose`/
+`docker load`/`docker tag` directly — a THIRD path (alongside a human and the prober's own
+schedule) that could touch containers, with no coordination against the prober's independently
+scheduled health checks. A deploy's own container swap landing mid-way through the prober's
+escalation window could get fought by an unrelated "restart it" tick, or leave the prober
+monitoring a stale state after the deploy finished.
+
+**Fix**: both the local/dev path and the remote/prod path now go through the same two sanctioned
+entry points above, never `docker compose up/stop` directly:
+
+1. `stop_env.sh <env>` — disables the prober, archives its state, stops both apps.
+2. Load the new artifact, retag it (must happen before step 3, so the freshly-tagged `:latest`
+   image is what `run_all.sh` picks up).
+3. `run_env.sh <env>` — re-enables the prober and triggers one probe, which itself calls
+   `run_all.sh` via the `bootstrap` action.
+4. Poll until the container is actually running, then run the existing health/version
+   verification unchanged.
+
+Because `stop_env.sh`/`run_env.sh` operate on the whole environment, deploying either app briefly
+restarts both — an accepted cost, same "no per-app games" rule as above.
+
+**Remote/prod backward compatibility**: gated behind `HAVE_SCRIPTS_BUNDLE` — a version cut before
+this existed (no bundled `stop_env.sh`/`run_env.sh` on the box) falls back unchanged to the
+original direct `docker compose up -d` + manual `active_env.json` write. **Side-effect fix**: once
+on the new path, the previously-known-and-deferred stale `active_env.json` schema gap (gap #1,
+explicitly left out of this bugfix's scope per earlier triage) is fixed for free — `env_lock.sh`,
+invoked transitively via `stop_all.sh`/`run_all.sh`, already writes the current `active_envs` dict
+schema; the old manual write never did. This was not pursued as its own fix — it simply stopped
+applying once the manual write was replaced.
+
+**Test ground**: `dev`, via the real `scratch_deploy_repo` fixture (`scripts/tests/conftest.py`),
+serves as the mechanical proof this works before prod ever sees it — the fixture now includes a
+genuinely functioning two-app environment (real per-app `run_/stop_` scripts, a real
+`/health`-serving container) so `test_deploy_release.py`'s existing 8 tests exercise the actual
+`stop_env.sh → load → retag → run_env.sh → prober bootstrap → run_all.sh` chain end-to-end, not
+just argument validation. `register_prober_schedule.sh` itself is stubbed only in this fixture
+(never the real macOS LaunchAgent) since `deploy_release.sh`'s `<env>` argument is hard-locked to
+the literal string `"dev"`, which would otherwise collide with a real dev environment's
+LaunchAgent label on the same machine — the LaunchAgent mechanism itself stays fully covered
+separately, against real `launchd`, by `test_env_scripts.py`. Full `scripts/` suite: 61/61
+passing.
+
+**Still no automated coverage for the remote/SSH leg of this** (same as the rest of that path) —
+relies on a manual gate against the real box.
 
 ## How this branch would land
 
