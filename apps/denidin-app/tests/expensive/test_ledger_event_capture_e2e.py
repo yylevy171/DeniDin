@@ -681,29 +681,60 @@ class TestLedgerEventCaptureE2E:
                 "התשלומים ותאריכי התשלומים",
                 id_prefix="LEDGER_E2E_F4_VERIFY",
             )
-            fetch_calls = _calls_for(verify_ai, "get_invoice_details")
-            assert fetch_calls, (
-                f"A3/A3b: the verify turn never fetched the document from Morning "
-                f"(no get_invoice_details call). Calls: {verify_ai.mcp_calls if verify_ai else None!r}"
+            # A3/A3b: the verify turn must have gone to Morning and pulled the
+            # real document back with its payment block INTACT. We don't care
+            # which read tool the model picks - get_invoice_details returns the
+            # doc object directly; list_invoices (include_full_details=true)
+            # returns it inside a "documents" list - both carry the identical
+            # payment/bank data. Accept either, normalise to the doc dict.
+            fetch_calls = (
+                _calls_for(verify_ai, "get_invoice_details")
+                + _calls_for(verify_ai, "list_invoices")
             )
-            doc = fetch_calls[0].get("output") or ""
-            assert "653" not in doc and "654" not in doc, (
-                f"A2: the deposited 554 was inflated by 18%: {doc!r}"
+            doc_obj = None
+            for call in fetch_calls:
+                try:
+                    parsed = json.loads(call.get("output") or "")
+                except (TypeError, ValueError):
+                    continue
+                candidate = parsed
+                if isinstance(parsed, dict) and parsed.get("documents"):
+                    candidate = parsed["documents"][0]
+                if isinstance(candidate, dict) and candidate.get("payment"):
+                    doc_obj = candidate
+                    break
+            assert doc_obj is not None, (
+                f"A3/A3b: the verify turn never fetched the created document from "
+                f"Morning with its payment block (no get_invoice_details / "
+                f"list_invoices?include_full_details call carrying `payment`). "
+                f"Calls: {verify_ai.mcp_calls if verify_ai else None!r}"
             )
-            assert "554" in doc, (
-                f"A2: the fetched document does not hold the deposited amount: {doc!r}"
+            # The doc ACTUALLY exists in Morning: a real display number and the
+            # deposited amount, un-inflated (554, never 554*1.18 == 653.72).
+            assert str(doc_obj.get("display_number") or "").strip(), (
+                f"A: fetched document has no Morning display number: {doc_obj!r}"
             )
-            payment = json.loads(doc).get("payment") or {}
-            payment_date = payment.get("date") or ""
+            assert doc_obj.get("amount") in (554, 554.0), (
+                f"A2: fetched document amount is not the deposited 554 "
+                f"(inflated / wrong?): {doc_obj!r}"
+            )
+            # Payment details INTACT on that document.
+            payment = doc_obj.get("payment") or {}
+            payment_date = str(payment.get("date") or "")
             for part in ("5", "8", "26"):
                 assert part in payment_date, (
                     f"A3: date component {part!r} missing from the fetched document's "
-                    f"payment date: {doc!r}"
+                    f"payment date: {doc_obj!r}"
                 )
             assert payment.get("type") == 4, (
                 f"A3b: a bank deposit must be booked as payment type 4 (bank transfer), "
-                f"the only type Morning stores bank details on: {doc!r}"
+                f"the only type Morning stores bank details on: {doc_obj!r}"
             )
+            for field in ("bank_number", "bank_branch", "bank_account"):
+                assert str(payment.get(field) or "").strip(), (
+                    f"A3b: bank detail {field!r} missing from the fetched payment "
+                    f"block: {doc_obj!r}"
+                )
         finally:
             self._clear_chat_test_data(denidin_app, chat_id)
 
