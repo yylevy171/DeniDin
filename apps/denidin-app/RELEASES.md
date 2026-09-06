@@ -71,3 +71,7 @@ Accounting-reconciliation sweep reliability: bugfix-047 gives the sweep its own 
 ## denidin-app v0.5.4-70 — 2026-09-06
 
 Rolling 14-day short-term memory window with nightly daily-summary roll; retires 24h session expiry and the hourly cleanup thread.
+
+## denidin-app v0.5.4-b43 — 2026-09-06
+
+bugfix-043: admin stop/start owns the prober; deploy_release.sh no longer races it
