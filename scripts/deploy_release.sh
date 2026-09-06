@@ -42,6 +42,19 @@
 # remote context would resolve relative paths against the WRONG filesystem. `dev` is unaffected -
 # still a plain local deploy, exactly as before.
 #
+# 2026-09-06 (bugfix-043): the remote/prod path also ships + unpacks the shared host-side
+# ops-scripts bundle (scripts/run_all.sh, stop_all.sh, env_lock.sh, killall_containers.sh, each
+# app's run_*.sh/stop_*.sh, and the health-monitoring prober - see
+# scripts/lib/release_scripts_manifest.sh) that scripts/cut_release.sh now produces alongside
+# the docker image tarball. Prod's deploy directory is NOT a git checkout (Feature 035), so
+# these host-side scripts - which invoke `docker compose` from OUTSIDE any container - would
+# otherwise never refresh after initial setup. Unpacking is done via
+# scripts/lib/unpack_scripts_bundle.sh, shipped to the box and run there via SSH; the same
+# helper is exercised directly (no SSH) by scripts/tests/test_release_scripts_bundle.py. Backward
+# compatible: a version cut before this existed simply has no bundle file, and deploying it logs
+# a note and skips the unpack rather than failing. The LOCAL path (dev, or `--local`-forced prod)
+# never unpacks the bundle at all - see the comment above the local path's side effects for why.
+#
 # See specs/in-progress/034-versioning-release-mgmt/contracts/deploy_release_cli.md for the full
 # contract (preconditions, side effects, exit codes, why this never rebuilds from source).
 
@@ -123,6 +136,11 @@ TAR_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.tar"
 MANIFEST_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.json"
 COMPOSE_FILE="docker/docker-compose.${ENV}.yml"
 SERVICE_NAME="${APP}-${ENV}"
+# bugfix-043: the shared ops-scripts bundle cut_release.sh packages alongside the image tar.
+# Soft-optional (not a hard precondition) - a version cut BEFORE this feature existed has no
+# bundle, and rolling back to one must still work; see the HAVE_SCRIPTS_BUNDLE check below.
+SCRIPTS_BUNDLE_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}-scripts.tar.gz"
+UNPACK_SCRIPTS_HELPER="$SCRIPT_DIR/lib/unpack_scripts_bundle.sh"
 
 # --- Preconditions (fail before any side effect) ---
 
@@ -159,6 +177,15 @@ if [ -z "$PROJECT_NAME" ]; then
     exit 1
 fi
 
+# bugfix-043: soft-optional check, deliberately NOT a hard precondition (see the field's own
+# comment above for why a missing bundle - an old, pre-bugfix-043 cut - must still deploy fine).
+HAVE_SCRIPTS_BUNDLE=0
+if [ -f "$SCRIPTS_BUNDLE_PATH" ]; then
+    HAVE_SCRIPTS_BUNDLE=1
+else
+    echo "Note: no scripts bundle found for ${APP} v${VERSION} (${SCRIPTS_BUNDLE_PATH}) - this version predates bugfix-043's shared ops-scripts bundling. Deploying without refreshing the ops scripts."
+fi
+
 # --- Remote path: env=prod ships to Feature 035's Windows box over SSH, unless --local forces
 #     the old same-machine behavior (test-only seam - see the big comment at the top of this
 #     file for why prod can't just reuse this repo checkout's local compose files). ---
@@ -184,53 +211,89 @@ if [ "$REMOTE" -eq 1 ]; then
     # session succeeded" is never good enough (2026-08-03, per-step verification requirement).
 
     # Step R1: ship the artifact.
-    echo "== [R1/R8] Shipping ${ARTIFACT_NAME} to ${REMOTE_HOST}:~/${REMOTE_DEPLOY_DIR} (prod runs exclusively on the Windows box - Feature 035) =="
+    echo "== [R1/R10] Shipping ${ARTIFACT_NAME} to ${REMOTE_HOST}:~/${REMOTE_DEPLOY_DIR} (prod runs exclusively on the Windows box - Feature 035) =="
     if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$TAR_PATH" "${REMOTE_HOST}:~/${ARTIFACT_NAME}"; then
         echo "🚨 DEPLOY FAILED at step R1 (scp artifact -> ${REMOTE_HOST}): scp exited non-zero. Nothing on ${REMOTE_HOST} was touched." >&2
         exit 1
     fi
 
-    # Step R2: resolve the Windows-side home directory (SFTP's "~" != WSL bash's "~" - see
+    # Step R2 (bugfix-043): ship + unpack the shared ops-scripts bundle, if this version has one
+    # (soft-optional - see HAVE_SCRIPTS_BUNDLE above). Ships the UNPACK HELPER SCRIPT directly
+    # from this local checkout (not from the bundle itself) - avoids a chicken-and-egg bootstrap
+    # problem on a box that has never received a bundle before. Uses the same helper script
+    # scripts/tests/test_release_scripts_bundle.py exercises directly (no SSH) - identical
+    # extraction/verification logic either way.
+    if [ "$HAVE_SCRIPTS_BUNDLE" -eq 1 ]; then
+        SCRIPTS_BUNDLE_NAME="$(basename "$SCRIPTS_BUNDLE_PATH")"
+        UNPACK_HELPER_NAME="$(basename "$UNPACK_SCRIPTS_HELPER")"
+        MANIFEST_HELPER_NAME="release_scripts_manifest.sh"
+        echo "== [R2/R10] Shipping + unpacking the shared ops-scripts bundle on ${REMOTE_HOST} (bugfix-043) =="
+        if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$SCRIPTS_BUNDLE_PATH" "${REMOTE_HOST}:~/${SCRIPTS_BUNDLE_NAME}"; then
+            echo "🚨 DEPLOY FAILED at step R2 (scp scripts bundle -> ${REMOTE_HOST}): scp exited non-zero. Nothing on ${REMOTE_HOST} was touched." >&2
+            exit 1
+        fi
+        if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$UNPACK_SCRIPTS_HELPER" "${REMOTE_HOST}:~/${UNPACK_HELPER_NAME}"; then
+            echo "🚨 DEPLOY FAILED at step R2 (scp unpack helper -> ${REMOTE_HOST}): scp exited non-zero." >&2
+            exit 1
+        fi
+        if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$SCRIPT_DIR/lib/release_scripts_manifest.sh" "${REMOTE_HOST}:~/${MANIFEST_HELPER_NAME}"; then
+            echo "🚨 DEPLOY FAILED at step R2 (scp release-scripts manifest -> ${REMOTE_HOST}): scp exited non-zero." >&2
+            exit 1
+        fi
+        UNPACK_OUTPUT="$(remote_run "bash ~/${UNPACK_HELPER_NAME} ~/${SCRIPTS_BUNDLE_NAME} ~/${REMOTE_DEPLOY_DIR}" 2>&1)"
+        if ! echo "$UNPACK_OUTPUT" | grep -q "^OK:"; then
+            echo "🚨 DEPLOY FAILED at step R2 (unpacking scripts bundle on ${REMOTE_HOST}): the box's ops scripts may now be in an incomplete state - investigate before retrying. Raw output was:" >&2
+            echo "$UNPACK_OUTPUT" >&2
+            exit 1
+        fi
+        echo "$UNPACK_OUTPUT"
+        # Clean up the shipped helper files off the box - a failure here doesn't undo the
+        # (already-verified) unpack, so it's reported but not fatal.
+        remote_run "rm -f ~/${SCRIPTS_BUNDLE_NAME} ~/${UNPACK_HELPER_NAME} ~/${MANIFEST_HELPER_NAME}" \
+            || echo "Warning: could not clean up shipped scripts-bundle helper files on ${REMOTE_HOST} - harmless, but worth a look." >&2
+    fi
+
+    # Step R3: resolve the Windows-side home directory (SFTP's "~" != WSL bash's "~" - see
     # header comment). Split from the load step so a wslpath/cmd.exe failure is never
     # misreported as a docker load failure.
-    echo "== [R2/R8] Resolving Windows-side home directory on ${REMOTE_HOST} =="
+    echo "== [R3/R10] Resolving Windows-side home directory on ${REMOTE_HOST} =="
     WIN_HOME_OUTPUT="$(remote_run "wslpath -u \"\$(cmd.exe /c echo %USERPROFILE% | tr -d '\\r')\"" 2>&1)"
     WIN_HOME="$(echo "$WIN_HOME_OUTPUT" | tail -1)"
     if [ -z "$WIN_HOME" ]; then
-        echo "🚨 DEPLOY FAILED at step R2 (resolve WIN_HOME on ${REMOTE_HOST}): got empty output. Raw output was:" >&2
+        echo "🚨 DEPLOY FAILED at step R3 (resolve WIN_HOME on ${REMOTE_HOST}): got empty output. Raw output was:" >&2
         echo "$WIN_HOME_OUTPUT" >&2
         exit 1
     fi
 
-    # Step R3: load the artifact on the box - no rebuild, ever (REQ-DEPLOY-001).
-    echo "== [R3/R8] Loading ${ARTIFACT_NAME} into Docker on ${REMOTE_HOST} =="
+    # Step R4: load the artifact on the box - no rebuild, ever (REQ-DEPLOY-001).
+    echo "== [R4/R10] Loading ${ARTIFACT_NAME} into Docker on ${REMOTE_HOST} =="
     LOAD_OUTPUT="$(remote_run "docker load -i \"${WIN_HOME}/${ARTIFACT_NAME}\"" 2>&1)"
     LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
     if [ -z "$LOADED_REF" ]; then
-        echo "🚨 DEPLOY FAILED at step R3 (docker load on ${REMOTE_HOST}): could not determine the loaded image reference. Raw output was:" >&2
+        echo "🚨 DEPLOY FAILED at step R4 (docker load on ${REMOTE_HOST}): could not determine the loaded image reference. Raw output was:" >&2
         echo "$LOAD_OUTPUT" >&2
         exit 1
     fi
 
-    # Step R4: clean up the shipped tarball off the box - separately checked so a failure here
+    # Step R5: clean up the shipped tarball off the box - separately checked so a failure here
     # (disk full, permissions) is never silently swallowed by the load step's own success.
-    echo "== [R4/R8] Removing the shipped tarball from ${REMOTE_HOST} =="
+    echo "== [R5/R10] Removing the shipped tarball from ${REMOTE_HOST} =="
     if ! remote_run "rm \"${WIN_HOME}/${ARTIFACT_NAME}\""; then
-        echo "🚨 DEPLOY FAILED at step R4 (rm shipped tarball on ${REMOTE_HOST}): the image loaded fine (step R3), but cleanup failed - investigate disk/permissions on the box before retrying." >&2
+        echo "🚨 DEPLOY FAILED at step R5 (rm shipped tarball on ${REMOTE_HOST}): the image loaded fine (step R4), but cleanup failed - investigate disk/permissions on the box before retrying." >&2
         exit 1
     fi
 
-    # Step R5: retag + recreate, executed ON the box - never via a Mac-side remote Docker
+    # Step R6: retag + recreate, executed ON the box - never via a Mac-side remote Docker
     # context against this checkout's local YAML (see top-of-file comment: the box's own
     # docker-compose.prod.local.yml is the one that must apply).
     COMPOSE_IMAGE="${PROJECT_NAME}-${SERVICE_NAME}:latest"
-    echo "== [R5/R8] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} on ${REMOTE_HOST} =="
+    echo "== [R6/R10] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} on ${REMOTE_HOST} =="
     if ! remote_run "docker tag ${LOADED_REF} ${COMPOSE_IMAGE}"; then
-        echo "🚨 DEPLOY FAILED at step R5 (docker tag on ${REMOTE_HOST})." >&2
+        echo "🚨 DEPLOY FAILED at step R6 (docker tag on ${REMOTE_HOST})." >&2
         exit 1
     fi
 
-    # Step R6 (bugfix-021): ensure shared/active_env.json exists as a real FILE, not a
+    # Step R7 (bugfix-021): ensure shared/active_env.json exists as a real FILE, not a
     # directory, before `docker compose up -d`'s bind mount touches it. Docker silently
     # creates a directory at a missing bind-mount source path - since nothing in this deploy
     # path (nor the retired deploy_and_verify.sh before it) ever wrote this file, every prod
@@ -238,44 +301,44 @@ if [ "$REMOTE" -eq 1 ]; then
     # watchdog.py's env-mismatch safety check on both apps. Same schema/intent as
     # env_lock.sh's env_lock_acquire, which the LOCAL (dev) path already gets for free via
     # env_lock_acquire below - prod is never owner-locked (CLAUDE.md), so owner is always null.
-    echo "== [R6/R8] Ensuring shared/active_env.json is a real file on ${REMOTE_HOST} (bugfix-021) =="
+    echo "== [R7/R10] Ensuring shared/active_env.json is a real file on ${REMOTE_HOST} (bugfix-021) =="
     ACTIVE_ENV_STATE="$(remote_run "cd ~/${REMOTE_DEPLOY_DIR} && mkdir -p shared && if [ -d shared/active_env.json ]; then if [ -z \"\$(ls -A shared/active_env.json)\" ]; then rmdir shared/active_env.json && echo REMOVED_EMPTY_DIR; else echo NONEMPTY_DIR; fi; else echo OK; fi" 2>&1)"
     if echo "$ACTIVE_ENV_STATE" | grep -q "NONEMPTY_DIR"; then
-        echo "🚨 DEPLOY FAILED at step R6 (shared/active_env.json on ${REMOTE_HOST}): it's a NON-EMPTY directory, not the expected file - refusing to remove it automatically. Investigate by hand before retrying." >&2
+        echo "🚨 DEPLOY FAILED at step R7 (shared/active_env.json on ${REMOTE_HOST}): it's a NON-EMPTY directory, not the expected file - refusing to remove it automatically. Investigate by hand before retrying." >&2
         exit 1
     fi
     if ! echo "$ACTIVE_ENV_STATE" | grep -qE "OK|REMOVED_EMPTY_DIR"; then
-        echo "🚨 DEPLOY FAILED at step R6 (checking shared/active_env.json state on ${REMOTE_HOST}): unexpected output:" >&2
+        echo "🚨 DEPLOY FAILED at step R7 (checking shared/active_env.json state on ${REMOTE_HOST}): unexpected output:" >&2
         echo "$ACTIVE_ENV_STATE" >&2
         exit 1
     fi
     UPDATED_AT="$(date -u +%Y-%m-%dT%H:%M:%S+00:00)"
     if ! remote_run "printf '{\"active_env\": \"prod\", \"owner\": null, \"updated_at\": \"${UPDATED_AT}\"}\n' > ~/${REMOTE_DEPLOY_DIR}/shared/active_env.json"; then
-        echo "🚨 DEPLOY FAILED at step R6 (writing shared/active_env.json on ${REMOTE_HOST})." >&2
+        echo "🚨 DEPLOY FAILED at step R7 (writing shared/active_env.json on ${REMOTE_HOST})." >&2
         exit 1
     fi
     ACTIVE_ENV_VERIFY="$(remote_run "test -f ~/${REMOTE_DEPLOY_DIR}/shared/active_env.json && echo FILE || echo NOTFILE")"
     if [ "$ACTIVE_ENV_VERIFY" != "FILE" ]; then
-        echo "🚨 DEPLOY FAILED at step R6 (verifying shared/active_env.json is a file on ${REMOTE_HOST}): got '${ACTIVE_ENV_VERIFY}'." >&2
+        echo "🚨 DEPLOY FAILED at step R7 (verifying shared/active_env.json is a file on ${REMOTE_HOST}): got '${ACTIVE_ENV_VERIFY}'." >&2
         exit 1
     fi
 
     REMOTE_COMPOSE="cd ~/${REMOTE_DEPLOY_DIR} && docker compose --project-directory . -f docker/docker-compose.prod.yml -f docker/docker-compose.prod.local.yml"
-    echo "== [R7/R8] Recreating ${SERVICE_NAME} on ${REMOTE_HOST} (docker compose up -d --no-build) =="
+    echo "== [R8/R10] Recreating ${SERVICE_NAME} on ${REMOTE_HOST} (docker compose up -d --no-build) =="
     if ! remote_run "${REMOTE_COMPOSE} up -d --no-build ${SERVICE_NAME}"; then
-        echo "🚨 DEPLOY FAILED at step R7 (docker compose up -d on ${REMOTE_HOST})." >&2
+        echo "🚨 DEPLOY FAILED at step R8 (docker compose up -d on ${REMOTE_HOST})." >&2
         exit 1
     fi
 
     CONTAINER_NAME="${PROJECT_NAME}-${SERVICE_NAME}-1"
 
-    # Step R8: confirm the container is actually running, not just that `up -d` exited 0 -
+    # Step R9: confirm the container is actually running, not just that `up -d` exited 0 -
     # compose can return success even if the container immediately crashed (restart policy is
     # "no" repo-wide, so a crash shows as Exited, not a silent respawn-loop).
-    echo "== [R8/R8] Confirming ${CONTAINER_NAME} is running on ${REMOTE_HOST} =="
+    echo "== [R9/R10] Confirming ${CONTAINER_NAME} is running on ${REMOTE_HOST} =="
     CONTAINER_STATUS="$(remote_run "docker inspect --format '{{.State.Status}}' ${CONTAINER_NAME}" 2>&1)"
     if [ "$CONTAINER_STATUS" != "running" ]; then
-        echo "🚨 DEPLOY FAILED at step R8 (${CONTAINER_NAME} on ${REMOTE_HOST}): expected status 'running', got '${CONTAINER_STATUS}'." >&2
+        echo "🚨 DEPLOY FAILED at step R9 (${CONTAINER_NAME} on ${REMOTE_HOST}): expected status 'running', got '${CONTAINER_STATUS}'." >&2
         remote_run "docker logs ${CONTAINER_NAME} --tail 20" >&2 2>&1 || true
         exit 1
     fi
@@ -315,6 +378,16 @@ if [ "$REMOTE" -eq 1 ]; then
 fi
 
 # --- Local path (env=dev always; env=prod only with --local) ---
+
+# bugfix-043: the scripts bundle (if present, see HAVE_SCRIPTS_BUNDLE above) is deliberately
+# NEVER unpacked here. Local/dev deploys run against this very git checkout - its ops scripts
+# are already current by construction (they're whatever's on disk right now), and unpacking the
+# bundle on top would dirty tracked files for no benefit while creating a real risk of masking
+# an uncommitted local edit to one of those scripts. The bundle exists purely for the remote/
+# prod path above, where the deploy directory is NOT a git checkout (Feature 035).
+if [ "$HAVE_SCRIPTS_BUNDLE" -eq 1 ]; then
+    echo "Note: scripts bundle present for ${APP} v${VERSION} but not applied - local/dev deploys use this checkout's own ops scripts as-is (bugfix-043)."
+fi
 
 # Cross-clone env lock + mandatory per-clone local-override file (CLAUDE.md's "Multi-clone
 # lock"/"dev/prod data is also a singleton across clones" sections - the same 2026-07-30

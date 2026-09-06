@@ -134,14 +134,20 @@ part of this incident at all.)
 - Config wiring: `health_check_port` explicit in all 4 `denidin-app` config files (8100 dev/prod,
   0/disabled in test/example).
 
-## Additional scope surfaced this session (2026-09-01) — not yet designed or implemented
+## Additional scope surfaced this session (2026-09-01) — triaged 2026-09-06
 
 Found while restarting real prod for an unrelated reason (stale ledger index — see
 `specs/done/065-august-ledger-audit-apply/`) and while restoring the sibling spec above. Both
 are the same *class* of problem this bugfix already exists to solve — a piece of external/startup
 state that's checked or written once, trusted, and never re-verified — just surfacing in
-different places than the ngrok check itself. Recording as scope for whoever designs the next
-increment of this branch, not implementing here:
+different places than the ngrok check itself.
+
+**Triage (2026-09-06, explicit human decision)**: item 1 left out of this bugfix entirely (not
+understood/wanted as in-scope here); item 2 pulled into this bugfix and implemented same day (see
+"Shared ops-scripts bundling" below); item 3 (Feature 068's webapp) deferred — when that branch
+lands, its own release/deploy tooling should follow the identical bundling pattern established
+here, per explicit user confirmation ("when deploy webapp arrives with 68 - it also does the
+same").
 
 1. **`scripts/deploy_release.sh` writes a stale JSON schema into `shared/active_env.json` on
    every real prod deploy.** Step R6 still writes `{"active_env": "prod", "owner": null, ...}`
@@ -171,8 +177,55 @@ increment of this branch, not implementing here:
    incident. Worth considering whether the prober (or a startup check in the health server) should
    verify these scripts' provenance/version before or as part of using them.
 
-Neither of the above is designed or implemented yet — flagging as scope, per instruction, not
-building it out.
+Item 1 (`deploy_release.sh`'s stale `active_env.json` schema) is explicitly left out of this
+bugfix — see triage above.
+
+## Shared ops-scripts bundling (2026-09-06, implements gap #2 above)
+
+Both apps' release artifacts now carry a second tarball, `<app>-v<version>-scripts.tar.gz`,
+alongside the existing Docker image tarball — the same host-side ops scripts that drive
+restart/recovery on the real prod box (`scripts/run_all.sh`, `stop_all.sh`, `env_lock.sh`,
+`killall_containers.sh`, each app's `run_*.sh`/`stop_*.sh`, and `scripts/health_monitoring/
+prober.py`), which previously could only ever be manually synced onto `~/denidin-prod` (not a git
+checkout — Feature 035) and had already been caught silently stale once (2026-08-31, see gap #2's
+original writeup above).
+
+- **Canonical manifest**: `scripts/lib/release_scripts_manifest.sh` — one `RELEASE_SCRIPTS_BUNDLE_FILES`
+  array, sourced by both `cut_release.sh` (bundling) and `scripts/lib/unpack_scripts_bundle.sh`
+  (verification after extraction), so the two lists can never drift apart.
+- **`cut_release.sh`**: refuses to cut (before any side effect) if any manifest file is missing
+  from the checkout; builds `<app>-v<version>-scripts.tar.gz` right after the existing `docker
+  save` step; records it in the JSON manifest as `"scripts_bundle"`; reverts cleanly (no commit)
+  if bundling fails. Symmetric for both apps (`denidin-app` and `morning-mcp-app`) — the manifest
+  itself already spans both apps' own `run_*.sh`/`stop_*.sh`, so no app-specific branching was
+  needed in `cut_release.sh` itself.
+- **`scripts/lib/unpack_scripts_bundle.sh`**: extracts the bundle into a target directory and
+  verifies every manifest file actually landed, failing loudly and naming exactly what's missing
+  otherwise. Runs identically whether invoked directly (this is how
+  `scripts/tests/test_release_scripts_bundle.py` proves the mechanism with no SSH and no real
+  infrastructure) or shipped to the box and run there over SSH.
+- **`deploy_release.sh`**: the **remote/prod path only** ships the bundle tar + the unpack helper
+  + the manifest script to the box (new step R2, pushing the old R2-R8 down to R3-R10) and runs
+  the helper there via `remote_run`, then cleans up the shipped files off the box. **The
+  local/dev path (and `--local`-forced prod) never unpacks the bundle** — a local deploy already
+  runs against this very git checkout, so its ops scripts are current by construction; unpacking
+  on top would dirty tracked files for no benefit. **Backward compatible**: a version cut before
+  this feature existed simply has no bundle file (`HAVE_SCRIPTS_BUNDLE=0`) — deploying it logs a
+  note and skips the unpack rather than failing.
+- **Tests**: `scripts/tests/test_release_scripts_bundle.py` (7 tests, all real subprocess calls,
+  no mocking) — bundle creation + manifest field, the checkout-missing-a-file refusal, the unpack
+  helper's success and two distinct failure modes (incomplete bundle, missing bundle file
+  entirely), local deploy never touching tracked files, and the pre-bundle-version backward-compat
+  path. `scripts/tests/conftest.py`'s `scratch_repo`/`scratch_deploy_repo` fixtures now stub every
+  manifest file (including a full `apps/morning-mcp-app/` stub, previously absent from both
+  fixtures) plus a no-op `scripts/env_lock.sh`/local-override compose file, so the new
+  `cut_release.sh` precondition is satisfiable without dragging real cross-clone locking into
+  these tests. All pre-existing `scripts/tests/`/`scripts/health_monitoring/tests/` tests
+  (41 total) re-verified green after this change.
+- **Still no automated coverage for the actual remote/SSH ship+unpack steps in
+  `deploy_release.sh`** (same gap as the rest of that path, per `test_deploy_release.py`'s own
+  docstring) — relies on a manual gate against real infrastructure, same as everything else on
+  that path.
 
 ## How this branch would land
 

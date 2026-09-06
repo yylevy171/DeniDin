@@ -3,6 +3,13 @@
 # artifact, appends CHANGELOG.md/RELEASES.md entries, and applies a git tag. Deploys nothing
 # anywhere - see scripts/deploy_release.sh for that (Feature 034, REQ-REL-001/005).
 #
+# Also bundles the shared host-side ops-scripts (bugfix-043 - run_all.sh, stop_all.sh,
+# env_lock.sh, killall_containers.sh, each app's own run_*.sh/stop_*.sh, and the
+# health-monitoring prober) into a sibling *-scripts.tar.gz artifact - see
+# scripts/lib/release_scripts_manifest.sh for the exact file list. Symmetric across both apps
+# (whichever is cut/deployed most recently is what keeps the scripts fresh on a real, non-git
+# deploy directory like prod's) - see scripts/deploy_release.sh for the unpack side.
+#
 # Also sweeps specs/done/ (2026-08-20 reorganization): every spec sitting FLAT directly under
 # specs/done/ (a finished feature or bugfix not yet in any cut release - see CLAUDE.md's
 # specs/done/ note and specs/bugfixes/README.md) moves into this release's own
@@ -89,6 +96,12 @@ APP_DIR="apps/${APP}"
 TAG="${APP}-v${VERSION}"
 TAR_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.tar"
 MANIFEST_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.json"
+# bugfix-043: shared host-side ops-scripts bundle, packaged into EVERY app's artifact
+# (symmetric - whichever app was cut/deployed most recently is what keeps the scripts fresh,
+# see scripts/lib/release_scripts_manifest.sh's own header comment for why).
+SCRIPTS_BUNDLE_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}-scripts.tar.gz"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/lib/release_scripts_manifest.sh"
 
 # --- Preconditions (fail before any side effect) ---
 
@@ -104,6 +117,19 @@ fi
 
 if [ -n "$(git status --porcelain "$APP_DIR")" ]; then
     echo "Error: ${APP_DIR} has uncommitted changes - commit or stash before cutting a release." >&2
+    exit 1
+fi
+
+# bugfix-043: every file the shared ops-scripts bundle needs must exist BEFORE anything
+# irreversible happens - a real cut must never produce a partial/incomplete bundle silently.
+MISSING_BUNDLE_FILES=()
+for f in "${RELEASE_SCRIPTS_BUNDLE_FILES[@]}"; do
+    if [ ! -f "${REPO_ROOT}/${f}" ]; then
+        MISSING_BUNDLE_FILES+=("$f")
+    fi
+done
+if [ ${#MISSING_BUNDLE_FILES[@]} -gt 0 ]; then
+    echo "Error: cannot build the shared scripts bundle - missing from this checkout: ${MISSING_BUNDLE_FILES[*]}" >&2
     exit 1
 fi
 
@@ -152,6 +178,7 @@ _revert_uncommitted_release_files() {
         done
         rmdir "$DONE_VERSION_DIR" 2>/dev/null || true
     fi
+    rm -f "$SCRIPTS_BUNDLE_PATH"
 }
 
 # 1. Update VERSION (uncommitted)
@@ -251,6 +278,21 @@ if [ "$SAVE_STATUS" -ne 0 ]; then
     exit 1
 fi
 
+# 5b. bugfix-043: build the shared ops-scripts bundle - also before any commit, same
+#     leave-zero-trace-on-failure discipline as the two docker steps above. Every file in it was
+#     already confirmed present in the preconditions section, so a failure here means something
+#     went wrong with tar itself, not a missing source file.
+set +e
+tar -czf "$SCRIPTS_BUNDLE_PATH" -C "$REPO_ROOT" "${RELEASE_SCRIPTS_BUNDLE_FILES[@]}"
+BUNDLE_STATUS=$?
+set -e
+if [ "$BUNDLE_STATUS" -ne 0 ]; then
+    echo "Error: building the shared scripts bundle failed - reverting VERSION/CHANGELOG.md/RELEASES.md, no commit made." >&2
+    rm -f "$TAR_PATH" "$SCRIPTS_BUNDLE_PATH"
+    _revert_uncommitted_release_files
+    exit 1
+fi
+
 # 6. NOW commit - both docker steps already succeeded, so this commit will always have a
 #    matching artifact/tag. Includes the specs/done/ sweep (already staged by git mv) and any
 #    pointer-file rewrites from step 3c (sed edits, not yet staged) in the SAME commit.
@@ -269,11 +311,12 @@ cat > "$MANIFEST_PATH" <<EOF
   "version": "${VERSION}",
   "date": "${RELEASE_DATE}",
   "git_commit": "${COMMIT_SHA}",
-  "image_id": "${IMAGE_ID}"
+  "image_id": "${IMAGE_ID}",
+  "scripts_bundle": "$(basename "$SCRIPTS_BUNDLE_PATH")"
 }
 EOF
 
 # 8. Tag the commit
 git tag "$TAG"
 
-echo "Cut ${TAG} successfully: ${TAR_PATH}"
+echo "Cut ${TAG} successfully: ${TAR_PATH} (+ scripts bundle: ${SCRIPTS_BUNDLE_PATH})"

@@ -19,12 +19,67 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CUT_RELEASE_SCRIPT = REPO_ROOT / "scripts" / "cut_release.sh"
 DEPLOY_RELEASE_SCRIPT = REPO_ROOT / "scripts" / "deploy_release.sh"
+RELEASE_SCRIPTS_MANIFEST = REPO_ROOT / "scripts" / "lib" / "release_scripts_manifest.sh"
+UNPACK_SCRIPTS_BUNDLE_SCRIPT = REPO_ROOT / "scripts" / "lib" / "unpack_scripts_bundle.sh"
 
 TRIVIAL_DOCKERFILE = "FROM scratch\nCOPY . /\n"
+
+# Mirrors scripts/lib/release_scripts_manifest.sh's RELEASE_SCRIPTS_BUNDLE_FILES - kept as a
+# literal list here (not sourced/parsed from the real file) since these tests need to physically
+# create each path as a scratch stub file, which is a different job than the real manifest's
+# (naming what a real cut must find on disk). Deliberately duplicated as a real Python literal
+# rather than shelling out to parse bash array syntax, but the actual manifest sourcing/matching
+# logic under test is scripts/lib/release_scripts_manifest.sh + unpack_scripts_bundle.sh
+# themselves, unmodified copies of the real files.
+BUNDLE_STUB_FILES = (
+    "scripts/run_all.sh",
+    "scripts/stop_all.sh",
+    "scripts/env_lock.sh",
+    "scripts/killall_containers.sh",
+    "scripts/health_monitoring/prober.py",
+    "apps/denidin-app/run_denidin.sh",
+    "apps/denidin-app/stop_denidin.sh",
+    "apps/morning-mcp-app/run_morning_mcp.sh",
+    "apps/morning-mcp-app/stop_morning_mcp.sh",
+)
 
 
 def _git(args, cwd):
     subprocess.run(["git"] + args, cwd=cwd, check=True, capture_output=True, text=True)
+
+
+def _add_scripts_bundle_files(repo):
+    """Creates a stub file for every path scripts/lib/release_scripts_manifest.sh's
+    RELEASE_SCRIPTS_BUNDLE_FILES lists (including a full apps/morning-mcp-app/ stub, which
+    scratch_repo/scratch_deploy_repo otherwise never create - both fixtures only build out
+    apps/denidin-app/), plus copies the real, unmodified scripts/lib/*.sh helpers in - so
+    cut_release.sh's bugfix-043 precondition check (every bundle file must exist in the
+    checkout) passes against these scratch repos exactly as it would against the real one."""
+    for rel_path in BUNDLE_STUB_FILES:
+        dest = repo / rel_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if rel_path == "scripts/env_lock.sh":
+            # deploy_release.sh's LOCAL path sources scripts/env_lock.sh (if present) and calls
+            # env_lock_require_local_override/env_lock_acquire - real scratch repos deliberately
+            # have no real cross-clone lock state, so this stub defines both as harmless no-ops
+            # rather than the real implementation, purely so cut_release.sh's bugfix-043
+            # precondition (every bundle file must exist) is satisfiable without dragging real
+            # multi-clone locking machinery into these tests.
+            dest.write_text(
+                "#!/bin/bash\n"
+                "env_lock_require_local_override() { :; }\n"
+                "env_lock_acquire() { :; }\n"
+            )
+        else:
+            dest.write_text("#!/bin/bash\necho stub\n")
+        os.chmod(dest, 0o755)
+
+    lib_dir = repo / "scripts" / "lib"
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    for src in (RELEASE_SCRIPTS_MANIFEST, UNPACK_SCRIPTS_BUNDLE_SCRIPT):
+        dest = lib_dir / src.name
+        shutil.copy(src, dest)
+        os.chmod(dest, 0o755)
 
 
 @pytest.fixture
@@ -52,6 +107,8 @@ def scratch_repo(tmp_path):
             dest = scripts_dir / src.name
             shutil.copy(src, dest)
             os.chmod(dest, 0o755)
+
+    _add_scripts_bundle_files(repo)
 
     _git(["add", "-A"], repo)
     _git(["commit", "-q", "-m", "initial"], repo)
@@ -112,6 +169,12 @@ def scratch_deploy_repo(tmp_path):
         "      context: ./apps/denidin-app\n"
         '    restart: "no"\n'
     )
+    # No-op local-override file, required to exist by the env_lock.sh stub's
+    # env_lock_require_local_override (see _add_scripts_bundle_files) once bugfix-043's scripts
+    # bundling makes scripts/env_lock.sh present in scratch repos - matches the real CLAUDE.md
+    # "mandatory per-clone docker-compose.<env>.local.yml" requirement, just satisfied trivially.
+    (docker_dir / "docker-compose.dev.local.yml").write_text("services: {}\n")
+    (docker_dir / "docker-compose.prod.local.yml").write_text("services: {}\n")
 
     scripts_dir = repo / "scripts"
     scripts_dir.mkdir()
@@ -120,6 +183,8 @@ def scratch_deploy_repo(tmp_path):
             dest = scripts_dir / src.name
             shutil.copy(src, dest)
             os.chmod(dest, 0o755)
+
+    _add_scripts_bundle_files(repo)
 
     _git(["add", "-A"], repo)
     _git(["commit", "-q", "-m", "initial"], repo)
