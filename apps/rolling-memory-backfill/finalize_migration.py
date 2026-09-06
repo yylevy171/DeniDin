@@ -8,7 +8,7 @@ so the app's first ``run_startup_daily_roll_sweep`` finds only the ≤ 2 un-roll
 leftover days and does no bulk archive on boot.
 
 ``main(argv=None) -> int``; ``sys.exit(main())``. ``--report-only`` writes
-nothing. See ``specs/done/070-rolling-memory-window/consolidator-spec.md`` §2.
+nothing. See ``specs/done/v0.5.4-70/070-rolling-memory-window/consolidator-spec.md`` §2.
 """
 import argparse
 import json

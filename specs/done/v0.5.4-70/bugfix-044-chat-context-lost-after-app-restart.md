@@ -17,12 +17,27 @@ priority until root cause is understood (some possible causes below are P0-shape
 more narrowly scoped).
 
 ## Status
-**Open — root cause NOT YET investigated.** Per Bug-Driven Development (METHODOLOGY.md §VII),
-this spec currently only records the reported symptom and available evidence. No code has been
-read or changed for this bug yet. Next step is root-cause investigation, to be presented for
-human approval before any test-gap analysis or fix work begins — this spec is being filed first,
-deliberately, rather than folding investigation and fix together the way bugfix-043 did (a
-process mistake corrected in real time, same session).
+**CLOSED — resolved by Feature 070 (released 0.5.4-70, deployed to prod 2026-09-06).**
+The failure mode is designed out: there is now **one long-lived `Session` per chat** that
+never expires or gets recreated, and "which session does this chat's next message append
+to?" is answered by a durable on-disk lookup (`chat_index.db`, SQLite `chat TEXT PRIMARY
+KEY`), rebuilt from disk on every `SessionManager` construction (`_reconcile_chat_index`).
+There is no in-memory `chat_to_session` state a recovery path can forget to populate, no
+orphaned-session recovery step at all (`recover_orphaned_sessions` deleted), and no
+`remove_from_index`/4-step cleanup (all deleted with `cleanup_service.py`).
+
+Verified live in prod across the 0.5.4-70 deploy restart (2026-09-06): **0 "Created new
+session" log lines**, and a real WhatsApp turn asking about a client from a conversation
+13+ days earlier ("על איזה לקוחה שאלתי אותך בתאריך 14.8?") was answered correctly from
+recalled `daily_summary` context — the exact "context lost after restart" symptom no longer
+reproduces.
+
+The secondary `pending_ledger_events` schema-rejection finding is closed too: `SessionManager`
+now tolerantly filters unknown persisted keys (WARNING, not `TypeError`) — see bugfix-035 H2.
+
+Mapping to Feature 070 acceptance scenarios: US1 restart scenario + AC-2. See
+[`specs/done/v0.5.4-70/070-rolling-memory-window/spec.md`](070-rolling-memory-window/spec.md)
+§"Legacy Defects and How the New Model Addresses Them".
 
 *(2026-09-02: In progress via Feature 070 — moved from `specs/bugfixes/` to `specs/in-progress/`.
 Per explicit user direction 2026-09-01, this is NOT worked as a standalone Bug-Driven Development
@@ -31,7 +46,7 @@ per chat resolved through a durable SQLite chat index (`_reconcile_chat_index` r
 disk on every restart), so there is no losable in-memory `chat_to_session` state and no
 orphan-recovery step to forget to populate; `remove_from_index` and the whole 4-step cleanup are
 deleted. Proven by Feature 070 US1 restart scenario + AC-2. See
-`specs/done/070-rolling-memory-window/spec.md` §"Legacy Defects". Final closure status note
+`specs/done/v0.5.4-70/070-rolling-memory-window/spec.md` §"Legacy Defects". Final closure status note
 is added at Feature 070 haleluya.)*
 
 ## Date Opened

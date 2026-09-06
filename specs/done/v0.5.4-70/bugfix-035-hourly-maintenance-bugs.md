@@ -18,14 +18,37 @@ rule set 2026-08-09.
 > hour it is left alone. The core fix is a one-line change.
 
 ## Status
-**Open — backlogged.** No fix designed. Per Bug-Driven Development (METHODOLOGY.md §VII), next
-step is human approval of the root causes before test-gap analysis.
+**CLOSED — resolved by Feature 070 (released 0.5.4-70, deployed to prod 2026-09-06).**
+All three defects are eliminated by the rolling-window redesign, not by a standalone
+Bug-Driven Development fix (per explicit user direction 2026-09-01):
+
+- **H1** — the hourly `SessionCleanupThread` → `transfer_session_to_long_term_memory`
+  cycle it looped on is **deleted**. Long-term memory is now written only by the nightly
+  daily-summary roll, via `MemoryManager.remember(collection_name=…)` (sanitizes on write)
+  with no raw `client.get_collection()` verify step, and group/1:1 chats share one
+  sanitized helper (`memory_collections.collection_name_for_chat`). The idempotent
+  `RollMarkerStore` (`claimed`→`committed`) makes reprocessing a day impossible.
+  Verified in prod: 0 `ERROR`/`Traceback`, 0 repeated summarization, post-deploy.
+- **H2** — `SessionManager` session load now filters unknown persisted keys (WARNING, not
+  `TypeError`). Verified in prod: startup catch-up sweep loaded every session with 0 errors.
+- **H3** — no `expired/YYYY-MM-DD/` shared directory exists anymore; a rolled day's messages
+  `Path.rename` into that chat's own `{session_dir}/archived/`. The `rglob(...)[0]`
+  test-isolation trap is gone with the model it depended on.
+
+The 27 pre-existing duplicate records in `memory_120363210094632983_at_g.us` were purged as
+part of the Feature 070 prod migration (`purge_legacy_summaries.py`, 2026-09-06 — 24,194
+legacy `session_summary` records removed across both canonical chats).
+
+Mapping to Feature 070 acceptance scenarios: H1 → AC-1 / US2 group-chat; H2 → US1 sc.6 + AC-5;
+H3 → US3 sc.5. See
+[`specs/done/v0.5.4-70/070-rolling-memory-window/spec.md`](070-rolling-memory-window/spec.md)
+§"Legacy Defects and How the New Model Addresses Them".
 
 *(2026-09-02: In progress via Feature 070 — moved from `specs/bugfixes/` to `specs/in-progress/`.
 Per explicit user direction 2026-09-01, H1/H2/H3 are NOT worked as a standalone Bug-Driven
 Development track; each is structurally eliminated by the Feature 070 redesign or fixed inline,
 proven by a named acceptance scenario — H1 → Feature 070 AC-1 / US2 group-chat scenario, H2 →
-US1 sc.6 + AC-5, H3 → US3 sc.5. See `specs/done/070-rolling-memory-window/spec.md`
+US1 sc.6 + AC-5, H3 → US3 sc.5. See `specs/done/v0.5.4-70/070-rolling-memory-window/spec.md`
 §"Legacy Defects and How the New Model Addresses Them". This spec's final closure status note is
 added at Feature 070 haleluya.)*
 
