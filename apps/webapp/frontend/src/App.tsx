@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { Image, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { THEMES, ThemeName } from "./theme";
 import {
   AuthError,
@@ -496,6 +496,11 @@ export default function App() {
           flexWrap: "wrap",
         }}
       >
+        <Image
+          source={{ uri: "/honigman-law-logo.png" }}
+          style={{ width: 34, height: 40, resizeMode: "contain" }}
+          accessibilityLabel="הוניגמן משרד עורכי דין"
+        />
         <Text style={{ fontSize: 17, fontWeight: "800", color: theme.accent }}>דני-דין · ארועים</Text>
         <View style={{ flex: 1 }} />
         <Text style={{ color: theme.textDim, fontSize: 13 }}>
