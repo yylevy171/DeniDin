@@ -3111,6 +3111,20 @@ class AIHandler:
                 assistant_msg_recipient = effective_chat_id if is_group else resolved_sender_phone
                 assistant_msg_recipient_name = (chat_name or effective_chat_id) if is_group else sender_name_val
 
+                # Feature 069: the bot reply's persisted timestamp. Live - the
+                # operator message's own wall-clock send time (request.timestamp,
+                # the Green API notification epoch). WhatsApp-export player replay
+                # - the injected ORIGINAL conversation time + 10s, so the reply
+                # sorts just after the operator turn it answers instead of
+                # sharing its exact second. This is the message
+                # `_run_post_turn_ledger_recognition` dates a `הסכם`/`בנק` event
+                # from (session.message_ids[-1], Decision #10).
+                replayed = bool(getattr(request.original_message, "is_replay", False))
+                assistant_source_ts = (
+                    None if request.timestamp is None
+                    else request.timestamp + (10 if replayed else 0)
+                )
+
                 if self.rbac_enabled and user_obj:
                     # Store user message with token limit
                     self.session_manager.add_message_with_token_limit(
@@ -3124,7 +3138,8 @@ class AIHandler:
                         recipient=user_msg_recipient,
                         recipient_name=user_msg_recipient_name,
                         ledger_event_ids=ledger_event_ids,
-                        message_id=request.message_id
+                        message_id=request.message_id,
+                        source_timestamp=request.timestamp
                     )
 
                     if should_reply:
@@ -3140,6 +3155,7 @@ class AIHandler:
                             recipient=assistant_msg_recipient,
                             recipient_name=assistant_msg_recipient_name,
                             mcp_calls=mcp_calls,
+                            source_timestamp=assistant_source_ts,
                         )
                 else:
                     # Existing behavior: regular add_message without token limits
@@ -3153,7 +3169,8 @@ class AIHandler:
                         recipient=user_msg_recipient,
                         recipient_name=user_msg_recipient_name,
                         ledger_event_ids=ledger_event_ids,
-                        message_id=request.message_id
+                        message_id=request.message_id,
+                        source_timestamp=request.timestamp
                     )
 
                     if should_reply:
@@ -3168,6 +3185,7 @@ class AIHandler:
                             recipient=assistant_msg_recipient,
                             recipient_name=assistant_msg_recipient_name,
                             mcp_calls=mcp_calls,
+                            source_timestamp=assistant_source_ts,
                         )
 
                 storage_note = (
@@ -3374,28 +3392,42 @@ class AIHandler:
     ) -> List[Dict]:
         """Feature 069: build the `input` list for the post-turn recognition call.
 
-        Only the last `ledger_recognition_context_window_hours` of the chat is
-        included (older messages excluded). Each windowed line is
-        `<message_id> [<role>] <content>`, with a `[✓ captured as <ids>]` marker
-        for a message that already produced a ledger event, its attachment's
-        extracted text, and the Morning MCP calls persisted on that message's
-        turn (arguments + real result). The reply just sent and this turn's own
-        MCP calls follow.
+        Only the last `ledger_recognition_context_window_hours` of the chat -
+        measured back from the NEWEST message in the session, not wall-clock
+        `now` - is included (older messages excluded). Anchoring on the newest
+        message keeps the WhatsApp-export player working: its replayed messages
+        carry their real (possibly weeks-old) conversation timestamps, and a
+        `now - 1h` cutoff would drop the whole replayed chat. Live is
+        unaffected - the newest message's timestamp is ~now.
+
+        Each windowed line is `<message_id> [<role>] <content>`, with a
+        `[✓ captured as <ids>]` marker for a message that already produced a
+        ledger event, its attachment's extracted text, and the Morning MCP calls
+        persisted on that message's turn (arguments + real result). The reply
+        just sent and this turn's own MCP calls follow.
         """
         window_hours = float(
             getattr(self.config, "ledger_recognition_context_window_hours", 1.0) or 1.0
         )
-        cutoff = now_local() - timedelta(hours=window_hours)
+        loaded = [
+            (mid, self.session_manager.load_message(session, mid))
+            for mid in session.message_ids
+        ]
+        loaded = [(mid, msg) for mid, msg in loaded if msg is not None]
+        msg_times = [
+            ts for _mid, msg in loaded
+            if (ts := self._parse_message_timestamp(getattr(msg, "timestamp", None))) is not None
+        ]
+        if not msg_times:
+            return []
+        cutoff = max(msg_times) - timedelta(hours=window_hours)
 
         lines = [
             f"THE CONVERSATION WINDOW (the last {window_hours:g}h, oldest first) - "
             "'<message_id> [<role>] <content>':"
         ]
         excluded = 0
-        for mid in session.message_ids:
-            msg = self.session_manager.load_message(session, mid)
-            if msg is None:
-                continue
+        for mid, msg in loaded:
             ts = self._parse_message_timestamp(getattr(msg, "timestamp", None))
             if ts is not None and ts < cutoff:
                 excluded += 1
@@ -3953,11 +3985,18 @@ class AIHandler:
                     chat_id=effective_chat_id, role="user", content=request.user_prompt,
                     user_role=user_obj.role, token_limit=user_obj.token_limit,
                     sender=sender or effective_chat_id, message_id=request.message_id,
+                    source_timestamp=request.timestamp,
                 )
                 self.session_manager.add_message_with_token_limit(
                     chat_id=effective_chat_id, role="assistant", content=response_text,
                     user_role=user_obj.role, token_limit=user_obj.token_limit,
                     recipient=sender or effective_chat_id,
+                    source_timestamp=(
+                        None if request.timestamp is None
+                        else request.timestamp + (
+                            10 if getattr(request.original_message, "is_replay", False) else 0
+                        )
+                    ),
                 )
             except Exception as e:
                 logger.error(f"[054] Failed to store reminder-approval messages in session: {e}", exc_info=True)

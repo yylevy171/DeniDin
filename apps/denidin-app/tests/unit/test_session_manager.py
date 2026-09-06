@@ -139,6 +139,63 @@ class TestSenderRecipientRealIdentifiers:
         assert message_data["recipient_name"] == "Godfather"
 
 
+class TestSourceTimestamp:
+    """Feature 069: Message.timestamp is the time the event actually happened.
+    An inbound turn passes the Green API notification epoch (source_timestamp) -
+    which the WhatsApp-export player injects as the message's ORIGINAL
+    conversation time - and it must be persisted verbatim (as local ISO),
+    NOT replaced with processing time. received_at stays processing time.
+    """
+
+    def test_source_timestamp_is_persisted_as_message_timestamp(self, session_manager):
+        # 2026-01-15 09:30:00 +02:00  ->  epoch 1736926200
+        epoch = 1736926200
+        message_id = session_manager.add_message(
+            chat_id="1234567890@c.us", role="user", content="Hi", user_role="client",
+            source_timestamp=epoch,
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+
+        from src.utils.time_utils import local_from_timestamp
+        assert message_data["timestamp"] == local_from_timestamp(epoch).isoformat()
+        # received_at is still "now", not the source epoch
+        assert message_data["received_at"] != message_data["timestamp"]
+
+    def test_absent_source_timestamp_falls_back_to_processing_time(self, session_manager):
+        message_id = session_manager.add_message(
+            chat_id="1234567890@c.us", role="assistant", content="Reply", user_role="client",
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+        assert message_data["timestamp"] == message_data["received_at"]
+
+    def test_source_timestamp_survives_token_limit_path(self, session_manager):
+        from src.models.user import Role
+        epoch = 1736926200
+        session_manager.add_message_with_token_limit(
+            chat_id="1234567890@c.us", role="user", content="Hi", user_role=Role.GODFATHER,
+            token_limit=100000, source_timestamp=epoch,
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        mid = session.message_ids[-1]
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{mid}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+        from src.utils.time_utils import local_from_timestamp
+        assert message_data["timestamp"] == local_from_timestamp(epoch).isoformat()
+
+
 class TestRealRoleAndAiRequiredRole:
     """2026-08-19: Message.role is now the REAL role ("admin"/"godfather"/
     "client"/"assistant"), computed from the caller's structural role

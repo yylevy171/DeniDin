@@ -59,6 +59,13 @@ class WhatsAppMessage:
     # Used for Message.recipient_name when this message's chat is the
     # recipient (a group message is addressed to the whole group).
     chat_name: str = ""
+    # Feature 069: True when this notification was synthesized by the
+    # WhatsApp-export player (player/notification_synth.py sets event["replay"]),
+    # not received live from Green API. The player injects each message's
+    # ORIGINAL conversation timestamp into event["timestamp"]; downstream
+    # (AIHandler._finalize_response) uses this flag to date the bot's own reply
+    # as "just after" that original moment (+10s) rather than at wall-clock now.
+    is_replay: bool = False
 
     @classmethod
     def from_notification(cls, notification) -> 'WhatsAppMessage':
@@ -101,6 +108,7 @@ class WhatsAppMessage:
         # Detect if it's a group chat (group chats have @g.us in chat_id)
         is_group = '@g.us' in chat_id
         timestamp = event.get('timestamp', int(now_local().timestamp()))
+        is_replay = bool(event.get('replay', False))
 
         # Generate unique message ID (UUID) for tracking throughout lifecycle
         message_id = str(uuid.uuid4())
@@ -119,7 +127,8 @@ class WhatsAppMessage:
             is_group=is_group,
             received_timestamp=received_timestamp,
             sender_display_name=sender_display_name,
-            chat_name=chat_name
+            chat_name=chat_name,
+            is_replay=is_replay,
         )
 
 

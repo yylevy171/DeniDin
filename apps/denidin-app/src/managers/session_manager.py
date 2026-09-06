@@ -16,7 +16,7 @@ import tiktoken
 
 from src.models.user import Role
 from src.utils.logger import get_logger
-from src.utils.time_utils import now_local
+from src.utils.time_utils import now_local, local_from_timestamp
 
 logger = get_logger(__name__)
 
@@ -200,7 +200,8 @@ class SessionManager:
         extracted_text: Optional[str] = None,
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None,
-        mcp_calls: Optional[List[Dict]] = None
+        mcp_calls: Optional[List[Dict]] = None,
+        source_timestamp: Optional[int] = None
     ) -> str:
         """
         Add message to session.
@@ -260,6 +261,18 @@ class SessionManager:
         # Create message
         message_id = message_id or str(uuid.uuid4())
         now = now_local().isoformat()
+        # Feature 069: Message.timestamp is the time the event actually
+        # happened, not when we persisted it. For an inbound turn the caller
+        # passes the Green API notification epoch (source_timestamp) - which
+        # the WhatsApp-export player injects as the message's ORIGINAL
+        # conversation time (player/notification_synth.py) and which
+        # WhatsAppMessage.from_notification already surfaces. Falls back to
+        # processing time only when genuinely absent (assistant replies,
+        # synthetic internal turns). received_at stays processing time.
+        event_ts = (
+            local_from_timestamp(source_timestamp).isoformat()
+            if source_timestamp is not None else now
+        )
 
         # 2026-08-19: compute the real, persisted role + the OpenAI-safe
         # derived role. `role`/`user_role` themselves are never persisted -
@@ -287,7 +300,7 @@ class SessionManager:
             sender_name=sender_name,
             recipient=recipient,
             recipient_name=recipient_name,
-            timestamp=now,
+            timestamp=event_ts,
             received_at=now,
             was_received=True,
             order_num=session.message_counter,
@@ -751,7 +764,8 @@ class SessionManager:
         recipient_name: Optional[str] = None,
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None,
-        mcp_calls: Optional[List[Dict]] = None
+        mcp_calls: Optional[List[Dict]] = None,
+        source_timestamp: Optional[int] = None
     ) -> str:
         """
         Add message and update session token count.
@@ -782,7 +796,7 @@ class SessionManager:
             sender=sender, sender_name=sender_name,
             recipient=recipient, recipient_name=recipient_name,
             ledger_event_ids=ledger_event_ids, message_id=message_id,
-            mcp_calls=mcp_calls
+            mcp_calls=mcp_calls, source_timestamp=source_timestamp
         )
 
         # Count and add tokens
@@ -806,7 +820,8 @@ class SessionManager:
         recipient_name: Optional[str] = None,
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None,
-        mcp_calls: Optional[List[Dict]] = None
+        mcp_calls: Optional[List[Dict]] = None,
+        source_timestamp: Optional[int] = None
     ) -> str:
         """
         Add message with token limit enforcement and auto-pruning.
@@ -857,7 +872,7 @@ class SessionManager:
             sender=sender, sender_name=sender_name,
             recipient=recipient, recipient_name=recipient_name,
             ledger_event_ids=ledger_event_ids, message_id=message_id,
-            mcp_calls=mcp_calls
+            mcp_calls=mcp_calls, source_timestamp=source_timestamp
         )
 
     def calculate_session_tokens(self, chat_id: str) -> int:

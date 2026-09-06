@@ -278,7 +278,7 @@ class MediaHandler:
             self._store_media_turn(
                 chat_id, sender_phone, sender_display_name or sender_phone, media_type,
                 caption, summary, ledger_event_ids, message_id, relative_image_path,
-                extracted_text, is_group, chat_name
+                extracted_text, is_group, chat_name, source_timestamp=timestamp
             )
 
             return {
@@ -306,7 +306,7 @@ class MediaHandler:
         caption: str, summary: str, ledger_event_ids: Optional[list] = None,
         message_id: Optional[str] = None, image_path: Optional[str] = None,
         extracted_text: Optional[str] = None, is_group: bool = False,
-        chat_name: Optional[str] = None
+        chat_name: Optional[str] = None, source_timestamp: Optional[int] = None
     ) -> None:
         """bugfix-017: store both sides of a media turn in the session, mirroring
         AIHandler._finalize_response's user+assistant storage for text turns.
@@ -372,6 +372,7 @@ class MediaHandler:
                 recipient=user_msg_recipient, recipient_name=user_msg_recipient_name,
                 ledger_event_ids=ledger_event_ids, message_id=message_id,
                 image_path=image_path, extracted_text=extracted_text,
+                source_timestamp=source_timestamp,
             )
             self.session_manager.add_message(
                 chat_id=chat_id, role="assistant", content=summary,

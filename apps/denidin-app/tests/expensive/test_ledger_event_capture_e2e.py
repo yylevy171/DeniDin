@@ -17,10 +17,17 @@ Consequences for this file (T052, acceptance-regression-map.md Tier 1):
 - Every test seeds an exact-match Morning client first, then follows the routed
   turn (+ any resolution detour) with a `ClarificationAnswerBank` until the
   event lands.
-- `event_datetime` is NOT asserted against the webhook timestamp anymore - 069
-  dates `הסכם`/`בנק` from the COMPLETING (detour) message, and the Phase 11
-  acceptance helpers list `event_datetime` in `PROVENANCE_IGNORE` for exactly
-  this reason.
+- `event_datetime` IS asserted (2026-09-06): 069 dates `הסכם`/`בנק` from the
+  COMPLETING (last) message's own timestamp (Decision #10), and
+  `SessionManager.add_message` now persists the Green API notification epoch
+  (`source_timestamp`) onto `Message.timestamp` instead of stamping processing
+  time. So the check is direct and clock-free: load the completing `Message`
+  (`event["message_id"]`), format its persisted `.timestamp` the same way
+  `LedgerEventManager._message_epoch` does, and assert it equals
+  `event["event_datetime"]`. No fixed clock, no pinned date - webhooks carry
+  real wall-clock timestamps. (The Phase 11 acceptance helpers still list
+  `event_datetime` in `PROVENANCE_IGNORE` because that manifest-fidelity check
+  has no completing-message reference; this is the direct coverage.)
 
 Deleted 2026-09-06 (superseded by Feature 069's own Phase 11 acceptance suite,
 `tests/expensive/test_e2e_media_client_resolution.py`, which drives the same
@@ -84,6 +91,7 @@ from tests.billed.denidin_mcp_e2e_helpers import (
 from tests.e2e_helpers import (
     ClarificationAnswerBank,
     create_real_notification,
+    event_datetime_for_message_ts,
     get_response,
     assert_response_exists,
     assert_image_path_persisted,
@@ -284,11 +292,14 @@ class TestLedgerEventCaptureE2E:
         """Assert events were persisted for this chat, each carrying the
         bookkeeping fields `persist_recognized_event` adds.
 
-        Feature 069: `event_datetime` is NOT asserted here - 069 dates
-        `הסכם`/`בנק` from the COMPLETING (detour) message, not the webhook, and
-        the Phase 11 acceptance helpers list `event_datetime` in
-        PROVENANCE_IGNORE for the same reason. Presence of `captured_at` /
-        `message_id` is still checked.
+        Feature 069: `event_datetime` IS asserted (2026-09-06). 069 dates
+        `הסכם`/`בנק` from the COMPLETING (last) message (Decision #10), and
+        `SessionManager.add_message` persists that message's Green API
+        notification epoch onto `Message.timestamp`. So the check is direct and
+        clock-free: load the completing `Message` (`event["message_id"]`),
+        format its persisted `.timestamp` the way `_message_epoch` does, and
+        assert it equals `event["event_datetime"]`. `captured_at` / `message_id`
+        presence is still checked.
 
         expected_count: exact count required, or None to only assert >= 1.
         """
@@ -301,6 +312,8 @@ class TestLedgerEventCaptureE2E:
                 f"found {len(events)}: {events}"
             )
 
+        session_manager = denidin_app.ai_handler.session_manager
+        session = session_manager.get_session(chat_id)
         for record in events:
             assert record.get("captured_at"), "captured_at was not persisted"
             assert record.get("message_id"), (
@@ -309,6 +322,19 @@ class TestLedgerEventCaptureE2E:
             )
             assert "raw_message_excerpt" not in record, (
                 "raw_message_excerpt was removed from the persisted schema (2026-08-18)"
+            )
+            completing = session_manager.load_message(session, record["message_id"])
+            assert completing is not None, (
+                f"completing message {record['message_id']} for event "
+                f"{record.get('event_id')} is not loadable from the session"
+            )
+            expected_dt = event_datetime_for_message_ts(completing.timestamp)
+            assert record.get("event_datetime") == expected_dt, (
+                f"event_datetime {record.get('event_datetime')!r} does not match the "
+                f"completing message's own persisted timestamp {completing.timestamp!r} "
+                f"(-> {expected_dt!r}). 069 dates the event from that message; a "
+                f"mismatch means the notification epoch was dropped in favour of "
+                f"processing time somewhere on the write path."
             )
         return events
 
@@ -652,7 +678,9 @@ class TestLedgerEventCaptureE2E:
 
             _, verify_ai = _send_turn(
                 chat_id,
-                "תן לי את הפרטים המלאים של המסמך שהופק, כולל התשלומים ותאריך התשלום",
+                "עזור לי לוודא שהמסמך באמת הופק במערכת התשלומים. תביא לי מהמערכת "
+                "מורנינג בדיוק את כל הפרטים עבור המסמך האחרון שהופק, כולל כל "
+                "התשלומים ותאריכי התשלומים",
                 id_prefix="LEDGER_E2E_F4_VERIFY",
             )
             fetch_calls = _calls_for(verify_ai, "get_invoice_details")

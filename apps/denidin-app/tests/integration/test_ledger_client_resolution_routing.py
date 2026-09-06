@@ -39,6 +39,7 @@ import pytest
 from src.handlers.ai_handler import AIHandler, LEDGER_EVENT_TOOL
 from src.models.config import AppConfiguration
 
+from tests.e2e_helpers import event_datetime_for_message_ts
 from tests.integration import _ledger_069_harness as h
 from tests.integration._ledger_069_harness import (
     ScriptedOpenAI, GODFATHER_CHAT_ID, GODFATHER_SENDER, RECOGNITION_TOOL_NAME,
@@ -465,15 +466,17 @@ class TestLedgerClientResolutionRouting:
         assert len(events) == 3
         assert {e["client_name"] for e in events} == {"רון לוי"}
         assert {e["payer_name"] for e in events} == {"איגוד העובדים"}
-        # event_datetime is the ORIGINAL agreement message's timestamp, not "now"
-        first_ts = json.loads(
-            (Path(denidin_app.ai_handler.session_manager.storage_dir)
-             / self._session(denidin_app).session_id / "messages"
-             / f"{self._first_message_id(denidin_app)}.json").read_text(encoding="utf-8")
-        )["timestamp"][:10]  # YYYY-MM-DD
+        # Feature 069 decision #10: event_datetime is the COMPLETING message's
+        # OWN persisted timestamp. Every webhook in this test carries the same
+        # fixed epoch, so this is also the original agreement message's time -
+        # never "now".
+        messages_dir = (Path(denidin_app.ai_handler.session_manager.storage_dir)
+                        / self._session(denidin_app).session_id / "messages")
         for e in events:
-            dd, mm, yyyy = e["event_datetime"].split(" ")[0].split("/")
-            assert f"{yyyy}-{mm}-{dd}" == first_ts
+            completing = json.loads(
+                (messages_dir / f"{e['message_id']}.json").read_text(encoding="utf-8")
+            )
+            assert e["event_datetime"] == event_datetime_for_message_ts(completing["timestamp"])
 
         # back-link on the turn-3 completing assistant message
         by_role = self._messages_by_role(denidin_app)

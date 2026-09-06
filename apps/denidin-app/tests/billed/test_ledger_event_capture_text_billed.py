@@ -36,6 +36,7 @@ from tests.billed.denidin_mcp_e2e_helpers import GODFATHER_CHAT_ID, _seed_client
 from tests.e2e_helpers import (
     sanity_worker_data_root,
     create_real_notification,
+    event_datetime_for_message_ts,
     get_response,
     assert_response_exists,
     ClarificationAnswerBank,
@@ -164,11 +165,11 @@ class TestLedgerEventCaptureTextBilled:
 
         expected_count: exact count required, or None to only assert >=1.
 
-        Feature 069 (2026-09-04): capture is a post-turn recognition step dated
-        from the COMPLETING message (the reply this round) - i.e. the actual
-        capture time, not the inbound message's own timestamp. So event_datetime
-        is asserted to be a well-formed "DD/MM/YYYY HH:MM" within a few minutes of
-        now, not equal to a fixed synthetic notification timestamp.
+        Feature 069 decision #10: capture is a post-turn recognition step dated
+        from the COMPLETING message (`record["message_id"]`, the reply this
+        round). event_datetime is asserted to equal that message's OWN persisted
+        timestamp, formatted the way `_message_epoch` does - clock-free, so it
+        holds for live and WhatsApp-export player replay alike.
         """
         events = TestLedgerEventCaptureTextBilled._events_for_chat(denidin_app, chat_id)
         if expected_count is None:
@@ -179,20 +180,22 @@ class TestLedgerEventCaptureTextBilled:
                 f"found {len(events)}: {events}"
             )
 
-        # event_datetime is Israel local time, "DD/MM/YYYY HH:MM" - the actual
-        # capture time (Feature 069).
-        now_naive = now_local().replace(tzinfo=None)
         for record in events:
             raw = record.get("event_datetime")
             try:
-                parsed = datetime.strptime(raw, "%d/%m/%Y %H:%M")
+                datetime.strptime(raw, "%d/%m/%Y %H:%M")
             except (TypeError, ValueError):
                 raise AssertionError(
                     f"event_datetime={raw!r} is not a well-formed 'DD/MM/YYYY HH:MM' value"
                 ) from None
-            assert abs((now_naive - parsed).total_seconds()) <= 15 * 60, (
-                f"event_datetime={raw!r} is not within 15 minutes of the actual "
-                f"capture time {now_naive:%d/%m/%Y %H:%M}"
+            completing = TestLedgerEventCaptureTextBilled._read_message(
+                denidin_app, chat_id, record["message_id"]
+            )
+            expected_dt = event_datetime_for_message_ts(completing["timestamp"])
+            assert raw == expected_dt, (
+                f"event_datetime={raw!r} does not match the completing message's own "
+                f"persisted timestamp {completing['timestamp']!r} (-> {expected_dt!r}). "
+                f"069 dates the event from that message."
             )
             assert record.get("captured_at"), "captured_at was not persisted"
             assert record.get("message_id"), (

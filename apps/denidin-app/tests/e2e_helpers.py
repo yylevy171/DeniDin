@@ -11,10 +11,24 @@ import os
 import re
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from whatsapp_chatbot_python import Notification
 
 from src.utils.time_utils import local_from_timestamp
+
+
+def event_datetime_for_message_ts(message_ts: str) -> str:
+    """Feature 069 decision #10: a `הסכם`/`בנק` ledger event's `event_datetime`
+    is derived from its COMPLETING message's own persisted `Message.timestamp`
+    (an Asia/Jerusalem ISO string). This formats that timestamp exactly the way
+    `LedgerEventManager._message_epoch` + `add_ledger_events_from_call` do -
+    epoch at minute precision, "DD/MM/YYYY HH:MM" - so a test can assert
+    `event["event_datetime"] == event_datetime_for_message_ts(completing_msg["timestamp"])`
+    with no wall-clock dependency (works for live AND WhatsApp-export player replay).
+    """
+    epoch = int(datetime.fromisoformat(message_ts).timestamp())
+    return local_from_timestamp(epoch).strftime("%d/%m/%Y %H:%M")
 
 logger = logging.getLogger(__name__)
 
@@ -218,20 +232,24 @@ def assert_image_path_persisted(denidin_app, chat_id):
     with open(Path(session_manager.storage_dir) / session_id / "session.json", encoding='utf-8') as f:
         session_data = json.load(f)
 
+    # The most recent user message that carries an image_path. NOT simply the
+    # last user message: under Feature 069 a recognised fee-agreement / bank-
+    # deposit image is followed by a SYNTHETIC conversational turn (the ledger
+    # stash), so the last user message is that stash (no image_path) and the
+    # real image turn - stored by MediaHandler._store_media_turn WITH its
+    # image_path - is one turn earlier. A plain media turn with no 069 routing
+    # is still the last user message, so this stays correct for those too.
     last_user_message = None
     for message_id in session_data["message_ids"]:
         with open(messages_dir / f"{message_id}.json", encoding='utf-8') as f:
             message_data = json.load(f)
-        if message_data.get("ai_required_role", message_data.get("role")) == "user":
+        if (message_data.get("ai_required_role", message_data.get("role")) == "user"
+                and message_data.get("image_path")):
             last_user_message = message_data
 
     assert last_user_message is not None, (
-        f"No user session message found at all for chat_id={chat_id!r}"
-    )
-    assert last_user_message.get("image_path"), (
-        f"Most recent user session message for chat_id={chat_id!r} has no image_path "
-        f"(bugfix-009 regression: media turns are stored, but without image_path). "
-        f"Message: {last_user_message}"
+        f"No user session message with an image_path found for chat_id={chat_id!r} "
+        f"(bugfix-009 regression: media turns are stored, but without image_path)."
     )
 
     resolved = Path(denidin_app.config.data_root) / last_user_message["image_path"]

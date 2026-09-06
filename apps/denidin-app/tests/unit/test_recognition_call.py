@@ -315,6 +315,33 @@ class TestInputAssemblyAndIsolation:
         assert RECOGNITION_TOOL_NAME in tool_names
         assert "query_ledger_events" in tool_names
 
+    def test_window_anchored_to_newest_message_not_wall_clock(self, ai_handler):
+        """Player replay: a conversation whose messages carry real (weeks-old)
+        timestamps must still land in the recognition transcript. The window is
+        measured back from the newest message in the session, not `now`."""
+        from src.utils.time_utils import now_local
+
+        ai_handler.client.responses.create.return_value = _no_call_response()
+        chat_id = "player-replay@g.us"
+        sm = ai_handler.session_manager
+        base = int(now_local().timestamp()) - 30 * 24 * 3600  # 30 days ago
+        sm.add_message(chat_id=chat_id, role="user",
+                       content="OLD-TURN-MARKER חתמנו הסכם עם דנה כהן",
+                       user_role="godfather", sender="972500000002",
+                       source_timestamp=base)
+        sm.add_message(chat_id=chat_id, role="assistant", content="רשמתי.",
+                       user_role="godfather", source_timestamp=base + 120)
+
+        ai_handler.recognize_ledger_event(
+            session=sm.get_session(chat_id), reply_text="רשמתי.", turn_mcp_calls=[])
+
+        blob, _ = self._stringify_call(ai_handler.client.responses.create)
+        assert "OLD-TURN-MARKER" in blob, (
+            "a 30-day-old replayed conversation was dropped from the recognition "
+            "window - the cutoff is still wall-clock-relative"
+        )
+        assert "outside the window and omitted" not in blob
+
     def test_verdict_output_never_appended_to_session(self, ai_handler, session):
         before = list(session.session.message_ids)
         payload = {"verdict": "complete", "event": _agreement_event(),
