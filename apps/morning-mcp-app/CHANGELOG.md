@@ -70,3 +70,7 @@ Parse negative-amount documents: Invoice / Payment / LinkedDocument .amount drop
 ## [0.5.4-70] - 2026-09-06
 
 Lockstep version bump for the both-apps 0.5.4-70 deploy — no code change from v0.5.4.
+
+## [0.5.4-b43] - 2026-09-06
+
+bugfix-043: admin stop/start owns the prober; deploy_release.sh no longer races it
