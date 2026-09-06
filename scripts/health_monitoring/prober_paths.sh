@@ -19,12 +19,24 @@ prober_log_file() {
     echo "${REPO_ROOT}/logs/health_monitoring/$1/prober.log"
 }
 
+# Container names are derived from the ACTUAL compose project name (the compose file's own
+# `name:` field), never hardcoded as "denidin-<env>" - deploy_release.sh already derives
+# PROJECT_NAME the same way (see its own `grep -m1 '^name:'` line), and a scratch/test compose
+# file deliberately uses a distinct project name specifically so it can never collide with a
+# real running dev/prod environment on the same machine (see scripts/tests/conftest.py's
+# scratch_deploy_repo docstring) - hardcoding the real repo's own project name here would defeat
+# that isolation the moment this script ran against a scratch environment.
+_prober_project_name() {
+    local compose_file="${REPO_ROOT}/docker/docker-compose.$1.yml"
+    grep -m1 '^name:' "$compose_file" | sed 's/^name:[[:space:]]*//'
+}
+
 prober_denidin_container() {
-    echo "denidin-$1-denidin-app-$1-1"
+    echo "$(_prober_project_name "$1")-denidin-app-$1-1"
 }
 
 prober_morning_container() {
-    echo "denidin-$1-morning-mcp-app-$1-1"
+    echo "$(_prober_project_name "$1")-morning-mcp-app-$1-1"
 }
 
 # Reads config.<env>.json's health_check_port / mcp.port via python3 (already

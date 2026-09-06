@@ -43,17 +43,26 @@
 # still a plain local deploy, exactly as before.
 #
 # 2026-09-06 (bugfix-043): the remote/prod path also ships + unpacks the shared host-side
-# ops-scripts bundle (scripts/run_all.sh, stop_all.sh, env_lock.sh, killall_containers.sh, each
-# app's run_*.sh/stop_*.sh, and the health-monitoring prober - see
+# ops-scripts bundle (scripts/run_all.sh, stop_all.sh, run_env.sh, stop_env.sh, env_lock.sh,
+# killall_containers.sh, each app's run_*.sh/stop_*.sh, and the health-monitoring prober - see
 # scripts/lib/release_scripts_manifest.sh) that scripts/cut_release.sh now produces alongside
 # the docker image tarball. Prod's deploy directory is NOT a git checkout (Feature 035), so
 # these host-side scripts - which invoke `docker compose` from OUTSIDE any container - would
 # otherwise never refresh after initial setup. Unpacking is done via
 # scripts/lib/unpack_scripts_bundle.sh, shipped to the box and run there via SSH; the same
-# helper is exercised directly (no SSH) by scripts/tests/test_release_scripts_bundle.py. Backward
-# compatible: a version cut before this existed simply has no bundle file, and deploying it logs
-# a note and skips the unpack rather than failing. The LOCAL path (dev, or `--local`-forced prod)
-# never unpacks the bundle at all - see the comment above the local path's side effects for why.
+# helper is exercised directly (no SSH) by scripts/tests/test_release_scripts_bundle.py.
+#
+# 2026-09-06 (bugfix-043, admin stop/start revision): once the bundle includes stop_env.sh/
+# run_env.sh, BOTH the local/dev path and the remote/prod path stop the environment via
+# stop_env.sh, load+retag the new image, then start it via run_env.sh - never calling
+# `docker compose up/stop` directly - so a deploy can never race the health-monitoring prober's
+# own independently-scheduled checks (the exact race stop_env.sh/run_env.sh exist to close; see
+# prober.py's module docstring). run_env.sh never calls `run_all.sh` itself - it only re-enables
+# the prober's schedule and triggers one probe, which itself calls run_all.sh (the "bootstrap"
+# action) now that the freshly-tagged image is in place. Backward compatible: a version cut
+# before bugfix-043 existed has no bundle at all (HAVE_SCRIPTS_BUNDLE=0) and falls back to the
+# original direct `docker compose up -d` + active_env.json bookkeeping this script has always
+# done - see the HAVE_SCRIPTS_BUNDLE branch below for exactly where that split happens.
 #
 # See specs/in-progress/034-versioning-release-mgmt/contracts/deploy_release_cli.md for the full
 # contract (preconditions, side effects, exit codes, why this never rebuilds from source).
@@ -211,7 +220,7 @@ if [ "$REMOTE" -eq 1 ]; then
     # session succeeded" is never good enough (2026-08-03, per-step verification requirement).
 
     # Step R1: ship the artifact.
-    echo "== [R1/R10] Shipping ${ARTIFACT_NAME} to ${REMOTE_HOST}:~/${REMOTE_DEPLOY_DIR} (prod runs exclusively on the Windows box - Feature 035) =="
+    echo "== [R1/R9] Shipping ${ARTIFACT_NAME} to ${REMOTE_HOST}:~/${REMOTE_DEPLOY_DIR} (prod runs exclusively on the Windows box - Feature 035) =="
     if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$TAR_PATH" "${REMOTE_HOST}:~/${ARTIFACT_NAME}"; then
         echo "🚨 DEPLOY FAILED at step R1 (scp artifact -> ${REMOTE_HOST}): scp exited non-zero. Nothing on ${REMOTE_HOST} was touched." >&2
         exit 1
@@ -227,7 +236,7 @@ if [ "$REMOTE" -eq 1 ]; then
         SCRIPTS_BUNDLE_NAME="$(basename "$SCRIPTS_BUNDLE_PATH")"
         UNPACK_HELPER_NAME="$(basename "$UNPACK_SCRIPTS_HELPER")"
         MANIFEST_HELPER_NAME="release_scripts_manifest.sh"
-        echo "== [R2/R10] Shipping + unpacking the shared ops-scripts bundle on ${REMOTE_HOST} (bugfix-043) =="
+        echo "== [R2/R9] Shipping + unpacking the shared ops-scripts bundle on ${REMOTE_HOST} (bugfix-043) =="
         if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$SCRIPTS_BUNDLE_PATH" "${REMOTE_HOST}:~/${SCRIPTS_BUNDLE_NAME}"; then
             echo "🚨 DEPLOY FAILED at step R2 (scp scripts bundle -> ${REMOTE_HOST}): scp exited non-zero. Nothing on ${REMOTE_HOST} was touched." >&2
             exit 1
@@ -256,7 +265,7 @@ if [ "$REMOTE" -eq 1 ]; then
     # Step R3: resolve the Windows-side home directory (SFTP's "~" != WSL bash's "~" - see
     # header comment). Split from the load step so a wslpath/cmd.exe failure is never
     # misreported as a docker load failure.
-    echo "== [R3/R10] Resolving Windows-side home directory on ${REMOTE_HOST} =="
+    echo "== [R3/R9] Resolving Windows-side home directory on ${REMOTE_HOST} =="
     WIN_HOME_OUTPUT="$(remote_run "wslpath -u \"\$(cmd.exe /c echo %USERPROFILE% | tr -d '\\r')\"" 2>&1)"
     WIN_HOME="$(echo "$WIN_HOME_OUTPUT" | tail -1)"
     if [ -z "$WIN_HOME" ]; then
@@ -265,80 +274,149 @@ if [ "$REMOTE" -eq 1 ]; then
         exit 1
     fi
 
-    # Step R4: load the artifact on the box - no rebuild, ever (REQ-DEPLOY-001).
-    echo "== [R4/R10] Loading ${ARTIFACT_NAME} into Docker on ${REMOTE_HOST} =="
-    LOAD_OUTPUT="$(remote_run "docker load -i \"${WIN_HOME}/${ARTIFACT_NAME}\"" 2>&1)"
-    LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
-    if [ -z "$LOADED_REF" ]; then
-        echo "🚨 DEPLOY FAILED at step R4 (docker load on ${REMOTE_HOST}): could not determine the loaded image reference. Raw output was:" >&2
-        echo "$LOAD_OUTPUT" >&2
-        exit 1
-    fi
-
-    # Step R5: clean up the shipped tarball off the box - separately checked so a failure here
-    # (disk full, permissions) is never silently swallowed by the load step's own success.
-    echo "== [R5/R10] Removing the shipped tarball from ${REMOTE_HOST} =="
-    if ! remote_run "rm \"${WIN_HOME}/${ARTIFACT_NAME}\""; then
-        echo "🚨 DEPLOY FAILED at step R5 (rm shipped tarball on ${REMOTE_HOST}): the image loaded fine (step R4), but cleanup failed - investigate disk/permissions on the box before retrying." >&2
-        exit 1
-    fi
-
-    # Step R6: retag + recreate, executed ON the box - never via a Mac-side remote Docker
-    # context against this checkout's local YAML (see top-of-file comment: the box's own
-    # docker-compose.prod.local.yml is the one that must apply).
     COMPOSE_IMAGE="${PROJECT_NAME}-${SERVICE_NAME}:latest"
-    echo "== [R6/R10] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} on ${REMOTE_HOST} =="
-    if ! remote_run "docker tag ${LOADED_REF} ${COMPOSE_IMAGE}"; then
-        echo "🚨 DEPLOY FAILED at step R6 (docker tag on ${REMOTE_HOST})." >&2
-        exit 1
-    fi
-
-    # Step R7 (bugfix-021): ensure shared/active_env.json exists as a real FILE, not a
-    # directory, before `docker compose up -d`'s bind mount touches it. Docker silently
-    # creates a directory at a missing bind-mount source path - since nothing in this deploy
-    # path (nor the retired deploy_and_verify.sh before it) ever wrote this file, every prod
-    # container's /app/active-env/active_env.json ended up as an empty directory, which broke
-    # watchdog.py's env-mismatch safety check on both apps. Same schema/intent as
-    # env_lock.sh's env_lock_acquire, which the LOCAL (dev) path already gets for free via
-    # env_lock_acquire below - prod is never owner-locked (CLAUDE.md), so owner is always null.
-    echo "== [R7/R10] Ensuring shared/active_env.json is a real file on ${REMOTE_HOST} (bugfix-021) =="
-    ACTIVE_ENV_STATE="$(remote_run "cd ~/${REMOTE_DEPLOY_DIR} && mkdir -p shared && if [ -d shared/active_env.json ]; then if [ -z \"\$(ls -A shared/active_env.json)\" ]; then rmdir shared/active_env.json && echo REMOVED_EMPTY_DIR; else echo NONEMPTY_DIR; fi; else echo OK; fi" 2>&1)"
-    if echo "$ACTIVE_ENV_STATE" | grep -q "NONEMPTY_DIR"; then
-        echo "🚨 DEPLOY FAILED at step R7 (shared/active_env.json on ${REMOTE_HOST}): it's a NON-EMPTY directory, not the expected file - refusing to remove it automatically. Investigate by hand before retrying." >&2
-        exit 1
-    fi
-    if ! echo "$ACTIVE_ENV_STATE" | grep -qE "OK|REMOVED_EMPTY_DIR"; then
-        echo "🚨 DEPLOY FAILED at step R7 (checking shared/active_env.json state on ${REMOTE_HOST}): unexpected output:" >&2
-        echo "$ACTIVE_ENV_STATE" >&2
-        exit 1
-    fi
-    UPDATED_AT="$(date -u +%Y-%m-%dT%H:%M:%S+00:00)"
-    if ! remote_run "printf '{\"active_env\": \"prod\", \"owner\": null, \"updated_at\": \"${UPDATED_AT}\"}\n' > ~/${REMOTE_DEPLOY_DIR}/shared/active_env.json"; then
-        echo "🚨 DEPLOY FAILED at step R7 (writing shared/active_env.json on ${REMOTE_HOST})." >&2
-        exit 1
-    fi
-    ACTIVE_ENV_VERIFY="$(remote_run "test -f ~/${REMOTE_DEPLOY_DIR}/shared/active_env.json && echo FILE || echo NOTFILE")"
-    if [ "$ACTIVE_ENV_VERIFY" != "FILE" ]; then
-        echo "🚨 DEPLOY FAILED at step R7 (verifying shared/active_env.json is a file on ${REMOTE_HOST}): got '${ACTIVE_ENV_VERIFY}'." >&2
-        exit 1
-    fi
-
-    REMOTE_COMPOSE="cd ~/${REMOTE_DEPLOY_DIR} && docker compose --project-directory . -f docker/docker-compose.prod.yml -f docker/docker-compose.prod.local.yml"
-    echo "== [R8/R10] Recreating ${SERVICE_NAME} on ${REMOTE_HOST} (docker compose up -d --no-build) =="
-    if ! remote_run "${REMOTE_COMPOSE} up -d --no-build ${SERVICE_NAME}"; then
-        echo "🚨 DEPLOY FAILED at step R8 (docker compose up -d on ${REMOTE_HOST})." >&2
-        exit 1
-    fi
-
     CONTAINER_NAME="${PROJECT_NAME}-${SERVICE_NAME}-1"
 
-    # Step R9: confirm the container is actually running, not just that `up -d` exited 0 -
-    # compose can return success even if the container immediately crashed (restart policy is
-    # "no" repo-wide, so a crash shows as Exited, not a silent respawn-loop).
-    echo "== [R9/R10] Confirming ${CONTAINER_NAME} is running on ${REMOTE_HOST} =="
-    CONTAINER_STATUS="$(remote_run "docker inspect --format '{{.State.Status}}' ${CONTAINER_NAME}" 2>&1)"
-    if [ "$CONTAINER_STATUS" != "running" ]; then
-        echo "🚨 DEPLOY FAILED at step R9 (${CONTAINER_NAME} on ${REMOTE_HOST}): expected status 'running', got '${CONTAINER_STATUS}'." >&2
+    if [ "$HAVE_SCRIPTS_BUNDLE" -eq 1 ]; then
+        # bugfix-043 (2026-09-06 revision): this version's bundle includes stop_env.sh/
+        # run_env.sh (see scripts/lib/release_scripts_manifest.sh), so the box already has the
+        # SAME sanctioned start/stop entry points a human or the prober's own schedule uses -
+        # go through them instead of hand-rolling `docker compose up/stop` + the active_env.json
+        # write directly here. This closes the exact race stop_env.sh/run_env.sh exist to close
+        # (a deploy's own container swap racing the prober's independently-scheduled health
+        # checks) and, as a side effect, fixes the previously-known-and-deferred stale
+        # active_env.json schema gap (env_lock.sh - invoked transitively via stop_all.sh/
+        # run_all.sh - already writes the current active_envs dict schema; the old manual R7
+        # write below never did).
+
+        # Step R4: stop prod the sanctioned way - disables the prober's schedule, archives its
+        # state, stops BOTH apps ("no per-app games" - deploying either app briefly restarts
+        # both, same accepted cost as the local/dev path).
+        echo "== [R4/R9] Stopping ${ENV} via stop_env.sh on ${REMOTE_HOST} (bugfix-043) =="
+        if ! remote_run "bash ~/${REMOTE_DEPLOY_DIR}/scripts/stop_env.sh ${ENV}"; then
+            echo "🚨 DEPLOY FAILED at step R4 (stop_env.sh ${ENV} on ${REMOTE_HOST}): nothing further attempted." >&2
+            exit 1
+        fi
+
+        # Step R5: load the artifact on the box - no rebuild, ever (REQ-DEPLOY-001).
+        echo "== [R5/R9] Loading ${ARTIFACT_NAME} into Docker on ${REMOTE_HOST} =="
+        LOAD_OUTPUT="$(remote_run "docker load -i \"${WIN_HOME}/${ARTIFACT_NAME}\"" 2>&1)"
+        LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
+        if [ -z "$LOADED_REF" ]; then
+            echo "🚨 DEPLOY FAILED at step R5 (docker load on ${REMOTE_HOST}): could not determine the loaded image reference. The environment is currently STOPPED (step R4 already ran) - rerun this deploy, or run_env.sh ${ENV} on ${REMOTE_HOST} to bring it back up as-is. Raw output was:" >&2
+            echo "$LOAD_OUTPUT" >&2
+            exit 1
+        fi
+
+        # Step R6: clean up the shipped tarball off the box.
+        echo "== [R6/R9] Removing the shipped tarball from ${REMOTE_HOST} =="
+        if ! remote_run "rm \"${WIN_HOME}/${ARTIFACT_NAME}\""; then
+            echo "🚨 DEPLOY FAILED at step R6 (rm shipped tarball on ${REMOTE_HOST}): the image loaded fine (step R5), but cleanup failed - investigate disk/permissions on the box before retrying." >&2
+            exit 1
+        fi
+
+        # Step R7: retag - must happen BEFORE run_env.sh below, since the prober's own
+        # bootstrap-triggered `run_all.sh` needs the correctly-tagged :latest image in place.
+        echo "== [R7/R9] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} on ${REMOTE_HOST} =="
+        if ! remote_run "docker tag ${LOADED_REF} ${COMPOSE_IMAGE}"; then
+            echo "🚨 DEPLOY FAILED at step R7 (docker tag on ${REMOTE_HOST}): the environment is currently STOPPED (step R4 already ran)." >&2
+            exit 1
+        fi
+
+        # Step R8: start prod the sanctioned way - re-enables the prober's schedule and triggers
+        # one immediate probe, which itself calls run_all.sh (the "bootstrap" action) now that
+        # both apps are stopped and this app's image is freshly tagged.
+        echo "== [R8/R9] Starting ${ENV} via run_env.sh on ${REMOTE_HOST} (bugfix-043) =="
+        if ! remote_run "bash ~/${REMOTE_DEPLOY_DIR}/scripts/run_env.sh ${ENV}"; then
+            echo "🚨 DEPLOY FAILED at step R8 (run_env.sh ${ENV} on ${REMOTE_HOST}): the environment may be left STOPPED - investigate before retrying." >&2
+            exit 1
+        fi
+    else
+        # Backward compatibility: this version was cut before bugfix-043's stop_env.sh/
+        # run_env.sh existed (HAVE_SCRIPTS_BUNDLE's own note above already logged why) - fall
+        # back to the original direct compose-up + active_env.json bookkeeping this script has
+        # always done. Never delete this branch just because it looks "old" - it is what makes
+        # deploying/rolling back to any pre-bugfix-043 version keep working.
+
+        # Step R4: (no stop_env.sh available yet on this version's box) - nothing to do.
+        echo "== [R4/R9] (skipped - no stop_env.sh available for this pre-bugfix-043 version) =="
+
+        # Step R5: load the artifact on the box - no rebuild, ever (REQ-DEPLOY-001).
+        echo "== [R5/R9] Loading ${ARTIFACT_NAME} into Docker on ${REMOTE_HOST} =="
+        LOAD_OUTPUT="$(remote_run "docker load -i \"${WIN_HOME}/${ARTIFACT_NAME}\"" 2>&1)"
+        LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
+        if [ -z "$LOADED_REF" ]; then
+            echo "🚨 DEPLOY FAILED at step R5 (docker load on ${REMOTE_HOST}): could not determine the loaded image reference. Raw output was:" >&2
+            echo "$LOAD_OUTPUT" >&2
+            exit 1
+        fi
+
+        # Step R6: clean up the shipped tarball off the box.
+        echo "== [R6/R9] Removing the shipped tarball from ${REMOTE_HOST} =="
+        if ! remote_run "rm \"${WIN_HOME}/${ARTIFACT_NAME}\""; then
+            echo "🚨 DEPLOY FAILED at step R6 (rm shipped tarball on ${REMOTE_HOST}): the image loaded fine (step R5), but cleanup failed - investigate disk/permissions on the box before retrying." >&2
+            exit 1
+        fi
+
+        # Step R7: retag + recreate, executed ON the box - never via a Mac-side remote Docker
+        # context against this checkout's local YAML (see top-of-file comment: the box's own
+        # docker-compose.prod.local.yml is the one that must apply).
+        echo "== [R7/R9] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} on ${REMOTE_HOST} =="
+        if ! remote_run "docker tag ${LOADED_REF} ${COMPOSE_IMAGE}"; then
+            echo "🚨 DEPLOY FAILED at step R7 (docker tag on ${REMOTE_HOST})." >&2
+            exit 1
+        fi
+
+        # Step R8 (bugfix-021): ensure shared/active_env.json exists as a real FILE, not a
+        # directory, before `docker compose up -d`'s bind mount touches it, then recreate the
+        # service directly. See git history for the full incident writeup this originally fixed.
+        echo "== [R8/R9] Ensuring shared/active_env.json is a real file and recreating ${SERVICE_NAME} on ${REMOTE_HOST} (bugfix-021) =="
+        ACTIVE_ENV_STATE="$(remote_run "cd ~/${REMOTE_DEPLOY_DIR} && mkdir -p shared && if [ -d shared/active_env.json ]; then if [ -z \"\$(ls -A shared/active_env.json)\" ]; then rmdir shared/active_env.json && echo REMOVED_EMPTY_DIR; else echo NONEMPTY_DIR; fi; else echo OK; fi" 2>&1)"
+        if echo "$ACTIVE_ENV_STATE" | grep -q "NONEMPTY_DIR"; then
+            echo "🚨 DEPLOY FAILED at step R8 (shared/active_env.json on ${REMOTE_HOST}): it's a NON-EMPTY directory, not the expected file - refusing to remove it automatically. Investigate by hand before retrying." >&2
+            exit 1
+        fi
+        if ! echo "$ACTIVE_ENV_STATE" | grep -qE "OK|REMOVED_EMPTY_DIR"; then
+            echo "🚨 DEPLOY FAILED at step R8 (checking shared/active_env.json state on ${REMOTE_HOST}): unexpected output:" >&2
+            echo "$ACTIVE_ENV_STATE" >&2
+            exit 1
+        fi
+        UPDATED_AT="$(date -u +%Y-%m-%dT%H:%M:%S+00:00)"
+        if ! remote_run "printf '{\"active_env\": \"prod\", \"owner\": null, \"updated_at\": \"${UPDATED_AT}\"}\n' > ~/${REMOTE_DEPLOY_DIR}/shared/active_env.json"; then
+            echo "🚨 DEPLOY FAILED at step R8 (writing shared/active_env.json on ${REMOTE_HOST})." >&2
+            exit 1
+        fi
+        ACTIVE_ENV_VERIFY="$(remote_run "test -f ~/${REMOTE_DEPLOY_DIR}/shared/active_env.json && echo FILE || echo NOTFILE")"
+        if [ "$ACTIVE_ENV_VERIFY" != "FILE" ]; then
+            echo "🚨 DEPLOY FAILED at step R8 (verifying shared/active_env.json is a file on ${REMOTE_HOST}): got '${ACTIVE_ENV_VERIFY}'." >&2
+            exit 1
+        fi
+        REMOTE_COMPOSE="cd ~/${REMOTE_DEPLOY_DIR} && docker compose --project-directory . -f docker/docker-compose.prod.yml -f docker/docker-compose.prod.local.yml"
+        if ! remote_run "${REMOTE_COMPOSE} up -d --no-build ${SERVICE_NAME}"; then
+            echo "🚨 DEPLOY FAILED at step R8 (docker compose up -d on ${REMOTE_HOST})." >&2
+            exit 1
+        fi
+    fi
+
+    # Step R9: confirm the container is actually running, not just that the previous step exited
+    # 0 - compose can report success even if the container immediately crashed (restart policy
+    # is "no" repo-wide, so a crash shows as Exited, not a silent respawn-loop). Poll briefly
+    # rather than checking once immediately - the bundle path's run_env.sh trigger and the
+    # prober's own run_all.sh call are not perfectly synchronous.
+    echo "== [R9/R9] Confirming ${CONTAINER_NAME} is running on ${REMOTE_HOST} =="
+    CONTAINER_UP=0
+    CONTAINER_CHECK_ELAPSED=0
+    while [ "$CONTAINER_CHECK_ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
+        CONTAINER_STATUS="$(remote_run "docker inspect --format '{{.State.Status}}' ${CONTAINER_NAME}" 2>&1)"
+        if [ "$CONTAINER_STATUS" == "running" ]; then
+            CONTAINER_UP=1
+            break
+        fi
+        sleep "$VERIFY_POLL_INTERVAL"
+        CONTAINER_CHECK_ELAPSED=$((CONTAINER_CHECK_ELAPSED + VERIFY_POLL_INTERVAL))
+    done
+    if [ "$CONTAINER_UP" -ne 1 ]; then
+        echo "🚨 DEPLOY FAILED at step R9 (${CONTAINER_NAME} on ${REMOTE_HOST}): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
         remote_run "docker logs ${CONTAINER_NAME} --tail 20" >&2 2>&1 || true
         exit 1
     fi
@@ -367,7 +445,7 @@ if [ "$REMOTE" -eq 1 ]; then
     done
 
     if [ "$VERIFIED" -ne 1 ]; then
-        echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} on ${REMOTE_HOST} within ${VERIFY_TIMEOUT}s (container is running - step R7 passed - but never reported the right version)." >&2
+        echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} on ${REMOTE_HOST} within ${VERIFY_TIMEOUT}s (container is running - step R9 passed - but never reported the right version)." >&2
         echo "Last observed container state:" >&2
         remote_run "docker logs ${CONTAINER_NAME} --tail 20" >&2 2>&1 || true
         exit 1
@@ -393,7 +471,10 @@ fi
 # lock"/"dev/prod data is also a singleton across clones" sections - the same 2026-07-30
 # incident run_denidin.sh guards against). Only applies in a real repo checkout (scratch/test
 # fixtures deliberately don't copy env_lock.sh in, since cross-clone locking is meaningless for
-# a throwaway git repo) - presence of scripts/env_lock.sh is exactly that signal.
+# a throwaway git repo) - presence of scripts/env_lock.sh is exactly that signal. Still needed
+# here even though stop_env.sh/run_env.sh do their own env_lock work internally (via
+# stop_all.sh/run_all.sh) - COMPOSE_ARGS is also used below by the verification step's
+# `docker compose port` lookup.
 COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE")
 if [ -f "$SCRIPT_DIR/env_lock.sh" ]; then
     # shellcheck source=/dev/null
@@ -408,50 +489,80 @@ fi
 # Every step below is verified individually and fails LOUDLY, naming exactly which step failed
 # with the actual command output attached (2026-08-03, per-step verification requirement) -
 # matching the same discipline as the remote/prod path above.
+#
+# bugfix-043 (2026-09-06 revision): stopping/starting containers directly here - a THIRD path
+# that could touch them, alongside a human and the prober - is exactly the race this bugfix
+# exists to close (a deploy landing mid-way through the prober's own escalation window could
+# either get fought by an "unhealthy, restart it" tick, or itself dodge the prober's schedule
+# and leave it monitoring a stale state). So deploy now goes through the SAME two sanctioned
+# entry points a human/the scheduler use - scripts/stop_env.sh and scripts/run_env.sh - never
+# touching `docker compose up/stop` directly. Because stop_env.sh/run_env.sh operate on the
+# WHOLE environment (both apps together - "no per-app games", the same rule the prober itself
+# follows), deploying either app briefly stops+restarts BOTH - a real, accepted cost of dev being
+# a genuine mechanical test ground for the exact same path prod will use.
 
-# Step L1: load the artifact - no rebuild, ever, for any of the 3 shapes (REQ-DEPLOY-001).
+# Step L1: stop the environment the sanctioned way - disables the prober's schedule first (so it
+# can't race with what follows), archives its state file, then stops both apps.
+echo "== [L1/L5] Stopping ${ENV} via stop_env.sh (local) =="
+if ! "$SCRIPT_DIR/stop_env.sh" "$ENV"; then
+    echo "🚨 DEPLOY FAILED at step L1 (stop_env.sh ${ENV}, local): nothing further attempted." >&2
+    exit 1
+fi
+
+# Step L2: load the artifact - no rebuild, ever, for any of the 3 shapes (REQ-DEPLOY-001).
 # Capture the ACTUAL loaded image reference from docker load's own output rather than assuming
 # it matches <app>:<version> - a tarball's embedded tag always wins over its filename on disk.
-echo "== [L1/L4] Loading ${TAR_PATH} into Docker (local) =="
+echo "== [L2/L5] Loading ${TAR_PATH} into Docker (local) =="
 LOAD_OUTPUT="$(docker load -i "$TAR_PATH" 2>&1)"
 LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
 if [ -z "$LOADED_REF" ]; then
-    echo "🚨 DEPLOY FAILED at step L1 (docker load, local): could not determine the loaded image reference. Raw output was:" >&2
+    echo "🚨 DEPLOY FAILED at step L2 (docker load, local): could not determine the loaded image reference. The environment is currently STOPPED (step L1 already ran) - rerun this deploy, or run_env.sh ${ENV} to bring it back up as-is. Raw output was:" >&2
     echo "$LOAD_OUTPUT" >&2
     exit 1
 fi
 
-# Step L2: retag it to whatever docker-compose expects for this service - this is what
+# Step L3: retag it to whatever docker-compose expects for this service - this is what
 # preserves the environment's existing volume mounts (config/logs/data) instead of a bare
-# `docker run` silently missing them.
+# `docker run` silently missing them. Must happen BEFORE run_env.sh below, since the prober's
+# own bootstrap-triggered `run_all.sh` needs the correctly-tagged :latest image already in place.
 COMPOSE_IMAGE="${PROJECT_NAME}-${SERVICE_NAME}:latest"
-echo "== [L2/L4] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} (local) =="
+echo "== [L3/L5] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} (local) =="
 if ! docker tag "$LOADED_REF" "$COMPOSE_IMAGE"; then
-    echo "🚨 DEPLOY FAILED at step L2 (docker tag, local)." >&2
+    echo "🚨 DEPLOY FAILED at step L3 (docker tag, local): the environment is currently STOPPED (step L1 already ran)." >&2
     exit 1
 fi
 
-# Declare intent in the shared active-env file BEFORE starting, same as run_denidin.sh - only
-# in a real repo checkout (see the env_lock.sh presence check above).
-if [ -f "$SCRIPT_DIR/env_lock.sh" ]; then
-    env_lock_acquire "$ENV"
-fi
-
-echo "== [L3/L4] Recreating ${SERVICE_NAME} (local, docker compose up -d --no-build) =="
-if ! docker compose "${COMPOSE_ARGS[@]}" up -d --no-build "$SERVICE_NAME"; then
-    echo "🚨 DEPLOY FAILED at step L3 (docker compose up -d, local)." >&2
+# Step L4: start the environment the sanctioned way - (re-)enables the prober's schedule and
+# triggers one immediate probe, which itself calls run_all.sh (the "bootstrap" action - see
+# prober.py) now that both apps are stopped and this app's image is freshly tagged.
+echo "== [L4/L5] Starting ${ENV} via run_env.sh (local) =="
+if ! "$SCRIPT_DIR/run_env.sh" "$ENV"; then
+    echo "🚨 DEPLOY FAILED at step L4 (run_env.sh ${ENV}, local): the environment may be left STOPPED - investigate before retrying." >&2
     exit 1
 fi
 
 CONTAINER_NAME="${PROJECT_NAME}-${SERVICE_NAME}-1"
 
-# Step L4: confirm the container is actually running, not just that `up -d` exited 0 - compose
-# can return success even if the container immediately crashed (restart policy is "no"
-# repo-wide, so a crash shows as Exited, not a silent respawn-loop).
-echo "== [L4/L4] Confirming ${CONTAINER_NAME} is running (local) =="
-CONTAINER_STATUS="$(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME" 2>&1)"
-if [ "$CONTAINER_STATUS" != "running" ]; then
-    echo "🚨 DEPLOY FAILED at step L4 (${CONTAINER_NAME}, local): expected status 'running', got '${CONTAINER_STATUS}'." >&2
+# Step L5: confirm the container is actually running, not just that run_env.sh exited 0 - the
+# prober's own soft-restart/bootstrap path calls `docker compose up -d` in the background via
+# run_all.sh, which can itself report success even if the container immediately crashed
+# (restart policy is "no" repo-wide, so a crash shows as Exited, not a silent respawn-loop).
+# Poll briefly rather than checking once immediately - run_env.sh's trigger and the prober's own
+# run_all.sh call are not perfectly synchronous.
+echo "== [L5/L5] Confirming ${CONTAINER_NAME} is running (local) =="
+CONTAINER_UP=0
+CONTAINER_CHECK_ELAPSED=0
+while [ "$CONTAINER_CHECK_ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
+    CONTAINER_STATUS="$(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME" 2>&1)"
+    if [ "$CONTAINER_STATUS" == "running" ]; then
+        CONTAINER_UP=1
+        break
+    fi
+    sleep "$VERIFY_POLL_INTERVAL"
+    CONTAINER_CHECK_ELAPSED=$((CONTAINER_CHECK_ELAPSED + VERIFY_POLL_INTERVAL))
+done
+if [ "$CONTAINER_UP" -ne 1 ]; then
+    echo "🚨 DEPLOY FAILED at step L5 (${CONTAINER_NAME}, local): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
     docker logs "$CONTAINER_NAME" --tail 20 >&2 2>&1 || true
     exit 1
 fi
@@ -484,7 +595,7 @@ while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
 done
 
 if [ "$VERIFIED" -ne 1 ]; then
-    echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} within ${VERIFY_TIMEOUT}s (container is running - step L4 passed - but never reported the right version)." >&2
+    echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} within ${VERIFY_TIMEOUT}s (container is running - step L5 passed - but never reported the right version)." >&2
     echo "Last observed container state:" >&2
     docker logs "$CONTAINER_NAME" --tail 20 >&2 2>&1 || true
     exit 1

@@ -150,7 +150,14 @@ def test_local_deploy_does_not_unpack_bundle_onto_checkout(scratch_deploy_repo):
         ["git", "status", "--porcelain"], cwd=scratch_deploy_repo["repo"],
         capture_output=True, text=True, check=True,
     ).stdout
-    assert status_after == status_before, "local deploy must not modify tracked working-tree files"
+    # A real deploy now genuinely runs stop_env.sh/run_env.sh (2026-09-06 revision), which write
+    # real runtime log/state files under logs/health_monitoring/ - a legitimate new untracked
+    # directory, not the bundle being unpacked onto tracked files. Only tracked-file changes (any
+    # porcelain line NOT starting with "??") are what this test actually cares about.
+    tracked_changes_before = [line for line in status_before.splitlines() if not line.startswith("??")]
+    tracked_changes_after = [line for line in status_after.splitlines() if not line.startswith("??")]
+    assert tracked_changes_after == tracked_changes_before, \
+        "local deploy must not modify any TRACKED working-tree file"
     assert git_log(scratch_deploy_repo["repo"]) == before_log
 
 

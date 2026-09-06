@@ -48,13 +48,17 @@ def scratch_env_repo(tmp_path):
     (repo / "apps" / "morning-mcp-app" / "config").mkdir(parents=True)
     (repo / "scripts" / "health_monitoring").mkdir(parents=True)
 
-    for env, denidin_port, morning_port in (("dev", 8100, 8000), ("prod", 8101, 8001)):
+    for env, denidin_port, morning_port, project in (
+        ("dev", 8100, 8000, "scratch-env-dev"), ("prod", 8101, 8001, "scratch-env-prod"),
+    ):
         (repo / "apps" / "denidin-app" / "config" / f"config.{env}.json").write_text(
             json.dumps({"health_check_port": denidin_port})
         )
         (repo / "apps" / "morning-mcp-app" / "config" / f"config.{env}.json").write_text(
             json.dumps({"mcp": {"port": morning_port}})
         )
+        (repo / "docker").mkdir(exist_ok=True)
+        (repo / "docker" / f"docker-compose.{env}.yml").write_text(f"name: {project}\nservices: {{}}\n")
 
     shutil.copy(PROBER_PATHS_SCRIPT, repo / "scripts" / "health_monitoring" / "prober_paths.sh")
     shutil.copy(RUN_PROBER_SCRIPT, repo / "scripts" / "health_monitoring" / "run_prober_for_env.sh")
@@ -79,8 +83,8 @@ def test_prober_paths_resolve_ports_and_container_names(scratch_env_repo):
 
     assert "denidin_url=http://127.0.0.1:8100/health" in output
     assert "morning_url=http://127.0.0.1:8000/health" in output
-    assert "denidin_container=denidin-prod-denidin-app-prod-1" in output
-    assert "morning_container=denidin-prod-morning-mcp-app-prod-1" in output
+    assert "denidin_container=scratch-env-prod-denidin-app-prod-1" in output
+    assert "morning_container=scratch-env-prod-morning-mcp-app-prod-1" in output
     assert f"state_file={scratch_env_repo}/logs/health_monitoring/dev/state.json" in output
 
 
@@ -107,8 +111,8 @@ def test_run_prober_for_env_constructs_correct_prober_invocation(scratch_env_rep
     assert "--env" in argv and argv[argv.index("--env") + 1] == "dev"
     assert argv[argv.index("--denidin-health-url") + 1] == "http://127.0.0.1:8100/health"
     assert argv[argv.index("--morning-health-url") + 1] == "http://127.0.0.1:8000/health"
-    assert argv[argv.index("--denidin-container") + 1] == "denidin-dev-denidin-app-dev-1"
-    assert argv[argv.index("--morning-container") + 1] == "denidin-dev-morning-mcp-app-dev-1"
+    assert argv[argv.index("--denidin-container") + 1] == "scratch-env-dev-denidin-app-dev-1"
+    assert argv[argv.index("--morning-container") + 1] == "scratch-env-dev-morning-mcp-app-dev-1"
     assert "--dry-run" in argv
 
 
