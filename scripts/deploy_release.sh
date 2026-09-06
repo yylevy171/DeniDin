@@ -186,6 +186,40 @@ fi
 MANIFEST_APP="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['app'])" "$MANIFEST_PATH" 2>/dev/null || echo "")"
 MANIFEST_VERSION="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['version'])" "$MANIFEST_PATH" 2>/dev/null || echo "")"
 
+# The image tag(s) this artifact's tar is supposed to contain - straight from the manifest
+# cut_release.sh wrote at `docker save` time (authoritative for WHAT should be in the tar).
+# This drives the retag loop below instead of parsing `docker load`'s own stdout for it,
+# because over the wsl.exe/base64 SSH transport that multi-line output can be collapsed to a
+# single line (real incident 2026-09-06: webapp's 2-image tar retagged only the first image,
+# then `docker compose up -d` failed on the missing second one). `docker load`'s output is
+# still checked - via _verify_loaded_matches_manifest below - but only to catch an image the
+# manifest does NOT list (a swapped/corrupt tarball), never as the retag source of truth.
+# Manifests cut before the `images` array existed (older single-image denidin-app/
+# morning-mcp-app releases) fall back to the one <app>:<version> tag `docker save` embedded.
+MANIFEST_IMAGES="$(python3 -c "import json,sys; print('\n'.join(json.load(open(sys.argv[1])).get('images') or []))" "$MANIFEST_PATH" 2>/dev/null || echo "")"
+if [ -z "$MANIFEST_IMAGES" ]; then
+    MANIFEST_IMAGES="${APP}:${VERSION}"
+fi
+
+# Fail if `docker load`'s output names an image tag the manifest does NOT list - that means the
+# tarball's content doesn't match its manifest (e.g. bytes swapped after the cut). The reverse -
+# a manifest image NOT appearing in the load output - is NOT failed here: the SSH transport can
+# drop lines from multi-line stdout; each manifest image's real presence is confirmed separately
+# by `docker image inspect` at the retag step. $1 = captured `docker load` output; $2 = optional
+# host label for the error message.
+_verify_loaded_matches_manifest() {
+    local load_output="$1" where="" t
+    [ -n "$2" ] && where=" on $2"
+    while IFS= read -r t; do
+        [ -z "$t" ] && continue
+        if ! printf '%s\n' "$MANIFEST_IMAGES" | grep -qxF "$t"; then
+            echo "🚨 DEPLOY FAILED at the load step${where}: the tarball loaded image '${t}', which the release manifest for ${APP} v${VERSION} does not list ($(echo "$MANIFEST_IMAGES" | tr '\n' ' ')). The artifact's content does not match its manifest - refusing to deploy." >&2
+            return 1
+        fi
+    done <<< "$(echo "$load_output" | tr -d '\r' | grep -oE 'Loaded image: [^ ]+' | sed 's/^Loaded image: //')"
+    return 0
+}
+
 if [ "$MANIFEST_APP" != "$APP" ] || [ "$MANIFEST_VERSION" != "$VERSION" ]; then
     echo "Error: manifest at ${MANIFEST_PATH} doesn't match requested ${APP} v${VERSION} (found: app=${MANIFEST_APP:-<none>}, version=${MANIFEST_VERSION:-<none>})." >&2
     exit 1
@@ -250,15 +284,24 @@ if [ "$REMOTE" -eq 1 ]; then
     fi
 
     # Step R3: load the artifact on the box - no rebuild, ever (REQ-DEPLOY-001). webapp's
-    # bundled tar carries two images.
+    # bundled tar carries two images. Exit codes don't propagate through `wsl.exe -e bash -c`,
+    # so success is confirmed two ways: (a) `docker load`'s output must not name any image the
+    # manifest doesn't list (corrupt/swapped tar), and (b) every manifest image must actually
+    # be present afterward (`docker image inspect`) - the transport can drop a "Loaded image:"
+    # line from multi-line stdout without the load itself having failed.
     echo "== [R3/R8] Loading ${ARTIFACT_NAME} into Docker on ${REMOTE_HOST} =="
     LOAD_OUTPUT="$(remote_run "docker load -i \"${WIN_HOME}/${ARTIFACT_NAME}\"" 2>&1)"
-    LOADED_REFS="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
-    if [ -z "$LOADED_REFS" ]; then
-        echo "🚨 DEPLOY FAILED at step R3 (docker load on ${REMOTE_HOST}): could not determine the loaded image reference(s). Raw output was:" >&2
-        echo "$LOAD_OUTPUT" >&2
-        exit 1
-    fi
+    echo "$LOAD_OUTPUT" | sed 's/^/   /'
+    _verify_loaded_matches_manifest "$LOAD_OUTPUT" "$REMOTE_HOST" || exit 1
+    LOADED_REFS="$MANIFEST_IMAGES"
+    while IFS= read -r _ref; do
+        [ -z "$_ref" ] && continue
+        _present="$(remote_run "docker image inspect ${_ref} >/dev/null 2>&1 && echo PRESENT || echo MISSING" 2>&1 | tail -1)"
+        if [ "$_present" != "PRESENT" ]; then
+            echo "🚨 DEPLOY FAILED at step R3 (docker load on ${REMOTE_HOST}): image ${_ref} (from the release manifest) is not present after load." >&2
+            exit 1
+        fi
+    done <<< "$LOADED_REFS"
 
     # Step R4: clean up the shipped tarball off the box - separately checked so a failure here
     # (disk full, permissions) is never silently swallowed by the load step's own success.
@@ -277,7 +320,10 @@ if [ "$REMOTE" -eq 1 ]; then
         [ -z "$_ref" ] && continue
         _target="$(_compose_image_for "$_ref")"
         echo "   ${_ref} -> ${_target}"
-        if ! remote_run "docker tag ${_ref} ${_target}"; then
+        # Exit codes don't propagate through the SSH/wsl transport - confirm the retag landed
+        # by inspecting the target, not by `remote_run`'s return status.
+        _tagged="$(remote_run "docker tag ${_ref} ${_target} && docker image inspect ${_target} >/dev/null 2>&1 && echo OK || echo FAIL" 2>&1 | tail -1)"
+        if [ "$_tagged" != "OK" ]; then
             echo "🚨 DEPLOY FAILED at step R5 (docker tag ${_ref} -> ${_target} on ${REMOTE_HOST})." >&2
             exit 1
         fi
@@ -414,16 +460,23 @@ fi
 # matching the same discipline as the remote/prod path above.
 
 # Step L1: load the artifact - no rebuild, ever, for any of the 3 shapes (REQ-DEPLOY-001).
-# Capture the ACTUAL loaded image reference from docker load's own output rather than assuming
-# it matches <app>:<version> - a tarball's embedded tag always wins over its filename on disk.
+# The retag list (step L2) is the manifest's image tags, NOT whatever `docker load` prints -
+# see MANIFEST_IMAGES above. `docker load`'s output is still checked, to reject a tarball
+# containing an image the manifest doesn't list (swapped/corrupt bytes); step L2 then confirms
+# each manifest image is actually present. This is what mis-handled webapp's 2-image tar
+# before (2026-09-06) and what the swapped-tarball verification test exercises.
 echo "== [L1/L4] Loading ${TAR_PATH} into Docker (local) =="
+set +e
 LOAD_OUTPUT="$(docker load -i "$TAR_PATH" 2>&1)"
-LOADED_REFS="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
-if [ -z "$LOADED_REFS" ]; then
-    echo "🚨 DEPLOY FAILED at step L1 (docker load, local): could not determine the loaded image reference(s). Raw output was:" >&2
-    echo "$LOAD_OUTPUT" >&2
+LOAD_STATUS=$?
+set -e
+echo "$LOAD_OUTPUT" | sed 's/^/   /'
+if [ "$LOAD_STATUS" -ne 0 ]; then
+    echo "🚨 DEPLOY FAILED at step L1 (docker load, local)." >&2
     exit 1
 fi
+_verify_loaded_matches_manifest "$LOAD_OUTPUT" || exit 1
+LOADED_REFS="$MANIFEST_IMAGES"
 
 # Step L2: retag each loaded image to whatever docker-compose expects for its service - this
 # is what preserves the environment's existing volume mounts (config/logs/data) instead of a
@@ -431,6 +484,10 @@ fi
 echo "== [L2/L4] Retagging loaded image(s) to their compose names (local) =="
 while IFS= read -r _ref; do
     [ -z "$_ref" ] && continue
+    if ! docker image inspect "$_ref" >/dev/null 2>&1; then
+        echo "🚨 DEPLOY FAILED at step L2 (image ${_ref} from the release manifest not present after docker load, local)." >&2
+        exit 1
+    fi
     _target="$(_compose_image_for "$_ref")"
     echo "   ${_ref} -> ${_target}"
     if ! docker tag "$_ref" "$_target"; then

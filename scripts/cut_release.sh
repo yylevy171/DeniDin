@@ -249,6 +249,33 @@ fi
 #    setups, several of which run their VM as x86_64) this is a native build; on an arm64 Mac
 #    host it runs under Docker's transparent QEMU emulation. Either way, ONE artifact is correct
 #    for BOTH deploy targets - no per-environment rebuild, ever.
+#
+#    Pause the colima keepalive around build+save. `~/bin/colima-keepalive.sh` runs via launchd
+#    every 2 min; its health probe is `docker info` with a 15s timeout, and a heavy build keeps
+#    the daemon busy long enough to trip it - the keepalive then concludes the VM is wedged and
+#    does `pkill -9 limactl` + `colima start`, killing the in-progress build (real incident
+#    2026-09-06 cutting webapp-v0.0.1-webapp: every retry hit the same ~2-min guillotine). The
+#    EXIT trap guarantees it comes back on any exit path; step 5 also resumes it explicitly the
+#    moment the fragile part is done. Best-effort and skipped entirely under a --artifacts-root
+#    override (the test seam): a cut never fails because launchctl is missing or the job isn't
+#    loaded.
+_KEEPALIVE_PLIST="$HOME/Library/LaunchAgents/com.yaron.colima-keepalive.plist"
+_KEEPALIVE_PAUSED=0
+_resume_keepalive() {
+    [ "$_KEEPALIVE_PAUSED" -eq 1 ] || return 0
+    _KEEPALIVE_PAUSED=0
+    launchctl load "$_KEEPALIVE_PLIST" >/dev/null 2>&1 && echo "  (resumed colima-keepalive)"
+}
+trap _resume_keepalive EXIT
+if [ "$ARTIFACTS_ROOT" == "$DEFAULT_ARTIFACTS_ROOT" ] && [ -f "$_KEEPALIVE_PLIST" ] && command -v launchctl >/dev/null 2>&1; then
+    if launchctl list 2>/dev/null | grep -q 'com\.yaron\.colima-keepalive'; then
+        if launchctl unload "$_KEEPALIVE_PLIST" >/dev/null 2>&1; then
+            _KEEPALIVE_PAUSED=1
+            echo "  (paused colima-keepalive for the build - resumes automatically when the cut finishes)"
+        fi
+    fi
+fi
+
 BUILD_STATUS=0
 for _spec in "${BUILD_SPECS[@]}"; do
     _tag="${_spec%%|*}"
@@ -280,6 +307,10 @@ if [ "$SAVE_STATUS" -ne 0 ]; then
     _revert_uncommitted_release_files
     exit 1
 fi
+
+# Build + save done - the part the keepalive could kill is over. Restore it now rather than
+# waiting for the EXIT trap, so the VM is protected again during the git/manifest/tag steps.
+_resume_keepalive
 
 # 6. NOW commit - both docker steps already succeeded, so this commit will always have a
 #    matching artifact/tag. Includes the specs/done/ sweep (already staged by git mv) and any
