@@ -17,7 +17,7 @@ patch to just the ngrok check (reverted — see "Branch/numbering discrepancy" b
 recurs on every future restart/reboot until a fix lands.
 
 ## Status
-**Open — code and tests exist on this branch (`bugfix/043-health-monitoring-and-auto-restart`),
+**In Progress — code and tests exist on this branch (`bugfix/043-health-monitoring-and-auto-restart`),
 merged current with master and re-verified passing 2026-09-06. Never had a PR, never merged to
 master. No prod wiring (Windows Task Scheduler) or live demo performed yet.**
 
