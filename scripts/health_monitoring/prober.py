@@ -9,8 +9,17 @@ JSON file between invocations, per explicit design decision ("I actually
 prefer that" - state in a file, not an app's memory, and the scheduling
 itself is a system-level mechanism, not a new bespoke long-running process).
 
-Escalation (both thresholds measured from the last time ALL checks passed):
-  - < 3 min:  no action, just log.
+Escalation (both timed thresholds measured from the last time ALL checks passed):
+  - no state file at all (BOOTSTRAP): immediate proper-channels restart, same
+    mechanism as SOFT below, no waiting. This is the normal case on every
+    legitimate start - run_env.sh's job is only to (re-)enable this script's
+    own schedule; THIS script is what actually calls run_all.sh, every time,
+    on every kind of start (fresh install, admin-requested, crash recovery,
+    reboot recovery) - see stop_env.sh/run_env.sh below for why. stop_env.sh
+    archives (never deletes-without-a-trace) the state file on every
+    deliberate stop specifically so the next start lands here instead of
+    wrongly escalating against a stale pre-stop timestamp.
+  - < 3 min (with a real, non-stale state file): no action, just log.
   - >= 3 min: SOFT restart - stop_all.sh <env> -force && run_all.sh <env>.
               The proper-channels path (env_lock, active_env.json bookkeeping
               all respected) - tried first because it's the well-behaved one.
@@ -18,6 +27,23 @@ Escalation (both thresholds measured from the last time ALL checks passed):
                Bypasses all of that bookkeeping - the blunt fallback, only
                reached if the soft path already had its chance and didn't
                resolve things.
+
+Admin-initiated stop/start (bugfix-043, 2026-09-06 revision): an admin deciding
+an environment should be down is NOT an outage, and must not be fought by this
+script. Rather than a separately-maintained "intentionally down" flag (the same
+class of bug as the original incident - a piece of state someone has to
+remember to keep correct), the fix ties the prober's own on/off state directly
+to the human-facing stop/start actions themselves:
+  - scripts/stop_env.sh <env>: disables/unregisters this script's own OS-level
+    schedule for <env> FIRST (so it can't race with the shutdown), archives the
+    state file (see archive_state_file - never silently deleted), then stops
+    the apps (stop_all.sh <env> -force).
+  - scripts/run_env.sh <env>: (re-)registers/enables this script's schedule for
+    <env> (idempotent - a no-op if already enabled) and triggers one immediate
+    probe cycle. That immediate probe sees no state file -> BOOTSTRAP -> calls
+    run_all.sh itself. run_env.sh never calls run_all.sh directly - the whole
+    point is that the prober's own bring-up code path is exercised on every
+    single start, not just during a rare real crash.
 
 Usage (dev demo, dry-run - logs what it WOULD do, never actually restarts):
     python3 prober.py --env dev \\
@@ -85,15 +111,51 @@ def write_last_up_time(state_path: Path, timestamp: float) -> None:
     state_path.write_text(json.dumps({"last_up_time": timestamp}))
 
 
+def archive_state_file(state_path: Path, now: float) -> Optional[Path]:
+    """Called by stop_env.sh when an admin deliberately stops an environment. Renames the live
+    state file (if any) to a timestamped archive path instead of deleting it - the last-known-up
+    timestamp is kept as a historical record (the timestamp is baked into the archive filename so
+    repeated stops never overwrite each other), but nothing is left at state_path afterward. That
+    absence is what makes the very next probe after a later start correctly see "no baseline" and
+    bootstrap immediately (see decide_action's "bootstrap" branch) instead of measuring elapsed
+    time against a stale pre-stop timestamp and misfiring a "hard" restart on what was actually a
+    perfectly ordinary admin-requested start.
+
+    Returns the archive path, or None if there was no state file to archive (e.g. the env was
+    never successfully probed even once before being stopped).
+    """
+    if not state_path.exists():
+        return None
+    try:
+        data = json.loads(state_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    data["stopped_at"] = now
+    archive_path = state_path.parent / f"{state_path.stem}_stopped_{int(now)}{state_path.suffix}"
+    archive_path.write_text(json.dumps(data))
+    state_path.unlink()
+    return archive_path
+
+
 def decide_action(last_up_time: Optional[float], now: float) -> str:
     """Pure decision function, deliberately separated from all I/O
     (probing, restarting, logging) so the escalation math is trivially
     unit-testable in isolation - see tests/test_prober.py.
 
-    Returns "none", "soft", or "hard".
+    Returns "none", "bootstrap", "soft", or "hard".
+
+    "bootstrap" (no persisted last_up_time at all) is treated as an immediate, proper-channel
+    restart (run_soft_restart, i.e. run_all.sh) rather than "do nothing" - this is what makes
+    run_env.sh's "just start the prober, let it bring the apps up itself" model work: a missing
+    state file means either a genuinely fresh install, or (far more commonly) that stop_env.sh
+    just archived it moments ago on a deliberate stop. Either way it means "nothing to escalate
+    from, start it now" - not "wait out an arbitrary timer for a state we already know is
+    intentional." A real crash/reboot recovery, in contrast, always has a real (now-stale)
+    last_up_time on disk, so it still goes through the soft (>=3min) / hard (>=10min) escalation
+    ladder unchanged.
     """
     if last_up_time is None:
-        return "none"
+        return "bootstrap"
     elapsed = now - last_up_time
     if elapsed >= HARD_RESTART_THRESHOLD_SECONDS:
         return "hard"
@@ -154,7 +216,7 @@ def run_once(
     now: Optional[float] = None,
 ) -> str:
     """Runs exactly one probe-and-decide cycle. Returns the action taken
-    ("none"/"soft"/"hard") so callers (tests, a manual dev demo) can assert
+    ("none"/"bootstrap"/"soft"/"hard") so callers (tests, a manual dev demo) can assert
     on it directly instead of parsing the log file."""
     now = now if now is not None else time.time()
     denidin_ok = probe_health(denidin_health_url)
@@ -168,7 +230,7 @@ def run_once(
         action = "none"
     else:
         action = decide_action(last_up_time, now)
-        if action == "soft" and not dry_run:
+        if action in ("soft", "bootstrap") and not dry_run:
             run_soft_restart(env, scripts_dir)
         elif action == "hard" and not dry_run:
             run_hard_restart(denidin_container, morning_container)
@@ -180,15 +242,42 @@ def run_once(
 def main(argv: Optional[list] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--env", required=True, choices=["dev", "prod"])
-    parser.add_argument("--denidin-health-url", required=True)
-    parser.add_argument("--morning-health-url", required=True)
+    parser.add_argument("--denidin-health-url")
+    parser.add_argument("--morning-health-url")
     parser.add_argument("--state-file", required=True, type=Path)
-    parser.add_argument("--log-file", required=True, type=Path)
-    parser.add_argument("--scripts-dir", required=True, type=Path, help="Repo root containing scripts/stop_all.sh and scripts/run_all.sh")
-    parser.add_argument("--denidin-container", required=True)
-    parser.add_argument("--morning-container", required=True)
+    parser.add_argument("--log-file", type=Path)
+    parser.add_argument("--scripts-dir", type=Path, help="Repo root containing scripts/stop_all.sh and scripts/run_all.sh")
+    parser.add_argument("--denidin-container")
+    parser.add_argument("--morning-container")
     parser.add_argument("--dry-run", action="store_true", help="Log what would happen, never actually restart anything")
+    parser.add_argument(
+        "--archive-state", action="store_true",
+        help="Archive the current state file (rename it with a _stopped_<timestamp> suffix) and "
+             "exit immediately - no probing, no restart decision. Used by stop_env.sh when an "
+             "admin deliberately stops an environment, so the state file's absence makes the "
+             "next run_env.sh start bootstrap immediately instead of escalating against a stale "
+             "pre-stop timestamp.",
+    )
     args = parser.parse_args(argv)
+
+    if args.archive_state:
+        archived = archive_state_file(args.state_file, time.time())
+        print(f"archived={archived}" if archived is not None else "archived=none (no existing state file)")
+        return 0
+
+    required_for_probe = {
+        "--denidin-health-url": args.denidin_health_url,
+        "--morning-health-url": args.morning_health_url,
+        "--log-file": args.log_file,
+        "--scripts-dir": args.scripts_dir,
+        "--denidin-container": args.denidin_container,
+        "--morning-container": args.morning_container,
+    }
+    missing = [name for name, value in required_for_probe.items() if value is None]
+    if missing:
+        parser.error(
+            f"the following arguments are required unless --archive-state is passed: {', '.join(missing)}"
+        )
 
     action = run_once(
         env=args.env,

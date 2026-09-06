@@ -23,7 +23,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from prober import (  # noqa: E402
+    archive_state_file,
     decide_action,
+    main,
     probe_health,
     read_last_up_time,
     run_once,
@@ -119,12 +121,16 @@ class TestStateFileRoundTrip:
 
 
 class TestDecideAction:
-    def test_no_baseline_yet_takes_no_action(self):
-        # Bootstrap edge case: a brand-new state file with nothing recorded
-        # yet must never be treated as "unhealthy for a very long time" -
-        # that would restart a freshly-started system before it ever had a
-        # chance to report healthy once.
-        assert decide_action(None, now=1000.0) == "none"
+    def test_no_baseline_yet_triggers_bootstrap(self):
+        # 2026-09-06 revision (bugfix-043): a missing state file now means
+        # "start it now via the proper channel" (bootstrap), not "do
+        # nothing" - see run_env.sh/stop_env.sh, which rely on this to make
+        # the prober itself the one thing that ever calls run_all.sh, on
+        # every kind of start (fresh install, admin-requested, crash/reboot
+        # recovery alike). stop_env.sh archives (rather than silently
+        # deleting) the state file precisely so this branch is reached on
+        # every deliberate start, not just a true first-ever install.
+        assert decide_action(None, now=1000.0) == "bootstrap"
 
     def test_within_soft_threshold_takes_no_action(self):
         now = 1000.0
@@ -150,6 +156,46 @@ class TestDecideAction:
         now = 1000.0
         last_up = now - (HARD_RESTART_THRESHOLD_SECONDS * 3)
         assert decide_action(last_up, now) == "hard"
+
+
+class TestArchiveStateFile:
+    def test_no_existing_state_file_returns_none(self, tmp_path):
+        assert archive_state_file(tmp_path / "state.json", now=1000.0) is None
+
+    def test_archives_with_timestamp_in_filename_and_removes_original(self, tmp_path):
+        state_file = tmp_path / "state.json"
+        write_last_up_time(state_file, 12345.0)
+
+        archive_path = archive_state_file(state_file, now=99999.0)
+
+        assert archive_path is not None
+        assert archive_path.name == "state_stopped_99999.json"
+        assert not state_file.exists()
+        archived = json.loads(archive_path.read_text())
+        assert archived["last_up_time"] == 12345.0
+        assert archived["stopped_at"] == 99999.0
+
+    def test_repeated_stops_never_overwrite_each_other(self, tmp_path):
+        state_file = tmp_path / "state.json"
+        write_last_up_time(state_file, 1.0)
+        first_archive = archive_state_file(state_file, now=100.0)
+
+        write_last_up_time(state_file, 2.0)
+        second_archive = archive_state_file(state_file, now=200.0)
+
+        assert first_archive != second_archive
+        assert first_archive.exists()
+        assert second_archive.exists()
+
+    def test_corrupt_state_file_still_archives_without_crashing(self, tmp_path):
+        state_file = tmp_path / "state.json"
+        state_file.write_text("not valid json{{{")
+
+        archive_path = archive_state_file(state_file, now=500.0)
+
+        assert archive_path is not None
+        assert not state_file.exists()
+        assert json.loads(archive_path.read_text())["stopped_at"] == 500.0
 
 
 class TestRunOnceDryRun:
@@ -229,3 +275,42 @@ class TestRunOnceDryRun:
         entry = json.loads(log_file.read_text().splitlines()[-1])
         assert entry["denidin_health"] == "success"
         assert entry["morning_health"] == "fail"
+
+    def test_no_state_file_and_unhealthy_reports_bootstrap(self, tmp_path, health_server):
+        # No seed_last_up passed at all - simulates run_env.sh's normal case
+        # (stop_env.sh already archived any prior state, or this is a
+        # genuinely fresh install) where the apps aren't up yet.
+        url, set_status = health_server
+        set_status(503)
+        action, state_file, log_file = self._run(tmp_path, url, url, now=5000.0)
+        assert action == "bootstrap"
+        assert not state_file.exists()  # dry_run must never write a baseline on failure
+        entry = json.loads(log_file.read_text().splitlines()[-1])
+        assert entry["action"] == "bootstrap"
+
+
+class TestMainArchiveStateCLI:
+    """The --archive-state CLI mode - what stop_env.sh actually invokes."""
+
+    def test_archive_state_flag_archives_and_exits_zero(self, tmp_path, capsys):
+        state_file = tmp_path / "state.json"
+        write_last_up_time(state_file, 42.0)
+
+        exit_code = main(["--env", "dev", "--state-file", str(state_file), "--archive-state"])
+
+        assert exit_code == 0
+        assert not state_file.exists()
+        archives = list(tmp_path.glob("state_stopped_*.json"))
+        assert len(archives) == 1
+        assert "archived=" in capsys.readouterr().out
+
+    def test_archive_state_flag_with_no_existing_file_still_exits_zero(self, tmp_path, capsys):
+        state_file = tmp_path / "state.json"
+        exit_code = main(["--env", "dev", "--state-file", str(state_file), "--archive-state"])
+        assert exit_code == 0
+        assert "archived=none" in capsys.readouterr().out
+
+    def test_missing_probe_args_without_archive_state_errors_out(self, tmp_path):
+        state_file = tmp_path / "state.json"
+        with pytest.raises(SystemExit):
+            main(["--env", "dev", "--state-file", str(state_file)])
