@@ -167,6 +167,7 @@ class TestSourceTimestamp:
         assert message_data["received_at"] != message_data["timestamp"]
 
     def test_absent_timestamp_falls_back_to_processing_time(self, session_manager):
+        from datetime import datetime, timedelta
         message_id = session_manager.add_message(
             chat_id="1234567890@c.us", role="assistant", content="Reply", user_role="client",
         )
@@ -176,7 +177,11 @@ class TestSourceTimestamp:
         )
         with open(message_file) as f:
             message_data = json.load(f)
-        assert message_data["timestamp"] == message_data["received_at"]
+        # timestamp and received_at are two independent now_local() reads when no
+        # explicit timestamp is passed - both processing time, within a hair.
+        ts = datetime.fromisoformat(message_data["timestamp"])
+        recv = datetime.fromisoformat(message_data["received_at"])
+        assert abs((recv - ts).total_seconds()) < 1.0
 
     def test_explicit_timestamp_survives_token_counting_path(self, session_manager):
         from src.models.user import Role

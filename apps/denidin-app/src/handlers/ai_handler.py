@@ -183,6 +183,22 @@ NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
 # expected or desired behavior.
 MAX_LOCAL_TOOL_LOOP_ITERATIONS = 10
 
+# Feature 069: earliest epoch we accept as a real message send-time (2020-01-01
+# Israel local). Anything below this - 0, a negative value, a malformed webhook
+# `timestamp`, a test sentinel - is treated as "no usable source time", so the
+# persisted Message.timestamp falls back to processing time instead of landing
+# the message decades in the past (which would misdate its ledger event AND
+# drop it out of Feature 070's rolling context window).
+_MIN_PLAUSIBLE_SOURCE_EPOCH = 1_577_836_800
+
+
+def _sane_source_epoch(epoch: Optional[int]) -> Optional[int]:
+    """Return `epoch` when it's a plausible real send-time, else None."""
+    if epoch is None or epoch < _MIN_PLAUSIBLE_SOURCE_EPOCH:
+        return None
+    return epoch
+
+
 def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
     """bugfix-024: rewrite an @-mention of DeniDin's own WhatsApp number (WhatsApp's
     native @-mention picker inserts the mentioned contact's raw phone number into
@@ -3127,22 +3143,24 @@ class AIHandler:
                 assistant_msg_recipient = effective_chat_id if is_group else resolved_sender_phone
                 assistant_msg_recipient_name = (chat_name or effective_chat_id) if is_group else sender_name_val
 
-                # Feature 069: the bot reply's persisted timestamp. Live - the
+                # Feature 069: the persisted Message.timestamp. Live - the
                 # operator message's own wall-clock send time (request.timestamp,
                 # the Green API notification epoch). WhatsApp-export player replay
-                # - the injected ORIGINAL conversation time + 10s, so the reply
-                # sorts just after the operator turn it answers instead of
-                # sharing its exact second. This is the message
-                # `_run_post_turn_ledger_recognition` dates a `הסכם`/`בנק` event
-                # from (session.message_ids[-1], Decision #10).
+                # - the injected ORIGINAL conversation time (+10s for the reply,
+                # so it sorts just after the operator turn it answers). This is
+                # what `_run_post_turn_ledger_recognition` dates a `הסכם`/`בנק`
+                # event from (session.message_ids[-1], Decision #10) AND what
+                # Feature 070's rolling window filters on - so an absent or
+                # implausible epoch (a malformed webhook, a test sentinel) must
+                # fall back to processing time, never land the message in 1970.
                 replayed = bool(getattr(request.original_message, "is_replay", False))
+                _src_epoch = _sane_source_epoch(request.timestamp)
                 user_source_ts = (
-                    None if request.timestamp is None
-                    else local_from_timestamp(request.timestamp)
+                    None if _src_epoch is None else local_from_timestamp(_src_epoch)
                 )
                 assistant_source_ts = (
-                    None if request.timestamp is None
-                    else local_from_timestamp(request.timestamp + (10 if replayed else 0))
+                    None if _src_epoch is None
+                    else local_from_timestamp(_src_epoch + (10 if replayed else 0))
                 )
 
                 if self.rbac_enabled and user_obj:
@@ -3999,13 +4017,14 @@ class AIHandler:
 
         if self.memory_enabled and self.session_manager and effective_chat_id and self.rbac_enabled and user_obj:
             try:
+                _rem_epoch = _sane_source_epoch(request.timestamp)
+                _rem_replayed = bool(getattr(request.original_message, "is_replay", False))
                 self.session_manager.add_message_with_tokens(
                     chat_id=effective_chat_id, role="user", content=request.user_prompt,
                     user_role=user_obj.role,
                     sender=sender or effective_chat_id, message_id=request.message_id,
                     timestamp=(
-                        None if request.timestamp is None
-                        else local_from_timestamp(request.timestamp)
+                        None if _rem_epoch is None else local_from_timestamp(_rem_epoch)
                     ),
                 )
                 self.session_manager.add_message_with_tokens(
@@ -4013,10 +4032,8 @@ class AIHandler:
                     user_role=user_obj.role,
                     recipient=sender or effective_chat_id,
                     timestamp=(
-                        None if request.timestamp is None
-                        else local_from_timestamp(request.timestamp + (
-                            10 if getattr(request.original_message, "is_replay", False) else 0
-                        ))
+                        None if _rem_epoch is None
+                        else local_from_timestamp(_rem_epoch + (10 if _rem_replayed else 0))
                     ),
                 )
             except Exception as e:

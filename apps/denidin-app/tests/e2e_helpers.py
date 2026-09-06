@@ -63,6 +63,26 @@ def sanity_worker_data_root() -> Path:
     return root / worker if worker else root
 
 
+def reset_chat_session(session_manager, chat_id: str) -> None:
+    """Empty a chat's session between tests. Feature 070 removed
+    SessionManager.clear_session (one permanent, never-expiring session per
+    chat now); this is the equivalent - drop every persisted message file
+    (live `messages/` and `archived/`), reset the id lists and counters, save.
+    No-op-safe if the session has no messages yet."""
+    session = session_manager.get_session(chat_id)
+    base = session_manager.storage_dir / (session.storage_path or session.session_id)
+    for sub in ("messages", "archived"):
+        d = base / sub
+        if d.exists():
+            for f in d.glob("*.json"):
+                f.unlink()
+    session.message_ids = []
+    session.archived_message_ids = []
+    session.total_tokens = 0
+    session.message_counter = 0
+    session_manager._save_session(session)
+
+
 def create_real_notification(event_dict):
     """
     Create real SDK Notification object (not mocked).

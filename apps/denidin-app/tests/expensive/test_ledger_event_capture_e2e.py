@@ -266,10 +266,8 @@ class TestLedgerEventCaptureE2E:
 
         session_manager = denidin_app.ai_handler.session_manager
         if session_manager is not None:
-            try:
-                session_manager.clear_session(chat_id)
-            except AttributeError:
-                logger.warning("SessionManager has no clear_session - session data not cleared")
+            from tests.e2e_helpers import reset_chat_session
+            reset_chat_session(session_manager, chat_id)
 
     # ------------------------------------------------------------------ event readers
     @staticmethod

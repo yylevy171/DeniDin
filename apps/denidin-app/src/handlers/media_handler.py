@@ -20,7 +20,7 @@ from src.handlers.extractors.docx_extractor import DOCXExtractor
 from src.managers.media_file_manager import MediaFileManager
 from src.utils.logger import get_logger
 from src.utils.time_utils import local_from_timestamp, now_local
-from src.handlers.ai_handler import build_ledger_stash_text
+from src.handlers.ai_handler import _MIN_PLAUSIBLE_SOURCE_EPOCH, build_ledger_stash_text
 
 logger = get_logger(__name__)
 
@@ -374,7 +374,8 @@ class MediaHandler:
                 image_path=image_path, extracted_text=extracted_text,
                 timestamp=(
                     local_from_timestamp(source_timestamp)
-                    if source_timestamp is not None else None
+                    if source_timestamp is not None
+                    and source_timestamp >= _MIN_PLAUSIBLE_SOURCE_EPOCH else None
                 ),
             )
             self.session_manager.add_message(

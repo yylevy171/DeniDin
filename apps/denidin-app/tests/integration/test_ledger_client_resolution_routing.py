@@ -39,7 +39,7 @@ import pytest
 from src.handlers.ai_handler import AIHandler, LEDGER_EVENT_TOOL
 from src.models.config import AppConfiguration
 
-from tests.e2e_helpers import event_datetime_for_message_ts
+from tests.e2e_helpers import event_datetime_for_message_ts, reset_chat_session
 from tests.integration import _ledger_069_harness as h
 from tests.integration._ledger_069_harness import (
     ScriptedOpenAI, GODFATHER_CHAT_ID, GODFATHER_SENDER, RECOGNITION_TOOL_NAME,
@@ -106,7 +106,7 @@ class TestLedgerClientResolutionRouting:
             manager._accounting_document_cache = None
             for path in manager.storage_dir.glob("*.json"):
                 path.unlink()
-            denidin_app.ai_handler.session_manager.clear_session(GODFATHER_CHAT_ID)
+            reset_chat_session(denidin_app.ai_handler.session_manager, GODFATHER_CHAT_ID)
             denidin_app.ai_handler.pending_approval_manager._pending.clear()
         _wipe()
         yield
