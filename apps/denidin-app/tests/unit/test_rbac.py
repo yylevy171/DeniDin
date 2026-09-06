@@ -202,69 +202,6 @@ class TestEndToEndRBACEnforcement:
             handler.get_response(request, user_phone=blocked_phone, sender=blocked_phone)
 
 
-class TestTokenLimitAutoPruning:
-    """Test automatic message pruning when token limits exceeded."""
-    
-    def test_client_exceeds_4k_tokens_triggers_pruning(self, rbac_config, mock_ai_client, temp_data_dir):
-        """CLIENT conversation exceeding 4K tokens auto-prunes oldest messages."""
-        # Arrange
-        session_manager = SessionManager(
-            storage_dir=f'{temp_data_dir}/sessions',
-            session_timeout_hours=24
-        )
-        
-        chat_id = "client_long_chat@c.us"
-        
-        # Act: Add messages until we exceed 4K tokens
-        # Each message ~500 tokens, so 10 messages = ~5K tokens
-        for i in range(10):
-            long_message = "This is a long message. " * 50  # ~500 tokens
-            session_manager.add_message_with_token_limit(
-                chat_id=chat_id,
-                role="user" if i % 2 == 0 else "assistant",
-                content=long_message,
-                user_role=Role.CLIENT,
-                token_limit=4000,
-                sender="+972501111111" if i % 2 == 0 else "AI",
-                recipient="AI" if i % 2 == 0 else "+972501111111"
-            )
-        
-        # Assert: Total tokens should not exceed 4K
-        total_tokens = session_manager.get_session_token_count(chat_id)
-        assert total_tokens <= 4000
-        
-        # Assert: Messages were pruned (exact count depends on token sizes)
-        # With ~300 tokens per message, should have ~13 messages for 4K limit
-        session = session_manager.get_session(chat_id)
-        assert len(session.message_ids) <= 14  # Allowing some variance
-    
-    def test_godfather_no_pruning_until_100k(self, rbac_config, mock_ai_client, temp_data_dir):
-        """GODFATHER can accumulate messages up to 100K tokens without pruning."""
-        # Arrange
-        session_manager = SessionManager(
-            storage_dir=f'{temp_data_dir}/sessions',
-            session_timeout_hours=24
-        )
-        
-        chat_id = "godfather_chat@c.us"
-        
-        # Act: Add 10 messages (~5K tokens total)
-        for i in range(10):
-            message = "This is a message. " * 50  # ~500 tokens
-            session_manager.add_message_with_token_limit(
-                chat_id=chat_id,
-                role="user" if i % 2 == 0 else "assistant",
-                content=message,
-                user_role=Role.GODFATHER,
-                token_limit=100000,
-                sender="+972501234567" if i % 2 == 0 else "AI",
-                recipient="AI" if i % 2 == 0 else "+972501234567"
-            )
-        
-        # Assert: No pruning - all 10 messages retained
-        session = session_manager.get_session(chat_id)
-        assert len(session.message_ids) == 10
-
 
 class TestMemoryScopeFiltering:
     """Test memory filtering based on user roles and scopes."""
@@ -620,27 +557,6 @@ class TestErrorHandling:
         # Assert: No results
         assert len(results) == 0
     
-    def test_session_with_zero_token_limit_accepts_no_messages(self, rbac_config, temp_data_dir):
-        """BLOCKED user with 0 token limit cannot add messages."""
-        # Arrange
-        session_manager = SessionManager(
-            storage_dir=f'{temp_data_dir}/sessions',
-            session_timeout_hours=24
-        )
-        
-        chat_id = "blocked_chat@c.us"
-        
-        # Act & Assert: Should raise ValueError
-        with pytest.raises(ValueError, match="Token limit exceeded: BLOCKED users cannot add messages"):
-            session_manager.add_message_with_token_limit(
-                chat_id=chat_id,
-                role="user",
-                content="Test message",
-                user_role=Role.BLOCKED,
-                token_limit=0,
-                sender="+972505555555",
-                recipient="AI"
-            )
 
 
 class TestConcurrentUserScenarios:
@@ -725,18 +641,16 @@ class TestConcurrentUserScenarios:
         # Arrange
         session_manager = SessionManager(
             storage_dir=f'{temp_data_dir}/sessions',
-            session_timeout_hours=24
         )
         
         # Act: Multiple users create sessions
         chat_ids = ["user1@c.us", "user2@c.us", "user3@c.us"]
         for i, chat_id in enumerate(chat_ids):
-            session_manager.add_message_with_token_limit(
+            session_manager.add_message_with_tokens(
                 chat_id=chat_id,
                 role="user",
                 content=f"Message from {chat_id}",
                 user_role=Role.CLIENT,
-                token_limit=4000,
                 sender=f"+97250{i}111111",
                 recipient="AI"
             )

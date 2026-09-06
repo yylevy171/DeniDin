@@ -31,10 +31,9 @@ Responses API -> real Morning MCP server, over the real tunnel.
 
 A few tests in this suite depend on a small number of PERMANENT real
 sandbox clients, seeded once and never re-created per run (as opposed to
-`_unique_client_name`/`_seed_client_via_conversation` below, the default
-fresh-per-run pattern) - see GROUND_TRUTH_CLIENTS.md in this same directory
-for the full registry, why each one exists, and what to do if the sandbox
-is ever wiped.
+`_unique_client_name`/`_seed_client` below, the default fresh-per-run
+pattern) - see GROUND_TRUTH_CLIENTS.md in this same directory for the full
+registry, why each one exists, and what to do if the sandbox is ever wiped.
 """
 from __future__ import annotations
 
@@ -45,6 +44,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from dataclasses import dataclass
+from enum import Enum
 from typing import Callable, List, Optional, Tuple
 
 from whatsapp_chatbot_python import Notification
@@ -52,6 +53,11 @@ from whatsapp_chatbot_python import Notification
 logger = logging.getLogger(__name__)
 
 DENIDIN_APP_DIR = Path(__file__).resolve().parents[2]
+
+# Feature 075: single source of truth in tests/e2e_helpers.py; re-exported here
+# so tests/billed/conftest.py and the MCP e2e modules can import it from their
+# usual helper module.
+from tests.e2e_helpers import sanity_worker_data_root  # noqa: E402,F401
 
 
 class NoMorningTunnelError(Exception):
@@ -64,9 +70,9 @@ class NoMorningTunnelError(Exception):
 
 
 class ClientAlreadyExistsError(Exception):
-    """Raised by `_complete_add_client_flow` when the name it was asked to
-    create turns out to be a genuine EXACT match for a real, pre-existing
-    sandbox client (2026-08-12, user decision, following the removal of the
+    """Raised by `_seed_client` (specific-name variant) when the name it was
+    asked to create turns out to be a genuine EXACT match for a real,
+    pre-existing sandbox client (2026-08-12, user decision, following the removal of the
     constitution's old "offer to update instead" behavior for this exact
     case - the app itself now just refuses and stops, so a test-side helper
     trying to CREATE a new client must treat this as a real, distinguishable
@@ -365,6 +371,68 @@ def _random_seed_email() -> str:
 
 _SEED_PHONE = "050-1234567"  # a plausible, always-valid Israeli mobile number
 
+
+# --------------------------------------------------------------------------- #
+# Feature 059 item 5: pick an already-existing sandbox client instead of       #
+# seeding a throwaway one.                                                     #
+#                                                                             #
+# Most Morning-MCP billed/expensive tests just need *a* valid client to exist  #
+# - client freshness buys them nothing (only a fresh *document* matters, and   #
+# those tests seed that separately). Historically each still paid 2-3 billed   #
+# OpenAI turns + a `time.sleep(3)` to seed a client through the conversational #
+# `add_client` flow. `tests/fixtures/morning_sandbox_clients.json` is a        #
+# committed, occasionally-refreshed snapshot of real sandbox clients whose     #
+# names are safe to pick blindly (two clean Hebrew words, unambiguous first    #
+# word, nothing else asserts anything specific about them - see the pull       #
+# script apps/morning-mcp-app/scripts/pull_sandbox_clients.py and              #
+# GROUND_TRUTH_CLIENTS.md). Group 2 tests `pick_existing_client()` from it -   #
+# no OpenAI, no seeding turn, no sleep.                                        #
+# --------------------------------------------------------------------------- #
+_SANDBOX_CLIENTS_FIXTURE = (
+    DENIDIN_APP_DIR / "tests" / "fixtures" / "morning_sandbox_clients.json"
+)
+_sandbox_clients_cache: Optional[List[dict]] = None
+
+
+def _load_sandbox_clients() -> List[dict]:
+    global _sandbox_clients_cache
+    if _sandbox_clients_cache is None:
+        payload = json.loads(_SANDBOX_CLIENTS_FIXTURE.read_text(encoding="utf-8"))
+        clients = payload.get("clients") or []
+        if not clients:
+            raise RuntimeError(
+                f"{_SANDBOX_CLIENTS_FIXTURE} has no clients - regenerate it with "
+                f"apps/morning-mcp-app/scripts/pull_sandbox_clients.py"
+            )
+        _sandbox_clients_cache = clients
+    return _sandbox_clients_cache
+
+
+def pick_existing_client(predicate: Optional[Callable[[dict], bool]] = None) -> dict:
+    """Return a random real sandbox client row (dict with
+    ``name``/``id``/``email``/``phone``/``tax_id``) from the committed
+    ``morning_sandbox_clients.json`` fixture - for any Group 2 test that needs
+    *a* client to exist but does not depend on it being brand-new.
+
+    No OpenAI call, no seeding conversation, no ``time.sleep`` - the client is
+    already indexed in Morning, so it resolves on the very next turn.
+
+    `predicate`, if given, filters the pool first (e.g.
+    ``pick_existing_client(lambda c: c["email"])`` for a test that needs the
+    client to carry an email it can assert round-trips). Raises if nothing
+    matches - a signal to refresh the fixture, never something to paper over.
+    """
+    pool = _load_sandbox_clients()
+    if predicate is not None:
+        pool = [c for c in pool if predicate(c)]
+    if not pool:
+        raise RuntimeError(
+            "pick_existing_client: no sandbox client matches the given predicate - "
+            "regenerate tests/fixtures/morning_sandbox_clients.json "
+            "(apps/morning-mcp-app/scripts/pull_sandbox_clients.py) or loosen the predicate"
+        )
+    return random.choice(pool)
+
 GODFATHER_CHAT_ID = "972500000021@c.us"  # Feature 018 E2E test godfather identity (rotated 2026-08-12, bugfix-028: 972500000018's persisted session had accumulated a long, noisy history that was confusing the model across turns)
 CLIENT_ROLE_CHAT_ID = "972500000019@c.us"  # Feature 026 US5 - defaults to Role.CLIENT (not godfather/admin/blocked)
 BLOCKED_ROLE_CHAT_ID = "972500000020@c.us"  # Feature 026 US5 - added to denidin_config's blocked_phones in conftest.py
@@ -405,58 +473,284 @@ def _calls_for(ai_response: Optional[AIResponse], tool_name: str) -> List[dict]:
 
 
 def _seeded_email_from(ai_response: Optional[AIResponse]) -> str:
-    """Extract the email `_seed_fresh_client` actually used, from the
-    add_client call already captured in its returned `ai_response`.
+    """Extract the email `_seed_client` actually used, from the add_client
+    call already captured in its returned `ai_response`.
 
-    `_seed_fresh_client` draws its own random email internally
-    (`_random_seed_email()`) and never returns it directly - most callers
-    only care about the resulting `client_name`. A caller that DOES need the
-    exact seeded email later (e.g. to assert it round-trips unchanged
-    through get_client_details/update_client) must extract it from here,
-    never track a separately-drawn `seed_email` of its own - that stray
-    variable is exactly what caused a real, pre-existing `NameError` in
-    3 separate tests in test_denidin_morning_client_management_e2e.py
-    (found live, 2026-08-12): each referenced a `seed_email` that was never
-    actually defined anywhere in that test, a leftover from before this
-    file's tests were migrated from the old `_seed_client_via_conversation`
-    (which took/returned an explicit email) to `_seed_fresh_client` (which
-    doesn't)."""
+    `_seed_client` draws its own random email internally
+    (`_random_seed_email()`) unless one is passed in, and never returns it
+    directly - most callers only care about the resulting `client_name`. A
+    caller that DOES need the exact seeded email later (e.g. to assert it
+    round-trips unchanged through get_client_details/update_client) must
+    extract it from here, never track a separately-drawn `seed_email` of its
+    own - that stray variable is exactly what caused a real, pre-existing
+    `NameError` in 3 separate tests in
+    test_denidin_morning_client_management_e2e.py (found live, 2026-08-12)."""
     add_calls = _calls_for(ai_response, "add_client")
     if not add_calls:
         raise ValueError(
-            f"No add_client call found - is this really _seed_fresh_client's own "
+            f"No add_client call found - is this really _seed_client's own "
             f"returned ai_response? mcp_calls: {ai_response.mcp_calls if ai_response else None!r}"
         )
     return json.loads(add_calls[0]["arguments"])["email"]
 
 
-# The ONE literal marker for resolve_client_name's genuine-EXACT-match outcome
-# (format_client_name_resolved's own wording, morning-mcp-app side) - every
-# caller needing to distinguish "this client actually exists" from "it
-# doesn't" MUST go through `_client_name_exact_match_found` below, never
-# re-check this string itself. Duplicating this check inline is exactly what
-# broke twice already (2026-08-12): once inside `_fresh_nonexistent_client_
-# name` (fixed, then re-broken by a second, unrelated ad-hoc copy of the same
-# logic in test_create_document_for_new_client_declines_client_creation, which
-# had never been updated to use the fix). One canonical check, used
-# everywhere, so it can only ever be wrong (or right) in one place.
+# --------------------------------------------------------------------------- #
+# resolve_client_name's FOUR outcomes - the ONE place this suite classifies    #
+# them and drives an identity-resolution question to a conclusion.             #
+#                                                                             #
+# The production resolve_client_name MCP tool returns exactly one of four      #
+# fixed-prefix Hebrew strings (morning-mcp-app/…/formatters.py), and the       #
+# model very often echoes that same string near-verbatim in its plain-text    #
+# reply when it answers a resolution question without a fresh tool call - so   #
+# `_classify` reads the marker from the tool output OR the reply text,         #
+# whichever carries one:                                                       #
+#   EXACT            format_client_name_resolved            - the client       #
+#                    exists in Morning exactly as queried (the ONLY outcome    #
+#                    that means "exists as queried")                           #
+#   SINGLE_CANDIDATE format_client_name_confirmation_question - one similar     #
+#                    but non-exact client; a bare "כן" confirms it             #
+#   MULTI_CANDIDATE  format_ambiguous_clients_message         - 2+ similar     #
+#                    clients; "כן" can NOT disambiguate - an exact name must   #
+#                    be supplied                                               #
+#   NONE             format_client_not_found / nothing looked the client up   #
+#                    and nothing named an outcome - zero confirmed matches     #
+#                                                                             #
+# There is NO fifth "errored"/"not attempted" bucket. A resolve_client_name    #
+# call that Morning rejected, or one whose output matches none of the four     #
+# markers, is a hard failure - `_classify` RAISES ``ResolveClientNameError``   #
+# (identity resolution must never error; in a test any unintended error is a   #
+# failure, not a state to recover from). Only a turn with no resolve call at   #
+# all and no marker in the reply is benign - that is a plain-text clarifying   #
+# question, classified NONE (nothing has confirmed the client exists).         #
+#                                                                             #
+# NOTHING else in this suite may read those markers, re-derive "does this      #
+# client exist", or decide what to reply to a resolution question - it all     #
+# goes through `_resolve_client_name` below. Inline copies of this exact       #
+# check drifted and broke the suite twice in 2026-08 (once in the old          #
+# `_fresh_nonexistent_client_name` helper, then again via a second ad-hoc      #
+# copy in test_create_document_for_new_client_declines_client_creation). One   #
+# classifier, one driver, one place - so it can only ever be wrong in one.     #
+# --------------------------------------------------------------------------- #
 _EXACT_CLIENT_MATCH_MARKER = 'שם הלקוח המדויק במורנינג: "'
+_SINGLE_CANDIDATE_MARKER = 'מצאתי לקוח בשם "'
+_MULTI_CANDIDATE_MARKER = "נמצאו כמה לקוחות בשם דומה"
+_CLIENT_NOT_FOUND_MARKER = "לא נמצא לקוח בשם הזה"
 
 
-def _client_name_exact_match_found(ai_response: Optional[AIResponse]) -> bool:
-    """Whether this turn's resolve_client_name call(s) found a genuine EXACT
-    match - the ONLY resolve_client_name outcome that means a client by that
-    literal queried name actually exists. Every other outcome (zero matches,
-    a single non-exact confirmation question, or an ambiguous candidates
-    list) means the client, AS QUERIED, does NOT exist - never treat those as
-    "exists" (user, 2026-08-12: "WHEN AN AMBIGUOUS REPLY RETURNS IT MEANS THE
-    CLIENT AS REQUESTED DOES NOT EXIST"). Returns False (not "unknown") if no
-    resolve_client_name call happened at all in this turn - callers checking
-    for "confirmed does not exist" should treat that as inconclusive, not as
-    confirmation, since nothing was actually looked up."""
-    return any(
-        (call["output"] or "").startswith(_EXACT_CLIENT_MATCH_MARKER)
-        for call in _calls_for(ai_response, "resolve_client_name")
+class ResolveClientNameError(AssertionError):
+    """A resolve_client_name call errored, or returned an output shape that
+    matches none of the four known markers. Identity resolution must never
+    error - in this suite that is a hard failure, never a state to recover
+    from (user, 2026-09-02: "error or junk is NOT NONE - it is an error that
+    should be raised ... any error is a failure unless we intended for it to
+    happen"). A test that deliberately provokes such an error catches this."""
+
+
+class ResolveOutcome(Enum):
+    """Exactly which of resolve_client_name's four outcomes a turn produced.
+    There is no "errored"/"not attempted" member - see
+    ``ResolveClientNameError`` and the comment block above:
+
+    * ``EXACT``            - the client exists in Morning exactly as queried
+      (the ONLY outcome for which ``.exists`` is True).
+    * ``SINGLE_CANDIDATE`` - one similar but non-exact client; a bare "כן"
+      confirms it.
+    * ``MULTI_CANDIDATE``  - 2+ similar clients; an exact name is needed to
+      disambiguate.
+    * ``NONE``             - zero confirmed matches: either the not-found
+      marker, or nothing looked the client up and the reply named no outcome
+      (a plain-text clarifying question).
+    """
+
+    NONE = "none"
+    EXACT = "exact"
+    SINGLE_CANDIDATE = "single_candidate"
+    MULTI_CANDIDATE = "multi_candidate"
+
+
+@dataclass
+class ResolveResult:
+    """Outcome of classifying (and optionally driving to a conclusion) a
+    resolve_client_name interaction.
+
+    * ``outcome``       - classification of the FIRST turn examined (what the
+                          model's initial resolve_client_name call returned).
+                          ``.exists`` reflects THIS.
+    * ``final_outcome`` - classification of the LAST turn, after any driving.
+    * ``resolved_name`` - the exact / confirmed-candidate client name when one
+                          is determinable (EXACT, or a SINGLE_CANDIDATE's
+                          quoted name); ``None`` for MULTI_CANDIDATE / NONE.
+    * ``reply`` / ``ai_response`` - the final turn's reply text and
+                          ``AIResponse`` (so a caller can assert on what the
+                          model did once identity was settled - a follow-up
+                          get_client_details call, a mutation-approval prompt,
+                          etc.).
+    """
+
+    outcome: ResolveOutcome
+    final_outcome: ResolveOutcome
+    resolved_name: Optional[str]
+    reply: Optional[str]
+    ai_response: Optional[AIResponse]
+
+    @property
+    def exists(self) -> bool:
+        """True iff the client exists in Morning exactly as first queried -
+        i.e. the FIRST resolve_client_name call was a genuine EXACT match.
+        Every other outcome (zero / single-non-exact / ambiguous) means "not
+        as queried" (user, 2026-08-12: "WHEN AN AMBIGUOUS REPLY RETURNS IT
+        MEANS THE CLIENT AS REQUESTED DOES NOT EXIST")."""
+        return self.outcome is ResolveOutcome.EXACT
+
+
+def _resolve_client_name(
+    chat_id: Optional[str] = None,
+    name: Optional[str] = None,
+    id_prefix: Optional[str] = None,
+    *,
+    initial_result: Optional[Tuple[Optional[str], Optional[AIResponse]]] = None,
+    disambiguator: Optional[str] = None,
+    drive: bool = True,
+    max_rounds: int = 4,
+) -> ResolveResult:
+    """THE one place this suite understands resolve_client_name's four
+    outcomes. Nothing else classifies a resolve_client_name output, checks the
+    EXACT marker, or answers an identity-resolution question.
+
+    Two modes:
+
+    * **classify only** (``drive=False``) - pass an already-captured turn as
+      ``initial_result=(reply, ai_response)``; returns its ``ResolveResult``
+      with no further turns sent. ``chat_id`` / ``name`` / ``id_prefix`` are
+      then unused (pass ``initial_result=(None, ai_response)`` when only the
+      ``AIResponse`` is on hand).
+
+    * **classify and drive** (``drive=True``, default) - classify the first
+      turn (either ``initial_result``, or a fresh ``"פרטים על הלקוח {name}"``
+      probe when ``initial_result`` is omitted), then drive it to a definitive
+      state, up to ``max_rounds`` reply turns:
+        - EXACT / NONE                           -> terminal, return as-is
+        - a real mutation-approval prompt reached -> terminal (identity is
+          settled; the model has moved on to the approval gate)
+        - SINGLE_CANDIDATE -> reply "כן", re-classify
+        - MULTI_CANDIDATE  -> reply ``disambiguator`` (an exact name; REQUIRED
+          for this outcome), re-classify
+        - NONE, but the model is still asking something (a plain-text
+          clarifying question, not the not-found terminal) -> nudge with
+          ``disambiguator`` if one was given, else terminal
+      Any tool error on a driven turn - or a resolve_client_name call that
+      errored / returned junk on any turn - raises (identity resolution must
+      never error). ``.outcome`` always reports what the FIRST turn was;
+      ``.reply`` / ``.ai_response`` / ``.resolved_name`` reflect the final
+      state.
+    """
+    def _match_marker(text: str) -> Optional[Tuple[ResolveOutcome, Optional[str]]]:
+        """Read one of the four fixed markers out of `text` (a tool output OR a
+        reply). ``None`` if the text carries none of them."""
+        if _EXACT_CLIENT_MATCH_MARKER in text:
+            after = text.split(_EXACT_CLIENT_MATCH_MARKER, 1)[1]
+            return ResolveOutcome.EXACT, (after.split('"')[0] or None)
+        if _SINGLE_CANDIDATE_MARKER in text:
+            after = text.split(_SINGLE_CANDIDATE_MARKER, 1)[1]
+            return ResolveOutcome.SINGLE_CANDIDATE, (after.split('"')[0] or None)
+        if _MULTI_CANDIDATE_MARKER in text:
+            return ResolveOutcome.MULTI_CANDIDATE, None
+        if _CLIENT_NOT_FOUND_MARKER in text:
+            return ResolveOutcome.NONE, None
+        return None
+
+    def _classify(
+        turn_ai: Optional[AIResponse], turn_reply: Optional[str] = None
+    ) -> Tuple[ResolveOutcome, Optional[str]]:
+        """One turn -> exactly one of the four ``ResolveOutcome`` values. The
+        marker is read from the turn's LAST resolve_client_name output if it
+        made a call, otherwise from the reply text (the model routinely quotes
+        the same fixed string when it answers in plain text). A resolve call
+        that errored, or one whose output matches no marker, RAISES
+        ``ResolveClientNameError``. A turn with no resolve call and no marker
+        in the reply is NONE - a benign plain-text clarifying question,
+        nothing has confirmed the client exists. The ONLY place any of the
+        four markers is read."""
+        calls = _calls_for(turn_ai, "resolve_client_name")
+        if calls:
+            last = calls[-1]
+            if last.get("error") is not None:
+                raise ResolveClientNameError(
+                    f"resolve_client_name errored - identity resolution must "
+                    f"never error: {last!r}"
+                )
+            matched = _match_marker(last.get("output") or "")
+            if matched is None:
+                raise ResolveClientNameError(
+                    f"resolve_client_name returned an output matching none of "
+                    f"the four known markers: {last.get('output')!r}"
+                )
+            return matched
+        matched = _match_marker(turn_reply or "")
+        if matched is not None:
+            return matched
+        return ResolveOutcome.NONE, None
+
+    if initial_result is not None:
+        reply, ai_response = initial_result
+    else:
+        assert chat_id and name and id_prefix, (
+            "_resolve_client_name: chat_id/name/id_prefix are required when no "
+            "initial_result is given"
+        )
+        reply, ai_response = _send_turn(
+            chat_id, f"פרטים על הלקוח {name}", id_prefix=f"{id_prefix}_RESOLVE_PROBE"
+        )
+
+    first_outcome, resolved_name = _classify(ai_response, reply)
+    outcome, current_name = first_outcome, resolved_name
+
+    if drive:
+        assert chat_id and id_prefix, (
+            "_resolve_client_name(drive=True): chat_id/id_prefix are required to "
+            "send resolution replies"
+        )
+        for round_num in range(1, max_rounds + 1):
+            if _is_real_approval_prompt(reply):
+                break
+            if outcome is ResolveOutcome.EXACT:
+                break
+            if outcome is ResolveOutcome.SINGLE_CANDIDATE:
+                answer = "כן"
+            elif outcome is ResolveOutcome.MULTI_CANDIDATE:
+                assert disambiguator, (
+                    "_resolve_client_name: resolve_client_name returned multiple "
+                    "candidates but no `disambiguator` (exact name) was supplied "
+                    "to answer with - a bare 'כן' cannot disambiguate a "
+                    "multi-candidate list"
+                )
+                answer = disambiguator
+            else:  # NONE - the confirmed not-found terminal, or the model
+                # asked a plain-text clarifying question (no resolve call, no
+                # marker). With an exact name in hand, nudge with it (it
+                # resolves a plain-text question and corrects a spurious
+                # not-found alike); without one, NONE is terminal.
+                if not disambiguator:
+                    break
+                answer = disambiguator
+            reply, ai_response = _send_turn(
+                chat_id, answer, id_prefix=f"{id_prefix}_RESOLVE_R{round_num}"
+            )
+            for call in (ai_response.mcp_calls if ai_response else []):
+                assert call.get("error") is None, (
+                    f"_resolve_client_name: a tool call errored while resolving "
+                    f"identity (round {round_num}): {call!r}"
+                )
+            outcome, round_name = _classify(ai_response, reply)
+            if round_name:
+                current_name = round_name
+
+    return ResolveResult(
+        outcome=first_outcome,
+        final_outcome=outcome,
+        resolved_name=current_name,
+        reply=reply,
+        ai_response=ai_response,
     )
 
 
@@ -679,313 +973,209 @@ def _send_turn_and_approve_capturing_approval(
     return approval_text, approve_ai_response
 
 
-def _fresh_nonexistent_client_name(chat_id: str, id_prefix: str, max_attempts: int = 5) -> str:
-    """Return a client name from `_unique_client_name()`'s real-name pool
-    that is CONFIRMED not to already exist as a real Morning client -
-    needed by any test whose premise is "this client doesn't exist yet"
-    (feature 027's not-found/refusal flows).
-
-    `_unique_client_name()`'s pool (565x591 = ~334K combinations) is
-    "unique enough" for tests that don't care whether the name happens to
-    coincide with a real pre-existing client (harmless collision before
-    feature 027 - every create_invoice call succeeded regardless of
-    whether the client existed). Feature 027 makes a collision visible: if
-    the randomly-picked name happens to already be a real client (the
-    sandbox accumulates real clients across every E2E run, growing over
-    time), a "client doesn't exist yet" test's whole premise silently
-    doesn't hold, and its actual outcome is indistinguishable from success
-    on a fresh flow (a real, observed 2026-08-07 failure). This checks via
-    a real, read-only get_client_details turn (no approval needed) before
-    returning, and retries with a new name on a genuine collision.
-
-    CORRECTED acceptance check (2026-08-12, user correction - a prior version of
-    this check got this backwards and was live for a while): under the client-
-    name-resolution architecture (bugfix-028), `resolve_client_name` has exactly
-    ONE outcome that means "this literal name already exists as a real client" -
-    a genuine EXACT match (`format_client_name_resolved`'s
-    `שם הלקוח המדויק במורנינג: "..."` line). Every other outcome - zero matches,
-    a single non-exact match, or multiple ambiguous matches - means the literal
-    candidate name is NOT an existing client, i.e. it's vacant and safe to use:
-    `add_client`/`create_invoice` etc. against that exact literal spelling will
-    correctly treat it as "doesn't exist yet" (bugfix-028's own partial-match
-    fix: a non-exact/ambiguous result is relayed as an open choice including
-    "or create a new one named Z", never a hard block). The previous version of
-    this check required literal "not found" phrasing in the model's free-text
-    reply and treated an ambiguous/non-exact result as a collision - wrong, and
-    exactly why a real run exhausted all 5 attempts on 2026-08-12 (every
-    candidate that came back ambiguous was actually fine and got needlessly
-    rejected). Checked against the real `resolve_client_name` tool-call output
-    itself (not the model's paraphrased free-text reply, which isn't guaranteed
-    to echo the tool's exact wording) for the same reason `_is_genuine_document_
-    creation` elsewhere in this file checks tool output, not free text.
-    """
-    for _ in range(max_attempts):
-        candidate = _unique_client_name()
-        _, ai_response = _send_turn(
-            chat_id=chat_id,
-            text=f"פרטים על הלקוח {candidate}",
-            id_prefix=f"{id_prefix}_FRESHCHECK",
-        )
-        if not _client_name_exact_match_found(ai_response):
-            return candidate
-        logger.warning(f"Name collision picking a fresh nonexistent client name: {candidate!r} already exists")
-    raise RuntimeError(f"Could not find a genuinely nonexistent client name after {max_attempts} attempts")
-
-
-def _seed_client_via_conversation(
+def _seed_client(
     chat_id: str,
-    client_name: str,
     id_prefix: str,
+    *,
+    name: Optional[str] = None,
+    name_factory: Callable[[], str] = _unique_client_name,
+    text: Optional[str] = None,
     email: Optional[str] = None,
     phone: str = _SEED_PHONE,
-) -> Tuple[Optional[str], Optional[AIResponse]]:
-    """Seed a real Morning client via the real, two-turn `add_client`
-    conversational flow (Feature 026, approval-gated) and return the
-    APPROVE turn's (response, ai_response).
-
-    Feature 027 (mandatory client reference for document creation): every
-    create_invoice/create_transaction_account/create_combo_document call
-    now resolves its client_name against a real client record and refuses
-    if none exists - any test that needs "a client that already exists"
-    MUST seed it this way first. This is the ONLY way to create a client
-    from this E2E layer (the app-wall forbids importing morning-mcp-app's
-    MorningClient directly - see this module's own docstring) - there is no
-    faster raw-API shortcut available here, unlike the sandbox-level
-    integration tests in apps/morning-mcp-app.
-
-    Asserts the seed itself actually succeeded (fails loudly, not silently)
-    - a downstream test failure caused by a failed seed would otherwise be
-    misleading about what actually broke. Sleeps 3s afterward (search-index
-    lag, research.md Decision 8 - a cost-free local wait, cheaper than
-    retrying a whole billed conversational turn) before returning, so the
-    client is reliably resolvable by the very next turn.
-    """
-    seed_email = email or _random_seed_email()
-    _, (response, ai_response) = _send_turn_and_approve(
-        chat_id=chat_id,
-        text=f"תוסיף לקוח חדש בשם {client_name}, מייל {seed_email}, טלפון {phone}",
-        id_prefix=f"{id_prefix}_SEEDCLIENT",
-    )
-    add_calls = _calls_for(ai_response, "add_client")
-    assert add_calls and add_calls[0]["error"] is None, (
-        f"Failed to seed client {client_name!r} via add_client - cannot "
-        f"proceed with the rest of this test: "
-        f"{ai_response.mcp_calls if ai_response else None!r}"
-    )
-    time.sleep(3)
-    return response, ai_response
-
-
-# Feature 026's exception to "always require an exact resolved match" -
-# add_client alone (never update_client) doesn't need one, since its whole
-# purpose is to create a client that does NOT exist yet
-# (runtime_constitution.md's "Exception when the underlying request is to
-# ADD a NEW client", tightened bugfix-045). Deliberately verbose and
-# unambiguous so it reads the same regardless of whether the model's
-# preceding disambiguation question was phrased as a closed yes/no or an
-# open "X1, X2, or new?" - a bare "כן" is genuinely ambiguous against the
-# latter phrasing (bugfix-045 root cause); this sentence isn't.
-_CONFIRM_NEW_CLIENT_REPLY = (
-    "אני יודע/ת שיש אולי לקוחות עם שם דומה, אבל אני בכל זאת רוצה ליצור "
-    "לקוח חדש עם השם שנתתי, ולא אחד מהדומים."
-)
-
-
-def _seed_fresh_client(
-    chat_id: str,
-    id_prefix: str,
+    create: bool = True,
+    ensure_exists: bool = False,
     max_attempts: int = 5,
-    name_factory: Callable[[], str] = _unique_client_name,
 ) -> Tuple[str, Optional[str], Optional[AIResponse]]:
-    """Seed a brand-new client under a freshly-drawn name, retrying with a
-    new draw if this particular name collides with an existing real sandbox
-    client (a real, growing risk as the sandbox accumulates clients across
-    many billed runs - see bugfix-028 handoff, 2026-08-12).
+    """The ONE client-seeding flow for this E2E suite - one real
+    conversational `add_client` path with a few caller-selected variants.
+    Always returns ``(client_name, last_response, last_ai_response)``;
+    ``last_response`` / ``last_ai_response`` are ``None`` for the two
+    read-only variants that never create anything.
 
-    `name_factory` defaults to `_unique_client_name` (a fully random
-    first+family pair) but can be overridden for a test that needs some
-    control over the drawn name's shape (e.g. a fixed spelling variant paired
-    with a random family name) while still getting the same collision-retry
-    safety - see callers passing a custom factory for examples.
+    Variants:
 
-    Reworked bugfix-045: `resolve_client_name` returns exactly one of four
-    outcomes for the seed message's name, handled deterministically -
-    never by parsing the model's own free-text question, which is exactly
-    what let the bugfix-045 regression hide inside "5 attempts exhausted"
-    across 6+ real test failures for weeks:
-    - EXACT match ("שם הלקוח המדויק במורנינג") → a real pre-existing
-      duplicate. The only thing on offer is updating THAT existing client -
-      never approve here, since that would silently mutate an unrelated
-      real sandbox client's email/phone. Draw a new name instead - the
-      ONLY branch that advances to the next attempt.
-    - Zero matches, one non-exact candidate, or several ambiguous
-      candidates now all resolve the same way (the constitution's ADD-NEW
-      exception): check `PendingApprovalManager` directly, never text -
-      zero matches usually goes straight to a pending `add_client`; one or
-      more candidates first need `_CONFIRM_NEW_CLIENT_REPLY` to get there.
-      Either way, once pending, one plain "כן" approves it.
+    * **fresh drawn name** (default: ``name=None``) - draws a name from
+      ``name_factory`` (default ``_unique_client_name``), seeds it, and on a
+      genuine EXACT-match collision with a real pre-existing client redraws
+      and retries, up to ``max_attempts``. Never approves an update to the
+      colliding client (bugfix-045). Pass a custom ``name_factory`` to
+      control the drawn name's shape (e.g. a fixed spelling variant + random
+      family name) while keeping the collision-retry safety.
 
-    A non-exact-match candidate that still fails to reach a completed
-    `add_client` after one unambiguous "create new" reply and one approval
-    is now a REAL failure (raises immediately, never silently retried with
-    a new name) - that silent retry is exactly what buried the bug this
-    long."""
+    * **specific name** (``name="..."``, optionally with ``text=``) - seeds
+      that exact name. A genuine EXACT-match collision raises
+      ``ClientAlreadyExistsError`` (no redraw - the caller established this
+      name in earlier turns and cannot silently swap it). ``text``, if
+      given, is the first turn sent verbatim (for a caller mid-conversation
+      that has already stated the name/fields its own way); otherwise a
+      standard "add a client named X, email, phone" turn is sent.
+
+    * ``create=False`` - draws a name (``name_factory``) and returns it only
+      once a read-only probe confirms NO client by that literal name exists
+      yet; redraws on collision. Creates nothing. For tests whose premise is
+      "this client doesn't exist yet" (feature 027's not-found / refusal
+      flows) - they take the returned name into a later request and assert
+      the app treats it as unknown.
+
+    * ``ensure_exists=True`` (with ``name="..."``) - idempotent: a read-only
+      probe first; if the client already exists, returns immediately having
+      done nothing; otherwise seeds it. For expensive tests that reuse one
+      FIXED payer name across runs and must not pile up duplicates (which
+      would make the name ambiguous and fail the test for the wrong reason).
+
+    Existence is decided ONLY by ``_resolve_client_name(...).exists`` (a
+    genuine EXACT `resolve_client_name` match) - zero / single-non-exact /
+    ambiguous all mean "does not exist as queried", never parsed from the
+    model's free text (user, 2026-08-12: "WHEN AN AMBIGUOUS REPLY RETURNS IT
+    MEANS THE CLIENT AS REQUESTED DOES NOT EXIST").
+
+    add_client is Feature 026's exception to "always require an exact
+    resolved match" (its whole purpose is to create a client that does NOT
+    exist yet - runtime_constitution.md's "Exception when the underlying
+    request is to ADD a NEW client", tightened bugfix-045). On a non-exact
+    resolve during creation with no pending approval yet, one explicit
+    "לא, תוסיף לקוח חדש בשם X, מייל ..., טלפון ..." turn forces the
+    create-new intent through by name (restating email/phone, which the
+    model otherwise re-asks for) rather than guessing whether a bare "כן"
+    answers whatever the disambiguation question was. Then up to two "כן"
+    turns approve the pending `add_client`. A non-exact candidate that still
+    fails to complete `add_client` after that is a REAL failure (raises, never
+    silently retried) - that silent retry is what buried the bugfix-045
+    regression for weeks. `time.sleep(3)` after a successful create covers
+    Morning's search-index lag so the client resolves on the very next turn.
+    """
     import denidin
 
-    for attempt in range(1, max_attempts + 1):
-        candidate = name_factory()
-        seed_email = _random_seed_email()
-        response, ai_response = _send_turn(
-            chat_id=chat_id,
-            text=f"תוסיף לקוח חדש בשם {candidate}, מייל {seed_email}, טלפון {_SEED_PHONE}",
-            id_prefix=f"{id_prefix}_SEEDCLIENT_A{attempt}",
-        )
-        if _client_name_exact_match_found(ai_response):
-            logger.warning(
-                f"_seed_fresh_client: attempt {attempt} name {candidate!r} is an EXACT "
-                f"match for a real existing client - retrying with a new name "
-                f"(never approving an update to an unrelated client)."
+    drawn = name is None
+    attempts = max_attempts if drawn else 1
+
+    for attempt in range(1, attempts + 1):
+        candidate = name_factory() if drawn else name
+        assert candidate
+
+        if not create or ensure_exists:
+            _, probe_ai = _send_turn(
+                chat_id=chat_id,
+                text=f"פרטים על הלקוח {candidate}",
+                id_prefix=f"{id_prefix}_PROBE_A{attempt}",
             )
-            continue
+            exists = _resolve_client_name(
+                initial_result=(None, probe_ai), drive=False
+            ).exists
+            if not create:
+                if not exists:
+                    return candidate, None, None
+                logger.warning(
+                    f"_seed_client(create=False): {candidate!r} already exists - redrawing"
+                )
+                continue
+            if exists:  # ensure_exists and the client is already there
+                return candidate, None, None
 
-        if denidin.denidin_app.ai_handler.pending_approval_manager.get(chat_id) is None:
-            # No pending add_client yet - the model asked a disambiguation
-            # question (one candidate or several) instead of attempting the
-            # call directly. One unambiguous reply, regardless of exactly
-            # how that question was phrased.
-            response, ai_response = _send_turn(
-                chat_id=chat_id, text=_CONFIRM_NEW_CLIENT_REPLY,
-                id_prefix=f"{id_prefix}_SEEDCLIENT_A{attempt}_CONFIRMNEW",
-            )
-
-        assert denidin.denidin_app.ai_handler.pending_approval_manager.get(chat_id) is not None, (
-            f"_seed_fresh_client: attempt {attempt} name {candidate!r} - no pending "
-            f"add_client approval even after an unambiguous 'create new' reply. This "
-            f"is a real bug, not a name collision to retry past: "
-            f"{ai_response.mcp_calls if ai_response else None!r}"
+        seed_email = email or _random_seed_email()
+        first_text = text or (
+            f"תוסיף לקוח חדש בשם {candidate}, מייל {seed_email}, טלפון {phone}"
         )
-
         response, ai_response = _send_turn(
-            chat_id=chat_id, text="כן", id_prefix=f"{id_prefix}_SEEDCLIENT_A{attempt}_APPROVE"
+            chat_id=chat_id, text=first_text, id_prefix=f"{id_prefix}_SEED_A{attempt}"
         )
-        add_calls = _calls_for(ai_response, "add_client")
-        assert add_calls and add_calls[0]["error"] is None, (
-            f"_seed_fresh_client: attempt {attempt} name {candidate!r} - add_client "
-            f"did not complete cleanly after approval. This is a real bug, not a "
-            f"name collision to retry past: "
-            f"{ai_response.mcp_calls if ai_response else None!r}"
+
+        # Classify the seed turn's resolve_client_name outcome through the ONE
+        # shared classifier. A genuine EXACT match is a real collision with a
+        # pre-existing client - drawn names redraw, a caller-fixed name raises
+        # (never approve an update to an unrelated client - bugfix-045).
+        seed_res = _resolve_client_name(
+            initial_result=(response, ai_response), drive=False
         )
-        time.sleep(3)
-        return candidate, response, ai_response
-
-    raise RuntimeError(
-        f"Could not seed a genuinely fresh client after {max_attempts} attempts "
-        f"(every attempt hit a real EXACT-match name collision)"
-    )
-
-
-def _complete_add_client_flow(
-    chat_id: str,
-    text: str,
-    client_name: str,
-    id_prefix: str,
-    max_confirm_turns: int = 2,
-    email: Optional[str] = None,
-    phone: Optional[str] = None,
-) -> Tuple[Optional[str], Optional[AIResponse]]:
-    """Send `text` (expected to trigger add_client, directly or via a
-    resolve_client_name check first) and drive it through to a genuine
-    add_client success under `client_name` specifically - callers should not
-    need to know or care HOW MANY turns that took (2026-08-12, user decision:
-    "the main test shouldn't care *how* a new client was born, just that it
-    was").
-
-    Handles the real shapes `_seed_fresh_client` already handles (this is
-    that same logic, extracted so a caller that already has a SPECIFIC name
-    established in prior conversation turns - not free to draw a new one -
-    can reuse it too), plus one more found live (2026-08-12) that
-    `_seed_fresh_client` doesn't hit as often (it draws a fresh name every
-    attempt, so rarely collides at all):
-    - `resolve_client_name` reports a genuine EXACT match → the name is a
-      real, pre-existing duplicate. Raises `ClientAlreadyExistsError`
-      immediately - never approves an update to the unrelated existing
-      client (2026-08-12: this used to be offered by the constitution and
-      auto-approved here, which silently overwrote a real client's
-      email/phone - see runtime_constitution.md's "Do NOT offer... update"
-      note for the app-level half of this fix).
-    - Non-exact (one candidate needing a plain "כן", or several ambiguous
-      candidates where a bare "כן" doesn't even make sense as an answer) →
-      creation is still on the table, but a bare "כן" is unreliable here -
-      it depends on the model having phrased a clean yes/no question, which
-      it doesn't reliably do for a multi-candidate list (found live,
-      2026-08-12: the model just asked "please be more specific" with no
-      create-new offer at all). Instead, sends one explicit, unambiguous
-      "לא, תוסיף לקוח חדש בשם {client_name}" turn that names the target
-      directly - forces the intended name through regardless of how (or
-      whether) the disambiguation question offered a "create new" choice,
-      matching the user's own framing: "there is no meaning in creating a
-      new client using a name of an existing one," so the ONLY acceptable
-      outcome here is add_client under the exact original name, never a
-      silent substitution of a similar candidate's spelling. If `email`/
-      `phone` are given, they're restated in this same message too (found
-      live, 2026-08-12: omitting them made the model ask for the email
-      again, having apparently lost track of it once the conversation moved
-      past the original request - restating removes the ambiguity rather
-      than relying on it re-deriving values from further back in history).
-      Only sent if a
-      non-exact resolve outcome is seen and add_client hasn't already
-      succeeded outright (a genuinely fresh name may go straight to the
-      ordinary pending-approval prompt with no disambiguation needed at
-      all). Then sends "כן" (up to `max_confirm_turns` times) until a real
-      add_client success appears, or gives up and raises RuntimeError.
-
-    Returns the (response, ai_response) of the turn that actually executed
-    add_client successfully.
-    """
-
-    def _raise_if_exact_match(ai_response: Optional[AIResponse]) -> None:
-        if _client_name_exact_match_found(ai_response):
+        if seed_res.exists:
+            if drawn:
+                logger.warning(
+                    f"_seed_client: attempt {attempt} name {candidate!r} is an EXACT "
+                    f"match for a real existing client - redrawing (never approving an "
+                    f"update to an unrelated client)."
+                )
+                continue
             raise ClientAlreadyExistsError(
-                f"add_client's target name {client_name!r} is a real, pre-existing "
+                f"_seed_client: target name {candidate!r} is a real, pre-existing "
                 f"exact-match client - refusing to proceed (never approving an update "
-                f"to an unrelated client). mcp_calls: {ai_response.mcp_calls if ai_response else None!r}"
+                f"to an unrelated client). mcp_calls: "
+                f"{ai_response.mcp_calls if ai_response else None!r}"
             )
 
-    response, ai_response = _send_turn(chat_id, text, id_prefix=f"{id_prefix}_PROVIDE")
-    _raise_if_exact_match(ai_response)
+        # Not an EXACT collision (handled above). The model may have surfaced a
+        # SIMILAR client (SINGLE / MULTI), reported not-found, or asked a
+        # free-text "which one / create new?" question - in EVERY one of those
+        # cases the create-new intent is pushed through the SAME single way:
+        # one explicit reply naming the new client and restating email + phone
+        # (which the model otherwise re-asks for). That one reply correctly
+        # answers a one-candidate confirmation, a multi-candidate list, and a
+        # free-text "pick 1/2/3" alike - it rejects every existing candidate BY
+        # NAME, so a bare "כן" can never be read as "yes, use that existing
+        # client instead" (bugfix-045). Sent whenever nothing has been created
+        # and no approval is pending yet - NOT gated on whether a
+        # resolve_client_name call fired (the model often disambiguates in
+        # plain text with no fresh call; gating on that dead-ended the seed -
+        # 2026-09-02).
+        add_calls = _calls_for(ai_response, "add_client")
+        already_succeeded = bool(add_calls and add_calls[0]["error"] is None)
+        pending = denidin.denidin_app.ai_handler.pending_approval_manager.get(chat_id)
+        if not already_succeeded and pending is None:
+            force_new_text = (
+                f"לא, תוסיף לקוח חדש בשם {candidate}, מייל {seed_email}, טלפון {phone}"
+            )
+            response, ai_response = _send_turn(
+                chat_id=chat_id, text=force_new_text,
+                id_prefix=f"{id_prefix}_FORCE_NEW_A{attempt}",
+            )
+            if _resolve_client_name(
+                initial_result=(response, ai_response), drive=False
+            ).exists:
+                if drawn:
+                    logger.warning(
+                        f"_seed_client: attempt {attempt} name {candidate!r} EXACT match "
+                        f"on the force-new turn - redrawing."
+                    )
+                    continue
+                raise ClientAlreadyExistsError(
+                    f"_seed_client: target name {candidate!r} is a real, pre-existing "
+                    f"exact-match client (seen on the force-new turn). mcp_calls: "
+                    f"{ai_response.mcp_calls if ai_response else None!r}"
+                )
 
-    resolve_calls = _calls_for(ai_response, "resolve_client_name")
-    add_calls = _calls_for(ai_response, "add_client")
-    already_succeeded = add_calls and add_calls[0]["error"] is None
-    if resolve_calls and not already_succeeded:
-        # A non-exact resolve happened (one or several candidates) and
-        # add_client hasn't already gone straight through - force the
-        # create-new intent through explicitly, by name, rather than
-        # guessing whether a bare "כן" answers whatever question (if any)
-        # the model actually asked. Restate email/phone too, if given - see
-        # docstring for why (omitting them can make the model ask again).
-        force_new_text = f"לא, תוסיף לקוח חדש בשם {client_name}"
-        if email:
-            force_new_text += f", מייל {email}"
-        if phone:
-            force_new_text += f", טלפון {phone}"
-        response, ai_response = _send_turn(chat_id, force_new_text, id_prefix=f"{id_prefix}_FORCE_NEW")
-        _raise_if_exact_match(ai_response)
+        for _ in range(3):
+            add_calls = _calls_for(ai_response, "add_client")
+            if add_calls and add_calls[0]["error"] is None:
+                time.sleep(3)
+                return candidate, response, ai_response
+            if _is_real_approval_prompt(response) or "לאישור" in (response or ""):
+                approve_text = "כן"
+            else:
+                # Still being asked to choose - restate the create-new intent
+                # by name rather than sending a bare "כן" that answers nothing.
+                approve_text = (
+                    f"לא, תוסיף לקוח חדש בשם {candidate}, מייל {seed_email}, "
+                    f"טלפון {phone}"
+                )
+            response, ai_response = _send_turn(
+                chat_id=chat_id, text=approve_text,
+                id_prefix=f"{id_prefix}_APPROVE_A{attempt}"
+            )
 
-    for _ in range(max_confirm_turns):
         add_calls = _calls_for(ai_response, "add_client")
         if add_calls and add_calls[0]["error"] is None:
             time.sleep(3)
-            return response, ai_response
-        response, ai_response = _send_turn(chat_id, "כן", id_prefix=f"{id_prefix}_YES")
+            return candidate, response, ai_response
 
-    add_calls = _calls_for(ai_response, "add_client")
-    if add_calls and add_calls[0]["error"] is None:
-        time.sleep(3)
-        return response, ai_response
+        raise AssertionError(
+            f"_seed_client: name {candidate!r} - add_client did not complete cleanly "
+            f"after a create-new reply and approval turns. A real bug, not a name "
+            f"collision to retry past: {ai_response.mcp_calls if ai_response else None!r}"
+        )
+
     raise RuntimeError(
-        f"add_client did not succeed within {max_confirm_turns} confirmation turns: "
-        f"{ai_response.mcp_calls if ai_response else None!r}"
+        f"_seed_client: could not obtain a "
+        f"{'vacant' if not create else 'freshly-seeded'} client name after "
+        f"{attempts} attempts (every attempt hit a real EXACT-match collision)"
     )
 
 

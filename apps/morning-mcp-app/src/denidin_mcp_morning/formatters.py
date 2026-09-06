@@ -120,7 +120,23 @@ def format_invoice_details(invoice: Invoice) -> str:
     if invoice.payments:
         lines.append("תשלומים:")
         for payment in invoice.payments:
-            lines.append(f"  - {format_currency_ils(payment.amount)} ({format_date_il(payment.payment_date)})")
+            method = payment.method or translate_payment_type(payment.payment_type)
+            method_suffix = f" - {method}" if method else ""
+            lines.append(
+                f"  - {format_currency_ils(payment.amount)} "
+                f"({format_date_il(payment.payment_date)}){method_suffix}"
+            )
+            bank_bits = [
+                bit
+                for bit in (
+                    f"בנק {payment.bank_name}" if payment.bank_name else None,
+                    f"סניף {payment.bank_branch}" if payment.bank_branch else None,
+                    f"חשבון {payment.bank_account}" if payment.bank_account else None,
+                )
+                if bit
+            ]
+            if bank_bits:
+                lines.append(f"    {' / '.join(bank_bits)}")
 
     if invoice.linked_documents:
         # Real, structured, bidirectional linkage (bugfix-014) - a receipt or

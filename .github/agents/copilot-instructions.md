@@ -18,6 +18,7 @@ Note: After adding this file, reload your editor window so Copilot can re-index 
 ## Active Technologies
 - Python 3.11 (denidin-app), Python 3.10+ (morning-mcp-app) — unchanged, no application code logic changes beyond config plumbing + Docker + Docker Compose (v2, `docker compose` CLI), ngrok CLI (now baked into the morning-mcp-app image), existing app dependencies unchanged (019-env-separation)
 - Filesystem — per-environment `config.<env>.json`, per-environment data root (`data/` prod, `dev_data/` dev for denidin-app), per-environment log directories, per-environment shared bind-mounted status-file directories (019-env-separation)
+- Python 3.11 (both apps) — `APScheduler` (`BackgroundScheduler` + `CronTrigger`), ChromaDB, `sqlite3` (roll-marker store + chat index), OpenAI Responses API; rolling 14-day verbatim memory window + nightly 02:00 Israel-local daily-summary roll, one long-lived `Session` per chat, archive-only trimming, `TimedRotatingFileHandler` log retention (070-rolling-memory-window)
 
 ## Recent Changes
 - 019-env-separation: Added Python 3.11 (denidin-app), Python 3.10+ (morning-mcp-app) — unchanged, no application code logic changes beyond config plumbing + Docker + Docker Compose (v2, `docker compose` CLI), ngrok CLI (now baked into the morning-mcp-app image), existing app dependencies unchanged

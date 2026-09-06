@@ -76,6 +76,12 @@ class AppConfiguration:
     # accidentally starts a new listener.
     health_check_port: int = 0
 
+    # Log retention (Feature 070, US5). Top-level (not under `memory`) - this is an
+    # operational concern, not part of the memory model. `rotation_when` feeds
+    # logging.handlers.TimedRotatingFileHandler(when=...); `backup_count` 0 = keep
+    # every rotated (gzipped) segment forever. No env vars.
+    logging: Dict = field(default_factory=dict)
+
     @classmethod
     def from_file(cls, file_path: str) -> 'AppConfiguration':
         """
@@ -132,7 +138,8 @@ class AppConfiguration:
             'user_roles': {},
             'mcp': {},
             'reminders': {},
-            'accounting_ledger_update_freq': 0
+            'accounting_ledger_update_freq': 0,
+            'logging': {}
         }
 
         # Merge with defaults
@@ -143,18 +150,33 @@ class AppConfiguration:
         # Set memory sub-field defaults if memory key exists
         if 'memory' in config_data and config_data['memory']:
             data_root = config_data.get('data_root', 'data')
-            memory_defaults = {
+            memory_defaults: Dict[str, Dict[str, Any]] = {
                 'session': {
                     'storage_dir': 'sessions',  # Relative to data_root
                     'max_tokens_by_role': {'client': 4000, 'godfather': 100000},
-                    'session_timeout_hours': 24
+                    # Feature 070: rolling verbatim window length in Israel-local
+                    # calendar days (REQ-MEM-008). There is no idle-expiry
+                    # timeout any more - the old `session_timeout_hours` key is
+                    # retired and removed from every config file.
+                    'window_days': 14
                 },
                 'longterm': {
                     'enabled': True,
                     'storage_dir': 'memory',  # Relative to data_root
                     'collection_name': 'godfather_memory',
                     'top_k_results': 5,
-                    'min_similarity': 0.7
+                    'min_similarity': 0.7,
+                    # Feature 070: top_k for the single per-turn conversational
+                    # recall call, which now also surfaces daily summaries
+                    # (REQ-MEM-047, contracts/ai-handler-recall.md). The
+                    # MemoryManager.recall parameter default stays 5.
+                    'daily_summary_top_k': 10
+                },
+                # Feature 070: nightly daily-summary roll (US2).
+                'roll': {
+                    'hour': 2,                     # CronTrigger(hour=...), Israel local
+                    'catchup_lookback_days': 21,   # startup catch-up sweep bound (REQ-MEM-028)
+                    'stale_claim_minutes': 120     # a 'claimed' roll marker older than this is re-takeable
                 }
             }
 
@@ -166,6 +188,12 @@ class AppConfiguration:
                     for key, value in section_defaults.items():
                         if key not in config_data['memory'][section]:
                             config_data['memory'][section][key] = value
+
+            # Feature 070: top-level memory key (not a section) - archived-message
+            # retention. 0 = retain forever by design; no pruner is built
+            # (REQ-MEM-034).
+            if 'archive_retention_days' not in config_data['memory']:
+                config_data['memory']['archive_retention_days'] = 0
 
             # Combine data_root with storage_dir for each section
             for section in ['session', 'longterm']:
@@ -204,6 +232,17 @@ class AppConfiguration:
             for key, value in reminders_defaults.items():
                 if key not in config_data['reminders']:
                     config_data['reminders'][key] = value
+
+        # Set logging sub-field defaults (Feature 070, US5). Always applied - a
+        # bare/missing `logging` block still gets the safe retention defaults.
+        logging_defaults = {
+            'rotation_when': 'midnight',  # TimedRotatingFileHandler(when=...)
+            'backup_count': 0             # 0 = keep every rotated segment
+        }
+        config_data.setdefault('logging', {})
+        for key, value in logging_defaults.items():
+            if key not in config_data['logging']:
+                config_data['logging'][key] = value
 
         # Filter out unknown keys (backward compatibility for removed config fields)
         valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
@@ -253,3 +292,43 @@ class AppConfiguration:
                 raise ValueError(
                     f"reminders.max_active_reminders must be a positive integer, got {max_active!r}"
                 )
+
+        # Validate Feature 070 memory tunables, if a memory block is configured
+        if self.memory:
+            session_cfg = self.memory.get('session', {})
+            window_days = session_cfg.get('window_days', 14)
+            if not isinstance(window_days, int) or isinstance(window_days, bool) or window_days < 1:
+                raise ValueError(f"memory.session.window_days must be a positive integer, got {window_days!r}")
+
+            longterm_cfg = self.memory.get('longterm', {})
+            ds_top_k = longterm_cfg.get('daily_summary_top_k', 10)
+            if not isinstance(ds_top_k, int) or isinstance(ds_top_k, bool) or ds_top_k < 1:
+                raise ValueError(
+                    f"memory.longterm.daily_summary_top_k must be a positive integer, got {ds_top_k!r}"
+                )
+
+            retention = self.memory.get('archive_retention_days', 0)
+            if not isinstance(retention, int) or isinstance(retention, bool) or retention < 0:
+                raise ValueError(
+                    f"memory.archive_retention_days must be a non-negative integer, got {retention!r}"
+                )
+
+            roll_cfg = self.memory.get('roll', {})
+            for key, minimum in (('hour', 0), ('catchup_lookback_days', 1), ('stale_claim_minutes', 1)):
+                val = roll_cfg.get(key, {'hour': 2, 'catchup_lookback_days': 21, 'stale_claim_minutes': 120}[key])
+                if not isinstance(val, int) or isinstance(val, bool) or val < minimum:
+                    raise ValueError(f"memory.roll.{key} must be an integer >= {minimum}, got {val!r}")
+            if roll_cfg.get('hour', 2) > 23:
+                raise ValueError(f"memory.roll.hour must be 0-23, got {roll_cfg.get('hour')!r}")
+
+        # Validate logging tunables (Feature 070, US5)
+        if self.logging:
+            rotation_when = self.logging.get('rotation_when', 'midnight')
+            valid_when = {'midnight', 'S', 'M', 'H', 'D', 'W0', 'W1', 'W2', 'W3', 'W4', 'W5', 'W6'}
+            if rotation_when not in valid_when:
+                raise ValueError(
+                    f"logging.rotation_when must be one of {sorted(valid_when)}, got {rotation_when!r}"
+                )
+            backup_count = self.logging.get('backup_count', 0)
+            if not isinstance(backup_count, int) or isinstance(backup_count, bool) or backup_count < 0:
+                raise ValueError(f"logging.backup_count must be a non-negative integer, got {backup_count!r}")

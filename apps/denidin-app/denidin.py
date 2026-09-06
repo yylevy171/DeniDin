@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Optional
 from whatsapp_chatbot_python import Notification
 from openai import OpenAI
 from src.models.config import AppConfiguration
-from src.utils.logger import get_logger
+from src.utils.logger import get_logger, reconfigure_file_rotation
 from src.sources.green_api_source import GreenAPIMessageSource
 from src.utils.green_api_bot import (
     DeniDinGreenAPIBot,
@@ -34,7 +34,6 @@ from src.handlers.media_handler import MediaHandler
 from src.managers.session_manager import SessionManager
 from src.managers.memory_manager import MemoryManager
 from src.managers.group_membership_resolver import GroupMembershipResolver
-from src.services.cleanup_service import SessionCleanupThread, run_startup_cleanup
 from src.services.reminder_delivery_service import (
     run_startup_reminder_sweep, start_reminder_scheduler,
 )
@@ -43,6 +42,9 @@ from src.services.accounting_reconciliation_service import (
 )
 from src.services.health_server import (
     build_health_check_fns, resolve_log_path, start_health_server, start_heartbeat_thread,
+)
+from src.services.daily_summary_roll_service import (
+    run_startup_daily_roll_sweep, start_daily_roll_scheduler,
 )
 
 # Configuration
@@ -73,6 +75,15 @@ except Exception as e:
 # level set here, or those modules would silently fall back to Python's
 # built-in root default (WARNING) instead of honoring config.log_level.
 logging.getLogger().setLevel(getattr(logging, config.log_level))
+# Feature 070 (US5): every module created its logger at import time (above) with
+# logger.py's built-in rotation defaults, before config was loaded. Now that we
+# have config.logging, rebuild the root file handler with the real values (a
+# no-op when they match the defaults, the common case).
+reconfigure_file_rotation(
+    rotation_when=config.logging.get('rotation_when', 'midnight'),
+    backup_count=config.logging.get('backup_count', 0),
+    log_level=config.log_level,
+)
 logger = get_logger(__name__, log_level=config.log_level)
 
 
@@ -166,7 +177,7 @@ class DeniDin:
     """
     def __init__(self, ai_handler, config, whatsapp_handler, cleanup_thread=None,
                  group_membership_resolver=None, reminder_scheduler=None,
-                 accounting_reconciliation_scheduler=None):
+                 accounting_reconciliation_scheduler=None, daily_roll_scheduler=None):
         self.ai_handler = ai_handler
         self.config = config
         self.whatsapp_handler = whatsapp_handler
@@ -189,6 +200,11 @@ class DeniDin:
         # an ordinary test run reach live external services unattended).
         # Also None (inactive) whenever config.accounting_ledger_update_freq == 0.
         self.accounting_reconciliation_scheduler = accounting_reconciliation_scheduler
+        # Feature 070: the single shared APScheduler instance driving the nightly
+        # 02:00 daily-summary roll - None until __main__ sets it (NEVER
+        # initialize_app(), same rule as accounting_reconciliation_scheduler -
+        # see contracts/daily-summary-roll-service.md).
+        self.daily_roll_scheduler = daily_roll_scheduler
         self._logger = get_logger(__name__)
         # Feature 048's typing indicator needs the live bot (bot.api.serviceMethods.
         # sendTyping) at message-processing time, same as mark_message_read needs it
@@ -314,6 +330,10 @@ class DeniDin:
             self._logger.info("Stopping accounting reconciliation scheduler...")
             self.accounting_reconciliation_scheduler.shutdown(wait=False)
             self._logger.info("Accounting reconciliation scheduler stopped")
+        if self.daily_roll_scheduler is not None:
+            self._logger.info("Stopping daily-summary roll scheduler...")
+            self.daily_roll_scheduler.shutdown(wait=False)
+            self._logger.info("Daily-summary roll scheduler stopped")
         if self.memory_manager is not None:
             self._logger.info("Closing ChromaDB client...")
             self.memory_manager.client.close()
@@ -411,24 +431,10 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
     media_handler = MediaHandler(denidin)
     whatsapp_handler.media_handler = media_handler
     
-    # Initialize memory system if enabled
-    if ai_handler.memory_enabled:
-        # Run startup cleanup using denidin as context
-        run_startup_cleanup(denidin)
-        
-        # Start cleanup thread - get interval from nested config structure
-        cleanup_interval = 3600  # Default
-        if hasattr(config, 'memory') and isinstance(config.memory, dict):
-            session_config = config.memory.get('session', {})
-            cleanup_interval = session_config.get('cleanup_interval_seconds', 3600)
-        elif hasattr(config, 'session_cleanup_interval_seconds'):
-            cleanup_interval = config.session_cleanup_interval_seconds
-        
-        cleanup_thread = SessionCleanupThread(denidin, cleanup_interval)
-        cleanup_thread.start()
-
-        # Update denidin with cleanup thread reference
-        denidin.cleanup_thread = cleanup_thread
+    # Feature 070: sessions never expire and there is no session-cleanup thread.
+    # Aged conversation is rolled to daily summaries by the nightly
+    # DailySummaryRollService, wired in __main__ only (like the Feature 054
+    # reminder scheduler below).
 
     # Feature 054: reminder delivery scheduler is deliberately NOT started here.
     # initialize_app() is the shared bootstrap tests/integration/ calls directly
@@ -1029,6 +1035,9 @@ if __name__ == "__main__":
         # a config.dev.json/config.prod.json value doesn't silently do
         # nothing, exactly like accounting_ledger_update_freq's own history.
         'health_check_port': config.health_check_port,
+        # Feature 070 (US5): log-retention tunables. Same "must also be listed
+        # here or it silently has no effect" rule as accounting_ledger_update_freq.
+        'logging': config.logging,
     }
 
     # Feature 043: construct the live Green API bot explicitly here (via
@@ -1109,19 +1118,17 @@ if __name__ == "__main__":
         start_health_server(denidin.config.health_check_port, check_fns)
         start_heartbeat_thread()
 
-    # Perform orphaned session recovery if memory enabled
+    # Feature 070: nightly 02:00 Israel-local daily-summary roll - same
+    # deliberate-placement rule as the two schedulers above (started HERE,
+    # never inside initialize_app() - see contracts/daily-summary-roll-service.md).
+    # No feature flag; unconditional when the memory system is enabled.
     if denidin.ai_handler.memory_enabled:
-        logger.info("Starting orphaned session recovery...")
-        recovery_result = denidin.ai_handler.recover_orphaned_sessions()
-        
-        logger.info(
-            f"Session recovery complete: "
-            f"{recovery_result.get('total_found', 0)} found, "
-            f"{recovery_result.get('transferred_to_long_term', 0)} transferred, "
-            f"{recovery_result.get('loaded_to_short_term', 0)} loaded, "
-            f"{recovery_result.get('failed', 0)} failed"
+        run_startup_daily_roll_sweep(denidin)
+        denidin.daily_roll_scheduler = start_daily_roll_scheduler(
+            denidin,
+            roll_hour=int((denidin.config.memory or {}).get("roll", {}).get("hour", 2)),
         )
-    
+
     logger.info("=" * 60)
     
     # Track if shutdown has been requested (to avoid duplicate logging)
@@ -1150,6 +1157,11 @@ if __name__ == "__main__":
             if denidin.accounting_reconciliation_scheduler is not None:
                 logger.info("Stopping accounting reconciliation scheduler...")
                 denidin.accounting_reconciliation_scheduler.shutdown(wait=False)
+
+            # Feature 070: stop the daily-summary roll scheduler, if active
+            if denidin.daily_roll_scheduler is not None:
+                logger.info("Stopping daily-summary roll scheduler...")
+                denidin.daily_roll_scheduler.shutdown(wait=False)
 
             # Raise KeyboardInterrupt to break out of message_source.start()'s
             # blocking bot.run_forever() call, below.
@@ -1194,6 +1206,11 @@ if __name__ == "__main__":
             if denidin.accounting_reconciliation_scheduler is not None:
                 logger.info("Stopping accounting reconciliation scheduler...")
                 denidin.accounting_reconciliation_scheduler.shutdown(wait=False)
+
+            # Feature 070: stop the daily-summary roll scheduler if not already stopped
+            if denidin.daily_roll_scheduler is not None:
+                logger.info("Stopping daily-summary roll scheduler...")
+                denidin.daily_roll_scheduler.shutdown(wait=False)
     except Exception as e:
         # Catch any unexpected error to prevent crash
         logger.critical(

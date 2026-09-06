@@ -45,6 +45,7 @@ import pytest
 
 import src.services.reminder_delivery_service as delivery_service
 from src.models.config import AppConfiguration
+from tests.e2e_helpers import sanity_worker_data_root
 from src.utils.time_utils import now_local, to_local
 from src.constants.error_messages import REMINDER_CAP_EXCEEDED
 
@@ -68,7 +69,7 @@ class TestReminderLifecycleBilled:
             pytest.skip("config.test.json not found")
         config = AppConfiguration.from_file(str(config_path))
         config.validate()
-        test_data_root = Path(__file__).parent.parent.parent / "test_data"
+        test_data_root = sanity_worker_data_root()  # per-xdist-worker under -n (Feature 075)
         config.data_root = str(test_data_root)
         config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
         config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
@@ -288,6 +289,7 @@ class TestReminderLifecycleBilled:
         again = self._simulate_sweep(denidin_app, monkeypatch, due_at)
         again.assert_not_called()  # already fired - idempotent, never re-delivered
 
+    @pytest.mark.sanity
     def test_godfather_creates_one_time_reminder_button_approval(self, denidin_app, config):
         phone, chat_id = self._godfather(config)
         n1 = self._send_text(
@@ -303,6 +305,7 @@ class TestReminderLifecycleBilled:
         confirmation = self._get_response(n2)
         assert confirmation is not None
 
+    @pytest.mark.sanity
     def test_godfather_creates_recurring_reminder(self, denidin_app, config, monkeypatch):
         phone, chat_id = self._godfather(config)
         reminder_manager = denidin_app.ai_handler.reminder_manager
@@ -481,6 +484,7 @@ class TestReminderLifecycleBilled:
         new_check = self._simulate_sweep(denidin_app, monkeypatch, new_due_at)
         new_check.assert_called_once()
 
+    @pytest.mark.sanity
     def test_modify_single_occurrence_of_recurring_reminder(self, denidin_app, config, monkeypatch):
         phone, chat_id = self._godfather(config)
         reminder_manager = denidin_app.ai_handler.reminder_manager

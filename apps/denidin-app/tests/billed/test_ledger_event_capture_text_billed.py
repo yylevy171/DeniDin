@@ -33,6 +33,7 @@ import pytest
 from src.models.config import AppConfiguration
 from src.utils.time_utils import local_from_timestamp
 from tests.e2e_helpers import (
+    sanity_worker_data_root,
     create_real_notification,
     get_response,
     assert_response_exists,
@@ -63,7 +64,7 @@ class TestLedgerEventCaptureTextBilled:
 
         config = AppConfiguration.from_file(str(config_path))
         config.validate()
-        test_data_root = Path(__file__).parent.parent.parent / "test_data"
+        test_data_root = sanity_worker_data_root()  # per-xdist-worker under -n (Feature 075)
         config.data_root = str(test_data_root)
         config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
         config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
@@ -282,6 +283,7 @@ class TestLedgerEventCaptureTextBilled:
     # this whole feature
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_given_real_gilyan_davidian_agreement_text_when_processed_then_captured_per_component(
         self, denidin_app
     ):
@@ -503,6 +505,7 @@ class TestLedgerEventCaptureTextBilled:
     # HOURS FLOW (REQ-DATA-005, real work-log messages)
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_given_real_single_day_hours_message_then_hours_and_date_correctly_persisted(
         self, denidin_app
     ):
@@ -676,6 +679,7 @@ class TestLedgerEventCaptureTextBilled:
     # tests/expensive/test_ledger_event_capture_e2e.py's image-flow tests.
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_given_real_conditional_fee_text_then_trigger_condition_captured(self, denidin_app):
         """Finding #10: trigger_condition was previously hardcoded null with no
         schema property at all - LEDGER_EVENT_TOOL never exposed it, so a

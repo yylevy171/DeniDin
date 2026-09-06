@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from src.models.config import AppConfiguration
-from tests.e2e_helpers import assert_response_exists, create_real_notification, get_response
+from tests.e2e_helpers import sanity_worker_data_root, assert_response_exists, create_real_notification, get_response
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def config():
     cfg.validate()
     cfg.godfather_phone = GODFATHER_CHAT_ID
 
-    test_data_root = Path(__file__).resolve().parents[2] / "test_data"
+    test_data_root = sanity_worker_data_root()  # per-xdist-worker under -n (Feature 075)
     cfg.data_root = str(test_data_root)
     cfg.memory['session']['storage_dir'] = str(test_data_root / "sessions")
     cfg.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
@@ -117,6 +117,7 @@ def test_client_role_gets_accurate_version_answer(denidin_app):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_role_gets_accurate_version_answer(denidin_app):
     from denidin import handle_text_message
 

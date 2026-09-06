@@ -37,7 +37,9 @@ from .denidin_mcp_e2e_helpers import (
     _calls_for,
     _random_amount,
     _random_description,
-    _seed_fresh_client,
+    _resolve_client_name,
+    ResolveOutcome,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve,
 )
@@ -71,6 +73,7 @@ KNOWN_INVOICE_NUMBERS_ON_FIXED_DATE = ("60001", "60006")  # first and last of th
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_lists_invoices_via_whatsapp(denidin_app):
     """Godfather asks to see invoices from a specific day, the way a real
     person would - no year given (a real user rarely bothers), no format or
@@ -190,6 +193,57 @@ def test_godfather_asks_analytical_debtor_question_via_whatsapp(denidin_app):
 # instruction, to reproduce with the exact input that misfired in production.
 _ZEHAVIT_MESSAGE = "לקוחה בשם זהבית - בדוק לי כמה שילמה ומתי, תן לי הכל"
 _ZEHAVIT_NAME = "זהבית"
+# The un-polluted real sandbox client. "זהבית" alone is ambiguous - the sandbox
+# also holds junk "זהביתDENIDIN_039_T1_<ts> צור" clients from old Feature 039
+# runs (that marker-in-name pattern was removed from _unique_client_name on
+# 2026-08-03, so this is a fixed pool of pre-existing debris, not a live leak).
+# Both tests below therefore drive resolve_client_name's MULTI_CANDIDATE outcome
+# to a settled identity with this exact name, via the shared _resolve_client_name
+# helper, before asserting anything about list_invoices.
+_ZEHAVIT_REAL_CLIENT = "זהבית צור"
+
+
+def _drive_zehavit_to_list_invoices(id_prefix: str):
+    """Send the exact bugfix-013 incident message, resolve the (ambiguous, in the
+    polluted sandbox) client identity to `_ZEHAVIT_REAL_CLIENT` via the shared
+    `_resolve_client_name` drive loop, and return
+    ``(first_turn_ai, resolved_name, list_calls, final_ai, final_reply)`` -
+    where `first_turn_ai` is the model's response to the raw incident message
+    (for the verbatim-transcription check) and `list_calls` is guaranteed
+    non-empty on success."""
+    first_reply, first_turn_ai = _send_turn(
+        chat_id=GODFATHER_CHAT_ID, text=_ZEHAVIT_MESSAGE, id_prefix=id_prefix
+    )
+    assert first_reply is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+
+    res = _resolve_client_name(
+        chat_id=GODFATHER_CHAT_ID,
+        id_prefix=id_prefix,
+        initial_result=(first_reply, first_turn_ai),
+        disambiguator=_ZEHAVIT_REAL_CLIENT,
+        drive=True,
+    )
+    assert res.final_outcome is ResolveOutcome.EXACT, (
+        f"client identity never resolved to a single client: "
+        f"final_outcome={res.final_outcome}, reply={res.reply!r}"
+    )
+
+    final_ai, final_reply = res.ai_response, res.reply
+    list_calls = _calls_for(final_ai, "list_invoices")
+    if not list_calls:
+        # identity settled but the model hasn't listed yet - one more turn on
+        # the same (still date-free, still "תן לי הכל") request.
+        final_reply, final_ai = _send_turn(
+            chat_id=GODFATHER_CHAT_ID, text=_ZEHAVIT_MESSAGE, id_prefix=f"{id_prefix}_LIST"
+        )
+        list_calls = _calls_for(final_ai, "list_invoices")
+
+    assert list_calls, (
+        f"Model never reached list_invoices even after identity resolved to "
+        f"{res.resolved_name!r}. mcp_calls: {final_ai.mcp_calls if final_ai else None!r}. "
+        f"Final reply: {final_reply!r}"
+    )
+    return first_turn_ai, res.resolved_name, list_calls, final_ai, final_reply
 
 
 @pytest.mark.billed
@@ -209,19 +263,32 @@ def test_zehavit_client_name_transcribed_exactly(denidin_app):
     is the useful signal: it proves the garbling still happens with today's
     model/config, and is the trigger to reopen this finding.
     """
-    response, ai_response = _send_turn(
-        chat_id=GODFATHER_CHAT_ID,
-        text=_ZEHAVIT_MESSAGE,
-        id_prefix="E2E_BUGFIX013_NAME",
-    )
-    list_calls = _calls_for(ai_response, "list_invoices")
-
-    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert list_calls, (
-        f"Model never invoked list_invoices for the Zehavit request. "
-        f"mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
+    first_turn_ai, resolved_name, list_calls, final_ai, _ = (
+        _drive_zehavit_to_list_invoices("E2E_BUGFIX013_NAME")
     )
 
+    # bugfix-013's garble check: the model transcribes "זהבית" out of the user's
+    # free-text sentence into its FIRST structured client reference. Today that
+    # is the mandatory resolve_client_name call (Feature 027); pre-027 it was
+    # list_invoices directly. That first transcription is what garbled live
+    # ("זהבית" -> "זבית", dropped ה) and it must be verbatim.
+    first_ref = None
+    for call in (first_turn_ai.mcp_calls if first_turn_ai else []):
+        try:
+            args = json.loads(call["arguments"] or "{}")
+        except json.JSONDecodeError:
+            args = {}
+        first_ref = args.get("name") or args.get("client_name")
+        if first_ref:
+            break
+    assert first_ref == _ZEHAVIT_NAME, (
+        f"Client name garbled: the model's first client reference was "
+        f"{first_ref!r}, expected {_ZEHAVIT_NAME!r} verbatim "
+        f"(mcp_calls: {first_turn_ai.mcp_calls if first_turn_ai else None!r})"
+    )
+
+    # And no garble introduced downstream either: the resolved client name must
+    # reach list_invoices verbatim too.
     transcribed_names = []
     for call in list_calls:
         try:
@@ -229,11 +296,10 @@ def test_zehavit_client_name_transcribed_exactly(denidin_app):
         except json.JSONDecodeError:
             args = {}
         transcribed_names.append(args.get("client_name"))
-
-    assert any(name == _ZEHAVIT_NAME for name in transcribed_names), (
-        f"Client name garbled: expected {_ZEHAVIT_NAME!r} to appear exactly "
-        f"in at least one list_invoices call, got {transcribed_names!r} "
-        f"(mcp_calls: {ai_response.mcp_calls!r})"
+    assert any(name == resolved_name for name in transcribed_names), (
+        f"Client name garbled downstream: identity resolved to {resolved_name!r} "
+        f"but list_invoices got {transcribed_names!r} "
+        f"(mcp_calls: {final_ai.mcp_calls if final_ai else None!r})"
     )
 
 
@@ -255,18 +321,7 @@ def test_no_date_mentioned_omits_date_range(denidin_app):
     the current constitution wording, and to pass once the wording is
     strengthened per the approved fix direction.
     """
-    response, ai_response = _send_turn(
-        chat_id=GODFATHER_CHAT_ID,
-        text=_ZEHAVIT_MESSAGE,
-        id_prefix="E2E_BUGFIX013_DATE",
-    )
-    list_calls = _calls_for(ai_response, "list_invoices")
-
-    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert list_calls, (
-        f"Model never invoked list_invoices for the Zehavit request. "
-        f"mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
-    )
+    _, _, list_calls, final_ai, _ = _drive_zehavit_to_list_invoices("E2E_BUGFIX013_DATE")
 
     for call in list_calls:
         try:
@@ -281,7 +336,7 @@ def test_no_date_mentioned_omits_date_range(denidin_app):
         assert args.get("from_date") is None and args.get("to_date") is None, (
             f"list_invoices was called with an unrequested date range despite "
             f"no date being mentioned in the request: {args!r} "
-            f"(mcp_calls: {ai_response.mcp_calls!r})"
+            f"(mcp_calls: {final_ai.mcp_calls if final_ai else None!r})"
         )
 
 
@@ -371,6 +426,7 @@ def _assert_full_picture(response, ai_response, id_prefix: str) -> None:
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_client_all_payments_gets_the_complete_picture(denidin_app):
     """Reproduction test for bugfix-014's strongest root-cause candidate:
     runtime_constitution.md's payment-word -> status="paid" rule
@@ -388,6 +444,18 @@ def test_client_all_payments_gets_the_complete_picture(denidin_app):
     Uses the real, mixed-status "דורית אשכנזי" sandbox client (see ground
     truth above) so the bug's effect on the data itself is directly
     observable, rather than only inspecting the tool call's raw arguments.
+
+    KNOWN FAILURE — BLOCKED ON FEATURE 069 (do not "fix" here). Feature 059
+    triage (2026-09-03): the model's answer is correct (full paid+unpaid
+    picture), but `ai_handler.py` only harvests `mcp_call` items from the FINAL
+    settled response, dropping the `list_invoices` call that ran inside an
+    intermediate chained response in the `query_ledger_events` follow-up loop
+    (Morning MCP server log proves it ran). So `ai_response.mcp_calls` — and
+    this test's tool-call assertion — is incomplete. Feature 069
+    (`specs/backlog/069-mandatory-client-resolution-before-ledger-event`)
+    reworks this exact ledger/resolution code path; the call-accounting gap is
+    expected to close with it. Left red on purpose until then — see
+    `specs/done/v0.5.4/059-stabilize-tests-sanity-suite/sanity-failures.md` (S2).
     """
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -565,7 +633,7 @@ def test_godfather_searches_invoice_by_number_finds_it(denidin_app):
     a 'too many results' narrowing request."""
     amount = _random_amount()
     description = _random_description()
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_NUMSEARCH_SEED")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: only the invoice must be fresh
 
     _, (seed_response, seed_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,

@@ -179,6 +179,33 @@ def test_format_invoice_details_omits_linked_documents_section_when_absent():
     assert "מסמכים מקושרים" not in message
 
 
+def test_format_invoice_details_payments_section_names_method_and_bank_details():
+    """get_invoice_details' text output must surface the payment method and the
+    structured bank details it alone carries - a bank deposit booked as
+    העברה בנקאית (payment type 4) has to be visible as such in the prose, not
+    only in the opt-in JSON shape. Regression for Feature 059: a real E2E read
+    the payments block back and found only amount+date."""
+    with_bank_payment = dict(
+        REAL_DOCUMENT_RESPONSE_SAMPLE,
+        type=320,
+        payment=[
+            {
+                "id": "c4c52171", "date": "2026-07-12", "type": 4, "amount": 1500,
+                "name": "העברה בנקאית", "bankName": "31", "bankBranch": "109",
+                "bankAccount": "105542585",
+            }
+        ],
+    )
+    invoice = Invoice.model_validate(with_bank_payment)
+
+    message = format_invoice_details(invoice)
+
+    assert "תשלומים:" in message
+    assert "העברה בנקאית" in message
+    assert "31" in message and "109" in message and "105542585" in message
+    assert "12/07/2026" in message
+
+
 def test_format_invoice_confirmation_includes_creation_timestamp():
     """denidin-app's Feature 025 (2026-08-22): the creation timestamp must be
     visible in the SHARED per-invoice block - which means list_invoices'

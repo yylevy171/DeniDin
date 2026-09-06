@@ -36,6 +36,7 @@ Amounts stay under 100, per this suite's sandbox convention.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -49,7 +50,7 @@ from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     _is_real_approval_prompt,
     _random_amount,
     _random_description,
-    _seed_fresh_client,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve_capturing_approval,
 )
@@ -67,13 +68,16 @@ def _today_il() -> str:
 
 
 def _seed_invoice_305(amount: int, description: str) -> tuple[str, str]:
-    """Seed a fresh type-305 tax invoice for a brand-new client via a real,
-    approved WhatsApp exchange. Returns (client_name, invoice_number) - the
-    real display number, extracted from create_invoice's own confirmation
-    output, never a guess."""
+    """Seed a fresh type-305 tax invoice via a real, approved WhatsApp
+    exchange. Returns (client_name, invoice_number) - the real display number,
+    extracted from create_invoice's own confirmation output, never a guess.
+
+    Feature 059 item 5: only the invoice must be fresh - the client just has to
+    exist, so it's drawn from the committed sandbox-client fixture rather than
+    seeded conversationally (saves 2-3 billed turns + a sleep per test)."""
     from tests.billed.denidin_mcp_e2e_helpers import _send_turn_and_approve
 
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B038_BILLED_SEED")
+    client_name = pick_existing_client()["name"]
     _, (_, seed_ai) = _send_turn_and_approve(
         GODFATHER_CHAT_ID,
         f"תפיק חשבונית מס ל{client_name} על סך {amount} ₪ כולל מע״מ, עבור {description}",
@@ -97,7 +101,7 @@ def _seed_transaction_account_300(amount: int, description: str) -> tuple[str, s
     stated explicitly up front (sidesteps the model's own mandatory VAT
     question - this test is about the approval's reference-data content, not
     that separate flow). Returns (client_name, document_number)."""
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B038_BILLED_SEED300")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
     _, ai_response = _send_turn(
         GODFATHER_CHAT_ID,
         f"תפתח חשבון עסקה עבור {client_name} על סך {amount} ₪ כולל מע״מ, עבור {description}",
@@ -124,7 +128,7 @@ def _seed_transaction_account_300_with_real_id(amount: int, description: str) ->
     confirmation output, which always includes it per format_invoice_
     confirmation) - needed to prove which id a later multi-turn call
     actually used. Returns (client_name, doc_number, real_internal_morning_id)."""
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B038_BILLED_SEED300ID")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
     _, ai_response = _send_turn(
         GODFATHER_CHAT_ID,
         f"תפתח חשבון עסקה עבור {client_name} על סך {amount} ₪ כולל מע״מ, עבור {description}",
@@ -191,14 +195,25 @@ class TestGroupBReferenceApprovalBilled:
     tool - each proves the SAME core defect (blank/placeholder reference
     data) via the cheapest possible real reproduction."""
 
+    @pytest.mark.sanity
     def test_receipt_against_existing_invoice_shows_reference_data(self, denidin_app):
         """create_receipt (400) closing an existing type-305 tax invoice."""
         amount = _random_amount()
         client_name, invoice_number = _seed_invoice_305(amount, _random_description())
 
+        # Point at the freshly-seeded invoice as "the one I just issued"
+        # (שהרגע הפקתי / האחרונה), not just "the invoice of {client}".
+        # `pick_existing_client()` can (and does) land on a client that already
+        # carries an unpaid invoice from an earlier run - then "the invoice of
+        # X" is genuinely ambiguous and the model correctly asks which one,
+        # which the one-clarifying-turn helper can't answer (seen 2026-09-04:
+        # sandbox client מרסל אלמו still holding invoice #51816 from 2026-08-11,
+        # on top of the one this test just seeded). "הרגע" is what a real user
+        # says, uniquely picks the just-created invoice regardless of dates,
+        # and doesn't leak the number.
         approval_text, approve_ai_response = _send_turn_and_approve_capturing_approval(
             GODFATHER_CHAT_ID,
-            f"סמן את החשבונית של {client_name} כשולמה, התשלום התקבל היום",
+            f"סמן את החשבונית האחרונה של {client_name}, זו שהרגע הפקתי, כשולמה - התשלום התקבל היום",
             id_prefix="B038_BILLED_RECEIPT",
             tool_name="create_receipt",
         )
@@ -235,6 +250,7 @@ class TestGroupBReferenceApprovalBilled:
         )
         _assert_internal_id_never_leaked(approval_text, approve_ai_response)
 
+    @pytest.mark.sanity
     def test_combo_document_against_existing_transaction_account_shows_reference_data(self, denidin_app):
         """create_combo_document_as_reference (320) closing an existing type-300 חשבון
         עסקה. Uses today's tool name - will be updated to
@@ -330,11 +346,25 @@ class TestGroupBReferenceApprovalBilled:
             f"{final_ai_response.mcp_calls if final_ai_response else None!r}"
         )
         for call in id_shaped_calls:
-            args = call.get("arguments") or ""
-            assert doc_number not in args, (
-                f"call used the DISPLAY number ({doc_number}) where an internal_morning_id "
-                f"was required - this is the exact bug: {call!r}"
-            )
+            try:
+                args = json.loads(call.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            # The bug is the DISPLAY number landing in an id-shaped field. Assert
+            # on those fields specifically - a whole-blob substring scan also
+            # trips on a legitimate mention of the display number in the
+            # free-text `description` ("...חשבון עסקה מספר 40445...", which is
+            # correct and natural), which is NOT the bug (2026-09-03, Feature 059
+            # triage: original_internal_morning_id was the correct GUID and the
+            # call succeeded). Stricter, too: the id field must be exactly the
+            # real resolved id, not merely "not the display number".
+            for id_field in ("internal_morning_id", "original_internal_morning_id"):
+                if args.get(id_field) is not None:
+                    assert args[id_field] == real_id, (
+                        f"{id_field} was {args[id_field]!r}, not the real resolved id "
+                        f"{real_id!r} (the display number is {doc_number}) - this is the "
+                        f"exact bug: {call!r}"
+                    )
             assert call["error"] is None, (
                 f"tool call failed - likely used a wrong/malformed id: {call!r}"
             )

@@ -94,6 +94,12 @@ pytest tests/unit/test_module.py::test_function -xvs
 - Read `logs/test_logs/` before re-running - don't burn money re-deriving known info
 - Only re-run a previously-failed one once confident a fix addresses it
 
+### Sanity Suite (`@pytest.mark.sanity`, Feature 059)
+- Curated cross-app subset; every sanity test is ALSO `billed` or `expensive` and keeps that tier's rules
+- `./scripts/run_sanity.sh` (repo root): gate (`morning-mcp-app`) then `denidin-app` billed subset, one test at a time **only through `run_single_test.sh`** (never a bare `-m` batch). Stop-on-fail, live sound-off, resumable state in `sanity_state.tsv` (`--status`/`--fresh`/`--mark`). `expensive` members are a printed checklist, never auto-run.
+- `./scripts/verify_sanity_lists.sh` - guards the decorators vs `run_sanity.sh`'s arrays against drift. Failures log: `specs/done/059-.../sanity-failures.md`
+- Fast "anything obviously broken end-to-end" pass. Not a substitute for the full tiers. Not CI.
+
 ### Test Standards
 - Once approved, tests are IMMUTABLE (never modify without human approval)
 - New phases ADD new tests, never modify existing ones
