@@ -66,3 +66,7 @@ Feature 061: new standalone prod-ledger-backfill operator tool (apps/prod-ledger
 ## [0.5.4] - 2026-09-04
 
 Accounting-reconciliation sweep reliability: bugfix-047 gives the sweep its own 300s OpenAI timeout (was inheriting the 30s conversational-turn ceiling and timing out once the sandbox held ~13+ in-window documents), bugfix-048 switches its dedup key to (date, display_number) so already-captured Morning documents are no longer re-flagged as anomalies after every app restart. Also: prod Morning ledger backfill completed from 2025-09-01 (Feature 062), August 2026 ledger audit findings applied to prod (Feature 065), parallel sanity test sweep (Feature 075), and cross-app sanity-suite stabilization (Feature 059).
+
+## [0.5.4-70] - 2026-09-06
+
+Rolling 14-day short-term memory window with nightly daily-summary roll; retires 24h session expiry and the hourly cleanup thread.
