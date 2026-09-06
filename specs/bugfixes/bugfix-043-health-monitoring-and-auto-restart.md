@@ -18,31 +18,66 @@ recurs on every future restart/reboot until a fix lands.
 
 ## Status
 **Open — code and tests exist on this branch (`bugfix/043-health-monitoring-and-auto-restart`),
-merged current with master and re-verified passing 2026-09-01. Never had a PR, never merged to
+merged current with master and re-verified passing 2026-09-06. Never had a PR, never merged to
 master. No prod wiring (Windows Task Scheduler) or live demo performed yet.**
 
 - Code written and committed 2026-08-26 (`ee252ca`), pushed to origin.
-- **2026-09-01**: this session merged current `master` into the branch — **clean, zero
-  conflicts** (130 files, +9819/-323, all upstream unrelated work: ledger/reconciliation/player
-  changes, spec reorganizations, releases). Re-ran every test this branch added against the
+- **2026-09-01**: merged current `master` into the branch — clean, zero conflicts (130 files,
+  +9819/-323, all upstream unrelated work). Re-ran every test this branch added against the
   merged result:
   - `apps/denidin-app/tests/unit/test_health_server.py` — 23 passed
   - `apps/morning-mcp-app/tests/unit/test_health_checks.py` + `test_health_endpoint.py` — 16 passed
   - `scripts/health_monitoring/tests/test_prober.py` — 18 passed
-  - Full `apps/denidin-app/tests/unit/` — **1254 passed, 0 failed** (the commit message's own
-    "1 pre-existing unrelated failure" note no longer applies — whatever that was has since been
-    fixed or aged out)
+  - Full `apps/denidin-app/tests/unit/` — **1254 passed, 0 failed**
   - Full `apps/morning-mcp-app/tests/unit/` — **360 passed, 0 failed**
-  - This is a real, fresh, independently-run confirmation as of 2026-09-01, not a repeat of the
-    commit message's original claim.
-- **This spec file itself did not exist until this session** — the branch shipped code+tests but
-  no spec, exactly as its own commit message flagged under "Not yet done."
+- **2026-09-06**: merged current `master` into the branch again — this time **NOT** clean. Master
+  had moved substantially in the interim (64 commits: all of Feature 070 — the rolling 14-day
+  memory window replacing session expiry/cleanup entirely — plus Feature 044 ledger-event
+  querying, a v0.5.4-70 release cut). Real 3-way conflicts in `apps/denidin-app/denidin.py`,
+  `apps/denidin-app/src/models/config.py`, and `apps/denidin-app/config/config.example.json` —
+  all resolved as pure additive merges (this branch's `health_check_port` field/health-server
+  startup block kept alongside master's new `logging` field/daily-summary-roll-scheduler block;
+  one stale leftover comment referencing Feature 070's now-deleted orphaned-session-recovery code
+  was dropped rather than reintroduced). No logic on either side was altered to resolve these —
+  confirmed by re-running every test after resolution:
+  - Full `apps/denidin-app/tests/unit/` — **1335 passed, 0 failed** (the previous
+    session's "1254 passed" count grew with upstream's own new tests; no new failures)
+  - Full `apps/morning-mcp-app/tests/unit/` — **371 passed, 0 failed**
+  - `scripts/health_monitoring/tests/test_prober.py` — 18 passed
+  - Merge commit: `53be8e8`.
+- **This spec file itself did not exist until 2026-09-01** — the branch shipped code+tests but
+  no spec initially, exactly as its own commit message flagged under "Not yet done."
 - Still not done: Windows Task Scheduler wiring for `prober.py` on the real prod box (a real
   environment-affecting change, needs its own explicit approval per CLAUDE.md's "never start an
   environment... without explicit approval" rule — this is system-level scheduling, not just a
   container action, so it likely needs the same care even though it's not literally
-  `docker compose up`), and the live dev demo the commit message describes as not yet performed.
-  No PR has ever been opened for this branch.
+  `docker compose up`), and the live dev demo. No PR has ever been opened for this branch's code
+  (only for this spec file, tracked separately — see "How this lands" below).
+
+## Familiarization with Feature 068 (webapp) — not merged, reviewed for future-merge impact (2026-09-06)
+
+Per explicit instruction, this session reviewed (but did **not** merge) `origin/feature/068-ledger-ui-and-reports`
+— an unmerged branch adding a third app, `apps/webapp/` (a read-only ledger UI, frontend + backend,
+containerized, deployed via Cloudflare Tunnel), so that whenever that branch eventually merges to
+master, reconciling it against this one is less work. Findings:
+
+- **`scripts/run_all.sh`/`stop_all.sh` on that branch just append a third call** (`apps/webapp/run_webapp.sh`/
+  `stop_webapp.sh`) around the existing two — `prober.py`'s **soft-restart** path (which calls
+  these two scripts generically, by name, with no knowledge of what they start) will automatically
+  restart the webapp too, with zero code changes needed here.
+- **Gap**: `prober.py`'s **hard-restart** path (`run_hard_restart`) hardcodes exactly two container
+  names (`--denidin-container`/`--morning-container`) and calls `docker restart` on them directly,
+  bypassing `run_all.sh`/`stop_all.sh` entirely. Once Feature 068 merges, a hard restart would
+  leave the webapp containers untouched. Not fixed here (068 isn't merged yet) — flagged as a
+  concrete follow-up task for whoever lands 068 (or a subsequent bugfix-043 increment): either add
+  `--webapp-container` args, or have hard-restart delegate to a small script that knows the full
+  container set instead of hardcoding two.
+- **Coincidental, currently-harmless port-number collision**: Feature 068's `webapp-backend-<env>`
+  container listens on port `8100` internally (`BACKEND_UPSTREAM: "webapp-backend-dev:8100"` in its
+  `docker-compose.dev.yml`) — the exact same port this bugfix picked for `denidin-app`'s
+  `health_check_port`. No actual conflict today (separate containers, separate network
+  namespaces, nothing binds both to the same host port), but worth a deliberate check at merge
+  time that neither compose file ever host-maps both to `8100` simultaneously.
 
 ## Branch/numbering discrepancy (flagging explicitly, 2026-09-01)
 
@@ -139,19 +174,24 @@ increment of this branch, not implementing here:
 Neither of the above is designed or implemented yet — flagging as scope, per instruction, not
 building it out.
 
-## How this branch would land (2026-09-01 merge trial)
+## How this branch would land
 
-`git merge --no-commit --no-ff origin/master` from the pre-merge tip (`ee252ca` + the branch's
-prior catch-up merge) applied **cleanly with zero conflicts** — 130 files changed
-(+9819/-323), entirely unrelated upstream work (ledger/reconciliation changes, spec
-reorganizations, player features, releases up through v0.5.3). No file this branch touches
-(`health_server.py`, `health_checks.py`, `server.py`, `prober.py`, the 4 config files,
-`denidin.py`, `requirements.txt`, `models/config.py`) was touched by anything upstream in the
-intervening 40 commits, so there was nothing to reconcile. The merge was committed to this branch
-(`af889df`). Every test this branch added still passes against the merged result (see Status
-above) — this branch is mergeable to current master today with no further reconciliation work,
-purely on the "does it apply cleanly and still pass" axis. Whether it's *ready* to merge (spec
-approval, prod wiring, live demo, the two open-scope items above) is a separate, human decision.
+**2026-09-01 merge trial**: `git merge --no-commit --no-ff origin/master` from the pre-merge tip
+(`ee252ca` + the branch's prior catch-up merge) applied **cleanly with zero conflicts** — 130
+files changed (+9819/-323), entirely unrelated upstream work. The merge was committed to this
+branch (`af889df`).
+
+**2026-09-06 re-merge**: master had moved 64 commits further (Feature 070's full session-model
+rearchitecture, Feature 044, a release cut) — this time **3 real conflicts**, all in files this
+branch itself touches (`denidin.py`, `models/config.py`, `config.example.json`), all resolved as
+pure additive merges with no logic changes on either side (see "Status" above for detail).
+Committed as `53be8e8`. This confirms the pattern going forward: this branch **will** need active
+reconciliation on every future master merge (it touches `denidin.py`'s `__main__` and
+`AppConfiguration`, both high-churn files), not a one-time "applies cleanly forever" guarantee —
+whoever lands this next should expect to redo this same 3-conflict resolution if master has moved
+again by then. Every test this branch added still passes against the merged result (see Status
+above). Whether it's *ready* to merge (spec approval, prod wiring, live demo, the two open-scope
+items above, and now the Feature 068 hard-restart gap) is a separate, human decision.
 
 ## Verification
 
@@ -160,12 +200,17 @@ approval, prod wiring, live demo, the two open-scope items above) is a separate,
 - [x] Re-verified independently, 2026-09-01, against current master after a clean merge: 23 + 16
       + 18 = 57 branch-specific tests pass; full suites 1254 (denidin-app) + 360 (morning-mcp-app)
       pass, zero failures.
-- [x] Branch merges cleanly with current master, no conflicts.
+- [x] Branch merged cleanly with master on 2026-09-01; re-merged 2026-09-06 with 3 conflicts,
+      resolved additively (no logic changes either side), all tests re-confirmed passing.
 - [x] Branch/numbering discrepancy flagged and resolved (this file is canonical).
+- [x] Familiarized with unmerged Feature 068 (webapp) for future-merge impact; one real gap
+      flagged (hard-restart doesn't yet know about a third app), no functional collision found.
 - [ ] Human review/approval of this design as the path forward (never formally requested — no PR
-      was ever opened for this branch).
+      was ever opened for this branch's code, only for this spec file — see "How this lands").
 - [ ] The two additional-scope items above designed and either folded into this bugfix or split
       out, per human decision.
+- [ ] Feature 068's hard-restart gap (see above) designed and either folded into this bugfix or
+      split out, once 068 actually merges.
 - [ ] Windows Task Scheduler wiring for `prober.py` on real prod (needs its own explicit
       approval).
 - [ ] Live dev demo of the full probe → soft-restart → hard-restart ladder.
