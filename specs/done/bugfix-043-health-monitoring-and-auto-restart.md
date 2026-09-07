@@ -17,9 +17,9 @@ patch to just the ngrok check (reverted — see "Branch/numbering discrepancy" b
 recurs on every future restart/reboot until a fix lands.
 
 ## Status
-**Done — Windows Task Scheduler wiring live on real prod, live restart-loop root cause found and
-fixed, live-verified in both dev and prod at v0.5.4-b43v5, merging to master via haleluya
-(2026-09-07).**
+**Done - Merged to master (PR #284).** Windows Task Scheduler wiring live on real prod, live
+restart-loop root cause found and fixed, live-verified in both dev and prod at v0.5.4-b43v5
+(2026-09-07).
 
 - **2026-09-07: real prod incident, root-caused, fixed, and verified live — this is the actual
   end-to-end proof this bugfix exists to provide.** Full detail in "2026-09-07: live prod incident
