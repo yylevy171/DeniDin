@@ -74,6 +74,13 @@ class AppConfiguration:
     # messages are excluded from the recognition input. Default 1.0.
     ledger_recognition_context_window_hours: float = 1.0
 
+    # Health monitoring (bugfix-043) - localhost-only /health HTTP endpoint for
+    # the prod-only external health-check prober. 0 = disabled (no server
+    # started at all) - matches accounting_ledger_update_freq's "0 = inactive"
+    # convention above, so an environment that hasn't set this key yet never
+    # accidentally starts a new listener.
+    health_check_port: int = 0
+
     # Log retention (Feature 070, US5). Top-level (not under `memory`) - this is an
     # operational concern, not part of the memory model. `rotation_when` feeds
     # logging.handlers.TimedRotatingFileHandler(when=...); `backup_count` 0 = keep
