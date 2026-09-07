@@ -17,10 +17,16 @@ services:
       # 2026-09-06 (bugfix-043): host-published health_check_port so the
       # host-level prober can actually reach GET /health - see
       # docker-compose.dev.yml's matching comment for the full incident
-      # this fixes. Distinct host port from dev's (8100:8100) so dev+prod
+      # this fixes. Distinct host port from dev's (8200:8100) so dev+prod
       # can run concurrently without a collision, same pattern as
       # morning-mcp-app-dev/-prod below.
-      - "8101:8100"
+      #
+      # 2026-09-07 fix: originally 8101:8100, which collides with an
+      # already-running, unrelated webapp-backend-prod container on THIS
+      # SAME Windows box, also published on host port 8101 (confirmed live
+      # via docker ps against denidin-winprod). Moved to 8201, verified
+      # genuinely free on the box before choosing it.
+      - "8201:8100"
     volumes:
       - ./apps/denidin-app/config/config.prod.json:/app/config/config.json:ro
       - ./apps/denidin-app/config/runtime_constitution.md:/app/config/runtime_constitution.md:ro

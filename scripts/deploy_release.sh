@@ -226,52 +226,65 @@ if [ "$REMOTE" -eq 1 ]; then
         exit 1
     fi
 
-    # Step R2 (bugfix-043): ship + unpack the shared ops-scripts bundle, if this version has one
+    # Step R2: resolve the Windows-side home directory (SFTP's "~" != WSL bash's "~" - see
+    # header comment). Moved ahead of the scripts-bundle step below (2026-09-07 fix - see that
+    # step's own comment for why) so every scp'd-file reference in this remote path can use it.
+    # Split from the load step so a wslpath/cmd.exe failure is never misreported as a docker load
+    # failure.
+    echo "== [R2/R9] Resolving Windows-side home directory on ${REMOTE_HOST} =="
+    WIN_HOME_OUTPUT="$(remote_run "wslpath -u \"\$(cmd.exe /c echo %USERPROFILE% | tr -d '\\r')\"" 2>&1)"
+    WIN_HOME="$(echo "$WIN_HOME_OUTPUT" | tail -1)"
+    if [ -z "$WIN_HOME" ]; then
+        echo "🚨 DEPLOY FAILED at step R2 (resolve WIN_HOME on ${REMOTE_HOST}): got empty output. Raw output was:" >&2
+        echo "$WIN_HOME_OUTPUT" >&2
+        exit 1
+    fi
+
+    # Step R3 (bugfix-043): ship + unpack the shared ops-scripts bundle, if this version has one
     # (soft-optional - see HAVE_SCRIPTS_BUNDLE above). Ships the UNPACK HELPER SCRIPT directly
     # from this local checkout (not from the bundle itself) - avoids a chicken-and-egg bootstrap
     # problem on a box that has never received a bundle before. Uses the same helper script
     # scripts/tests/test_release_scripts_bundle.py exercises directly (no SSH) - identical
     # extraction/verification logic either way.
+    #
+    # 2026-09-07 fix (found via a real prod deploy dry run): this step originally referenced its
+    # own scp'd files as bare `~/...`, exactly the same "SFTP's ~ != WSL bash's ~" mistake R2
+    # above exists specifically to prevent for the main artifact tarball - scp (SFTP, via Windows
+    # OpenSSH) deposits files under the WINDOWS-side home, but `remote_run` executes inside WSL,
+    # where `~` means the WSL user's own (different) home - so `bash ~/unpack_scripts_bundle.sh`
+    # failed with "No such file or directory" even though the scp itself had just succeeded. Every
+    # scp'd-file reference here now uses `${WIN_HOME}` instead. The unpack TARGET directory
+    # (`~/${REMOTE_DEPLOY_DIR}`, the real deploy checkout) is correctly left as bare `~` - that
+    # directory lives under the WSL home, matching every other reference to it elsewhere in this
+    # script (R4/R8's stop_env.sh/run_env.sh calls, the compose invocations, etc.).
     if [ "$HAVE_SCRIPTS_BUNDLE" -eq 1 ]; then
         SCRIPTS_BUNDLE_NAME="$(basename "$SCRIPTS_BUNDLE_PATH")"
         UNPACK_HELPER_NAME="$(basename "$UNPACK_SCRIPTS_HELPER")"
         MANIFEST_HELPER_NAME="release_scripts_manifest.sh"
-        echo "== [R2/R9] Shipping + unpacking the shared ops-scripts bundle on ${REMOTE_HOST} (bugfix-043) =="
+        echo "== [R3/R9] Shipping + unpacking the shared ops-scripts bundle on ${REMOTE_HOST} (bugfix-043) =="
         if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$SCRIPTS_BUNDLE_PATH" "${REMOTE_HOST}:~/${SCRIPTS_BUNDLE_NAME}"; then
-            echo "🚨 DEPLOY FAILED at step R2 (scp scripts bundle -> ${REMOTE_HOST}): scp exited non-zero. Nothing on ${REMOTE_HOST} was touched." >&2
+            echo "🚨 DEPLOY FAILED at step R3 (scp scripts bundle -> ${REMOTE_HOST}): scp exited non-zero. Nothing on ${REMOTE_HOST} was touched." >&2
             exit 1
         fi
         if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$UNPACK_SCRIPTS_HELPER" "${REMOTE_HOST}:~/${UNPACK_HELPER_NAME}"; then
-            echo "🚨 DEPLOY FAILED at step R2 (scp unpack helper -> ${REMOTE_HOST}): scp exited non-zero." >&2
+            echo "🚨 DEPLOY FAILED at step R3 (scp unpack helper -> ${REMOTE_HOST}): scp exited non-zero." >&2
             exit 1
         fi
         if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$SCRIPT_DIR/lib/release_scripts_manifest.sh" "${REMOTE_HOST}:~/${MANIFEST_HELPER_NAME}"; then
-            echo "🚨 DEPLOY FAILED at step R2 (scp release-scripts manifest -> ${REMOTE_HOST}): scp exited non-zero." >&2
+            echo "🚨 DEPLOY FAILED at step R3 (scp release-scripts manifest -> ${REMOTE_HOST}): scp exited non-zero." >&2
             exit 1
         fi
-        UNPACK_OUTPUT="$(remote_run "bash ~/${UNPACK_HELPER_NAME} ~/${SCRIPTS_BUNDLE_NAME} ~/${REMOTE_DEPLOY_DIR}" 2>&1)"
+        UNPACK_OUTPUT="$(remote_run "bash \"${WIN_HOME}/${UNPACK_HELPER_NAME}\" \"${WIN_HOME}/${SCRIPTS_BUNDLE_NAME}\" ~/${REMOTE_DEPLOY_DIR}" 2>&1)"
         if ! echo "$UNPACK_OUTPUT" | grep -q "^OK:"; then
-            echo "🚨 DEPLOY FAILED at step R2 (unpacking scripts bundle on ${REMOTE_HOST}): the box's ops scripts may now be in an incomplete state - investigate before retrying. Raw output was:" >&2
+            echo "🚨 DEPLOY FAILED at step R3 (unpacking scripts bundle on ${REMOTE_HOST}): the box's ops scripts may now be in an incomplete state - investigate before retrying. Raw output was:" >&2
             echo "$UNPACK_OUTPUT" >&2
             exit 1
         fi
         echo "$UNPACK_OUTPUT"
         # Clean up the shipped helper files off the box - a failure here doesn't undo the
         # (already-verified) unpack, so it's reported but not fatal.
-        remote_run "rm -f ~/${SCRIPTS_BUNDLE_NAME} ~/${UNPACK_HELPER_NAME} ~/${MANIFEST_HELPER_NAME}" \
+        remote_run "rm -f \"${WIN_HOME}/${SCRIPTS_BUNDLE_NAME}\" \"${WIN_HOME}/${UNPACK_HELPER_NAME}\" \"${WIN_HOME}/${MANIFEST_HELPER_NAME}\"" \
             || echo "Warning: could not clean up shipped scripts-bundle helper files on ${REMOTE_HOST} - harmless, but worth a look." >&2
-    fi
-
-    # Step R3: resolve the Windows-side home directory (SFTP's "~" != WSL bash's "~" - see
-    # header comment). Split from the load step so a wslpath/cmd.exe failure is never
-    # misreported as a docker load failure.
-    echo "== [R3/R9] Resolving Windows-side home directory on ${REMOTE_HOST} =="
-    WIN_HOME_OUTPUT="$(remote_run "wslpath -u \"\$(cmd.exe /c echo %USERPROFILE% | tr -d '\\r')\"" 2>&1)"
-    WIN_HOME="$(echo "$WIN_HOME_OUTPUT" | tail -1)"
-    if [ -z "$WIN_HOME" ]; then
-        echo "🚨 DEPLOY FAILED at step R3 (resolve WIN_HOME on ${REMOTE_HOST}): got empty output. Raw output was:" >&2
-        echo "$WIN_HOME_OUTPUT" >&2
-        exit 1
     fi
 
     COMPOSE_IMAGE="${PROJECT_NAME}-${SERVICE_NAME}:latest"

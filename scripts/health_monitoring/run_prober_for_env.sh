@@ -30,6 +30,7 @@ exec python3 "$SCRIPT_DIR/prober.py" \
     --morning-health-url "$(prober_morning_health_url "$ENV")" \
     --state-file "$(prober_state_file "$ENV")" \
     --log-file "$(prober_log_file "$ENV")" \
+    --verify-log-file "$(prober_verify_log_file "$ENV")" \
     --scripts-dir "$REPO_ROOT" \
     --denidin-container "$(prober_denidin_container "$ENV")" \
     --morning-container "$(prober_morning_container "$ENV")" \

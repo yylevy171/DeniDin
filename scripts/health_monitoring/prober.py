@@ -68,36 +68,26 @@ import json
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Optional
+
+from verify import PROBE_TIMEOUT_SECONDS, fetch_health_body, is_healthy_body, probe_health  # noqa: F401
 
 # Escalation thresholds, in seconds since the last all-checks-passed moment.
 SOFT_RESTART_THRESHOLD_SECONDS = 180   # 3 minutes
 HARD_RESTART_THRESHOLD_SECONDS = 600   # 10 minutes
 
-PROBE_TIMEOUT_SECONDS = 10.0
-
-
-def probe_health(url: str, timeout: float = PROBE_TIMEOUT_SECONDS) -> bool:
-    """True iff `url` (a /health endpoint) responds with HTTP 200 - both
-    apps' /health handlers already return 200 only when every check they
-    know about succeeded, and a non-200 (5xx) or any transport failure both
-    correctly count as "not healthy" here.
-
-    Uses only the standard library (urllib), deliberately - this script is
-    designed to run as a bare host-level script (LaunchAgent/Task
-    Scheduler/cron), invoked as plain `python3 prober.py`, with no
-    guarantee any app's venv (where a third-party `requests` install would
-    otherwise live) is active. See bugfix-043's 2026-09-06 fix note: a real
-    `dev` deploy failed with `ModuleNotFoundError: No module named
-    'requests'` for exactly this reason."""
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            return response.status == 200
-    except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError):
-        return False
+# probe_health/fetch_health_body/is_healthy_body all live in verify.py now
+# (bugfix-043, 2026-09-07 revision) - it's the single implementation shared
+# with scripts/run_all_and_verify_healthy.sh (which invokes verify.py
+# directly as a CLI - no intermediate .sh wrapper). probe_health is
+# re-exported here
+# (not just imported for internal use) so `from prober import probe_health`
+# keeps working for existing callers/tests - this script runs as a bare
+# `python3 prober.py` (Task Scheduler/LaunchAgent/cron), so both modules
+# living in the same directory is what makes the plain `import verify` work
+# with no path hacks: Python always puts the invoked script's own directory
+# on sys.path[0].
 
 
 def read_last_up_time(state_path: Path) -> Optional[float]:
@@ -175,9 +165,26 @@ def decide_action(last_up_time: Optional[float], now: float) -> str:
 def run_soft_restart(env: str, scripts_dir: Path) -> None:
     """The proper-channels restart: the same sanctioned scripts a human
     would run by hand (env_lock acquire/release, active_env.json
-    bookkeeping all respected)."""
+    bookkeeping all respected).
+
+    Calls run_all_and_verify_healthy.sh, NOT run_all.sh directly (2026-09-07
+    fix, bugfix-043) - run_all.sh/docker compose up -d return as soon as the
+    containers are created/started, long before the app inside has actually
+    finished booting and reported healthy. Since this call is what the OS
+    scheduler's own task instance blocks on (subprocess.run is synchronous),
+    calling only run_all.sh meant the scheduled task "finished" seconds into
+    a boot that could take much longer - so the OS's own
+    already-correctly-configured "don't start a new instance while one is
+    already running" policy (Windows Task Scheduler's MultipleInstancesPolicy
+    =IgnoreNew; confirmed live against the real prod task) never actually
+    covered the boot window, and the next tick's BOOTSTRAP decision (no
+    last_up_time yet - see decide_action) restarted the still-booting
+    container out from under itself, repeatedly. run_all_and_verify_healthy.sh
+    blocks until the environment is confirmed healthy (or a 5-minute grace
+    expires), so this call - and therefore the scheduled task instance -
+    now genuinely spans the whole boot-or-fail window."""
     subprocess.run([str(scripts_dir / "scripts" / "stop_all.sh"), env, "-force"], check=False)
-    subprocess.run([str(scripts_dir / "scripts" / "run_all.sh"), env], check=False)
+    subprocess.run([str(scripts_dir / "scripts" / "run_all_and_verify_healthy.sh"), env], check=False)
 
 
 def run_hard_restart(denidin_container: str, morning_container: str) -> None:
@@ -194,15 +201,26 @@ def _write_log_entry(
     now: float,
     denidin_ok: bool,
     morning_ok: bool,
+    denidin_checks: Optional[dict],
+    morning_checks: Optional[dict],
     last_up_time: Optional[float],
     action: str,
     dry_run: bool,
 ) -> None:
+    """denidin_checks/morning_checks are the raw parsed /health bodies
+    (2026-09-07 fix, bugfix-043) - previously only the flat success/fail
+    summary was logged, so a real failure gave no record of *which*
+    per-check field inside the app actually failed (ai_connectivity vs.
+    whatsapp_connectivity vs. the Morning tunnel, etc.) - None here means
+    the request itself failed (unreachable/non-200/unparseable), not that
+    every check inside it failed."""
     log_file.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "timestamp": now,
         "denidin_health": "success" if denidin_ok else "fail",
         "morning_health": "success" if morning_ok else "fail",
+        "denidin_checks": denidin_checks,
+        "morning_checks": morning_checks,
         "last_up_time": last_up_time,
         "action": action,
         "dry_run": dry_run,
@@ -222,13 +240,16 @@ def run_once(
     morning_container: str,
     dry_run: bool = False,
     now: Optional[float] = None,
+    verify_log_file: Optional[Path] = None,
 ) -> str:
     """Runs exactly one probe-and-decide cycle. Returns the action taken
     ("none"/"bootstrap"/"soft"/"hard") so callers (tests, a manual dev demo) can assert
     on it directly instead of parsing the log file."""
     now = now if now is not None else time.time()
-    denidin_ok = probe_health(denidin_health_url)
-    morning_ok = probe_health(morning_health_url)
+    denidin_body = fetch_health_body(denidin_health_url, log_file=verify_log_file, app_name="denidin")
+    morning_body = fetch_health_body(morning_health_url, log_file=verify_log_file, app_name="morning")
+    denidin_ok = is_healthy_body(denidin_body)
+    morning_ok = is_healthy_body(morning_body)
     all_ok = denidin_ok and morning_ok
 
     last_up_time = read_last_up_time(state_file)
@@ -243,7 +264,9 @@ def run_once(
         elif action == "hard" and not dry_run:
             run_hard_restart(denidin_container, morning_container)
 
-    _write_log_entry(log_file, now, denidin_ok, morning_ok, last_up_time, action, dry_run)
+    _write_log_entry(
+        log_file, now, denidin_ok, morning_ok, denidin_body, morning_body, last_up_time, action, dry_run
+    )
     return action
 
 
@@ -254,6 +277,12 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--morning-health-url")
     parser.add_argument("--state-file", required=True, type=Path)
     parser.add_argument("--log-file", type=Path)
+    parser.add_argument(
+        "--verify-log-file", type=Path,
+        help="Append every individual health-check attempt + its full raw reply here (see "
+             "verify.py) - distinct from --log-file, which is prober.py's own strict-JSONL "
+             "per-tick decision log.",
+    )
     parser.add_argument("--scripts-dir", type=Path, help="Repo root containing scripts/stop_all.sh and scripts/run_all.sh")
     parser.add_argument("--denidin-container")
     parser.add_argument("--morning-container")
@@ -297,6 +326,7 @@ def main(argv: Optional[list] = None) -> int:
         denidin_container=args.denidin_container,
         morning_container=args.morning_container,
         dry_run=args.dry_run,
+        verify_log_file=args.verify_log_file,
     )
     print(f"action={action}")
     return 0

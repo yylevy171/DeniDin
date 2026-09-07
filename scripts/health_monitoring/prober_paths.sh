@@ -19,6 +19,16 @@ prober_log_file() {
     echo "${REPO_ROOT}/logs/health_monitoring/$1/prober.log"
 }
 
+# Distinct from prober_log_file() above (2026-09-07, bugfix-043) -
+# prober.log is a strict JSONL decision log (one _write_log_entry() object
+# per prober.py tick); this is a plain-text, per-check-attempt log (every
+# single verify.py request/reply, from BOTH the in-process prober.py ticks
+# AND run_all_and_verify_healthy.sh's own post-start polling loop) - mixing
+# the two into one file would break prober.log's JSONL parseability.
+prober_verify_log_file() {
+    echo "${REPO_ROOT}/logs/health_monitoring/$1/verify.log"
+}
+
 # Container names are derived from the ACTUAL compose project name (the compose file's own
 # `name:` field), never hardcoded as "denidin-<env>" - deploy_release.sh already derives
 # PROJECT_NAME the same way (see its own `grep -m1 '^name:'` line), and a scratch/test compose
