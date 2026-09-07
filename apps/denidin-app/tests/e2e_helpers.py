@@ -13,6 +13,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from whatsapp_chatbot_python import Notification
 
 from src.utils.time_utils import local_from_timestamp
@@ -98,13 +99,40 @@ def create_real_notification(event_dict):
     notification = Notification.__new__(Notification)
     notification.event = event_dict
     notification._test_sent_messages = []
-    
+    notification._test_button_sends = []
+
     def track_answer(message):
         """Track what would be sent to user"""
         notification._test_sent_messages.append(message)
         logger.info(f"\n📤 Would send to user: {message}...")
-    
+
+    _next_id = [0]
+
+    def track_answer_with_interactive_buttons(body, buttons, header=None, footer=None):
+        """Feature 047: a pending-approval prompt is delivered as interactive
+        buttons rather than plain text. `Notification.answer_with_interactive_buttons`
+        would go through a real `self.api.sending.sendInteractiveButtons`, which
+        this bare `Notification.__new__` construction never wires - so capture it
+        the same way `.answer()` is. `body` is ALSO appended to
+        `_test_sent_messages` (dual-write) so `get_response()` keeps returning
+        exactly what a user would read on screen regardless of delivery form, and
+        a real idMessage-shaped Response is returned so denidin.py's
+        `attach_sent_message_id` wiring fires exactly as in production. Identical
+        to `tests/billed/denidin_mcp_e2e_helpers.create_real_notification`'s stub
+        - kept in sync deliberately; the two notification factories should be
+        collapsed into one."""
+        _next_id[0] += 1
+        id_message = f"TEST_BUTTONS_{event_dict.get('idMessage', 'noid')}_{_next_id[0]}"
+        notification._test_button_sends.append({
+            'body': body, 'buttons': buttons, 'header': header, 'footer': footer,
+            'idMessage': id_message,
+        })
+        notification._test_sent_messages.append(body)
+        logger.info(f"\n📤 Would send interactive buttons to user: body={body!r}")
+        return SimpleNamespace(code=200, data={'idMessage': id_message}, error=None)
+
     notification.answer = track_answer
+    notification.answer_with_interactive_buttons = track_answer_with_interactive_buttons
     return notification
 
 
@@ -510,6 +538,20 @@ def converse_until_ledger_events_captured(
         if events:
             log.info(f"Ledger events detected after turn {turn_num} - stopping the conversation here")
             return events, transcript
+
+        # Feature 069 new-client detour: when the model puts up the real
+        # mutation-approval gate (add_client, or a Morning create), the turn
+        # that moves the flow toward capture is a bare "כן". The answer bank
+        # has no topic for it, and its field-detail keywords would misfire on
+        # the prompt's own text - so answer it here directly. The gate has a
+        # fixed shape: "לאישור" + "כן" + "לא" together (mirrors
+        # denidin_mcp_e2e_helpers._is_real_approval_prompt).
+        if reply and "לאישור" in reply and "כן" in reply and "לא" in reply:
+            text = "כן"
+            entry["matched_topics"] = ["_approval_gate"]
+            log.info(f"Approval gate detected on turn {turn_num} - answering 'כן'")
+            ts += turn_interval_seconds
+            continue
 
         text, matched_topics = answer_bank.compose_answer(reply)
         entry["matched_topics"] = matched_topics

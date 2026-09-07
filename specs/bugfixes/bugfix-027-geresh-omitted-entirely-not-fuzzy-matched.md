@@ -96,6 +96,35 @@ non-native sounds - roughly 11% of the shared Hebrew family-name test pool,
   or address geresh/apostrophe handling at all - confirmed via a text search of its spec - so
   this bugfix is a genuinely new gap, not a regression of that feature.
 
+## Additional Evidence (2026-09-06) - model renders geresh names with an ASCII apostrophe in its prose reply
+
+Surfaced during a Feature 069 sanity re-run (`test_denidin_morning_invoice_creation_e2e.py::
+test_godfather_add_client_near_duplicate_name_is_asked_before_creating`, `-n 5`), when the random
+family-name draw picked a geresh name (`ח׳ליפה`). Not infra, not a Feature 070 merge regression -
+the asymmetric-normalization line predates the merge (last touched by bugfix-045).
+
+What the logs actually show (translated; Hebrew shown transliterated):
+- `add_client` was called with the raw ASCII-apostrophe argument `{"name":"אהרון ח'ליפה", ...}`.
+- **Morning stored it correctly WITH the geresh** - its `add_client` response and a later
+  `resolve_client_name` both return `name` as `אהרון ח׳ליפה` (`׳`, real geresh). So the
+  write-boundary normalization from case 1's Feature 027 fix is working.
+- **But the model's natural-language reply to the user rendered the name with an ASCII
+  apostrophe**: `"I found several similar clients:\n• אהרון ח'ליפה\n• ..."` - i.e. the model
+  transcribed the geresh name into its Hebrew prose using `'` instead of `׳`.
+- The test's disclosure assertion (`test_...invoice_creation_e2e.py:589`) normalizes only its
+  left operand: `_normalize_hebrew_geresh(seed_name) in (ask_response or "")` - geresh on the
+  left, apostrophe in the reply text on the right, so `in` is `False` even though the bot did
+  disclose the existing similar client (first bullet). The assertion's intent is correct (the
+  stored/canonical name is the geresh form); the test is just not this bug's to fix, and its
+  one-sided normalization is tracked separately.
+
+Relevance to this bugfix: this is a third geresh-handling gap, adjacent to the two already
+catalogued above - **output rendering**, not lookup. The canonical stored form is geresh, but
+the model's free-text replies don't consistently reproduce it, which (a) confuses users
+comparing the reply against what they typed and (b) breaks naive downstream string matching on
+the reply. A complete geresh fix should consider normalizing model-facing/model-emitted name
+text too, not only the search/write boundaries.
+
 ## Next Step
 Per BDD, awaiting human approval of the complexity assessment above (and a priority/scheduling
 decision - this may be better suited to a small dedicated feature spec than a bugfix, given it's

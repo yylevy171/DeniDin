@@ -332,6 +332,49 @@ def _verify_schema_version_history() -> None:
 
 _verify_schema_version_history()
 
+# The complete, ordered set of keys every persisted LedgerEvent JSON carries -
+# the single source of truth for "what fields does a ledger event have". Built
+# by `add_ledger_event`'s `record` dict (an assertion there keeps the two in
+# lockstep; adding a key to `record` without adding it here fails loudly at the
+# first persist). Test helpers that assert full-payload fidelity import this so
+# a new field can never be silently left unasserted (Feature 069, C9).
+LEDGER_EVENT_FIELDS: Tuple[str, ...] = (
+    "event_id",
+    "event_datetime",
+    "source_type",
+    "event_subtype",
+    "client_name",
+    "payer_name",
+    "description",
+    "amount",
+    "reference",
+    "agreement_id",
+    "component_id",
+    "component_label",
+    "trigger_condition",
+    "percent",
+    "percent_base",
+    "hours",
+    "hourly_rate",
+    "txn_date",
+    "vat_status",
+    "split_partner",
+    "split_percent",
+    "accounting_document_display_number",
+    "accounting_document_status",
+    "accounting_document_status_code",
+    "accounting_document_status_label",
+    "accounting_document_payment_method",
+    "session_id",
+    "message_id",
+    "captured_at",
+    "reference_hint",
+    "bank_number",
+    "bank_branch",
+    "bank_account",
+    "schema_version",
+)
+
 # Matches ש"ח / ש׳ח / שח (various quote-character renderings of "shekel chadash").
 _SHEKEL_WORD_RE = re.compile(r'ש["\'״]?ח')
 _NUMERIC_RE = re.compile(r'-?\d+(\.\d+)?')
@@ -599,14 +642,30 @@ def _first_line_item_description(doc: Dict) -> Optional[str]:
     return doc.get("description")
 
 
+# Morning document types that only ever exist for money that has ALREADY been
+# received - VAT is baked into that amount unconditionally, exactly like a בנק
+# deposit (runtime_constitution.md, `create_combo_document` / `create_receipt`:
+# "vat_included is ALWAYS true"). Morning's own create response routinely omits
+# vat_amount, so this cannot be inferred from the number for a synchronous create.
+_VAT_INCLUSIVE_DOC_TYPES = frozenset({320, 400})
+
+
 def _derive_vat_status(doc: Dict) -> str:
     """Derived in code, never asked of the model (same discipline as
     _normalize_amount / בנק's forced vat_status).
 
-    A Morning document's `amount` is always the VAT-inclusive total, so a real
-    VAT component means the captured amount includes it. When VAT is zero
-    (an exempt document) neither "כולל" nor "לא כולל" is true, so we assert
-    neither rather than state something false."""
+    Types 320 (חשבונית מס/קבלה) and 400 (קבלה) are always VAT-inclusive - money
+    that already changed hands has VAT in it, full stop. For every other type a
+    Morning document's `amount` is the VAT-inclusive total, so a real VAT
+    component means the captured amount includes it; when VAT is zero (an exempt
+    document) neither "כולל" nor "לא כולל" is true, so we assert neither rather
+    than state something false."""
+    try:
+        doc_type = int(doc.get("type"))
+    except (TypeError, ValueError):
+        doc_type = None
+    if doc_type in _VAT_INCLUSIVE_DOC_TYPES:
+        return "כולל"
     vat = doc.get("vat_amount")
     if vat:
         return "כולל"
@@ -1162,6 +1221,16 @@ class LedgerEventManager:
             "bank_account": bank_account,
             "schema_version": CURRENT_SCHEMA_VERSION,  # Feature 043, US5
         }
+
+        # Keep LEDGER_EVENT_FIELDS in lockstep with what actually gets persisted -
+        # a new key added to `record` above without a matching entry there (or
+        # vice versa) fails here at the first persist rather than silently
+        # slipping past every full-payload fidelity test.
+        assert set(record) == set(LEDGER_EVENT_FIELDS), (
+            "LEDGER_EVENT_FIELDS is out of sync with the persisted record: "
+            f"missing={set(record) - set(LEDGER_EVENT_FIELDS)!r} "
+            f"extra={set(LEDGER_EVENT_FIELDS) - set(record)!r}"
+        )
 
         file_path = self.storage_dir / f"{event_id}.json"
         tmp_path = file_path.with_suffix(".json.tmp")

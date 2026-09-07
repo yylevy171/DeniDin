@@ -5,60 +5,159 @@ This is **test code for the billed/expensive tier**, written in the Acceptance
 phase (METHODOLOGY §VI) — not a fixture, mocks nothing. Importable from both
 `tests/billed/` and `tests/expensive/`.
 
-What it provides:
-  - `PROVENANCE_IGNORE`                    — the C9 ignore set for the backward check
-  - `load_manifest(name)`                  — read a `tests/fixtures/ledger_069/<name>.manifest.json`
-  - `assert_event_matches_manifest(...)`   — bidirectional (no drop / no hallucination) — T036
-  - `assert_event_matches_manifest_two_hop(...)` — extractor-output ↔ event ↔ manifest — T037
-  - `ledger_events_for_chat(...)`          — the persisted `LedgerEvent` files for one chat
-  - `resolution_answer_bank(...)`          — a `ClarificationAnswerBank` for the new-client
-                                            (full name + email + phone) resolution detour — T038
+Full-payload fidelity — the model of it
+--------------------------------------
+Contract C9, in the user's words: *"In all scenarios that actually create a
+ledger event at the end — assert that ALL the details that we given/extracted in
+the initial msg made it to the persisted event."*
 
-No test asserts `schema_version`'s value anywhere (CLAUDE.md — ledger schema is
-human-only); it is in `PROVENANCE_IGNORE` purely so the backward check does not
-flag it as an unexplained field.
+The check here proves that **per field, exhaustively**. Every persisted
+`LedgerEvent` carries exactly the keys in
+`LedgerEventManager.LEDGER_EVENT_FIELDS` (a `src/` assertion keeps that constant
+in lockstep with what actually gets written — a new field can never slip past
+unasserted). For each scenario, a **manifest** classifies *every one* of those
+fields as exactly one of:
+
+  - ``{"tested": <value>}``   — the test supplies the ground-truth value; assert
+                                equality (normalised). ``"$client"`` means "use
+                                the ``resolved_client_name`` argument".
+  - ``{"generated": "<kind>"}`` — the ledgerer mints it; assert it is present
+                                **and** conforms to that kind's rule (a format,
+                                or an exact value we can compute — e.g.
+                                ``event_datetime`` must equal the triggering
+                                message's Green API timestamp).
+  - ``{"null": true}``        — assert absent / empty.
+  - ``{"free_text": true}``   — (``description`` only) assert present, a
+                                non-empty string, and not a bare number/date.
+
+A roster field no manifest rule covers ⇒ **fail** (the manifest is incomplete).
+A persisted field outside the roster ⇒ **fail**. There are **no** ignore lists,
+tolerance sets, or "structural-ok" carve-outs — every constant of that kind was
+deleted 2026-09-06 (user directive). ``txn_date`` on a flat/percent ``הסכם``
+component is `null` per the recognition tool schema ("Null in every other
+case") — if the model populates it, that is a real defect and this check
+catches it.
+
+What it provides
+----------------
+  - ``assert_ledger_event_matches_manifest(...)``          — the per-field check
+  - ``assert_ledger_event_matches_manifest_two_hop(...)``  — media: extractor
+        output carried every tested value, then the persisted event matches
+  - ``load_manifest(name)`` / ``fixture_path(name)``
+  - ``ledger_events_for_chat`` / ``assert_no_ledger_event``
+  - ``resolution_answer_bank(...)`` — the new-client resolution-detour answers
 """
 from __future__ import annotations
 
 import json
 import re
+import unicodedata
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
+from src.managers.ledger_event_manager import LEDGER_EVENT_FIELDS
 from tests.e2e_helpers import ClarificationAnswerBank
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "ledger_069"
+ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 
-# C9 — bookkeeping / provenance fields the backward "no hallucination" check skips.
-PROVENANCE_IGNORE = {
-    "event_id",
-    "event_datetime",
-    "captured_at",
-    "session_id",
-    "message_id",
-    "schema_version",
-    "reference_hint",
-    "agreement_id",
-    "component_id",
-    "_linked_document",
-}
+# Fields that legitimately differ file-to-file for a `הסכם` — the ledgerer
+# persists one JSON file per fee component, so these belong under a manifest's
+# per-`components` entries; everything else is identical across the set and
+# belongs under `shared_fields`.
+_COMPONENT_FIELDS = frozenset({
+    "amount", "percent", "percent_base", "hours", "hourly_rate",
+    "txn_date", "trigger_condition", "component_label", "component_id", "description",
+})
 
-# Fields the ledgerer force-populates for a בנק event regardless of the source —
-# a manifest is allowed not to mention them, and the backward check must not flag
-# them as unexplained.
-_BANK_FORCED_KEYS = {"vat_status"}
+# Morning canonicalises an ASCII apostrophe in a client name to a Hebrew geresh
+# (׳) on store (bugfix-027), so a name seeded with an apostrophe comes back with
+# a geresh. Normalising both sides of a `client_name` compare mirrors that one
+# real Morning behaviour — it is not a tolerance for arbitrary divergence.
+_GERESH = "׳"
+_APOSTROPHES = ("'", "’", "׳")
 
-# בנק banking data read straight off the slip. A manifest lists these when the
-# ground truth is legible; when it is not (older fixtures never transcribed the
-# routing digits), the backward check still tolerates them because they are
-# inherently source-traced — never model-invented specifics about the *client*.
-_BANK_SOURCE_KEYS = {"bank_number", "bank_branch", "bank_account", "reference"}
-
-# Structural / always-present keys the backward check tolerates even when a
-# manifest is silent about them (they carry no invented specifics).
-_STRUCTURAL_OK = {"source_type", "event_subtype", "split_partner", "split_percent"}
+# Bidi / general-format control codepoints an RTL-aware model or WhatsApp layer
+# can silently insert into or drop from a mixed-script name (Hebrew + Arabic
+# Israeli names are both in the seed pool). They carry no identity — strip them
+# from both sides of a client_name compare, then NFC-normalise.
+_BIDI_CONTROLS = dict.fromkeys(
+    [0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+     0x2066, 0x2067, 0x2068, 0x2069, 0x061C]
+)
 
 
+def _geresh_normalise(text: Optional[str]) -> Optional[str]:
+    if text is None:
+        return None
+    out = unicodedata.normalize("NFC", str(text)).translate(_BIDI_CONTROLS)
+    for ch in _APOSTROPHES:
+        out = out.replace(ch, _GERESH)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# value normalisation for the `tested` compare
+# --------------------------------------------------------------------------- #
+def _norm(value: Any) -> Optional[str]:
+    """`None`/`""` → `None`; numbers → plain int/decimal string; strings →
+    trimmed + whitespace-collapsed."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        f = float(value)
+        return str(int(f)) if f.is_integer() else str(f)
+    text = re.sub(r"\s+", " ", str(value)).strip()
+    return text or None
+
+
+def _norm_date(value: Any) -> Optional[str]:
+    """Normalise to `DD/MM/YYYY` from that form or ISO `YYYY-MM-DD`."""
+    s = _norm(value)
+    if s is None:
+        return None
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(3)}/{m.group(2)}/{m.group(1)}"
+    return s.replace(" ", "")
+
+
+def _norm_percent(value: Any) -> Optional[str]:
+    s = _norm(value)
+    if s is None:
+        return None
+    return _norm(s.replace("%", "").replace("‏", "").strip())
+
+
+def _norm_field(field: str, value: Any) -> Optional[str]:
+    if field == "client_name":
+        return _norm(_geresh_normalise(value))
+    if field == "txn_date":
+        return _norm_date(value)
+    if field in ("percent", "percent_base", "split_percent"):
+        return _norm_percent(value)
+    return _norm(value)
+
+
+_PURE_NUMBER_RE = re.compile(r"[-+]?[\d.,\s‏₪%]+")
+_PURE_DATE_RE = re.compile(r"\d{1,4}[/.\-]\d{1,2}([/.\-]\d{1,4})?")
+
+
+def _looks_like_bare_number(s: str) -> bool:
+    return bool(_PURE_NUMBER_RE.fullmatch(s.strip()))
+
+
+def _looks_like_bare_date(s: str) -> bool:
+    return bool(_PURE_DATE_RE.fullmatch(s.strip()))
+
+
+# --------------------------------------------------------------------------- #
+# manifest loading
+# --------------------------------------------------------------------------- #
 def load_manifest(name: str) -> Dict[str, Any]:
     """Read `tests/fixtures/ledger_069/<name>.manifest.json` (pass the bare stem)."""
     path = FIXTURES_DIR / f"{name}.manifest.json"
@@ -72,269 +171,285 @@ def load_manifest(name: str) -> Dict[str, Any]:
 
 def fixture_path(filename: str) -> Path:
     """Absolute path to a `tests/fixtures/ledger_069/` artifact (or a media
-    fixture reused by reference — see each manifest's `source_file`)."""
+    fixture reused by reference)."""
     p = FIXTURES_DIR / filename
     if p.exists():
         return p
-    media = FIXTURES_DIR.parent / "media" / "ledger_events" / filename
-    return media
+    return FIXTURES_DIR.parent / "media" / "ledger_events" / filename
 
 
-def _norm(value: Any) -> Optional[str]:
-    """String-normalise for a fidelity compare: `None`/`""` → `None`; numbers →
-    their plain integer/decimal string; strings → trimmed, whitespace-collapsed.
-    So a manifest `"4000"` matches a persisted `4000`, and `"12 / 07 / 2026"`
-    matches `"12/07/2026"` only after an explicit date normalise (below)."""
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return str(value)
-    if isinstance(value, (int, float)):
-        f = float(value)
-        return str(int(f)) if f.is_integer() else str(f)
-    text = re.sub(r"\s+", " ", str(value)).strip()
-    return text or None
-
-
-def _norm_date(value: Any) -> Optional[str]:
-    """Normalise a date to `DD/MM/YYYY` (the persisted `txn_date` form) from
-    either that form or ISO `YYYY-MM-DD`."""
-    s = _norm(value)
-    if s is None:
-        return None
-    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", s)
-    if m:
-        return f"{m.group(3)}/{m.group(2)}/{m.group(1)}"
-    return s.replace(" ", "")
-
-
-_DATE_KEYS = {"txn_date"}
-_PERCENT_KEYS = {"percent", "split_percent", "percent_base"}
-
-
-def _norm_percent(value: Any) -> Optional[str]:
-    """Normalise a percentage for a fidelity compare so a manifest `"15"` matches
-    a persisted `"15%"` (the ledgerer stores percent components with the sign).
-    Strips a trailing `%`, surrounding whitespace, and a leading currency mark,
-    then reuses `_norm` for the numeric collapse (`"15.0"` → `"15"`)."""
-    s = _norm(value)
-    if s is None:
-        return None
-    s = s.replace("%", "").replace("\u200f", "").strip()  # strip a leading RTL mark
-    return _norm(s)
-
-
-def _values_match(expected: Any, actual: Any, key: str) -> bool:
-    if key in _DATE_KEYS:
-        return _norm_date(expected) == _norm_date(actual)
-    if key in _PERCENT_KEYS:
-        return _norm_percent(expected) == _norm_percent(actual)
-    return _norm(expected) == _norm(actual)
-
-
-def _events_of_agreement(events: List[Dict]) -> List[Dict]:
-    """One persisted file per fee component for a `הסכם` — group them back."""
-    return sorted(events, key=lambda e: (e.get("component_id") or "", e.get("event_id")))
-
-
-def assert_event_matches_manifest(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-    events: List[Dict],
-    manifest: Dict[str, Any],
-    *,
-    stated_name_for_store_anyway: Optional[str] = None,
-) -> None:
-    """C9 / T036 — bidirectional full-payload fidelity for the persisted event(s)
-    of one scenario.
-
-    `events` is every persisted `LedgerEvent` dict the scenario produced for its
-    chat (one for `בנק`; one-per-component for `הסכם`). `manifest` is the parsed
-    ground-truth manifest.
-
-    Forward  : every `expected_event` field is present & equal on the event
-               (component fields checked across the component files).
-    Backward : every populated, non-provenance field on each event is explained
-               by the manifest (or is `client_name` / `description` / a structural
-               key / a `בנק` forced key).
-    Client   : `client_name` == `morning_name_after_resolution` — unless
-               `expects_marker_in_description`, in which case `client_name` ==
-               the operator-stated name and the marker phrase is in `description`.
-    """
-    assert events, "no LedgerEvent was persisted for this scenario"
-
-    expected = dict(manifest["expected_event"])
-    resolution = manifest["client_resolution"]
-    expected_components = expected.pop("components", None)
-    marker = "[לקוח לא אומת במורנינג]"
-    # store-anyway is active when the manifest declares it OR when the caller
-    # explicitly passes the operator-stated name for that branch. US4 and US8
-    # share one manifest (`agreement_new_client`) - US4 runs the normal detour
-    # (no marker), US8 elects store-anyway (marker) and signals it via
-    # `stated_name_for_store_anyway`. Without this the shared manifest's single
-    # `expects_marker_in_description: false` made US8 assert the marker was
-    # ABSENT and fail on the model's correct behaviour (2026-09-06).
-    store_anyway = (
-        bool(resolution.get("expects_marker_in_description"))
-        or stated_name_for_store_anyway is not None
+# --------------------------------------------------------------------------- #
+# the per-field check
+# --------------------------------------------------------------------------- #
+def _check_generated(field: str, value: Any, kind: str, ev: Dict, *,
+                     trigger_epoch: int, session_id: str) -> None:
+    assert value not in (None, "", [], {}), (
+        f"{field}: manifest says this is generated, so it must be populated — got {value!r}"
     )
-
-    # ---- shared (non-component) forward check ------------------------------
-    for key, exp_val in expected.items():
-        if key == "description":
-            continue  # handled below
-        # a component-level key may legitimately be null on the shared head and
-        # live on the component files — skip here, verified in the component pass
-        if expected_components is not None and key in {
-            "amount", "percent", "percent_base", "trigger_condition", "hours", "hourly_rate"
-        }:
-            continue
-        matched = any(_values_match(exp_val, ev.get(key), key) for ev in events)
-        assert matched, (
-            f"[no drop] manifest expected {key}={exp_val!r} but no persisted event "
-            f"carries it (got {[ev.get(key) for ev in events]!r})"
+    if kind == "event_id":
+        assert re.fullmatch(r"[A-Za-z]\d{11}", str(value)), (
+            f"event_id malformed (want letter + DDMMYY + HHMM + seq): {value!r}"
         )
-
-    # ---- הסכם component forward check ------------------------------------
-    if expected_components is not None:
-        comp_events = _events_of_agreement(events)
-        assert len(comp_events) == len(expected_components), (
-            f"[no drop] manifest lists {len(expected_components)} fee component(s) "
-            f"but {len(comp_events)} event file(s) were persisted "
-            f"({[(_norm(e.get('amount')), _norm(e.get('percent'))) for e in comp_events]!r})"
+    elif kind == "event_datetime":
+        want = datetime.fromtimestamp(trigger_epoch, ISRAEL_TZ).strftime("%d/%m/%Y %H:%M")
+        assert str(value) == want, (
+            f"event_datetime must equal the triggering message's Green API timestamp "
+            f"{want!r} (epoch {trigger_epoch}), got {value!r} — the 'hard pointer' must "
+            f"survive the whole detour"
         )
-        for spec in expected_components:
-            kind = spec["kind"]
-            value = spec["value"]
-            hit = None
-            for ev in comp_events:
-                if kind == "fixed" and _values_match(value, ev.get("amount"), "amount"):
-                    hit = ev
-                elif kind == "percent" and _values_match(value, ev.get("percent"), "percent"):
-                    hit = ev
-                elif kind == "hours" and _values_match(value, ev.get("hours"), "hours"):
-                    hit = ev
-                if hit is not None:
-                    break
-            _seen = [
-                {"amount": e.get("amount"), "percent": e.get("percent"), "hours": e.get("hours")}
-                for e in comp_events
-            ]
-            assert hit is not None, (
-                f"[no drop] fee component {spec!r} did not reach any persisted event ({_seen!r})"
-            )
-            if spec.get("description"):
-                _keys = ("description", "percent_base", "component_label", "trigger_condition")
-                blob = " ".join(_norm(hit.get(k)) or "" for k in _keys)
-                assert _norm(spec["description"]) in blob or any(
-                    w in blob for w in str(spec["description"]).split()
-                ), (
-                    f"[no drop] component description {spec['description']!r} not reflected "
-                    f"anywhere on the matched event ({hit.get('description')!r} / "
-                    f"{hit.get('percent_base')!r} / {hit.get('component_label')!r})"
-                )
-
-    # ---- client name / store-anyway marker -------------------------------
-    if store_anyway:
-        stated = stated_name_for_store_anyway or resolution.get("morning_name_after_resolution")
-        for ev in events:
-            assert _norm(ev.get("client_name")) == _norm(stated), (
-                f"[store-anyway] client_name should stay the operator-stated {stated!r}, "
-                f"got {ev.get('client_name')!r}"
-            )
-            assert marker in (ev.get("description") or ""), (
-                f"[store-anyway] description must carry {marker!r}, got {ev.get('description')!r}"
+    elif kind == "session_id":
+        assert str(value) == str(session_id), (
+            f"session_id {value!r} != this chat's session {session_id!r}"
+        )
+    elif kind == "message_id":
+        assert isinstance(value, str) and value.strip(), (
+            f"message_id must be a non-empty string, got {value!r}"
+        )
+    elif kind == "captured_at":
+        # LedgerEventManager persists captured_at as now_local().strftime(
+        # "%d/%m/%Y %H:%M") (Phase 11) — minute-granular Israel wall-clock, NOT
+        # ISO-8601. Assert that shape and that it parses.
+        assert re.fullmatch(r"\d{2}/\d{2}/\d{4} \d{2}:\d{2}", str(value)), (
+            f"captured_at must be DD/MM/YYYY HH:MM (Israel local), got {value!r}"
+        )
+        datetime.strptime(str(value), "%d/%m/%Y %H:%M")
+    elif kind == "schema_version":
+        # value itself is NEVER asserted (CLAUDE.md — ledger schema is human-only);
+        # only that it is present and integer-shaped.
+        assert isinstance(value, int) or re.fullmatch(r"\d+", str(value)), (
+            f"schema_version must be an int, got {value!r}"
+        )
+    elif kind == "non_empty":
+        assert str(value).strip(), f"{field}: generated field must be non-empty, got {value!r}"
+    elif kind == "date":
+        assert re.fullmatch(r"\d{2}/\d{2}/\d{4}", str(value)) or re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}", str(value)
+        ), f"{field}: expected a DD/MM/YYYY or ISO date, got {value!r}"
+    elif kind == "agreement_id":
+        assert isinstance(value, str) and value.strip(), (
+            f"agreement_id is AI-authored free text — must be a non-empty string, got {value!r}"
+        )
+    elif kind == "component_id":
+        assert isinstance(value, str) and value.strip(), (
+            f"component_id must be a non-empty string, got {value!r}"
+        )
+        aid = ev.get("agreement_id")
+        if aid:
+            assert str(value).startswith(f"{aid}-"), (
+                f"component_id {value!r} must start with '{aid}-' (agreement_id + label slug)"
             )
     else:
-        exact = resolution["morning_name_after_resolution"]
-        for ev in events:
-            assert _norm(ev.get("client_name")) == _norm(exact), (
-                f"[resolution] client_name must equal the exact Morning name {exact!r}, "
-                f"got {ev.get('client_name')!r}"
-            )
-            assert marker not in (ev.get("description") or ""), (
-                f"[resolution] description must NOT carry the store-anyway marker for a "
-                f"genuinely resolved client, got {ev.get('description')!r}"
-            )
+        raise AssertionError(f"unknown generated kind {kind!r} for field {field!r}")
 
-    # ---- backward: no hallucinated / unexplained field -------------------
-    explained = set(expected) | _STRUCTURAL_OK | {"client_name", "description"}
-    if _norm(expected.get("source_type")) == "בנק":
-        explained |= _BANK_FORCED_KEYS | _BANK_SOURCE_KEYS
-    if expected_components is not None:
-        explained |= {
-            "amount", "percent", "percent_base", "trigger_condition",
-            "hours", "hourly_rate", "component_label",
-        }
+
+def _check_field(field: str, value: Any, rule: Dict, ev: Dict, *,
+                 trigger_epoch: int, session_id: str,
+                 resolved_client_name: Optional[str]) -> None:
+    if "null" in rule:
+        assert value in (None, "", [], {}), (
+            f"{field}: manifest says this must be null/empty for this scenario, got {value!r}"
+        )
+    elif "free_text" in rule:
+        assert isinstance(value, str) and value.strip(), (
+            f"{field}: expected a non-empty free-text string, got {value!r}"
+        )
+        assert not _looks_like_bare_number(value) and not _looks_like_bare_date(value), (
+            f"{field}: expected prose, got what parses as a bare number/date: {value!r}"
+        )
+    elif "tested" in rule:
+        expected = rule["tested"]
+        if expected == "$client":
+            assert resolved_client_name is not None, (
+                f"{field}: manifest uses \"$client\" but the test passed no resolved_client_name"
+            )
+            expected = resolved_client_name
+        assert _norm_field(field, value) == _norm_field(field, expected), (
+            f"{field}: expected {expected!r}, persisted event has {value!r}"
+        )
+    elif "generated" in rule:
+        _check_generated(field, value, rule["generated"], ev,
+                         trigger_epoch=trigger_epoch, session_id=session_id)
+    else:
+        raise AssertionError(f"{field}: malformed manifest rule {rule!r}")
+
+
+def _check_one_file(ev: Dict, shared: Dict, comp: Dict, roster: set, *,
+                    trigger_epoch: int, session_id: str,
+                    resolved_client_name: Optional[str]) -> None:
+    for field in roster:
+        rule = comp.get(field, shared.get(field))
+        assert rule is not None, (
+            f"manifest does not classify field {field!r} — every LEDGER_EVENT_FIELDS "
+            f"entry must be tested/generated/null/free_text"
+        )
+        _check_field(field, ev.get(field), rule, ev,
+                     trigger_epoch=trigger_epoch, session_id=session_id,
+                     resolved_client_name=resolved_client_name)
+
+
+def _component_discriminator(comp: Dict) -> Dict[str, Any]:
+    return {
+        k: comp[k]["tested"]
+        for k in ("amount", "percent", "hours")
+        if k in comp and isinstance(comp[k], dict) and "tested" in comp[k]
+    }
+
+
+def _match_component(events: List[Dict], comp: Dict) -> Optional[Dict]:
+    disc = _component_discriminator(comp)
+    if not disc:
+        return events[0] if events else None
     for ev in events:
-        for key, val in ev.items():
-            if key in PROVENANCE_IGNORE or val in (None, "", [], {}):
-                continue
-            if key.startswith("accounting_document"):
-                continue  # 069 never touches חשבונית via this helper's callers
-            assert key in explained, (
-                f"[no hallucination] persisted event carries an unexplained populated "
-                f"field {key}={val!r} — either the model invented it or the manifest is "
-                f"missing it"
-            )
+        if all(_norm_field(k, ev.get(k)) == _norm_field(k, want) for k, want in disc.items()):
+            return ev
+    return None
 
 
-def assert_event_matches_manifest_two_hop(
-    extractor_output: Dict[str, Any],
-    events: List[Dict],
+def assert_ledger_event_matches_manifest(
+    persisted_events: List[Dict],
     manifest: Dict[str, Any],
     *,
-    stated_name_for_store_anyway: Optional[str] = None,
+    trigger_epoch: int,
+    session_id: str,
+    resolved_client_name: Optional[str] = None,
 ) -> None:
-    """C9 / T037 — two-hop fidelity for a media source (US7 incl. 7d, US9, US10).
+    """C9 — exhaustive per-field fidelity for every `LedgerEvent` a scenario
+    persisted (one file for `בנק`/`חשבונית`; one per fee component for `הסכם`).
 
-    Hop 1: the extractor's `analyze_media()` output already carried every field
-           the manifest lists (catches OCR / vision loss *before* the resolution
-           detour). `extractor_output` is the raw dict `MediaHandler` got back —
-           `{"ledger_events": [...], "document_analysis": {...}, "extracted_text": "..."}`.
-    Hop 2: the persisted event matches the manifest (delegates to
-           `assert_event_matches_manifest`) — catches a field dropped *in* the
-           detour / recognition call.
+    `manifest` shape::
+
+        {
+          "files": "single" | "per_component",
+          "shared_fields": { "<field>": <rule>, ... },   # identical on every file
+          "components":    [ { "<field>": <rule>, ... }, ... ]   # per_component only
+        }
+
+    Together, `shared_fields` and the union of `components` keys must classify
+    **every** field in `LEDGER_EVENT_FIELDS` exactly once.
     """
-    expected = manifest["expected_event"]
-    text_blob = _norm(extractor_output.get("extracted_text")) or ""
-    ev_list = extractor_output.get("ledger_events") or []
-    ev0 = ev_list[0] if ev_list else {}
-    comp0 = ev0.get("components") or []
+    roster = set(LEDGER_EVENT_FIELDS)
+    assert persisted_events, "no LedgerEvent was persisted for this scenario"
 
-    def _in_hop1(value: Any) -> bool:
-        s = _norm(value)
-        if s is None:
-            return True
-        if s in text_blob:
-            return True
-        # any structured extractor field
-        flat = json.dumps(ev0, ensure_ascii=False)
-        return s in flat
-
-    for key, val in expected.items():
-        if key in {"components", "source_type", "event_subtype", "description", "reference"}:
-            continue
-        assert _in_hop1(val), (
-            f"[hop 1 — extraction] manifest field {key}={val!r} is not present in the "
-            f"extractor output (extracted_text or ledger_events[0]) — vision/OCR lost it "
-            f"before the resolution detour"
-        )
-    for spec in expected.get("components", []) or []:
-        assert _in_hop1(spec["value"]) or any(
-            _norm(spec["value"]) in (json.dumps(c, ensure_ascii=False)) for c in comp0
-        ), (
-            f"[hop 1 — extraction] fee component {spec!r} is not in the extractor output "
-            f"— the model did not read it off the source"
+    for ev in persisted_events:
+        extra = set(ev) - roster
+        missing = roster - set(ev)
+        assert not extra and not missing, (
+            f"persisted event keys disagree with LEDGER_EVENT_FIELDS — "
+            f"extra={extra!r} missing={missing!r} (event_id={ev.get('event_id')!r})"
         )
 
-    # Hop 2
-    assert_event_matches_manifest(
-        events, manifest, stated_name_for_store_anyway=stated_name_for_store_anyway
+    layout = manifest["files"]
+    shared = manifest["shared_fields"]
+
+    if layout == "single":
+        assert len(persisted_events) == 1, (
+            f"[no drop] expected exactly one persisted file, got {len(persisted_events)}"
+        )
+        uncovered = roster - set(shared)
+        assert not uncovered, f"manifest shared_fields does not classify: {sorted(uncovered)!r}"
+        _check_one_file(persisted_events[0], shared, {}, roster,
+                        trigger_epoch=trigger_epoch, session_id=session_id,
+                        resolved_client_name=resolved_client_name)
+        return
+
+    assert layout == "per_component", f"unknown manifest 'files' layout {layout!r}"
+    comps = manifest.get("components") or []
+    assert len(persisted_events) == len(comps), (
+        f"[no drop] manifest lists {len(comps)} fee component(s) but "
+        f"{len(persisted_events)} event file(s) were persisted"
+    )
+    comp_keys = set().union(*(set(c) for c in comps)) if comps else set()
+    overlap = set(shared) & comp_keys
+    assert not overlap, f"fields declared in BOTH shared_fields and a component: {sorted(overlap)!r}"
+    uncovered = roster - (set(shared) | comp_keys)
+    assert not uncovered, (
+        f"manifest does not classify every LEDGER_EVENT_FIELDS entry: {sorted(uncovered)!r}"
+    )
+
+    remaining = list(persisted_events)
+    for comp in comps:
+        hit = _match_component(remaining, comp)
+        assert hit is not None, (
+            f"[no drop] no persisted file matches fee component "
+            f"{_component_discriminator(comp)!r}"
+        )
+        remaining.remove(hit)
+        _check_one_file(hit, shared, comp, roster,
+                        trigger_epoch=trigger_epoch, session_id=session_id,
+                        resolved_client_name=resolved_client_name)
+    assert not remaining, (
+        f"{len(remaining)} persisted file(s) matched no manifest component "
+        f"({[e.get('event_id') for e in remaining]!r})"
     )
 
 
+def assert_ledger_event_matches_manifest_two_hop(
+    extractor_output: Dict[str, Any],
+    persisted_events: List[Dict],
+    manifest: Dict[str, Any],
+    *,
+    trigger_epoch: int,
+    session_id: str,
+    resolved_client_name: Optional[str] = None,
+) -> None:
+    """Media sources (US7 images incl. 7d, US9 image, US10 `docx`): two hops.
+
+    Hop 1 — every ``tested`` value in the manifest is present somewhere in the
+            extractor's own output (`extracted_text` or `ledger_events[0]`), so a
+            value lost in OCR/vision is distinguishable from one lost in the
+            resolution detour.
+    Hop 2 — the persisted event matches the manifest (delegates to
+            `assert_ledger_event_matches_manifest`).
+    """
+    text_blob = _norm(extractor_output.get("extracted_text")) or ""
+    ev_list = extractor_output.get("ledger_events") or []
+    flat = json.dumps(ev_list[0], ensure_ascii=False) if ev_list else ""
+
+    def _present(value: Any) -> bool:
+        s = _norm(value)
+        if s is None or s == "$client":
+            return True
+        if s in text_blob or s in flat:
+            return True
+        # a bare number in the manifest ("18000") vs the source's own grouping
+        # ("18,000") — compare digit-runs with separators stripped from both sides
+        if re.fullmatch(r"\d[\d,.\s]*", s):
+            digits = re.sub(r"[,.\s]", "", s)
+            stripped_blob = re.sub(r"[,.\s]", "", text_blob + " " + flat)
+            return digits in stripped_blob
+        return False
+
+    # Hop 1 verifies a *content* value survived OCR/vision. Derived classifications
+    # (`vat_status` = לא כולל/כולל, `source_type`, `event_subtype`) are the model's
+    # own reading of "+ מע"מ" / the document shape — never a verbatim substring —
+    # so they belong to Hop 2's manifest check only, not this one.
+    _HOP1_SKIP = {"client_name", "vat_status", "source_type", "event_subtype"}
+
+    def _walk(rules: Dict) -> None:
+        for field, rule in rules.items():
+            if isinstance(rule, dict) and "tested" in rule and field not in _HOP1_SKIP:
+                assert _present(rule["tested"]), (
+                    f"[hop 1 — extraction] manifest field {field}={rule['tested']!r} is "
+                    f"not in the extractor output — vision/OCR lost it before the detour"
+                )
+
+    _walk(manifest.get("shared_fields", {}))
+    for comp in manifest.get("components", []) or []:
+        _walk(comp)
+
+    assert_ledger_event_matches_manifest(
+        persisted_events, manifest,
+        trigger_epoch=trigger_epoch, session_id=session_id,
+        resolved_client_name=resolved_client_name,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# reading persisted events
+# --------------------------------------------------------------------------- #
 def ledger_events_for_chat(denidin_app, chat_id: str) -> List[Dict]:
-    """Every persisted `LedgerEvent` JSON file whose `session_id` is this chat's
-    current session — read off disk, sorted by `captured_at` then `event_id`."""
+    """Every persisted `LedgerEvent` JSON whose `session_id` is this chat's
+    current session — sorted by `captured_at` then `event_id`."""
     session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
     events_dir = Path(denidin_app.ai_handler.ledger_event_manager.storage_dir)
     out: List[Dict] = []
@@ -354,12 +469,15 @@ def assert_no_ledger_event(denidin_app, chat_id: str) -> None:
     )
 
 
-def recognition_breadcrumbs(caplog) -> List[str]:
-    return [r.getMessage() for r in caplog.records if r.getMessage().startswith("[069]")]
+def session_id_for_chat(denidin_app, chat_id: str) -> str:
+    return denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
 
 
+# --------------------------------------------------------------------------- #
+# resolution-detour answer bank (new client)
+# --------------------------------------------------------------------------- #
 def resolution_answer_bank(*, full_name: str, email: str, phone: str) -> ClarificationAnswerBank:
-    """T038 — the deterministic answer bank for the new-client resolution detour
+    """The deterministic answer bank for the new-client resolution detour
     (`resolve_client_name` → 0 matches → "give me full name + email + phone").
     One reply supplies all three, so the model can go straight to `add_client`."""
     supply_all = f"שם מלא: {full_name}. אימייל: {email}. טלפון: {phone}."

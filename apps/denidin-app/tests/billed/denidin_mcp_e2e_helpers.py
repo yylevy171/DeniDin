@@ -134,12 +134,18 @@ def require_live_morning_tunnel(status_file_path: Path, max_age_seconds: int = 0
     return server_url
 
 
-def build_text_webhook(chat_id: str, sender_name: str, text: str, message_id: str) -> dict:
+def build_text_webhook(chat_id: str, sender_name: str, text: str, message_id: str,
+                       timestamp: Optional[int] = None) -> dict:
     """Build a real Green API incomingMessageReceived webhook event dict for a
-    textMessage, matching the shape used by this repo's existing E2E tests."""
+    textMessage, matching the shape used by this repo's existing E2E tests.
+
+    `timestamp` (unix epoch seconds) pins the Green API notification time — pass
+    it when a test needs to assert the persisted event's `event_datetime`
+    against a known value; defaults to now.
+    """
     return {
         'typeWebhook': 'incomingMessageReceived',
-        'timestamp': int(time.time()),
+        'timestamp': timestamp if timestamp is not None else int(time.time()),
         'idMessage': message_id,
         'instanceData': {
             'idInstance': 7103000000,
@@ -439,16 +445,22 @@ BLOCKED_ROLE_CHAT_ID = "972500000020@c.us"  # Feature 026 US5 - added to denidin
 ADMIN_ISOLATED_CHAT_ID = "972500000022@c.us"  # bugfix-052 stop-gap: a spare admin-role chat id for an individual test that needs its own session, isolated from GODFATHER_CHAT_ID's module-wide shared one
 
 
-def _send_turn(chat_id: str, text: str, id_prefix: str) -> Tuple[Optional[str], Optional[AIResponse]]:
+def _send_turn(chat_id: str, text: str, id_prefix: str,
+               timestamp: Optional[int] = None) -> Tuple[Optional[str], Optional[AIResponse]]:
     """Send one real WhatsApp turn through the real router handler and return
-    (reply text, AIResponse with mcp_calls) for inspection."""
+    (reply text, AIResponse with mcp_calls) for inspection.
+
+    `timestamp` (unix epoch seconds) pins the Green API notification time — pass
+    it when the test needs a known `event_datetime`; defaults to now.
+    """
     from denidin import handle_text_message
 
     notification = create_real_notification(build_text_webhook(
         chat_id=chat_id,
         sender_name="E2E Godfather",
         text=text,
-        message_id=f"{id_prefix}_{int(datetime.now(timezone.utc).timestamp())}"
+        message_id=f"{id_prefix}_{int(datetime.now(timezone.utc).timestamp())}",
+        timestamp=timestamp,
     ))
     handle_text_message(notification)
     response = get_response(notification)

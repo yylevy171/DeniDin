@@ -128,7 +128,7 @@ you.
 
 | type | mandatory | conditional | keep-if-provided |
 |---|---|---|---|
-| `הסכם` | resolved `client_name` or store-anyway text (you) · the agreement's own date (you) · `description` (you) · ≥1 `components` entry **OR** an hours value (you) | per component: `amount` > 0 **OR** `percent` (you, iff that component is monetary) | `payer_name`; per-component `trigger_condition` / `percent` / `percent_base` / `hours` / `hourly_rate`; `reference` / `reference_hint` |
+| `הסכם` | resolved `client_name` or store-anyway text (you) · `description` (you) · ≥1 `components` entry **OR** an hours value (you) | per component: `amount` > 0 **OR** `percent` (you, iff that component is monetary) | `payer_name`; per-component `trigger_condition` / `percent` / `percent_base` / `hours` / `hourly_rate`; `reference` / `reference_hint` |
 | `בנק` | resolved `client_name` or store-anyway text (you) · `txn_date` (you) · `amount` (you) · `description` (you) · `vat_status` = `כולל` (you — always) | — | `bank_number` / `bank_branch` / `bank_account`; `reference` / `reference_hint` |
 | `חשבונית` | `client_name` (by construction) · `txn_date` · `event_subtype` (= the document type) · `amount` · `accounting_document_display_number` — **all from the real Morning `create_*` response** | — | every other `accounting_document_*` field from the response; `reference` / `reference_hint` |
 
@@ -145,10 +145,14 @@ you.
 
 When the window's MCP calls contain a **successful** `create_invoice` / `create_combo_document`
 / `create_receipt` / `create_credit_note` / `create_combo_document_as_reference`, that
-document IS a complete `חשבונית` event this round. Populate `event` from the **real response
-in that tool result** — display number, amount, document type, creation date — never
-re-derived from the operator's or your own prose. If prose and response disagree, the
-response wins.
+document IS a complete `חשבונית` event this round. Populate the **flat** `event` fields from
+the **real response in that tool result** — `client_name`, `accounting_document_display_number`,
+`event_subtype` (the document type), `amount`, and per-component `description` / `vat_status` /
+`txn_date` — never re-derived from the operator's or your own prose. If prose and response
+disagree, the response wins. **Leave `accounting_document_json` null here** — that field is
+only for reconciling a pre-existing document (a round with no `create_*` call); using it for a
+synchronous create makes code re-derive every field from a response that is often sparse
+(no `vat_amount`, no dates) and lose what you correctly mapped.
 
 ## Amendments, corrections, cancellations
 
@@ -186,6 +190,17 @@ ledger history:
   commitment is its own entry in `components` (set `component_count` to match). A per-stage
   condition goes in `trigger_condition`, not `description`. A base+total pair for one stage
   is still one entry.
+- **`trigger_condition` is for a real contingency, not payment timing.** A component whose
+  fee is contingent on an outcome or a countable event — a percentage success-fee
+  (`מכל סכום שייפסק`), a per-hearing/per-appearance fee (`עבור כל ישיבת הוכחות`), an
+  `אם…`/`במידה ו…` bonus — carries that clause in `trigger_condition`. A plain fixed
+  retainer is **unconditional → `trigger_condition` null**, even when the source says when
+  it is due (`לתשלום עם חתימת ההסכם`, `ישולם תוך 30 יום`) — due-date / payment-timing
+  wording is never a `trigger_condition`, and never invent one that the source did not
+  state.
+- **An agreement's own signing/execution date (`נחתם ביום …`) is never captured** — not in
+  `txn_date`, not anywhere. `txn_date` on a `הסכם` component is non-null **only** for an
+  hourly work-log component (the date the hours were worked).
 - **Hourly work-log entries** ("3 שעות") are first-class events, one per occurrence, and
   qualify every time — brevity is never a reason to skip. Never aggregate.
 - **Unpriced mentions still get captured** — client + matter named, no fee → capture with

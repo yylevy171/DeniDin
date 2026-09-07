@@ -1,20 +1,52 @@
 {
   "source_kind": "image",
-  "story": "US7d — bank-deposit photo whose payer is an EXACT existing Morning client: no disambiguation question, no add_client, captured directly against the existing client",
+  "story": "US7d — bank-deposit photo whose payer is an EXACT existing Morning client: no disambiguation question, no add_client, captured directly against the existing client. Two-hop.",
   "source_file": "Bank-test-image.jpg",
+  "_incomplete": "The bank triplet / reference for Bank-test-image.jpg were never transcribed (only amount 1500 and txn_date 12/07/2026 are known). Fields marked null below are provisional — run the extractor once and fill in any it legibly reads (a failure here on the first expensive run is the signal, not a mechanism bug).",
   "seed_clients": [
     { "id_prefix": "F069_DEP_EXACT", "name": "עטיה רועי מאיר", "ensure_exists": true }
   ],
-  "expected_event": {
-    "source_type": "בנק",
-    "event_subtype": "הפקדה",
-    "amount": "1500",
-    "txn_date": "2026-07-12"
-  },
   "client_resolution": {
     "scenario": "exact_match",
     "operator_stated_name": "עטיה רועי מאיר",
-    "morning_name_after_resolution": "עטיה רועי מאיר",
-    "expects_marker_in_description": false
+    "operator_picks": "עטיה רועי מאיר",
+    "morning_name_after_resolution": "עטיה רועי מאיר"
+  },
+  "files": "single",
+  "shared_fields": {
+    "event_id":            { "generated": "event_id" },
+    "event_datetime":      { "generated": "event_datetime" },
+    "source_type":         { "tested": "בנק" },
+    "event_subtype":       { "tested": "הפקדה" },
+    "client_name":         { "tested": "עטיה רועי מאיר" },
+    "payer_name":          { "null": true },
+    "description":         { "free_text": true },
+    "amount":             { "tested": "1500" },
+    "txn_date":           { "tested": "2026-07-12" },
+    "reference":          { "null": true },
+    "reference_hint":     { "null": true },
+    "bank_number":        { "null": true },
+    "bank_branch":        { "null": true },
+    "bank_account":       { "null": true },
+    "vat_status":         { "tested": "כולל" },
+    "agreement_id":       { "null": true },
+    "component_id":       { "null": true },
+    "component_label":    { "null": true },
+    "trigger_condition":  { "null": true },
+    "percent":            { "null": true },
+    "percent_base":       { "null": true },
+    "hours":              { "null": true },
+    "hourly_rate":        { "null": true },
+    "split_partner":      { "null": true },
+    "split_percent":      { "null": true },
+    "accounting_document_display_number":  { "null": true },
+    "accounting_document_status":          { "null": true },
+    "accounting_document_status_code":     { "null": true },
+    "accounting_document_status_label":    { "null": true },
+    "accounting_document_payment_method":  { "null": true },
+    "session_id":         { "generated": "session_id" },
+    "message_id":         { "generated": "message_id" },
+    "captured_at":        { "generated": "captured_at" },
+    "schema_version":     { "generated": "schema_version" }
   }
 }

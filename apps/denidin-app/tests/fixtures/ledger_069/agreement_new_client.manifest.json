@@ -1,23 +1,70 @@
 {
   "source_kind": "text",
-  "story": "US4 (new client) + US8 store-anyway variant",
-  "expected_event": {
-    "source_type": "הסכם",
-    "event_subtype": "יצירה",
-    "txn_date": "2026-03-15",
-    "payer_name": "עוזי אלגרבלי",
-    "components": [
-      { "kind": "fixed", "value": "12000", "description": "מקדמה קבועה עם חתימת ההסכם" },
-      { "kind": "percent", "value": "15", "description": "שכר הצלחה מכל סכום שייפסק או ייגבה" },
-      { "kind": "fixed", "value": "1500", "description": "שכר טרחה עבור כל ישיבת הוכחות" }
-    ]
+  "story": "US4 (0-match, full new-client resolution detour) + US8 store-anyway variant. Client name is injected by the test via _unique_client_name() (a real Hebrew first+family name drawn fresh, never a per-run suffix) so US4 stays a genuine 0-match case across runs; the fixture text carries a {client_name} placeholder. payer_name (עוזי אלגרבלי / \"Uzi Elgarbli\") is literal in the text and MUST persist as free text, distinct from client_name (FR-069-017).",
+  "source_file": "agreement_new_client.txt",
+  "files": "per_component",
+  "shared_fields": {
+    "event_id":            { "generated": "event_id" },
+    "event_datetime":      { "generated": "event_datetime" },
+    "source_type":         { "tested": "הסכם" },
+    "event_subtype":       { "tested": "יצירה" },
+    "client_name":         { "tested": "$client" },
+    "payer_name":          { "tested": "עוזי אלגרבלי" },
+    "reference":           { "null": true },
+    "reference_hint":      { "null": true },
+    "agreement_id":        { "generated": "agreement_id" },
+    "vat_status":          { "tested": "לא כולל" },
+    "split_partner":       { "null": true },
+    "split_percent":       { "null": true },
+    "bank_number":         { "null": true },
+    "bank_branch":         { "null": true },
+    "bank_account":        { "null": true },
+    "accounting_document_display_number":  { "null": true },
+    "accounting_document_status":          { "null": true },
+    "accounting_document_status_code":     { "null": true },
+    "accounting_document_status_label":    { "null": true },
+    "accounting_document_payment_method":  { "null": true },
+    "session_id":          { "generated": "session_id" },
+    "message_id":          { "generated": "message_id" },
+    "captured_at":         { "generated": "captured_at" },
+    "schema_version":      { "generated": "schema_version" }
   },
-  "client_resolution": {
-    "scenario": "new_client",
-    "operator_stated_name": "תומר אלגרבלי",
-    "morning_name_after_resolution": "תומר אלגרבלי",
-    "new_client_email": "tomer.algarbli@example.com",
-    "new_client_phone": "0525550142",
-    "expects_marker_in_description": false
-  }
+  "components": [
+    {
+      "component_label":   { "free_text": true },
+      "component_id":      { "generated": "component_id" },
+      "description":       { "free_text": true },
+      "amount":            { "tested": "12000" },
+      "percent":           { "null": true },
+      "percent_base":      { "null": true },
+      "hours":             { "null": true },
+      "hourly_rate":       { "null": true },
+      "txn_date":          { "null": true },
+      "trigger_condition": { "null": true }
+    },
+    {
+      "component_label":   { "free_text": true },
+      "component_id":      { "generated": "component_id" },
+      "description":       { "free_text": true },
+      "amount":            { "null": true },
+      "percent":           { "tested": "15" },
+      "percent_base":      { "free_text": true },
+      "hours":             { "null": true },
+      "hourly_rate":       { "null": true },
+      "txn_date":          { "null": true },
+      "trigger_condition": { "free_text": true }
+    },
+    {
+      "component_label":   { "free_text": true },
+      "component_id":      { "generated": "component_id" },
+      "description":       { "free_text": true },
+      "amount":            { "tested": "1500" },
+      "percent":           { "null": true },
+      "percent_base":      { "null": true },
+      "hours":             { "null": true },
+      "hourly_rate":       { "null": true },
+      "txn_date":          { "null": true },
+      "trigger_condition": { "free_text": true }
+    }
+  ]
 }

@@ -32,7 +32,7 @@ from unittest.mock import Mock, MagicMock
 
 import pytest
 
-from src.handlers.ai_handler import AIHandler
+from src.handlers.ai_handler import AIHandler, LEDGER_EVENT_TOOL, RECOGNITION_TOOL
 from src.models.config import AppConfiguration
 
 RECOGNITION_TOOL_NAME = "report_ledger_recognition"
@@ -356,3 +356,35 @@ class TestInputAssemblyAndIsolation:
 
         after = list(ai_handler.session_manager.get_session(session.chat_id).message_ids)
         assert after == before
+
+
+class TestComponentFieldScopingGuidance:
+    """Feature 069 (2026-09-06, BDD): the recognition tool schema must keep the
+    scoping that stops the model routing agreement prose into optional structured
+    fields — the billed acceptance suite (US1/US5/US5b/US6/US8) caught the model
+    (deterministically) filing an agreement's `נחתם ביום` signing date into a flat
+    component's `txn_date`, and inventing a `trigger_condition` on an unconditional
+    fixed retainer. RECOGNITION_TOOL deep-copies these descriptions from
+    LEDGER_EVENT_TOOL, so pin both."""
+
+    def _component_props(self, tool):
+        props = tool["parameters"]["properties"]
+        if "event" in props:  # RECOGNITION_TOOL wraps the event schema
+            props = props["event"]["properties"]
+        return props["components"]["items"]["properties"]
+
+    @pytest.mark.parametrize("tool", [LEDGER_EVENT_TOOL, RECOGNITION_TOOL])
+    def test_txn_date_excludes_agreement_signing_date(self, tool):
+        desc = self._component_props(tool)["txn_date"]["description"]
+        assert "נחתם ביום" in desc and "NEVER txn_date" in desc, (
+            "txn_date guidance must explicitly exclude an agreement's own signing date"
+        )
+
+    @pytest.mark.parametrize("tool", [LEDGER_EVENT_TOOL, RECOGNITION_TOOL])
+    def test_trigger_condition_excludes_payment_timing(self, tool):
+        desc = self._component_props(tool)["trigger_condition"]["description"]
+        assert "עם חתימת ההסכם" in desc, (
+            "trigger_condition guidance must call out that due-on-signing / payment-"
+            "timing wording on a fixed retainer is not a condition"
+        )
+        assert "fixed retainer" in desc

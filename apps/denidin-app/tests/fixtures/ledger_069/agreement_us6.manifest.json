@@ -1,22 +1,14 @@
 {
   "source_kind": "text",
-  "story": "US5 — 2+ partial Morning matches for the stated name; operator picks one; capture proceeds against that exact picked Morning name. No payer in the text. Signing date 09/04/2026 appears in the text but per the recognition tool schema txn_date is null for a non-hourly הסכם component.",
-  "source_file": "agreement_ambiguous.txt",
+  "story": "US6 — exact match resolves silently: a single EXACT Morning match (seeded in-test, name injected as $client) → the operator is NOT asked to disambiguate; the agreement is recorded on the same turn. Two components (fixed 7,000 retainer + 20% success). No payer.",
+  "source_file": null,
   "files": "per_component",
-  "seed_clients": [
-    { "id_prefix": "F069_AMB_A", "name": "יעל ברקוביץ אלון", "ensure_exists": true },
-    { "id_prefix": "F069_AMB_B", "name": "יעל ברקוביץ שיר", "ensure_exists": true }
-  ],
-  "client_resolution": {
-    "operator_stated_name": "יעל ברקוביץ'",
-    "operator_picks": "יעל ברקוביץ אלון"
-  },
   "shared_fields": {
     "event_id":            { "generated": "event_id" },
     "event_datetime":      { "generated": "event_datetime" },
     "source_type":         { "tested": "הסכם" },
     "event_subtype":       { "tested": "יצירה" },
-    "client_name":         { "tested": "יעל ברקוביץ אלון" },
+    "client_name":         { "tested": "$client" },
     "payer_name":          { "null": true },
     "reference":           { "null": true },
     "reference_hint":      { "null": true },
@@ -41,21 +33,14 @@
     {
       "component_label": { "free_text": true }, "component_id": { "generated": "component_id" },
       "description": { "free_text": true },
-      "amount": { "tested": "8000" }, "percent": { "null": true }, "percent_base": { "null": true },
+      "amount": { "tested": "7000" }, "percent": { "null": true }, "percent_base": { "null": true },
       "hours": { "null": true }, "hourly_rate": { "null": true },
       "txn_date": { "null": true }, "trigger_condition": { "null": true }
     },
     {
       "component_label": { "free_text": true }, "component_id": { "generated": "component_id" },
       "description": { "free_text": true },
-      "amount": { "null": true }, "percent": { "tested": "12" }, "percent_base": { "free_text": true },
-      "hours": { "null": true }, "hourly_rate": { "null": true },
-      "txn_date": { "null": true }, "trigger_condition": { "free_text": true }
-    },
-    {
-      "component_label": { "free_text": true }, "component_id": { "generated": "component_id" },
-      "description": { "free_text": true },
-      "amount": { "tested": "900" }, "percent": { "null": true }, "percent_base": { "null": true },
+      "amount": { "null": true }, "percent": { "tested": "20" }, "percent_base": { "null": true },
       "hours": { "null": true }, "hourly_rate": { "null": true },
       "txn_date": { "null": true }, "trigger_condition": { "free_text": true }
     }
