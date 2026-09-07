@@ -1,6 +1,8 @@
 # bugfix-076: denidin-app health server starts last + deploy scripts' false-positive verification
 
-**Status**: Fixed - awaiting human review/haleluya.
+**Status**: Done - fixed, live-verified in dev (health server bind time dropped from ~3m23s to
+~18s, real /health check confirmed `status: "ok"`), merging to master via haleluya
+(2026-09-07).
 
 ## Root cause (Bug-Driven Development)
 
