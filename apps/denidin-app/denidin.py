@@ -1169,6 +1169,37 @@ if __name__ == "__main__":
         lambda chat_id: denidin.ai_handler.user_manager.get_user(chat_id).is_blocked
     )
 
+    # bugfix-076 (2026-09-07): localhost-only /health server + heartbeat writer, for the
+    # prod-only external health-check prober. Started FIRST among this block - deliberately
+    # BEFORE the reminder/accounting-reconciliation/daily-roll startup sweeps below, which is a
+    # change from bugfix-043's original ordering (health server was started LAST). Real prod
+    # incident, 2026-09-07: the accounting-reconciliation startup sweep makes a real, synchronous
+    # OpenAI+Morning-MCP call before returning: cold real-world latency from watchdog spawning
+    # denidin.py to the health server actually binding its port was measured at ~3m23s (log
+    # timestamps: LedgerEventManager init ~37s, the reconciliation sweep's OpenAI round-trip
+    # ~69s more). Every deploy/restart during that window is a real, unmonitored outage window -
+    # nothing responds on the health port at all, so no prober/verify.py-based check could ever
+    # see it as anything but "unreachable," and a fresh restart looks identical to a hang. Health
+    # server placement doesn't depend on any of the schedulers below (only needs
+    # ai_client/live_bot.api/denidin.config.mcp/denidin.memory_manager, all already available
+    # immediately after initialize_app() above), so moving it first costs nothing and closes this
+    # gap at its source rather than needing a longer prober grace period to paper over it. Same
+    # deliberate-placement rule as before (started HERE, never inside initialize_app() - a real
+    # listener bound even on 127.0.0.1, plus real OpenAI/Green API/Morning-tunnel/ChromaDB calls
+    # on every probe, has no place running unattended during an ordinary test run). Gated by
+    # config.health_check_port (0 = inactive, matching accounting_ledger_update_freq's convention
+    # below).
+    if denidin.config.health_check_port > 0:
+        check_fns = build_health_check_fns(
+            ai_client=ai_client,
+            green_api=live_bot.api,
+            mcp_config=denidin.config.mcp,
+            memory_manager=denidin.memory_manager,
+            log_path=resolve_log_path(),
+        )
+        start_health_server(denidin.config.health_check_port, check_fns)
+        start_heartbeat_thread()
+
     # Feature 054: reminder delivery scheduler - deliberately started HERE, not
     # inside initialize_app() (see that function's comment for why: this is the
     # real, live-running app, gated the same way message_source.start()'s
@@ -1192,25 +1223,6 @@ if __name__ == "__main__":
         denidin.accounting_reconciliation_scheduler = start_accounting_reconciliation_scheduler(
             denidin, update_freq
         )
-
-    # bugfix-043: localhost-only /health server + heartbeat writer, for the
-    # prod-only external health-check prober. Same deliberate-placement rule
-    # as reminder_scheduler/accounting_reconciliation_scheduler above
-    # (started HERE, never inside initialize_app() - a real listener bound
-    # even on 127.0.0.1, plus real OpenAI/Green API/Morning-tunnel/ChromaDB
-    # calls on every probe, has no place running unattended during an
-    # ordinary test run). Gated by config.health_check_port (0 = inactive,
-    # matching accounting_ledger_update_freq's convention above).
-    if denidin.config.health_check_port > 0:
-        check_fns = build_health_check_fns(
-            ai_client=ai_client,
-            green_api=live_bot.api,
-            mcp_config=denidin.config.mcp,
-            memory_manager=denidin.memory_manager,
-            log_path=resolve_log_path(),
-        )
-        start_health_server(denidin.config.health_check_port, check_fns)
-        start_heartbeat_thread()
 
     # Feature 070: nightly 02:00 Israel-local daily-summary roll - same
     # deliberate-placement rule as the two schedulers above (started HERE,
