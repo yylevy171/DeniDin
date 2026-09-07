@@ -320,6 +320,57 @@ def _with_amount_mismatch(invoice_json: str, requested: float, stored: Optional[
     return json.dumps(doc, ensure_ascii=False)
 
 
+def _read_back_full_document(client: MorningClient, doc_id: str) -> Optional[dict]:
+    """Read the COMPLETE just-created document back from Morning.
+
+    `POST /documents` returns only a minimal echo (id/number/client/lang/
+    signed/type/url/vatRate - probed live 2026-08-09), with no amount, dates,
+    VAT breakdown, payment array or line items. `GET /documents/{id}` returns
+    the full document, exactly what `format_invoice_json` needs so every field
+    it exposes is real rather than silently null (create_credit_note /
+    create_receipt / create_combo_document_as_reference already do this;
+    2026-09-06 brought create_invoice / create_transaction_account /
+    create_combo_document into line via this shared helper).
+
+    Never raises: a failed read-back must not turn a successful creation into
+    an error - the caller falls back to the minimal echo.
+    """
+    if not doc_id:
+        return None
+    try:
+        return client.get_invoice(doc_id)
+    except Exception as exc:  # noqa: BLE001 - failsafe: a read-back must never mask a real creation
+        logger.warning(f"Could not read back document {doc_id} for full detail: {exc}")
+        return None
+
+
+def _finalize_created_document(
+    client: MorningClient,
+    doc_id: str,
+    requested_amount: float,
+    fallback_invoice: Invoice,
+) -> str:
+    """Shared tail for create_invoice / create_transaction_account /
+    create_combo_document: re-fetch the full document and format THAT, so the
+    JSON result carries every real field. On a failed read-back, fall back to
+    `fallback_invoice` (the minimal echo the caller already built) rather than
+    erroring - a created document must still be reported.
+
+    The amount-mismatch guard (bugfix-028 A4) is preserved either way: it
+    compares `requested_amount` against what Morning actually stored."""
+    full = _read_back_full_document(client, doc_id)
+    if full is not None:
+        try:
+            invoice = Invoice.model_validate(full)
+        except ValidationError as exc:
+            logger.warning(f"Full read-back of {doc_id} did not validate ({exc}); using minimal echo")
+            invoice = fallback_invoice
+    else:
+        invoice = fallback_invoice
+    stored_total = invoice.total_amount if invoice.total_amount is not None else None
+    return _with_amount_mismatch(format_invoice_json(invoice), requested_amount, stored_total)
+
+
 def _build_transaction_account_payload(
     client_id: str,
     amount: float,
@@ -452,19 +503,20 @@ def create_transaction_account(
         or ""
     )
 
-    stored_total = _read_back_stored_total(client, doc_id)
-    invoice = Invoice(
-        id=doc_id,
-        number=response.get("number"),
-        client_name=client_name,
-        amount=amount,
-        total_amount=stored_total if stored_total is not None else amount,
-        currency=response.get("currency", "ILS"),
-        due_date=due_date,
-        status=response.get("status"),
-        type=_TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
+    return _finalize_created_document(
+        client, doc_id, amount,
+        fallback_invoice=Invoice(
+            id=doc_id,
+            number=response.get("number"),
+            client_name=client_name,
+            amount=amount,
+            total_amount=None,
+            currency=response.get("currency", "ILS"),
+            due_date=due_date,
+            status=response.get("status"),
+            type=_TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
+        ),
     )
-    return _with_amount_mismatch(format_invoice_json(invoice), amount, stored_total)
 
 
 def _build_combo_document_core_payload(
@@ -696,18 +748,19 @@ def create_combo_document(
         or ""
     )
 
-    stored_total = _read_back_stored_total(client, doc_id)
-    invoice = Invoice(
-        id=doc_id,
-        number=response.get("number"),
-        client_name=client_name,
-        amount=amount,
-        total_amount=stored_total if stored_total is not None else amount,
-        currency=response.get("currency", "ILS"),
-        status=response.get("status"),
-        type=_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
+    return _finalize_created_document(
+        client, doc_id, amount,
+        fallback_invoice=Invoice(
+            id=doc_id,
+            number=response.get("number"),
+            client_name=client_name,
+            amount=amount,
+            total_amount=None,
+            currency=response.get("currency", "ILS"),
+            status=response.get("status"),
+            type=_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
+        ),
     )
-    return _with_amount_mismatch(format_invoice_json(invoice), amount, stored_total)
 
 
 def create_invoice(
@@ -780,18 +833,19 @@ def create_invoice(
         or ""
     )
 
-    stored_total = _read_back_stored_total(client, internal_morning_id)
-    invoice = Invoice(
-        id=internal_morning_id,
-        number=response.get("number"),
-        client_name=client_name,
-        amount=amount,
-        total_amount=stored_total if stored_total is not None else amount,
-        currency=response.get("currency", "ILS"),
-        due_date=due_date,
-        status=response.get("status"),
+    return _finalize_created_document(
+        client, internal_morning_id, amount,
+        fallback_invoice=Invoice(
+            id=internal_morning_id,
+            number=response.get("number"),
+            client_name=client_name,
+            amount=amount,
+            total_amount=None,
+            currency=response.get("currency", "ILS"),
+            due_date=due_date,
+            status=response.get("status"),
+        ),
     )
-    return _with_amount_mismatch(format_invoice_json(invoice), amount, stored_total)
 
 
 def _map_list_invoices_filters(

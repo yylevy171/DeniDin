@@ -62,6 +62,7 @@ FAIL_FILE="${ROOT}/specs/done/v0.5.4/059-stabilize-tests-sanity-suite/sanity-fai
 # ---- ordered test lists.  entry = "<app>|<nodeid>"  (app = mm | den) -------
 GATE=(
   "mm|tests/billed/test_openai_invokes_mcp_e2e.py::test_openai_invokes_create_invoice_via_remote_mcp"
+  "mm|tests/billed/test_create_returns_full_document_e2e.py::test_create_combo_document_result_carries_the_full_document"
 )
 
 BILLED=(
