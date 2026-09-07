@@ -120,15 +120,42 @@ The 14 skipped = **11 `test.fixme`** (real plan-backed gaps, tracked as bugfix-0
 
 ---
 
+## 3a. master merged in (2026-09-07, commit `003ebb0`)
+
+Branch was 84 behind. Merge brought in **bugfix-043** (health monitoring + auto-restart,
+PR #284 — the "bug43" reboot-recovery work), **denidin-app + morning-mcp-app v0.6.0**
+(PR #285), the Feature 070 release sweep, and the **release-script split**.
+
+**Conflicts (4), all resolved:**
+- `docker/docker-compose.{dev,prod}.yml` — keep-both: master's `logging:` json-file bounds on
+  `morning-mcp-app-*` + my webapp services + dormant `cloudflared-*`. `docker compose config`
+  passes on both merged files.
+- `scripts/cut_release.sh`, `scripts/deploy_release.sh` — **took master's**. Master split
+  these into all-apps orchestrators + new `*_single.sh` workers; my branch's webapp support
+  (commit `1d1f7c5`) was against the old monolithic versions and **must be re-ported onto
+  `cut_release_single.sh` / `deploy_release_single.sh`** before webapp can be cut/deployed
+  again. See §4.
+
+`apps/webapp/` itself had **zero** conflicts — master never touched it.
+
+**bugfix-043 ↔ webapp:** master already deconflicted host ports for us — `denidin-app-dev`
+→ `8200:8100`, `denidin-app-prod` → `8201:8100`, explicitly because `webapp-backend-{dev,prod}`
+already publish `8100`/`8101` (the commit messages name the webapp). The bugfix-043 prober
+monitors denidin-app + morning-mcp-app only; webapp is not under it. Webapp reboot-recovery
+is still an open follow-up (needs a "start `run_webapp.sh <env>` on boot" hook per box) but
+is not a release blocker.
+
 ## 4. What is NOT done / open decisions
 
 | item | state | who decides |
 |---|---|---|
-| **Manual mobile QA on dev** | user was mid-QA; found G1, G1 fixed; dev webapp now stopped — restart & continue | user |
+| **Re-port webapp release support** | `cut_release_single.sh` / `deploy_release_single.sh` / `release_scripts_manifest.sh` need webapp added back (source: `git show 1d1f7c5`). ~5 focused blocks, mechanical. Blocks any new webapp cut/deploy. | — (do on approval) |
+| **Manual mobile QA on dev** | user was mid-QA; found G1, G1 fixed; dev webapp stopped (Exited 255) — `run_webapp.sh dev` to resume | user |
 | **bugfix-052 G1a + G2–G7** | Open. Root cause written; needs human approval before any fix (BDD gate) | user |
-| **Feature 068 haleluya** | not started — all work uncommitted. Only on explicit `haleluya`/`/haleluya` | user |
-| **Cut a new webapp release** | prod is on `v0.0.1-webapp`; a new cut is a human-only version decision | user |
-| **webapp reboot-recovery** | webapp containers are `restart:"no"` and not in any keepalive; ride **bug43** once it lands (add `webapp-backend-<env>` / `webapp-frontend-<env>` to its start-set) | — |
+| **Feature 068 haleluya** | not started. Only on explicit `haleluya`/`/haleluya` | user |
+| **First real webapp release** | prod on `v0.0.1-webapp` (test-only string). Needs the re-port done, then a real version string (**human-only, never propose one**) → `cut_release_single.sh webapp <ver>` → `deploy_release_single.sh webapp prod <ver>` | user |
+| **webapp reboot-recovery** | bugfix-043 landed but covers denidin-app + morning-mcp-app only. webapp needs a per-box "start `run_webapp.sh <env>` on boot" hook. Not a release blocker. | — |
+| **Post-merge verification** | not run yet: `vite build`, full e2e suite, a dry `cut_release_single.sh` | — (do on approval) |
 
 ---
 
