@@ -141,17 +141,27 @@ no way to distinguish them. Resolved:
   is unaddressed); there is no way to selectively revoke one device's session without expiring
   everyone's or rotating the password entirely.
 
-## 6. Hosting/ingress (Cloudflare Tunnel) — deployment-time details deferred
+## 6. Hosting/ingress — Tailscale (Cloudflare Tunnel deferred indefinitely)
 
-Confirmed with the user: one Cloudflare Tunnel per environment, routed only to that
-environment's webapp ports; `denidin-app`/`morning-mcp-app` are never tunneled. Still open,
-to be settled at actual deploy time (not blocking `speckit.tasks`):
-- Which domain (must be added to the user's Cloudflare account).
-- Exact subdomain scheme (`ledger-dev.<domain>` / `ledger.<domain>` suggested, not decided).
-- Whether `cloudflared` runs as a third container per environment (matching the
-  containers-only rule the rest of the project follows) or as a host-level process — should
-  default to **containerized**, per "Both apps run exclusively as Docker containers" precedent,
-  unless a concrete reason emerges to deviate.
+**Decision revised 2026-09-06.** The webapp frontend container binds `0.0.0.0`
+(`5100`/`5101`), and the project already runs Tailscale — prod on the always-on Windows box
+(Feature 035), the dev Mac on the same tailnet. So remote access needs **no new ingress**:
+
+- **prod**: **Tailscale Serve** (already configured on the Windows box) proxies HTTPS 443 on
+  the box's Tailscale MagicDNS name → the local frontend port, terminating TLS with an
+  automatic cert. URL is `https://yaronlaptop.tail274e9b.ts.net/` — HTTPS, no port; `yaronlaptop`
+  is the box's *real* Tailscale hostname, not the `denidin-winprod` SSH alias.
+- **dev**: LAN/WiFi (`http://<mac-LAN-IP>:5100`) — no Serve config on the dev Mac.
+
+`denidin-app`/`morning-mcp-app` are still never exposed — only the frontend has a published
+port, and Serve fronts only that.
+
+Cloudflare Tunnel is **not used**: it requires an owned domain, which the user does not have
+and does not want to pay for. The `cloudflared-<env>` sidecar stays in both compose files
+(dormant — `env_file required: false`, `restart: "no"`, deploy scripts skip it without a
+token file) as a zero-cost option if a domain ever appears. If enabled later: one tunnel per
+env, routed only at that env's `webapp-frontend`, subdomain scheme TBD
+(`ledger-dev.<domain>` / `ledger.<domain>`), containerized (per the containers-only rule).
 
 ## 7. Concurrent read of denidin-app data while it is mid-write (2026-09-05)
 

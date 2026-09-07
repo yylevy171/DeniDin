@@ -197,13 +197,13 @@ re-applies whatever filters were already active, rather than resetting to the fu
   denidin-app's current version at cut time, not an ongoing lockstep guarantee). Own
   `run_webapp.sh`/`stop_webapp.sh dev|prod` for direct start/stop, same `env_lock.sh`
   conventions as the other two apps. See `plan.md`/`quickstart.md` for full detail.
-- **Hosting/ingress**: `denidin-app`/`morning-mcp-app` are never internet-exposed, in either
-  environment — only the webapp itself is reachable from outside the local network/tailnet, via
-  one **Cloudflare Tunnel per environment** (`dev`, `prod`), each routed only to that
-  environment's `webapp-frontend`/`webapp-backend` ports. This is a new ingress pattern for the
-  repo (distinct from Tailscale, which remains the *operator's* access path to the Windows prod
-  box). Domain/subdomain naming is a deployment-time detail, not fixed by this spec. See
-  `research.md` §6.
+- **Hosting/ingress**: `denidin-app`/`morning-mcp-app` are never exposed, in either
+  environment — only the webapp frontend has a published port. Remote access is over
+  **Tailscale** (prod: **Tailscale Serve**, already configured on the Windows box — HTTPS at
+  `https://yaronlaptop.tail274e9b.ts.net/`, TLS-terminated, no port; the same tailnet already
+  used for operator access; dev: LAN/WiFi). A per-environment
+  **Cloudflare Tunnel** sidecar is defined but deferred indefinitely — it needs an owned
+  domain the user does not have; it stays dormant in compose at zero cost. See `research.md` §6.
 
 ## Summation (Σ button)
 

@@ -104,6 +104,7 @@ function LoginScreen({ theme, onDone }: { theme: any; onDone: () => void }) {
   };
   return (
     <View
+      testID="login-screen"
       style={{
         flex: 1,
         backgroundColor: theme.bg,
@@ -131,6 +132,7 @@ function LoginScreen({ theme, onDone }: { theme: any; onDone: () => void }) {
           value={pw}
           onChangeText={setPw}
           secureTextEntry
+          testID="password-input"
           placeholder="סיסמה"
           placeholderTextColor={theme.textDim}
           onSubmitEditing={submit}
@@ -144,8 +146,18 @@ function LoginScreen({ theme, onDone }: { theme: any; onDone: () => void }) {
             textAlign: "right",
           }}
         />
-        {err ? <Text style={{ color: theme.danger, textAlign: "right" }}>{err}</Text> : null}
-        <Button label={busy ? "…" : "כניסה"} onPress={submit} theme={theme} disabled={busy} />
+        {err ? (
+          <Text testID="login-error" style={{ color: theme.danger, textAlign: "right" }}>
+            {err}
+          </Text>
+        ) : null}
+        <Button
+          label={busy ? "…" : "כניסה"}
+          onPress={submit}
+          theme={theme}
+          disabled={busy}
+          testID="login-submit"
+        />
       </View>
     </View>
   );
@@ -254,6 +266,16 @@ export default function App() {
   }, [authed, settings.daysBack]); // eslint-disable-line
 
   useEffect(() => saveSettings(settings), [settings]);
+
+  // expose the active theme as an html attribute so acceptance tests (and any future CSS)
+  // can read it without inspecting computed colours
+  useEffect(() => {
+    try {
+      document.documentElement.setAttribute("data-theme", settings.theme);
+    } catch {
+      /* non-browser render */
+    }
+  }, [settings.theme]);
 
   const visible = useMemo(() => {
     let out = rows.filter((r) => {
@@ -408,6 +430,8 @@ export default function App() {
       visible.map((r) => (
         <View
           key={r.event_id}
+          testID={`event-row-${r.event_id}`}
+          {...({ "data-event-row": r.event_id } as any)}
           style={{
             backgroundColor: theme.surface,
             borderWidth: 1,
@@ -415,8 +439,23 @@ export default function App() {
             borderRadius: 10,
           }}
         >
-          <Pressable onPress={() => toggleExpand(r.event_id)} style={{ padding: 10, gap: 4 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Pressable
+            testID={`expand-toggle-${r.event_id}`}
+            accessibilityState={{ expanded: !!expanded[r.event_id] }}
+            {...({ "aria-expanded": expanded[r.event_id] ? "true" : "false" } as any)}
+            onPress={() => toggleExpand(r.event_id)}
+            style={{ padding: 10, gap: 4 }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                // mobile: fixed-width cells sum wider than a phone viewport — let them wrap
+                // onto a second line instead of scrolling the whole page sideways (6.3.3).
+                flexWrap: isMobile ? "wrap" : "nowrap",
+              }}
+            >
               <Text style={{ color: theme.accent, fontWeight: "800", width: 18, fontSize: 16 }}>
                 {expanded[r.event_id] ? "–" : "+"}
               </Text>
@@ -429,9 +468,12 @@ export default function App() {
                 text={r.amount != null ? `₪${r.amount.toLocaleString()}` : "—"}
                 theme={theme}
               />
-              <View style={{ flex: 1 }} />
+              {/* desktop-only: pushes nothing, just absorbs remaining width. On mobile a
+                  flex:1 item would force its own wrap line. */}
+              {!isMobile ? <View style={{ flex: 1 }} /> : null}
             </View>
             <Text
+              testID="row-description"
               numberOfLines={2}
               style={{ color: theme.textDim, fontSize: 12.5, textAlign: "right", paddingHorizontal: 28 }}
             >
@@ -441,6 +483,8 @@ export default function App() {
 
           {expanded[r.event_id] ? (
             <View
+              testID={`expanded-${r.event_id}`}
+              {...({ "data-layout": isMobile ? "stacked" : "sidebyside" } as any)}
               style={{
                 flexDirection: isMobile ? "column" : "row",
                 borderTopWidth: 1,
@@ -449,6 +493,7 @@ export default function App() {
               }}
             >
               <View
+                testID={`detail-panel-${r.event_id}`}
                 style={{
                   flex: 1,
                   borderLeftWidth: isMobile ? 0 : 1,
@@ -458,7 +503,10 @@ export default function App() {
               >
                 <DetailPanel detail={expanded[r.event_id].detail} theme={theme} />
               </View>
-              <View style={{ flex: 1, height: isMobile ? 240 : undefined }}>
+              <View
+                testID={`context-panel-${r.event_id}`}
+                style={{ flex: 1, height: isMobile ? 240 : undefined }}
+              >
                 <ChatPanel
                   messages={expanded[r.event_id].ctx?.messages}
                   error={expanded[r.event_id].ctx?.error}
@@ -482,7 +530,7 @@ export default function App() {
   if (!authed) return <LoginScreen theme={theme} onDone={() => setAuthed(true)} />;
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <View testID="app-ready" style={{ flex: 1, backgroundColor: theme.bg }}>
       {/* top bar */}
       <View
         style={{
@@ -497,13 +545,14 @@ export default function App() {
         }}
       >
         <Image
+          testID="logo"
           source={{ uri: "/honigman-law-logo.png" }}
           style={{ width: 34, height: 40, resizeMode: "contain" }}
           accessibilityLabel="הוניגמן משרד עורכי דין"
         />
         <Text style={{ fontSize: 17, fontWeight: "800", color: theme.accent }}>דני-דין · ארועים</Text>
         <View style={{ flex: 1 }} />
-        <Text style={{ color: theme.textDim, fontSize: 13 }}>
+        <Text testID="record-count" style={{ color: theme.textDim, fontSize: 13 }}>
           {loading ? "…" : `${visible.length.toLocaleString()} רשומות`}
         </Text>
         <View style={{ flex: 1 }} />
@@ -513,6 +562,7 @@ export default function App() {
           glyphSize={20}
           theme={theme}
           title="רענון"
+          testID="refresh-data"
           onPress={() => load("refresh")}
           disabled={refreshing}
         />
@@ -521,6 +571,7 @@ export default function App() {
           glyphSize={22}
           theme={theme}
           title="הגדרות"
+          testID="settings-gear"
           onPress={() => {
             setOpenMenu(null);
             setShowSettings((s) => !s);
@@ -583,6 +634,7 @@ export default function App() {
           <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "right" }}>סוג</Text>
           <MultiSelect
             label="סוג אירוע"
+            testID="filter-type"
             options={EVENT_TYPES}
             selected={typeSel}
             onToggle={toggleType}
@@ -596,6 +648,7 @@ export default function App() {
           <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "right" }}>תת-סוג</Text>
           <MultiSelect
             label="תת-סוג"
+            testID="filter-subtype"
             options={ALL_SUBTYPES}
             selected={subSel}
             disabledOptions={disabledSubs}
@@ -608,20 +661,75 @@ export default function App() {
         </View>
         <View style={{ gap: 4 }}>
           <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "right" }}>חיפוש חופשי</Text>
-          <Field value={globalText} onChange={setGlobalText} placeholder="חיפוש בכל השדות" theme={theme} />
+          <Field
+            value={globalText}
+            onChange={setGlobalText}
+            placeholder="חיפוש בכל השדות"
+            theme={theme}
+            testID="filter-global"
+          />
         </View>
         <View style={{ alignSelf: "flex-end", flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <IconButton glyph="🔍" theme={theme} title="חיפוש" onPress={apply} />
-          <IconButton glyph="Σ" theme={theme} title="סיכום" onPress={computeSigma} disabled={refreshing} />
+          <IconButton glyph="🔍" theme={theme} title="חיפוש" onPress={apply} testID="filter-apply" />
+          <IconButton
+            glyph="Σ"
+            theme={theme}
+            title="סיכום"
+            testID="sigma-button"
+            onPress={computeSigma}
+            disabled={refreshing}
+          />
           {sigma ? (
-            <Text style={{ color: theme.text, fontWeight: "700", fontSize: 13 }}>
+            <Text testID="sigma-result" style={{ color: theme.text, fontWeight: "700", fontSize: 13 }}>
               {sigma.n} אירועים: ₪{sigma.total.toLocaleString()}
             </Text>
           ) : null}
         </View>
       </View>
 
-      {/* column header */}
+      {/* column header — mobile: a fixed 6-column header can't align to a wrapped card row,
+          so show just the two interactive controls (expand-all toggle + date sort). */}
+      {isMobile ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 14,
+            paddingVertical: 6,
+            paddingHorizontal: 14,
+            backgroundColor: theme.surfaceAlt,
+            borderBottomWidth: 1,
+            borderColor: theme.border,
+          }}
+        >
+          <Pressable
+            onPress={toggleAll}
+            hitSlop={6}
+            testID={allMode === "expand" ? "expand-all" : "collapse-all"}
+            {...({ title: allMode === "expand" ? "פתח הכל" : "סגור הכל" } as any)}
+          >
+            <Text style={{ color: theme.accent, fontSize: 18, fontWeight: "800" }}>
+              {allMode === "expand" ? "+" : "–"}
+            </Text>
+          </Pressable>
+          <Pressable
+            testID="sort-toggle"
+            {...({ "data-sort-dir": sortDir } as any)}
+            onPress={() => {
+              setOpenMenu(null);
+              setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+            }}
+            hitSlop={6}
+            style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+          >
+            <Text style={{ color: theme.textDim, fontSize: 11, fontWeight: "700" }}>תאריך</Text>
+            <Text style={{ color: theme.accent, fontSize: 12, fontWeight: "800" }}>
+              {sortDir === "desc" ? "▼" : "▲"}
+            </Text>
+          </Pressable>
+          <View style={{ flex: 1 }} />
+        </View>
+      ) : (
       <View
         style={{
           flexDirection: "row",
@@ -642,6 +750,7 @@ export default function App() {
                 key={i}
                 onPress={toggleAll}
                 hitSlop={6}
+                testID={allMode === "expand" ? "expand-all" : "collapse-all"}
                 style={{ width: c.w, alignItems: "center", justifyContent: "center" }}
                 {...({ title: allMode === "expand" ? "פתח הכל" : "סגור הכל" } as any)}
               >
@@ -669,6 +778,8 @@ export default function App() {
               </Text>
               {isDate ? (
                 <Pressable
+                  testID="sort-toggle"
+                  {...({ "data-sort-dir": sortDir } as any)}
                   onPress={() => {
                     setOpenMenu(null);
                     setSortDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -687,12 +798,17 @@ export default function App() {
           תיאור
         </Text>
       </View>
+      )}
 
       {/* list */}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 10, gap: 8 }}>
-        {loading ? <Text style={{ color: theme.textDim }}>…טוען</Text> : null}
+      <ScrollView testID="event-list" style={{ flex: 1 }} contentContainerStyle={{ padding: 10, gap: 8 }}>
+        {loading ? (
+          <Text testID="loading" style={{ color: theme.textDim }}>
+            …טוען
+          </Text>
+        ) : null}
         {!loading && visible.length === 0 ? (
-          <Text style={{ color: theme.textDim, textAlign: "center", marginTop: 30 }}>
+          <Text testID="empty-state" style={{ color: theme.textDim, textAlign: "center", marginTop: 30 }}>
             אין אירועים להצגה.
           </Text>
         ) : null}
@@ -773,9 +889,10 @@ function SettingsPanel({
   );
 
   return (
-    <View style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 200 }}>
+    <View testID="settings-panel" style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 200 }}>
       {/* backdrop — blocks the rest of the app until closed (same as the image overlay) */}
       <Pressable
+        testID="settings-backdrop"
         onPress={onClose}
         style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.35)" }}
       />
@@ -809,6 +926,7 @@ function SettingsPanel({
             label={settings.theme === "light" ? "בהיר" : "כהה"}
             variant="ghost"
             theme={theme}
+            testID="setting-theme"
             onPress={() =>
               setSettings({ ...settings, theme: settings.theme === "light" ? "dark" : "light" })
             }
@@ -818,6 +936,7 @@ function SettingsPanel({
           "ברירת מחדל בעלייה ראשונה (ימים)",
           <MiniNum
             theme={theme}
+            testID="setting-days-back"
             value={settings.daysBack}
             onChange={(n) => setSettings({ ...settings, daysBack: Math.max(1, n) })}
           />
@@ -826,6 +945,7 @@ function SettingsPanel({
           "זמן סביב שיחת whatsapp (דקות)",
           <MiniNum
             theme={theme}
+            testID="setting-lookback"
             value={settings.lookback}
             onChange={(n) => setSettings({ ...settings, lookback: Math.min(60, Math.max(0, n)) })}
           />
@@ -833,14 +953,24 @@ function SettingsPanel({
 
         <View style={{ height: 1, backgroundColor: theme.border, marginVertical: 2 }} />
 
-        <Button label="שמור" theme={theme} onPress={onClose} />
-        <Button label="התנתקות" variant="danger" theme={theme} onPress={onLogout} />
+        <Button label="שמור" theme={theme} onPress={onClose} testID="settings-close" />
+        <Button label="התנתקות" variant="danger" theme={theme} onPress={onLogout} testID="setting-logout" />
       </View>
     </View>
   );
 }
 
-function MiniNum({ theme, value, onChange }: { theme: any; value: number; onChange: (n: number) => void }) {
+function MiniNum({
+  theme,
+  value,
+  onChange,
+  testID,
+}: {
+  theme: any;
+  value: number;
+  onChange: (n: number) => void;
+  testID?: string;
+}) {
   const [t, setT] = useState(String(value));
   useEffect(() => setT(String(value)), [value]);
   const commit = (raw: string) => {
@@ -849,6 +979,7 @@ function MiniNum({ theme, value, onChange }: { theme: any; value: number; onChan
   };
   return (
     <TextInput
+      testID={testID}
       value={t}
       onChangeText={(v) => {
         setT(v);

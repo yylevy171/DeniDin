@@ -63,6 +63,10 @@ services:
       - webapp-backend-prod
     restart: "no"
 
+  # Optional Cloudflare Tunnel — NOT currently used (no owned domain). Prod is reached over
+  # Tailscale Serve: https://yaronlaptop.tail274e9b.ts.net/ (TLS-terminated by Tailscale, no
+  # port), already set up. Stays down without the gitignored docker/cloudflared.prod.env
+  # token file (required: false + restart: "no"). See quickstart.md "Access".
   cloudflared-prod:
     image: cloudflare/cloudflared:2024.10.0
     command: tunnel --no-autoupdate run

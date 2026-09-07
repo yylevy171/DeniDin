@@ -1,4 +1,20 @@
-const BASE = (import.meta as any).env?.VITE_API_BASE || "";
+// API origin: build-time VITE_API_BASE by default. On localhost only, a ?api=<origin> query
+// param overrides it — used by the Playwright acceptance suite to point one dev server at
+// either the "full" or "empty" fixture backend. Never honoured off localhost.
+function resolveBase(): string {
+  const buildBase = (import.meta as any).env?.VITE_API_BASE || "";
+  try {
+    const host = location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      const override = new URLSearchParams(location.search).get("api");
+      if (override) return override;
+    }
+  } catch {
+    /* non-browser */
+  }
+  return buildBase;
+}
+const BASE = resolveBase();
 const TOKEN_KEY = "denidin_ledger_token";
 
 export function getToken(): string | null {

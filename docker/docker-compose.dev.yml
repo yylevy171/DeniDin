@@ -54,9 +54,12 @@ services:
     restart: "no"
 
   # Feature 068 — read-only Ledger Web UI. Reads denidin-app-dev's data root directly off
-  # disk (read-only mount), never over a network hop and never its live process. Not bundled
-  # with the WhatsApp-traffic constraint (it sends nothing), but IS bundled into the dev
-  # env-lock / run_all ordering (morning-mcp-app -> denidin-app -> webapp).
+  # disk (read-only mount), never over a network hop and never its live process. It sends
+  # nothing and mutates nothing, so it is ENV-LOCK AGNOSTIC (2026-09-06): run_webapp.sh /
+  # stop_webapp.sh never acquire, release, or check shared/active_env.json — start/stop it
+  # regardless of which clone owns dev. run_all.sh still starts it LAST (it reads
+  # denidin-app's data; nothing depends on it) but the lock itself is held only by the two
+  # WhatsApp apps.
   webapp-backend-dev:
     build:
       context: .
@@ -82,10 +85,14 @@ services:
       - webapp-backend-dev
     restart: "no"
 
-  # One Cloudflare Tunnel per environment, routed ONLY at that env's webapp-frontend — never
-  # denidin-app / morning-mcp-app. Token lives in the gitignored docker/cloudflared.dev.env
-  # (TUNNEL_TOKEN=...); until that file exists this container just fails and stays down
-  # (restart: "no"), leaving the rest of the stack unaffected. See quickstart.md "Access".
+  # Optional Cloudflare Tunnel — NOT currently used (no owned domain). Remote access is over
+  # Tailscale instead (prod: HTTPS via Tailscale Serve at the box's MagicDNS name; see
+  # quickstart.md "Access"). This
+  # sidecar is kept for a possible future domain-based public URL: it would route ONLY at
+  # this env's webapp-frontend — never denidin-app / morning-mcp-app. Token would live in the
+  # gitignored docker/cloudflared.dev.env (TUNNEL_TOKEN=...); until that file exists this
+  # container just fails and stays down (restart: "no"), leaving the rest of the stack
+  # unaffected.
   cloudflared-dev:
     image: cloudflare/cloudflared:2024.10.0
     command: tunnel --no-autoupdate run

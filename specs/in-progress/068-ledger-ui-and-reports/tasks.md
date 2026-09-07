@@ -1,8 +1,11 @@
 # Tasks: Ledger Web UI (Feature 068, v1)
 
 🚨 **REVISED GATE (2026-09-05, explicit user instruction): nothing in Phases 1–10 below may be
-implemented until the user has approved the exact Playwright test plan** — a draft exists at
-`contracts/playwright-draft.md`, still pending sign-off. This reverses the original
+implemented until the user has approved the exact Playwright test plan.** ✅ **SATISFIED
+(2026-09-05): the full plan is `PLAYWRIGHT-TEST-PLAN.md` at this spec's root — ~303 cases across
+10 components, all approved case-by-case.** The abbreviated component summaries later in this
+file predate it and are superseded by it. The `contracts/playwright-draft.md` file is an early
+preview, not the plan. This reverses the original
 `billed`/`expensive`-style "describe now, write code at the end" ordering: for this feature,
 the acceptance test *code* (or at minimum its exact scenario/assertion list) is approved
 **first**, and only then does any Task B implementation work begin. Task A (unit/integration
@@ -189,8 +192,8 @@ fuzzy; documents render as a "media unavailable"-style fallback (only images hav
 thumbnail/lightbox path). These are the remaining gaps before Stories 4–8 are *done* vs
 *viewable*.
 
-Local launcher: `apps/webapp/run_webapp_dev.sh` (backend :8100 via `uvicorn --factory`,
-frontend :5173 via Vite; not the containerized env — that's Story 10).
+Local launcher: `apps/webapp/run_webapp.sh host` (backend :8100 via `uvicorn --factory`,
+frontend :5173 via Vite; not the containerized env — that's `run_webapp.sh dev|prod`, Story 10).
 
 ### Story 3 original task text (kept for reference)
 
@@ -268,7 +271,14 @@ frontend :5173 via Vite; not the containerized env — that's Story 10).
     `version == <version>` (same shape as morning-mcp-app). Both local (`dev`) and remote
     Windows-box (`prod`, over SSH) paths handled.
 
-## Story 10 — Docker/env bundling & Cloudflare Tunnel ingress
+## Story 10 — Docker/env bundling & ingress
+
+> **Ingress revised 2026-09-06**: remote access is over Tailscale / LAN (frontend binds
+> `0.0.0.0`), not Cloudflare Tunnel (no owned domain). The `cloudflared-<env>` service stays
+> in compose but dormant. `run_webapp.sh` / `stop_webapp.sh` are also now **env-lock
+> agnostic** (no `acquire`/`release` — read-only viewer, no contention) and `run_webapp.sh`
+> is a single script with a `host` | `dev` | `prod` mode arg (merged in the old
+> `run_webapp_dev.sh`). See `research.md` §6, `quickstart.md` "Access".
 
 - **10A**: no automated test (infra/compose config) — verified manually per-environment at
   deploy time, same as the existing two apps' compose changes. `docker compose config` on both
@@ -276,8 +286,8 @@ frontend :5173 via Vite; not the containerized env — that's Story 10).
   pytest (62) green after the config-path changes.
 - **10B** (impl — DONE 2026-09-05): `webapp-backend-<env>`/`webapp-frontend-<env>`/
   `cloudflared-<env>` services added to `docker/docker-compose.{dev,prod}.yml`;
-  `apps/webapp/run_webapp.sh`/`stop_webapp.sh dev|prod` (mirror `run_morning_mcp.sh`, source
-  `scripts/env_lock.sh`, `env_lock_require_local_override` + `acquire`/`release`);
+  `apps/webapp/run_webapp.sh`/`stop_webapp.sh` (single script, `host|dev|prod` mode arg;
+  env-lock agnostic — `env_lock_require_local_override` only, no `acquire`/`release`, revised 2026-09-06);
   `scripts/run_all.sh`/`stop_all.sh` extended (`morning-mcp-app → denidin-app → webapp`,
   reverse on stop). Backend `Dockerfile` rewritten to **preserve** the repo tree inside the
   image (`/app/apps/webapp/backend/...` + `/app/apps/denidin-app/src`) so
@@ -368,6 +378,26 @@ frontend :5173 via Vite; not the containerized env — that's Story 10).
 
 ## Acceptance Phase (Playwright — approved FIRST, before Phases 1–10 build; run at the end)
 
+> **IMPLEMENTED (2026-09-06).** The full suite lives in **`apps/webapp/e2e/`** — one spec file
+> per component (`tests/00-layout.spec.ts` … `tests/09-visual.spec.ts`), a deterministic,
+> date-relative fixture seeder (`seed_fixture.py`), two real `webapp_backend` instances +
+> a Vite dev server wired via `playwright.config.ts`'s `webServer`, and `e2e/README.md` for
+> how to run it. Latest full run: **256 passed, 0 failed, 14 `test.fixme`**
+> (`desktop-chromium` 244 pass / 12 skip, `mobile-chromium` 12 pass / 2 skip). The fixmes
+> document real "viewable → done" gaps (Stories 0/0b and 4–8), tracked as **bugfix-052** —
+> each carries a one-line note citing its `PLAYWRIGHT-TEST-PLAN.md` section;
+> `grep -rn "test.fixme" apps/webapp/e2e/tests/`.
+> **2026-09-06**: bugfix-052 **G1** (mobile/narrow horizontal page scroll) was fixed at the
+> user's request after a real-phone repro — `App.tsx` `isMobile` branch only (collapsed-row
+> cells `flexWrap`, compact mobile column header); desktop path byte-identical (all 5 desktop
+> Component-9 visual baselines pass unchanged; 2 mobile baselines regenerated + committed).
+> `run_webapp_dev.sh` was also merged into `run_webapp.sh` as a `host` mode.
+> Other frontend changes for the suite are testability-only (`testID`/`data-testid`,
+> `data-theme` on `<html>`, `aria-checked`/`aria-disabled`/`aria-expanded`, localhost-gated
+> `?api=` routing) — no production behavior changed. The enumerated components/cases below
+> remain the authoritative description of intended coverage; `PLAYWRIGHT-TEST-PLAN.md` is the
+> approved plan they implement.
+
 **Ordering note (2026-09-05)**: unlike the original plan, the scenarios/assertions below (and
 the concrete draft in `contracts/playwright-draft.md`) must be reviewed and approved by the
 user *before* implementation work begins — not merely described in UX terms and coded later.
@@ -427,11 +457,14 @@ a backend integration test (Story 1A); 1.5 is manual-only (no code, ever).
 
 Real browser, real data, no mocking, one pass at the end of `speckit.implement`.
 
-**Status: Component 1 (Session & Auth) is the only one gone through case-by-case so far and
-approved with the additions above. Components 2–9 below are still at their original,
-provisional one-line granularity — each needs the same per-case scrutiny before being
-considered approved.** Do not treat their brevity below as equivalent to Component 1's
-thoroughness; it isn't, yet.
+**Status (updated 2026-09-06): the full, case-by-case-approved acceptance test plan is
+`PLAYWRIGHT-TEST-PLAN.md` at this spec's root** — ~303 individual test cases across all 10
+components (0, 0b, 1–9), each component gone through and approved as a unit as of 2026-09-05
+("Open items: None carried forward"). That file — not the abbreviated component summaries
+below, and not `contracts/playwright-draft.md` (an early preview only) — is the authoritative
+enumeration and the gate that governs the start of implementation. The gate is **satisfied**.
+The per-component sections below are kept for historical context; where they and
+`PLAYWRIGHT-TEST-PLAN.md` differ, the latter wins.
 
 ### Component 2 — Initial Load (full test enumeration, approved 2026-09-05, ~21 tests)
 

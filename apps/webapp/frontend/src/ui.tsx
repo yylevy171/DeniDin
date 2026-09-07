@@ -11,6 +11,7 @@ export function Button({
   disabled,
   iconSize,
   title,
+  testID,
 }: {
   label: string;
   onPress: () => void;
@@ -19,6 +20,7 @@ export function Button({
   disabled?: boolean;
   iconSize?: number; // when set, renders as a square icon button at this glyph size
   title?: string; // hover tooltip (web)
+  testID?: string;
 }) {
   const bg =
     variant === "primary" ? theme.accent : variant === "danger" ? theme.danger : "transparent";
@@ -27,6 +29,7 @@ export function Button({
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
+      testID={testID}
       {...({ title } as any)}
       style={{
         paddingVertical: iconSize ? 6 : 8,
@@ -65,6 +68,7 @@ export function IconButton({
   title,
   disabled,
   glyphSize = 17,
+  testID,
 }: {
   glyph?: string;
   icon?: keyof typeof ICON_PATHS; // preferred: a real inline SVG, perfectly centred
@@ -73,10 +77,14 @@ export function IconButton({
   title?: string;
   disabled?: boolean;
   glyphSize?: number;
+  testID?: string;
 }) {
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
+      testID={testID}
+      disabled={!!disabled}
+      accessibilityState={{ disabled: !!disabled }}
       {...({ title } as any)}
       style={{
         width: 36,
@@ -118,11 +126,13 @@ export function Field({
   onChange,
   placeholder,
   theme,
+  testID,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
   theme: Theme;
+  testID?: string;
 }) {
   return (
     <TextInput
@@ -130,6 +140,7 @@ export function Field({
       onChangeText={onChange}
       placeholder={placeholder}
       placeholderTextColor={theme.textDim}
+      testID={testID}
       style={{
         borderWidth: 1,
         borderColor: theme.border,
@@ -236,6 +247,7 @@ export function ClientNameInput({
     <View style={{ position: "relative", zIndex: show ? 120 : 1 }}>
       {/* plain DOM input on web — real onKeyDown for arrow/Enter nav */}
       <input
+        data-testid="filter-client-name"
         value={value}
         onChange={(e: any) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
@@ -259,6 +271,7 @@ export function ClientNameInput({
       />
       {show ? (
         <View
+          testID="client-suggest-list"
           style={{
             position: "absolute",
             top: 40,
@@ -276,15 +289,15 @@ export function ClientNameInput({
           }}
         >
           {status === "searching" ? (
-            <Text style={{ color: theme.textDim, textAlign: "right", fontSize: 13, padding: 10 }}>
+            <Text testID="client-suggest-searching" style={{ color: theme.textDim, textAlign: "right", fontSize: 13, padding: 10 }}>
               מחפש…
             </Text>
           ) : status === "empty" ? (
-            <Text style={{ color: theme.textDim, textAlign: "right", fontSize: 13, padding: 10 }}>
+            <Text testID="client-suggest-empty" style={{ color: theme.textDim, textAlign: "right", fontSize: 13, padding: 10 }}>
               לא נמצאו לקוחות
             </Text>
           ) : status === "error" ? (
-            <Text style={{ color: theme.textDim, textAlign: "right", fontSize: 13, padding: 10 }}>
+            <Text testID="client-suggest-error" style={{ color: theme.textDim, textAlign: "right", fontSize: 13, padding: 10 }}>
               שגיאת חיפוש
             </Text>
           ) : null}
@@ -292,6 +305,7 @@ export function ClientNameInput({
             {suggests.map((s, i) => (
               <Pressable
                 key={s}
+                testID={`client-suggest-${s}`}
                 onPress={() => choose(s)}
                 onHoverIn={() => setCursor(i)}
                 style={{
@@ -301,6 +315,7 @@ export function ClientNameInput({
                 }}
               >
                 <Text
+                  testID={i === cursor ? "client-suggest-active" : undefined}
                   style={{
                     color: i === cursor ? theme.accentText : theme.text,
                     textAlign: "right",
@@ -349,6 +364,7 @@ export function DateRange({
     <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
       {/* forceRTL reverses this row: from ends up on the right, to on the left */}
       <input
+        data-testid="filter-date-to"
         type="date"
         value={to}
         min={from || earliest}
@@ -358,6 +374,7 @@ export function DateRange({
       />
       <Text style={{ color: theme.textDim }}>—</Text>
       <input
+        data-testid="filter-date-from"
         type="date"
         value={from}
         min={earliest}
@@ -376,6 +393,7 @@ function OptionRow({
   disabled,
   onPress,
   theme,
+  testID,
 }: {
   label: string;
   on: boolean;
@@ -384,10 +402,15 @@ function OptionRow({
   onPress: () => void;
   theme: Theme;
   key?: string;
+  testID?: string;
 }) {
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
+      testID={testID}
+      disabled={!!disabled}
+      accessibilityState={{ disabled: !!disabled, checked: on }}
+      {...({ "aria-checked": on ? "true" : "false" } as any)}
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -424,6 +447,7 @@ export function MultiSelect({
   open,
   onToggleOpen,
   theme,
+  testID,
 }: {
   label: string;
   options: string[];
@@ -434,16 +458,19 @@ export function MultiSelect({
   open: boolean;
   onToggleOpen: () => void;
   theme: Theme;
+  testID?: string;
 }) {
   const enabled = options.filter((o) => !disabledOptions?.has(o));
   const total = enabled.length;
   const count = enabled.filter((o) => selected.has(o)).length;
   const allOn = total > 0 && count === total;
   const summary = allOn ? "הכל" : count === 0 ? "ללא" : String(count);
+  const idBase = testID || `ms-${label}`;
   return (
     <View style={{ position: "relative", zIndex: open ? 120 : 1 }}>
       <Pressable
         onPress={onToggleOpen}
+        testID={idBase}
         style={{
           borderWidth: 1,
           borderColor: theme.border,
@@ -466,6 +493,7 @@ export function MultiSelect({
       </Pressable>
       {open ? (
         <View
+          testID={`${idBase}-menu`}
           style={{
             position: "absolute",
             top: 42,
@@ -486,7 +514,14 @@ export function MultiSelect({
             {total === 0 ? (
               <Text style={{ color: theme.textDim, padding: 10, fontSize: 12 }}>אין ערכים</Text>
             ) : (
-              <OptionRow label="הכל" on={allOn} bold onPress={() => onSetAll(!allOn)} theme={theme} />
+              <OptionRow
+                label="הכל"
+                on={allOn}
+                bold
+                onPress={() => onSetAll(!allOn)}
+                theme={theme}
+                testID={`${idBase}-opt-all`}
+              />
             )}
             {options.map((o) => (
               <OptionRow
@@ -496,6 +531,7 @@ export function MultiSelect({
                 disabled={disabledOptions?.has(o)}
                 onPress={() => onToggle(o)}
                 theme={theme}
+                testID={`${idBase}-opt-${o}`}
               />
             ))}
           </ScrollView>
@@ -534,10 +570,14 @@ function ChatImage({
   }, [path]);
 
   if (failed)
-    return <Text style={{ color: theme.textDim, fontStyle: "italic" }}>[מדיה לא זמינה]</Text>;
+    return (
+      <Text testID="chat-media-unavailable" style={{ color: theme.textDim, fontStyle: "italic" }}>
+        [מדיה לא זמינה]
+      </Text>
+    );
   if (!url) return <Text style={{ color: theme.textDim }}>…טוען תמונה</Text>;
   return (
-    <Pressable onPress={() => onOpen(url)}>
+    <Pressable testID="chat-image" onPress={() => onOpen(url)}>
       <Image
         source={{ uri: url }}
         style={{ width: 160, height: 160, borderRadius: 8, backgroundColor: theme.surfaceAlt }}
@@ -565,6 +605,7 @@ export function ImageOverlay({
   }, [onClose]);
   return (
     <View
+      testID="image-overlay"
       style={{
         position: "absolute",
         top: 0,
@@ -580,7 +621,7 @@ export function ImageOverlay({
       }}
     >
       <Image source={{ uri: url }} style={{ width: "94%", height: "86%" }} resizeMode="contain" />
-      <Button label="סגירה" onPress={onClose} theme={theme} />
+      <Button label="סגירה" onPress={onClose} theme={theme} testID="image-overlay-close" />
     </View>
   );
 }
@@ -598,19 +639,24 @@ export function ChatPanel({
 }) {
   if (error)
     return (
-      <View style={{ padding: 12 }}>
+      <View style={{ padding: 12 }} testID="context-unavailable">
         <Text style={{ color: theme.textDim, fontStyle: "italic" }}>
           השיחה שקשורה לאירוע זה אינה זמינה עוד.
         </Text>
       </View>
     );
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 10, gap: 8 }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 10, gap: 8 }} testID="chat-scroll">
       {(messages || []).map((m) => {
         const mine = m.side === "right";
         return (
           // forceRTL is on: flex-start === right edge, flex-end === left edge
-          <View key={m.message_id} style={{ alignItems: mine ? "flex-start" : "flex-end" }}>
+          <View
+            key={m.message_id}
+            testID={`chat-msg-${m.message_id}`}
+            accessibilityLabel={`msg side:${m.side} id:${m.message_id}`}
+            style={{ alignItems: mine ? "flex-start" : "flex-end" }}
+          >
             <View
               style={{
                 maxWidth: "82%",
@@ -623,7 +669,9 @@ export function ChatPanel({
               }}
             >
               {m.sender_name ? (
-                <Text style={{ fontSize: 11, color: theme.textDim }}>{m.sender_name}</Text>
+                <Text testID="context-message-sender" style={{ fontSize: 11, color: theme.textDim }}>
+                  {m.sender_name}
+                </Text>
               ) : null}
               {m.media_url ? (
                 <ChatImage path={m.media_url} theme={theme} onOpen={onOpenImage} />
@@ -632,7 +680,7 @@ export function ChatPanel({
                 <Text style={{ color: theme.text, fontSize: 14, textAlign: "right" }}>{m.content}</Text>
               ) : null}
               {m.timestamp ? (
-                <Text style={{ fontSize: 10, color: theme.textDim, textAlign: "right" }}>
+                <Text testID="context-message-time" style={{ fontSize: 10, color: theme.textDim, textAlign: "right" }}>
                   {m.timestamp.replace("T", " ").slice(0, 16)}
                 </Text>
               ) : null}
@@ -641,7 +689,7 @@ export function ChatPanel({
         );
       })}
       {(!messages || messages.length === 0) && !error ? (
-        <Text style={{ color: theme.textDim }}>אין הודעות בטווח.</Text>
+        <Text testID="context-empty" style={{ color: theme.textDim }}>אין הודעות בטווח.</Text>
       ) : null}
     </ScrollView>
   );
@@ -662,10 +710,10 @@ type Detail = {
 };
 
 export function DetailPanel({ detail, theme }: { detail: Detail | null; theme: Theme }) {
-  if (!detail) return <Text style={{ color: theme.textDim, padding: 12 }}>…טוען</Text>;
+  if (!detail) return <Text testID="detail-loading" style={{ color: theme.textDim, padding: 12 }}>…טוען</Text>;
   if (detail.unsupported) {
     return (
-      <Text style={{ color: theme.textDim, padding: 12, textAlign: "right" }}>
+      <Text testID="detail-unsupported" style={{ color: theme.textDim, padding: 12, textAlign: "right" }}>
         {detail.message || "סוג אירוע לא מוכר."}
       </Text>
     );
@@ -674,9 +722,14 @@ export function DetailPanel({ detail, theme }: { detail: Detail | null; theme: T
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={{ padding: 8, flexDirection: "row", flexWrap: "wrap" }}
+      testID="detail-fields"
     >
       {(detail.fields || []).map((f) => (
-        <View key={f.key} style={{ width: "50%", paddingVertical: 3, paddingHorizontal: 6 }}>
+        <View
+          key={f.key}
+          testID={`detail-field-${f.key}`}
+          style={{ width: "50%", paddingVertical: 3, paddingHorizontal: 6 }}
+        >
           <Text style={{ fontSize: 12.5, textAlign: "right" }}>
             <Text style={{ color: theme.textDim }}>{f.label}: </Text>
             <Text style={{ color: theme.text, fontWeight: "600" }}>{fmtVal(f.value)}</Text>

@@ -6,8 +6,8 @@
 
 ```
 Browser (React Native Web SPA, apps/webapp/frontend)
-   │  HTTPS via Cloudflare Tunnel (per-env: dev/prod) — the ONLY internet-reachable service
-   │  denidin-app / morning-mcp-app are never tunneled/exposed
+   │  reached over LAN or Tailscale (per-env: dev/prod) — the ONLY published-port service
+   │  denidin-app / morning-mcp-app are never exposed  (Cloudflare Tunnel: deferred, no domain — research.md §6)
    ▼
 webapp-backend (Python + Starlette BFF, apps/webapp/backend)
    │  Authorization: Bearer <session-token>  (issued at POST /auth/login)
@@ -41,9 +41,11 @@ denidin-app's data_root (read-only)
   volume mount (pointing at the shared root-clone `dev_data`/`data`, same pattern as the other
   two services) — a **manual, per-clone follow-up step**, flagged explicitly in `tasks.md` so it
   isn't silently skipped (mirrors the exact 2026-07-30 incident class documented in CLAUDE.md).
-- **Ingress**: one Cloudflare Tunnel per environment, each routed only to that environment's
-  `webapp-frontend`/`webapp-backend` ports. Domain/subdomain naming is a deployment-time detail
-  (settle with the user when wiring DNS — not blocking this plan).
+- **Ingress**: none beyond the frontend's published `0.0.0.0` port — reached over LAN/WiFi, or
+  for prod over **Tailscale Serve** (already set up on the Windows box: HTTPS at
+  `https://yaronlaptop.tail274e9b.ts.net/`, TLS-terminated, no port). Cloudflare Tunnel is deferred
+  indefinitely (no owned domain); the `cloudflared-<env>` sidecar stays dormant in compose.
+  See `research.md` §6.
 
 ## Auth Flow
 
@@ -91,9 +93,8 @@ denidin-app's data_root (read-only)
 - `apps/webapp/VERSION`, `CHANGELOG.md`, `RELEASES.md`.
 - `apps/webapp/run_webapp.sh`, `stop_webapp.sh`.
 - `docker/docker-compose.dev.yml`, `docker/docker-compose.prod.yml` — two new services each
-  (`webapp-backend-<env>`, `webapp-frontend-<env>`), plus a third, `cloudflared-<env>`
-  (containerized, per "Both apps run exclusively as Docker containers" precedent — see
-  `research.md` §6), routed only to the webapp services, never to `denidin-app-<env>`/
+  (`webapp-backend-<env>`, `webapp-frontend-<env>`), plus a third, dormant `cloudflared-<env>`
+  (unused without a domain — see `research.md` §6), routed only to the webapp services, never to `denidin-app-<env>`/
   `morning-mcp-app-<env>`.
 - `docker/docker-compose.{dev,prod}.local.yml` (every clone, manual) — new override lines.
 - `scripts/run_all.sh`, `scripts/stop_all.sh` — extended ordering.

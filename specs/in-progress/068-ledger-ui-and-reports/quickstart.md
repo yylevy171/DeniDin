@@ -3,9 +3,12 @@
 ## Fastest way to view it (host dev, implemented 2026-09-05)
 
 ```bash
-./apps/webapp/run_webapp_dev.sh          # backend :8100 (uvicorn), frontend :5173 (Vite)
+./apps/webapp/run_webapp.sh host         # backend :8100 (uvicorn), frontend :5173 (Vite), Ctrl-C stops both
 # then open http://localhost:5173
 ```
+
+`run_webapp.sh` is the single entrypoint: `host` (no Docker, live-reload, localhost only),
+`dev` / `prod` (Docker Compose, LAN-reachable — see "Running containerized" below).
 
 - **Password**: whatever is hashed into `apps/webapp/backend/auth/password.hash`
   (`sha256("denidin-pw" + password)`; the salt is hardcoded in `webapp_backend.auth.PASSWORD_SALT`,
@@ -56,9 +59,11 @@ connector — see below). Ports: frontend `5100`/`5101`, backend `8100`/`8101` (
 
 ```bash
 cd apps/webapp
-./run_webapp.sh dev        # or prod — sources scripts/env_lock.sh identically to the other apps
-./stop_webapp.sh dev       # [-force] to release a dev lock held by another clone
-# then open http://localhost:5100
+./run_webapp.sh dev        # or prod — ENV-LOCK AGNOSTIC: never touches shared/active_env.json,
+                           # start it regardless of which clone owns dev (read-only viewer,
+                           # no contention). Still requires this clone's docker-compose.<env>.local.yml.
+./stop_webapp.sh dev       # 2nd arg accepted + ignored (no lock to release)
+# then open http://localhost:5100  — or  http://<this-mac-LAN-IP>:5100  from a phone on the same WiFi
 ```
 
 Bundled into the full stack via the repo-root scripts, in the confirmed order:
@@ -94,20 +99,43 @@ Every clone's gitignored `docker/docker-compose.{dev,prod}.local.yml` needs a
 (The root clone's copies keep the base file's own `./apps/...` paths — no override needed there.)
 
 ## Access
-- **Local/dev loop**: `http://localhost:5100` (dev) / `http://localhost:5101` (prod).
-- **Remote**: via that environment's Cloudflare Tunnel hostname — `denidin-app`/
-  `morning-mcp-app` are never reachable from the internet, only the webapp.
-- First load: password screen (see `contracts/api.md`'s `/auth/login`).
 
-### Cloudflare Tunnel setup (per environment)
-1. Cloudflare Zero Trust dashboard → Networks → Tunnels → create a tunnel per env.
-2. Add a public hostname (e.g. `ledger-dev.<domain>` / `ledger.<domain>`) routed to
-   `http://webapp-frontend-<env>:80`. Point it **only** at the frontend service.
-3. `cp docker/cloudflared.env.example docker/cloudflared.dev.env` (and `.prod.env`),
-   paste the connector token as `TUNNEL_TOKEN=...`. Both files are gitignored.
-4. `./apps/webapp/run_webapp.sh <env>` — the `cloudflared-<env>` container comes up with the
-   frontend. Without the `.env` file it simply fails and stays down (`restart: "no"`),
-   leaving the rest of the stack running.
+The Docker frontend binds `0.0.0.0` (`5100` dev / `5101` prod):
+
+- **Same host**: `http://localhost:5100` (dev) / `http://localhost:5101` (prod).
+- **Same LAN/WiFi**: `http://<host-LAN-IP>:5100` — e.g. a phone on the same WiFi as the dev Mac.
+- **Tailscale (the real remote path for prod)**: **Tailscale Serve** is already configured on
+  the Windows prod box — it proxies HTTPS 443 on the box's Tailscale MagicDNS name to the
+  local frontend port and terminates TLS with an automatic cert. The URL is
+  **`https://yaronlaptop.tail274e9b.ts.net/`** (HTTPS, no port), reachable from any tailnet
+  device (Mac, or a phone with the Tailscale app), anywhere. Note `yaronlaptop` is the box's
+  real Tailscale hostname — **not** the `denidin-winprod` SSH alias (see Feature 035
+  `WINDOWS_GOTCHAS.md` §10). Dev has no Serve config; use LAN/WiFi.
+
+**Backend note**: Tailscale Serve fronts the *frontend* container only; nginx there already
+reverse-proxies `/api` + `/health` to the backend, so no separate Serve rule for :8101.
+
+`denidin-app` / `morning-mcp-app` are never exposed on any of these paths — only the webapp
+frontend has a published port. First load: password screen (see `contracts/api.md`'s
+`/auth/login`).
+
+### Reboot recovery (pending)
+The webapp containers are `restart: "no"` like the rest of the repo, so nothing brings them
+back after a prod-box reboot on their own. The prod reboot-recovery wiring is being done in
+**bug43**; once it lands, add `webapp-backend-<env>` / `webapp-frontend-<env>` (and the
+`cloudflared-<env>` sidecar if ever enabled) to whatever start-set that mechanism drives.
+Until then, `./scripts/run_all.sh prod` (or `run_webapp.sh prod`) after a reboot.
+
+### Cloudflare Tunnel (optional, unused — no domain)
+A `cloudflared-<env>` sidecar is defined in both compose files for a possible future
+domain-based public URL, but it is **not in use**: it needs a Cloudflare account + an owned
+domain, and without `docker/cloudflared.<env>.env` (gitignored, absent) the container simply
+fails and stays down (`env_file required: false`, `restart: "no"`) with zero effect on the
+rest of the stack. `deploy_release.sh` / `cut_release.sh` already skip it unless that token
+file exists. To enable it later: create a tunnel in Cloudflare Zero Trust → Networks →
+Tunnels, route a hostname (`ledger-dev.<domain>`) to `http://webapp-frontend-<env>:80` (the
+frontend only), `cp docker/cloudflared.env.example docker/cloudflared.<env>.env` and paste the
+connector token as `TUNNEL_TOKEN=...`.
 
 ## Release/deploy (once cut)
 ```bash
