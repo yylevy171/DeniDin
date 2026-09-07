@@ -26,5 +26,4 @@ artifacts
 **/config/config.test.json
 apps/webapp/backend/auth/password.hash
 creds
-docker/cloudflared.*.env
 docker/docker-compose.*.local.yml

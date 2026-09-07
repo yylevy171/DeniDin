@@ -82,5 +82,12 @@ def test_missing_password_file_starts_app_but_all_logins_fail(tmp_path, known_pa
         denidin_data_root=str(tmp_path),
     )
     with TestClient(build_app(cfg)) as c:
-        assert c.get("/health").status_code == 200
+        # The app still STARTS and stays up (that's what this test is about) - proven by the
+        # login call below returning a clean 401, not a connection error. But /health now runs
+        # real dependency checks (Feature 068, "check all the elements are OK"): a password-hash
+        # file that can't be read is a real degraded state (nobody can ever log in), so /health
+        # reports it - 503 with password_hash_readable == "fail", not a false 200.
+        health = c.get("/health")
+        assert health.status_code == 503
+        assert health.json()["password_hash_readable"] == "fail"
         assert c.post("/api/auth/login", json={"password": known_password}).status_code == 401

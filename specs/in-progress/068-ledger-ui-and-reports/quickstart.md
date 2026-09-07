@@ -52,10 +52,10 @@ npm run web               # local dev server, points at the backend's dev URL
 
 ## Running containerized, per-env (Story 10)
 
-Three services per environment — `webapp-backend-<env>` (Starlette BFF, reads the denidin
+Two services per environment — `webapp-backend-<env>` (Starlette BFF, reads the denidin
 data root **read-only**), `webapp-frontend-<env>` (nginx serving the built Vite bundle +
-reverse-proxying `/api` and `/health` to the backend), `cloudflared-<env>` (Cloudflare Tunnel
-connector — see below). Ports: frontend `5100`/`5101`, backend `8100`/`8101` (dev/prod).
+reverse-proxying `/api` and `/health` to the backend, plus its own `/healthz` liveness).
+Ports: frontend `5100`/`5101`, backend `8100`/`8101` (dev/prod).
 
 ```bash
 cd apps/webapp
@@ -122,20 +122,14 @@ frontend has a published port. First load: password screen (see `contracts/api.m
 ### Reboot recovery (pending)
 The webapp containers are `restart: "no"` like the rest of the repo, so nothing brings them
 back after a prod-box reboot on their own. The prod reboot-recovery wiring is being done in
-**bug43**; once it lands, add `webapp-backend-<env>` / `webapp-frontend-<env>` (and the
-`cloudflared-<env>` sidecar if ever enabled) to whatever start-set that mechanism drives.
-Until then, `./scripts/run_all.sh prod` (or `run_webapp.sh prod`) after a reboot.
+**bug43**; once it lands, add `webapp-backend-<env>` / `webapp-frontend-<env>` to whatever
+start-set that mechanism drives. Until then, `./scripts/run_all.sh prod` (or
+`run_webapp.sh prod`) after a reboot.
 
-### Cloudflare Tunnel (optional, unused — no domain)
-A `cloudflared-<env>` sidecar is defined in both compose files for a possible future
-domain-based public URL, but it is **not in use**: it needs a Cloudflare account + an owned
-domain, and without `docker/cloudflared.<env>.env` (gitignored, absent) the container simply
-fails and stays down (`env_file required: false`, `restart: "no"`) with zero effect on the
-rest of the stack. `deploy_release.sh` / `cut_release.sh` already skip it unless that token
-file exists. To enable it later: create a tunnel in Cloudflare Zero Trust → Networks →
-Tunnels, route a hostname (`ledger-dev.<domain>`) to `http://webapp-frontend-<env>:80` (the
-frontend only), `cp docker/cloudflared.env.example docker/cloudflared.<env>.env` and paste the
-connector token as `TUNNEL_TOKEN=...`.
+### Public ingress
+None. There is no Cloudflare Tunnel / public URL (ditched — no owned domain, not wanted).
+Prod is reached over **Tailscale Serve** (`https://yaronlaptop.tail274e9b.ts.net/`, already
+configured on the Windows box); dev over LAN only (`http://<mac-lan-ip>:5100`).
 
 ## Release/deploy (once cut)
 ```bash

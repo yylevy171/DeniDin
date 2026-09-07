@@ -12,7 +12,7 @@ shared password, internal tool), not against a determined offline attacker with 
 in hand — and the user explicitly specified the salt literal, which only makes sense for a
 plain fast hash (a real KDF's whole point is a *configurable, slow* cost factor, which a fixed
 literal salt doesn't need). If threat model changes later (e.g. once this gate is the only
-thing standing between the internet and real client financials, post Cloudflare Tunnel), this
+thing standing between the internet and real client financials), this
 should be revisited — noted as a flagged risk, not silently resolved as "good enough forever."
 
 ## 2. Filtering split: server-side vs client-side
@@ -141,7 +141,7 @@ no way to distinguish them. Resolved:
   is unaddressed); there is no way to selectively revoke one device's session without expiring
   everyone's or rotating the password entirely.
 
-## 6. Hosting/ingress — Tailscale (Cloudflare Tunnel deferred indefinitely)
+## 6. Hosting/ingress — Tailscale (Cloudflare Tunnel ditched)
 
 **Decision revised 2026-09-06.** The webapp frontend container binds `0.0.0.0`
 (`5100`/`5101`), and the project already runs Tailscale — prod on the always-on Windows box
@@ -156,12 +156,10 @@ no way to distinguish them. Resolved:
 `denidin-app`/`morning-mcp-app` are still never exposed — only the frontend has a published
 port, and Serve fronts only that.
 
-Cloudflare Tunnel is **not used**: it requires an owned domain, which the user does not have
-and does not want to pay for. The `cloudflared-<env>` sidecar stays in both compose files
-(dormant — `env_file required: false`, `restart: "no"`, deploy scripts skip it without a
-token file) as a zero-cost option if a domain ever appears. If enabled later: one tunnel per
-env, routed only at that env's `webapp-frontend`, subdomain scheme TBD
-(`ledger-dev.<domain>` / `ledger.<domain>`), containerized (per the containers-only rule).
+Cloudflare Tunnel was considered and **ditched** (2026-09-07): it requires an owned domain,
+which the user does not have and does not want to pay for. The `cloudflared-<env>` sidecar,
+its `env_file`s, and `docker/cloudflared.env.example` were all removed. If a public URL is
+ever wanted, it can be re-added then against whatever ingress makes sense at that point.
 
 ## 7. Concurrent read of denidin-app data while it is mid-write (2026-09-05)
 

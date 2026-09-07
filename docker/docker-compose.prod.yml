@@ -78,6 +78,7 @@ services:
       - ./apps/webapp/backend/config/config.prod.container.json:/app/apps/webapp/backend/config/config.json:ro
       - ./apps/webapp/backend/auth/password.hash:/app/apps/webapp/backend/auth/password.hash:ro
       - ./apps/denidin-app/data:/app/denidin-data:ro
+      - ./apps/webapp/logs/prod:/app/apps/webapp/backend/logs
     restart: "no"
 
   webapp-frontend-prod:
@@ -91,18 +92,4 @@ services:
       NGINX_ENVSUBST_FILTER: "^BACKEND_UPSTREAM$$"
     depends_on:
       - webapp-backend-prod
-    restart: "no"
-
-  # Optional Cloudflare Tunnel — NOT currently used (no owned domain). Prod is reached over
-  # Tailscale Serve: https://yaronlaptop.tail274e9b.ts.net/ (TLS-terminated by Tailscale, no
-  # port), already set up. Stays down without the gitignored docker/cloudflared.prod.env
-  # token file (required: false + restart: "no"). See quickstart.md "Access".
-  cloudflared-prod:
-    image: cloudflare/cloudflared:2024.10.0
-    command: tunnel --no-autoupdate run
-    env_file:
-      - path: ./docker/cloudflared.prod.env
-        required: false
-    depends_on:
-      - webapp-frontend-prod
     restart: "no"

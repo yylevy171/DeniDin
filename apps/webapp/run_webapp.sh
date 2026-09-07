@@ -12,9 +12,6 @@
 #                                           over Tailscale Serve (HTTPS at the Windows box's
 #                                           MagicDNS name, no port - already set up).
 #                                           prod uses :8101/:5101.
-#                                           A cloudflared-<env> sidecar is also defined but
-#                                           stays down unless docker/cloudflared.<env>.env
-#                                           exists (needs a domain - not used, see quickstart.md).
 #
 # ENV-LOCK AGNOSTIC (2026-09-06): the webapp is a read-only viewer - it sends no WhatsApp
 # traffic, polls no Green API instance, and mutates nothing. There is no contention on
@@ -65,7 +62,7 @@ case "$MODE" in
     ENV="$MODE"
     COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.$ENV.yml"
     LOCAL_OVERRIDE="$REPO_ROOT/docker/docker-compose.$ENV.local.yml"
-    SERVICES=("webapp-backend-$ENV" "webapp-frontend-$ENV" "cloudflared-$ENV")
+    SERVICES=("webapp-backend-$ENV" "webapp-frontend-$ENV")
 
     source "$REPO_ROOT/scripts/env_lock.sh"
 
@@ -85,7 +82,6 @@ case "$MODE" in
     echo "Frontend: http://localhost:$FPORT  (backend :$BPORT)"
     echo "LAN/WiFi: http://<this-host-LAN-IP>:$FPORT  (Docker binds 0.0.0.0)"
     echo "Remote  : prod = https://yaronlaptop.tail274e9b.ts.net/  (Tailscale Serve, HTTPS, no port)"
-    echo "          (docker/cloudflared.$ENV.env is optional and unused without a domain)"
     ;;
 
   *)

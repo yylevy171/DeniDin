@@ -8,7 +8,7 @@ a live ``SessionStore`` rather than one fixed config value. ``/health`` and
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Optional
 
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -20,7 +20,9 @@ from starlette.routing import Route
 from webapp_backend.auth import PasswordVerifier, SessionStore
 from webapp_backend.config import AppConfig
 from webapp_backend.context_reader import ContextReader
+from webapp_backend.health_checks import build_health_check_fns, start_heartbeat_thread
 from webapp_backend.ledger_reader import DEFAULT_DAYS_BACK, LedgerReader
+from webapp_backend.logger import resolve_log_path, setup_logging
 
 logger = logging.getLogger("webapp_backend")
 
@@ -60,7 +62,7 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def build_app(config: AppConfig) -> Starlette:
+def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
     verifier = PasswordVerifier(Path(config.password_hash_file))
     sessions = SessionStore(config.session_expiry_hours)
     reader = LedgerReader(config.denidin_data_root)
@@ -73,10 +75,34 @@ def build_app(config: AppConfig) -> Starlette:
             verifier.load_error,
         )
 
+    # Real dependency checks, same shape/rationale as denidin-app's and morning-mcp-app's
+    # /health (bugfix-043): each is a zero-arg callable bound to a live value. log_path is only
+    # passed when a file logger was set up (main()/app_factory()) - when it's None the
+    # logs_writing check is simply omitted, not reported as failed.
+    _health_checks = build_health_check_fns(
+        denidin_data_root=config.denidin_data_root,
+        password_hash_file=config.password_hash_file,
+        ledger_reader=reader,
+        log_path=log_path,
+    )
+
     async def health(_request: Request) -> JSONResponse:
-        return JSONResponse(
-            {"status": "ok", "environment": config.environment, "version": version}
-        )
+        body: dict = {
+            "app_up": "success",
+            "environment": config.environment,
+            "version": version,
+        }
+        all_ok = True
+        for name, check_fn in _health_checks.items():
+            try:
+                ok = check_fn()
+            except Exception:  # noqa: BLE001 - a check that raises is a failed check, not a 500
+                logger.warning("health check %r raised", name, exc_info=True)
+                ok = False
+            body[name] = "success" if ok else "fail"
+            all_ok = all_ok and ok
+        body["status"] = "ok" if all_ok else "fail"
+        return JSONResponse(body, status_code=200 if all_ok else 503)
 
     async def login(request: Request) -> JSONResponse:
         try:
@@ -149,8 +175,9 @@ def build_app(config: AppConfig) -> Starlette:
         ]
     )
     app.add_middleware(SessionAuthMiddleware, sessions=sessions)
-    # Dev convenience: the Vite dev server runs on a different port. Tightened at deploy time
-    # (Story 10) when frontend + backend sit behind one Cloudflare hostname.
+    # Dev convenience: the Vite dev server runs on a different port. In dev/prod the browser
+    # only ever talks to the frontend nginx (same origin), which reverse-proxies /api + /health
+    # to this backend, so this wildcard CORS is never actually exercised there.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -178,7 +205,9 @@ def app_factory() -> Starlette:  # pragma: no cover - uvicorn --factory entrypoi
     config.validate()
     if config.denidin_src_path and config.denidin_src_path not in sys.path:
         sys.path.insert(0, config.denidin_src_path)
-    return build_app(config)
+    log_path = setup_logging(level=config.http.log_level)
+    start_heartbeat_thread()
+    return build_app(config, log_path=log_path)
 
 
 def main() -> None:  # pragma: no cover - container entrypoint
@@ -191,9 +220,11 @@ def main() -> None:  # pragma: no cover - container entrypoint
     config.validate()
     if config.denidin_src_path and config.denidin_src_path not in sys.path:
         sys.path.insert(0, config.denidin_src_path)
-    logging.basicConfig(level=config.http.log_level.upper())
+    log_path = setup_logging(level=config.http.log_level)
+    start_heartbeat_thread()
+    logger.info("webapp-backend starting: env=%s version=%s", config.environment, read_version())
     uvicorn.run(
-        build_app(config),
+        build_app(config, log_path=log_path),
         host=config.http.host,
         port=config.http.port,
         log_level=config.http.log_level.lower(),

@@ -101,6 +101,7 @@ services:
       - ./apps/webapp/backend/config/config.dev.container.json:/app/apps/webapp/backend/config/config.json:ro
       - ./apps/webapp/backend/auth/password.hash:/app/apps/webapp/backend/auth/password.hash:ro
       - ./apps/denidin-app/dev_data:/app/denidin-data:ro
+      - ./apps/webapp/logs/dev:/app/apps/webapp/backend/logs
     restart: "no"
 
   webapp-frontend-dev:
@@ -114,22 +115,4 @@ services:
       NGINX_ENVSUBST_FILTER: "^BACKEND_UPSTREAM$$"
     depends_on:
       - webapp-backend-dev
-    restart: "no"
-
-  # Optional Cloudflare Tunnel — NOT currently used (no owned domain). Remote access is over
-  # Tailscale instead (prod: HTTPS via Tailscale Serve at the box's MagicDNS name; see
-  # quickstart.md "Access"). This
-  # sidecar is kept for a possible future domain-based public URL: it would route ONLY at
-  # this env's webapp-frontend — never denidin-app / morning-mcp-app. Token would live in the
-  # gitignored docker/cloudflared.dev.env (TUNNEL_TOKEN=...); until that file exists this
-  # container just fails and stays down (restart: "no"), leaving the rest of the stack
-  # unaffected.
-  cloudflared-dev:
-    image: cloudflare/cloudflared:2024.10.0
-    command: tunnel --no-autoupdate run
-    env_file:
-      - path: ./docker/cloudflared.dev.env
-        required: false
-    depends_on:
-      - webapp-frontend-dev
     restart: "no"

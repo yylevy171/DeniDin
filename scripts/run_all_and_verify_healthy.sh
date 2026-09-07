@@ -53,12 +53,25 @@ POLL_INTERVAL_SECONDS=10
 
 "$SCRIPT_DIR/run_all.sh" "$ENV"
 
+# webapp (Feature 068) - include it in the health gate only when its containers exist on this
+# box/env (it's deployed independently, not present everywhere). Both containers checked
+# independently (backend deep /health + frontend nginx /healthz). Same guard as
+# run_prober_for_env.sh.
+WEBAPP_VERIFY_ARGS=()
+if docker inspect "$(prober_webapp_container "$ENV")" >/dev/null 2>&1; then
+    WEBAPP_VERIFY_ARGS+=(--webapp-health-url "$(prober_webapp_health_url "$ENV")")
+fi
+if docker inspect "$(prober_webapp_frontend_container "$ENV")" >/dev/null 2>&1; then
+    WEBAPP_VERIFY_ARGS+=(--webapp-frontend-health-url "$(prober_webapp_frontend_health_url "$ENV")")
+fi
+
 echo "== Waiting up to ${GRACE_SECONDS}s for $ENV to report healthy =="
 elapsed=0
 while [ "$elapsed" -lt "$GRACE_SECONDS" ]; do
     if python3 "$SCRIPT_DIR/health_monitoring/verify.py" \
         --denidin-health-url "$(prober_denidin_health_url "$ENV")" \
         --morning-health-url "$(prober_morning_health_url "$ENV")" \
+        "${WEBAPP_VERIFY_ARGS[@]}" \
         --log-file "$(prober_verify_log_file "$ENV")"
     then
         echo "== $ENV is healthy (took ~${elapsed}s) =="

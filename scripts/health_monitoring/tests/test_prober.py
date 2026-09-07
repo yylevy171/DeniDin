@@ -289,6 +289,138 @@ class TestRunOnceDryRun:
         assert entry["action"] == "bootstrap"
 
 
+@pytest.fixture
+def make_health_server():
+    """Factory yielding independent real local HTTP health servers, each with
+    its own set_status - lets a test drive webapp-backend and webapp-frontend
+    (and the two apps) failing independently. All are torn down at test end."""
+    servers = []
+
+    def _make(initial=200):
+        state = {"code": initial}
+
+        class _Handler(_FixedStatusHandler):
+            def do_GET(self):  # noqa: N802
+                self.send_response(state["code"])
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"status": "ok"}')
+
+            def log_message(self, format, *args):  # noqa: A002
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        servers.append((server, thread))
+        url = f"http://127.0.0.1:{server.server_port}/health"
+
+        def set_status(code):
+            state["code"] = code
+
+        return url, set_status
+
+    yield _make
+
+    for server, thread in servers:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+class TestRunOnceWebapp:
+    """webapp (Feature 068) is a TWO-container app - webapp-backend's deep
+    /health and webapp-frontend's nginx /healthz are monitored independently,
+    each only when a URL is supplied. All dry_run=True (no real restarts)."""
+
+    def _run(self, tmp_path, *, denidin_url, morning_url, now, seed_last_up=None,
+             webapp_url=None, webapp_frontend_url=None):
+        state_file = tmp_path / "state.json"
+        log_file = tmp_path / "health.log"
+        if seed_last_up is not None:
+            write_last_up_time(state_file, seed_last_up)
+        action = run_once(
+            env="dev",
+            denidin_health_url=denidin_url,
+            morning_health_url=morning_url,
+            state_file=state_file,
+            log_file=log_file,
+            scripts_dir=tmp_path,
+            denidin_container="fake-denidin",
+            morning_container="fake-morning",
+            dry_run=True,
+            now=now,
+            webapp_health_url=webapp_url,
+            webapp_container="fake-webapp-backend" if webapp_url else None,
+            webapp_frontend_health_url=webapp_frontend_url,
+            webapp_frontend_container="fake-webapp-frontend" if webapp_frontend_url else None,
+        )
+        return action, state_file, log_file
+
+    def test_not_monitored_leaves_log_shape_unchanged(self, tmp_path, make_health_server):
+        url, _ = make_health_server(200)
+        _, _, log_file = self._run(tmp_path, denidin_url=url, morning_url=url, now=5000.0)
+        entry = json.loads(log_file.read_text().splitlines()[-1])
+        assert "webapp_health" not in entry
+        assert "webapp_frontend_health" not in entry
+
+    def test_both_webapp_containers_healthy_are_logged(self, tmp_path, make_health_server):
+        app_url, _ = make_health_server(200)
+        be_url, _ = make_health_server(200)
+        fe_url, _ = make_health_server(200)
+        action, state_file, log_file = self._run(
+            tmp_path, denidin_url=app_url, morning_url=app_url, now=5000.0,
+            webapp_url=be_url, webapp_frontend_url=fe_url,
+        )
+        assert action == "none"
+        assert read_last_up_time(state_file) == 5000.0
+        entry = json.loads(log_file.read_text().splitlines()[-1])
+        assert entry["webapp_health"] == "success"
+        assert entry["webapp_frontend_health"] == "success"
+
+    def test_webapp_backend_down_counts_as_overall_unhealthy(self, tmp_path, make_health_server):
+        app_url, _ = make_health_server(200)
+        fe_url, _ = make_health_server(200)
+        be_url, set_be = make_health_server(200)
+        set_be(503)
+        now = 5000.0
+        action, _, log_file = self._run(
+            tmp_path, denidin_url=app_url, morning_url=app_url, now=now,
+            seed_last_up=now - SOFT_RESTART_THRESHOLD_SECONDS,
+            webapp_url=be_url, webapp_frontend_url=fe_url,
+        )
+        assert action == "soft"
+        entry = json.loads(log_file.read_text().splitlines()[-1])
+        assert entry["webapp_health"] == "fail"
+        assert entry["webapp_frontend_health"] == "success"
+
+    def test_webapp_frontend_down_alone_counts_as_overall_unhealthy(self, tmp_path, make_health_server):
+        # Healthy backend, wedged nginx - the exact gap this wiring closes.
+        app_url, _ = make_health_server(200)
+        be_url, _ = make_health_server(200)
+        fe_url, set_fe = make_health_server(200)
+        set_fe(503)
+        now = 5000.0
+        action, _, log_file = self._run(
+            tmp_path, denidin_url=app_url, morning_url=app_url, now=now,
+            seed_last_up=now - HARD_RESTART_THRESHOLD_SECONDS,
+            webapp_url=be_url, webapp_frontend_url=fe_url,
+        )
+        assert action == "hard"
+        entry = json.loads(log_file.read_text().splitlines()[-1])
+        assert entry["webapp_health"] == "success"
+        assert entry["webapp_frontend_health"] == "fail"
+
+    def test_only_backend_monitored_frontend_absent(self, tmp_path, make_health_server):
+        app_url, _ = make_health_server(200)
+        be_url, _ = make_health_server(200)
+        _, _, log_file = self._run(
+            tmp_path, denidin_url=app_url, morning_url=app_url, now=5000.0, webapp_url=be_url,
+        )
+        entry = json.loads(log_file.read_text().splitlines()[-1])
+        assert entry["webapp_health"] == "success"
+        assert "webapp_frontend_health" not in entry
+
+
 class TestMainArchiveStateCLI:
     """The --archive-state CLI mode - what stop_env.sh actually invokes."""
 

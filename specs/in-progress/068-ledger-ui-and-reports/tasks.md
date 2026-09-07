@@ -265,17 +265,28 @@ frontend :5173 via Vite; not the containerized env — that's `run_webapp.sh dev
     manifest gains an `images: [...]` array, one tag `webapp-v<version>`. VERSION/CHANGELOG/
     RELEASES at `apps/webapp/` (already seeded: VERSION `0.5.4`).
   - `deploy_release.sh`: `webapp` loads both images, retags each to its
-    `<project>-webapp-{backend,frontend}-<env>:latest`, `up -d --no-build` both services
-    (+ `cloudflared-<env>` **iff** `docker/cloudflared.<env>.env` exists), confirms both
-    backend+frontend containers `running`, then polls `webapp-backend-<env>`'s `/health` for
-    `version == <version>` (same shape as morning-mcp-app). Both local (`dev`) and remote
-    Windows-box (`prod`, over SSH) paths handled.
+    `<project>-webapp-{backend,frontend}-<env>:latest`, then goes through the standard
+    `stop_env.sh` → load/retag → `run_env.sh` cycle (webapp is in `deploy_release.sh`'s
+    `APPS` array), confirms both backend+frontend containers `running`, runs the fast
+    `[v<version>]` log-grep on the backend, then the real health check via
+    `deploy_final_health_check.sh` — which checks **both** containers: `webapp-backend`'s deep
+    `/health` (denidin data mount, ledger index, password hash) **and** `webapp-frontend`
+    nginx's own `/healthz` (nginx-up-and-config-valid, no backend hop; returns the standard
+    `200 + {"status":"ok"}` shape so `verify.py`/`prober.py` need no special case). Both local
+    (`dev`) and remote Windows-box (`prod`, over SSH) paths handled.
+  - **Health monitoring** (`scripts/health_monitoring/`): the prober monitors both webapp
+    containers independently — `run_prober_for_env.sh` adds `--webapp-health-url` /
+    `--webapp-frontend-health-url` (+ the matching `--*-container` for the hard-restart path)
+    only when each container actually exists on the box. A wedged nginx with a healthy backend
+    is a real user-facing outage and is now caught + restarted (frontend container, last).
+    `run_all_and_verify_healthy.sh`'s post-start gate checks both too.
 
 ## Story 10 — Docker/env bundling & ingress
 
-> **Ingress revised 2026-09-06**: remote access is over Tailscale / LAN (frontend binds
-> `0.0.0.0`), not Cloudflare Tunnel (no owned domain). The `cloudflared-<env>` service stays
-> in compose but dormant. `run_webapp.sh` / `stop_webapp.sh` are also now **env-lock
+> **Ingress revised 2026-09-06; Cloudflare fully removed 2026-09-07**: remote access is over
+> Tailscale / LAN (frontend binds `0.0.0.0`). Cloudflare Tunnel was ditched (no owned domain) —
+> the `cloudflared-<env>` services, `env_file`s and `cloudflared.env.example` were deleted.
+> `run_webapp.sh` / `stop_webapp.sh` are also now **env-lock
 > agnostic** (no `acquire`/`release` — read-only viewer, no contention) and `run_webapp.sh`
 > is a single script with a `host` | `dev` | `prod` mode arg (merged in the old
 > `run_webapp_dev.sh`). See `research.md` §6, `quickstart.md` "Access".
@@ -284,8 +295,8 @@ frontend :5173 via Vite; not the containerized env — that's `run_webapp.sh dev
   deploy time, same as the existing two apps' compose changes. `docker compose config` on both
   merged files (base + coder2 local override) parses clean; frontend `vite build` + backend
   pytest (62) green after the config-path changes.
-- **10B** (impl — DONE 2026-09-05): `webapp-backend-<env>`/`webapp-frontend-<env>`/
-  `cloudflared-<env>` services added to `docker/docker-compose.{dev,prod}.yml`;
+- **10B** (impl — DONE 2026-09-05; Cloudflare removed 2026-09-07): `webapp-backend-<env>`/
+  `webapp-frontend-<env>` services added to `docker/docker-compose.{dev,prod}.yml`;
   `apps/webapp/run_webapp.sh`/`stop_webapp.sh` (single script, `host|dev|prod` mode arg;
   env-lock agnostic — `env_lock_require_local_override` only, no `acquire`/`release`, revised 2026-09-06);
   `scripts/run_all.sh`/`stop_all.sh` extended (`morning-mcp-app → denidin-app → webapp`,
@@ -296,10 +307,8 @@ frontend :5173 via Vite; not the containerized env — that's `run_webapp.sh dev
   (multi-stage Vite build → nginx) + `nginx.conf.template` (envsubst `${BACKEND_UPSTREAM}`,
   `NGINX_ENVSUBST_FILTER` so nginx's own `$vars` survive) proxying `/api` + `/health` to the
   backend, SPA fallback. Container config: committed `config/config.{dev,prod}.container.json`
-  (no secrets); `auth/password.hash` mounted read-only from host. Cloudflare Tunnel:
-  `cloudflared-<env>` container, token from gitignored `docker/cloudflared.<env>.env`
-  (`env_file` `required: false` — absent → container just stays down), `docker/cloudflared.env.example`
-  committed, `.gitignore` updated.
+  (no secrets); `auth/password.hash` mounted read-only from host. (A `cloudflared-<env>`
+  sidecar was added here originally, then removed entirely on 2026-09-07 — Cloudflare ditched.)
   **Manual per-clone follow-up (flagged, not automatable):** every clone's gitignored
   `docker-compose.{dev,prod}.local.yml` needs a `webapp-backend-<env>` override entry for the
   `/app/denidin-data` mount — coder2's is done; documented in `quickstart.md`.

@@ -49,6 +49,38 @@ prober_morning_container() {
     echo "$(_prober_project_name "$1")-morning-mcp-app-$1-1"
 }
 
+# webapp (Feature 068) - the Ledger Web UI is a TWO-container app: webapp-backend (deep /health -
+# denidin data mount, ledger index, password hash) and webapp-frontend (nginx serving the SPA +
+# proxying /api; its own /healthz is nginx-up-and-config-valid, no backend hop). BOTH are
+# monitored - a wedged nginx is a real user-facing outage even with a perfectly healthy backend.
+# Only consulted by run_prober_for_env.sh when the container actually exists on this box (webapp
+# is deployed independently and isn't present everywhere) - see that script's own guard.
+prober_webapp_container() {
+    echo "$(_prober_project_name "$1")-webapp-backend-$1-1"
+}
+
+prober_webapp_frontend_container() {
+    echo "$(_prober_project_name "$1")-webapp-frontend-$1-1"
+}
+
+prober_webapp_health_url() {
+    local env="$1"
+    local port
+    port="$(_prober_host_port "$env" "webapp-backend-$env")"
+    echo "http://127.0.0.1:${port}/health"
+}
+
+# The frontend's OWN liveness (nginx up + config valid), no backend hop - returns the same
+# 200 + {"status":"ok"} shape as every other /health here, so is_healthy_body() needs no
+# special case. A backend outage does NOT trip this (that's webapp_health_url's job) - so
+# prober.py can tell which container to restart.
+prober_webapp_frontend_health_url() {
+    local env="$1"
+    local port
+    port="$(_prober_host_port "$env" "webapp-frontend-$env")"
+    echo "http://127.0.0.1:${port}/healthz"
+}
+
 # 2026-09-06 fix: the HOST-reachable port for a service is NOT the same
 # thing as the app's own config.<env>.json port field, and must never be
 # resolved from it - config.json's port is the container's *internal*

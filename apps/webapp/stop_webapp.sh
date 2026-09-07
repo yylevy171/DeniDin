@@ -23,7 +23,7 @@ fi
 
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.$ENV.yml"
 LOCAL_OVERRIDE="$REPO_ROOT/docker/docker-compose.$ENV.local.yml"
-SERVICES=("webapp-backend-$ENV" "webapp-frontend-$ENV" "cloudflared-$ENV")
+SERVICES=("webapp-backend-$ENV" "webapp-frontend-$ENV")
 
 COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE")
 if [ -f "$LOCAL_OVERRIDE" ]; then

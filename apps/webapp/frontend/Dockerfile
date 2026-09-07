@@ -3,7 +3,8 @@
 #
 # Multi-stage: build the Vite bundle with Node, then serve the static dist/ with nginx.
 # nginx also reverse-proxies /api and /health to the backend service so the browser only
-# ever talks to one origin (the Cloudflare Tunnel hostname) — VITE_API_BASE stays "".
+# ever talks to one origin (the frontend host, e.g. the Tailscale Serve name) — VITE_API_BASE
+# stays "". nginx serves its own /healthz (200, no backend hop) as this container's liveness.
 FROM node:20-slim AS build
 WORKDIR /build
 COPY apps/webapp/frontend/package.json apps/webapp/frontend/package-lock.json ./

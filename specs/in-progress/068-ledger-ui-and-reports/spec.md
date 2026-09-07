@@ -201,9 +201,8 @@ re-applies whatever filters were already active, rather than resetting to the fu
   environment — only the webapp frontend has a published port. Remote access is over
   **Tailscale** (prod: **Tailscale Serve**, already configured on the Windows box — HTTPS at
   `https://yaronlaptop.tail274e9b.ts.net/`, TLS-terminated, no port; the same tailnet already
-  used for operator access; dev: LAN/WiFi). A per-environment
-  **Cloudflare Tunnel** sidecar is defined but deferred indefinitely — it needs an owned
-  domain the user does not have; it stays dormant in compose at zero cost. See `research.md` §6.
+  used for operator access; dev: LAN/WiFi). There is **no** public tunnel / Cloudflare
+  ingress — it was considered and ditched (no owned domain, not wanted). See `research.md` §6.
 
 ## Summation (Σ button)
 
