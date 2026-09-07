@@ -187,6 +187,8 @@ if [ "$REMOTE" -eq 1 ]; then
     source "$WSL_SSH_HELPER"
     remote_run() { wsl_ssh_run "$REMOTE_HOST" "$@"; }
     UNPACK_SCRIPTS_HELPER="$SCRIPT_DIR/lib/unpack_scripts_bundle.sh"
+    # shellcheck source=/dev/null
+    source "$SCRIPT_DIR/lib/deploy_final_health_check.sh"
 
     TOTAL_STEPS=10  # R1(x2 apps as one step) R2 R3 R4 R5(x2) R6(x2) R7(x2) R8 R9(x2) final(x2)
 
@@ -307,40 +309,43 @@ if [ "$REMOTE" -eq 1 ]; then
             exit 1
         fi
 
-        echo "== Final check: polling ${APP}'s health/version endpoint on ${REMOTE_HOST} until it reports v${VERSION} =="
-        VERIFIED=0
+        # Version-image check (2026-09-07, bugfix-076 revision): fast log-grep, confirms the
+        # RIGHT image got loaded - deliberately kept separate from the real health check below,
+        # which used to be combined with this same grep for denidin-app (see
+        # lib/deploy_final_health_check.sh's header for why that was wrong).
+        echo "== Confirming $(_container_name "$APP") is running the v${VERSION} image on ${REMOTE_HOST} =="
+        VERSION_OK=0
         ELAPSED=0
         while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
-            if [ "$APP" == "morning-mcp-app" ]; then
-                HEALTH_JSON="$(remote_run "cd ~/${REMOTE_DEPLOY_DIR} && PORT=\$(docker compose -f docker/docker-compose.prod.yml port $(_service_name "$APP") 8000 | cut -d: -f2) && curl -sf http://127.0.0.1:\$PORT/health" 2>/dev/null || echo "")"
-                HEALTH_VERSION="$(echo "$HEALTH_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))" 2>/dev/null || echo "")"
-                if [ "$HEALTH_VERSION" == "$VERSION" ]; then
-                    VERIFIED=1
-                    break
-                fi
-            else
-                if remote_run "docker logs $(_container_name "$APP") --tail 20" 2>&1 | grep -q "\[v${VERSION}\]"; then
-                    VERIFIED=1
-                    break
-                fi
+            if remote_run "docker logs $(_container_name "$APP") --tail 20" 2>&1 | grep -q "\[v${VERSION}\]"; then
+                VERSION_OK=1
+                break
             fi
             sleep "$VERIFY_POLL_INTERVAL"
             ELAPSED=$((ELAPSED + VERIFY_POLL_INTERVAL))
         done
-        if [ "$VERIFIED" -ne 1 ]; then
-            echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} on ${REMOTE_HOST} within ${VERIFY_TIMEOUT}s (container is running - step R9 passed - but never reported the right version)." >&2
+        if [ "$VERSION_OK" -ne 1 ]; then
+            echo "🚨 DEPLOY FAILED at version-image check: ${APP} v${VERSION} not confirmed running in ${ENV} on ${REMOTE_HOST} within ${VERIFY_TIMEOUT}s (container is running - step R9 passed - but never logged the right version)." >&2
             echo "Last observed container state:" >&2
             remote_run "docker logs $(_container_name "$APP") --tail 20" >&2 2>&1 || true
             exit 1
         fi
-        echo "✅ ${APP} v${VERSION} confirmed live in ${ENV} (${REMOTE_HOST})."
     done
 
-    echo "✅ Deployed and verified: BOTH apps v${VERSION} are live in ${ENV} (${REMOTE_HOST})."
+    # Real health verification (2026-09-07, bugfix-076): ONE combined poll for both apps, via
+    # verify.py - see lib/deploy_final_health_check.sh's header for the full incident/rationale.
+    if ! deploy_final_health_check_remote "$REMOTE_HOST" "$REMOTE_DEPLOY_DIR" "$ENV" 1 1; then
+        exit 1
+    fi
+
+    echo "✅ Deployed and verified: BOTH apps v${VERSION} are live AND genuinely healthy in ${ENV} (${REMOTE_HOST})."
     exit 0
 fi
 
 # --- Local path (env=dev always; env=prod only with --local) ---
+
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/lib/deploy_final_health_check.sh"
 
 # Cross-clone env lock + mandatory per-clone local-override file - see
 # deploy_release_single.sh's own comment for the full rationale.
@@ -411,37 +416,33 @@ for APP in "${APPS[@]}"; do
         exit 1
     fi
 
-    echo "== Final check: polling ${APP}'s health/version endpoint (local) until it reports v${VERSION} =="
-    VERIFIED=0
+    # Version-image check (2026-09-07, bugfix-076 revision): fast log-grep, confirms the RIGHT
+    # image got loaded - deliberately kept separate from the real health check below (see
+    # lib/deploy_final_health_check.sh's header for why the old combined denidin-app check was
+    # wrong).
+    echo "== Confirming $(_container_name "$APP") is running the v${VERSION} image (local) =="
+    VERSION_OK=0
     ELAPSED=0
     while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
-        if [ "$APP" == "morning-mcp-app" ]; then
-            HOST_PORT="$(docker compose "${COMPOSE_ARGS[@]}" port "$(_service_name "$APP")" 8000 2>/dev/null | cut -d: -f2)"
-            HEALTH_JSON=""
-            if [ -n "$HOST_PORT" ]; then
-                HEALTH_JSON="$(curl -s "http://localhost:${HOST_PORT}/health" 2>/dev/null || echo "")"
-            fi
-            HEALTH_VERSION="$(echo "$HEALTH_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))" 2>/dev/null || echo "")"
-            if [ "$HEALTH_VERSION" == "$VERSION" ]; then
-                VERIFIED=1
-                break
-            fi
-        else
-            if docker logs "$(_container_name "$APP")" --tail 20 2>&1 | grep -q "\[v${VERSION}\]"; then
-                VERIFIED=1
-                break
-            fi
+        if docker logs "$(_container_name "$APP")" --tail 20 2>&1 | grep -q "\[v${VERSION}\]"; then
+            VERSION_OK=1
+            break
         fi
         sleep "$VERIFY_POLL_INTERVAL"
         ELAPSED=$((ELAPSED + VERIFY_POLL_INTERVAL))
     done
-    if [ "$VERIFIED" -ne 1 ]; then
-        echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} within ${VERIFY_TIMEOUT}s (container is running - step L5 passed - but never reported the right version)." >&2
+    if [ "$VERSION_OK" -ne 1 ]; then
+        echo "🚨 DEPLOY FAILED at version-image check: ${APP} v${VERSION} not confirmed running in ${ENV} within ${VERIFY_TIMEOUT}s (container is running - step L5 passed - but never logged the right version)." >&2
         echo "Last observed container state:" >&2
         docker logs "$(_container_name "$APP")" --tail 20 >&2 2>&1 || true
         exit 1
     fi
-    echo "✅ ${APP} v${VERSION} confirmed live in ${ENV}."
 done
 
-echo "✅ Deployed and verified: BOTH apps v${VERSION} are live in ${ENV}."
+# Real health verification (2026-09-07, bugfix-076): ONE combined poll for both apps, via
+# verify.py - see lib/deploy_final_health_check.sh's header for the full incident/rationale.
+if ! deploy_final_health_check_local "$ENV" 1 1; then
+    exit 1
+fi
+
+echo "✅ Deployed and verified: BOTH apps v${VERSION} are live AND genuinely healthy in ${ENV}."
