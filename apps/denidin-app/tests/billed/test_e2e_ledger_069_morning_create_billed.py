@@ -45,11 +45,17 @@ _NULL = {"null": True}
 
 
 def _us2_manifest(*, amount: str) -> dict:
-    """Exhaustive per-field manifest for the synchronous `חשבונית` capture.
-    `client_name` is `$client` (the resolved seeded client); `amount` is what the
-    operator asked for; the Morning-sourced fields (`event_subtype` = the type
-    name, `accounting_document_display_number`, `txn_date`) are asserted present
-    and well-shaped, not against a value the test can't know up front."""
+    """Exhaustive per-field manifest for a `חשבונית` captured from a Morning
+    document DeniDin issued this turn.
+
+    Captured by the SAME mechanism as the background reconciliation sweep: the
+    recognition model copies the `create_*` result JSON verbatim into
+    `accounting_document_json`, and `_expand_accounting_document_json` derives
+    every field in code. `client_name` is `$client` (the resolved seeded
+    client); `amount` is what the operator asked for; the Morning-sourced fields
+    (`event_subtype` = the real type name, `accounting_document_display_number`,
+    `txn_date`, status/payment) are asserted present and well-shaped, not against
+    a value the test can't know up front."""
     return {
         "files": "single",
         "shared_fields": {
@@ -61,9 +67,9 @@ def _us2_manifest(*, amount: str) -> dict:
             "payer_name":          _NULL,
             "description":         {"free_text": True},
             "amount":              {"tested": amount},
-            # Synchronous capture goes the FLAT path (no accounting_document_json
-            # blob): the model maps "שולם היום" → today's date. Format-checked, not
-            # value-pinned (ISO vs DD/MM/YYYY normalisation on persist).
+            # From the document's payment record (paid today by bank transfer);
+            # _expand_accounting_document_json maps payment.date -> txn_date.
+            # Format-checked, not value-pinned (ISO vs DD/MM/YYYY on persist).
             "txn_date":            {"generated": "date"},
             "reference":           _NULL,
             "reference_hint":      _NULL,
@@ -82,16 +88,18 @@ def _us2_manifest(*, amount: str) -> dict:
             "bank_branch":         _NULL,
             "bank_account":        _NULL,
             "accounting_document_display_number": _GEN,
-            # The recognition tool schema marks every other accounting_document_*
-            # field OPTIONAL ("from the response, if present"). A freshly created
-            # combo document's create response carries only the display number —
-            # observed None for all four on a real in-conversation create
-            # (run 2026-09-06). If a future run legitimately populates one, that
-            # is the signal to reclassify it, not a mechanism bug.
-            "accounting_document_status":         _NULL,
-            "accounting_document_status_code":    _NULL,
-            "accounting_document_status_label":   _NULL,
-            "accounting_document_payment_method": _NULL,
+            # The create_* tool now re-fetches the full document (GET /documents/{id}),
+            # so its result carries the status group and the payment record - the
+            # same shape the reconciliation sweep's listing returns - and
+            # _expand_accounting_document_json maps all of them. A paid type-320
+            # combo document has a real status and (paid by bank transfer) a real
+            # payment method. If the first real run shows one of these genuinely
+            # absent from Morning's document, flip that one line back to _NULL -
+            # that is a Morning-data fact, not a mechanism bug.
+            "accounting_document_status":         _GEN,
+            "accounting_document_status_code":    _GEN,
+            "accounting_document_status_label":   _GEN,
+            "accounting_document_payment_method": _GEN,
             "session_id":          {"generated": "session_id"},
             "message_id":          {"generated": "message_id"},
             "captured_at":         {"generated": "captured_at"},

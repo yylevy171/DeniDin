@@ -24,9 +24,12 @@ clock. (`חשבונית` dates from the Morning document itself.)
 Real `LedgerEventManager` + real `SessionManager`. No mocks — there is no
 external service on this path.
 
-Scope note: Phase 2 covers `הסכם` + `בנק`. The `חשבונית` synchronous-persistence
-path (which needs the `accounting_document_json` blob shape from a real Morning
-`create_*` response) is Phase 5 (US2), not here.
+Scope note: `הסכם` + `בנק` verdicts carry flat, model-mapped fields. A `חשבונית`
+verdict instead carries the whole Morning document JSON verbatim in
+`accounting_document_json` (identical whether DeniDin issued the document this
+turn or the background reconciliation sweep found a pre-existing one) and every
+persisted field is derived from that blob in code by
+`_expand_accounting_document_json` - see `TestInvoiceComplete`.
 """
 import json
 import inspect
@@ -258,6 +261,143 @@ class TestBankComplete:
 
         completing = _read_message(sm, session, completing_id)
         assert completing["ledger_event_ids"] == created
+
+
+_INVOICE_DOC_JSON = {
+    "display_number": "60777",
+    "internal_morning_id": "doc-abc-123",
+    "type": 320,
+    "type_name": "חשבונית מס / קבלה",
+    "status": "closed", "status_code": 2, "status_label": "שולם",
+    "client_name": "דנה כהן",
+    "description": "ייעוץ משפטי",
+    "amount": 1200.0,
+    "amount_excl_vat": 1025.64, "vat_amount": 174.36, "vat_rate": 17,
+    "currency": "ILS",
+    "document_date": "2026-07-15", "due_date": None,
+    # the document's OWN creation instant - later (10:00) than the completing
+    # message (09:30) so the two are told apart.
+    "creation_date": "2026-07-15T10:00:00+03:00",
+    "payment": {
+        "method": "העברה בנקאית", "type": 4, "date": "2026-07-15",
+        "amount": 1200.0, "bank_number": None, "bank_branch": None, "bank_account": None,
+    },
+    "line_items": [
+        {"description": "ייעוץ משפטי", "quantity": 1, "price": 1200.0, "amount": 1200.0},
+    ],
+    "linked_document": None,
+}
+
+
+_NO_BLOB = object()
+
+
+def _invoice_verdict(trigger_id, doc=None, **event_overrides):
+    """A `חשבונית` verdict as the recognition step now emits it: the entire
+    Morning document JSON copied verbatim into `accounting_document_json`, and
+    nothing else (`component_count` 0, `components` []) - the SAME shape the
+    reconciliation sweep produces. `event_subtype` is a placeholder the code
+    overwrites from the document's real `type_name`."""
+    if doc is None:
+        blob = json.dumps(_INVOICE_DOC_JSON, ensure_ascii=False)
+    elif doc is _NO_BLOB:
+        blob = None
+    else:
+        blob = json.dumps(doc, ensure_ascii=False)
+    event = {
+        "source_type": "חשבונית",
+        "event_subtype": "הפקה",
+        "accounting_document_json": blob,
+        "component_count": 0,
+        "components": [],
+    }
+    event.update(event_overrides)
+    return {"verdict": "complete", "trigger_message_id": trigger_id, "event": event}
+
+
+class TestInvoiceComplete:
+    """`persist_recognized_event` for `source_type=חשבונית` - the branch that
+    delegates straight to `add_ledger_events_from_call` (the same path the
+    reconciliation sweep's `_handle_accounting_reconciliation_capture` uses),
+    bypassing every `הסכם`/`בנק`-shaped step."""
+
+    def test_single_record_with_every_field_derived_from_the_blob(self, lem, sm):
+        session, trigger_id, completing_id = _build_session(
+            sm, trigger_content="תפיק לדנה כהן חשבונית מס-קבלה על 1200 כולל מעמ")
+
+        created = lem.persist_recognized_event(
+            _invoice_verdict(trigger_id), session, completing_id)
+
+        assert len(created) == 1
+        (record,) = _load_events(lem)
+        assert record["source_type"] == "חשבונית"
+        assert record["event_id"].startswith("H")
+        # code-derived from the blob, NOT from the model's placeholder / prose
+        assert record["event_subtype"] == "חשבונית מס / קבלה"        # <- type_name
+        assert record["accounting_document_display_number"] == "60777"
+        assert record["client_name"] == "דנה כהן"
+        assert record["description"] == "ייעוץ משפטי"                 # first line item
+        assert record["amount"] == 1200
+        assert record["vat_status"] == "כולל"                        # _derive_vat_status(320)
+        assert "2026" in record["txn_date"]                          # <- payment.date
+        assert record["accounting_document_payment_method"] == "העברה בנקאית"
+        assert record["accounting_document_status_code"] == 2
+        assert record["accounting_document_status_label"] == "שולם"
+
+    def test_event_datetime_is_the_documents_creation_date_not_the_completing_message(self, lem, sm):
+        session, trigger_id, completing_id = _build_session(sm)
+
+        lem.persist_recognized_event(_invoice_verdict(trigger_id), session, completing_id)
+
+        (record,) = _load_events(lem)
+        # 10:00 (the document) - NOT 09:30 (EXPECTED_EVENT_DATETIME, the completing
+        # message) and NOT now.
+        assert record["event_datetime"] == "15/07/2026 10:00"
+        assert record["event_datetime"] != EXPECTED_EVENT_DATETIME
+        assert record["captured_at"].startswith(now_local().strftime("%d/%m/%Y"))
+
+    def test_no_agreement_id_no_component_id_no_incomplete_marker(self, lem, sm):
+        session, trigger_id, completing_id = _build_session(sm)
+
+        lem.persist_recognized_event(_invoice_verdict(trigger_id), session, completing_id)
+
+        (record,) = _load_events(lem)
+        # none of the הסכם/בנק machinery ran
+        assert record["agreement_id"] is None
+        assert record["component_id"] is None
+        # _mandatory_field_gaps must NOT have fired on the (absent) flat fields
+        assert "רישום חלקי" not in (record["description"] or "")
+
+    def test_back_link_lands_on_the_completing_message(self, lem, sm):
+        session, trigger_id, completing_id = _build_session(sm)
+
+        created = lem.persist_recognized_event(
+            _invoice_verdict(trigger_id), session, completing_id)
+
+        assert _read_message(sm, session, completing_id)["ledger_event_ids"] == created
+        assert _read_message(sm, session, trigger_id)["ledger_event_ids"] == []
+
+    def test_same_document_same_day_is_deduped(self, lem, sm):
+        session, trigger_id, completing_id = _build_session(sm)
+
+        first = lem.persist_recognized_event(
+            _invoice_verdict(trigger_id), session, completing_id)
+        again = lem.persist_recognized_event(
+            _invoice_verdict(trigger_id), session, completing_id)
+
+        assert len(first) == 1
+        assert again == []
+        assert len(_load_events(lem)) == 1
+
+    def test_verdict_without_a_blob_persists_nothing(self, lem, sm):
+        session, trigger_id, completing_id = _build_session(sm)
+
+        created = lem.persist_recognized_event(
+            _invoice_verdict(trigger_id, doc=_NO_BLOB), session, completing_id)
+
+        assert created == []
+        assert _events_on_disk(lem) == []
+        assert _read_message(sm, session, completing_id)["ledger_event_ids"] == []
 
 
 class TestDeclinedAndNone:

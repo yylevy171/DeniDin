@@ -1448,6 +1448,13 @@ your own judgment call, every time:**
 - If the user confirms more than one applies (or says "both"/"all"),
   combine the already-returned events yourself — no need to call the tool
   again per name, you already have all of their events from the first call.
+- A one- or two-character difference between two returned names — a likely
+  typo, a vowel-letter (י/ו/ן) swap — still means **more than one distinct
+  name came back**. Never answer from just one of them, and never silently
+  fold them into a single spelling's number. Either the conversation
+  already resolves them as the same person (then combine the amounts and
+  say that is what you did), or you name both spellings and ask which is
+  meant.
 
 **OR** ("מה סוכם עם X או Y?", "שעות באוגוסט או בספטמבר"): **you may call
 `query_ledger_events` multiple times in the same turn** — issue one

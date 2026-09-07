@@ -1409,14 +1409,14 @@ class LedgerEventManager:
             ):
                 if _blank(event.get(key)):
                     gaps.append(label)
-        elif source_type == "חשבונית":
-            for key, label in (
-                ("client_name", "שם לקוח"), ("txn_date", "תאריך"),
-                ("event_subtype", "סוג מסמך"), ("amount", "סכום"),
-                ("accounting_document_display_number", "מספר מסמך"),
-            ):
-                if _blank(event.get(key)):
-                    gaps.append(label)
+        # source_type == "חשבונית" is intentionally not handled here: a חשבונית
+        # verdict carries a verbatim accounting_document_json blob, not flat
+        # top-level fields, so this check (which reads event.get("txn_date") etc.)
+        # would always spuriously flag it. persist_recognized_event routes חשבונית
+        # straight to add_ledger_events_from_call, and completeness there is a
+        # property of the Morning document itself, enforced inside
+        # _expand_accounting_document_json (a missing/garbled payload is refused
+        # outright, never half-persisted).
         return gaps
 
     @staticmethod
@@ -1582,14 +1582,50 @@ class LedgerEventManager:
             f"trigger_message_id={trigger_message_id!r} time={now_iso}"
         )
 
-        if source_type == "חשבונית" and not event.get("_source_creation_ts_raw"):
-            # Feature 069 synchronous חשבונית capture: the recognition verdict is
-            # flat (text-only, no accounting_document_json blob), so its txn_date
-            # IS the Morning document's creation date. Feed it through the same
-            # `_source_creation_ts_raw` slot Feature 025's reconciliation uses, so
-            # event_datetime lands on the document's real date and the
-            # (date, display_number) dedup key matches a later reconciliation pass.
-            event["_source_creation_ts_raw"] = event.get("txn_date")
+        if source_type == "חשבונית":
+            # A חשבונית event - whether the operator had DeniDin issue the Morning
+            # document this turn, or the background reconciliation sweep found a
+            # pre-existing one - is captured by ONE mechanism: the model copied the
+            # whole Morning document JSON verbatim into accounting_document_json, and
+            # add_ledger_event (-> _expand_accounting_document_json) derives every
+            # field from it in code, including event_datetime from the document's own
+            # creation_date and the (date, display_number) dedup guard. None of the
+            # הסכם/בנק-shaped handling below applies - not the agreement_id slug, not
+            # the component explosion, not the content-fingerprint dedup, and not
+            # _mandatory_field_gaps (which reads flat top-level fields this verdict
+            # deliberately does not carry - they live inside the blob until expansion).
+            # This is the same delegation _handle_accounting_reconciliation_capture
+            # does for the sweep; the only difference is the starting point. No
+            # reference_override (a linked document is carried inside the blob and
+            # resolved by _expand_accounting_document_json). message_timestamp is
+            # the completing message's epoch - a harmless fallback only, since
+            # event_datetime for a חשבונית comes from the document's own
+            # creation_date; the sweep has no source message and passes None.
+            if not event.get("accounting_document_json"):
+                logger.error(
+                    f"[069] חשבונית verdict for session {session.session_id} carries no "
+                    f"accounting_document_json - refusing to persist a half-empty record "
+                    f"rather than guessing the document's fields (trigger_message_id="
+                    f"{trigger_message_id!r})"
+                )
+                return []
+            created = self.add_ledger_events_from_call(
+                session_id=session.session_id,
+                call_arguments=event,
+                message_id=completing_message_id,
+                message_timestamp=epoch,
+            )
+            for event_id in created:
+                logger.info(
+                    f"[069] ledger event written: type=invoice event_id={event_id} "
+                    f"session={session.session_id} chat={session.whatsapp_chat} "
+                    f"time={now_local().isoformat()}"
+                )
+            if created and self.session_manager is not None:
+                self.session_manager.append_ledger_event_ids(
+                    session, completing_message_id, created
+                )
+            return created
 
         if source_type == "הסכם":
             label = event.get("description") or "הסכם"

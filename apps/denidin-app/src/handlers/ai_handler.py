@@ -785,30 +785,14 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
             "accounting_document_json": {
                 "type": ["string", "null"],
                 "description": (
-                    "ONLY for a reconciliation sweep of a pre-existing Morning document "
-                    "(the round has NO create_* call - you were handed a document JSON to "
-                    "reconcile): the document's ENTIRE JSON object, copied verbatim and "
-                    "unmodified (the whole {...} object as a single string) - every value "
-                    "is read out of it by code. For a SYNCHRONOUS capture (a create_* call "
-                    "succeeded THIS round) leave this null and map the real response into "
-                    "the flat fields instead (client_name, accounting_document_display_number, "
-                    "event_subtype, amount, and per-component description / vat_status / "
-                    "txn_date) - a create response is often sparse (no vat_amount, no dates) "
-                    "and the blob path would overwrite your correct mapping with its nulls. "
-                    "ALWAYS null for הסכם/בנק."
-                ),
-            },
-            "accounting_document_display_number": {
-                "type": ["string", "null"],
-                "description": (
-                    "For source_type=חשבונית ONLY, on a SYNCHRONOUS capture (a create_* "
-                    "Morning call succeeded THIS round): the document's real Morning "
-                    "display number, copied verbatim from the create_* response "
-                    "('display_number'). This is the whole point of the synchronous "
-                    "capture - never leave it null when the response carried one. "
-                    "ALWAYS null for source_type=הסכם/בנק, and null for a חשבונית "
-                    "reconciliation blob (that number is read out of "
-                    "accounting_document_json by code instead)."
+                    "Only for source_type=חשבונית: the document's ENTIRE JSON object, "
+                    "copied verbatim and unmodified from the tool output you were given "
+                    "(the whole {...} object for that one document, as a single string) - "
+                    "the background reconciliation sweep's document listing, OR the "
+                    "successful create_* result from the turn the operator had you issue "
+                    "the document. Do not summarise it, reorder it, translate it, drop "
+                    "fields, or fill anything in yourself - every value is read out of "
+                    "this JSON by code. ALWAYS null for הסכם/בנק."
                 ),
             },
             "component_count": {
@@ -929,7 +913,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
         "required": [
             "source_type", "event_subtype", "client_name", "payer_name", "agreement_id",
             "reference_hint", "bank_number", "bank_branch", "bank_account",
-            "accounting_document_json", "accounting_document_display_number",
+            "accounting_document_json",
             "component_count", "components",
         ],
         "additionalProperties": False,

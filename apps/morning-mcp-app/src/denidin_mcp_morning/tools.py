@@ -320,55 +320,38 @@ def _with_amount_mismatch(invoice_json: str, requested: float, stored: Optional[
     return json.dumps(doc, ensure_ascii=False)
 
 
-def _read_back_full_document(client: MorningClient, doc_id: str) -> Optional[dict]:
-    """Read the COMPLETE just-created document back from Morning.
+def _created_document_result(client: MorningClient, doc_id: str, approved_amount: float) -> str:
+    """Turn a just-created document into its JSON tool result.
 
-    `POST /documents` returns only a minimal echo (id/number/client/lang/
-    signed/type/url/vatRate - probed live 2026-08-09), with no amount, dates,
-    VAT breakdown, payment array or line items. `GET /documents/{id}` returns
-    the full document, exactly what `format_invoice_json` needs so every field
-    it exposes is real rather than silently null (create_credit_note /
-    create_receipt / create_combo_document_as_reference already do this;
-    2026-09-06 brought create_invoice / create_transaction_account /
-    create_combo_document into line via this shared helper).
+    Every document-returning path in this app funnels through the SAME three
+    steps: `client.get_invoice(id)` (GET /documents/{id}) -> `Invoice.model_validate`
+    -> `format_invoice_json`. `get_invoice_details`, `list_invoices(include_full_details=True)`
+    (per document), and the reference create_* tools (`create_credit_note` /
+    `create_receipt` / `create_combo_document_as_reference`) all already do
+    exactly this; this helper is where `create_invoice` /
+    `create_transaction_account` / `create_combo_document` join them (they used
+    to hand-build a sparse `Invoice` from the `POST /documents` echo - which
+    carries only id/number/client/type - so their result came back with dates,
+    payment, line items and the VAT breakdown all silently null).
 
-    Never raises: a failed read-back must not turn a successful creation into
-    an error - the caller falls back to the minimal echo.
+    One authoritative shape, one serializer, for every path - so a data-model
+    change (a new payment method, a new field) is made once in the `Invoice`
+    model + `format_invoice_json` and is reflected everywhere.
+
+    The bugfix-028-A4 amount-mismatch guard is applied on top, and ONLY here:
+    these three tools take an operator-approved `amount`, so if Morning's
+    stored total disagrees with it both numbers are surfaced. The reference
+    create_* tools derive their amount from the original document, so there is
+    nothing operator-approved to disagree with and they omit the guard.
+
+    A failed re-fetch propagates (same as `create_credit_note` et al.) rather
+    than being masked with a stub - the created document's real state must not
+    be guessed at.
     """
-    if not doc_id:
-        return None
-    try:
-        return client.get_invoice(doc_id)
-    except Exception as exc:  # noqa: BLE001 - failsafe: a read-back must never mask a real creation
-        logger.warning(f"Could not read back document {doc_id} for full detail: {exc}")
-        return None
-
-
-def _finalize_created_document(
-    client: MorningClient,
-    doc_id: str,
-    requested_amount: float,
-    fallback_invoice: Invoice,
-) -> str:
-    """Shared tail for create_invoice / create_transaction_account /
-    create_combo_document: re-fetch the full document and format THAT, so the
-    JSON result carries every real field. On a failed read-back, fall back to
-    `fallback_invoice` (the minimal echo the caller already built) rather than
-    erroring - a created document must still be reported.
-
-    The amount-mismatch guard (bugfix-028 A4) is preserved either way: it
-    compares `requested_amount` against what Morning actually stored."""
-    full = _read_back_full_document(client, doc_id)
-    if full is not None:
-        try:
-            invoice = Invoice.model_validate(full)
-        except ValidationError as exc:
-            logger.warning(f"Full read-back of {doc_id} did not validate ({exc}); using minimal echo")
-            invoice = fallback_invoice
-    else:
-        invoice = fallback_invoice
-    stored_total = invoice.total_amount if invoice.total_amount is not None else None
-    return _with_amount_mismatch(format_invoice_json(invoice), requested_amount, stored_total)
+    invoice = Invoice.model_validate(client.get_invoice(doc_id))
+    return _with_amount_mismatch(
+        format_invoice_json(invoice), approved_amount, invoice.total_amount
+    )
 
 
 def _build_transaction_account_payload(
@@ -503,20 +486,7 @@ def create_transaction_account(
         or ""
     )
 
-    return _finalize_created_document(
-        client, doc_id, amount,
-        fallback_invoice=Invoice(
-            id=doc_id,
-            number=response.get("number"),
-            client_name=client_name,
-            amount=amount,
-            total_amount=None,
-            currency=response.get("currency", "ILS"),
-            due_date=due_date,
-            status=response.get("status"),
-            type=_TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
-        ),
-    )
+    return _created_document_result(client, doc_id, amount)
 
 
 def _build_combo_document_core_payload(
@@ -748,19 +718,7 @@ def create_combo_document(
         or ""
     )
 
-    return _finalize_created_document(
-        client, doc_id, amount,
-        fallback_invoice=Invoice(
-            id=doc_id,
-            number=response.get("number"),
-            client_name=client_name,
-            amount=amount,
-            total_amount=None,
-            currency=response.get("currency", "ILS"),
-            status=response.get("status"),
-            type=_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
-        ),
-    )
+    return _created_document_result(client, doc_id, amount)
 
 
 def create_invoice(
@@ -833,19 +791,7 @@ def create_invoice(
         or ""
     )
 
-    return _finalize_created_document(
-        client, internal_morning_id, amount,
-        fallback_invoice=Invoice(
-            id=internal_morning_id,
-            number=response.get("number"),
-            client_name=client_name,
-            amount=amount,
-            total_amount=None,
-            currency=response.get("currency", "ILS"),
-            due_date=due_date,
-            status=response.get("status"),
-        ),
-    )
+    return _created_document_result(client, internal_morning_id, amount)
 
 
 def _map_list_invoices_filters(

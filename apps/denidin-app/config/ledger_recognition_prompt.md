@@ -130,7 +130,7 @@ you.
 |---|---|---|---|
 | `הסכם` | resolved `client_name` or store-anyway text (you) · `description` (you) · ≥1 `components` entry **OR** an hours value (you) | per component: `amount` > 0 **OR** `percent` (you, iff that component is monetary) | `payer_name`; per-component `trigger_condition` / `percent` / `percent_base` / `hours` / `hourly_rate`; `reference` / `reference_hint` |
 | `בנק` | resolved `client_name` or store-anyway text (you) · `txn_date` (you) · `amount` (you) · `description` (you) · `vat_status` = `כולל` (you — always) | — | `bank_number` / `bank_branch` / `bank_account`; `reference` / `reference_hint` |
-| `חשבונית` | `client_name` (by construction) · `txn_date` · `event_subtype` (= the document type) · `amount` · `accounting_document_display_number` — **all from the real Morning `create_*` response** | — | every other `accounting_document_*` field from the response; `reference` / `reference_hint` |
+| `חשבונית` | `accounting_document_json` = the document's whole JSON object, copied verbatim (you) — from the Morning `create_*` result, or the reconciliation sweep's listing. **Nothing else** — code derives the display number, `event_subtype`, `amount`, `txn_date`, VAT, status, payment method and client from that JSON. | — | `reference` / `reference_hint` |
 
 **Always code-minted — never provide, for any type:** `event_id`, `event_datetime`,
 `captured_at`, `schema_version`, `session_id`, `agreement_id`, `component_id`,
@@ -141,18 +141,18 @@ you.
 > marker in `description`), never dropped. Your job is still to only report `complete` when
 > you believe it genuinely is — the code check is a backstop, not a licence to guess.
 
-## `חשבונית` — synchronous capture from a Morning document
+## `חשבונית` — capturing a Morning document created this turn
 
 When the window's MCP calls contain a **successful** `create_invoice` / `create_combo_document`
 / `create_receipt` / `create_credit_note` / `create_combo_document_as_reference`, that
-document IS a complete `חשבונית` event this round. Populate the **flat** `event` fields from
-the **real response in that tool result** — `client_name`, `accounting_document_display_number`,
-`event_subtype` (the document type), `amount`, and per-component `description` / `vat_status` /
-`txn_date` — never re-derived from the operator's or your own prose. If prose and response
-disagree, the response wins. **Leave `accounting_document_json` null here** — that field is
-only for reconciling a pre-existing document (a round with no `create_*` call); using it for a
-synchronous create makes code re-derive every field from a response that is often sparse
-(no `vat_amount`, no dates) and lose what you correctly mapped.
+document IS a complete `חשבונית` event this round. Capture it **exactly as the background
+reconciliation sweep captures a pre-existing document**: copy the **entire** JSON object from
+that tool's result — the whole `{…}`, verbatim, every field — into `accounting_document_json`,
+and set nothing else (`component_count` = 0, `components` = []). Do not summarise, reorder,
+translate, drop fields, or fill anything in from the operator's or your own prose. Code reads
+the display number, document type (`event_subtype`), amount, dates, VAT status, payment
+method, status and client straight out of that JSON — the `create_*` result carries the full
+document, identical in shape to what the reconciliation listing returns.
 
 ## Amendments, corrections, cancellations
 

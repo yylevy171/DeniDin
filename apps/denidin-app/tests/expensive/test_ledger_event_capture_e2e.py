@@ -578,6 +578,7 @@ class TestLedgerEventCaptureE2E:
 
         chat_id = self._godfather_chat_id(config)
         self._clear_chat_test_data(denidin_app, chat_id)
+        created_320_number = ""  # set once the run's own 320 exists (diff3 cleanup)
         try:
             # Seed FIRST - Feature 069 requires the client resolved before the
             # בנק event can be persisted at all (not just before the document).
@@ -657,11 +658,49 @@ class TestLedgerEventCaptureE2E:
                 )  # "yes"
                 seen_texts.append(approve_reply or "")
 
+            # F2-a (2026-09-07): the Morning sandbox accumulates a signed
+            # type-320 for this fixed payer (אסתר אסולין) + amount (554) every
+            # run, and signed tax docs can NEVER be deleted - so once several
+            # exist the model correctly stops and asks the operator to confirm a
+            # DUPLICATE rather than issuing blindly. That is right behaviour, not
+            # a failure. If we reached here with no create yet, give the explicit
+            # go-ahead a real operator would and approve once more.
+            if not combo_calls:
+                dup_reply, last_ai = _send_turn(
+                    chat_id,
+                    "כן, אני יודעת שכבר קיימות חשבוניות דומות. תפיק חשבונית "
+                    "מס-קבלה חדשה ונפרדת עבור ההפקדה הזו בכל זאת.",
+                    id_prefix="LEDGER_E2E_F4_DUP_OK",
+                )  # "yes, I know similar invoices exist - issue a new separate 320 anyway"
+                seen_texts.append(dup_reply or "")
+                for _ in range(2):
+                    combo_calls = _calls_for(last_ai, "create_combo_document")
+                    if combo_calls:
+                        break
+                    assert not _calls_for(last_ai, "create_invoice"), (
+                        f"A1: booked as a plain tax invoice (305). "
+                        f"Calls: {last_ai.mcp_calls if last_ai else None!r}"
+                    )
+                    approve_reply, last_ai = _send_turn(
+                        chat_id, "כן", id_prefix="LEDGER_E2E_F4_DUP_APPROVE",
+                    )
+                    seen_texts.append(approve_reply or "")
+
             assert combo_calls, (
                 f"A1: expected a חשבונית מס/קבלה (320) for an already-received payment "
-                f"after 3 approval rounds. Last calls: {last_ai.mcp_calls if last_ai else None!r}"
+                f"after the approval + explicit-duplicate-override rounds. "
+                f"Last calls: {last_ai.mcp_calls if last_ai else None!r}"
             )
             assert combo_calls[0]["error"] is None, f"creation failed: {combo_calls[0]!r}"
+
+            # diff3 (2026-09-07): remember the 320 this run issued so the finally
+            # block can credit-note it and leave Morning net-clean. Only ever
+            # acts on a genuinely fresh, valid Morning document number.
+            try:
+                _created_320 = json.loads(combo_calls[0].get("output") or "{}")
+            except (TypeError, ValueError):
+                _created_320 = {}
+            created_320_number = str(_created_320.get("display_number") or "").strip()
 
             approval_text = "\n".join(seen_texts)
             assert BANK_IMAGE_PAYER_SURNAME in approval_text, (
@@ -736,7 +775,45 @@ class TestLedgerEventCaptureE2E:
                     f"block: {doc_obj!r}"
                 )
         finally:
+            # diff3 (2026-09-07): leave Morning net-clean - a full credit note
+            # (type 330) for the 320 this run issued. Signed tax docs can never
+            # be deleted, so a linked credit note is the only lawful reversal.
+            # Best-effort and only on a real fresh number; never masks the test
+            # result.
+            if created_320_number:
+                self._credit_note_just_created_document(chat_id, created_320_number)
             self._clear_chat_test_data(denidin_app, chat_id)
+
+    @staticmethod
+    def _credit_note_just_created_document(chat_id, display_number):
+        """diff3 cleanup helper: drive the running Morning MCP (via the model, the
+        same path the rest of this test uses) to issue a full credit note for the
+        just-created 320. Wrapped so any hiccup is logged, never raised - a
+        cleanup failure must not fail or error the test."""
+        from tests.billed.denidin_mcp_e2e_helpers import _calls_for, _send_turn
+        try:
+            _, ai = _send_turn(
+                chat_id,
+                f"תפיק זיכוי מלא (חשבונית זיכוי) עבור חשבונית מס-קבלה מספר "
+                f"{display_number} שיצרת עכשיו.",
+                id_prefix="LEDGER_E2E_F4_CLEANUP",
+            )  # "issue a full credit note for tax-invoice/receipt no. N you just created"
+            for _ in range(3):
+                if _calls_for(ai, "create_credit_note"):
+                    break
+                _, ai = _send_turn(chat_id, "כן", id_prefix="LEDGER_E2E_F4_CLEANUP_OK")
+            calls = _calls_for(ai, "create_credit_note")
+            if calls and calls[0].get("error") is None:
+                logger.info("F4 cleanup: credit-noted 320 #%s", display_number)
+            else:
+                logger.warning(
+                    "F4 cleanup: credit note for 320 #%s did not complete: %r",
+                    display_number, calls,
+                )
+        except Exception as exc:  # pylint: disable=broad-except - cleanup only
+            logger.warning(
+                "F4 cleanup for 320 #%s raised (ignored): %r", display_number, exc
+            )
 
     # ==================================================================
     # F5 - photographed 6-component agreement with camera glare on the
