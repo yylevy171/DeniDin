@@ -9,6 +9,8 @@ config/config.test.json
 dev_data/
 data/
 logs/
+test_data/
+player_data/
 
 # Local dev/VCS cruft.
 .git/

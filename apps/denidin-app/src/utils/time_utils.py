@@ -31,7 +31,7 @@ datetime.
 byte-identical twin of this module, same as `logger.py` - the two apps must not
 disagree about what time it is.
 """
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional, Union
 from zoneinfo import ZoneInfo
 
@@ -67,3 +67,39 @@ def local_from_timestamp(epoch_seconds: Union[int, float]) -> datetime:
 def local_isoformat(value: Optional[datetime] = None) -> str:
     """ISO-8601 in local time, always carrying the real offset. Defaults to now."""
     return (value or now_local()).astimezone(LOCAL_TZ).isoformat()
+
+
+# --- Day-bucketing helpers (Feature 070) -------------------------------------
+# The rolling-window builder and the nightly daily-summary roll MUST agree on
+# "which Israel-local calendar day does this instant belong to". These three
+# helpers are the single implementation both use, so a message can never be
+# in the window AND summarised, or in neither (REQ-MEM-003, spec Edge Cases).
+# A pre-2026-08-10 message with a `+00:00` offset buckets correctly because
+# `to_local` converts before `.date()` is taken.
+
+def local_calendar_date(value: datetime) -> date:
+    """The Israel-local calendar date of an instant. Total function - a naive
+    input is treated as already-local (per `to_local`), an aware input is
+    converted first."""
+    return to_local(value).date()
+
+
+def start_of_local_day(value: datetime) -> datetime:
+    """Aware Asia/Jerusalem datetime at 00:00:00 of `local_calendar_date(value)`.
+
+    Midnight is unambiguous on both DST-transition days (the spring-forward gap
+    is at 02:00, the fall-back repeat is at 02:00), so no `fold` handling is
+    needed here.
+    """
+    return datetime.combine(local_calendar_date(value), time.min, tzinfo=LOCAL_TZ)
+
+
+def n_calendar_days_ago(n: int, now: Optional[datetime] = None) -> date:
+    """The Israel-local calendar date `n` days before today (or before `now`).
+
+    "The last 14 calendar days" (inclusive of today) is every message whose
+    `local_calendar_date` is `>= n_calendar_days_ago(13)`. The nightly roll's
+    "yesterday" is `n_calendar_days_ago(1)`.
+    """
+    base = local_calendar_date(now or now_local())
+    return base - timedelta(days=n)

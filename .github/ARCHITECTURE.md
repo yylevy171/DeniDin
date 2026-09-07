@@ -1,10 +1,12 @@
 # DeniDin Architecture
 
-**Version**: 1.1 | **Last Updated**: 2026-07-07 | **Status**: Production
+**Version**: 1.2 | **Last Updated**: 2026-09-03 | **Status**: Production
 
 ## Overview
 
-DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture with role-based access control. The system processes messages through a pipeline that includes session management, AI response generation, semantic memory recall, and automated background cleanup.
+DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture with role-based access control. The system processes messages through a pipeline that includes session management, AI response generation, semantic memory recall, and a nightly daily-summary roll.
+
+**Memory model (Feature 070, 2026-09-03)**: there is exactly **one long-lived `Session` per chat** — it never expires and is never recreated (the chat→session mapping is authoritative in `chat_index.db`). Each turn reads a **rolling 14-day verbatim window** (Israel-local calendar days) capped read-only by the acting role's token limit; nothing is pruned at write time. A nightly **02:00 Israel-local roll** writes one `daily_summary` per (chat, date) into ChromaDB (claim-first two-phase, tracked in `roll_markers.db`) and physically **moves** (never deletes) out-of-window message files into `{session_dir}/archived/`. The pre-070 24-hour expiry + hourly `cleanup_service` transfer cycle is retired.
 
 **Repo structure**: this document describes `apps/denidin-app/`, one of two independently deployable apps in this monorepo under `apps/`. The other, `apps/morning-mcp-app/`, is a much smaller standalone Morning/Green Invoice API client — see "Sibling App: morning-mcp-app" near the end of this document. All `src/...` paths below are relative to `apps/denidin-app/`.
 
@@ -45,11 +47,11 @@ DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture wit
 │                        ▼                                         │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │           Session Manager (Tier 1 Memory)                 │  │
-│  │  - UUID-based session tracking                            │  │
-│  │  - Message history persistence (JSON)                     │  │
-│  │  - Token counting & pruning                               │  │
-│  │  - 24-hour expiration tracking                            │  │
-│  │  - Session archival (expired/YYYY-MM-DD/)                 │  │
+│  │  - One long-lived session per chat (never expires)        │  │
+│  │  - chat_index.db: durable chat -> session mapping         │  │
+│  │  - Message history persistence (JSON, one file/message)   │  │
+│  │  - Rolling 14-day window; read-only per-turn token cap    │  │
+│  │  - Nightly archive of out-of-window msgs -> archived/     │  │
 │  └─────────────────────┬─────────────────────────────────────┘  │
 │                        │                                         │
 │                        ▼                                         │
@@ -83,15 +85,15 @@ DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture wit
 │                                └──────────────────────────┘    │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │              Background Cleanup Thread                    │  │
+│  │        Nightly Daily-Summary Roll (APScheduler)          │  │
+│  │        src/services/daily_summary_roll_service.py        │  │
 │  │                                                           │  │
-│  │  Monitors expired sessions (hourly)                      │  │
-│  │                                                           │  │
-│  │  4-step cleanup:                                         │  │
-│  │  1. Archive files                                        │  │
-│  │  2. Transfer to ChromaDB                                 │  │
-│  │  3. Remove from index                                    │  │
-│  │  4. Mark transferred                                     │  │
+│  │  CronTrigger 02:00 Israel-local + startup catch-up sweep │  │
+│  │  Per (chat, out-of-window date):                         │  │
+│  │  1. Claim marker in roll_markers.db (claimed)            │  │
+│  │  2. Summarize the day's msgs -> ChromaDB daily_summary   │  │
+│  │  3. Commit marker (committed)                            │  │
+│  │  4. Physically move the day's msg files -> archived/     │  │
 │  └──────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -142,27 +144,40 @@ Blocked (lowest)
 
 ### 3. Session Manager (`src/managers/session_manager.py`)
 
-**Tier 1 Memory - Short-term conversation history**
+**Tier 1 Memory - the rolling verbatim conversation window (Feature 070)**
 
 **Responsibilities:**
-- Session lifecycle management (create, load, save, archive)
-- Message persistence in JSON format
-- Token counting and pruning
-- Expiration detection (24 hours from last activity)
-- Conversation history retrieval
+- One long-lived session per chat: create-once, load, save. **Never expires, never recreated.**
+- `chat_index.db` (SQLite) — the authoritative `chat → session_id` map; the in-memory
+  `chat_to_session` dict is a read-through cache. Reconciled against every session dir on disk
+  at construction (`INSERT OR IGNORE`, deletes nothing; bugfix-044).
+- Message persistence in JSON, one file per message under `messages/`.
+- `get_rolling_window()` — the per-turn context read: every in-window message (Israel-local
+  calendar date ≥ `window_days-1` days ago, default 14), oldest-first, then capped **read-only**
+  newest→oldest to the acting role's `max_tokens_by_role` limit (the single newest message is
+  always kept). **No write-time pruning** — `add_message` only ever appends.
+- Tolerant load (`_session_from_dict`, bugfix-035 H2): any persisted key the current `Session`
+  dataclass doesn't have is dropped with one WARNING, never a `TypeError` (e.g. the retired
+  Feature-024 `pending_ledger_events`).
+- `archive_aged_and_backstopped_messages()` — invoked by the nightly roll only; **moves**
+  (`Path.rename`, never `unlink`) out-of-window / beyond-backstop message files into
+  `archived/`. Invariant: `message_counter == len(message_ids) + len(archived_message_ids)`.
 
 **Storage Structure:**
 ```
 data/sessions/
+├── chat_index.db                 # durable chat -> session_id map (bugfix-044)
+├── roll_markers.db               # nightly-roll claim/commit markers, PK(chat, date)
 ├── {session_id}/
-│   ├── session.json          # Session metadata
-│   └── messages/
-│       ├── {msg_id_1}.json
-│       ├── {msg_id_2}.json
+│   ├── session.json              # Session metadata
+│   ├── messages/
+│   │   ├── {msg_id_1}.json        # in-window (live) messages
+│   │   └── ...
+│   └── archived/
+│       ├── {msg_id_k}.json        # physically moved out of the window by the roll
 │       └── ...
-└── expired/
-    └── YYYY-MM-DD/
-        └── {session_id}/     # Archived sessions
+└── expired/                       # legacy only — pre-070 archived sessions, still read on load
+    └── YYYY-MM-DD/{session_id}/
 ```
 
 **Session Metadata:**
@@ -171,14 +186,16 @@ data/sessions/
   "session_id": "uuid",
   "whatsapp_chat": "phone@c.us",
   "message_ids": ["uuid1", "uuid2"],
-  "message_counter": 10,
+  "archived_message_ids": ["uuid0"],
+  "message_counter": 3,
   "created_at": "ISO-8601",
   "last_active": "ISO-8601",
   "total_tokens": 1500,
-  "transferred_to_longterm": false,
   "storage_path": "path/to/session"
 }
 ```
+`transferred_to_longterm` is still accepted on load (dead field — an old session.json that
+carries it loads without a warning) but nothing reads or writes it any more.
 
 ### 4. Memory Manager (`src/managers/memory_manager.py`)
 
@@ -200,6 +217,19 @@ ChromaDB Collections:
 ├── memory_system_context            # Global system context
 └── memory_global_client_context     # Global client context
 ```
+
+**Per-chat collection naming (`src/managers/memory_collections.py`, `collection_name_for_chat`,
+bugfix-035 H1)**: a chat's daily summaries and session summaries live in a collection derived
+from the chat id — a `@g.us` group id is sanitized (ChromaDB forbids some characters and caps
+length) so a group no longer silently collides with, or fails to create, its collection.
+
+**`daily_summary` records (Feature 070)**: the nightly roll writes one per (chat, date) via the
+sanitizing `MemoryManager.remember()` path, with metadata `{type: "daily_summary", chat, date}`.
+The per-turn conversational recall (`recall_with_rbac_filter`, `top_k =
+memory.longterm.daily_summary_top_k`, default 10) surfaces these alongside older
+`session_summary` records; matches are appended to `instructions` under a
+`RECALLED MEMORIES` block. Re-rolling a day overwrites (`collection.delete(where=…)` then
+re-add) — never duplicates.
 
 **Memory Document Structure:**
 ```json
@@ -254,15 +284,16 @@ are genuinely ambiguous, since they carry no offset at all.
 
 **Processing Flow:**
 1. Receive message + user context
-2. Recall relevant memories from MemoryManager
-3. Build system prompt with:
-   - Constitution rules
-   - Role-specific context
-   - Recalled memories (up to 5)
-   - Recent conversation history
+2. Recall relevant memories from MemoryManager (`daily_summary` + `session_summary` records,
+   `top_k = daily_summary_top_k`) — appended to `instructions` under `RECALLED MEMORIES`
+3. Build the OpenAI call:
+   - `instructions` = constitution (byte-stable prefix, prompt-cache eligible) + recalled
+     memories + `---` + today's Israel-local date
+   - input history = `SessionManager.get_rolling_window()` (the rolling 14-day verbatim
+     window, role-token-capped read-only), not the retired `get_conversation_history`
 4. Call OpenAI API
 5. Return response
-6. Store message in SessionManager
+6. Store message in SessionManager (append-only)
 
 **Retry Logic:**
 - API timeout: 3 retries, 2s wait
@@ -343,33 +374,29 @@ MediaExtractor (Abstract Base)
 - After: 1 AI call (combined) = $0.01-0.02 per document
 - Savings: ~50% cost reduction + faster processing
 
-### 7. Background Cleanup Thread (`src/services/cleanup_service.py`)
+### 7. Nightly Daily-Summary Roll (`src/services/daily_summary_roll_service.py`)
 
-**Responsibilities:**
-- Monitor for expired sessions (hourly)
-- Execute atomic cleanup process
-- Transfer sessions to long-term memory
-- Maintain system health
+Replaces the retired hourly `cleanup_service.py` transfer cycle. One `APScheduler`
+`BackgroundScheduler` with a single `CronTrigger` job at `memory.roll.hour` (default 02:00,
+Israel-local, wall-clock-aligned), plus `run_startup_daily_roll_sweep()` for boot catch-up
+(bounded by `memory.roll.catchup_lookback_days`, default 21). Wired in `denidin.py __main__`
+only. Same shape as `reminder_delivery_service.py` / `accounting_reconciliation_service.py`.
 
-**Cleanup Process (4 Steps):**
+**Per (chat, out-of-window date) — `_roll_one_chat_day`, claim-first two-phase:**
 
-1. **Archive**: Move session files to `expired/YYYY-MM-DD/`
-   - Update `storage_path` in session metadata
-   - Keep in active index (still queryable)
+1. **Claim**: `INSERT` a `claimed` row into `roll_markers.db` (`PRIMARY KEY(chat, date)`). A
+   row already `committed` is skipped; a `claimed` row older than
+   `memory.roll.stale_claim_minutes` (default 120) is re-takeable.
+2. **Summarize**: `summarizer.summarize_conversation()` over that day's messages — read from
+   **both** `messages/` and `archived/` — one OpenAI call; empty day → no summary, marker only.
+3. **Store**: `MemoryManager.remember()` (sanitizing path) writes one `daily_summary` record
+   into the chat's collection; `collection.delete(where=…)` first, so a re-roll overwrites.
+4. **Commit**: update the marker to `committed` with `message_count` + `summary_memory_id`.
+5. **Archive**: `SessionManager.archive_aged_and_backstopped_messages()` physically **moves**
+   (never deletes) that day's now-summarized message files into `{session_dir}/archived/`.
 
-2. **Transfer**: Send to ChromaDB via AIHandler
-   - Generate conversation summary
-   - Create embedding
-   - Store in appropriate collection
-   - Set `transferred_to_longterm = true`
-
-3. **Remove**: Delete from active session index
-   - Session no longer accessible via `get_session()`
-   - Files remain in expired archive
-
-4. **Mark**: Update session flags
-   - `transferred_to_longterm = true`
-   - Prevents duplicate transfers
+`roll_markers.db` row: `chat, date, status(claimed|committed), claimed_at, message_count,
+summary_memory_id, source(daily-roll|catch-up|migration)`.
 
 ## Data Flow
 
@@ -393,28 +420,26 @@ MediaExtractor (Abstract Base)
    d. Gets response
    ↓
 7. Session Manager:
-   a. Stores user message
-   b. Stores AI response
-   c. Updates token count
-   d. Prunes if needed
+   a. Appends user message (one JSON file)
+   b. Appends AI response (one JSON file)
+   c. Updates total_tokens (bookkeeping only — never triggers a drop)
    ↓
 8. WhatsApp Handler sends response to user
 ```
 
-### Session Lifecycle
+### Session & message lifecycle (Feature 070)
 
 ```
-Session Created (first message)
+Session created on the chat's first-ever message
    ↓
-Active (messages exchanged)
-   ↓ 24 hours of inactivity
-Expired (marked for cleanup)
-   ↓ Background thread runs
-Archived (moved to expired/YYYY-MM-DD/)
+Long-lived — one per chat, mapped in chat_index.db, NEVER expires, NEVER recreated
+   ↓  (each turn reads a rolling 14-day window, role-token-capped read-only)
+Nightly 02:00 roll, per out-of-window calendar day:
+   claim marker -> summarize -> write ChromaDB daily_summary -> commit marker
+   -> physically MOVE that day's message files: messages/ -> archived/
    ↓
-Transferred (sent to ChromaDB)
-   ↓
-Removed (deleted from active index)
+Message files live under archived/ forever (memory.archive_retention_days = 0, no pruner).
+The day is thereafter recalled semantically via its daily_summary.
 ```
 
 ## Configuration
@@ -432,8 +457,12 @@ Removed (deleted from active index)
   "poll_interval_seconds": 5,
   "data_root": "data",
   "enable_memory_system": true,
-  "session_ttl_hours": 24,
-  "cleanup_interval_seconds": 3600,
+  "memory": {
+    "session": { "window_days": 14, "max_tokens_by_role": { "client": 4000, "godfather": 100000 } },
+    "longterm": { "daily_summary_top_k": 10 },
+    "roll": { "hour": 2, "catchup_lookback_days": 21, "stale_claim_minutes": 120 },
+    "archive_retention_days": 0
+  },
   "roles": {
     "admin_phones": ["+1234567890"],
     "godfather_phones": ["+0987654321"],
@@ -462,9 +491,11 @@ Removed (deleted from active index)
 ### Error Recovery
 
 - **API Failures**: Automatic retry with exponential backoff
-- **Corrupt Sessions**: Create new session, log error
+- **Unknown persisted session field**: dropped on load with one WARNING, session still loads
+  (`_session_from_dict`, bugfix-035 H2) — a session is never recreated to recover
 - **Memory Failures**: Disable memory system, continue without recall
-- **ChromaDB Down**: Queue transfers, retry on next cycle
+- **Daily roll interrupted mid-run**: the `claimed` marker is left behind; a later sweep re-takes
+  it once older than `stale_claim_minutes` and re-rolls the day idempotently
 
 ## Performance Characteristics
 
@@ -544,14 +575,15 @@ See `apps/denidin-app/DEPLOYMENT.md` for the full systemd setup guide.
 1. Load configuration
 2. Initialize ChromaDB client
 3. Initialize OpenAI client
-4. Recover orphaned sessions
-5. Start background cleanup thread
-6. Start Green API webhook listener
+4. Reconcile `chat_index.db` against sessions on disk
+5. Run the startup daily-summary catch-up sweep (bounded by `catchup_lookback_days`)
+6. Start the nightly daily-summary roll scheduler
+7. Start Green API webhook listener
 
 ### Shutdown Sequence
 1. Stop accepting new messages
 2. Complete in-flight message processing
-3. Stop background cleanup thread
+3. Shut down the daily-summary roll scheduler
 4. Save all active sessions
 5. Close ChromaDB connection
 6. Exit cleanly

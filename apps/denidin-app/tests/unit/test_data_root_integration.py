@@ -46,8 +46,7 @@ class TestDataRootIntegration:
         # Create SessionManager with relative storage_dir
         # (Code should combine custom_data_root + "sessions")
         sm = SessionManager(
-            storage_dir=str(session_storage),
-            session_timeout_hours=24
+            storage_dir=str(session_storage)
         )
         
         # Verify storage directory was created in custom location
@@ -113,8 +112,7 @@ class TestDataRootIntegration:
         
         # Create SessionManager using config value
         sm = SessionManager(
-            storage_dir=config.memory['session']['storage_dir'],
-            session_timeout_hours=24
+            storage_dir=config.memory['session']['storage_dir']
         )
         
         # Verify SessionManager created storage in custom location
@@ -161,14 +159,12 @@ class TestDataRootIntegration:
         # Load configs and create SessionManagers
         cfg1 = AppConfiguration.from_file(str(config1_file))
         sm1 = SessionManager(
-            storage_dir=cfg1.memory['session']['storage_dir'],
-            session_timeout_hours=24
+            storage_dir=cfg1.memory['session']['storage_dir']
         )
         
         cfg2 = AppConfiguration.from_file(str(config2_file))
         sm2 = SessionManager(
-            storage_dir=cfg2.memory['session']['storage_dir'],
-            session_timeout_hours=24
+            storage_dir=cfg2.memory['session']['storage_dir']
         )
         
         # Verify different storage locations

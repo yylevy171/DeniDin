@@ -32,6 +32,23 @@ services:
   denidin-app-dev:
     build:
       context: ./apps/denidin-app
+    ports:
+      # 2026-09-06 (bugfix-043): host-published health_check_port so the
+      # host-level prober can actually reach GET /health - previously
+      # missing entirely, so the prober saw this service as permanently
+      # unreachable/unhealthy and soft-restarted it in an endless loop.
+      # Distinct from prod's mapping (8201:8100) so dev+prod can run
+      # concurrently without a host-port collision, same pattern as
+      # morning-mcp-app-dev/-prod below.
+      #
+      # 2026-09-07 fix: originally 8100:8100, which collides with an
+      # unrelated webapp-backend-dev container already published on host
+      # port 8100 on this same machine (confirmed live) - that container
+      # just happened to be stopped throughout this feature's dev testing,
+      # so the collision never actually surfaced until checked directly.
+      # Moved to 8200, verified genuinely free on both dev's Mac and prod's
+      # Windows box before choosing it.
+      - "8200:8100"
     volumes:
       - ./apps/denidin-app/config/config.dev.json:/app/config/config.json:ro
       - ./apps/denidin-app/config/runtime_constitution.md:/app/config/runtime_constitution.md:ro
@@ -40,6 +57,14 @@ services:
       - ./shared/mcp-status-dev:/app/mcp-status
       - ./shared/active_env.json:/app/active-env/active_env.json:ro
     restart: "no"
+    # Feature 070 (US5): bound the `docker logs` json-file stream. It is lossy on
+    # purpose - full history is retained independently by the app's own
+    # TimedRotatingFileHandler(backupCount=0)+gzip under /app/logs.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   morning-mcp-app-dev:
     build:
@@ -52,6 +77,12 @@ services:
       - ./shared/mcp-status-dev:/app/mcp-status
       - ./shared/active_env.json:/app/active-env/active_env.json:ro
     restart: "no"
+    # Feature 070 (US5): see denidin-app-dev above.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # Feature 068 — read-only Ledger Web UI. Reads denidin-app-dev's data root directly off
   # disk (read-only mount), never over a network hop and never its live process. It sends

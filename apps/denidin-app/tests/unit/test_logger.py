@@ -1,457 +1,188 @@
 """
-Unit tests for logging utility.
-Tests logger configuration, file/console handlers, and log levels.
+Unit tests for the logging utility.
+
+Feature 070 (US5) rewrote the handler model: one handler set on the **root**
+logger (not one per module), `TimedRotatingFileHandler(backupCount=0)` + gzip
+instead of size-based `RotatingFileHandler` with numbered backups. The
+rotation/retention specifics live in `test_logger_retention.py`; this file keeps
+the format / level-filtering / version-stamp / directory-creation coverage,
+adapted to the root-handler model.
 """
-import pytest
-import tempfile
-import os
 import logging
+import os
+import re
 import shutil
+import tempfile
 import uuid
 from pathlib import Path
-from logging.handlers import RotatingFileHandler
-from src.utils.logger import setup_logger, get_logger
+
+import pytest
+
+from src.utils.logger import _our_file_handler, get_logger, setup_logger
+
+
+@pytest.fixture
+def isolated_root():
+    root = logging.getLogger()
+    saved_handlers, saved_filters, saved_level = root.handlers[:], root.filters[:], root.level
+    root.handlers, root.filters = [], []
+    try:
+        yield root
+    finally:
+        for h in root.handlers[:]:
+            h.close()
+            root.removeHandler(h)
+        root.handlers, root.filters = saved_handlers, saved_filters
+        root.setLevel(saved_level)
+
+
+@pytest.fixture
+def temp_logs_dir():
+    d = tempfile.mkdtemp()
+    yield d
+    shutil.rmtree(d, ignore_errors=True)
+
+
+def _flush_root():
+    for h in logging.getLogger().handlers:
+        h.flush()
+
+
+def _read_log(logs_path: str) -> str:
+    with open(os.path.join(logs_path, "denidin.log"), "r", encoding="utf-8") as f:
+        return f.read()
 
 
 class TestLogger:
-    """Test suite for logger utility."""
-
-    @pytest.fixture
-    def temp_logs_dir(self):
-        """Create a temporary logs directory."""
-        temp_dir = tempfile.mkdtemp()
-        yield temp_dir
-        # Clean up
-        shutil.rmtree(temp_dir, ignore_errors=True)
-
-    def test_logger_creates_logs_directory_if_missing(self, temp_logs_dir):
-        """Test that logger creates logs/ directory if missing."""
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        
-        # Ensure directory doesn't exist
+    def test_logger_creates_logs_directory_if_missing(self, isolated_root, temp_logs_dir):
+        logs_path = os.path.join(temp_logs_dir, "logs")
         if os.path.exists(logs_path):
             shutil.rmtree(logs_path)
-        
-        logger = setup_logger('test_logger', logs_dir=logs_path)
-        
-        # Directory should now exist
-        assert os.path.exists(logs_path)
+        setup_logger("test_logger", logs_dir=logs_path)
         assert os.path.isdir(logs_path)
 
-    def test_file_handler_writes_to_logs_file(self, temp_logs_dir):
-        """Test that file handler writes to logs/denidin.log."""
-        import uuid
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        # Use unique logger name to avoid conflicts
-        logger_name = f'test_file_{uuid.uuid4().hex[:8]}'
-        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO')
-        
-        # Write a test log message
-        test_message = 'Test log message for file handler'
-        logger.info(test_message)
-        
-        # Flush all handlers to ensure write
-        for handler in logger.handlers:
-            handler.flush()
-        
-        # Verify the log file was created
-        log_file = os.path.join(logs_path, 'denidin.log')
-        assert os.path.exists(log_file)
-        
-        # Verify the message was written
-        with open(log_file, 'r') as f:
-            content = f.read()
-        assert test_message in content
+    def test_file_handler_writes_to_logs_file(self, isolated_root, temp_logs_dir):
+        logs_path = os.path.join(temp_logs_dir, "logs")
+        logger = setup_logger(f"test_file_{uuid.uuid4().hex[:8]}", logs_dir=logs_path, log_level="INFO")
+        msg = "Test log message for file handler"
+        logger.info(msg)
+        _flush_root()
+        assert msg in _read_log(logs_path)
 
-    def test_console_handler_outputs_to_stderr(self, temp_logs_dir, capsys):
-        """Test that console handler outputs to stderr."""
-        logger = setup_logger('test_console', logs_dir=temp_logs_dir, log_level='INFO')
-        
-        test_message = 'Test console output'
-        logger.info(test_message)
-        
-        # Capture stderr output
-        captured = capsys.readouterr()
-        assert test_message in captured.err
+    def test_console_handler_outputs_to_stderr(self, isolated_root, temp_logs_dir, capsys):
+        logger = setup_logger("test_console", logs_dir=temp_logs_dir, log_level="INFO")
+        logger.info("Test console output")
+        assert "Test console output" in capsys.readouterr().err
 
-    def test_rotating_file_handler_limits_file_size(self, temp_logs_dir):
-        """Test that RotatingFileHandler limits file size."""
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        # Create logger with small max bytes for testing
-        logger = setup_logger(
-            'test_rotating',
-            logs_dir=logs_path,
-            log_level='INFO',
-            max_bytes=1024,  # 1KB for testing
-            backup_count=2
-        )
-        
-        # Write enough data to trigger rotation
-        for i in range(100):
-            logger.info(f'Log message number {i} with some padding text to increase size')
-        
-        # Check that backup files were created
-        log_file = os.path.join(logs_path, 'denidin.log')
-        assert os.path.exists(log_file)
-        
-        # At least the main log file should exist
-        assert os.path.getsize(log_file) > 0
+    def test_root_has_one_file_and_one_stream_handler(self, isolated_root, temp_logs_dir):
+        for i in range(3):
+            setup_logger(f"test_handlers_{i}", logs_dir=temp_logs_dir, log_level="INFO")
+        assert _our_file_handler(isolated_root) is not None
+        # pytest keeps its own capture handlers on root; count only plain StreamHandlers
+        streams = [h for h in isolated_root.handlers if type(h) is logging.StreamHandler]
+        assert len(streams) == 1  # no per-name stacking
 
-    def test_log_format_includes_timestamp_name_level_message(self, temp_logs_dir):
-        """Test that log format includes timestamp, name, level, and message."""
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        logger = setup_logger('test_format', logs_dir=logs_path, log_level='INFO')
-        
-        test_message = 'Format test message'
-        logger.info(test_message)
-        
-        # Read the log file
-        log_file = os.path.join(logs_path, 'denidin.log')
-        with open(log_file, 'r') as f:
-            log_line = f.read()
-        
-        # Verify format components
-        assert 'INFO' in log_line  # Log level
-        assert test_message in log_line  # Message
-        assert 'test_format' in log_line  # Logger name
-        # Timestamp pattern: YYYY-MM-DD HH:MM:SS
-        import re
-        timestamp_pattern = r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'
-        assert re.search(timestamp_pattern, log_line)
+    def test_log_format_includes_timestamp_name_level_message(self, isolated_root, temp_logs_dir):
+        logs_path = os.path.join(temp_logs_dir, "logs")
+        logger = setup_logger("test_format", logs_dir=logs_path, log_level="INFO")
+        logger.info("Format test message")
+        _flush_root()
+        line = _read_log(logs_path)
+        assert "INFO" in line
+        assert "Format test message" in line
+        assert "test_format" in line
+        assert re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", line)
 
-    def test_log_level_parameter_controls_info_vs_debug_verbosity(self, temp_logs_dir):
-        """Test that log_level parameter controls INFO vs DEBUG verbosity."""
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        
-        # Test INFO level - should not show DEBUG messages
-        info_logger = setup_logger('test_info', logs_dir=logs_path, log_level='INFO')
-        info_logger.debug('This is a DEBUG message')
-        info_logger.info('This is an INFO message')
-        
-        log_file = os.path.join(logs_path, 'denidin.log')
-        with open(log_file, 'r') as f:
-            content = f.read()
-        
-        assert 'This is an INFO message' in content
-        assert 'This is a DEBUG message' not in content
-        
-        # Clean up for DEBUG test
-        os.unlink(log_file)
-        
-        # Test DEBUG level - should show both DEBUG and INFO messages
-        debug_logger = setup_logger('test_debug', logs_dir=logs_path, log_level='DEBUG')
-        debug_logger.debug('This is a DEBUG message')
-        debug_logger.info('This is an INFO message')
-        
-        with open(log_file, 'r') as f:
-            content = f.read()
-        
-        assert 'This is a DEBUG message' in content
-        assert 'This is an INFO message' in content
+    def test_log_level_parameter_controls_info_vs_debug_verbosity(self, isolated_root, temp_logs_dir):
+        logs_path = os.path.join(temp_logs_dir, "logs")
+        info_logger = setup_logger("test_info", logs_dir=logs_path, log_level="INFO")
+        info_logger.debug("This is a DEBUG message")
+        info_logger.info("This is an INFO message")
+        _flush_root()
+        content = _read_log(logs_path)
+        assert "This is an INFO message" in content
+        assert "This is a DEBUG message" not in content
 
-    def test_info_logs_messages_and_errors_only(self, temp_logs_dir):
-        """Test that INFO level logs messages and errors only."""
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        logger = setup_logger('test_info_only', logs_dir=logs_path, log_level='INFO')
-        
-        logger.debug('Debug message - should not appear')
-        logger.info('Info message - should appear')
-        logger.warning('Warning message - should appear')
-        logger.error('Error message - should appear')
-        
-        log_file = os.path.join(logs_path, 'denidin.log')
-        with open(log_file, 'r') as f:
-            content = f.read()
-        
-        assert 'Debug message' not in content
-        assert 'Info message' in content
-        assert 'Warning message' in content
-        assert 'Error message' in content
+    def test_info_logs_messages_and_errors_only(self, isolated_root, temp_logs_dir):
+        logs_path = os.path.join(temp_logs_dir, "logs")
+        logger = setup_logger("test_info_only", logs_dir=logs_path, log_level="INFO")
+        logger.debug("Debug message - should not appear")
+        logger.info("Info message - should appear")
+        logger.warning("Warning message - should appear")
+        logger.error("Error message - should appear")
+        _flush_root()
+        content = _read_log(logs_path)
+        assert "Debug message" not in content
+        assert "Info message" in content
+        assert "Warning message" in content
+        assert "Error message" in content
 
-    def test_debug_logs_parsing_state_api_details(self, temp_logs_dir):
-        """Test that DEBUG level logs parsing, state, and API details."""
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        logger = setup_logger('test_debug_details', logs_dir=logs_path, log_level='DEBUG')
-        
-        # Simulate detailed debug logs
-        logger.debug('Parsing notification: {"type": "textMessage"}')
-        logger.debug('State loaded: last_message_id=msg_123')
-        logger.debug('API call: POST /sendMessage with payload')
-        
-        log_file = os.path.join(logs_path, 'denidin.log')
-        with open(log_file, 'r') as f:
-            content = f.read()
-        
-        assert 'Parsing notification' in content
-        assert 'State loaded' in content
-        assert 'API call' in content
-
-    def test_get_logger_returns_configured_logger(self, temp_logs_dir):
-        """Test that get_logger() returns a properly configured logger."""
-        logger = get_logger('test_get', logs_dir=temp_logs_dir, log_level='INFO')
-        
-        assert logger is not None
+    def test_get_logger_returns_configured_logger(self, isolated_root, temp_logs_dir):
+        logger = get_logger("test_get", logs_dir=temp_logs_dir, log_level="INFO")
         assert isinstance(logger, logging.Logger)
-        assert logger.name == 'test_get'
-
-
-class TestLogRotation:
-    """Test suite for log rotation functionality (Phase 6: US4 T045a)."""
-
-    @pytest.fixture
-    def temp_logs_dir(self):
-        """Create a temporary logs directory."""
-        temp_dir = tempfile.mkdtemp()
-        yield temp_dir
-        # Clean up
-        shutil.rmtree(temp_dir, ignore_errors=True)
-
-    def test_rotating_file_handler_maxbytes_10mb_default(self, temp_logs_dir):
-        """Test RotatingFileHandler uses 10MB default maxBytes."""
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        logger = setup_logger('test_10mb', logs_dir=logs_path, log_level='INFO')
-        
-        # Find the RotatingFileHandler
-        rotating_handler = None
-        for handler in logger.handlers:
-            if isinstance(handler, RotatingFileHandler):
-                rotating_handler = handler
-                break
-        
-        assert rotating_handler is not None, "RotatingFileHandler not found"
-        assert rotating_handler.maxBytes == 10 * 1024 * 1024  # 10MB
-
-    def test_backup_count_creates_five_backup_files(self, temp_logs_dir):
-        """Test backupCount=5 creates .1, .2, .3, .4, .5 backup files."""
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        
-        # Create logger with very small max bytes to force rotation
-        logger = setup_logger(
-            'test_backups',
-            logs_dir=logs_path,
-            log_level='INFO',
-            max_bytes=500,  # Very small to trigger rotation quickly
-            backup_count=5
-        )
-        
-        # Write enough data to create multiple backup files
-        # Each log message is ~100 bytes, so 50 messages = ~5KB = 10 rotations
-        large_message = 'X' * 100  # 100 char message
-        for i in range(50):
-            logger.info(f'Log {i}: {large_message}')
-        
-        # Check that backup files were created
-        log_file = os.path.join(logs_path, 'denidin.log')
-        assert os.path.exists(log_file)
-        
-        # Check for backup files (.1, .2, .3, .4, .5)
-        backup_files_found = 0
-        for i in range(1, 6):
-            backup_file = f"{log_file}.{i}"
-            if os.path.exists(backup_file):
-                backup_files_found += 1
-        
-        # At least some backup files should be created
-        assert backup_files_found >= 1, "No backup files created during rotation"
-
-    def test_logs_directory_created_if_missing(self, temp_logs_dir):
-        """Test logs/ directory is automatically created if missing."""
-        logs_path = os.path.join(temp_logs_dir, 'new_logs_dir')
-        
-        # Verify directory doesn't exist yet
-        assert not os.path.exists(logs_path)
-        
-        # Create logger - should auto-create directory
-        logger = setup_logger('test_mkdir', logs_dir=logs_path, log_level='INFO')
-        logger.info('Test message')
-        
-        # Verify directory was created
-        assert os.path.exists(logs_path)
-        assert os.path.isdir(logs_path)
-        
-        # Verify log file was created in the new directory
-        log_file = os.path.join(logs_path, 'denidin.log')
-        assert os.path.exists(log_file)
-
-    def test_old_logs_rotated_when_size_limit_reached(self, temp_logs_dir):
-        """Test that old logs are rotated when size limit is reached."""
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        
-        # Create logger with small max bytes
-        logger = setup_logger(
-            'test_rotation',
-            logs_dir=logs_path,
-            log_level='INFO',
-            max_bytes=1024,  # 1KB
-            backup_count=3
-        )
-        
-        log_file = os.path.join(logs_path, 'denidin.log')
-        
-        # Write initial data
-        for i in range(20):
-            logger.info(f'Initial log message {i} with padding text to increase size')
-        
-        # Get initial file size
-        initial_size = os.path.getsize(log_file)
-        
-        # Write more data to trigger rotation
-        for i in range(30):
-            logger.info(f'Additional log message {i} with more padding text to trigger rotation')
-        
-        # Main log file should not grow indefinitely - rotation should have occurred
-        final_size = os.path.getsize(log_file)
-        
-        # Final size should be less than (initial_size + all new data)
-        # If rotation didn't happen, file would be much larger
-        assert final_size < 5000, f"Log file too large ({final_size} bytes) - rotation may not be working"
-        
-        # At least one backup file should exist
-        backup_exists = (
-            os.path.exists(f"{log_file}.1") or
-            os.path.exists(f"{log_file}.2") or
-            os.path.exists(f"{log_file}.3")
-        )
-        assert backup_exists, "No backup files created - rotation not working"
-
-    def test_mock_large_log_writes(self, temp_logs_dir):
-        """Test log rotation with mock large log writes."""
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        
-        # Create logger with 2KB limit
-        logger = setup_logger(
-            'test_large',
-            logs_dir=logs_path,
-            log_level='INFO',
-            max_bytes=2048,  # 2KB
-            backup_count=5
-        )
-        
-        log_file = os.path.join(logs_path, 'denidin.log')
-        
-        # Mock large writes - each message is ~1KB
-        large_message = 'A' * 1000
-        
-        # Write 10KB total (should create multiple rotations)
-        for i in range(10):
-            logger.info(f'Large log {i}: {large_message}')
-        
-        # Verify main log file exists and is under size limit
-        assert os.path.exists(log_file)
-        main_log_size = os.path.getsize(log_file)
-        assert main_log_size <= 2048, f"Main log exceeded maxBytes: {main_log_size} > 2048"
-        
-        # Verify backup files were created
-        backup_count = 0
-        for i in range(1, 6):
-            if os.path.exists(f"{log_file}.{i}"):
-                backup_count += 1
-
-        assert backup_count > 0, "No backup files created with large writes"
+        assert logger.name == "test_get"
+        assert logger.propagate is True
 
 
 class TestVersionFilter:
-    """Feature 034 (REQ-VER-003): every log line carries the app's current version.
-
-    setup_logger()/get_logger() accept an optional version_file path (defaulting to the real
-    apps/denidin-app/VERSION) so tests can point at a scratch file without touching the real one.
-    """
-
-    @pytest.fixture
-    def temp_logs_dir(self):
-        temp_dir = tempfile.mkdtemp()
-        yield temp_dir
-        shutil.rmtree(temp_dir, ignore_errors=True)
+    """Feature 034 (REQ-VER-003): every log line carries the app's current version."""
 
     @pytest.fixture
     def temp_version_file(self):
-        temp_dir = tempfile.mkdtemp()
-        version_path = Path(temp_dir) / 'VERSION'
-        yield version_path
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        d = tempfile.mkdtemp()
+        yield Path(d) / "VERSION"
+        shutil.rmtree(d, ignore_errors=True)
 
-    def _read_log(self, logs_path: str) -> str:
-        log_file = os.path.join(logs_path, 'denidin.log')
-        with open(log_file, 'r') as f:
-            return f.read()
-
-    def test_log_line_includes_version_from_version_file(self, temp_logs_dir, temp_version_file):
-        temp_version_file.write_text('1.4.2\n')
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        logger_name = f'test_version_{uuid.uuid4().hex[:8]}'
-        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO',
-                               version_file=temp_version_file)
-
-        logger.info('hello')
-        for handler in logger.handlers:
-            handler.flush()
-
-        content = self._read_log(logs_path)
-        assert '[v1.4.2]' in content
-        assert 'hello' in content
+    def test_log_line_includes_version_from_version_file(self, isolated_root, temp_logs_dir, temp_version_file):
+        temp_version_file.write_text("1.4.2\n")
+        logs_path = os.path.join(temp_logs_dir, "logs")
+        logger = setup_logger(f"test_version_{uuid.uuid4().hex[:8]}", logs_dir=logs_path,
+                              log_level="INFO", version_file=temp_version_file)
+        logger.info("hello")
+        _flush_root()
+        content = _read_log(logs_path)
+        assert "[v1.4.2]" in content and "hello" in content
 
     def test_log_line_falls_back_to_unknown_when_version_file_missing(
-        self, temp_logs_dir, temp_version_file
+        self, isolated_root, temp_logs_dir, temp_version_file
     ):
-        # temp_version_file's parent dir exists but the file itself was never written.
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        logger_name = f'test_version_missing_{uuid.uuid4().hex[:8]}'
-        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO',
-                               version_file=temp_version_file)
-
-        logger.info('hello')
-        for handler in logger.handlers:
-            handler.flush()
-
-        content = self._read_log(logs_path)
-        assert '[vunknown]' in content
+        logs_path = os.path.join(temp_logs_dir, "logs")
+        logger = setup_logger(f"test_version_missing_{uuid.uuid4().hex[:8]}", logs_dir=logs_path,
+                              log_level="INFO", version_file=temp_version_file)
+        logger.info("hello")
+        _flush_root()
+        assert "[vunknown]" in _read_log(logs_path)
 
     def test_log_line_falls_back_to_unknown_when_version_file_malformed(
-        self, temp_logs_dir, temp_version_file
+        self, isolated_root, temp_logs_dir, temp_version_file
     ):
-        temp_version_file.write_text('not-a-version-at-all!!\n')
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        logger_name = f'test_version_malformed_{uuid.uuid4().hex[:8]}'
-        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO',
-                               version_file=temp_version_file)
+        temp_version_file.write_text("not-a-version-at-all!!\n")
+        logs_path = os.path.join(temp_logs_dir, "logs")
+        logger = setup_logger(f"test_version_malformed_{uuid.uuid4().hex[:8]}", logs_dir=logs_path,
+                              log_level="INFO", version_file=temp_version_file)
+        logger.info("hello")
+        _flush_root()
+        assert "[vunknown]" in _read_log(logs_path)
 
-        logger.info('hello')
-        for handler in logger.handlers:
-            handler.flush()
-
-        content = self._read_log(logs_path)
-        assert '[vunknown]' in content
-
-    def test_log_line_accepts_preinit_placeholder_verbatim(self, temp_logs_dir, temp_version_file):
-        # 0.0.0-preinit (T001's bootstrap placeholder) is not strict MAJOR.MINOR.PATCH but should
-        # still surface verbatim (not "unknown") since it starts with a valid semver prefix - this
-        # keeps pre-first-release logs informative rather than ambiguous.
-        temp_version_file.write_text('0.0.0-preinit\n')
-        logs_path = os.path.join(temp_logs_dir, 'logs')
-        logger_name = f'test_version_preinit_{uuid.uuid4().hex[:8]}'
-        logger = setup_logger(logger_name, logs_dir=logs_path, log_level='INFO',
-                               version_file=temp_version_file)
-
-        logger.info('hello')
-        for handler in logger.handlers:
-            handler.flush()
-
-        content = self._read_log(logs_path)
-        assert '[v0.0.0-preinit]' in content
+    def test_log_line_accepts_preinit_placeholder_verbatim(
+        self, isolated_root, temp_logs_dir, temp_version_file
+    ):
+        temp_version_file.write_text("0.0.0-preinit\n")
+        logs_path = os.path.join(temp_logs_dir, "logs")
+        logger = setup_logger(f"test_version_preinit_{uuid.uuid4().hex[:8]}", logs_dir=logs_path,
+                              log_level="INFO", version_file=temp_version_file)
+        logger.info("hello")
+        _flush_root()
+        assert "[v0.0.0-preinit]" in _read_log(logs_path)
 
     def test_get_logger_also_includes_version(self, temp_version_file, caplog):
-        # get_logger() short-circuits to reusing the root logger's own handlers whenever the
-        # root logger already has handlers - which conftest.py always ensures during this test
-        # suite's run. That means asserting on a written log FILE (as the other tests in this
-        # class do) doesn't exercise get_logger()'s own behavior here - the version Filter must
-        # be attached to the Logger object itself (not just a handler) to survive that shortcut,
-        # so we assert directly on the captured LogRecord instead.
-        temp_version_file.write_text('2.0.0\n')
-        logger_name = f'test_get_version_{uuid.uuid4().hex[:8]}'
-        logger = get_logger(logger_name, log_level='INFO', version_file=temp_version_file)
-
-        with caplog.at_level('INFO', logger=logger_name):
-            logger.info('via get_logger')
-
+        # get_logger's test-environment shortcut attaches the version Filter to the
+        # child logger itself (records are initiated there), so it survives even
+        # though the child has no handlers of its own.
+        temp_version_file.write_text("2.0.0\n")
+        logger_name = f"test_get_version_{uuid.uuid4().hex[:8]}"
+        logger = get_logger(logger_name, log_level="INFO", version_file=temp_version_file)
+        with caplog.at_level("INFO", logger=logger_name):
+            logger.info("via get_logger")
         assert len(caplog.records) == 1
-        assert caplog.records[0].version == '2.0.0'
+        assert caplog.records[0].version == "2.0.0"

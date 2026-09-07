@@ -1,37 +1,51 @@
 #!/bin/bash
-# Cuts a release for one app: bumps VERSION, builds+tags+exports a Docker image as a durable
-# artifact, appends CHANGELOG.md/RELEASES.md entries, and applies a git tag. Deploys nothing
-# anywhere - see scripts/deploy_release.sh for that (Feature 034, REQ-REL-001/005).
+# Cuts a release for ALL apps at ONE shared version + ONE shared summary (2026-09-07, bugfix-043
+# follow-up) - one call to scripts/cut_release_single.sh per app, in a fixed order, same version
+# string and same --summary text for every app.
 #
-# Also sweeps specs/done/ (2026-08-20 reorganization): every spec sitting FLAT directly under
-# specs/done/ (a finished feature or bugfix not yet in any cut release - see CLAUDE.md's
-# specs/done/ note and specs/bugfixes/README.md) moves into this release's own
-# specs/done/vVERSION/ folder, features and bugfixes together, and every repo-wide
-# cross-reference to its old flat path is rewritten to match - all in the SAME commit as the
-# version bump. Confined to this repo's own tracked files only (git grep/git mv/git ls-files,
-# never a raw recursive grep/mv over the whole working tree) - this repo may be checked out in
-# sibling clone directories nested inside this one (e.g. coder1/, coder2/), and those must never
-# be touched (CLAUDE.md's clone-confinement rule) - git's own tracked-file list can never include
-# another clone's files, so scoping every search/rewrite through it is what makes that safe.
+# Why this exists: scripts/cut_release_single.sh cuts exactly one app per call. When every app is
+# being released together at the same version (the common case - e.g. this bugfix's own b43v3/
+# b43v4 cuts, done as two manual back-to-back calls before this script existed), calling it once
+# per app by hand means retyping the same version/summary N times, with no guard against a typo
+# making them drift. This script is that loop, made explicit and safe.
 #
-# 🚨 HUMAN-ONLY, HARD CONSTRAINT (CLAUDE.md): <app> and <version> below must always come
-# directly from a human in that specific request. No AI agent may compute, suggest, or default
-# a version number - see REQ-REL-002.
+# App list is intentionally a single, easy-to-extend array (ADD_NEW_APPS_HERE) - two more apps
+# (UI-frontend, UI-backend) are already waiting on this same release tooling; adding either one
+# here is the only change needed to include it in every future "all apps" cut. Order matches
+# scripts/run_all.sh's own start order (morning-mcp-app before denidin-app - see CLAUDE.md's
+# "Order matters" note) purely for consistency with scripts/deploy_release.sh's app list; cutting
+# itself has no cross-app ordering dependency (each cut_release_single.sh call is independent).
 #
-# Usage: ./scripts/cut_release.sh <app> <version> --summary "<text>" [--artifacts-root <path>]
-#   <app>     : denidin-app | morning-mcp-app | webapp
-#   <version> : exact semantic version, e.g. 1.4.2 (no leading "v")
+# Each app's cut still goes through cut_release_single.sh UNCHANGED - same preconditions
+# (uncommitted-changes check, bundle-file-presence check, immutability check), same permanent-
+# action confirmation prompt (once per app - deliberately not merged into a single combined
+# prompt; each app's cut is its own permanent, independent side effect, per REQ-REL-006), same
+# specs/done/ sweep (idempotent across apps - the second app's call finds nothing left to sweep
+# once the first has already moved everything into the shared vVERSION/ folder, a harmless no-op,
+# see cut_release_single.sh's own step 3b comment), same failure/revert behavior. This script adds
+# nothing except the loop and the "same version+summary for every app" convenience - it is not a
+# reimplementation.
 #
-# webapp is a TWO-image app (webapp-backend + webapp-frontend, both built from repo-root
-# context). Both images go into ONE artifact tar (`docker save img1 img2`), under one
-# manifest and one git tag (webapp-v<version>) - deploy_release.sh loads both and brings up
-# webapp-backend-<env> + webapp-frontend-<env> (+ cloudflared-<env> if its token file exists).
-#   --summary : required, human-written one-line summary for CHANGELOG.md/RELEASES.md
+# Stops on the first app's failure (bash `set -e` propagating a non-zero cut_release_single.sh
+# exit) - whichever apps already cut successfully stay cut (REQ-REL-006: a cut is permanent and
+# immutable once it happens), and the remaining apps are simply not attempted. Rerunning this
+# script for the same version after a partial failure is safe: cut_release_single.sh's own
+# immutability precondition (existing tag/artifact) means an already-cut app is skipped as an
+# error you'd see and can work around by cutting only the remaining app(s) via
+# cut_release_single.sh directly - this script has no "resume" mode of its own.
+#
+# 🚨 HUMAN-ONLY, HARD CONSTRAINT (CLAUDE.md): <version> and --summary below must always come
+# directly from a human in that specific request. No AI agent may compute, suggest, or default a
+# version number or summary text - see REQ-REL-002/003. This is the exact same rule as
+# cut_release_single.sh's own - looping over apps changes nothing about who decides these values.
+#
+# Usage: ./scripts/cut_release.sh <version> --summary "<text>" [--artifacts-root <path>]
+#   <version> : exact semantic version, e.g. 1.4.2 (no leading "v") - applied to EVERY app
+#   --summary : required, human-written one-line summary - the SAME text used for every app's
+#               CHANGELOG.md/RELEASES.md entry (REQ-REL-003). For genuinely independent per-app
+#               summaries, use cut_release_single.sh separately for each app instead.
 #   --artifacts-root : optional override of the artifacts folder (test-only seam; real
 #                      invocations never pass this - defaults to the real shared folder)
-#
-# See specs/in-progress/034-versioning-release-mgmt/contracts/cut_release_cli.md for the full
-# contract (preconditions, side effects, exit codes).
 
 set -e
 
@@ -39,14 +53,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
+# ADD_NEW_APPS_HERE - the single place to extend this script to a new app.
+APPS=(morning-mcp-app denidin-app)
+
 DEFAULT_ARTIFACTS_ROOT="/Users/yaron/Projects/DeniDin/artifacts"
 
-APP=""
 VERSION=""
 SUMMARY=""
 ARTIFACTS_ROOT="$DEFAULT_ARTIFACTS_ROOT"
 
-# First two positional args, then optional flags in any order.
 POSITIONAL=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -65,18 +80,11 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-APP="${POSITIONAL[0]}"
-VERSION="${POSITIONAL[1]}"
+VERSION="${POSITIONAL[0]}"
 
 usage() {
-    echo "Usage: $0 <denidin-app|morning-mcp-app|webapp> <version> --summary \"<text>\" [--artifacts-root <path>]" >&2
+    echo "Usage: $0 <version> --summary \"<text>\" [--artifacts-root <path>]" >&2
 }
-
-if [ "$APP" != "denidin-app" ] && [ "$APP" != "morning-mcp-app" ] && [ "$APP" != "webapp" ]; then
-    echo "Error: <app> must be denidin-app, morning-mcp-app or webapp (got: '${APP}')." >&2
-    usage
-    exit 2
-fi
 
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
     echo "Error: <version> must be MAJOR.MINOR.PATCH with an optional -suffix (got: '${VERSION}')." >&2
@@ -90,257 +98,21 @@ if [ -z "$SUMMARY" ]; then
     exit 2
 fi
 
-APP_DIR="apps/${APP}"
-TAG="${APP}-v${VERSION}"
-TAR_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.tar"
-MANIFEST_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.json"
-
-# The image(s) this release builds. One for denidin-app/morning-mcp-app; two for webapp
-# (backend + frontend), bundled into the single TAR_PATH. Each entry is
-# "<tag>|<dockerfile>|<build-context>".
-if [ "$APP" == "webapp" ]; then
-    BUILD_SPECS=(
-        "webapp-backend:${VERSION}|apps/webapp/backend/Dockerfile|."
-        "webapp-frontend:${VERSION}|apps/webapp/frontend/Dockerfile|."
-    )
-else
-    BUILD_SPECS=("${APP}:${VERSION}|${APP_DIR}/Dockerfile|${APP_DIR}")
+CUT_SINGLE_SCRIPT="$SCRIPT_DIR/cut_release_single.sh"
+if [ ! -f "$CUT_SINGLE_SCRIPT" ]; then
+    echo "Error: ${CUT_SINGLE_SCRIPT} not found." >&2
+    exit 1
 fi
-IMAGE_TAGS=()
-for _spec in "${BUILD_SPECS[@]}"; do
-    IMAGE_TAGS+=("${_spec%%|*}")
+
+echo "== Cutting v${VERSION} for ${#APPS[@]} app(s): ${APPS[*]} =="
+for APP in "${APPS[@]}"; do
+    echo ""
+    echo "== [$APP] cutting v${VERSION} =="
+    if ! "$CUT_SINGLE_SCRIPT" "$APP" "$VERSION" --summary "$SUMMARY" --artifacts-root "$ARTIFACTS_ROOT"; then
+        echo "🚨 CUT FAILED for ${APP} v${VERSION} - stopping. Any app(s) already cut above remain cut (immutable, REQ-REL-006); ${APP} and every app after it in the list (${APPS[*]}) were not attempted." >&2
+        exit 1
+    fi
 done
 
-# --- Preconditions (fail before any side effect) ---
-
-if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
-    echo "Error: tag ${TAG} already exists - refusing to re-cut an existing release (REQ-REL-006)." >&2
-    exit 1
-fi
-
-if [ -f "$TAR_PATH" ]; then
-    echo "Error: artifact already exists at ${TAR_PATH} - refusing to overwrite (REQ-REL-006)." >&2
-    exit 1
-fi
-
-if [ -n "$(git status --porcelain "$APP_DIR")" ]; then
-    echo "Error: ${APP_DIR} has uncommitted changes - commit or stash before cutting a release." >&2
-    exit 1
-fi
-
-# --- Interactive confirmation (before anything irreversible) ---
-
-CURRENT_VERSION="$(cat "${APP_DIR}/VERSION" 2>/dev/null || echo unknown)"
-echo "About to cut ${APP} v${VERSION}:"
-echo "  - from commit: $(git rev-parse --short HEAD)"
-echo "  - VERSION file: ${CURRENT_VERSION} -> ${VERSION}"
-echo "  - git tag: ${TAG} (new)"
-echo "  - artifact: ${TAR_PATH}"
 echo ""
-echo "This is permanent (REQ-REL-006) - continue? [y/N]"
-read -r CONFIRM
-if ! [[ "$CONFIRM" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-    echo "Aborted - nothing changed."
-    exit 0
-fi
-
-# --- Side effects (in order) ---
-#
-# IMPORTANT (2026-08-02, real-world bug found cutting the actual first release): the build step
-# is the one most likely to fail (Docker daemon down, network, etc.), so it MUST happen BEFORE
-# any git commit - otherwise a failed build leaves a dangling "release:" commit with no matching
-# tag/artifact, and a naive re-run appends a SECOND duplicate CHANGELOG.md/RELEASES.md entry on
-# top of it (exactly what happened; caught and cleaned up by hand before this fix landed).
-# VERSION/CHANGELOG/RELEASES are updated on disk first (the build needs the bumped VERSION baked
-# in), but nothing is committed until the build AND save both succeed - a failure at either point
-# reverts those working-tree changes and exits, leaving zero trace.
-
-RELEASE_DATE="$(date -u +%Y-%m-%d)"
-
-# Populated by the specs/done/ sweep below, read by the revert function - must be declared
-# before _revert_uncommitted_release_files so a failure during/after the sweep can undo it.
-SWEPT_SPECS=()
-POINTER_FILES_TOUCHED=()
-
-_revert_uncommitted_release_files() {
-    git checkout -- "${APP_DIR}/VERSION" "${APP_DIR}/CHANGELOG.md" "${APP_DIR}/RELEASES.md"
-    if [ ${#POINTER_FILES_TOUCHED[@]} -gt 0 ]; then
-        git checkout -- "${POINTER_FILES_TOUCHED[@]}"
-    fi
-    if [ ${#SWEPT_SPECS[@]} -gt 0 ]; then
-        for name in "${SWEPT_SPECS[@]}"; do
-            git mv "${DONE_VERSION_DIR}/${name}" "specs/done/${name}"
-        done
-        rmdir "$DONE_VERSION_DIR" 2>/dev/null || true
-    fi
-}
-
-# 1. Update VERSION (uncommitted)
-echo "$VERSION" > "${APP_DIR}/VERSION"
-
-# 2. Prepend/append CHANGELOG.md entry (terse index, uncommitted)
-{
-    echo ""
-    echo "## [${VERSION}] - ${RELEASE_DATE}"
-    echo ""
-    echo "$SUMMARY"
-} >> "${APP_DIR}/CHANGELOG.md"
-
-# 3. Append RELEASES.md section (fuller notes, uncommitted)
-{
-    echo ""
-    echo "## ${APP} v${VERSION} — ${RELEASE_DATE}"
-    echo ""
-    echo "$SUMMARY"
-} >> "${APP_DIR}/RELEASES.md"
-
-# 3b. Sweep every FLAT specs/done/ entry (a finished feature folder or bugfix-*.md/dir with no
-#     vX.Y.Z wrapper yet - i.e. everything finished since the last cut, for either app; specs
-#     aren't strictly attributed to one app, and the two apps are cut together often enough that
-#     one shared version folder is simpler than trying to split them) into this release's own
-#     specs/done/vVERSION/ folder. If another app's cut already created this exact version folder
-#     and already swept everything flat, the loop below simply finds nothing left to move - a
-#     harmless no-op, not an error.
-DONE_VERSION_DIR="specs/done/v${VERSION}"
-if [ -d "specs/done" ]; then
-    mkdir -p "$DONE_VERSION_DIR"
-    for entry in specs/done/*; do
-        [ -e "$entry" ] || continue
-        name="$(basename "$entry")"
-        # Skip existing version folders (v0.0.1, v0.4.3, ...) and the one just created above -
-        # only sweep genuinely flat entries, never something already versioned.
-        if [[ "$name" =~ ^v[0-9] ]]; then
-            continue
-        fi
-        git mv "$entry" "$DONE_VERSION_DIR/$name"
-        SWEPT_SPECS+=("$name")
-    done
-    if [ ${#SWEPT_SPECS[@]} -gt 0 ]; then
-        echo "Swept ${#SWEPT_SPECS[@]} finished spec(s) into ${DONE_VERSION_DIR}/: ${SWEPT_SPECS[*]}"
-    fi
-fi
-
-# 3c. Rewrite repo-wide cross-references to each swept spec's now-versioned path (e.g.
-#     "specs/done/047-.../foo.md" -> "specs/done/v0.4.3/047-.../foo.md"). git grep only ever
-#     searches this repo's own tracked files - see this script's header comment for why that
-#     matters (never a raw recursive grep/sed over the whole working tree).
-if [ ${#SWEPT_SPECS[@]} -gt 0 ]; then
-    for name in "${SWEPT_SPECS[@]}"; do
-        OLD_REF="specs/done/${name}"
-        NEW_REF="${DONE_VERSION_DIR}/${name}"
-        MATCHES="$(git grep -l --fixed-strings -- "$OLD_REF" -- '*.md' '*.py' '*.sh' '*.json' 2>/dev/null || true)"
-        [ -z "$MATCHES" ] && continue
-        while IFS= read -r f; do
-            [ -f "$f" ] || continue
-            sed -i.bak "s#${OLD_REF}#${NEW_REF}#g" "$f"
-            rm -f "${f}.bak"
-            POINTER_FILES_TOUCHED+=("$f")
-        done <<< "$MATCHES"
-    done
-    if [ ${#POINTER_FILES_TOUCHED[@]} -gt 0 ]; then
-        echo "Updated ${#POINTER_FILES_TOUCHED[@]} file(s) with a cross-reference to a swept spec."
-    fi
-fi
-
-# 4. Build the image - BEFORE any commit (see note above)
-#    Pinned to linux/amd64 (2026-08-03, Feature 035 reconciliation): this is what makes "build
-#    once, deploy anywhere" true - prod runs exclusively on a Windows/WSL2 box (native amd64,
-#    Feature 035) while dev runs locally: on an amd64 Docker host (e.g. this repo's own Colima
-#    setups, several of which run their VM as x86_64) this is a native build; on an arm64 Mac
-#    host it runs under Docker's transparent QEMU emulation. Either way, ONE artifact is correct
-#    for BOTH deploy targets - no per-environment rebuild, ever.
-#
-#    Pause the colima keepalive around build+save. `~/bin/colima-keepalive.sh` runs via launchd
-#    every 2 min; its health probe is `docker info` with a 15s timeout, and a heavy build keeps
-#    the daemon busy long enough to trip it - the keepalive then concludes the VM is wedged and
-#    does `pkill -9 limactl` + `colima start`, killing the in-progress build (real incident
-#    2026-09-06 cutting webapp-v0.0.1-webapp: every retry hit the same ~2-min guillotine). The
-#    EXIT trap guarantees it comes back on any exit path; step 5 also resumes it explicitly the
-#    moment the fragile part is done. Best-effort and skipped entirely under a --artifacts-root
-#    override (the test seam): a cut never fails because launchctl is missing or the job isn't
-#    loaded.
-_KEEPALIVE_PLIST="$HOME/Library/LaunchAgents/com.yaron.colima-keepalive.plist"
-_KEEPALIVE_PAUSED=0
-_resume_keepalive() {
-    [ "$_KEEPALIVE_PAUSED" -eq 1 ] || return 0
-    _KEEPALIVE_PAUSED=0
-    launchctl load "$_KEEPALIVE_PLIST" >/dev/null 2>&1 && echo "  (resumed colima-keepalive)"
-}
-trap _resume_keepalive EXIT
-if [ "$ARTIFACTS_ROOT" == "$DEFAULT_ARTIFACTS_ROOT" ] && [ -f "$_KEEPALIVE_PLIST" ] && command -v launchctl >/dev/null 2>&1; then
-    if launchctl list 2>/dev/null | grep -q 'com\.yaron\.colima-keepalive'; then
-        if launchctl unload "$_KEEPALIVE_PLIST" >/dev/null 2>&1; then
-            _KEEPALIVE_PAUSED=1
-            echo "  (paused colima-keepalive for the build - resumes automatically when the cut finishes)"
-        fi
-    fi
-fi
-
-BUILD_STATUS=0
-for _spec in "${BUILD_SPECS[@]}"; do
-    _tag="${_spec%%|*}"
-    _rest="${_spec#*|}"
-    _dockerfile="${_rest%%|*}"
-    _context="${_rest##*|}"
-    set +e
-    docker build --platform linux/amd64 -t "$_tag" -f "$_dockerfile" "$_context" -q >/dev/null
-    BUILD_STATUS=$?
-    set -e
-    [ "$BUILD_STATUS" -ne 0 ] && break
-done
-if [ "$BUILD_STATUS" -ne 0 ]; then
-    echo "Error: docker build failed - reverting VERSION/CHANGELOG.md/RELEASES.md, no commit made." >&2
-    _revert_uncommitted_release_files
-    exit 1
-fi
-
-# 5. Export it as the durable artifact - also before any commit. For webapp both images go
-#    into the one tar (docker save accepts multiple image refs).
-mkdir -p "${ARTIFACTS_ROOT}/${APP}"
-set +e
-docker save "${IMAGE_TAGS[@]}" -o "$TAR_PATH"
-SAVE_STATUS=$?
-set -e
-if [ "$SAVE_STATUS" -ne 0 ]; then
-    echo "Error: docker save failed - reverting VERSION/CHANGELOG.md/RELEASES.md, no commit made." >&2
-    rm -f "$TAR_PATH"
-    _revert_uncommitted_release_files
-    exit 1
-fi
-
-# Build + save done - the part the keepalive could kill is over. Restore it now rather than
-# waiting for the EXIT trap, so the VM is protected again during the git/manifest/tag steps.
-_resume_keepalive
-
-# 6. NOW commit - both docker steps already succeeded, so this commit will always have a
-#    matching artifact/tag. Includes the specs/done/ sweep (already staged by git mv) and any
-#    pointer-file rewrites from step 3c (sed edits, not yet staged) in the SAME commit.
-git add "${APP_DIR}/VERSION" "${APP_DIR}/CHANGELOG.md" "${APP_DIR}/RELEASES.md"
-if [ ${#POINTER_FILES_TOUCHED[@]} -gt 0 ]; then
-    git add "${POINTER_FILES_TOUCHED[@]}"
-fi
-git commit -q -m "release: ${APP} v${VERSION}"
-COMMIT_SHA="$(git rev-parse HEAD)"
-
-# 7. Write the manifest. image_id is the first (only, or backend) image; webapp also records
-#    every bundled image tag under "images" so deploy has the full list without re-parsing.
-IMAGE_ID="$(docker inspect --format '{{.Id}}' "${IMAGE_TAGS[0]}")"
-_images_json=""
-for _t in "${IMAGE_TAGS[@]}"; do
-    _images_json="${_images_json:+${_images_json}, }\"${_t}\""
-done
-cat > "$MANIFEST_PATH" <<EOF
-{
-  "app": "${APP}",
-  "version": "${VERSION}",
-  "date": "${RELEASE_DATE}",
-  "git_commit": "${COMMIT_SHA}",
-  "image_id": "${IMAGE_ID}",
-  "images": [${_images_json}]
-}
-EOF
-
-# 8. Tag the commit
-git tag "$TAG"
-
-echo "Cut ${TAG} successfully: ${TAR_PATH}"
+echo "✅ Cut v${VERSION} successfully for all ${#APPS[@]} app(s): ${APPS[*]}"

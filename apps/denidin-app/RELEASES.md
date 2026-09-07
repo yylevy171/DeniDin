@@ -67,3 +67,31 @@ Feature 061: new standalone prod-ledger-backfill operator tool (apps/prod-ledger
 ## denidin-app v0.5.4 — 2026-09-04
 
 Accounting-reconciliation sweep reliability: bugfix-047 gives the sweep its own 300s OpenAI timeout (was inheriting the 30s conversational-turn ceiling and timing out once the sandbox held ~13+ in-window documents), bugfix-048 switches its dedup key to (date, display_number) so already-captured Morning documents are no longer re-flagged as anomalies after every app restart. Also: prod Morning ledger backfill completed from 2025-09-01 (Feature 062), August 2026 ledger audit findings applied to prod (Feature 065), parallel sanity test sweep (Feature 075), and cross-app sanity-suite stabilization (Feature 059).
+
+## denidin-app v0.5.4-70 — 2026-09-06
+
+Rolling 14-day short-term memory window with nightly daily-summary roll; retires 24h session expiry and the hourly cleanup thread.
+
+## denidin-app v0.5.4-b43 — 2026-09-06
+
+bugfix-043: admin stop/start owns the prober; deploy_release.sh no longer races it
+
+## denidin-app v0.5.4-b43v2 — 2026-09-06
+
+bugfix-043: fix prober requests dependency, run_env.sh double-trigger race, denidin-app health reachability (compose ports + 0.0.0.0 bind), and prober host-port resolution
+
+## denidin-app v0.5.4-b43v3 — 2026-09-07
+
+bugfix-043: prober now parses /health response bodies (not just HTTP status) and calls a new blocking run_all_and_verify_healthy.sh wrapper so a restart genuinely waits for the app to report healthy before the OS scheduler's next tick can fire - closes the prod restart-loop where a still-booting container was killed mid-start. Every health-check attempt is now logged in full (logs/health_monitoring/<env>/verify.log).
+
+## denidin-app v0.5.4-b43v4 — 2026-09-07
+
+Version bump only - re-cut to align with morning-mcp-app (v3 skipped for denidin-app so both apps carry matching version strings). No app source changes since v0.5.4-b43v3; the bugfix-043 restart-loop/health-check fix lives entirely in scripts/ (ops-level, not part of either app's Docker build).
+
+## denidin-app v0.5.4-b43v5 — 2026-09-07
+
+bugfix-043: fix prober restart-loop (run_all_and_verify_healthy.sh blocks until real health confirmed), real JSON-body health checks (verify.py), full per-attempt verify logging; split cut/deploy release scripts into single-app and all-apps variants
+
+## denidin-app v0.6.0 — 2026-09-07
+
+Feature 070: rolling 14-day short-term memory window with a nightly daily-summary roll, replacing 24h session expiry and the hourly cleanup thread. bugfix-043: health-monitoring + auto-restart (prober + escalation ladder, real OS scheduler wiring for dev and prod, admin-owned stop/start, deploy/prober race fix, shared ops-scripts bundling); live prod incidents found and fixed - the restart-loop itself (run_all_and_verify_healthy.sh blocks until real JSON-body health is confirmed, closing a race where a still-booting container got killed mid-start) and a ~41-minute prod outage caused by interrupted single-app deploys, fixed by splitting cut_release.sh/deploy_release.sh into single-app and all-apps variants (one shared stop/start cycle for every app instead of one per app).
