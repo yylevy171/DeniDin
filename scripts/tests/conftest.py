@@ -256,11 +256,15 @@ def scratch_deploy_repo(tmp_path):
     _git(["config", "user.name", "Test"], repo)
 
     app_dir = repo / "apps" / "denidin-app"
-    app_dir.mkdir(parents=True)
-    (app_dir / "Dockerfile").write_text(RUNNING_DOCKERFILE)
-    (app_dir / "VERSION").write_text("1.0.0\n")
-    (app_dir / "CHANGELOG.md").write_text("# Changelog\n")
-    (app_dir / "RELEASES.md").write_text("# Releases\n")
+    # bugfix-076 (2026-09-07): denidin-app's scratch container now also serves real /health
+    # (same _write_health_app helper morning-mcp-app already used) - deploy_release.sh's/
+    # deploy_release_single.sh's final verification now includes a REAL health check for
+    # denidin-app (not just a docker-logs version grep - see lib/deploy_final_health_check.sh's
+    # header for the real prod incident that motivated this), so this scratch fixture must
+    # genuinely exercise that path rather than relying on the old "denidin-app is always seen as
+    # unhealthy here, harmless" carve-out. Internal port 8100 matches health_check_port's real
+    # default and the "18100:8100" compose mapping below.
+    _write_health_app(app_dir, internal_port=8100, version="1.0.0")
 
     # bugfix-043: deploy_release.sh's local path now calls stop_env.sh/run_env.sh, which touch
     # BOTH apps ("no per-app games") and rely on the prober actually reaching a real /health
@@ -303,14 +307,11 @@ def scratch_deploy_repo(tmp_path):
                                     "morning-mcp-app")
 
     # denidin-app's own config, read by prober_paths.sh - health_check_port must be the HOST
-    # port the prober (a host-side script) actually curls. This scratch denidin-app container
-    # (RUNNING_DOCKERFILE) deliberately does NOT serve real HTTP /health - only morning-mcp-app
-    # does (see _write_health_app above) - so the prober always sees denidin-app as unhealthy
-    # here. That's harmless for what these tests check (deploy_release.sh's own docker-logs-based
-    # version verification, run entirely independently of the prober's own state) - it just means
-    # the prober's "bootstrap" action fires on literally every triggered probe rather than
-    # settling into "none" once healthy, which is fine since each deploy only ever triggers one
-    # probe cycle (register_prober_schedule.sh's stub "trigger-once", see below).
+    # port the prober (a host-side script) actually curls. bugfix-076: denidin-app's scratch
+    # container now serves real /health too (see _write_health_app call above), so both the
+    # prober AND deploy_release.sh's/deploy_release_single.sh's own real final health check
+    # (lib/deploy_final_health_check.sh) see it as genuinely healthy here, not just "logged the
+    # right version."
     (app_dir / "config").mkdir(parents=True, exist_ok=True)
     (app_dir / "config" / "config.dev.json").write_text(json.dumps({"health_check_port": 18100}))
     (morning_app_dir / "config").mkdir(parents=True, exist_ok=True)
@@ -342,7 +343,10 @@ def scratch_deploy_repo(tmp_path):
                      "scripts/health_monitoring/prober.py",
                      "scripts/health_monitoring/verify.py",
                      "scripts/health_monitoring/prober_paths.sh",
-                     "scripts/health_monitoring/run_prober_for_env.sh"):
+                     "scripts/health_monitoring/run_prober_for_env.sh",
+                     # bugfix-076: the real health-check helper both deploy scripts' final
+                     # verification now sources - see its own header for the full rationale.
+                     "scripts/lib/deploy_final_health_check.sh"):
         dest = repo / rel_path
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO_ROOT / rel_path, dest)

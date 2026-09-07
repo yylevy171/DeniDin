@@ -35,6 +35,10 @@ def _deploy(scratch, app="denidin-app", env="dev", version="1.0.0"):
         cwd=scratch["repo"],
         stdin="",
         timeout=90,
+        # bugfix-076: the real final health check (lib/deploy_final_health_check.sh) otherwise
+        # defaults to a 300s grace period - short-circuit that here, since the scratch health
+        # app answers correctly almost immediately (a few seconds is plenty for these tests).
+        env_overrides={"DEPLOY_HEALTH_GRACE_SECONDS": "20", "DEPLOY_HEALTH_POLL_INTERVAL": "1"},
     )
 
 
