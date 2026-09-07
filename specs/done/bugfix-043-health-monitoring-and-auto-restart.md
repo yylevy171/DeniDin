@@ -17,9 +17,28 @@ patch to just the ngrok check (reverted — see "Branch/numbering discrepancy" b
 recurs on every future restart/reboot until a fix lands.
 
 ## Status
-**In Progress — code and tests exist on this branch (`bugfix/043-health-monitoring-and-auto-restart`),
-merged current with master and re-verified passing 2026-09-06. Never had a PR, never merged to
-master. No prod wiring (Windows Task Scheduler) or live demo performed yet.**
+**Done — Windows Task Scheduler wiring live on real prod, live restart-loop root cause found and
+fixed, live-verified in both dev and prod at v0.5.4-b43v5, merging to master via haleluya
+(2026-09-07).**
+
+- **2026-09-07: real prod incident, root-caused, fixed, and verified live — this is the actual
+  end-to-end proof this bugfix exists to provide.** Full detail in "2026-09-07: live prod incident
+  and fix" below. Summary: the Windows Task Scheduler wiring for `prober.py` (last remaining open
+  item from 2026-09-06) was completed and deployed; a real live incident surfaced almost
+  immediately (the prober's own restart-loop kept re-triggering before the app finished booting,
+  plus HTTP-200-only health checks masking real failures) and was root-caused, fixed
+  (`run_all_and_verify_healthy.sh` blocks until real JSON-body health is confirmed or a 5-minute
+  grace expires; `verify.py` parses the real `status` field instead of trusting HTTP 200 alone;
+  every check attempt is now logged to `logs/health_monitoring/<env>/verify.log`), and verified
+  live in both `dev` and `prod`. A **second, independent** incident was found and root-caused
+  during this same work: two overlapping/interrupted single-app `deploy_release.sh` calls for the
+  same app left prod's containers down AND its health-monitoring schedule disabled for ~41
+  minutes, undetected, because the very mechanism that would have caught it had itself been
+  disabled by the first call's `stop_env.sh` and never re-enabled by either interrupted call. Fixed
+  by splitting `cut_release.sh`/`deploy_release.sh` into single-app (`*_single.sh`, unchanged
+  logic) and all-apps (one shared stop/start cycle instead of one per app, eliminating the
+  interference window) variants — see "cut/deploy release script split" below. Both apps now
+  confirmed live on `v0.5.4-b43v5` in `dev` and `prod`.
 
 - **2026-09-06 (same day, later): admin stop/start + deploy-race redesign.** A design review
   surfaced that the original "prober skips if the env is intentionally down" proposal relied on a
@@ -334,6 +353,107 @@ passing.
 **Still no automated coverage for the remote/SSH leg of this** (same as the rest of that path) —
 relies on a manual gate against the real box.
 
+## 2026-09-07: live prod incident and fix
+
+With the design above complete and re-verified, the last open item — actually wiring the Windows
+Task Scheduler task for `prober.py` on real prod — was completed and the scripts deployed. Real
+production use immediately surfaced two genuine, independent gaps neither of which had been caught
+by the (extensive) unit-level testing above, because both are about *live, wall-clock, cross-tick*
+behavior that a single-process test can't exercise.
+
+### Gap 1: the restart-loop itself, and HTTP-200-only health checks
+
+Deployed to prod (`v0.5.4-b43v2`), the environment entered a visible restart loop: the prober
+would trigger a soft restart, the app would still be mid-boot on the *next* scheduled tick a minute
+later, and — because Windows Task Scheduler's `MultipleInstancesPolicy=IgnoreNew` only protects
+against a second *task instance* overlapping the first, and the first instance's own
+`subprocess.run()` call to `run_all.sh` returned as soon as `docker compose up -d` returned, long
+before the app inside had actually finished booting — the next tick's task instance was free to
+fire, see the app still not yet healthy, and trigger *another* restart. Root cause: nothing made
+the scheduled task instance itself span the real boot window.
+
+Separately, `prober.py`'s health check only ever inspected the HTTP status code (200 vs. not-200)
+of each app's `/health` endpoint — never the JSON body's own `status` field. Both apps' `/health`
+returns HTTP 200 with `"status": "fail"` for some real failure modes (a specific check failing
+while the endpoint itself still answers) — a case the old code would silently treat as healthy.
+
+**Fix** (`scripts/run_all_and_verify_healthy.sh` + `scripts/health_monitoring/verify.py`, both
+new):
+- `verify.py` is the single source of truth for "is this app's `/health` actually healthy" —
+  fetches the real JSON body, checks `status == "ok"`, and logs **every single check attempt**
+  (`[timestamp] checking app=<name>` / `[timestamp] got reply: <full detail, including the exact
+  error string on failure>`) to a new, dedicated `logs/health_monitoring/<env>/verify.log` (kept
+  separate from the strict-JSONL `prober.log` — mixing free-text per-attempt logs into a JSONL
+  decision log would break its parseability). `prober.py` now imports `verify.py` directly
+  (`from verify import ...`) rather than re-implementing health checking — one implementation, no
+  two-way duplication between the prober and the deploy path.
+- `run_all_and_verify_healthy.sh` wraps `run_all.sh`: it blocks, polling `verify.py` every 10s, for
+  up to a 5-minute grace period, until both apps report genuinely healthy — only then does the
+  scheduled task instance (and thus `MultipleInstancesPolicy=IgnoreNew`'s protection) actually
+  cover the real boot window. `prober.py`'s `run_soft_restart()` now calls this instead of
+  `run_all.sh` directly.
+- Verified live in both `dev` and `prod`: a clean bootstrap → healthy → steady `"none"` cycle with
+  zero premature restarts, reproduced identically in both environments.
+
+### Gap 2: two interrupted single-app deploys left prod down for ~41 minutes, unmonitored
+
+While working through the fix above, a **second, independent** incident was found and confirmed
+via direct evidence (Windows Task Scheduler's own event log, `docker events`, and this session's
+own tool-call transcript — not inference):
+
+- **11:54:59 IDT**: `./scripts/deploy_release.sh morning-mcp-app prod 0.5.4-b43v4` (the old,
+  single-app-only script) was run. Its remote path's `stop_env.sh` step executed on the box
+  (11:55:09 — both containers killed, the scheduled prober task disabled), but the call was
+  interrupted (11:55:42) before reaching its own restart step. The scheduled prober's own next
+  tick (11:56:01, having just been re-enabled) found both apps down and correctly triggered its own
+  bootstrap — containers came back up at 11:56:03–04, with `morning-mcp-app` on the new v4 image.
+- **11:56:17 IDT**: the *exact same command* was run again — before the first attempt's own
+  verification had settled. Its `stop_env.sh` step (11:57:00–07) killed both containers again and
+  disabled the task again. This second call was also interrupted (11:57:06), before reaching its
+  own restart step.
+- **Net result, confirmed directly via `docker events`: zero containers running on the box from
+  11:57:07 to 12:38:03 — a continuous 41-minute outage**, undetected the entire time because the
+  one thing that would have caught it (the scheduled health prober) had itself been disabled by the
+  first call and never re-enabled by either interrupted attempt. `denidin-app` was never part of
+  either call and stayed on `v0.5.4-b43v2` throughout — it was never actually deployed to `v3` or
+  `v4` on prod at all (confirmed: no such image was ever loaded on the box).
+- Recovered only because this session's later `scripts/deploy_release.sh prod 0.5.4-b43v5` call
+  (see below) ran to completion at 12:38.
+
+**Root cause, generalized**: `deploy_release.sh`'s remote/prod path always calls `stop_env.sh`
+(which disables the prober's schedule and stops both apps) before `run_env.sh` (which restarts
+them and re-enables the schedule) — a script interrupted anywhere in between those two steps
+leaves the environment down **and** unmonitored, with nothing else positioned to catch or recover
+it. The *contributing* factor that made this specific incident more likely: deploying both apps at
+that time meant two separate single-app deploy calls, each doing its own full stop/start cycle —
+doubling the exposure window and creating exactly the overlap seen above (the second call's stop
+landing on top of the first call's still-settling restart).
+
+**Fix — cut/deploy release script split (`scripts/cut_release.sh`/`scripts/deploy_release.sh` vs.
+`scripts/cut_release_single.sh`/`scripts/deploy_release_single.sh`)**: the original single-app
+scripts were renamed to `*_single.sh` with their logic otherwise unchanged. New
+`scripts/cut_release.sh <version> --summary "<text>"` and `scripts/deploy_release.sh <env>
+<version>` cut/deploy **every** app at one shared version (and, for cutting, one shared summary) in
+a single pass — `cut_release.sh` loops `cut_release_single.sh` once per app;
+`deploy_release.sh` does exactly ONE `stop_env.sh`/`run_env.sh` cycle for the whole environment
+(loading/retagging every app's image in between) instead of one full cycle per app — eliminating
+the double-exposure window that made this incident more likely. This does **not** fully close the
+"interrupted mid-flight" gap by itself (a single all-apps call can still be interrupted between its
+own stop and start) — that residual gap is flagged, not yet fixed, in Verification below.
+Additionally fixed along the way: `scripts/lib/release_scripts_manifest.sh` was missing
+`scripts/run_all_and_verify_healthy.sh` and `scripts/health_monitoring/verify.py` (both introduced
+by gap 1's fix above), so any bundle-based deploy of a version cut after that fix would have
+shipped a `prober.py` that immediately crashed with `ModuleNotFoundError: No module named
+'verify'` — found via the scratch-fixture test suite before it ever hit real infrastructure. Also
+fixed: `deploy_release.sh`'s associative-array app-field lookups (`declare -A`) don't work under
+macOS's default bash 3.2 — replaced with plain lookup functions, found live on the first real `dev`
+deploy attempt with this script.
+
+**Verified live**: `v0.5.4-b43v5` cut for both apps, deployed to `dev` then `prod` via the new
+all-apps `deploy_release.sh`, both apps confirmed healthy and running the right version in both
+environments (dev via the deploy script's own final verification; prod additionally cross-checked
+against `verify.log`/`prober.log` directly on the box).
+
 ## How this branch would land
 
 **2026-09-01 merge trial**: `git merge --no-commit --no-ff origin/master` from the pre-merge tip
@@ -365,14 +485,27 @@ items above, and now the Feature 068 hard-restart gap) is a separate, human deci
 - [x] Branch/numbering discrepancy flagged and resolved (this file is canonical).
 - [x] Familiarized with unmerged Feature 068 (webapp) for future-merge impact; one real gap
       flagged (hard-restart doesn't yet know about a third app), no functional collision found.
-- [ ] Human review/approval of this design as the path forward (never formally requested — no PR
-      was ever opened for this branch's code, only for this spec file — see "How this lands").
-- [ ] The two additional-scope items above designed and either folded into this bugfix or split
-      out, per human decision.
+- [x] Windows Task Scheduler wiring for `prober.py` deployed to real prod (2026-09-07).
+- [x] Live dev + prod demo of the full probe → soft-restart cycle, including a real restart-loop
+      incident found, root-caused, fixed, and re-verified live in both environments (2026-09-07 —
+      see "2026-09-07: live prod incident and fix" above).
+- [x] Live re-verification against a real production incident (not the original ngrok race
+      specifically, but the same *class* of problem this bugfix targets — a restart mechanism that
+      re-triggered before the app finished booting, live on real prod, 2026-09-07).
+- [x] A second, independent real incident (two interrupted single-app prod deploys leaving the
+      environment down and unmonitored for ~41 minutes) found, root-caused with direct evidence,
+      and fixed via the cut/deploy release script split (2026-09-07).
+- [x] Human review/approval of this design as the path forward — confirmed via live prod use and
+      this haleluya finish-up (2026-09-07).
+- [ ] The two additional-scope items surfaced 2026-09-01 (gap #1, `active_env.json` schema — now
+      fixed *incidentally*, see "Deploy race with the prober" above; gap #2, ops-scripts drift —
+      fixed via the scripts bundle) are effectively closed; not re-verified as their own explicit
+      checklist items here.
 - [ ] Feature 068's hard-restart gap (see above) designed and either folded into this bugfix or
-      split out, once 068 actually merges.
-- [ ] Windows Task Scheduler wiring for `prober.py` on real prod (needs its own explicit
-      approval).
-- [ ] Live dev demo of the full probe → soft-restart → hard-restart ladder.
-- [ ] Live re-verification against a real reboot/restart of `morning-mcp-app-prod` that actually
-      loses the original ngrok race (not yet observed since the incident itself).
+      split out, once 068 actually merges — 068 still unmerged as of this bugfix's closure.
+- [ ] Residual gap, explicitly NOT fixed here: an all-apps `deploy_release.sh` call can still be
+      interrupted between its own `stop_env.sh` and `run_env.sh` steps, leaving an environment down
+      and unmonitored with nothing to catch it (the 2026-09-07 incident's root cause, only
+      partially mitigated by the single-cycle redesign — not eliminated). A proposed fix (a `trap`
+      that best-effort re-runs `run_env.sh` on early exit) was discussed but not implemented or
+      approved as of this bugfix's closure — worth a follow-up bugfix if it recurs.
