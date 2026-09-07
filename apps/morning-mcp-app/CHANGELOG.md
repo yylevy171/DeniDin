@@ -70,3 +70,19 @@ Parse negative-amount documents: Invoice / Payment / LinkedDocument .amount drop
 ## [0.5.4-70] - 2026-09-06
 
 Lockstep version bump for the both-apps 0.5.4-70 deploy — no code change from v0.5.4.
+
+## [0.5.4-b43] - 2026-09-06
+
+bugfix-043: admin stop/start owns the prober; deploy_release.sh no longer races it
+
+## [0.5.4-b43v2] - 2026-09-06
+
+bugfix-043: no code change, re-cut to keep both apps' versions aligned with denidin-app 0.5.4-b43v2 for this dev test round
+
+## [0.5.4-b43v4] - 2026-09-07
+
+Version bump to align with denidin-app (v3 skipped for denidin-app; both apps now carry matching version strings). No app source changes since v0.5.4-b43v2; the bugfix-043 restart-loop/health-check fix lives entirely in scripts/ (ops-level, not part of either app's Docker build).
+
+## [0.5.4-b43v5] - 2026-09-07
+
+bugfix-043: fix prober restart-loop (run_all_and_verify_healthy.sh blocks until real health confirmed), real JSON-body health checks (verify.py), full per-attempt verify logging; split cut/deploy release scripts into single-app and all-apps variants

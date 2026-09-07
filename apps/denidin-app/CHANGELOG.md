@@ -70,3 +70,23 @@ Accounting-reconciliation sweep reliability: bugfix-047 gives the sweep its own 
 ## [0.5.4-70] - 2026-09-06
 
 Rolling 14-day short-term memory window with nightly daily-summary roll; retires 24h session expiry and the hourly cleanup thread.
+
+## [0.5.4-b43] - 2026-09-06
+
+bugfix-043: admin stop/start owns the prober; deploy_release.sh no longer races it
+
+## [0.5.4-b43v2] - 2026-09-06
+
+bugfix-043: fix prober requests dependency, run_env.sh double-trigger race, denidin-app health reachability (compose ports + 0.0.0.0 bind), and prober host-port resolution
+
+## [0.5.4-b43v3] - 2026-09-07
+
+bugfix-043: prober now parses /health response bodies (not just HTTP status) and calls a new blocking run_all_and_verify_healthy.sh wrapper so a restart genuinely waits for the app to report healthy before the OS scheduler's next tick can fire - closes the prod restart-loop where a still-booting container was killed mid-start. Every health-check attempt is now logged in full (logs/health_monitoring/<env>/verify.log).
+
+## [0.5.4-b43v4] - 2026-09-07
+
+Version bump only - re-cut to align with morning-mcp-app (v3 skipped for denidin-app so both apps carry matching version strings). No app source changes since v0.5.4-b43v3; the bugfix-043 restart-loop/health-check fix lives entirely in scripts/ (ops-level, not part of either app's Docker build).
+
+## [0.5.4-b43v5] - 2026-09-07
+
+bugfix-043: fix prober restart-loop (run_all_and_verify_healthy.sh blocks until real health confirmed), real JSON-body health checks (verify.py), full per-attempt verify logging; split cut/deploy release scripts into single-app and all-apps variants
