@@ -79,3 +79,7 @@ bugfix-043: admin stop/start owns the prober; deploy_release.sh no longer races 
 ## morning-mcp-app v0.5.4-b43v2 — 2026-09-06
 
 bugfix-043: no code change, re-cut to keep both apps' versions aligned with denidin-app 0.5.4-b43v2 for this dev test round
+
+## morning-mcp-app v0.5.4-b43v4 — 2026-09-07
+
+Version bump to align with denidin-app (v3 skipped for denidin-app; both apps now carry matching version strings). No app source changes since v0.5.4-b43v2; the bugfix-043 restart-loop/health-check fix lives entirely in scripts/ (ops-level, not part of either app's Docker build).
