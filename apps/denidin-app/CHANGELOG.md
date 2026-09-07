@@ -78,3 +78,7 @@ bugfix-043: admin stop/start owns the prober; deploy_release.sh no longer races 
 ## [0.5.4-b43v2] - 2026-09-06
 
 bugfix-043: fix prober requests dependency, run_env.sh double-trigger race, denidin-app health reachability (compose ports + 0.0.0.0 bind), and prober host-port resolution
+
+## [0.5.4-b43v3] - 2026-09-07
+
+bugfix-043: prober now parses /health response bodies (not just HTTP status) and calls a new blocking run_all_and_verify_healthy.sh wrapper so a restart genuinely waits for the app to report healthy before the OS scheduler's next tick can fire - closes the prod restart-loop where a still-booting container was killed mid-start. Every health-check attempt is now logged in full (logs/health_monitoring/<env>/verify.log).
