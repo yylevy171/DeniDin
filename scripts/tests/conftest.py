@@ -4,10 +4,10 @@ Every test here runs the REAL script against a scratch git repo + a trivial `FRO
 Dockerfile (instant build, no network pull) - no mocking of git/docker subprocess calls
 (CONSTITUTION SS I/V: mock only third-party network services, not local tools).
 
-scripts/cut_release.sh and scripts/deploy_release.sh resolve their own REPO_ROOT from their own
-on-disk location ($BASH_SOURCE), same pattern every other script in this repo uses (see
-scripts/killall_containers.sh) - so copying the script into a scratch repo tree naturally scopes
-all of its git/file operations to that scratch tree without needing any env-var override.
+scripts/cut_release_single.sh and scripts/deploy_release_single.sh resolve their own REPO_ROOT
+from their own on-disk location ($BASH_SOURCE), same pattern every other script in this repo uses
+(see scripts/killall_containers.sh) - so copying the script into a scratch repo tree naturally
+scopes all of its git/file operations to that scratch tree without needing any env-var override.
 """
 import json
 import os
@@ -18,8 +18,15 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CUT_RELEASE_SCRIPT = REPO_ROOT / "scripts" / "cut_release.sh"
-DEPLOY_RELEASE_SCRIPT = REPO_ROOT / "scripts" / "deploy_release.sh"
+# 2026-09-07: renamed from cut_release.sh to cut_release_single.sh (mirrors
+# deploy_release_single.sh's own rename, same day) - scripts/cut_release.sh now means something
+# different (cuts ALL apps at one shared version+summary). These tests exercise the single-app
+# script's behavior, unchanged.
+CUT_RELEASE_SCRIPT = REPO_ROOT / "scripts" / "cut_release_single.sh"
+# 2026-09-07: renamed from deploy_release.sh to deploy_release_single.sh (see that file's own
+# header comment) - scripts/deploy_release.sh now means something different (deploys ALL apps
+# at once). These tests exercise the single-app script's behavior, unchanged.
+DEPLOY_RELEASE_SCRIPT = REPO_ROOT / "scripts" / "deploy_release_single.sh"
 RELEASE_SCRIPTS_MANIFEST = REPO_ROOT / "scripts" / "lib" / "release_scripts_manifest.sh"
 UNPACK_SCRIPTS_BUNDLE_SCRIPT = REPO_ROOT / "scripts" / "lib" / "unpack_scripts_bundle.sh"
 
@@ -37,9 +44,11 @@ BUNDLE_STUB_FILES = (
     "scripts/stop_all.sh",
     "scripts/run_env.sh",
     "scripts/stop_env.sh",
+    "scripts/run_all_and_verify_healthy.sh",
     "scripts/env_lock.sh",
     "scripts/killall_containers.sh",
     "scripts/health_monitoring/prober.py",
+    "scripts/health_monitoring/verify.py",
     "scripts/health_monitoring/prober_paths.sh",
     "scripts/health_monitoring/run_prober_for_env.sh",
     "scripts/health_monitoring/register_prober_schedule.sh",
@@ -126,8 +135,8 @@ def scratch_repo(tmp_path):
         "repo": repo,
         "app_dir": app_dir,
         "artifacts_root": artifacts_root,
-        "cut_script": scripts_dir / "cut_release.sh",
-        "deploy_script": scripts_dir / "deploy_release.sh",
+        "cut_script": scripts_dir / "cut_release_single.sh",
+        "deploy_script": scripts_dir / "deploy_release_single.sh",
     }
 
 
@@ -329,7 +338,9 @@ def scratch_deploy_repo(tmp_path):
     # overwrite the relevant stubs with real, unmodified copies of the actual scripts, EXCEPT
     # register_prober_schedule.sh (see below).
     for rel_path in ("scripts/run_all.sh", "scripts/stop_all.sh", "scripts/run_env.sh",
-                     "scripts/stop_env.sh", "scripts/health_monitoring/prober.py",
+                     "scripts/stop_env.sh", "scripts/run_all_and_verify_healthy.sh",
+                     "scripts/health_monitoring/prober.py",
+                     "scripts/health_monitoring/verify.py",
                      "scripts/health_monitoring/prober_paths.sh",
                      "scripts/health_monitoring/run_prober_for_env.sh"):
         dest = repo / rel_path
@@ -379,8 +390,8 @@ def scratch_deploy_repo(tmp_path):
         "repo": repo,
         "app_dir": app_dir,
         "artifacts_root": artifacts_root,
-        "cut_script": scripts_dir / "cut_release.sh",
-        "deploy_script": scripts_dir / "deploy_release.sh",
+        "cut_script": scripts_dir / "cut_release_single.sh",
+        "deploy_script": scripts_dir / "deploy_release_single.sh",
         "compose_file": docker_dir / "docker-compose.dev.yml",
         "project_name": "scratch-034-deploy-test",
     }

@@ -2,8 +2,9 @@
 # Extracts a release's shared ops-scripts bundle (bugfix-043) into a target directory and
 # verifies every expected file actually landed. Runs identically whether invoked locally (this
 # is exactly how scripts/tests/test_release_scripts_bundle.py proves the mechanism works,
-# without ever touching real prod) or remotely over SSH by scripts/deploy_release.sh's prod
-# path (Feature 035's Windows box) - same code, same verification, no special-casing.
+# without ever touching real prod) or remotely over SSH by scripts/deploy_release.sh's or
+# scripts/deploy_release_single.sh's prod path (Feature 035's Windows box) - same code, same
+# verification, no special-casing.
 #
 # Usage: unpack_scripts_bundle.sh <bundle-tar-path> <target-dir>
 #   <bundle-tar-path> : a *-scripts.tar.gz produced by scripts/cut_release.sh
