@@ -24,7 +24,9 @@
 # specs/done/ note and specs/bugfixes/README.md) moves into this release's own
 # specs/done/vVERSION/ folder, features and bugfixes together, and every repo-wide
 # cross-reference to its old flat path is rewritten to match - all in the SAME commit as the
-# version bump. Confined to this repo's own tracked files only (git grep/git mv/git ls-files,
+# version bump. Since the specs/repo/ reorganization, each flat entry is a relative symlink
+# into specs/repo/{features,bugfixes}/ (the real file never moves); the sweep moves the link
+# and re-points it one directory deeper (../repo/... -> ../../repo/...). Confined to this repo's own tracked files only (git grep/git mv/git ls-files,
 # never a raw recursive grep/mv over the whole working tree) - this repo may be checked out in
 # sibling clone directories nested inside this one (e.g. coder1/, coder2/), and those must never
 # be touched (CLAUDE.md's clone-confinement rule) - git's own tracked-file list can never include
@@ -184,6 +186,17 @@ _revert_uncommitted_release_files() {
     if [ ${#SWEPT_SPECS[@]} -gt 0 ]; then
         for name in "${SWEPT_SPECS[@]}"; do
             git mv "${DONE_VERSION_DIR}/${name}" "specs/done/${name}"
+            # Undo the sweep's link-target deepening (see 3b): ../../repo/... -> ../repo/...
+            if [ -L "specs/done/${name}" ]; then
+                lt="$(readlink "specs/done/${name}")"
+                case "$lt" in
+                    ../../repo/*)
+                        rm "specs/done/${name}"
+                        ln -s "${lt#../}" "specs/done/${name}"
+                        git add "specs/done/${name}"
+                        ;;
+                esac
+            fi
         done
         rmdir "$DONE_VERSION_DIR" 2>/dev/null || true
     fi
@@ -209,13 +222,20 @@ echo "$VERSION" > "${APP_DIR}/VERSION"
     echo "$SUMMARY"
 } >> "${APP_DIR}/RELEASES.md"
 
-# 3b. Sweep every FLAT specs/done/ entry (a finished feature folder or bugfix-*.md/dir with no
-#     vX.Y.Z wrapper yet - i.e. everything finished since the last cut, for either app; specs
-#     aren't strictly attributed to one app, and the two apps are cut together often enough that
-#     one shared version folder is simpler than trying to split them) into this release's own
+# 3b. Sweep every FLAT specs/done/ entry (a finished feature or bugfix with no vX.Y.Z wrapper
+#     yet - i.e. everything finished since the last cut, for either app; specs aren't strictly
+#     attributed to one app, and the two apps are cut together often enough that one shared
+#     version folder is simpler than trying to split them) into this release's own
 #     specs/done/vVERSION/ folder. If another app's cut already created this exact version folder
 #     and already swept everything flat, the loop below simply finds nothing left to move - a
 #     harmless no-op, not an error.
+#
+#     Since the specs/repo/ reorganization every status-folder entry (flat done/ ones included)
+#     is a RELATIVE symlink into specs/repo/{features,bugfixes}/ - the real file never moves,
+#     only the link does. A flat done/ link reads "../repo/..."; one level deeper under
+#     vVERSION/ it must read "../../repo/...", so after git-mv'ing the link we prepend one
+#     "../" to its target. A non-symlink flat entry (shouldn't happen under the new convention,
+#     but handled for safety) is just git-mv'd as before.
 DONE_VERSION_DIR="specs/done/v${VERSION}"
 if [ -d "specs/done" ]; then
     mkdir -p "$DONE_VERSION_DIR"
@@ -228,6 +248,16 @@ if [ -d "specs/done" ]; then
             continue
         fi
         git mv "$entry" "$DONE_VERSION_DIR/$name"
+        if [ -L "$DONE_VERSION_DIR/$name" ]; then
+            link_target="$(readlink "$DONE_VERSION_DIR/$name")"
+            case "$link_target" in
+                ../repo/*)
+                    rm "$DONE_VERSION_DIR/$name"
+                    ln -s "../${link_target}" "$DONE_VERSION_DIR/$name"
+                    git add "$DONE_VERSION_DIR/$name"
+                    ;;
+            esac
+        fi
         SWEPT_SPECS+=("$name")
     done
     if [ ${#SWEPT_SPECS[@]} -gt 0 ]; then
