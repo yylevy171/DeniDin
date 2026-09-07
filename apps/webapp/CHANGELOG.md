@@ -9,3 +9,7 @@ One entry per release, newest first. Written only by `scripts/cut_release.sh` â€
 ## [0.0.1-webapp] - 2026-09-06
 
 Feature 068 Ledger Web UI â€” read-only password-gated web UI over LedgerEvent data (backend BFF + frontend SPA). Test-only pre-release from feature/068-ledger-ui-and-reports; not merged to master.
+
+## [0.6.0-f68v2] - 2026-09-07
+
+test

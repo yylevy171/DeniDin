@@ -9,3 +9,7 @@ REQ-REL-006).
 ## webapp v0.0.1-webapp — 2026-09-06
 
 Feature 068 Ledger Web UI — read-only password-gated web UI over LedgerEvent data (backend BFF + frontend SPA). Test-only pre-release from feature/068-ledger-ui-and-reports; not merged to master.
+
+## webapp v0.6.0-f68v2 — 2026-09-07
+
+test
