@@ -118,11 +118,10 @@ Feature implementation MUST follow a structured phase progression with validatio
 All feature context MUST reside in structured markdown documents; code comments are supplementary only.
 
 **Requirements:**
-- `specs/[###-feature]/` directory MUST contain all feature artifacts
- - `specs/[###-feature]/` directory MUST contain all feature artifacts
- - STORAGE LOCATION POLICY (NEW): All new and updated feature specs, bugfix specs, and any other specification documents MUST be authored and stored under the `specs/in-progress/` hierarchy (for features) or `specs/bugfixes/` (for bugfix specs). The parent `specs/` folder (top-level `specs/` entries such as `specs/005-mcp-morning-green-receipt/`) is deprecated for active authoring and MUST NOT be used to store authoritative specs going forward.
-   - Rationale: this eliminates duplication and ensures automation and reviewers always find canonical artifacts in a single location.
-   - Enforcement: CI and tooling SHOULD prefer `specs/in-progress/` as the canonical source; reviewers MUST flag PRs that add or modify authoritative spec files outside `specs/in-progress/` or `specs/bugfixes/` and request relocation into the correct folder before merging.
+- `specs/repo/features/[###-feature]/` directory MUST contain all feature artifacts
+ - STORAGE LOCATION POLICY (2026-09-07): The real, authoritative spec files — feature specs, bugfix specs, and every supporting artifact — MUST be authored and stored under `specs/repo/features/` or `specs/repo/bugfixes/`, and nowhere else. Every other `specs/` folder holds only relative symlinks into `specs/repo/` that encode current status (see §XI). Never author or `mv` a real spec file into a status folder.
+   - Rationale: a single permanent path per spec eliminates duplication and keeps every cross-reference, `[[link]]`, and doc pointer valid across status changes and release cuts.
+   - Enforcement: reviewers MUST flag any PR that adds or modifies a real (non-symlink) spec file outside `specs/repo/` and request relocation before merging.
 - `plan.md` is the technical authority for implementation decisions
 - `spec.md` is the functional authority for requirements and acceptance criteria
 - `tasks.md` is the execution authority for implementation sequence
@@ -248,7 +247,7 @@ redefinition above.
     at a time, only through `scripts/run_single_test.sh`** (never a bare `-m` batch) —
     stop-on-first-failure, live per-test sound-off, progress tracked in `sanity_state.tsv` and
     resumable (`--status`/`--fresh`/`--mark`). `expensive` members are printed as a manual
-    checklist, never auto-run. Known failures: `specs/done/059-.../sanity-failures.md`. A
+    checklist, never auto-run. Known failures: `specs/repo/features/059-stabilize-tests-sanity-suite/sanity-failures.md`. A
     fast end-to-end "is anything obviously broken" pass, not a substitute for the full tiers,
     and not CI. `./scripts/verify_sanity_lists.sh` guards the decorators and `run_sanity.sh`'s
     arrays against drift.
@@ -318,11 +317,10 @@ approval gates, run alongside or after §VI.a's acceptance pass.
 All bug fixes MUST follow a disciplined root-cause analysis and test-first workflow.
 
 **Bug Specification Storage:**
-- ALL bugfix specifications MUST be stored in `specs/bugfixes/` directory
-- Format: `specs/bugfixes/bugfix-###-description.md` (e.g., `specs/bugfixes/bugfix-001-constitution-not-loaded.md`)
-- Prefix: Always start with `bugfix-` to distinguish from features
-- Sequential numbering: 001, 002, 003, etc.
-- Never store bugfix specs in `specs/in-progress/` or other feature directories
+- The real file lives at `specs/repo/bugfixes/bugfix-###-description.md` (2026-09-07 reorganization) — this path is permanent and never changes
+- An OPEN bugfix is symlinked from `specs/bugfixes/`; a resolved one from `specs/done/` (then `done/vX.Y.Z/` after a cut); a stale/rejected one from `specs/obsolete/bugfixes/`; an investigated-but-unfixed one from `specs/not_reproducible/bugfixes/`
+- Format: `bugfix-###-description.md` — prefix always `bugfix-` to distinguish from features; sequential numbering 001, 002, 003, …
+- Never symlink a bugfix from `specs/in-progress/` or a feature status folder
 - **Priority (2026-07-24)**: Every bugfix spec MUST declare a `Priority` field (`P0`/`P1`/`P2`), the same scheme used by feature specs (see §XI) — set at spec creation, before the root-cause approval gate, and revisited if severity is reassessed during investigation
 
 **Branch Naming:**
@@ -586,15 +584,35 @@ concept are now ONE folder, `in-progress/`; there is no longer a distinct
 "clarifications-only, not yet started" stage as its own folder)**:
 ```
 specs/
+├── repo/              # ⭐ THE ONLY PLACE REAL SPEC FILES LIVE (2026-09-07 reorganization)
+│   ├── features/      #     every feature spec folder, by NNN-name, forever — path never changes
+│   └── bugfixes/      #     every bugfix spec (bugfix-NNN-*.md or dir), forever — path never changes
 ├── in-progress/       # Features with open CLARIFICATIONS and/or currently being implemented (active work)
 ├── backlog/           # Fully-specified features not yet started, any priority (merged P0/P1/P2, 2026-07-21)
-├── done/              # Completed features (implemented, tested, merged) + done/bugfixes/
+├── low-priority/      # Specified but deprioritized indefinitely (not the same as backlog)
+├── done/              # Completed features + bugfixes, bucketed by cut release: done/vX.Y.Z/
 ├── obsolete/          # Cancelled/deprecated features and bugfixes, or specs no longer accurate (merged with not-doing, 2026-07-21) + obsolete/bugfixes/
-├── bugfixes/          # Open bugfix specs (bugfix-###-description.md)
+├── not_reproducible/  # Bugs investigated + closed by human decision with no fix (not_reproducible/bugfixes/)
+├── bugfixes/          # Open bugfix specs
 ├── CONSTITUTION.md    # Coding standards and constraints
 ├── METHODOLOGY.md     # Development process and workflow (this file)
 └── ROADMAP.md         # Feature priorities and status tracking
 ```
+
+**Status folders hold SYMLINKS, not real files (2026-09-07 reorganization).** Every entry in
+`in-progress/`, `backlog/`, `low-priority/`, `done/vX.Y.Z/`, `obsolete/`, `not_reproducible/`,
+and `bugfixes/` is a **relative symlink** into `specs/repo/features/` or `specs/repo/bugfixes/`.
+The real file has exactly one permanent path under `specs/repo/` and never moves — so
+cross-references, `[[links]]`, memory notes, and doc paths that point at `specs/repo/...` stay
+valid forever. A spec's **status is which folder currently symlinks it** (still exactly one at a
+time). Changing status = move the *symlink*, not the file. Link depth differs by location:
+`backlog/X` → `../repo/features/X`; `done/v0.5.4/X` → `../../repo/features/X`. Always relative,
+never absolute (this repo is cloned in sibling directories — an absolute link would break).
+- Editing a spec through any symlink path edits the one real file — that's the point.
+- `rg`/`find`/`grep -r` do **not** descend symlinked directories by default. To search spec
+  *content*, search `specs/repo/`. The status folders are only for "what state is this in".
+- A brand-new spec is created as a real file/folder directly under `specs/repo/`, then
+  symlinked from its starting status folder in the same commit.
 
 **Requirements:**
 - **in-progress/**: A feature lives here for its entire active-work lifespan — from initial
@@ -604,7 +622,7 @@ specs/
   - A brand-new feature starts here directly (not first in some other folder)
   - A feature resumed from `backlog/` also moves back here, right after branch creation,
     before any further planning/implementation work begins
-  - Action: Move to `done/` once merged to master (or to `backlog/` if paused before
+  - Action: Move the symlink to `done/` once merged to master (or to `backlog/` if paused before
     completion — see below)
 
 - **backlog/**: Fully specified, clarified, not currently being worked — priority tracked via
@@ -626,15 +644,16 @@ specs/
   - Never deleted (prevents re-proposing rejected ideas or re-investigating already-resolved reports)
   - Each archived spec MUST carry a brief status note explaining why it was archived and when
 
-**Folder Movement Rules:**
-1. New feature starts in `in-progress/` (drafting, may have open clarifications)
+**Folder Movement Rules** (a "move" = relocating the *symlink*; the real file stays put under `specs/repo/`):
+1. New feature: create the real folder under `specs/repo/features/`, then symlink it from `in-progress/` (drafting, may have open clarifications)
 2. Once clarifications answered and the feature is not being actively worked further right
-   now → Move to `backlog/`
-3. **When a backlog feature is picked up to start/resume work → Move back to `in-progress/`**
+   now → move the symlink to `backlog/`
+3. **When a backlog feature is picked up to start/resume work → move the symlink back to `in-progress/`**
    — right after branch creation, before any further planning/implementation work begins
-4. When feature merged to master → Move to `done/`
-5. When feature cancelled/rejected/found obsolete → Move to `obsolete/` (with rationale documented in spec)
-6. Feature folders MUST NOT exist in multiple locations simultaneously
+4. When feature merged to master → move the symlink to `done/` (flat; `scripts/cut_release.sh` later re-points it into `done/vX.Y.Z/`)
+5. When feature cancelled/rejected/found obsolete → move the symlink to `obsolete/` (with rationale documented in spec)
+6. A spec MUST be symlinked from exactly ONE status folder at a time (never two)
+7. Deleting a spec's real file under `specs/repo/` is never part of any flow — `done/`, `obsolete/`, `not_reproducible/` are permanent archives
 
 **Rationale**: Organized folder structure provides instant visibility into feature status, prevents stale specs from cluttering active work, enables priority-based planning, and maintains historical archive of completed features.
 
@@ -645,21 +664,21 @@ specs/
 ### Feature Initialization
 
 1. Run `.specify/scripts/bash/create-new-feature.sh` to generate feature directory and branch structure
-2. Feature directories MUST follow naming: `specs/###-feature-name/`
+2. The real feature directory MUST live at `specs/repo/features/###-feature-name/` (permanent path); it is symlinked from a status folder to show state
 3. Branch names MUST follow: `###-feature-name` (matching directory)
 4. Spec MUST be created via `speckit.specify` agent with user input validation
-5. New feature starts in `specs/in-progress/` folder (drafting stage, may still have open clarifications)
+5. A new feature starts symlinked from `specs/in-progress/` (drafting stage, may still have open clarifications)
 
 ### Workflow Progression
 
 ```text
 User Request
     ↓
-speckit.specify → spec.md in specs/in-progress/
+speckit.specify → spec.md under specs/repo/features/, symlinked from specs/in-progress/
     ↓
 Resolve CLARIFICATIONS (USER APPROVAL GATE)
     ↓
-Move to specs/backlog/ (priority tracked in the spec's own Priority field)
+Move the symlink to specs/backlog/ (priority tracked in the spec's own Priority field)
     ↓
 speckit.plan → plan.md (USER APPROVAL GATE)
     ↓
@@ -681,11 +700,11 @@ speckit.implement → Incremental code delivery by user story
 🚨 **NEVER RUN HALELUYA ON YOUR OWN.** 🚨 (added 2026-07-31, after the AI agent did exactly this
 unprompted while fixing bugfix-019)
 
-Saying **"haleluya"** (or any reasonable spelling variant — "halleluja", "halelluia", etc.) to the AI agent at any point is shorthand for: **first verify a spec file for the current feature/bugfix is actually committed under `specs/`** (if none is found, stop and ask the human rather than proceeding — see "Missing-Spec Verification" below), then **update docs and move the spec to its correct `specs/` folder per the Folder Movement Rules above (as part of the SAME commit as the code, not a separate later commit), commit, push, open a PR, and merge it**. Also available as the `/haleluya` slash command. **Branches are never deleted as part of this flow** — the merged branch is left in place for the human to delete explicitly if they want to. This does not skip any gate elsewhere in this doc (tests still must pass, CONSTITUTION checks still apply) — it's purely a shorthand for the finish-up mechanics once the actual work is already done and approved.
+Saying **"haleluya"** (or any reasonable spelling variant — "halleluja", "halelluia", etc.) to the AI agent at any point is shorthand for: **first verify a spec file for the current feature/bugfix is actually committed under `specs/repo/`** (if none is found, stop and ask the human rather than proceeding — see "Missing-Spec Verification" below), then **update docs and move the spec's status symlink to its correct `specs/` folder per the Folder Movement Rules above (the real file under `specs/repo/` never moves; as part of the SAME commit as the code, not a separate later commit), commit, push, open a PR, and merge it**. Also available as the `/haleluya` slash command. **Branches are never deleted as part of this flow** — the merged branch is left in place for the human to delete explicitly if they want to. This does not skip any gate elsewhere in this doc (tests still must pass, CONSTITUTION checks still apply) — it's purely a shorthand for the finish-up mechanics once the actual work is already done and approved.
 
-**Missing-Spec Verification (added 2026-07-30):** Feature 024 (Ledger Event Recognition) was fully implemented and merged to `master` with **no spec file ever committed at all** — confirmed via a full `git log --all` history search, which found zero commits touching any `024`-prefixed path anywhere, ever. Spec-first development (see above) is meant to make this structurally impossible, but nothing was actually checking for it at the one moment - "finishing" the feature - where it's cheap to catch and expensive to miss. Haleluya's first step is now to extract the feature/bugfix's numeric ID from the branch name and confirm a matching spec exists under `specs/` (in git, not just the working tree) before touching git state at all; if none is found, it stops and surfaces this to the human instead of silently finishing the merge.
+**Missing-Spec Verification (added 2026-07-30):** Feature 024 (Ledger Event Recognition) was fully implemented and merged to `master` with **no spec file ever committed at all** — confirmed via a full `git log --all` history search, which found zero commits touching any `024`-prefixed path anywhere, ever. Spec-first development (see above) is meant to make this structurally impossible, but nothing was actually checking for it at the one moment - "finishing" the feature - where it's cheap to catch and expensive to miss. Haleluya's first step is now to extract the feature/bugfix's numeric ID from the branch name and confirm a matching real spec exists under `specs/repo/` (in git, not just the working tree) before touching git state at all; if none is found, it stops and surfaces this to the human instead of silently finishing the merge.
 
-**Single PR, not two (added 2026-08-07).** Earlier practice had the docs/spec-folder-move land as a *separate* follow-up PR after the feature PR merged (e.g. PR #198 for the feature, then a distinct PR #199 titled "docs/...-spec-cleanup"). Don't do that anymore — fold the docs update and spec-folder move into the same commit as the code, so the whole thing ships as one PR. The one wrinkle: the spec's `Status` line traditionally records the PR number, which doesn't exist yet at commit time — write the Status line without it initially, then once `gh pr create` returns the real number, push one small addendum commit onto the *same* branch/PR to fill it in before merging. That still counts as one PR, not two.
+**Single PR, not two (added 2026-08-07).** Earlier practice had the docs/spec-folder-move land as a *separate* follow-up PR after the feature PR merged (e.g. PR #198 for the feature, then a distinct PR #199 titled "docs/...-spec-cleanup"). Don't do that anymore — fold the docs update and spec status-symlink move into the same commit as the code, so the whole thing ships as one PR. The one wrinkle: the spec's `Status` line traditionally records the PR number, which doesn't exist yet at commit time — write the Status line without it initially, then once `gh pr create` returns the real number, push one small addendum commit onto the *same* branch/PR to fill it in before merging. That still counts as one PR, not two.
 
 **Haleluya never touches `dev`/`prod` (rewritten 2026-08-07 — deploy step removed entirely, not just gated).** Earlier versions of this flow had a "test-deploy" step (rebuild-and-recreate a running environment's container to verify the merged fix) gated behind an explicit human ask-first, added 2026-08-05 after a real incident where a silent test-deploy to `dev` left it running a from-source build that was never actually cut as a release. That gate itself is no longer enough: **haleluya now has no deploy step, scripted or ask-first, at all** — no rebuild, no `run_all.sh`/`stop_all.sh` call, no dev-lock release, nothing that touches a running environment in any way. Which environment(s) run what, and when, is always a separate, fully explicit human decision made outside this flow, on its own request, subject to CLAUDE.md's "never start an environment without approval" rule as always — haleluya's own job stops at "merged to master, docs in order."
 

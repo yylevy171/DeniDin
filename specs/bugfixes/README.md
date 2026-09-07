@@ -6,22 +6,25 @@
 
 ## Directory Structure
 
-```
-specs/bugfixes/
-├── README.md                                  # This file
-├── bugfix-004-data-root-ignored.md           # Bugfix spec (Not Started)
-└── bugfix-###-description.md                 # Future bugfix specs
+**Since the 2026-09-07 reorganization, every real bugfix spec file lives at exactly one
+permanent path — `specs/repo/bugfixes/bugfix-###-description.md` — and never moves.** Its
+*status* is shown by which folder holds a **relative symlink** to it:
 
-specs/done/                                    # A completed bugfix lands here FLAT
-├── bugfix-001-constitution-not-loaded.md     # ✅ Complete, not yet in a cut release
-└── v0.4.0/                                    # Once a release is cut (scripts/cut_release.sh,
-    ├── 048-whatsapp-typing-indicator/         # 2026-08-20 reorganization), every flat entry
-    └── bugfix-036-mcp-server-has-no-audit-trail.md  # sitting in specs/done/ moves into that
-                                                # release's own version folder, features and
-                                                # bugfixes together, no separate bugfixes/
-                                                # subfolder anymore - see specs/done/v*/ for the
-                                                # full, versioned history.
 ```
+specs/repo/bugfixes/
+├── bugfix-001-constitution-not-loaded.md      # THE REAL FILE (permanent path, never moves)
+└── bugfix-###-description.md                   # ...one per bugfix, forever
+
+specs/bugfixes/          → symlink here while OPEN        (this dir; README.md stays a real file)
+specs/done/              → symlink moves here on RESOLVE  (flat, then done/vX.Y.Z/ after a cut)
+specs/obsolete/bugfixes/ → symlink here if found STALE / rejected
+specs/not_reproducible/bugfixes/ → symlink here if investigated + closed with NO fix
+```
+
+`scripts/cut_release.sh` re-points every flat `specs/done/` symlink into that release's own
+`specs/done/vX.Y.Z/` (deepening its `../repo/…` target to `../../repo/…`) the next time a
+release is cut — features and bugfixes side by side, no separate `bugfixes/` subfolder.
+⚠️ `rg`/`grep -r`/`find` don't follow symlinked dirs — search `specs/repo/bugfixes/` for content.
 
 ---
 
@@ -49,8 +52,10 @@ Following **METHODOLOGY.md §VII: Bug-Driven Development**
 
 ### 1. Create Bugfix Spec
 ```bash
-# Create new bugfix spec (use next sequential number)
-touch specs/bugfixes/bugfix-005-new-bug-description.md
+# Create the REAL file under specs/repo/, then symlink it from specs/bugfixes/ (same commit)
+touch specs/repo/bugfixes/bugfix-005-new-bug-description.md
+ln -s ../repo/bugfixes/bugfix-005-new-bug-description.md \
+      specs/bugfixes/bugfix-005-new-bug-description.md
 ```
 
 ### 2. Create Branch
@@ -71,10 +76,10 @@ git checkout -b bugfix/005-new-bug-description
 
 ### 4. Move to Done
 ```bash
-# After merge, move spec to done folder - flat, no version subfolder yet
-# (scripts/cut_release.sh sweeps flat specs/done/ entries into a versioned
-# folder, e.g. specs/done/v0.4.4/, the next time a release is cut)
-mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfix-005-new-bug-description.md
+# After merge, move the SYMLINK (not the real file) to specs/done/ - flat, no version
+# subfolder yet. scripts/cut_release.sh re-points it into specs/done/vX.Y.Z/ at the next cut.
+git mv specs/bugfixes/bugfix-005-new-bug-description.md \
+       specs/done/bugfix-005-new-bug-description.md
 ```
 
 ---
@@ -133,10 +138,10 @@ mv specs/bugfixes/bugfix-005-new-bug-description.md specs/done/bugfix-005-new-bu
 
 ## Notes
 
-- ALL bugfix specs MUST live in this directory (never in `specs/in-progress/`)
+- The real file for EVERY bugfix spec MUST live under `specs/repo/bugfixes/` (never a real file
+  in `specs/bugfixes/`, `specs/in-progress/`, `specs/done/`, or anywhere else)
+- An OPEN bugfix is symlinked from `specs/bugfixes/`; never from `specs/in-progress/`
 - Each bugfix gets a sequential number (never reuse numbers)
 - Branch name MUST match spec file number
-- Completed bugfixes move to `specs/done/` flat (no subfolder), same as a finished feature -
-  `scripts/cut_release.sh` moves it into that release's own `specs/done/vX.Y.Z/` folder the next
-  time a release is cut (2026-08-20 reorganization - see `specs/done/v*/` for the versioned
-  history)
+- On resolution the SYMLINK moves to `specs/done/` flat (same as a finished feature);
+  `scripts/cut_release.sh` re-points it into `specs/done/vX.Y.Z/` at the next cut
