@@ -133,31 +133,38 @@ if [ -z "$PROJECT_NAME" ]; then
 fi
 
 # --- Preconditions for BOTH apps, up front - fail before any side effect if either is missing. ---
-declare -A TAR_PATH MANIFEST_PATH SCRIPTS_BUNDLE_PATH SERVICE_NAME CONTAINER_NAME COMPOSE_IMAGE
-for APP in "${APPS[@]}"; do
-    TAR_PATH[$APP]="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.tar"
-    MANIFEST_PATH[$APP]="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.json"
-    SCRIPTS_BUNDLE_PATH[$APP]="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}-scripts.tar.gz"
-    SERVICE_NAME[$APP]="${APP}-${ENV}"
-    CONTAINER_NAME[$APP]="${PROJECT_NAME}-${SERVICE_NAME[$APP]}-1"
-    COMPOSE_IMAGE[$APP]="${PROJECT_NAME}-${SERVICE_NAME[$APP]}:latest"
+#
+# Plain functions instead of associative arrays (2026-09-07): macOS ships bash 3.2 by default
+# (no `declare -A` support - that's a bash 4+ feature), and this script must run as a plain
+# `#!/bin/bash` invocation on a developer's Mac (dev deploys) same as every other script in this
+# repo - no `#!/usr/bin/env bash` + a newer Homebrew bash assumed. Each of these is a pure,
+# deterministic function of an app name (given ENV/VERSION/ARTIFACTS_ROOT/PROJECT_NAME, all
+# already fixed globals by this point), so a lookup function is exactly equivalent to an
+# associative array here and needs no bash-version assumption at all.
+_tar_path() { echo "${ARTIFACTS_ROOT}/$1/$1-v${VERSION}.tar"; }
+_manifest_path() { echo "${ARTIFACTS_ROOT}/$1/$1-v${VERSION}.json"; }
+_scripts_bundle_path() { echo "${ARTIFACTS_ROOT}/$1/$1-v${VERSION}-scripts.tar.gz"; }
+_service_name() { echo "$1-${ENV}"; }
+_container_name() { echo "${PROJECT_NAME}-$(_service_name "$1")-1"; }
+_compose_image() { echo "${PROJECT_NAME}-$(_service_name "$1"):latest"; }
 
-    if [ ! -f "${TAR_PATH[$APP]}" ]; then
-        echo "Error: no release found for ${APP} v${VERSION} - checked ${TAR_PATH[$APP]}." >&2
+for APP in "${APPS[@]}"; do
+    if [ ! -f "$(_tar_path "$APP")" ]; then
+        echo "Error: no release found for ${APP} v${VERSION} - checked $(_tar_path "$APP")." >&2
         exit 1
     fi
-    if [ ! -f "${MANIFEST_PATH[$APP]}" ]; then
-        echo "Error: manifest missing for ${APP} v${VERSION} - checked ${MANIFEST_PATH[$APP]}." >&2
+    if [ ! -f "$(_manifest_path "$APP")" ]; then
+        echo "Error: manifest missing for ${APP} v${VERSION} - checked $(_manifest_path "$APP")." >&2
         exit 1
     fi
-    MANIFEST_APP="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['app'])" "${MANIFEST_PATH[$APP]}" 2>/dev/null || echo "")"
-    MANIFEST_VERSION="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['version'])" "${MANIFEST_PATH[$APP]}" 2>/dev/null || echo "")"
+    MANIFEST_APP="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['app'])" "$(_manifest_path "$APP")" 2>/dev/null || echo "")"
+    MANIFEST_VERSION="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['version'])" "$(_manifest_path "$APP")" 2>/dev/null || echo "")"
     if [ "$MANIFEST_APP" != "$APP" ] || [ "$MANIFEST_VERSION" != "$VERSION" ]; then
-        echo "Error: manifest at ${MANIFEST_PATH[$APP]} doesn't match requested ${APP} v${VERSION} (found: app=${MANIFEST_APP:-<none>}, version=${MANIFEST_VERSION:-<none>})." >&2
+        echo "Error: manifest at $(_manifest_path "$APP") doesn't match requested ${APP} v${VERSION} (found: app=${MANIFEST_APP:-<none>}, version=${MANIFEST_VERSION:-<none>})." >&2
         exit 1
     fi
-    if [ ! -f "${SCRIPTS_BUNDLE_PATH[$APP]}" ]; then
-        echo "Error: no ops-scripts bundle found for ${APP} v${VERSION} (${SCRIPTS_BUNDLE_PATH[$APP]}) - this script requires the bugfix-043 bundle for BOTH apps (see header comment). Deploy this version via scripts/deploy_release_single.sh instead." >&2
+    if [ ! -f "$(_scripts_bundle_path "$APP")" ]; then
+        echo "Error: no ops-scripts bundle found for ${APP} v${VERSION} ($(_scripts_bundle_path "$APP")) - this script requires the bugfix-043 bundle for BOTH apps (see header comment). Deploy this version via scripts/deploy_release_single.sh instead." >&2
         exit 1
     fi
 done
@@ -186,9 +193,9 @@ if [ "$REMOTE" -eq 1 ]; then
     # Step R1: ship both artifacts.
     echo "== [R1] Shipping both apps' tarballs to ${REMOTE_HOST}:~/${REMOTE_DEPLOY_DIR} =="
     for APP in "${APPS[@]}"; do
-        ARTIFACT_NAME="$(basename "${TAR_PATH[$APP]}")"
+        ARTIFACT_NAME="$(basename "$(_tar_path "$APP")")"
         echo "  -> ${ARTIFACT_NAME}"
-        if ! scp -o BatchMode=yes -o ConnectTimeout=10 "${TAR_PATH[$APP]}" "${REMOTE_HOST}:~/${ARTIFACT_NAME}"; then
+        if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$(_tar_path "$APP")" "${REMOTE_HOST}:~/${ARTIFACT_NAME}"; then
             echo "🚨 DEPLOY FAILED at step R1 (scp ${ARTIFACT_NAME} -> ${REMOTE_HOST}): scp exited non-zero. Nothing on ${REMOTE_HOST} was touched." >&2
             exit 1
         fi
@@ -208,11 +215,11 @@ if [ "$REMOTE" -eq 1 ]; then
     # version carry the identical repo-wide scripts/ snapshot - see header comment; using
     # morning-mcp-app's is an arbitrary but deterministic choice, not a meaningful difference).
     BUNDLE_APP="${APPS[0]}"
-    SCRIPTS_BUNDLE_NAME="$(basename "${SCRIPTS_BUNDLE_PATH[$BUNDLE_APP]}")"
+    SCRIPTS_BUNDLE_NAME="$(basename "$(_scripts_bundle_path "$BUNDLE_APP")")"
     UNPACK_HELPER_NAME="$(basename "$UNPACK_SCRIPTS_HELPER")"
     MANIFEST_HELPER_NAME="release_scripts_manifest.sh"
     echo "== [R3] Shipping + unpacking the shared ops-scripts bundle on ${REMOTE_HOST} (from ${BUNDLE_APP}'s v${VERSION} bundle) =="
-    if ! scp -o BatchMode=yes -o ConnectTimeout=10 "${SCRIPTS_BUNDLE_PATH[$BUNDLE_APP]}" "${REMOTE_HOST}:~/${SCRIPTS_BUNDLE_NAME}"; then
+    if ! scp -o BatchMode=yes -o ConnectTimeout=10 "$(_scripts_bundle_path "$BUNDLE_APP")" "${REMOTE_HOST}:~/${SCRIPTS_BUNDLE_NAME}"; then
         echo "🚨 DEPLOY FAILED at step R3 (scp scripts bundle -> ${REMOTE_HOST}): scp exited non-zero. Nothing on ${REMOTE_HOST} was touched." >&2
         exit 1
     fi
@@ -247,7 +254,7 @@ if [ "$REMOTE" -eq 1 ]; then
     # (REQ-DEPLOY-001). Both must be correctly tagged BEFORE the single run_env.sh call below,
     # since the prober's own bootstrap-triggered run_all.sh needs both :latest images in place.
     for APP in "${APPS[@]}"; do
-        ARTIFACT_NAME="$(basename "${TAR_PATH[$APP]}")"
+        ARTIFACT_NAME="$(basename "$(_tar_path "$APP")")"
         echo "== [R5] Loading ${ARTIFACT_NAME} into Docker on ${REMOTE_HOST} =="
         LOAD_OUTPUT="$(remote_run "docker load -i \"${WIN_HOME}/${ARTIFACT_NAME}\"" 2>&1)"
         LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
@@ -263,8 +270,8 @@ if [ "$REMOTE" -eq 1 ]; then
             exit 1
         fi
 
-        echo "== [R7] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE[$APP]} on ${REMOTE_HOST} =="
-        if ! remote_run "docker tag ${LOADED_REF} ${COMPOSE_IMAGE[$APP]}"; then
+        echo "== [R7] Retagging ${LOADED_REF} -> $(_compose_image "$APP") on ${REMOTE_HOST} =="
+        if ! remote_run "docker tag ${LOADED_REF} $(_compose_image "$APP")"; then
             echo "🚨 DEPLOY FAILED at step R7 (docker tag ${APP} on ${REMOTE_HOST}): the environment is currently STOPPED (step R4 already ran)." >&2
             exit 1
         fi
@@ -282,11 +289,11 @@ if [ "$REMOTE" -eq 1 ]; then
     # Step R9 + final verification, per app - a container merely started (or the previous step
     # merely exiting 0) is not a success; block until each app is genuinely confirmed.
     for APP in "${APPS[@]}"; do
-        echo "== [R9] Confirming ${CONTAINER_NAME[$APP]} is running on ${REMOTE_HOST} =="
+        echo "== [R9] Confirming $(_container_name "$APP") is running on ${REMOTE_HOST} =="
         CONTAINER_UP=0
         CONTAINER_CHECK_ELAPSED=0
         while [ "$CONTAINER_CHECK_ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
-            CONTAINER_STATUS="$(remote_run "docker inspect --format '{{.State.Status}}' ${CONTAINER_NAME[$APP]}" 2>&1)"
+            CONTAINER_STATUS="$(remote_run "docker inspect --format '{{.State.Status}}' $(_container_name "$APP")" 2>&1)"
             if [ "$CONTAINER_STATUS" == "running" ]; then
                 CONTAINER_UP=1
                 break
@@ -295,8 +302,8 @@ if [ "$REMOTE" -eq 1 ]; then
             CONTAINER_CHECK_ELAPSED=$((CONTAINER_CHECK_ELAPSED + VERIFY_POLL_INTERVAL))
         done
         if [ "$CONTAINER_UP" -ne 1 ]; then
-            echo "🚨 DEPLOY FAILED at step R9 (${CONTAINER_NAME[$APP]} on ${REMOTE_HOST}): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
-            remote_run "docker logs ${CONTAINER_NAME[$APP]} --tail 20" >&2 2>&1 || true
+            echo "🚨 DEPLOY FAILED at step R9 ($(_container_name "$APP") on ${REMOTE_HOST}): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
+            remote_run "docker logs $(_container_name "$APP") --tail 20" >&2 2>&1 || true
             exit 1
         fi
 
@@ -305,14 +312,14 @@ if [ "$REMOTE" -eq 1 ]; then
         ELAPSED=0
         while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
             if [ "$APP" == "morning-mcp-app" ]; then
-                HEALTH_JSON="$(remote_run "cd ~/${REMOTE_DEPLOY_DIR} && PORT=\$(docker compose -f docker/docker-compose.prod.yml port ${SERVICE_NAME[$APP]} 8000 | cut -d: -f2) && curl -sf http://127.0.0.1:\$PORT/health" 2>/dev/null || echo "")"
+                HEALTH_JSON="$(remote_run "cd ~/${REMOTE_DEPLOY_DIR} && PORT=\$(docker compose -f docker/docker-compose.prod.yml port $(_service_name "$APP") 8000 | cut -d: -f2) && curl -sf http://127.0.0.1:\$PORT/health" 2>/dev/null || echo "")"
                 HEALTH_VERSION="$(echo "$HEALTH_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('version',''))" 2>/dev/null || echo "")"
                 if [ "$HEALTH_VERSION" == "$VERSION" ]; then
                     VERIFIED=1
                     break
                 fi
             else
-                if remote_run "docker logs ${CONTAINER_NAME[$APP]} --tail 20" 2>&1 | grep -q "\[v${VERSION}\]"; then
+                if remote_run "docker logs $(_container_name "$APP") --tail 20" 2>&1 | grep -q "\[v${VERSION}\]"; then
                     VERIFIED=1
                     break
                 fi
@@ -323,7 +330,7 @@ if [ "$REMOTE" -eq 1 ]; then
         if [ "$VERIFIED" -ne 1 ]; then
             echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} on ${REMOTE_HOST} within ${VERIFY_TIMEOUT}s (container is running - step R9 passed - but never reported the right version)." >&2
             echo "Last observed container state:" >&2
-            remote_run "docker logs ${CONTAINER_NAME[$APP]} --tail 20" >&2 2>&1 || true
+            remote_run "docker logs $(_container_name "$APP") --tail 20" >&2 2>&1 || true
             exit 1
         fi
         echo "✅ ${APP} v${VERSION} confirmed live in ${ENV} (${REMOTE_HOST})."
@@ -359,8 +366,8 @@ fi
 
 # Steps L2-L3: load + retag each app's image while everything is stopped.
 for APP in "${APPS[@]}"; do
-    echo "== [L2] Loading ${TAR_PATH[$APP]} into Docker (local) =="
-    LOAD_OUTPUT="$(docker load -i "${TAR_PATH[$APP]}" 2>&1)"
+    echo "== [L2] Loading $(_tar_path "$APP") into Docker (local) =="
+    LOAD_OUTPUT="$(docker load -i "$(_tar_path "$APP")" 2>&1)"
     LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
     if [ -z "$LOADED_REF" ]; then
         echo "🚨 DEPLOY FAILED at step L2 (docker load ${APP}, local): could not determine the loaded image reference. The environment is currently STOPPED (step L1 already ran) - rerun this deploy, or run_env.sh ${ENV} to bring it back up as-is. Raw output was:" >&2
@@ -368,8 +375,8 @@ for APP in "${APPS[@]}"; do
         exit 1
     fi
 
-    echo "== [L3] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE[$APP]} (local) =="
-    if ! docker tag "$LOADED_REF" "${COMPOSE_IMAGE[$APP]}"; then
+    echo "== [L3] Retagging ${LOADED_REF} -> $(_compose_image "$APP") (local) =="
+    if ! docker tag "$LOADED_REF" "$(_compose_image "$APP")"; then
         echo "🚨 DEPLOY FAILED at step L3 (docker tag ${APP}, local): the environment is currently STOPPED (step L1 already ran)." >&2
         exit 1
     fi
@@ -386,11 +393,11 @@ fi
 
 # Step L5 + final verification, per app.
 for APP in "${APPS[@]}"; do
-    echo "== [L5] Confirming ${CONTAINER_NAME[$APP]} is running (local) =="
+    echo "== [L5] Confirming $(_container_name "$APP") is running (local) =="
     CONTAINER_UP=0
     CONTAINER_CHECK_ELAPSED=0
     while [ "$CONTAINER_CHECK_ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
-        CONTAINER_STATUS="$(docker inspect --format '{{.State.Status}}' "${CONTAINER_NAME[$APP]}" 2>&1)"
+        CONTAINER_STATUS="$(docker inspect --format '{{.State.Status}}' "$(_container_name "$APP")" 2>&1)"
         if [ "$CONTAINER_STATUS" == "running" ]; then
             CONTAINER_UP=1
             break
@@ -399,8 +406,8 @@ for APP in "${APPS[@]}"; do
         CONTAINER_CHECK_ELAPSED=$((CONTAINER_CHECK_ELAPSED + VERIFY_POLL_INTERVAL))
     done
     if [ "$CONTAINER_UP" -ne 1 ]; then
-        echo "🚨 DEPLOY FAILED at step L5 (${CONTAINER_NAME[$APP]}, local): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
-        docker logs "${CONTAINER_NAME[$APP]}" --tail 20 >&2 2>&1 || true
+        echo "🚨 DEPLOY FAILED at step L5 ($(_container_name "$APP"), local): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
+        docker logs "$(_container_name "$APP")" --tail 20 >&2 2>&1 || true
         exit 1
     fi
 
@@ -409,7 +416,7 @@ for APP in "${APPS[@]}"; do
     ELAPSED=0
     while [ "$ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
         if [ "$APP" == "morning-mcp-app" ]; then
-            HOST_PORT="$(docker compose "${COMPOSE_ARGS[@]}" port "${SERVICE_NAME[$APP]}" 8000 2>/dev/null | cut -d: -f2)"
+            HOST_PORT="$(docker compose "${COMPOSE_ARGS[@]}" port "$(_service_name "$APP")" 8000 2>/dev/null | cut -d: -f2)"
             HEALTH_JSON=""
             if [ -n "$HOST_PORT" ]; then
                 HEALTH_JSON="$(curl -s "http://localhost:${HOST_PORT}/health" 2>/dev/null || echo "")"
@@ -420,7 +427,7 @@ for APP in "${APPS[@]}"; do
                 break
             fi
         else
-            if docker logs "${CONTAINER_NAME[$APP]}" --tail 20 2>&1 | grep -q "\[v${VERSION}\]"; then
+            if docker logs "$(_container_name "$APP")" --tail 20 2>&1 | grep -q "\[v${VERSION}\]"; then
                 VERIFIED=1
                 break
             fi
@@ -431,7 +438,7 @@ for APP in "${APPS[@]}"; do
     if [ "$VERIFIED" -ne 1 ]; then
         echo "🚨 DEPLOY FAILED at final verification: ${APP} v${VERSION} not confirmed live in ${ENV} within ${VERIFY_TIMEOUT}s (container is running - step L5 passed - but never reported the right version)." >&2
         echo "Last observed container state:" >&2
-        docker logs "${CONTAINER_NAME[$APP]}" --tail 20 >&2 2>&1 || true
+        docker logs "$(_container_name "$APP")" --tail 20 >&2 2>&1 || true
         exit 1
     fi
     echo "✅ ${APP} v${VERSION} confirmed live in ${ENV}."
