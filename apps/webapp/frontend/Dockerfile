@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # webapp-frontend (Feature 068). Build context = repo root (matches the backend Dockerfile).
 #   docker build -f apps/webapp/frontend/Dockerfile -t webapp-frontend .
 #
@@ -5,12 +6,18 @@
 # nginx also reverse-proxies /api and /health to the backend service so the browser only
 # ever talks to one origin (the frontend host, e.g. the Tailscale Serve name) — VITE_API_BASE
 # stays "". nginx serves its own /healthz (200, no backend hop) as this container's liveness.
+#
+# Two layers of caching, both important under x86 emulation on an Apple-Silicon dev machine:
+#  - package*.json COPYed alone, before the app source, so the whole `npm ci` layer is reused
+#    on any cut whose lockfile didn't change (plain layer cache).
+#  - --mount=type=cache on /root/.npm keeps npm's download cache across builds (BuildKit, not
+#    baked into any layer), so even a lockfile change only re-links, doesn't re-download.
 FROM node:20-slim AS build
 WORKDIR /build
 COPY apps/webapp/frontend/package.json apps/webapp/frontend/package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY apps/webapp/frontend/ ./
-RUN npx vite build
+RUN npm run build
 
 FROM nginx:1.27-alpine
 # ${BACKEND_UPSTREAM} (e.g. webapp-backend-dev:8100) is filled in at container start by the

@@ -343,18 +343,39 @@ if [ "$ARTIFACTS_ROOT" == "$DEFAULT_ARTIFACTS_ROOT" ] && [ -f "$_KEEPALIVE_PLIST
     fi
 fi
 
+# Build every image (2 for webapp, 1 otherwise) CONCURRENTLY. Under x86 emulation on an arm64
+# dev machine each webapp image build runs for minutes and they contend for little beyond CPU,
+# so parallel builds roughly halve a webapp cut's wall-clock cost. A single-image app just runs
+# one background build + one wait - identical behaviour to the old serial loop. Each build's
+# output goes to its own temp log, printed only if THAT build fails (a cut produces every image
+# or none). This whole block runs inside the colima-keepalive pause window above.
+#
+# DOCKER_BUILDKIT=1: the Dockerfiles use `RUN --mount=type=cache` (npm's /root/.npm, pip's
+# /root/.cache/pip) to persist download caches across builds - needs BuildKit (buildx). Layer
+# caching (deps COPYed before the app source) covers the unchanged-deps case on top of that.
 BUILD_STATUS=0
+_build_pids=()
+_build_logs=()
+_build_names=()
 for _spec in "${BUILD_SPECS[@]}"; do
     _tag="${_spec%%|*}"
     _rest="${_spec#*|}"
     _dockerfile="${_rest%%|*}"
     _context="${_rest##*|}"
-    set +e
-    docker build --platform linux/amd64 -t "$_tag" -f "$_dockerfile" "$_context" -q >/dev/null
-    BUILD_STATUS=$?
-    set -e
-    [ "$BUILD_STATUS" -ne 0 ] && break
+    _blog="$(mktemp -t cut_release_build.XXXXXX)"
+    _build_logs+=("$_blog")
+    _build_names+=("$_tag")
+    DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -t "$_tag" -f "$_dockerfile" "$_context" -q >"$_blog" 2>&1 &
+    _build_pids+=("$!")
 done
+for _i in "${!_build_pids[@]}"; do
+    if ! wait "${_build_pids[$_i]}"; then
+        BUILD_STATUS=1
+        echo "Error: docker build failed for ${_build_names[$_i]}:" >&2
+        sed 's/^/    /' "${_build_logs[$_i]}" >&2
+    fi
+done
+rm -f "${_build_logs[@]}"
 if [ "$BUILD_STATUS" -ne 0 ]; then
     echo "Error: docker build failed - reverting VERSION/CHANGELOG.md/RELEASES.md, no commit made." >&2
     _revert_uncommitted_release_files

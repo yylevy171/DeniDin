@@ -17,8 +17,25 @@ apps/denidin-app/dev_data
 apps/denidin-app/data
 apps/denidin-app/test_data
 apps/*/logs
+apps/*/test_data
+apps/*/dev_data
+**/*.log
 shared
 artifacts
+
+# Not COPYed by either webapp Dockerfile — keep them out of the (repo-root) build context so
+# the context transfer to the daemon stays small. Backend COPYs only apps/webapp/backend/ +
+# apps/denidin-app/src/ (+ a few named files); frontend only apps/webapp/frontend/.
+apps/morning-mcp-app
+apps/webapp/e2e
+specs
+.github
+.claude
+**/playwright-report
+**/test-results
+**/blob-report
+**/.last-run.json
+**/.DS_Store
 
 # Secrets / per-clone files
 **/config/config.dev.json
