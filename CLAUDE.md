@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code), Antigravity, and Gemini when working with code in this repository.
 
 ## Personality dispatch
 Read and follow @.claude/personalities/<basename of current working directory>.md
