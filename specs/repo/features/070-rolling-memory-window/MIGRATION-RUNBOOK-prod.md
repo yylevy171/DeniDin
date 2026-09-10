@@ -6,10 +6,10 @@ pre-staging, no delta-merge. Simple, single shot, rehearsed twice.
 Written from the **Stage 1 dress rehearsal executed 2026-09-04** against a byte copy of live prod
 data (`~/denidin-migration/snapshots/prod-20260904/`). Every command below is the exact command
 that rehearsal ran, only the data-root path changes for the live run. Runs **on the Mac** from the
-`coder1` clone checked out on `feature/070-rolling-memory-window` (the migration tools live there);
+`teammate1` clone checked out on `feature/070-rolling-memory-window` (the migration tools live there);
 the Windows box only stops/starts and sends/receives the `data/` tree. `<PY>` =
-`/Users/yaron/Projects/DeniDin/coder1/apps/denidin-app/venv/bin/python3` (chromadb 1.5.9 —
-confirmed to read the current prod store). `<APP>` = `.../coder1/apps/rolling-memory-backfill`.
+`/Users/yaron/Projects/DeniDin/teammate1/apps/denidin-app/venv/bin/python3` (chromadb 1.5.9 —
+confirmed to read the current prod store). `<APP>` = `.../teammate1/apps/rolling-memory-backfill`.
 
 Target release: **0.5.4-70** (both apps, cut from `feature/070` — tags `denidin-app-v0.5.4-70` /
 `morning-mcp-app-v0.5.4-70`, artifacts under `/Users/yaron/Projects/DeniDin/artifacts/`).
@@ -78,7 +78,7 @@ cd <APP>
 # 4b. reconcile check — on $WORK
 <PY> - <<EOF
 from pathlib import Path; import logging; logging.basicConfig(level=logging.WARNING, force=True)
-import sys; sys.path.insert(0, "/Users/yaron/Projects/DeniDin/coder1/apps/denidin-app")
+import sys; sys.path.insert(0, "/Users/yaron/Projects/DeniDin/teammate1/apps/denidin-app")
 from src.managers.session_manager import SessionManager
 from src.managers.message_integrity import assert_message_integrity
 sm = SessionManager(storage_dir=str(Path("$WORK")/"sessions"))
@@ -90,7 +90,7 @@ EOF
 
 # 5. backfill — RUN IT BACKGROUNDED, NEVER behind a timeout, DO NOT interrupt
 <PY> backfill_daily_summaries.py --data-root $WORK \
-  --config /Users/yaron/Projects/DeniDin/coder1/apps/denidin-app/config/config.dev.json \
+  --config /Users/yaron/Projects/DeniDin/teammate1/apps/denidin-app/config/config.dev.json \
   --since 2026-08-01 --until <today-14>            # read the plan for the exact --until, then:
 <PY> backfill_daily_summaries.py --data-root $WORK --config .../config.dev.json \
   --since 2026-08-01 --until <today-14> --yes > ~/denidin-migration/reports/backfill-$DATE.txt 2>&1 &

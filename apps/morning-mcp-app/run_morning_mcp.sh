@@ -23,7 +23,7 @@ COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.$ENV.yml"
 LOCAL_OVERRIDE="$REPO_ROOT/docker/docker-compose.$ENV.local.yml"
 SERVICE="morning-mcp-app-$ENV"
 
-# The lock is shared across all clones (this one, coder1, coder2, ...) via
+# The lock is shared across all clones (this one, teammate1, teammate2, ...) via
 # ./shared, and "dev" is additionally locked to whichever clone acquires it
 # - see scripts/env_lock.sh.
 source "$REPO_ROOT/scripts/env_lock.sh"

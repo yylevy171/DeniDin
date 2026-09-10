@@ -12,7 +12,7 @@ If no matching file exists, use @.claude/personalities/default.md
 **You are confined to the files and folders inside your own clone's directory
 ONLY.** Per the multi-clone setup described below, this repo is checked out
 in multiple sibling locations at once (this original/`root` clone plus dev
-clones like `coder1`, `coder2`, ...), each a fully independent `git` clone
+clones like `teammate1`, `teammate2`, ...), each a fully independent `git` clone
 with its own working tree — **not** git worktrees of one shared repo. Do not
 read, list, `grep`, `cd` into, or otherwise inspect any sibling clone or the
 parent directory containing them, and do not read, edit, move, or run
@@ -32,7 +32,7 @@ clone's virtualenv/interpreter/binaries, and never trust a bare command
 (`python3`, `pytest`, etc.) without first confirming what your shell's
 `PATH`/active venv actually resolves it to. A stale or leaked `PATH` from
 a prior command in the same session can silently point a "plain" command
-at a sibling clone's venv (e.g. `coder1`'s or `coder2`'s) — running
+at a sibling clone's venv (e.g. `teammate1`'s or `teammate2`'s) — running
 anything through it, even a read-only test run, is the same violation as
 `cd`-ing into that clone directly. Always resolve/activate your own
 clone's own venv explicitly before running project commands, and verify
@@ -119,7 +119,7 @@ specifically so a slip here fails loudly instead of silently.
 
 **Multi-clone lock (2026-07-23)**: this repo may be checked out in more than
 one place at once — this original/`root` clone plus sibling dev clones
-(`coder1`, `coder2`, ...), each with its own [Personality dispatch](#personality-dispatch)
+(`teammate1`, `teammate2`, ...), each with its own [Personality dispatch](#personality-dispatch)
 identity. `scripts/env_lock.sh` (sourced by `run_denidin.sh`,
 `run_morning_mcp.sh`, `stop_denidin.sh`, `stop_morning_mcp.sh`, and
 `scripts/killall_containers.sh`) enforces this across all of them: `dev` is

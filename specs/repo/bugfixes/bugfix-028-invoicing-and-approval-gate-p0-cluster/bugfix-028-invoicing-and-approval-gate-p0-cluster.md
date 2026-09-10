@@ -177,7 +177,7 @@ is correct and stays.
 ### Gotchas for anyone continuing this work
 
 - **`python3` resolves to another clone's venv on this machine** (observed:
-  `coder2/apps/morning-mcp-app/venv/bin/python3`). Using it is a cross-clone violation. Run
+  `teammate2/apps/morning-mcp-app/venv/bin/python3`). Using it is a cross-clone violation. Run
   `which -a python3` and use an absolute path.
 - **Log timestamps are UTC. Ledger `event_time`/`event_date`/`event_id` are local IDT (UTC+3).**
   Comparing them directly shows a phantom 3-hour gap. This is bugfix-037.

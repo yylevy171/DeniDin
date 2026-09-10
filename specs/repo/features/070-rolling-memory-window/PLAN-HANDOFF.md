@@ -1,7 +1,7 @@
 # Feature 070 — `/speckit.plan` Handoff
 
 **Written**: 2026-09-02 · **Branch**: `feature/070-rolling-memory-window` (speckit ID `070-rolling-memory-window`)
-**Clone**: `coder1` (Avi) · **Working dir**: `/Users/yaron/Projects/DeniDin/coder1`
+**Clone**: `teammate1` (Avi) · **Working dir**: `/Users/yaron/Projects/DeniDin/teammate1`
 
 This file records where the `/speckit.plan` step for Feature 070 stands so the next
 session can resume without re-deriving context. It is a working note, **not** a SpecKit
@@ -348,7 +348,7 @@ verify-before-design-lock plan (the Phase 0 spike). The doc explicitly permits t
    prod-logging table + multi-handler-race explanation + `json-file` dependency statement +
    forced-rotation verification procedure).
 6. **Run** `SPECIFY_FEATURE=070-rolling-memory-window .specify/scripts/bash/update-agent-context.sh copilot`
-   (verify `which python3` / venv resolves inside `coder1` first).
+   (verify `which python3` / venv resolves inside `teammate1` first).
 7. **Re-evaluate Constitution Check** post-design in `plan.md`.
 8. **Stop and report** branch + IMPL_PLAN path + generated artifacts.
 9. **Then `/speckit.analyze`** for cross-artifact consistency (requirements.md lines 116-117

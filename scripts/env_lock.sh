@@ -2,7 +2,7 @@
 # Shared helper library for the cross-clone dev/prod environment lock.
 # Sourced by run_denidin.sh, stop_denidin.sh, run_morning_mcp.sh,
 # stop_morning_mcp.sh, and killall_containers.sh in every clone (this
-# original clone, coder1, coder2, ...). Not meant to be run directly.
+# original clone, teammate1, teammate2, ...). Not meant to be run directly.
 #
 # Model (2026-08-05 - dev+prod concurrency ban lifted): dev and prod may now
 # both be active at once, independently - see CLAUDE.md's "Environments
@@ -174,7 +174,7 @@ with open('$lock_file', 'w', encoding='utf-8') as f:
 # its paths are already canonical, but the file itself must still exist so
 # this check can't silently skip it.
 #
-# Real incident this check exists to prevent (2026-07-30, coder2/Bina): this
+# Real incident this check exists to prevent (2026-07-30, teammate2/Bina): this
 # file was missing in a coderN clone, so docker-compose.<env>.yml's own
 # plain relative volume paths resolved against THAT clone's own directory
 # instead of being overridden to point at the shared root-clone paths - the
@@ -192,7 +192,7 @@ env_lock_require_local_override() {
     if [ ! -f "$override_file" ]; then
         echo "ERROR: $override_file not found." >&2
         echo "" >&2
-        echo "Every clone (root, coder1, coder2, ...) MUST have this file, created by hand -" >&2
+        echo "Every clone (root, teammate1, teammate2, ...) MUST have this file, created by hand -" >&2
         echo "see CLAUDE.md's 'Multi-clone lock' / 'dev/prod data is also a singleton across" >&2
         echo "clones' sections. Without it, this clone's dev/prod data+log volumes silently" >&2
         echo "fall back to THIS clone's own directory instead of the shared canonical" >&2
@@ -201,7 +201,7 @@ env_lock_require_local_override() {
         echo "shared history, with zero warning)." >&2
         echo "" >&2
         echo "Fix: create $override_file. Copy an existing coderN clone's file (e.g." >&2
-        echo "coder1's docker/docker-compose.dev.local.yml) and adjust if needed; if this IS" >&2
+        echo "teammate1's docker/docker-compose.dev.local.yml) and adjust if needed; if this IS" >&2
         echo "the root/canonical clone, use a no-op stub: 'services: {}'." >&2
         echo "Refusing to start until this file exists - this is deliberate, not a bug." >&2
         exit 1
