@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 
 EVENTS_DIR = Path(os.path.expanduser(
-    "~/Projects/DeniDin/coder1/apps/denidin-app/player_data/events"
+    "~/Projects/DeniDin/teammate1/apps/denidin-app/player_data/events"
 ))
 ORIGINALS_DIR = EVENTS_DIR / "_originals"
 

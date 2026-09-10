@@ -19,9 +19,9 @@ import json
 import shutil
 from pathlib import Path
 
-BASE = Path("/Users/yaron/Projects/DeniDin/coder1/specs/backlog/065-august-ledger-audit-apply")
+BASE = Path("/Users/yaron/Projects/DeniDin/teammate1/specs/backlog/065-august-ledger-audit-apply")
 TYPE2_CSV = BASE / "type2_modify_in_prod.csv"
-PLAYER_DIR = Path("/Users/yaron/Projects/DeniDin/coder1/apps/denidin-app/player_data/events")
+PLAYER_DIR = Path("/Users/yaron/Projects/DeniDin/teammate1/apps/denidin-app/player_data/events")
 PROD_RW_DIR = Path.home() / "denidin-winprod-data-rw" / "events"
 MODIFIED_DIR = PROD_RW_DIR / "_modified"
 

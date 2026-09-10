@@ -26,10 +26,10 @@ from datetime import date
 
 PROD_EVENTS_DIR = os.path.expanduser("~/denidin-winprod-data/events")
 PLAYER_EVENTS_DIR = os.path.expanduser(
-    "~/Projects/DeniDin/coder1/apps/denidin-app/player_data/events"
+    "~/Projects/DeniDin/teammate1/apps/denidin-app/player_data/events"
 )
 OUT_DIR = os.path.expanduser(
-    "~/Projects/DeniDin/coder1/specs/backlog/065-august-ledger-audit-apply"
+    "~/Projects/DeniDin/teammate1/specs/backlog/065-august-ledger-audit-apply"
 )
 
 WINDOW_START = date(2026, 7, 1)

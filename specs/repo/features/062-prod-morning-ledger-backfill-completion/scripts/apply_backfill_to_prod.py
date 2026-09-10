@@ -24,7 +24,7 @@ import json
 import shutil
 from pathlib import Path
 
-SRC = Path("/Users/yaron/Projects/DeniDin/coder1/apps/prod-ledger-backfill/ledger_events/prod_backfill_sep2025")
+SRC = Path("/Users/yaron/Projects/DeniDin/teammate1/apps/prod-ledger-backfill/ledger_events/prod_backfill_sep2025")
 DEST = Path.home() / "denidin-winprod-data-rw" / "events"
 
 

@@ -226,8 +226,8 @@ cover all three cases — there is no separate "rollback script."
 ### Artifacts Storage
 
 - **REQ-ART-001**: Release artifacts (image tarballs + manifests) live in one canonical,
-  hardcoded-path artifacts folder shared identically across every clone (root `DeniDin`, `coder1`,
-  `coder2`, ...) on the machine — e.g. `/Users/yaron/Projects/DeniDin/artifacts/` — laid out as
+  hardcoded-path artifacts folder shared identically across every clone (root `DeniDin`, `teammate1`,
+  `teammate2`, ...) on the machine — e.g. `/Users/yaron/Projects/DeniDin/artifacts/` — laid out as
   `artifacts/<app>/<app>-v<version>.tar` (+ manifest, REQ-ART-002). This mirrors the existing
   cross-clone shared-state precedent (`shared/` symlink + `config/shared_state.local.json` for
   env-lock state; `docker/docker-compose.*.local.yml` for dev/prod data volumes) rather than
@@ -274,7 +274,7 @@ Reasonable defaults applied where no explicit user direction was given, document
   it's non-sensitive operational info, unlike Morning-tool access — flag if this should actually
   be restricted to godfather/admin instead.
 - **The artifacts folder's exact path is `/Users/yaron/Projects/DeniDin/artifacts/`** (sibling to
-  the `DeniDin`/`coder1`/`coder2` clones, matching the existing shared-state precedent) —
+  the `DeniDin`/`teammate1`/`teammate2` clones, matching the existing shared-state precedent) —
   confirmed by the user 2026-08-02.
 
 ## Key Entities

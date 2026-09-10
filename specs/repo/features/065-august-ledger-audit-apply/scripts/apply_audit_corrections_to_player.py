@@ -28,11 +28,11 @@ import sys
 from pathlib import Path
 
 PLAYER_EVENTS_DIR = Path(os.path.expanduser(
-    "~/Projects/DeniDin/coder1/apps/denidin-app/player_data/events"
+    "~/Projects/DeniDin/teammate1/apps/denidin-app/player_data/events"
 ))
 ORIGINALS_DIR = PLAYER_EVENTS_DIR / "_originals"
 AUDIT_JSON = Path(os.path.expanduser(
-    "~/Projects/DeniDin/coder1/specs/backlog/065-august-ledger-audit-apply/"
+    "~/Projects/DeniDin/teammate1/specs/backlog/065-august-ledger-audit-apply/"
     "ledger_changes_august.json"
 ))
 
