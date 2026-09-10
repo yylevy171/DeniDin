@@ -1,0 +1,477 @@
+import json
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import os
+import difflib
+
+from generate_client_status import get_report_data, MAPPING_FILE, NOTES_FILE, CLIENT_COMMENTS_FILE
+
+def render_html():
+    official_clients, stats, unmatched, manual_mapping, notes, amount_to_clients, client_comments = get_report_data()
+    
+    html = """<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <title>DeniDin - Interactive Resolution Engine</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --surface-hover: #334155;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-color: #3b82f6;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+            --border-color: #334155;
+        }
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            margin: 0; 
+            padding: 40px; 
+            background: var(--bg-color); 
+            color: var(--text-color); 
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1, h2 { 
+            background: linear-gradient(90deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 20px;
+            font-weight: 800;
+        }
+        
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 40px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        
+        table { 
+            border-collapse: separate; 
+            border-spacing: 0;
+            width: 100%; 
+        }
+        
+        th, td { 
+            padding: 16px; 
+            text-align: right; 
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        th { 
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Row Status Colors */
+        .row-green { background-color: rgba(16, 185, 129, 0.15); }
+        .row-red { background-color: rgba(239, 68, 68, 0.15); }
+        .row-yellow { background-color: rgba(250, 204, 21, 0.35); color: #fff; }
+        
+        .row-green:hover { background-color: rgba(16, 185, 129, 0.25); }
+        .row-red:hover { background-color: rgba(239, 68, 68, 0.25); }
+        .row-yellow:hover { background-color: rgba(250, 204, 21, 0.5); }
+        
+        tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .events-row {
+            background-color: #0f172a;
+        }
+        
+        .events-table {
+            width: 95%;
+            margin: 10px auto;
+            background-color: var(--surface-color);
+            border-radius: 8px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+        }
+        
+        .events-table th, .events-table td {
+            padding: 8px 12px;
+            font-size: 0.85em;
+        }
+        
+        .toggle-btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            cursor: pointer;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            font-weight: bold;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .toggle-btn:hover {
+            background: var(--accent-color);
+        }
+        
+        select, input[type="text"] {
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 10px 14px;
+            border-radius: 8px;
+            width: 100%;
+            font-family: inherit;
+            transition: all 0.3s ease;
+        }
+        
+        select:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        
+        button.primary-btn {
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            position: fixed;
+            bottom: 40px;
+            right: 40px;
+            z-index: 100;
+        }
+        
+        button.primary-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+        }
+        
+        .flex-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .comment-input-row {
+            background-color: rgba(255,255,255,0.02);
+            border-top: 1px dashed rgba(255,255,255,0.1);
+        }
+        
+        .comment-input-row td {
+            padding: 15px 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DeniDin - Interactive Resolution Engine</h1>
+        <p style="color: var(--text-muted); margin-bottom: 40px;">Displaying verified data from 2026 onwards.</p>
+        
+        <form action="/submit_mapping" method="POST">
+            <button class="primary-btn" type="submit">Save State & Recalculate</button>
+
+            <div class="glass-panel">
+                <h2>Official Client Roster (2026)</h2>
+                <table>
+                    <tr>
+                        <th style="width: 40px;"></th>
+                        <th>Client Name</th>
+                        <th>Raw Ledger Matches</th>
+                        <th>Agreed (Ceiling)</th>
+                        <th>Deposits (Paid)</th>
+                        <th>Invoices (Net)</th>
+                    </tr>
+"""
+    
+    import uuid
+    
+    for client in sorted(official_clients):
+        data = stats[client]
+        agreed = data["agreements"]
+        paid = data["deposits"]
+        invoices_net = data.get("invoices_net", 0.0)
+        manual_agreed = data.get("manual_agreement_amount")
+        
+        display_agreed = agreed
+        is_manual = False
+        
+        if agreed == 0 and manual_agreed is not None:
+            display_agreed = manual_agreed
+            is_manual = True
+            
+        if display_agreed == 0 and paid == 0 and invoices_net == 0:
+            continue
+            
+        row_class = ""
+        if display_agreed > 0 and paid == display_agreed:
+            row_class = "row-green"
+        elif display_agreed > 0 and paid < display_agreed:
+            row_class = "row-red"
+        elif (display_agreed == 0 and (paid > 0 or invoices_net > 0)) or (paid > display_agreed):
+            row_class = "row-yellow"
+            
+        raw_names_str = ", ".join(data["raw_names"]) if data["raw_names"] else "-"
+        client_id = str(uuid.uuid4())[:8]
+        current_comment = client_comments.get(client, "")
+        
+        if is_manual:
+            agreed_html = f'<span style="color: var(--danger-color); font-weight: bold;">₪{display_agreed:,.2f}</span>'
+        else:
+            agreed_html = f'₪{display_agreed:,.2f}'
+        
+        html += f"""
+                    <tr class="{row_class}">
+                        <td><button type="button" class="toggle-btn" onclick="toggleEvents('{client_id}', this)">+</button></td>
+                        <td style="font-weight: 600;">{client}</td>
+                        <td style="color: var(--text-muted); font-size: 0.9em;">{raw_names_str}</td>
+                        <td>{agreed_html}</td>
+                        <td>₪{paid:,.2f}</td>
+                        <td>₪{invoices_net:,.2f}</td>
+                    </tr>
+                    <tr id="events_{client_id}" class="events-row" style="display: none;">
+                        <td colspan="6" style="padding: 0;">
+                            <table class="events-table">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Sub Type</th>
+                                    <th>Description / Component</th>
+                                    <th>Amount</th>
+                                </tr>
+"""
+        
+        for ev in data["events"]:
+            html += f"""
+                                <tr>
+                                    <td>{ev['date']}</td>
+                                    <td>{ev['type']}</td>
+                                    <td>{ev['subtype']}</td>
+                                    <td>{ev['desc']}</td>
+                                    <td>₪{ev['amount']:,.2f}</td>
+                                </tr>
+"""
+        # Add comment row inside the drilldown table
+        html += f"""
+                                <tr class="comment-input-row">
+                                    <td colspan="5">
+                                        <input type="text" name="comment_{client}" placeholder="Operations Directives / Comments (e.g. 'cancel dup component', 'ignore event 3')..." value="{current_comment}">
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+"""
+                
+    html += """
+                </table>
+            </div>
+"""
+
+    if unmatched:
+        html += """
+            <div class="glass-panel" style="border-left: 4px solid var(--danger-color);">
+                <div class="flex-container">
+                    <h2>Resolution Queue (Unmatched Names)</h2>
+                    <span style="background: rgba(239, 68, 68, 0.2); color: var(--danger-color); padding: 4px 12px; border-radius: 20px; font-weight: bold;">{num} Items Remaining</span>
+                </div>
+                
+                <table>
+                    <tr>
+                        <th>Raw Name (from ledger)</th>
+                        <th>Resolution (Matched Candidates)</th>
+                        <th>Notes / Commands</th>
+                        <th>Agreement Amount / Text</th>
+                        <th>Deposits (Paid)</th>
+                    </tr>
+""".replace("{num}", str(len(unmatched)))
+            
+        for raw_name, data in sorted(unmatched.items()):
+            agreed_val = data['agreements']
+            current_note = notes.get(raw_name, "")
+            
+            # Smart Candidate Generation
+            candidates_amount = amount_to_clients.get(agreed_val, set()) if agreed_val > 0 else set()
+            candidates_fuzzy = set(difflib.get_close_matches(raw_name, official_clients, n=3, cutoff=0.5))
+            candidates_family = set()
+            
+            words = raw_name.split()
+            if len(words) > 1:
+                last_word = words[-1]
+                for oc in official_clients:
+                    if last_word in oc:
+                        candidates_family.add(oc)
+                        
+            all_smart_candidates = candidates_amount.union(candidates_fuzzy).union(candidates_family)
+            
+            options_html = '<option value="">--- Select Match ---</option>'
+            options_html += '<option value="Unknown">Unknown (Skip for now)</option>'
+            
+            if all_smart_candidates:
+                options_html += '<optgroup label="Smart Suggestions">'
+                for oc in sorted(all_smart_candidates):
+                    reasons = []
+                    if oc in candidates_amount: reasons.append("Amount")
+                    if oc in candidates_fuzzy: reasons.append("Fuzzy")
+                    if oc in candidates_family: reasons.append("Family Name")
+                    options_html += f'<option value="{oc}">{oc} ({", ".join(reasons)})</option>'
+                options_html += '</optgroup>'
+                
+            options_html += '<optgroup label="All Clients">'
+            for oc in sorted(official_clients):
+                if oc not in all_smart_candidates:
+                    options_html += f'<option value="{oc}">{oc}</option>'
+            options_html += '</optgroup>'
+                
+            if agreed_val == 0 and data['raw_text']:
+                agreement_display = f"<span style='color: var(--warning-color); font-size: 0.9em;'>{', '.join(data['raw_text'])}</span>"
+            else:
+                agreement_display = f"₪{agreed_val:,.2f}"
+                
+            html += f"""
+                    <tr>
+                        <td style="font-weight: 600;">{raw_name}</td>
+                        <td>
+                            <select name="mapping_{raw_name}">
+                                {options_html}
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" name="notes_{raw_name}" placeholder="Type notes or commands..." value="{current_note}">
+                        </td>
+                        <td>{agreement_display}</td>
+                        <td>₪{data['deposits']:,.2f}</td>
+                    </tr>"""
+                    
+        html += """
+                </table>
+            </div>
+"""
+    else:
+        html += """
+            <div class="glass-panel" style="text-align: center; border-left: 4px solid var(--success-color);">
+                <h2>Resolution Queue is Empty!</h2>
+                <p style="color: var(--text-muted);">All raw ledger events have been successfully mapped to official Morning clients.</p>
+            </div>
+"""
+        
+    html += """
+        </form>
+    </div>
+    <script>
+        function toggleEvents(clientId, btn) {
+            var row = document.getElementById('events_' + clientId);
+            if (row.style.display === 'none') {
+                row.style.display = 'table-row';
+                btn.textContent = '-';
+            } else {
+                row.style.display = 'none';
+                btn.textContent = '+';
+            }
+        }
+    </script>
+</body>
+</html>
+"""
+    return html
+
+
+class MappingRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html; charset=utf-8')
+            self.end_headers()
+            
+            html_content = render_html()
+            self.wfile.write(html_content.encode('utf-8'))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        if self.path == '/submit_mapping':
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            parsed_data = urllib.parse.parse_qs(post_data)
+            
+            manual_mapping = {}
+            if os.path.exists(MAPPING_FILE):
+                with open(MAPPING_FILE, "r", encoding="utf-8") as f:
+                    manual_mapping = json.load(f)
+                    
+            notes = {}
+            if os.path.exists(NOTES_FILE):
+                with open(NOTES_FILE, "r", encoding="utf-8") as f:
+                    notes = json.load(f)
+                    
+            client_comments = {}
+            if os.path.exists(CLIENT_COMMENTS_FILE):
+                with open(CLIENT_COMMENTS_FILE, "r", encoding="utf-8") as f:
+                    client_comments = json.load(f)
+            
+            for key, values in parsed_data.items():
+                val = values[0].strip()
+                if not val:
+                    continue
+                    
+                if key.startswith("mapping_"):
+                    raw_name = key.replace("mapping_", "", 1)
+                    manual_mapping[raw_name] = val
+                elif key.startswith("notes_"):
+                    raw_name = key.replace("notes_", "", 1)
+                    notes[raw_name] = val
+                elif key.startswith("comment_"):
+                    official_client = key.replace("comment_", "", 1)
+                    client_comments[official_client] = val
+                    
+            with open(MAPPING_FILE, "w", encoding="utf-8") as f:
+                json.dump(manual_mapping, f, ensure_ascii=False, indent=4)
+                
+            with open(NOTES_FILE, "w", encoding="utf-8") as f:
+                json.dump(notes, f, ensure_ascii=False, indent=4)
+                
+            with open(CLIENT_COMMENTS_FILE, "w", encoding="utf-8") as f:
+                json.dump(client_comments, f, ensure_ascii=False, indent=4)
+            
+            self.send_response(303)
+            self.send_header('Location', '/')
+            self.end_headers()
+
+def run_server():
+    server_address = ('', 8080)
+    httpd = HTTPServer(server_address, MappingRequestHandler)
+    print("Server running on port 8080. Open http://localhost:8080 in your browser.")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.server_close()
+        print("Server stopped.")
+
+if __name__ == '__main__':
+    run_server()
