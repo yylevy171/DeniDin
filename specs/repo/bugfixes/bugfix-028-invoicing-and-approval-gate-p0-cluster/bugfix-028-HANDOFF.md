@@ -25,7 +25,7 @@ below). Branch `bugfix/028-invoicing-and-approval-gate-p0-cluster`.
    per-environment files `config/config.dev.json`, `config/config.prod.json`,
    `config/config.test.json` (`config/config.json` is a symlink to `config.test.json`, so it's
    the same file, not a fourth edit). **The three gitignored files will NOT show up in any diff
-   or PR** - every other clone (`coder1`, `coder2`, etc.) needs this exact same
+   or PR** - every other clone (`teammate1`, `teammate2`, etc.) needs this exact same
    `"ai_reply_max_tokens": 2500` → `20000` edit made by hand in its own copies of
    `config.dev.json`/`config.prod.json`/`config.test.json`, same as any other clone-local secret.
 4. **Test 21 failed, investigated deeply, NOT fixed here** - `test_given_a_deposit_matching_an_

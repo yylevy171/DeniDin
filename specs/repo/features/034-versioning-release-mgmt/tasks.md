@@ -36,7 +36,7 @@
   `apps/morning-mcp-app/RELEASES.md` scaffolds, same as T003.
 - [x] **T005** 👤 **MANUAL GATE**: create `/Users/yaron/Projects/DeniDin/artifacts/denidin-app/`
   and `/Users/yaron/Projects/DeniDin/artifacts/morning-mcp-app/` — this writes inside the root
-  clone's directory tree, outside `coder1`'s own confinement boundary (research.md Decision 7);
+  clone's directory tree, outside `teammate1`'s own confinement boundary (research.md Decision 7);
   needs its own explicit go-ahead at implementation time even though the path itself was already
   confirmed at spec time. Also confirm the user has already added the root clone's `.gitignore`
   entry for `/artifacts/` (user-owned, per 2026-08-02 decision) before this task is considered

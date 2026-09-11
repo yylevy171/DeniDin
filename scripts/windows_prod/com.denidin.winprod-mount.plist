@@ -28,7 +28,7 @@
     <string>com.denidin.winprod-mount</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/yaron/Projects/DeniDin/coder1/scripts/windows_prod/mount_data_foreground.sh</string>
+        <string>/Users/yaron/Projects/DeniDin/teammate1/scripts/windows_prod/mount_data_foreground.sh</string>
         <string>denidin-winprod</string>
     </array>
     <key>RunAtLoad</key>

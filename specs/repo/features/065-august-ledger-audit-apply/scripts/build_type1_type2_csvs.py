@@ -18,7 +18,7 @@ Type 3 (deletion) is NOT produced here - flagged separately, see chat.
 import csv
 from pathlib import Path
 
-OUT_DIR = Path("/Users/yaron/Projects/DeniDin/coder1/specs/backlog/065-august-ledger-audit-apply")
+OUT_DIR = Path("/Users/yaron/Projects/DeniDin/teammate1/specs/backlog/065-august-ledger-audit-apply")
 PROD_CSV = OUT_DIR / "prod_events_jul_aug_reconciliation.csv"
 PLAYER_CSV = OUT_DIR / "player_events_jul_aug_reconciliation.csv"
 

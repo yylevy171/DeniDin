@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 
 PROD_DIR = Path.home() / "denidin-winprod-data" / "events"
-PLAYER_DIR = Path("/Users/yaron/Projects/DeniDin/coder1/apps/denidin-app/player_data/events")
+PLAYER_DIR = Path("/Users/yaron/Projects/DeniDin/teammate1/apps/denidin-app/player_data/events")
 
 SCHEMA_V2_FIELDS = [
     "accounting_document_display_number", "accounting_document_payment_method",
