@@ -114,6 +114,45 @@ DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture wit
 - Message tracking with unique IDs
 - Sender/recipient attribution
 
+### 1a. Webhook Type Routing (`denidin.py`)
+
+`HANDLER_REGISTRY` (a `typeMessage` → handler function dict) plus
+`dispatch_notification()` is the single source of truth for which handler a
+given Green API webhook type routes to — used identically by the live
+`GreenAPIMessageSource` and by anything else that supplies notifications via
+a different `MessageSource` (e.g. the Feature 043 WhatsApp-export player).
+Three buckets, checked in this order:
+
+1. `interactiveButtonsResponse` (Feature 047) — special-cased, routes to
+   `handle_button_tap`.
+2. `ERROR_REPLY_TYPES` (Feature 076 — `audioMessage`, `pollMessage`,
+   `templateMessage`, `templateButtonsReplyMessage`, `listMessage`,
+   `listResponseMessage`) — routes to `handle_unsupported_message_default`,
+   which sends exactly one canned `סוג הודעה לא נתמך` reply.
+3. `HANDLER_REGISTRY` — the conversational/media handlers, plus
+   `editedMessage`/`deletedMessage` (Feature 076 — logged into the chat's
+   session as a dated note, no AI call, no reply; see `SessionManager`
+   below and `config/runtime_constitution.md`'s "Edited & Deleted Message
+   Markers" section for how the model is told to read the two note markers).
+4. **Fallback**: `CATCH_ALL_HANDLER` (`handle_ignored_message_default`,
+   Feature 076) — any `typeMessage` not covered above (reactions, stickers,
+   locations, poll votes, and any type never seen before) is **silently
+   ignored**: no WhatsApp reply at all, only the existing verbatim
+   `log_inbound` audit record.
+
+**Invariant (relaxed 2026-09, Feature 076):** the old rule was "no message
+type is silently *dropped*" — every type got at least a canned reply. This
+is now deliberately relaxed to "no message type is silently *lost*" —
+`log_inbound` still captures every raw webhook verbatim regardless of
+bucket; the change is only that low-value types no longer trigger a
+user-facing reply.
+
+`audioMessage` is no longer a media type (`WhatsAppHandler.is_media_message`
+no longer includes it) — voice notes were never actually transcribed (the
+media pipeline only accepts jpg/png/pdf/docx), so it now gets the honest
+canned "unsupported" reply above instead of a confusing file-processing
+error.
+
 ### 2. User Manager (`src/managers/user_manager.py`)
 
 **Responsibilities:**

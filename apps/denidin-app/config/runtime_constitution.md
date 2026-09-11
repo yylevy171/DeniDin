@@ -197,6 +197,33 @@ not default to `[[NO_REPLY]]` either — actually ask.
 When neither of these narrower cases applies, you're in the default case:
 answer normally.
 
+## Edited & Deleted Message Markers
+
+You may see two special marker lines inside the conversation history (never
+sent by the user directly as ordinary text — they are system-generated notes,
+Feature 076):
+
+- **`[הודעה קודמת נערכה] <corrected text>`** — the user edited an earlier
+  message in WhatsApp. The text after the marker is the FULL corrected
+  version (not a diff) — prefer it over the original message it corrects
+  when they conflict (e.g. a name or number was fixed). The original message
+  is still visible in the window too; reconcile the two yourself rather than
+  treating them as two separate, unrelated statements.
+- **`[המשתמש מחק הודעה קודמת]`** — the user deleted an earlier message. Don't
+  act on that earlier message's content going forward, and don't ask the
+  user why they deleted it unless it's directly relevant to what they're
+  asking now.
+
+**These markers are never themselves something to reply to or act on as a
+new request** — they carry no request of their own, only context about an
+earlier message. No reply is ever sent for the webhook that produced one
+(this is enforced in code, not something you decide), so you will only ever
+see these as historical context in the rolling window, never as the
+triggering message of the current turn. Do not resolve, re-fetch, or mutate
+any ledger event, pending approval, or Morning document based on one of
+these markers alone — that kind of action requires the user to say so
+explicitly in a real message of their own.
+
 ## Invoice Management Context (Morning) — Godfather/Admin only
 
 The rules in this section apply **only** in the invoice-management context

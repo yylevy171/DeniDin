@@ -21,6 +21,7 @@ from src.utils.green_api_bot import (
     send_typing_indicator,
 )
 from src.utils.whatsapp_audit_log import log_inbound, log_outbound
+from src.utils.time_utils import local_from_timestamp
 from src.constants.error_messages import (
     APP_NOT_READY_RETRY_LATER,
     UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
@@ -777,20 +778,113 @@ def handle_video_message(notification: Notification) -> None:
     _process_media_message(notification)
 
 
-def handle_audio_message(notification: Notification) -> None:
+def _append_edit_or_delete_note(notification: Notification, content: str) -> None:
     """
-    Handle incoming audio messages from WhatsApp.
-    Routes to MediaHandler for audio processing.
-    
+    Feature 076 (FR-001/FR-002/FR-004): shared persistence for the editedMessage/
+    deletedMessage note - a plain `role="user"` Message appended via
+    SessionManager.add_message, dated from the webhook's own `timestamp`
+    (Israel local, per CONSTITUTION §XV), never the current wall-clock time.
+    Creates the chat's session on first contact exactly like any other first
+    message (SessionManager.get_session, called internally by add_message) -
+    no special-casing needed for a chat with no prior session (FR-004).
+
+    Deliberately does NOT resolve, read, or mutate the message referenced by
+    the webhook's own `stanzaId` (FR-003) - that's Feature 032 territory.
+
     Args:
-        notification: Green API notification object containing audio data
+        notification: Green API notification (editedMessage or deletedMessage)
+        content: The exact note text to persist (already framed with the
+            `[הודעה קודמת נערכה]`/`[המשתמש מחק הודעה קודמת]` marker)
+    """
+    from src.models.message import WhatsAppMessage  # local import - matches existing style
+
+    message = WhatsAppMessage.from_notification(notification)
+    event_timestamp = notification.event.get("timestamp")
+    note_timestamp = local_from_timestamp(event_timestamp) if event_timestamp is not None else None
+    user_role = denidin_app.ai_handler.user_manager.get_user(message.sender_id).role
+
+    denidin_app.ai_handler.session_manager.add_message(
+        chat_id=message.chat_id,
+        role="user",
+        content=content,
+        user_role=user_role,
+        sender=message.sender_id,
+        sender_name=message.sender_display_name,
+        timestamp=note_timestamp,
+    )
+
+
+def handle_edited_message(notification: Notification) -> None:
+    """
+    Handle a WhatsApp `editedMessage` webhook (Feature 076, FR-001).
+
+    A good-faith correction to an earlier message (Green API delivers the full
+    corrected text, not a diff - see spec.md "Research"). Per spec.md
+    Clarifications Q2: note the correction into the chat's long-lived session
+    as a dated `[הודעה קודמת נערכה] <corrected text>` message - no AI call, no
+    WhatsApp reply. The model picks up the correction on its next real turn via
+    the 14-day rolling window (SessionManager.get_rolling_window), reconciling
+    it against the original message naturally rather than via any code-level
+    resolution of `editedMessageData.stanzaId` (out of scope - Feature 032).
+
+    Args:
+        notification: Green API notification object containing the edit
     """
     log_inbound(notification)
     if denidin_app is None:
-        _handle_not_initialized_error(notification, "audio")
+        _handle_not_initialized_error(notification, "editedMessage")
         return
 
-    _process_media_message(notification)
+    edited_text = notification.event.get("messageData", {}).get(
+        "editedMessageData", {}
+    ).get("textMessage", "")
+    _append_edit_or_delete_note(notification, f"[הודעה קודמת נערכה] {edited_text}")
+
+
+def handle_deleted_message(notification: Notification) -> None:
+    """
+    Handle a WhatsApp `deletedMessage` webhook (Feature 076, FR-002).
+
+    Green API delivers only a pointer (`deletedMessageData.stanzaId`) with no
+    text and no flag on the original - see spec.md "Research". Per spec.md
+    Clarifications Q3: note the retraction into the chat's long-lived session
+    as a fixed dated `[המשתמש מחק הודעה קודמת]` message - same no-AI-call,
+    no-reply rules as handle_edited_message. The deleted stanzaId is logged for
+    traceability only; it is never persisted on the note itself (FR-002/FR-003).
+
+    Args:
+        notification: Green API notification object containing the deletion
+    """
+    log_inbound(notification)
+    if denidin_app is None:
+        _handle_not_initialized_error(notification, "deletedMessage")
+        return
+
+    stanza_id = notification.event.get("messageData", {}).get(
+        "deletedMessageData", {}
+    ).get("stanzaId", "")
+    logger.info(f"[076] deletedMessage received for stanzaId={stanza_id!r} - logging note only")
+    _append_edit_or_delete_note(notification, "[המשתמש מחק הודעה קודמת]")
+
+
+def handle_ignored_message_default(notification: Notification) -> None:
+    """
+    Silent catch-all for trivial/low-value message types (Feature 076, Q7/FR-006).
+
+    Replaces the old `handle_unsupported_message_default` as CATCH_ALL_HANDLER -
+    reactions, stickers, locations, poll votes, and any `typeMessage` never seen
+    before now get NO WhatsApp reply at all, only the existing verbatim
+    `log_inbound` audit record. This deliberately relaxes the old "no message
+    type is silently *dropped*" invariant to "no message type is silently
+    *lost*" (spec.md "Non-Functional / Constraints" - `log_inbound` is the
+    thing that keeps it non-lost) - see .github/ARCHITECTURE.md for the same
+    note. `denidin_app is None` needs no special handling here (unlike every
+    other handler) - there is nothing to reply with either way.
+
+    Args:
+        notification: Green API notification object containing message data
+    """
+    log_inbound(notification)
 
 
 def handle_button_tap(notification: Notification) -> None:
@@ -805,9 +899,10 @@ def handle_button_tap(notification: Notification) -> None:
     sendInteractiveButtons tap actually produces, per Gate Zero). Registration itself
     happens via GreenAPIMessageSource's explicit message_types list in __main__
     (Feature 043 - no module-level `bot`/decorator, see research.md R3), deliberately
-    NOT via HANDLER_REGISTRY/dispatch_notification (that dict's exact-8-types shape
-    is locked by an existing immutable test predating this feature) - dispatch_notification
-    special-cases this one type instead.
+    NOT via HANDLER_REGISTRY/dispatch_notification (that dict's exact-types shape
+    is locked by an existing immutable test predating this feature - see
+    test_denidin_dispatch.py, updated for Feature 076's own additions) -
+    dispatch_notification special-cases this one type instead.
 
     Args:
         notification: Green API notification object containing the tap
@@ -893,12 +988,30 @@ HANDLER_REGISTRY: Dict[str, Callable[[Notification], None]] = {
     "imageMessage": handle_image_message,
     "documentMessage": handle_document_message,
     "videoMessage": handle_video_message,
-    "audioMessage": handle_audio_message,
+    # Feature 076 (FR-001/FR-002): editedMessage/deletedMessage are logged to
+    # the session, never replied to - handled here, not via ERROR_REPLY_TYPES
+    # or the silent catch-all.
+    "editedMessage": handle_edited_message,
+    "deletedMessage": handle_deleted_message,
+    # audioMessage removed (Feature 076, Q5) - voice notes are not
+    # transcribed, so it now falls into ERROR_REPLY_TYPES below instead of
+    # routing to the media pipeline.
 }
 
-# Matches the old bare `@bot.router.message()` catch-all exactly - any
-# message type not present in HANDLER_REGISTRY routes here.
-CATCH_ALL_HANDLER: Callable[[Notification], None] = handle_unsupported_message_default
+# Feature 076 (Q5/Q6, FR-005/FR-007): each of these gets exactly one canned
+# `UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES` reply (`סוג הודעה לא נתמך`), no AI
+# call, no session write - checked by dispatch_notification() BEFORE falling
+# through to CATCH_ALL_HANDLER (the silent bucket, Q7).
+ERROR_REPLY_TYPES = {
+    "audioMessage", "pollMessage", "templateMessage",
+    "templateButtonsReplyMessage", "listMessage", "listResponseMessage",
+}
+
+# Feature 076 (Q7, FR-006): any message type not present in HANDLER_REGISTRY
+# and not in ERROR_REPLY_TYPES routes here - silently ignored (log_inbound
+# only, no reply). Replaces the old handle_unsupported_message_default
+# catch-all, which now serves only ERROR_REPLY_TYPES.
+CATCH_ALL_HANDLER: Callable[[Notification], None] = handle_ignored_message_default
 
 
 class RecentNotificationDeduper:
@@ -990,6 +1103,12 @@ def dispatch_notification(type_message: str, notification: Notification) -> None
     if type_message == "interactiveButtonsResponse":
         handle_button_tap(notification)
         return
+    if type_message in ERROR_REPLY_TYPES:
+        # Feature 076 (FR-005): checked before HANDLER_REGISTRY.get()'s own
+        # fallback so these six types get the canned reply, not the silent
+        # CATCH_ALL_HANDLER - none of them are ever also HANDLER_REGISTRY keys.
+        handle_unsupported_message_default(notification)
+        return
     handler = HANDLER_REGISTRY.get(type_message, CATCH_ALL_HANDLER)
     handler(notification)
 
@@ -1051,7 +1170,13 @@ if __name__ == "__main__":
     # (Feature 047) is appended explicitly rather than folded into
     # HANDLER_REGISTRY itself - see dispatch_notification's docstring for why.
     message_source = GreenAPIMessageSource(
-        config, message_types=list(HANDLER_REGISTRY.keys()) + ["interactiveButtonsResponse"]
+        config,
+        # Feature 076 (FR-010): ERROR_REPLY_TYPES added alongside
+        # HANDLER_REGISTRY's own keys, so audioMessage/pollMessage/etc.
+        # actually reach dispatch_notification() rather than being filtered
+        # out by the library before dispatch ever runs.
+        message_types=list(HANDLER_REGISTRY.keys()) + list(ERROR_REPLY_TYPES)
+        + ["interactiveButtonsResponse"],
     )
     live_bot = message_source.connect()
 

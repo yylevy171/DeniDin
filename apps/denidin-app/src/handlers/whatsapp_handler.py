@@ -303,10 +303,16 @@ class WhatsAppHandler:
             notification: Green API notification
             
         Returns:
-            True if message is a media type (image, document, video, audio), False otherwise
+            True if message is a media type (image, document, video), False otherwise
+
+        Feature 076 (Q5, FR-008): audioMessage removed - voice notes are not
+        transcribed (the media pipeline only accepts jpg/png/pdf/docx), so it
+        now routes to the canned "unsupported" reply (ERROR_REPLY_TYPES in
+        denidin.py) instead of the media pipeline. videoMessage/imageMessage/
+        documentMessage are unchanged.
         """
         message_type = notification.event.get('messageData', {}).get('typeMessage', '')
-        return message_type in ['imageMessage', 'documentMessage', 'videoMessage', 'audioMessage']
+        return message_type in ['imageMessage', 'documentMessage', 'videoMessage']
     
     def get_media_type(self, notification: Notification) -> str:
         """
