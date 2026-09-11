@@ -113,3 +113,12 @@ specs/in-progress/025-morning-sourced-ledger-events/scripts/*.disabled
 # Local-only audit input, same rule as Events.csv above. The committed
 # derived artifacts in that folder carry only client names + amounts.
 specs/backlog/065-august-ledger-audit-apply/august_morning.csv
+
+# Temporary backfill data, staging datasets, and merge bundles (local-only, keep on disk)
+reports/tmp_data/
+reports/staging_prod_data/
+reports/staging_prod_data.tar.gz
+reports/merge_staging/
+reports/merge_prod.sh
+reports/prod_merge_bundle.tar.gz
+
