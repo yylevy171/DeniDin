@@ -4,7 +4,7 @@
 **Created**: 2026-09-04
 **Clarified**: 2026-09-07 (interactive, with the user — see "Clarifications" below)
 **Status**: DONE — implemented, all unit/integration tests green (1495 passed after
-merging master), verified live in dev, merged via PR #TBD.
+merging master), verified live in dev, merged via PR #300.
 **Priority**: P1 (real client-visible symptom already observed in prod — see Evidence).
 
 **Complies with**:
