@@ -369,21 +369,32 @@ class TestLedgerClientResolutionRouting:
         self, denidin_app, monkeypatch, caplog
     ):
         caplog.set_level(logging.INFO)
+        # Real create_combo_document tool-output shape (Feature 025 Phase 9 /
+        # 2026-09-05 unification, commit 1a14644): the model's only job for a
+        # חשבונית capture is to copy this JSON verbatim into
+        # accounting_document_json - every derived field (event_subtype,
+        # vat_status, etc.) comes from _expand_accounting_document_json in
+        # code, never from flat fields on the verdict itself.
         morning_response = {
-            "status": "success", "document_number": "1042", "document_type": 320,
-            "amount": 4000, "creation_date": "2026-07-15", "client_name": "דנה כהן",
+            "display_number": "1042", "internal_morning_id": "mid-1042",
+            "type": 320, "type_name": "חשבונית מס/קבלה",
+            "status": 0, "status_code": 0, "status_label": "פתוח",
+            "client_name": "דנה כהן", "description": "עסקה משולבת",
+            "amount": 4000, "amount_excl_vat": 4000, "vat_amount": 0, "vat_rate": 0,
+            "currency": "ILS", "document_date": "2026-07-15", "due_date": None,
+            "creation_date": "2026-07-15T10:00:00", "payment": None,
+            "line_items": [], "linked_document": None,
         }
         # prose deliberately disagrees with the real response (wrong number/amount)
         prose = "יצרתי עסקה משולבת מספר 9999 על סך 12,000."
         invoice_ev = h.invoice_event(
-            accounting_document_display_number="1042", amount="4000",
-            txn_date="2026-07-15", event_subtype="חשבונית מס/קבלה", vat_status="כולל",
+            accounting_document_json=json.dumps(morning_response, ensure_ascii=False),
         )
         script = ScriptedOpenAI().queue_turn(
             h.reply_with_calls(prose, [{
                 "type": "mcp_call", "name": "create_combo_document",
                 "arguments": json.dumps({"client_name": "דנה כהן", "amount": 4000}),
-                "output": json.dumps(morning_response),
+                "output": json.dumps(morning_response, ensure_ascii=False),
             }]),
             self._recognize_verdict_for_trigger(denidin_app, invoice_ev),
         )
@@ -396,9 +407,9 @@ class TestLedgerClientResolutionRouting:
         rec = events[0]
         assert rec["source_type"] == "חשבונית"
         assert rec["accounting_document_display_number"] == "1042"   # from the response
-        assert rec["amount"] == 4000
+        assert rec["amount"] == 4000   # from the real create_combo_document response JSON
         assert rec["event_subtype"] == "חשבונית מס/קבלה"
-        assert rec["vat_status"] == "כולל"
+        assert rec["vat_status"] == "כולל"   # type 320 is always VAT-inclusive
 
         # Feature 025 dedup: the display number is now in the cache, so the
         # reconciliation sweep re-seeing it that same day is a no-op.
