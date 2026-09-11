@@ -3,7 +3,9 @@
 **From:** Rapaport (Senior Business & Operations Analyst)  
 **To:** Pamela (Lead Product Spec Owner)  
 **cc:** Genadi (PM), Engineering Team  
-**Subject:** Spec Request: Productizing the Interactive Client Resolution & Ledger Engine into the Core UI
+**Subject:** Spec Request: Productizing the Interactive Client Resolution & Ledger Engine into the Core UI  
+**Status:** Merged to master (PR #297)  
+**PR:** https://github.com/yylevy171/DeniDin/pull/297  
 
 ---
 
