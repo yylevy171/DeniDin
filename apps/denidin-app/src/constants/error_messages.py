@@ -7,7 +7,12 @@ Naming convention: Const names describe the TEXT content, not the error situatio
 APP_NOT_READY_RETRY_LATER = "אני לא זמין כרגע. אנא נסה שוב בעוד רגע."
 
 # Message type support errors
-UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES = "סוג הודעה זה אינו נתמך עדיין. אני תומך בטקסט, תמונות וקבצים."
+# Feature 076 (Q6): shortened from the old "...אני תומך בטקסט, תמונות וקבצים." - now
+# used only for the narrow ERROR_REPLY_TYPES bucket (denidin.py), not every
+# unrecognized type (most of those are now silently ignored - see
+# handle_ignored_message_default). Name kept as-is to avoid a churny rename
+# across every import site (spec.md "Touch points" - a rename is out of scope).
+UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES = "סוג הודעה לא נתמך"
 
 # Message processing errors
 ERROR_PROCESSING_MESSAGE_TRY_AGAIN = "אני נתקלתי בשגיאה בעיבוד הודעתך. אנא נסה שוב."

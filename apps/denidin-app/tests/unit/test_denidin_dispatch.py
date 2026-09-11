@@ -39,18 +39,40 @@ class TestHandlerRegistryCompleteness:
     def test_video_message_routes_to_handle_video_message(self):
         assert denidin_module.HANDLER_REGISTRY["videoMessage"] is denidin_module.handle_video_message
 
-    def test_audio_message_routes_to_handle_audio_message(self):
-        assert denidin_module.HANDLER_REGISTRY["audioMessage"] is denidin_module.handle_audio_message
+    def test_edited_message_routes_to_handle_edited_message(self):
+        # Feature 076: editedMessage is logged to the session, never replied to.
+        assert denidin_module.HANDLER_REGISTRY["editedMessage"] is denidin_module.handle_edited_message
 
-    def test_registry_contains_exactly_these_eight_types_no_more_no_less(self):
+    def test_deleted_message_routes_to_handle_deleted_message(self):
+        # Feature 076: deletedMessage is logged to the session, never replied to.
+        assert denidin_module.HANDLER_REGISTRY["deletedMessage"] is denidin_module.handle_deleted_message
+
+    def test_audio_message_is_no_longer_in_the_registry(self):
+        # Feature 076 (Q5): audioMessage is not transcribed - it now falls into
+        # ERROR_REPLY_TYPES and gets the canned "unsupported" reply, not a media
+        # handler.
+        assert "audioMessage" not in denidin_module.HANDLER_REGISTRY
+
+    def test_registry_contains_exactly_these_nine_types_no_more_no_less(self):
+        # Feature 076: audioMessage removed; editedMessage + deletedMessage added.
         assert set(denidin_module.HANDLER_REGISTRY.keys()) == {
             "textMessage", "extendedTextMessage", "contactMessage",
             "contactsArrayMessage", "imageMessage", "documentMessage",
-            "videoMessage", "audioMessage",
+            "videoMessage", "editedMessage", "deletedMessage",
         }
 
-    def test_catch_all_handler_is_handle_unsupported_message_default(self):
-        assert denidin_module.CATCH_ALL_HANDLER is denidin_module.handle_unsupported_message_default
+    def test_error_reply_types_are_exactly_these(self):
+        # Feature 076 (Q5, Q6): each of these gets exactly one canned
+        # `סוג הודעה לא נתמך` reply, no AI call, no session write.
+        assert denidin_module.ERROR_REPLY_TYPES == {
+            "audioMessage", "pollMessage", "templateMessage",
+            "templateButtonsReplyMessage", "listMessage", "listResponseMessage",
+        }
+
+    def test_catch_all_handler_is_now_the_silent_handler(self):
+        # Feature 076 (Q7): unknown/low-value types are silently ignored
+        # (audit-logged only), not answered with a canned reply.
+        assert denidin_module.CATCH_ALL_HANDLER is denidin_module.handle_ignored_message_default
 
 
 class TestDispatchNotification:
@@ -71,6 +93,21 @@ class TestDispatchNotification:
         denidin_module.dispatch_notification("someBrandNewMessageType", fake_notification)
 
         assert calls == [fake_notification]
+
+    def test_dispatches_error_reply_type_to_the_canned_reply_handler(self, monkeypatch):
+        # Feature 076: a type in ERROR_REPLY_TYPES routes to
+        # handle_unsupported_message_default (the canned reply), NOT the
+        # silent catch-all.
+        canned, silent = [], []
+        monkeypatch.setattr(denidin_module, "handle_unsupported_message_default",
+                            lambda n: canned.append(n))
+        monkeypatch.setattr(denidin_module, "CATCH_ALL_HANDLER", lambda n: silent.append(n))
+
+        fake_notification = object()
+        denidin_module.dispatch_notification("pollMessage", fake_notification)
+
+        assert canned == [fake_notification]
+        assert silent == []
 
 
 class TestRecentNotificationDeduper:

@@ -379,23 +379,25 @@ class TestMediaWebhookRoutingUserPerspective:
 
         return denidin.denidin_app
 
-    def test_audio_message_user_gets_response(self, real_e2e_denidin_app):
+    def test_audio_message_user_gets_the_canned_unsupported_reply(self, real_e2e_denidin_app):
         """
         **BDD Scenario**: User sends audio via WhatsApp
 
         Given: User sends audioMessage via WhatsApp
         When: Bot receives the webhook
-        Then: User gets a response with EXACT error message
+        Then: User gets exactly the canned "unsupported" reply - no media
+            processing is attempted at all
 
-        Moved here from tests/expensive/test_media_e2e.py (2026-08-03), unmarked:
-        traced the actual code path and confirmed it makes ZERO OpenAI API calls -
-        MediaFileManager.validate_format() raises for unsupported extensions (.mp3)
-        before any extractor/AI call ever runs, so this was never actually
-        vision/expensive work, just a real router-dispatch + real MediaHandler
-        rejection path. Uses the real `tests.e2e_helpers` notification helpers
-        (same as every other real E2E test in this codebase, not a bespoke mock).
+        Feature 076 (Q5, FR-005/FR-008): audioMessage is no longer a media
+        type - `handle_audio_message` and the old `FAILED_TO_PROCESS_FILE_
+        DEFAULT` (MediaFileManager rejecting the .mp3 extension) are both
+        gone from this path. It now falls into ERROR_REPLY_TYPES
+        (denidin.py), routed via dispatch_notification exactly like
+        pollMessage/templateMessage/etc. - dispatch tested here rather than
+        calling a handler function directly, since audioMessage no longer
+        has one of its own.
         """
-        from denidin import handle_audio_message
+        import denidin as denidin_module
         from tests.e2e_helpers import create_real_notification, get_response
 
         notification = create_real_notification({
@@ -423,11 +425,11 @@ class TestMediaWebhookRoutingUserPerspective:
             }
         })
 
-        handle_audio_message(notification)
+        denidin_module.dispatch_notification('audioMessage', notification)
         response = get_response(notification)
 
-        assert response == FAILED_TO_PROCESS_FILE_DEFAULT, (
-            f"Expected: {FAILED_TO_PROCESS_FILE_DEFAULT}\n"
+        assert response == UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES, (
+            f"Expected: {UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES}\n"
             f"Got: {response}"
         )
 

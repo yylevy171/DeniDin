@@ -29,6 +29,12 @@ from src.utils.green_api_bot import DeniDinGreenAPIBot, mark_message_read
 # get live's real coverage. denidin.py itself is the source of truth for
 # which handler a given type routes to; this constant is only "which types
 # exist at all," used as start()'s default.
+#
+# Feature 076 (FR-010): audioMessage removed (no longer a media handler -
+# see WhatsAppHandler.is_media_message); editedMessage/deletedMessage plus
+# the six ERROR_REPLY_TYPES (denidin.py) added, so all of them actually
+# reach dispatch_notification() instead of being filtered out by the
+# library before dispatch ever runs.
 DEFAULT_MESSAGE_TYPES: List[str] = [
     "textMessage",
     "extendedTextMessage",
@@ -37,7 +43,14 @@ DEFAULT_MESSAGE_TYPES: List[str] = [
     "imageMessage",
     "documentMessage",
     "videoMessage",
+    "editedMessage",
+    "deletedMessage",
     "audioMessage",
+    "pollMessage",
+    "templateMessage",
+    "templateButtonsReplyMessage",
+    "listMessage",
+    "listResponseMessage",
 ]
 
 
