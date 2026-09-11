@@ -1044,12 +1044,29 @@ class TestPayerNameBankHandling:
         assert data["payer_name"] is None
         assert any(r.levelno == logging.WARNING for r in caplog.records)
 
-    def test_payer_name_not_rescued_when_client_name_already_set(self, manager, temp_events_dir):
-        """Both given (a genuine same-name coincidence, or the model correctly set
-        client_name and redundantly also set payer_name) - client_name wins as-is,
-        never overwritten by the rescue path."""
+    def test_payer_name_kept_when_genuinely_distinct_from_client_name(self, manager, temp_events_dir):
+        """Both given, and genuinely different (Feature 069, 2026-09-11: a בנק event
+        can legitimately have a payer distinct from its resolved client - e.g. a
+        deposit slip naming a compound/joint account holder that the operator
+        explicitly rejects as the client, stating an unrelated one instead).
+        client_name wins as the resolved client, but payer_name is preserved
+        rather than discarded - never lose a real captured name to the same
+        conflation the original nulling guard was meant to catch."""
         event_id = manager.add_ledger_event(
             session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", client_name="שם נכון", payer_name="שם אחר"),
+            message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["client_name"] == "שם נכון"
+        assert data["payer_name"] == "שם אחר"
+
+    def test_payer_name_nulled_when_it_duplicates_client_name(self, manager, temp_events_dir):
+        """Both given, and identical - this is the original conflation the guard
+        exists for (the model redundantly restating the same name in both fields).
+        Collapse to one field: keep client_name, null payer_name."""
+        event_id = manager.add_ledger_event(
+            session_id="s",
+            event=dict(SAMPLE_EVENT, source_type="בנק", client_name="שם נכון", payer_name="שם נכון"),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
@@ -1287,6 +1304,18 @@ class TestInMemoryIndex:
     def test_construction_with_no_existing_files_yields_empty_index(self, temp_events_dir):
         manager = LedgerEventManager(storage_dir=str(temp_events_dir))
         assert manager._index == []
+
+    def test_list_events_returns_shallow_copy_of_every_record(self, temp_events_dir):
+        # Feature 068: additive read-only accessor for the webapp-backend.
+        _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))
+        _write_raw_event_file(temp_events_dir, "B2807261408", dict(SAMPLE_EVENT, event_id="B2807261408"))
+        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+
+        events = manager.list_events()
+        assert {e["event_id"] for e in events} == {"A2807261406", "B2807261408"}
+        # a shallow copy of the list — mutating the returned list never touches the index
+        events.clear()
+        assert len(manager.list_events()) == 2
 
     def test_corrupt_file_skipped_not_raised_others_still_load(self, temp_events_dir, caplog):
         _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))

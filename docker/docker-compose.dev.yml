@@ -83,3 +83,36 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+
+  # Feature 068 — read-only Ledger Web UI. Reads denidin-app-dev's data root directly off
+  # disk (read-only mount), never over a network hop and never its live process. It sends
+  # nothing and mutates nothing, so it is ENV-LOCK AGNOSTIC (2026-09-06): run_webapp.sh /
+  # stop_webapp.sh never acquire, release, or check shared/active_env.json — start/stop it
+  # regardless of which clone owns dev. run_all.sh still starts it LAST (it reads
+  # denidin-app's data; nothing depends on it) but the lock itself is held only by the two
+  # WhatsApp apps.
+  webapp-backend-dev:
+    build:
+      context: .
+      dockerfile: apps/webapp/backend/Dockerfile
+    ports:
+      - "8100:8100"
+    volumes:
+      - ./apps/webapp/backend/config/config.dev.container.json:/app/apps/webapp/backend/config/config.json:ro
+      - ./apps/webapp/backend/auth/password.hash:/app/apps/webapp/backend/auth/password.hash:ro
+      - ./apps/denidin-app/dev_data:/app/denidin-data:ro
+      - ./apps/webapp/logs/dev:/app/apps/webapp/backend/logs
+    restart: "no"
+
+  webapp-frontend-dev:
+    build:
+      context: .
+      dockerfile: apps/webapp/frontend/Dockerfile
+    ports:
+      - "5100:80"
+    environment:
+      BACKEND_UPSTREAM: "webapp-backend-dev:8100"
+      NGINX_ENVSUBST_FILTER: "^BACKEND_UPSTREAM$$"
+    depends_on:
+      - webapp-backend-dev
+    restart: "no"

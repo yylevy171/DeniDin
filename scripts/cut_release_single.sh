@@ -37,8 +37,14 @@
 # a version number - see REQ-REL-002.
 #
 # Usage: ./scripts/cut_release.sh <app> <version> --summary "<text>" [--artifacts-root <path>]
-#   <app>     : denidin-app | morning-mcp-app
+#   <app>     : denidin-app | morning-mcp-app | webapp
 #   <version> : exact semantic version, e.g. 1.4.2 (no leading "v")
+#
+# webapp is a TWO-image app (webapp-backend + webapp-frontend, both built from the repo-root
+# context with their own Dockerfiles). Both images go into ONE artifact tar (`docker save
+# img1 img2`), under one manifest (with an "images": [...] array) and one git tag
+# (webapp-v<version>) - deploy_release[_single].sh loads both and brings up
+# webapp-backend-<env> + webapp-frontend-<env>.
 #   --summary : required, human-written one-line summary for CHANGELOG.md/RELEASES.md
 #   --artifacts-root : optional override of the artifacts folder (test-only seam; real
 #                      invocations never pass this - defaults to the real shared folder)
@@ -82,11 +88,11 @@ APP="${POSITIONAL[0]}"
 VERSION="${POSITIONAL[1]}"
 
 usage() {
-    echo "Usage: $0 <denidin-app|morning-mcp-app> <version> --summary \"<text>\" [--artifacts-root <path>]" >&2
+    echo "Usage: $0 <denidin-app|morning-mcp-app|webapp> <version> --summary \"<text>\" [--artifacts-root <path>]" >&2
 }
 
-if [ "$APP" != "denidin-app" ] && [ "$APP" != "morning-mcp-app" ]; then
-    echo "Error: <app> must be denidin-app or morning-mcp-app (got: '${APP}')." >&2
+if [ "$APP" != "denidin-app" ] && [ "$APP" != "morning-mcp-app" ] && [ "$APP" != "webapp" ]; then
+    echo "Error: <app> must be denidin-app, morning-mcp-app or webapp (got: '${APP}')." >&2
     usage
     exit 2
 fi
@@ -113,6 +119,22 @@ MANIFEST_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.json"
 SCRIPTS_BUNDLE_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}-scripts.tar.gz"
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/lib/release_scripts_manifest.sh"
+
+# The image(s) this release builds. One for denidin-app/morning-mcp-app; two for webapp
+# (backend + frontend), bundled into the single TAR_PATH. Each entry is
+# "<tag>|<dockerfile>|<build-context>".
+if [ "$APP" == "webapp" ]; then
+    BUILD_SPECS=(
+        "webapp-backend:${VERSION}|apps/webapp/backend/Dockerfile|."
+        "webapp-frontend:${VERSION}|apps/webapp/frontend/Dockerfile|."
+    )
+else
+    BUILD_SPECS=("${APP}:${VERSION}|${APP_DIR}/Dockerfile|${APP_DIR}")
+fi
+IMAGE_TAGS=()
+for _spec in "${BUILD_SPECS[@]}"; do
+    IMAGE_TAGS+=("${_spec%%|*}")
+done
 
 # --- Preconditions (fail before any side effect) ---
 
@@ -294,20 +316,77 @@ fi
 #    setups, several of which run their VM as x86_64) this is a native build; on an arm64 Mac
 #    host it runs under Docker's transparent QEMU emulation. Either way, ONE artifact is correct
 #    for BOTH deploy targets - no per-environment rebuild, ever.
-set +e
-docker build --platform linux/amd64 -t "${APP}:${VERSION}" "${APP_DIR}" -q >/dev/null
-BUILD_STATUS=$?
-set -e
+#
+#    Pause the colima keepalive around build+save. `~/bin/colima-keepalive.sh` runs via launchd
+#    every 2 min; its health probe is `docker info` with a 15s timeout, and a heavy build keeps
+#    the daemon busy long enough to trip it - the keepalive then concludes the VM is wedged and
+#    does `pkill -9 limactl` + `colima start`, killing the in-progress build (real incident
+#    2026-09-06 cutting webapp-v0.0.1-webapp: every retry hit the same ~2-min guillotine). The
+#    EXIT trap guarantees it comes back on any exit path; step 5 also resumes it explicitly the
+#    moment the fragile part is done. Best-effort and skipped entirely under a --artifacts-root
+#    override (the test seam): a cut never fails because launchctl is missing or the job isn't
+#    loaded.
+_KEEPALIVE_PLIST="$HOME/Library/LaunchAgents/com.yaron.colima-keepalive.plist"
+_KEEPALIVE_PAUSED=0
+_resume_keepalive() {
+    [ "$_KEEPALIVE_PAUSED" -eq 1 ] || return 0
+    _KEEPALIVE_PAUSED=0
+    launchctl load "$_KEEPALIVE_PLIST" >/dev/null 2>&1 && echo "  (resumed colima-keepalive)"
+}
+trap _resume_keepalive EXIT
+if [ "$ARTIFACTS_ROOT" == "$DEFAULT_ARTIFACTS_ROOT" ] && [ -f "$_KEEPALIVE_PLIST" ] && command -v launchctl >/dev/null 2>&1; then
+    if launchctl list 2>/dev/null | grep -q 'com\.yaron\.colima-keepalive'; then
+        if launchctl unload "$_KEEPALIVE_PLIST" >/dev/null 2>&1; then
+            _KEEPALIVE_PAUSED=1
+            echo "  (paused colima-keepalive for the build - resumes automatically when the cut finishes)"
+        fi
+    fi
+fi
+
+# Build every image (2 for webapp, 1 otherwise) CONCURRENTLY. Under x86 emulation on an arm64
+# dev machine each webapp image build runs for minutes and they contend for little beyond CPU,
+# so parallel builds roughly halve a webapp cut's wall-clock cost. A single-image app just runs
+# one background build + one wait - identical behaviour to the old serial loop. Each build's
+# output goes to its own temp log, printed only if THAT build fails (a cut produces every image
+# or none). This whole block runs inside the colima-keepalive pause window above.
+#
+# DOCKER_BUILDKIT=1: the Dockerfiles use `RUN --mount=type=cache` (npm's /root/.npm, pip's
+# /root/.cache/pip) to persist download caches across builds - needs BuildKit (buildx). Layer
+# caching (deps COPYed before the app source) covers the unchanged-deps case on top of that.
+BUILD_STATUS=0
+_build_pids=()
+_build_logs=()
+_build_names=()
+for _spec in "${BUILD_SPECS[@]}"; do
+    _tag="${_spec%%|*}"
+    _rest="${_spec#*|}"
+    _dockerfile="${_rest%%|*}"
+    _context="${_rest##*|}"
+    _blog="$(mktemp -t cut_release_build.XXXXXX)"
+    _build_logs+=("$_blog")
+    _build_names+=("$_tag")
+    DOCKER_BUILDKIT=1 docker build --platform linux/amd64 -t "$_tag" -f "$_dockerfile" "$_context" -q >"$_blog" 2>&1 &
+    _build_pids+=("$!")
+done
+for _i in "${!_build_pids[@]}"; do
+    if ! wait "${_build_pids[$_i]}"; then
+        BUILD_STATUS=1
+        echo "Error: docker build failed for ${_build_names[$_i]}:" >&2
+        sed 's/^/    /' "${_build_logs[$_i]}" >&2
+    fi
+done
+rm -f "${_build_logs[@]}"
 if [ "$BUILD_STATUS" -ne 0 ]; then
     echo "Error: docker build failed - reverting VERSION/CHANGELOG.md/RELEASES.md, no commit made." >&2
     _revert_uncommitted_release_files
     exit 1
 fi
 
-# 5. Export it as the durable artifact - also before any commit
+# 5. Export it as the durable artifact - also before any commit. For webapp both images go
+#    into the one tar (docker save accepts multiple image refs).
 mkdir -p "${ARTIFACTS_ROOT}/${APP}"
 set +e
-docker save "${APP}:${VERSION}" -o "$TAR_PATH"
+docker save "${IMAGE_TAGS[@]}" -o "$TAR_PATH"
 SAVE_STATUS=$?
 set -e
 if [ "$SAVE_STATUS" -ne 0 ]; then
@@ -332,6 +411,10 @@ if [ "$BUNDLE_STATUS" -ne 0 ]; then
     exit 1
 fi
 
+# Build + save + bundle done - the part the keepalive could kill is over. Restore it now
+# rather than waiting for the EXIT trap, so the VM is protected during the git/manifest/tag steps.
+_resume_keepalive
+
 # 6. NOW commit - both docker steps already succeeded, so this commit will always have a
 #    matching artifact/tag. Includes the specs/done/ sweep (already staged by git mv) and any
 #    pointer-file rewrites from step 3c (sed edits, not yet staged) in the SAME commit.
@@ -342,8 +425,14 @@ fi
 git commit -q -m "release: ${APP} v${VERSION}"
 COMMIT_SHA="$(git rev-parse HEAD)"
 
-# 7. Write the manifest
-IMAGE_ID="$(docker inspect --format '{{.Id}}' "${APP}:${VERSION}")"
+# 7. Write the manifest. image_id is the first (only, or backend) image; "images" records every
+#    bundled image tag so deploy has the full list without re-parsing `docker load` output
+#    (webapp's 2-image tar - real incident 2026-09-06 where only the first got retagged).
+IMAGE_ID="$(docker inspect --format '{{.Id}}' "${IMAGE_TAGS[0]}")"
+_images_json=""
+for _t in "${IMAGE_TAGS[@]}"; do
+    _images_json="${_images_json:+${_images_json}, }\"${_t}\""
+done
 cat > "$MANIFEST_PATH" <<EOF
 {
   "app": "${APP}",
@@ -351,6 +440,7 @@ cat > "$MANIFEST_PATH" <<EOF
   "date": "${RELEASE_DATE}",
   "git_commit": "${COMMIT_SHA}",
   "image_id": "${IMAGE_ID}",
+  "images": [${_images_json}],
   "scripts_bundle": "$(basename "$SCRIPTS_BUNDLE_PATH")"
 }
 EOF

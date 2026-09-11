@@ -1,0 +1,15 @@
+{
+  "name": "webapp-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Feature 068 Ledger Web UI — Playwright acceptance suite (PLAYWRIGHT-TEST-PLAN.md)",
+  "scripts": {
+    "test": "playwright test",
+    "seed": "python3 seed_fixture.py",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  },
+  "type": "module"
+}

@@ -187,13 +187,26 @@ def run_soft_restart(env: str, scripts_dir: Path) -> None:
     subprocess.run([str(scripts_dir / "scripts" / "run_all_and_verify_healthy.sh"), env], check=False)
 
 
-def run_hard_restart(denidin_container: str, morning_container: str) -> None:
+def run_hard_restart(
+    denidin_container: str,
+    morning_container: str,
+    webapp_container: Optional[str] = None,
+    webapp_frontend_container: Optional[str] = None,
+) -> None:
     """The blunt fallback: bypasses env_lock/active_env.json bookkeeping
     entirely - a direct container-runtime restart, morning-mcp-app first
     (denidin-app depends on it discovering the tunnel), then denidin-app,
-    matching this project's own established start ordering."""
+    matching this project's own established start ordering. webapp
+    (Feature 068), when monitored, is restarted last - nothing depends on
+    it and it depends only on denidin-app's data being on disk; its own two
+    containers go backend-then-frontend (the frontend nginx proxies to the
+    backend, so bring the backend up first)."""
     subprocess.run(["docker", "restart", morning_container], check=False)
     subprocess.run(["docker", "restart", denidin_container], check=False)
+    if webapp_container:
+        subprocess.run(["docker", "restart", webapp_container], check=False)
+    if webapp_frontend_container:
+        subprocess.run(["docker", "restart", webapp_frontend_container], check=False)
 
 
 def _write_log_entry(
@@ -206,6 +219,10 @@ def _write_log_entry(
     last_up_time: Optional[float],
     action: str,
     dry_run: bool,
+    webapp_ok: Optional[bool] = None,
+    webapp_checks: Optional[dict] = None,
+    webapp_frontend_ok: Optional[bool] = None,
+    webapp_frontend_checks: Optional[dict] = None,
 ) -> None:
     """denidin_checks/morning_checks are the raw parsed /health bodies
     (2026-09-07 fix, bugfix-043) - previously only the flat success/fail
@@ -225,6 +242,14 @@ def _write_log_entry(
         "action": action,
         "dry_run": dry_run,
     }
+    # webapp (Feature 068) is only present in the log when it's actually being monitored -
+    # omitted entirely otherwise, so existing log consumers/tests see no shape change.
+    if webapp_ok is not None:
+        entry["webapp_health"] = "success" if webapp_ok else "fail"
+        entry["webapp_checks"] = webapp_checks
+    if webapp_frontend_ok is not None:
+        entry["webapp_frontend_health"] = "success" if webapp_frontend_ok else "fail"
+        entry["webapp_frontend_checks"] = webapp_frontend_checks
     with log_file.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
@@ -241,6 +266,10 @@ def run_once(
     dry_run: bool = False,
     now: Optional[float] = None,
     verify_log_file: Optional[Path] = None,
+    webapp_health_url: Optional[str] = None,
+    webapp_container: Optional[str] = None,
+    webapp_frontend_health_url: Optional[str] = None,
+    webapp_frontend_container: Optional[str] = None,
 ) -> str:
     """Runs exactly one probe-and-decide cycle. Returns the action taken
     ("none"/"bootstrap"/"soft"/"hard") so callers (tests, a manual dev demo) can assert
@@ -250,7 +279,34 @@ def run_once(
     morning_body = fetch_health_body(morning_health_url, log_file=verify_log_file, app_name="morning")
     denidin_ok = is_healthy_body(denidin_body)
     morning_ok = is_healthy_body(morning_body)
-    all_ok = denidin_ok and morning_ok
+
+    # webapp (Feature 068) is monitored only when a URL is supplied - a box/env where the Ledger
+    # Web UI is not deployed passes None here and webapp never affects the decision.
+    webapp_monitored = webapp_health_url is not None
+    webapp_body = (
+        fetch_health_body(webapp_health_url, log_file=verify_log_file, app_name="webapp")
+        if webapp_monitored
+        else None
+    )
+    webapp_ok = is_healthy_body(webapp_body) if webapp_monitored else None
+
+    # webapp-frontend (Feature 068) - nginx's own /healthz, monitored independently of the
+    # backend so a wedged nginx (healthy backend, dead frontend) is still caught, and the hard
+    # path knows to restart the frontend container specifically.
+    webapp_frontend_monitored = webapp_frontend_health_url is not None
+    webapp_frontend_body = (
+        fetch_health_body(webapp_frontend_health_url, log_file=verify_log_file, app_name="webapp-frontend")
+        if webapp_frontend_monitored
+        else None
+    )
+    webapp_frontend_ok = is_healthy_body(webapp_frontend_body) if webapp_frontend_monitored else None
+
+    all_ok = (
+        denidin_ok
+        and morning_ok
+        and (webapp_ok if webapp_monitored else True)
+        and (webapp_frontend_ok if webapp_frontend_monitored else True)
+    )
 
     last_up_time = read_last_up_time(state_file)
 
@@ -262,10 +318,14 @@ def run_once(
         if action in ("soft", "bootstrap") and not dry_run:
             run_soft_restart(env, scripts_dir)
         elif action == "hard" and not dry_run:
-            run_hard_restart(denidin_container, morning_container)
+            run_hard_restart(
+                denidin_container, morning_container, webapp_container, webapp_frontend_container
+            )
 
     _write_log_entry(
-        log_file, now, denidin_ok, morning_ok, denidin_body, morning_body, last_up_time, action, dry_run
+        log_file, now, denidin_ok, morning_ok, denidin_body, morning_body, last_up_time, action, dry_run,
+        webapp_ok=webapp_ok, webapp_checks=webapp_body,
+        webapp_frontend_ok=webapp_frontend_ok, webapp_frontend_checks=webapp_frontend_body,
     )
     return action
 
@@ -286,6 +346,29 @@ def main(argv: Optional[list] = None) -> int:
     parser.add_argument("--scripts-dir", type=Path, help="Repo root containing scripts/stop_all.sh and scripts/run_all.sh")
     parser.add_argument("--denidin-container")
     parser.add_argument("--morning-container")
+    parser.add_argument(
+        "--webapp-health-url",
+        help="Optional (Feature 068): monitor the Ledger Web UI's webapp-backend /health too. "
+             "Omit on any box/env where webapp is not deployed - then webapp never affects the "
+             "escalation decision.",
+    )
+    parser.add_argument(
+        "--webapp-container",
+        help="Optional (Feature 068): the webapp-backend container name, restarted on the HARD "
+             "path only (last, after morning + denidin). Only meaningful with --webapp-health-url.",
+    )
+    parser.add_argument(
+        "--webapp-frontend-health-url",
+        help="Optional (Feature 068): monitor the Ledger Web UI's webapp-frontend nginx /healthz "
+             "too (independent of the backend - catches a wedged nginx). Omit where webapp is not "
+             "deployed.",
+    )
+    parser.add_argument(
+        "--webapp-frontend-container",
+        help="Optional (Feature 068): the webapp-frontend container name, restarted on the HARD "
+             "path only (very last, after the backend). Only meaningful with "
+             "--webapp-frontend-health-url.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Log what would happen, never actually restart anything")
     parser.add_argument(
         "--archive-state", action="store_true",
@@ -327,6 +410,10 @@ def main(argv: Optional[list] = None) -> int:
         morning_container=args.morning_container,
         dry_run=args.dry_run,
         verify_log_file=args.verify_log_file,
+        webapp_health_url=args.webapp_health_url,
+        webapp_container=args.webapp_container,
+        webapp_frontend_health_url=args.webapp_frontend_health_url,
+        webapp_frontend_container=args.webapp_frontend_container,
     )
     print(f"action={action}")
     return 0

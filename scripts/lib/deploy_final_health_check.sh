@@ -31,11 +31,13 @@
 DEPLOY_HEALTH_GRACE_SECONDS="${DEPLOY_HEALTH_GRACE_SECONDS:-300}"
 DEPLOY_HEALTH_POLL_INTERVAL="${DEPLOY_HEALTH_POLL_INTERVAL:-10}"
 
-# deploy_final_health_check_local <env> <check_denidin:0|1> <check_morning:0|1>
+# deploy_final_health_check_local <env> <check_denidin:0|1> <check_morning:0|1> [<check_webapp:0|1>]
 # Runs verify.py directly, in this checkout - REPO_ROOT already IS the deploy directory for the
-# local path (dev, or prod with --local).
+# local path (dev, or prod with --local). check_webapp (Feature 068) is optional and defaults to
+# 0 so existing callers are unaffected; when 1, BOTH webapp containers are checked (webapp-backend's
+# real /health + webapp-frontend nginx's /healthz).
 deploy_final_health_check_local() {
-    local env="$1" check_denidin="$2" check_morning="$3"
+    local env="$1" check_denidin="$2" check_morning="$3" check_webapp="${4:-0}"
     # shellcheck source=/dev/null
     source "$REPO_ROOT/scripts/health_monitoring/prober_paths.sh"
     local args=()
@@ -44,6 +46,11 @@ deploy_final_health_check_local() {
     fi
     if [ "$check_morning" -eq 1 ]; then
         args+=(--morning-health-url "$(prober_morning_health_url "$env")")
+    fi
+    if [ "$check_webapp" -eq 1 ]; then
+        # webapp is two containers - check both (backend deep /health + frontend nginx /healthz).
+        args+=(--webapp-health-url "$(prober_webapp_health_url "$env")")
+        args+=(--webapp-frontend-health-url "$(prober_webapp_frontend_health_url "$env")")
     fi
     local elapsed=0
     echo "== Waiting up to ${DEPLOY_HEALTH_GRACE_SECONDS}s for ${env} to report genuinely healthy (real /health check, local) =="
@@ -59,18 +66,24 @@ deploy_final_health_check_local() {
     return 1
 }
 
-# deploy_final_health_check_remote <remote_host> <remote_deploy_dir> <env> <check_denidin:0|1> <check_morning:0|1>
+# deploy_final_health_check_remote <remote_host> <remote_deploy_dir> <env> <check_denidin:0|1> <check_morning:0|1> [<check_webapp:0|1>]
 # Requires remote_run() already defined by the caller (see scripts/windows_prod/_wsl_ssh.sh) and
 # the ops-scripts bundle (which includes verify.py + prober_paths.sh) already unpacked on the
 # remote box - both deploy scripts already guarantee this before this function is ever called.
+# check_webapp (Feature 068) is optional and defaults to 0.
 deploy_final_health_check_remote() {
-    local remote_host="$1" remote_deploy_dir="$2" env="$3" check_denidin="$4" check_morning="$5"
+    local remote_host="$1" remote_deploy_dir="$2" env="$3" check_denidin="$4" check_morning="$5" check_webapp="${6:-0}"
     local args=""
     if [ "$check_denidin" -eq 1 ]; then
         args="${args} --denidin-health-url \"\$(prober_denidin_health_url ${env})\""
     fi
     if [ "$check_morning" -eq 1 ]; then
         args="${args} --morning-health-url \"\$(prober_morning_health_url ${env})\""
+    fi
+    if [ "$check_webapp" -eq 1 ]; then
+        # webapp is two containers - check both (backend deep /health + frontend nginx /healthz).
+        args="${args} --webapp-health-url \"\$(prober_webapp_health_url ${env})\""
+        args="${args} --webapp-frontend-health-url \"\$(prober_webapp_frontend_health_url ${env})\""
     fi
     local remote_cmd="REPO_ROOT=\"\$HOME/${remote_deploy_dir}\"; source \"\$REPO_ROOT/scripts/health_monitoring/prober_paths.sh\"; python3 \"\$REPO_ROOT/scripts/health_monitoring/verify.py\"${args} --log-file \"\$(prober_verify_log_file ${env})\""
     local elapsed=0

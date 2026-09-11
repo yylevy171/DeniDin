@@ -47,6 +47,59 @@ def test_unknown_app_exits_2(scratch_repo):
     assert result.returncode == 2
 
 
+def test_webapp_bundles_two_images_into_one_artifact(scratch_webapp_repo):
+    """webapp is a valid <app>: cut_release.sh builds webapp-backend + webapp-frontend, saves
+    BOTH into the single webapp-v<version>.tar, and writes one manifest (listing both image
+    tags) + one git tag."""
+    result = run_script(
+        scratch_webapp_repo["cut_script"],
+        ["webapp", "0.5.4", "--artifacts-root", str(scratch_webapp_repo["artifacts_root"]),
+         "--summary", "First webapp release"],
+        cwd=scratch_webapp_repo["repo"],
+        stdin="y\n",
+        timeout=180,
+    )
+    assert result.returncode == 0, result.stderr
+
+    tag = subprocess.run(
+        ["git", "tag", "-l", "webapp-v0.5.4"],
+        cwd=scratch_webapp_repo["repo"], capture_output=True, text=True,
+    )
+    assert tag.stdout.strip() == "webapp-v0.5.4"
+
+    tar_path = scratch_webapp_repo["artifacts_root"] / "webapp" / "webapp-v0.5.4.tar"
+    manifest_path = scratch_webapp_repo["artifacts_root"] / "webapp" / "webapp-v0.5.4.json"
+    assert tar_path.is_file()
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["app"] == "webapp"
+    assert manifest["version"] == "0.5.4"
+    assert manifest["images"] == ["webapp-backend:0.5.4", "webapp-frontend:0.5.4"]
+
+    # The one tar really carries BOTH images.
+    loaded = subprocess.run(
+        ["docker", "load", "-i", str(tar_path)], capture_output=True, text=True,
+    )
+    assert "webapp-backend:0.5.4" in loaded.stdout
+    assert "webapp-frontend:0.5.4" in loaded.stdout
+    subprocess.run(["docker", "rmi", "-f", "webapp-backend:0.5.4", "webapp-frontend:0.5.4"],
+                   capture_output=True, text=True)
+
+    assert (scratch_webapp_repo["webapp_dir"] / "VERSION").read_text().strip() == "0.5.4"
+
+
+def test_webapp_recut_refuses(scratch_webapp_repo):
+    args = ["webapp", "0.5.4", "--artifacts-root", str(scratch_webapp_repo["artifacts_root"]),
+            "--summary", "First"]
+    first = run_script(scratch_webapp_repo["cut_script"], args,
+                       cwd=scratch_webapp_repo["repo"], stdin="y\n", timeout=180)
+    assert first.returncode == 0, first.stderr
+    second = run_script(scratch_webapp_repo["cut_script"], args,
+                        cwd=scratch_webapp_repo["repo"], stdin="y\n", timeout=60)
+    assert second.returncode == 1
+    subprocess.run(["docker", "rmi", "-f", "webapp-backend:0.5.4", "webapp-frontend:0.5.4"],
+                   capture_output=True, text=True)
+
+
 def test_happy_path_updates_version_changelog_releases_tag_and_artifact(scratch_repo):
     result = _cut(scratch_repo, version="1.1.0", summary="Adds versioning support")
 

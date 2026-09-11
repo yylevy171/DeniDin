@@ -31,4 +31,6 @@ RELEASE_SCRIPTS_BUNDLE_FILES=(
     "apps/denidin-app/stop_denidin.sh"
     "apps/morning-mcp-app/run_morning_mcp.sh"
     "apps/morning-mcp-app/stop_morning_mcp.sh"
+    "apps/webapp/run_webapp.sh"
+    "apps/webapp/stop_webapp.sh"
 )

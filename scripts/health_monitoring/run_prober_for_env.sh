@@ -24,6 +24,27 @@ fi
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/prober_paths.sh"
 
+# webapp (Feature 068) is deployed independently and isn't present on every box/env. Only monitor
+# it when its container actually exists right now - otherwise prober.py would see it as
+# permanently unreachable and escalate a restart of the whole env for a service that was never
+# meant to be running here. Both webapp containers are checked independently (backend deep
+# /health + frontend nginx /healthz) - each guarded on its own container existing.
+WEBAPP_ARGS=()
+WEBAPP_CONTAINER="$(prober_webapp_container "$ENV")"
+if docker inspect "$WEBAPP_CONTAINER" >/dev/null 2>&1; then
+    WEBAPP_ARGS=(
+        --webapp-health-url "$(prober_webapp_health_url "$ENV")"
+        --webapp-container "$WEBAPP_CONTAINER"
+    )
+fi
+WEBAPP_FRONTEND_CONTAINER="$(prober_webapp_frontend_container "$ENV")"
+if docker inspect "$WEBAPP_FRONTEND_CONTAINER" >/dev/null 2>&1; then
+    WEBAPP_ARGS+=(
+        --webapp-frontend-health-url "$(prober_webapp_frontend_health_url "$ENV")"
+        --webapp-frontend-container "$WEBAPP_FRONTEND_CONTAINER"
+    )
+fi
+
 exec python3 "$SCRIPT_DIR/prober.py" \
     --env "$ENV" \
     --denidin-health-url "$(prober_denidin_health_url "$ENV")" \
@@ -34,4 +55,5 @@ exec python3 "$SCRIPT_DIR/prober.py" \
     --scripts-dir "$REPO_ROOT" \
     --denidin-container "$(prober_denidin_container "$ENV")" \
     --morning-container "$(prober_morning_container "$ENV")" \
+    "${WEBAPP_ARGS[@]}" \
     "$@"

@@ -142,16 +142,40 @@ def main(argv: Optional[list] = None) -> int:
     )
     parser.add_argument("--denidin-health-url")
     parser.add_argument("--morning-health-url")
+    parser.add_argument(
+        "--webapp-health-url",
+        help="Optional (Feature 068) - the Ledger Web UI's webapp-backend /health. Omit on any "
+             "box/env where webapp is not deployed; when given, it's checked exactly like the "
+             "other two.",
+    )
+    parser.add_argument(
+        "--webapp-frontend-health-url",
+        help="Optional (Feature 068) - the Ledger Web UI's webapp-frontend nginx /healthz "
+             "(nginx-up-and-config-valid, no backend hop; same 200 + {\"status\":\"ok\"} shape). "
+             "Omit where webapp is not deployed; when given, checked exactly like the others.",
+    )
     parser.add_argument("--timeout", type=float, default=PROBE_TIMEOUT_SECONDS)
     parser.add_argument("--log-file", type=Path, help="Append every check attempt + its full raw reply here")
     args = parser.parse_args(argv)
 
-    if not args.denidin_health_url and not args.morning_health_url:
-        parser.error("at least one of --denidin-health-url / --morning-health-url is required")
+    if not (
+        args.denidin_health_url
+        or args.morning_health_url
+        or args.webapp_health_url
+        or args.webapp_frontend_health_url
+    ):
+        parser.error(
+            "at least one of --denidin-health-url / --morning-health-url / --webapp-health-url / "
+            "--webapp-frontend-health-url is required"
+        )
 
     denidin_ok = _check_one("denidin", args.denidin_health_url, args.timeout, args.log_file)
     morning_ok = _check_one("morning", args.morning_health_url, args.timeout, args.log_file)
-    return 0 if (denidin_ok and morning_ok) else 1
+    webapp_ok = _check_one("webapp", args.webapp_health_url, args.timeout, args.log_file)
+    webapp_frontend_ok = _check_one(
+        "webapp-frontend", args.webapp_frontend_health_url, args.timeout, args.log_file
+    )
+    return 0 if (denidin_ok and morning_ok and webapp_ok and webapp_frontend_ok) else 1
 
 
 if __name__ == "__main__":
