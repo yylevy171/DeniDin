@@ -2,8 +2,11 @@
 
 **Feature Branch**: `feature/068-ledger-ui-and-reports`
 **Created**: 2026-09-04
-**Status**: Draft — post speckit.plan (plan.md/research.md/data-model.md/contracts/quickstart.md
-written), post speckit.analyze, pre speckit.tasks
+**Status**: Done (2026-09-11). `speckit.plan`/`speckit.tasks`/`speckit.analyze`/`speckit.implement`
+complete — full Playwright acceptance suite (`apps/webapp/e2e/`) green: 256 passed, 0 failed, 14
+skipped (11 `test.fixme` tracked separately as `bugfix-052-webapp-ui-gaps-vs-approved-playwright-plan`,
+3 `test.skip` designated manual-only by the plan). Deployed and live in both `dev` and `prod`
+(`webapp v0.6.0-f68v2`). PR: TBD.
 
 ## Scope note (2026-09-04)
 
