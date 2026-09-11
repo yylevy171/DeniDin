@@ -6,7 +6,7 @@
 complete — full Playwright acceptance suite (`apps/webapp/e2e/`) green: 256 passed, 0 failed, 14
 skipped (11 `test.fixme` tracked separately as `bugfix-052-webapp-ui-gaps-vs-approved-playwright-plan`,
 3 `test.skip` designated manual-only by the plan). Deployed and live in both `dev` and `prod`
-(`webapp v0.6.0-f68v2`). PR: TBD.
+(`webapp v0.6.0-f68v2`). PR: #296.
 
 ## Scope note (2026-09-04)
 
