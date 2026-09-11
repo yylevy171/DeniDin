@@ -130,11 +130,11 @@ ENV="${POSITIONAL[1]}"
 VERSION="${POSITIONAL[2]}"
 
 usage() {
-    echo "Usage: $0 <denidin-app|morning-mcp-app> <dev|prod> <version> [--artifacts-root <path>] [--verify-timeout <seconds>]" >&2
+    echo "Usage: $0 <denidin-app|morning-mcp-app|webapp> <dev|prod> <version> [--artifacts-root <path>] [--verify-timeout <seconds>]" >&2
 }
 
-if [ "$APP" != "denidin-app" ] && [ "$APP" != "morning-mcp-app" ]; then
-    echo "Error: <app> must be denidin-app or morning-mcp-app (got: '${APP}')." >&2
+if [ "$APP" != "denidin-app" ] && [ "$APP" != "morning-mcp-app" ] && [ "$APP" != "webapp" ]; then
+    echo "Error: <app> must be denidin-app, morning-mcp-app or webapp (got: '${APP}')." >&2
     usage
     exit 2
 fi
@@ -155,6 +155,43 @@ TAR_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.tar"
 MANIFEST_PATH="${ARTIFACTS_ROOT}/${APP}/${APP}-v${VERSION}.json"
 COMPOSE_FILE="docker/docker-compose.${ENV}.yml"
 SERVICE_NAME="${APP}-${ENV}"
+
+# webapp (Feature 068) is a first-class app: it deploys through the EXACT SAME stop_env.sh ->
+# load+retag -> run_env.sh -> real /health verification path as the other two (run_all.sh /
+# stop_all.sh already start/stop it alongside them). WEBAPP=1 turns on the small per-step
+# branches below; two things differ: (a) its tar carries TWO images (webapp-backend +
+# webapp-frontend) so load/retag loop over the manifest's `images` array; (b) it emits a
+# [v<version>] log line like the others (webapp_backend/logger.py) AND its /health does real
+# dependency checks (deploy_final_health_check.sh's --check-webapp), so both halves of the
+# 076-split final verification apply unchanged. webapp has no watchdog / active_env.json - a
+# property of its containers, not of how it's deployed.
+WEBAPP=0
+if [ "$APP" == "webapp" ]; then
+    WEBAPP=1
+    WEBAPP_SERVICES=("webapp-backend-${ENV}" "webapp-frontend-${ENV}")
+    # SERVICE_NAME / CONTAINER_NAME (derived elsewhere) point at the backend - it's the one
+    # with the [v<version>] log line and the /health endpoint. The container-running check
+    # below is overridden to cover BOTH services.
+    SERVICE_NAME="webapp-backend-${ENV}"
+fi
+
+# webapp's two release images, newline-separated (from the manifest's `images` array that
+# cut_release_single.sh writes; conventional fallback for an artifact cut before that field).
+webapp_manifest_images() {
+    python3 -c "import json,sys; print('\n'.join(json.load(open(sys.argv[1])).get('images') or []))" "$MANIFEST_PATH" 2>/dev/null \
+        || printf 'webapp-backend:%s\nwebapp-frontend:%s' "$VERSION" "$VERSION"
+}
+
+# Map a loaded webapp image ref to the :latest tag its compose service expects (empty for an
+# unrecognized ref - caller treats that as a hard failure).
+_webapp_compose_image_for() {
+    case "$1" in
+        webapp-backend:*)  echo "${PROJECT_NAME}-webapp-backend-${ENV}:latest" ;;
+        webapp-frontend:*) echo "${PROJECT_NAME}-webapp-frontend-${ENV}:latest" ;;
+        *)                 echo "" ;;
+    esac
+}
+
 # bugfix-043: the shared ops-scripts bundle cut_release.sh packages alongside the image tar.
 # Soft-optional (not a hard precondition) - a version cut BEFORE this feature existed has no
 # bundle, and rolling back to one must still work; see the HAVE_SCRIPTS_BUNDLE check below.
@@ -201,6 +238,9 @@ fi
 HAVE_SCRIPTS_BUNDLE=0
 if [ -f "$SCRIPTS_BUNDLE_PATH" ]; then
     HAVE_SCRIPTS_BUNDLE=1
+elif [ "$WEBAPP" -eq 1 ]; then
+    echo "Error: no ops-scripts bundle for webapp v${VERSION} (${SCRIPTS_BUNDLE_PATH}). webapp deploys only through the stop_env.sh/run_env.sh path (it has no pre-bugfix-043 fallback), which needs the bundle - re-cut this version with the current scripts/cut_release_single.sh." >&2
+    exit 1
 else
     echo "Note: no scripts bundle found for ${APP} v${VERSION} (${SCRIPTS_BUNDLE_PATH}) - this version predates bugfix-043's shared ops-scripts bundling. Deploying without refreshing the ops scripts."
 fi
@@ -326,11 +366,26 @@ if [ "$REMOTE" -eq 1 ]; then
         # Step R5: load the artifact on the box - no rebuild, ever (REQ-DEPLOY-001).
         echo "== [R5/R9] Loading ${ARTIFACT_NAME} into Docker on ${REMOTE_HOST} =="
         LOAD_OUTPUT="$(remote_run "docker load -i \"${WIN_HOME}/${ARTIFACT_NAME}\"" 2>&1)"
-        LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
-        if [ -z "$LOADED_REF" ]; then
-            echo "🚨 DEPLOY FAILED at step R5 (docker load on ${REMOTE_HOST}): could not determine the loaded image reference. The environment is currently STOPPED (step R4 already ran) - rerun this deploy, or run_env.sh ${ENV} on ${REMOTE_HOST} to bring it back up as-is. Raw output was:" >&2
-            echo "$LOAD_OUTPUT" >&2
-            exit 1
+        echo "$LOAD_OUTPUT" | sed 's/^/   /'
+        if [ "$WEBAPP" -eq 1 ]; then
+            # Two images in one tar; exit codes don't propagate through the SSH/wsl transport,
+            # so confirm each manifest image is present by inspecting.
+            WEBAPP_IMAGES="$(webapp_manifest_images)"
+            while IFS= read -r _ref; do
+                [ -z "$_ref" ] && continue
+                _present="$(remote_run "docker image inspect ${_ref} >/dev/null 2>&1 && echo PRESENT || echo MISSING" 2>&1 | tail -1)"
+                if [ "$_present" != "PRESENT" ]; then
+                    echo "🚨 DEPLOY FAILED at step R5 (docker load webapp on ${REMOTE_HOST}): image ${_ref} (from the release manifest) is not present after load. The environment is currently STOPPED (step R4 already ran) - run_env.sh ${ENV} on ${REMOTE_HOST} to bring it back up as-is." >&2
+                    exit 1
+                fi
+            done <<< "$WEBAPP_IMAGES"
+        else
+            LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
+            if [ -z "$LOADED_REF" ]; then
+                echo "🚨 DEPLOY FAILED at step R5 (docker load on ${REMOTE_HOST}): could not determine the loaded image reference. The environment is currently STOPPED (step R4 already ran) - rerun this deploy, or run_env.sh ${ENV} on ${REMOTE_HOST} to bring it back up as-is. Raw output was:" >&2
+                echo "$LOAD_OUTPUT" >&2
+                exit 1
+            fi
         fi
 
         # Step R6: clean up the shipped tarball off the box.
@@ -342,10 +397,28 @@ if [ "$REMOTE" -eq 1 ]; then
 
         # Step R7: retag - must happen BEFORE run_env.sh below, since the prober's own
         # bootstrap-triggered `run_all.sh` needs the correctly-tagged :latest image in place.
-        echo "== [R7/R9] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} on ${REMOTE_HOST} =="
-        if ! remote_run "docker tag ${LOADED_REF} ${COMPOSE_IMAGE}"; then
-            echo "🚨 DEPLOY FAILED at step R7 (docker tag on ${REMOTE_HOST}): the environment is currently STOPPED (step R4 already ran)." >&2
-            exit 1
+        if [ "$WEBAPP" -eq 1 ]; then
+            echo "== [R7/R9] Retagging webapp's loaded images to their compose names on ${REMOTE_HOST} =="
+            while IFS= read -r _ref; do
+                [ -z "$_ref" ] && continue
+                _target="$(_webapp_compose_image_for "$_ref")"
+                if [ -z "$_target" ]; then
+                    echo "🚨 DEPLOY FAILED at step R7 (${REMOTE_HOST}): unexpected image ref '${_ref}' - not a webapp image. The environment is currently STOPPED (step R4 already ran)." >&2
+                    exit 1
+                fi
+                echo "   ${_ref} -> ${_target}"
+                _tagged="$(remote_run "docker tag ${_ref} ${_target} && docker image inspect ${_target} >/dev/null 2>&1 && echo OK || echo FAIL" 2>&1 | tail -1)"
+                if [ "$_tagged" != "OK" ]; then
+                    echo "🚨 DEPLOY FAILED at step R7 (docker tag ${_ref} -> ${_target} on ${REMOTE_HOST}): the environment is currently STOPPED (step R4 already ran)." >&2
+                    exit 1
+                fi
+            done <<< "$WEBAPP_IMAGES"
+        else
+            echo "== [R7/R9] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} on ${REMOTE_HOST} =="
+            if ! remote_run "docker tag ${LOADED_REF} ${COMPOSE_IMAGE}"; then
+                echo "🚨 DEPLOY FAILED at step R7 (docker tag on ${REMOTE_HOST}): the environment is currently STOPPED (step R4 already ran)." >&2
+                exit 1
+            fi
         fi
 
         # Step R8: start prod the sanctioned way - re-enables the prober's schedule and triggers
@@ -428,23 +501,31 @@ if [ "$REMOTE" -eq 1 ]; then
     # is "no" repo-wide, so a crash shows as Exited, not a silent respawn-loop). Poll briefly
     # rather than checking once immediately - the bundle path's run_env.sh trigger and the
     # prober's own run_all.sh call are not perfectly synchronous.
-    echo "== [R9/R9] Confirming ${CONTAINER_NAME} is running on ${REMOTE_HOST} =="
-    CONTAINER_UP=0
-    CONTAINER_CHECK_ELAPSED=0
-    while [ "$CONTAINER_CHECK_ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
-        CONTAINER_STATUS="$(remote_run "docker inspect --format '{{.State.Status}}' ${CONTAINER_NAME}" 2>&1)"
-        if [ "$CONTAINER_STATUS" == "running" ]; then
-            CONTAINER_UP=1
-            break
-        fi
-        sleep "$VERIFY_POLL_INTERVAL"
-        CONTAINER_CHECK_ELAPSED=$((CONTAINER_CHECK_ELAPSED + VERIFY_POLL_INTERVAL))
-    done
-    if [ "$CONTAINER_UP" -ne 1 ]; then
-        echo "🚨 DEPLOY FAILED at step R9 (${CONTAINER_NAME} on ${REMOTE_HOST}): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
-        remote_run "docker logs ${CONTAINER_NAME} --tail 20" >&2 2>&1 || true
-        exit 1
+    if [ "$WEBAPP" -eq 1 ]; then
+        R9_CONTAINERS=()
+        for _svc in "${WEBAPP_SERVICES[@]}"; do R9_CONTAINERS+=("${PROJECT_NAME}-${_svc}-1"); done
+    else
+        R9_CONTAINERS=("${CONTAINER_NAME}")
     fi
+    for _cname in "${R9_CONTAINERS[@]}"; do
+        echo "== [R9/R9] Confirming ${_cname} is running on ${REMOTE_HOST} =="
+        CONTAINER_UP=0
+        CONTAINER_CHECK_ELAPSED=0
+        while [ "$CONTAINER_CHECK_ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
+            CONTAINER_STATUS="$(remote_run "docker inspect --format '{{.State.Status}}' ${_cname}" 2>&1)"
+            if [ "$CONTAINER_STATUS" == "running" ]; then
+                CONTAINER_UP=1
+                break
+            fi
+            sleep "$VERIFY_POLL_INTERVAL"
+            CONTAINER_CHECK_ELAPSED=$((CONTAINER_CHECK_ELAPSED + VERIFY_POLL_INTERVAL))
+        done
+        if [ "$CONTAINER_UP" -ne 1 ]; then
+            echo "🚨 DEPLOY FAILED at step R9 (${_cname} on ${REMOTE_HOST}): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
+            remote_run "docker logs ${_cname} --tail 20" >&2 2>&1 || true
+            exit 1
+        fi
+    done
 
     # Version-image check (2026-09-07, bugfix-076 revision): fast log-grep, confirms the RIGHT
     # image got loaded - deliberately kept separate from the real health check below (see
@@ -473,12 +554,13 @@ if [ "$REMOTE" -eq 1 ]; then
     # unverified container is not a success - checked via verify.py, not a log grep. Only THIS
     # app is checked (the other app also bounced via stop_env.sh/run_env.sh, but wasn't the one
     # being deployed - same scope the old per-app version check already had).
-    if [ "$APP" == "denidin-app" ]; then
-        CHECK_DENIDIN=1; CHECK_MORNING=0
-    else
-        CHECK_DENIDIN=0; CHECK_MORNING=1
-    fi
-    if ! deploy_final_health_check_remote "$REMOTE_HOST" "$REMOTE_DEPLOY_DIR" "$ENV" "$CHECK_DENIDIN" "$CHECK_MORNING"; then
+    CHECK_DENIDIN=0; CHECK_MORNING=0; CHECK_WEBAPP=0
+    case "$APP" in
+        denidin-app)     CHECK_DENIDIN=1 ;;
+        morning-mcp-app) CHECK_MORNING=1 ;;
+        webapp)          CHECK_WEBAPP=1 ;;
+    esac
+    if ! deploy_final_health_check_remote "$REMOTE_HOST" "$REMOTE_DEPLOY_DIR" "$ENV" "$CHECK_DENIDIN" "$CHECK_MORNING" "$CHECK_WEBAPP"; then
         exit 1
     fi
 
@@ -548,22 +630,52 @@ fi
 # it matches <app>:<version> - a tarball's embedded tag always wins over its filename on disk.
 echo "== [L2/L5] Loading ${TAR_PATH} into Docker (local) =="
 LOAD_OUTPUT="$(docker load -i "$TAR_PATH" 2>&1)"
-LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
-if [ -z "$LOADED_REF" ]; then
-    echo "🚨 DEPLOY FAILED at step L2 (docker load, local): could not determine the loaded image reference. The environment is currently STOPPED (step L1 already ran) - rerun this deploy, or run_env.sh ${ENV} to bring it back up as-is. Raw output was:" >&2
-    echo "$LOAD_OUTPUT" >&2
-    exit 1
+echo "$LOAD_OUTPUT" | sed 's/^/   /'
+if [ "$WEBAPP" -eq 1 ]; then
+    # Two images in one tar - confirm each manifest image is present after load.
+    WEBAPP_IMAGES="$(webapp_manifest_images)"
+    while IFS= read -r _ref; do
+        [ -z "$_ref" ] && continue
+        if ! docker image inspect "$_ref" >/dev/null 2>&1; then
+            echo "🚨 DEPLOY FAILED at step L2 (docker load webapp, local): image ${_ref} (from the release manifest) is not present after load. The environment is currently STOPPED (step L1 already ran) - run_env.sh ${ENV} to bring it back up as-is." >&2
+            exit 1
+        fi
+    done <<< "$WEBAPP_IMAGES"
+else
+    LOADED_REF="$(echo "$LOAD_OUTPUT" | grep -oE 'Loaded image( ID)?: .*' | sed -E 's/^Loaded image( ID)?: //')"
+    if [ -z "$LOADED_REF" ]; then
+        echo "🚨 DEPLOY FAILED at step L2 (docker load, local): could not determine the loaded image reference. The environment is currently STOPPED (step L1 already ran) - rerun this deploy, or run_env.sh ${ENV} to bring it back up as-is. Raw output was:" >&2
+        echo "$LOAD_OUTPUT" >&2
+        exit 1
+    fi
 fi
 
 # Step L3: retag it to whatever docker-compose expects for this service - this is what
 # preserves the environment's existing volume mounts (config/logs/data) instead of a bare
 # `docker run` silently missing them. Must happen BEFORE run_env.sh below, since the prober's
 # own bootstrap-triggered `run_all.sh` needs the correctly-tagged :latest image already in place.
-COMPOSE_IMAGE="${PROJECT_NAME}-${SERVICE_NAME}:latest"
-echo "== [L3/L5] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} (local) =="
-if ! docker tag "$LOADED_REF" "$COMPOSE_IMAGE"; then
-    echo "🚨 DEPLOY FAILED at step L3 (docker tag, local): the environment is currently STOPPED (step L1 already ran)." >&2
-    exit 1
+if [ "$WEBAPP" -eq 1 ]; then
+    echo "== [L3/L5] Retagging webapp's loaded images to their compose names (local) =="
+    while IFS= read -r _ref; do
+        [ -z "$_ref" ] && continue
+        _target="$(_webapp_compose_image_for "$_ref")"
+        if [ -z "$_target" ]; then
+            echo "🚨 DEPLOY FAILED at step L3 (local): unexpected image ref '${_ref}' - not a webapp image. The environment is currently STOPPED (step L1 already ran)." >&2
+            exit 1
+        fi
+        echo "   ${_ref} -> ${_target}"
+        if ! docker tag "$_ref" "$_target"; then
+            echo "🚨 DEPLOY FAILED at step L3 (docker tag ${_ref} -> ${_target}, local): the environment is currently STOPPED (step L1 already ran)." >&2
+            exit 1
+        fi
+    done <<< "$WEBAPP_IMAGES"
+else
+    COMPOSE_IMAGE="${PROJECT_NAME}-${SERVICE_NAME}:latest"
+    echo "== [L3/L5] Retagging ${LOADED_REF} -> ${COMPOSE_IMAGE} (local) =="
+    if ! docker tag "$LOADED_REF" "$COMPOSE_IMAGE"; then
+        echo "🚨 DEPLOY FAILED at step L3 (docker tag, local): the environment is currently STOPPED (step L1 already ran)." >&2
+        exit 1
+    fi
 fi
 
 # Step L4: start the environment the sanctioned way - (re-)enables the prober's schedule and
@@ -583,23 +695,31 @@ CONTAINER_NAME="${PROJECT_NAME}-${SERVICE_NAME}-1"
 # (restart policy is "no" repo-wide, so a crash shows as Exited, not a silent respawn-loop).
 # Poll briefly rather than checking once immediately - run_env.sh's trigger and the prober's own
 # run_all.sh call are not perfectly synchronous.
-echo "== [L5/L5] Confirming ${CONTAINER_NAME} is running (local) =="
-CONTAINER_UP=0
-CONTAINER_CHECK_ELAPSED=0
-while [ "$CONTAINER_CHECK_ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
-    CONTAINER_STATUS="$(docker inspect --format '{{.State.Status}}' "$CONTAINER_NAME" 2>&1)"
-    if [ "$CONTAINER_STATUS" == "running" ]; then
-        CONTAINER_UP=1
-        break
-    fi
-    sleep "$VERIFY_POLL_INTERVAL"
-    CONTAINER_CHECK_ELAPSED=$((CONTAINER_CHECK_ELAPSED + VERIFY_POLL_INTERVAL))
-done
-if [ "$CONTAINER_UP" -ne 1 ]; then
-    echo "🚨 DEPLOY FAILED at step L5 (${CONTAINER_NAME}, local): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
-    docker logs "$CONTAINER_NAME" --tail 20 >&2 2>&1 || true
-    exit 1
+if [ "$WEBAPP" -eq 1 ]; then
+    L5_CONTAINERS=()
+    for _svc in "${WEBAPP_SERVICES[@]}"; do L5_CONTAINERS+=("${PROJECT_NAME}-${_svc}-1"); done
+else
+    L5_CONTAINERS=("${CONTAINER_NAME}")
 fi
+for _cname in "${L5_CONTAINERS[@]}"; do
+    echo "== [L5/L5] Confirming ${_cname} is running (local) =="
+    CONTAINER_UP=0
+    CONTAINER_CHECK_ELAPSED=0
+    while [ "$CONTAINER_CHECK_ELAPSED" -lt "$VERIFY_TIMEOUT" ]; do
+        CONTAINER_STATUS="$(docker inspect --format '{{.State.Status}}' "$_cname" 2>&1)"
+        if [ "$CONTAINER_STATUS" == "running" ]; then
+            CONTAINER_UP=1
+            break
+        fi
+        sleep "$VERIFY_POLL_INTERVAL"
+        CONTAINER_CHECK_ELAPSED=$((CONTAINER_CHECK_ELAPSED + VERIFY_POLL_INTERVAL))
+    done
+    if [ "$CONTAINER_UP" -ne 1 ]; then
+        echo "🚨 DEPLOY FAILED at step L5 (${_cname}, local): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
+        docker logs "$_cname" --tail 20 >&2 2>&1 || true
+        exit 1
+    fi
+done
 
 # Version-image check (2026-09-07, bugfix-076 revision): fast log-grep, confirms the RIGHT image
 # got loaded - deliberately kept separate from the real health check below (see
@@ -626,12 +746,13 @@ fi
 # Real health verification (REQ-DEPLOY-002, 2026-09-07 bugfix-076 revision) - block until
 # confirmed or timeout, via verify.py, not a log grep. A container that merely started, without
 # this passing, is a FAILED deploy, not a success.
-if [ "$APP" == "denidin-app" ]; then
-    CHECK_DENIDIN=1; CHECK_MORNING=0
-else
-    CHECK_DENIDIN=0; CHECK_MORNING=1
-fi
-if ! deploy_final_health_check_local "$ENV" "$CHECK_DENIDIN" "$CHECK_MORNING"; then
+CHECK_DENIDIN=0; CHECK_MORNING=0; CHECK_WEBAPP=0
+case "$APP" in
+    denidin-app)     CHECK_DENIDIN=1 ;;
+    morning-mcp-app) CHECK_MORNING=1 ;;
+    webapp)          CHECK_WEBAPP=1 ;;
+esac
+if ! deploy_final_health_check_local "$ENV" "$CHECK_DENIDIN" "$CHECK_MORNING" "$CHECK_WEBAPP"; then
     exit 1
 fi
 

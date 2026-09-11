@@ -63,3 +63,33 @@ services:
       options:
         max-size: "50m"
         max-file: "5"
+
+  # Feature 068 — read-only Ledger Web UI. See docker-compose.dev.yml for the rationale.
+  # denidin-data here is prod data (./apps/denidin-app/data), mounted READ-ONLY — on a coderN
+  # clone that path is remapped to the root clone / real prod mount via
+  # docker-compose.prod.local.yml, same as the other apps.
+  webapp-backend-prod:
+    build:
+      context: .
+      dockerfile: apps/webapp/backend/Dockerfile
+    ports:
+      - "8101:8100"
+    volumes:
+      - ./apps/webapp/backend/config/config.prod.container.json:/app/apps/webapp/backend/config/config.json:ro
+      - ./apps/webapp/backend/auth/password.hash:/app/apps/webapp/backend/auth/password.hash:ro
+      - ./apps/denidin-app/data:/app/denidin-data:ro
+      - ./apps/webapp/logs/prod:/app/apps/webapp/backend/logs
+    restart: "no"
+
+  webapp-frontend-prod:
+    build:
+      context: .
+      dockerfile: apps/webapp/frontend/Dockerfile
+    ports:
+      - "5101:80"
+    environment:
+      BACKEND_UPSTREAM: "webapp-backend-prod:8100"
+      NGINX_ENVSUBST_FILTER: "^BACKEND_UPSTREAM$$"
+    depends_on:
+      - webapp-backend-prod
+    restart: "no"

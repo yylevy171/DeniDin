@@ -1,8 +1,8 @@
 #!/bin/bash
-# Stops BOTH denidin-app and morning-mcp-app for a given environment - the
-# symmetric counterpart to run_all.sh. Use this instead of calling
-# stop_denidin.sh/stop_morning_mcp.sh individually, unless specifically
-# asked to stop only one.
+# Stops the Feature 068 webapp, denidin-app and morning-mcp-app for a given
+# environment - the symmetric counterpart to run_all.sh (reverse order:
+# webapp -> denidin-app -> morning-mcp-app). Use this instead of calling the
+# per-app stop scripts individually, unless specifically asked to stop one.
 #
 # Order matters (2026-08-07): denidin-app stops FIRST, morning-mcp-app
 # SECOND - the reverse of run_all.sh's start order. denidin-app depends on
@@ -24,5 +24,6 @@ if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
     exit 1
 fi
 
+"$REPO_ROOT/apps/webapp/stop_webapp.sh" "$ENV" "$FORCE"
 "$REPO_ROOT/apps/denidin-app/stop_denidin.sh" "$ENV" "$FORCE"
 "$REPO_ROOT/apps/morning-mcp-app/stop_morning_mcp.sh" "$ENV" "$FORCE"

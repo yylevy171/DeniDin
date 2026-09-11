@@ -1,0 +1,38 @@
+server {
+    listen       80;
+    server_name  _;
+
+    root   /usr/share/nginx/html;
+    index  index.html;
+
+    # Read-only BFF. Everything under /api/* and the /health probe go to the backend service.
+    location /api/ {
+        proxy_pass http://${BACKEND_UPSTREAM};
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # This container's OWN liveness - nginx is up and its config is valid. No backend hop, so
+    # it isolates "the frontend is serving" from "the backend is healthy" (deploy verification
+    # and the health prober check this AND the backend's /health separately). Cheap, no logging.
+    # Same body shape as every other app's /health in this repo (200 + {"status":"ok"}) so
+    # verify.py / prober.py's is_healthy_body() parses it with no special case.
+    location = /healthz {
+        access_log off;
+        default_type application/json;
+        return 200 '{"status": "ok", "app_up": "success", "service": "webapp-frontend"}';
+    }
+
+    # Full-chain check for a browser / one-origin caller: nginx up + proxy wired + backend's
+    # own deep /health (denidin data mount readable, ledger index loads, password hash usable).
+    location = /health {
+        proxy_pass http://${BACKEND_UPSTREAM}/health;
+    }
+
+    # SPA: any other path serves the app shell (client-side routing / hard refreshes).
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

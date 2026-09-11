@@ -54,7 +54,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 # ADD_NEW_APPS_HERE - the single place to extend this script to a new app.
-APPS=(morning-mcp-app denidin-app)
+# webapp (Feature 068) is a two-image app; cut_release_single.sh handles that fan-out
+# internally, so it's just another entry here. Cutting has no cross-app ordering dependency.
+APPS=(morning-mcp-app denidin-app webapp)
 
 DEFAULT_ARTIFACTS_ROOT="/Users/yaron/Projects/DeniDin/artifacts"
 

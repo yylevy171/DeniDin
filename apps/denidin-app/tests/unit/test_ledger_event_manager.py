@@ -1288,6 +1288,18 @@ class TestInMemoryIndex:
         manager = LedgerEventManager(storage_dir=str(temp_events_dir))
         assert manager._index == []
 
+    def test_list_events_returns_shallow_copy_of_every_record(self, temp_events_dir):
+        # Feature 068: additive read-only accessor for the webapp-backend.
+        _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))
+        _write_raw_event_file(temp_events_dir, "B2807261408", dict(SAMPLE_EVENT, event_id="B2807261408"))
+        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+
+        events = manager.list_events()
+        assert {e["event_id"] for e in events} == {"A2807261406", "B2807261408"}
+        # a shallow copy of the list — mutating the returned list never touches the index
+        events.clear()
+        assert len(manager.list_events()) == 2
+
     def test_corrupt_file_skipped_not_raised_others_still_load(self, temp_events_dir, caplog):
         _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))
         _write_raw_event_file(temp_events_dir, "A2807261407", "{not valid json at all")
