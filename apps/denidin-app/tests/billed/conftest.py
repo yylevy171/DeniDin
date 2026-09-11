@@ -24,6 +24,7 @@ from src.models.config import AppConfiguration
 
 from .denidin_mcp_e2e_helpers import (
     DENIDIN_APP_DIR,
+    ADMIN_ISOLATED_CHAT_ID,
     BLOCKED_ROLE_CHAT_ID,
     GODFATHER_CHAT_ID,
     NoMorningTunnelError,
@@ -90,7 +91,14 @@ def denidin_config():
     # otherwise find nothing here).
 
     config.godfather_phone = GODFATHER_CHAT_ID
-    config.user_roles = {'admin_phones': [], 'blocked_phones': [BLOCKED_ROLE_CHAT_ID]}
+    # bugfix-052 stop-gap: a distinct admin-role chat id for individual tests that need
+    # their own isolated session rather than sharing GODFATHER_CHAT_ID's module-wide one
+    # (real defect: session store is wiped once per module, not once per test - see the
+    # bugfix spec). Additive only - every other test in this module is unaffected.
+    config.user_roles = {
+        'admin_phones': [ADMIN_ISOLATED_CHAT_ID],
+        'blocked_phones': [BLOCKED_ROLE_CHAT_ID],
+    }
 
     return config
 

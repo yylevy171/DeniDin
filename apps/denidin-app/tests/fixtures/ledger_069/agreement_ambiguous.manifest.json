@@ -1,0 +1,197 @@
+{
+  "source_kind": "text",
+  "story": "US5 — 2+ partial Morning matches for the stated name; operator picks one; capture proceeds against that exact picked Morning name. No payer in the text. Signing date 09/04/2026 appears in the text but per the recognition tool schema txn_date is null for a non-hourly הסכם component.",
+  "source_file": "agreement_ambiguous.txt",
+  "seed_clients": [
+    {
+      "id_prefix": "F069_AMB_A",
+      "name": "יעל ברקוביץ אלון",
+      "ensure_exists": true,
+      "phone": "0525550102"
+    },
+    {
+      "id_prefix": "F069_AMB_B",
+      "name": "יעל ברקוביץ שיר",
+      "ensure_exists": true,
+      "phone": "0525550102"
+    }
+  ],
+  "resolution": {
+    "mode": "pick_existing",
+    "stated": "יעל ברקוביץ'",
+    "resolves_to": "יעל ברקוביץ אלון"
+  },
+  "files": "per_component",
+  "shared_fields": {
+    "event_id": {
+      "generated": "event_id"
+    },
+    "event_datetime": {
+      "generated": "event_datetime"
+    },
+    "source_type": {
+      "tested": "הסכם"
+    },
+    "event_subtype": {
+      "tested": "יצירה"
+    },
+    "client_name": {
+      "tested": "$client"
+    },
+    "payer_name": {
+      "null": true
+    },
+    "reference": {
+      "null": true
+    },
+    "reference_hint": {
+      "null": true
+    },
+    "agreement_id": {
+      "generated": "agreement_id"
+    },
+    "vat_status": {
+      "tested": "לא כולל"
+    },
+    "split_partner": {
+      "null": true
+    },
+    "split_percent": {
+      "null": true
+    },
+    "bank_number": {
+      "null": true
+    },
+    "bank_branch": {
+      "null": true
+    },
+    "bank_account": {
+      "null": true
+    },
+    "accounting_document_display_number": {
+      "null": true
+    },
+    "accounting_document_status": {
+      "null": true
+    },
+    "accounting_document_status_code": {
+      "null": true
+    },
+    "accounting_document_status_label": {
+      "null": true
+    },
+    "accounting_document_payment_method": {
+      "null": true
+    },
+    "session_id": {
+      "generated": "session_id"
+    },
+    "message_id": {
+      "generated": "message_id"
+    },
+    "captured_at": {
+      "generated": "captured_at"
+    },
+    "schema_version": {
+      "generated": "schema_version"
+    }
+  },
+  "components": [
+    {
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "tested": "8000"
+      },
+      "percent": {
+        "null": true
+      },
+      "percent_base": {
+        "null": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "null": true
+      }
+    },
+    {
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "null": true
+      },
+      "percent": {
+        "tested": "12"
+      },
+      "percent_base": {
+        "free_text": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "free_text": true
+      }
+    },
+    {
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "tested": "900"
+      },
+      "percent": {
+        "null": true
+      },
+      "percent_base": {
+        "null": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "free_text": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "source_kind": "morning_create",
+  "story": "US2 — in-conversation Morning create (type-320 combo): the חשבונית ledger event is captured synchronously that turn, against the exact resolved (seeded) client, carrying the real Morning document number. No VAT question.",
+  "seed_clients": [
+    {
+      "id_prefix": "F069_US2",
+      "name": "$unique",
+      "phone": "0525550104",
+      "ensure_exists": true
+    }
+  ],
+  "resolution": {
+    "mode": "none",
+    "name": "$unique"
+  },
+  "files": "single",
+  "shared_fields": {
+    "event_id": {
+      "generated": "event_id"
+    },
+    "event_datetime": {
+      "generated": "event_datetime"
+    },
+    "source_type": {
+      "tested": "חשבונית"
+    },
+    "event_subtype": {
+      "generated": "non_empty"
+    },
+    "client_name": {
+      "tested": "$client"
+    },
+    "payer_name": {
+      "null": true
+    },
+    "description": {
+      "free_text": true
+    },
+    "amount": {
+      "tested": "1200"
+    },
+    "txn_date": {
+      "generated": "date"
+    },
+    "reference": {
+      "null": true
+    },
+    "reference_hint": {
+      "null": true
+    },
+    "agreement_id": {
+      "null": true
+    },
+    "component_id": {
+      "null": true
+    },
+    "component_label": {
+      "null": true
+    },
+    "trigger_condition": {
+      "null": true
+    },
+    "percent": {
+      "null": true
+    },
+    "percent_base": {
+      "null": true
+    },
+    "hours": {
+      "null": true
+    },
+    "hourly_rate": {
+      "null": true
+    },
+    "vat_status": {
+      "tested": "כולל"
+    },
+    "split_partner": {
+      "null": true
+    },
+    "split_percent": {
+      "null": true
+    },
+    "bank_number": {
+      "null": true
+    },
+    "bank_branch": {
+      "null": true
+    },
+    "bank_account": {
+      "null": true
+    },
+    "accounting_document_display_number": {
+      "generated": "non_empty"
+    },
+    "accounting_document_status": {
+      "generated": "non_empty"
+    },
+    "accounting_document_status_code": {
+      "generated": "non_empty"
+    },
+    "accounting_document_status_label": {
+      "generated": "non_empty"
+    },
+    "accounting_document_payment_method": {
+      "generated": "non_empty"
+    },
+    "session_id": {
+      "generated": "session_id"
+    },
+    "message_id": {
+      "generated": "message_id"
+    },
+    "captured_at": {
+      "generated": "captured_at"
+    },
+    "schema_version": {
+      "generated": "schema_version"
+    }
+  }
+}

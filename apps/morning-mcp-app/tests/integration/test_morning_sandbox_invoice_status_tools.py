@@ -13,6 +13,7 @@ No mocks: seeds a real invoice via create_invoice (US1), then drives
 get_invoice_details and the direct tools against the live sandbox.
 Per CONSTITUTION §V and this app's testing policy (spec.md §Testing Strategy).
 """
+import json
 from pathlib import Path
 
 import pytest
@@ -63,7 +64,8 @@ def test_get_invoice_details_returns_status_and_dates(morning_client, seeded_int
     result = get_invoice_details(morning_client, internal_morning_id=seeded_internal_morning_id)
 
     assert isinstance(result, str)
-    assert "לא שולם" in result  # freshly created documents are open ("unpaid")
+    payload = json.loads(result)
+    assert payload["status"] == "unpaid"  # freshly created documents are open
 
 
 def test_create_receipt_then_get_details_reflects_paid(morning_client, seeded_internal_morning_id):
@@ -75,9 +77,8 @@ def test_create_receipt_then_get_details_reflects_paid(morning_client, seeded_in
     create_result = create_receipt(morning_client, seeded_internal_morning_id, payment_date="2026-07-12")
     assert create_result
 
-    details = get_invoice_details(morning_client, internal_morning_id=seeded_internal_morning_id)
-    assert "לא שולם" not in details
-    assert "שולם" in details
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=seeded_internal_morning_id))
+    assert details["status"] == "paid"
 
 
 def test_repeated_create_receipt_is_idempotent_no_op(morning_client, seeded_internal_morning_id):
@@ -94,9 +95,8 @@ def test_repeated_create_receipt_is_idempotent_no_op(morning_client, seeded_inte
     receipts = [doc for doc in linked if doc.get("type") == 400]
     assert len(receipts) == 1, f"Expected exactly one linked receipt, got: {linked!r}"
 
-    details = get_invoice_details(morning_client, internal_morning_id=seeded_internal_morning_id)
-    assert "לא שולם" not in details
-    assert "שולם" in details
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=seeded_internal_morning_id))
+    assert details["status"] == "paid"
 
 
 def test_there_is_no_mark_as_unpaid_action_anymore(morning_client, seeded_internal_morning_id):
@@ -125,13 +125,13 @@ def test_create_credit_note_issues_a_linked_credit_invoice(morning_client, seede
     directly (US5)."""
     from denidin_mcp_morning.tools import create_credit_note, get_invoice_details
 
-    result = create_credit_note(morning_client, seeded_internal_morning_id)
+    result = json.loads(create_credit_note(morning_client, seeded_internal_morning_id))
 
-    assert "זיכוי" in result
+    assert result["type_name"] == "חשבונית זיכוי"
 
-    details = get_invoice_details(morning_client, internal_morning_id=seeded_internal_morning_id)
-    assert "מסמכים מקושרים" in details
-    assert "זיכוי" in details
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=seeded_internal_morning_id))
+    assert details["linked_document"] is not None
+    assert "זיכוי" in details["linked_document"]["type_name"]
 
 
 def test_create_receipt_rejects_a_transaction_account_original(morning_client):
@@ -153,9 +153,10 @@ def test_create_receipt_rejects_a_transaction_account_original(morning_client):
 
     internal_morning_id = None
     for _ in range(12):
-        result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
-        if "מזהה פנימי" in result:
-            internal_morning_id = result.split("מזהה פנימי (internal_morning_id): ")[1].splitlines()[0].strip()
+        payload = json.loads(list_invoices(morning_client, client_name=client_name, name_resolved=True))
+        documents = payload.get("documents") or []
+        if documents:
+            internal_morning_id = documents[0]["internal_morning_id"]
             break
         time.sleep(1.5)
     assert internal_morning_id, f"Could not resolve transaction account id for {client_name!r}"
@@ -184,9 +185,10 @@ def seeded_transaction_account_id(morning_client):
 
     internal_morning_id = None
     for _ in range(12):
-        result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
-        if "מזהה פנימי" in result:
-            internal_morning_id = result.split("מזהה פנימי (internal_morning_id): ")[1].splitlines()[0].strip()
+        payload = json.loads(list_invoices(morning_client, client_name=client_name, name_resolved=True))
+        documents = payload.get("documents") or []
+        if documents:
+            internal_morning_id = documents[0]["internal_morning_id"]
             break
         time.sleep(1.5)
     assert internal_morning_id, f"Could not resolve transaction account id for {client_name!r}"
@@ -210,9 +212,8 @@ def test_create_combo_document_as_reference_issues_a_type_320_combo_document(
     )
     assert close_result
 
-    details = get_invoice_details(morning_client, internal_morning_id=seeded_transaction_account_id)
-    assert "לא שולם" not in details
-    assert "שולם" in details
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=seeded_transaction_account_id))
+    assert details["status"] == "paid"
 
     raw = morning_client.get_invoice(seeded_transaction_account_id)
     assert raw.get("status") in (1, 2), f"Expected a closed/paid status code, got: {raw.get('status')!r}"

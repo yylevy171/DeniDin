@@ -2186,6 +2186,21 @@ class TestAccountingDocumentJsonCapture:
         )
         assert _read(temp_events_dir, exempt)["vat_status"] == "לא צוין"
 
+    @pytest.mark.parametrize("doc_type", [320, 400])
+    def test_vat_status_forced_kolel_for_320_and_400(self, manager, temp_events_dir, doc_type):
+        """Feature 069 (2026-09-06): types 320/400 exist only for money already
+        received - VAT is always baked in, unconditionally. A synchronous
+        in-conversation create response omits vat_amount, so this must NOT depend
+        on the number being present (a real billed failure: US2 recorded a
+        type-320 combo document as 'לא צוין')."""
+        ev_id = manager.add_ledger_event(
+            session_id="accounting-reconciliation",
+            event=_json_event(display_number="60999", type=doc_type,
+                              vat_amount=None, vat_rate=None),
+            message_id=None, message_timestamp=None,
+        )
+        assert _read(temp_events_dir, ev_id)["vat_status"] == "כולל"
+
     # test_schema_version_is_3 / test_schema_version_is_current removed (2026-08-26, human
     # decision, post-incident) - see TestSchemaVersion's removal comment above for the full
     # policy rationale: no test may assert on schema_version's value, ever, not even against

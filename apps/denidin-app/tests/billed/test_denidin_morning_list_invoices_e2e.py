@@ -116,16 +116,32 @@ def test_godfather_lists_invoices_via_whatsapp(denidin_app):
         f"in its arguments: {list_calls!r}"
     )
 
-    # Tool correctness: real, known ground truth in the tool's own output.
+    # Tool correctness: real, known ground truth in the tool's own output
+    # (JSON per the 2026-09-04 contract - assert on the parsed fields, not
+    # prose markers that no longer exist in the output).
     combined_output = "\n".join(c["output"] or "" for c in list_calls)
-    found_numbers = [n for n in KNOWN_INVOICE_NUMBERS_ON_FIXED_DATE if n in combined_output]
+    docs = [
+        d
+        for c in list_calls if c["output"]
+        for d in json.loads(c["output"]).get("documents", [])
+    ]
+    found_numbers = [
+        n for n in KNOWN_INVOICE_NUMBERS_ON_FIXED_DATE
+        if any(str(d.get("display_number")) == n for d in docs)
+    ]
     assert len(found_numbers) >= 2, (
         f"Expected at least 2 known invoice numbers {KNOWN_INVOICE_NUMBERS_ON_FIXED_DATE} "
         f"in the tool output, found {found_numbers}. Tool output: {combined_output!r}"
     )
-    assert "₪" in combined_output, f"Tool output missing amount field: {combined_output!r}"
-    assert "מזהה" in combined_output, f"Tool output missing invoice id field: {combined_output!r}"
-    assert "שולם" in combined_output, f"Tool output missing status field: {combined_output!r}"
+    assert all(d.get("amount") is not None for d in docs), (
+        f"Tool output missing amount field: {combined_output!r}"
+    )
+    assert all(d.get("internal_morning_id") for d in docs), (
+        f"Tool output missing invoice id field: {combined_output!r}"
+    )
+    assert all(d.get("status_label") for d in docs), (
+        f"Tool output missing status field: {combined_output!r}"
+    )
 
 
 # ============================================================================
@@ -645,8 +661,9 @@ def test_godfather_searches_invoice_by_number_finds_it(denidin_app):
         f"Seed create_invoice failed: {seed_ai_response.mcp_calls if seed_ai_response else None!r}"
     )
     output = create_calls[0]["output"] or ""
-    assert "#" in output, f"Could not find invoice number marker in output: {output!r}"
-    invoice_number = output.split("#")[1].splitlines()[0].strip()
+    invoice_number = json.loads(output).get("display_number") if output else None
+    assert invoice_number, f"Could not find invoice number marker in output: {output!r}"
+    invoice_number = str(invoice_number)
 
     response, ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,

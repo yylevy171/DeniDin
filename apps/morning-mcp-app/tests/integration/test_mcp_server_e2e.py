@@ -8,6 +8,7 @@ requirement (CONSTITUTION §V) — proving tool registration/dispatch actually
 works end-to-end, not just that the tools.py functions work in isolation.
 """
 import asyncio
+import json
 import threading
 import time
 from pathlib import Path
@@ -132,8 +133,9 @@ def test_mcp_client_can_invoke_create_invoice_tool_end_to_end(server_url):
 
     assert result.isError is not True
     text = "".join(block.text for block in result.content if hasattr(block, "text"))
-    assert client_name in text
-    assert "₪33.00" in text
+    doc = json.loads(text)
+    assert doc["client_name"] == client_name
+    assert doc["amount"] == 33.0
 
 
 def test_mcp_tool_error_is_friendly_not_a_raw_stack_trace(server_url):

@@ -23,19 +23,25 @@ NO MOCKING - real OpenAI API calls, real session storage.
 
 import json
 import logging
+import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 from src.models.config import AppConfiguration
-from src.utils.time_utils import local_from_timestamp
 from tests.e2e_helpers import (
+    persisted_ledger_events_for_chat,
     sanity_worker_data_root,
     create_real_notification,
+    event_datetime_for_message_ts,
     get_response,
     assert_response_exists,
+    ClarificationAnswerBank,
+    converse_until_ledger_events_captured,
 )
+from tests.billed.denidin_mcp_e2e_helpers import GODFATHER_CHAT_ID, _seed_client
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -65,11 +71,16 @@ class TestLedgerEventCaptureBilled:
         config.data_root = str(test_data_root)
         config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
         config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
+        # Feature 069: ledger capture is now a post-turn recognition call that needs
+        # the Morning tools attached (client must resolve in Morning first), so the
+        # capture test runs as GODFATHER_CHAT_ID rather than a roleless _fresh_chat_id.
+        config.godfather_phone = GODFATHER_CHAT_ID
         return config
 
     @pytest.fixture
-    def denidin_app(self, config):
-        """Initialize the full denidin app - NO MOCKING."""
+    def denidin_app(self, config, live_morning_tunnel):
+        """Initialize the full denidin app - NO MOCKING - against the live Morning
+        tunnel (Feature 069 post-turn recognition resolves the client in Morning)."""
         import denidin
 
         if denidin.denidin_app is None:
@@ -112,47 +123,20 @@ class TestLedgerEventCaptureBilled:
         unbounded ledger events for a shared chat and confuse assertions."""
         return f"97250{uuid.uuid4().hex[:7]}_{label}@c.us"
 
-    @staticmethod
-    def _events_for_chat(denidin_app, chat_id):
-        """All persisted LedgerEvent files (data/events/*.json) for this chat_id,
-        sorted by captured_at - reads the real files off disk, not an in-memory
-        proxy, so assertions prove the event genuinely landed in permanent storage
-        (Feature 033's whole point).
-
-        2026-08-19: LedgerEvent no longer carries its own whatsapp_chat (removed -
-        redundant with session_id, which already points at a session that carries
-        its own whatsapp_chat) - filters by session_id instead, resolved via the
-        real SessionManager for this chat_id."""
-        session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
-        events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
-        results = []
-        for f in events_dir.glob("*.json"):
-            with open(f, encoding='utf-8') as fh:
-                data = json.load(fh)
-            if data.get("session_id") == session_id:
-                results.append(data)
-        results.sort(key=lambda d: d["captured_at"])
-        return results
+    _events_for_chat = staticmethod(persisted_ledger_events_for_chat)
 
     @staticmethod
-    def _assert_ledger_events_persisted(denidin_app, chat_id, expected_count, expected_event_timestamp):
+    def _assert_ledger_events_persisted(denidin_app, chat_id, expected_count):
         """Asserts events were persisted for this chat, each with the bookkeeping
-        fields LedgerEventManager.add_ledger_event adds (event_datetime = the real
-        hard pointer, captured_at, message_id) present and correct. Returns the
-        events in capture order for further field-specific assertions.
+        fields LedgerEventManager.add_ledger_event adds (event_datetime,
+        captured_at, message_id) present and correct. Returns the events in
+        capture order for further field-specific assertions.
 
-        expected_event_timestamp: the real Green API notification timestamp (unix
-        epoch seconds) these events should be pointed at - the constitution's "hard
-        pointer" requirement (never processing time, never a guess).
-
-        2026-08-18 (player-review follow-up audit): this helper was stale -
-        `message_timestamp` and `sender` were both removed from the persisted
-        record back in the original Phase 11 revision (2026-08-16; sender/
-        message_timestamp fully covered by event_datetime, see data-model.md
-        SS1b) but this helper still asserted on them, which would have failed
-        the very next time this file actually ran. Fixed to check
-        `event_datetime` (the field that actually replaced message_timestamp)
-        and dropped the sender assertion entirely.
+        Feature 069 decision #10: capture is a post-turn recognition step dated
+        from the COMPLETING message (`record["message_id"]`, the reply this
+        round). event_datetime is asserted to equal that message's OWN persisted
+        timestamp, formatted the way `_message_epoch` does - clock-free, so it
+        holds for live and WhatsApp-export player replay alike.
         """
         events = TestLedgerEventCaptureBilled._events_for_chat(denidin_app, chat_id)
         assert len(events) == expected_count, (
@@ -160,13 +144,22 @@ class TestLedgerEventCaptureBilled:
             f"found {len(events)}: {events}"
         )
 
-        # bugfix-037/Phase 11: event_datetime is Israel local time, "DD/MM/YYYY HH:MM".
-        expected_event_datetime = local_from_timestamp(expected_event_timestamp).strftime("%d/%m/%Y %H:%M")
         for record in events:
-            assert record.get("event_datetime") == expected_event_datetime, (
-                f"event_datetime={record.get('event_datetime')!r} does not match the "
-                f"real notification timestamp {expected_event_datetime!r} - the constitution's "
-                f"'hard pointer' requirement (never processing time, never a guess)"
+            raw = record.get("event_datetime")
+            try:
+                datetime.strptime(raw, "%d/%m/%Y %H:%M")
+            except (TypeError, ValueError):
+                raise AssertionError(
+                    f"event_datetime={raw!r} is not a well-formed 'DD/MM/YYYY HH:MM' value"
+                ) from None
+            completing = TestLedgerEventCaptureBilled._read_message(
+                denidin_app, chat_id, record["message_id"]
+            )
+            expected_dt = event_datetime_for_message_ts(completing["timestamp"])
+            assert raw == expected_dt, (
+                f"event_datetime={raw!r} does not match the completing message's own "
+                f"persisted timestamp {completing['timestamp']!r} (-> {expected_dt!r}). "
+                f"069 dates the event from that message."
             )
             assert record.get("captured_at"), "captured_at was not persisted"
             assert record.get("message_id"), (
@@ -206,37 +199,45 @@ class TestLedgerEventCaptureBilled:
         """Given a WhatsApp message stating a new fee agreement in the same shorthand
         style the real AHLedger source chat uses, When DeniDin processes it, Then
         capture_ledger_event is called with source_type=הסכם and the right client/amount,
-        persisted under data/events/."""
+        persisted under data/events/.
+
+        Feature 069 (2026-09-04): capture moved to a post-turn recognition call that
+        requires the client to already resolve in Morning. The test seeds an
+        EXACT-match client first, then drives the agreement turn through
+        converse_until_ledger_events_captured. The inbound message timestamp no
+        longer drives event_datetime (the ledgerer dates the event from the
+        completing message = the actual capture time), so no synthetic timestamp
+        is pinned. Runs as GODFATHER_CHAT_ID; tests/billed/conftest.py wipes all
+        persisted ledger events before AND after every test, so the shared chat
+        starts from zero."""
         from denidin import handle_text_message
 
-        chat_id = self._fresh_chat_id("text_agreement")
-        notification = create_real_notification({
-            'typeWebhook': 'incomingMessageReceived',
-            'timestamp': 1770000000,
-            'idMessage': 'LEDGER_E2E_TEXT_AGREEMENT_001',
-            'instanceData': {'idInstance': 7103000000, 'wid': '972501234567@c.us', 'typeInstance': 'whatsapp'},
-            'senderData': {'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
-            'messageData': {
-                'typeMessage': 'textMessage',
-                'textMessageData': {
-                    'textMessage': 'רונית כהן - הצעת שכר טרחה לכתב הגנה: 9,000 ₪ כולל מעמ'
-                }
-            }
-        })
+        chat_id = GODFATHER_CHAT_ID
+        # Fixed reused name -> ensure_exists=True is idempotent (probe, create only
+        # if missing). The agreement text names this exact client so the post-turn
+        # recognition resolves it as an EXACT Morning match and captures on turn 1.
+        _seed_client(chat_id, "LEDGER_AGREEMENT", name="רונית כהן", ensure_exists=True)
 
         logger.info("GIVEN a clear fee-agreement text message")
-        handle_text_message(notification)
-        logger.info("WHEN DeniDin processes it")
-
-        response = get_response(notification)
-        assert_response_exists(response)
+        events, transcript = converse_until_ledger_events_captured(
+            handle_text_message=handle_text_message,
+            chat_id=chat_id,
+            first_message_text='רונית כהן - הצעת שכר טרחה לכתב הגנה: 9,000 ₪ כולל מעמ',
+            answer_bank=ClarificationAnswerBank([], fallback="כן, זה נכון, תרשום"),
+            events_for_chat=lambda cid: self._events_for_chat(denidin_app, cid),
+            base_timestamp=int(time.time()),
+            base_id_message='LEDGER_E2E_TEXT_AGREEMENT_001',
+            sender_data={'chatId': chat_id, 'sender': chat_id, 'senderName': 'Test User'},
+            max_turns=3,
+            test_logger=logger,
+        )
+        logger.info(f"WHEN DeniDin processes it (captured after {len(transcript)} turn(s))")
 
         # THEN: verify against the real persisted data/events/{event_id}.json file
         # (Feature 033 - not session.json anymore), including the bookkeeping fields
-        # LedgerEventManager.add_ledger_event adds - message_timestamp must be the
-        # real notification timestamp (1770000000), never processing time.
+        # LedgerEventManager.add_ledger_event adds.
         events = self._assert_ledger_events_persisted(
-            denidin_app, chat_id, expected_count=1, expected_event_timestamp=1770000000
+            denidin_app, chat_id, expected_count=1
         )
         captured = events[0]
         logger.info(f"THEN captured event (persisted): {captured}")

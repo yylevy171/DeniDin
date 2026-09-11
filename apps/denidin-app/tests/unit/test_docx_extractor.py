@@ -107,6 +107,27 @@ def test_extracted_text_empty_when_analyze_false_still_has_deterministic_text(
     assert mock_denidin_context.ai_handler.get_response.call_count == 0
 
 
+def test_feature069_fee_agreement_docx_type_signal_no_ai(docx_extractor, mock_denidin_context):
+    """Feature 069 Phase 10: a DOCX whose body names a fee agreement is
+    classified deterministically (no OpenAI call) as document_type == 'הסכם',
+    surfaced under document_analysis for MediaHandler to route as a synthetic
+    turn."""
+    media = create_docx_media("הסכם שכר טרחה", "בין עורך הדין לבין הלקוח רון לוי")
+
+    result = docx_extractor.analyze_media(media, analyze=False)
+
+    assert result["document_analysis"]["document_type"] == "הסכם"
+    assert mock_denidin_context.ai_handler.get_response.call_count == 0
+
+
+def test_feature069_non_agreement_docx_stays_generic(docx_extractor, mock_denidin_context):
+    media = create_docx_media("רשימת קניות", "חלב, לחם, ביצים")
+
+    result = docx_extractor.analyze_media(media, analyze=False)
+
+    assert result["document_analysis"]["document_type"] == "generic"
+
+
 def test_extract_hebrew_text(docx_extractor, mock_denidin_context):
     """
     CHK006: Extract Hebrew text with UTF-8 encoding.

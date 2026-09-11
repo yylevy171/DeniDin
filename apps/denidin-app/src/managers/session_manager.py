@@ -17,7 +17,11 @@ import tiktoken
 
 from src.models.user import Role
 from src.utils.logger import get_logger
-from src.utils.time_utils import local_calendar_date, n_calendar_days_ago, now_local
+from src.utils.time_utils import (
+    local_calendar_date,
+    n_calendar_days_ago,
+    now_local,
+)
 
 logger = get_logger(__name__)
 
@@ -89,6 +93,14 @@ class Message:
     # the reverse link to LedgerEvent.message_id. Empty for the vast majority of
     # messages (most capture nothing).
     ledger_event_ids: List[str] = field(default_factory=list)
+    # Feature 069: the Morning MCP tool calls made on this message's turn (an
+    # assistant message only), each {"name", "arguments", "result"/"error"} exactly
+    # as AIResponse.mcp_calls carried them. Persisted so the post-turn ledger
+    # recognition call can see, across its context window, what was actually
+    # resolved/created in Morning (a client name in prose is only a candidate; a
+    # tool RESULT is the evidence). Empty for every user message and for an
+    # assistant turn that called no Morning tool.
+    mcp_calls: List[Dict] = field(default_factory=list)
 
 
 @dataclass
@@ -318,6 +330,7 @@ class SessionManager:
         extracted_text: Optional[str] = None,
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None,
+        mcp_calls: Optional[List[Dict]] = None,
         timestamp: Optional[datetime] = None
     ) -> str:
         """
@@ -381,6 +394,12 @@ class SessionManager:
         # real persistence API. `received_at` always stays the real wall-clock
         # time this row was written.
         message_id = message_id or str(uuid.uuid4())
+        # Feature 069: for a replayed/inbound turn the caller passes an
+        # explicit `timestamp` (the Green API notification's own wall-clock
+        # time - the WhatsApp-export player injects the message's ORIGINAL
+        # conversation time, surfaced by WhatsAppMessage.from_notification).
+        # Production live turns leave it None (-> now_local()). `received_at`
+        # always stays the real processing time.
         now = (timestamp or now_local()).isoformat()
         received_at = now_local().isoformat()
 
@@ -416,7 +435,8 @@ class SessionManager:
             order_num=session.message_counter,
             image_path=image_path,
             extracted_text=extracted_text,
-            ledger_event_ids=list(ledger_event_ids) if ledger_event_ids else []
+            ledger_event_ids=list(ledger_event_ids) if ledger_event_ids else [],
+            mcp_calls=list(mcp_calls) if mcp_calls else []
         )
 
         # Save message to session directory
@@ -506,6 +526,52 @@ class SessionManager:
                 })
 
         return history
+
+    def _messages_dir_for(self, session: Session) -> Path:
+        base = session.storage_path or session.session_id
+        return self.storage_dir / base / "messages"
+
+    def load_message(self, session: Session, message_id: str) -> Optional[Message]:
+        """Feature 069: load one persisted Message by id from a session's own
+        message directory, or None if no such file exists. Read-only - the
+        counterpart writer is append_ledger_event_ids below."""
+        message_file = self._messages_dir_for(session) / f"{message_id}.json"
+        if not message_file.exists():
+            return None
+        with open(message_file, encoding="utf-8") as f:
+            data = json.load(f)
+        known = {f.name for f in Message.__dataclass_fields__.values()}
+        return Message(**{k: v for k, v in data.items() if k in known})
+
+    def append_ledger_event_ids(
+        self, session: Session, message_id: str, event_ids: List[str]
+    ) -> None:
+        """Feature 069: append one or more LedgerEvent ids onto a persisted
+        message's `ledger_event_ids` list (the reverse link to
+        LedgerEvent.message_id), de-duplicated and rewritten to disk in place.
+        No-op if the message file is missing or `event_ids` is empty."""
+        if not event_ids:
+            return
+        message_file = self._messages_dir_for(session) / f"{message_id}.json"
+        if not message_file.exists():
+            logger.warning(
+                f"append_ledger_event_ids: message {message_id} not found in "
+                f"session {session.session_id} - nothing to link"
+            )
+            return
+        with open(message_file, encoding="utf-8") as f:
+            data = json.load(f)
+        existing = list(data.get("ledger_event_ids") or [])
+        for eid in event_ids:
+            if eid not in existing:
+                existing.append(eid)
+        data["ledger_event_ids"] = existing
+        with open(message_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        logger.debug(
+            f"Linked ledger events {event_ids} onto message {message_id} "
+            f"(session {session.session_id})"
+        )
 
     # --- Feature 070: rolling 14-day window + per-day gather ------------------
 
@@ -815,6 +881,7 @@ class SessionManager:
         recipient_name: Optional[str] = None,
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None,
+        mcp_calls: Optional[List[Dict]] = None,
         timestamp: Optional[datetime] = None
     ) -> str:
         """
@@ -851,7 +918,7 @@ class SessionManager:
             sender=sender, sender_name=sender_name,
             recipient=recipient, recipient_name=recipient_name,
             ledger_event_ids=ledger_event_ids, message_id=message_id,
-            timestamp=timestamp
+            mcp_calls=mcp_calls, timestamp=timestamp
         )
 
         # Count and add tokens
