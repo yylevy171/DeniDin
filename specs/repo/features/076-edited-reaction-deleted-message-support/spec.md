@@ -3,8 +3,8 @@
 **Feature Branch**: `feature/076-edited-reaction-deleted-message-support`
 **Created**: 2026-09-04
 **Clarified**: 2026-09-07 (interactive, with the user — see "Clarifications" below)
-**Status**: IMPLEMENTED — all unit/integration tests green (1415 passed). Awaiting
-manual verification in dev, then haleluya (spec move to done, PR, merge).
+**Status**: DONE — implemented, all unit/integration tests green (1495 passed after
+merging master), verified live in dev, merged via PR #TBD.
 **Priority**: P1 (real client-visible symptom already observed in prod — see Evidence).
 
 **Complies with**:
