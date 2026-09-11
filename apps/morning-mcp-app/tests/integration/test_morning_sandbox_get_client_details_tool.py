@@ -4,6 +4,7 @@ client-name-resolution architecture fix, bugfix-028 sub-piece, 2026-08-12).
 No mocks: drives denidin_mcp_morning.tools.get_client_details against the live
 sandbox, per CONSTITUTION §V and this app's testing policy.
 """
+import json
 import time
 import uuid
 from pathlib import Path
@@ -86,16 +87,17 @@ def test_get_client_details_returns_full_record(morning_client):
     )
 
     result = _poll_until(
-        lambda r: r.startswith("לקוח:"),
+        lambda r: json.loads(r).get("client", {}).get("name") == name,
         lambda: get_client_details(morning_client, name, name_resolved=True),
     )
+    payload = json.loads(result)
 
-    assert name in result
-    assert "308253681" in result
-    assert "050-1234567" in result
+    assert payload["client"]["name"] == name
+    assert payload["client"]["tax_id"] == "308253681"
+    assert payload["client"]["phone"] == "050-1234567"
     # Morning lowercases email addresses server-side (observed live) -
     # compare case-insensitively rather than assuming case is preserved.
-    assert f"{unique_marker}@example.com".lower() in result.lower()
+    assert payload["client"]["email"].lower() == f"{unique_marker}@example.com".lower()
 
 
 def test_get_client_details_never_includes_raw_client_id(morning_client):
@@ -178,9 +180,10 @@ def test_get_client_details_exact_match_uses_standard_phrasing(morning_client):
     add_client(morning_client, name=name, email=f"{unique_marker}@example.com", phone="050-1234567")
 
     result = _poll_until(
-        lambda r: r.startswith("לקוח:"),
+        lambda r: json.loads(r).get("client", {}).get("name") == name,
         lambda: get_client_details(morning_client, name, name_resolved=True),
     )
+    payload = json.loads(result)
 
-    assert result.startswith("לקוח:")
-    assert "מצאתי את הלקוח" not in result
+    assert payload["client"]["name"] == name
+    assert payload["exact_match"] is True

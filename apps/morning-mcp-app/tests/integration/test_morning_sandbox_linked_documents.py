@@ -8,6 +8,7 @@ of double-counting the receipt as a separate charge.
 
 Per CONSTITUTION §V and this app's testing policy (spec.md §Testing Strategy).
 """
+import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,11 +63,11 @@ def test_get_invoice_details_shows_linked_receipt(morning_client, paid_invoice):
 
     internal_morning_id, _ = paid_invoice
 
-    result = get_invoice_details(morning_client, internal_morning_id=internal_morning_id)
+    result = json.loads(get_invoice_details(morning_client, internal_morning_id=internal_morning_id))
 
-    assert "מסמכים מקושרים" in result
-    assert "קבלה" in result
-    assert "₪77.00" in result
+    assert result["linked_document"] is not None
+    assert result["linked_document"]["type_name"] == "קבלה"
+    assert result["amount"] == 77.0
 
 
 def test_list_invoices_shows_receipt_document_type(morning_client, paid_invoice):

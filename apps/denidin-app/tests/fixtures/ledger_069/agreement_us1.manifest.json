@@ -1,0 +1,158 @@
+{
+  "source_kind": "text",
+  "story": "US1 — the mechanism moved: a plain-text fee agreement, client already an EXACT Morning match (seeded in-test, name injected as $client). Exactly one agreement recorded post-turn against the exact Morning name; no inline capture_ledger_event tool. Two components (fixed 5,000 retainer + 10% success). No payer.",
+  "source_file": null,
+  "seed_clients": [
+    {
+      "id_prefix": "F069_US1",
+      "name": "ליאור אשכנזי כהן",
+      "ensure_exists": true,
+      "phone": "0525550101"
+    }
+  ],
+  "resolution": {
+    "mode": "exact",
+    "name": "ליאור אשכנזי כהן"
+  },
+  "files": "per_component",
+  "shared_fields": {
+    "event_id": {
+      "generated": "event_id"
+    },
+    "event_datetime": {
+      "generated": "event_datetime"
+    },
+    "source_type": {
+      "tested": "הסכם"
+    },
+    "event_subtype": {
+      "tested": "יצירה"
+    },
+    "client_name": {
+      "tested": "$client"
+    },
+    "payer_name": {
+      "null": true
+    },
+    "reference": {
+      "null": true
+    },
+    "reference_hint": {
+      "null": true
+    },
+    "agreement_id": {
+      "generated": "agreement_id"
+    },
+    "vat_status": {
+      "tested": "לא כולל"
+    },
+    "split_partner": {
+      "null": true
+    },
+    "split_percent": {
+      "null": true
+    },
+    "bank_number": {
+      "null": true
+    },
+    "bank_branch": {
+      "null": true
+    },
+    "bank_account": {
+      "null": true
+    },
+    "accounting_document_display_number": {
+      "null": true
+    },
+    "accounting_document_status": {
+      "null": true
+    },
+    "accounting_document_status_code": {
+      "null": true
+    },
+    "accounting_document_status_label": {
+      "null": true
+    },
+    "accounting_document_payment_method": {
+      "null": true
+    },
+    "session_id": {
+      "generated": "session_id"
+    },
+    "message_id": {
+      "generated": "message_id"
+    },
+    "captured_at": {
+      "generated": "captured_at"
+    },
+    "schema_version": {
+      "generated": "schema_version"
+    }
+  },
+  "components": [
+    {
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "tested": "5000"
+      },
+      "percent": {
+        "null": true
+      },
+      "percent_base": {
+        "null": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "null": true
+      }
+    },
+    {
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "null": true
+      },
+      "percent": {
+        "tested": "10"
+      },
+      "percent_base": {
+        "free_text": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "free_text": true
+      }
+    }
+  ]
+}

@@ -138,6 +138,69 @@ class TestSenderRecipientRealIdentifiers:
         assert message_data["recipient_name"] == "Godfather"
 
 
+class TestSourceTimestamp:
+    """Feature 069 (converged onto Feature 070's `timestamp` seam on merge):
+    Message.timestamp is the time the event actually happened. An inbound turn
+    passes an explicit `timestamp` (AIHandler/MediaHandler derive it from the
+    Green API notification epoch - the WhatsApp-export player injects the
+    message's ORIGINAL conversation time) and it must be persisted verbatim,
+    NOT replaced with processing time. received_at always stays processing time.
+    """
+
+    def test_explicit_timestamp_is_persisted_as_message_timestamp(self, session_manager):
+        from src.utils.time_utils import local_from_timestamp
+        # 2026-01-15 09:30:00 +02:00  ->  epoch 1736926200
+        source = local_from_timestamp(1736926200)
+        message_id = session_manager.add_message(
+            chat_id="1234567890@c.us", role="user", content="Hi", user_role="client",
+            timestamp=source,
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+
+        assert message_data["timestamp"] == source.isoformat()
+        # received_at is still "now", not the source time
+        assert message_data["received_at"] != message_data["timestamp"]
+
+    def test_absent_timestamp_falls_back_to_processing_time(self, session_manager):
+        from datetime import datetime, timedelta
+        message_id = session_manager.add_message(
+            chat_id="1234567890@c.us", role="assistant", content="Reply", user_role="client",
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+        # timestamp and received_at are two independent now_local() reads when no
+        # explicit timestamp is passed - both processing time, within a hair.
+        ts = datetime.fromisoformat(message_data["timestamp"])
+        recv = datetime.fromisoformat(message_data["received_at"])
+        assert abs((recv - ts).total_seconds()) < 1.0
+
+    def test_explicit_timestamp_survives_token_counting_path(self, session_manager):
+        from src.models.user import Role
+        from src.utils.time_utils import local_from_timestamp
+        source = local_from_timestamp(1736926200)
+        session_manager.add_message_with_tokens(
+            chat_id="1234567890@c.us", role="user", content="Hi", user_role=Role.GODFATHER,
+            timestamp=source,
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        mid = session.message_ids[-1]
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{mid}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+        assert message_data["timestamp"] == source.isoformat()
+
+
 class TestRealRoleAndAiRequiredRole:
     """2026-08-19: Message.role is now the REAL role ("admin"/"godfather"/
     "client"/"assistant"), computed from the caller's structural role

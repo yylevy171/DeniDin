@@ -17,12 +17,14 @@ can be run freely - no per-run approval (see CLAUDE.md/CONSTITUTION §VII).
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 
 import pytest
 
 from .denidin_mcp_e2e_helpers import (
+    ADMIN_ISOLATED_CHAT_ID,
     GODFATHER_CHAT_ID,
     _SEED_PHONE,
     _calls_for,
@@ -75,8 +77,12 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
     description = _random_description()
     client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
+    # bugfix-052 stop-gap: this test's own isolated chat id (not the module-wide
+    # GODFATHER_CHAT_ID shared by every other test in this file) - its VERIFY turn
+    # below depends on the model actually calling get_invoice_details/list_invoices
+    # rather than answering from stale session memory left by an unrelated test.
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
+        chat_id=ADMIN_ISOLATED_CHAT_ID,
         text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
         id_prefix="E2E_027_HAPPY",
     )
@@ -101,16 +107,24 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
 
     # Verified via Morning: a real follow-up get_invoice_details call
     # independently confirms the document exists and names this client.
+    # Asking specifically for the CURRENT PAYMENT STATUS (never stated in the
+    # creation confirmation above) forces a fresh Morning lookup - the model
+    # cannot answer this from its own in-session memory of the creation turn.
     details_response, details_ai_response = _send_turn(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"מה הפרטים של החשבונית של {client_name}?",
+        chat_id=ADMIN_ISOLATED_CHAT_ID,
+        text=f"תבדוק מול מורנינג - מה הסטטוס העדכני של החשבונית של {client_name}? שולמה או לא?",
         id_prefix="E2E_027_HAPPY_VERIFY",
     )
     details_calls = _calls_for(details_ai_response, "get_invoice_details") + _calls_for(
         details_ai_response, "list_invoices"
     )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
-    assert _normalize_hebrew_geresh(client_name) in combined_output, (
+    payloads = [json.loads(c["output"]) for c in details_calls if c["output"]]
+    docs = [p for p in payloads if "documents" not in p] + [
+        d for p in payloads for d in p.get("documents", [])
+    ]
+    client_names = [_normalize_hebrew_geresh(d.get("client_name") or "") for d in docs]
+    assert _normalize_hebrew_geresh(client_name) in client_names, (
         f"Follow-up real Morning lookup did not confirm the invoice for "
         f"{client_name!r}: {combined_output!r}. Bot reply: {details_response!r}"
     )
@@ -321,10 +335,17 @@ def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
     assert "http" in response, f"Bot reply did not include an invoice link: {response!r}"
 
     # Verified via Morning: both the new client and the new document, via
-    # real follow-up lookups.
+    # real follow-up lookups. "תבדוק מול מורנינג" (same phrasing as the
+    # F1-style verify turn above) forces a fresh live tool call - without it
+    # the model can (and does) answer correctly from its own in-session
+    # memory of the creation turns above, leaving no MCP call for this
+    # assertion to inspect at all (found live, 2026-09-11).
     details_response, details_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"פרטים על הלקוח {client_name}",
+        text=(
+            f"תעזור לי לוודא שבאמת נוצר הלקוח שאני מצפה. "
+            f"תבדוק במורנינג שהלקוח {client_name} קיים ומה פרטי הקשר שלו."
+        ),
         id_prefix="E2E_027_FULLFLOW_VERIFY_CLIENT",
     )
     detail_calls = _calls_for(details_ai_response, "get_client_details")
@@ -334,16 +355,31 @@ def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
     )
     invoice_details_response, invoice_details_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"מה הפרטים של החשבונית של {client_name}?",
+        text=(
+            f"תעזור לי לוודא שבאמת נוצר המסמך שאני מצפה. "
+            f"תבדוק במורנינג מה הפרטים העדכניים של החשבונית של {client_name}. "
+            f"לא מהזיכרון שלך ולא מהשיחה - אני רוצה שתבצע קריאת API אמיתית "
+            f"למערכת מורנינג, שהיא מקור האמת - המקור היחיד לאמת."
+        ),
         id_prefix="E2E_027_FULLFLOW_VERIFY_INVOICE",
     )
     invoice_detail_calls = _calls_for(invoice_details_ai_response, "get_invoice_details") + _calls_for(
         invoice_details_ai_response, "list_invoices"
     )
     combined_output = "\n".join(c["output"] or "" for c in invoice_detail_calls)
-    assert client_name in combined_output, (
+    # The raw tool output is JSON text with non-ASCII (Hebrew) characters \uXXXX-escaped
+    # (standard json.dumps default) - a plain substring check against that raw text can
+    # never match a literal Hebrew client_name. Decode each call's JSON before comparing
+    # so the check inspects the actual value, not its ASCII-safe wire encoding (found
+    # live, 2026-09-11 - the real Morning call and the bot's own reply were both already
+    # correct; only this comparison was looking at the wrong representation).
+    combined_output_decoded = "\n".join(
+        json.dumps(json.loads(c["output"]), ensure_ascii=False) if c["output"] else ""
+        for c in invoice_detail_calls
+    )
+    assert client_name in combined_output_decoded, (
         f"Follow-up real Morning lookup did not confirm the new invoice: "
-        f"{combined_output!r}. Bot reply: {invoice_details_response!r}"
+        f"{combined_output_decoded!r}. Bot reply: {invoice_details_response!r}"
     )
 
 
@@ -435,9 +471,18 @@ def test_create_document_for_new_client_creates_client_but_declines_document(den
     )
 
     # Verified via Morning: the client DOES exist (created), the invoice does NOT.
+    # "תבדוק מול מורנינג" forces a fresh live tool call - without it the model
+    # can answer (or, for the invoice question, wrongly stay silent on a tool
+    # call while still replying something plausible) from in-session memory
+    # alone, which would let the `not in combined_output` assertion below pass
+    # vacuously on an empty string instead of a real negative Morning lookup
+    # (found live, 2026-09-11 - same class of gap as the FULLFLOW variant above).
     client_details_response, client_details_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"פרטים על הלקוח {client_name}",
+        text=(
+            f"תעזור לי לוודא שבאמת נוצר הלקוח שאני מצפה. "
+            f"תבדוק במורנינג שהלקוח {client_name} קיים ומה פרטי הקשר שלו."
+        ),
         id_prefix="E2E_027_SEMINEG_VERIFY_CLIENT",
     )
     assert "050-1234567" in client_details_response, (
@@ -445,7 +490,10 @@ def test_create_document_for_new_client_creates_client_but_declines_document(den
     )
     invoice_details_response, invoice_details_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"מה הפרטים של החשבונית של {client_name}?",
+        text=(
+            f"תעזור לי לוודא שבאמת לא נוצר מסמך שלא ציפיתי לו. "
+            f"תבדוק במורנינג אם קיימת חשבונית עבור {client_name}."
+        ),
         id_prefix="E2E_027_SEMINEG_VERIFY_INVOICE",
     )
     invoice_detail_calls = _calls_for(invoice_details_ai_response, "get_invoice_details") + _calls_for(

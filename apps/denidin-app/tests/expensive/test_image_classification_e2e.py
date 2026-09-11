@@ -174,16 +174,38 @@ def test_bank_test_image_is_classified_as_a_bank_deposit(image_extractor):
     _assert_text_was_extracted(result)
 
 
-def test_kehilat_tzair_deposit_is_classified_as_a_bank_deposit(image_extractor):
-    """A second, visually different real bank confirmation (₪9,440, קהילת צעיר,
-    "זיכוי ממס\"ב") - one screenshot layout passing proves nothing about the
-    next, and the user's own note is that bank screenshots vary."""
-    result = _classify(image_extractor, "bank_deposit_kehilat_tzair.jpg")
+@pytest.mark.sanity
+def test_kehunai_deposit_is_classified_as_a_bank_deposit(image_extractor):
+    """A second, visually different real bank confirmation - one screenshot
+    layout passing proves nothing about the next.
+
+    Ground truth read directly off the image (Deposit_Kehunai.jpg, added
+    2026-09-11 replacing the retired bank_deposit_kehilat_tzair.jpg, which
+    showed only the recipient's OWN account/branch and never the payer's
+    banking details - non-deterministic and wrong to assert on):
+
+        תאריך פעולה / יום ערך  02/08/2026
+        שם חשבון מחויב         כהונאי מוריס,כהונאי סמירה
+        מספר בנק מחויב         11
+        מספר סניף מחויב        303
+        מספר חשבון מחויב       13008082
+        סכום                   ₪1,888.00
+
+    The payer name is a compound/joint account holder - deliberately unclear,
+    the whole point of this fixture (US7a, tests/fixtures/ledger_069/
+    deposit_zero_matches.manifest.json: the operator rejects it as the client
+    and states an unrelated new one instead)."""
+    result = _classify(image_extractor, "Deposit_Kehunai.jpg")
 
     assert result["doc_type"] == DOC_TYPE_BANK, (
         f"got {result['doc_type']!r} - summary was: {result.get('raw_response')!r}"
     )
-    assert float(result["fields"].get("amount")) == 9440, f"amount: {result['fields'].get('amount')!r}"
+    fields = result["fields"]
+    assert float(fields.get("amount")) == 1888, f"amount: {fields.get('amount')!r}"
+    assert fields.get("txn_date") == "02/08/2026", f"txn_date: {fields.get('txn_date')!r}"
+    assert str(fields.get("bank_number")) == "11", f"bank_number: {fields.get('bank_number')!r}"
+    assert str(fields.get("bank_branch")) == "303", f"bank_branch: {fields.get('bank_branch')!r}"
+    assert str(fields.get("bank_account")) == "13008082", f"bank_account: {fields.get('bank_account')!r}"
     _assert_text_was_extracted(result)
 
 

@@ -55,9 +55,16 @@ class MediaExtractor(ABC):
                 this - it overrides wall-clock "today" in the ledger-event
                 classification call's date resolution (see
                 AIHandler._build_instructions/capture_ledger_events_from_text).
-                DOCXExtractor accepts but ignores it (no ledger capture on
-                that path). `None` (the default) preserves current
-                wall-clock behavior everywhere.
+                DOCXExtractor accepts but ignores it. `None` (the default)
+                preserves current wall-clock behavior everywhere.
+
+                Feature 069 (Phase 10): ledger capture from media is now a
+                POST-TURN recognition step - the extractors no longer persist
+                LedgerEvents. ImageExtractor still runs its field-structuring
+                pass (populating `ledger_events`), and DOCXExtractor surfaces a
+                deterministic `document_analysis.document_type` ("הסכם"/"generic",
+                no OpenAI call); MediaHandler turns either signal into a synthetic
+                conversational turn via build_ledger_stash_text.
 
         Returns:
             {

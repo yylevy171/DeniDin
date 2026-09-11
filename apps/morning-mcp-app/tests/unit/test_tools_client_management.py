@@ -6,6 +6,8 @@ Uses a fake MorningClient (dependency-injected, matching the real
 add_client/search_clients contracts) — this mocks a third-party API
 boundary, not an internal component (CONSTITUTION.md §I/§V).
 """
+import json
+
 import pytest
 
 from denidin_mcp_morning import tools
@@ -164,7 +166,9 @@ def test_list_clients_zero_clients_returns_friendly_message():
     result = tools.list_clients(client)
 
     assert isinstance(result, str)
-    assert "אין" in result  # friendly "no clients yet" message, not an error
+    payload = json.loads(result)
+    assert payload["count"] == 0
+    assert payload["clients"] == []
     assert client.search_clients_calls == [{}]
 
 
@@ -464,9 +468,10 @@ def test_get_client_details_exact_match_uses_standard_phrasing():
     record = _client_record(name="Tech Solutions")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    result = tools.get_client_details(client, "Tech Solutions", name_resolved=True)
+    payload = json.loads(tools.get_client_details(client, "Tech Solutions", name_resolved=True))
 
-    assert result.startswith("לקוח:")
+    assert payload["client"]["name"] == "Tech Solutions"
+    assert payload["exact_match"] is True
 
 
 def test_get_client_details_non_exact_match_with_name_resolved_raises_not_found():
@@ -490,9 +495,10 @@ def test_update_client_exact_match_uses_standard_phrasing():
     record = _client_record(name="Tech Solutions")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
-    result = tools.update_client(client, name="Tech Solutions", phone="050-1234567", name_resolved=True)
+    payload = json.loads(tools.update_client(client, name="Tech Solutions", phone="050-1234567", name_resolved=True))
 
-    assert result.startswith("עודכנו פרטי הלקוח:")
+    assert payload["status"] == "updated"
+    assert payload["client"]["name"] == "Tech Solutions"
 
 
 def test_update_client_non_exact_match_with_name_resolved_raises_not_found_and_updates_nothing():
@@ -556,11 +562,11 @@ def test_list_clients_over_cap_reports_total_without_fetching_further_pages():
         search_clients_response={"items": [_client_record()] * 25, "total": 278, "page": 1, "pages": 12}
     )
 
-    result = tools.list_clients(client)
+    payload = json.loads(tools.list_clients(client))
 
     assert len(client.search_clients_calls) == 1  # never fetched page 2+
-    assert "278" in result
-    assert "יותר מדי" in result or "צמצם" in result
+    assert payload["status"] == "too_many"
+    assert payload["total"] == 278
 
 
 # --- Hebrew geresh normalization (bugfix, 2026-08-07) ---
