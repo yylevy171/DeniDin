@@ -202,12 +202,18 @@ def render_html():
                         <th>Client Name</th>
                         <th>Raw Ledger Matches</th>
                         <th>Agreed (Ceiling)</th>
-                        <th>Deposits (Paid)</th>
+                        
                         <th>Invoices (Net)</th>
                     </tr>
 """
     
     import uuid
+    from datetime import datetime
+    counters = {"settled": {"count":0, "agreed":0, "deposits":0, "invoices":0}, "ongoing": {"count":0, "agreed":0, "deposits":0, "invoices":0}, "missing": {"count":0, "agreed":0, "deposits":0, "invoices":0}, "past": {"count":0, "agreed":0, "deposits":0, "invoices":0}}
+    settled_rows_html = ""
+    ongoing_rows_html = ""
+    missing_rows_html = ""
+    past_rows_html = ""
     
     for client in sorted(official_clients):
         data = stats[client]
@@ -215,81 +221,152 @@ def render_html():
         paid = data["deposits"]
         invoices_net = data.get("invoices_net", 0.0)
         manual_agreed = data.get("manual_agreement_amount")
+        latest_act_str = data.get("latest_activity")
         
-        display_agreed = agreed
-        is_manual = False
+        is_past = True
+        if latest_act_str:
+            try:
+                dt = datetime.fromisoformat(latest_act_str)
+                if dt > datetime(2025, 9, 1):
+                    is_past = False
+            except ValueError:
+                pass
+                
+        if is_past:
+            manual_agreed = None
+            
+        display_agreed = manual_agreed if manual_agreed is not None else agreed
+        is_manual = (manual_agreed is not None)
+            
+        agreed_status = data.get("agreed_status", "WHITE")
+        paid_status = data.get("paid_status", "WHITE")
+        display_paid = invoices_net
         
-        if agreed == 0 and manual_agreed is not None:
-            display_agreed = manual_agreed
-            is_manual = True
+        if agreed_status == "GRAY":
+            agreed_html = f'<span style="color: #888; font-weight: bold;">₪{display_agreed:,.2f}</span>'
+        elif agreed_status == "YELLOW":
+            agreed_html = f'<span style="color: #eab308; font-weight: bold;">₪{display_agreed:,.2f}</span>'
+        else:
+            agreed_html = f'₪{display_agreed:,.2f}'
             
-        if display_agreed == 0 and paid == 0 and invoices_net == 0:
-            continue
+        if paid_status == "GRAY":
+            paid_html = f'<span style="color: #888; font-weight: bold;">₪{display_paid:,.2f}</span>'
+        elif paid_status == "YELLOW":
+            paid_html = f'<span style="color: #eab308; font-weight: bold;">₪{display_paid:,.2f}</span>'
+        else:
+            paid_html = f'₪{display_paid:,.2f}'
             
+        # Re-evaluate row colors with rounded values
         row_class = ""
-        if display_agreed > 0 and paid == display_agreed:
+        agreed_round = round(display_agreed, 2)
+        paid_round = round(display_paid, 2)
+        
+        if agreed_round > 0 and paid_round == agreed_round:
             row_class = "row-green"
-        elif display_agreed > 0 and paid < display_agreed:
+        elif agreed_round > 0 and paid_round < agreed_round:
             row_class = "row-red"
-        elif (display_agreed == 0 and (paid > 0 or invoices_net > 0)) or (paid > display_agreed):
+        elif (agreed_round == 0 and paid_round > 0) or (paid_round > agreed_round):
             row_class = "row-yellow"
             
         raw_names_str = ", ".join(data["raw_names"]) if data["raw_names"] else "-"
         client_id = str(uuid.uuid4())[:8]
         current_comment = client_comments.get(client, "")
+        current_comment_escaped = current_comment.replace('"', '&quot;')
         
-        if is_manual:
-            agreed_html = f'<span style="color: var(--danger-color); font-weight: bold;">₪{display_agreed:,.2f}</span>'
+        row_html = (
+            f'<tr class="{row_class}">'
+            f'<td><button type="button" class="toggle-btn" onclick="toggleEvents(\'{client_id}\', this)">+</button></td>'
+            f'<td style="font-weight: 600;">{client}</td>'
+            f'<td style="color: var(--text-muted); font-size: 0.9em;">{raw_names_str}</td>'
+            f'<td>{agreed_html}</td>'
+            f''
+            f'<td>₪{invoices_net:,.2f}</td>'
+            f'</tr>'
+            f'<tr id="events_{client_id}" class="events-row" style="display: none;">'
+            f'<td colspan="5" style="padding: 0;">'
+            f'<table class="events-table">'
+            f'<tr><th>Date</th><th>Type</th><th>Sub Type</th><th>Description / Component</th><th>Amount</th></tr>'
+        )
+        if data["events"]:
+            for ev in data["events"]:
+                row_html += (
+                    f'<tr>'
+                    f'<td>{ev["date"]}</td>'
+                    f'<td>{ev["type"]}</td>'
+                    f'<td>{ev["subtype"]}</td>'
+                    f'<td>{ev["desc"]}</td>'
+                    f'<td>₪{ev["amount"]:,.2f}</td>'
+                    f'</tr>'
+                )
         else:
-            agreed_html = f'₪{display_agreed:,.2f}'
-        
-        html += f"""
-                    <tr class="{row_class}">
-                        <td><button type="button" class="toggle-btn" onclick="toggleEvents('{client_id}', this)">+</button></td>
-                        <td style="font-weight: 600;">{client}</td>
-                        <td style="color: var(--text-muted); font-size: 0.9em;">{raw_names_str}</td>
-                        <td>{agreed_html}</td>
-                        <td>₪{paid:,.2f}</td>
-                        <td>₪{invoices_net:,.2f}</td>
-                    </tr>
-                    <tr id="events_{client_id}" class="events-row" style="display: none;">
-                        <td colspan="6" style="padding: 0;">
-                            <table class="events-table">
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Type</th>
-                                    <th>Sub Type</th>
-                                    <th>Description / Component</th>
-                                    <th>Amount</th>
-                                </tr>
-"""
-        
-        for ev in data["events"]:
-            html += f"""
-                                <tr>
-                                    <td>{ev['date']}</td>
-                                    <td>{ev['type']}</td>
-                                    <td>{ev['subtype']}</td>
-                                    <td>{ev['desc']}</td>
-                                    <td>₪{ev['amount']:,.2f}</td>
-                                </tr>
-"""
-        # Add comment row inside the drilldown table
-        html += f"""
-                                <tr class="comment-input-row">
-                                    <td colspan="5">
-                                        <input type="text" name="comment_{client}" placeholder="Operations Directives / Comments (e.g. 'cancel dup component', 'ignore event 3')..." value="{current_comment}">
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-"""
+            row_html += '<tr><td colspan="5" style="text-align:center;color:gray;">No events found (active strictly prior to 2026)</td></tr>'
+                                
+        row_html += (
+            f'<tr class="comment-input-row">'
+            f'<td colspan="5">'
+            f'<input type="text" name="comment_{client}" placeholder="Operations Directives / Comments..." value="{current_comment_escaped}">'
+            f'</td>'
+            f'</tr>'
+            f'</table></td></tr>'
+        )
+        if is_past:
+            past_rows_html += row_html
+            counters["past"]["count"] += 1
+            counters["past"]["agreed"] += display_agreed
+            counters["past"]["deposits"] += display_paid
+            counters["past"]["invoices"] += invoices_net
+        else:
+            if display_agreed == 0 and paid == 0 and invoices_net == 0:
+                continue
                 
-    html += """
-                </table>
-            </div>
-"""
+            if row_class == "row-green":
+                settled_rows_html += row_html
+                counters["settled"]["count"] += 1
+                counters["settled"]["agreed"] += display_agreed
+                counters["settled"]["deposits"] += display_paid
+                counters["settled"]["invoices"] += invoices_net
+            elif row_class == "row-red":
+                ongoing_rows_html += row_html
+                counters["ongoing"]["count"] += 1
+                counters["ongoing"]["agreed"] += display_agreed
+                counters["ongoing"]["deposits"] += display_paid
+                counters["ongoing"]["invoices"] += invoices_net
+            else:
+                missing_rows_html += row_html
+                counters["missing"]["count"] += 1
+                counters["missing"]["agreed"] += display_agreed
+                counters["missing"]["deposits"] += display_paid
+                counters["missing"]["invoices"] += invoices_net
+            
+    def make_section(title, color, section_id, html_content, stats, expanded=True):
+        if not html_content:
+            html_content = '<tr><td colspan="5" style="text-align:center;color:gray;padding:20px;">No clients in this category</td></tr>'
+        display_style = '' if expanded else 'none'
+        toggle_icon = '-' if expanded else '+'
+        return (
+            '<table style="margin-top: 40px; margin-bottom: 0; box-shadow: none;">\n'
+            f'<tr style="background: var(--surface-color); cursor: pointer;" onclick="var b = document.getElementById(\'{section_id}-body\'); b.style.display = b.style.display === \'none\' ? \'\' : \'none\'; this.querySelector(\'.toggle-icon\').innerText = b.style.display === \'none\' ? \'+\' : \'-\';">\n'
+            f'<td colspan="5" style="font-weight: bold; border-top: 2px solid var(--border-color); border-bottom: 2px solid var(--border-color); padding: 15px 10px;">\n'
+            f'<span class="toggle-icon" style="display:inline-block; width:20px; text-align:center;">{toggle_icon}</span> '
+            f'<span style="color: {color}; font-size: 1.1em;">{title}</span> '
+            '</td></tr>\n'
+            '</table>\n'
+            f'<table id="{section_id}-body" style="display: {display_style}; margin-top: 0;">\n'
+            '<tr><th style="width: 40px;"></th><th>Client Name</th><th>Raw Ledger Matches</th><th>Agreed (Ceiling)</th><th>Invoices (Net)</th></tr>\n'
+            + html_content +
+            f'<tr style="background: rgba(0,0,0,0.03); font-weight: bold;">'
+            f'<td></td><td style="color: {color}">TOTALS: {stats["count"]} clients</td><td></td>'
+            f'<td>₪{stats["agreed"]:,.2f}</td><td>₪{stats["invoices"]:,.2f}</td>'
+            f'</tr>\n'
+            '</table>\n'
+        )
+
+    html += '\n<div class="glass-panel">\n<h2>Official Client Roster (Active since Sep 1, 2025)</h2>\n'
+    html += make_section('Settled (Agreements match Payments)', '#10b981', 'settled-clients', settled_rows_html, counters['settled'])
+    html += make_section('Ongoing / Collecting (Agreements &gt; Payments)', '#ef4444', 'ongoing-clients', ongoing_rows_html, counters['ongoing'])
+    html += make_section('Missing Agreement / Overpaid (Payments &gt; Agreements)', '#eab308', 'missing-clients', missing_rows_html, counters['missing'])
+    html += make_section('Past Clients (Latest Activity &le; Sep 1, 2025)', 'var(--text-color)', 'past-clients', past_rows_html, counters['past'], expanded=False)
+    html += '</div>\n\n'
 
     if unmatched:
         html += """
@@ -304,8 +381,8 @@ def render_html():
                         <th>Raw Name (from ledger)</th>
                         <th>Resolution (Matched Candidates)</th>
                         <th>Notes / Commands</th>
-                        <th>Agreement Amount / Text</th>
-                        <th>Deposits (Paid)</th>
+                        <th>Agreement Amount / Source Text</th>
+                        
                     </tr>
 """.replace("{num}", str(len(unmatched)))
             
@@ -346,10 +423,11 @@ def render_html():
                     options_html += f'<option value="{oc}">{oc}</option>'
             options_html += '</optgroup>'
                 
-            if agreed_val == 0 and data['raw_text']:
-                agreement_display = f"<span style='color: var(--warning-color); font-size: 0.9em;'>{', '.join(data['raw_text'])}</span>"
+            raw_text_display = "<br>".join(data['raw_text']) if data['raw_text'] else "No Source Text"
+            if agreed_val == 0:
+                agreement_display = f"<span style='color: var(--warning-color); font-size: 0.9em;'>{raw_text_display}</span>"
             else:
-                agreement_display = f"₪{agreed_val:,.2f}"
+                agreement_display = f"₪{agreed_val:,.2f}<br><span style='color: var(--text-muted); font-size: 0.8em;'>{raw_text_display}</span>"
                 
             html += f"""
                     <tr>
@@ -363,7 +441,7 @@ def render_html():
                             <input type="text" name="notes_{raw_name}" placeholder="Type notes or commands..." value="{current_note}">
                         </td>
                         <td>{agreement_display}</td>
-                        <td>₪{data['deposits']:,.2f}</td>
+                        
                     </tr>"""
                     
         html += """
