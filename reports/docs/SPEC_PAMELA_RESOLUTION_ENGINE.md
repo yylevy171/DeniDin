@@ -42,18 +42,18 @@ The CEO has requested that we make this capability an integral part of the main 
 
 ### 3. Architecture & Existing Reference Code
 
-We already have a fully functioning backend service, aggregation logic, and responsive Glassmorphism UI running locally:
+All working code has been merged directly into `master`. Once you run `git pull origin master` on your checkout, you can find the complete implementation in your own `reports/` folder:
 
 * **Backend Data Aggregation & Logic:**  
-  [`teammate5/reports/generate_client_status.py`](file:///Users/yaron/Projects/DeniDin/teammate5/reports/generate_client_status.py)  
+  `reports/generate_client_status.py`  
   * Implements `get_report_data()`, multi-source ledger merging, name normalization, and formula definitions (Docs 320, 400, 300, 305, 330).
 * **Interactive Web Server & UI Layout:**  
-  [`teammate5/reports/mapping_server.py`](file:///Users/yaron/Projects/DeniDin/teammate5/reports/mapping_server.py)  
+  `reports/mapping_server.py`  
   * Contains the HTML template, responsive CSS styling, and POST endpoints (`/save-mapping`, `/save-notes`, `/save-comment`).
 * **Active Data Models & State Files:**  
-  * Mappings: `client_mapping.json`
-  * Client Comments: `client_comments.json`
-  * Notes: `mapping_notes.json`
+  * Mappings: `reports/client_mapping.json`
+  * Client Comments: `reports/client_comments.json`
+  * Notes: `reports/mapping_notes.json`
 
 ---
 
@@ -63,13 +63,18 @@ We already have a fully functioning backend service, aggregation logic, and resp
 ### Task for Frontend/Fullstack Engineer:
 Embed the "Client Resolution & Aging Ledger Dashboard" into the DeniDin web application UI (`apps/webapp`).
 
+#### Source References (available locally in `reports/` after `git pull origin master`):
+- Full aggregation engine and rules: `reports/generate_client_status.py`
+- Complete HTML/CSS and API endpoints: `reports/mapping_server.py`
+- Client state & mapping files: `reports/client_comments.json`, `reports/client_mapping.json`
+
 #### Scope:
 1. **API Integration:**
-   * Port the data aggregation logic from `teammate5/reports/generate_client_status.py` into a backend service / API route in `apps/webapp/backend` (e.g. `GET /api/reports/client-status`).
+   * Port the data aggregation logic from `reports/generate_client_status.py` into a backend service / API route in `apps/webapp/backend` (e.g. `GET /api/reports/client-status`).
    * Provide endpoints to update client comments and alias mappings (`POST /api/reports/client-mapping`, `POST /api/reports/client-comment`).
 
 2. **UI Component:**
-   * Convert the frontend in `teammate5/reports/mapping_server.py` into a React/Next.js/web component under the main app navigation (e.g. `/reports/reconciliation` or `/ledger/resolution`).
+   * Convert the frontend in `reports/mapping_server.py` into a React/Next.js component under the main app navigation (e.g. `/reports/reconciliation` or `/ledger/resolution`).
    * Preserve the UX features:
      - Color-coded balance badges (Green for equal, Red for underpaid).
      - Search and status filter (All, Mismatches Only, Unmapped Only).
