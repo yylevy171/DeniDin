@@ -133,20 +133,20 @@ git-tracked file resolved by direct path, not through the config-loading pipelin
 **Finding (not fully resolved — flagged for `/speckit.tasks`/implementation)**: The confirmed path
 `/Users/yaron/Projects/DeniDin/artifacts/` sits directly inside the **root clone's own working
 tree** (`/Users/yaron/Projects/DeniDin/` is both "the root clone" and the parent directory
-containing `coder1/`/`coder2/` as nested subdirectories — confirmed via `ls`, 2026-08-02: `CLAUDE.md`,
-`apps/`, `.git`, `coder1/`, `coder2/` are all direct children of the same directory). That means:
-- The root clone's own `.gitignore` almost certainly already excludes `coder1/`/`coder2/` (else
+containing `teammate1/`/`teammate2/` as nested subdirectories — confirmed via `ls`, 2026-08-02: `CLAUDE.md`,
+`apps/`, `.git`, `teammate1/`, `teammate2/` are all direct children of the same directory). That means:
+- The root clone's own `.gitignore` almost certainly already excludes `teammate1/`/`teammate2/` (else
   `git status` there would show two entire nested repos as untracked) — an `/artifacts/` entry
   would need to be added there too, for the same reason `dev_data/`/`logs/` are already
   gitignored elsewhere in this project (large, mutable, non-source content).
-- This is a **root-clone file edit**, outside `coder1`'s own confinement boundary — per CLAUDE.md's
-  clone-confinement rule, doing this from a `coder1` session requires either explicit per-request
+- This is a **root-clone file edit**, outside `teammate1`'s own confinement boundary — per CLAUDE.md's
+  clone-confinement rule, doing this from a `teammate1` session requires either explicit per-request
   user authorization for that specific edit, or should be done by the user directly / from a
   session actually running in the root clone.
 
 **Resolved (2026-08-02)**: the user will add the root clone's `.gitignore` entry themselves,
 outside this feature's implementation tasks — `/speckit.tasks` should not generate a task for it,
-and no `coder1` session should attempt this edit.
+and no `teammate1` session should attempt this edit.
 
 ## Decision 8: `RELEASES.md`/`CHANGELOG.md` entry format
 

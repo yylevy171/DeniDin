@@ -28,7 +28,7 @@
 # into specs/repo/{features,bugfixes}/ (the real file never moves); the sweep moves the link
 # and re-points it one directory deeper (../repo/... -> ../../repo/...). Confined to this repo's own tracked files only (git grep/git mv/git ls-files,
 # never a raw recursive grep/mv over the whole working tree) - this repo may be checked out in
-# sibling clone directories nested inside this one (e.g. coder1/, coder2/), and those must never
+# sibling clone directories nested inside this one (e.g. teammate1/, teammate2/), and those must never
 # be touched (CLAUDE.md's clone-confinement rule) - git's own tracked-file list can never include
 # another clone's files, so scoping every search/rewrite through it is what makes that safe.
 #

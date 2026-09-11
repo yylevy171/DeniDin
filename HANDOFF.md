@@ -1,6 +1,6 @@
 # Session Handoff — 2026-08-20
 
-**Clone**: coder1 ("Avi")
+**Clone**: teammate1 ("Avi")
 **Branch at end of session**: `chore/windows-prod-persistent-mount` (fully merged, nothing pending on it)
 
 Everything below is **completed and merged to master** unless explicitly marked otherwise —
