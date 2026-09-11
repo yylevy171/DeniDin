@@ -1,143 +1,175 @@
-# Feature Specification: Support `editedMessage`, `reactionMessage`, `deletedMessage` (and other unhandled WhatsApp webhook types)
+# Feature Specification: Handle `editedMessage`, `deletedMessage`, and re-triage the remaining unhandled WhatsApp webhook types
 
 **Feature Branch**: `feature/076-edited-reaction-deleted-message-support`
 **Created**: 2026-09-04
-**Status**: Placeholder — not yet clarified/specced. Run `speckit.specify` + `speckit.clarify`
-before implementation.
-**Priority**: TBD (real client-visible symptom already observed in prod — see Evidence).
+**Clarified**: 2026-09-07 (interactive, with the user — see "Clarifications" below)
+**Status**: IN PROGRESS — clarified, implementing.
+**Priority**: P1 (real client-visible symptom already observed in prod — see Evidence).
 
-## Input
+**Complies with**:
+- **CONSTITUTION.md** §I (no env vars, config by DI), §V (integration tests simulate a real
+  external entry point — a Green API webhook dispatched through `dispatch_notification`), §XV
+  (Israel local time — `local_from_timestamp` / `now_local`), §XVII (no monkey-patching).
+- **METHODOLOGY.md** §VI.b (unit/integration RED→GREEN with human approval, tests immutable
+  once approved), §"Finish-Feature Trigger Phrase".
 
-User description: DeniDin currently supports only 8 WhatsApp message types
-(`textMessage`, `extendedTextMessage`, `contactMessage`, `contactsArrayMessage`,
-`imageMessage`, `documentMessage`, `videoMessage`, `audioMessage`) plus
-`interactiveButtonsResponse`. Every other `typeMessage` Green API can deliver falls
-through `denidin.py`'s `CATCH_ALL_HANDLER` → `handle_unsupported_message` →
-a canned Hebrew "this message type isn't supported yet" auto-reply
-(`UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES`, `src/constants/error_messages.py`).
+---
 
-Add real handling for at least:
+## Problem
 
-- **`editedMessage`** — a user edits a previously-sent WhatsApp message. Green API
-  delivers a new webhook carrying `editedMessageData.textMessage` (the new text) and
-  `editedMessageData.stanzaId` (the `idMessage` of the original message being edited).
-- **`reactionMessage`** — a user reacts to a message with an emoji (or removes a
-  reaction). Carries the target message's id and the emoji (empty string = reaction
-  removed).
-- **`deletedMessage`** — a user deletes ("delete for everyone") a previously-sent
-  message. Carries the deleted message's id.
+DeniDin recognizes a fixed set of WhatsApp `typeMessage` values and routes every other value
+through `denidin.py`'s `CATCH_ALL_HANDLER` → `WhatsAppHandler.handle_unsupported_message` →
+a canned Hebrew "this message type isn't supported yet" auto-reply. Three concrete costs:
 
-"…and perhaps other types" — `speckit.clarify` should decide which of the remaining
-Green API types are in scope now vs. deferred (candidates: `pollMessage` /
-`pollUpdateMessage`, `locationMessage` / `liveLocationMessage`, `stickerMessage`,
-`groupInviteMessage`, `templateMessage` / `listMessage` / legacy `buttonsMessage`,
-`quotedMessage`-only payloads).
+1. **`editedMessage` / `deletedMessage` are answered with "unsupported".** When a user edits or
+   retracts a message — a normal, good-faith action — DeniDin replies with a canned "not
+   supported" message and never registers that the earlier message changed.
+2. **The canned reply fires for genuinely trivial events** — a 👍 reaction, a sticker, a shared
+   location, a poll vote — cluttering the conversation with "not supported" noise.
+3. **`audioMessage` is nominally "supported" but does nothing** — it routes to the media
+   pipeline, which only accepts `jpg/png/pdf/docx`, so a real voice note already fails with
+   `לא הצלחתי לעבד את הקובץ הזה.` There is no transcription. It behaves worse than an honest
+   "unsupported" reply because the error text implies DeniDin tried and the *file* was bad.
 
 ## Evidence (real prod incident, 2026-09-04 — the trigger for this feature)
 
-During the v0.5.4 deploy, chat `120363210094632983@g.us` ("$$ גבייה אילה $$"),
-sender "אילה 🦋". All times Israel local, from real prod audit log (`[AUDIT-IN]` /
-`[AUDIT-OUT]`, `whatsapp_audit_log.py`):
+During the v0.5.4 deploy, chat `120363210094632983@g.us` ("$$ גבייה אילה $$"), sender
+"אילה 🦋". All times Israel local, from real prod audit log (`[AUDIT-IN]` / `[AUDIT-OUT]`):
 
 | Time | Event |
 |---|---|
 | 10:35:20 | `textMessage` `3A2F324F5A148E7F7D58`: `"כמיר כף\nזמנכל ביטוח לאומי\nמכתב\n 3,000₪"` (garbled name + typo) |
-| 10:35:45–10:35:59 | DeniDin processed it: recognized a fee agreement, **captured a `LedgerEvent` with client name `"כמיר כף"`**, replied *"נרשם הסכם שכר טרחה: לקוח: כמיר כף…"* |
+| 10:35:45–10:35:59 | DeniDin recognized a fee agreement, **captured a `LedgerEvent` with client name `"כמיר כף"`**, replied *"נרשם הסכם שכר טרחה: לקוח: כמיר כף…"* |
 | 10:36:01 | `editedMessage` `3A3F9992DBC6B052C485` (stanzaId → `3A2F324F5A148E7F7D58`): name corrected `"כמיר כף"` → `"עמיר כץ"`. → **"unsupported message type" auto-reply** |
 | 10:36:02 | `editedMessage` `3A8B47BFBD044BB12351` (stanzaId → same original): typo corrected `"זמנכל"` → `"סמנכל"`. → **"unsupported message type" auto-reply** |
 
-**Exactly 2 `editedMessage` notifications were received** — two genuine, separate edits
-the user made to fix the same original message, 1 second apart. Each produced its own
-canned "unsupported" reply (there was no duplication bug; `RecentNotificationDeduper`
-correctly did not suppress them — distinct `idMessage`s).
+Net effect: the user visibly corrected a client's name from a garbled `"כמיר כף"` to the
+correct `"עמיר כץ"`, and DeniDin (a) never registered the correction and (b) answered a
+good-faith fix with two "not supported" messages.
 
-Net effect: the user visibly corrected the client's name from a garbled `"כמיר כף"` to
-the correct `"עמיר כץ"`, and DeniDin (a) never applied the correction — the captured
-ledger event still carries the wrong name — and (b) answered the good-faith correction
-with two "not supported" messages. This is the concrete cost of leaving `editedMessage`
-unhandled.
+## Research (payload shapes — official Green API docs, 2026-09-07)
 
-## Notes captured so far
+Per `green-api.com/en/docs/api/receiving/notifications-format/incoming-message/…` (the user
+explicitly accepted docs-based research here in place of a live capture; reaction-removal
+shape is not documented, and is not needed because reactions are ignored outright):
 
-- **All three types are currently 100% unhandled** — no reference to `editedMessage` /
-  `reactionMessage` / `deletedMessage` anywhere in `apps/denidin-app/src` or `denidin.py`
-  (grep, 2026-09-04). They only reach `handle_unsupported_message`.
-- `editedMessage` and `deletedMessage` both reference a prior message by `stanzaId` /
-  id — this is exactly **Feature 032** (`specs/in-progress/032-whatsapp-reply-reference-resolution/`,
-  planned, no implementation yet): resolving a WhatsApp reference back to DeniDin's own
-  stored `Message` record. Feature 076 should build on 032's resolution capability rather
-  than re-deriving it. Sequencing (076 after 032, or 076 forces 032's resolution layer to
-  land first) is a `speckit.clarify` question.
-- Acting on an edit/delete that targets a message which **already produced a
-  `LedgerEvent`** (the prod evidence above) overlaps **Feature 040**
-  (`specs/backlog/040-agreement-cancellation-modification/`): modify/cancel a captured
-  ledger event via a resolved reference. Decide the boundary — does 076 only *route* the
-  edit/delete to the right place, with 040 owning the ledger-event mutation? Or does 076
-  cover the simple "re-run the turn on the edited text" case directly?
-- Not to be confused with **Feature 067** (`realistic-message-handling` — coalescing
-  bursts of *new* messages). 076 is about *retroactive* changes to an already-delivered
-  message, a different concern.
-- The catch-all itself must stay — "no message type is silently dropped" is a deliberate
-  invariant (`denidin.py` / `.github/ARCHITECTURE.md`). 076 moves specific types *out* of
-  the catch-all into real handlers; anything still unrecognized keeps getting a friendly
-  reply.
+**`editedMessage`** — delivers the *full* corrected text plus the original message id:
+```json
+"messageData": {
+  "typeMessage": "editedMessage",
+  "editedMessageData": { "textMessage": "<full new text>", "stanzaId": "<original idMessage>" }
+}
+```
 
-## Open questions for `speckit.clarify`
+**`deletedMessage`** — only the pointer, no text, no flag:
+```json
+"messageData": {
+  "typeMessage": "deletedMessage",
+  "deletedMessageData": { "stanzaId": "<deleted idMessage>" }
+}
+```
 
-**`editedMessage`:**
-- Re-run the whole turn on the edited text as if it were a fresh message? Or a lighter
-  "note the correction" path?
-- If the original already produced a side effect (a `LedgerEvent`, a pending approval, an
-  invoice), what happens? (→ likely defers to Feature 040 for ledger events.)
-- Time bound — only honor an edit within N minutes / while the session is still active?
-  Ignore edits to messages older than the current session?
-- Group chats: does the edit have to come from the same sender as the original? (Prod
-  evidence: yes, same sender.)
-- Does the edited message get stored as a new `Message`, replace the original's stored
-  content, or append a "(edited: …)" annotation?
+**`reactionMessage`** (ignored — shape recorded for completeness):
+```json
+"messageData": {
+  "typeMessage": "reactionMessage",
+  "extendedTextMessageData": { "text": "👍" },
+  "quotedMessage": { "stanzaId": "<reacted msg id>", "participant": "<who>" }
+}
+```
 
-**`reactionMessage`:**
-- Is any action wanted at all, or is "silently ignore, no reply" the whole feature? (A 👍
-  on DeniDin's own reply almost certainly wants *no* response.)
-- Any reaction that *should* mean something — e.g. 👍 on an approval prompt as an
-  alternative to typing "כן" / tapping the button? (Cross-check Feature 047's approval
-  UX; probably out of scope, but name it explicitly per the "EVERY NEW TOOL-BEARING
-  FEATURE NEEDS EXPLICIT CONSTITUTION BOUNDARIES" rule.)
+Both `editedMessage` and `deletedMessage` carry a normal top-level `senderData` block (chatId,
+sender, senderName, senderContactName) and a top-level unix `timestamp`.
 
-**`deletedMessage`:**
-- Silently ignore, or acknowledge? ("delete for everyone" on a message that stated an
-  agreement → cancel the agreement? → Feature 040 territory.)
-- Remove / tombstone the corresponding stored `Message`? Affect session history sent to
-  OpenAI?
+## Clarifications (2026-09-07)
 
-**Scope:**
-- Which of the "perhaps other types" are in this feature vs. a follow-up.
-- Feature-flag the new behavior (per CONSTITUTION §? — new behavior defaults off, catch-all
-  path byte-identical when the flag is off).
+| # | Question | Answer |
+|---|---|---|
+| Q1 | Scope | **Minimal, self-contained.** No dependency on Feature 032 (reference resolution) or Feature 040 (ledger cancel/modify). 076 only routes and logs; ledger-event mutation stays Feature 040. |
+| Q2 | `editedMessage` behavior | **Note the correction, no reply.** Persist the corrected text into the chat's session as a dated note; do **not** run an AI turn or send any WhatsApp reply. The model picks up the correction on the next real turn via the 14-day rolling window. |
+| Q3 | `deletedMessage` behavior | Same shape: persist a dated "user deleted an earlier message" note into the session, no reply. |
+| Q4 | Where the note is stored | A new `role="user"` `Message` appended via `SessionManager.add_message`, dated from the webhook's own `timestamp` (Israel local). **No mutation** of the referenced original `Message` — the original and the note both sit in the verbatim window, so the model reconciles them naturally. Stored-history annotation / `stanzaId` resolution is Feature 032 territory, out of scope. |
+| Q5 | `audioMessage` | **Move to the canned "unsupported" reply.** Voice notes are not transcribed today (media pipeline rejects the format), so nothing is lost. Removed from `HANDLER_REGISTRY` and from `WhatsAppHandler.is_media_message`. `videoMessage` is left exactly as-is (unchanged). |
+| Q6 | Canned reply text | Changed to exactly **`סוג הודעה לא נתמך`** (was: `"סוג הודעה זה אינו נתמך עדיין. אני תומך בטקסט, תמונות וקבצים."`). |
+| Q7 | "Ignore completely" bucket | **Silent** — `log_inbound` (the existing verbatim inbound audit log) only, **no WhatsApp reply**. Applies to `reactionMessage`, `stickerMessage`, `locationMessage`, `liveLocationMessage`, `pollUpdateMessage`, `groupInviteMessage`, `pinInChatMessage`/`pinMessageResponse`, `keepInChat`, legacy `buttonsMessage`/`buttonsResponseMessage`, `quotedMessage`-only payloads, **and any `typeMessage` value never seen before** (the new default). |
+| Q8 | Feature flag | **No feature flag.** The user explicitly declined one; the behavior change is direct. |
+| Q9 | Acceptance tests | **No `billed`/`expensive` tests** — nothing in this feature calls OpenAI. Unit + integration only. Integration tests are **required for at least `editedMessage` and `deletedMessage`**. |
+| Q10 | Immutable registry test | `test_denidin_dispatch.py::test_registry_contains_exactly_these_eight_types_no_more_no_less` (and the per-type asserts) are updated as part of this feature — the user has signed off on this change here. |
 
-## Impact / touch points (preliminary — confirm during `speckit.plan`)
+## Functional Requirements
 
-- `denidin.py` — `HANDLER_REGISTRY` gains entries; new `handle_edited_message` /
-  `handle_reaction_message` / `handle_deleted_message` functions. `GreenAPIMessageSource`
-  is constructed with `message_types=list(HANDLER_REGISTRY.keys()) + [...]` so new keys
-  auto-register.
-- `tests/unit/test_denidin_dispatch.py::test_registry_contains_exactly_these_eight_types_no_more_no_less`
-  — an **immutable approved test** that hard-asserts the registry is exactly those 8
-  types. Updating it needs explicit human sign-off (METHODOLOGY.md — tests immutable once
-  approved).
-- `src/models/message.py` — `WhatsAppMessage.from_notification` currently has no branch for
-  `editedMessageData` / reaction / deletion payload shapes.
-- `src/handlers/whatsapp_handler.py` — `validate_message_type` allow-list; possibly new
-  send paths.
-- `config/runtime_constitution.md` — if any new type carries conversational meaning (an
-  edit re-running a turn), it needs its own scope section + cross-references, per the
-  "EVERY NEW TOOL-BEARING FEATURE NEEDS EXPLICIT CONSTITUTION BOUNDARIES" rule.
-- Depends on / coordinates with **Feature 032** (reference resolution) and **Feature 040**
-  (ledger-event cancel/modify).
+- **FR-001** — A `editedMessage` webhook appends one `role="user"` `Message` to the chat's
+  long-lived session, content `[הודעה קודמת נערכה] <editedMessageData.textMessage>`, timestamped
+  `local_from_timestamp(event["timestamp"])`. No AI call. No WhatsApp reply. `message_id` is a
+  fresh UUID (the note is a new record, not the original).
+- **FR-002** — A `deletedMessage` webhook appends one `role="user"` `Message`, content
+  `[המשתמש מחק הודעה קודמת]`. Same rules as FR-001 (dated, no AI call, no reply). The deleted
+  `stanzaId` is written to the app log for traceability; it is not persisted on the `Message`.
+- **FR-003** — Neither FR-001 nor FR-002 resolves, reads, or mutates the message referenced by
+  `stanzaId`, and neither touches any `LedgerEvent`, pending approval, or Morning document.
+- **FR-004** — `editedMessage` / `deletedMessage` from a chat with **no existing session** create
+  the session (via `SessionManager.get_session`, same as any first message) and append the note.
+- **FR-005** — `audioMessage`, `pollMessage`, `templateMessage`, `templateButtonsReplyMessage`,
+  `listMessage`, `listResponseMessage` each produce exactly one WhatsApp reply with the text
+  `סוג הודעה לא נתמך` and nothing else (no AI call, no session write).
+- **FR-006** — Every other `typeMessage` not named above and not already handled (the pre-existing
+  8 conversational/media types + `interactiveButtonsResponse` + the two new ones) produces **no
+  WhatsApp reply at all**. `log_inbound` still records the raw webhook verbatim.
+- **FR-007** — The canned-reply constant's value is exactly `סוג הודעה לא נתמך`. No caller
+  constructs this string inline.
+- **FR-008** — `WhatsAppHandler.is_media_message` no longer returns `True` for `audioMessage`.
+  `videoMessage`, `imageMessage`, `documentMessage` are unchanged.
+- **FR-009** — The `idMessage` de-duplication (`RecentNotificationDeduper`) applies to the new
+  types exactly as it does to every other type — a redelivered `editedMessage` is not logged
+  to the session twice.
+- **FR-010** — `GreenAPIMessageSource` is constructed with a `message_types` list that includes
+  every type this feature gives explicit behavior to (`editedMessage`, `deletedMessage`, and the
+  six error-reply types), so they actually reach `dispatch_notification` rather than being
+  filtered out by the library before dispatch.
+- **FR-011** — `config/runtime_constitution.md` gains a short subsection telling the model how to
+  read the two markers (`[הודעה קודמת נערכה] …` = prefer the corrected text; `[המשתמש מחק הודעה
+  קודמת]` = an earlier message was retracted, don't act on its content) and that these markers
+  are never themselves something to reply to.
 
-## Out of scope (tentative — confirm in `speckit.clarify`)
+## Non-Functional / Constraints
 
+- No new config keys, no feature flag (Q8).
+- Israel-local timestamps only (`src/utils/time_utils.py`).
+- No monkey-patching; new handlers are plain functions in `denidin.py` registered in the
+  dispatch table, mirroring every existing handler.
+- The "no message type is silently *dropped*" invariant is deliberately **relaxed** to "no
+  message type is silently *lost*" — `log_inbound` still captures everything; the change is that
+  low-value types no longer trigger a user-facing reply. Recorded here and in
+  `.github/ARCHITECTURE.md`.
+
+## Touch points
+
+- `apps/denidin-app/denidin.py` — `handle_edited_message`, `handle_deleted_message`,
+  `handle_error_reply_message`, a silent `handle_ignored_message_default`; `HANDLER_REGISTRY`
+  gains `editedMessage` / `deletedMessage`, loses `audioMessage`; new `ERROR_REPLY_TYPES` set;
+  `dispatch_notification` checks `ERROR_REPLY_TYPES` before the catch-all; `CATCH_ALL_HANDLER`
+  → silent; `__main__` `message_types` list extended (FR-010).
+- `apps/denidin-app/src/constants/error_messages.py` — `UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES`
+  value → `סוג הודעה לא נתמך` (name kept to avoid a churny rename across imports; a follow-up
+  rename is out of scope).
+- `apps/denidin-app/src/handlers/whatsapp_handler.py` — `is_media_message` drops `audioMessage`;
+  `handle_unsupported_message` unchanged in shape (still sends the same constant).
+- `apps/denidin-app/config/runtime_constitution.md` — FR-011 subsection.
+- `apps/denidin-app/.github/ARCHITECTURE.md` — note the relaxed invariant + new handlers.
+- `apps/denidin-app/tests/unit/test_denidin_dispatch.py` — registry asserts updated (Q10).
+- New: `tests/unit/test_edited_deleted_handlers.py`,
+  `tests/integration/test_edited_deleted_webhook_routing.py`,
+  and additions to `tests/integration/test_media_webhook_routing.py` for the new error-reply /
+  silent behavior.
+
+## Out of scope
+
+- `stanzaId` → stored-`Message` resolution (Feature 032).
+- Cancelling/modifying a `LedgerEvent` from an edit/delete (Feature 040).
+- Any *reaction* that carries meaning (e.g. 👍 as approval) — explicitly not wired; reactions
+  are ignored.
 - Coalescing bursts of new messages (Feature 067).
-- The full ledger-event modification/cancellation behavior (Feature 040) — 076 routes the
-  edit/delete to it, 040 owns what happens to the event.
-- Sending our own edited/reaction messages outbound (this is inbound handling only).
+- Outbound edited/reaction/deletion sends (this is inbound handling only).
+- Transcribing voice notes (would be its own feature; `audioMessage` just gets an honest
+  "unsupported" reply here).
+- Renaming `UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES`.
