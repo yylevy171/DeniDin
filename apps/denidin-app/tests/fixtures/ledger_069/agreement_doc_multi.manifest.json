@@ -2,61 +2,190 @@
   "source_kind": "document",
   "story": "US10 — DOCX fee agreement, multi-component, near-match client (routed as a synthetic turn; text-only post-turn recognition → billed). Morning has 'מרים בן שחר' (seeded); the document names 'מרים בן שעיה' — a single near-match. Operator picks the EXISTING candidate 'מרים בן שחר' (spec scenario 3), so no client is created and the fixture is repeatable. Two-hop fidelity. payer_name (איתן רוזן / \"Eitan Rozen\") is literal in the document.",
   "source_file": "agreement_doc_multi.docx",
-  "files": "per_component",
   "seed_clients": [
-    { "id_prefix": "F069_DOC_NEAR", "name": "מרים בן שחר", "ensure_exists": true }
+    {
+      "id_prefix": "F069_DOC_NEAR",
+      "name": "מרים בן שחר",
+      "ensure_exists": true,
+      "phone": "0525550110"
+    }
   ],
-  "client_resolution": {
-    "operator_stated_name": "מרים בן שעיה",
-    "operator_picks": "מרים בן שחר"
+  "resolution": {
+    "mode": "pick_existing",
+    "stated": "מרים בן שעיה",
+    "resolves_to": "מרים בן שחר"
   },
+  "files": "per_component",
   "shared_fields": {
-    "event_id":            { "generated": "event_id" },
-    "event_datetime":      { "generated": "event_datetime" },
-    "source_type":         { "tested": "הסכם" },
-    "event_subtype":       { "tested": "יצירה" },
-    "client_name":         { "tested": "מרים בן שחר" },
-    "payer_name":          { "tested": "איתן רוזן" },
-    "reference":           { "null": true },
-    "reference_hint":      { "null": true },
-    "agreement_id":        { "generated": "agreement_id" },
-    "vat_status":          { "tested": "לא כולל" },
-    "split_partner":       { "null": true },
-    "split_percent":       { "null": true },
-    "bank_number":         { "null": true },
-    "bank_branch":         { "null": true },
-    "bank_account":        { "null": true },
-    "accounting_document_display_number":  { "null": true },
-    "accounting_document_status":          { "null": true },
-    "accounting_document_status_code":     { "null": true },
-    "accounting_document_status_label":    { "null": true },
-    "accounting_document_payment_method":  { "null": true },
-    "session_id":          { "generated": "session_id" },
-    "message_id":          { "generated": "message_id" },
-    "captured_at":         { "generated": "captured_at" },
-    "schema_version":      { "generated": "schema_version" }
+    "event_id": {
+      "generated": "event_id"
+    },
+    "event_datetime": {
+      "generated": "event_datetime"
+    },
+    "source_type": {
+      "tested": "הסכם"
+    },
+    "event_subtype": {
+      "tested": "יצירה"
+    },
+    "client_name": {
+      "tested": "$client"
+    },
+    "payer_name": {
+      "tested": "איתן רוזן"
+    },
+    "reference": {
+      "null": true
+    },
+    "reference_hint": {
+      "null": true
+    },
+    "agreement_id": {
+      "generated": "agreement_id"
+    },
+    "vat_status": {
+      "tested": "לא כולל"
+    },
+    "split_partner": {
+      "null": true
+    },
+    "split_percent": {
+      "null": true
+    },
+    "bank_number": {
+      "null": true
+    },
+    "bank_branch": {
+      "null": true
+    },
+    "bank_account": {
+      "null": true
+    },
+    "accounting_document_display_number": {
+      "null": true
+    },
+    "accounting_document_status": {
+      "null": true
+    },
+    "accounting_document_status_code": {
+      "null": true
+    },
+    "accounting_document_status_label": {
+      "null": true
+    },
+    "accounting_document_payment_method": {
+      "null": true
+    },
+    "session_id": {
+      "generated": "session_id"
+    },
+    "message_id": {
+      "generated": "message_id"
+    },
+    "captured_at": {
+      "generated": "captured_at"
+    },
+    "schema_version": {
+      "generated": "schema_version"
+    }
   },
   "components": [
     {
-      "component_label": { "free_text": true }, "component_id": { "generated": "component_id" },
-      "description": { "free_text": true },
-      "amount": { "tested": "18000" }, "percent": { "null": true }, "percent_base": { "null": true },
-      "hours": { "null": true }, "hourly_rate": { "null": true },
-      "txn_date": { "null": true }, "trigger_condition": { "null": true }
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "tested": "18000"
+      },
+      "percent": {
+        "null": true
+      },
+      "percent_base": {
+        "null": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "null": true
+      }
     },
     {
-      "component_label": { "free_text": true }, "component_id": { "generated": "component_id" },
-      "description": { "free_text": true },
-      "amount": { "null": true }, "percent": { "tested": "18" }, "percent_base": { "free_text": true },
-      "hours": { "null": true }, "hourly_rate": { "null": true },
-      "txn_date": { "null": true }, "trigger_condition": { "free_text": true }
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "null": true
+      },
+      "percent": {
+        "tested": "18"
+      },
+      "percent_base": {
+        "free_text": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "free_text": true
+      }
     },
     {
-      "component_label": { "free_text": true }, "component_id": { "generated": "component_id" },
-      "description": { "free_text": true },
-      "amount": { "tested": "2000" }, "percent": { "null": true }, "percent_base": { "null": true },
-      "hours": { "null": true }, "hourly_rate": { "null": true },
-      "txn_date": { "null": true }, "trigger_condition": { "free_text": true }
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "tested": "2000"
+      },
+      "percent": {
+        "null": true
+      },
+      "percent_base": {
+        "null": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "free_text": true
+      }
     }
   ]
 }

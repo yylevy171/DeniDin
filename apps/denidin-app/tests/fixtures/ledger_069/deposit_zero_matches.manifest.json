@@ -1,49 +1,117 @@
 {
   "source_kind": "image",
-  "story": "US7a — bank-deposit photo whose payer has ZERO Morning matches: operator supplies full name + email + phone, add_client, then capture against the new client. Two-hop.",
-  "source_file": "bank_deposit_kehilat_tzair.jpg",
-  "_incomplete": "The bank triplet / reference / txn_date for bank_deposit_kehilat_tzair.jpg were never transcribed. Fields marked null below are provisional — run the extractor once and, if it legibly reads a bank number/branch/account/reference/date off this image, change those entries to {\"tested\": \"<value>\"} (a failure here on the first expensive run is the signal to do that, not a bug in the mechanism).",
-  "client_resolution": {
-    "scenario": "new_client",
-    "operator_stated_name": "קהילת צעיר",
-    "new_client_email": "kehilat.tzair.f069@example.com",
-    "new_client_phone": "0525550991"
+  "story": "US7a — bank-deposit photo whose payer name is a compound/unclear joint account holder ('כהונאי מוריס,כהונאי סמירה'). The operator rejects treating the payer as the client (payer_name is free text, an intermediary who pays, never resolved) and states an unrelated brand-new client instead; add_client, then capture against the new client with payer_name kept verbatim. Two-hop.",
+  "source_file": "Deposit_Kehunai.jpg",
+  "_note": "Deposit_Kehunai.jpg replaces the retired bank_deposit_kehilat_tzair.jpg (2026-09-11 - that image showed only the RECIPIENT's own account/branch, never the payer's banking details, which made extraction non-deterministic and wrong). Ground truth read directly off the image: 02/08/2026, ₪1,888.00, account holder כהונאי מוריס,כהונאי סמירה, bank 11 / branch 303 / account 13008082 (the 'מחויב' triplet - the payer's own debited account, not 'סניף בו בוצעה הפעולה' which is the recipient's channel). Reference number is never asserted (product does not store it) regardless of where the model renders it.",
+  "resolution": {
+    "mode": "new_client_distinct_payer",
+    "name": "$unique",
+    "email": "$email",
+    "phone": "0525550991"
   },
   "files": "single",
   "shared_fields": {
-    "event_id":            { "generated": "event_id" },
-    "event_datetime":      { "generated": "event_datetime" },
-    "source_type":         { "tested": "בנק" },
-    "event_subtype":       { "tested": "הפקדה" },
-    "client_name":         { "tested": "$client" },
-    "payer_name":          { "null": true },
-    "description":         { "free_text": true },
-    "amount":             { "tested": "9440" },
-    "txn_date":           { "null": true },
-    "reference":          { "null": true },
-    "reference_hint":     { "null": true },
-    "bank_number":        { "null": true },
-    "bank_branch":        { "null": true },
-    "bank_account":       { "null": true },
-    "vat_status":         { "tested": "כולל" },
-    "agreement_id":       { "null": true },
-    "component_id":       { "null": true },
-    "component_label":    { "null": true },
-    "trigger_condition":  { "null": true },
-    "percent":            { "null": true },
-    "percent_base":       { "null": true },
-    "hours":              { "null": true },
-    "hourly_rate":        { "null": true },
-    "split_partner":      { "null": true },
-    "split_percent":      { "null": true },
-    "accounting_document_display_number":  { "null": true },
-    "accounting_document_status":          { "null": true },
-    "accounting_document_status_code":     { "null": true },
-    "accounting_document_status_label":    { "null": true },
-    "accounting_document_payment_method":  { "null": true },
-    "session_id":         { "generated": "session_id" },
-    "message_id":         { "generated": "message_id" },
-    "captured_at":        { "generated": "captured_at" },
-    "schema_version":     { "generated": "schema_version" }
+    "event_id": {
+      "generated": "event_id"
+    },
+    "event_datetime": {
+      "generated": "event_datetime"
+    },
+    "source_type": {
+      "tested": "בנק"
+    },
+    "event_subtype": {
+      "tested": "הפקדה"
+    },
+    "client_name": {
+      "tested": "$client"
+    },
+    "payer_name": {
+      "tested": "כהונאי מוריס,כהונאי סמירה"
+    },
+    "description": {
+      "free_text": true
+    },
+    "amount": {
+      "tested": "1888"
+    },
+    "txn_date": {
+      "tested": "2026-08-02"
+    },
+    "reference": {
+      "null": true
+    },
+    "reference_hint": {
+      "null": true
+    },
+    "bank_number": {
+      "tested": "11"
+    },
+    "bank_branch": {
+      "tested": "303"
+    },
+    "bank_account": {
+      "tested": "13008082"
+    },
+    "vat_status": {
+      "tested": "כולל"
+    },
+    "agreement_id": {
+      "null": true
+    },
+    "component_id": {
+      "null": true
+    },
+    "component_label": {
+      "null": true
+    },
+    "trigger_condition": {
+      "null": true
+    },
+    "percent": {
+      "null": true
+    },
+    "percent_base": {
+      "null": true
+    },
+    "hours": {
+      "null": true
+    },
+    "hourly_rate": {
+      "null": true
+    },
+    "split_partner": {
+      "null": true
+    },
+    "split_percent": {
+      "null": true
+    },
+    "accounting_document_display_number": {
+      "null": true
+    },
+    "accounting_document_status": {
+      "null": true
+    },
+    "accounting_document_status_code": {
+      "null": true
+    },
+    "accounting_document_status_label": {
+      "null": true
+    },
+    "accounting_document_payment_method": {
+      "null": true
+    },
+    "session_id": {
+      "generated": "session_id"
+    },
+    "message_id": {
+      "generated": "message_id"
+    },
+    "captured_at": {
+      "generated": "captured_at"
+    },
+    "schema_version": {
+      "generated": "schema_version"
+    }
   }
 }

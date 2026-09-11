@@ -129,7 +129,7 @@ you.
 | type | mandatory | conditional | keep-if-provided |
 |---|---|---|---|
 | `הסכם` | resolved `client_name` or store-anyway text (you) · `description` (you) · ≥1 `components` entry **OR** an hours value (you) | per component: `amount` > 0 **OR** `percent` (you, iff that component is monetary) | `payer_name`; per-component `trigger_condition` / `percent` / `percent_base` / `hours` / `hourly_rate`; `reference` / `reference_hint` |
-| `בנק` | resolved `client_name` or store-anyway text (you) · `txn_date` (you) · `amount` (you) · `description` (you) · `vat_status` = `כולל` (you — always) | — | `bank_number` / `bank_branch` / `bank_account`; `reference` / `reference_hint` |
+| `בנק` | resolved `client_name` or store-anyway text (you) · `txn_date` (you) · `amount` (you) · `description` (you) · `vat_status` = `כולל` (you — always) | — | `bank_number` / `bank_branch` / `bank_account`; `reference` / `reference_hint`; `payer_name` **when it genuinely differs from the resolved client** (see "בנק payer vs client" below — put the slip's name verbatim, don't just fold it into `description`) |
 | `חשבונית` | `accounting_document_json` = the document's whole JSON object, copied verbatim (you) — from the Morning `create_*` result, or the reconciliation sweep's listing. **Nothing else** — code derives the display number, `event_subtype`, `amount`, `txn_date`, VAT, status, payment method and client from that JSON. | — | `reference` / `reference_hint` |
 
 **Always code-minted — never provide, for any type:** `event_id`, `event_datetime`,
@@ -213,6 +213,13 @@ ledger history:
   is "from <name>" — strip the מ. Prefer a labeled account-holder field over a loose inline
   name. Multiple dates on a screenshot can differ — an explicit transaction/value date goes
   in `txn_date`.
+- **בנק payer vs client.** A deposit slip's own account-holder/depositor name is who *paid*
+  — it is not automatically the client. When the conversation shows the operator resolving
+  the event against a client that differs from that name (e.g. rejecting a compound/unclear
+  slip name as the client and stating an unrelated one instead), put the slip's name
+  **verbatim** in `payer_name` — don't just fold it into `description` and leave `payer_name`
+  empty. Only when the slip's name and the resolved client are the same person does
+  `payer_name` stay null (the ordinary case).
 
 ## Out of scope
 

@@ -41,9 +41,9 @@ import json
 import logging
 import random
 import time
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, List, Optional, Tuple
@@ -57,7 +57,11 @@ DENIDIN_APP_DIR = Path(__file__).resolve().parents[2]
 # Feature 075: single source of truth in tests/e2e_helpers.py; re-exported here
 # so tests/billed/conftest.py and the MCP e2e modules can import it from their
 # usual helper module.
-from tests.e2e_helpers import sanity_worker_data_root  # noqa: E402,F401
+from tests.e2e_helpers import (  # noqa: E402,F401
+    sanity_worker_data_root,
+    create_real_notification,
+    get_response,
+)
 
 
 class NoMorningTunnelError(Exception):
@@ -203,57 +207,12 @@ def build_button_tap_webhook(
     }
 
 
-def create_real_notification(event_dict: dict) -> Notification:
-    """Create a real SDK Notification object (no mocking), tracking answer() and
-    answer_with_interactive_buttons() calls.
-
-    Feature 047: `answer_with_interactive_buttons` needs `self.api` internally
-    (`chat = self.get_chat(); return self.api.sending.sendInteractiveButtons(...)`),
-    which this bare `Notification.__new__` construction never sets (real
-    `__init__` is deliberately skipped, same as before this feature) - a real
-    Green API send would be as undesirable here as `.answer()`'s real send
-    always was (this is a fake test chat_id, nothing should actually be
-    delivered anywhere). So this is captured the same way `.answer()` already
-    is, rather than routed through a real `self.api` - additive, not a change
-    to the existing `.answer()` capture pattern. `body` is ALSO appended to
-    `_test_sent_messages` (dual-write) so every existing helper reading
-    `get_response()`/`_test_sent_messages[0]` keeps seeing exactly what a real
-    user would read on screen, regardless of whether it arrived as plain text
-    or as an interactive-buttons body - the same content either way, per
-    spec.md Scope ("buttons change how the answer arrives, never what the
-    question contains")."""
-    notification = Notification.__new__(Notification)
-    notification.event = event_dict
-    notification._test_sent_messages = []
-    notification._test_button_sends = []
-
-    def track_answer(message):
-        notification._test_sent_messages.append(message)
-        logger.info(f"Would send to user: {message}")
-
-    _next_id = [0]
-
-    def track_answer_with_interactive_buttons(body, buttons, header=None, footer=None):
-        _next_id[0] += 1
-        id_message = f"TEST_BUTTONS_{event_dict.get('idMessage', 'noid')}_{_next_id[0]}"
-        notification._test_button_sends.append({
-            'body': body, 'buttons': buttons, 'header': header, 'footer': footer,
-            'idMessage': id_message,
-        })
-        notification._test_sent_messages.append(body)
-        logger.info(
-            f"Would send interactive buttons to user: body={body!r} buttons={buttons!r} "
-            f"idMessage={id_message}"
-        )
-        return SimpleNamespace(code=200, data={'idMessage': id_message}, error=None)
-
-    notification.answer = track_answer
-    notification.answer_with_interactive_buttons = track_answer_with_interactive_buttons
-    return notification
-
-
-def get_response(notification: Notification) -> Optional[str]:
-    return notification._test_sent_messages[0] if notification._test_sent_messages else None
+# `create_real_notification` / `get_response`: single implementation in
+# tests/e2e_helpers.py (imported at the top of this module). The bare-Notification
+# stub there already captures both `.answer()` and Feature 047's
+# `.answer_with_interactive_buttons` (dual-writing the button body into
+# `_test_sent_messages` so `get_response()` reads identically for either delivery
+# form) - this module's near-identical copy was removed 2026-09-10.
 
 
 def get_button_send(notification: Notification) -> Optional[dict]:
@@ -532,7 +491,7 @@ def _seeded_email_from(ai_response: Optional[AIResponse]) -> str:
 #                                                                             #
 # There is NO fifth "errored"/"not attempted" bucket. A resolve_client_name    #
 # call that Morning rejected, or one whose output matches none of the four     #
-# shapes, is a hard failure - `_classify` RAISES ``ResolveClientNameError``    #
+# shapes, is a hard failure - `_classify` RAISES ``AssertionError``    #
 # (identity resolution must never error; in a test any unintended error is a   #
 # failure, not a state to recover from). Only a turn with no resolve call at   #
 # all is benign - that is a plain-text clarifying question, classified NONE    #
@@ -551,20 +510,10 @@ def _seeded_email_from(ai_response: Optional[AIResponse]) -> str:
 # --------------------------------------------------------------------------- #
 
 
-class ResolveClientNameError(AssertionError):
-    """A resolve_client_name call errored, or returned an output shape that
-    matches none of the four known JSON shapes. Identity resolution must
-    never error - in this suite that is a hard failure, never a state to
-    recover from (user, 2026-09-02: "error or junk is NOT NONE - it is an
-    error that should be raised ... any error is a failure unless we intended
-    for it to happen"). A test that deliberately provokes such an error
-    catches this."""
-
-
 class ResolveOutcome(Enum):
     """Exactly which of resolve_client_name's four outcomes a turn produced.
     There is no "errored"/"not attempted" member - see
-    ``ResolveClientNameError`` and the comment block above:
+    an ``AssertionError`` (see the comment block above):
 
     * ``EXACT``            - the client exists in Morning exactly as queried
       (the ONLY outcome for which ``.exists`` is True).
@@ -686,7 +635,7 @@ def _resolve_client_name(
         """One turn -> exactly one of the four ``ResolveOutcome`` values, read
         from the turn's LAST resolve_client_name call's raw JSON output. A
         resolve call that errored, or one whose output matches none of the
-        four known JSON shapes, RAISES ``ResolveClientNameError``. A turn with
+        four known JSON shapes, RAISES ``AssertionError``. A turn with
         no resolve call at all is NONE - a benign plain-text clarifying
         question, nothing has confirmed the client exists (the model never
         echoes this JSON verbatim in prose, so there is no reply-text
@@ -697,13 +646,13 @@ def _resolve_client_name(
             return ResolveOutcome.NONE, None
         last = calls[-1]
         if last.get("error") is not None:
-            raise ResolveClientNameError(
+            raise AssertionError(
                 f"resolve_client_name errored - identity resolution must "
                 f"never error: {last!r}"
             )
         matched = _match_output(last.get("output") or "")
         if matched is None:
-            raise ResolveClientNameError(
+            raise AssertionError(
                 f"resolve_client_name returned an output matching none of "
                 f"the four known JSON shapes: {last.get('output')!r}"
             )
@@ -773,23 +722,37 @@ def _resolve_client_name(
 
 
 _HEBREW_GERESH = "׳"
-_APOSTROPHE_VARIANTS = ("'", "’")  # ASCII ' and typographic '
+_APOSTROPHE_VARIANTS = ("'", "’", "׳")  # ASCII ' , typographic ' , geresh (idempotent)
+# Bidi / general-format control codepoints an RTL-aware model or the WhatsApp
+# layer can silently insert into or drop from a mixed-script name (Hebrew +
+# Arabic Israeli names both occur in the seed pools). They carry no identity.
+_BIDI_CONTROLS = dict.fromkeys(
+    [0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+     0x2066, 0x2067, 0x2068, 0x2069, 0x061C]
+)
 
 
-def _normalize_hebrew_geresh(name: str) -> str:
-    """Replace any apostrophe-like character with the Hebrew geresh - mirrors
-    denidin_mcp_morning.tools._normalize_hebrew_geresh exactly (independently
-    reimplemented, never imported - see this module's App-wall docstring
-    above). Morning normalizes any client name it stores this way, so a name
-    containing an apostrophe (e.g. "ריצ'רד") comes back from Morning's own
-    formatted output as "ריצ׳רד" - a caller comparing against the raw,
-    un-normalized name (as typed/generated) against that OUTPUT (not
-    against a tool call's own arguments, which stay un-normalized) needs
-    this to avoid a false negative (caught in a post-merge sweep 2026-08-12,
-    a real run drew "ריצ'רד" from _unique_client_name()'s pool)."""
+def _normalize_hebrew_geresh(name):
+    """Canonicalise a Hebrew client name for an equality/substring compare
+    against Morning's own formatted OUTPUT (never against a tool call's raw
+    arguments, which stay un-normalized).
+
+    - Replace every apostrophe-like character with the Hebrew geresh - Morning
+      stores names this way, so "ריצ'רד" comes back as "ריצ׳רד"
+      (mirrors `denidin_mcp_morning.tools._normalize_hebrew_geresh`; caught in a
+      post-merge sweep 2026-08-12 when a real run drew "ריצ'רד" from the pool).
+    - NFC-normalise and strip bidi/format controls, so an invisible RTL mark the
+      model or WhatsApp layer added/dropped does not fail an otherwise-identical
+      compare (Feature 069, was a separate `_geresh_normalise` in
+      `_ledger_069_acceptance.py` until 2026-09-10 - folded in here).
+    - `None`/`""` pass through unchanged.
+    """
+    if not name:
+        return name
+    out = unicodedata.normalize("NFC", str(name)).translate(_BIDI_CONTROLS)
     for variant in _APOSTROPHE_VARIANTS:
-        name = name.replace(variant, _HEBREW_GERESH)
-    return name
+        out = out.replace(variant, _HEBREW_GERESH)
+    return out
 
 
 def _is_real_approval_prompt(text: Optional[str]) -> bool:

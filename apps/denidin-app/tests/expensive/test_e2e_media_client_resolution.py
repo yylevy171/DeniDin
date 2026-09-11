@@ -9,9 +9,12 @@ persisted directly off the OCR anymore — FR-069-045), so the mandatory
 client-resolution detour runs, and the post-turn recognition call then records
 the event against an EXACT Morning client name.
 
-Two-hop fidelity (`_ledger_069_acceptance.assert_ledger_event_matches_manifest_two_hop`):
-  Hop 1 — the vision extractor already carried every manifest field (no OCR loss)
-  Hop 2 — the persisted event matches the manifest (no loss in the detour)
+Two-hop fidelity is automatic — every manifest here is `source_kind: image`, so
+`assert_ledger_event_matches_manifest` runs Hop 1 (the vision extractor already
+carried every manifest field) before Hop 2 (the persisted event matches).
+
+Every test is seed / send-image / drive / assert — the client-resolution answers
+live in the driver, keyed by each manifest's `resolution.mode`.
 
 🚨 EXPENSIVE — each test needs its own fresh explicit human approval, every run,
 one at a time. STOP at every failure for a full report. Read `logs/test_logs/`
@@ -19,19 +22,6 @@ one at a time. STOP at every failure for a full report. Read `logs/test_logs/`
 
     scripts/run_single_test.sh \\
       "tests/expensive/test_e2e_media_client_resolution.py::TestMediaClientResolutionE2E::<name>"
-
-Morning sandbox roster
-----------------------
-* US7d: `עטיה רועי מאיר` — seeded idempotently in-test
-  (`_seed_client(ensure_exists=True)`); also on `pull_sandbox_clients.py`'s
-  denylist (expensive bank-deposit payer).
-* US7a / US9: the payer/client (`קהילת צעיר` / `עידן שבתאי`) is NOT in the sandbox —
-  the run creates it via the detour.
-* US7b / US7c: both drive off `bank_transfer_grinfeld.jpg` (payer `גרינפלד אורלי`,
-  ₪800, 23/08/2026). The tests seed non-exact partial-match clients
-  (`_seed_client(ensure_exists=True)`) per each manifest's `seed_clients`; they
-  assert only the final resolved `client_name`, not the candidate count (they
-  share one image, so a prior run of the other leaves its partials behind).
 """
 from __future__ import annotations
 
@@ -48,22 +38,15 @@ from src.models.config import AppConfiguration
 from tests.billed.denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,
     NoMorningTunnelError,
-    _seed_client,
     require_live_morning_tunnel,
 )
-from tests.billed._ledger_069_acceptance import (
-    assert_ledger_event_matches_manifest_two_hop,
-    ledger_events_for_chat,
-    load_manifest,
-    resolution_answer_bank,
-    session_id_for_chat,
-)
+from tests.billed._ledger_069_acceptance import assert_ledger_event_matches_manifest
+from tests.billed._ledger_069_post_turn_base import drive_capture, seed_scenario
 from tests.e2e_helpers import (
-    ClarificationAnswerBank,
     create_real_notification,
     get_response,
     assert_response_exists,
-    reset_chat_session,
+    wipe_chat_messages_on_disk,
 )
 
 logger = logging.getLogger(__name__)
@@ -164,14 +147,8 @@ class TestMediaClientResolutionE2E:
             mgr = denidin_app.ai_handler.ledger_event_manager
             if hasattr(mgr, "_index"):
                 mgr._index = []  # keep the in-memory index consistent with disk
-            # Feature 070: one permanent session per chat, no expiry. Each US7/US9
-            # scenario is self-contained, so clear the chat's message history
-            # too - otherwise a prior test's routed image + detour sits in the
-            # next test's 1h post-turn recognition window and can produce a
-            # spurious cross-scenario event (e.g. a lingering `בנק` failing US9's
-            # "every event is `הסכם`" check, or an extra follow-up turn breaking
-            # US7d's "exact match => no detour" count).
-            reset_chat_session(denidin_app.ai_handler.session_manager, GODFATHER_CHAT_ID)
+            wipe_chat_messages_on_disk(
+                denidin_app.ai_handler.session_manager.storage_dir, GODFATHER_CHAT_ID)
 
         _wipe()
         yield
@@ -210,69 +187,14 @@ class TestMediaClientResolutionE2E:
         assert_response_exists(reply)
         return reply, trigger_epoch
 
-    def _run_detour_until_captured(  # pylint: disable=too-many-locals
-        self, denidin_app, first_reply, answer_bank, id_prefix, max_turns=6
-    ):
-        from denidin import handle_text_message
-
-        events = ledger_events_for_chat(denidin_app, GODFATHER_CHAT_ID)
-        text = first_reply
-        ts = int(time.time())
-        transcript = [{"turn": 0, "sent": "<image>", "reply": first_reply}]
-        turn = 0
-        while not events and turn < max_turns:
-            turn += 1
-            nxt, matched = answer_bank.compose_answer(text or "")
-            notification = create_real_notification({
-                "typeWebhook": "incomingMessageReceived",
-                "timestamp": ts + turn * 30,
-                "idMessage": f"{id_prefix}_F{turn}",
-                "instanceData": {"idInstance": 7103000000, "wid": "972501234567@c.us",
-                                 "typeInstance": "whatsapp"},
-                "senderData": _SENDER_DATA,
-                "messageData": {"typeMessage": "textMessage",
-                                "textMessageData": {"textMessage": nxt}},
-            })
-            handle_text_message(notification)
-            text = get_response(notification)
-            transcript.append({"turn": turn, "sent": nxt, "reply": text, "matched": matched})
-            events = ledger_events_for_chat(denidin_app, GODFATHER_CHAT_ID)
-        for e in transcript:
-            logger.info("TURN %s | sent=%r | reply=%r", e["turn"], e["sent"], e["reply"])
-        return events, transcript
-
-    def _extractor_output_for_chat(self, denidin_app):
-        """Best-effort Hop-1 payload: the synthetic media turn's stashed user
-        message text (verbatim OCR + the rendered structured fields, produced by
-        `build_ledger_stash_text`) pulled back out of session history.
-
-        The media pipeline rewrites the incoming `imageMessage` into a synthetic
-        *text* turn whose `content` is the stash block, persisted as an ordinary
-        user turn. A persisted human turn's `Message.role` is the REAL role
-        (`"godfather"`) since the 2026-08-19 role-model change - the "was this a
-        human turn" key is `ai_required_role` (same as
-        `tests/e2e_helpers.assert_extracted_text_persisted`). The stash frame
-        line always contains `טקסט שחולץ מה...`, so that substring identifies the
-        media turn among the detour's plain-text answers.
-
-        KNOWN LIMITATION (B4, 2026-09-06): MediaHandler does not persist the raw
-        structured `ledger_events` list anywhere, so `ledger_events` here stays
-        `[]` and Hop-1's `comp0`/`ev0` structured path is inert - the meaningful
-        check is the substring match against the stash text blob, which now
-        renders `סכום` / `תאריך הפקדה` / `מספר בנק` / the fee components etc.
-        Persisting the `image_event` dict onto the Message to catch a
-        structured-vs-verbatim divergence is tracked in
-        acceptance-regression-map.md."""
-        sm = denidin_app.ai_handler.session_manager
-        session = sm.get_session(GODFATHER_CHAT_ID)
-        for mid in session.message_ids:
-            msg = sm.load_message(session, mid)
-            if msg is None:
-                continue
-            content = getattr(msg, "content", None) or ""
-            if getattr(msg, "ai_required_role", None) == "user" and "שחולץ מה" in content:
-                return {"extracted_text": content, "ledger_events": [], "document_analysis": {}}
-        return {"extracted_text": "", "ledger_events": [], "document_analysis": {}}
+    def _run(self, denidin_app, http_server, manifest_name, caption, id_prefix, *, max_turns=7):
+        manifest = seed_scenario(denidin_app, manifest_name)
+        first, trigger_epoch = self._send_image(
+            http_server, manifest["source_file"], caption, id_prefix)
+        events, transcript, event_epoch = drive_capture(
+            denidin_app, manifest_name, image_reply=first, base_ts=trigger_epoch,
+            id_prefix=id_prefix, max_turns=max_turns)
+        return manifest, events, transcript, event_epoch
 
     # ==================================================================== US7
     @pytest.mark.sanity
@@ -280,108 +202,42 @@ class TestMediaClientResolutionE2E:
         """US7a — deposit slip whose payer has ZERO Morning matches. The detour
         collects full name + email + phone, `add_client` runs, and the deposit is
         recorded against the new exact Morning name."""
-        manifest = load_manifest("deposit_zero_matches")
-        res = manifest["client_resolution"]
-        first, trigger_epoch = self._send_image(http_server, manifest["source_file"],
-                                 "הפקדה שנכנסה היום, תרשום ביומן", "F069_US7A")
-        bank = resolution_answer_bank(
-            full_name=res["operator_stated_name"],
-            email=res["new_client_email"],
-            phone=res["new_client_phone"],
-        )
-        events, _ = self._run_detour_until_captured(denidin_app, first, bank, "F069_US7A")
+        _, events, _, epoch = self._run(
+            denidin_app, http_server, "deposit_zero_matches",
+            "הפקדה שנכנסה היום, תרשום ביומן", "F069_US7A")
         assert events, "US7a: deposit never recorded"
-        assert_ledger_event_matches_manifest_two_hop(
-            self._extractor_output_for_chat(denidin_app), events, manifest,
-            trigger_epoch=trigger_epoch,
-            session_id=session_id_for_chat(denidin_app, GODFATHER_CHAT_ID),
-            resolved_client_name=res.get('operator_stated_name'),
-        )
-
-    def _seed_from_manifest(self, manifest):
-        for seed in manifest.get("seed_clients", []):
-            _seed_client(GODFATHER_CHAT_ID, seed["id_prefix"], name=seed["name"],
-                         ensure_exists=bool(seed.get("ensure_exists")))
-            time.sleep(2)
+        assert_ledger_event_matches_manifest(denidin_app, events, "deposit_zero_matches", epoch)
 
     def test_us7b_deposit_image_one_partial_match(self, denidin_app, http_server):
         """US7b — the deposit slip's payer (`גרינפלד אורלי`) has ONE partial
         (non-exact) Morning match. The routed turn asks to confirm; the operator
-        confirms → the deposit is recorded against that exact Morning name.
-
-        (Shared image with US7c — the candidate *count* is not asserted, since a
-        prior US7c run leaves its own partials in the sandbox; the assertion is
-        on the final resolved `client_name` via a name-specific answer bank.)
-        """
-        manifest = load_manifest("deposit_one_partial")
-        res = manifest["client_resolution"]
-        self._seed_from_manifest(manifest)
-        first, trigger_epoch = self._send_image(http_server, manifest["source_file"],
-                                 "הפקדה שנכנסה, תרשום ביומן", "F069_US7B")
-        bank = ClarificationAnswerBank(
-            [{"topic": "confirm_or_pick",
-              "keywords": ["מצאתי", "האם הכוונה", "התכוונת", "נכון", "איזה", "כמה"],
-              "answer": f"כן, הכוונה ל{res['morning_name_after_resolution']}"}],
-            fallback=f"כן, הכוונה ל{res['morning_name_after_resolution']}",
-        )
-        events, _ = self._run_detour_until_captured(denidin_app, first, bank, "F069_US7B")
+        confirms → the deposit is recorded against that exact Morning name."""
+        _, events, _, epoch = self._run(
+            denidin_app, http_server, "deposit_one_partial",
+            "הפקדה שנכנסה, תרשום ביומן", "F069_US7B")
         assert events, "US7b: deposit never recorded"
-        assert_ledger_event_matches_manifest_two_hop(
-            self._extractor_output_for_chat(denidin_app), events, manifest,
-            trigger_epoch=trigger_epoch,
-            session_id=session_id_for_chat(denidin_app, GODFATHER_CHAT_ID),
-            resolved_client_name=res.get('operator_stated_name'),
-        )
+        assert_ledger_event_matches_manifest(denidin_app, events, "deposit_one_partial", epoch)
 
     def test_us7c_deposit_image_two_plus_matches(self, denidin_app, http_server):
         """US7c — the payer (`גרינפלד אורלי`) has 2+ partial matches; operator
         picks one → capture against that exact Morning name."""
-        manifest = load_manifest("deposit_two_plus")
-        res = manifest["client_resolution"]
-        self._seed_from_manifest(manifest)
-        first, trigger_epoch = self._send_image(http_server, manifest["source_file"],
-                                 "הפקדה, תרשום ביומן", "F069_US7C")
-        bank = ClarificationAnswerBank(
-            [{"topic": "pick_one", "keywords": ["איזה", "מצאתי", "יותר מ", "האם הכוונה", "כמה"],
-              "answer": f"הכוונה ל{res['operator_picks']}"}],
-            fallback=f"הכוונה ל{res['operator_picks']}",
-        )
-        events, _ = self._run_detour_until_captured(denidin_app, first, bank, "F069_US7C")
+        _, events, _, epoch = self._run(
+            denidin_app, http_server, "deposit_two_plus",
+            "הפקדה, תרשום ביומן", "F069_US7C")
         assert events, "US7c: deposit never recorded"
-        assert_ledger_event_matches_manifest_two_hop(
-            self._extractor_output_for_chat(denidin_app), events, manifest,
-            trigger_epoch=trigger_epoch,
-            session_id=session_id_for_chat(denidin_app, GODFATHER_CHAT_ID),
-            resolved_client_name=res.get('operator_stated_name'),
-        )
+        assert_ledger_event_matches_manifest(denidin_app, events, "deposit_two_plus", epoch)
 
+    @pytest.mark.sanity
     def test_us7d_deposit_image_exact_match_no_question(self, denidin_app, http_server):
         """US7d — the deposit slip's payer is an EXACT existing Morning client.
-        NO disambiguation question, NO `add_client` — the deposit is recorded
-        directly against the existing client, on the routed turn."""
-        manifest = load_manifest("deposit_exact_match")
-        res = manifest["client_resolution"]
-        _seed_client(GODFATHER_CHAT_ID, "F069_US7D",
-                     name=res["morning_name_after_resolution"], ensure_exists=True)
-        time.sleep(2)
-        first, trigger_epoch = self._send_image(http_server, manifest["source_file"],
-                                 "הפקדה שנכנסה, תרשום ביומן", "F069_US7D")
-        events, transcript = self._run_detour_until_captured(
-            denidin_app, first,
-            ClarificationAnswerBank([], fallback="כן תרשום"),
-            "F069_US7D", max_turns=3,
-        )
+        NO disambiguation question, NO `add_client` (the no-detour assertion lives
+        in `drive_capture`) — the deposit is recorded directly against the
+        existing client, on the routed turn."""
+        _, events, _, epoch = self._run(
+            denidin_app, http_server, "deposit_exact_match",
+            "הפקדה שנכנסה, תרשום ביומן", "F069_US7D", max_turns=3)
         assert events, "US7d: exact-match deposit not recorded"
-        assert len(transcript) <= 2, (
-            f"US7d: an exact Morning match must not trigger a resolution detour, "
-            f"took {len(transcript)-1} follow-up turn(s)"
-        )
-        assert_ledger_event_matches_manifest_two_hop(
-            self._extractor_output_for_chat(denidin_app), events, manifest,
-            trigger_epoch=trigger_epoch,
-            session_id=session_id_for_chat(denidin_app, GODFATHER_CHAT_ID),
-            resolved_client_name=res.get('operator_stated_name'),
-        )
+        assert_ledger_event_matches_manifest(denidin_app, events, "deposit_exact_match", epoch)
 
     # ==================================================================== US9
     @pytest.mark.sanity
@@ -389,23 +245,10 @@ class TestMediaClientResolutionE2E:
         """US9 — a photographed multi-tier fee agreement (`agreement_idan_shabtai.jpg`).
         Client not in Morning → detour → `add_client` → every fee tier recorded
         against the new exact Morning name. Two-hop fidelity."""
-        manifest = load_manifest("agreement_photo_multi")
-        res = manifest["client_resolution"]
-        first, trigger_epoch = self._send_image(http_server, manifest["source_file"],
-                                 "ההסכם החתום, תרשום ביומן", "F069_US9")
-        bank = resolution_answer_bank(
-            full_name=res["operator_stated_name"],
-            email=res["new_client_email"],
-            phone=res["new_client_phone"],
-        )
-        events, _ = self._run_detour_until_captured(denidin_app, first, bank, "F069_US9",
-                                                    max_turns=7)
+        _, events, _, epoch = self._run(
+            denidin_app, http_server, "agreement_photo_multi",
+            "ההסכם החתום, תרשום ביומן", "F069_US9")
         assert events, "US9: photographed agreement never recorded"
         for e in events:
             assert e["source_type"] == "הסכם"
-        assert_ledger_event_matches_manifest_two_hop(
-            self._extractor_output_for_chat(denidin_app), events, manifest,
-            trigger_epoch=trigger_epoch,
-            session_id=session_id_for_chat(denidin_app, GODFATHER_CHAT_ID),
-            resolved_client_name=res.get('operator_stated_name'),
-        )
+        assert_ledger_event_matches_manifest(denidin_app, events, "agreement_photo_multi", epoch)

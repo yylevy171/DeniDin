@@ -1,18 +1,10 @@
 {
   "source_kind": "text",
-  "story": "US1 — the mechanism moved: a plain-text fee agreement, client already an EXACT Morning match (seeded in-test, name injected as $client). Exactly one agreement recorded post-turn against the exact Morning name; no inline capture_ledger_event tool. Two components (fixed 5,000 retainer + 10% success). No payer.",
-  "source_file": null,
-  "seed_clients": [
-    {
-      "id_prefix": "F069_US1",
-      "name": "ליאור אשכנזי כהן",
-      "ensure_exists": true,
-      "phone": "0525550101"
-    }
-  ],
+  "story": "US8 — store-anyway: same 3-tier fee agreement as US4, but the operator declines Morning client resolution and elects to store it as stated. No add_client; the LedgerEvent is persisted with the operator-stated name (minted per-run). Every non-client field is still manifest-exact.",
+  "source_file": "agreement_new_client.txt",
   "resolution": {
-    "mode": "exact",
-    "name": "ליאור אשכנזי כהן"
+    "mode": "store_as_stated",
+    "name": "$unique"
   },
   "files": "per_component",
   "shared_fields": {
@@ -32,7 +24,7 @@
       "tested": "$client"
     },
     "payer_name": {
-      "null": true
+      "tested": "עוזי אלגרבלי"
     },
     "reference": {
       "null": true
@@ -101,7 +93,7 @@
         "free_text": true
       },
       "amount": {
-        "tested": "5000"
+        "tested": "12000"
       },
       "percent": {
         "null": true
@@ -136,10 +128,42 @@
         "null": true
       },
       "percent": {
-        "tested": "10"
+        "tested": "15"
       },
       "percent_base": {
         "free_text": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "free_text": true
+      }
+    },
+    {
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "tested": "1500"
+      },
+      "percent": {
+        "null": true
+      },
+      "percent_base": {
+        "null": true
       },
       "hours": {
         "null": true

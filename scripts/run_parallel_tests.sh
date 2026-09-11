@@ -2,6 +2,20 @@
 set -uo pipefail
 
 # ============================================================================
+# 🚨 MUST BE RUN WITH LIVE SOUND-OFF — ALWAYS. 🚨
+# This script's own per-test `>>> TEST [k/N] PASSED|FAILED` lines (emitted by
+# conftest.py, on by default) are worthless if the invoking agent/human waits
+# on a blocking call and only reads them after the whole run finishes. Stream
+# this script's stdout live (tail -f / Monitor-style) and relay each `>>> TEST`
+# line the instant it appears - never launch it in the background and silently
+# block until completion. Real incident (2026-09-11): an agent ran this in the
+# background with a long blocking wait, going dark for minutes at a time
+# across several retry rounds with zero live status, on a run the user was
+# actively watching. CLAUDE.md's "INDIVIDUAL PER-TEST SOUND-OFF IS THE
+# STANDARD" banner already says this applies to every way tests are run,
+# including this script - this comment exists only because that got missed
+# in practice, not because the rule was previously silent on it.
+#
 # General-purpose PARALLEL runner for denidin-app billed / expensive tests.
 #
 # This is the NON-sanity sibling of scripts/run_sanity_parallel.sh (Feature 075).

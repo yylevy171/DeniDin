@@ -168,8 +168,8 @@ class TestGroupBReferenceApprovalE2E:
 
         session_manager = denidin_app.ai_handler.session_manager
         if session_manager is not None:
-            from tests.e2e_helpers import reset_chat_session
-            reset_chat_session(session_manager, chat_id)
+            from tests.e2e_helpers import wipe_chat_messages_on_disk
+            wipe_chat_messages_on_disk(session_manager.storage_dir, chat_id)
 
     def test_given_a_deposit_matching_an_existing_tax_invoice_then_a_receipt_closes_it(
         self, denidin_app, http_server, config

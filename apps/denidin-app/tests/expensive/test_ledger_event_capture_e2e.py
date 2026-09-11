@@ -38,9 +38,9 @@ images through the full resolution detour with bidirectional-manifest fidelity):
   amounts 23,600 / 70,800 / 9,440).
 - `test_given_real_bank_deposit_screenshot_when_processed_then_captured_as_bank_deposit`
   -> US7a (`test_us7a_deposit_image_zero_matches_new_client`, manifest
-  `deposit_zero_matches`: same `bank_deposit_kehilat_tzair.jpg`, same 9,440;
-  `vat_status: "כולל"` folded into that manifest to keep this file's forced-
-  field coverage).
+  `deposit_zero_matches`: now `Deposit_Kehunai.jpg` (2026-09-11, replacing the
+  retired `bank_deposit_kehilat_tzair.jpg`), same 1,888; `vat_status: "כולל"`
+  folded into that manifest to keep this file's forced-field coverage).
 
 Images are real source material from the AHLedger reconciliation project
 (tests/fixtures/media/ledger_events/), each with independently verified
@@ -89,6 +89,7 @@ from tests.billed.denidin_mcp_e2e_helpers import (
     require_live_morning_tunnel,
 )
 from tests.e2e_helpers import (
+    persisted_ledger_events_for_chat,
     ClarificationAnswerBank,
     create_real_notification,
     event_datetime_for_message_ts,
@@ -266,24 +267,11 @@ class TestLedgerEventCaptureE2E:
 
         session_manager = denidin_app.ai_handler.session_manager
         if session_manager is not None:
-            from tests.e2e_helpers import reset_chat_session
-            reset_chat_session(session_manager, chat_id)
+            from tests.e2e_helpers import wipe_chat_messages_on_disk
+            wipe_chat_messages_on_disk(session_manager.storage_dir, chat_id)
 
     # ------------------------------------------------------------------ event readers
-    @staticmethod
-    def _events_for_chat(denidin_app, chat_id):
-        """All persisted LedgerEvent files for this chat_id's current session,
-        sorted by captured_at - reads the real files off disk."""
-        session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
-        events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
-        results = []
-        for f in events_dir.glob("*.json"):
-            with open(f, encoding='utf-8') as fh:
-                data = json.load(fh)
-            if data.get("session_id") == session_id:
-                results.append(data)
-        results.sort(key=lambda d: d["captured_at"])
-        return results
+    _events_for_chat = staticmethod(persisted_ledger_events_for_chat)
 
     @staticmethod
     def _assert_ledger_events_persisted(denidin_app, chat_id, expected_count):

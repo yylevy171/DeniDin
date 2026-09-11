@@ -32,7 +32,7 @@ Each `הסכם` / `בנק` fixture ships a committed sibling manifest:
 | `agreement_doc_multi` | ✅ | ✅ `.docx` (`build_agreement_doc_multi.py`) | US10 |
 | `agreement_photo_multi` | ✅ | ↔ reuses `media/ledger_events/agreement_idan_shabtai.jpg` | US9 |
 | `deposit_exact_match` | ✅ | ↔ reuses `media/ledger_events/Bank-test-image.jpg` | US7d |
-| `deposit_zero_matches` | ✅ | ↔ reuses `media/ledger_events/bank_deposit_kehilat_tzair.jpg` | US7a |
+| `deposit_zero_matches` | ✅ | ↔ reuses `media/ledger_events/Deposit_Kehunai.jpg` | US7a — payer name is a compound/unclear joint holder, deliberately not the client (see `resolution.mode: new_client_distinct_payer`) |
 | `deposit_one_partial` | ✅ | ↔ reuses `media/ledger_events/bank_transfer_grinfeld.jpg` (payer גרינפלד אורלי, 800 ₪, 23/08/2026) | US7b — test seeds 1 non-exact partial |
 | `deposit_two_plus` | ✅ | ↔ reuses `media/ledger_events/bank_transfer_grinfeld.jpg` | US7c — test seeds 2 partials; shares the image with US7b (candidate count not asserted) |
 
@@ -53,35 +53,46 @@ Planned fixture set (per C9):
 | `deposit_two_plus` | `.png` | expensive | US7c |
 | `deposit_exact_match` | `.png` | expensive | US7d (exact Morning match — no question, no new client) |
 
-## Manifest shape
+## Manifest shape (normalised 2026-09-10 — ONE schema for every manifest)
+
+A test's **name is the only key**: `Test X → load_manifest("X")`. Once loaded, the
+whole seed / drive / assert mechanism is common to every scenario.
 
 ```json
 {
-  "source_kind": "image" | "text" | "document",
-  "expected_event": {
-    "source_type": "בנק",
-    "event_subtype": "הפקדה",
-    "amount": "6200",
-    "txn_date": "2026-08-14",
-    "bank_number": "12",
-    "bank_branch": "645",
-    "bank_account": "418302",
-    "reference": "88213347",
-    "payer_name": "רונית בר"
-  },
-  "client_resolution": {
-    "scenario": "exact_match | one_partial_then_new | two_plus_then_pick | new_client | store_anyway",
-    "morning_name_after_resolution": "רונית בר-כוכבא",
-    "expects_marker_in_description": false
-  }
+  "source_kind": "text" | "image" | "document" | "morning_create",
+  "story": "one-line human description",
+  "source_file": "agreement_new_client.txt",          // optional; the source artifact
+  "seed_clients": [                                     // optional; seed_scenario() seeds each
+    {"id_prefix": "F069_US1", "name": "…", "phone": "…", "ensure_exists": true}
+  ],
+  "resolution": { "mode": "…", … },                    // THE one scenario-specific knob
+  "files": "single" | "per_component",
+  "shared_fields":  { "<persisted_field>": <rule>, … },// identical on every persisted file
+  "components":     [ { "<persisted_field>": <rule>, … }, … ]   // per_component only
 }
 ```
 
-For a `הסכם` fixture (text, photo, or `docx`), `expected_event` also lists **every fee
-component as its own entry** under a `components` list, each
-`{kind: "fixed" | "percent", value, description}` — `agreement_photo_multi` and
-`agreement_doc_multi` each carry a fixed retainer + a success percentage + a per-hearing
-fee at minimum, so drop-detection is not weak.
+`shared_fields` + the union of `components` keys must classify **every**
+`LEDGER_EVENT_FIELDS` entry exactly once. Each `<rule>` is one of
+`{"tested": <v>}` (`"$client"` = the resolved client name), `{"generated": "<kind>"}`,
+`{"null": true}`, `{"free_text": true}`.
+
+### `resolution.mode` — drives the answer bank (in `drive_capture`) and `$client` (in the asserter)
+
+| mode | params | flow the driver answers | `$client` resolves to |
+|---|---|---|---|
+| `exact` | `name` | none — asserts NO detour happened | `name` |
+| `pick_existing` | `stated`, `resolves_to` | "yes, the existing client `resolves_to`" | `resolves_to` |
+| `new_client` | `name`, `email`, `phone` | supplies full name + email + phone → `add_client` | `name` |
+| `new_client_distinct_payer` | `name`, `email`, `phone` | rejects the source's own payer name as the client ("that's only who paid"), states an unrelated new client → `add_client`; `payer_name` is asserted non-null (verbatim from the source) instead of null | `name` |
+| `store_as_stated` | `name` | "store it as-stated, don't verify in Morning" | `name` |
+| `none` | `name` | no client detour (only e.g. US2's approval gate) | `name` |
+
+`name` / `email` may be the sentinel `"$unique"` / `"$email"` — bound **once per
+test** to a freshly-minted real client name / ASCII email (`load_manifest`
+memoises; the autouse fixture clears it). One `$unique` value is shared by
+`resolution.*` and every `seed_clients` entry.
 
 ## Persisted `LedgerEvent` field names — pinned
 

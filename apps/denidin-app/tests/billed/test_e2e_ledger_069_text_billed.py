@@ -8,12 +8,17 @@ text (FR-069-005/022). Exhaustive per-field manifest fidelity via
 `event_datetime` is asserted equal to the triggering message's Green API
 timestamp on every scenario that persists an event.
 
+Every test is the same three steps:
+    1. `seed_scenario(denidin_app, <manifest>)`      — seed the manifest's clients
+    2. `drive_capture(denidin_app, <manifest>, first_text=<trigger>)` — one turn +
+       whatever resolution detour the manifest's `resolution.mode` implies
+    3. `assert_ledger_event_matches_manifest(denidin_app, events, <manifest>, epoch)`
+
 The 4-way client-resolution logic is covered across this file + US10:
-    US4  — 0 Morning matches → new-client detour
-    US5b — exactly 1 partial match → operator picks the existing candidate
-    US5  — 2+ partial matches → operator picks one
-    US6  — exact match → silent, no question
-(US10, `..._docx_billed.py`, adds the 1-partial case for a `.docx` source.)
+    US4  — 0 Morning matches → new-client detour        (resolution.mode new_client)
+    US5b — exactly 1 partial match → operator picks it   (resolution.mode pick_existing)
+    US5  — 2+ partial matches → operator picks one       (resolution.mode pick_existing)
+    US6  — exact match → silent, no question             (resolution.mode exact)
 
 Run (billed — no per-run approval; sound off each result live):
     scripts/run_single_test.sh "tests/billed/test_e2e_ledger_069_text_billed.py::<node>"
@@ -21,30 +26,19 @@ Run (billed — no per-run approval; sound off each result live):
 """
 from __future__ import annotations
 
-import time
-
 import pytest
 
-from tests.billed.denidin_mcp_e2e_helpers import (
-    GODFATHER_CHAT_ID,
-    _random_seed_email,
-    _seed_client,
-    _send_turn,
-    _unique_client_name,
-)
+from tests.billed.denidin_mcp_e2e_helpers import GODFATHER_CHAT_ID, _send_turn
 from tests.billed._ledger_069_acceptance import (
     assert_ledger_event_matches_manifest,
     assert_no_ledger_event,
-    load_manifest,
-    resolution_answer_bank,
-    session_id_for_chat,
 )
 from tests.billed._ledger_069_post_turn_base import (
     FIX_DIR,
-    drive_capture_conversation,
-    reset_069_chat,  # noqa: F401 - autouse fixture, imported to register in this module
+    drive_capture,
+    seed_scenario,
+    clean_069_chat_history,  # noqa: F401 - autouse fixture, registers in this module
 )
-from tests.e2e_helpers import ClarificationAnswerBank
 
 
 @pytest.mark.billed
@@ -57,22 +51,17 @@ class TestLedgerPostTurnCaptureText:
         Morning name. `capture_ledger_event` is not offered to the model anymore
         (the mechanism move) — the only path to a `LedgerEvent` is the post-turn
         recognition call. Exhaustive manifest fidelity."""
-        name, _, _ = _seed_client(GODFATHER_CHAT_ID, "F069_US1", phone="0525550101")
-        time.sleep(2)
+        manifest = seed_scenario(denidin_app, "agreement_us1")
+        name = manifest["resolution"]["name"]
         text = (
             f"סגרתי היום הסכם שכר טרחה עם {name}: מקדמה קבועה 5,000 ש\"ח + מע\"מ, "
             f"ובנוסף שכר הצלחה 10% + מע\"מ מכל סכום שייפסק."
         )
-        events, transcript, trigger_epoch = drive_capture_conversation(
-            denidin_app, text,
-            ClarificationAnswerBank([], fallback="כן, זה נכון, תרשום"),
-            id_prefix="F069_US1",
+        events, _, trigger_epoch = drive_capture(
+            denidin_app, "agreement_us1", first_text=text, id_prefix="F069_US1",
         )
         assert_ledger_event_matches_manifest(
-            events, load_manifest("agreement_us1"),
-            trigger_epoch=trigger_epoch,
-            session_id=session_id_for_chat(denidin_app, GODFATHER_CHAT_ID),
-            resolved_client_name=name,
+            denidin_app, events, "agreement_us1", trigger_epoch,
         )
         last = denidin_app.ai_handler.last_response
         if last is not None:
@@ -95,35 +84,27 @@ class TestLedgerPostTurnCaptureText:
         assert_no_ledger_event(denidin_app, GODFATHER_CHAT_ID)
 
     # ---- US4: FLAGSHIP — 0-match, brand-new client, full resolution detour --
+    @pytest.mark.sanity
     def test_us4_new_client_agreement_full_detour(self, denidin_app):
         """`agreement_new_client.txt`: a multi-component fee agreement for a
-        client Morning has never seen (name drawn fresh via `_unique_client_name`
-        and injected — a real name, never a per-run suffix). The turn cannot
+        client Morning has never seen (name minted fresh via the manifest's
+        `$unique` sentinel — a real name, never a per-run suffix). The turn cannot
         complete until the operator supplies full name + email + phone and
         `add_client` runs; only then does the post-turn recognition call record
         the agreement — every fee component, `payer_name` verbatim as free text
         (≠ `client_name`), against the newly-created exact Morning name.
         Exhaustive bidirectional manifest fidelity — the detour lost nothing and
         invented nothing."""
-        manifest = load_manifest("agreement_new_client")
-        client_name = _unique_client_name()
-        agreement_text = (FIX_DIR / "agreement_new_client.txt").read_text(
+        manifest = seed_scenario(denidin_app, "agreement_new_client")
+        agreement_text = (FIX_DIR / manifest["source_file"]).read_text(
             encoding="utf-8"
-        ).format(client_name=client_name)
-        bank = resolution_answer_bank(
-            full_name=client_name,
-            email=_random_seed_email(),  # ASCII only — a Hebrew local-part makes add_client reject
-            phone="0525550142",
-        )
-        events, transcript, trigger_epoch = drive_capture_conversation(
-            denidin_app,
-            "קיבלתי עכשיו את ההסכם הבא, תרשום אותו ביומן:\n\n" + agreement_text,
-            bank, id_prefix="F069_US4", max_turns=6,
+        ).format(client_name=manifest["resolution"]["name"])
+        events, _, trigger_epoch = drive_capture(
+            denidin_app, "agreement_new_client", id_prefix="F069_US4", max_turns=6,
+            first_text="קיבלתי עכשיו את ההסכם הבא, תרשום אותו ביומן:\n\n" + agreement_text,
         )
         assert_ledger_event_matches_manifest(
-            events, manifest, trigger_epoch=trigger_epoch,
-            session_id=session_id_for_chat(denidin_app, GODFATHER_CHAT_ID),
-            resolved_client_name=client_name,
+            denidin_app, events, "agreement_new_client", trigger_epoch,
         )
 
     # ---- US5b: exactly ONE partial match — operator picks the candidate ----
@@ -133,114 +114,76 @@ class TestLedgerPostTurnCaptureText:
         one candidate AND the create-new option; the operator picks the existing
         candidate; the agreement is recorded against that exact seeded Morning
         name. No client is created — repeatable."""
-        manifest = load_manifest("agreement_one_partial")
-        res = manifest["client_resolution"]
-        for seed in manifest["seed_clients"]:
-            _seed_client(GODFATHER_CHAT_ID, seed["id_prefix"], name=seed["name"],
-                         phone="0525550106", ensure_exists=bool(seed.get("ensure_exists")))
-            time.sleep(2)
-        agreement_text = (FIX_DIR / "agreement_one_partial.txt").read_text(encoding="utf-8")
-        bank = ClarificationAnswerBank(
-            [{"topic": "one_candidate_or_new",
-              "keywords": ["מצאתי", "האם הכוונה", "התכוונת", "דומה", "נכון", "קיים", "חדש", "ליצור"],
-              "answer": f"כן, הכוונה ללקוח הקיים {res['operator_picks']}, אל תיצור לקוח חדש"}],
-            fallback=f"כן, הלקוח הקיים {res['operator_picks']}, אל תיצור חדש",
-        )
-        events, transcript, trigger_epoch = drive_capture_conversation(
-            denidin_app,
-            "תרשום ביומן את ההסכם הזה:\n\n" + agreement_text,
-            bank, id_prefix="F069_US5B", max_turns=6,
+        manifest = seed_scenario(denidin_app, "agreement_one_partial")
+        agreement_text = (FIX_DIR / manifest["source_file"]).read_text(encoding="utf-8")
+        events, _, trigger_epoch = drive_capture(
+            denidin_app, "agreement_one_partial", id_prefix="F069_US5B", max_turns=6,
+            first_text="תרשום ביומן את ההסכם הזה:\n\n" + agreement_text,
         )
         assert_ledger_event_matches_manifest(
-            events, manifest, trigger_epoch=trigger_epoch,
-            session_id=session_id_for_chat(denidin_app, GODFATHER_CHAT_ID),
+            denidin_app, events, "agreement_one_partial", trigger_epoch,
         )
 
     # ---- US5: 2+ partial matches — operator picks one --------------------
+    @pytest.mark.sanity
     def test_us5_ambiguous_agreement_operator_picks(self, denidin_app):
         """`agreement_ambiguous.txt`: two partial Morning matches for the stated
         name. The turn must ask which one; once the operator picks, the agreement
         is recorded against that exact Morning name. Exhaustive manifest
         fidelity."""
-        manifest = load_manifest("agreement_ambiguous")
-        res = manifest["client_resolution"]
-        for seed in manifest["seed_clients"]:
-            _seed_client(GODFATHER_CHAT_ID, seed["id_prefix"], name=seed["name"],
-                         phone="0525550102", ensure_exists=bool(seed.get("ensure_exists")))
-            time.sleep(2)  # Morning search-index settle
-        agreement_text = (FIX_DIR / "agreement_ambiguous.txt").read_text(encoding="utf-8")
-        bank = ClarificationAnswerBank(
-            [{"topic": "which_of_the_matches",
-              "keywords": ["איזה", "מצאתי", "יותר מ", "האם הכוונה", "שתי", "כמה"],
-              "answer": f"הכוונה ל{res['operator_picks']}"}],
-            fallback=f"הכוונה ל{res['operator_picks']}",
-        )
-        events, transcript, trigger_epoch = drive_capture_conversation(
-            denidin_app,
-            "תרשום ביומן את ההסכם הזה:\n\n" + agreement_text,
-            bank, id_prefix="F069_US5", max_turns=6,
+        manifest = seed_scenario(denidin_app, "agreement_ambiguous")
+        agreement_text = (FIX_DIR / manifest["source_file"]).read_text(encoding="utf-8")
+        events, _, trigger_epoch = drive_capture(
+            denidin_app, "agreement_ambiguous", id_prefix="F069_US5", max_turns=6,
+            first_text="תרשום ביומן את ההסכם הזה:\n\n" + agreement_text,
         )
         assert_ledger_event_matches_manifest(
-            events, manifest, trigger_epoch=trigger_epoch,
-            session_id=session_id_for_chat(denidin_app, GODFATHER_CHAT_ID),
+            denidin_app, events, "agreement_ambiguous", trigger_epoch,
         )
 
     # ---- US6: exact match → silent, no disambiguation question -----------
+    @pytest.mark.sanity
     def test_us6_exact_match_captures_without_a_question(self, denidin_app):
         """A single EXACT Morning match → the operator is NOT asked to
-        disambiguate; the agreement is recorded on the same turn, exhaustive
+        disambiguate; the agreement is recorded on the same turn (the
+        exact-mode no-detour assertion lives in `drive_capture`), exhaustive
         manifest fidelity."""
-        name, _, _ = _seed_client(GODFATHER_CHAT_ID, "F069_US6", phone="0525550103")
-        time.sleep(2)
+        manifest = seed_scenario(denidin_app, "agreement_us6")
+        name = manifest["resolution"]["name"]
         text = (
             f"רשום ביומן: הסכם שכר טרחה עם {name} מהיום — מקדמה 7,000 ש\"ח + מע\"מ, "
             f"ושכר הצלחה 20% + מע\"מ."
         )
-        events, transcript, trigger_epoch = drive_capture_conversation(
-            denidin_app, text,
-            ClarificationAnswerBank([], fallback="כן תרשום"),
-            id_prefix="F069_US6", max_turns=3,
+        events, transcript, trigger_epoch = drive_capture(
+            denidin_app, "agreement_us6", first_text=text, id_prefix="F069_US6",
+            max_turns=3,
         )
         assert transcript and transcript[0]["reply"], "no reply on turn 1"
-        assert len(transcript) <= 2, (
-            f"an exact-match client should not trigger a resolution detour, "
-            f"took {len(transcript)} turns: {[t['sent'] for t in transcript]!r}"
-        )
         assert_ledger_event_matches_manifest(
-            events, load_manifest("agreement_us6"),
-            trigger_epoch=trigger_epoch,
-            session_id=session_id_for_chat(denidin_app, GODFATHER_CHAT_ID),
-            resolved_client_name=name,
+            denidin_app, events, "agreement_us6", trigger_epoch,
         )
 
     # ---- US8: store-anyway election + its refusal twin -------------------
     def test_us8_store_anyway_marks_the_record(self, denidin_app):
-        """`agreement_new_client.txt`, but the operator declines to resolve the
-        client and explicitly elects to store it as-stated → persisted with the
-        operator-stated name (a fresh `_unique_client_name`, never created in
-        Morning). No 'בטוח?' turn. Every non-client field is still manifest-exact
-        (`description` is free text, not asserted for the marker)."""
-        manifest = load_manifest("agreement_new_client")
-        stated = _unique_client_name()
-        agreement_text = (FIX_DIR / "agreement_new_client.txt").read_text(
+        """`agreement_store_anyway`: same agreement as US4, but the operator
+        declines to resolve the client and explicitly elects to store it
+        as-stated → persisted with the operator-stated name (a fresh `$unique`,
+        never created in Morning). No 'בטוח?' turn. Every non-client field is
+        still manifest-exact (`description` is free text, not asserted)."""
+        manifest = seed_scenario(denidin_app, "agreement_store_anyway")
+        stated = manifest["resolution"]["name"]
+        agreement_text = (FIX_DIR / manifest["source_file"]).read_text(
             encoding="utf-8"
         ).format(client_name=stated)
-        bank = ClarificationAnswerBank(
-            [{"topic": "resolve_or_store_anyway",
-              "keywords": ["אימייל", "טלפון", "שם מלא", "חדש", "ליצור", "מצאתי", "לקוח"],
-              "answer": "אל תיצור לקוח ואל תחפש, תרשום את זה ככה עם השם שנתתי, גם בלי אימות במורנינג"}],
-            fallback="תרשום ככה בלי אימות במורנינג",
-        )
-        events, transcript, trigger_epoch = drive_capture_conversation(
-            denidin_app,
-            f"תרשום ביומן, ואל תטרח לאמת את הלקוח במורנינג — תרשום עם השם {stated} כמו שהוא:\n\n"
-            + agreement_text,
-            bank, id_prefix="F069_US8", max_turns=5,
+        events, _, trigger_epoch = drive_capture(
+            denidin_app, "agreement_store_anyway", id_prefix="F069_US8", max_turns=5,
+            first_text=(
+                f"תרשום ביומן, ואל תטרח לאמת את הלקוח במורנינג — תרשום עם השם {stated} כמו שהוא:\n\n"
+                + agreement_text
+            ),
         )
         assert_ledger_event_matches_manifest(
-            events, manifest, trigger_epoch=trigger_epoch,
-            session_id=session_id_for_chat(denidin_app, GODFATHER_CHAT_ID),
-            resolved_client_name=stated,
+            denidin_app, events, "agreement_store_anyway", trigger_epoch,
         )
 
     def test_us8_dont_store_persists_nothing(self, denidin_app):

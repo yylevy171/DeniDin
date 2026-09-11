@@ -64,24 +64,56 @@ def sanity_worker_data_root() -> Path:
     return root / worker if worker else root
 
 
-def reset_chat_session(session_manager, chat_id: str) -> None:
-    """Empty a chat's session between tests. Feature 070 removed
-    SessionManager.clear_session (one permanent, never-expiring session per
-    chat now); this is the equivalent - drop every persisted message file
-    (live `messages/` and `archived/`), reset the id lists and counters, save.
-    No-op-safe if the session has no messages yet."""
-    session = session_manager.get_session(chat_id)
-    base = session_manager.storage_dir / (session.storage_path or session.session_id)
+def wipe_chat_messages_on_disk(sessions_storage_dir, chat_id: str) -> None:
+    """Give a chat a clean slate between tests, entirely from the outside — pure
+    filesystem, no `SessionManager` call and no live `Session` object mutation.
+
+    Feature 070 removed `SessionManager.clear_session` on purpose (one permanent,
+    never-expiring session per chat). A test that needs an empty history for the
+    NEXT run therefore does it itself: resolve `chat -> session_id` through the
+    SQLite chat index (`chat_index.db`, just a file), delete that session's
+    `messages/` + `archived/` JSON, and rewrite the four bookkeeping fields in
+    `session.json`. `SessionManager._load_session` re-reads `session.json` off
+    disk on every `get_session`, so the next turn sees the emptied session with
+    no in-process cache to fight.
+
+    `sessions_storage_dir` is the session store root (a `Path` or str — e.g.
+    `denidin_app.ai_handler.session_manager.storage_dir`, a read-only locate).
+    No-op-safe when the chat / index / files don't exist yet.
+    """
+    import sqlite3
+
+    root = Path(sessions_storage_dir)
+    index_db = root / "chat_index.db"
+    if not index_db.exists():
+        return
+    con = sqlite3.connect(str(index_db))
+    try:
+        row = con.execute(
+            "SELECT session_id FROM chat_sessions WHERE chat = ?", (chat_id,)
+        ).fetchone()
+    finally:
+        con.close()
+    if not row:
+        return
+
+    session_dir = root / row[0]
     for sub in ("messages", "archived"):
-        d = base / sub
+        d = session_dir / sub
         if d.exists():
             for f in d.glob("*.json"):
                 f.unlink()
-    session.message_ids = []
-    session.archived_message_ids = []
-    session.total_tokens = 0
-    session.message_counter = 0
-    session_manager._save_session(session)
+
+    session_json = session_dir / "session.json"
+    if session_json.exists():
+        data = json.loads(session_json.read_text(encoding="utf-8"))
+        data["message_ids"] = []
+        data["archived_message_ids"] = []
+        data["total_tokens"] = 0
+        data["message_counter"] = 0
+        session_json.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
 
 def create_real_notification(event_dict):
@@ -454,8 +486,9 @@ class ClarificationAnswerBank:
 
 
 def converse_until_ledger_events_captured(
-    *, handle_text_message, chat_id, first_message_text, answer_bank,
+    *, handle_text_message, chat_id, answer_bank,
     events_for_chat, base_timestamp, base_id_message, sender_data,
+    first_message_text=None, pre_sent_first_turn=None,
     instance_data=None, max_turns=4, turn_interval_seconds=30, test_logger=None,
 ):
     """
@@ -471,10 +504,23 @@ def converse_until_ledger_events_captured(
     as a clarifying question, runs it through answer_bank.compose_answer(),
     and sends the composed answer as the next turn - up to max_turns total.
 
+    A media source (an `imageMessage`) can't be sent as a `textMessage` turn 1,
+    so the caller sends the image itself and passes its result as
+    `pre_sent_first_turn={"sent": "<image>", "reply": <model reply>}` (with
+    `first_message_text=None`). Everything after turn 1 - the same
+    approval-gate / answer-bank detour, the same capture check - is then driven
+    here, so there is exactly ONE detour loop for text and media alike.
+
     Args:
         handle_text_message: the real denidin.handle_text_message callable.
         chat_id: this conversation's chat id.
-        first_message_text: the real fixture message to send on turn 1.
+        first_message_text: the real fixture message to send on turn 1 (omit
+            when passing pre_sent_first_turn).
+        pre_sent_first_turn: {"sent": str, "reply": str} - turn 1 already
+            happened outside this driver (e.g. an image message); its reply is
+            evaluated for capture / a clarifying question exactly as an
+            in-driver turn 1 would be. Mutually exclusive with
+            first_message_text.
         answer_bank: a ClarificationAnswerBank instance.
         events_for_chat: callable(chat_id) -> list of persisted ledger event
             dicts for this chat (e.g. a test class's own _events_for_chat).
@@ -505,13 +551,50 @@ def converse_until_ledger_events_captured(
     Raises:
         AssertionError if no events exist for chat_id after max_turns turns.
     """
+    assert (first_message_text is None) != (pre_sent_first_turn is None), (
+        "converse_until_ledger_events_captured: pass exactly one of "
+        "first_message_text / pre_sent_first_turn"
+    )
     log = test_logger or logger
     transcript = []
     events = []
-    text = first_message_text
     ts = base_timestamp
 
-    for turn_num in range(1, max_turns + 1):
+    def _next_text_from_reply(reply, entry):
+        """Given a model reply that did NOT capture, decide what the operator
+        says next: 'כן' to the real mutation-approval gate ("לאישור" + "כן" +
+        "לא" together - mirrors denidin_mcp_e2e_helpers._is_real_approval_prompt;
+        the answer bank has no topic for it and its field keywords would misfire
+        on the prompt's own text), otherwise the answer bank's composed reply."""
+        if reply and "לאישור" in reply and "כן" in reply and "לא" in reply:
+            entry["matched_topics"] = ["_approval_gate"]
+            log.info("Approval gate detected - answering 'כן'")
+            return "כן"
+        text, matched_topics = answer_bank.compose_answer(reply)
+        entry["matched_topics"] = matched_topics
+        log.info(f"No events yet - composed next turn from matched_topics={matched_topics!r}: {text!r}")
+        return text
+
+    if pre_sent_first_turn is not None:
+        # Turn 1 already happened outside this driver (an image message). Record
+        # it, and if it already captured, stop here - never send a follow-up
+        # after a turn that captured (the double-capture guard).
+        events = events_for_chat(chat_id)
+        entry = {"turn": 1, "sent": pre_sent_first_turn["sent"],
+                 "reply": pre_sent_first_turn["reply"], "matched_topics": []}
+        transcript.append(entry)
+        log.info(f"THEN turn 1 (pre-sent) reply: {pre_sent_first_turn['reply']!r}")
+        if events:
+            log.info("Ledger events detected after turn 1 - stopping the conversation here")
+            return events, transcript
+        text = _next_text_from_reply(pre_sent_first_turn["reply"], entry)
+        first_follow_up_turn = 2
+        ts += turn_interval_seconds
+    else:
+        text = first_message_text
+        first_follow_up_turn = 1
+
+    for turn_num in range(first_follow_up_turn, max_turns + 1):
         notification = create_real_notification({
             'typeWebhook': 'incomingMessageReceived',
             'timestamp': ts,
@@ -539,23 +622,7 @@ def converse_until_ledger_events_captured(
             log.info(f"Ledger events detected after turn {turn_num} - stopping the conversation here")
             return events, transcript
 
-        # Feature 069 new-client detour: when the model puts up the real
-        # mutation-approval gate (add_client, or a Morning create), the turn
-        # that moves the flow toward capture is a bare "כן". The answer bank
-        # has no topic for it, and its field-detail keywords would misfire on
-        # the prompt's own text - so answer it here directly. The gate has a
-        # fixed shape: "לאישור" + "כן" + "לא" together (mirrors
-        # denidin_mcp_e2e_helpers._is_real_approval_prompt).
-        if reply and "לאישור" in reply and "כן" in reply and "לא" in reply:
-            text = "כן"
-            entry["matched_topics"] = ["_approval_gate"]
-            log.info(f"Approval gate detected on turn {turn_num} - answering 'כן'")
-            ts += turn_interval_seconds
-            continue
-
-        text, matched_topics = answer_bank.compose_answer(reply)
-        entry["matched_topics"] = matched_topics
-        log.info(f"No events yet - composed next turn from matched_topics={matched_topics!r}: {text!r}")
+        text = _next_text_from_reply(reply, entry)
         ts += turn_interval_seconds
 
     raise AssertionError(
@@ -576,3 +643,27 @@ def reserve_ledger_event_bucket_prefixes(base_timestamp, max_turns, turn_interva
         f"{letter}{local_from_timestamp(base_timestamp + i * turn_interval_seconds).strftime('%d%m%y%H%M')}"
         for i in range(max_turns)
     }
+
+
+def persisted_ledger_events_for_chat(denidin_app, chat_id):
+    """Every persisted `LedgerEvent` JSON on disk whose `session_id` is this
+    chat's current session, sorted by `captured_at` then `event_id`.
+
+    The single reader for every ledger-capture E2E test (Feature 033/044/069) -
+    reads the real files off `LedgerEventManager.storage_dir`, never an in-memory
+    proxy, so an assertion proves the event genuinely landed in permanent
+    storage. Replaced five byte-identical copies 2026-09-10: the per-class
+    `_events_for_chat` staticmethods in `test_ledger_event_capture_billed.py`,
+    `test_ledger_event_capture_text_billed.py`, `test_ledger_event_capture_e2e.py`,
+    plus `_ledger_069_acceptance.ledger_events_for_chat` and
+    `_ledger_069_post_turn_base.events_reader`.
+    """
+    session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
+    events_dir = Path(denidin_app.ai_handler.ledger_event_manager.storage_dir)
+    out = []
+    for f in events_dir.glob("*.json"):
+        data = json.loads(f.read_text(encoding="utf-8"))
+        if data.get("session_id") == session_id:
+            out.append(data)
+    out.sort(key=lambda d: (d.get("captured_at", ""), d.get("event_id", "")))
+    return out

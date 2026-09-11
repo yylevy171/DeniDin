@@ -1,18 +1,17 @@
 {
-  "source_kind": "image",
-  "story": "US7d — bank-deposit photo whose payer is an EXACT existing Morning client: no disambiguation question, no add_client, captured directly against the existing client. Two-hop.",
-  "source_file": "Bank-test-image.jpg",
-  "_note": "Bank triplet filled in 2026-09-10 from the extractor's own legible read on the 2026-09-07 expensive run (bank 31 / branch 109 / account 105542585, amount 1500, txn_date 12/07/2026). The reference number (3263) is rendered into the free-text description by the model but not lifted into the `reference` field, so `reference`/`reference_hint` stay null.",
+  "source_kind": "morning_create",
+  "story": "US2 — in-conversation Morning create (type-320 combo): the חשבונית ledger event is captured synchronously that turn, against the exact resolved (seeded) client, carrying the real Morning document number. No VAT question.",
   "seed_clients": [
     {
-      "id_prefix": "F069_DEP_EXACT",
-      "name": "עטיה רועי מאיר",
+      "id_prefix": "F069_US2",
+      "name": "$unique",
+      "phone": "0525550104",
       "ensure_exists": true
     }
   ],
   "resolution": {
-    "mode": "exact",
-    "name": "עטיה רועי מאיר"
+    "mode": "none",
+    "name": "$unique"
   },
   "files": "single",
   "shared_fields": {
@@ -23,10 +22,10 @@
       "generated": "event_datetime"
     },
     "source_type": {
-      "tested": "בנק"
+      "tested": "חשבונית"
     },
     "event_subtype": {
-      "tested": "הפקדה"
+      "generated": "non_empty"
     },
     "client_name": {
       "tested": "$client"
@@ -38,28 +37,16 @@
       "free_text": true
     },
     "amount": {
-      "tested": "1500"
+      "tested": "1200"
     },
     "txn_date": {
-      "tested": "2026-07-12"
+      "generated": "date"
     },
     "reference": {
       "null": true
     },
     "reference_hint": {
       "null": true
-    },
-    "bank_number": {
-      "tested": "31"
-    },
-    "bank_branch": {
-      "tested": "109"
-    },
-    "bank_account": {
-      "tested": "105542585"
-    },
-    "vat_status": {
-      "tested": "כולל"
     },
     "agreement_id": {
       "null": true
@@ -85,26 +72,38 @@
     "hourly_rate": {
       "null": true
     },
+    "vat_status": {
+      "tested": "כולל"
+    },
     "split_partner": {
       "null": true
     },
     "split_percent": {
       "null": true
     },
-    "accounting_document_display_number": {
+    "bank_number": {
       "null": true
+    },
+    "bank_branch": {
+      "null": true
+    },
+    "bank_account": {
+      "null": true
+    },
+    "accounting_document_display_number": {
+      "generated": "non_empty"
     },
     "accounting_document_status": {
-      "null": true
+      "generated": "non_empty"
     },
     "accounting_document_status_code": {
-      "null": true
+      "generated": "non_empty"
     },
     "accounting_document_status_label": {
-      "null": true
+      "generated": "non_empty"
     },
     "accounting_document_payment_method": {
-      "null": true
+      "generated": "non_empty"
     },
     "session_id": {
       "generated": "session_id"

@@ -4,7 +4,7 @@
 **Feature ID**: 069-mandatory-client-resolution-before-ledger-event
 **Priority**: P2
 **Created**: 2026-08-30
-**Status**: Re-specified 2026-09-01 (architecture redesign). `speckit.clarify` / `speckit.plan` / `speckit.tasks` / `speckit.analyze` complete. Acceptance scenarios re-locked 2026-09-02 (US2 → Morning combo doc type 320 + VAT-included; US3 → in-conversation combo-doc create yields one `חשבונית` event; US7 → +7d exact-match; institution-slip story removed; single-ask + proactive store-anyway). Next: `speckit.implement`.
+**Status**: Done (2026-09-11). Re-specified 2026-09-01 (architecture redesign). `speckit.clarify` / `speckit.plan` / `speckit.tasks` / `speckit.analyze` complete. Acceptance scenarios re-locked 2026-09-02 (US2 → Morning combo doc type 320 + VAT-included; US3 → in-conversation combo-doc create yields one `חשבונית` event; US7 → +7d exact-match; institution-slip story removed; single-ask + proactive store-anyway). `speckit.implement` complete — full billed/expensive acceptance suite green (17 new Feature-069 tests, 7 added to the sanity suite), plus a real post-implementation bugfix (בנק `payer_name` incorrectly nulled when genuinely distinct from `client_name` — fixed in `ledger_recognition_prompt.md`'s Fields table + `ledger_event_manager.py`). PR: TBD.
 
 **Input** — User direction (2026-08-30 objective, materially redesigned 2026-09-01):
 

@@ -1087,27 +1087,41 @@ class LedgerEventManager:
             bank_branch = None
             bank_account = None
 
-        # payer_name is a הסכם-only concept (a routed/intermediary payment) - forced
-        # null for בנק regardless of what the AI passed, same defensive discipline as
-        # bank_number/etc above (finding #4, 2026-08-18 player review: the model put
-        # the depositor/account-holder name here about half the time instead of
-        # client_name, despite the tool description now forbidding it). Rather than
-        # just discarding a misplaced name (real data loss for exactly the mistake
-        # this is guarding against), rescue it into client_name when the model left
-        # client_name empty - never lose a real captured name to a field-choice
-        # mistake, matching this file's existing amount/hours "preserve the original
-        # rather than drop it" philosophy.
+        # payer_name used to be treated as a הסכם-only concept and was forced null
+        # for בנק regardless of what the AI passed (finding #4, 2026-08-18 player
+        # review: the model put the depositor/account-holder name here about half
+        # the time instead of client_name, despite the tool description forbidding
+        # it). Rather than just discarding a misplaced name (real data loss for
+        # exactly the mistake this was guarding against), that value was rescued
+        # into client_name when the model left client_name empty - never lose a
+        # real captured name to a field-choice mistake, matching this file's
+        # existing amount/hours "preserve the original rather than drop it"
+        # philosophy.
+        #
+        # Feature 069 (2026-09-11, US7a - new_client_distinct_payer): a בנק event
+        # CAN legitimately have a payer distinct from its client now (e.g. a
+        # deposit slip naming a compound/joint account holder that the operator
+        # explicitly rejects as the client, stating an unrelated new one instead -
+        # runtime_constitution.md's payer_name is "an intermediary who pays; may
+        # differ from the client; never resolved"). So payer_name is only nulled
+        # when it duplicates client_name (the original conflation this guard
+        # exists for) - never when the model has genuinely distinguished the two.
         client_name = event.get("client_name")
         payer_name_raw = event.get("payer_name")
         if source_type == "בנק":
             if not client_name and payer_name_raw:
                 logger.warning(
                     f"בנק event: client_name empty but payer_name={payer_name_raw!r} "
-                    f"given - payer_name doesn't apply to בנק, rescuing its value into "
-                    f"client_name instead of discarding it"
+                    f"given - rescuing its value into client_name instead of discarding it"
                 )
                 client_name = payer_name_raw
-            payer_name = None
+                payer_name = None
+            elif payer_name_raw and payer_name_raw.strip() == (client_name or "").strip():
+                # Same conflation the original guard targeted - collapse to one field.
+                payer_name = None
+            else:
+                # Genuinely distinct (or payer_name_raw is empty) - keep as given.
+                payer_name = payer_name_raw
         elif source_type == "חשבונית":
             # No routed-payment concept applies to a Morning document capture -
             # forced null, same discipline as בנק above (Feature 025).

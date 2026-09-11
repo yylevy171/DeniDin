@@ -107,6 +107,9 @@ BILLED=(
   "den|tests/billed/test_reminder_lifecycle_billed.py::TestReminderLifecycleBilled::test_godfather_creates_one_time_reminder_button_approval"
   "den|tests/billed/test_reminder_lifecycle_billed.py::TestReminderLifecycleBilled::test_godfather_creates_recurring_reminder"
   "den|tests/billed/test_reminder_lifecycle_billed.py::TestReminderLifecycleBilled::test_modify_single_occurrence_of_recurring_reminder"
+  "den|tests/billed/test_e2e_ledger_069_text_billed.py::TestLedgerPostTurnCaptureText::test_us4_new_client_agreement_full_detour"
+  "den|tests/billed/test_e2e_ledger_069_text_billed.py::TestLedgerPostTurnCaptureText::test_us5_ambiguous_agreement_operator_picks"
+  "den|tests/billed/test_e2e_ledger_069_text_billed.py::TestLedgerPostTurnCaptureText::test_us6_exact_match_captures_without_a_question"
 )
 
 EXPENSIVE=(
@@ -118,6 +121,8 @@ EXPENSIVE=(
   "den|tests/expensive/test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_multi_component_agreement_image_then_components_correctly_persisted"
   "den|tests/expensive/test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_bank_deposit_image_then_full_fields_correctly_persisted"
   "den|tests/expensive/test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_six_component_agreement_image_mor_ben_shaya_then_all_components_correctly_persisted"
+  "den|tests/expensive/test_e2e_media_client_resolution.py::TestMediaClientResolutionE2E::test_us7d_deposit_image_exact_match_no_question"
+  "den|tests/expensive/test_image_classification_e2e.py::test_kehunai_deposit_is_classified_as_a_bank_deposit"
 )
 
 ALL_ENTRIES=( "${GATE[@]}" "${BILLED[@]}" "${EXPENSIVE[@]}" )
