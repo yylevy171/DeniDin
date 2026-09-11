@@ -18,6 +18,7 @@ raising, so `pytest.raises` sees nothing.
 No mocking - the "not found" is real: a genuinely unused client name checked
 against the real sandbox first.
 """
+import json
 from pathlib import Path
 
 import pytest
@@ -139,17 +140,16 @@ def test_a_decorated_client_name_asks_for_confirmation(morning_client):
     assert items, f"expected the just-created client to be found via search_clients"
     morning_client.update_client(items[0]["id"], {"taxId": tax_id})
 
-    bare = resolve_client_name(morning_client, client_name)
-    assert bare.startswith("שם הלקוח המדויק"), f"precondition: the bare name must resolve - {bare!r}"
+    bare = json.loads(resolve_client_name(morning_client, client_name))
+    assert bare.get("status") == "resolved", f"precondition: the bare name must resolve - {bare!r}"
 
-    decorated = resolve_client_name(morning_client, f"{client_name} (ח.פ {tax_id})")
-    assert not decorated.startswith("שם הלקוח המדויק"), (
+    decorated = json.loads(resolve_client_name(morning_client, f"{client_name} (ח.פ {tax_id})"))
+    assert decorated.get("status") != "resolved", (
         f"a decorated (non-exact) name must never silently resolve - got {decorated!r}"
     )
-    assert client_name in decorated, (
-        f"the confirmation question must name the real client it found - got {decorated!r}"
+    assert decorated.get("status") == "needs_confirmation", (
+        f"a non-exact match must ask for confirmation, not a silent resolution - got {decorated!r}"
     )
-    assert "כן" in decorated and "לא" in decorated, (
-        f"a non-exact match must be a closed yes/no confirmation question, not a "
-        f"silent resolution - got {decorated!r}"
+    assert client_name in decorated.get("candidate_name", ""), (
+        f"the confirmation question must name the real client it found - got {decorated!r}"
     )

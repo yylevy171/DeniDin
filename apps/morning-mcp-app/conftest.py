@@ -6,6 +6,7 @@ apps/denidin-app/conftest.py exactly):
 - Production: logs/morning-mcp.log
 - Tests: logs/test_logs/{test_file_name}.log (automatic, per test file)
 """
+import os
 import sys
 import logging
 from pathlib import Path
@@ -84,6 +85,45 @@ def pytest_configure(config):
         "markers",
         "expensive: Tests that make real vision/image/PDF/DOCX OpenAI API calls (costlier; skip by default)"
     )
+
+    # Live per-test sound-off — ON BY DEFAULT (mirrors apps/denidin-app/conftest.py;
+    # CLAUDE.md / METHODOLOGY.md §VI / CONSTITUTION.md §V). One
+    # `>>> TEST [k/N] STATUS: <nodeid>` + `TEST-PROGRESS ...` line per test the
+    # moment its result is determined. Controller process only. Opt out with
+    # DENIDIN_TEST_SOUNDOFF=0; SANITY_PARALLEL_SOUNDOFF=1 forces it on.
+    global _SOUNDOFF_ON
+    _SOUNDOFF_ON = (
+        os.environ.get("DENIDIN_TEST_SOUNDOFF", "1") != "0"
+        or os.environ.get("SANITY_PARALLEL_SOUNDOFF") == "1"
+    ) and not hasattr(config, "workerinput")
+
+
+_SOUNDOFF_ON = False
+_soundoff = {"done": 0, "total": 0}
+
+
+def pytest_collection_finish(session):
+    # morning-mcp-app tests run serially (no pytest-xdist dependency here), so
+    # the core collection hook is enough for the k/N total.
+    if _SOUNDOFF_ON and not _soundoff["total"]:
+        _soundoff["total"] = len(getattr(session, "items", []) or [])
+
+
+def pytest_runtest_logreport(report):
+    if not _SOUNDOFF_ON:
+        return
+    if report.when == "call":
+        status = report.outcome.upper()
+    elif report.when == "setup" and report.outcome in ("failed", "skipped"):
+        status = "ERROR" if report.outcome == "failed" else "SKIP"
+    else:
+        return
+    _soundoff["done"] += 1
+    n, total = _soundoff["done"], (_soundoff["total"] or "?")
+    worker = getattr(report, "worker_id", "") or getattr(report, "node", "") or ""
+    tag = f"  ({worker})" if worker else ""
+    print(f"\n>>> TEST [{n}/{total}] {status}: {report.nodeid}{tag}", flush=True)
+    print(f"TEST-PROGRESS done={n} total={total} status={status} node={report.nodeid}", flush=True)
 
 
 @pytest.fixture(scope="session", autouse=True)

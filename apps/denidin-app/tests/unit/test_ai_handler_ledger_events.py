@@ -1,7 +1,11 @@
 """
-Unit tests for Ledger Event Recognition's function-call extraction (runtime_constitution.md)
-and, since Feature 033, LedgerEventManager wiring in AIHandler._handle_ledger_event_capture/
-_finalize_response.
+Unit tests for Ledger Event Recognition's function-call extraction (runtime_constitution.md).
+
+Feature 069 (mechanism move) removed the inline `_handle_ledger_event_capture` path
+entirely - ledger capture is now a dedicated post-turn recognition call plus a
+zero-AI ledgerer (see test_recognition_call.py / test_ledgerer.py). The extraction
+helpers and the LEDGER_EVENT_TOOL schema that this file exercises are still used
+(by the recognition call and by capture_ledger_events_from_text), so those tests stay.
 
 Real classification/extraction accuracy (does the model call the tool at the right time,
 with the right fields) is NOT unit-testable - that needs the real OpenAI API and is covered
@@ -512,243 +516,6 @@ class TestCaptureLedgerEventsFromTextRetry:
         assert mock_ai_client.responses.create.call_count == 2
 
 
-class TestHandleLedgerEventCaptureWiring:
-    """T008a/T012a: AIHandler._handle_ledger_event_capture -> LedgerEventManager
-    (Feature 033), replacing the removed SessionManager.add_pending_ledger_event."""
-
-    def test_single_call_persisted_via_ledger_event_manager(self, ai_handler, mock_ai_client):
-        mock_ai_client.responses.create.return_value = _followup_response()
-        response = _ledger_call_response([SAMPLE_EVENT])
-        request = AIRequest(
-            user_prompt="ישראל ישראלי 5,000₪ כתב הגנה", constitution="", max_tokens=500,
-            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-abc",
-            timestamp=1770000000,
-        )
-
-        followup = ai_handler._handle_ledger_event_capture(
-            request, response, effective_chat_id="972500000000@c.us",
-            sender="972500000000@c.us", tools=None
-        )
-
-        assert followup is not None
-        events_dir = ai_handler.ledger_event_manager.storage_dir
-        files = list(events_dir.glob("*.json"))
-        assert len(files) == 1
-        with files[0].open(encoding="utf-8") as f:
-            data = json.load(f)
-        assert data["source_type"] == "הסכם"
-        assert data["message_id"] == "msg-abc"
-        assert data["amount"] == 5000
-
-    def test_two_calls_in_one_turn_are_rejected_not_persisted(self, ai_handler, mock_ai_client):
-        """bugfix-018: runtime_constitution.md's Ledger Event Recognition (Step 4)
-        instructs the model to call capture_ledger_event AT MOST ONCE per message,
-        covering every genuinely distinct component of that message's event in
-        that one call - there is no legitimate case where more than one call in a
-        single turn is correct. The real 2026-07-30 incident (req_0f4656c9bd90)
-        had the model emit 17 near-identical calls for a message that needed
-        zero; more than one call in a turn is always a protocol violation, not a
-        multi-client edge case, so NONE of the calls are trusted - not even a
-        well-formed one - once more than one appears. Both must be rejected and
-        NOTHING persisted (previously this test asserted the opposite: that two
-        calls were legitimate and both got persisted - that assumption is what
-        let a 17-call protocol violation reach the persistence layer at all)."""
-        mock_ai_client.responses.create.return_value = _followup_response()
-        event2 = _with_component_override(
-            dict(SAMPLE_EVENT, client_name="דנה כהן"), amount="2,000₪"
-        )
-        response = _ledger_call_response([SAMPLE_EVENT, event2])
-        request = AIRequest(
-            user_prompt="two components", constitution="", max_tokens=500,
-            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-multi",
-            timestamp=1770000000,
-        )
-
-        ai_handler._handle_ledger_event_capture(
-            request, response, effective_chat_id="972500000000@c.us",
-            sender="972500000000@c.us", tools=None
-        )
-
-        events_dir = ai_handler.ledger_event_manager.storage_dir
-        files = sorted(events_dir.glob("*.json"))
-        assert files == [], (
-            "more than one capture_ledger_event call in a turn is always a "
-            "protocol violation (at-most-once rule) - nothing should ever be "
-            "persisted from it, regardless of how well-formed each call looks"
-        )
-
-    def test_multiple_components_in_one_call_share_identical_agreement_id(
-        self, ai_handler, mock_ai_client
-    ):
-        """REQ-DATA-004 (2026-07-30 components-array redesign): the PRIMARY way to
-        get multiple components of one agreement is now a single capture_ledger_event
-        call whose `components` array has multiple entries - not the model making N
-        separate calls (proven unreliable even with a materially stronger model - see
-        spec.md). All components from that ONE call must share byte-for-byte the same
-        agreement_id, read once by add_ledger_events_from_call from the AI-authored
-        shared_fields["agreement_id"], with distinct component_ids."""
-        mock_ai_client.responses.create.return_value = _followup_response()
-        multi_component_event = dict(SAMPLE_EVENT, component_count=2)
-        multi_component_event["components"] = [
-            dict(SAMPLE_EVENT["components"][0]),
-            dict(SAMPLE_EVENT["components"][0], description="שלב שני", amount="2,000₪", component_label="שלב שני"),
-        ]
-        response = _ledger_call_response([multi_component_event])
-        request = AIRequest(
-            user_prompt="one agreement, two components", constitution="", max_tokens=500,
-            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-batch",
-            timestamp=1770000000,
-        )
-
-        ai_handler._handle_ledger_event_capture(
-            request, response, effective_chat_id="972500000000@c.us",
-            sender="972500000000@c.us", tools=None
-        )
-
-        events_dir = ai_handler.ledger_event_manager.storage_dir
-        files = sorted(events_dir.glob("*.json"))
-        assert len(files) == 2
-        agreement_ids = set()
-        component_ids = set()
-        for f in files:
-            with f.open(encoding="utf-8") as fh:
-                data = json.load(fh)
-            agreement_ids.add(data["agreement_id"])
-            component_ids.add(data["component_id"])
-        assert None not in agreement_ids
-        assert len(agreement_ids) == 1, "both components must share one identical agreement_id"
-        assert len(component_ids) == 2, "component_id must still differ per component"
-
-    def test_two_calls_in_one_turn_both_get_rejected_status_in_followup(
-        self, ai_handler, mock_ai_client
-    ):
-        """bugfix-018: rejecting a multi-call turn must not just skip persistence
-        (proven above) - the follow-up sent back to OpenAI must still resolve
-        EVERY call_id from the turn (OpenAI requires an output for every pending
-        function call, regardless of whether we intend to honor it), each
-        explicitly marked "rejected" so the model is told plainly it broke the
-        at-most-once rule - never left silently believing its calls succeeded,
-        and never left with an unresolved call_id (the exact mechanism that
-        caused the real 400 in the first place)."""
-        mock_ai_client.responses.create.return_value = _followup_response()
-        event2 = dict(SAMPLE_EVENT, client_name="דנה כהן")
-        response = _ledger_call_response([SAMPLE_EVENT, event2])
-        request = AIRequest(
-            user_prompt="two unrelated clients", constitution="", max_tokens=500,
-            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-separate",
-            timestamp=1770000000,
-        )
-
-        ai_handler._handle_ledger_event_capture(
-            request, response, effective_chat_id="972500000000@c.us",
-            sender="972500000000@c.us", tools=None
-        )
-
-        followup_call_kwargs = mock_ai_client.responses.create.call_args.kwargs
-        outputs_by_call_id = {
-            item["call_id"]: json.loads(item["output"]) for item in followup_call_kwargs["input"]
-        }
-        assert set(outputs_by_call_id.keys()) == {"call_0", "call_1"}
-        for call_id, payload in outputs_by_call_id.items():
-            assert payload["status"] == "rejected", (
-                f"{call_id} must be explicitly rejected, not silently treated as captured"
-            )
-
-    def test_morning_mcp_sourced_turn_suppressed_not_persisted(self, ai_handler, mock_ai_client):
-        """Feature 024/025 suppression must still hold after the storage-layer
-        swap: when the same turn's response.output contains a real mcp_call
-        item, nothing is persisted."""
-        mock_ai_client.responses.create.return_value = _followup_response()
-        items = [
-            SimpleNamespace(type="mcp_call", name="list_invoices", arguments="{}", output="{}", error=None),
-            _function_call_item("capture_ledger_event", json.dumps(SAMPLE_EVENT), call_id="call_0"),
-        ]
-        response = SimpleNamespace(id="resp_mcp", output=items, output_text="")
-        request = AIRequest(
-            user_prompt="show me invoices", constitution="", max_tokens=500,
-            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-mcp",
-            timestamp=1770000000,
-        )
-
-        ai_handler._handle_ledger_event_capture(
-            request, response, effective_chat_id="972500000000@c.us",
-            sender="972500000000@c.us", tools=None
-        )
-
-        events_dir = ai_handler.ledger_event_manager.storage_dir
-        assert list(events_dir.glob("*.json")) == []
-
-    def test_accounting_document_shaped_call_still_suppressed_under_mcp_call(
-        self, ai_handler, mock_ai_client
-    ):
-        """Feature 025, T018a (User Story 4's regression check): the
-        extended LEDGER_EVENT_TOOL schema (source_type=חשבונית, round 2/3)
-        must NOT accidentally exempt a same-shaped call from
-        _handle_ledger_event_capture's existing suppression rule -
-        _handle_ledger_event_capture doesn't discriminate by source_type at
-        all, so a חשבונית-shaped call reaching THIS (old, unmodified)
-        handler alongside a real mcp_call must be suppressed exactly like
-        any other source_type, same as the 2026-07-28 incident this guards
-        against."""
-        mock_ai_client.responses.create.return_value = _followup_response()
-        accounting_shaped_call = dict(
-            SAMPLE_EVENT, source_type="חשבונית", event_subtype="הפקה",
-            accounting_document_display_number="40406",
-        )
-        items = [
-            SimpleNamespace(type="mcp_call", name="list_invoices", arguments="{}", output="{}", error=None),
-            _function_call_item(
-                "capture_ledger_event", json.dumps(accounting_shaped_call), call_id="call_0"
-            ),
-        ]
-        response = SimpleNamespace(id="resp_mcp_accounting", output=items, output_text="")
-        request = AIRequest(
-            user_prompt="show me invoices", constitution="", max_tokens=500,
-            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-mcp-accounting",
-            timestamp=1770000000,
-        )
-
-        ai_handler._handle_ledger_event_capture(
-            request, response, effective_chat_id="972500000000@c.us",
-            sender="972500000000@c.us", tools=None
-        )
-
-        events_dir = ai_handler.ledger_event_manager.storage_dir
-        assert list(events_dir.glob("*.json")) == []
-
-    def test_morning_mcp_pending_approval_turn_suppressed_not_persisted(self, ai_handler, mock_ai_client):
-        """Real billed incident (2026-08-02): an approval-required Morning tool
-        (create_combo_document, add_client, etc.) shows up as mcp_approval_request
-        on the turn that proposes it - NOT mcp_call, since nothing has executed
-        yet. The mcp_call-only check missed this: a real run had a two-word
-        field-filling reply ("עבור ייעוץ") sent mid-approval-flow misclassified as
-        two spurious capture_ledger_event calls, entangled with (and breaking) the
-        pending-approval round-trip itself. User directive: Morning-involved turns
-        must never produce a ledger event, full stop."""
-        mock_ai_client.responses.create.return_value = _followup_response()
-        items = [
-            SimpleNamespace(
-                type="mcp_approval_request", name="create_combo_document",
-                arguments='{"client_name":"בטא צפון","amount":34,"description":"ייעוץ"}',
-            ),
-            _function_call_item("capture_ledger_event", json.dumps(SAMPLE_EVENT), call_id="call_0"),
-        ]
-        response = SimpleNamespace(id="resp_mcp_approval", output=items, output_text="")
-        request = AIRequest(
-            user_prompt="עבור ייעוץ", constitution="", max_tokens=500,
-            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-mcp-approval",
-            timestamp=1770000000,
-        )
-
-        ai_handler._handle_ledger_event_capture(
-            request, response, effective_chat_id="972500000000@c.us",
-            sender="972500000000@c.us", tools=None
-        )
-
-        events_dir = ai_handler.ledger_event_manager.storage_dir
-        assert list(events_dir.glob("*.json")) == []
-
-
 def _mcp_call_item(name="list_invoices"):
     return SimpleNamespace(type="mcp_call", name=name)
 
@@ -794,18 +561,16 @@ ACCOUNTING_EVENT = _accounting_event()
 
 class TestHandleAccountingReconciliationCapture:
     """Feature 025, T010a: the NEW reconciliation-capture handler
-    (_handle_accounting_reconciliation_capture) - a thin adapter, structurally
-    separate from _handle_ledger_event_capture (which stays completely
-    unmodified - see TestHandleLedgerEventCaptureWiring above and
-    contracts/ledger-event-manager-extension.md's "UNCHANGED" section)."""
+    (_handle_accounting_reconciliation_capture) - a thin adapter. It is the only
+    remaining code path that turns a `capture_ledger_event` call into a persisted
+    LedgerEvent inside AIHandler (Feature 069 removed the conversational one)."""
 
     def test_persists_via_ledger_event_manager_even_with_mcp_call_in_same_turn(
         self, ai_handler
     ):
-        """The exact opposite of _handle_ledger_event_capture's suppression
-        rule - list_invoices/get_invoice_details mcp_calls co-occurring with
+        """list_invoices/get_invoice_details mcp_calls co-occurring with
         capture_ledger_event in the same turn is the NORMAL, expected shape
-        here, not a false-positive to guard against."""
+        for the reconciliation sweep, not a false-positive to guard against."""
         response = SimpleNamespace(
             output=[
                 _mcp_call_item("list_invoices"),
@@ -827,27 +592,20 @@ class TestHandleAccountingReconciliationCapture:
         assert data["source_type"] == "חשבונית"
         assert data["accounting_document_display_number"] == "40406"
 
-    def test_never_calls_handle_ledger_event_capture(self, ai_handler, monkeypatch):
-        """Structural proof, not just behavioral - this handler must not
-        delegate to (or otherwise invoke) _handle_ledger_event_capture at
-        all, since that method's suppression logic would defeat this
-        feature's entire purpose if it were ever reached."""
-        called = {"n": 0}
+    def test_inline_conversational_capture_path_is_gone(self, ai_handler):
+        """Feature 069: the reconciliation sweep is the ONLY AIHandler path that
+        persists a capture_ledger_event call - the old inline conversational
+        handler it used to be contrasted with no longer exists at all."""
+        assert not hasattr(ai_handler, "_handle_ledger_event_capture")
+        assert not hasattr(type(ai_handler), "_call_openai_ledger_followup_api")
 
-        def _fail_if_called(*args, **kwargs):
-            called["n"] += 1
-            raise AssertionError("_handle_ledger_event_capture must never be called here")
-
-        monkeypatch.setattr(ai_handler, "_handle_ledger_event_capture", _fail_if_called)
         response = SimpleNamespace(output=[
             _function_call_item(
                 "capture_ledger_event", json.dumps(ACCOUNTING_EVENT), call_id="call_0"
             ),
         ])
-
-        ai_handler._handle_accounting_reconciliation_capture(response)
-
-        assert called["n"] == 0
+        event_ids = ai_handler._handle_accounting_reconciliation_capture(response)
+        assert len(event_ids) == 1
 
     def test_two_calls_in_one_turn_both_persisted_not_a_protocol_violation(self, ai_handler):
         """The opposite of _handle_ledger_event_capture's "more than one call
@@ -986,36 +744,6 @@ class TestMaxOutputTokensTruncationCausesEmptyReply:
             usage=SimpleNamespace(total_tokens=2500, input_tokens=2000, output_tokens=500),
         )
 
-    def test_truncated_call_is_dropped_leaving_its_call_id_unresolved_in_followup(
-        self, ai_handler, mock_ai_client
-    ):
-        """Proves the mechanical cause of OpenAI's real 400: the follow-up request
-        built from a truncated original response never includes a
-        function_call_output for the truncated call's call_id, even though that
-        call_id is still pending on OpenAI's side (it was emitted, just not fully
-        written) - this is exactly what a real follow-up submission would get
-        rejected for."""
-        mock_ai_client.responses.create.return_value = _followup_response()
-        response = self._truncated_response()
-        request = AIRequest(
-            user_prompt="פרטים על הלקוח דוד גרוזדוביץ'", constitution="", max_tokens=2500,
-            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-trunc",
-            timestamp=1770000000,
-        )
-
-        ai_handler._handle_ledger_event_capture(
-            request, response, effective_chat_id="972500000000@c.us",
-            sender="972500000000@c.us", tools=None
-        )
-
-        followup_call_kwargs = mock_ai_client.responses.create.call_args.kwargs
-        submitted_call_ids = {item["call_id"] for item in followup_call_kwargs["input"]}
-        assert "call_truncated_by_token_limit" in submitted_call_ids, (
-            "the truncated call's call_id must still get a function_call_output - "
-            "OpenAI still considers it pending even though we couldn't parse its "
-            "arguments, so omitting it is exactly what triggers the real 400"
-        )
-
     def test_followup_rejection_from_truncation_leaves_user_with_empty_reply(
         self, ai_handler, mock_ai_client
     ):
@@ -1054,51 +782,6 @@ class TestMaxOutputTokensTruncationCausesEmptyReply:
 class TestFinalizeResponseThreadsLedgerEventIds:
     """T008a: the stored user message must carry ledger_event_ids at creation
     time (Feature 033's Message.ledger_event_ids, REQ-TRACE-003)."""
-
-    def test_captured_event_id_threaded_into_stored_user_message(self, ai_handler, mock_ai_client):
-        mock_ai_client.responses.create.return_value = _followup_response()
-        response = _ledger_call_response([SAMPLE_EVENT])
-        request = AIRequest(
-            user_prompt="ישראל ישראלי 5,000₪ כתב הגנה", constitution="", max_tokens=500,
-            model="gpt-5.6-luna", chat_id="972500000000@c.us", message_id="msg-thread",
-            timestamp=1770000000,
-        )
-
-        ai_response = ai_handler._finalize_response(
-            request, response, effective_chat_id="972500000000@c.us",
-            user_obj=None, user_role="client", sender="972500000000@c.us",
-            recipient="AI", tools=None
-        )
-
-        assert ai_response is not None
-        events_dir = ai_handler.ledger_event_manager.storage_dir
-        event_files = list(events_dir.glob("*.json"))
-        assert len(event_files) == 1
-        with event_files[0].open(encoding="utf-8") as f:
-            event_record = json.load(f)
-        event_id = event_record["event_id"]
-
-        session = ai_handler.session_manager.get_session("972500000000@c.us")
-        session_dir = ai_handler.session_manager.storage_dir / session.session_id
-        user_messages = []
-        for message_id in session.message_ids:
-            with (session_dir / "messages" / f"{message_id}.json").open(encoding="utf-8") as f:
-                msg = json.load(f)
-            if msg["ai_required_role"] == "user":
-                user_messages.append(msg)
-
-        assert len(user_messages) == 1
-        assert user_messages[0]["ledger_event_ids"] == [event_id]
-
-        # Confirmed design (2026-07-30): the id decided at message-arrival time
-        # (AIRequest.message_id, from WhatsAppMessage.from_notification) MUST be
-        # identical across the persisted message's own message_id field, its
-        # filename, the session's message_ids entry, AND LedgerEvent.message_id -
-        # never independently regenerated at storage time.
-        assert user_messages[0]["message_id"] == "msg-thread"
-        assert "msg-thread" in session.message_ids
-        assert (session_dir / "messages" / "msg-thread.json").exists()
-        assert event_record["message_id"] == "msg-thread"
 
     def test_no_capture_leaves_ledger_event_ids_empty(self, ai_handler, mock_ai_client):
         response = SimpleNamespace(

@@ -12,6 +12,7 @@ between them - the exact real-world scenario that surfaced the bug (a
 freshly created invoice was invisible to status="unpaid"). Per CONSTITUTION
 §V and this app's testing policy (spec.md §Testing Strategy).
 """
+import json
 import time
 from pathlib import Path
 
@@ -71,9 +72,10 @@ def paid_invoice(morning_client):
 
     internal_morning_id = None
     for _ in range(12):
-        result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
-        if "מזהה פנימי" in result:
-            internal_morning_id = result.split("מזהה פנימי (internal_morning_id): ")[1].splitlines()[0].strip()
+        payload = json.loads(list_invoices(morning_client, client_name=client_name, name_resolved=True))
+        documents = payload.get("documents") or []
+        if documents:
+            internal_morning_id = documents[0]["internal_morning_id"]
             break
         time.sleep(1.5)
     assert internal_morning_id, f"Could not resolve internal_morning_id for {client_name!r} to mark it paid: {response!r}"

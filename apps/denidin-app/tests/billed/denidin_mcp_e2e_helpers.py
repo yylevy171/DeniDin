@@ -41,9 +41,9 @@ import json
 import logging
 import random
 import time
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, List, Optional, Tuple
@@ -57,7 +57,11 @@ DENIDIN_APP_DIR = Path(__file__).resolve().parents[2]
 # Feature 075: single source of truth in tests/e2e_helpers.py; re-exported here
 # so tests/billed/conftest.py and the MCP e2e modules can import it from their
 # usual helper module.
-from tests.e2e_helpers import sanity_worker_data_root  # noqa: E402,F401
+from tests.e2e_helpers import (  # noqa: E402,F401
+    sanity_worker_data_root,
+    create_real_notification,
+    get_response,
+)
 
 
 class NoMorningTunnelError(Exception):
@@ -134,12 +138,18 @@ def require_live_morning_tunnel(status_file_path: Path, max_age_seconds: int = 0
     return server_url
 
 
-def build_text_webhook(chat_id: str, sender_name: str, text: str, message_id: str) -> dict:
+def build_text_webhook(chat_id: str, sender_name: str, text: str, message_id: str,
+                       timestamp: Optional[int] = None) -> dict:
     """Build a real Green API incomingMessageReceived webhook event dict for a
-    textMessage, matching the shape used by this repo's existing E2E tests."""
+    textMessage, matching the shape used by this repo's existing E2E tests.
+
+    `timestamp` (unix epoch seconds) pins the Green API notification time — pass
+    it when a test needs to assert the persisted event's `event_datetime`
+    against a known value; defaults to now.
+    """
     return {
         'typeWebhook': 'incomingMessageReceived',
-        'timestamp': int(time.time()),
+        'timestamp': timestamp if timestamp is not None else int(time.time()),
         'idMessage': message_id,
         'instanceData': {
             'idInstance': 7103000000,
@@ -197,57 +207,12 @@ def build_button_tap_webhook(
     }
 
 
-def create_real_notification(event_dict: dict) -> Notification:
-    """Create a real SDK Notification object (no mocking), tracking answer() and
-    answer_with_interactive_buttons() calls.
-
-    Feature 047: `answer_with_interactive_buttons` needs `self.api` internally
-    (`chat = self.get_chat(); return self.api.sending.sendInteractiveButtons(...)`),
-    which this bare `Notification.__new__` construction never sets (real
-    `__init__` is deliberately skipped, same as before this feature) - a real
-    Green API send would be as undesirable here as `.answer()`'s real send
-    always was (this is a fake test chat_id, nothing should actually be
-    delivered anywhere). So this is captured the same way `.answer()` already
-    is, rather than routed through a real `self.api` - additive, not a change
-    to the existing `.answer()` capture pattern. `body` is ALSO appended to
-    `_test_sent_messages` (dual-write) so every existing helper reading
-    `get_response()`/`_test_sent_messages[0]` keeps seeing exactly what a real
-    user would read on screen, regardless of whether it arrived as plain text
-    or as an interactive-buttons body - the same content either way, per
-    spec.md Scope ("buttons change how the answer arrives, never what the
-    question contains")."""
-    notification = Notification.__new__(Notification)
-    notification.event = event_dict
-    notification._test_sent_messages = []
-    notification._test_button_sends = []
-
-    def track_answer(message):
-        notification._test_sent_messages.append(message)
-        logger.info(f"Would send to user: {message}")
-
-    _next_id = [0]
-
-    def track_answer_with_interactive_buttons(body, buttons, header=None, footer=None):
-        _next_id[0] += 1
-        id_message = f"TEST_BUTTONS_{event_dict.get('idMessage', 'noid')}_{_next_id[0]}"
-        notification._test_button_sends.append({
-            'body': body, 'buttons': buttons, 'header': header, 'footer': footer,
-            'idMessage': id_message,
-        })
-        notification._test_sent_messages.append(body)
-        logger.info(
-            f"Would send interactive buttons to user: body={body!r} buttons={buttons!r} "
-            f"idMessage={id_message}"
-        )
-        return SimpleNamespace(code=200, data={'idMessage': id_message}, error=None)
-
-    notification.answer = track_answer
-    notification.answer_with_interactive_buttons = track_answer_with_interactive_buttons
-    return notification
-
-
-def get_response(notification: Notification) -> Optional[str]:
-    return notification._test_sent_messages[0] if notification._test_sent_messages else None
+# `create_real_notification` / `get_response`: single implementation in
+# tests/e2e_helpers.py (imported at the top of this module). The bare-Notification
+# stub there already captures both `.answer()` and Feature 047's
+# `.answer_with_interactive_buttons` (dual-writing the button body into
+# `_test_sent_messages` so `get_response()` reads identically for either delivery
+# form) - this module's near-identical copy was removed 2026-09-10.
 
 
 def get_button_send(notification: Notification) -> Optional[dict]:
@@ -436,18 +401,25 @@ def pick_existing_client(predicate: Optional[Callable[[dict], bool]] = None) -> 
 GODFATHER_CHAT_ID = "972500000021@c.us"  # Feature 018 E2E test godfather identity (rotated 2026-08-12, bugfix-028: 972500000018's persisted session had accumulated a long, noisy history that was confusing the model across turns)
 CLIENT_ROLE_CHAT_ID = "972500000019@c.us"  # Feature 026 US5 - defaults to Role.CLIENT (not godfather/admin/blocked)
 BLOCKED_ROLE_CHAT_ID = "972500000020@c.us"  # Feature 026 US5 - added to denidin_config's blocked_phones in conftest.py
+ADMIN_ISOLATED_CHAT_ID = "972500000022@c.us"  # bugfix-052 stop-gap: a spare admin-role chat id for an individual test that needs its own session, isolated from GODFATHER_CHAT_ID's module-wide shared one
 
 
-def _send_turn(chat_id: str, text: str, id_prefix: str) -> Tuple[Optional[str], Optional[AIResponse]]:
+def _send_turn(chat_id: str, text: str, id_prefix: str,
+               timestamp: Optional[int] = None) -> Tuple[Optional[str], Optional[AIResponse]]:
     """Send one real WhatsApp turn through the real router handler and return
-    (reply text, AIResponse with mcp_calls) for inspection."""
+    (reply text, AIResponse with mcp_calls) for inspection.
+
+    `timestamp` (unix epoch seconds) pins the Green API notification time — pass
+    it when the test needs a known `event_datetime`; defaults to now.
+    """
     from denidin import handle_text_message
 
     notification = create_real_notification(build_text_webhook(
         chat_id=chat_id,
         sender_name="E2E Godfather",
         text=text,
-        message_id=f"{id_prefix}_{int(datetime.now(timezone.utc).timestamp())}"
+        message_id=f"{id_prefix}_{int(datetime.now(timezone.utc).timestamp())}",
+        timestamp=timestamp,
     ))
     handle_text_message(notification)
     response = get_response(notification)
@@ -499,57 +471,49 @@ def _seeded_email_from(ai_response: Optional[AIResponse]) -> str:
 # them and drives an identity-resolution question to a conclusion.             #
 #                                                                             #
 # The production resolve_client_name MCP tool returns exactly one of four      #
-# fixed-prefix Hebrew strings (morning-mcp-app/…/formatters.py), and the       #
-# model very often echoes that same string near-verbatim in its plain-text    #
-# reply when it answers a resolution question without a fresh tool call - so   #
-# `_classify` reads the marker from the tool output OR the reply text,         #
-# whichever carries one:                                                       #
-#   EXACT            format_client_name_resolved            - the client       #
-#                    exists in Morning exactly as queried (the ONLY outcome    #
-#                    that means "exists as queried")                           #
-#   SINGLE_CANDIDATE format_client_name_confirmation_question - one similar     #
-#                    but non-exact client; a bare "כן" confirms it             #
-#   MULTI_CANDIDATE  format_ambiguous_clients_message         - 2+ similar     #
-#                    clients; "כן" can NOT disambiguate - an exact name must   #
-#                    be supplied                                               #
-#   NONE             format_client_not_found / nothing looked the client up   #
-#                    and nothing named an outcome - zero confirmed matches     #
+# fixed JSON shapes (morning-mcp-app/…/formatters.py, 2026-09-04 JSON-only     #
+# contract - see that module's docstring). The model composes its own fresh   #
+# Hebrew reply from this JSON and never echoes it verbatim, so `_classify`     #
+# reads the shape from the tool's raw OUTPUT only - a turn with no             #
+# resolve_client_name call at all falls straight through to NONE, it is       #
+# never inferred from reply text:                                             #
+#   EXACT            {"status": "resolved", "name": ...}          - the       #
+#                    client exists in Morning exactly as queried (the ONLY    #
+#                    outcome that means "exists as queried")                  #
+#   SINGLE_CANDIDATE {"status": "needs_confirmation",                         #
+#                     "candidate_name": ...}            - one similar but     #
+#                    non-exact client; a bare "כן" confirms it                #
+#   MULTI_CANDIDATE  {"status": "ambiguous", "candidates": [...]}  - 2+       #
+#                    similar clients; "כן" can NOT disambiguate - an exact    #
+#                    name must be supplied                                    #
+#   NONE             {"found": false} / nothing looked the client up and      #
+#                    nothing named an outcome - zero confirmed matches        #
 #                                                                             #
 # There is NO fifth "errored"/"not attempted" bucket. A resolve_client_name    #
 # call that Morning rejected, or one whose output matches none of the four     #
-# markers, is a hard failure - `_classify` RAISES ``ResolveClientNameError``   #
+# shapes, is a hard failure - `_classify` RAISES ``AssertionError``    #
 # (identity resolution must never error; in a test any unintended error is a   #
 # failure, not a state to recover from). Only a turn with no resolve call at   #
-# all and no marker in the reply is benign - that is a plain-text clarifying   #
-# question, classified NONE (nothing has confirmed the client exists).         #
+# all is benign - that is a plain-text clarifying question, classified NONE    #
+# (nothing has confirmed the client exists).                                  #
 #                                                                             #
-# NOTHING else in this suite may read those markers, re-derive "does this      #
+# NOTHING else in this suite may read this shape, re-derive "does this        #
 # client exist", or decide what to reply to a resolution question - it all     #
 # goes through `_resolve_client_name` below. Inline copies of this exact       #
 # check drifted and broke the suite twice in 2026-08 (once in the old          #
 # `_fresh_nonexistent_client_name` helper, then again via a second ad-hoc      #
-# copy in test_create_document_for_new_client_declines_client_creation). One   #
-# classifier, one driver, one place - so it can only ever be wrong in one.     #
+# copy in test_create_document_for_new_client_declines_client_creation), and   #
+# the shape itself drifted underneath this file once already (2026-09-04's    #
+# JSON-only contract change on the morning-mcp-app side, caught late - this    #
+# file wasn't updated in lockstep). One classifier, one driver, one place -    #
+# so it can only ever be wrong in one.                                        #
 # --------------------------------------------------------------------------- #
-_EXACT_CLIENT_MATCH_MARKER = 'שם הלקוח המדויק במורנינג: "'
-_SINGLE_CANDIDATE_MARKER = 'מצאתי לקוח בשם "'
-_MULTI_CANDIDATE_MARKER = "נמצאו כמה לקוחות בשם דומה"
-_CLIENT_NOT_FOUND_MARKER = "לא נמצא לקוח בשם הזה"
-
-
-class ResolveClientNameError(AssertionError):
-    """A resolve_client_name call errored, or returned an output shape that
-    matches none of the four known markers. Identity resolution must never
-    error - in this suite that is a hard failure, never a state to recover
-    from (user, 2026-09-02: "error or junk is NOT NONE - it is an error that
-    should be raised ... any error is a failure unless we intended for it to
-    happen"). A test that deliberately provokes such an error catches this."""
 
 
 class ResolveOutcome(Enum):
     """Exactly which of resolve_client_name's four outcomes a turn produced.
     There is no "errored"/"not attempted" member - see
-    ``ResolveClientNameError`` and the comment block above:
+    an ``AssertionError`` (see the comment block above):
 
     * ``EXACT``            - the client exists in Morning exactly as queried
       (the ONLY outcome for which ``.exists`` is True).
@@ -644,52 +608,55 @@ def _resolve_client_name(
       ``.reply`` / ``.ai_response`` / ``.resolved_name`` reflect the final
       state.
     """
-    def _match_marker(text: str) -> Optional[Tuple[ResolveOutcome, Optional[str]]]:
-        """Read one of the four fixed markers out of `text` (a tool output OR a
-        reply). ``None`` if the text carries none of them."""
-        if _EXACT_CLIENT_MATCH_MARKER in text:
-            after = text.split(_EXACT_CLIENT_MATCH_MARKER, 1)[1]
-            return ResolveOutcome.EXACT, (after.split('"')[0] or None)
-        if _SINGLE_CANDIDATE_MARKER in text:
-            after = text.split(_SINGLE_CANDIDATE_MARKER, 1)[1]
-            return ResolveOutcome.SINGLE_CANDIDATE, (after.split('"')[0] or None)
-        if _MULTI_CANDIDATE_MARKER in text:
+    def _match_output(output: str) -> Optional[Tuple[ResolveOutcome, Optional[str]]]:
+        """Classify a resolve_client_name tool-call's raw JSON OUTPUT into one
+        of the four outcomes. ``None`` if `output` isn't one of the four known
+        JSON shapes (including: not valid JSON at all)."""
+        try:
+            payload = json.loads(output)
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        status = payload.get("status")
+        if status == "resolved":
+            return ResolveOutcome.EXACT, payload.get("name")
+        if status == "needs_confirmation":
+            return ResolveOutcome.SINGLE_CANDIDATE, payload.get("candidate_name")
+        if status == "ambiguous":
             return ResolveOutcome.MULTI_CANDIDATE, None
-        if _CLIENT_NOT_FOUND_MARKER in text:
+        if payload.get("found") is False:
             return ResolveOutcome.NONE, None
         return None
 
     def _classify(
         turn_ai: Optional[AIResponse], turn_reply: Optional[str] = None
     ) -> Tuple[ResolveOutcome, Optional[str]]:
-        """One turn -> exactly one of the four ``ResolveOutcome`` values. The
-        marker is read from the turn's LAST resolve_client_name output if it
-        made a call, otherwise from the reply text (the model routinely quotes
-        the same fixed string when it answers in plain text). A resolve call
-        that errored, or one whose output matches no marker, RAISES
-        ``ResolveClientNameError``. A turn with no resolve call and no marker
-        in the reply is NONE - a benign plain-text clarifying question,
-        nothing has confirmed the client exists. The ONLY place any of the
-        four markers is read."""
+        """One turn -> exactly one of the four ``ResolveOutcome`` values, read
+        from the turn's LAST resolve_client_name call's raw JSON output. A
+        resolve call that errored, or one whose output matches none of the
+        four known JSON shapes, RAISES ``AssertionError``. A turn with
+        no resolve call at all is NONE - a benign plain-text clarifying
+        question, nothing has confirmed the client exists (the model never
+        echoes this JSON verbatim in prose, so there is no reply-text
+        fallback to read here any more). ``turn_reply`` is accepted for call-
+        site compatibility but unused. The ONLY place this JSON is read."""
         calls = _calls_for(turn_ai, "resolve_client_name")
-        if calls:
-            last = calls[-1]
-            if last.get("error") is not None:
-                raise ResolveClientNameError(
-                    f"resolve_client_name errored - identity resolution must "
-                    f"never error: {last!r}"
-                )
-            matched = _match_marker(last.get("output") or "")
-            if matched is None:
-                raise ResolveClientNameError(
-                    f"resolve_client_name returned an output matching none of "
-                    f"the four known markers: {last.get('output')!r}"
-                )
-            return matched
-        matched = _match_marker(turn_reply or "")
-        if matched is not None:
-            return matched
-        return ResolveOutcome.NONE, None
+        if not calls:
+            return ResolveOutcome.NONE, None
+        last = calls[-1]
+        if last.get("error") is not None:
+            raise AssertionError(
+                f"resolve_client_name errored - identity resolution must "
+                f"never error: {last!r}"
+            )
+        matched = _match_output(last.get("output") or "")
+        if matched is None:
+            raise AssertionError(
+                f"resolve_client_name returned an output matching none of "
+                f"the four known JSON shapes: {last.get('output')!r}"
+            )
+        return matched
 
     if initial_result is not None:
         reply, ai_response = initial_result
@@ -755,23 +722,37 @@ def _resolve_client_name(
 
 
 _HEBREW_GERESH = "׳"
-_APOSTROPHE_VARIANTS = ("'", "’")  # ASCII ' and typographic '
+_APOSTROPHE_VARIANTS = ("'", "’", "׳")  # ASCII ' , typographic ' , geresh (idempotent)
+# Bidi / general-format control codepoints an RTL-aware model or the WhatsApp
+# layer can silently insert into or drop from a mixed-script name (Hebrew +
+# Arabic Israeli names both occur in the seed pools). They carry no identity.
+_BIDI_CONTROLS = dict.fromkeys(
+    [0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+     0x2066, 0x2067, 0x2068, 0x2069, 0x061C]
+)
 
 
-def _normalize_hebrew_geresh(name: str) -> str:
-    """Replace any apostrophe-like character with the Hebrew geresh - mirrors
-    denidin_mcp_morning.tools._normalize_hebrew_geresh exactly (independently
-    reimplemented, never imported - see this module's App-wall docstring
-    above). Morning normalizes any client name it stores this way, so a name
-    containing an apostrophe (e.g. "ריצ'רד") comes back from Morning's own
-    formatted output as "ריצ׳רד" - a caller comparing against the raw,
-    un-normalized name (as typed/generated) against that OUTPUT (not
-    against a tool call's own arguments, which stay un-normalized) needs
-    this to avoid a false negative (caught in a post-merge sweep 2026-08-12,
-    a real run drew "ריצ'רד" from _unique_client_name()'s pool)."""
+def _normalize_hebrew_geresh(name):
+    """Canonicalise a Hebrew client name for an equality/substring compare
+    against Morning's own formatted OUTPUT (never against a tool call's raw
+    arguments, which stay un-normalized).
+
+    - Replace every apostrophe-like character with the Hebrew geresh - Morning
+      stores names this way, so "ריצ'רד" comes back as "ריצ׳רד"
+      (mirrors `denidin_mcp_morning.tools._normalize_hebrew_geresh`; caught in a
+      post-merge sweep 2026-08-12 when a real run drew "ריצ'רד" from the pool).
+    - NFC-normalise and strip bidi/format controls, so an invisible RTL mark the
+      model or WhatsApp layer added/dropped does not fail an otherwise-identical
+      compare (Feature 069, was a separate `_geresh_normalise` in
+      `_ledger_069_acceptance.py` until 2026-09-10 - folded in here).
+    - `None`/`""` pass through unchanged.
+    """
+    if not name:
+        return name
+    out = unicodedata.normalize("NFC", str(name)).translate(_BIDI_CONTROLS)
     for variant in _APOSTROPHE_VARIANTS:
-        name = name.replace(variant, _HEBREW_GERESH)
-    return name
+        out = out.replace(variant, _HEBREW_GERESH)
+    return out
 
 
 def _is_real_approval_prompt(text: Optional[str]) -> bool:
@@ -791,17 +772,19 @@ def _is_genuine_document_creation(call: dict) -> bool:
     mcp_call actually created a document, vs. refused (bugfix-039, caught in a
     post-merge sweep 2026-08-12).
 
-    `call["error"] is None` is NOT sufficient on its own: bugfix-039's
-    refuse-and-ask-for-confirmation on a non-exact client match (and the
-    ambiguous/ - not-found refusal messages) are ALL ordinary string returns,
-    same as a genuine success - `error` stays None either way, since none of
-    those paths raise (only a true zero-candidate match raises
-    ClientNotFoundError, and even that gets caught and turned into an
-    ordinary string by server.py's error boundary - see errors.py). The one
-    reliable signal is the output's own shape: format_invoice_confirmation
-    always starts with "חשבונית #", which no refusal/confirmation-question/
-    ambiguous-candidates message ever does."""
-    return bool(call.get("error") is None and (call.get("output") or "").startswith("חשבונית #"))
+    `call["error"] is None` is NOT sufficient on its own: a name_resolved=False
+    refusal (format_name_not_resolved) is an ordinary JSON string return, same
+    as a genuine success - `error` stays None either way, since that path
+    doesn't raise. The one reliable signal is the output's own shape
+    (2026-09-04 JSON-only contract): format_invoice_json always carries a
+    `display_number` key, which no refusal shape ever does."""
+    if call.get("error") is not None:
+        return False
+    try:
+        payload = json.loads(call.get("output") or "")
+    except (ValueError, TypeError):
+        return False
+    return isinstance(payload, dict) and "display_number" in payload
 
 
 def _send_turn_and_approve(

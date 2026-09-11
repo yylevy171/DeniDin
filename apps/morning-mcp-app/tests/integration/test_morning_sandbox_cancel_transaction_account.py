@@ -14,6 +14,7 @@ including the idempotency guard research.md's Finding 3 found necessary
 (the raw API rejects a redundant close with a 400 - it does not no-op
 itself).
 """
+import json
 import time
 from pathlib import Path
 
@@ -60,9 +61,10 @@ def _seed_open_transaction_account(morning_client, label):
 
     internal_morning_id = None
     for _ in range(12):
-        result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
-        if "מזהה פנימי" in result:
-            internal_morning_id = result.split("מזהה פנימי (internal_morning_id): ")[1].splitlines()[0].strip()
+        payload = json.loads(list_invoices(morning_client, client_name=client_name, name_resolved=True))
+        documents = payload.get("documents") or []
+        if documents:
+            internal_morning_id = documents[0]["internal_morning_id"]
             break
         time.sleep(1.5)
     assert internal_morning_id, f"Could not resolve transaction account id for {client_name!r}"

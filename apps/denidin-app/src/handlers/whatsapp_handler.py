@@ -2,7 +2,7 @@
 WhatsAppHandler - Handles WhatsApp message processing with retry logic
 Phase 5: US3 - Error Handling & Resilience
 """
-from typing import cast, Optional
+from typing import cast, Dict, Optional
 import requests
 from tenacity import (
     retry,
@@ -335,10 +335,14 @@ class WhatsAppHandler:
         message_type = self.get_media_type(notification)
         return message_type in ['imageMessage', 'documentMessage']
     
-    def handle_media_message(self, notification: Notification) -> None:
+    def handle_media_message(self, notification: Notification) -> Optional[Dict]:
         """
         Process WhatsApp media messages (images, documents).
         Routes to MediaHandler and sends summary back to user.
+
+        Returns the MediaHandler result dict (Feature 069: so the caller can route
+        a recognised `ledger_stash` as a synthetic conversational turn); None on
+        the early not-initialized / failed-processing paths.
         CHK111: Caption is WhatsApp message text from webhook, not file metadata.
         
         Args:
@@ -346,8 +350,8 @@ class WhatsAppHandler:
         """
         if not self.media_handler:
             logger.error("MediaHandler not initialized, cannot process media")
-            return
-        
+            return None
+
         message_data = notification.event.get('messageData', {})
 
         # Feature 033: parse through the SAME WhatsAppMessage.from_notification
@@ -399,10 +403,24 @@ class WhatsAppHandler:
             logger.warning(f"Media processing failed: {result.get('error_message', 'Unknown error')}")
             notification.answer(FAILED_TO_PROCESS_FILE_DEFAULT)
             log_outbound(chat_id, FAILED_TO_PROCESS_FILE_DEFAULT, kind="text")
-            return
-        
+            return None
+
+        # Feature 069 (Phase 9/10): a recognised fee-agreement / bank-deposit image
+        # or DOCX is NOT answered with the plain extraction summary. The caller
+        # (denidin.py `_process_media_message`) routes `ledger_stash` as a synthetic
+        # conversational turn, and the operator gets that turn's reply instead
+        # (a client-resolution question, a confirmation, etc.).
+        if result.get("ledger_stash"):
+            logger.info(
+                f"[069] media ledger event recognised "
+                f"(source_type={result.get('ledger_stash_source_type')!r}) - routing a "
+                f"synthetic conversational turn instead of the plain media summary"
+            )
+            return cast(Dict, result)
+
         # Send summary to user (no approval workflow - just send as reply)
         summary = result.get("summary", "")
         logger.info(f"Sending media processing summary to {sender}")
         notification.answer(summary)
         log_outbound(chat_id, summary, kind="text")
+        return cast(Dict, result)

@@ -13,6 +13,7 @@ rather than trusting the create response alone.
 
 Per CONSTITUTION §V and this app's testing policy (spec.md §Testing Strategy).
 """
+import json
 import time
 from pathlib import Path
 
@@ -134,9 +135,9 @@ def test_create_credit_note_tool_sandbox_happy_path(morning_client, seeded_invoi
 
     # Follow-up: the original invoice must independently show the new
     # credit note in its linked documents.
-    details = get_invoice_details(morning_client, internal_morning_id=original_id)
-    assert "מסמכים מקושרים" in details
-    assert "חשבונית זיכוי" in details
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=original_id))
+    assert details["linked_document"] is not None
+    assert details["linked_document"]["type_name"] == "חשבונית זיכוי"
 
 
 def test_create_credit_note_tool_sandbox_nonexistent_original(morning_client):
@@ -151,9 +152,13 @@ def test_create_credit_note_tool_sandbox_partial_amount(morning_client, seeded_i
 
     create_credit_note(morning_client, original_id, amount=50.0)
 
-    details = get_invoice_details(morning_client, internal_morning_id=original_id)
-    assert "מסמכים מקושרים" in details
-    assert "₪50.00" in details, f"Partial credit note amount not reflected in linked documents: {details!r}"
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=original_id))
+    assert details["linked_document"] is not None
+    raw = morning_client.get_invoice(original_id)
+    linked_raw = (raw.get("linkedDocuments") or [{}])[0]
+    assert linked_raw.get("amount") == 50.0, (
+        f"Partial credit note amount not reflected in linked documents: {linked_raw!r}"
+    )
 
 
 def test_create_receipt_tool_sandbox_happy_path(morning_client, seeded_invoice):
@@ -162,12 +167,9 @@ def test_create_receipt_tool_sandbox_happy_path(morning_client, seeded_invoice):
     create_receipt(morning_client, original_id, payment_date="2026-07-12")
 
     # Follow-up: independently re-fetch the original and confirm it flipped
-    # to paid as a result of the receipt now existing. Checking both
-    # directions matters: "שולם" (paid) is a substring of "לא שולם" (unpaid),
-    # so a bare "שולם" in details check alone is a false positive either way.
-    details = get_invoice_details(morning_client, internal_morning_id=original_id)
-    assert "לא שולם" not in details, f"Original invoice still shows unpaid after receipt: {details!r}"
-    assert "שולם" in details, f"Original invoice did not show as paid after receipt: {details!r}"
+    # to paid as a result of the receipt now existing.
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=original_id))
+    assert details["status"] == "paid", f"Original invoice did not show as paid after receipt: {details!r}"
     raw = morning_client.get_invoice(original_id)
     assert raw.get("status") in (1, 2), f"Expected a closed/paid status code, got: {raw.get('status')!r}"
 
@@ -212,9 +214,8 @@ def test_create_receipt_tool_sandbox_already_paid_original(morning_client, seede
     receipts = [doc for doc in linked if doc.get("type") == 400]
     assert len(receipts) == 1, f"Expected exactly one linked receipt, got: {linked!r}"
 
-    details = get_invoice_details(morning_client, internal_morning_id=original_id)
-    assert "לא שולם" not in details
-    assert "שולם" in details
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=original_id))
+    assert details["status"] == "paid"
 
 
 def test_create_receipt_tool_sandbox_partial_amount(morning_client, seeded_invoice):
@@ -222,9 +223,13 @@ def test_create_receipt_tool_sandbox_partial_amount(morning_client, seeded_invoi
 
     create_receipt(morning_client, original_id, payment_date="2026-07-12", amount=80.0)
 
-    details = get_invoice_details(morning_client, internal_morning_id=original_id)
-    assert "מסמכים מקושרים" in details
-    assert "₪80.00" in details, f"Partial receipt amount not reflected in linked documents: {details!r}"
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=original_id))
+    assert details["linked_document"] is not None
+    raw = morning_client.get_invoice(original_id)
+    linked_raw = (raw.get("linkedDocuments") or [{}])[0]
+    assert linked_raw.get("amount") == 80.0, (
+        f"Partial receipt amount not reflected in linked documents: {linked_raw!r}"
+    )
 
 
 @pytest.fixture()
@@ -255,16 +260,13 @@ def test_create_combo_document_as_reference_tool_sandbox_happy_path_full_amount(
     # Follow-up: independently re-fetch the original and confirm it flipped
     # to paid as a result of the linked combo document now existing, and
     # that the linked-documents section names the new combo document.
-    # Checking both directions matters: "שולם" (paid) is a substring of "לא
-    # שולם" (unpaid), so a bare "שולם" in details check alone would be a
-    # false positive if the original never actually flipped (feature 023's
-    # confirmed root cause: closing with a mismatched amount leaves the
-    # original genuinely unpaid, and Morning correctly never flips it).
-    details = get_invoice_details(morning_client, internal_morning_id=original_id)
-    assert "לא שולם" not in details, f"Original transaction account still shows unpaid: {details!r}"
-    assert "שולם" in details, f"Original transaction account did not show as paid after closing: {details!r}"
-    assert "מסמכים מקושרים" in details
-    assert "חשבונית מס / קבלה" in details
+    # (feature 023's confirmed root cause: closing with a mismatched amount
+    # leaves the original genuinely unpaid, and Morning correctly never
+    # flips it - so this is a real, meaningful check.)
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=original_id))
+    assert details["status"] == "paid", f"Original transaction account did not show as paid after closing: {details!r}"
+    assert details["linked_document"] is not None
+    assert details["linked_document"]["type_name"] == "חשבונית מס / קבלה"
     raw = morning_client.get_invoice(original_id)
     assert raw.get("status") in (1, 2), f"Expected a closed/paid status code, got: {raw.get('status')!r}"
 
@@ -275,9 +277,13 @@ def test_create_combo_document_as_reference_tool_sandbox_partial_amount(morning_
 
     create_combo_document_as_reference(morning_client, original_id, payment_date="2026-07-12", amount=15.0)
 
-    details = get_invoice_details(morning_client, internal_morning_id=original_id)
-    assert "מסמכים מקושרים" in details
-    assert "₪15.00" in details, f"Partial combo-close amount not reflected in linked documents: {details!r}"
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=original_id))
+    assert details["linked_document"] is not None
+    raw = morning_client.get_invoice(original_id)
+    linked_raw = (raw.get("linkedDocuments") or [{}])[0]
+    assert linked_raw.get("amount") == 15.0, (
+        f"Partial combo-close amount not reflected in linked documents: {linked_raw!r}"
+    )
 
 
 def test_create_combo_document_as_reference_tool_sandbox_nonexistent_original(morning_client):
@@ -301,7 +307,7 @@ def test_create_combo_document_as_reference_tool_sandbox_rejects_non_transaction
 
     # Follow-up: confirm no combo document was created against the rejected
     # original despite the raised error.
-    details = get_invoice_details(morning_client, internal_morning_id=original_id)
-    assert "מסמכים מקושרים" not in details, (
+    details = json.loads(get_invoice_details(morning_client, internal_morning_id=original_id))
+    assert details["linked_document"] is None, (
         f"A document must not have been linked to a rejected non-transaction-account original: {details!r}"
     )
