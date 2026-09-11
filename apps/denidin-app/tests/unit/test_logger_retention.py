@@ -147,7 +147,21 @@ class TestLosslessRotation:
                 with lock:
                     emitted.add(seq)
                 child.info("SEQ=%d", seq)
-                time.sleep(0.01)
+                # 0.05s (not 0.01s): with n_threads running concurrently, the
+                # whole burst must reliably span the "S" (1-second) rotation
+                # boundary for the second assertion below to hold. At 0.01s
+                # the 4 threads' ~0.6s combined real time left too thin a
+                # margin - under a loaded full-suite run (thread contention,
+                # GC pauses) the burst could finish before a full second
+                # elapsed, so no rotation fired and `glob("denidin.log.*")`
+                # came back empty (flaky, not a real bug - found live,
+                # 2026-09-11, wobbled once in a 1468-test full run but passed
+                # every time in isolation). 60 * 0.05s = 3s of real sleep per
+                # thread comfortably clears one full rotation window even
+                # under load, without weakening what the test actually checks
+                # (every emitted record survives a real rotation, no mocking
+                # of time).
+                time.sleep(0.05)
 
         threads = [threading.Thread(target=worker, args=(t,)) for t in range(n_threads)]
         for t in threads:
