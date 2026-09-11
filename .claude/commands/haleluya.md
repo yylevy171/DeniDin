@@ -1,4 +1,5 @@
 ---
+name: haleluya
 description: Finish off the current work - commit, push, PR, merge, docs update, spec cleanup
 ---
 

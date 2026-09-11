@@ -539,9 +539,14 @@ class MappingRequestHandler(BaseHTTPRequestHandler):
             self.send_header('Location', '/')
             self.end_headers()
 
+from socketserver import ThreadingMixIn
+
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
 def run_server():
     server_address = ('', 8080)
-    httpd = HTTPServer(server_address, MappingRequestHandler)
+    httpd = ThreadedHTTPServer(server_address, MappingRequestHandler)
     print("Server running on port 8080. Open http://localhost:8080 in your browser.")
     try:
         httpd.serve_forever()
@@ -553,3 +558,4 @@ def run_server():
 
 if __name__ == '__main__':
     run_server()
+

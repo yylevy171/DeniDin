@@ -49,6 +49,35 @@ def fuzzy_match(name, official_clients, manual_mapping):
         
     return None, name
 
+_CACHED_EVENTS = None
+_CACHED_MTIME = 0
+
+def load_all_events(events_dir=EVENTS_DIR):
+    global _CACHED_EVENTS, _CACHED_MTIME
+    files = glob.glob(os.path.join(events_dir, "*.json"))
+    if not files:
+        return []
+        
+    latest_mtime = max(os.path.getmtime(f) for f in files) if files else 0
+    if _CACHED_EVENTS is not None and len(_CACHED_EVENTS) == len(files) and latest_mtime <= _CACHED_MTIME:
+        return list(_CACHED_EVENTS)
+        
+    from concurrent.futures import ThreadPoolExecutor
+    
+    def read_one(fpath):
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=32) as executor:
+        results = list(executor.map(read_one, files))
+        
+    _CACHED_EVENTS = [r for r in results if r is not None]
+    _CACHED_MTIME = latest_mtime
+    return list(_CACHED_EVENTS)
+
 def get_report_data():
     official_clients = get_official_clients()
     manual_mapping = load_json_file(MAPPING_FILE)
@@ -56,7 +85,6 @@ def get_report_data():
     client_comments = load_json_file(CLIENT_COMMENTS_FILE)
     
     # official_client_name -> { agreements: 0, deposits: 0, invoices_net: 0, raw_names: set(), events: [] }
-    # official_client_name -> { agreements: 0, deposits: 0, invoices_net: 0, raw_names: set(), events: [], latest_activity: None }
     stats = {c: {"agreements": 0.0, "deposits": 0.0, "invoices_net": 0.0, "raw_names": set(), "events": [], "latest_activity": None} for c in official_clients}
     
     # raw_name -> { agreements: 0, deposits: 0, raw_text: set() }
@@ -64,16 +92,8 @@ def get_report_data():
     
     amount_to_clients = defaultdict(set)
     
-    files = glob.glob(os.path.join(EVENTS_DIR, "*.json"))
-    
-    all_events_data = []
-    for fpath in files:
-        with open(fpath, "r", encoding="utf-8") as f:
-            try:
-                data = json.load(f)
-                all_events_data.append(data)
-            except Exception:
-                pass
+    all_events_data = load_all_events()
+
                 
     import csv
     try:
@@ -322,5 +342,67 @@ def get_report_data():
         
     return official_clients, stats, final_unmatched, manual_mapping, notes, amount_to_clients, client_comments
 
+def export_static_reports():
+    official_clients, stats, final_unmatched, manual_mapping, notes, amount_to_clients, client_comments = get_report_data()
+    
+    rows = []
+    
+    # 1. Unmatched rows
+    for raw_name, udata in sorted(final_unmatched.items()):
+        agreed = udata["agreements"]
+        rows.append({
+            "name": f"UNMATCHED: {raw_name}",
+            "agreed": agreed,
+            "open": 0.0,
+            "paid": 0.0,
+            "gap": agreed
+        })
+        
+    # 2. Official clients
+    for client in sorted(official_clients):
+        data = stats[client]
+        agreed = data["agreements"]
+        manual_agreed = data.get("manual_agreement_amount")
+        display_agreed = manual_agreed if manual_agreed is not None else agreed
+        invoices_net = data.get("invoices_net", 0.0)
+        gap = display_agreed - invoices_net
+        
+        # Only include if there is activity
+        if display_agreed > 0 or invoices_net > 0 or data["events"]:
+            rows.append({
+                "name": client,
+                "agreed": display_agreed,
+                "open": 0.0,
+                "paid": invoices_net,
+                "gap": gap
+            })
+
+    # Write CSV
+    with open("reports/final_client_status.csv", "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Client Name", "Agreements (Ceiling)", "Invoiced (Open)", "Invoiced (Paid)", "Uninvoiced Gap"])
+        for r in rows:
+            writer.writerow([r["name"], r["agreed"], r["open"], r["paid"], r["gap"]])
+            
+    # Write MD
+    md_content = """# Client Status & Payments Report
+
+> **Note on Logic:**
+> - **Agreements (Ceiling)**: Total of all WhatsApp agreements. This is often excluding VAT and may contain conditionals.
+> - **Invoiced (Paid / Net)**: Fully captured documents in Morning.
+> - **Uninvoiced Gap**: Agreements minus all Invoices (Paid). A positive number means we have an agreement but haven't collected/invoiced fully yet. A negative number means we invoiced more than the base agreement.
+
+| Client Name | Agreements (Ceiling) | Invoiced (Open) | Invoiced (Paid) | Uninvoiced Gap |
+|-------------|----------------------|-----------------|-----------------|----------------|
+"""
+    for r in rows:
+        md_content += f"| {r['name']} | ₪{r['agreed']:,.2f} | ₪{r['open']:,.2f} | ₪{r['paid']:,.2f} | ₪{r['gap']:,.2f} |\n"
+        
+    with open("reports/final_client_status.md", "w", encoding="utf-8") as f:
+        f.write(md_content)
+
+    print(f"Static reports successfully updated: {len(rows)} rows (Unmatched: {len(final_unmatched)}, Official active: {len(rows)-len(final_unmatched)})")
+
 if __name__ == "__main__":
-    print("This module provides get_report_data(). Run reports/mapping_server.py to see the interactive UI.")
+    export_static_reports()
+
