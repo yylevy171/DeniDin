@@ -1,35 +1,37 @@
 # Contract: Group discretion gating + `runtime_constitution.md` boundaries
 
-## `is_message_addressed_to_bot()` predicate
+## Correction (2026-09-12, discovered during implementation)
 
-**Location**: extracted into a small, standalone function (proposed home:
-`src/handlers/whatsapp_handler.py`, alongside the existing group-handling logic it's extracted
-from), reused by:
-1. The fast-path pre-dispatch hook (`contracts/fast-path-reaction-heuristic.md`), to guarantee
-   **zero** Green API reaction calls for ambient group messages (REQ-084-005, SC-001).
-2. Whatever existing logic already determines group-turn engagement today (Feature 039's
-   etiquette model — DeniDin is addressed by default in a group, same as 1:1, and the model's own
-   `[[NO_REPLY]]` sentinel judgment governs substantive replies).
+The original plan assumed an existing `is_message_addressed_to_bot()`-style predicate could be
+extracted from `whatsapp_handler.py`'s group-gating logic and shared with the fast-path hook.
+**No such predicate exists.** Feature 039 removed group mention-gating entirely — DeniDin
+processes every group message by default (same as 1:1), and the `[[NO_REPLY]]` sentinel is the
+model's own *after-the-fact* judgment on whether to reply substantively, not a pre-dispatch gate
+anything else can consult. There is nothing to extract.
 
-**Why extract rather than duplicate**: REQ-084-005 requires the *reaction* gate to precisely match
-"messages that are actively processed by DeniDin" — if this were reimplemented as a second,
-independent string/heuristic check, the two could silently drift apart over time (a message the
-reply-gate would answer but the reaction-gate misses, or vice versa), which is exactly the failure
-mode SC-003 ("zero reaction webhooks... for ignored ambient group chat messages") exists to
-prevent. A single shared predicate makes drift structurally impossible rather than something to
-catch in review.
+**Revised design**: the fast-path hook's own classification IS the gate, for both group and 1:1
+traffic alike — no separate "addressed to bot" check exists or is added. A message only produces a
+fast-path reaction if it matches the media-type check (`imageMessage`/`documentMessage`) or the
+action-verb keyword check (`contracts/fast-path-reaction-heuristic.md`, `research.md` R2). Ambient
+group banter (two humans chatting, no action verbs, no media) simply never matches either check —
+REQ-084-005/SC-003's "zero reactions for ambient group chatter" falls out of the classification
+itself, not a dedicated addressing predicate. This is a deliberately narrower, cheaper guarantee
+than "detect whether DeniDin is truly being addressed" — it's "detect whether this specific message
+looks actionable," which is all the fast-path ever needed and matches what the classification
+already had to do regardless of group/1:1.
 
-**Human review flag**: extracting and repurposing existing group-gating logic for a second purpose
-is exactly the kind of refactor that deserves explicit human sign-off before being trusted, per this
-plan's own "Human decisions flagged for later" — a subtle regression here fails silently (nothing
-crashes; SC-003 is just quietly violated) and would only surface as an unwanted reaction in a real
-group chat.
+**What this means for group-chat reactions beyond the fast-path**: the model's own
+`react_to_message` tool calls (flips, conversational reactions) are governed entirely by
+constitution guidance below — same discretion as any other tool call, no code-level "is this
+message addressed to me" gate exists for those either, consistent with how the reply pipeline
+itself works (Feature 039: the model decides `[[NO_REPLY]]` on its own for replies; the model
+decides whether/how to react on its own for reactions, guided by the same "favor silence in
+groups" framing).
 
-**Note**: this predicate answers "is DeniDin engaged with this specific message" — it is
-*independent* of whether the model ultimately decides to reply substantively (the `[[NO_REPLY]]`
-sentinel) or whether it decides to react at all (User Story 5's 1:1 discretion, governed by
-constitution guidance below, not this predicate). The predicate only needs to be correct about
-group-addressing; 1:1 discretion is handled entirely downstream, by the model.
+**Human review flag**: this is a smaller, more mechanical claim than the original plan assumed
+(classification-as-gate rather than a shared, extracted predicate) — worth a quick sanity check
+during review that ambient group scenarios in the reaction-judgment pool actually produce zero
+fast-path calls, since there is no longer a dedicated, separately-named guard to point to.
 
 ## New `runtime_constitution.md` section: `## Reaction Management`
 
@@ -78,10 +80,10 @@ being understood instantly is.
   skipping it is never wrong.
 
 ### When this does NOT apply — do not call this tool
-- Any message in a group chat that this predicate/etiquette already determined DeniDin is not
-  actually engaging with (ambient banter, a message clearly addressed to someone else) — this is
-  enforced at the code level before you ever see such a message as needing a reaction decision,
-  but never call `react_to_message` retroactively on such a message either.
+- Ambient group banter not concerning DeniDin at all (unrelated small talk between other
+  participants). There is no code-level filter hiding these from you the way there is for the
+  fast-path's own classification — this is your own judgment call, same discretion as deciding
+  whether a reply is warranted.
 - Trivial 1:1 acknowledgments, routine small talk, or any turn where a reaction would feel forced
   or generic. Favor silence — no reaction is often the more polite choice, exactly as choosing not
   to reply substantively can be. Do not react "just in case" or because a tool happens to be
@@ -109,8 +111,10 @@ substitute for them — mirroring the existing "an Invoice Management action is 
 
 No hard-assertion test can verify prose guidance/emoji taste directly — by explicit human decision
 (2026-09-12), this feature does NOT use fixed `billed`/`expensive` acceptance scenarios asserting a
-specific expected emoji. The code-level `is_message_addressed_to_bot()` unit/integration tests
-still hard-assert on the zero-tolerance group-ambient-silence requirement (that's deterministic
-plumbing, not judgment). Reaction *quality* is instead tuned iteratively via
+specific expected emoji. The fast-path classification's unit/integration tests still hard-assert on
+the zero-tolerance group-ambient-silence requirement for the fast-path specifically (that's
+deterministic plumbing, not judgment) — there is no separate predicate to test on its own, since
+classification IS the gate (see the Correction above). Reaction *quality*, and the model's own
+tool-driven reaction/silence decisions in groups, are instead tuned iteratively via
 `contracts/reaction-judgment-tuning.md`'s rotating capture harness — see that contract for the
 full mechanism.

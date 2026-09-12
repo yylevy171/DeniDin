@@ -114,9 +114,9 @@ in `contracts/`:
 3. **`contracts/fast-path-reaction-heuristic.md`** — the pre-dispatch hook's exact placement in
    `dispatch_notification()`, its media/action-request classification tables, and its shared
    flip-not-stack contract with the AI tool.
-4. **`contracts/group-discretion-gating.md`** — the shared `is_message_addressed_to_bot` predicate
-   and the new `runtime_constitution.md` section (including the classics list) plus required
-   cross-references.
+4. **`contracts/group-discretion-gating.md`** — the fast-path classification-as-gate design
+   (corrected 2026-09-12: no separate addressed-to-bot predicate exists to extract) and the new
+   `runtime_constitution.md` section (including the classics list) plus required cross-references.
 5. **`contracts/reaction-judgment-tuning.md`** — the scenario pool, capture-stub mechanism,
    rotation harness, and the AI-run iterative tuning loop that replaces fixed acceptance scenarios
    for judgment quality (human decision, 2026-09-12).
@@ -156,9 +156,7 @@ apps/denidin-app/
 │   │                                        #   (Optional[str]); Session gains
 │   │                                        #   active_document_message_id (Optional[str]).
 │   ├── utils/
-│   │   └── green_api_bot.py                # MODIFIED — + send_reaction(), + a small
-│   │                                        #   is_message_addressed_to_bot() extraction reused by
-│   │                                        #   both the fast-path hook and existing group gating.
+│   │   └── green_api_bot.py                # MODIFIED — + send_reaction().
 │   └── handlers/
 │       └── ai_handler.py                   # MODIFIED — new REACT_TO_MESSAGE_TOOL schema,
 │                                            #   attached unconditionally (no RBAC gate), dispatched
@@ -214,10 +212,9 @@ where its closest analog already lives.
 3. **Phase 2 — Data model additions**: `Message.whatsapp_id_message`, `Session.active_document_message_id`
    in `session_manager.py`, plus the capture point (inbound webhook parsing already extracts
    `idMessage` for read-receipt purposes — reuse that extraction, do not re-derive it).
-4. **Phase 3 — Fast-path hook + shared addressed-to-bot predicate**: `denidin.py`'s pre-dispatch
-   hook, and the `is_message_addressed_to_bot()` extraction from existing group-gating logic
-   (flagged for explicit human review per `contracts/group-discretion-gating.md` — a regression
-   here silently violates SC-003).
+4. **Phase 3 — Fast-path hook**: `denidin.py`'s pre-dispatch hook, whose own classification is the
+   entire gate (corrected 2026-09-12 — no separate addressed-to-bot predicate exists to extract,
+   see `contracts/group-discretion-gating.md`'s Correction).
 5. **Phase 4 — `react_to_message` AI tool**: schema + immediate-dispatch wiring in `ai_handler.py`,
    depends on Phases 1-2 for the resolution fallback chain to have real fields to read.
 6. **Phase 5 — `runtime_constitution.md`**: new `## Reaction Management` section (with the classics

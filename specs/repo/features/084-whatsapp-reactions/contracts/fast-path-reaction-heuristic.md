@@ -6,8 +6,9 @@
 
 Inserted as a side-effecting pre-step, **after** the existing dedup check and **before** the
 `HANDLER_REGISTRY.get(...)` lookup — never as a new `HANDLER_REGISTRY` entry, since that table's
-exact 8-key shape is locked by an existing test (`test_denidin_dispatch.py`, per prior exploration
-of this codebase). The existing `interactiveButtonsResponse` special-casing is the precedent for
+exact 9-key shape (verified live against `test_denidin_dispatch.py`'s
+`test_registry_contains_exactly_these_nine_types_no_more_no_less`) is locked by an existing test.
+The existing `interactiveButtonsResponse` special-casing is the precedent for
 adding new pre-dispatch behavior without touching the registry's shape.
 
 ```python
@@ -16,23 +17,21 @@ _dispatch_fast_path_reaction(type_message, notification)   # NEW — never raise
 handler(notification)
 ```
 
-`_dispatch_fast_path_reaction` itself:
-1. Resolves whether this message is actually addressed to DeniDin, via the shared
-   `is_message_addressed_to_bot()` predicate (see `contracts/group-discretion-gating.md`) — if not
-   (e.g. ambient group chatter), returns immediately with **zero** Green API calls (REQ-084-005,
-   SC-003 — this check must run first, before any classification, to guarantee zero calls, not
-   just zero *reactions ultimately sent*).
-2. Classifies the message per `research.md` R2's two lookup tables:
+`_dispatch_fast_path_reaction` itself (revised 2026-09-12 — see `contracts/group-discretion-gating.md`'s
+Correction: there is no separate "addressed to bot" predicate to check first; classification below
+IS the gate, for group and 1:1 traffic alike):
+1. Classifies the message per `research.md` R2's two lookup tables:
    - `typeMessage in {"imageMessage", "documentMessage"}` → pick from the media pool
      (`["👀", "🔍", "⏳"]`).
    - `typeMessage in {"textMessage", "extendedTextMessage"}` and the text matches the curated
      action-verb keyword list → pick from the action-request pool (`["👍", "🫡", "👌"]`).
    - Anything else (routine chatter, media types with no matching heuristic) → no reaction,
-     silently.
-3. Resolves the message's real `idMessage` from the inbound webhook payload (already extracted
+     silently. This is the entire gate — ambient group banter and trivial 1:1 chatter alike simply
+     never match either rule, satisfying REQ-084-005/SC-003 without a dedicated addressing check.
+2. Resolves the message's real `idMessage` from the inbound webhook payload (already extracted
    inline elsewhere in `green_api_bot.py` for read-receipt purposes — reuse that extraction, do not
    re-derive it) and the `chatId`.
-4. Calls `send_reaction(bot, chat_id, id_message, chosen_emoji)` — never blocks `handler(notification)`
+3. Calls `send_reaction(bot, chat_id, id_message, chosen_emoji)` — never blocks `handler(notification)`
    from running afterward regardless of outcome; any exception inside this whole function is caught
    internally, logged at WARNING, and swallowed (REQ-084-007).
 
