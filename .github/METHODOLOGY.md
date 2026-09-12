@@ -99,15 +99,22 @@ Development workflow integrates AI agents as first-class collaborators with clea
 Feature implementation MUST follow a structured phase progression with validation gates.
 
 **Phases:**
+- **Phase -1: Acceptance Scenario Definition & Approval (§VI.a, added 2026-09-12)** - after
+  `speckit.specify`/`speckit.clarify`, BEFORE Phase 0 begins: draft every `billed`/`expensive`
+  acceptance scenario in plain user-experience language (what a real person does, what they
+  should see) and get **explicit human approval** on it. This is the alignment point between
+  the human operator and the AI on the actual outcome, before any technical design is spent.
+  `speckit.plan` MUST refuse to start without this approval.
 - **Phase 0: Research** - Technical feasibility, dependency analysis, constraints
 - **Phase 1: Design** - Data models, API contracts, quickstart scenarios
 - **Phase 2: Task Generation** - Dependency-ordered, user-story-grouped task list
 - **Phase 3: Implementation** - unit/integration test discipline (§VI.b) per user story
   priority, followed by a single Test-Driven Development (TDD, §VI.a) acceptance pass
-  (`billed`/`expensive` tests, defined earlier in Phase 2, run once the whole feature is
+  (`billed`/`expensive` tests, defined and approved in Phase -1, run once the whole feature is
   code-complete)
 - **Constitution & Methodology Check** MUST pass before Phase 0; re-check after Phase 1
-- No phase may begin until predecessor phase artifacts are complete and approved
+- No phase may begin until predecessor phase artifacts are complete and approved (Phase -1's
+  acceptance-scenario approval included — it gates Phase 0 exactly like any other approval)
 
 **Rationale**: Phased execution reduces rework by catching issues early, enables incremental delivery, and ensures architecture decisions precede implementation details.
 
@@ -159,33 +166,58 @@ in every app in this monorepo (each app registers these markers independently in
 
 These are the tests that actually validate the feature works — end to end, from a real
 user's perspective, through the real webhook/router/handler/AI pipeline, exactly as a real
-person would trigger it. They are **defined at the start of the feature's task breakdown**
-(during `speckit.tasks`/planning, same timing as before) — but "defined" means a **plain-language,
-user-experience description** of the scenario, not test code. The actual test code is written,
-and run, together, only at the end. Neither the description nor (once it exists) the code blocks
-any unit/integration task.
+person would trigger it. **Redefined again 2026-09-12 (explicit human decision — see
+Changelog): they are now defined, and MUST be human-approved, BEFORE `speckit.plan` begins —
+not during `speckit.tasks` as the 2026-08-18 redefinition originally had it.** "Defined" still
+means a **plain-language, user-experience description** of the scenario, not test code — that
+part is unchanged. The actual test code is still written, and run, together, only at the end.
+Neither the description nor (once it exists) the code blocks any unit/integration task.
+
+**Why moved earlier**: this is where the AI and the human operator become aligned on the actual
+outcome — what a real person does and what they should see — before any technical design work
+(`plan.md`'s architecture/storage/technology decisions) is spent building toward it. Settling
+this after `speckit.tasks` (the old timing) meant the entire plan phase could already bake in
+assumptions about the acceptance scenarios that were never actually checked against what the
+human wanted. Getting explicit sign-off on the scenarios first makes `plan.md`/`tasks.md`
+answerable to an already-agreed target, not the other way around.
 
 **Workflow:**
-1. **DEFINE, at the start, in user-experience terms**: as part of the feature's task list,
-   describe each `billed`/`expensive` scenario in plain, user-facing language — what a real
-   person does (what they'd type/send), what they should see happen in response, which user
-   story/success criterion it validates, and its exact tier (`billed` vs `expensive` — flag
+1. **DEFINE, immediately after `speckit.specify`/`speckit.clarify` and BEFORE `speckit.plan`
+   starts, in user-experience terms**: describe each `billed`/`expensive` scenario in plain,
+   user-facing language — what a real person does (what they'd type/send), what they should see
+   happen in response, which user story/success criterion it validates, and its exact tier (`billed`
+   vs `expensive` — flag
    `expensive` explicitly, since it carries its own separate per-run approval gate). This is a
    **description, not code** — no test file, no pytest function, no assertions are written at
    this stage. It's the same kind of scenario language `quickstart.md`/`user-stories.md`
-   Acceptance Scenarios already use, not an implementation artifact.
-2. **DO NOT WRITE the actual test code, and DO NOT RUN anything**, while unit/integration tasks
-   for the feature are still in progress — the user-experience description from step 1 is the
-   only artifact that exists at this point; there is no test file to be blocked on or to skip.
-3. **IMPLEMENT AND RUN, together, only at the end** — once the whole feature is code-complete
+   Acceptance Scenarios already use, not an implementation artifact. Record it in
+   `user-stories.md`'s Acceptance Scenarios/UAT section (or an equivalent
+   `acceptance-scenarios.md`, if kept separate) so it lives alongside the spec it validates, not
+   buried in `tasks.md`.
+2. 🚨 **BLOCKING GATE — explicit human approval required before `speckit.plan` may begin.**
+   Present the drafted scenarios to the human operator and wait for explicit sign-off (a plain
+   "approved"/"yes"/equivalent, not silence or an unrelated reply). This is a distinct approval
+   gate from spec approval (§I) and from `speckit.clarify`'s ambiguity resolution — it exists
+   specifically so the human and the AI agree on the actual observable outcome before any
+   technical design (`plan.md`) gets built toward it. `speckit.plan` MUST refuse to start (stop
+   and ask, per this document's existing gate-refusal pattern) if this approval hasn't happened
+   for the feature yet.
+3. **DO NOT WRITE the actual test code, and DO NOT RUN anything**, during `speckit.plan`,
+   `speckit.tasks`, or while unit/integration tasks for the feature are still in progress — the
+   approved user-experience description from step 1 is the only artifact that exists until the
+   feature is code-complete; there is no test file to be blocked on or to skip.
+4. **IMPLEMENT AND RUN, together, only at the end** — once the whole feature is code-complete
    (every unit and integration task, §VI.b below, finished and GREEN). At that point, turn each
    step-1 description into real test code and run it immediately, once, against the completed
    implementation. This is the feature's real acceptance pass — fix forward on any failure (same
-   "no premature declaring success" bar as any other test).
-4. `expensive` tests keep the full existing per-run human-approval gate, one at a time, with
+   "no premature declaring success" bar as any other test). The approved scenarios from step 1/2
+   are the contract this pass is checked against — a test that quietly drifts from what was
+   approved (a different flow, a different expected outcome) is a bug in the test, not a reason
+   to reinterpret the approval.
+5. `expensive` tests keep the full existing per-run human-approval gate, one at a time, with
    logs read before any re-run (CONSTITUTION §VII) — this discipline is unchanged by this
    redefinition. `billed` tests keep their existing no-approval-needed, run-freely status.
-5. 🚨 **Any `billed`/`expensive` test that seeds persistent state (ledger events, reminders,
+6. 🚨 **Any `billed`/`expensive` test that seeds persistent state (ledger events, reminders,
    sessions, or anything else written to disk/DB under `test_data/`) MUST wipe that state
    both BEFORE and AFTER it runs — no exceptions, and this is not optional polish added
    later.** "Before" makes the test's own result independent of what any earlier run (in this
@@ -1157,9 +1189,18 @@ process pressure that ever gets the actual root cause fixed.
 
 ---
 
-**Version**: 2.12.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-09-04
+**Version**: 2.13.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-09-12
 
 **Changelog**:
+- v2.13.0 (2026-09-12): Moved §VI.a's `billed`/`expensive` acceptance-scenario definition
+  earlier — now drafted and **explicitly human-approved BEFORE `speckit.plan` begins** (new
+  Phase -1, §IV), not during `speckit.tasks` as the 2026-08-18 redefinition had it. Per explicit
+  operator instruction: this is where the human and the AI become aligned on the actual outcome,
+  before technical design work is spent building toward assumptions never checked against what
+  was wanted. `speckit.plan.agent.md` and `speckit.specify.agent.md` updated to enforce this as
+  a blocking prerequisite/handoff step. Scenario definition format (plain user-experience
+  language, not test code) and the later "implement+run once at the end" step are unchanged from
+  v2.5.1/v2.5.0.
 - v2.12.0 (2026-09-04): §VI — **individual per-test sound-off is now the permanent, code-enforced default for every test run** (serial, parallel, sanity, bare `pytest`, every tier). Both apps' `conftest.py` emit a `>>> TEST [k/N] STATUS: <nodeid>` line per test by default; the run driver relays each as it lands. Generalised from the prior `run_multiple_billed_tests.sh`-only rule. See CONSTITUTION.md §VII (v2.10.0) and CLAUDE.md.
 - v2.11.0 (2026-09-02): Feature 059 added the **sanity** test tier (`@pytest.mark.sanity`) to §VI's tier list — a curated cross-app subset run via `./scripts/run_sanity.sh` as a fast end-to-end smoke check (one test at a time through `run_single_test.sh`, resumable, expensive members checklist-only). Not CI.
 - v2.10.0 (2026-08-25): Added "Production Incidents Require Mandatory Bug-Driven-Development
