@@ -5,6 +5,12 @@
 # Process ID file
 denidin.pid
 
+# Session handoff notes - ephemeral, agent/session-local working notes that
+# should never have been committed (2026-09-12 cleanup: 8 tracked HANDOFF*.md
+# files removed repo-wide). Never re-add one to git.
+HANDOFF*.md
+**/HANDOFF*.md
+
 # Python
 __pycache__/
 *.py[cod]
