@@ -24,3 +24,34 @@
 **When** the execution cycle concludes
 **Then** the system MUST record concrete, structured telemetry data
 **And** the data MUST include end-to-end duration, total LLM inference time, and total tool execution time, stored in a queryable log or database for future performance audits.
+
+## User Experience Testing Scenarios (UAT)
+
+To ensure the "silent void" is effectively eliminated, the developers must manually verify the following timeline-based UX scenarios.
+
+### Scenario A: The 45-Second Heavy Workflow (Document Upload)
+**Goal**: Verify continuous typing indicator and proactive AI progress text during a long tool execution.
+- **T=0s**: User sends a multi-page PDF document to DeniDin.
+- **T+1s**: The bot attaches the fast-path "👀" reaction (Feature 084 logic). The WhatsApp `typing...` indicator appears on the user's screen.
+- **T+5s**: The AI determines that OCR and analysis will take significant time. It autonomously dispatches a brief text: *"קיבלתי את המסמך, מתחיל לקרוא ולחלץ נתונים..."*
+- **T+20s**: Behind the scenes, the system re-pings the Green API presence endpoint. The `typing...` indicator continues seamlessly without dropping.
+- **T+35s**: The system pings the Green API presence endpoint again.
+- **T+45s**: The internal pipeline finishes. DeniDin dispatches the final comprehensive analysis as a single cohesive message. The `typing...` indicator naturally stops. The initial "👀" reaction flips to "✅".
+
+### Scenario B: The Multi-Step Lookup (Conversational)
+**Goal**: Verify the AI constitution correctly instructs the bot to send an intermediate update when doing multi-tool research.
+- **T=0s**: User asks: *"כמה הלקוח יוסי כהן שילם לנו השנה בסך הכל?"*
+- **T+1s**: Bot attaches a "👍" reaction. `typing...` indicator appears.
+- **T+8s**: The AI queries the client database, finds Yossi Cohen, and realizes it now needs to scan the ledger. It autonomously texts: *"שניה, אני בודק את היסטוריית התשלומים שלו ביומן..."*
+- **T+20s**: The system re-pings the presence endpoint. `typing...` is maintained.
+- **T+28s**: The final total is calculated and sent as a single message. `typing...` stops, and the "👍" flips to "✅".
+
+### Scenario C: Telemetry Data Validation (Backend)
+**Goal**: Verify the metrics plumbing captures the breakdown of where time was spent during Scenario A or B.
+- **T=0**: Admin/Developer completes either Scenario A or B.
+- **T+1**: Admin queries the new metrics log/database.
+- **Expectation**: A distinct row/record exists for the processed message containing:
+  - `total_duration_ms`: e.g., 28000
+  - `llm_inference_ms`: e.g., 8500
+  - `tool_execution_ms`: e.g., 18500
+  - `tool_breakdown`: A breakdown showing exactly which tools took how long.
