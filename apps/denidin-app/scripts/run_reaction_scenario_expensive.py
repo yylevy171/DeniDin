@@ -157,7 +157,14 @@ def _send_text(chat_id, id_message, text):
     return notification._test_sent_messages[0] if notification._test_sent_messages else None
 
 
-def run_scenario(scenario, seq):
+def run_scenario(scenario, seq, adhoc_followup=None):
+    """`adhoc_followup`, when given, OVERRIDES the pool's own `followup_message` for this
+    run only - used to force a genuine AI-turn (react_to_message IS attached there) on a
+    scenario whose pool data has `followup_message: None`. Found necessary 2026-09-12:
+    MediaHandler._compose_user_message composes the document-upload's OWN reply
+    deterministically (see its own docstring) - it never calls AIHandler.get_response, so
+    react_to_message is never even attached on that first turn, regardless of constitution
+    wording. Only a real follow-up text turn ever reaches a tool-bearing AI call."""
     illustrative_name = Path(scenario["document_path"]).name
     real_filename = _FIXTURE_MAP.get(illustrative_name, illustrative_name)
     stub = ReactionCaptureStub()
@@ -167,10 +174,11 @@ def run_scenario(scenario, seq):
             scenario["chat_id"], f"MANUAL_EXP_{scenario['name']}_DOC_{seq}",
             real_filename, scenario["document_type"],
         )
-        if scenario.get("followup_message"):
+        followup = adhoc_followup or scenario.get("followup_message")
+        if followup:
             reply_text = _send_text(
                 scenario["chat_id"], f"MANUAL_EXP_{scenario['name']}_FOLLOWUP_{seq}",
-                scenario["followup_message"],
+                followup,
             )
     return stub.calls, reply_text, real_filename
 
@@ -182,7 +190,13 @@ def main():
         return 2
 
     round_timestamp = sys.argv[1]
-    scenario_names = sys.argv[2:]
+    rest = sys.argv[2:]
+    adhoc_followup = None
+    if "--followup" in rest:
+        idx = rest.index("--followup")
+        adhoc_followup = rest[idx + 1]
+        rest = rest[:idx] + rest[idx + 2:]
+    scenario_names = rest
 
     server = _start_fixture_server()
     try:
@@ -195,7 +209,7 @@ def main():
         for seq, name in enumerate(scenario_names):
             scenario = _find_scenario(name)
             print(f"--- running expensive scenario: {name} ---")
-            calls, reply_text, real_filename = run_scenario(scenario, seq)
+            calls, reply_text, real_filename = run_scenario(scenario, seq, adhoc_followup=adhoc_followup)
             log.append(name, calls, reply_text=reply_text or "")
             print(f"    fixture used: {real_filename}")
             print(f"    reactions: {[(c.source, c.reaction) for c in calls]}")
