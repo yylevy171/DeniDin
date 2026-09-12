@@ -1,7 +1,7 @@
 # Feature 068 — Ledger Web UI: Playwright acceptance suite
 
 End-to-end acceptance tests for `apps/webapp`, implementing
-[`PLAYWRIGHT-TEST-PLAN.md`](../../../specs/done/068-ledger-ui-and-reports/PLAYWRIGHT-TEST-PLAN.md)
+[`PLAYWRIGHT-TEST-PLAN.md`](../../../specs/done/v0.7.0/068-ledger-ui-and-reports/PLAYWRIGHT-TEST-PLAN.md)
 (the full, case-by-case-approved plan — ~270 cases across 10 components, 0–9).
 
 This is **not** part of the Python `pytest` tiers (`unit`/`integration`/`billed`/`expensive`)
