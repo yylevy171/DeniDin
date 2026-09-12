@@ -8,7 +8,8 @@ from tenacity import (
     retry,
     stop_after_attempt,
     wait_fixed,
-    retry_if_exception_type
+    retry_if_exception_type,
+    retry_if_exception,
 )
 from whatsapp_chatbot_python import Notification
 from src.constants.error_messages import (
@@ -140,8 +141,22 @@ class WhatsAppHandler:
                 # 5xx errors: let tenacity retry them by raising
             raise
 
+    @staticmethod
+    def _is_retryable_send_error(exception: BaseException) -> bool:
+        """True for a timeout/connection error, or an HTTPError NOT in the
+        4xx range - the actual gate that makes "never retry a 4xx" real,
+        since a plain `retry_if_exception_type` would match every
+        requests.HTTPError regardless of status code (re-raising inside the
+        function body does not change what the retry decorator itself sees)."""
+        if isinstance(exception, (requests.Timeout, requests.ConnectionError)):
+            return True
+        if isinstance(exception, requests.HTTPError):
+            status_code = getattr(getattr(exception, 'response', None), 'status_code', None)
+            return not (status_code is not None and 400 <= status_code < 500)
+        return False
+
     @retry(
-        retry=retry_if_exception_type((requests.Timeout, requests.ConnectionError, requests.HTTPError)),
+        retry=retry_if_exception(_is_retryable_send_error.__func__),
         stop=stop_after_attempt(2),  # Initial attempt + 1 retry = 2 total attempts
         wait=wait_fixed(1),
         reraise=True
@@ -157,7 +172,6 @@ class WhatsAppHandler:
             if hasattr(e, 'response') and e.response is not None:
                 if 400 <= e.response.status_code < 500:
                     logger.error(f"Green API 400-range error sending file - not retrying: {e}")
-                    raise
             raise
 
     def send_document_response(

@@ -40,15 +40,16 @@ to that file, see T014 below).
 
 ## Phase 3: AI tool wiring — IMPLEMENTED, in a NEW separate file (2026-09-12 user instruction:
   "consider creating a new py file for this... ai_handler.py should be refactored but not now")
-- [x] T008-partial [Task A] No dedicated `test_ai_handler_fee_agreement_tools.py` unit test file
-  was written this pass — deferred, tracked below as still-outstanding, NOT silently dropped. What
-  IS verified so far: the full existing 1420-test unit suite (including
-  `test_ai_handler_reminders.py`, `test_ai_handler_retry.py`, `test_ai_handler_zero_execution_detection.py`,
-  `test_main_turn_tools.py`) still passes unchanged against the new wiring (no regression), and
-  `DocTemplateEngine` itself (the logic `FeeAgreementToolHandler` delegates to) is fully covered by
-  T005. `FeeAgreementToolHandler`'s own dispatch logic (proposal validation, approval-details text,
-  verify/send bookkeeping) is NOT yet independently unit-tested — this is a real gap, not closed by
-  the suite passing, since nothing in the existing suite exercises the new code paths at all yet.
+- [x] T008 [Task A/B done together, human-approved reordering 2026-09-12] `tests/unit/test_ai_handler_fee_agreement_tools.py`
+  written (19 tests) covering: tool attachment (RBAC + feature flag, 4 tests), the
+  `generate_fee_agreement` proposal path (valid/missing-values/unknown-variant, 4 tests), the
+  approval-resolution path (approve → real `DocTemplateEngine.generate()` → followup text; decline;
+  TOCTOU re-validation, 3 tests), and the immediate-dispatch verify/send handlers (clean verify sets
+  `verified=True`; stale `document_id` is a tool-call error not a crash; send refused when
+  unverified; send success cleans up the document + temp file; send with no chat_id/no
+  whatsapp_handler is a tool-call error, 8 tests). Real `DocTemplateEngine` throughout (no mocking
+  of internal code) — only the OpenAI client is a stand-in, same discipline as
+  `test_ai_handler_reminders.py`.
 - [x] T009 [Task B] Implemented, split as the user directed:
   - **New file `src/handlers/fee_agreement_tools.py`** (NOT inlined into `ai_handler.py`): tool
     schemas `GENERATE_FEE_AGREEMENT_TOOL`/`VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL`/
@@ -81,21 +82,36 @@ to that file, see T014 below).
     reason, since `AIHandler` didn't hold a `WhatsAppHandler` reference before this feature).
 
 ## Phase 4: WhatsApp delivery (`whatsapp_handler.py`) — IMPLEMENTED (Task B only so far)
-- [ ] T010 [Task A] `tests/unit/test_whatsapp_handler_document_send.py` — NOT yet written (same
-  status as T008-partial above: a real, tracked gap, not silently skipped).
+- [x] T010 [Task A/B done together] `tests/unit/test_whatsapp_handler_document_send.py` written
+  (8 tests): sends exactly once on success with the exact expected `sendFileByUpload` args; refuses
+  outright when unverified (no call attempted); returns `False` when no bot is injected; retries
+  once on a 5xx then succeeds; never retries a 4xx; returns `False` after retry exhausted; never
+  raises on a connection error; never deletes the temp file itself (that's
+  `FeeAgreementToolHandler._cleanup`'s job). Fixing this test surfaced and fixed a real bug in the
+  first retry-predicate implementation (see note below).
 - [x] T011 [Task B] `whatsapp_handler.py`: `send_document_response(generated: GeneratedDocument, chat_id: str, caption: str) -> bool`
   implemented per `contracts/whatsapp-file-delivery.md` — `_send_file_with_retry` (retry-once-on-5xx/
-  timeout/connection-error, never-on-4xx, same tenacity pattern as `_send_with_retry`), refuses
-  outright (returns `False`, no call attempted) if `generated.verified is not True`, never raises
-  (all failure paths return `False`). Temp-file deletion is NOT this method's job — it's
-  `FeeAgreementToolHandler._cleanup`'s, called by `ai_handler.py`'s send handler regardless of this
-  method's return value (SC-003 still holds, just enforced one layer up).
+  timeout/connection-error, never-on-4xx), refuses outright (returns `False`, no call attempted) if
+  `generated.verified is not True`, never raises (all failure paths return `False`). Temp-file
+  deletion is NOT this method's job — it's `FeeAgreementToolHandler._cleanup`'s, called by
+  `ai_handler.py`'s send handler regardless of this method's return value (SC-003 still holds, just
+  enforced one layer up).
 
-**Honest status note (2026-09-12): Phase 3/4 code is written and wired end-to-end, and the full
-pre-existing 1420-test unit suite passes against it with zero regressions - but T008/T010's OWN
-new unit tests do not exist yet.** This is a real, acknowledged gap against this file's original
-Task-A-before-Task-B discipline, surfaced explicitly rather than glossed over - not yet re-approved
-by the human as an intentional reordering.
+**Bug caught by T010's own test (2026-09-12, worth recording)**: the first `_send_file_with_retry`
+implementation used `retry_if_exception_type((Timeout, ConnectionError, HTTPError))` with an inner
+`except HTTPError: if 4xx: log "not retrying"; raise` — but tenacity's retry predicate evaluates the
+exception the DECORATED function raises, regardless of what happened inside it; re-raising an
+`HTTPError` from inside the function body doesn't stop tenacity from matching `HTTPError` and
+retrying anyway, so a 4xx was actually being retried once despite the log line claiming otherwise.
+Fixed by switching to `retry_if_exception` with an explicit status-code-aware predicate
+(`_is_retryable_send_error`). `test_never_retries_a_4xx_error` failed against the buggy version and
+passed once fixed — a real regression this task's own Task-A-first discipline caught before it
+shipped.
+
+**Status (2026-09-12): Phase 3 and Phase 4 are both fully implemented AND unit-tested — T008/T010
+were done as Task A/B together (reordered from the file's original A-then-B split), which the human
+explicitly approved when asked how to close this gap** (see the exchange right after this file's
+prior revision). Full unit suite: 1447/1447 passing (1420 pre-existing + 27 new, zero regressions).
 
 ## Phase 5: Runtime constitution boundaries (CLAUDE.md-mandated)
 - [ ] T012 New "Fee Agreement Generation" section in `config/runtime_constitution.md`: scope (when
