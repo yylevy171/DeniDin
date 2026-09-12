@@ -1,6 +1,6 @@
 # Feature Specification: Refactor Runtime Constitution
 
-**Feature Branch**: `078-refactor-runtime-const`  
+**Feature Branch**: `085-refactor-runtime-const`  
 **Created**: 2026-09-11
 **Status**: Draft  
 **Input**: User description: "Refactor runtime const into modules."
@@ -25,10 +25,10 @@ See **`user-stories.md`** for full Given-When-Then criteria.
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
-- **REQ-078-01**: The monolithic `apps/denidin-app/config/runtime_constitution.md` (currently ~1700 lines) MUST be split into logical domain modules (e.g., `core_identity.md`, `customer_engagement.md`, `invoice_management.md`, `ledger_events.md`).
-- **REQ-078-02**: The `AIHandler` or initialization sequence MUST dynamically concatenate these modules at startup into a single string.
-- **REQ-078-03**: The resulting concatenated string MUST be byte-for-byte stable across identical runs to ensure OpenAI Prompt Caching is not invalidated.
-- **REQ-078-04**: The modular files MUST be located in `apps/denidin-app/config/runtime_modules/` or a similar dedicated directory.
+- **REQ-085-01**: The monolithic `apps/denidin-app/config/runtime_constitution.md` (currently ~1700 lines) MUST be split into logical domain modules (e.g., `core_identity.md`, `customer_engagement.md`, `invoice_management.md`, `ledger_events.md`).
+- **REQ-085-02**: The `AIHandler` or initialization sequence MUST dynamically concatenate these modules at startup into a single string.
+- **REQ-085-03**: The resulting concatenated string MUST be byte-for-byte stable across identical runs to ensure OpenAI Prompt Caching is not invalidated.
+- **REQ-085-04**: The modular files MUST be located in `apps/denidin-app/config/runtime_modules/` or a similar dedicated directory.
 
 ### Key Entities
 - **ConstitutionLoader**: A new utility responsible for reading, ordering, and assembling the markdown modules into a single system prompt.
