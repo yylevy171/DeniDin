@@ -10,7 +10,21 @@ harness's two permitted hard-assertion categories (contracts/reaction-judgment-t
 No assertion anywhere asserts on emoji choice itself - that's the AI-run tuning loop's
 job (T012), not a test's. `send_reaction` is stubbed at the Green API boundary only
 (tests/_reaction_capture.py) - everything else (AIHandler, tool dispatch, session
-persistence, fast-path hook) runs for real, exactly like every other billed E2E test.
+persistence) runs for real, exactly like every other billed E2E test. (The deterministic
+non-AI fast-path hook this docstring used to also mention was removed 2026-09-12, per
+explicit user instruction - the fast ack is now produced by the model itself, as its own
+first tool call, same as the resolution reaction.)
+
+(c) `TestAgreementCreationReactionsBilled` below (added 2026-09-12): a real
+    agreement-creation-via-text turn, hitting Morning MCP for real (`resolve_client_name`
+    against a known, permanent sandbox client - see GROUND_TRUTH_CLIENTS.md) - not a
+    reminder/local-tool stand-in. Added specifically because the reminder-based repro
+    used earlier in this session's live debugging found and fixed a real code bug (an
+    empty `tools` list on the reminder-confirmation follow-up call) that had nothing to
+    do with the actual live failure being chased (add_client/agreement flows, which go
+    through Morning MCP, not reminders at all) - this class verifies the reaction cycle
+    on the actual MCP-backed flow directly, judgment-only (no hard assertion on emoji
+    choice, same discipline as the rest of this file).
 
 Run with: pytest tests/billed/test_reaction_judgment_tuning.py -m billed -v
 """
@@ -21,6 +35,7 @@ import pytest
 
 from src.models.config import AppConfiguration
 from tests._reaction_capture import ReactionCaptureStub
+from tests.billed.denidin_mcp_e2e_helpers import GODFATHER_CHAT_ID
 from tests.billed.reaction_judgment_pool import BILLED_REACTION_SCENARIOS
 from tests.e2e_helpers import create_real_notification, get_response, sanity_worker_data_root
 
@@ -137,4 +152,59 @@ class TestReactionJudgmentTuningHardAssertions:
             )
         assert stub.calls[-1].id_message == stub.calls[0].id_message, (
             f"flip's second call should target the same id_message as the first: {stub.calls}"
+        )
+
+
+@pytest.mark.billed
+class TestAgreementCreationReactionsBilled:
+    """Added 2026-09-12, per explicit user request after the reminder-based repro used
+    earlier in this session's live debugging turned out to test the wrong flow entirely
+    (reminders are a local tool, no Morning MCP involved - the user's actual live
+    complaint was about add_client/agreement flows, which DO hit Morning MCP). This
+    class sends one real agreement-creation text message, against a known, permanent
+    sandbox client (`זהבית צור` - see GROUND_TRUTH_CLIENTS.md, chosen specifically because
+    it carries no invoice-number dependency, so accumulating documents across repeated
+    runs of this test is safe), so `resolve_client_name` succeeds via a real Morning MCP
+    round-trip within the SAME conversational turn `react_to_message` is attached to -
+    no multi-turn clarification needed, so both the ask-side fast ack and the
+    resolution reaction have a genuine chance to fire in one turn.
+
+    Deliberately reuses `tests/billed/conftest.py`'s own `denidin_app`/`live_morning_tunnel`
+    fixtures (config.test.json + GODFATHER_CHAT_ID) rather than this file's OTHER classes'
+    hand-rolled `config`/`denidin_app` fixtures (config/config.json) - those omit `mcp` from
+    `config_dict` entirely, a real, separate, pre-existing gap found while writing this test:
+    Morning MCP tools silently never attach under that fixture, for any test using it,
+    regardless of role - `_build_morning_mcp_tools` reads `self.config.mcp`, which is never
+    populated because config.json's own `mcp` block never gets forwarded into `config_dict`.
+    Not fixed in the other classes here (out of scope for this addition; `test_flip_earlier_
+    message_targets_the_same_id_message`, godfather-role, has never actually exercised a
+    Morning MCP call as a result) - flagging for whoever revisits that class next.
+
+    Judgment-only, same discipline as the rest of this file - no assertion on emoji
+    choice itself; only that at least one real `react_to_message` call happened
+    (evidence the ask/resolution reaction mechanism is reachable on this real MCP-backed
+    flow, not proof of any specific emoji judgment).
+    """
+
+    def test_agreement_creation_via_text_reacts_on_ask_and_resolution(
+        self, denidin_app, live_morning_tunnel,
+    ):
+        chat_id = GODFATHER_CHAT_ID
+        stub = ReactionCaptureStub()
+        with stub.installed():
+            notification = _send_turn(
+                chat_id,
+                "AGREEMENT_REACT_BILLED_1",
+                "תעד הסכם שכר טרחה עם זהבית צור על 750 שח",
+            )
+            response = get_response(notification)
+
+        logger.info(
+            "test_agreement_creation_via_text_reacts_on_ask_and_resolution: "
+            f"reply={getattr(response, 'response_text', None)!r}, calls={stub.calls!r}"
+        )
+        assert stub.calls, (
+            "expected at least one real react_to_message call on a real Morning-MCP-"
+            f"backed agreement-creation turn (fast ack and/or resolution) - got zero. "
+            f"reply was: {getattr(response, 'response_text', None)!r}"
         )

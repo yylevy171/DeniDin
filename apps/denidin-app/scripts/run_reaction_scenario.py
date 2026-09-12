@@ -64,10 +64,9 @@ def _boot_denidin_app():
     }
     app = denidin.initialize_app(config_dict)
     denidin.denidin_app = app
-    # Feature 084's fast-path hook (denidin._dispatch_fast_path_reaction) no-ops when
-    # denidin_app.green_api_bot is None - only __main__ sets a real bot there. This
-    # manual driver stubs send_reaction() itself (ReactionCaptureStub), so any non-None
-    # placeholder is fine here purely to clear that guard.
+    # ai_handler.react_to_message needs a non-None bot object to call send_reaction on
+    # (only __main__ sets a real one). This manual driver stubs send_reaction() itself
+    # (ReactionCaptureStub), so any non-None placeholder is fine here.
     app.green_api_bot = object()
     app.ai_handler.green_api_bot = app.green_api_bot
     return app
@@ -88,7 +87,41 @@ def _send_turn(chat_id: str, id_message: str, text: str):
     return notification._test_sent_messages[0] if notification._test_sent_messages else None
 
 
+def _apply_scenario_role(app, scenario):
+    """The pool's chat_id values are made-up test numbers that don't match
+    config/config.json's real godfather_phone/admin_phones - so a scenario's
+    documented "role" field alone was never actually enforced (a bug found while
+    testing the fast-ack constitution fix, 2026-09-12: "godfather"-labeled
+    scenarios were silently resolving to CLIENT, so Morning MCP / reminder tools
+    were never actually attached, no matter what the constitution said). Point
+    UserManager's real role lists at this scenario's own chat_id for the
+    duration of this run so its declared role is the role that's actually
+    resolved - never mutates config/config.json itself.
+    """
+    phone = scenario["chat_id"].split("@")[0]
+    user_manager = app.ai_handler.user_manager
+    role = scenario.get("role")
+    if role == "godfather":
+        user_manager.godfather_phone = phone
+        user_manager._godfather_phone_normalized = phone  # pylint: disable=protected-access
+    elif role == "admin":
+        user_manager.admin_phones = [phone]
+        user_manager._admin_phones_normalized = {phone}  # pylint: disable=protected-access
+    elif role == "client":
+        # Ensure a fake chat_id that happens to collide with a real
+        # godfather/admin/blocked number from a PRIOR scenario's override in
+        # the same process doesn't leak into this one.
+        if user_manager._godfather_phone_normalized == phone:  # pylint: disable=protected-access
+            user_manager.godfather_phone = None
+            user_manager._godfather_phone_normalized = None  # pylint: disable=protected-access
+        user_manager._admin_phones_normalized.discard(phone)  # pylint: disable=protected-access
+    user_manager._user_cache.pop(scenario["chat_id"], None)  # pylint: disable=protected-access
+
+
 def run_scenario(scenario, seq):
+    import denidin
+
+    _apply_scenario_role(denidin.denidin_app, scenario)
     stub = ReactionCaptureStub()
     reply_text = None
     with stub.installed():

@@ -3,7 +3,17 @@
 **Feature Branch**: `feature/084-whatsapp-reactions`  
 **Created**: 2026-09-11  
 **Clarified & Approved**: 2026-09-12 (with CEO)  
-**Status**: Approved Specification — Ready for Implementation Planning  
+**Status**: Done (2026-09-13). `speckit.plan`/`speckit.tasks`/`speckit.implement` complete —
+Phases 1-6 (T001-T011) implemented and green; the fast-path mechanism was later removed entirely
+per explicit user instruction, with the fast ack now produced solely by the model's own
+`react_to_message` tool call. A live-debugging follow-through session found and fixed three real
+bugs surfaced by an actual user-reported miss (empty `tools` list on the reminder-followup call;
+`REACT_TO_MESSAGE_TOOL`'s schema description needing to be imperative, not just descriptive; a
+test fixture never wiring `green_api_bot`) — see `tasks.md`'s session addendum for the full
+account. Verified via a real Morning-MCP-backed billed test plus a 15-test sanity-suite spot-check
+(32 real `react_to_message` calls observed, correct emoji per outcome, zero dispatch failures).
+T012 (further rotation-based tuning rounds) and T013 (live-dev-environment quickstart
+verification) remain deliberately out of scope — see `tasks.md`. PR: TBD.  
 **Input**: User description: "Whatsapp reactions - react to user messages according to your interpretation; reaction can change according to your actions"
 
 ---

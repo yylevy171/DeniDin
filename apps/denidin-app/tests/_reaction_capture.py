@@ -5,6 +5,16 @@ Green API boundary ONLY (permitted per CONSTITUTION SS V - external services may
 mocked in tests; internal components may not) - everything else in a scenario run
 (AIHandler, tool dispatch, session persistence) is real.
 
+The deterministic keyword-based fast-path hook in denidin.py has been removed
+(2026-09-12, explicit user instruction: "get rid of the fast in code. Fast should
+happen IN THE AI") - the only real send_reaction call site left is ai_handler.py's
+react_to_message tool. The model is now expected to produce its own fast initial
+reaction+ack itself (as its very first tool call in a turn), then do the rest of the
+work, then react again on resolution - not a separate non-AI heuristic. The
+"fast_path" source label is kept in CapturedReaction/the judgment log shape for
+backward-compatible log format only; it is never actually recorded anymore since
+nothing patches denidin.py's now-nonexistent send_reaction reference.
+
 Underscore-prefixed (not `test_*.py`) so pytest never collects this as a test module -
 imported by tests/unit/test_reaction_tuning_harness.py and by the actual billed/expensive
 reaction-judgment test files.
@@ -29,10 +39,12 @@ class CapturedReaction:
 
 
 class ReactionCaptureStub:
-    """Records every send_reaction call made during a scenario run, across both real
-    call sites (denidin.py's fast-path hook and ai_handler.py's react_to_message tool).
-    A scenario that makes zero calls is a valid, loggable outcome - `self.calls` simply
-    stays empty, never treated as an error by this class itself."""
+    """Records every send_reaction call made during a scenario run. The only real call
+    site left is ai_handler.py's react_to_message tool (denidin.py's deterministic
+    fast-path hook was removed 2026-09-12 - the model's own first tool call in a turn
+    is now the "fast" reaction). A scenario that makes zero calls is a valid, loggable
+    outcome - `self.calls` simply stays empty, never treated as an error by this class
+    itself."""
 
     def __init__(self) -> None:
         self.calls: List[CapturedReaction] = []
@@ -45,12 +57,11 @@ class ReactionCaptureStub:
 
     @contextmanager
     def installed(self):
-        """Patches send_reaction at both of its real import sites for the duration of
-        the `with` block. Each scenario run should use a FRESH ReactionCaptureStub
-        instance (never reused across scenarios) so `self.calls` reflects exactly one
-        scenario's outcome."""
-        with patch("denidin.send_reaction", side_effect=self._recorder("fast_path")), \
-             patch("src.handlers.ai_handler.send_reaction", side_effect=self._recorder("react_to_message")):
+        """Patches send_reaction at its one real import site for the duration of the
+        `with` block. Each scenario run should use a FRESH ReactionCaptureStub instance
+        (never reused across scenarios) so `self.calls` reflects exactly one scenario's
+        outcome."""
+        with patch("src.handlers.ai_handler.send_reaction", side_effect=self._recorder("react_to_message")):
             yield self
 
 

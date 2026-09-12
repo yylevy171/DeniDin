@@ -82,18 +82,6 @@ class TestReactionCaptureStub:
             pass
         assert stub.calls == []
 
-    def test_records_a_fast_path_call(self):
-        import denidin
-
-        stub = ReactionCaptureStub()
-        with stub.installed():
-            denidin.send_reaction(None, "972500000000@c.us", "wamid.1", "👀")
-        assert len(stub.calls) == 1
-        assert stub.calls[0].source == "fast_path"
-        assert stub.calls[0].chat_id == "972500000000@c.us"
-        assert stub.calls[0].id_message == "wamid.1"
-        assert stub.calls[0].reaction == "👀"
-
     def test_records_a_react_to_message_tool_call(self):
         from src.handlers import ai_handler
 
@@ -104,11 +92,11 @@ class TestReactionCaptureStub:
         assert stub.calls[0].source == "react_to_message"
 
     def test_fresh_stub_per_scenario_does_not_leak_calls(self):
-        import denidin
+        from src.handlers import ai_handler
 
         first = ReactionCaptureStub()
         with first.installed():
-            denidin.send_reaction(None, "chat@c.us", "wamid.1", "👀")
+            ai_handler.send_reaction(None, "chat@c.us", "wamid.1", "👀")
 
         second = ReactionCaptureStub()
         with second.installed():
@@ -150,15 +138,15 @@ class TestReactionTuningJudgmentLog:
         assert len(second.entries) == 2
 
     def test_captured_reaction_calls_are_serialized_as_dicts(self, tmp_path):
-        import denidin
+        from src.handlers import ai_handler
 
         stub = ReactionCaptureStub()
         with stub.installed():
-            denidin.send_reaction(None, "chat@c.us", "wamid.1", "👀")
+            ai_handler.send_reaction(None, "chat@c.us", "wamid.1", "👀")
 
         log = ReactionTuningJudgmentLog(tmp_path, "round1")
         log.append("scenario_a", stub.calls)
         on_disk = json.loads(log.path.read_text(encoding="utf-8"))
         assert on_disk[0]["reactions"] == [
-            {"source": "fast_path", "chat_id": "chat@c.us", "id_message": "wamid.1", "reaction": "👀"}
+            {"source": "react_to_message", "chat_id": "chat@c.us", "id_message": "wamid.1", "reaction": "👀"}
         ]

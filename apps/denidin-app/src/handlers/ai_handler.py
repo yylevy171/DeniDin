@@ -1445,13 +1445,25 @@ REACT_TO_MESSAGE_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "react_to_message",
     "description": (
-        "Attach or replace a native WhatsApp emoji reaction on a message. Pass an empty "
-        "string for emoji to clear an existing reaction. Omit message_id (pass null) to "
-        "react to the CURRENT user turn's incoming message; pass a known earlier message "
-        "id to flip a reaction you or the system set earlier in this workflow (e.g. "
-        "flipping a document's in-flight emoji to a final checkmark once its ledger "
-        "capture is complete). This is purely cosmetic and reversible - a failure here is "
-        "logged and never blocks your reply."
+        "Call this proactively, every turn where it applies - do not wait to be asked and "
+        "do not treat it as optional decoration. Two mandatory moments call for it: (1) the "
+        "user asked you to DO something (not just answer a question) - call this as your "
+        "very first tool call, before any other tool, with a quick ack emoji (e.g. \U0001FAE1/\U0001F44D), "
+        "so the user sees you registered the request within 1-2 seconds; (2) that ask just "
+        "became RESOLVED in this reply - success, failure, validation problem, or a blocked/"
+        "abandoned action - call this again with a terminal emoji (✅/\U0001F389 success, "
+        "⚠️/❓/❌ failure) BEFORE or ALONGSIDE writing that resolution into your reply text. "
+        "This applies even when the ask and its resolution both happen in this SAME single "
+        "turn with no back-and-forth - 'it resolved instantly' is never a reason to skip "
+        "either call, and a turn that resolves more than one ask deserves a reaction for "
+        "each. Never substitute an emoji embedded in your reply text for this tool call - "
+        "only a real call here counts. Pass an empty string for emoji to clear an existing "
+        "reaction. Omit message_id (pass null) to react to the CURRENT user turn's incoming "
+        "message; pass a known earlier message id to flip a reaction you or the system set "
+        "earlier in this workflow (e.g. flipping a document's in-flight emoji to a final "
+        "checkmark once its ledger capture is complete). This is purely cosmetic and "
+        "reversible - a failure here is logged and never blocks your reply, so there is no "
+        "downside to calling it liberally."
     ),
     "strict": True,
     "parameters": {
@@ -3476,6 +3488,7 @@ class AIHandler:
 
     def _call_openai_reminder_followup_api(
         self, request: AIRequest, pending: PendingLocalToolApproval, result: Dict[str, Any],
+        tools: Optional[List[Dict]] = None,
     ):
         """Reminders (Feature 054): report the concrete result of an approved
         create_reminder/modify_reminder/delete_reminder action back as that
@@ -3489,6 +3502,16 @@ class AIHandler:
         result, instead of a hardcoded template - confirmed as the preferred
         approach over a template (one extra billed call per approved
         action, judged worth it for voice consistency).
+
+        `tools` (Feature 084 fix, 2026-09-12): this call used to omit `tools`
+        entirely, meaning it went out with an EMPTY tool list - `react_to_message`
+        was structurally unreachable on the exact turn that reports a reminder's
+        real resolution, no matter what the constitution said. A confirmed real
+        miss found via the reaction-judgment tuning harness: a reminder approval
+        resolved successfully and the model could never react to it, only ever
+        embed an emoji character in the reply text (or, worse, once the wording
+        ruled that out too, drop all signal of the resolution entirely). Mirrors
+        `_call_openai_react_to_message_followup_api`'s own `tools` param.
         """
         output_items = [{
             "type": "function_call_output",
@@ -3502,6 +3525,8 @@ class AIHandler:
             "previous_response_id": pending.response_id,
             "max_output_tokens": request.max_tokens,
         }
+        if tools:
+            kwargs["tools"] = tools
         logger.info(f"[054] _call_openai_reminder_followup_api: call_id={pending.call_id!r}, result={result!r}")
         _log_outgoing_request("_call_openai_reminder_followup_api", kwargs)
         response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
@@ -4192,11 +4217,37 @@ class AIHandler:
         logger.info(f"[054] Approved and cleared pending local-tool approval for chat={effective_chat_id!r}")
 
         try:
-            followup = self._call_openai_reminder_followup_api(request, pending, result)
-            response_text = followup.output_text
+            # Feature 084 fix (2026-09-12): _assemble_tools already includes
+            # react_to_message unconditionally regardless of RBAC (see its own
+            # docstring) - same call as the main turn path (get_response) uses,
+            # so this follow-up call is no longer sent with an empty tool list.
+            followup_tools = self._assemble_tools(user_obj, request.request_id)
+            followup = self._call_openai_reminder_followup_api(request, pending, result, tools=followup_tools)
+            # Feature 084 fix (2026-09-12, same finding as above): now that
+            # react_to_message is actually attached here, the model may spend
+            # this ENTIRE response on that function_call alone (a real, correct
+            # resolution reaction - ✅ on the reminder that just got created),
+            # leaving output_text empty even though nothing failed. That's the
+            # same "function_call OR message" reasoning-model shape every other
+            # react_to_message call site already handles via
+            # _handle_react_to_message's own follow-up round-trip - reuse it
+            # here, capped the same way _run_local_tool_dispatch_loop caps its
+            # own loop, rather than falling through to a generic error message
+            # for a turn that actually succeeded.
             tokens_used = followup.usage.total_tokens
             prompt_tokens = followup.usage.input_tokens
             completion_tokens = followup.usage.output_tokens
+            for _round in range(MAX_LOCAL_TOOL_LOOP_ITERATIONS):
+                react_followup = self._handle_react_to_message(
+                    request, followup, followup_tools, effective_chat_id,
+                )
+                if react_followup is None:
+                    break
+                followup = react_followup
+                tokens_used += followup.usage.total_tokens
+                prompt_tokens += followup.usage.input_tokens
+                completion_tokens += followup.usage.output_tokens
+            response_text = followup.output_text
             model_name = followup.model
         except Exception as e:
             logger.error(

@@ -162,3 +162,54 @@ also implemented and is green — see above. T012 (the AI-run tuning loop itself
 Phase 7's T013 (manual quickstart verification, needs a live dev environment) remain deliberately
 out of scope: neither is a "unit and integration test," and both need a separate, explicit human
 decision to start (T012's iterative judgment review; T013's environment start, per CLAUDE.md).
+
+## Session addendum (2026-09-12/13) — live-debugging follow-through, real fixes found
+
+Per explicit user instruction, the deterministic keyword-based fast-path mechanism was removed
+entirely (`denidin.py`'s `_dispatch_fast_path_reaction` and its helpers/tests deleted) — the fast
+ack is now produced solely by the model's own `react_to_message` tool call, same mechanism as the
+resolution reaction, both dispatched via `AIHandler._handle_react_to_message`'s existing
+immediate-dispatch loop.
+
+Chasing a real user-reported live miss (godfather asks to document a fee agreement via text; zero
+reactions fired end-to-end) surfaced and fixed three separate real bugs, in order:
+
+1. **`_call_openai_reminder_followup_api` sent an empty `tools` list** on the reminder-resolution
+   follow-up call, making `react_to_message` structurally unreachable there — fixed to accept and
+   forward `tools`, with the call site now assembling the real tool set and running the same
+   `_handle_react_to_message` dispatch loop other paths use, accumulating token usage correctly
+   across rounds.
+2. **`REACT_TO_MESSAGE_TOOL`'s JSON-schema `description` was purely descriptive** ("what this tool
+   does"), not imperative ("call this now") — five consecutive constitution-wording-only attempts
+   (each adding a stronger, more specific "confirmed real miss" example) had zero effect on a real
+   billed Morning-MCP-backed agreement-creation test. Rewriting the tool's own `description` to
+   explicitly mandate calling it as the first tool call on every ask and again on every resolution
+   (including single-turn instant resolutions) fixed it immediately — confirmed via RAWLOG: the
+   model began emitting real `function_call`s for `react_to_message` (🫡 then ✅) on the very next
+   run. This is the first concrete evidence in this feature's tuning history that the tool
+   schema's own description carries independent salience from constitution prose, not just "how
+   to call it mechanically" (contrary to this repo's usual assumption per METHODOLOGY's tool-
+   scoping rule — flagging as a real, generalizable finding, not specific to this one tool).
+3. **`tests/billed/conftest.py`'s `denidin_app` fixture never wired `ai_handler.green_api_bot`**
+   (only `denidin.py`'s `__main__` does that in production) — so even after fix (2) got the model
+   calling `react_to_message` correctly, every dispatch attempt through this fixture failed
+   silently with "nothing to react through" and zero reactions were ever actually sent. Fixed by
+   setting a non-None placeholder (send_reaction is stubbed at the boundary in every test that
+   exercises reactions, so the placeholder's identity doesn't matter) — same idiom
+   `scripts/run_reaction_scenario.py`'s manual driver already used.
+
+Verification after all three fixes: `TestAgreementCreationReactionsBilled::test_agreement_creation_via_text_reacts_on_ask_and_resolution`
+(the real Morning-MCP-backed repro of the user's original live complaint) passes — two real
+`react_to_message` calls (🫡, then ✅) alongside a correct reply. A follow-up 15-test parallel
+sanity-suite spot-check (12 billed + 3 expensive, `-n 5`, expensive pre-approved) found 32 real
+`react_to_message` calls across the passing tests, zero dispatch failures, and emoji choices
+matching their turns' actual outcomes (18× 🫡 fast-ack, 5× ✅, 6× ⚠️, 3× ❓ — the ❓ calls all
+correctly corresponded to near-duplicate-client-name ambiguity turns). 5 of the 15 tests failed on
+OpenAI account credit exhaustion (`insufficient_quota`, unrelated to this feature) and were not
+re-run in this session — see this feature's PR discussion for the account-billing follow-up.
+
+T012/T013 remain formally out of scope (no live-dev-environment quickstart run, no further
+rotated-subset tuning rounds beyond what's documented above) — the fixes in this addendum were
+found via real bug reports/billed tests, not the rotation-based tuning loop itself, and are
+considered sufficient for this feature to ship; any further wording refinement is ordinary
+post-ship iteration, same as any other constitution section.

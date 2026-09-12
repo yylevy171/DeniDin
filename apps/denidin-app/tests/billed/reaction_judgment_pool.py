@@ -154,4 +154,99 @@ BILLED_REACTION_SCENARIOS: List[Dict[str, Any]] = [
         "message": "האמת שהבוט הזה עובד יותר טוב ממני בבוקר יום שני 😂",
         "hard_assertions": {},
     },
+    # --- Added 2026-09-12: reproductions of real live dev failures where the
+    # model had react_to_message attached but never called it, despite the
+    # "any ask" constitution wording. These are the exact patterns from real
+    # WhatsApp T013 testing this session - see logs/reaction_tuning/tuning_log.md
+    # for the incident this session's constitution fix addresses.
+    {
+        "name": "new_client_and_fee_agreement_single_message",
+        "description": (
+            "Real dev failure repro: a new-client-add + fee-agreement ask, both "
+            "stated in ONE message (mirrors the live 'יויו ביויו' conversation, "
+            "2026-09-12, which produced zero reactions end to end). Expects a fast "
+            "ack once the ask is understood, then a resolution reaction once the "
+            "client is actually added (a second one if the agreement resolves "
+            "separately)."
+        ),
+        "role": "godfather",
+        "chat_id": "972500000113@c.us",
+        "is_group": False,
+        "prior_turns": [],
+        "message": (
+            "בוא ננסה שוב - יש לי לקוח חדש בשם יויו ביויו עם טלפון 0588881117. "
+            "הסכם שכר טרחה על 21 שח"
+        ),
+        "hard_assertions": {},
+    },
+    {
+        "name": "add_client_not_found_needs_full_details",
+        "description": (
+            "Real dev failure repro: a bare 'add a new client <name>' ask with no "
+            "email/phone yet (mirrors the live 'תוסיף לקוח חדש גידי גוב' turn, "
+            "2026-09-12, which the model correctly answered by asking for missing "
+            "details but never reacted on). Expects a fast ack on the ask itself "
+            "even though the turn's whole reply is a clarifying question, not yet "
+            "a completed action."
+        ),
+        "role": "godfather",
+        "chat_id": "972500000114@c.us",
+        "is_group": False,
+        "prior_turns": [],
+        "message": "תוסיף לקוח חדש גידי גוב",
+        "hard_assertions": {},
+    },
+    {
+        "name": "add_client_then_agreement_two_resolutions",
+        "description": (
+            "Real dev failure repro: a multi-turn add-client-then-agreement flow "
+            "(mirrors the live conversation that added client 'יוסי מרמורק' via "
+            "the interactive-buttons approval flow, then documented a fee "
+            "agreement against that same client, 2026-09-12 - zero reactions fired "
+            "across either resolution). The email/phone were already supplied in "
+            "an earlier turn and the client was already approved; this turn's ask "
+            "is the fee-agreement documentation, which should get its own fast ack "
+            "and its own resolution reaction, independent of the earlier client-add."
+        ),
+        "role": "godfather",
+        "chat_id": "972500000115@c.us",
+        "is_group": False,
+        "prior_turns": [
+            ("user", "לקוח חדש: יוסי מרמורק, מייל yossi@example.com, טלפון 0501234567"),
+            ("assistant", "📋 לאישור — לקוח חדש:\nשם: יוסי מרמורק\nמייל: yossi@example.com\nטלפון: 0501234567\n\nאישור — כן/לא?"),
+            ("user", "כן"),
+            ("assistant", "הלקוח החדש נוסף בהצלחה: יוסי מרמורק."),
+        ],
+        "message": "מעולה, תעד גם הסכם שכר טרחה מולו על 5,000 ש\"ח",
+        "hard_assertions": {},
+    },
+    {
+        "name": "reminder_ask_then_full_local_resolution",
+        "description": (
+            "A fully-specified create_reminder ask (name + exact time, so the model "
+            "has everything it needs and actually proposes the tool call for real - "
+            "not just a clarifying question), then a real 'כן' confirmation in the "
+            "SAME chat - unlike the add_client scenarios above, this resolves "
+            "entirely through LOCAL tools (create_reminder + its own approval flow, "
+            "PendingLocalToolApprovalManager), no Morning MCP tunnel required, so the "
+            "full ask -> resolution reaction cycle can be verified end to end even "
+            "outside a live dev environment. Both turns are dispatched as real "
+            "messages through the real pipeline (only 'user'-role prior_turns are "
+            "actually replayed by the driver - there is deliberately no seeded "
+            "'assistant' turn here, since one that doesn't match what the model "
+            "would really say produces a confirmation with nothing real to confirm)."
+        ),
+        "role": "godfather",
+        "chat_id": "972500000118@c.us",
+        "is_group": False,
+        "prior_turns": [
+            # An absolute future date/time, not "מחר" - the manual driver's synthetic
+            # webhook carries a fixed historical idMessage timestamp unrelated to the
+            # real Israel-local "today" AIHandler injects, and a relative date produced
+            # a spurious "that's already in the past" rejection when tried here.
+            ("user", "תזכיר לי ב-25/9/2026 בשעה 10:00 להתקשר ללקוח בעניין החוזה"),
+        ],
+        "message": "כן",
+        "hard_assertions": {},
+    },
 ]
