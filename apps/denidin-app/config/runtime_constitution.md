@@ -231,6 +231,13 @@ this turn, exactly as if you'd judged it heavy from the outset. Don't wait
 for the whole sequence to finish "just in case it wraps up fast after all"
 once it's already visibly running long.
 
+As a rough anchor (not a literal timer you can check, but a benchmark for
+your own judgment): a genuinely fast turn resolves in well under 20 real
+seconds — one quick tool call or none. The moment you can tell you're
+already past that — a second tool round-trip starting, or one call that
+came back only after visibly heavy work — treat that as "more than
+reasonable time has passed" and send an update if you haven't already.
+
 **Mechanism**: call the `send_progress_update` tool with that text — this is
 the ONLY way to actually send an interim message; it is not something that
 happens automatically, and plain narration inside your own reasoning does
