@@ -45,7 +45,8 @@ import pytest
 
 import src.services.reminder_delivery_service as delivery_service
 from src.models.config import AppConfiguration
-from tests.e2e_helpers import sanity_worker_data_root
+from tests.e2e_helpers import create_real_notification, get_response, sanity_worker_data_root
+from tests.billed.denidin_mcp_e2e_helpers import get_button_send
 from src.utils.time_utils import now_local, to_local
 from src.constants.error_messages import REMINDER_CAP_EXCEEDED
 
@@ -112,50 +113,34 @@ class TestReminderLifecycleBilled:
         )
         return denidin.denidin_app
 
+    # Notification construction + reply/button-send capture (`create_real_notification`/
+    # `get_response`/`get_button_send`) all delegate to the shared implementations in
+    # tests/e2e_helpers.py / tests/billed/denidin_mcp_e2e_helpers.py - Feature 080:
+    # get_response() reads the LAST sent message (not the first), so a slow/multi-step
+    # reminder turn's interim send_progress_update message(s), if any, are correctly not
+    # mistaken for the real answer. No local reimplementation here anymore (there used to
+    # be one, byte-for-byte identical to the shared helpers minus this fix - reinventing it
+    # meant this file's own copy silently missed the fix the shared one got).
     @staticmethod
-    def _create_notification(chat_id, sender, sender_name, text, msg_id):
-        from whatsapp_chatbot_python import Notification
-
-        notification = Notification.__new__(Notification)
-        notification.event = {
+    def _make_event(chat_id, sender, sender_name, text, msg_id):
+        return {
             'typeWebhook': 'incomingMessageReceived',
             'idMessage': msg_id,
             'timestamp': int(now_local().timestamp()),
             'senderData': {'chatId': chat_id, 'sender': sender, 'senderName': sender_name},
             'messageData': {'typeMessage': 'textMessage', 'textMessageData': {'textMessage': text}},
         }
-        notification._test_sent_messages = []
-        notification._test_button_sends = []
 
-        def track_answer(message):
-            notification._test_sent_messages.append(message)
-            logger.info(f"Would send to user: {message}")
+    def _get_response(self, notification):
+        return get_response(notification)
 
-        def track_answer_with_interactive_buttons(body, buttons, header=None, footer=None):
-            from types import SimpleNamespace
-            id_message = f"TEST_BUTTONS_{msg_id}_{len(notification._test_button_sends)}"
-            notification._test_button_sends.append({'body': body, 'buttons': buttons, 'idMessage': id_message})
-            notification._test_sent_messages.append(body)
-            logger.info(f"Would send interactive buttons: body={body!r}")
-            return SimpleNamespace(code=200, data={'idMessage': id_message}, error=None)
-
-        notification.answer = track_answer
-        notification.answer_with_interactive_buttons = track_answer_with_interactive_buttons
-        return notification
-
-    @staticmethod
-    def _get_response(notification):
-        return notification._test_sent_messages[0] if notification._test_sent_messages else None
-
-    @staticmethod
-    def _get_button_send(notification):
-        sends = notification._test_button_sends
-        return sends[0] if sends else None
+    def _get_button_send(self, notification):
+        return get_button_send(notification)
 
     def _send_text(self, chat_id, sender, sender_name, text, label):
         from denidin import handle_text_message
         msg_id = f"billed_{label}_{uuid.uuid4().hex[:8]}"
-        notification = self._create_notification(chat_id, sender, sender_name, text, msg_id)
+        notification = create_real_notification(self._make_event(chat_id, sender, sender_name, text, msg_id))
         handle_text_message(notification)
         return notification
 
@@ -163,7 +148,7 @@ class TestReminderLifecycleBilled:
         from denidin import handle_button_tap
         from src.models.message import WhatsAppMessage  # noqa: F401 (documents the shape relied on)
         msg_id = f"billed_{label}_{uuid.uuid4().hex[:8]}"
-        notification = self._create_notification(chat_id, sender, "Test Godfather", "", msg_id)
+        notification = create_real_notification(self._make_event(chat_id, sender, "Test Godfather", "", msg_id))
         notification.event['messageData'] = {
             'typeMessage': 'interactiveButtonsResponse',
             'interactiveButtonsResponse': {'selectedId': selected_id, 'stanzaId': stanza_id},
