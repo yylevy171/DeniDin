@@ -2785,16 +2785,11 @@ class AIHandler:
         _log_raw_response("_call_openai_list_reminders_followup_api", response)
         return response
 
-    def _handle_list_reminders(self, request: AIRequest, response, tools: Optional[List[Dict]]):
-        """Reminders (Feature 054): list_reminders (FR-013) is read-only, dispatched
-        immediately (unlike create/modify/delete_reminder), same as
-        capture_ledger_event - needs a follow-up round-trip for the same reason
-        (reasoning models emit function_call OR message, never both in one turn).
-
-        Returns the follow-up response (whose output_text/usage should replace the
-        original response's), or None if no list_reminders call was made this turn,
-        or if the follow-up call itself failed.
-        """
+    def _compute_list_reminders_outputs(self, response) -> Optional[List[Dict[str, Any]]]:
+        """Pure computation half of list_reminders dispatch (no API call) - see
+        _handle_list_reminders and _dispatch_all_local_tools for why this is split
+        out. Returns a single-item outputs list, or None if no list_reminders call
+        is present in `response`."""
         call_id = extract_function_call_id(response, LIST_REMINDERS_TOOL["name"])
         if call_id is None:
             return None
@@ -2808,6 +2803,30 @@ class AIHandler:
             }
             for r in reminders
         ]
+        return [{"call_id": call_id, "payload": {"reminders": summary}}]
+
+    def _handle_list_reminders(self, request: AIRequest, response, tools: Optional[List[Dict]]):
+        """Reminders (Feature 054): list_reminders (FR-013) is read-only, dispatched
+        immediately (unlike create/modify/delete_reminder), same as
+        capture_ledger_event - needs a follow-up round-trip for the same reason
+        (reasoning models emit function_call OR message, never both in one turn).
+
+        Standalone single-tool-type entry point, kept for direct callers/tests
+        exercising list_reminders in isolation - the main dispatch loop instead
+        goes through _dispatch_all_local_tools, which also picks up any OTHER
+        tool type's calls co-occurring in the same response (bugfix 2026-09-13:
+        this method alone would silently orphan them, since OpenAI rejects a
+        follow-up unless EVERY pending call from that response gets an output).
+
+        Returns the follow-up response (whose output_text/usage should replace the
+        original response's), or None if no list_reminders call was made this turn,
+        or if the follow-up call itself failed.
+        """
+        outputs = self._compute_list_reminders_outputs(response)
+        if outputs is None:
+            return None
+        call_id = outputs[0]["call_id"]
+        summary = outputs[0]["payload"]["reminders"]
         try:
             return self._call_openai_list_reminders_followup_api(
                 request, response.id, call_id, summary, tools
@@ -2844,18 +2863,14 @@ class AIHandler:
         _log_raw_response("_call_openai_send_progress_update_followup_api", response)
         return response
 
-    def _handle_send_progress_update(self, request: AIRequest, response, tools: Optional[List[Dict]]):
-        """Feature 080 (REQ-080-02): send_progress_update is read-only from the ledger's
-        perspective (writes nothing persistent except telemetry), dispatched immediately
-        - same shape as _handle_list_reminders. The actual WhatsApp send happens here, via
-        whatever callback get_response() activated in _active_progress_callback (denidin.py's
-        notification.answer wrapper in production; None in any caller that didn't pass one,
-        e.g. today's test fixtures that don't yet exercise this - the update is then simply
-        not sent, and the turn still proceeds normally via the follow-up call below).
-
-        Returns the follow-up response (whose output_text/usage should replace the original
-        response's), or None if no send_progress_update call was made this turn, or if the
-        follow-up call itself failed."""
+    def _compute_send_progress_update_outputs(
+        self, request: AIRequest, response,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Pure(ish) computation half of send_progress_update dispatch (the actual
+        WhatsApp send is a real side effect, but no OpenAI API call is made here) -
+        see _handle_send_progress_update and _dispatch_all_local_tools for why this
+        is split out. Returns a single-item outputs list, or None if no
+        send_progress_update call is present in `response`."""
         call_id = extract_function_call_id(response, SEND_PROGRESS_UPDATE_TOOL["name"])
         if call_id is None:
             return None
@@ -2881,6 +2896,29 @@ class AIHandler:
         else:
             logger.debug("[080] send_progress_update called but no progress_callback is active - nothing sent")
 
+        return [{"call_id": call_id, "payload": {"sent": sent}}]
+
+    def _handle_send_progress_update(self, request: AIRequest, response, tools: Optional[List[Dict]]):
+        """Feature 080 (REQ-080-02): send_progress_update is read-only from the ledger's
+        perspective (writes nothing persistent except telemetry), dispatched immediately
+        - same shape as _handle_list_reminders. The actual WhatsApp send happens here, via
+        whatever callback get_response() activated in _active_progress_callback (denidin.py's
+        notification.answer wrapper in production; None in any caller that didn't pass one,
+        e.g. today's test fixtures that don't yet exercise this - the update is then simply
+        not sent, and the turn still proceeds normally via the follow-up call below).
+
+        Standalone single-tool-type entry point, kept for direct callers/tests
+        exercising send_progress_update in isolation - the main dispatch loop instead
+        goes through _dispatch_all_local_tools (bugfix 2026-09-13, see its docstring).
+
+        Returns the follow-up response (whose output_text/usage should replace the original
+        response's), or None if no send_progress_update call was made this turn, or if the
+        follow-up call itself failed."""
+        outputs = self._compute_send_progress_update_outputs(request, response)
+        if outputs is None:
+            return None
+        call_id = outputs[0]["call_id"]
+        sent = outputs[0]["payload"]["sent"]
         try:
             return self._call_openai_send_progress_update_followup_api(
                 request, response.id, call_id, sent, tools
@@ -2932,28 +2970,12 @@ class AIHandler:
         _log_raw_response("_call_openai_query_ledger_events_followup_api", response)
         return response
 
-    def _handle_query_ledger_events(self, request: AIRequest, response, tools: Optional[List[Dict]]):
-        """Feature 044 (research.md Decision 10): query_ledger_events is
-        read-only, dispatched immediately (like list_reminders) - needs a
-        follow-up round-trip for the same reasoning-model
-        function_call-OR-message limitation.
-
-        UNLIKE list_reminders (single-call), this uses
-        extract_all_function_calls: a turn may legitimately contain SEVERAL
-        query_ledger_events calls (e.g. "client A or client B" - the model
-        calls once per criterion and combines results itself). query_ledger_events
-        writes nothing, so every call is independent and safe to execute
-        regardless of how many others are present this turn.
-
-        A call whose arguments fail to parse (truncated mid-generation, same
-        failure mode bugfix-018 guards against) gets its own isolated error
-        output (data-model.md shape D) WITHOUT affecting any other call from
-        the same turn - never a whole-turn rejection.
-
-        Returns the follow-up response (whose output_text/usage should
-        replace the original response's), or None if no query_ledger_events
-        call was made this turn, or if the follow-up call itself failed.
-        """
+    def _compute_query_ledger_events_outputs(self, response) -> Optional[List[Dict[str, Any]]]:
+        """Pure computation half of query_ledger_events dispatch (no API call) -
+        see _handle_query_ledger_events and _dispatch_all_local_tools for why this
+        is split out. Returns an outputs list (one entry per call - a turn may
+        legitimately contain several), or None if no query_ledger_events call is
+        present in `response`."""
         calls = extract_all_function_calls(response, QUERY_LEDGER_EVENTS_TOOL["name"])
         if not calls:
             return None
@@ -2988,7 +3010,26 @@ class AIHandler:
                 f"query_events returned: {result!r}"
             )
             outputs.append({"call_id": call["call_id"], "payload": result})
+        return outputs
 
+    def _handle_query_ledger_events(self, request: AIRequest, response, tools: Optional[List[Dict]]):
+        """Feature 044 (research.md Decision 10): query_ledger_events is
+        read-only, dispatched immediately (like list_reminders) - needs a
+        follow-up round-trip for the same reasoning-model
+        function_call-OR-message limitation.
+
+        Standalone single-tool-type entry point, kept for direct callers/tests
+        exercising query_ledger_events in isolation - the main dispatch loop
+        instead goes through _dispatch_all_local_tools (bugfix 2026-09-13, see
+        its docstring).
+
+        Returns the follow-up response (whose output_text/usage should
+        replace the original response's), or None if no query_ledger_events
+        call was made this turn, or if the follow-up call itself failed.
+        """
+        outputs = self._compute_query_ledger_events_outputs(response)
+        if outputs is None:
+            return None
         try:
             return self._call_openai_query_ledger_events_followup_api(
                 request, response.id, outputs, tools
@@ -3052,24 +3093,16 @@ class AIHandler:
         _log_raw_response("_call_openai_react_to_message_followup_api", response)
         return response
 
-    def _handle_react_to_message(
-        self, request: AIRequest, response, tools: Optional[List[Dict]],
-        effective_chat_id: Optional[str] = None,
-    ):
-        """Feature 084: react_to_message is cosmetic/reversible, dispatched
-        immediately (like list_reminders/query_ledger_events) - needs a
-        follow-up round-trip for the same function_call-OR-message reasoning-
-        model limitation. Uses extract_all_function_calls: a turn may
-        legitimately call this more than once (react to current message AND
-        flip an earlier one).
-
-        Never raises past this method - a reaction failure is logged
-        (REQ-084-007) and reported to the model as {"status": "failed"}, never
-        propagated to break the turn.
-
-        Returns the follow-up response, or None if no react_to_message call
-        was made this turn, or if the follow-up call itself failed.
-        """
+    def _compute_react_to_message_outputs(
+        self, request: AIRequest, response, effective_chat_id: Optional[str] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Pure(ish) computation half of react_to_message dispatch (the actual
+        reaction send is a real side effect, but no OpenAI API call is made here) -
+        see _handle_react_to_message and _dispatch_all_local_tools for why this is
+        split out. Uses extract_all_function_calls: a turn may legitimately call
+        this more than once (react to current message AND flip an earlier one).
+        Returns an outputs list, or None if no react_to_message call is present in
+        `response`."""
         calls = extract_all_function_calls(response, REACT_TO_MESSAGE_TOOL["name"])
         if not calls:
             return None
@@ -3107,13 +3140,139 @@ class AIHandler:
                 "call_id": call["call_id"],
                 "payload": {"status": "ok" if success else "failed"},
             })
+        return outputs
 
+    def _handle_react_to_message(
+        self, request: AIRequest, response, tools: Optional[List[Dict]],
+        effective_chat_id: Optional[str] = None,
+    ):
+        """Feature 084: react_to_message is cosmetic/reversible, dispatched
+        immediately (like list_reminders/query_ledger_events) - needs a
+        follow-up round-trip for the same function_call-OR-message reasoning-
+        model limitation.
+
+        Never raises past this method - a reaction failure is logged
+        (REQ-084-007) and reported to the model as {"status": "failed"}, never
+        propagated to break the turn.
+
+        Standalone single-tool-type entry point, kept for direct callers/tests
+        exercising react_to_message in isolation (including the reminder-approval
+        confirmation follow-up path, which loops this call directly rather than
+        going through _dispatch_all_local_tools). Any OTHER call site handling a
+        response that could ALSO carry a different tool type's calls alongside
+        react_to_message should go through _dispatch_all_local_tools instead
+        (bugfix 2026-09-13, see its docstring) - this method alone only resolves
+        react_to_message's own calls and would leave any other pending call in
+        the same response unaddressed, which OpenAI rejects outright.
+
+        Returns the follow-up response, or None if no react_to_message call
+        was made this turn, or if the follow-up call itself failed.
+        """
+        outputs = self._compute_react_to_message_outputs(request, response, effective_chat_id)
+        if outputs is None:
+            return None
         try:
             return self._call_openai_react_to_message_followup_api(
                 request, response.id, outputs, tools
             )
         except Exception as e:  # pylint: disable=broad-except
             logger.error(f"[084] react_to_message follow-up call failed: {e}", exc_info=True)
+            return None
+
+    def _call_openai_combined_local_tools_followup_api(
+        self, request: AIRequest, previous_response_id: str,
+        outputs: List[Dict[str, Any]], tools: Optional[List[Dict]] = None,
+    ):
+        """Reports EVERY immediate-dispatch local tool call from one response back
+        in a SINGLE follow-up, one function_call_output item per call_id - see
+        _dispatch_all_local_tools for why this must be one combined call rather
+        than one call per tool type."""
+        output_items = [
+            {
+                "type": "function_call_output",
+                "call_id": item["call_id"],
+                "output": json.dumps(item["payload"], ensure_ascii=False),
+            }
+            for item in outputs
+        ]
+        kwargs = {
+            "model": request.model,
+            "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
+            "input": output_items,
+            "previous_response_id": previous_response_id,
+            "max_output_tokens": request.max_tokens,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        call_ids = [item["call_id"] for item in outputs]
+        logger.info(f"[LOOP] _call_openai_combined_local_tools_followup_api: call_ids={call_ids!r}")
+        _log_outgoing_request("_call_openai_combined_local_tools_followup_api", kwargs)
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
+        _log_raw_response("_call_openai_combined_local_tools_followup_api", response)
+        return response
+
+    def _dispatch_all_local_tools(
+        self, request: AIRequest, response, tools: Optional[List[Dict]],
+        effective_chat_id: Optional[str] = None,
+    ):
+        """Bugfix (2026-09-13, real production incident): collects pending
+        immediate-dispatch local-tool calls of EVERY known type from `response`
+        and resolves them together in ONE follow-up call.
+
+        Root cause this fixes: OpenAI's Responses API rejects a follow-up
+        outright ("No tool output found for function call ...") unless outputs
+        for EVERY pending function_call from that response are included - not
+        just the ones the caller happens to be reporting. Before this fix, each
+        tool type (query_ledger_events, list_reminders, send_progress_update,
+        react_to_message) ran its own siloed follow-up via its own _handle_X
+        method, checked one at a time in a loop that `continue`d the instant any
+        ONE of them fired. That was safe only as long as a response never
+        contained calls of TWO different types at once. Feature 084's
+        react_to_message tool is unconditionally attached to every single turn
+        (REQ-084, cosmetic/reversible, no RBAC gate) and is exactly the kind of
+        call a model naturally bundles alongside a "real" action in the same
+        response - the first live test of Feature 080 + Feature 084 together hit
+        this immediately: a response containing both a list_reminders call and
+        two react_to_message calls caused BOTH single-type handlers to fail in
+        turn (each omitting the other's call_id(s)), and the loop silently fell
+        back to a pre-tool-call narration ("checking Morning now...") as if it
+        were the final answer - the real lookup never happened.
+
+        Every immediate-dispatch tool type must be reflected here - this is the
+        ONLY safe way to resolve a response's local-tool calls once more than
+        one such tool can be attached at a time (which, per Feature 084's
+        unconditional attachment, is now true for every single turn).
+
+        Returns the combined follow-up response, or None if `response` carries
+        no pending call of any known immediate-dispatch tool type, or if the
+        combined follow-up call itself failed."""
+        outputs: List[Dict[str, Any]] = []
+
+        ledger_outputs = self._compute_query_ledger_events_outputs(response)
+        if ledger_outputs:
+            outputs.extend(ledger_outputs)
+
+        reminders_outputs = self._compute_list_reminders_outputs(response)
+        if reminders_outputs:
+            outputs.extend(reminders_outputs)
+
+        progress_outputs = self._compute_send_progress_update_outputs(request, response)
+        if progress_outputs:
+            outputs.extend(progress_outputs)
+
+        react_outputs = self._compute_react_to_message_outputs(request, response, effective_chat_id)
+        if react_outputs:
+            outputs.extend(react_outputs)
+
+        if not outputs:
+            return None
+
+        try:
+            return self._call_openai_combined_local_tools_followup_api(
+                request, response.id, outputs, tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[LOOP] combined local-tool follow-up call failed: {e}", exc_info=True)
             return None
 
     def _handle_reminder_modify_or_delete_proposal(
@@ -3279,13 +3438,17 @@ class AIHandler:
         extra_tokens = extra_prompt_tokens = extra_completion_tokens = 0
         ledger_event_ids: List[str] = []
         for _loop_round in range(MAX_LOCAL_TOOL_LOOP_ITERATIONS):
-            made_progress = False
-
-            # Ledger Event Querying (Feature 044): query_ledger_events is
-            # read-only, dispatched immediately (may involve SEVERAL calls in
-            # one turn - see research.md Decision 10), and needs a follow-up
-            # round-trip for its reply for the same function_call-OR-message
-            # reason as everything else in this loop.
+            # Bugfix (2026-09-13): every immediate-dispatch local tool type
+            # (query_ledger_events, list_reminders, send_progress_update,
+            # react_to_message) is resolved together in ONE combined follow-up
+            # via _dispatch_all_local_tools, rather than one siloed follow-up
+            # per tool type - see that method's docstring for the real
+            # production incident this fixes (react_to_message is
+            # unconditionally attached to every turn, so a response containing
+            # it ALONGSIDE any other tool type used to always fail: OpenAI
+            # rejects a follow-up unless outputs for EVERY pending call in that
+            # response are included, and each single-type handler only knew
+            # about its own).
             # Feature 080 (REQ-080-04): the local tool dispatch AND its own internal
             # follow-up responses.create() call (already separately counted by
             # _timed_llm_call) both fall inside this timed span - tool_total_execution_ms
@@ -3293,67 +3456,16 @@ class AIHandler:
             # total_duration_ms for a turn that uses a local tool, a known/accepted v1
             # limitation (total_duration_ms itself is measured independently and stays
             # accurate regardless).
-            ledger_query_followup = self._timed_tool_call(
-                "query_ledger_events",
-                lambda: self._handle_query_ledger_events(request, current_response, tools),
+            local_tools_followup = self._timed_tool_call(
+                "local_tools",
+                lambda: self._dispatch_all_local_tools(request, current_response, tools, effective_chat_id),
             )
-            if ledger_query_followup is not None:
-                current_response = ledger_query_followup
-                usage_response = ledger_query_followup
-                extra_tokens += ledger_query_followup.usage.total_tokens
-                extra_prompt_tokens += ledger_query_followup.usage.input_tokens
-                extra_completion_tokens += ledger_query_followup.usage.output_tokens
-                made_progress = True
-                continue
-
-            # Reminders (Feature 054): list_reminders is read-only, dispatched
-            # immediately (unlike create/modify/delete_reminder), and needs a
-            # follow-up round-trip for its reply for the same function_call-
-            # OR-message reason as ledger events.
-            list_reminders_followup = self._timed_tool_call(
-                "list_reminders",
-                lambda: self._handle_list_reminders(request, current_response, tools),
-            )
-            if list_reminders_followup is not None:
-                current_response = list_reminders_followup
-                usage_response = list_reminders_followup
-                extra_tokens += list_reminders_followup.usage.total_tokens
-                extra_prompt_tokens += list_reminders_followup.usage.input_tokens
-                extra_completion_tokens += list_reminders_followup.usage.output_tokens
-                made_progress = True
-                continue
-
-            # Feature 080 (REQ-080-02): send_progress_update is dispatched immediately
-            # (a real send, no approval gate), and needs the same follow-up round-trip
-            # as the other two immediate-dispatch tools above, for the same
-            # function_call-OR-message reason.
-            progress_update_followup = self._timed_tool_call(
-                "send_progress_update",
-                lambda: self._handle_send_progress_update(request, current_response, tools),
-            )
-            if progress_update_followup is not None:
-                current_response = progress_update_followup
-                usage_response = progress_update_followup
-                extra_tokens += progress_update_followup.usage.total_tokens
-                extra_prompt_tokens += progress_update_followup.usage.input_tokens
-                extra_completion_tokens += progress_update_followup.usage.output_tokens
-                made_progress = True
-                continue
-
-            # WhatsApp Reactions (Feature 084): react_to_message is cosmetic/
-            # reversible, dispatched immediately, and needs a follow-up
-            # round-trip for the same function_call-OR-message reason as the
-            # other two handlers above.
-            react_to_message_followup = self._handle_react_to_message(
-                request, current_response, tools, effective_chat_id,
-            )
-            if react_to_message_followup is not None:
-                current_response = react_to_message_followup
-                usage_response = react_to_message_followup
-                extra_tokens += react_to_message_followup.usage.total_tokens
-                extra_prompt_tokens += react_to_message_followup.usage.input_tokens
-                extra_completion_tokens += react_to_message_followup.usage.output_tokens
-                made_progress = True
+            if local_tools_followup is not None:
+                current_response = local_tools_followup
+                usage_response = local_tools_followup
+                extra_tokens += local_tools_followup.usage.total_tokens
+                extra_prompt_tokens += local_tools_followup.usage.input_tokens
+                extra_completion_tokens += local_tools_followup.usage.output_tokens
                 continue
 
             break  # a full pass made no progress - current_response is final
@@ -4537,21 +4649,26 @@ class AIHandler:
             # resolution reaction - ✅ on the reminder that just got created),
             # leaving output_text empty even though nothing failed. That's the
             # same "function_call OR message" reasoning-model shape every other
-            # react_to_message call site already handles via
-            # _handle_react_to_message's own follow-up round-trip - reuse it
-            # here, capped the same way _run_local_tool_dispatch_loop caps its
-            # own loop, rather than falling through to a generic error message
-            # for a turn that actually succeeded.
+            # local-tool call site already handles.
+            # Bugfix (2026-09-13): this used to loop _handle_react_to_message
+            # alone, which only resolves react_to_message's own calls - any
+            # OTHER tool type (query_ledger_events, list_reminders,
+            # send_progress_update) co-occurring in the same response would be
+            # left unaddressed and OpenAI would reject the follow-up outright
+            # (the same production incident _dispatch_all_local_tools' docstring
+            # describes). Every immediate-dispatch tool type can plausibly show
+            # up here too, so this goes through the same combined dispatcher,
+            # capped the same way _run_local_tool_dispatch_loop caps its own loop.
             tokens_used = followup.usage.total_tokens
             prompt_tokens = followup.usage.input_tokens
             completion_tokens = followup.usage.output_tokens
             for _round in range(MAX_LOCAL_TOOL_LOOP_ITERATIONS):
-                react_followup = self._handle_react_to_message(
+                local_tools_followup = self._dispatch_all_local_tools(
                     request, followup, followup_tools, effective_chat_id,
                 )
-                if react_followup is None:
+                if local_tools_followup is None:
                     break
-                followup = react_followup
+                followup = local_tools_followup
                 tokens_used += followup.usage.total_tokens
                 prompt_tokens += followup.usage.input_tokens
                 completion_tokens += followup.usage.output_tokens
