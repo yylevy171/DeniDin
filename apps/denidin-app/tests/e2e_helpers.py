@@ -170,18 +170,17 @@ def create_real_notification(event_dict):
 
 def get_response(notification):
     """Get the turn's real final answer - Feature 080: the LAST message sent, not the
-    first. When verbosity_and_telemetry_080 is on, a slow/multi-step turn may send one or
-    more interim send_progress_update messages BEFORE the real answer - the first message
-    is no longer reliably "the response". When the flag is off (or no interim message was
-    sent this turn), there's exactly one message and last == first, so this is unchanged
-    for every caller that predates this feature."""
+    first. A slow/multi-step turn may send one or more interim send_progress_update
+    messages BEFORE the real answer - the first message is no longer reliably "the
+    response". On a fast turn with no interim message, there's exactly one message and
+    last == first, so this is unchanged for every caller that predates this feature."""
     return notification._test_sent_messages[-1] if notification._test_sent_messages else None
 
 
 def get_progress_updates(notification):
     """Every message sent BEFORE the final answer this turn - i.e. any interim
-    send_progress_update sends (Feature 080). Empty list on a fast turn (flag off, or the
-    model judged no interim update was warranted)."""
+    send_progress_update sends (Feature 080). Empty list on a fast turn where the model
+    judged no interim update was warranted."""
     return notification._test_sent_messages[:-1]
 
 

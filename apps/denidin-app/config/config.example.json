@@ -10,9 +10,6 @@
   },
   "data_root": "dev_data_for_dev_or_data_for_prod",
   "environment": "dev",
-  "feature_flags": {
-    "verbosity_and_telemetry_080": false
-  },
   "godfather_phone": "YOUR_GODFATHER_PHONE_NUMBER",
   "green_api_instance_id": "YOUR_GREEN_API_INSTANCE_ID",
   "green_api_token": "YOUR_GREEN_API_TOKEN",

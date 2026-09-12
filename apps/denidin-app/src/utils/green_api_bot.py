@@ -150,8 +150,9 @@ def start_typing_keepalive(
     interval_seconds: int = 15,
     max_duration_seconds: int = 180,
 ) -> Optional[str]:
-    """Feature 080 (REQ-080-01): renewal-loop keep-alive for the typing indicator, superseding
-    feature 048's single-call design when `feature_flags.verbosity_and_telemetry_080` is on.
+    """Feature 080: renewal-loop keep-alive for the typing indicator, superseding
+    feature 048's single-call design (always active - the feature flag that used to gate
+    this has been removed, 2026-09-12, explicit operator instruction).
 
     Unlike feature 048's reverted raw-thread renewer (see research.md R1 for the incident this
     avoids), this schedules a job on the caller's already-running APScheduler

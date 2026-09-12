@@ -1,11 +1,13 @@
-"""Feature 080 (T016/T017) — telemetry instrumentation wiring inside AIHandler.get_response().
+"""Feature 080 — telemetry instrumentation wiring inside AIHandler.get_response().
 
-Per METHODOLOGY.md/CLAUDE.md's feature-flag rule, integration tests must never set feature
-flags (they validate default production behavior with the flag off) - so this is deliberately
-a UNIT test: constructs AIHandler directly with the flag forced on via AppConfiguration, and a
-stubbed (not real) OpenAI client, per CONSTITUTION §I/§V (mock only third-party network
-services - the stub here stands in for the real OpenAI API, the only external dependency in
-this call path).
+The feature flag that used to gate this has been removed (2026-09-12, explicit operator
+instruction - never gated by request); telemetry is now always active whenever a
+telemetry_manager is supplied (initialize_app() always supplies one). This is a UNIT test:
+constructs AIHandler directly with a real TelemetryManager and a stubbed (not real) OpenAI
+client, per CONSTITUTION §I/§V (mock only third-party network services - the stub here
+stands in for the real OpenAI API, the only external dependency in this call path).
+telemetry_manager itself stays Optional on AIHandler (tests that construct it directly
+without one still get a clean no-op path).
 """
 from datetime import datetime, timezone
 from unittest.mock import Mock, MagicMock
@@ -31,7 +33,7 @@ def mock_config(tmp_path):
     }
     config.user_roles = {}
     config.godfather_phone = None
-    config.feature_flags = {'verbosity_and_telemetry_080': True}
+    config.feature_flags = {}
     return config
 
 
@@ -66,7 +68,7 @@ def sample_whatsapp_message():
 
 
 class TestTelemetryWiring:
-    def test_flag_on_produces_exactly_one_telemetry_row(
+    def test_produces_exactly_one_telemetry_row(
         self, ai_handler, mock_ai_client, telemetry_manager, sample_whatsapp_message
     ):
         mock_ai_client.responses.create.return_value = Mock(
@@ -90,12 +92,10 @@ class TestTelemetryWiring:
         assert row["output_tokens_count"] == 40
         assert row["total_duration_ms"] >= 0
 
-    def test_flag_off_records_nothing(self, mock_config, mock_ai_client, telemetry_manager, sample_whatsapp_message):
-        mock_config.feature_flags = {'verbosity_and_telemetry_080': False}
-        # telemetry_manager still passed explicitly here to prove the DECIDING factor is
-        # AIHandler receiving telemetry_manager=None from initialize_app when the flag is off
-        # (denidin.py's own gate) - this test instead pins AIHandler's OWN no-op path when
-        # telemetry_manager is None, which is what actually matters at this layer.
+    def test_no_telemetry_manager_records_nothing(self, mock_config, mock_ai_client, telemetry_manager, sample_whatsapp_message):
+        # Pins AIHandler's own no-op path when telemetry_manager=None (a test constructing
+        # AIHandler directly without one, e.g. many pre-080 unit tests still do this) - not
+        # a feature-flag concern any more, just an ordinary Optional-dependency no-op.
         handler = AIHandler(mock_ai_client, mock_config, telemetry_manager=None)
         mock_ai_client.responses.create.return_value = Mock(
             output_text="Success response",

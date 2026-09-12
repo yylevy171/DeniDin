@@ -228,12 +228,11 @@ class TestLedgerQueryBilled:
     @staticmethod
     def _get_response(notification):
         """The turn's real final answer - Feature 080: LAST sent message, not the first.
-        When verbosity_and_telemetry_080 is on, a slow turn may send one or more interim
-        send_progress_update messages BEFORE the real answer (see
-        _get_progress_updates below) - the first message is no longer reliably the
-        answer. When the flag is off (or no interim message was sent), there's exactly
-        one message and last == first, so this stays correct for every pre-existing
-        caller unchanged."""
+        A slow turn may send one or more interim send_progress_update messages BEFORE
+        the real answer (see _get_progress_updates below) - the first message is no
+        longer reliably the answer. On a fast turn with no interim message, there's
+        exactly one message and last == first, so this stays correct for every
+        pre-existing caller unchanged."""
         return notification._test_sent_messages[-1] if notification._test_sent_messages else None
 
     @staticmethod

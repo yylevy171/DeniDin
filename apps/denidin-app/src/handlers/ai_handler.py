@@ -1675,11 +1675,11 @@ class AIHandler:
         Args:
             ai_client: Configured AI client instance (OpenAI)
             config: Application configuration with AI settings
-            telemetry_manager: Feature 080 (REQ-080-04) - the RequestTelemetry SQLite store,
-                constructed by initialize_app() only when
-                feature_flags.verbosity_and_telemetry_080 is on. None (default) means
-                telemetry is fully disabled - every instrumented call site below becomes a
-                no-op, byte-identical to pre-feature behavior.
+            telemetry_manager: Feature 080 - the RequestTelemetry SQLite store, constructed
+                by initialize_app() unconditionally (the feature flag that used to gate this
+                has been removed, 2026-09-12, explicit operator instruction). Still Optional
+                (None is accepted and every instrumented call site no-ops) for tests that
+                construct AIHandler directly without one.
         """
         self.client = ai_client
         self.config = config
@@ -1939,24 +1939,18 @@ class AIHandler:
             return ""
 
     def _apply_feature_080_constitution_gate(self, content: str) -> str:
-        """Feature 080 (REQ-080-02): the "Proactive Progress Updates" section is wrapped in
+        """Feature 080: the "Proactive Progress Updates" section is wrapped in
         `<!-- FEATURE_080_PROGRESS_UPDATES_START/END -->` HTML-comment markers in
-        runtime_constitution.md. When `feature_flags.verbosity_and_telemetry_080` is off
-        (default), strip the marked block entirely so the assembled prompt is byte-identical
-        to before this feature existed (CLAUDE.md's feature-flag rule); when on, strip only the
-        markers themselves, leaving the directive text in place. A single shared file (not a
-        per-environment copy) stays correct either way - the flag, not the file, decides.
+        runtime_constitution.md. The feature flag that used to gate this on/off has been
+        removed (2026-09-12, explicit operator instruction - never gated by request) -
+        the directive is always active now; this just strips the now-inert markers
+        themselves, leaving the directive text in place.
         """
         start_marker = "<!-- FEATURE_080_PROGRESS_UPDATES_START -->"
         end_marker = "<!-- FEATURE_080_PROGRESS_UPDATES_END -->"
-        start_idx = content.find(start_marker)
-        end_idx = content.find(end_marker)
-        if start_idx == -1 or end_idx == -1:
+        if start_marker not in content or end_marker not in content:
             return content  # markers absent - nothing to gate, return as-is
-        flag_on = self.config.feature_flags.get('verbosity_and_telemetry_080', False)
-        if flag_on:
-            return content.replace(start_marker, "").replace(end_marker, "")
-        return (content[:start_idx] + content[end_idx + len(end_marker):]).strip()
+        return content.replace(start_marker, "").replace(end_marker, "")
 
     def _load_recognition_prompt(self) -> str:
         """Feature 069: load config/ledger_recognition_prompt.md with mtime-based
@@ -2176,18 +2170,11 @@ class AIHandler:
         return [QUERY_LEDGER_EVENTS_TOOL]
 
     def _build_progress_update_tools(self) -> List[Dict]:
-        """Feature 080 (REQ-080-02): send_progress_update - gated ONLY by the feature
-        flag, not RBAC (every role can have a slow turn), and not by self.rbac_enabled
-        either (unlike the other _build_*_tools above) - see _assemble_tools."""
-        # getattr/or-{} (not a bare self.config.feature_flags.get(...)) deliberately:
-        # _assemble_tools runs on every ordinary turn, including many existing unit
-        # tests' Mock(spec=AppConfiguration) fixtures that predate this feature and
-        # never set .feature_flags (dataclass fields with a default_factory aren't
-        # part of Mock(spec=...)'s allowed-attribute set, so a bare access there
-        # raises AttributeError, not a missing-key situation .get() could handle).
-        feature_flags = getattr(self.config, 'feature_flags', None) or {}
-        flag_on = bool(feature_flags.get('verbosity_and_telemetry_080', False))
-        return [SEND_PROGRESS_UPDATE_TOOL] if flag_on else []
+        """Feature 080: send_progress_update - always attached (the feature flag that
+        used to gate this has been removed, 2026-09-12, explicit operator instruction),
+        not RBAC-gated either (every role can have a slow turn), unlike the other
+        _build_*_tools above - see _assemble_tools."""
+        return [SEND_PROGRESS_UPDATE_TOOL]
 
     def _assemble_tools(self, user_obj, correlation_id: str) -> Optional[List[Dict]]:
         """Merge the (RBAC-gated) Morning MCP tools, the (RBAC-gated) reminder

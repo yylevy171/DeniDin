@@ -208,21 +208,19 @@ class DeniDin:
         # initialize_app(), same rule as accounting_reconciliation_scheduler -
         # see contracts/daily-summary-roll-service.md).
         self.daily_roll_scheduler = daily_roll_scheduler
-        # Feature 080: gated behind feature_flags.verbosity_and_telemetry_080 (default False -
-        # both stay None, and every call site below no-ops exactly as it did pre-feature).
+        # Feature 080: always active (the feature flag that used to gate this has been
+        # removed, 2026-09-12, explicit operator instruction).
         # typing_keepalive_scheduler: a dedicated APScheduler BackgroundScheduler for the
         # per-turn renewal jobs (research.md R1 - reuses the same battle-tested primitive as
         # reminder_scheduler/accounting_reconciliation_scheduler, not feature 048's reverted
         # raw-thread renewer). telemetry_manager: reuses ai_handler's own instance (constructed
         # in initialize_app, before AIHandler, so AIHandler's instrumented responses.create()
         # call sites can record into it directly) rather than a second, independent one.
-        self.typing_keepalive_scheduler = None
-        self.telemetry_manager = getattr(ai_handler, 'telemetry_manager', None)
-        if config.feature_flags.get('verbosity_and_telemetry_080', False):
-            from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
+        from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 
-            self.typing_keepalive_scheduler = BackgroundScheduler()
-            self.typing_keepalive_scheduler.start()
+        self.telemetry_manager = getattr(ai_handler, 'telemetry_manager', None)
+        self.typing_keepalive_scheduler = BackgroundScheduler()
+        self.typing_keepalive_scheduler.start()
         self._logger = get_logger(__name__)
         # Feature 048's typing indicator needs the live bot (bot.api.serviceMethods.
         # sendTyping) at message-processing time, same as mark_message_read needs it
@@ -425,14 +423,12 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
         max_retries=config.max_retries
     )
     
-    # Feature 080 (REQ-080-04): constructed here, before AIHandler, so AIHandler's own
-    # instrumented responses.create() call sites can record into it directly. None when the
-    # flag is off (default) - AIHandler.telemetry_manager stays None, every instrumented call
-    # site no-ops, byte-identical to pre-feature behavior.
-    telemetry_manager = None
-    if config.feature_flags.get('verbosity_and_telemetry_080', False):
-        from src.managers.telemetry_manager import TelemetryManager
-        telemetry_manager = TelemetryManager(config.data_root)
+    # Feature 080: constructed here, before AIHandler, so AIHandler's own instrumented
+    # responses.create() call sites can record into it directly. Always constructed now
+    # (the feature flag that used to gate this has been removed, 2026-09-12, explicit
+    # operator instruction).
+    from src.managers.telemetry_manager import TelemetryManager
+    telemetry_manager = TelemetryManager(config.data_root)
 
     # Initialize AI handler
     ai_handler = AIHandler(ai_client, config, telemetry_manager=telemetry_manager)
@@ -662,18 +658,14 @@ def _process_conversational_message(notification: Notification) -> None:
         # 2026-08-04: this silently broke RBAC-gated Morning MCP tool attachment
         # for every 1:1 conversation, resolving the display name as an unknown
         # phone -> defaulting to CLIENT role).
-        # Feature 080 (REQ-080-02): progress_callback is how send_progress_update actually
-        # sends a real interim WhatsApp message mid-turn - notification.answer is the same
-        # real send mechanism send_response() below eventually uses for the final reply
-        # (and what billed/expensive test fixtures already capture via _test_sent_messages),
-        # so reusing it here keeps interim and final sends byte-identical in production AND
-        # tests. Only passed when the flag is on - preserves byte-identical behavior when off
-        # (the tool is also never attached in that case, so this would never fire anyway).
-        progress_callback = (
-            notification.answer
-            if denidin_app.config.feature_flags.get('verbosity_and_telemetry_080', False)
-            else None
-        )
+        # Feature 080: progress_callback is how send_progress_update actually sends a real
+        # interim WhatsApp message mid-turn - notification.answer is the same real send
+        # mechanism send_response() below eventually uses for the final reply (and what
+        # billed/expensive test fixtures already capture via _test_sent_messages), so
+        # reusing it here keeps interim and final sends byte-identical in production AND
+        # tests. Always passed now (the feature flag that used to gate this has been
+        # removed, 2026-09-12, explicit operator instruction).
+        progress_callback = notification.answer
         ai_response = denidin_app.ai_handler.get_response(
             ai_request,
             sender=message.sender_display_name,
