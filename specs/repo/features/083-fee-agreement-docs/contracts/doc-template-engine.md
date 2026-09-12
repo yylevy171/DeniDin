@@ -51,7 +51,14 @@ class DocTemplateEngine:
 ```
 
 RBAC: attached only when the acting role is GODFATHER or ADMIN (same gate as reminders/Morning
-MCP tools). Dispatches immediately — no `PendingLocalToolApproval` (see research.md §4).
+MCP tools). **Creates a `PendingLocalToolApproval` over the `variant_id`/`values` payload before
+generating anything** (human-confirmed 2026-09-12, research.md §4) — same UX as
+`create_reminder`/`modify_reminder`/`delete_reminder`: the AI's proposed values are shown to the
+user for confirmation, and `DocTemplateEngine.generate()` only actually runs once the human
+approves (typed reply or button tap, via the existing `PendingLocalToolApprovalManager` resolution
+path in `get_response()`/`resolve_button_tap()`). Once approved and generated, the document's own
+release (send) is gated only by `verify_fee_agreement_document` (see
+`fee-agreement-verification.md`) — no second human approval on the finished file.
 
 ## Error Handling
 - Unknown `variant_id` / mismatched `values` keys / empty value → tool-call error result (a

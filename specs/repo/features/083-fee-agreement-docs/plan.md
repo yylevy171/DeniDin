@@ -59,11 +59,9 @@ financial/legal values ever reach the template (REQ-083-02) — enforced by tool
 (`generate_fee_agreement` requires every placeholder value as an explicit argument; the AI
 cannot omit one and have the tool silently default it).
 **Scale/Scope**: RBAC-gated to godfather/admin only (same tier as reminders/Morning tools);
-N template variants, initially seeded from a manual review of the historical fee-agreement
-`.docx` corpus in prod media (human-in-the-loop — see Research; this plan does not attempt to
-auto-mine templates from prod data, since prod `data`/`media` is read-only and reviewing/curating
-real client documents into reusable templates is inherently a human judgment call, not something
-an agent should do unsupervised on live client files).
+3 initial template variants (`hourly_consultation`, `retainer_agreement`, `fixed_price_project`),
+authored as generic boilerplate by this implementation (no access to the prod media corpus from
+this clone — see Research #5), checked into `config/fee_agreement_templates/`.
 
 ## Constitution Check
 
@@ -82,6 +80,11 @@ an agent should do unsupervised on live client files).
   planned.
 - **RBAC**: `generate_fee_agreement`/`verify_fee_agreement_document` tools are attached only for
   godfather/admin roles, mirroring reminders/ledger tools. ✅ planned.
+- **Human approval gate (human-confirmed 2026-09-12)**: `generate_fee_agreement` creates a
+  `PendingLocalToolApproval` over the *collected placeholder values* (same UX as reminders) —
+  the human confirms the data before any document is generated. The generated document itself is
+  gated only by the AI's own self-verification (REQ-083-04) — no second human approval on the
+  finished file. See research.md #4. ✅ planned.
 - **Runtime constitution boundaries (CLAUDE.md "EVERY NEW TOOL-BEARING FEATURE...")**: a new
   "Fee Agreement Generation" section in `runtime_constitution.md` is REQUIRED — scope (when this
   applies), explicit non-scope (this is not a general document-editing or general-DOCX-creation
@@ -131,13 +134,13 @@ apps/denidin-app/
 │   │                                      # python-docx, writes temp .docx, exposes a
 │   │                                      # verify() read-back for the self-verification tool
 │   ├── handlers/
-│   │   ├── ai_handler.py                # NEW local tools: generate_fee_agreement,
-│   │   │                                  # verify_fee_agreement_document (both RBAC-gated,
-│   │   │                                  # godfather/admin only; generate_fee_agreement
-│   │   │                                  # dispatches immediately - no approval gate, since
-│   │   │                                  # REQ-083-04's verify step is the real safety gate,
-│   │   │                                  # not a typed-reply approval - see Research for why
-│   │   │                                  # this differs from Reminders/Morning's approval UX)
+│   │   ├── ai_handler.py                # NEW local tools: generate_fee_agreement (creates a
+│   │   │                                  # PendingLocalToolApproval over the collected values,
+│   │   │                                  # same UX as reminders), verify_fee_agreement_document
+│   │   │                                  # (dispatches immediately, read-only). Both RBAC-gated,
+│   │   │                                  # godfather/admin only. The document itself is gated
+│   │   │                                  # only by AI self-verification (REQ-083-04) - no
+│   │   │                                  # second human approval on the finished file.
 │   │   └── whatsapp_handler.py          # NEW send_document_response() path using Green
 │   │                                      # API sendFileByUpload; deletes the temp file after
 │   │                                      # a successful send or after retry exhaustion

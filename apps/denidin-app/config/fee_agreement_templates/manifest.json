@@ -1,0 +1,37 @@
+{
+  "variants": [
+    {
+      "variant_id": "hourly_consultation",
+      "template_filename": "hourly_consultation.docx",
+      "placeholders": ["FIRM_NAME", "DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "HOURLY_RATE", "FEE_AMOUNT"],
+      "selection_cues": [
+        "standard hourly fee agreement for consultation",
+        "hourly rate consulting arrangement",
+        "הסכם שעתי ליעוץ",
+        "הסכם שעתי לשעות ייעוץ"
+      ]
+    },
+    {
+      "variant_id": "retainer_agreement",
+      "template_filename": "retainer_agreement.docx",
+      "placeholders": ["FIRM_NAME", "DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "FEE_AMOUNT", "RETAINER_PERIOD"],
+      "selection_cues": [
+        "retainer agreement",
+        "ongoing monthly retainer",
+        "הסכם רטיינר",
+        "לקוח קבוע חודשי"
+      ]
+    },
+    {
+      "variant_id": "fixed_price_project",
+      "template_filename": "fixed_price_project.docx",
+      "placeholders": ["FIRM_NAME", "DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "FEE_AMOUNT", "DUE_DATE"],
+      "selection_cues": [
+        "fixed-price contract for a defined project",
+        "one-time project fee",
+        "הסכם במחיר קבוע לפרויקט",
+        "עלות קבועה חד-פעמית"
+      ]
+    }
+  ]
+}

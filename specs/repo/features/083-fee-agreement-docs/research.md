@@ -66,48 +66,50 @@ sweeper service to clean up after a leak.
 pre-070 `cleanup_service.py` pattern). Rejected as unnecessary complexity for a file whose whole
 lifecycle (create → verify → send → delete) fits inside a single tool-call chain within one turn.
 
-## 4. Approval-gate shape: does `generate_fee_agreement` need a `PendingLocalToolApproval`?
+## 4. Approval-gate shape: does anything about this flow get a human `PendingLocalToolApproval`?
 
-**Decision**: No. `generate_fee_agreement` dispatches immediately (like `list_reminders`,
-`query_ledger_events` — read/generate-only, no external side effect yet), and the *actual* release
-gate is REQ-083-04's self-verification step: the document is not sent to the user until the model
-has called `verify_fee_agreement_document` and explicitly determined it's correct. Only the send
-step is a real, irreversible external action (delivering a file to the client over WhatsApp) —
-and per REQ-083-04 that step's gate is model self-verification, not a typed-reply/button human
-approval like Reminders/Morning MCP mutations use.
+**Decision (human-confirmed 2026-09-12)**: There IS a human approval step, but it gates the
+**collected details**, not the finished document. Before `generate_fee_agreement` is called, the
+AI's proposed placeholder values (client name, fee amount, scope, dates, etc.) are presented to
+the user as a normal `PendingLocalToolApproval` typed-reply/button confirmation — the same UX
+Reminders already use — so the human confirms "yes, these are the right numbers" before a single
+byte of the document is generated. Once approved, `generate_fee_agreement` →
+`verify_fee_agreement_document` → send proceeds with **no further human gate**: the AI's own
+self-verification (REQ-083-04) is the sole release gate for the document itself, exactly as the
+spec states. If the user is unhappy with the *finished document* after delivery, the resolution is
+a fresh regeneration request in a new turn (potentially with corrected details, going through the
+same details-approval gate again) — never a way to edit or re-approve the already-sent file.
 
-**Rationale**: Spec language ("A document is only 'Released' (sent) once the model itself
-approves it as correct") explicitly assigns the gate to the model's own verification, not a human
-approval step — this is a deliberate, different UX from the existing `PendingApprovalManager`/
-`PendingLocalToolApprovalManager` gates, not an oversight to fix. This should be called out
-plainly in `runtime_constitution.md`'s new "Fee Agreement Generation" section so it isn't
-mistaken for a corner cut.
+**Rationale**: Matches the existing approval-gate pattern (confirm-before-acting) for the part
+that's genuinely still fallible — the AI's data collection/interpretation — while keeping REQ-083-04's
+explicit intent that the document's own correctness is machine-verified, not human-gated
+line-by-line (a human re-reading full legal boilerplate on WhatsApp before every send would defeat
+the point of automating this at all).
 
-**Open question flagged for the human (not resolved unilaterally)**: should sending the finished
-`.docx` to the client *also* require a typed/button human approval (matching every other
-external-facing action's UX in this codebase), on top of the AI's own self-verification? The spec
-as written does not require it, but every other mutating/dispatching tool in this codebase does
-have a human approval gate. Recommend raising this explicitly during `speckit.clarify`/`tasks`
-review before implementation, rather than deciding it here.
+**Local tool schema/flow update**: `generate_fee_agreement` now creates a `PendingLocalToolApproval`
+(same manager as reminders — see `handlers/ai_handler.py`'s existing pattern) instead of
+dispatching immediately as `doc-template-engine.md`'s original contract said. `contracts/` is
+updated accordingly.
 
-## 5. Sourcing the N template variants from the historical prod corpus (REQ-083-01)
+## 5. Sourcing the N template variants (REQ-083-01)
 
-**Decision**: This is a **human-curated** step, not something this plan automates. Prod media
-lives read-only at `~/denidin-winprod-data/media` (per CLAUDE.md's Windows-prod mount) and
-contains real client documents — an agent should not unsupervised mine, rewrite, or template-ize
-real client files. The task list will include a task to work *with* the human to select 3
-representative historical fee agreements (or however many the human decides), manually redact
-them into reusable `.docx` templates with `{{PLACEHOLDER}}`-style tokens, and hand those to
-`config/fee_agreement_templates/` alongside a `manifest.json` describing each variant's
-placeholders and selection cues (the three named in `user-stories.md` Stage 1 —
-`hourly_consultation`, `retainer_agreement`, `fixed_price_project` — are a reasonable starting
-set, but the exact count/N is confirmed with the human, not assumed fixed at exactly 3).
+**Decision (human-confirmed 2026-09-12): creating the templates is an implementation task for
+this agent, not something deferred to the human.** This clone has no read access to the prod
+media corpus (`~/denidin-winprod-data/media` is a root-clone-only sshfs mount, not set up here,
+and per CLAUDE.md is real client data an agent should not mine unsupervised regardless). The three
+variants named in `user-stories.md` Stage 1 — `hourly_consultation`, `retainer_agreement`,
+`fixed_price_project` — were authored from scratch as generic, standard legal-services fee
+agreement boilerplate (parties, scope, fee terms, signature block), with `{{PLACEHOLDER}}` tokens,
+via `python-docx`. These are checked into `config/fee_agreement_templates/` (see plan.md's Project
+Structure) alongside `manifest.json`. They are a deliberately generic starting point — the human
+can swap in prod-derived language/branding later (a template-content change, not a
+placeholder-contract change) without touching any code.
 
-**Rationale**: REQ-083-01 says "derived from the historical corpus," not "auto-generated from
-it" — human review before turning a real client's paperwork into a reusable template is the safer
-and more defensible reading, especially since regenerated documents carry legal/financial
-consequences (REQ-083-02's own anti-hallucination framing already treats this domain as
-high-stakes).
+**Rationale**: REQ-083-01 requires N variants to exist and be selectable; it does not require them
+to be verbatim derivations of specific historical documents. Given no accessible corpus from this
+clone, a correct, generic starting set unblocks the rest of the pipeline (selection, generation,
+verification, delivery) without waiting on a human curation pass that isn't this feature's
+critical path.
 
 ## 6. Placeholder / self-verification format
 
