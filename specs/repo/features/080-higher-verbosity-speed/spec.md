@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/080-higher-verbosity-speed`  
 **Created**: 2026-09-12  
-**Status**: Draft — Pending Review  
+**Status**: Approved Specification — Ready for Implementation Planning  
 **Input**: User description: "Higher verbosoty and speed, multiple replies per user message." Revised: Continuous feedback, keeping user in the loop via AI constitution, keep-alive typing indicator, and gather latency metrics plumbing.
 
 ---
@@ -46,6 +46,7 @@ This feature addresses both perceived latency (UX) and actual latency (Telemetry
   - `tool_calls_count`: Total number of tools invoked during the workflow.
   - `slowest_tool_name`: The specific tool that consumed the most time (e.g., `extract_doc`, `search_ledger`).
   - `slowest_tool_duration_ms`: Execution time of that slowest tool.
+  - `morning_api_request_times_ms`: Breakdown of downstream Morning API latency categorized by endpoint type (e.g., `list_clients: 300ms`, `get_document_details: 1200ms`).
   - `input_tokens_count` / `output_tokens_count`: To correlate latency with context size and generation length.
 ### Key Entities
 - **WhatsApp API / Presence Manager**: Handles the periodic 15-second "typing" keep-alive pings.
