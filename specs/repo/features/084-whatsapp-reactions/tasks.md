@@ -116,12 +116,25 @@ harness plumbing (hard-assertion-tested) plus the AI-run tuning loop itself (not
   `--billed-only`/`--include-expensive N`/`--subset-size` flags, judgment-log write shape) — 20
   tests, all green. Smoke-verified end-to-end: two successive rounds correctly rotate through
   never-run-first scenarios and advance `rotation_state.tsv`.
-- **T012 [AI-run loop, not a test]**: Run the iterative tuning loop per
-  `contracts/reaction-judgment-tuning.md` (billed rounds first; expensive rounds only with
-  fresh human approval per round) until judgment looks stable across rotated subsets. Documented
-  in `logs/reaction_tuning/tuning_log.md`. **Explicitly deferred past this session's current
-  checkpoint** — per the user's instruction to stop and report back once Phases 1-5 and their
-  unit/integration tests are green, before starting this phase.
+- **T012 [AI-run loop, not a test] — RUN, not declared stable**: Ran the iterative tuning loop
+  per `contracts/reaction-judgment-tuning.md`, in two later sessions (2026-09-12), session-capped
+  each time by explicit instruction rather than run to the contract's own stopping condition:
+  - **5 billed rounds** — all 12 billed pool scenarios exercised at least once. Found and fixed
+    one real constitution gap (the model was embedding a reaction emoji inside its reply text
+    instead of calling `react_to_message`); confirmed the fix worked and caused no regression.
+    Documented in `logs/reaction_tuning/tuning_log.md`.
+  - **2×3 expensive rounds** (fresh human approval each time) — found a real document-flip
+    wording gap (❓ missing as a flip target), then, investigating why the fix looked ineffective,
+    found and fixed a real bug in the tuning driver itself (`--followup`/mimeType), and finally
+    confirmed the wording fix genuinely works once a document scenario has a real follow-up turn
+    (`react_to_message` is only ever attached there — a document upload's own first reply is
+    composed by deterministic code, `MediaHandler._compose_user_message`, with no tool access at
+    all). Documented in `logs/reaction_tuning/tuning_log_expensive.md`.
+  - **Not reached**: the contract's own stopping condition ("a couple of consecutive rounds
+    across different rotated subsets, including expensive, with no real misses") — every round
+    run so far found or chased something real. Held-out for a future round: a scenario giving
+    `react_flip_earlier_message` a genuine 3rd turn (it's one turn short of ever completing a
+    flip), and continued rotation through the remaining never-repeated scenarios.
 
 ## Phase 7 — `quickstart.md` manual verification
 
