@@ -115,15 +115,46 @@ overage past X hours," or "a one-time setup fee plus a monthly fee").
 The first draft of this variant capped the fee table at 3 pre-declared component slots
 (`COMPONENT_1/2/3_*`), which does not satisfy "any N" — a 4th, 5th, etc. real component would
 have had nowhere to go. Replaced with a **repeating-row design**: the template `.docx` declares
-exactly ONE generic table row (`{{COMPONENT_NAME}}`/`{{COMPONENT_DESCRIPTION}}`/`{{COMPONENT_FEE}}`),
-and `generate_fee_agreement` takes a `components` list (any length ≥ 2) instead of N indexed
-placeholder groups; `DocTemplateEngine.generate()` clones that one row once per list entry at
-generation time. See `data-model.md`'s "Variable-length component rows" section and the
-`doc-template-engine.md` contract's updated `generate()` signature (`components:
-list[dict[str,str]] | None`) for the full design. Each of the 4 variants' `selection_cues` in
-`manifest.json` now explicitly states its single-vs-multi-component character, so the AI's
-variant-selection judgment call has this distinction available directly from the manifest content
-it already reads, rather than needing separate constitution-level guidance to infer it.
+exactly ONE generic table row, and `generate_fee_agreement` takes a `components` list (any
+length ≥ 2) instead of N indexed placeholder groups; `DocTemplateEngine.generate()` clones that
+one row once per list entry at generation time.
+
+**Third addendum (same day, human correction): "the templates should allow for all component
+variants like percentages, coshare with other partners, and payer entity... the component actual
+line is fully generated from the user context."** The row's per-component fields were changed
+from a rigid `{name, description, fee}` triplet to `{label, terms}`: `label` is a short name, and
+`terms` is a **single free-text line the AI composes fully from the conversation** — a flat
+amount, a percentage/commission, a cost-share split with a named partner, a specific payer entity
+different from the main Client, or any combination thereof. No fixed sub-schema was introduced
+for these variations (no separate `percentage`/`payer_entity`/`cost_share_partner` fields) —
+real arrangements vary too much to enumerate exhaustively in a schema, and a free-text line the
+AI is instructed to compose only from what was actually said generalizes to any shape without
+needing a schema change every time a new kind of arrangement comes up. REQ-083-02's
+anti-hallucination guardrail now explicitly applies at the level of "every fact stated inside one
+component's `terms` line," not just "every placeholder/component slot was filled" — see
+`data-model.md`'s "Why `terms` is one free-text field" subsection.
+
+See `data-model.md`'s "Variable-length component rows" section and the `doc-template-engine.md`
+contract's `generate()` signature (`components: list[dict[str,str]] | None`, each entry
+`{label, terms}`) for the full design. Each of the 4 variants' `selection_cues` in
+`manifest.json` now explicitly states its single-vs-multi-component character (including that
+percentage/cost-share/payer-entity arrangements route to `multi_component_agreement`), so the
+AI's variant-selection judgment call has this distinction available directly from the manifest
+content it already reads, rather than needing separate constitution-level guidance to infer it.
+
+**Fourth addendum (same day, human feedback): example-guided but not example-limited
+composition.** Rather than leaving `terms` entirely open-ended with no guidance, added
+`repeating_group.example_terms` to `manifest.json` — a small set of phrasing patterns for
+common real-world fee-arrangement shapes (flat amount, percentage/commission, cost-share split,
+non-Client payer entity, hourly overage), each with its own `{{SLOT}}` tokens the AI fills from
+real conversation facts when a described component matches that shape. This is explicitly
+guidance, not a closed enum or code-enforced template: a component that doesn't fit any example
+is still composed as its own natural free-text line rather than distorted to match the nearest
+pattern. No production template corpus was available to source these from directly (see #5
+above — no prod media access from this clone), so they were authored as generically
+representative fee-arrangement shapes; the human can refine/replace them once real historical
+agreements are reviewed, without any code or contract change (this is pure `manifest.json`
+content).
 
 **Rationale**: REQ-083-01 requires N variants to exist and be selectable; it does not require them
 to be verbatim derivations of specific historical documents. Given no accessible corpus from this

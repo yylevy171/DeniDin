@@ -304,7 +304,7 @@ class TestFeeAgreementGenerationFlow:
             f"got {len(components)}: {components!r}"
         )
         for entry in components:
-            assert set(entry.keys()) == {"name", "description", "fee"}
+            assert set(entry.keys()) == {"label", "terms"}
         assert "values" in pending.arguments and not any(
             k.startswith("COMPONENT") for k in pending.arguments["values"]
         ), "scalar `values` must never carry component data - that belongs in `components`"
@@ -374,3 +374,45 @@ class TestFeeAgreementGenerationFlow:
                 "temp .docx must be deleted after a successful send (SC-003) — "
                 "found still on disk after the turn completed"
             )
+
+    # --- Component terms: example-pattern-guided AND free-form creative ----------
+
+    def test_multi_component_percentage_coshare_payer_terms(self, denidin_app, config):
+        """Per human feedback (2026-09-12): components must support percentages,
+        cost-sharing with other partners, and a payer entity other than the Client -
+        composed as free text, guided (but not limited) by manifest.json's
+        example_terms patterns. One component here matches an example pattern
+        (percentage split with a named partner); another describes a genuinely novel
+        arrangement with no matching example, to prove the AI isn't forced to distort
+        it into the nearest pattern."""
+        phone, chat_id = self._godfather(config)
+
+        self._send_text(
+            chat_id, phone, "Test Godfather",
+            "Draft an agreement for Delta Holdings with two fee components: "
+            "(1) a referral fee of 15% of the collected amount, split 50/50 with "
+            "Partner Cohen, payable by the Client upon receipt; "
+            "(2) a one-time success bonus of 10,000 NIS payable directly by "
+            "Delta Holdings' parent company, Delta Group Ltd, only if the deal "
+            "closes before year-end. Total combined fee: as per the above.",
+            "creative_terms",
+        )
+        pending = self._pending_approval(denidin_app, chat_id)
+        assert pending is not None
+        components = pending.arguments.get("components") or []
+        assert len(components) == 2
+
+        all_terms = " | ".join(c.get("terms", "") for c in components)
+        # Component 1: percentage + cost-share (matches an example pattern).
+        assert "15" in all_terms and "%" in all_terms
+        assert "Cohen" in all_terms
+        assert "50" in all_terms  # the split ratio, stated verbatim, not invented
+        # Component 2: a non-Client payer entity AND a conditional trigger - no
+        # example_terms pattern covers "conditional on a deal closing," so this
+        # proves free-form composition beyond the guided examples still works.
+        assert "10,000" in all_terms or "10000" in all_terms
+        assert "Delta Group" in all_terms
+        assert "year-end" in all_terms or "close" in all_terms.lower()
+        # Nothing invented: no percentage/split/payer/condition appears that
+        # wasn't actually stated above (spot-check a plausible hallucination).
+        assert "20%" not in all_terms and "30,000" not in all_terms and "3000" not in all_terms

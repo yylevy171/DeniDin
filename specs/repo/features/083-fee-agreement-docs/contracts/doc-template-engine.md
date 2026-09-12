@@ -49,7 +49,7 @@ class DocTemplateEngine:
 {
   "type": "function",
   "name": "generate_fee_agreement",
-  "description": "Generates a fee agreement .docx from a template variant, filling in the exact placeholder values provided. Never call this with guessed or default values for any placeholder, and never pad or merge fee components to hit a particular count - if any required detail is unknown, ask the user first.",
+  "description": "Generates a fee agreement .docx from a template variant, filling in the exact placeholder values provided. Never call this with guessed or default values for any placeholder or inside any component's terms, and never pad or merge fee components to hit a particular count - if any required detail is unknown, ask the user first.",
   "parameters": {
     "type": "object",
     "properties": {
@@ -65,11 +65,10 @@ class DocTemplateEngine:
         "items": {
           "type": "object",
           "properties": {
-            "name": {"type": "string"},
-            "description": {"type": "string"},
-            "fee": {"type": "string"}
+            "label": {"type": "string", "description": "Short name for this component, e.g. 'Referral Fee', 'Setup Fee', 'Monthly Retainer'."},
+            "terms": {"type": "string", "description": "ONE free-text line, fully composed from what the user actually said - the amount, and (only if the user stated them) a percentage/commission, a cost-share split with a named partner, and/or the specific payer entity if different from the main Client. If the component matches one of manifest.json's repeating_group.example_terms patterns, follow that pattern's phrasing/structure filling in the real facts; otherwise compose an equally natural free-text line of your own - the examples are guidance, not a closed set. Never invent any detail not actually discussed, in either case. Example: '15% of the collected amount, split 50/50 with Partner Cohen, payable by the Client upon receipt.'"}
           },
-          "required": ["name", "description", "fee"]
+          "required": ["label", "terms"]
         },
         "minItems": 2
       }
