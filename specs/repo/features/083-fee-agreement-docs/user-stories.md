@@ -24,3 +24,27 @@
 **Given** the system contains a branded `fee_agreement_template.docx` with bold headers, specific fonts, and bullet points
 **When** the placeholders are dynamically replaced
 **Then** the resulting output file MUST perfectly retain all the original branding and formatting surrounding the injected text.
+
+## User Experience Testing Scenarios (UAT)
+
+To ensure smooth operation and strict adherence to the anti-hallucination constraints, developers must manually verify the following scenarios:
+
+### Scenario A: Zero-Turn Direct Generation
+**Goal**: Verify the AI can fulfill a complete request without unnecessarily nagging the user.
+- **T=0**: User texts: *"Create a retainer agreement for NewCo Ltd. Fee is 5,000 NIS monthly for general consulting."*
+- **T+1**: AI recognizes all mandatory fields are present. It selects the "Retainer" template variant based on historical prod media.
+- **T+X**: AI generates and dispatches the `.docx` file natively in WhatsApp.
+- **Expectation**: No clarifying questions are asked. The file is downloadable directly from the WhatsApp chat.
+
+### Scenario B: Anti-Hallucination Guardrail (Missing Data)
+**Goal**: Verify the AI refuses to guess financial or legal terms when information is missing.
+- **T=0**: User texts: *"Generate a standard fee agreement for Yossi."*
+- **T+1**: AI identifies Yossi in the ledger but sees the fee and scope are missing. 
+- **T+X**: AI replies: *"מצאתי את יוסי, אבל חסר לי סכום העסקה ומה בדיוק תיאור העבודה. מה הסכום ומה השירות?"* (or similar).
+- **Expectation**: The AI **must not** generate a placeholder document or hallucinate a default fee. It must wait for the user's reply. Once the user replies with the missing data, the document is generated.
+
+### Scenario C: Formatting Integrity Verification
+**Goal**: Verify the Python backend generating the Word document doesn't destroy the template's branding.
+- **Step 1**: Trigger Scenario A or B to receive a `.docx` file.
+- **Step 2**: Open the received file in MS Word or Google Docs.
+- **Expectation**: Company logos are intact, bold/italic text styles surrounding the placeholders remain correct, bullet points are unbroken, and paragraph justification matches the baseline variant perfectly.
