@@ -1,50 +1,33 @@
 # User Stories: Fee Agreement Document Generation
 
-## Stories
+## User Acceptance Testing (UAT) Flow
 
-### User Story 1 - The "One-Shot" Generation (Priority: P1)
-**Given** the user provides all necessary details in a single prompt (e.g., "Draft a fee agreement for new client Avi Levi, fee is 5000 NIS for tax consultation")
-**When** the AI processes the request
-**Then** the AI MUST NOT ask unnecessary clarifying questions
-**And** the AI MUST immediately invoke the document generation tool and send the finalized `.docx` file back to the user in the chat.
+The testing for this feature is broken down into four distinct stages to ensure every part of the document generation pipeline works correctly and safely.
 
-### User Story 2 - The Clarification Flow (Priority: P1)
-**Given** the user provides partial information (e.g., "I need a fee agreement for Yossi")
-**When** the AI realizes that mandatory template fields (like scope of work and fee amount) are missing
-**Then** the AI MUST pause the generation and text the user asking for the specific missing fields
-**And** upon receiving the answers, the AI MUST resume the flow and generate the document.
+### Stage 1: Template Selection Accuracy
+**Goal**: Verify the AI selects the correct template variant based on the user's phrasing.
+- **Test 1.1**: User texts *"Create a retainer agreement for NewCo Ltd."* 
+  - **Expectation**: System selects the `retainer_agreement` variant.
+- **Test 1.2**: User texts *"I need a standard hourly fee agreement for consultation."*
+  - **Expectation**: System selects the `hourly_consultation` variant.
+- **Test 1.3**: User texts *"Draft a fixed-price contract for building a website."*
+  - **Expectation**: System selects the `fixed_price_project` variant.
 
-### User Story 3 - Editable Direct Delivery (Priority: P1)
-**Given** the document generation engine has created the finalized fee agreement
-**When** the system dispatches it to the user
-**Then** the user MUST receive it directly inside WhatsApp as a standard document attachment
-**And** the file MUST be in `.docx` format, allowing the user to open it on their phone/PC and make manual edits before forwarding it to their client.
+### Stage 2: Data Gathering & Clarification (Anti-Hallucination)
+**Goal**: Verify the AI properly identifies missing required fields and asks the user for them in simple turns.
+- **Scenario**: User texts *"Draft an agreement for Yossi."* (assuming Yossi is found, but terms are missing).
+- **Turn 1 (AI)**: The AI MUST pause and ask a clarifying question: *"What is the fee amount and scope of work for Yossi?"*
+- **Turn 2 (User)**: User replies: *"The fee is 5,000 NIS for tax consultation."*
+- **Expectation**: The AI successfully collects this data without hallucinating default values and proceeds to the next stage.
 
-### User Story 4 - Formatting Preservation (Priority: P2)
-**Given** the system contains a branded `fee_agreement_template.docx` with bold headers, specific fonts, and bullet points
-**When** the placeholders are dynamically replaced
-**Then** the resulting output file MUST perfectly retain all the original branding and formatting surrounding the injected text.
+### Stage 3: AI Self-Verification (QA)
+**Goal**: Verify that the AI acts as its own QA engineer before releasing the document to the user.
+- **Scenario**: The document generation tool has created the temporary `.docx` file.
+- **Expectation**: The AI MUST invoke an internal verification tool to read the generated document's contents.
+- **Validation**: The AI confirms that all placeholders (e.g., `{{FEE_AMOUNT}}`) were successfully replaced with the correct user-provided data (e.g., "5,000 NIS"). 
+- **Release Gate**: The document is ONLY dispatched to the user after the AI explicitly outputs a determination that the document complies with the template and is ready for release. The test logs must show the AI performing this validation step.
 
-## User Experience Testing Scenarios (UAT)
-
-To ensure smooth operation and strict adherence to the anti-hallucination constraints, developers must manually verify the following scenarios:
-
-### Scenario A: Zero-Turn Direct Generation
-**Goal**: Verify the AI can fulfill a complete request without unnecessarily nagging the user.
-- **T=0**: User texts: *"Create a retainer agreement for NewCo Ltd. Fee is 5,000 NIS monthly for general consulting."*
-- **T+1**: AI recognizes all mandatory fields are present. It selects the "Retainer" template variant based on historical prod media.
-- **T+X**: AI generates and dispatches the `.docx` file natively in WhatsApp.
-- **Expectation**: No clarifying questions are asked. The file is downloadable directly from the WhatsApp chat.
-
-### Scenario B: Anti-Hallucination Guardrail (Missing Data)
-**Goal**: Verify the AI refuses to guess financial or legal terms when information is missing.
-- **T=0**: User texts: *"Generate a standard fee agreement for Yossi."*
-- **T+1**: AI identifies Yossi in the ledger but sees the fee and scope are missing. 
-- **T+X**: AI replies: *"מצאתי את יוסי, אבל חסר לי סכום העסקה ומה בדיוק תיאור העבודה. מה הסכום ומה השירות?"* (or similar).
-- **Expectation**: The AI **must not** generate a placeholder document or hallucinate a default fee. It must wait for the user's reply. Once the user replies with the missing data, the document is generated.
-
-### Scenario C: Formatting Integrity Verification
-**Goal**: Verify the Python backend generating the Word document doesn't destroy the template's branding.
-- **Step 1**: Trigger Scenario A or B to receive a `.docx` file.
-- **Step 2**: Open the received file in MS Word or Google Docs.
-- **Expectation**: Company logos are intact, bold/italic text styles surrounding the placeholders remain correct, bullet points are unbroken, and paragraph justification matches the baseline variant perfectly.
+### Stage 4: Successful Delivery
+**Goal**: Verify the final asset is reliably delivered to the user's device.
+- **Scenario**: The AI has "Released" the document.
+- **Expectation (Integration Level)**: The system successfully invokes Green API's `sendFileByUpload` endpoint. The user receives an actual, editable `.docx` file in their WhatsApp chat. Formatting (fonts, logos, bullet points) is perfectly intact upon opening.
