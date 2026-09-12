@@ -6,6 +6,7 @@ Phase 6: US4 - Configuration & Deployment
 """
 import logging
 import os
+import random
 import sys
 import signal
 import time
@@ -18,6 +19,7 @@ from src.sources.green_api_source import GreenAPIMessageSource
 from src.utils.green_api_bot import (
     DeniDinGreenAPIBot,
     mark_message_read,
+    send_reaction,
     send_typing_indicator,
 )
 from src.utils.whatsapp_audit_log import log_inbound, log_outbound
@@ -1161,6 +1163,78 @@ class RecentNotificationDeduper:
 _recent_notifications = RecentNotificationDeduper()
 
 
+# Feature 084 (WhatsApp reactions): media types that get an in-flight "looking into
+# it" reaction. See contracts/fast-path-reaction-heuristic.md.
+_FAST_PATH_MEDIA_TYPES = {"imageMessage", "documentMessage"}
+_FAST_PATH_MEDIA_REACTIONS = ["👀", "🔍", "⏳"]
+
+# Curated action-verb keyword list (Hebrew + English) - a rough, deliberately
+# imprecise heuristic for "this looks like a command", not an NLU classifier.
+# Matched case-insensitively as a substring against textMessage/extendedTextMessage
+# content. False negatives here are fine (no reaction, no harm - the model can
+# still react itself via react_to_message); the fast-path's entire job is a fast,
+# free, no-LLM-call "acknowledge receipt" signal, not perfect classification.
+_FAST_PATH_ACTION_KEYWORDS = (
+    "צור", "תיצור", "תוציא", "הוצא", "תבטל", "בטל", "עדכן", "תעדכן",
+    "מחק", "תמחק", "שלח", "תשלח",
+    "create", "issue", "cancel", "update", "delete", "send", "invoice",
+)
+_FAST_PATH_ACTION_REACTIONS = ["👍", "🫡", "👌"]
+
+_FAST_PATH_TEXT_TYPES = {"textMessage", "extendedTextMessage"}
+
+
+def _classify_fast_path_reaction(type_message: str, notification: Notification) -> Optional[str]:
+    """Returns a chosen reaction emoji if `notification` matches the fast-path
+    heuristic's media or action-request classification, else None ("neither" -
+    no reaction, silently). Classification IS the entire gate - see
+    contracts/group-discretion-gating.md's Correction (2026-09-12): there is no
+    separate addressed-to-bot predicate, for group or 1:1 traffic alike.
+    """
+    if type_message in _FAST_PATH_MEDIA_TYPES:
+        return random.choice(_FAST_PATH_MEDIA_REACTIONS)
+
+    if type_message in _FAST_PATH_TEXT_TYPES:
+        event = getattr(notification, "event", None)
+        message_data = event.get("messageData", {}) if isinstance(event, dict) else {}
+        if type_message == "extendedTextMessage":
+            text = message_data.get("extendedTextMessageData", {}).get("text", "")
+        else:
+            text = message_data.get("textMessageData", {}).get("textMessage", "")
+        text_lower = (text or "").lower()
+        if any(keyword in text_lower for keyword in _FAST_PATH_ACTION_KEYWORDS):
+            return random.choice(_FAST_PATH_ACTION_REACTIONS)
+
+    return None
+
+
+def _dispatch_fast_path_reaction(type_message: str, notification: Notification) -> None:
+    """Feature 084: fast, non-LLM "in-flight" reaction dispatched at webhook-dispatch
+    time, before the real handler runs - see contracts/fast-path-reaction-heuristic.md.
+    Never raises, never blocks/delays the real handler regardless of outcome; any
+    failure is caught here and logged at WARNING (REQ-084-007).
+    """
+    try:
+        reaction = _classify_fast_path_reaction(type_message, notification)
+        if reaction is None:
+            return
+
+        event = getattr(notification, "event", None)
+        if not isinstance(event, dict):
+            return
+        id_message = event.get("idMessage")
+        chat_id = event.get("senderData", {}).get("chatId")
+        if not id_message or not chat_id:
+            return
+
+        if denidin_app is None or denidin_app.green_api_bot is None:
+            return
+
+        send_reaction(denidin_app.green_api_bot, chat_id, id_message, reaction)
+    except Exception as error:  # pylint: disable=broad-except
+        logger.warning(f"Fast-path reaction dispatch failed (type={type_message!r}): {error}")
+
+
 def dispatch_notification(type_message: str, notification: Notification) -> None:
     """The dispatch callable every MessageSource.start() calls - looks up
     HANDLER_REGISTRY, falling back to CATCH_ALL_HANDLER for any type not
@@ -1202,6 +1276,7 @@ def dispatch_notification(type_message: str, notification: Notification) -> None
         handle_unsupported_message_default(notification)
         return
     handler = HANDLER_REGISTRY.get(type_message, CATCH_ALL_HANDLER)
+    _dispatch_fast_path_reaction(type_message, notification)
     handler(notification)
 
 
