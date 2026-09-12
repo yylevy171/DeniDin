@@ -126,7 +126,13 @@ sleep_timeout_never() {
 # (see quickstart.md §7) - much simpler, no trigger-timing behavior to get
 # wrong.
 startup_script_present() {
-  ssh_run "cat \"\$(wslpath -u \"\$(cmd.exe /c echo %APPDATA% | tr -d '\\r')\")/Microsoft/Windows/Start Menu/Programs/Startup/DeniDinProdAutostart.cmd\"" | grep -qF 'run_all.sh prod'
+  # bugfix-043 (2026-09-06) made run_env.sh the only correct start entrypoint
+  # - it hands off to the health-monitoring prober, which is now the ONLY
+  # thing that ever brings the apps up, on every kind of start including
+  # reboot recovery (see run_env.sh's own header comment). run_all.sh
+  # bypasses the prober entirely, so a startup script still targeting it is
+  # stale, not just differently-worded.
+  ssh_run "cat \"\$(wslpath -u \"\$(cmd.exe /c echo %APPDATA% | tr -d '\\r')\")/Microsoft/Windows/Start Menu/Programs/Startup/DeniDinProdAutostart.cmd\"" | grep -qF 'run_env.sh prod'
 }
 
 auto_logon_configured() {
@@ -140,12 +146,50 @@ auto_logon_configured() {
   ssh_run 'reg.exe query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" /v AutoAdminLogon' | grep -qE 'REG_SZ\s+1\b'
 }
 
-both_containers_up() {
-  docker --context "$DOCKER_CTX" compose -f docker/docker-compose.prod.yml ps --format '{{.State}}' | grep -c '^running$' | grep -q '^2$'
+# Rewritten 2026-09-12 (real incident): this used to hard-code the expected
+# running-container COUNT ("2"), from before Feature 068 added
+# webapp-backend-prod/webapp-frontend-prod - prod moved from 2 services to 4
+# and this check silently started failing every run despite everything
+# actually being healthy (found while deploying v0.7.0). A count is also the
+# wrong shape of check on its own merits: it can't tell "the right N
+# containers are up" from "some other N containers are up, and the ones that
+# matter are down." Now derives the expected set of service NAMES straight
+# from docker-compose.prod.yml itself (`compose ... config --services`) and
+# checks that exactly that set - no more, no less - is running, by name.
+# Self-updating if another app's service is ever added to the compose file
+# (no second place to remember to bump a number).
+compose_services() {
+  docker --context "$DOCKER_CTX" compose -f docker/docker-compose.prod.yml config --services
 }
 
-morning_health_responds() {
-  ssh_run "cd ~/$DEPLOY_DIR && PORT=\$(docker compose -f docker/docker-compose.prod.yml port morning-mcp-app-prod 8000 | cut -d: -f2) && curl -sf http://127.0.0.1:\$PORT/health"
+all_containers_up() {
+  local expected running
+  expected="$(compose_services | sort)"
+  running="$(docker --context "$DOCKER_CTX" compose -f docker/docker-compose.prod.yml ps --format '{{.Service}} {{.State}}' | awk '$2 == "running" {print $1}' | sort)"
+  [ -n "$expected" ] && [ "$expected" = "$running" ]
+}
+
+# Generalized 2026-09-12: was morning-mcp-app-prod only - the other 3
+# containers (denidin-app-prod, webapp-backend-prod, webapp-frontend-prod)
+# had no internal /health check at all, so a hung/crash-looping one of
+# those could sit behind "container reports Up" (all_containers_up only
+# sees Docker's own process-alive state, not app-level health) with nothing
+# here to catch it. One reusable check per (service, container-port) pair -
+# container ports per docker-compose.prod.yml, not the host-published ones.
+service_health_responds() {
+  local svc="$1" container_port="$2"
+  ssh_run "cd ~/$DEPLOY_DIR && HOST_PORT=\$(docker compose -f docker/docker-compose.prod.yml port $svc $container_port | cut -d: -f2) && curl -sf http://127.0.0.1:\$HOST_PORT/health"
+}
+
+# Rewritten 2026-09-12, same incident: this used to hard-code a single
+# service name (denidin-app-prod) - a stale/missing log stream on any OTHER
+# service (e.g. webapp-backend-prod) would pass unnoticed. Now checks every
+# service the compose file actually defines.
+logs_readable_for_all_services() {
+  local svc
+  for svc in $(compose_services); do
+    docker --context "$DOCKER_CTX" compose -f docker/docker-compose.prod.yml logs --tail 5 "$svc" >/dev/null 2>&1 || return 1
+  done
 }
 
 data_mount_present() {
@@ -201,7 +245,7 @@ check "AC-power sleep timeout = never" \
 
 echo
 echo "== T2a/T2b: reboot-recovery configuration (static config only — see verify_reboot_recovery.sh for the live end-to-end test) =="
-check "Startup-folder script present, targets run_all.sh prod" \
+check "Startup-folder script present, targets run_env.sh prod" \
   startup_script_present
 check "Windows auto-logon is configured (AutoAdminLogon=1)" \
   auto_logon_configured
@@ -212,12 +256,18 @@ check "Docker context reachable" \
   docker context inspect "$DOCKER_CTX"
 check "docker compose ps reachable via remote context" \
   docker --context "$DOCKER_CTX" compose -f docker/docker-compose.prod.yml ps
-check "Both containers report Up (not Restarting/Exited)" \
-  both_containers_up
-check "Log output readable via remote context" \
-  docker --context "$DOCKER_CTX" compose -f docker/docker-compose.prod.yml logs --tail 5 denidin-app-prod
+check "All containers report Up (not Restarting/Exited)" \
+  all_containers_up
+check "Log output readable via remote context (every service)" \
+  logs_readable_for_all_services
 check "morning-mcp-app-prod internal /health responds" \
-  morning_health_responds
+  service_health_responds morning-mcp-app-prod 8000
+check "denidin-app-prod internal /health responds" \
+  service_health_responds denidin-app-prod 8100
+check "webapp-backend-prod internal /health responds" \
+  service_health_responds webapp-backend-prod 8100
+check "webapp-frontend-prod internal /health responds" \
+  service_health_responds webapp-frontend-prod 80
 
 echo
 echo "== T-M: sshfs data-folder mount on the Mac (FR6a, added 2026-08-02) =="

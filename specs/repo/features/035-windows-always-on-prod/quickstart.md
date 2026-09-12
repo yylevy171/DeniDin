@@ -268,9 +268,20 @@ trigger-timing complexity:
 ```powershell
 @'
 @echo off
-wsl.exe -e bash -c "cd ~/denidin-prod && ./scripts/run_all.sh prod"
+wsl.exe -e bash -c "cd ~/denidin-prod && ./scripts/run_env.sh prod"
 '@ | Set-Content -Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\DeniDinProdAutostart.cmd" -Encoding ASCII
 ```
+**Corrected 2026-09-12 (real gap, found via `verify_windows_prod.sh`): this must call
+`run_env.sh`, not `run_all.sh`.** bugfix-043 (2026-09-06) made `run_env.sh` the ONE sanctioned
+way to start an environment — it hands off to the health-monitoring prober, which is now the
+only thing that ever brings the apps up, on every kind of start including reboot recovery (see
+`run_env.sh`'s own header comment). `run_all.sh` starts containers directly and bypasses the
+prober entirely, so a startup script still targeting it (as this doc and the real box's file
+both did, undetected, until now) means a real reboot never actually exercises the prober's
+bootstrap path — exactly the class of gap CLAUDE.md's "reboot recovery must be verified
+end-to-end, not just container is up" rule warns about. If you're re-provisioning a box from
+this doc, use `run_env.sh` from the start; if adjusting an existing one, `cat` the real file
+first to confirm what it currently says before overwriting.
 (Adjust `denidin-prod` if you used a different deploy-directory name in
 step 3. This only works once at least one deploy from step 9 has
 populated that directory — running it before that just fails with "script
@@ -426,9 +437,12 @@ The two hosts must never both run `prod` at once (spec.md Edge Cases).
 ## Day-to-day operation, once set up
 
 ```bash
-# Start / stop (existing wrapper scripts, unmodified, in the deploy directory)
-ssh denidin-winprod './denidin-prod/scripts/run_all.sh prod'
-ssh denidin-winprod './denidin-prod/scripts/stop_all.sh prod'
+# Start / stop the RIGHT way (bugfix-043, 2026-09-06) - run_env.sh/stop_env.sh, not
+# run_all.sh/stop_all.sh directly, so the health-monitoring prober's schedule and this
+# start/stop go through the same bootstrap path reboot recovery also uses (see run_env.sh's
+# own header comment; corrected here 2026-09-12, this section previously said run_all.sh).
+ssh denidin-winprod './denidin-prod/scripts/run_env.sh prod'
+ssh denidin-winprod './denidin-prod/scripts/stop_env.sh prod'
 
 # Deploy a new version — cut once, ship the exact same artifact, load, and start on the box.
 ./scripts/cut_release.sh <app> <version> --summary "<text>"
