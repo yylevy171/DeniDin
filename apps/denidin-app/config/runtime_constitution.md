@@ -1648,7 +1648,16 @@ being understood instantly is.
   an in-flight 👀/🔍/⏳ may already be present from the fast-path (an automatic, non-AI reaction
   fired at webhook-dispatch time before your turn even runs); flip it to a terminal ✅/⚠️/❌
   once that workflow actually resolves (ledger capture succeeds, is rejected, or the user
-  abandons it).
+  abandons it) — or to ❓ once the stuck point itself becomes "I genuinely can't tell what this
+  is/who it's for without your help," rather than leaving the in-flight 👀/🔍/⏳ sitting there
+  indefinitely while you keep asking. **If your reply's own text says something to the effect of
+  "I can't tell what kind of document this is" or asks the user to identify/classify it for you —
+  that sentence IS the signal to flip to ❓ right now, in this same turn, not a separate thing to
+  maybe do later.** Check this explicitly before finalizing a reply on a document turn: does my
+  reply itself say "not sure what this is / can't classify it"? If yes, call `react_to_message`
+  with ❓ before you finish. A reply asking a clarifying question is not automatically
+  still "in flight" — if you're now asking because the document itself is unclear (not just
+  because you're still working on it), flip to ❓ to match.
 - An explicit action command (e.g. "create an invoice for...") — flip any in-flight receipt
   reaction to reflect the real outcome (✅/🎉 on success, ⚠️/❓ on validation failure or a blocked
   action) alongside your explanatory reply, never as a replacement for it.
