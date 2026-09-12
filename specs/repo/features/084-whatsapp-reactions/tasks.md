@@ -101,16 +101,21 @@ harness plumbing (hard-assertion-tested) plus the AI-run tuning loop itself (not
 
 ## Phase 6 — Reaction judgment tuning harness (plumbing only — see `contracts/reaction-judgment-tuning.md`)
 
-- **T010 [test+impl]**: `tests/billed/reaction_judgment_pool.py` +
+- **T010 [test+impl] — DONE**: `tests/billed/reaction_judgment_pool.py` +
   `tests/expensive/reaction_judgment_pool.py` — the scenario-pool data + the capture mechanism
-  (stub `send_reaction` at the Green API boundary, write one JSON judgment-log entry per scenario
-  run). Hard assertions ONLY on: zero `send_reaction` calls for the two ambient-group scenarios,
-  and flip-targeting correctness (second call's `id_message` matches the first's) for the flip
-  scenario. No assertion anywhere on emoji choice itself.
-- **T011 [test+impl]**: `scripts/run_reaction_tuning.sh` + `logs/reaction_tuning/rotation_state.tsv`
-  rotation logic, and its own unit tests (`tests/unit/test_reaction_tuning_harness.py` —
-  least-recently-run selection, `--billed-only`/`--include-expensive N` flags, judgment-log write
-  shape).
+  (`tests/_reaction_capture.py`: stubs `send_reaction` at the Green API boundary, writes one JSON
+  judgment-log entry per scenario run). Hard assertions ONLY on: zero `send_reaction` calls for
+  the two ambient-group scenarios, and flip-targeting correctness (second call's `id_message`
+  matches the first's) for the flip scenario — implemented as real billed tests
+  (`tests/billed/test_reaction_judgment_tuning.py`, run against the actual `AIHandler` pipeline)
+  and confirmed green. No assertion anywhere on emoji choice itself; the flip test explicitly
+  skips (never fails) when the model's own judgment doesn't produce a flip that round.
+- **T011 [test+impl] — DONE**: `scripts/run_reaction_tuning.sh` + `logs/reaction_tuning/rotation_state.tsv`
+  rotation logic (`tests/_reaction_tuning_rotation.py`), and its own unit tests
+  (`tests/unit/test_reaction_tuning_harness.py` — least-recently-run selection,
+  `--billed-only`/`--include-expensive N`/`--subset-size` flags, judgment-log write shape) — 20
+  tests, all green. Smoke-verified end-to-end: two successive rounds correctly rotate through
+  never-run-first scenarios and advance `rotation_state.tsv`.
 - **T012 [AI-run loop, not a test]**: Run the iterative tuning loop per
   `contracts/reaction-judgment-tuning.md` (billed rounds first; expensive rounds only with
   fresh human approval per round) until judgment looks stable across rotated subsets. Documented
@@ -137,3 +142,10 @@ T013.
 
 Per explicit user instruction: implement and green Phases 1-5 (T001-T009), report back, and STOP
 before Phase 6 (T010-T012, the reaction-judgment-tuning harness and loop) and Phase 7 (T013).
+
+**Superseded (2026-09-12)**: per a later explicit user instruction ("continue until all is
+implemented and unit and integration tests pass"), Phase 6's harness plumbing (T010, T011) was
+also implemented and is green — see above. T012 (the AI-run tuning loop itself — not a test) and
+Phase 7's T013 (manual quickstart verification, needs a live dev environment) remain deliberately
+out of scope: neither is a "unit and integration test," and both need a separate, explicit human
+decision to start (T012's iterative judgment review; T013's environment start, per CLAUDE.md).
