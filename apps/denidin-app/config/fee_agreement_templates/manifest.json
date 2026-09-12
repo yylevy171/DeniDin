@@ -39,21 +39,19 @@
     {
       "variant_id": "multi_component_agreement",
       "template_filename": "multi_component_agreement.docx",
-      "placeholders": [
-        "FIRM_NAME", "DATE", "CLIENT_NAME", "SCOPE_OF_WORK",
-        "COMPONENT_1_NAME", "COMPONENT_1_DESCRIPTION", "COMPONENT_1_FEE",
-        "COMPONENT_2_NAME", "COMPONENT_2_DESCRIPTION", "COMPONENT_2_FEE",
-        "COMPONENT_3_NAME", "COMPONENT_3_DESCRIPTION", "COMPONENT_3_FEE",
-        "TOTAL_FEE"
-      ],
+      "placeholders": ["FIRM_NAME", "DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "TOTAL_FEE"],
+      "repeating_group": {
+        "min_items": 2,
+        "row_placeholders": ["COMPONENT_NAME", "COMPONENT_DESCRIPTION", "COMPONENT_FEE"]
+      },
       "selection_cues": [
-        "multiple distinct fee components in one engagement (e.g. a retainer PLUS hourly overage, or a setup fee PLUS a monthly fee)",
-        "the client mentions more than one separate charge/rate/line item that need their own description and amount",
+        "multiple (2 or more - any N) distinct fee components in one engagement (e.g. a retainer PLUS hourly overage, or a setup fee PLUS a monthly fee PLUS a one-time onboarding charge)",
+        "the client mentions more than one separate charge/rate/line item that each need their own description and amount",
         "an itemized or multi-part fee breakdown, not a single flat/hourly/fixed number",
         "כמה רכיבי שכר טרחה נפרדים באותו הסכם",
         "הסכם עם מספר שורות תשלום שונות"
       ],
-      "notes": "Template has 3 component table rows as an upper bound. If the user describes fewer than 3 real components, supply values only for the ones that are real - DocTemplateEngine deletes any COMPONENT_N_* row left entirely unsupplied rather than the AI inventing filler content for it (see data-model.md 'Variable-length component rows'). Never supply a placeholder value like 'N/A' or '-' yourself for an unused row - that is still a guess REQ-083-02 forbids; omit the whole COMPONENT_N group instead."
+      "notes": "The template docx has exactly ONE repeatable fee-table row - it is not capped at any fixed count. Supply a `components` list with one entry per REAL component the user described (2, 3, 5, however many); DocTemplateEngine clones the template row once per entry and discards the original. Never pad the list with an invented entry to hit some expected count, and never merge two real components into one to reduce the count - REQ-083-02 forbids inventing OR collapsing data either way."
     }
   ]
 }

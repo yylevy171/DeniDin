@@ -271,54 +271,66 @@ class TestFeeAgreementGenerationFlow:
             assert "Acme Corp" in text
             assert "20,000" in text or "20000" in text
 
-    # --- Stage 1b: multi-component with fewer than 3 real components (data-model.md
-    # "Variable-length component rows") -------------------------------------------
+    # --- Stage 1b: multi-component supports ANY N>1 (data-model.md "Variable-length
+    # component rows") - not a fixed cap ------------------------------------------
 
-    def test_multi_component_partial_omits_unused_rows(self, denidin_app, config):
-        """A request with only 2 real fee components must not invent a filler value
-        for the unused 3rd table row - DocTemplateEngine must delete that row
-        entirely rather than the AI guessing something to put there (REQ-083-02
-        applies to 'nothing here' just as much as to a wrong number)."""
+    @pytest.mark.parametrize("n_components", [2, 4])
+    def test_multi_component_arbitrary_n(self, denidin_app, config, n_components):
+        """Per explicit human correction (2026-09-12): the multi-component variant
+        must handle ANY N>1 real components, not a fixed maximum. Runs with both a
+        minimal case (2) and a case exceeding any hardcoded small cap (4) to prove
+        DocTemplateEngine clones its single repeatable table row exactly
+        n_components times - never padding a shorter list, never truncating a
+        longer one."""
         phone, chat_id = self._godfather(config)
-
+        component_descs = [
+            "a one-time setup fee of 2,000 NIS",
+            "a monthly maintenance fee of 500 NIS",
+            "an annual license renewal fee of 1,200 NIS",
+            "a one-time data migration fee of 3,000 NIS",
+        ][:n_components]
         self._send_text(
             chat_id, phone, "Test Godfather",
-            "Draft an agreement for Gamma LLC with two fee components: a one-time "
-            "setup fee of 2,000 NIS, and a monthly maintenance fee of 500 NIS. "
-            "Total combined fee 2,500 NIS for the first month.",
-            "stage1b",
+            f"Draft an agreement for Gamma LLC with {n_components} fee components: "
+            + "; ".join(component_descs) + ". "
+            "Total combined fee for the first period accordingly.",
+            f"stage1b-{n_components}",
         )
         pending = self._pending_approval(denidin_app, chat_id)
         assert pending is not None
-        values = pending.arguments.get("values", {})
-        assert not any(k.startswith("COMPONENT_3_") for k in values), (
-            f"AI must not invent a 3rd component when only 2 were described; "
-            f"got values={values!r}"
+        components = pending.arguments.get("components") or []
+        assert len(components) == n_components, (
+            f"expected exactly {n_components} real components (never padded/merged), "
+            f"got {len(components)}: {components!r}"
         )
-        stanza_id = getattr(pending, "sent_message_id", None)
+        for entry in components:
+            assert set(entry.keys()) == {"name", "description", "fee"}
+        assert "values" in pending.arguments and not any(
+            k.startswith("COMPONENT") for k in pending.arguments["values"]
+        ), "scalar `values` must never carry component data - that belongs in `components`"
 
+        stanza_id = getattr(pending, "sent_message_id", None)
         with patch(
             "src.handlers.whatsapp_handler.WhatsAppHandler.send_document_response",
             return_value=True,
         ) as mock_send:
             if stanza_id:
-                self._tap_button(chat_id, phone, "denidin_approve", stanza_id, "stage1b-approve")
+                self._tap_button(chat_id, phone, "denidin_approve", stanza_id, f"stage1b-{n_components}-approve")
             else:
-                self._send_text(chat_id, phone, "Test Godfather", "כן", "stage1b-approve")
+                self._send_text(chat_id, phone, "Test Godfather", "כן", f"stage1b-{n_components}-approve")
 
             assert mock_send.called
             sent_document = mock_send.call_args.args[1] if len(mock_send.call_args.args) > 1 \
                 else mock_send.call_args.kwargs.get("document")
             from docx import Document as DocxDocument
             docx_obj = DocxDocument(str(sent_document.temp_path))
-            table_text = "\n".join(
-                cell.text for table in docx_obj.tables for row in table.rows for cell in row.cells
-            )
+            table = docx_obj.tables[0]
+            table_text = "\n".join(cell.text for row in table.rows for cell in row.cells)
             assert "{{" not in table_text, f"leftover placeholder in table: {table_text!r}"
-            # Exactly 2 data rows (+1 header row) must remain - the unused 3rd row deleted.
-            assert len(docx_obj.tables[0].rows) == 3, (
-                f"expected header + 2 component rows (3 total), "
-                f"got {len(docx_obj.tables[0].rows)}"
+            # Header row + exactly n_components data rows - never a fixed cap.
+            assert len(table.rows) == n_components + 1, (
+                f"expected header + {n_components} component rows "
+                f"({n_components + 1} total), got {len(table.rows)}"
             )
 
     # --- Stage 4: Successful Delivery ---------------------------------------------

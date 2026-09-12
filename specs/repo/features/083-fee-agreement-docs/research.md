@@ -109,12 +109,18 @@ placeholder-contract change) without touching any code.
 to distinguish a single, simple fee arrangement (one rate/fee, one scope — what the original 3
 variants already cover) from a multi-component engagement, where the client's request describes
 several distinct, separately-priced fee items in one agreement (e.g. "a retainer plus hourly
-overage past X hours," or "a one-time setup fee plus a monthly fee"). This variant uses a 3-row
-fee table (`COMPONENT_1/2/3_NAME`/`_DESCRIPTION`/`_FEE` placeholder groups) as an upper bound —
-see `data-model.md`'s "Variable-length component rows" section for how a request with fewer than
-3 real components is handled (unused `COMPONENT_N_*` table rows are deleted by
-`DocTemplateEngine`, never filled with an invented/filler value — REQ-083-02 applies to "there's
-nothing here" just as much as to a wrong number). Each of the 4 variants' `selection_cues` in
+overage past X hours," or "a one-time setup fee plus a monthly fee").
+
+**Second addendum (same day, human correction): "the multi variant should apply for any N>1."**
+The first draft of this variant capped the fee table at 3 pre-declared component slots
+(`COMPONENT_1/2/3_*`), which does not satisfy "any N" — a 4th, 5th, etc. real component would
+have had nowhere to go. Replaced with a **repeating-row design**: the template `.docx` declares
+exactly ONE generic table row (`{{COMPONENT_NAME}}`/`{{COMPONENT_DESCRIPTION}}`/`{{COMPONENT_FEE}}`),
+and `generate_fee_agreement` takes a `components` list (any length ≥ 2) instead of N indexed
+placeholder groups; `DocTemplateEngine.generate()` clones that one row once per list entry at
+generation time. See `data-model.md`'s "Variable-length component rows" section and the
+`doc-template-engine.md` contract's updated `generate()` signature (`components:
+list[dict[str,str]] | None`) for the full design. Each of the 4 variants' `selection_cues` in
 `manifest.json` now explicitly states its single-vs-multi-component character, so the AI's
 variant-selection judgment call has this distinction available directly from the manifest content
 it already reads, rather than needing separate constitution-level guidance to infer it.
