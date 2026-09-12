@@ -1251,6 +1251,9 @@ if __name__ == "__main__":
         # Feature 070 (US5): log-retention tunables. Same "must also be listed
         # here or it silently has no effect" rule as accounting_ledger_update_freq.
         'logging': config.logging,
+        # Feature 083: fee agreement doc generation template/tmp paths. Same
+        # "must also be listed here or it silently has no effect" rule.
+        'fee_agreements': config.fee_agreements,
     }
 
     # Feature 043: construct the live Green API bot explicitly here (via
