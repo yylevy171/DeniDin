@@ -36,7 +36,8 @@ group-addressing; 1:1 discretion is handled entirely downstream, by the model.
 Proposed placement: alongside `## Reminder Management` and `## Ledger Event Querying`, following
 their exact when-applies / when-does-NOT-apply / ambiguity-resolution structure.
 
-Draft content (final wording subject to the same human review other tool-bearing sections got):
+Draft content (wording refined iteratively via `contracts/reaction-judgment-tuning.md`'s harness,
+not settled in a single pass):
 
 ```markdown
 ## Reaction Management — all roles
@@ -45,13 +46,32 @@ A native WhatsApp emoji reaction (via the `react_to_message` tool) is a lightwei
 signal — never a substitute for a substantive reply, and never something to reach for out of
 uncertainty about what else to do.
 
+### The classics — reach for one of these first, in the large majority of cases
+| Emoji | Use it for |
+|---|---|
+| 👍 | Simple acknowledgment, low-stakes |
+| 🫡 | An action command received — "on it" |
+| 👀 | A document/media being looked into |
+| ✅ | Clean, successful resolution |
+| 🎉 | A resolution worth celebrating (a larger win, a milestone) |
+| ⚠️ | Resolved, but something needs attention |
+| ❌ | Failed or explicitly declined |
+| ❓ | Outcome unresolved, needs clarification |
+| 🙏 | Reciprocating thanks/gratitude |
+| ❤️ | Warmth stronger than a simple thanks warrants |
+
+Reach for one of these ten first. Depart from the list only when a specific occasion makes a
+more precise emoji unambiguous (a holiday, a birthday) — if you have to stop and think about
+whether the reader will actually recognize it, use a classic instead. Novelty is not the goal;
+being understood instantly is.
+
 ### When this applies
 - A document or media message that starts a multi-step workflow (e.g. a fee agreement upload) —
-  an in-flight reaction may already be present from the fast-path; flip it to a terminal ✅/⚠️/❌
+  an in-flight 👀/🔍/⏳ may already be present from the fast-path; flip it to a terminal ✅/⚠️/❌
   once that workflow actually resolves (ledger capture succeeds, is rejected, or the user
   abandons it).
 - An explicit action command (e.g. "create an invoice for...") — flip any in-flight receipt
-  reaction to reflect the real outcome (✅ on success, ⚠️/❓ on validation failure or a blocked
+  reaction to reflect the real outcome (✅/🎉 on success, ⚠️/❓ on validation failure or a blocked
   action) alongside your explanatory reply, never as a replacement for it.
 - Warm, personal, non-transactional messages (holiday greetings, thanks, birthdays) — an
   expressive, context-appropriate emoji is a nice, human touch. This is a SHOULD, not a MUST:
@@ -87,7 +107,10 @@ substitute for them — mirroring the existing "an Invoice Management action is 
 
 ## Testing
 
-No automated test can verify prose guidance directly; covered indirectly by the billed
-conversational scenarios in `quickstart.md` (holiday greeting → creative emoji; trivial 1:1 "ok" →
-no forced reaction) and by the code-level `is_message_addressed_to_bot()` unit/integration tests
-covering the hard, zero-tolerance group-ambient-silence requirement.
+No hard-assertion test can verify prose guidance/emoji taste directly — by explicit human decision
+(2026-09-12), this feature does NOT use fixed `billed`/`expensive` acceptance scenarios asserting a
+specific expected emoji. The code-level `is_message_addressed_to_bot()` unit/integration tests
+still hard-assert on the zero-tolerance group-ambient-silence requirement (that's deterministic
+plumbing, not judgment). Reaction *quality* is instead tuned iteratively via
+`contracts/reaction-judgment-tuning.md`'s rotating capture harness — see that contract for the
+full mechanism.

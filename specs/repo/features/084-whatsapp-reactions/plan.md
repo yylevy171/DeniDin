@@ -115,7 +115,11 @@ in `contracts/`:
    `dispatch_notification()`, its media/action-request classification tables, and its shared
    flip-not-stack contract with the AI tool.
 4. **`contracts/group-discretion-gating.md`** — the shared `is_message_addressed_to_bot` predicate
-   and the new `runtime_constitution.md` section plus required cross-references.
+   and the new `runtime_constitution.md` section (including the classics list) plus required
+   cross-references.
+5. **`contracts/reaction-judgment-tuning.md`** — the scenario pool, capture-stub mechanism,
+   rotation harness, and the AI-run iterative tuning loop that replaces fixed acceptance scenarios
+   for judgment quality (human decision, 2026-09-12).
 
 ## Project Structure
 
@@ -133,7 +137,8 @@ specs/in-progress/084-whatsapp-reactions/
 │   ├── green-api-reaction-client.md      # this phase's output
 │   ├── react-to-message-tool-schema.md   # this phase's output
 │   ├── fast-path-reaction-heuristic.md   # this phase's output
-│   └── group-discretion-gating.md        # this phase's output
+│   ├── group-discretion-gating.md        # this phase's output
+│   └── reaction-judgment-tuning.md       # this phase's output
 └── tasks.md                # NOT yet run (/speckit.tasks)
 ```
 
@@ -161,26 +166,37 @@ apps/denidin-app/
 │                                            #   involvement) via the existing local-tool dispatch
 │                                            #   loop.
 ├── config/
-│   └── runtime_constitution.md             # MODIFIED — new `## Reaction Management` section +
-│                                            #   cross-reference edits to every other tool-bearing
-│                                            #   section (Reminder Management, Ledger Event
-│                                            #   Querying, Morning MCP sections).
+│   └── runtime_constitution.md             # MODIFIED — new `## Reaction Management` section
+│                                            #   (with the classics list) + cross-reference edits to
+│                                            #   every other tool-bearing section (Reminder
+│                                            #   Management, Ledger Event Querying, Morning MCP
+│                                            #   sections).
+├── scripts/
+│   └── run_reaction_tuning.sh              # NEW — rotation/state harness for the reaction
+│                                            #   judgment tuning loop (see
+│                                            #   contracts/reaction-judgment-tuning.md)
 └── tests/
     ├── unit/
     │   ├── test_green_api_bot.py                       # MODIFIED (already exists) — +
     │   │                                                #   send_reaction tests (retry/never-raise/
     │   │                                                #   WARNING-log contract, stubbed
     │   │                                                #   bot.api.request)
-    │   └── test_fast_path_reaction_heuristic.py         # NEW — media/action-request
-    │                                                     #   classification, addressed-to-bot
-    │                                                     #   gating, no LLM call involved
+    │   ├── test_fast_path_reaction_heuristic.py         # NEW — media/action-request
+    │   │                                                 #   classification, addressed-to-bot
+    │   │                                                 #   gating, no LLM call involved
+    │   └── test_reaction_tuning_harness.py              # NEW — rotation-state selection, the
+    │                                                     #   capture-stub's interception/logging
+    │                                                     #   shape (plumbing only, not judgment)
     ├── integration/
     │   └── test_reaction_dispatch_routing.py            # NEW — real notification through
     │                                                     #   bot.router; addressed group message
     │                                                     #   produces a reaction call, ambient
     │                                                     #   group message produces zero
-    └── billed/
-        └── test_react_to_message_tool_billed.py         # NEW — see "Testing strategy" below
+    ├── billed/
+    │   └── reaction_judgment_pool.py                    # NEW — see
+    │                                                     #   contracts/reaction-judgment-tuning.md
+    └── expensive/
+        └── reaction_judgment_pool.py                    # NEW — same, vision-based scenarios
 ```
 
 **Structure Decision**: Single project, following the exact placement convention already used for
@@ -204,33 +220,44 @@ where its closest analog already lives.
    here silently violates SC-003).
 5. **Phase 4 — `react_to_message` AI tool**: schema + immediate-dispatch wiring in `ai_handler.py`,
    depends on Phases 1-2 for the resolution fallback chain to have real fields to read.
-6. **Phase 5 — `runtime_constitution.md`**: new `## Reaction Management` section + cross-reference
-   edits, reviewed the same way Feature 054's reminder section was.
-7. **Phase 6 — Billed E2E tests + `quickstart.md` manual verification**, gated on Gate Zero R1
-   having closed.
+6. **Phase 5 — `runtime_constitution.md`**: new `## Reaction Management` section (with the classics
+   list) + cross-reference edits, reviewed the same way Feature 054's reminder section was.
+7. **Phase 6 — Reaction judgment tuning**: build the scenario pool, capture stub, and
+   `scripts/run_reaction_tuning.sh` rotation harness (`contracts/reaction-judgment-tuning.md`), then
+   run the iterative tuning loop (AI-run, billed rounds first, expensive rounds once billed judgment
+   looks stable) until judgment is consistently sound across rotated subsets.
+8. **Phase 7 — `quickstart.md` manual verification**: the handful of items the tuning harness
+   deliberately doesn't cover (see Testing Strategy below).
 
 ## Testing Strategy
+
+**Human decision (2026-09-12)**: this feature does NOT use fixed `billed`/`expensive` acceptance
+scenarios asserting a specific expected emoji — see `user-stories.md`'s "Acceptance Approach"
+section and `contracts/reaction-judgment-tuning.md` for the full reasoning and replacement
+mechanism.
 
 **Unit** (`tests/unit/`, no network): `test_green_api_bot.py` additions (never-raises contract,
 retry-once-on-5xx-never-on-4xx, WARNING logging, correct payload construction — all against a
 stubbed `bot.api.request`, permitted at the unit tier), `test_fast_path_reaction_heuristic.py`
 (media vs. action-request classification, addressed-to-bot gating producing zero calls for
-un-addressed group messages, rapid-burst "primary message only" logic).
+un-addressed group messages, rapid-burst "primary message only" logic), and unit tests for the
+tuning harness's own plumbing (rotation-state selection, the capture-stub's interception/logging
+shape — not the judgment content it captures).
 
 **Integration** (`tests/integration/`, real router dispatch, no mocking of internal components):
 a real notification through `bot.router` confirming an addressed group/1:1 message triggers a
 (stubbed-at-the-Green-API-boundary-only) reaction call and an ambient, unaddressed group message
 does not.
 
-**Billed** (`tests/billed/`, cheap real OpenAI, no per-run approval needed): a real conversational
-turn confirming the model is offered and can call `react_to_message`, and that a flip
-(`message_id` explicitly set to an earlier turn's id) is passed through correctly — the real Green
-API send itself may be stubbed for this tier if Gate Zero hasn't closed yet, but must be switched
-to the real call once it has (tracked explicitly, not silently left stubbed forever).
+**Reaction judgment tuning** (`tests/billed/reaction_judgment_pool.py` +
+`tests/expensive/reaction_judgment_pool.py`, run via `scripts/run_reaction_tuning.sh`, AI-run and
+AI-reviewed, not a fixed pass/fail acceptance gate): see `contracts/reaction-judgment-tuning.md` in
+full — hard assertions only on deterministic plumbing within these scenarios (zero calls for
+ambient group scenarios, correct flip targeting), never on emoji choice itself.
 
-**Manual/`quickstart.md`-only**: Gate Zero itself; the full document-upload-to-✅-flip journey;
-the <1000ms fast-path timing check against a real dev environment; the deleted-message-before-
-reaction edge case.
+**Manual/`quickstart.md`-only**: the <1000ms fast-path timing check against a real dev environment;
+the deleted-message-before-reaction edge case (already resolved as a silent no-op per Gate Zero,
+but worth a real confirmation once implemented).
 
 ## Complexity Tracking
 
