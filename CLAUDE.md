@@ -502,24 +502,29 @@ Standalone `MorningClient`/`MorningAuth` for the Morning (Green Invoice) sandbox
 Non-trivial features and bugfixes follow a SpecKit pipeline (full detail in `.github/METHODOLOGY.md`):
 ```
 speckit.specify → spec.md (+ MANDATORY user-stories.md, Given-When-Then, BLOCKING gate)
+    + drafts `billed`/`expensive` acceptance scenarios in user-experience terms and gets
+    EXPLICIT HUMAN APPROVAL on them — BLOCKING gate, before speckit.plan may run
   → speckit.clarify (resolve ambiguities)
-  → speckit.plan → plan.md, research.md, data-model.md, contracts/, quickstart.md
+  → speckit.plan → plan.md, research.md, data-model.md, contracts/, quickstart.md (refuses to
+    start without the acceptance-scenario approval above)
   → speckit.tasks → tasks.md (per-story unit/integration tasks: Task A = tests, Task B =
-    implementation, B blocked until A approved; plus a final Acceptance phase whose
-    `billed`/`expensive` scenarios are described here in user-experience terms only — no test
-    code yet)
+    implementation, B blocked until A approved; plus a final Acceptance phase referencing the
+    already-approved `billed`/`expensive` scenarios — no test code yet)
   → speckit.analyze (cross-artifact consistency check)
   → speckit.implement → incremental delivery, one user story at a time, ending with the
-    Acceptance phase's `billed`/`expensive` tests written AND run, together, once
+    approved Acceptance scenarios' `billed`/`expensive` tests written AND run, together, once
 ```
-**"TDD" redefinition (2026-08-18, `.github/METHODOLOGY.md` §VI)**: TDD now means specifically
-the `billed`/`expensive` tests above — real, end-to-end, user-perspective tests. "Defined during
-`speckit.tasks`" means a plain-language description of the scenario (what a real person does
-and sees), NOT test code — the actual test code is written, and run, together, only once, as a
-final acceptance pass, after every unit/integration task is GREEN. Unit/integration tests keep
-their prior RED→GREEN/human-approval/test-immutable discipline completely unchanged (now
-§VI.b) — only the term "TDD" and this deferred definition→code→run split for `billed`/
-`expensive` are new.
+**"TDD" redefinition (2026-08-18, revised 2026-09-12, `.github/METHODOLOGY.md` §VI)**: TDD now
+means specifically the `billed`/`expensive` tests above — real, end-to-end, user-perspective
+tests. They are drafted in plain-language, user-experience terms (what a real person does and
+sees), NOT test code, and now — per explicit operator instruction, 2026-09-12 — this drafting
+and its human approval happen **before `speckit.plan`**, not during `speckit.tasks` as
+originally defined; this is the point where the human operator and the AI agree on the actual
+outcome, before any technical design work is built toward it. The actual test code is still
+written, and run, together, only once, as a final acceptance pass, after every unit/integration
+task is GREEN. Unit/integration tests keep their prior RED→GREEN/human-approval/test-immutable
+discipline completely unchanged (§VI.b) — only the term "TDD" and this
+approve-early/code-late split for `billed`/`expensive` are new.
 - **The real spec files live ONLY under `specs/repo/features/` and `specs/repo/bugfixes/` (2026-09-07 reorganization).** Each real file/folder has one permanent path there and never moves — so `specs/repo/...` references stay valid forever. Every *other* `specs/` folder (`in-progress/`, `backlog/`, `low-priority/`, `done/vX.Y.Z/`, `obsolete/`, `not_reproducible/`, `bugfixes/`) holds **relative symlinks** into `specs/repo/`; a spec's **status is which folder currently symlinks it** (exactly one at a time). Changing status = `git mv` the *symlink*, never the real file. ⚠️ `rg`/`find`/`grep -r` don't follow symlinked dirs — to search spec *content*, search `specs/repo/`.
 - New/updated specs are authored as real files under `specs/repo/`, then symlinked from `specs/in-progress/` (drafting/pre-clarification through active implementation) or `specs/backlog/` (post-clarification, not currently worked — priority via each spec's own `Priority` field, not folder; replaced the old `specs/P0/`/`P1/`/`P2/` split 2026-07-21). `specs/done/` and `specs/obsolete/` are permanent archives — never delete the real file (`specs/obsolete/` also replaces the old `specs/not-doing/`, covering specs whose described issue no longer applies, not just cancelled features). An open bugfix is symlinked from `specs/bugfixes/`; on resolution the symlink moves to `specs/done/` (flat), or to `specs/obsolete/bugfixes/` if found stale, or to `specs/not_reproducible/bugfixes/` (added 2026-07-21 — root cause investigated, human decision to close, nothing fixed; e.g. accepted as inherent model non-determinism — see `bugfix-013`). Don't conflate `done/` (a fix landed), `obsolete/` (issue moot / rejected), `not_reproducible/` (investigated, no fix).
 - **`specs/done/` is bucketed by release version (2026-08-20)**: `specs/done/vX.Y.Z/` holds the symlinks (features and bugfixes side by side, no sub-split) for specs shipped in that cut release. Pre-Feature-034 work with no recorded version is best-effort bucketed under `specs/done/v0.0.1/`. A freshly-finished feature/bugfix (haleluya, or a plain symlink `mv` per `specs/bugfixes/README.md`) lands **flat** at `specs/done/<name>` — `scripts/cut_release.sh` re-points every flat symlink into a newly-created `specs/done/vX.Y.Z/` (deepening its `../repo/…` target to `../../repo/…`) the next time a release is actually cut, so a version folder always reflects a real, already-cut release.
