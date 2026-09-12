@@ -30,7 +30,10 @@ Drafting boilerplate fee agreements is a repetitive administrative burden. This 
 - **REQ-083-03: Document Generation Engine**  
   The system MUST provide a backend tool (exposed to the AI) that accepts a payload of key-value pairs (the extracted data). This tool MUST load the `.docx` template, replace the placeholders with the provided values, and save a temporary `.docx` output file. The implementation should rely on standard python libraries (like `python-docx`) to preserve the template's formatting.
 
-- **REQ-083-04: Direct File Delivery via WhatsApp**  
+- **REQ-083-04: AI Self-Verification (QA)**  
+  Before releasing the document to the user, the AI MUST explicitly verify the generated `.docx` file. The model must check (via an internal verification tool or text-extraction loop) that the document strictly complies with the template structure and correctly incorporates all user-provided details. A document is only "Released" (sent) once the model itself approves it as correct.
+
+- **REQ-083-05: Direct File Delivery via WhatsApp**  
   To optimize UX and reduce engineering overhead, the system MUST NOT rely on external file hosting or complex download portals. Instead, the WhatsApp integration (Green API) MUST be updated/utilized to support the `sendFileByUpload` endpoint. The newly generated `.docx` file MUST be uploaded and sent directly as a document attachment in the chat.
 
 ### Key Entities
