@@ -5,10 +5,25 @@
 **Rescoped**: 2026-08-04 — split into general reply-resolution infrastructure (this feature)
 and agreement-specific cancellation/modification behavior (moved to Feature 040, see "Split
 History" below).
-**Status**: IN PROGRESS (moved to `specs/in-progress/` 2026-08-07) — planning complete
-(`speckit.clarify` → `speckit.plan` → `speckit.tasks` → `speckit.analyze`, all done 2026-08-04/05,
-PR #194 merged). Zero implementation code written yet. See `HANDOFF.md` for full state and
-next steps. Ready for `speckit.implement`.
+**Status**: BACKLOG (moved back to `specs/backlog/` 2026-09-12 — see "Staleness note" below).
+Planning had been marked complete (`speckit.clarify` → `speckit.plan` → `speckit.tasks` →
+`speckit.analyze`, all done 2026-08-04/05, PR #194 merged), but confirmed 2026-09-12 that
+**zero implementation code was ever written** (`git log --all -S` across every branch/commit
+for `resolve_reply`/`quoted_stanza_id`/`whatsapp_id_message` returns nothing, and
+`origin/feature/032-whatsapp-reply-reference-resolution` has zero commits ahead of master —
+it's a stale, never-used branch pointer). The `HANDOFF.md` this used to point to has since been
+deleted repo-wide (tracked handoff files removed).
+
+**Staleness note (2026-09-12)**: `research.md`/`data-model.md`/`tasks.md` were designed against
+the **pre-Feature-070 session model** (24h-expiring sessions, `SessionCleanupThread`, an
+in-memory `chat_to_session` dict, `data/sessions/expired/YYYY-MM-DD/`) — all replaced by
+Feature 070 (one long-lived session per chat via `chat_index.db`, a rolling 14-day
+`messages/`/`archived/` split, no expiry at all). The design docs need a real rework against
+the current `SessionManager` before `speckit.tasks`/implementation can proceed — Q10's
+"active vs. expired session" scoping in particular has no direct equivalent anymore and needs
+re-deciding (e.g. "live window only" vs. "live + archived"). Core scope/US1/US2 and the
+`content`/`ledger_events` mutual-exclusivity design still hold up; only the session-lookup
+mechanics need rewriting.
 **Input**: User description: "create a new feature to support ref msgs (stanzaID, etc)" —
 originally motivated by a cancellation use case ("לבטל"/"למחוק" sent as a reply to a message
 that stated a fee agreement), but the underlying capability — resolving *any* WhatsApp
