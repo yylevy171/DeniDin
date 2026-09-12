@@ -33,6 +33,11 @@ from src.managers.reminder_manager import (
     ReminderManager, ReminderPastDateError, ReminderCapExceededError, ReminderNotFoundError,
     InvalidRecurrenceError, OccurrenceNotFoundError,
 )
+from src.managers.doc_template_engine import DocTemplateEngine
+from src.handlers.fee_agreement_tools import (
+    FeeAgreementToolHandler, GENERATE_FEE_AGREEMENT_TOOL,
+    VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL, SEND_FEE_AGREEMENT_DOCUMENT_TOOL,
+)
 from src.managers.pending_local_tool_approval_manager import (
     PendingLocalToolApprovalManager, PendingLocalToolApproval,
 )
@@ -1754,6 +1759,27 @@ class AIHandler:
         # contracts/local-tool-approval-gate.md).
         self.pending_local_tool_approval_manager = PendingLocalToolApprovalManager()
 
+        # Fee Agreement Document Generation (Feature 083) - config-driven paths
+        # (DI, no monkey-patching), same composed-at-construction-time pattern
+        # as reminder_manager above. Gating is two-layer: RBAC (GODFATHER/ADMIN,
+        # like reminders) AND config.feature_flags['fee_agreement_docs']
+        # (default False) - both enforced by FeeAgreementToolHandler.build_tools,
+        # never by DocTemplateEngine itself. All tool-facing logic for this
+        # feature lives in src/handlers/fee_agreement_tools.py, deliberately
+        # kept out of this already-oversized file.
+        fee_agreements_config = getattr(config, 'fee_agreements', {}) or {}
+        self.doc_template_engine = DocTemplateEngine(
+            templates_dir=Path(fee_agreements_config.get('templates_dir', 'config/fee_agreement_templates')),
+            tmp_dir=Path(config.data_root) / fee_agreements_config.get('tmp_dir', 'tmp/fee_agreements'),
+        )
+        self.fee_agreement_tools = FeeAgreementToolHandler(self.doc_template_engine)
+        self.fee_agreement_docs_enabled = bool((getattr(config, 'feature_flags', {}) or {}).get('fee_agreement_docs', False))
+        # Injected post-construction by denidin.py's initialize_app (same DI
+        # pattern as own_whatsapp_number below) - needed only by
+        # send_fee_agreement_document, which is unreachable unless
+        # fee_agreement_docs_enabled is True per the two-layer gate above.
+        self.whatsapp_handler = None
+
         # Most recent successful AIResponse, for observability/E2E test verification.
         self.last_response: Optional[AIResponse] = None
 
@@ -2051,6 +2077,10 @@ class AIHandler:
         morning_tools = self._build_morning_mcp_tools(user_obj, correlation_id) if self.rbac_enabled else None
         reminder_tools = self._build_reminder_tools(user_obj) if self.rbac_enabled else []
         ledger_query_tools = self._build_ledger_query_tools(user_obj) if self.rbac_enabled else []
+        fee_agreement_tools = (
+            self.fee_agreement_tools.build_tools(user_obj, self.fee_agreement_docs_enabled)
+            if self.rbac_enabled else []
+        )
         # Reminder tools deliberately go LAST (2026-08-19, user decision after a
         # real cross-feature confusion incident): Morning's tools are one opaque
         # `mcp` entry needing runtime discovery, so reminder tools - individually
@@ -2061,7 +2091,7 @@ class AIHandler:
         # query_ledger_events goes alongside reminder tools (also inlined
         # `function` entries, same visibility reasoning), before reminders.
         combined = (
-            (morning_tools or []) + ledger_query_tools + reminder_tools
+            (morning_tools or []) + ledger_query_tools + reminder_tools + fee_agreement_tools
         )
         return combined or None
 
@@ -2494,6 +2524,46 @@ class AIHandler:
         )
         return details, True
 
+    def _handle_fee_agreement_generation_proposal(
+        self, request: AIRequest, response, effective_chat_id: Optional[str],
+    ) -> "tuple[Optional[str], bool]":
+        """Fee Agreement Document Generation (Feature 083): detect a
+        `generate_fee_agreement` function_call and turn it into a pending
+        local-tool approval - never dispatched immediately, same
+        PendingLocalToolApproval gate/UX as _handle_reminder_creation_proposal.
+        Approval gates the collected VALUES, not the finished document (the
+        model's own subsequent verify_fee_agreement_document judgment is the
+        gate for that - see fee_agreement_tools.py's module docstring).
+
+        Returns (response_text_override, new_local_tool_pending_created) -
+        same contract as _handle_reminder_creation_proposal.
+        """
+        if effective_chat_id is None:
+            return None, False
+
+        args = extract_function_call(response, GENERATE_FEE_AGREEMENT_TOOL["name"])
+        if args is None:
+            return None, False
+
+        error = self.fee_agreement_tools.validate_generate_proposal(args)
+        if error is not None:
+            return error, False
+
+        pending = PendingLocalToolApproval(
+            tool_name=GENERATE_FEE_AGREEMENT_TOOL["name"],
+            response_id=response.id,
+            call_id=extract_function_call_id(response, GENERATE_FEE_AGREEMENT_TOOL["name"]) or "",
+            arguments=args,
+            created_at=now_local().isoformat(),
+        )
+        self.pending_local_tool_approval_manager.set(effective_chat_id, pending)
+        logger.info(
+            f"[083] Pending local-tool approval created for chat={effective_chat_id!r}, "
+            f"tool={GENERATE_FEE_AGREEMENT_TOOL['name']!r}, variant_id={args.get('variant_id')!r}"
+        )
+        details = self.fee_agreement_tools.build_approval_details(args)
+        return details, True
+
     def _call_openai_list_reminders_followup_api(
         self, request: AIRequest, previous_response_id: str, call_id: str,
         reminders_summary: List[Dict[str, Any]], tools: Optional[List[Dict]] = None,
@@ -2553,6 +2623,84 @@ class AIHandler:
             )
         except Exception as e:  # pylint: disable=broad-except
             logger.error(f"[054] list_reminders follow-up call failed: {e}", exc_info=True)
+            return None
+
+    def _call_openai_fee_agreement_followup_api(
+        self, request: AIRequest, previous_response_id: str, call_id: str,
+        payload: Dict[str, Any], tools: Optional[List[Dict]] = None,
+    ):
+        """Reports verify_fee_agreement_document's or send_fee_agreement_document's
+        result back as that call's function_call_output, via a follow-up chained
+        to the SAME turn's response.id - same single-item shape as
+        _call_openai_list_reminders_followup_api (both dispatch immediately, no
+        PendingLocalToolApproval involved)."""
+        output_items = [{
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps(payload, ensure_ascii=False),
+        }]
+        kwargs = {
+            "model": request.model,
+            "instructions": self._build_instructions(request.constitution),
+            "input": output_items,
+            "previous_response_id": previous_response_id,
+            "max_output_tokens": request.max_tokens,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        logger.info(f"[083] _call_openai_fee_agreement_followup_api: call_id={call_id!r}, payload={payload!r}")
+        _log_outgoing_request("_call_openai_fee_agreement_followup_api", kwargs)
+        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        _log_raw_response("_call_openai_fee_agreement_followup_api", response)
+        return response
+
+    def _handle_verify_fee_agreement_document(
+        self, request: AIRequest, response, tools: Optional[List[Dict]]
+    ):
+        """Fee Agreement Document Generation (Feature 083): verify_fee_agreement_document
+        is read-only, dispatched immediately - same shape as _handle_list_reminders.
+        Returns the follow-up response, or None if no such call was made this
+        turn, or if the follow-up call itself failed."""
+        call_id = extract_function_call_id(response, VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL["name"])
+        if call_id is None:
+            return None
+
+        args = extract_function_call(response, VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL["name"]) or {}
+        result = self.fee_agreement_tools.handle_verify(args.get("document_id"))
+        try:
+            return self._call_openai_fee_agreement_followup_api(
+                request, response.id, call_id, result, tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[083] verify_fee_agreement_document follow-up call failed: {e}", exc_info=True)
+            return None
+
+    def _handle_send_fee_agreement_document(
+        self, request: AIRequest, response, tools: Optional[List[Dict]],
+        effective_chat_id: Optional[str],
+    ):
+        """Fee Agreement Document Generation (Feature 083): send_fee_agreement_document
+        dispatches immediately but refuses (a tool-call error in the returned
+        payload, never a raised exception) unless the document already passed
+        verification - see fee_agreement_tools.handle_send's own docstring."""
+        call_id = extract_function_call_id(response, SEND_FEE_AGREEMENT_DOCUMENT_TOOL["name"])
+        if call_id is None:
+            return None
+
+        args = extract_function_call(response, SEND_FEE_AGREEMENT_DOCUMENT_TOOL["name"]) or {}
+        if effective_chat_id is None or self.whatsapp_handler is None:
+            result: Dict[str, Any] = {"error": "לא ניתן לשלוח מסמך בהקשר הנוכחי."}
+        else:
+            result = self.fee_agreement_tools.handle_send(
+                args.get("document_id"), self.whatsapp_handler, effective_chat_id,
+                args.get("caption", ""),
+            )
+        try:
+            return self._call_openai_fee_agreement_followup_api(
+                request, response.id, call_id, result, tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[083] send_fee_agreement_document follow-up call failed: {e}", exc_info=True)
             return None
 
     def _call_openai_query_ledger_events_followup_api(
@@ -2861,6 +3009,36 @@ class AIHandler:
                 made_progress = True
                 continue
 
+            # Fee Agreement Document Generation (Feature 083):
+            # verify_fee_agreement_document/send_fee_agreement_document are
+            # both read-only-dispatch-immediately (from the AI turn's
+            # perspective - send has real side effects, but no
+            # PendingLocalToolApproval is involved, same as list_reminders/
+            # query_ledger_events), and need the same follow-up round-trip.
+            verify_fee_agreement_followup = self._handle_verify_fee_agreement_document(
+                request, current_response, tools
+            )
+            if verify_fee_agreement_followup is not None:
+                current_response = verify_fee_agreement_followup
+                usage_response = verify_fee_agreement_followup
+                extra_tokens += verify_fee_agreement_followup.usage.total_tokens
+                extra_prompt_tokens += verify_fee_agreement_followup.usage.input_tokens
+                extra_completion_tokens += verify_fee_agreement_followup.usage.output_tokens
+                made_progress = True
+                continue
+
+            send_fee_agreement_followup = self._handle_send_fee_agreement_document(
+                request, current_response, tools, effective_chat_id
+            )
+            if send_fee_agreement_followup is not None:
+                current_response = send_fee_agreement_followup
+                usage_response = send_fee_agreement_followup
+                extra_tokens += send_fee_agreement_followup.usage.total_tokens
+                extra_prompt_tokens += send_fee_agreement_followup.usage.input_tokens
+                extra_completion_tokens += send_fee_agreement_followup.usage.output_tokens
+                made_progress = True
+                continue
+
             break  # a full pass made no progress - current_response is final
         else:
             logger.error(
@@ -2963,6 +3141,20 @@ class AIHandler:
             if modify_delete_details is not None:
                 response_text = modify_delete_details
                 new_local_tool_pending_created = modify_delete_pending_created
+
+        # Fee Agreement Document Generation (Feature 083): generate_fee_agreement
+        # is a proposal, same PendingLocalToolApproval gate as create_reminder -
+        # only checked if no reminder tool already claimed this turn (a turn
+        # calls at most one proposal-gated local tool in practice).
+        if not new_local_tool_pending_created:
+            fee_agreement_details, fee_agreement_pending_created = (
+                self._handle_fee_agreement_generation_proposal(
+                    request, reminder_tool_response, effective_chat_id
+                )
+            )
+            if fee_agreement_details is not None:
+                response_text = fee_agreement_details
+                new_local_tool_pending_created = fee_agreement_pending_created
 
         # bugfix-045-followup (2026-08-27): this used to need its own
         # all_output_items union of response.output + a same-turn ledger-
@@ -3981,6 +4173,28 @@ class AIHandler:
                 result = self.reminder_manager.delete_whole_series(
                     reminder_id=cast(str, args.get("reminder_id")),
                 )
+            elif pending.tool_name == GENERATE_FEE_AGREEMENT_TOOL["name"]:
+                # TOCTOU-closing re-validation at approval time (same
+                # discipline as reminders) - DocTemplateEngine itself raises
+                # ValueError, not a reminder-specific exception, so it is
+                # caught here rather than added to the shared except tuple
+                # below (which protects Feature 054's own test coverage).
+                try:
+                    generated_document = self.fee_agreement_tools.resolve_generate(args)
+                except ValueError as e:
+                    logger.error(
+                        f"[083] Approved generate_fee_agreement failed at persist time for "
+                        f"chat={effective_chat_id!r}: {e}", exc_info=True
+                    )
+                    self.pending_local_tool_approval_manager.clear(effective_chat_id)
+                    return self._create_fallback_response(
+                        request.request_id,
+                        "לא הצלחתי ליצור את מסמך ההסכם - נסה שוב עם הפרטים הנדרשים.",
+                    )
+                result = {
+                    "document_id": generated_document.document_id,
+                    "variant_id": generated_document.variant_id,
+                }
             else:
                 raise InvalidRecurrenceError(
                     f"unresolvable pending tool_name/scope: {pending.tool_name!r}/{scope!r}"

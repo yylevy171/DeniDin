@@ -414,6 +414,13 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
     # Initialize WhatsApp handler (without media_handler initially)
     whatsapp_handler = WhatsAppHandler()
 
+    # Feature 083: send_fee_agreement_document needs to call
+    # WhatsAppHandler.send_document_response() - injected post-construction
+    # the same way ai_handler.own_whatsapp_number is above (DI, not
+    # monkey-patching - WhatsAppHandler itself never depends on AIHandler,
+    # so this can't be a constructor arg without a circular dependency).
+    ai_handler.whatsapp_handler = whatsapp_handler
+
     # Feature 039: most-permissive-role RBAC resolution for group turns - built off
     # the injected green_api's own Green API groups client (Feature 043: no longer a
     # module-level `bot` global). GroupMembershipResolver.resolve() already degrades
@@ -1287,6 +1294,13 @@ if __name__ == "__main__":
     # message_source.is_blocked below - see DeniDin.__init__'s green_api_bot
     # docstring for why this can't be a constructor/initialize_app() arg either.
     denidin_app.green_api_bot = live_bot
+
+    # Feature 083: send_fee_agreement_document needs the real, live bot object
+    # (`.api.sending.sendFileByUpload`) - same "only exists once we're the
+    # real, live-running app, not initialize_app()'s test-harness callers"
+    # reasoning as reminder delivery's `live_bot` below, and the same
+    # post-construction-attribute idiom as green_api_bot just above.
+    denidin_app.whatsapp_handler.green_api_bot = live_bot
 
     # Feature 045's read-receipt hook: set as a post-construction attribute,
     # not a constructor/start() arg - denidin.ai_handler.user_manager doesn't
