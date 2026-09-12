@@ -113,22 +113,40 @@ were done as Task A/B together (reordered from the file's original A-then-B spli
 explicitly approved when asked how to close this gap** (see the exchange right after this file's
 prior revision). Full unit suite: 1447/1447 passing (1420 pre-existing + 27 new, zero regressions).
 
-## Phase 5: Runtime constitution boundaries (CLAUDE.md-mandated)
-- [ ] T012 New "Fee Agreement Generation" section in `config/runtime_constitution.md`: scope (when
-  this applies), explicit non-scope (not a general document-editing/DOCX-creation tool; not used
-  for invoices/receipts — those stay Morning MCP; not used for reminders), and a restatement that
-  ambiguous short replies mid-flow answer the pending clarification in the SAME context.
-- [ ] T013 One-line cross-reference added to each of: Reminders, Ledger Event Recognition, Morning
-  MCP integration sections — excluding fee-agreement generation from their own scope.
+## Phase 5: Runtime constitution boundaries (CLAUDE.md-mandated) — DONE
+- [x] T012 New "Fee Agreement Document Generation" section added to `config/runtime_constitution.md`:
+  scope (explicit request for the actual document, not just discussing/agreeing terms), the
+  mandatory 3-step generate→verify→send flow (never skip/reorder), explicit non-scope (not
+  invoices/receipts — Morning MCP; not reminders; not merely discussing/recording an agreement —
+  that's Ledger Event Recognition, automatic, no tool call), and the standard ambiguous-short-reply
+  restatement (answers the pending question in the SAME context, never a trigger to switch tool
+  families).
+- [x] T013 Cross-references added to each of: Reminder Management (its own scope-separation
+  paragraph now lists this feature too), Ledger Event Recognition ("How recording works" paragraph
+  now clarifies recording ≠ producing a document), Ledger Event Querying ("When this tool does NOT
+  apply" bullet now lists this feature alongside Invoice Management/Reminder Management), and
+  Invoice Management Context (its opening scope paragraph now lists this feature too) —
+  bidirectional, matching the existing cross-reference pattern exactly.
 
 ## Phase 6: Acceptance test finalization
-- [ ] T014 Extend `tests/billed/test_fee_agreement_generation_flow.py` with an `alternative_tracks`
-  scenario (Stage 1 template selection + Stage 2-4 flow), matching the corpus-driven redesign —
-  **BLOCKING**: needs human re-approval of the full test file (original approval predates the
-  Hebrew/corpus redesign and the 5th variant).
-  - [ ] T015 Run the (re-approved) `billed` acceptance tests via `scripts/run_single_test.sh`
-  (no per-run approval needed — `billed` tier).
-  - [ ] T016 Gate Zero: one real, human-approved live `dev` send exercising
+- [x] T014 Extended `tests/billed/test_fee_agreement_generation_flow.py`:
+  - Added `test_alternative_tracks_selected_and_generated` — asserts variant selection picks
+    `alternative_tracks` (not `multi_component_agreement`) for a mutually-exclusive-choice
+    request, asserts the required `SHARED_ADDON_TERMS` scalar is never omitted, and runs the
+    full generate→approve→verify→send flow end-to-end for the 5th variant.
+  - **Also fixed real API mismatches** the draft had predating implementation:
+    `pending_local_tool_approval_manager.get_pending()` → `.get()` (the manager's actual method
+    name); `send_document_response`/`_send_file_with_retry` mock `call_args` index fixes (patched
+    at the class level, so `self` is never in `call_args.args` — the draft assumed it was);
+    `_call_send_file_by_upload` (never existed) → `_send_file_with_retry` (the real private
+    method); added `fee_agreements` to the test fixture's `config_dict`.
+  - **STILL BLOCKING on fresh human re-approval of the WHOLE file** before T015 runs — the
+    original approval predates the Hebrew/corpus redesign, the alternative_tracks variant, AND
+    now these API-correctness fixes. The file's own docstring states this blocking status.
+- [ ] T015 Run the (re-approved) `billed` acceptance tests via `scripts/run_single_test.sh`
+  (no per-run approval needed — `billed` tier — but the file-level re-approval above is a
+  separate, prior gate that must clear first).
+- [ ] T016 Gate Zero: one real, human-approved live `dev` send exercising
   `sendFileByUpload` end-to-end (per research.md #2) — `expensive`-tier discipline applies
   (fresh approval every time) even though this isn't itself in `tests/expensive/`, since it's a
   real WhatsApp send with a real cost/side-effect profile matching that tier's caution.

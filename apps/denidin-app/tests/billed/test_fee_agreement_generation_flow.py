@@ -1,15 +1,17 @@
 """
-End-to-End Billed Test (DRAFT — Feature 083, Acceptance phase): Fee Agreement Document
+End-to-End Billed Test (Feature 083, Acceptance phase): Fee Agreement Document
 Generation.
 
-STATUS: DRAFT, FOR HUMAN REVIEW/APPROVAL BEFORE speckit.tasks/implementation PROCEEDS.
-Per the user's explicit request (2026-09-12), these tests are dissected from
-`user-stories.md`'s 4 UAT stages BEFORE implementation exists, ahead of METHODOLOGY §VI's
-normal "write+run TDD tests once, at the end" sequencing for `billed`/`expensive` tests. They
-CANNOT be executed yet — `generate_fee_agreement`, `verify_fee_agreement_document`,
-`DocTemplateEngine`, and the WhatsApp document-send path do not exist in `src/` yet. This file
-exists purely so the human can confirm "yes, this is what Stage 1-4 of user-stories.md should
-mean as real test code" before a single line of production code is written.
+STATUS (2026-09-12, T014): production code now exists and this file has been updated to
+match its REAL API — `pending_local_tool_approval_manager.get(chat_id)` (not `get_pending`),
+`WhatsAppHandler.send_document_response(generated, chat_id, caption)` and
+`_send_file_with_retry(chat_id, path, file_name, caption)` (patched at the class level, so
+mock call_args carry no `self`), and a new `test_alternative_tracks_selected_and_generated`
+scenario for the 5th, corpus-driven variant. **STILL BLOCKING on a fresh human
+re-approval before running** — the original approval of this file predates both the
+Hebrew/corpus template redesign and the alternative_tracks variant, so nothing here has been
+approved against what actually exists on disk today. Do not run via
+`scripts/run_single_test.sh`/`run_multiple_billed_tests.sh` until that re-approval is given.
 
 Tests the real OpenAI function-calling mechanism end-to-end — NOT unit-testable, since what's
 under test is whether the real model (a) selects the right template variant from natural
@@ -80,6 +82,7 @@ class TestFeeAgreementGenerationFlow:
                 'log_level': config.log_level,
                 'data_root': config.data_root,
                 'feature_flags': config.feature_flags,
+                'fee_agreements': config.fee_agreements,
                 'godfather_phone': config.godfather_phone,
                 'memory': config.memory,
                 'constitution_config': config.constitution_config,
@@ -149,7 +152,7 @@ class TestFeeAgreementGenerationFlow:
 
     @staticmethod
     def _pending_approval(denidin_app, chat_id):
-        return denidin_app.ai_handler.pending_local_tool_approval_manager.get_pending(chat_id)
+        return denidin_app.ai_handler.pending_local_tool_approval_manager.get(chat_id)
 
     # --- Stage 1: Template Selection Accuracy ------------------------------------
 
@@ -255,8 +258,10 @@ class TestFeeAgreementGenerationFlow:
                 "expected the document-send boundary to be reached after approval "
                 "(self-verification must have passed for this to happen at all)"
             )
-            sent_document = mock_send.call_args.args[1] if len(mock_send.call_args.args) > 1 \
-                else mock_send.call_args.kwargs.get("document")
+            # send_document_response(self, generated, chat_id, caption) - patched at the
+            # class level, so the mock receives no `self`; `generated` is args[0].
+            sent_document = mock_send.call_args.args[0] if mock_send.call_args.args \
+                else mock_send.call_args.kwargs.get("generated")
             assert sent_document is not None and getattr(sent_document, "verified", False) is True, (
                 "a document reaching send_document_response() must have verified=True — "
                 "code-level guard per contracts/fee-agreement-verification.md, not just a "
@@ -320,8 +325,10 @@ class TestFeeAgreementGenerationFlow:
                 self._send_text(chat_id, phone, "Test Godfather", "כן", f"stage1b-{n_components}-approve")
 
             assert mock_send.called
-            sent_document = mock_send.call_args.args[1] if len(mock_send.call_args.args) > 1 \
-                else mock_send.call_args.kwargs.get("document")
+            # send_document_response(self, generated, chat_id, caption) - patched at the
+            # class level, so the mock receives no `self`; `generated` is args[0].
+            sent_document = mock_send.call_args.args[0] if mock_send.call_args.args \
+                else mock_send.call_args.kwargs.get("generated")
             from docx import Document as DocxDocument
             docx_obj = DocxDocument(str(sent_document.temp_path))
             table = docx_obj.tables[0]
@@ -332,6 +339,74 @@ class TestFeeAgreementGenerationFlow:
                 f"expected header + {n_components} component rows "
                 f"({n_components + 1} total), got {len(table.rows)}"
             )
+
+    # --- Stage 1c: alternative_tracks - a real choice between mutually-exclusive
+    # fee structures, distinct from multi_component_agreement's "all apply together"
+    # shape (added per T014, corpus-driven 5th variant, 2026-09-12) -------------------
+
+    def test_alternative_tracks_selected_and_generated(self, denidin_app, config):
+        """A request describing two or more mutually-exclusive fee tracks for the
+        SAME engagement (the client picks exactly ONE) must select
+        `alternative_tracks`, never `multi_component_agreement` (where every
+        component applies together) - the two variants' selection_cues are
+        deliberately worded to distinguish exactly this. Also exercises the
+        required `SHARED_ADDON_TERMS` scalar and the full generate -> approve ->
+        verify -> send flow end-to-end for this 5th variant."""
+        phone, chat_id = self._godfather(config)
+
+        self._send_text(
+            chat_id, phone, "Test Godfather",
+            "Draft an agreement for Sigma Partners with two alternative fee tracks "
+            "for the client to choose between - only one will actually apply: "
+            "Track A is a flat fee of 18,000 NIS including VAT, no contingency. "
+            "Track B is a reduced base fee of 10,000 NIS including VAT plus 7% of "
+            "whatever amount is awarded or collected. There are no additional "
+            "terms that apply regardless of which track is chosen.",
+            "alt_tracks_1",
+        )
+
+        pending = self._pending_approval(denidin_app, chat_id)
+        assert pending is not None
+        assert pending.arguments.get("variant_id") == "alternative_tracks", (
+            f"a mutually-exclusive CHOICE between fee structures must select "
+            f"alternative_tracks, not {pending.arguments.get('variant_id')!r} - "
+            f"multi_component_agreement is for components that ALL apply together"
+        )
+        tracks = pending.arguments.get("components") or []
+        assert len(tracks) == 2, f"expected exactly 2 tracks, got {len(tracks)}: {tracks!r}"
+        all_terms = " | ".join(t.get("terms", "") for t in tracks)
+        assert "18,000" in all_terms or "18000" in all_terms
+        assert "10,000" in all_terms or "10000" in all_terms
+        assert "7" in all_terms and "%" in all_terms
+        values = pending.arguments.get("values", {})
+        shared_addon = str(values.get("SHARED_ADDON_TERMS", ""))
+        assert shared_addon, (
+            "SHARED_ADDON_TERMS is a required scalar - when the user said there's "
+            "nothing shared, the AI must say so explicitly, never omit the field"
+        )
+
+        stanza_id = getattr(pending, "sent_message_id", None)
+        with patch(
+            "src.handlers.whatsapp_handler.WhatsAppHandler.send_document_response",
+            return_value=True,
+        ) as mock_send:
+            if stanza_id:
+                self._tap_button(chat_id, phone, "denidin_approve", stanza_id, "alt_tracks_1_approve")
+            else:
+                self._send_text(chat_id, phone, "Test Godfather", "כן", "alt_tracks_1_approve")
+
+            assert mock_send.called
+            sent_document = mock_send.call_args.args[0] if mock_send.call_args.args \
+                else mock_send.call_args.kwargs.get("generated")
+            assert sent_document is not None and sent_document.verified is True
+
+            from docx import Document as DocxDocument
+            text = "\n".join(p.text for p in DocxDocument(str(sent_document.temp_path)).paragraphs)
+            assert "{{" not in text, f"leftover placeholder token(s) found: {text!r}"
+            assert "Sigma Partners" in text
+            for track in tracks:
+                assert track["label"] in text
+                assert track["terms"] in text
 
     # --- Stage 4: Successful Delivery ---------------------------------------------
 
@@ -352,8 +427,8 @@ class TestFeeAgreementGenerationFlow:
         stanza_id = getattr(pending, "sent_message_id", None)
 
         with patch(
-            "src.handlers.whatsapp_handler.WhatsAppHandler._call_send_file_by_upload",
-            return_value=True,
+            "src.handlers.whatsapp_handler.WhatsAppHandler._send_file_with_retry",
+            return_value=None,
         ) as mock_upload:
             if stanza_id:
                 self._tap_button(chat_id, phone, "denidin_approve", stanza_id, "stage4b")
@@ -364,8 +439,10 @@ class TestFeeAgreementGenerationFlow:
                 f"expected exactly one sendFileByUpload-equivalent call, "
                 f"got {mock_upload.call_count}"
             )
-            sent_path = Path(mock_upload.call_args.kwargs.get("file")
-                              or mock_upload.call_args.args[0])
+            # _send_file_with_retry(self, chat_id, path, file_name, caption) - patched at
+            # the class level, so the mock receives no `self`; `path` is args[1].
+            sent_path = Path(mock_upload.call_args.kwargs.get("path")
+                              or mock_upload.call_args.args[1])
             # The boundary call happens BEFORE cleanup — assert the path it was given
             # is a real .docx that existed at call time (checked via the call args'
             # captured path, since by now the file has already been deleted).
