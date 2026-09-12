@@ -522,6 +522,30 @@ class TestLedgerEventCaptureE2E:
 
             image_path = assert_image_path_persisted(denidin_app, chat_id)
             logger.info(f"THEN image_path persisted and resolves to real file: {image_path}")
+
+            # Feature 080 acceptance scenario (user-stories.md): this is a genuine
+            # multi-step, multi-tool-call vision flow (client resolution + a VAT
+            # clarification detour before all four fee components persist) - a good
+            # fit for observing a real interim progress update, and definitely a real
+            # RequestTelemetry row with non-null slowest_tool_name/vision-call
+            # accounting.
+            telemetry_manager = denidin_app.ai_handler.telemetry_manager
+            if telemetry_manager is not None:  # None whenever the feature flag is off
+                row = telemetry_manager.get_latest_by_chat(chat_id)
+                assert row is not None, f"expected a telemetry row for chat={chat_id!r}"
+                assert row["llm_turns_count"] >= 1
+                assert row["total_duration_ms"] >= 0
+                assert row["input_tokens_count"] > 0
+                assert row["output_tokens_count"] > 0
+                assert row["slowest_tool_name"] is not None, (
+                    f"expected a non-null slowest_tool_name for this multi-tool-call "
+                    f"vision flow, got row={dict(row)!r}"
+                )
+                logger.info(
+                    f"[080] telemetry row: llm_turns={row['llm_turns_count']} "
+                    f"tool_calls={row['tool_calls_count']} "
+                    f"had_progress_update={bool(row['had_progress_update'])}"
+                )
         finally:
             self._clear_chat_test_data(denidin_app, chat_id)
 
@@ -761,6 +785,23 @@ class TestLedgerEventCaptureE2E:
                 assert str(payment.get(field) or "").strip(), (
                     f"A3b: bank detail {field!r} missing from the fetched payment "
                     f"block: {doc_obj!r}"
+                )
+
+            # Feature 080 acceptance scenario (user-stories.md, Telemetry assertion):
+            # this is a real vision call + multi-turn resolution/document-creation flow -
+            # a RequestTelemetry row for the LAST turn must exist with plausible non-zero
+            # timing/token data and non-null slowest_tool_name/vision-call accounting.
+            telemetry_manager = denidin_app.ai_handler.telemetry_manager
+            if telemetry_manager is not None:  # None whenever the feature flag is off
+                row = telemetry_manager.get_latest_by_chat(chat_id)
+                assert row is not None, f"expected a telemetry row for chat={chat_id!r}"
+                assert row["llm_turns_count"] >= 1
+                assert row["total_duration_ms"] >= 0
+                assert row["input_tokens_count"] > 0
+                assert row["output_tokens_count"] > 0
+                assert row["slowest_tool_name"] is not None, (
+                    f"expected a non-null slowest_tool_name for this multi-tool-call "
+                    f"flow, got row={dict(row)!r}"
                 )
         finally:
             # diff3 (2026-09-07): leave Morning net-clean - a full credit note
