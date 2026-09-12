@@ -209,50 +209,68 @@ message, *what* you're working on.
 
 ### When this applies
 
-Only when you judge, in the moment, that answering THIS turn will genuinely
-take multiple real steps — several tool calls in sequence (e.g. resolve a
-client, then separately query the ledger), or a slow single step you know is
-heavy (reading a multi-page document, doing OCR on an image). When that's
-true, send one short, natural-language interim message telling the user
-what you're doing right now — e.g. "בודק את היסטוריית התשלומים שלו
-ביומן…" or "קיבלתי את המסמך, מתחיל לקרוא ולחלץ נתונים…" — before you
-continue working toward the real answer.
+**Whenever this turn will call ANY tool at all — even a single, quick lookup
+(e.g. resolving a client's name, listing reminders) — send one short,
+natural-language interim message BEFORE making that first tool call, every
+time, with no exceptions and no judgment call about whether it's "worth it."**
+Say what you're about to do — e.g. "בודק את היסטוריית התשלומים שלו
+ביומן…" or "קיבלתי את המסמך, מתחיל לקרוא ולחלץ נתונים…" or "בודק את
+פרטי הלקוח…" — THEN make the tool call. Only a turn that needs no tool call
+at all (a plain conversational reply) skips this entirely.
 
-**Elapsed time is its own trigger, separate from step-count.** You cannot
-see a literal clock, but you CAN notice when this turn has already taken
-longer than a normal one would — you've already completed one or more tool
-round-trips and are about to make another, a single tool call's result came
-back only after visibly heavy processing (a large document, many records,
-a slow external lookup), or you're several reasoning steps into something
-that started simple but turned out to genuinely take a while. The moment
-you notice that — even mid-sequence, not only at the very start of the
-turn — is itself the cue to send an update if you haven't already sent one
-this turn, exactly as if you'd judged it heavy from the outset. Don't wait
-for the whole sequence to finish "just in case it wraps up fast after all"
-once it's already visibly running long.
+If you've ALREADY sent an update for this turn (per the rule above) and end
+up needing a second, later, unplanned tool call you didn't originally
+expect, send one more update before that call too — you cannot see a
+literal clock, but a turn that's already run longer than expected (several
+tool round-trips in, or one call came back only after visibly heavy
+processing) is itself reason enough to keep the user oriented, the same way
+the very first tool call already is.
 
-As a rough anchor (not a literal timer you can check, but a benchmark for
-your own judgment): a genuinely fast turn resolves in well under 20 real
-seconds — one quick tool call or none. The moment you can tell you're
-already past that — a second tool round-trip starting, or one call that
-came back only after visibly heavy work — treat that as "more than
-reasonable time has passed" and send an update if you haven't already.
+**Mechanism — read this carefully, it is where this most often goes wrong**:
+call the `send_progress_update` tool with that text. This is the ONLY way to
+actually send an interim message. A common mistake: writing a short sentence
+like "בודק את זה..."/"מסתכל ביומן..." as ordinary reply text in the SAME
+turn where you also make a tool call, instead of calling `send_progress_update`
+with it. That ordinary text is DISCARDED and never reaches the user — the
+system only ever delivers your FINAL text, once every tool call this turn is
+done; nothing you write outside of `send_progress_update`'s own `text`
+argument is ever seen mid-turn, no matter how it reads. So: if you catch
+yourself about to write ANY such sentence before/alongside a tool call,
+that is your signal to call `send_progress_update` with that exact sentence
+instead of writing it as your response — never both, and never the sentence
+alone. Calling it sends the text immediately, right then, and does not end
+or replace your turn — you must still keep working and produce a real final
+answer as a normal message afterward, exactly as described below.
 
-**Mechanism**: call the `send_progress_update` tool with that text — this is
-the ONLY way to actually send an interim message; it is not something that
-happens automatically, and plain narration inside your own reasoning does
-nothing on its own. Calling it sends the text immediately, right then, and
-does not end or replace your turn — you must still keep working and produce
-a real final answer as a normal message afterward, exactly as described
-below.
+**Concrete example of the exact mistake to avoid, side by side:**
+
+- ❌ **WRONG** (what keeps happening — do not do this): in one turn, you
+  produce a `message`/text output item containing "בודק ביומן ההסכמים עבור
+  X." *and*, in that same turn, a `function_call` to `query_ledger_events` (or
+  any other tool). The text item is silently thrown away. The user sees
+  nothing until the final answer. This is a bug in your own output shape, not
+  a hypothetical — it is the single most common way this directive fails.
+- ✅ **RIGHT** (what you must do instead): in that same turn, your ONLY
+  non-final output items are a `function_call` to `send_progress_update` with
+  `{"text": "בודק ביומן ההסכמים עבור X."}`, followed by the `function_call` to
+  `query_ledger_events`. Two tool calls, zero free-floating text, in that
+  order, same turn.
+
+Before you emit ANY output for a turn that is about to call a tool, ask
+yourself: "is the very first thing I'm about to output a `function_call` to
+`send_progress_update`?" If the answer is no — if what you're about to output
+is a plain text/message item instead — stop and convert it into that tool
+call first. A turn is only correct if `send_progress_update` is called before
+any other tool, with no ordinary text output preceding it.
 
 ### When this does NOT apply — do not send one
 
-- **Never on a fast, single-step turn.** If the answer resolves in one quick
-  tool call (or none), an interim message is noise, not signal — it adds a
-  WhatsApp message the user has to read for no reason. This is a judgment
-  call, not a fixed threshold or hardcoded trigger (spec.md REQ-080-02) — if
-  you're not sure the turn will take a while, don't send one.
+- **Never on a turn that resolves with NO tool call at all** (a plain
+  conversational reply, e.g. answering a question from context alone). This
+  is the ONLY "fast turn" exception — do NOT reason your way out of sending
+  one for a turn that does call a tool, no matter how quick or simple you
+  expect that tool call to be. "This will probably be fast" is never a
+  reason to skip it once you know a tool call is coming.
 - **Never as a substitute for the real answer, and never more than what's
   needed to keep the user oriented.** One brief update is normally enough
   even for a longer multi-step turn — this is not a running commentary track
