@@ -36,12 +36,17 @@ This feature addresses both perceived latency (UX) and actual latency (Telemetry
   Contrary to earlier assumptions, the system MUST NOT arbitrarily chunk or split final substantive responses. Final responses should be delivered intact as a single message.
 
 - **REQ-080-04: Latency Telemetry Plumbing**  
-  The system MUST implement structured metrics gathering to record execution times. At minimum, it must track:
-  - Total Time To First Byte (TTFB) / End-to-end processing time.
-  - LLM Inference latency (per turn).
-  - Tool execution latency (time spent running individual MCP/local tools).
-  This data must be stored or logged in a structured format (e.g., JSON logs, DB telemetry table) that allows for future latency profiling and dashboarding.
-
+  The system MUST implement structured metrics gathering to record execution times for every user request. The telemetry payload MUST be stored in a queryable log or database, and MUST specifically capture:
+  - `request_id`: Unique identifier for the user's message/workflow.
+  - `timestamp_received`: Exact time the webhook was received.
+  - `total_duration_ms`: End-to-end time until the final message is dispatched.
+  - `llm_total_inference_time_ms`: Aggregate time spent waiting for LLM completions.
+  - `llm_turns_count`: Number of back-and-forth roundtrips to the LLM.
+  - `tool_total_execution_time_ms`: Aggregate time spent executing external/internal tools.
+  - `tool_calls_count`: Total number of tools invoked during the workflow.
+  - `slowest_tool_name`: The specific tool that consumed the most time (e.g., `extract_doc`, `search_ledger`).
+  - `slowest_tool_duration_ms`: Execution time of that slowest tool.
+  - `input_tokens_count` / `output_tokens_count`: To correlate latency with context size and generation length.
 ### Key Entities
 - **WhatsApp API / Presence Manager**: Handles the periodic 15-second "typing" keep-alive pings.
 - **AI Constitution**: The prompt layer providing the directive to communicate interim status.
