@@ -94,3 +94,7 @@ bugfix-043: fix prober restart-loop (run_all_and_verify_healthy.sh blocks until 
 ## [0.6.0] - 2026-09-07
 
 Feature 070: rolling 14-day short-term memory window with a nightly daily-summary roll, replacing 24h session expiry and the hourly cleanup thread. bugfix-043: health-monitoring + auto-restart (prober + escalation ladder, real OS scheduler wiring for dev and prod, admin-owned stop/start, deploy/prober race fix, shared ops-scripts bundling); live prod incidents found and fixed - the restart-loop itself (run_all_and_verify_healthy.sh blocks until real JSON-body health is confirmed, closing a race where a still-booting container got killed mid-start) and a ~41-minute prod outage caused by interrupted single-app deploys, fixed by splitting cut_release.sh/deploy_release.sh into single-app and all-apps variants (one shared stop/start cycle for every app instead of one per app).
+
+## [0.7.0] - 2026-09-12
+
+Ledger web UI, mandatory client resolution for ledger events, edited/deleted WhatsApp message handling
