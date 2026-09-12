@@ -72,7 +72,7 @@ Complete user stories are defined in **[`user-stories.md`](file:///Users/yaron/P
 
 ### Functional Requirements
 
-- **REQ-084-001**: The system MUST integrate Green API's `sendReaction` endpoint (`chatId`, `messageId`, `reaction`), allowing empty string `""` to clear reactions and new unicode emoji strings to replace existing reactions.
+- **REQ-084-001**: The system MUST integrate Green API's `sendReaction` endpoint (`chatId`, `idMessage`, `reaction`), allowing empty string `""` to clear reactions and new unicode emoji strings to replace existing reactions. *(Payload field corrected 2026-09-12 from `messageId` to `idMessage` — confirmed live via Gate Zero, see `research.md` R1; the endpoint name and behavior otherwise match as originally specified.)*
 - **REQ-084-002**: The webhook router MUST provide a fuzzy fast-path reaction mechanism that acknowledges actionable requests and media documents in **under 1000ms**, selecting contextually plausible in-flight emojis (e.g. `["👀", "🔍", "⏳"]` for media; `["👍", "🫡", "👌"]` for tasks).
 - **REQ-084-003**: The system MUST expose a dedicated AI tool (`react_to_message(emoji: str, message_id: Optional[str] = None)`) allowing the model to set or flip emoji reactions dynamically during its reasoning cycle. If `message_id` is omitted, it defaults to the current turn's incoming user message.
 - **REQ-084-004**: In multi-turn workflows (e.g., document ingestion followed by client clarifications), the `SessionManager` / context pipeline MUST preserve the `originating_message_id` so the AI can flip the reaction on the original trigger message upon workflow resolution.

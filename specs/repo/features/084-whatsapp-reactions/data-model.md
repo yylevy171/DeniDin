@@ -2,7 +2,7 @@
 
 No new persistent entity, no new SQLite table or JSON file, no new manager class. This is
 deliberately minimal compared to Feature 054 (reminders): reactions are stateless, fire-and-forget
-side effects, and (pending `research.md` R1/R3 confirmation) Green API's own same-`messageId` flip
+side effects, and (per `research.md` R1/R3, confirmed live) Green API's own same-`idMessage` flip
 semantics remove the need for any reaction-history bookkeeping on this side.
 
 ## Additive fields on existing entities
@@ -41,8 +41,8 @@ and `contracts/fast-path-reaction-heuristic.md` rather than restated in each.
 
 ## Explicitly out of scope for this data model
 
-- **No reaction-history table.** See `research.md` R3 — same-`messageId` flip semantics (pending
-  R1 confirmation) make this unnecessary; revisit only if Gate Zero disproves the flip assumption.
+- **No reaction-history table.** See `research.md` R3 — same-`idMessage` flip semantics, confirmed
+  live during Gate Zero, make this unnecessary.
 - **No config changes.** Nothing here is per-environment configurable.
 - **No new manager class.** The two fields above live directly on the existing `Message`/`Session`
   dataclasses; no `ReactionManager`-style object is introduced, unlike `ReminderManager` in

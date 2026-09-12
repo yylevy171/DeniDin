@@ -2,60 +2,82 @@
 
 ## R1 — Green API reaction endpoint shape (Gate Zero, BLOCKING, live, human-approved)
 
-**Status**: 🔴 OPEN — not run during planning. Per CLAUDE.md's "never start an environment or make
-real external calls without approval" rule and CONSTITUTION's "NO UNVERIFIED THIRD-PARTY
-ASSUMPTIONS" rule, this must be a real, human-approved, live-verified call against a real dev
-WhatsApp number before the implementation below is trusted as correct — not merely inferred from
-Green API's public documentation.
+**Status**: ✅ CLOSED (2026-09-12) — live-verified against the real dev Green API instance and a
+real dev WhatsApp account, with explicit human approval, human present to visually confirm each
+result. Two of the pre-Gate-Zero assumptions below turned out to be **wrong** and are corrected
+here; nothing about the endpoint's real behavior was accepted without this live confirmation.
 
-**Decision (pending live confirmation)**: call
-`POST {host}/waInstance{idInstance}/sendMessageReaction/{apiTokenInstance}` with body
-`{"chatId": "<chat>", "messageId": "<idMessage>", "reaction": "<emoji or empty string>"}`, via the
-SDK's already-vendored `GreenApi.raw_request(method="POST", url=..., json=...)` escape hatch
-(`API.py` lines ~165/181) — this method exists in the installed SDK today but has **zero call
-sites anywhere in this codebase**, so both the endpoint shape and the mechanism for reaching it are
-unverified in this specific integration, even though `raw_request` itself is a real, existing SDK
-method (not something being invented).
+**Confirmed mechanism**: `bot.api.request("POST", url, payload)` — the SDK's existing higher-level
+`request()` wrapper (used by every other `Sending` method, e.g. `sendMessage`), which handles
+`{{host}}`/`{{idInstance}}`/`{{apiTokenInstance}}` templating itself — **not** `raw_request`
+(`raw_request` takes literal `requests.Session.request` kwargs with no templating, and is a worse
+fit than `request()` for this SDK's own idiom; the pre-live-verification plan's preference for
+`raw_request` is superseded by this finding).
 
-**Rationale**: no wrapped `sendReaction`-style method exists anywhere in the installed
-`whatsapp-api-client-python` package (`tools/sending.py` was inspected in full: `sendMessage`,
-`sendButtons`, `sendTemplateButtons`, `sendListMessage`, `sendFileByUpload(Url)`, `uploadFile`,
-`sendLocation`, `sendContact`, `sendLink`, `forwardMessages`, `sendPoll`,
-`sendInteractiveButtons(Reply)` — no reaction support). `raw_request` is the SDK's documented
-generic mechanism for calling any Green API REST endpoint the Python wrapper hasn't caught up to
-yet, and is strongly preferred over hand-rolled `requests` calls (which would bypass the SDK's own
-session/host/timeout configuration) or patching a new method onto the vendored `GreenApi`/`Sending`
-classes (forbidden by CONSTITUTION §XVII).
+**Confirmed endpoint** (differs from the pre-verification assumption):
+```
+POST {{host}}/waInstance{{idInstance}}/sendReaction/{{apiTokenInstance}}
+Body: {"chatId": "<chat>", "idMessage": "<the target message's real Green API id>", "reaction": "<emoji or empty string>"}
+```
+`sendMessageReaction` (the originally assumed path) returns `404`; `messageId` (the originally
+assumed payload key) is wrong — the correct key is **`idMessage`**, confirmed by the exact error
+Green API returns when it's omitted: `400 {"message": "Validation failed. Details: 'idMessage' is
+required"}`.
+
+**Confirmed, live, with a human visually checking WhatsApp after each call**:
+1. ✅ Reacting to a real **inbound** (user-sent) message with 👀 — reaction appeared.
+2. ✅ Flipping the same message's reaction to ✅ (second call, same `idMessage`, different
+   `reaction`) — **replaced** the 👀, did not stack. Confirms R3's flip-not-stack assumption.
+3. ✅ Clearing with `reaction: ""` — reaction disappeared.
+4. ⚠️ Reacting to a message the **bot itself sent** (self-reaction: same account as both sender
+   and reactor) — the API call returned `200` exactly as for an inbound message, but **no
+   reaction ever rendered in WhatsApp**, confirmed by direct visual check across three separate
+   attempts. This is a real, load-bearing limitation. **However, it does not block this feature**:
+   every use case in `spec.md`/`user-stories.md` only ever reacts to messages the *user* sent
+   (documents, action-request text, the "current turn's incoming message" default for
+   `react_to_message`) — DeniDin never needs to react to its own replies. Recorded here so this
+   constraint is never silently forgotten if a future design change (e.g. reacting to the bot's
+   own confirmation message) is proposed.
+5. ⚠️ Reacting with a **bogus/nonexistent `idMessage`** also returned `200` — Green API does
+   **not** synchronously validate that the target message exists. This **invalidates** the
+   pre-verification assumption that a deleted-message reaction attempt would surface as a
+   detectable 4xx. **Design consequence** (updates `spec.md`'s Edge Cases /
+   `contracts/green-api-reaction-client.md`): `send_reaction()` cannot distinguish "the message
+   existed and was reacted to" from "the message doesn't exist and nothing happened" via the HTTP
+   response alone — both return `200`. This is fine given REQ-084-007's own framing (reaction
+   failures must never block the core turn) — a silent no-op on a deleted message is
+   indistinguishable from success and requires no special handling, error suppression, or retry
+   logic differentiation; the deleted-message edge case in `spec.md` is satisfied "for free" by
+   this behavior rather than by any explicit error-catching code.
+6. 🔲 **Not tested**: group chat (`@g.us`) behavior — explicit human decision (2026-09-12) to skip
+   for now, since the 1:1 mechanism is now fully confirmed and group chats use the identical
+   endpoint/payload shape with a different `chatId` suffix. Documented as an assumption-by-analogy,
+   not an independent confirmation — flag for a follow-up live check before/during
+   `speckit.tasks`'s billed acceptance tests if group-chat reaction behavior becomes load-bearing
+   for a specific test assertion.
+
+**Rationale for the corrected mechanism/endpoint**: no wrapped `sendReaction`-style method exists
+anywhere in the installed `whatsapp-api-client-python` package (`tools/sending.py` was inspected in
+full: `sendMessage`, `sendButtons`, `sendTemplateButtons`, `sendListMessage`,
+`sendFileByUpload(Url)`, `uploadFile`, `sendLocation`, `sendContact`, `sendLink`,
+`forwardMessages`, `sendPoll`, `sendInteractiveButtons(Reply)` — no reaction support), so a generic
+mechanism was required; `bot.api.request()` is what every other wrapped method already uses
+internally, making it the correct fit once `raw_request`'s awkward literal-kwargs shape was found
+unnecessary during live testing (a plain string URL with `{{host}}`/`{{idInstance}}`/
+`{{apiTokenInstance}}` placeholders, exactly like `sendMessage`'s own implementation, worked
+directly).
 
 **Alternatives considered**:
+- `GreenApi.raw_request(...)` (the original plan). Superseded once live testing showed
+  `bot.api.request()` — the SDK's own standard wrapper, doing its own URL templating — was simpler
+  and consistent with every existing call site in this codebase.
 - Hand-rolled `requests.post(...)` directly against the endpoint, bypassing the SDK entirely.
   Rejected: duplicates host/token/timeout configuration already centralized in `bot.api`, and
   every other Green API call site in this codebase goes through the SDK.
 - A subclass or monkey-patch adding a `sendReaction` method onto `Sending`. Rejected outright by
   CONSTITUTION §XVII (no monkey-patching, no runtime method injection).
 - Upgrading the vendored SDK version in case a newer release wraps reactions natively. Not pursued
-  for this plan — would be a separate, larger dependency-upgrade decision requiring its own review,
-  and `raw_request` unblocks the feature without it.
-
-**What Gate Zero must actually confirm, live, before implementation is trusted**:
-1. The exact endpoint path and payload key names (`sendMessageReaction` vs. some other exact
-   spelling; `reaction` vs. a different field name) — capture the real request Green API accepts
-   and the real response it returns (status code + body shape), mirroring Feature 076's
-   `capture_green_api_webhooks.py` precedent for evidence capture.
-2. That an empty-string `reaction` clears an existing reaction (per the spec's own glossary, not
-   yet independently confirmed).
-3. That sending a second, different emoji to the same `(chatId, messageId)` pair **replaces** the
-   existing reaction rather than stacking a second one — this "flip, not stack" assumption is load-
-   bearing for the whole feature design (see `data-model.md`: no reaction-history table is planned
-   specifically because of this assumption) and must not be treated as confirmed until verified.
-4. Behavior when reacting to a message that has since been deleted by the sender — expected to
-   surface as a 4xx-shaped failure (must NOT be retried, per the §XI policy) rather than a 5xx/
-   timeout; confirm this classification is actually what Green API returns, not assumed.
-5. That the same call works identically for both `@c.us` (1:1) and `@g.us` (group) chat ids.
-
-**Note for whoever runs Gate Zero**: this is explicitly *not* something to execute as part of
-planning or task-writing — it requires its own fresh, explicit human go-ahead when the time comes,
-same as any other real external call against a live environment per CLAUDE.md.
+  — `bot.api.request()` unblocks the feature without it.
 
 ## R2 — Fast-path classification tables (non-live, resolved now)
 
@@ -83,20 +105,35 @@ risk the fast-path exists to avoid; the *slower*, LLM-driven path already exists
 
 ## R3 — Flip-not-stack de-duplication (depends on R1)
 
+**Status**: ✅ CLOSED — confirmed live as part of R1 above (item 2: flipping 👀→✅ on the same
+`idMessage` replaced rather than stacked).
+
 **Decision**: no reaction-history bookkeeping of any kind. Because the fast-path's initial
 in-flight emoji and any later `react_to_message("✅", message_id=<same id>)` call target the
-identical `(chatId, messageId)` pair, Green API's own flip semantics (pending R1 confirmation)
-naturally replace rather than stack — so correctness here reduces entirely to always resolving and
-reusing the *same* real `messageId` for a given workflow, which is exactly why
+identical `(chatId, idMessage)` pair, Green API's own flip semantics (now confirmed) naturally
+replace rather than stack — so correctness here reduces entirely to always resolving and reusing
+the *same* real message id for a given workflow, which is exactly why
 `Message.whatsapp_id_message`/`Session.active_document_message_id` (see `data-model.md`) exist as
 the single source of truth for that id, rather than re-deriving it at each call site.
 
 **Rationale**: avoids inventing new persistent state (a reaction table) purely to solve a problem
-Green API's own API already solves, if R1 confirms the assumption — consistent with this codebase's
-general preference for the simplest storage that satisfies the requirement (compare Feature 054's
-explicit SQLite-vs-JSON-file storage-rationale discussion).
+Green API's own API already solves — consistent with this codebase's general preference for the
+simplest storage that satisfies the requirement (compare Feature 054's explicit
+SQLite-vs-JSON-file storage-rationale discussion).
 
 **Alternatives considered**: tracking a local "last reaction sent per message" cache to explicitly
-suppress a second, redundant identical send. Rejected as unnecessary complexity unless R1 reveals
-Green API does *not* reliably replace (in which case this would need revisiting before
-`speckit.tasks`, not silently designed around now).
+suppress a second, redundant identical send. Rejected as unnecessary complexity — now confirmed
+unnecessary, since Green API reliably replaces.
+
+## R4 — Self-reaction limitation (new finding from Gate Zero, non-blocking)
+
+**Status**: ✅ CLOSED — documented constraint, not a blocker.
+
+**Finding**: reacting to a message the bot's own account sent (as opposed to a message the user
+sent) returns `200` but never renders in WhatsApp (see R1 item 4).
+
+**Decision**: no code-level guard against this is needed. Every reaction use case in this feature
+targets a message the *user* sent (a document, an action-request command, or whatever message
+`Session.active_document_message_id`/the current turn's `whatsapp_id_message` resolves to — all
+inbound). If a future feature ever wants to react to DeniDin's own sent message, that would need
+its own investigation at that time; out of scope here.

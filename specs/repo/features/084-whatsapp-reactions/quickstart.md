@@ -4,25 +4,24 @@ All scenarios below run against a real `dev` environment (never `prod`). Startin
 requires its own explicit human approval each time, per CLAUDE.md's environment-start rule — this
 document does not grant that approval, it only describes what to verify once it's given.
 
-## Scenario 0 — Gate Zero: live Green API reaction call (BLOCKING PREREQUISITE)
+## Scenario 0 — Gate Zero: live Green API reaction call (CLOSED — 2026-09-12)
 
-**Not run as part of this planning stage.** Requires fresh, explicit human go-ahead when actually
-executed.
-
-1. From a real WhatsApp account, send any text message to the dev DeniDin number.
-2. Using `raw_request` in a small throwaway script (or directly via the running app once
-   Phase 1/2 land), call the reaction endpoint against that message's real `idMessage` with a
-   test emoji.
-3. **Confirm**: the emoji actually appears on the message in WhatsApp; capture the real HTTP
-   request/response (status + body) for `research.md` R1.
-4. Send a second, different emoji to the same message. **Confirm**: it replaces (flips) rather
-   than stacking a second reaction.
-5. Send an empty-string reaction to the same message. **Confirm**: the reaction is cleared.
-6. Delete the original message from the phone, then attempt to react to its now-stale
-   `idMessage`. **Confirm**: the failure is 4xx-shaped (not 5xx/timeout) and does not need a
-   retry.
-7. Repeat steps 2-3 targeting a message inside a group chat (`@g.us`). **Confirm**: identical
-   behavior to the 1:1 case.
+Ran live against the real dev Green API instance and a real dev WhatsApp account, human-approved
+and human-present to visually confirm each result. See `research.md` R1 for the full write-up.
+Summary of what was confirmed:
+1. ✅ Correct endpoint: `POST {{host}}/waInstance{{idInstance}}/sendReaction/{{apiTokenInstance}}`,
+   payload `{"chatId", "idMessage", "reaction"}` — the originally assumed `sendMessageReaction`
+   path and `messageId` payload key were both wrong, corrected from the real observed behavior.
+2. ✅ Reacting to a real inbound (user-sent) message: reaction visibly appeared.
+3. ✅ Flip (second call, same `idMessage`, different emoji): replaced, did not stack.
+4. ✅ Clear (`reaction: ""`): reaction visibly disappeared.
+5. ⚠️ Reacting to a message the bot itself sent (self-reaction): API returns 200 but never
+   renders — a real limitation, non-blocking since this feature never needs it (see `research.md`
+   R4).
+6. ⚠️ Reacting to a bogus/nonexistent `idMessage`: also returns 200 — no synchronous 4xx signal
+   exists for a deleted-target-message scenario, which changes Scenario 9 below.
+7. 🔲 Group chat (`@g.us`): not tested — explicit human decision to skip, assumed identical by
+   analogy to the confirmed 1:1 mechanism. Revisit if a specific test assertion needs it verified.
 
 ## Scenario 1 — Document ingestion with deferred resolution (UAT-1, P1)
 
@@ -85,10 +84,12 @@ remarks, and not duplicated.
 ## Scenario 9 — Message deleted before reaction
 
 **Given** a document is sent, then deleted from the sender's phone before DeniDin's fast-path
-reaction call completes (timing this precisely may require a deliberately slow network or a
-retry-forcing condition — best-effort scenario).
-**Confirm**: no error surfaces to the user, the conversation continues normally, and a WARNING
-(not ERROR) is logged.
+reaction call completes.
+**Confirm**: per Gate Zero's finding (`research.md` R1 item 5), Green API returns 200 regardless
+of whether the target message still exists — so this scenario is expected to produce **no error
+at all**, just a silent no-op reaction. No error surfaces to the user, the conversation continues
+normally, and no WARNING is logged either (there is nothing to detect as a failure in this case —
+confirm the implementation does not falsely log a failure it cannot actually observe).
 
 ## Scenario 10 — Green API 5xx / timeout
 

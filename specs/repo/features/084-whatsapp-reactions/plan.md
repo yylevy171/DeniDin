@@ -26,8 +26,10 @@ is being processed; and (2) a model-driven `react_to_message` AI tool the LLM ca
 own reasoning to set a reaction on the current turn, or to flip a reaction set earlier in the same
 multi-turn workflow (e.g. flipping a document's in-flight 👀 to a final ✅/❌ once ledger capture
 resolves). Green API's reaction endpoint has no existing wrapper anywhere in this codebase's
-vendored SDK, so a new thin helper is added using the SDK's already-vendored generic escape hatch
-(`GreenApi.raw_request`) rather than hand-rolled HTTP or a patch into third-party source. Group
+vendored SDK, so a new thin helper is added using the SDK's own `bot.api.request()` wrapper (the
+same mechanism every existing Green API call in this codebase already uses) against the
+live-confirmed `sendReaction` endpoint, rather than hand-rolled HTTP or a patch into third-party
+source. Group
 chats only ever react to messages DeniDin actually engages with (reusing the existing addressed-to-
 bot check, never duplicating it); 1:1 discretion and creative/conversational reactions are governed
 by a new `runtime_constitution.md` section, not code. Reaction failures are isolated entirely inside
@@ -38,13 +40,14 @@ ledger/document transaction.
 
 **Language/Version**: Python 3.9+ (existing project floor, `apps/denidin-app`)
 **Primary Dependencies (new)**: none — no new pip packages. The implementation relies entirely on
-`GreenApi.raw_request`/`raw_request_async`, already vendored in the installed
-`whatsapp-api-client-python` SDK (`API.py`), currently unused anywhere in this codebase.
+the SDK's own `bot.api.request()` wrapper (already vendored in `whatsapp-api-client-python`,
+used internally by every existing `Sending` method) against the live-confirmed `sendReaction`
+endpoint (`research.md` R1, Gate Zero closed 2026-09-12).
 **Storage**: no new persistent storage / no new SQLite table. Reactions are stateless, fire-and-
 forget side effects on Green API's side; the only new state is two lightweight in-process fields
 (see `data-model.md`) threaded through existing `Message`/`Session` objects.
 **Testing**: `tests/unit/` covers the new `send_reaction()` helper (retry-once/never-retry-4xx
-policy, WARNING logging, never-raises contract, against a stubbed `bot.api.raw_request`) and the
+policy, WARNING logging, never-raises contract, against a stubbed `bot.api.request`) and the
 fast-path heuristic's classification logic in isolation. `tests/integration/` covers real router
 dispatch through `bot.router` for the fast-path hook (verifying group ambient messages produce zero
 reaction calls, and that addressed messages do). `tests/billed/` covers the `react_to_message` tool
@@ -76,22 +79,23 @@ document).*
 - ✅ **§V no mocking of internal components**: `tests/integration/` exercises real router dispatch
   (a real notification through `bot.router`), real internal objects throughout. The one genuinely
   new third-party dependency this feature introduces — Green API's reaction endpoint — is mocked
-  only at the unit tier (permitted; unit tests may stub `bot.api.raw_request`), and is the explicit
-  subject of `research.md`'s Gate Zero at the integration/live tier — no mock ever substitutes for
-  actually confirming Green API's real behavior before implementation is trusted.
+  only at the unit tier (permitted; unit tests may stub `bot.api.request`). `research.md`'s Gate
+  Zero has already closed at the integration/live tier (2026-09-12) — no mock ever substituted for
+  actually confirming Green API's real behavior before implementation proceeds.
 - ✅ **§XI retry policy**: `send_reaction()` applies the retry-once-on-5xx/timeout-after-1s /
   never-retry-4xx policy explicitly and locally (there is no shared retry decorator for Green API
   calls elsewhere in this codebase to reuse — `mark_message_read`/`send_proactive_message` each
   handle their own failure paths locally too, so this is consistent with the existing idiom, not a
   new one).
 - ✅ **§XVII No monkey-patching**: `send_reaction()` is a new, plain function in `green_api_bot.py`
-  calling the SDK's own already-public `raw_request` method — no patching of
+  calling the SDK's own already-public `request()` method — no patching of
   `whatsapp_api_client_python`'s classes, no dynamic attribute injection.
 - ✅ **NO UNVERIFIED THIRD-PARTY ASSUMPTIONS**: the exact reaction endpoint path/payload/response
   shape, and the flip-not-stack (empty string clears, new emoji replaces) semantics the spec's own
-  glossary asserts, are treated as unconfirmed until `research.md`'s Gate Zero closes with a real,
-  human-approved live call — recorded as a blocking prerequisite for trusting the implementation,
-  not something this planning stage (or task implementation) executes on its own initiative.
+  glossary asserts, were confirmed live via a real, human-approved Gate Zero call (`research.md`
+  R1, closed 2026-09-12) — two pre-verification assumptions (the endpoint path and the payload key
+  name) turned out wrong and were corrected from the real, observed behavior, not merely inferred
+  from documentation.
 - **No feature-flag deviation, confirmed by human decision (2026-09-12)**: this feature ships
   without a `config.feature_flags` gate, same as Feature 054 — a wrong reaction is cosmetic, not a
   data-integrity or financial concern, and nothing existing is being altered, only a new, additive
@@ -166,7 +170,7 @@ apps/denidin-app/
     │   ├── test_green_api_bot.py                       # MODIFIED (already exists) — +
     │   │                                                #   send_reaction tests (retry/never-raise/
     │   │                                                #   WARNING-log contract, stubbed
-    │   │                                                #   raw_request)
+    │   │                                                #   bot.api.request)
     │   └── test_fast_path_reaction_heuristic.py         # NEW — media/action-request
     │                                                     #   classification, addressed-to-bot
     │                                                     #   gating, no LLM call involved
@@ -186,13 +190,11 @@ where its closest analog already lives.
 
 ## Phased Implementation Order
 
-1. **Phase 0 — Research**: close `research.md`'s non-live decisions (fast-path emoji/keyword
-   tables) immediately; Gate Zero R1 (live Green API reaction call) does NOT block Phases 1-3
-   below — implementation and unit tests can proceed against a stubbed `raw_request` — but blocks
-   Phase 4 (declaring the feature done/mergeable-as-trusted) and any billed/integration run that
-   would actually reach Green API.
+1. **Phase 0 — Research**: ✅ done. `research.md`'s non-live decisions (fast-path emoji/keyword
+   tables) are resolved, and Gate Zero R1 (live Green API reaction call) has closed (2026-09-12) —
+   the confirmed endpoint/mechanism/payload shape below are live-verified, not assumed.
 2. **Phase 1 — `send_reaction()` helper**: `green_api_bot.py`, fully unit-testable in isolation
-   against a stubbed `bot.api.raw_request` — lowest-risk, foundational, build first.
+   against a stubbed `bot.api.request` — lowest-risk, foundational, build first.
 3. **Phase 2 — Data model additions**: `Message.whatsapp_id_message`, `Session.active_document_message_id`
    in `session_manager.py`, plus the capture point (inbound webhook parsing already extracts
    `idMessage` for read-receipt purposes — reuse that extraction, do not re-derive it).
@@ -211,7 +213,7 @@ where its closest analog already lives.
 
 **Unit** (`tests/unit/`, no network): `test_green_api_bot.py` additions (never-raises contract,
 retry-once-on-5xx-never-on-4xx, WARNING logging, correct payload construction — all against a
-stubbed `raw_request`, permitted at the unit tier), `test_fast_path_reaction_heuristic.py`
+stubbed `bot.api.request`, permitted at the unit tier), `test_fast_path_reaction_heuristic.py`
 (media vs. action-request classification, addressed-to-bot gating producing zero calls for
 un-addressed group messages, rapid-burst "primary message only" logic).
 

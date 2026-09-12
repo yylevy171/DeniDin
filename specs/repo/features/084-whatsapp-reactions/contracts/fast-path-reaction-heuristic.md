@@ -29,10 +29,10 @@ handler(notification)
      action-verb keyword list → pick from the action-request pool (`["👍", "🫡", "👌"]`).
    - Anything else (routine chatter, media types with no matching heuristic) → no reaction,
      silently.
-3. Resolves the message's real `messageId` from the inbound webhook payload (already extracted
+3. Resolves the message's real `idMessage` from the inbound webhook payload (already extracted
    inline elsewhere in `green_api_bot.py` for read-receipt purposes — reuse that extraction, do not
    re-derive it) and the `chatId`.
-4. Calls `send_reaction(bot, chat_id, message_id, chosen_emoji)` — never blocks `handler(notification)`
+4. Calls `send_reaction(bot, chat_id, id_message, chosen_emoji)` — never blocks `handler(notification)`
    from running afterward regardless of outcome; any exception inside this whole function is caught
    internally, logged at WARNING, and swallowed (REQ-084-007).
 
@@ -59,10 +59,10 @@ verified.
 
 ## Shared flip-not-stack contract with the AI tool
 
-The emoji this hook sends targets the exact same `messageId` a later `react_to_message` call (fast-
+The emoji this hook sends targets the exact same `idMessage` a later `react_to_message` call (fast-
 path-set-then-model-flipped) would target — see `data-model.md`'s `whatsapp_id_message` field and
-`research.md` R3. No de-dup/suppression logic is needed here beyond both call sites resolving the
-same real id.
+`research.md` R3 (flip-not-stack confirmed live during Gate Zero). No de-dup/suppression logic is
+needed here beyond both call sites resolving the same real id.
 
 ## Testing
 
