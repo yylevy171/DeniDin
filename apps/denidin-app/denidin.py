@@ -662,13 +662,26 @@ def _process_conversational_message(notification: Notification) -> None:
         # 2026-08-04: this silently broke RBAC-gated Morning MCP tool attachment
         # for every 1:1 conversation, resolving the display name as an unknown
         # phone -> defaulting to CLIENT role).
+        # Feature 080 (REQ-080-02): progress_callback is how send_progress_update actually
+        # sends a real interim WhatsApp message mid-turn - notification.answer is the same
+        # real send mechanism send_response() below eventually uses for the final reply
+        # (and what billed/expensive test fixtures already capture via _test_sent_messages),
+        # so reusing it here keeps interim and final sends byte-identical in production AND
+        # tests. Only passed when the flag is on - preserves byte-identical behavior when off
+        # (the tool is also never attached in that case, so this would never fire anyway).
+        progress_callback = (
+            notification.answer
+            if denidin_app.config.feature_flags.get('verbosity_and_telemetry_080', False)
+            else None
+        )
         ai_response = denidin_app.ai_handler.get_response(
             ai_request,
             sender=message.sender_display_name,
             user_phone=group_user_phone or message.sender_id,
             sender_phone=message.sender_id,
             is_group=message.is_group,
-            chat_name=message.chat_name
+            chat_name=message.chat_name,
+            progress_callback=progress_callback,
         )
         logger.info(
             f"{tracking} AI response generated: {ai_response.tokens_used} tokens, "

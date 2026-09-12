@@ -175,6 +175,17 @@ class TelemetryManager:
             "SELECT * FROM request_telemetry WHERE request_id = ?", (request_id,)
         ).fetchone()
 
+    def get_latest_by_chat(self, chat_id: str) -> Optional[sqlite3.Row]:
+        """Read-only lookup of the most recently recorded row for a chat - used by
+        billed/expensive tests (Feature 080 acceptance scenarios), which know the chat_id
+        they sent a turn on but not that turn's internal request_id. rowid is
+        insertion-order, so MAX(rowid) is "most recent" without needing a separate
+        timestamp-ordering column."""
+        return self._conn.execute(
+            "SELECT * FROM request_telemetry WHERE chat_id = ? ORDER BY rowid DESC LIMIT 1",
+            (chat_id,),
+        ).fetchone()
+
 
 def monotonic_ms() -> int:
     """Shared helper for callers bracketing a timed span - milliseconds, monotonic clock

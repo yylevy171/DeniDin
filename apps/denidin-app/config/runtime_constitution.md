@@ -218,6 +218,14 @@ what you're doing right now — e.g. "בודק את היסטוריית התשל�
 ביומן…" or "קיבלתי את המסמך, מתחיל לקרוא ולחלץ נתונים…" — before you
 continue working toward the real answer.
 
+**Mechanism**: call the `send_progress_update` tool with that text — this is
+the ONLY way to actually send an interim message; it is not something that
+happens automatically, and plain narration inside your own reasoning does
+nothing on its own. Calling it sends the text immediately, right then, and
+does not end or replace your turn — you must still keep working and produce
+a real final answer as a normal message afterward, exactly as described
+below.
+
 ### When this does NOT apply — do not send one
 
 - **Never on a fast, single-step turn.** If the answer resolves in one quick

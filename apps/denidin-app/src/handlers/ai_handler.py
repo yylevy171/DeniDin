@@ -21,6 +21,7 @@ from src.models.message import (
 )
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
 from src.utils.time_utils import now_local, local_from_timestamp, to_local
+from src.utils.whatsapp_audit_log import log_outbound
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_collections import collection_name_for_chat
 from src.managers.roll_marker_store import RollMarkerStore
@@ -159,6 +160,16 @@ NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
 # across concurrent chats on different threads.
 _active_telemetry_builder: "contextvars.ContextVar[Optional[Any]]" = contextvars.ContextVar(
     "denidin_active_telemetry_builder", default=None
+)
+
+# Feature 080 (REQ-080-02): same contextvar shape/rationale as
+# _active_telemetry_builder above, for the send_progress_update local tool - set once at
+# the top of get_response() to the caller's real send function (e.g. a wrapper around
+# notification.answer), read by _handle_send_progress_update whenever the model actually
+# calls the tool. `None` (never set - most callers don't pass progress_callback, and the
+# flag being off means the tool is never attached anyway) makes the handler a no-op.
+_active_progress_callback: "contextvars.ContextVar[Optional[Callable[[str], None]]]" = contextvars.ContextVar(
+    "denidin_active_progress_callback", default=None
 )
 
 # Architectural fix (2026-08-25): _finalize_response used to run the local-tool
@@ -1224,6 +1235,40 @@ LIST_REMINDERS_TOOL: Dict[str, Any] = {
     "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
 }
 
+# Feature 080 (REQ-080-02): send_progress_update is the mechanism the model
+# actually uses to send a real, mid-turn interim WhatsApp message on a
+# multi-step/slow turn - see runtime_constitution.md's "Proactive Progress
+# Updates" section for when it's appropriate. Dispatched immediately (like
+# list_reminders/query_ledger_events) - it's a real outbound send with no
+# approval gate, never a substitute for the turn's actual final answer.
+# Attached for EVERY role (not RBAC-gated like reminders/ledger-query) since
+# any role can have a slow turn (e.g. a client's own document upload).
+SEND_PROGRESS_UPDATE_TOOL: Dict[str, Any] = {
+    "type": "function",
+    "name": "send_progress_update",
+    "description": (
+        "Send ONE short interim WhatsApp message to the user mid-turn, before your real "
+        "final answer is ready - use ONLY on a turn you already know will take a while "
+        "(e.g. processing a multi-page document, a multi-step tool sequence), never on an "
+        "ordinary fast turn. This is NOT your final answer and NEVER counts as one - you "
+        "MUST still produce a real final answer as a normal message after this. Never call "
+        "this in place of asking a genuine clarifying question, and never send more than one "
+        "progress update per turn unless the turn is unusually long."
+    ),
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "The short interim status message to show the user right now.",
+            },
+        },
+        "required": ["text"],
+        "additionalProperties": False,
+    },
+}
+
 # modify_reminder/delete_reminder share the reminder_id+scope shape - both
 # create a PendingLocalToolApproval, never dispatch immediately, same as
 # create_reminder.
@@ -2130,6 +2175,20 @@ class AIHandler:
             return []
         return [QUERY_LEDGER_EVENTS_TOOL]
 
+    def _build_progress_update_tools(self) -> List[Dict]:
+        """Feature 080 (REQ-080-02): send_progress_update - gated ONLY by the feature
+        flag, not RBAC (every role can have a slow turn), and not by self.rbac_enabled
+        either (unlike the other _build_*_tools above) - see _assemble_tools."""
+        # getattr/or-{} (not a bare self.config.feature_flags.get(...)) deliberately:
+        # _assemble_tools runs on every ordinary turn, including many existing unit
+        # tests' Mock(spec=AppConfiguration) fixtures that predate this feature and
+        # never set .feature_flags (dataclass fields with a default_factory aren't
+        # part of Mock(spec=...)'s allowed-attribute set, so a bare access there
+        # raises AttributeError, not a missing-key situation .get() could handle).
+        feature_flags = getattr(self.config, 'feature_flags', None) or {}
+        flag_on = bool(feature_flags.get('verbosity_and_telemetry_080', False))
+        return [SEND_PROGRESS_UPDATE_TOOL] if flag_on else []
+
     def _assemble_tools(self, user_obj, correlation_id: str) -> Optional[List[Dict]]:
         """Merge the (RBAC-gated) Morning MCP tools, the (RBAC-gated) reminder
         tools, and the (RBAC-gated) ledger-query tool into one `tools` list -
@@ -2145,6 +2204,8 @@ class AIHandler:
         morning_tools = self._build_morning_mcp_tools(user_obj, correlation_id) if self.rbac_enabled else None
         reminder_tools = self._build_reminder_tools(user_obj) if self.rbac_enabled else []
         ledger_query_tools = self._build_ledger_query_tools(user_obj) if self.rbac_enabled else []
+        # Feature 080: send_progress_update is NOT RBAC-gated - every role can attach it.
+        progress_update_tools = self._build_progress_update_tools()
         # Reminder tools deliberately go LAST (2026-08-19, user decision after a
         # real cross-feature confusion incident): Morning's tools are one opaque
         # `mcp` entry needing runtime discovery, so reminder tools - individually
@@ -2155,7 +2216,7 @@ class AIHandler:
         # query_ledger_events goes alongside reminder tools (also inlined
         # `function` entries, same visibility reasoning), before reminders.
         combined = (
-            (morning_tools or []) + ledger_query_tools + reminder_tools
+            (morning_tools or []) + ledger_query_tools + reminder_tools + progress_update_tools
         )
         return combined or None
 
@@ -2279,41 +2340,54 @@ class AIHandler:
                      user_role: str = 'client', sender: Optional[str] = None,
                      recipient: Optional[str] = None, user_phone: Optional[str] = None,
                      is_group: bool = False, chat_name: Optional[str] = None,
-                     sender_phone: Optional[str] = None) -> AIResponse:
+                     sender_phone: Optional[str] = None,
+                     progress_callback: Optional[Callable[[str], None]] = None) -> AIResponse:
         """Feature 080 (REQ-080-04): thin telemetry wrapper around _get_response_impl (the
         real logic, unchanged below) - constructs one TelemetryBuilder per turn, activates it
         via the module-level contextvar for the duration of this call (every instrumented
         responses.create()/tool-dispatch site below reads it), and records the finished
         RequestTelemetry row once the turn concludes (success OR exception - the finally
         block guarantees both context cleanup and recording regardless of how the turn ends).
-        A complete no-op - just calls _get_response_impl() directly - whenever
-        self.telemetry_manager is None (the flag is off, or was never configured), preserving
-        byte-identical behavior to before this feature existed."""
-        if self.telemetry_manager is None:
-            return self._get_response_impl(
-                request, chat_id=chat_id, user_role=user_role, sender=sender,
-                recipient=recipient, user_phone=user_phone, is_group=is_group,
-                chat_name=chat_name, sender_phone=sender_phone,
-            )
+        The telemetry half is a complete no-op - just calls _get_response_impl() directly -
+        whenever self.telemetry_manager is None (the flag is off, or was never configured),
+        preserving byte-identical behavior to before this feature existed.
 
-        from src.managers.telemetry_manager import TelemetryBuilder
-
-        effective_chat_id = chat_id or request.chat_id
-        builder = TelemetryBuilder(request.request_id, effective_chat_id, now_local().isoformat())
-        token = _active_telemetry_builder.set(builder)
+        progress_callback (REQ-080-02): the caller's real "send this text to the user right
+        now" function (denidin.py passes a wrapper around notification.answer, feature-flag
+        gated - see _process_conversational_message). Activated via _active_progress_callback
+        for the SAME duration as the telemetry builder, independent of whether telemetry_manager
+        is configured - send_progress_update's own tool attachment (_build_progress_update_tools)
+        is what actually gates whether the model can ever reach this path, not this parameter's
+        presence."""
+        callback_token = _active_progress_callback.set(progress_callback)
         try:
-            return self._get_response_impl(
-                request, chat_id=chat_id, user_role=user_role, sender=sender,
-                recipient=recipient, user_phone=user_phone, is_group=is_group,
-                chat_name=chat_name, sender_phone=sender_phone,
-            )
-        finally:
-            _active_telemetry_builder.reset(token)
+            if self.telemetry_manager is None:
+                return self._get_response_impl(
+                    request, chat_id=chat_id, user_role=user_role, sender=sender,
+                    recipient=recipient, user_phone=user_phone, is_group=is_group,
+                    chat_name=chat_name, sender_phone=sender_phone,
+                )
+
+            from src.managers.telemetry_manager import TelemetryBuilder
+
+            effective_chat_id = chat_id or request.chat_id
+            builder = TelemetryBuilder(request.request_id, effective_chat_id, now_local().isoformat())
+            telemetry_token = _active_telemetry_builder.set(builder)
             try:
-                record = builder.finalize(now_local().isoformat())
-                self.telemetry_manager.record(record)
-            except Exception as telemetry_error:  # pylint: disable=broad-except
-                logger.warning(f"Feature 080 telemetry finalize/record failed: {telemetry_error}")
+                return self._get_response_impl(
+                    request, chat_id=chat_id, user_role=user_role, sender=sender,
+                    recipient=recipient, user_phone=user_phone, is_group=is_group,
+                    chat_name=chat_name, sender_phone=sender_phone,
+                )
+            finally:
+                _active_telemetry_builder.reset(telemetry_token)
+                try:
+                    record = builder.finalize(now_local().isoformat())
+                    self.telemetry_manager.record(record)
+                except Exception as telemetry_error:  # pylint: disable=broad-except
+                    logger.warning(f"Feature 080 telemetry finalize/record failed: {telemetry_error}")
+        finally:
+            _active_progress_callback.reset(callback_token)
 
     def _get_response_impl(self, request: AIRequest, chat_id: Optional[str] = None,
                      user_role: str = 'client', sender: Optional[str] = None,
@@ -2689,6 +2763,79 @@ class AIHandler:
             logger.error(f"[054] list_reminders follow-up call failed: {e}", exc_info=True)
             return None
 
+    def _call_openai_send_progress_update_followup_api(
+        self, request: AIRequest, previous_response_id: str, call_id: str,
+        sent: bool, tools: Optional[List[Dict]] = None,
+    ):
+        """Reports send_progress_update's own result back as that call's
+        function_call_output, same pattern as _call_openai_list_reminders_followup_api -
+        send_progress_update dispatches immediately, so no PendingLocalToolApproval is
+        involved and no later turn is needed."""
+        output_items = [{
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps({"sent": sent}, ensure_ascii=False),
+        }]
+        kwargs = {
+            "model": request.model,
+            "instructions": self._build_instructions(request.constitution),
+            "input": output_items,
+            "previous_response_id": previous_response_id,
+            "max_output_tokens": request.max_tokens,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        logger.info(f"[080] _call_openai_send_progress_update_followup_api: call_id={call_id!r}")
+        _log_outgoing_request("_call_openai_send_progress_update_followup_api", kwargs)
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
+        _log_raw_response("_call_openai_send_progress_update_followup_api", response)
+        return response
+
+    def _handle_send_progress_update(self, request: AIRequest, response, tools: Optional[List[Dict]]):
+        """Feature 080 (REQ-080-02): send_progress_update is read-only from the ledger's
+        perspective (writes nothing persistent except telemetry), dispatched immediately
+        - same shape as _handle_list_reminders. The actual WhatsApp send happens here, via
+        whatever callback get_response() activated in _active_progress_callback (denidin.py's
+        notification.answer wrapper in production; None in any caller that didn't pass one,
+        e.g. today's test fixtures that don't yet exercise this - the update is then simply
+        not sent, and the turn still proceeds normally via the follow-up call below).
+
+        Returns the follow-up response (whose output_text/usage should replace the original
+        response's), or None if no send_progress_update call was made this turn, or if the
+        follow-up call itself failed."""
+        call_id = extract_function_call_id(response, SEND_PROGRESS_UPDATE_TOOL["name"])
+        if call_id is None:
+            return None
+
+        args = extract_function_call(response, SEND_PROGRESS_UPDATE_TOOL["name"]) or {}
+        text = args.get("text")
+        sent = False
+        callback = _active_progress_callback.get()
+        if text and callback is not None:
+            try:
+                callback(text)
+                sent = True
+                builder = _active_telemetry_builder.get()
+                if builder is not None:
+                    builder.mark_progress_update_sent()
+                log_outbound(request.chat_id, text, kind="progress_update")
+            except Exception as e:  # pylint: disable=broad-except
+                # Best-effort, per runtime_constitution.md: a failed interim send must
+                # never fail the turn - the real final answer still has to go out below.
+                logger.warning(f"[080] send_progress_update: failed to send interim message: {e}")
+        elif not text:
+            logger.warning("[080] send_progress_update called with no text argument - nothing sent")
+        else:
+            logger.debug("[080] send_progress_update called but no progress_callback is active - nothing sent")
+
+        try:
+            return self._call_openai_send_progress_update_followup_api(
+                request, response.id, call_id, sent, tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[080] send_progress_update follow-up call failed: {e}", exc_info=True)
+            return None
+
     def _call_openai_query_ledger_events_followup_api(
         self, request: AIRequest, previous_response_id: str,
         outputs: List[Dict[str, Any]], tools: Optional[List[Dict]] = None,
@@ -3001,6 +3148,23 @@ class AIHandler:
                 extra_tokens += list_reminders_followup.usage.total_tokens
                 extra_prompt_tokens += list_reminders_followup.usage.input_tokens
                 extra_completion_tokens += list_reminders_followup.usage.output_tokens
+                made_progress = True
+                continue
+
+            # Feature 080 (REQ-080-02): send_progress_update is dispatched immediately
+            # (a real send, no approval gate), and needs the same follow-up round-trip
+            # as the other two immediate-dispatch tools above, for the same
+            # function_call-OR-message reason.
+            progress_update_followup = self._timed_tool_call(
+                "send_progress_update",
+                lambda: self._handle_send_progress_update(request, current_response, tools),
+            )
+            if progress_update_followup is not None:
+                current_response = progress_update_followup
+                usage_response = progress_update_followup
+                extra_tokens += progress_update_followup.usage.total_tokens
+                extra_prompt_tokens += progress_update_followup.usage.input_tokens
+                extra_completion_tokens += progress_update_followup.usage.output_tokens
                 made_progress = True
                 continue
 
