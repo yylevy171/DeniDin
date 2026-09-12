@@ -1073,11 +1073,31 @@ def handle_button_tap(notification: Notification) -> None:
     selected_id = button_data.get("selectedId", "")
     stanza_id = button_data.get("stanzaId", "")
 
-    ai_response = denidin_app.ai_handler.resolve_button_tap(
-        message=message,
-        selected_id=selected_id,
-        stanza_id=stanza_id,
-    )
+    # Feature 080: a button tap is a real turn too (resolve_button_tap can itself take a
+    # while - it's a live MCP/local-tool call, same as any other turn) - start the same
+    # renewal-loop typing keep-alive the conversational path uses (denidin.py's own
+    # _process_conversational_message), so a slow tap-resolution doesn't leave the user
+    # staring at a stopped "typing…" indicator. This was missing entirely pre-2026-09-13 -
+    # a real gap, not something this feature deliberately scoped out.
+    is_blocked = denidin_app.ai_handler.user_manager.get_user(message.sender_id).is_blocked
+    keepalive_job_id = None
+    if denidin_app.green_api_bot is not None and denidin_app.typing_keepalive_scheduler is not None:
+        keepalive_job_id = start_typing_keepalive(
+            denidin_app.typing_keepalive_scheduler, denidin_app.green_api_bot,
+            message.chat_id, is_blocked, message.message_id,
+        )
+
+    try:
+        ai_response = denidin_app.ai_handler.resolve_button_tap(
+            message=message,
+            selected_id=selected_id,
+            stanza_id=stanza_id,
+        )
+    finally:
+        # DeniDin's turn is over the instant resolve_button_tap returns (or raises) -
+        # matching feature 048/080's "stop the instant the turn ends" semantics.
+        if denidin_app.typing_keepalive_scheduler is not None:
+            stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
 
     if ai_response is None:
         # Stale/superseded tap, or no pending approval at all - spec.md
