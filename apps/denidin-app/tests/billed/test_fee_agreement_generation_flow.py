@@ -159,12 +159,20 @@ class TestFeeAgreementGenerationFlow:
             ("Create a retainer agreement for NewCo Ltd.", "retainer_agreement"),
             ("I need a standard hourly fee agreement for consultation.", "hourly_consultation"),
             ("Draft a fixed-price contract for building a website.", "fixed_price_project"),
+            (
+                "Draft an agreement for Delta Ltd with a monthly retainer of 3,000 NIS "
+                "plus 400 NIS/hour for anything beyond 10 hours a month.",
+                "multi_component_agreement",
+            ),
         ],
     )
     def test_stage1_template_selection(self, denidin_app, config, user_text, expected_variant):
-        """Test 1.1/1.2/1.3: the AI selects the correct template variant from phrasing
+        """Test 1.1/1.2/1.3/1.4: the AI selects the correct template variant from phrasing
         alone, surfaced via the PendingLocalToolApproval it creates (which must name the
-        variant it intends to generate) before any document is produced."""
+        variant it intends to generate) before any document is produced. Test 1.4 (added
+        per human feedback) verifies a request describing MULTIPLE distinct, separately
+        priced fee components is recognized as such rather than forced into one of the
+        single-fee variants."""
         phone, chat_id = self._godfather(config)
         self._send_text(chat_id, phone, "Test Godfather", user_text, "stage1")
 
@@ -262,6 +270,56 @@ class TestFeeAgreementGenerationFlow:
             assert "{{" not in text, f"leftover placeholder token(s) found in generated doc: {text!r}"
             assert "Acme Corp" in text
             assert "20,000" in text or "20000" in text
+
+    # --- Stage 1b: multi-component with fewer than 3 real components (data-model.md
+    # "Variable-length component rows") -------------------------------------------
+
+    def test_multi_component_partial_omits_unused_rows(self, denidin_app, config):
+        """A request with only 2 real fee components must not invent a filler value
+        for the unused 3rd table row - DocTemplateEngine must delete that row
+        entirely rather than the AI guessing something to put there (REQ-083-02
+        applies to 'nothing here' just as much as to a wrong number)."""
+        phone, chat_id = self._godfather(config)
+
+        self._send_text(
+            chat_id, phone, "Test Godfather",
+            "Draft an agreement for Gamma LLC with two fee components: a one-time "
+            "setup fee of 2,000 NIS, and a monthly maintenance fee of 500 NIS. "
+            "Total combined fee 2,500 NIS for the first month.",
+            "stage1b",
+        )
+        pending = self._pending_approval(denidin_app, chat_id)
+        assert pending is not None
+        values = pending.arguments.get("values", {})
+        assert not any(k.startswith("COMPONENT_3_") for k in values), (
+            f"AI must not invent a 3rd component when only 2 were described; "
+            f"got values={values!r}"
+        )
+        stanza_id = getattr(pending, "sent_message_id", None)
+
+        with patch(
+            "src.handlers.whatsapp_handler.WhatsAppHandler.send_document_response",
+            return_value=True,
+        ) as mock_send:
+            if stanza_id:
+                self._tap_button(chat_id, phone, "denidin_approve", stanza_id, "stage1b-approve")
+            else:
+                self._send_text(chat_id, phone, "Test Godfather", "כן", "stage1b-approve")
+
+            assert mock_send.called
+            sent_document = mock_send.call_args.args[1] if len(mock_send.call_args.args) > 1 \
+                else mock_send.call_args.kwargs.get("document")
+            from docx import Document as DocxDocument
+            docx_obj = DocxDocument(str(sent_document.temp_path))
+            table_text = "\n".join(
+                cell.text for table in docx_obj.tables for row in table.rows for cell in row.cells
+            )
+            assert "{{" not in table_text, f"leftover placeholder in table: {table_text!r}"
+            # Exactly 2 data rows (+1 header row) must remain - the unused 3rd row deleted.
+            assert len(docx_obj.tables[0].rows) == 3, (
+                f"expected header + 2 component rows (3 total), "
+                f"got {len(docx_obj.tables[0].rows)}"
+            )
 
     # --- Stage 4: Successful Delivery ---------------------------------------------
 

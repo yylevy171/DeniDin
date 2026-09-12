@@ -59,9 +59,11 @@ financial/legal values ever reach the template (REQ-083-02) — enforced by tool
 (`generate_fee_agreement` requires every placeholder value as an explicit argument; the AI
 cannot omit one and have the tool silently default it).
 **Scale/Scope**: RBAC-gated to godfather/admin only (same tier as reminders/Morning tools);
-3 initial template variants (`hourly_consultation`, `retainer_agreement`, `fixed_price_project`),
-authored as generic boilerplate by this implementation (no access to the prod media corpus from
-this clone — see Research #5), checked into `config/fee_agreement_templates/`.
+4 initial template variants (`hourly_consultation`, `retainer_agreement`, `fixed_price_project` —
+each a single, simple fee arrangement — plus `multi_component_agreement`, added per human
+feedback 2026-09-12 for engagements with several distinct, separately-priced fee items in one
+agreement), authored as generic boilerplate by this implementation (no access to the prod media
+corpus from this clone — see Research #5), checked into `config/fee_agreement_templates/`.
 
 ## Constitution Check
 

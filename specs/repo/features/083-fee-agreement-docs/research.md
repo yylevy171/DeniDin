@@ -105,6 +105,20 @@ Structure) alongside `manifest.json`. They are a deliberately generic starting p
 can swap in prod-derived language/branding later (a template-content change, not a
 placeholder-contract change) without touching any code.
 
+**Addendum (human feedback, 2026-09-12): a 4th variant, `multi_component_agreement`, was added**
+to distinguish a single, simple fee arrangement (one rate/fee, one scope — what the original 3
+variants already cover) from a multi-component engagement, where the client's request describes
+several distinct, separately-priced fee items in one agreement (e.g. "a retainer plus hourly
+overage past X hours," or "a one-time setup fee plus a monthly fee"). This variant uses a 3-row
+fee table (`COMPONENT_1/2/3_NAME`/`_DESCRIPTION`/`_FEE` placeholder groups) as an upper bound —
+see `data-model.md`'s "Variable-length component rows" section for how a request with fewer than
+3 real components is handled (unused `COMPONENT_N_*` table rows are deleted by
+`DocTemplateEngine`, never filled with an invented/filler value — REQ-083-02 applies to "there's
+nothing here" just as much as to a wrong number). Each of the 4 variants' `selection_cues` in
+`manifest.json` now explicitly states its single-vs-multi-component character, so the AI's
+variant-selection judgment call has this distinction available directly from the manifest content
+it already reads, rather than needing separate constitution-level guidance to infer it.
+
 **Rationale**: REQ-083-01 requires N variants to exist and be selectable; it does not require them
 to be verbatim derivations of specific historical documents. Given no accessible corpus from this
 clone, a correct, generic starting set unblocks the rest of the pipeline (selection, generation,

@@ -18,12 +18,18 @@ class DocTemplateEngine:
         Raises ValueError if:
           - variant_id is unknown
           - values' keys don't exactly match the variant's declared placeholders
-            (missing OR extra keys are both errors - no silent partial fill)
+            (missing OR extra keys are both errors - no silent partial fill), EXCEPT
+            for multi_component_agreement's optional COMPONENT_2_*/COMPONENT_3_* groups
+            (see data-model.md "Variable-length component rows") - those may be omitted
+            as a complete group, but a partial group (e.g. COMPONENT_2_NAME without
+            COMPONENT_2_FEE) is still a validation error
           - any value is empty/whitespace-only (an empty string is not a legitimate
             answer to "what is the fee amount" - REQ-083-02)
 
         On success: loads the template via python-docx, replaces every {{PLACEHOLDER}}
-        run-by-run (preserving surrounding formatting - SC-002), writes to
+        run-by-run in BOTH paragraphs and table cells (preserving surrounding
+        formatting - SC-002), deletes any multi_component_agreement table row whose
+        COMPONENT_N_* group was omitted from values, writes to
         tmp_dir/{document_id}.docx, returns a GeneratedDocument with verified=False.
         """
 ```
