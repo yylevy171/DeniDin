@@ -93,6 +93,14 @@ class Message:
     # the reverse link to LedgerEvent.message_id. Empty for the vast majority of
     # messages (most capture nothing).
     ledger_event_ids: List[str] = field(default_factory=list)
+    # Feature 084 (WhatsApp reactions): the real Green API `idMessage` for this message, as
+    # delivered on the inbound webhook - distinct from `message_id` above, which is DeniDin's
+    # own internally-generated UUID (Feature 033's identity constraint: message_id must stay
+    # identical across the filename/session/ledger-event references, so it cannot be
+    # repurposed to carry this). Reacting to a message requires the real wire id. None for an
+    # assistant message (reactions never target DeniDin's own sent messages - see research.md
+    # R4) and for any message persisted before this field existed (tolerant load).
+    whatsapp_id_message: Optional[str] = None
     # Feature 069: the Morning MCP tool calls made on this message's turn (an
     # assistant message only), each {"name", "arguments", "result"/"error"} exactly
     # as AIResponse.mcp_calls carried them. Persisted so the post-turn ledger
@@ -128,6 +136,13 @@ class Session:
     # window, or beyond the largest role token limit). Disjoint from
     # message_ids; message_counter == len(message_ids) + len(archived_message_ids).
     archived_message_ids: List[str] = field(default_factory=list)
+    # Feature 084 (WhatsApp reactions): the whatsapp_id_message of the most recent
+    # document/image ingestion that started a still-open, multi-turn workflow (e.g. document
+    # -> client clarification -> ledger capture). Lets a later turn's react_to_message call
+    # flip the ORIGINAL triggering message's reaction to a terminal outcome, even across
+    # several conversational turns. Set when such a workflow's document is ingested; cleared
+    # once it resolves (see data-model.md's message_id resolution fallback chain).
+    active_document_message_id: Optional[str] = None
 
 
 class SessionManager:
@@ -331,7 +346,8 @@ class SessionManager:
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None,
         mcp_calls: Optional[List[Dict]] = None,
-        timestamp: Optional[datetime] = None
+        timestamp: Optional[datetime] = None,
+        whatsapp_id_message: Optional[str] = None,
     ) -> str:
         """
         Add message to session.
@@ -379,6 +395,10 @@ class SessionManager:
                 regenerated at storage time. Defaults to a fresh UUID when not
                 given (correct for a message with no prior identity, e.g. the
                 assistant's reply, which is genuinely created at this point).
+            whatsapp_id_message: The real Green API `idMessage` for this message
+                (Feature 084), distinct from `message_id` above - see
+                Message.whatsapp_id_message's own docstring. None for an
+                assistant message or when not yet known.
 
         Returns:
             Message UUID
@@ -436,7 +456,8 @@ class SessionManager:
             image_path=image_path,
             extracted_text=extracted_text,
             ledger_event_ids=list(ledger_event_ids) if ledger_event_ids else [],
-            mcp_calls=list(mcp_calls) if mcp_calls else []
+            mcp_calls=list(mcp_calls) if mcp_calls else [],
+            whatsapp_id_message=whatsapp_id_message,
         )
 
         # Save message to session directory
@@ -882,7 +903,8 @@ class SessionManager:
         ledger_event_ids: Optional[List[str]] = None,
         message_id: Optional[str] = None,
         mcp_calls: Optional[List[Dict]] = None,
-        timestamp: Optional[datetime] = None
+        timestamp: Optional[datetime] = None,
+        whatsapp_id_message: Optional[str] = None,
     ) -> str:
         """
         Add message and update session token count.
@@ -918,7 +940,8 @@ class SessionManager:
             sender=sender, sender_name=sender_name,
             recipient=recipient, recipient_name=recipient_name,
             ledger_event_ids=ledger_event_ids, message_id=message_id,
-            mcp_calls=mcp_calls, timestamp=timestamp
+            mcp_calls=mcp_calls, timestamp=timestamp,
+            whatsapp_id_message=whatsapp_id_message,
         )
 
         # Count and add tokens

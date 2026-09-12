@@ -3,7 +3,17 @@
 **Feature Branch**: `feature/084-whatsapp-reactions`  
 **Created**: 2026-09-11  
 **Clarified & Approved**: 2026-09-12 (with CEO)  
-**Status**: Approved Specification — Ready for Implementation Planning  
+**Status**: Done (2026-09-13). `speckit.plan`/`speckit.tasks`/`speckit.implement` complete —
+Phases 1-6 (T001-T011) implemented and green; the fast-path mechanism was later removed entirely
+per explicit user instruction, with the fast ack now produced solely by the model's own
+`react_to_message` tool call. A live-debugging follow-through session found and fixed three real
+bugs surfaced by an actual user-reported miss (empty `tools` list on the reminder-followup call;
+`REACT_TO_MESSAGE_TOOL`'s schema description needing to be imperative, not just descriptive; a
+test fixture never wiring `green_api_bot`) — see `tasks.md`'s session addendum for the full
+account. Verified via a real Morning-MCP-backed billed test plus a 15-test sanity-suite spot-check
+(32 real `react_to_message` calls observed, correct emoji per outcome, zero dispatch failures).
+T012 (further rotation-based tuning rounds) and T013 (live-dev-environment quickstart
+verification) remain deliberately out of scope — see `tasks.md`. PR: #314.  
 **Input**: User description: "Whatsapp reactions - react to user messages according to your interpretation; reaction can change according to your actions"
 
 ---
@@ -72,7 +82,7 @@ Complete user stories are defined in **[`user-stories.md`](file:///Users/yaron/P
 
 ### Functional Requirements
 
-- **REQ-084-001**: The system MUST integrate Green API's `sendReaction` endpoint (`chatId`, `messageId`, `reaction`), allowing empty string `""` to clear reactions and new unicode emoji strings to replace existing reactions.
+- **REQ-084-001**: The system MUST integrate Green API's `sendReaction` endpoint (`chatId`, `idMessage`, `reaction`), allowing empty string `""` to clear reactions and new unicode emoji strings to replace existing reactions. *(Payload field corrected 2026-09-12 from `messageId` to `idMessage` — confirmed live via Gate Zero, see `research.md` R1; the endpoint name and behavior otherwise match as originally specified.)*
 - **REQ-084-002**: The webhook router MUST provide a fuzzy fast-path reaction mechanism that acknowledges actionable requests and media documents in **under 1000ms**, selecting contextually plausible in-flight emojis (e.g. `["👀", "🔍", "⏳"]` for media; `["👍", "🫡", "👌"]` for tasks).
 - **REQ-084-003**: The system MUST expose a dedicated AI tool (`react_to_message(emoji: str, message_id: Optional[str] = None)`) allowing the model to set or flip emoji reactions dynamically during its reasoning cycle. If `message_id` is omitted, it defaults to the current turn's incoming user message.
 - **REQ-084-004**: In multi-turn workflows (e.g., document ingestion followed by client clarifications), the `SessionManager` / context pipeline MUST preserve the `originating_message_id` so the AI can flip the reaction on the original trigger message upon workflow resolution.

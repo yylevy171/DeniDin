@@ -115,6 +115,51 @@ def send_proactive_message(bot: Any, chat_id: str, message: str) -> Optional[str
     return id_message
 
 
+def send_reaction(bot: Any, chat_id: str, id_message: str, reaction: str) -> bool:
+    """Feature 084 (WhatsApp reactions): set/replace/clear a native emoji reaction on a
+    message via Green API's sendReaction endpoint (`research.md` R1, Gate Zero live-verified
+    2026-09-12). Pass `reaction=""` to clear an existing reaction; setting the same
+    idMessage again with a new emoji replaces rather than stacks (confirmed live).
+
+    Uses `bot.api.request()` - the SDK's own generic wrapper, already used internally by
+    every existing `Sending`/etc. method - rather than hand-rolled HTTP or a patch into the
+    vendored SDK (CONSTITUTION XVII). Applies CONSTITUTION XI's retry policy explicitly and
+    locally (no shared retry decorator exists for Green API calls elsewhere in this
+    codebase): retry once, after a 1s wait, on a 5xx or transport-level failure; never retry
+    a 4xx. Never raises - a reaction is cosmetic and must never break the conversational
+    turn or a document/ledger transaction (REQ-084-007); any failure is logged at WARNING
+    and this returns False.
+    """
+    url = "{{host}}/waInstance{{idInstance}}/sendReaction/{{apiTokenInstance}}"
+    payload = {"chatId": chat_id, "idMessage": id_message, "reaction": reaction}
+
+    for attempt in range(2):
+        transport_error: Optional[Exception] = None
+        code: Optional[int] = None
+        try:
+            response = bot.api.request("POST", url, payload)
+            code = getattr(response, "code", None)
+        except Exception as error:  # pylint: disable=broad-except
+            transport_error = error
+
+        if code == 200:
+            return True
+
+        is_5xx_or_transport_failure = transport_error is not None or (code is not None and code >= 500)
+        if is_5xx_or_transport_failure and attempt == 0:
+            time.sleep(1.0)
+            continue
+
+        logger.warning(
+            f"Failed to send reaction (chatId={chat_id}, idMessage={id_message}, "
+            f"reaction={reaction!r}): code={code!r}"
+            + (f", error={transport_error}" if transport_error is not None else "")
+        )
+        return False
+
+    return False  # pragma: no cover - loop always returns above
+
+
 def send_typing_indicator(bot: Any, chat_id: str, is_blocked: bool) -> None:
     """Feature 048 (reverted to single-call design 2026-08-13): best-effort typing
     indicator, fired at the start of DeniDin's turn for every non-blocked sender. Single

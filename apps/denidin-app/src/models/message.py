@@ -66,6 +66,12 @@ class WhatsAppMessage:
     # (AIHandler._finalize_response) uses this flag to date the bot's own reply
     # as "just after" that original moment (+10s) rather than at wall-clock now.
     is_replay: bool = False
+    # Feature 084 (WhatsApp reactions): the real Green API `idMessage` for this inbound
+    # message, distinct from `message_id` above (DeniDin's own internally-generated UUID,
+    # untouched - Feature 033's identity constraint). Reacting to a message requires this
+    # real wire id, which was previously only captured ad hoc, at SEND time, for outbound
+    # messages.
+    whatsapp_id_message: Optional[str] = None
 
     @classmethod
     def from_notification(cls, notification) -> 'WhatsAppMessage':
@@ -113,6 +119,9 @@ class WhatsAppMessage:
         # Generate unique message ID (UUID) for tracking throughout lifecycle
         message_id = str(uuid.uuid4())
 
+        # Feature 084: the real Green API wire id, for reactions.
+        whatsapp_id_message = event.get('idMessage')
+
         # Track when message was received by application (UTC)
         received_timestamp = now_local()
 
@@ -129,6 +138,7 @@ class WhatsAppMessage:
             sender_display_name=sender_display_name,
             chat_name=chat_name,
             is_replay=is_replay,
+            whatsapp_id_message=whatsapp_id_message,
         )
 
 
