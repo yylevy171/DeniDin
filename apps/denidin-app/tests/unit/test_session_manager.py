@@ -685,3 +685,90 @@ class TestAddMessageIdOverride:
         )
         assert returned_id == "supplied-id-2"
 
+
+class TestWhatsappIdMessageField:
+    """Feature 084 (WhatsApp reactions, T003): Message.whatsapp_id_message - the real
+    Green API wire id, distinct from message_id (DeniDin's own internal UUID)."""
+
+    def test_add_message_threads_whatsapp_id_message(self, session_manager):
+        chat_id = "1234567890@c.us"
+        message_id = session_manager.add_message(
+            chat_id=chat_id, role="user", content="hello", user_role="client",
+            whatsapp_id_message="wamid.ABC123",
+        )
+        session = session_manager.get_session(chat_id)
+        loaded = session_manager.load_message(session, message_id)
+        assert loaded.whatsapp_id_message == "wamid.ABC123"
+
+    def test_add_message_defaults_whatsapp_id_message_to_none(self, session_manager):
+        chat_id = "1234567890@c.us"
+        message_id = session_manager.add_message(
+            chat_id=chat_id, role="user", content="hello", user_role="client",
+        )
+        session = session_manager.get_session(chat_id)
+        loaded = session_manager.load_message(session, message_id)
+        assert loaded.whatsapp_id_message is None
+
+    def test_add_message_with_tokens_threads_whatsapp_id_message(self, session_manager):
+        chat_id = "1234567890@c.us"
+        message_id = session_manager.add_message_with_tokens(
+            chat_id=chat_id, role="user", content="hello", user_role=Role.CLIENT,
+            whatsapp_id_message="wamid.DEF456",
+        )
+        session = session_manager.get_session(chat_id)
+        loaded = session_manager.load_message(session, message_id)
+        assert loaded.whatsapp_id_message == "wamid.DEF456"
+
+    def test_loading_old_message_missing_the_field_defaults_to_none(self, session_manager):
+        """Tolerant load: a message persisted before this field existed must load
+        with whatsapp_id_message=None, not crash."""
+        chat_id = "1234567890@c.us"
+        message_id = session_manager.add_message(
+            chat_id=chat_id, role="user", content="hello", user_role="client",
+        )
+        session = session_manager.get_session(chat_id)
+        message_file = (
+            session_manager.storage_dir / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file, encoding="utf-8") as f:
+            data = json.load(f)
+        del data["whatsapp_id_message"]
+        with open(message_file, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+        loaded = session_manager.load_message(session, message_id)
+        assert loaded.whatsapp_id_message is None
+
+
+class TestActiveDocumentMessageIdField:
+    """Feature 084 (WhatsApp reactions, T003): Session.active_document_message_id -
+    the multi-turn "originating message" pointer for deferred reaction flips."""
+
+    def test_defaults_to_none_on_a_new_session(self, session_manager):
+        session = session_manager.get_session("1234567890@c.us")
+        assert session.active_document_message_id is None
+
+    def test_round_trips_through_save_and_load(self, session_manager):
+        chat_id = "1234567890@c.us"
+        session = session_manager.get_session(chat_id)
+        session.active_document_message_id = "wamid.DOC1"
+        session_manager._save_session(session)
+
+        reloaded = session_manager.get_session(chat_id)
+        assert reloaded.active_document_message_id == "wamid.DOC1"
+
+    def test_loading_old_session_missing_the_field_defaults_to_none(self, session_manager):
+        """Tolerant load: a session.json persisted before this field existed must load
+        with active_document_message_id=None, not crash."""
+        chat_id = "1234567890@c.us"
+        session = session_manager.get_session(chat_id)
+        session_file = session_manager.storage_dir / session.session_id / "session.json"
+        with open(session_file, encoding="utf-8") as f:
+            data = json.load(f)
+        del data["active_document_message_id"]
+        with open(session_file, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+        reloaded = session_manager._load_session(session.session_id)
+        assert reloaded.active_document_message_id is None
+
