@@ -162,6 +162,56 @@ clone, a correct, generic starting set unblocks the rest of the pipeline (select
 verification, delivery) without waiting on a human curation pass that isn't this feature's
 critical path.
 
+**Fifth addendum (2026-09-12, corpus review): real historical documents were reviewed and the
+templates were redesigned to match them, plus a 5th variant was added.** Per explicit human
+request, all 75 images in the read-only prod media mount (`~/denidin-winprod-data/media`) were
+read as the real source corpus (screenshots of real fee documents, not `.docx` files directly, per
+human clarification — REQ-083-01's "review real historical documents" was satisfied by treating
+these images as the documents they depict). ~20 real documents were identified (the rest: bank/Bit
+payment confirmations, one unrelated procurement letter), overwhelmingly from one law office
+(Ayala Honigman). Findings:
+
+- **Genre**: almost every real document is a Hebrew **"הצעת שכר טרחה"** (fee proposal) — a letter
+  FROM the firm TO the client ("בין [Client] (להלן – הלקוח) לבין עו"ד [Firm] (להלן – עוה"ד)"), not
+  a mutual bilateral contract. One outlier: a formal two-party contract (הואיל recitals, numbered
+  sections, both parties sign) for an institutional client — rarer, not modeled as its own variant
+  (out of scope; the letter format covers the overwhelming majority).
+- **Standing boilerplate clauses** appear in nearly every real document: an **expenses-excluded**
+  clause and an **appellate-representation-excluded** clause. Added verbatim (as fixed template
+  text, not placeholders) to all 5 variants.
+- **Signature block**: two shapes seen — plain "תאריך: / שם וחתימה:" and an extended "אני
+  מאשר/ת את ההסכם: תאריך/שם/חתימה". The extended shape was adopted for all variants (a
+  superset of the plain shape's information).
+- **Real fee-item shapes** (all fit inside `multi_component_agreement`'s free-text `terms` line):
+  flat amount, amount split across payment stages/milestones (sometimes with a "not to exceed"
+  cap), percentage of amount recovered, hourly rate WITH AN HOUR CAP, a staged base-fee-plus-
+  contingency-bonus combination. `manifest.json`'s `example_terms` were rewritten in Hebrew to
+  match these exact real shapes (replacing the earlier generically-authored English examples).
+- **New structural pattern not covered by any of the 4 existing variants — "Alternative
+  Tracks"**: one real document offers the client a choice between TWO mutually-exclusive fee
+  structures for the SAME engagement (e.g. a flat-fee track vs. a lower-base-fee-plus-contingency
+  track), each internally itemized, plus one shared add-on clause applying regardless of which
+  track is picked, and a signature line naming the chosen track.
+
+**Human-confirmed decision (2026-09-12) on Alternative Tracks: added as a 5th variant**,
+`alternative_tracks` — see `data-model.md`'s new section for the full design (a second,
+track-level repeating group, reusing the same clone-and-discard mechanism as
+`multi_component_agreement`'s component rows, applied one level up).
+
+**Human-confirmed decision (2026-09-12) on the other 4 variants: full redesign to match the real
+corpus** — Hebrew, letter framing, the two standing exclusion clauses, and the extended
+signature-block shape. Scalar placeholder names were kept unchanged (`FIRM_NAME`, `DATE`,
+`CLIENT_NAME`, `SCOPE_OF_WORK`, etc.) so no contract/data-model schema change was needed for these
+4 — only template *content* changed. All 4 `.docx` files were regenerated; `manifest.json`'s
+`selection_cues` were rewritten to reference the real Hebrew phrasing patterns.
+
+**Simplification flagged, not yet human-confirmed**: `multi_component_agreement`'s repeatable row
+is still a 2-column table (label/terms) rather than a literal lettered paragraph list (א./ב./ג.)
+as seen in the real documents — chosen because table-row cloning was already implemented and
+proven, and a lettered-paragraph-list clone would need dynamic Hebrew letter sequencing for
+arbitrary N. This is a presentation-only difference (the fee terms themselves are unaffected) and
+can be revisited if the human wants the literal lettered-list look.
+
 ## 6. Placeholder / self-verification format
 
 **Decision**: `{{PLACEHOLDER_NAME}}` tokens inside the `.docx` (Word run-level find/replace via

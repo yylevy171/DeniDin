@@ -7,10 +7,10 @@ Loaded from `config/fee_agreement_templates/manifest.json` at startup (or first 
 
 | Field | Type | Notes |
 |---|---|---|
-| `variant_id` | str | e.g. `"hourly_consultation"`, `"retainer_agreement"`, `"fixed_price_project"`, `"multi_component_agreement"`. Stable identifier, used by the AI tool call. |
+| `variant_id` | str | e.g. `"hourly_consultation"`, `"retainer_agreement"`, `"fixed_price_project"`, `"multi_component_agreement"`, `"alternative_tracks"`. Stable identifier, used by the AI tool call. |
 | `template_filename` | str | Relative filename inside `config/fee_agreement_templates/`, e.g. `"hourly_consultation.docx"`. |
 | `placeholders` | List[str] | The exact scalar `{{TOKEN}}` names the template contains, e.g. `["CLIENT_NAME", "FEE_AMOUNT", "SCOPE_OF_WORK", "DATE"]`. Every one MUST be supplied by the AI's tool call — no partial fills. Does NOT include the tokens inside a `repeating_group`'s row (see below) — those are supplied per-item via `components`, not as flat scalar keys. |
-| `repeating_group` | Optional[dict] | Present only for `multi_component_agreement`. `{"min_items": 2, "row_placeholders": ["COMPONENT_LABEL", "COMPONENT_TERMS"], "example_terms": [...]}`. Declares that this variant's template has exactly one repeatable table row, cloned once per entry in the tool call's `components` list. `example_terms` is a small set of illustrative phrasing patterns (flat amount, percentage, cost-share split, non-Client payer, hourly overage) the AI can match a described component against and fill in — a guide for register/structure, not a closed enum; a genuinely different real arrangement is composed as its own free-text line instead of being forced into the nearest example. `None`/absent for every single-fee variant. |
+| `repeating_group` | Optional[dict] | Present for `multi_component_agreement` and `alternative_tracks`. `{"min_items": 2, "row_placeholders": [...], "example_terms": [...]}`. Declares that this variant's template has exactly one repeatable block (a table row for `multi_component_agreement`; a heading+paragraph block for `alternative_tracks`), cloned once per entry in the tool call's `components` list. `example_terms` is a small set of illustrative phrasing patterns, sourced from a 2026-09-12 review of real historical fee-proposal letters, the AI can match a described component/track against and fill in — a guide for register/structure, not a closed enum; a genuinely different real arrangement is composed as its own free-text line instead of being forced into the nearest example. `None`/absent for every single-fee variant. |
 | `selection_cues` | List[str] | Free-text natural-language cues (Hebrew + English) describing when this variant applies — read by the AI, not pattern-matched in code (variant selection is the model's judgment call over the manifest content, not a keyword-matching engine in Python). Each variant's cues now state explicitly whether it's single- or multi-component. |
 
 ## GeneratedDocument (in-memory / ephemeral, not persisted long-term)
@@ -85,6 +85,38 @@ free-text line from scratch rather than distorting the description to fit the ne
 Nothing in code parses or enforces `example_terms` against the AI's actual output — this is
 prompt-level guidance surfaced through the same manifest content the AI already reads for
 variant selection, not a second validation layer.
+
+## Alternative fee tracks (`alternative_tracks` variant only)
+
+Added 2026-09-12 per human-confirmed decision, following a review of real historical fee-proposal
+letters that revealed a structural shape distinct from `multi_component_agreement`: the client is
+offered a choice between **two or more mutually-exclusive fee structures for the SAME
+engagement** (e.g. a flat-fee track vs. a lower-base-fee-plus-contingency-percentage track) and
+picks exactly ONE — never a combination of tracks, unlike `multi_component_agreement` where every
+component applies together.
+
+**Implementation: same clone-and-discard mechanism as `multi_component_agreement`'s row, applied
+one level up (at the track, not the component, granularity).**
+- `alternative_tracks.docx` contains exactly **one** template "track" block (a heading placeholder
+  `{{TRACK_LABEL}}` and one free-text paragraph placeholder `{{TRACK_TERMS}}`), plus a separate
+  scalar placeholder `{{SHARED_ADDON_TERMS}}` for any add-on that applies regardless of which
+  track is chosen (e.g. a fee for one specific extra step/appearance, as seen in the real corpus).
+- `generate_fee_agreement` supplies a `components` list for this variant too (same tool-call field
+  name as `multi_component_agreement`, reused for consistency rather than introducing a second,
+  differently-named list parameter) — one `{label, terms}` entry per real track,
+  `len(components) >= repeating_group.min_items` (2).
+- Each track's `terms` is ONE free-text passage that MAY itself describe multiple sub-items
+  within that track (e.g. a track that is itself staged) — fully composed by the AI from what the
+  user described for THAT track specifically. Never invented, never borrowed from another track's
+  description.
+- `SHARED_ADDON_TERMS` is a required scalar (in `values`, not `components` — it applies once, not
+  per-track). If the user described no shared add-on, the AI must state that explicitly (e.g.
+  "אין תוספות החלות על שני המסלולים") rather than omitting the placeholder or inventing content —
+  an empty/whitespace value is still rejected by the same validation rule as every other
+  placeholder (REQ-083-02: an empty string is not a legitimate answer).
+- Same anti-padding/anti-merging discipline as `multi_component_agreement`: never invent a track
+  the user did not actually offer as a real alternative, never pad to a round number, never merge
+  two genuinely distinct tracks into one.
 
 ## Relationships
 

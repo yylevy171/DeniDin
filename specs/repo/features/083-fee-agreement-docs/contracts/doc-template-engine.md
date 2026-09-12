@@ -26,7 +26,7 @@ class DocTemplateEngine:
             (missing OR extra keys are both errors - no silent partial fill)
           - any value (scalar or inside a components entry) is empty/whitespace-only (an empty
             string is not a legitimate answer to "what is the fee amount" - REQ-083-02)
-          - the variant HAS a repeating_group (multi_component_agreement) and:
+          - the variant HAS a repeating_group (multi_component_agreement or alternative_tracks) and:
               * components is None/empty, OR
               * len(components) < repeating_group.min_items (2), OR
               * any entry's keys don't exactly match repeating_group.row_placeholders
@@ -61,12 +61,12 @@ class DocTemplateEngine:
       },
       "components": {
         "type": "array",
-        "description": "ONLY for variants with a repeating fee-component group (currently multi_component_agreement) - omit entirely for every other variant. One entry per REAL, distinct fee component the user described - any N >= 2, never padded or merged to reach a particular count.",
+        "description": "ONLY for variants with a repeating group (currently multi_component_agreement and alternative_tracks) - omit entirely for every other variant. For multi_component_agreement: one entry per REAL, distinct fee component that applies TOGETHER with the others. For alternative_tracks: one entry per REAL, mutually-exclusive fee track the client may choose between (never combined). Either way: any N >= 2, never padded or merged to reach a particular count.",
         "items": {
           "type": "object",
           "properties": {
-            "label": {"type": "string", "description": "Short name for this component, e.g. 'Referral Fee', 'Setup Fee', 'Monthly Retainer'."},
-            "terms": {"type": "string", "description": "ONE free-text line, fully composed from what the user actually said - the amount, and (only if the user stated them) a percentage/commission, a cost-share split with a named partner, and/or the specific payer entity if different from the main Client. If the component matches one of manifest.json's repeating_group.example_terms patterns, follow that pattern's phrasing/structure filling in the real facts; otherwise compose an equally natural free-text line of your own - the examples are guidance, not a closed set. Never invent any detail not actually discussed, in either case. Example: '15% of the collected amount, split 50/50 with Partner Cohen, payable by the Client upon receipt.'"}
+            "label": {"type": "string", "description": "Short name for this component/track, e.g. 'Referral Fee', 'Setup Fee', 'Monthly Retainer' (multi_component_agreement), or 'מסלול א׳ - שכר טרחה קבוע' (alternative_tracks)."},
+            "terms": {"type": "string", "description": "ONE free-text passage, fully composed from what the user actually said. For multi_component_agreement: the amount, and (only if stated) a percentage/commission, an hourly rate with an hour cap, a cost-share split with a named partner, and/or the specific payer entity if different from the main Client. For alternative_tracks: the full description of that ONE track's fee structure (may itself describe multiple sub-items within the track). If it matches one of manifest.json's repeating_group.example_terms patterns, follow that pattern's phrasing/structure filling in the real facts; otherwise compose an equally natural free-text passage of your own - the examples are guidance, not a closed set. Never invent any detail not actually discussed, and never borrow a detail from one component/track into another. Example (multi_component_agreement): '15% of the collected amount, split 50/50 with Partner Cohen, payable by the Client upon receipt.'"}
           },
           "required": ["label", "terms"]
         },
