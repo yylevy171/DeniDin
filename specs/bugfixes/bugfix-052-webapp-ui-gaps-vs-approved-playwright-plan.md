@@ -168,7 +168,7 @@ unchanged; 2 mobile baselines regenerated + committed. Remaining `test.fixme`: 0
 5.2.1/5.2.2 (G7), + the 3 manual-only 1.5 skips.
 
 ## Related
-- Feature 068 (`specs/done/068-ledger-ui-and-reports/`) — the feature these gaps belong
+- Feature 068 (`specs/done/v0.7.0/068-ledger-ui-and-reports/`) — the feature these gaps belong
   to; its `tasks.md` "viewable → done" Stories 0/0b and 4–8 describe the same shortfalls in
   prose.
 - `apps/webapp/e2e/README.md` — how to run the suite and the current `test.fixme` inventory.
