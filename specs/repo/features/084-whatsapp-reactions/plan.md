@@ -65,7 +65,7 @@ webhooks (SC-003), enforced by the same addressed-to-bot predicate the existing 
 logic already uses, never a second, independently-drifting check.
 **Scale/Scope**: one new Green API helper (`send_reaction`); one new AI tool (`react_to_message`,
 dispatched immediately, no approval gate); one new fast-path pre-dispatch hook in `denidin.py`
-(not a new `HANDLER_REGISTRY` entry — that table's exact 8-key shape is locked by an existing test);
+(not a new `HANDLER_REGISTRY` entry — that table's exact 9-key shape is locked by an existing test);
 two new optional fields threaded through existing `Message`/`Session` objects; one new
 `runtime_constitution.md` section plus cross-reference edits to every other tool-bearing section.
 
