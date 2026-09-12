@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/083-fee-agreement-docs`  
 **Created**: 2026-09-12  
-**Status**: Draft — Pending Review  
+**Status**: Approved Specification — Ready for Implementation Planning  
 **Input**: User description: "Creating a fee agreement document automatically based on user details and a well-known template. User asks -> AI asks clarifying info -> AI creates document and provides it back for download. Preference for docx."
 
 ---
@@ -21,11 +21,11 @@ Drafting boilerplate fee agreements is a repetitive administrative burden. This 
 
 ### Functional Requirements
 
-- **REQ-083-01: Template Repository**  
-  The system MUST store a hardcoded base template (e.g., `assets/templates/fee_agreement_template.docx`). This template will contain distinct text placeholders (e.g., `{{CLIENT_NAME}}`, `{{FEE_AMOUNT}}`, `{{SCOPE_OF_WORK}}`, `{{DATE}}`).
+- **REQ-083-01: Dynamic Template Variants (from Prod)**  
+  Rather than a single hardcoded template, the system MUST support $N$ variants of fee agreements derived from the historical corpus of fee agreements currently existing in production media files. The AI MUST select the appropriate variant based on the context of the user's request (e.g., standard consultation vs. retainer vs. specific legal matter).
 
-- **REQ-083-02: Autonomous Data Gathering**  
-  When triggered, the AI MUST analyze the placeholders required by the template. If fields are missing, the AI is free to autonomously decide how to retrieve them—either by checking the internal CRM/Ledger (if it's an existing client) or by halting the generation and explicitly asking the user for the missing details in the chat.
+- **REQ-083-02: Autonomous Data Gathering & Anti-Hallucination Guardrail**  
+  When triggered, the AI MUST analyze the placeholders required by the selected template variant. While it can check the CRM/Ledger for existing details, it is **strictly forbidden from hallucinating or guessing** any financial or legal parameters (e.g., fee amount, specific scope). If there is any ambiguity or missing data, it MUST pause generation and explicitly ask the user for clarification. It is always better to ask than to guess.
 
 - **REQ-083-03: Document Generation Engine**  
   The system MUST provide a backend tool (exposed to the AI) that accepts a payload of key-value pairs (the extracted data). This tool MUST load the `.docx` template, replace the placeholders with the provided values, and save a temporary `.docx` output file. The implementation should rely on standard python libraries (like `python-docx`) to preserve the template's formatting.
