@@ -665,7 +665,23 @@ def _process_conversational_message(notification: Notification) -> None:
         # reusing it here keeps interim and final sends byte-identical in production AND
         # tests. Always passed now (the feature flag that used to gate this has been
         # removed, 2026-09-12, explicit operator instruction).
-        progress_callback = notification.answer
+        #
+        # Bugfix (2026-09-13): sending the interim message is itself a real WhatsApp send,
+        # and WhatsApp clears the visible "typing..." indicator client-side the instant any
+        # message is delivered to the chat - the renewal job's next SCHEDULED tick can then
+        # land well after the indicator has already visibly disappeared (up to
+        # interval_seconds later, compounded by this environment's observed ~20s sendTyping
+        # latency), so the dots can appear to vanish for good mid-turn even though the
+        # keep-alive job itself never stopped. Re-firing one sendTyping call immediately
+        # after each successful interim send closes that gap instead of waiting for the
+        # next scheduled tick - best-effort/log-only, same as every other typing-indicator
+        # call, never allowed to affect message delivery.
+        def _progress_callback_with_typing_refresh(text: str) -> None:
+            notification.answer(text)
+            if denidin_app.green_api_bot is not None:
+                send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
+
+        progress_callback = _progress_callback_with_typing_refresh
         ai_response = denidin_app.ai_handler.get_response(
             ai_request,
             sender=message.sender_display_name,
