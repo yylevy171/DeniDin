@@ -13,7 +13,7 @@ test fixture never wiring `green_api_bot`) — see `tasks.md`'s session addendum
 account. Verified via a real Morning-MCP-backed billed test plus a 15-test sanity-suite spot-check
 (32 real `react_to_message` calls observed, correct emoji per outcome, zero dispatch failures).
 T012 (further rotation-based tuning rounds) and T013 (live-dev-environment quickstart
-verification) remain deliberately out of scope — see `tasks.md`. PR: TBD.  
+verification) remain deliberately out of scope — see `tasks.md`. PR: #314.  
 **Input**: User description: "Whatsapp reactions - react to user messages according to your interpretation; reaction can change according to your actions"
 
 ---
