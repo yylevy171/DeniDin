@@ -3188,6 +3188,9 @@ class AIHandler:
                         ledger_event_ids=ledger_event_ids,
                         message_id=request.message_id,
                         timestamp=user_source_ts,
+                        whatsapp_id_message=getattr(
+                            request.original_message, "whatsapp_id_message", None
+                        ),
                     )
 
                     if should_reply:
@@ -3218,6 +3221,9 @@ class AIHandler:
                         ledger_event_ids=ledger_event_ids,
                         message_id=request.message_id,
                         timestamp=user_source_ts,
+                        whatsapp_id_message=getattr(
+                            request.original_message, "whatsapp_id_message", None
+                        ),
                     )
 
                     if should_reply:
