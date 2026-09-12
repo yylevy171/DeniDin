@@ -13,3 +13,7 @@ Feature 068 Ledger Web UI — read-only password-gated web UI over LedgerEvent d
 ## webapp v0.6.0-f68v2 — 2026-09-07
 
 test
+
+## webapp v0.7.0 — 2026-09-12
+
+Ledger web UI, mandatory client resolution for ledger events, edited/deleted WhatsApp message handling
