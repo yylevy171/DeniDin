@@ -134,6 +134,94 @@ def send_typing_indicator(bot: Any, chat_id: str, is_blocked: bool) -> None:
         logger.warning(f"Failed to send typing indicator (chatId={chat_id}): {error}")
 
 
+def _typing_keepalive_job_id(chat_id: str, request_id: str) -> str:
+    """Unique per-turn job id - two overlapping turns on the same chat (shouldn't normally
+    happen, but must never collide) get independent renewal jobs."""
+    return f"typing-keepalive:{chat_id}:{request_id}"
+
+
+def start_typing_keepalive(
+    scheduler: Any,
+    bot: Any,
+    chat_id: str,
+    is_blocked: bool,
+    request_id: str,
+    *,
+    interval_seconds: int = 15,
+    max_duration_seconds: int = 180,
+) -> Optional[str]:
+    """Feature 080 (REQ-080-01): renewal-loop keep-alive for the typing indicator, superseding
+    feature 048's single-call design when `feature_flags.verbosity_and_telemetry_080` is on.
+
+    Unlike feature 048's reverted raw-thread renewer (see research.md R1 for the incident this
+    avoids), this schedules a job on the caller's already-running APScheduler
+    `BackgroundScheduler` - the same battle-tested primitive already used by
+    `reminder_delivery_service`/`accounting_reconciliation_service` in this codebase, with no
+    observed first-tick scheduling delay there. `next_run_time=now_local()` forces the first
+    `sendTyping` call to fire immediately rather than waiting a full `interval_seconds`.
+
+    Returns the scheduled job's id (to pass to `stop_typing_keepalive`), or None if `is_blocked`
+    (no job started - mirrors `send_typing_indicator`'s existing blocked-user skip). Never
+    raises - scheduling failures are logged and treated the same as "no keep-alive this turn",
+    since a missing indicator is purely cosmetic (identical posture to the single-call design).
+    """
+    if is_blocked:
+        return None
+
+    job_id = _typing_keepalive_job_id(chat_id, request_id)
+
+    def _tick() -> None:
+        try:
+            bot.api.serviceMethods.sendTyping(chat_id, typingTime=20000)
+        except Exception as error:  # pylint: disable=broad-except
+            logger.warning(f"Typing keep-alive renewal failed (chatId={chat_id}): {error}")
+
+    try:
+        # Local import avoids a hard apscheduler dependency for any caller that never
+        # exercises the keep-alive path (mirrors this module's existing narrow import style).
+        from datetime import timedelta
+        from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
+        from src.utils.time_utils import now_local
+
+        scheduler.add_job(
+            _tick,
+            trigger=IntervalTrigger(seconds=interval_seconds),
+            id=job_id,
+            next_run_time=now_local(),
+            max_instances=1,
+            replace_existing=True,
+        )
+
+        def _cap() -> None:
+            stop_typing_keepalive(scheduler, job_id)
+
+        scheduler.add_job(
+            _cap,
+            trigger="date",
+            id=f"{job_id}:cap",
+            run_date=now_local() + timedelta(seconds=max_duration_seconds),
+            replace_existing=True,
+        )
+        return job_id
+    except Exception as error:  # pylint: disable=broad-except
+        logger.warning(f"Failed to start typing keep-alive (chatId={chat_id}): {error}")
+        return None
+
+
+def stop_typing_keepalive(scheduler: Any, job_id: Optional[str]) -> None:
+    """Cancels the renewal job (and its safety-cap job, if still pending). No-op if job_id is
+    None or already gone. Called the instant DeniDin's turn ends - a reply, interim
+    clarification, or approval prompt is sent - matching feature 048's Q4 "DeniDin's turn"
+    semantics exactly. Never raises."""
+    if job_id is None:
+        return
+    for jid in (job_id, f"{job_id}:cap"):
+        try:
+            scheduler.remove_job(jid)
+        except Exception:  # pylint: disable=broad-except
+            pass  # already gone (cap fired, or stop called twice) - not an error
+
+
 class DeniDinGreenAPIBot(GreenAPIBot):
     """GreenAPIBot with a startup-notification-drain and polling loop that survive a Green API
     backend serving a genuinely empty HTTP body for "notification queue is empty" (bugfix-020),

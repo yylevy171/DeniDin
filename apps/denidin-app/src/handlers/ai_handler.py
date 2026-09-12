@@ -4,13 +4,14 @@ Phase 5: US3 - Error Handling & Resilience
 Phase 5 (002+007): Memory system integration
 Phase 6: RBAC (Role-Based Access Control)
 """
+import contextvars
 import copy
 import json
 import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, cast, Optional, List, Dict
+from typing import Any, Callable, cast, Optional, List, Dict
 
 from openai import OpenAI, APITimeoutError, RateLimitError, APIError
 from src.models.config import AppConfiguration
@@ -145,6 +146,20 @@ LEDGER_QUERY_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # Re-exported here so every existing `from src.handlers.ai_handler import
 # NO_REPLY_SENTINEL` keeps working.
 NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
+
+# Feature 080 (REQ-080-04, research.md R3 as revised during implementation): the active
+# turn's TelemetryBuilder, if any. Set once at the top of get_response() (try/finally around
+# the whole turn), read by every instrumented responses.create()/tool-dispatch call site via
+# .get() (defaults to None - "no telemetry this call", the correct behavior whenever the
+# feature flag is off or telemetry_manager was never configured). Thread-local by default
+# (Python's contextvars are NOT shared across threads unless explicitly propagated), and this
+# codebase processes each request synchronously on its own thread - never asyncio - so this
+# is correctly scoped per in-flight request despite AIHandler serving concurrent chats. This
+# is deliberately NOT a plain module-level mutable dict/global, which really would leak
+# across concurrent chats on different threads.
+_active_telemetry_builder: "contextvars.ContextVar[Optional[Any]]" = contextvars.ContextVar(
+    "denidin_active_telemetry_builder", default=None
+)
 
 # Architectural fix (2026-08-25): _finalize_response used to run the local-tool
 # handlers (_handle_query_ledger_events / _handle_list_reminders) exactly
@@ -1608,16 +1623,22 @@ class AIHandler:
     Implements retry logic with exponential backoff for transient failures.
     """
 
-    def __init__(self, ai_client: OpenAI, config: AppConfiguration):
+    def __init__(self, ai_client: OpenAI, config: AppConfiguration, telemetry_manager: Optional[Any] = None):
         """
         Initialize AI handler with OpenAI client and configuration.
 
         Args:
             ai_client: Configured AI client instance (OpenAI)
             config: Application configuration with AI settings
+            telemetry_manager: Feature 080 (REQ-080-04) - the RequestTelemetry SQLite store,
+                constructed by initialize_app() only when
+                feature_flags.verbosity_and_telemetry_080 is on. None (default) means
+                telemetry is fully disabled - every instrumented call site below becomes a
+                no-op, byte-identical to pre-feature behavior.
         """
         self.client = ai_client
         self.config = config
+        self.telemetry_manager = telemetry_manager
 
         # Feature 034 (REQ-VER-005): read once at construction, not per-call - a version
         # can't change mid-process (research.md Decision 4), unlike today's date below.
@@ -1762,6 +1783,59 @@ class AIHandler:
             f"vision={config.ai_vision_model}, embedding={config.ai_embedding_model}"
         )
 
+    # ------------------------------------------------------------------
+    # Feature 080 (REQ-080-04): telemetry instrumentation helpers.
+    # ------------------------------------------------------------------
+
+    def _timed_llm_call(self, call_fn: Callable[[], Any]) -> Any:
+        """Wraps one responses.create() call site with timing + token accounting, recorded
+        into the active turn's TelemetryBuilder (contextvars - see _active_telemetry_builder's
+        module docstring), if any. Times success AND failure alike (a timed-out/errored call
+        still consumed wall-clock time and must count, per contracts/telemetry-recorder.md) -
+        the original call's own exception propagates unchanged; this never adds new failure
+        modes. A complete no-op (just calls call_fn() and returns) when no telemetry builder
+        is active - the exact common case when the feature flag is off."""
+        from src.managers.telemetry_manager import monotonic_ms
+
+        builder = _active_telemetry_builder.get()
+        if builder is None:
+            return call_fn()
+
+        start_ms = monotonic_ms()
+        response = None
+        try:
+            response = call_fn()
+            return response
+        finally:
+            duration_ms = monotonic_ms() - start_ms
+            usage = getattr(response, "usage", None)
+            input_tokens = getattr(usage, "input_tokens", 0) or 0
+            output_tokens = getattr(usage, "output_tokens", 0) or 0
+            try:
+                builder.record_llm_call(duration_ms, input_tokens, output_tokens)
+            except Exception as telemetry_error:  # pylint: disable=broad-except
+                # Telemetry accounting must never break the real call it's timing.
+                logger.warning(f"Feature 080 telemetry record_llm_call failed: {telemetry_error}")
+
+    def _timed_tool_call(self, tool_name: str, call_fn: Callable[[], Any], *, is_morning_tool: bool = False) -> Any:
+        """Same contract as _timed_llm_call, for local function-tool dispatch and remote MCP
+        tool-call handling - see contracts/telemetry-recorder.md's record_tool_call()."""
+        from src.managers.telemetry_manager import monotonic_ms
+
+        builder = _active_telemetry_builder.get()
+        if builder is None:
+            return call_fn()
+
+        start_ms = monotonic_ms()
+        try:
+            return call_fn()
+        finally:
+            duration_ms = monotonic_ms() - start_ms
+            try:
+                builder.record_tool_call(tool_name, duration_ms, is_morning_tool=is_morning_tool)
+            except Exception as telemetry_error:  # pylint: disable=broad-except
+                logger.warning(f"Feature 080 telemetry record_tool_call failed: {telemetry_error}")
+
     def _load_constitution(self) -> str:
         """
         Load constitution file with mtime-based caching.
@@ -1813,11 +1887,31 @@ class AIHandler:
                 logger.warning(f"Constitution file is empty: {filepath}, using system_message fallback")
                 return ""
             
-            return self._constitution_content
-            
+            return self._apply_feature_080_constitution_gate(self._constitution_content)
+
         except Exception as e:
             logger.error(f"Failed to load constitution file {filepath}: {e}", exc_info=True)
             return ""
+
+    def _apply_feature_080_constitution_gate(self, content: str) -> str:
+        """Feature 080 (REQ-080-02): the "Proactive Progress Updates" section is wrapped in
+        `<!-- FEATURE_080_PROGRESS_UPDATES_START/END -->` HTML-comment markers in
+        runtime_constitution.md. When `feature_flags.verbosity_and_telemetry_080` is off
+        (default), strip the marked block entirely so the assembled prompt is byte-identical
+        to before this feature existed (CLAUDE.md's feature-flag rule); when on, strip only the
+        markers themselves, leaving the directive text in place. A single shared file (not a
+        per-environment copy) stays correct either way - the flag, not the file, decides.
+        """
+        start_marker = "<!-- FEATURE_080_PROGRESS_UPDATES_START -->"
+        end_marker = "<!-- FEATURE_080_PROGRESS_UPDATES_END -->"
+        start_idx = content.find(start_marker)
+        end_idx = content.find(end_marker)
+        if start_idx == -1 or end_idx == -1:
+            return content  # markers absent - nothing to gate, return as-is
+        flag_on = self.config.feature_flags.get('verbosity_and_telemetry_080', False)
+        if flag_on:
+            return content.replace(start_marker, "").replace(end_marker, "")
+        return (content[:start_idx] + content[end_idx + len(end_marker):]).strip()
 
     def _load_recognition_prompt(self) -> str:
         """Feature 069: load config/ledger_recognition_prompt.md with mtime-based
@@ -2176,12 +2270,52 @@ class AIHandler:
         # SDK's heavily-overloaded create() - safe to ignore, the actual value
         # types are correct for the Responses API.
         _log_outgoing_request("_call_openai_api (initial call)", kwargs)
-        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
         _log_raw_response("_call_openai_api (initial call)", response)
 
         return response
 
     def get_response(self, request: AIRequest, chat_id: Optional[str] = None,
+                     user_role: str = 'client', sender: Optional[str] = None,
+                     recipient: Optional[str] = None, user_phone: Optional[str] = None,
+                     is_group: bool = False, chat_name: Optional[str] = None,
+                     sender_phone: Optional[str] = None) -> AIResponse:
+        """Feature 080 (REQ-080-04): thin telemetry wrapper around _get_response_impl (the
+        real logic, unchanged below) - constructs one TelemetryBuilder per turn, activates it
+        via the module-level contextvar for the duration of this call (every instrumented
+        responses.create()/tool-dispatch site below reads it), and records the finished
+        RequestTelemetry row once the turn concludes (success OR exception - the finally
+        block guarantees both context cleanup and recording regardless of how the turn ends).
+        A complete no-op - just calls _get_response_impl() directly - whenever
+        self.telemetry_manager is None (the flag is off, or was never configured), preserving
+        byte-identical behavior to before this feature existed."""
+        if self.telemetry_manager is None:
+            return self._get_response_impl(
+                request, chat_id=chat_id, user_role=user_role, sender=sender,
+                recipient=recipient, user_phone=user_phone, is_group=is_group,
+                chat_name=chat_name, sender_phone=sender_phone,
+            )
+
+        from src.managers.telemetry_manager import TelemetryBuilder
+
+        effective_chat_id = chat_id or request.chat_id
+        builder = TelemetryBuilder(request.request_id, effective_chat_id, now_local().isoformat())
+        token = _active_telemetry_builder.set(builder)
+        try:
+            return self._get_response_impl(
+                request, chat_id=chat_id, user_role=user_role, sender=sender,
+                recipient=recipient, user_phone=user_phone, is_group=is_group,
+                chat_name=chat_name, sender_phone=sender_phone,
+            )
+        finally:
+            _active_telemetry_builder.reset(token)
+            try:
+                record = builder.finalize(now_local().isoformat())
+                self.telemetry_manager.record(record)
+            except Exception as telemetry_error:  # pylint: disable=broad-except
+                logger.warning(f"Feature 080 telemetry finalize/record failed: {telemetry_error}")
+
+    def _get_response_impl(self, request: AIRequest, chat_id: Optional[str] = None,
                      user_role: str = 'client', sender: Optional[str] = None,
                      recipient: Optional[str] = None, user_phone: Optional[str] = None,
                      is_group: bool = False, chat_name: Optional[str] = None,
@@ -2520,7 +2654,7 @@ class AIHandler:
             kwargs["tools"] = tools
         logger.info(f"[054] _call_openai_list_reminders_followup_api: call_id={call_id!r}")
         _log_outgoing_request("_call_openai_list_reminders_followup_api", kwargs)
-        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
         _log_raw_response("_call_openai_list_reminders_followup_api", response)
         return response
 
@@ -2594,7 +2728,7 @@ class AIHandler:
         logger.info(f"[044] _call_openai_query_ledger_events_followup_api: call_ids={call_ids!r}")
         logger.debug(f"[044][RAWLOG] query_events payload(s) sent back to model: {outputs!r}")
         _log_outgoing_request("_call_openai_query_ledger_events_followup_api", kwargs)
-        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
         _log_raw_response("_call_openai_query_ledger_events_followup_api", response)
         return response
 
@@ -2833,8 +2967,16 @@ class AIHandler:
             # one turn - see research.md Decision 10), and needs a follow-up
             # round-trip for its reply for the same function_call-OR-message
             # reason as everything else in this loop.
-            ledger_query_followup = self._handle_query_ledger_events(
-                request, current_response, tools
+            # Feature 080 (REQ-080-04): the local tool dispatch AND its own internal
+            # follow-up responses.create() call (already separately counted by
+            # _timed_llm_call) both fall inside this timed span - tool_total_execution_ms
+            # and llm_total_inference_time_ms are not strictly additive to
+            # total_duration_ms for a turn that uses a local tool, a known/accepted v1
+            # limitation (total_duration_ms itself is measured independently and stays
+            # accurate regardless).
+            ledger_query_followup = self._timed_tool_call(
+                "query_ledger_events",
+                lambda: self._handle_query_ledger_events(request, current_response, tools),
             )
             if ledger_query_followup is not None:
                 current_response = ledger_query_followup
@@ -2849,8 +2991,9 @@ class AIHandler:
             # immediately (unlike create/modify/delete_reminder), and needs a
             # follow-up round-trip for its reply for the same function_call-
             # OR-message reason as ledger events.
-            list_reminders_followup = self._handle_list_reminders(
-                request, current_response, tools
+            list_reminders_followup = self._timed_tool_call(
+                "list_reminders",
+                lambda: self._handle_list_reminders(request, current_response, tools),
             )
             if list_reminders_followup is not None:
                 current_response = list_reminders_followup
@@ -3005,6 +3148,19 @@ class AIHandler:
         ]
         if mcp_calls:
             logger.info(f"MCP calls for request {request.request_id}: {mcp_calls}")
+            # Feature 080 (REQ-080-04): record each Morning MCP tool call for the
+            # tool_calls_count/morning_api_request_times_ms breakdown. Duration is
+            # deliberately 0 here - OpenAI's Responses API executes a remote MCP tool
+            # call server-side, INSIDE the responses.create() call itself (already
+            # captured by _timed_llm_call's own timing), so there is no separate,
+            # observable per-tool duration to measure from this side of the API. A
+            # future Morning-side timing improvement (out of scope here - see plan.md's
+            # "no changes to apps/morning-mcp-app" note) could attach real durations;
+            # until then this correctly reports count/name, not a fabricated duration.
+            telemetry_builder = _active_telemetry_builder.get()
+            if telemetry_builder is not None:
+                for call in mcp_calls:
+                    self._timed_tool_call(call["name"], lambda: None, is_morning_tool=True)
         elif tools and any(
             phrase in response_text
             for phrase in ("הוצאה בהצלחה", "סומנה כשולמה", "בוטלה בהצלחה", "נוסף בהצלחה")
@@ -3310,7 +3466,7 @@ class AIHandler:
         }
         logger.info(f"[054] _call_openai_reminder_followup_api: call_id={pending.call_id!r}, result={result!r}")
         _log_outgoing_request("_call_openai_reminder_followup_api", kwargs)
-        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
         _log_raw_response("_call_openai_reminder_followup_api", response)
         logger.info(
             f"[054] _call_openai_reminder_followup_api response: id={getattr(response, 'id', None)!r}, "
@@ -3377,7 +3533,7 @@ class AIHandler:
         # See _call_openai_api's comment: dynamically-built kwargs never match a
         # single create() overload.
         _log_outgoing_request("capture_ledger_events_from_text", kwargs)
-        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
         _log_raw_response("capture_ledger_events_from_text", response)
         ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
         ledger_events = [c["arguments"] for c in ledger_calls]
@@ -3410,7 +3566,7 @@ class AIHandler:
             # See _call_openai_api's comment: dynamically-built kwargs never match a
             # single create() overload.
             _log_outgoing_request("capture_ledger_events_from_text (retry)", retry_kwargs)
-            response = self.client.responses.create(**retry_kwargs)  # type: ignore[call-overload]
+            response = self._timed_llm_call(lambda: self.client.responses.create(**retry_kwargs))  # type: ignore[call-overload]
             _log_raw_response("capture_ledger_events_from_text (retry)", response)
             ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
             ledger_events = [c["arguments"] for c in ledger_calls]
@@ -3584,7 +3740,7 @@ class AIHandler:
         kwargs = dict(base_kwargs)
         kwargs["input"] = self._assemble_recognition_input(session, reply_text, turn_mcp_calls)
         _log_outgoing_request("recognize_ledger_event", kwargs)
-        response = self.client.responses.create(**kwargs)
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))
         _log_raw_response("recognize_ledger_event", response)
 
         # Bounded query_ledger_events loop: keep feeding the model its own lookup
@@ -3617,7 +3773,7 @@ class AIHandler:
             follow_kwargs["input"] = output_items
             follow_kwargs["previous_response_id"] = response.id
             _log_outgoing_request("recognize_ledger_event (query round)", follow_kwargs)
-            response = self.client.responses.create(**follow_kwargs)
+            response = self._timed_llm_call(lambda: self.client.responses.create(**follow_kwargs))
             _log_raw_response("recognize_ledger_event (query round)", response)
 
         # If the model produced no report call at all (only text, or it spent its
@@ -3641,7 +3797,7 @@ class AIHandler:
             }]
             retry_kwargs["previous_response_id"] = response.id
             _log_outgoing_request("recognize_ledger_event (retry)", retry_kwargs)
-            response = self.client.responses.create(**retry_kwargs)
+            response = self._timed_llm_call(lambda: self.client.responses.create(**retry_kwargs))
             _log_raw_response("recognize_ledger_event (retry)", response)
             args = self._extract_recognition_args(response)
 
@@ -3727,7 +3883,7 @@ class AIHandler:
         # AppConfiguration.max_retries' own docstring) via .with_options(...)
         # right here, rather than relying on any outer/shared retry layer to
         # respect this. No retry of this call is ever safe, at any layer.
-        response = self.client.with_options(max_retries=0).responses.create(**kwargs)  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.with_options(max_retries=0).responses.create(**kwargs))  # type: ignore[call-overload]
         _log_raw_response("_call_openai_approval_api", response)
         logger.info(
             f"[022] _call_openai_approval_api response: id={getattr(response, 'id', None)!r}, "
