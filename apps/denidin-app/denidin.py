@@ -1359,6 +1359,10 @@ if __name__ == "__main__":
     # message_source.is_blocked below - see DeniDin.__init__'s green_api_bot
     # docstring for why this can't be a constructor/initialize_app() arg either.
     denidin_app.green_api_bot = live_bot
+    # Feature 084 (WhatsApp reactions): react_to_message needs a bot object to call
+    # send_reaction on, same post-construction-attribute idiom as green_api_bot above -
+    # AIHandler is constructed inside initialize_app(), before live_bot exists.
+    denidin_app.ai_handler.green_api_bot = live_bot
 
     # Feature 045's read-receipt hook: set as a post-construction attribute,
     # not a constructor/start() arg - denidin.ai_handler.user_manager doesn't
