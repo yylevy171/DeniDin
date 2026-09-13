@@ -87,6 +87,19 @@ Scenarios ✅ approved 2026-09-12)
   document's own instruction, reiterated from the standing CLAUDE.md/METHODOLOGY approval
   gates).
 
+**Phase 6/7 status (2026-09-13, explicit operator decision): DEFERRED, not executed.**
+`verbosity_and_telemetry_080` was removed entirely later the same day (the feature became
+always-on, unconditional — see the flag-removal commit) — the flag-off/flag-on gating T020
+describes no longer exists, so T020 as written is moot. Rather than adapt this phase's plan to
+match, real-WhatsApp manual live testing (repeated rounds against the dev environment, operator-
+driven) was used instead to verify the feature end-to-end, and surfaced/fixed several real bugs
+this phase's own written-inventory approach would not have caught on its own (a local-tool
+dispatch-loop bug where a response carrying more than one pending tool call type failed
+outright; a typing-indicator renewal gap; a rogue-language leak). The operator confirmed live
+behavior as satisfactory and closed the feature on that basis. T019-T022 are left unchecked
+above as an accurate historical record of what was planned but not done, not retroactively
+marked complete.
+
 ## Dependencies
 - T001-T003 before everything.
 - T004→T005 (Task A/B gate) before Phase 2/3/4 use `TelemetryManager`.
