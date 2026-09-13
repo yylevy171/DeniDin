@@ -174,7 +174,11 @@ def send_typing_indicator(bot: Any, chat_id: str, is_blocked: bool) -> None:
         return
 
     try:
-        bot.api.serviceMethods.sendTyping(chat_id, typingTime=20000)
+        # Bugfix (2026-09-13): bumped from 20000 to 40000 - see start_typing_keepalive's
+        # _tick for the live-log evidence this duration needs to outlast (this function is
+        # also called as the immediate post-progress-update refresh, same reasoning
+        # applies: the next real signal after this one may land later than 20s away).
+        bot.api.serviceMethods.sendTyping(chat_id, typingTime=40000)
     except Exception as error:  # pylint: disable=broad-except
         logger.warning(f"Failed to send typing indicator (chatId={chat_id}): {error}")
 
@@ -218,7 +222,17 @@ def start_typing_keepalive(
 
     def _tick() -> None:
         try:
-            bot.api.serviceMethods.sendTyping(chat_id, typingTime=20000)
+            # Bugfix (2026-09-13): typingTime is WhatsApp's own client-side duration for
+            # how long the indicator stays visible after this call lands - it must
+            # comfortably outlast the worst-case gap between two successful ticks, not
+            # just the nominal interval_seconds. Live logs showed sendTyping's own HTTP
+            # round-trip occasionally taking longer than interval_seconds (15s), which
+            # (with max_instances=1 below) causes APScheduler to skip the next scheduled
+            # tick outright ("maximum number of running instances reached") rather than
+            # queue it - real successful calls were observed landing 21-30s apart while
+            # the indicator itself only lasted 20s, a real visible gap. 40s covers that
+            # observed worst case with margin.
+            bot.api.serviceMethods.sendTyping(chat_id, typingTime=40000)
         except Exception as error:  # pylint: disable=broad-except
             logger.warning(f"Typing keep-alive renewal failed (chatId={chat_id}): {error}")
 
@@ -234,7 +248,12 @@ def start_typing_keepalive(
             trigger=IntervalTrigger(seconds=interval_seconds),
             id=job_id,
             next_run_time=now_local(),
-            max_instances=1,
+            # Bugfix (2026-09-13): max_instances=2 (was 1) lets one slow in-flight
+            # sendTyping call overlap with the next scheduled tick instead of that tick
+            # being skipped outright - concurrent typing pings are harmless/idempotent
+            # (each just refreshes the same indicator), so overlap has no downside here,
+            # unlike a job with real side effects.
+            max_instances=2,
             replace_existing=True,
         )
 
