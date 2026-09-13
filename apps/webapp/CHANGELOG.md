@@ -17,3 +17,7 @@ test
 ## [0.7.0] - 2026-09-12
 
 Ledger web UI, mandatory client resolution for ledger events, edited/deleted WhatsApp message handling
+
+## [0.7.1] - 2026-09-13
+
+Feature 080: always-on progress updates, typing keep-alive, telemetry plumbing; fixes multi-tool dispatch collision, typing-indicator gap, and rogue-language leak.
