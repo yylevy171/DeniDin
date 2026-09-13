@@ -15,7 +15,7 @@ caused by Green API's own `sendTyping` latency interacting with the renewal job'
 rogue-language leak (a reply mixing in a non-Hebrew script mid-sentence), fixed via a broadened
 constitution guard. `verbosity_and_telemetry_080` (the feature flag originally planned in Phase 0)
 was removed entirely on 2026-09-12, per explicit operator instruction - the feature is
-unconditionally always-on, never flag-gated.  
+unconditionally always-on, never flag-gated. PR #315.  
 **Input**: User description: "Higher verbosoty and speed, multiple replies per user message." Revised: Continuous feedback, keeping user in the loop via AI constitution, keep-alive typing indicator, and gather latency metrics plumbing.
 
 ---
