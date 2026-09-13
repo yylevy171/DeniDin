@@ -2,7 +2,20 @@
 
 **Feature Branch**: `feature/080-higher-verbosity-speed`  
 **Created**: 2026-09-12  
-**Status**: Approved Specification — Ready for Implementation Planning  
+**Status**: Done (2026-09-13). `speckit.plan`/`speckit.tasks`/`speckit.implement` Phases 0-5
+(T001-T018) implemented and green; Phase 6/7 (cross-cutting test-helper audit + billed/expensive
+acceptance tests) explicitly deferred by operator decision in favor of repeated real-WhatsApp
+manual live testing against the dev environment, which verified the feature end-to-end and
+surfaced/fixed three real bugs a written-inventory audit alone would not have caught: (1) the
+local-tool dispatch loop rejecting any response carrying more than one pending tool call type at
+once (react_to_message, unconditionally attached by a separately-merged feature, colliding with
+query_ledger_events/list_reminders/send_progress_update); (2) a typing-indicator renewal gap
+caused by Green API's own `sendTyping` latency interacting with the renewal job's scheduling
+(fixed via cadence, not duration - `typingTime` is capped at 20000ms by Green API itself); (3) a
+rogue-language leak (a reply mixing in a non-Hebrew script mid-sentence), fixed via a broadened
+constitution guard. `verbosity_and_telemetry_080` (the feature flag originally planned in Phase 0)
+was removed entirely on 2026-09-12, per explicit operator instruction - the feature is
+unconditionally always-on, never flag-gated. PR #315.  
 **Input**: User description: "Higher verbosoty and speed, multiple replies per user message." Revised: Continuous feedback, keeping user in the loop via AI constitution, keep-alive typing indicator, and gather latency metrics plumbing.
 
 ---

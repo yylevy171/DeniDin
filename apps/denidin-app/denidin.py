@@ -19,6 +19,8 @@ from src.utils.green_api_bot import (
     DeniDinGreenAPIBot,
     mark_message_read,
     send_typing_indicator,
+    start_typing_keepalive,
+    stop_typing_keepalive,
 )
 from src.utils.whatsapp_audit_log import log_inbound, log_outbound
 from src.utils.time_utils import local_from_timestamp
@@ -206,6 +208,19 @@ class DeniDin:
         # initialize_app(), same rule as accounting_reconciliation_scheduler -
         # see contracts/daily-summary-roll-service.md).
         self.daily_roll_scheduler = daily_roll_scheduler
+        # Feature 080: always active (the feature flag that used to gate this has been
+        # removed, 2026-09-12, explicit operator instruction).
+        # typing_keepalive_scheduler: a dedicated APScheduler BackgroundScheduler for the
+        # per-turn renewal jobs (research.md R1 - reuses the same battle-tested primitive as
+        # reminder_scheduler/accounting_reconciliation_scheduler, not feature 048's reverted
+        # raw-thread renewer). telemetry_manager: reuses ai_handler's own instance (constructed
+        # in initialize_app, before AIHandler, so AIHandler's instrumented responses.create()
+        # call sites can record into it directly) rather than a second, independent one.
+        from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
+
+        self.telemetry_manager = getattr(ai_handler, 'telemetry_manager', None)
+        self.typing_keepalive_scheduler = BackgroundScheduler()
+        self.typing_keepalive_scheduler.start()
         self._logger = get_logger(__name__)
         # Feature 048's typing indicator needs the live bot (bot.api.serviceMethods.
         # sendTyping) at message-processing time, same as mark_message_read needs it
@@ -335,6 +350,10 @@ class DeniDin:
             self._logger.info("Stopping daily-summary roll scheduler...")
             self.daily_roll_scheduler.shutdown(wait=False)
             self._logger.info("Daily-summary roll scheduler stopped")
+        if self.typing_keepalive_scheduler is not None:
+            self._logger.info("Stopping typing keep-alive scheduler...")
+            self.typing_keepalive_scheduler.shutdown(wait=False)
+            self._logger.info("Typing keep-alive scheduler stopped")
         if self.memory_manager is not None:
             self._logger.info("Closing ChromaDB client...")
             self.memory_manager.client.close()
@@ -404,8 +423,15 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
         max_retries=config.max_retries
     )
     
+    # Feature 080: constructed here, before AIHandler, so AIHandler's own instrumented
+    # responses.create() call sites can record into it directly. Always constructed now
+    # (the feature flag that used to gate this has been removed, 2026-09-12, explicit
+    # operator instruction).
+    from src.managers.telemetry_manager import TelemetryManager
+    telemetry_manager = TelemetryManager(config.data_root)
+
     # Initialize AI handler
-    ai_handler = AIHandler(ai_client, config)
+    ai_handler = AIHandler(ai_client, config, telemetry_manager=telemetry_manager)
 
     # bugfix-024: resolve DeniDin's own WhatsApp number ONCE at startup (real Green
     # API call, never per-message) - see _fetch_own_whatsapp_number's docstring.
@@ -607,8 +633,20 @@ def _process_conversational_message(notification: Notification) -> None:
         # testing surfaced an unresolved scheduling delay; accepted limitation that the
         # indicator may lapse before the reply arrives on turns slower than ~20s.
         is_blocked = denidin_app.ai_handler.user_manager.get_user(message.sender_id).is_blocked
+        # Feature 080 (REQ-080-01): when the feature flag is on, use the renewal-loop
+        # keep-alive instead of feature 048's single-shot call - see
+        # src/utils/green_api_bot.py's start_typing_keepalive docstring. keepalive_job_id
+        # stays None (no-op stop below) whenever the flag is off, preserving feature 048's
+        # exact prior behavior byte-for-byte.
+        keepalive_job_id = None
         if denidin_app.green_api_bot is not None:
-            send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
+            if denidin_app.typing_keepalive_scheduler is not None:
+                keepalive_job_id = start_typing_keepalive(
+                    denidin_app.typing_keepalive_scheduler, denidin_app.green_api_bot,
+                    message.chat_id, is_blocked, ai_request.request_id,
+                )
+            else:
+                send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
         # Get AI response (with retry logic and fallbacks built-in)
         # Feature 039: pass the resolved display name (not the raw WhatsApp id) as
@@ -620,18 +658,49 @@ def _process_conversational_message(notification: Notification) -> None:
         # 2026-08-04: this silently broke RBAC-gated Morning MCP tool attachment
         # for every 1:1 conversation, resolving the display name as an unknown
         # phone -> defaulting to CLIENT role).
+        # Feature 080: progress_callback is how send_progress_update actually sends a real
+        # interim WhatsApp message mid-turn - notification.answer is the same real send
+        # mechanism send_response() below eventually uses for the final reply (and what
+        # billed/expensive test fixtures already capture via _test_sent_messages), so
+        # reusing it here keeps interim and final sends byte-identical in production AND
+        # tests. Always passed now (the feature flag that used to gate this has been
+        # removed, 2026-09-12, explicit operator instruction).
+        #
+        # Bugfix (2026-09-13): sending the interim message is itself a real WhatsApp send,
+        # and WhatsApp clears the visible "typing..." indicator client-side the instant any
+        # message is delivered to the chat - the renewal job's next SCHEDULED tick can then
+        # land well after the indicator has already visibly disappeared (up to
+        # interval_seconds later, compounded by this environment's observed ~20s sendTyping
+        # latency), so the dots can appear to vanish for good mid-turn even though the
+        # keep-alive job itself never stopped. Re-firing one sendTyping call immediately
+        # after each successful interim send closes that gap instead of waiting for the
+        # next scheduled tick - best-effort/log-only, same as every other typing-indicator
+        # call, never allowed to affect message delivery.
+        def _progress_callback_with_typing_refresh(text: str) -> None:
+            notification.answer(text)
+            if denidin_app.green_api_bot is not None:
+                send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
+
+        progress_callback = _progress_callback_with_typing_refresh
         ai_response = denidin_app.ai_handler.get_response(
             ai_request,
             sender=message.sender_display_name,
             user_phone=group_user_phone or message.sender_id,
             sender_phone=message.sender_id,
             is_group=message.is_group,
-            chat_name=message.chat_name
+            chat_name=message.chat_name,
+            progress_callback=progress_callback,
         )
         logger.info(
             f"{tracking} AI response generated: {ai_response.tokens_used} tokens, "
             f"{len(ai_response.response_text)} chars"
         )
+        # Feature 080: DeniDin's turn ends the instant it's about to send anything (or
+        # concludes with no reply) - stop the renewal job here, before the outbound send,
+        # matching feature 048's Q4 "DeniDin's turn" semantics exactly. No-op if
+        # keepalive_job_id is None (flag off, or no live bot).
+        if denidin_app.typing_keepalive_scheduler is not None:
+            stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
 
         # Feature 039 (US4a): should_reply=False means the model determined this
         # message wasn't for DeniDin - not an error, not a failure, just no reply.
@@ -668,6 +737,15 @@ def _process_conversational_message(notification: Notification) -> None:
         )
 
     except Exception as e:
+        # Feature 080: safety net - stop any still-running keep-alive job even if the try
+        # block raised before reaching its own stop_typing_keepalive call above (e.g.
+        # get_response itself raised). NameError guards the case the job was never started
+        # (exception before keepalive_job_id was assigned).
+        try:
+            if denidin_app.typing_keepalive_scheduler is not None:
+                stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
+        except NameError:
+            pass
         # Global exception handler - catches anything not handled by specific handlers
         # Try to include tracking if message was processed
         try:
@@ -727,10 +805,21 @@ def _process_media_message(notification: Notification) -> None:
 
     message = WhatsAppMessage.from_notification(notification)
     is_blocked = denidin_app.ai_handler.user_manager.get_user(message.sender_id).is_blocked
+    # Feature 080: same renewal-vs-single-call choice as _process_conversational_message
+    # above - see that function's comment for the full rationale.
+    keepalive_job_id = None
     if denidin_app.green_api_bot is not None:
-        send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
+        if denidin_app.typing_keepalive_scheduler is not None:
+            keepalive_job_id = start_typing_keepalive(
+                denidin_app.typing_keepalive_scheduler, denidin_app.green_api_bot,
+                message.chat_id, is_blocked, message.message_id,
+            )
+        else:
+            send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
     result = denidin_app.whatsapp_handler.handle_media_message(notification)
+    if denidin_app.typing_keepalive_scheduler is not None:
+        stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
 
     # Feature 069 (Phase 9/10): a fee-agreement / bank-deposit image or DOCX was
     # recognised. Instead of replying with the plain extraction summary,
@@ -1000,11 +1089,31 @@ def handle_button_tap(notification: Notification) -> None:
     selected_id = button_data.get("selectedId", "")
     stanza_id = button_data.get("stanzaId", "")
 
-    ai_response = denidin_app.ai_handler.resolve_button_tap(
-        message=message,
-        selected_id=selected_id,
-        stanza_id=stanza_id,
-    )
+    # Feature 080: a button tap is a real turn too (resolve_button_tap can itself take a
+    # while - it's a live MCP/local-tool call, same as any other turn) - start the same
+    # renewal-loop typing keep-alive the conversational path uses (denidin.py's own
+    # _process_conversational_message), so a slow tap-resolution doesn't leave the user
+    # staring at a stopped "typing…" indicator. This was missing entirely pre-2026-09-13 -
+    # a real gap, not something this feature deliberately scoped out.
+    is_blocked = denidin_app.ai_handler.user_manager.get_user(message.sender_id).is_blocked
+    keepalive_job_id = None
+    if denidin_app.green_api_bot is not None and denidin_app.typing_keepalive_scheduler is not None:
+        keepalive_job_id = start_typing_keepalive(
+            denidin_app.typing_keepalive_scheduler, denidin_app.green_api_bot,
+            message.chat_id, is_blocked, message.message_id,
+        )
+
+    try:
+        ai_response = denidin_app.ai_handler.resolve_button_tap(
+            message=message,
+            selected_id=selected_id,
+            stanza_id=stanza_id,
+        )
+    finally:
+        # DeniDin's turn is over the instant resolve_button_tap returns (or raises) -
+        # matching feature 048/080's "stop the instant the turn ends" semantics.
+        if denidin_app.typing_keepalive_scheduler is not None:
+            stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
 
     if ai_response is None:
         # Stale/superseded tap, or no pending approval at all - spec.md

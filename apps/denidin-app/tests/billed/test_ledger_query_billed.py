@@ -227,7 +227,20 @@ class TestLedgerQueryBilled:
 
     @staticmethod
     def _get_response(notification):
-        return notification._test_sent_messages[0] if notification._test_sent_messages else None
+        """The turn's real final answer - Feature 080: LAST sent message, not the first.
+        A slow turn may send one or more interim send_progress_update messages BEFORE
+        the real answer (see _get_progress_updates below) - the first message is no
+        longer reliably the answer. On a fast turn with no interim message, there's
+        exactly one message and last == first, so this stays correct for every
+        pre-existing caller unchanged."""
+        return notification._test_sent_messages[-1] if notification._test_sent_messages else None
+
+    @staticmethod
+    def _get_progress_updates(notification):
+        """Every message BEFORE the final answer - i.e. any interim
+        send_progress_update sends this turn made. Empty list on a fast turn (flag off,
+        or the model judged no interim update was warranted)."""
+        return notification._test_sent_messages[:-1]
 
     def _send_text(self, chat_id, sender, sender_name, text, label):
         from denidin import handle_text_message
@@ -423,6 +436,19 @@ class TestLedgerQueryBilled:
             f"expected BOTH amounts reflected after confirming both, got: {both!r}"
         )
 
+        # Feature 080 acceptance scenario (user-stories.md, Telemetry assertion):
+        # this multi-turn disambiguation drives at least one real query_ledger_events
+        # round-trip per turn - a RequestTelemetry row for the LAST turn ("both") must
+        # exist, with a plausible non-zero duration and at least one recorded LLM call.
+        telemetry_manager = denidin_app.ai_handler.telemetry_manager
+        if telemetry_manager is not None:  # None whenever the feature flag is off
+            row = telemetry_manager.get_latest_by_chat(chat_id)
+            assert row is not None, f"expected a telemetry row for chat={chat_id!r}"
+            assert row["llm_turns_count"] >= 1
+            assert row["total_duration_ms"] >= 0
+            assert row["input_tokens_count"] > 0
+            assert row["output_tokens_count"] > 0
+
     # ------------------------------------------------------------------
     # T010 - aggregation
     # ------------------------------------------------------------------
@@ -463,6 +489,19 @@ class TestLedgerQueryBilled:
         assert reply is not None
         assert "7" in reply, f"expected the correct sum (3+4=7) in reply: {reply!r}"
         assert "99" not in reply, f"the two-months-ago decoy hours leaked into the reply: {reply!r}"
+
+        # Feature 080 acceptance scenario (user-stories.md, Telemetry assertion):
+        # this aggregation query (client resolution -> ledger scan -> computed answer)
+        # must produce a RequestTelemetry row with plausible non-zero timing/token data.
+        telemetry_manager = denidin_app.ai_handler.telemetry_manager
+        if telemetry_manager is not None:  # None whenever the feature flag is off
+            row = telemetry_manager.get_latest_by_chat(chat_id)
+            assert row is not None, f"expected a telemetry row for chat={chat_id!r}"
+            assert row["llm_turns_count"] >= 1
+            assert row["total_duration_ms"] >= 0
+            assert row["llm_total_inference_time_ms"] >= 0
+            assert row["input_tokens_count"] > 0
+            assert row["output_tokens_count"] > 0
 
     def test_hours_by_payer_this_month(self, denidin_app, config):
         phone = config.godfather_phone

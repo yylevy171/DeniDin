@@ -174,9 +174,118 @@ def send_typing_indicator(bot: Any, chat_id: str, is_blocked: bool) -> None:
         return
 
     try:
+        # 20000 is Green API's own hard cap ("'typingTime' must be between 1000 and
+        # 20000" - confirmed live 2026-09-13 when a bugfix attempt briefly raised this to
+        # 40000 and every single sendTyping call started failing outright with a 400).
+        # Do not raise this value - see start_typing_keepalive's interval_seconds/
+        # max_instances for how the renewal-loop gap problem is actually addressed
+        # instead (shortening the cadence, not lengthening this).
         bot.api.serviceMethods.sendTyping(chat_id, typingTime=20000)
     except Exception as error:  # pylint: disable=broad-except
         logger.warning(f"Failed to send typing indicator (chatId={chat_id}): {error}")
+
+
+def _typing_keepalive_job_id(chat_id: str, request_id: str) -> str:
+    """Unique per-turn job id - two overlapping turns on the same chat (shouldn't normally
+    happen, but must never collide) get independent renewal jobs."""
+    return f"typing-keepalive:{chat_id}:{request_id}"
+
+
+def start_typing_keepalive(
+    scheduler: Any,
+    bot: Any,
+    chat_id: str,
+    is_blocked: bool,
+    request_id: str,
+    *,
+    interval_seconds: int = 8,
+    max_duration_seconds: int = 180,
+) -> Optional[str]:
+    """Feature 080: renewal-loop keep-alive for the typing indicator, superseding
+    feature 048's single-call design (always active - the feature flag that used to gate
+    this has been removed, 2026-09-12, explicit operator instruction).
+
+    Unlike feature 048's reverted raw-thread renewer (see research.md R1 for the incident this
+    avoids), this schedules a job on the caller's already-running APScheduler
+    `BackgroundScheduler` - the same battle-tested primitive already used by
+    `reminder_delivery_service`/`accounting_reconciliation_service` in this codebase, with no
+    observed first-tick scheduling delay there. `next_run_time=now_local()` forces the first
+    `sendTyping` call to fire immediately rather than waiting a full `interval_seconds`.
+
+    Returns the scheduled job's id (to pass to `stop_typing_keepalive`), or None if `is_blocked`
+    (no job started - mirrors `send_typing_indicator`'s existing blocked-user skip). Never
+    raises - scheduling failures are logged and treated the same as "no keep-alive this turn",
+    since a missing indicator is purely cosmetic (identical posture to the single-call design).
+    """
+    if is_blocked:
+        return None
+
+    job_id = _typing_keepalive_job_id(chat_id, request_id)
+
+    def _tick() -> None:
+        try:
+            # 20000 is Green API's own hard cap ("'typingTime' must be between 1000 and
+            # 20000" - confirmed live 2026-09-13: a first bugfix attempt raised this to
+            # 40000 to outlast an observed gap between successful ticks, and every single
+            # sendTyping call started failing outright with a 400). The gap is instead
+            # closed on the cadence side - see interval_seconds/max_instances below.
+            bot.api.serviceMethods.sendTyping(chat_id, typingTime=20000)
+        except Exception as error:  # pylint: disable=broad-except
+            logger.warning(f"Typing keep-alive renewal failed (chatId={chat_id}): {error}")
+
+    try:
+        # Local import avoids a hard apscheduler dependency for any caller that never
+        # exercises the keep-alive path (mirrors this module's existing narrow import style).
+        from datetime import timedelta
+        from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
+        from src.utils.time_utils import now_local
+
+        scheduler.add_job(
+            _tick,
+            trigger=IntervalTrigger(seconds=interval_seconds),
+            id=job_id,
+            next_run_time=now_local(),
+            # Bugfix (2026-09-13): typingTime is capped at 20000ms by Green API itself
+            # (confirmed live - see _tick), so the gap-between-ticks problem can only be
+            # closed from the cadence side, not by lengthening the indicator's own
+            # duration. interval_seconds dropped 15 -> 8 (well under the 20s cap, so a
+            # single skipped/delayed tick still leaves a live indicator when the next one
+            # lands) and max_instances raised 1 -> 2 so one slow in-flight sendTyping call
+            # no longer blocks the next scheduled tick from firing at all (concurrent
+            # typing pings are harmless/idempotent - each just refreshes the same
+            # indicator, unlike a job with real side effects).
+            max_instances=2,
+            replace_existing=True,
+        )
+
+        def _cap() -> None:
+            stop_typing_keepalive(scheduler, job_id)
+
+        scheduler.add_job(
+            _cap,
+            trigger="date",
+            id=f"{job_id}:cap",
+            run_date=now_local() + timedelta(seconds=max_duration_seconds),
+            replace_existing=True,
+        )
+        return job_id
+    except Exception as error:  # pylint: disable=broad-except
+        logger.warning(f"Failed to start typing keep-alive (chatId={chat_id}): {error}")
+        return None
+
+
+def stop_typing_keepalive(scheduler: Any, job_id: Optional[str]) -> None:
+    """Cancels the renewal job (and its safety-cap job, if still pending). No-op if job_id is
+    None or already gone. Called the instant DeniDin's turn ends - a reply, interim
+    clarification, or approval prompt is sent - matching feature 048's Q4 "DeniDin's turn"
+    semantics exactly. Never raises."""
+    if job_id is None:
+        return
+    for jid in (job_id, f"{job_id}:cap"):
+        try:
+            scheduler.remove_job(jid)
+        except Exception:  # pylint: disable=broad-except
+            pass  # already gone (cap fired, or stop called twice) - not an error
 
 
 class DeniDinGreenAPIBot(GreenAPIBot):
