@@ -99,3 +99,7 @@ Feature 070: rolling 14-day short-term memory window with a nightly daily-summar
 ## denidin-app v0.7.0 — 2026-09-12
 
 Ledger web UI, mandatory client resolution for ledger events, edited/deleted WhatsApp message handling
+
+## denidin-app v0.7.1 — 2026-09-13
+
+Feature 080: always-on progress updates, typing keep-alive, telemetry plumbing; fixes multi-tool dispatch collision, typing-indicator gap, and rogue-language leak.
