@@ -165,9 +165,14 @@ copy.
 - [x] T010b [P] [US2] Implement `scripts/backup_prod/pull_backups.sh` (depends on T004b; per
   research.md R4/contracts' `pull_backups.sh` contract) (BLOCKED until T010a approved)
 
-- [ ] T011 [US2] 👤 **MANUAL APPROVAL GATE**: run `quickstart.md` step 2 against the real
+- [x] T011 [US2] 👤 **MANUAL APPROVAL GATE**: run `quickstart.md` step 2 against the real
   `denidin-winprod` SSH alias and confirm the archive from US1's T009 gate now also exists
-  locally on the Mac (UAT 2) — requires the real dev/prod archive from T009 to already exist
+  locally on the Mac (UAT 2) — requires the real dev/prod archive from T009 to already exist.
+  **Done live, 2026-09-14**: found and fixed a real bug along the way — a plain `rsync -e "ssh
+  ..."` breaks against this box's cmd.exe SSH DefaultShell on any remote path with a space
+  (`scripts/backup_prod/lib/rsync_wsl_transport.sh` added to fix it, see that file's header).
+  Verified via the real `com.denidin.backuppull` LaunchAgent's `trigger-once`: the real 347MB
+  daily archive pulled byte-identical to the Mac.
 
 **Checkpoint**: Daily archives exist redundantly on both hosts.
 
@@ -204,7 +209,11 @@ store, non-zero exit.
 
 - [ ] T014 [US3] 👤 **MANUAL APPROVAL GATE**: run `quickstart.md` step 4 against a real archive
   pulled in US2's T011 gate; confirm every store passes and `denidin-app` boots against the
-  extracted data (UAT 3, SC-002)
+  extracted data (UAT 3, SC-002). **Integrity-check half done live, 2026-09-14**:
+  `verify_restore.sh` run against the real pulled archive, all 5 SQLite stores PASS
+  `PRAGMA integrity_check`. The boot-smoke half (T013a/T013b) remains deliberately unimplemented
+  per the 2026-09-14 quickstart decision, so this gate stays open pending that scope, not pending
+  another live run of what already exists.
 
 **Checkpoint**: Restore integrity is provable on demand, not just assumed.
 
@@ -264,9 +273,15 @@ archives spanning >36 months and confirm only the too-old ones purge.
 - [x] T018b [US5] Extend `pull_backups.sh` to also pull/purge the monthly tier (depends on T005b,
   T010b) (BLOCKED until T018a approved)
 
-- [ ] T019 [US5] 👤 **MANUAL APPROVAL GATE**: `quickstart.md` step 5's monthly-tier
-  spot-check (UAT 5) — same "not exercised live at initial rollout" note as T016; revisit at the
-  next real 1st-of-month run once live
+- [x] T019 [US5] 👤 **MANUAL APPROVAL GATE**: `quickstart.md` step 5's monthly-tier
+  spot-check (UAT 5). **Pull/purge side done live, 2026-09-14**: manually seeded the Windows
+  box's monthly folder with a copy of that day's daily archive (simulating what
+  `run_daily_backup.sh`'s own 1st-of-month promotion already does automatically, per
+  T017a/T017b's unit coverage — this spot-check exercised the pull side specifically, not that
+  automatic trigger) and confirmed the Mac's hourly pull picked it up into its own monthly
+  folder with no code changes needed, proving `pull_backups.sh` treats both tiers identically end
+  to end. A genuine 1st-of-month automatic promotion trigger has not yet been observed live
+  (next real occasion: 2026-10-01) — revisit then if ever in doubt.
 
 **Checkpoint**: All 5 UATs are independently satisfied.
 
