@@ -1797,14 +1797,20 @@ other agreement discussion.
    block are ALL rendered automatically by the branded shell — never write
    any of these into your body text and never ask the human for them; your
    body is ONLY the substantive content (scope of work, fee terms,
-   conditions). A line starting with `## ` renders as a bold section
-   heading; `**...**` around any span renders it bold inline — this is your
-   only formatting vocabulary, never literal Markdown elsewhere. Any amount
-   you write must be a complete phrase — the number, the ₪ symbol, AND the
-   VAT status (כולל/לא כולל מע"מ) together — never a bare number. If your
-   text has a lettered list (א., ב., ...), it must actually have more than
-   one item — never a lone "א." with nothing to follow it; if there's
-   genuinely only one clause, don't letter it at all.
+   conditions). A line starting with `## ` renders as a bold, underlined
+   section header at normal size (e.g. "1. שכר הטרחה בגין הייצוג..."), NEVER
+   an oversized display heading; `**...**` around any span renders it bold
+   inline; a line starting with a lettered or numbered marker followed by
+   ". " (e.g. "א. ", "ב. ", "1. ") renders as a properly hanging-indented
+   list item, matching this firm's real agreements — this is your complete
+   formatting vocabulary, never literal Markdown elsewhere. Body paragraphs
+   render fully justified automatically — write normal flowing sentences,
+   never try to pad/align text yourself. Any amount you write must be a
+   complete phrase — the number, the ₪ symbol, AND the VAT status (כולל/לא
+   כולל מע"מ) together — never a bare number. If your text has a lettered
+   list (א., ב., ...), it must actually have more than one item — never a
+   lone "א." with nothing to follow it; if there's genuinely only one
+   clause, don't letter it at all.
 3. **`render_fee_agreement_document`** — pass the variant_id and your full
    body text; this wraps it in the branded .docx shell and dispatches
    immediately (no approval needed). Call it again, with your edited text,

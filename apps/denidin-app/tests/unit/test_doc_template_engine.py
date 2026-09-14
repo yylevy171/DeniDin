@@ -274,8 +274,9 @@ class TestRenderFreeTextDocxFormatEssentials:
         real Word: <w:rtl/> on the paragraph mark AND on the run, with NO
         paragraph-level <w:bidi/> (which was proven to break jc="right"
         rendering in real Word - an undocumented interop bug). jc itself may
-        be "right" (the default) or "center" (the title only, 2026-09-14
-        visual-fidelity fix) - both are RTL-safe alignments."""
+        be "right" (the default), "center" (the title/"לבין" line), or "both"
+        (justified body paragraphs, 2026-09-14 visual-fidelity fix, matched
+        against the real reference corpus) - all are RTL-safe alignments."""
         doc = engine.render_free_text(variant_id, self.CLIENT_NAME, self.SAMPLE_BODY)
         docx_obj = DocxDocument(str(doc.temp_path))
         body_paragraphs = [p for p in docx_obj.paragraphs if p.text.strip()]
@@ -284,8 +285,8 @@ class TestRenderFreeTextDocxFormatEssentials:
             pPr = para._p.find(qn('w:pPr'))
             assert pPr is not None, f"paragraph has no pPr: {para.text!r}"
             jc = pPr.find(qn('w:jc'))
-            assert jc is not None and jc.get(qn('w:val')) in ('right', 'center'), (
-                f"paragraph is not right-aligned or centered: {para.text!r}"
+            assert jc is not None and jc.get(qn('w:val')) in ('right', 'center', 'both'), (
+                f"paragraph is not right-aligned, centered, or justified: {para.text!r}"
             )
             mark_rPr = pPr.find(qn('w:rPr'))
             assert mark_rPr is not None and mark_rPr.find(qn('w:rtl')) is not None, (

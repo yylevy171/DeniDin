@@ -243,15 +243,15 @@ class TestFeeAgreementGenerationFlow:
 
         # RTL: every actual line of AI-authored body text must render right-to-left.
         # jc may be "right" (the default) or "center" (the code-injected title only,
-        # 2026-09-14 visual-fidelity fix) - both are RTL-safe alignments.
+        # 2026-09-14 visual-fidelity fix, twice-revised) - all are RTL-safe alignments.
         for para in doc.paragraphs:
             if not para.text.strip():
                 continue
             pPr = para._p.find(qn('w:pPr'))
             assert pPr is not None, f"paragraph has no pPr (not RTL-safe): {para.text!r}"
             jc = pPr.find(qn('w:jc'))
-            assert jc is not None and jc.get(qn('w:val')) in ('right', 'center'), (
-                f"paragraph is not right-aligned or centered: {para.text!r}"
+            assert jc is not None and jc.get(qn('w:val')) in ('right', 'center', 'both'), (
+                f"paragraph is not right-aligned, centered, or justified: {para.text!r}"
             )
             mark_rPr = pPr.find(qn('w:rPr'))
             assert mark_rPr is not None and mark_rPr.find(qn('w:rtl')) is not None, (

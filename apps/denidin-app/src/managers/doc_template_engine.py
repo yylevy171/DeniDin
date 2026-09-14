@@ -31,6 +31,12 @@ logger = get_logger(__name__)
 
 PLACEHOLDER_PATTERN = re.compile(r"\{\{[A-Z_]+\}\}")
 
+# A lettered (Hebrew alef-bet) or numbered list-item marker at the start of a
+# body_text line, e.g. "א. " / "ב. " / "1. " / "2. " - matched against the
+# real reference corpus (tests/fixtures/media/ledger_events/*.jpg), where
+# every such item gets a hanging indent rather than a plain paragraph.
+_LETTERED_ITEM_RE = re.compile(r"^([א-ת]|\d+)\.\s")
+
 
 class DocTemplateEngine:
     """Loads fee agreement template variants and fills them with AI-supplied
@@ -269,17 +275,22 @@ class DocTemplateEngine:
 
         today = now_local().strftime("%d.%m.%Y")
 
-        # -- code-owned header block (title, date, identity) - compact by
-        # design (few lines, tight spacing) since a real agreement like this
-        # must fit on one page (2026-09-14 instruction). --
+        # -- code-owned header block (title, date, identity) - matches the
+        # real firm's own agreements (2026-09-14 fix, diffed against actual
+        # signed examples): title is bold+underlined at NORMAL size (not
+        # oversized display text), and the identity line is THREE separate
+        # lines (party / "לבין" centered / firm), not one merged sentence -
+        # compact by design since this must still fit on one page. --
         _insert(self._build_rtl_paragraph(
-            self._TITLE_TEXT, bold=True, size=28, center=True, space_after=80
+            self._TITLE_TEXT, bold=True, underline=True, center=True, space_after=80
         ))
         _insert(self._build_rtl_paragraph(f"תאריך: {today}", space_after=80))
         _insert(self._build_rtl_paragraph(
-            f'בין {client_name} (להלן – הלקוח) לבין {self.FIRM_LAWYER_NAME} '
-            f'(להלן – עוה"ד)',
-            space_after=160,
+            f"בין {client_name} (להלן – הלקוח)", space_after=0
+        ))
+        _insert(self._build_rtl_paragraph("לבין", center=True, space_after=0))
+        _insert(self._build_rtl_paragraph(
+            f'{self.FIRM_LAWYER_NAME} (להלן – עוה"ד)', space_after=160
         ))
 
         # -- the AI's own substantive content --
@@ -294,21 +305,35 @@ class DocTemplateEngine:
             if not line.strip():
                 continue
             if line.startswith("## "):
+                # Real agreements mark a section with bold+underline at
+                # NORMAL size (e.g. "1. שכר הטרחה בגין הייצוג...:"), never an
+                # oversized display heading - matches the reference corpus,
+                # not a generic "blog post" heading style.
                 _insert(self._build_rtl_paragraph(
-                    line[3:], bold=True, size=24, space_after=100
+                    line[3:], bold=True, underline=True, space_after=100
+                ))
+            elif _LETTERED_ITEM_RE.match(line):
+                # Real agreements use hanging-indented lettered/numbered
+                # sub-items (א./ב./1./2.) - the marker sits at the right
+                # margin, wrapped continuation lines indent under the text,
+                # not back under the marker.
+                _insert(self._build_rtl_paragraph(
+                    line, space_after=80, hanging_indent=True, justify=True
                 ))
             else:
-                _insert(self._build_rtl_paragraph(line, space_after=80))
+                _insert(self._build_rtl_paragraph(line, space_after=80, justify=True))
 
         # -- code-owned footer block (signature) - always present, always
-        # names the real client, never left to the AI to remember. --
+        # names the real client, never left to the AI to remember. Three
+        # separate lines, matching the real firm's own agreements, not one
+        # merged line. --
         _insert(self._build_rtl_paragraph(
             "אני מאשר את ההסכם.", space_after=80
         ))
+        _insert(self._build_rtl_paragraph(f"תאריך: {today}", space_after=0))
+        _insert(self._build_rtl_paragraph(f"שם: {client_name}", space_after=0))
         _insert(self._build_rtl_paragraph(
-            f"תאריך: {today}      שם הלקוח: {client_name}      "
-            f"חתימה: {self._SIGNATURE_LINE}",
-            space_after=0,
+            f"חתימה: {self._SIGNATURE_LINE}", space_after=0
         ))
 
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -333,32 +358,51 @@ class DocTemplateEngine:
         text: str,
         *,
         bold: bool = False,
+        underline: bool = False,
         size: Optional[int] = None,
         center: bool = False,
+        justify: bool = False,
+        hanging_indent: bool = False,
         space_after: int = 120,
     ):
-        """Builds a right-aligned (or centered, for the title) Hebrew
-        paragraph, matching the EXACT structure confirmed (2026-09-13, by
-        diffing a real human-verified-working .docx) to actually render
-        right-to-left in real Word: <w:rtl/> on the run AND on the paragraph
-        mark's own rPr - deliberately NO paragraph-level <w:bidi/>, which was
-        proven (by that same diff) to break jc="right" rendering.
+        """Builds a right-aligned (or centered/justified) Hebrew paragraph,
+        matching the EXACT structure confirmed (2026-09-13, by diffing a real
+        human-verified-working .docx) to actually render right-to-left in
+        real Word: <w:rtl/> on the run AND on the paragraph mark's own rPr -
+        deliberately NO paragraph-level <w:bidi/>, which was proven (by that
+        same diff) to break jc="right" rendering.
 
-        2026-09-14 visual-fidelity fix: real agreements have headings,
-        emphasis, and deliberate compact spacing - a flat, uniform run of
-        plain 11pt text per line (the original redesign) looked nothing like
-        the genuine template it replaced and needlessly ran to 2 pages. This
-        now supports a per-paragraph size/bold/center/spacing, plus inline
-        "**bold**" spans within `text` (the only markup vocabulary the AI is
-        given - see render_free_text's docstring). `space_after` is in
-        twentieths of a point (Word's own unit) - the default (120 = 6pt) is
-        deliberately tighter than Word's own default (~10pt) to help a
-        real agreement's worth of text actually fit on one page."""
+        2026-09-14 visual-fidelity fix, twice-revised: the first pass added
+        size/bold/center/spacing, but a direct comparison against this firm's
+        own REAL signed agreements (tests/fixtures/media/ledger_events/*.jpg)
+        showed it still looked nothing like them - real section headers are
+        bold+UNDERLINED at NORMAL size (never an oversized display heading),
+        real body paragraphs are fully JUSTIFIED (flush both margins, not
+        ragged-left), and real lettered/numbered sub-items (א./ב./1./2.) use
+        a HANGING indent (the marker sits at the margin, wrapped continuation
+        lines indent under the text). This revision adds `underline`,
+        `justify`, and `hanging_indent` to actually match that reference
+        corpus, plus inline "**bold**" spans within `text` (the AI's only
+        markup vocabulary - see render_free_text's docstring). `space_after`
+        is in twentieths of a point (Word's own unit) - the default (120 =
+        6pt) is deliberately tighter than Word's own default (~10pt) to help
+        a real agreement's worth of text actually fit on one page."""
         p = OxmlElement("w:p")
         pPr = OxmlElement("w:pPr")
         jc = OxmlElement("w:jc")
-        jc.set(qn("w:val"), "center" if center else "right")
+        jc.set(qn("w:val"), "center" if center else ("both" if justify else "right"))
         pPr.append(jc)
+        if hanging_indent:
+            # RTL hanging indent: w:start is the "outer" margin (the right
+            # margin, in an RTL paragraph) and w:hanging pulls the FIRST
+            # line back out toward it relative to w:start - so the marker
+            # sits at the right margin and wrapped continuation lines indent
+            # inward under the text, matching every real lettered list in
+            # the reference corpus.
+            ind = OxmlElement("w:ind")
+            ind.set(qn("w:start"), "360")
+            ind.set(qn("w:hanging"), "360")
+            pPr.append(ind)
         spacing = OxmlElement("w:spacing")
         spacing.set(qn("w:after"), str(space_after))
         spacing.set(qn("w:line"), "240")
@@ -385,6 +429,10 @@ class DocTemplateEngine:
             szCs = OxmlElement("w:szCs")
             szCs.set(qn("w:val"), str(size))
             mark_rPr.append(szCs)
+        if underline:
+            u = OxmlElement("w:u")
+            u.set(qn("w:val"), "single")
+            mark_rPr.append(u)
         mark_rPr.append(OxmlElement("w:rtl"))
         pPr.append(mark_rPr)
         p.append(pPr)
@@ -404,6 +452,10 @@ class DocTemplateEngine:
                 szCs = OxmlElement("w:szCs")
                 szCs.set(qn("w:val"), str(size))
                 run_rPr.append(szCs)
+            if underline:
+                u = OxmlElement("w:u")
+                u.set(qn("w:val"), "single")
+                run_rPr.append(u)
             run_rPr.append(OxmlElement("w:rtl"))
             r.append(run_rPr)
             t = OxmlElement("w:t")
