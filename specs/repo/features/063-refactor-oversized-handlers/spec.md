@@ -33,6 +33,11 @@ Instead of passing every single rule and capability to the AI on every turn, we 
 - Q: May unit tests (many import AIHandler internals directly) be rewritten to match new module boundaries, given REQ-063-05 only names billed/expensive E2E tests? → A: Yes — only billed/expensive/sanity E2E tests are the immutable regression gate; unit tests are restructured alongside the code they test, like any normal refactor.
 - Q: Should the capability plugin boundaries be enumerated in this spec now, or left to speckit.plan? → A: Enumerate now, organized by user-experience expectation (always-present vs. present-only-when-needed) crossed with CRUD (write/state-change vs. read/query, since approval-gating and response shape differ) — see "Capability Plugin Taxonomy" below.
 
+### Session 2026-09-14 (plan-phase revision, post-`speckit.plan` draft)
+
+- Q: Should this refactor be an in-place strip-down of `ai_handler.py`/`runtime_constitution.md` behind a feature flag, or two fully separate, parallel implementations? → A: Two fully separate implementations. `ai_handler.py` and `runtime_constitution.md` stay byte-for-byte untouched for as long as the flag exists; the Backbone+Plugins path is entirely new code (`config/backbone.md`, `config/capabilities/*.md`, a new orchestrator module), selected once at `denidin.py`'s `initialize_app` startup based on `config.feature_flags.enable_capability_backbone`. This directly informed dropping the old SC-001 (see below) and rewriting REQ-063-02/03 as REQ-063-07.
+- Q: With `ai_handler.py` no longer shrinking under this design, what replaces the old SC-001 ("`ai_handler.py` reduced by ≥70%")? → A: Dropped entirely — no line-count target. Success is measured by SC-002 (constitution split) and SC-004 (token reduction), not by `ai_handler.py`'s size, since it is intentionally never modified.
+
 ---
 
 ## Capability Plugin Taxonomy
@@ -44,8 +49,14 @@ Within the gated plugins, each topic that has both a state-changing and a read-o
 split along that seam, since write flows carry approval-gating (Feature 022/047's pending-approval
 UX) that read flows don't, and the two have materially different response shapes.
 
-**Backbone (always loaded, every turn)** — absorbs constitution sections that are unconditional
-UX, not domain-gated capabilities:
+**Note on the method names below (updated 2026-09-14, plan-phase revision)**: these name the
+existing `ai_handler.py` methods whose *behavior* the new Backbone/plugin code reimplements —
+they are a reference for what the new code must do equivalently, not a list of methods being
+extracted or removed. Per REQ-063-07, `ai_handler.py` itself is never modified; these methods stay
+exactly where they are, doing exactly what they do today, for the legacy path.
+
+**Backbone (always loaded, every turn)** — the new orchestrator's always-on logic, functionally
+equivalent to these existing behaviors:
 - Core Identity, Behavioral Guidelines, User Roles, Privacy & Security, Contexts of Operation
 - Group Conversation Etiquette, Edited & Deleted Message Markers
 - Intent recognition / the pre-classifier routing step itself (REQ-063-04)
@@ -62,25 +73,26 @@ UX, not domain-gated capabilities:
 - **Reminders — Read**: `list_reminders` (`_handle_list_reminders`, `_call_openai_list_reminders_followup_api`, `_compute_list_reminders_outputs`) — the read side of `reminder_manager.py`
 
 `session_manager.py` (991 lines, REQ-063-03) is cross-cutting infrastructure shared by every
-plugin and the Backbone alike (session/window resolution), not itself a capability plugin — its
-refactor is a Backbone-layer concern, detailed in `speckit.plan`.
+plugin and the Backbone alike (session/window resolution), not itself a capability plugin. Per the
+plan-phase revision (2026-09-14), it stays exactly where it is and unmodified — imported, as-is,
+by both the legacy `AIHandler` and the new orchestrator (see `plan.md`'s Project Structure).
 
 ---
 
 ## 2. PM Requirements (Functional)
 
 - **REQ-063-01 (The Backbone)**: The system MUST define a core Backbone prompt that is always loaded. It must contain the core persona, the strict operating boundaries, a directory of available capabilities, the always-on UX behaviors (Progress Updates, Reactions, Group Etiquette, Edited/Deleted Markers), and the intent pre-classifier routing step.
-- **REQ-063-02 (Capability Separation)**: The `runtime_constitution.md` MUST be split into distinct capability markdown files per the Capability Plugin Taxonomy above (6 plugin files + the Backbone file).
-- **REQ-063-03 (Code Separation)**: The `ai_handler.py` (4,859 lines) and the massive domain managers (e.g., `ledger_event_manager.py` at 2,037 lines, `session_manager.py` at 991 lines, `reminder_manager.py` at 809 lines) MUST be stripped down and refactored into cohesive Capability Plugins per the taxonomy above. A single "Capability" should encapsulate both its handler logic and its manager logic; `session_manager.py` is Backbone-layer shared infrastructure, not a plugin.
+- **REQ-063-02 (Capability Separation)**: A new `config/backbone.md` + `config/capabilities/*.md` file set MUST be authored, splitting the equivalent of today's `runtime_constitution.md` content into distinct capability markdown files per the Capability Plugin Taxonomy above (6 plugin files + the Backbone file). `config/runtime_constitution.md` itself is left untouched (REQ-063-07).
+- **REQ-063-03 (Code Separation, New Module)**: A new orchestrator module (parallel to, not replacing, `ai_handler.py`) MUST implement the Backbone+Plugins turn-handling logic, organized into cohesive Capability Plugin code per the taxonomy above (a single "Capability" encapsulates both its handler logic and its manager logic). `managers/ledger_event_manager.py` and `managers/reminder_manager.py` MUST stay exactly where they are, completely unmodified — the new orchestrator's capability handlers import from those same existing locations rather than duplicating their storage logic; `ai_handler.py` itself requires zero changes, including zero import changes, since it already imports these modules from where they already live. `session_manager.py` is Backbone-layer shared infrastructure, used unmodified by both implementations, not a plugin.
 - **REQ-063-04 (Dynamic Loading)**: A cheap pre-classifier LLM call, run before the main turn call, MUST determine which capability plugin(s) apply to the current user turn; only the matched plugin(s)' prompt+tools MUST be attached to the main call. Multi-capability turns (UAT3) attach the union of matched plugins.
 - **REQ-063-06 (Cache-Prefix Preservation)**: The Backbone content MUST remain the stable, byte-identical prefix of every call (as `runtime_constitution.md` is today); matched capability plugin content MUST be appended after it in a deterministic, canonical order (e.g. taxonomy order) so that repeated identical capability-sets across turns continue to hit OpenAI's prompt cache.
-- **REQ-063-05 (Zero Behavioral Regression)**: Despite the massive structural changes, the end-user MUST NOT experience any degradation in existing features. All existing `billed`/`expensive`/`sanity` E2E tests MUST pass without changing the test definitions themselves. Unit tests (which may reference `AIHandler` internals directly) MAY be rewritten/relocated to match the new module boundaries — they are not part of the immutable regression gate.
+- **REQ-063-05 (Zero Behavioral Regression)**: Despite the massive structural changes, the end-user MUST NOT experience any degradation in existing features. All existing `billed`/`expensive`/`sanity` E2E tests MUST pass without changing the test definitions themselves, against both implementations (flag off and flag on). Unit tests for the new orchestrator are new, standalone unit tests, not rewrites of `AIHandler`'s existing ones.
+- **REQ-063-07 (Parallel Implementation, not In-Place Refactor)**: `ai_handler.py` and `runtime_constitution.md` MUST remain fully untouched (byte-for-byte) for as long as `config.feature_flags.enable_capability_backbone` exists as a flag. The Backbone + 6 Capability Plugins are a **new, separate** orchestrator module and a new `config/backbone.md` + `config/capabilities/*.md` file set — not an in-place strip-down of the existing files. `denidin.py`'s `initialize_app` selects, once at startup, which implementation (`AIHandler` vs. the new orchestrator) to construct, based on the flag; the rest of `denidin.py` (routing, `WhatsAppHandler`, etc.) is unaware which one it's talking to (both expose the same `get_response`/`resolve_button_tap`/etc. interface).
 
 ---
 
 ## 3. Success Criteria
-- **SC-001**: `ai_handler.py` is reduced by at least 70% in line count.
-- **SC-002**: `runtime_constitution.md` is reduced to only core backbone rules, with the rest distributed to the 6 capability plugins per the taxonomy above.
+- **SC-002**: The new `config/backbone.md` contains only core backbone rules, with the 6 capability plugins in `config/capabilities/*.md`; `config/runtime_constitution.md` is untouched and still used verbatim by the legacy `AIHandler` path.
 - **SC-003**: 100% pass rate on `billed` and `expensive` test suites, proving zero behavioral regression.
 - **SC-004**: Average token input count per conversation turn drops significantly, proving dynamic prompt loading works.
 - **SC-005**: A turn matching zero capability plugins (e.g. small talk) measurably hits OpenAI prompt caching on the Backbone prefix, and a turn matching the same capability plugin(s) as a prior turn also hits cache on the appended plugin content (REQ-063-06), measured via `scripts/model_sanity_check.sh`-style `cached_tokens` inspection.
