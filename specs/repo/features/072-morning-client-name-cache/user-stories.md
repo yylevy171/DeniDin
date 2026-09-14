@@ -26,21 +26,30 @@ Reduce perceived AI latency by bypassing the 3-5 second overhead associated with
 
 ---
 
-## User Acceptance Testing (UAT)
+## User-Facing Testing (Billed & Expensive E2E Suites)
 
-To ensure we actually achieved the speedups and hit the 85% KPI, developers must verify the following scenarios:
+### Phase 1: Statistical Proof of Value (Development Phase)
+**Goal**: We need concrete, statistically valid proof that the Morning cache actually saves significant time. The cache only eliminates the MCP-to-Morning link, so we must prove that this specific link is slow enough to warrant caching.
+- **Methodology**: The engineers MUST write a dedicated benchmarking script (e.g., `scripts/benchmark_morning_cache.py`) used during development.
+- **Scenario**: 
+  1. The script modifies `config.json` to toggle a feature flag (e.g., `"morning_cache_enabled": false`).
+  2. It runs a batch of **50 resolution requests** and calculates the average `tool_total_execution_time_ms` (which includes the MCP network overhead + Morning API latency).
+  3. It toggles `config.json` to `"morning_cache_enabled": true`.
+  4. It runs the same **50 requests** and calculates the average `tool_total_execution_time_ms` (which now only includes the MCP network overhead).
+- **Proof Required**: The script must output the exact average time saved per tool call. The engineering team must present these numbers. If the average time saved is negligible (e.g., < 0.5 seconds), we re-evaluate the feature's value.
 
-### UAT-A: Cache Hit Speed Verification
-1. Ensure "Avi Levi" is in the local cache.
-2. Ask the bot: *"Did Avi Levi pay his invoice?"*
-3. **Verification**: 
-   - Check the telemetry logs for `morning_api_request_times_ms`. 
-   - There MUST be NO recorded call to `resolve_client_name` or `list_clients`.
-   - Total latency must be noticeably faster (measuring just LLM inference time).
+### Phase 2: No-Regression Sanity Test (CI/CD Phase)
+**Goal**: Ensure that over time, the cache continues to function and provide a speed benefit without regressing.
+- **New Test File**: The engineers MUST add a new test to the sanity suite (e.g., `test_cache_regression_sanity.py`).
+- **Methodology**: The test executes a longer, multi-turn user conversation (e.g., 5 messages resolving various clients).
+- **Hard Assertions**:
+  1. The test runs the conversation with the `config.json` cache flag OFF, recording total execution time.
+  2. The test runs the identical conversation with the cache flag ON.
+  3. The test asserts that the total execution time for the Flag ON run is consistently and measurably faster than the Flag OFF run, explicitly catching any future performance regressions.
 
-### UAT-B: Cache Miss Fallback
-1. Clear the cache or ask about a brand new client: *"Did NewCorp pay?"*
-2. **Verification**:
-   - The bot falls back to the Morning API.
-   - Telemetry logs show `morning_api_request_times_ms` captured for the resolution call.
-   - A subsequent ask about "NewCorp" must now register as a Cache Hit (UAT-A).
+### Phase 3: 85% Hit Rate Target Proof (`tests/billed/`)
+**Goal**: Prove the caching implementation achieves the 85% minimum hit rate under a realistic usage distribution.
+- **Batch Definition**: A test (`test_cache_hit_rate_simulation_billed.py`) executes a deterministic batch of **20 sequential user messages** against a fresh conversation state.
+  - **Distribution**: 17 messages will refer to 3-4 recurring "known" clients (simulating heavy daily use). 3 messages will refer to entirely new/unknown clients (simulating the ~15% miss rate).
+- **Measurement & Assertions**:
+  1. The test asserts that exactly >= 85% (17/20) of the `resolve_client` tool invocations resulted in a Cache Hit (i.e., `morning_api_request_times_ms` was NULL/empty).

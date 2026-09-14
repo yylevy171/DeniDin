@@ -43,20 +43,30 @@ changing client roster this is:
 - **Minimum Hit Rate (KPI)**: The implementation MUST guarantee a minimum **85% cache hit rate** against the existing production logs. A 100% hit rate is unrealistic to maintain (new clients happen), and anything below 50% indicates a flawed syncing/caching implementation.
 - **Engineering Autonomy**: The specific technical architecture (in-memory vs SQLite, TTL cron vs JIT updating, context-injected vs local tool swap) is left entirely to the engineering team, provided the 85% hit rate and the 3-5 second perceived latency savings are achieved.
 
-## Proposed Direction (for `speckit.clarify` / `plan`)
+## Proposed Direction & Architecture (Decided)
 
-A local cache of Morning client identities (name + Morning client id + email/phone as
-known), populated from every successful `resolve_client_name` / `list_clients` /
-`add_client` result, consulted first on any resolution:
+**Architecture Decision**: The cache will be implemented entirely within the `morning-mcp-app` as a **transparent cache**.
+- The AI remains completely unaware of the cache. It calls `resolve_client_name` exactly as it does today.
+- The MCP server intercepts the call, checks its local cache, and either returns the cached ID instantly or falls back to querying the Morning API.
+- Implementation specifics (TTL, population, refresh rates) are left to engineering, provided the 85% hit rate KPI is met.
 
-- **Exact-match fast path** — a name that exactly matches a cached entry resolves with no
-  Morning call.
-- **Staleness / invalidation** — TTL, or an explicit refresh, or invalidate-on-`add_client`;
-  decide the model. A cache miss always falls back to a live Morning call.
+### Handling Stale Data (Cache Invalidation)
+A critical risk of a transparent cache is returning a client ID that was recently deleted or deactivated in Morning. If the AI attempts to use a stale ID (e.g., calling `create_document` with a deleted ID), Morning will throw an error. 
+- **Requirement**: The MCP tools that execute writes (like `create_document`) MUST gracefully handle "Invalid Client ID" errors from the Morning API by:
+  1. Immediately evicting that specific client from the cache.
+  2. Returning a clear error message to the AI (e.g., *"Error: The client ID is no longer valid or was deleted in Morning. The cache has been cleared. Please resolve the client name again."*). 
+- This ensures the AI can auto-recover in the next turn without entering a broken loop.
 - **Not a source of truth** — Morning stays authoritative; the cache is a read-through
   accelerator, never the place a name is "created."
 - **Shared or per-environment** — dev and prod have separate Morning accounts (2026-08-03
-  asymmetry), so the cache is per-environment, same discipline as `shared/mcp-status-<env>/`.
+  decision), cache partitioning must respect this.
+
+## Future Optimization Research: "LLM Context Caching Add-On"
+While the **Transparent MCP Cache** is the core MVP architecture for this feature, the CEO has requested parallel research into an additional optimization layer: "LLM Context Caching". 
+- **The Concept**: Expose a `get_all_clients` MCP tool that the AI can call at session start to inject the full client list into its context window, achieving a "Zero-Turn" resolution (the AI wouldn't even need to call `resolve_client_name` because it already knows the IDs).
+- **The Challenge**: Injecting 500+ clients into a stateful Responses API thread raises complex questions around Cache Invalidation (how to update the AI's state when a new client is added mid-session) and Token TTL.
+- **Engineering Research Task**: The engineers MUST research how other teams handle mutable state and dynamic dataset injection with OpenAI's Responses API & Prompt Caching. 
+- **Not a Blocker**: This model-cache is an *add-on optimization*, not a replacement. The Transparent MCP Cache must be built and shipped regardless of this research outcome.
 
 ## Scope Notes
 
