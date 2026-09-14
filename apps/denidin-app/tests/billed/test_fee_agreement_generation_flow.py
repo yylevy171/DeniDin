@@ -218,11 +218,15 @@ class TestFeeAgreementGenerationFlow:
     def _assert_shell_intact(temp_path):
         """(1) Logo/header/footer/RTL - the parts of the .docx code owns, never the
         AI. Every non-empty body paragraph render_free_text() writes must carry the
-        same jc="right" + paragraph-mark <w:rtl/> + run-level <w:rtl/> recipe
-        _build_rtl_paragraph() applies (see doc_template_engine.py) - this is what
-        makes a real Word client render right-to-left correctly (see this feature's
-        own RTL debugging notes: paragraph-level <w:bidi/> actively breaks jc="right"
-        in real Word, so its ABSENCE here is also part of what "intact" means)."""
+        same jc="right"/"center"/"both" + paragraph-mark <w:rtl/> + run-level
+        <w:rtl/> recipe _build_rtl_paragraph() applies (see doc_template_engine.py)
+        - this is what makes a real Word client render right-to-left correctly. A
+        paragraph-level <w:bidi/> is scoped exactly to jc="both" paragraphs
+        (2026-09-14, two related but opposite real-rendering findings): it actively
+        breaks jc="right"/"center" rendering in real Word, so its absence there is
+        part of what "intact" means - but jc="both" WITHOUT it was separately shown,
+        via a real rendered screenshot, to render a short/single-line justified
+        paragraph flush LEFT instead of right, so its PRESENCE there is required."""
         doc = DocxDocument(str(temp_path))
         section = doc.sections[0]
 
@@ -241,17 +245,18 @@ class TestFeeAgreementGenerationFlow:
             f"footer contact line missing/altered - shell not preserved: {footer_text!r}"
         )
 
-        # RTL: every actual line of AI-authored body text must render right-to-left.
-        # jc may be "right" (the default) or "center" (the code-injected title only,
-        # 2026-09-14 visual-fidelity fix, twice-revised) - all are RTL-safe alignments.
+        # RTL: every actual line of AI-authored body text must render right-to-left,
+        # with the correct alignment for its jc value - no "left".
         for para in doc.paragraphs:
             if not para.text.strip():
                 continue
             pPr = para._p.find(qn('w:pPr'))
             assert pPr is not None, f"paragraph has no pPr (not RTL-safe): {para.text!r}"
             jc = pPr.find(qn('w:jc'))
-            assert jc is not None and jc.get(qn('w:val')) in ('right', 'center', 'both'), (
-                f"paragraph is not right-aligned, centered, or justified: {para.text!r}"
+            jc_val = jc.get(qn('w:val')) if jc is not None else None
+            assert jc_val in ('right', 'center', 'both'), (
+                f"paragraph alignment is not right/center/both (RTL-safe): "
+                f"{jc_val!r} for {para.text!r}"
             )
             mark_rPr = pPr.find(qn('w:rPr'))
             assert mark_rPr is not None and mark_rPr.find(qn('w:rtl')) is not None, (
@@ -264,12 +269,28 @@ class TestFeeAgreementGenerationFlow:
                 assert run_rPr is not None and run_rPr.find(qn('w:rtl')) is not None, (
                     f"run text is not RTL: {run.text!r}"
                 )
-            # bidi at the paragraph level is the confirmed-bad interop bug this
-            # feature root-caused (breaks jc="right" in real Word) - must never
-            # reappear on an individual paragraph.
-            assert pPr.find(qn('w:bidi')) is None, (
-                f"paragraph-level <w:bidi/> present - this is the confirmed real-Word "
-                f"RTL-rendering bug this feature fixed, must never regress: {para.text!r}"
+            has_bidi = pPr.find(qn('w:bidi')) is not None
+            if jc_val == 'both':
+                assert has_bidi, (
+                    f"justified (jc=both) paragraph is missing <w:bidi/> - real "
+                    f"rendering shows this as flush-LEFT, not right: {para.text!r}"
+                )
+            else:
+                assert not has_bidi, (
+                    f"paragraph-level <w:bidi/> present on a non-justified "
+                    f"({jc_val!r}) paragraph - this is the confirmed real-Word "
+                    f"RTL-rendering bug this feature fixed, must never regress: "
+                    f"{para.text!r}"
+                )
+
+            # Line spacing: 1.5 (w:line="360" at lineRule="auto", where 240 is
+            # single) - 2026-09-14, explicit human instruction: single spacing
+            # made a real rendered document look visibly crowded.
+            spacing = pPr.find(qn('w:spacing'))
+            assert spacing is not None, f"paragraph has no w:spacing: {para.text!r}"
+            assert spacing.get(qn('w:line')) == '360', (
+                f"paragraph is not 1.5-line-spaced (w:line="
+                f"{spacing.get(qn('w:line'))!r}, expected '360'): {para.text!r}"
             )
 
     @staticmethod

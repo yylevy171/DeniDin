@@ -392,6 +392,18 @@ class DocTemplateEngine:
         jc = OxmlElement("w:jc")
         jc.set(qn("w:val"), "center" if center else ("both" if justify else "right"))
         pPr.append(jc)
+        if justify:
+            # 2026-09-14 bug fix (found via a real rendered screenshot: a
+            # justified single/short line rendered LEFT-aligned instead of
+            # right): jc="both" alone leaves the paragraph's base direction
+            # ambiguous to Word/LibreOffice's justification algorithm, which
+            # then defaults the (in this case, only) line to LTR. This is
+            # DELIBERATELY scoped to justify=True only - jc="right"/"center"
+            # paragraphs must never get <w:bidi/> added (confirmed
+            # 2026-09-13, by diffing a real human-verified-working .docx, to
+            # break real Word's rendering of those alignments - see the test
+            # this method's docstring points at).
+            pPr.append(OxmlElement("w:bidi"))
         if hanging_indent:
             # RTL hanging indent: w:start is the "outer" margin (the right
             # margin, in an RTL paragraph) and w:hanging pulls the FIRST
@@ -405,7 +417,11 @@ class DocTemplateEngine:
             pPr.append(ind)
         spacing = OxmlElement("w:spacing")
         spacing.set(qn("w:after"), str(space_after))
-        spacing.set(qn("w:line"), "240")
+        # 1.5 line spacing (360 twentieths-of-a-line-height at lineRule=auto,
+        # where 240 is single) - 2026-09-14, explicit human instruction: the
+        # tighter single-spacing this feature started with made a real
+        # rendered document look visibly crowded, not merely compact.
+        spacing.set(qn("w:line"), "360")
         spacing.set(qn("w:lineRule"), "auto")
         pPr.append(spacing)
         # OOXML's CT_RPr schema is a strict, ordered sequence (b/bCs before

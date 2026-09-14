@@ -271,12 +271,22 @@ class TestRenderFreeTextDocxFormatEssentials:
     ):
         """The exact recipe confirmed (2026-09-13, by diffing a real
         human-verified-working .docx) to actually render right-to-left in
-        real Word: <w:rtl/> on the paragraph mark AND on the run, with NO
-        paragraph-level <w:bidi/> (which was proven to break jc="right"
-        rendering in real Word - an undocumented interop bug). jc itself may
-        be "right" (the default), "center" (the title/"לבין" line), or "both"
-        (justified body paragraphs, 2026-09-14 visual-fidelity fix, matched
-        against the real reference corpus) - all are RTL-safe alignments."""
+        real Word: <w:rtl/> on the paragraph mark AND on the run. jc itself
+        may be "right" (the default), "center" (the title/"לבין" line), or
+        "both" (justified body paragraphs, 2026-09-14 visual-fidelity fix,
+        matched against the real reference corpus) - all are RTL-safe
+        alignments, and NO OTHER value (e.g. "left") may ever appear.
+
+        Paragraph-level <w:bidi/> is scoped exactly to jc="both" paragraphs,
+        never any other alignment (2026-09-14, two related but opposite
+        findings from two separate real-rendering checks): jc="right"/
+        "center" WITH <w:bidi/> was proven, by diffing a real
+        human-verified-working .docx, to break real Word's rendering - so it
+        must never appear there. jc="both" WITHOUT <w:bidi/> was separately
+        proven, via a real rendered screenshot, to render a short/single-line
+        justified paragraph flush LEFT instead of right (a real visual bug,
+        not a cosmetic nit) - so <w:bidi/> is REQUIRED there. Both directions
+        of this rule must hold, every time."""
         doc = engine.render_free_text(variant_id, self.CLIENT_NAME, self.SAMPLE_BODY)
         docx_obj = DocxDocument(str(doc.temp_path))
         body_paragraphs = [p for p in docx_obj.paragraphs if p.text.strip()]
@@ -285,8 +295,10 @@ class TestRenderFreeTextDocxFormatEssentials:
             pPr = para._p.find(qn('w:pPr'))
             assert pPr is not None, f"paragraph has no pPr: {para.text!r}"
             jc = pPr.find(qn('w:jc'))
-            assert jc is not None and jc.get(qn('w:val')) in ('right', 'center', 'both'), (
-                f"paragraph is not right-aligned, centered, or justified: {para.text!r}"
+            jc_val = jc.get(qn('w:val')) if jc is not None else None
+            assert jc_val in ('right', 'center', 'both'), (
+                f"paragraph alignment is not right/center/both (RTL-safe): "
+                f"{jc_val!r} for {para.text!r}"
             )
             mark_rPr = pPr.find(qn('w:rPr'))
             assert mark_rPr is not None and mark_rPr.find(qn('w:rtl')) is not None, (
@@ -299,9 +311,45 @@ class TestRenderFreeTextDocxFormatEssentials:
                 assert run_rPr is not None and run_rPr.find(qn('w:rtl')) is not None, (
                     f"run text is not RTL: {run.text!r}"
                 )
-            assert pPr.find(qn('w:bidi')) is None, (
-                f"paragraph-level <w:bidi/> present - the confirmed real-Word "
-                f"RTL-rendering bug this feature fixed, must never regress: {para.text!r}"
+            has_bidi = pPr.find(qn('w:bidi')) is not None
+            if jc_val == 'both':
+                assert has_bidi, (
+                    f"justified (jc=both) paragraph is missing <w:bidi/> - "
+                    f"real rendering shows this as flush-LEFT, not right: {para.text!r}"
+                )
+            else:
+                assert not has_bidi, (
+                    f"paragraph-level <w:bidi/> present on a non-justified "
+                    f"({jc_val!r}) paragraph - the confirmed real-Word "
+                    f"RTL-rendering bug this feature fixed, must never regress: "
+                    f"{para.text!r}"
+                )
+
+    @pytest.mark.parametrize(
+        "variant_id", ["hourly_consultation", "multi_component_agreement", "alternative_tracks"]
+    )
+    def test_every_body_paragraph_uses_one_point_five_line_spacing(
+        self, engine, variant_id
+    ):
+        """2026-09-14, explicit human instruction: single ("tight") line
+        spacing made a real rendered document look visibly crowded. Every
+        paragraph must use 1.5 line spacing (w:line="360" at
+        lineRule="auto", where 240 is single) - checked directly on the
+        rendered .docx, not just eyeballed off a screenshot."""
+        doc = engine.render_free_text(variant_id, self.CLIENT_NAME, self.SAMPLE_BODY)
+        docx_obj = DocxDocument(str(doc.temp_path))
+        body_paragraphs = [p for p in docx_obj.paragraphs if p.text.strip()]
+        assert body_paragraphs, "expected at least one non-empty body paragraph"
+        for para in body_paragraphs:
+            pPr = para._p.find(qn('w:pPr'))
+            spacing = pPr.find(qn('w:spacing')) if pPr is not None else None
+            assert spacing is not None, f"paragraph has no w:spacing: {para.text!r}"
+            assert spacing.get(qn('w:line')) == '360', (
+                f"paragraph is not 1.5-line-spaced (w:line={spacing.get(qn('w:line'))!r}, "
+                f"expected '360'): {para.text!r}"
+            )
+            assert spacing.get(qn('w:lineRule')) == 'auto', (
+                f"paragraph lineRule is not 'auto': {para.text!r}"
             )
 
     def test_body_text_lines_appear_verbatim_and_in_order(self, engine):
