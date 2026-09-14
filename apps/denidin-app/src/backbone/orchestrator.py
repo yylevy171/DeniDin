@@ -215,7 +215,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         else:
             final_text = self._execute_plan(plan, request, intent_text, turn_context)
 
-        return self._finalize_response(request, final_text)
+        return self._finalize_response(request, final_text, effective_chat_id)
 
     def _resolve_pending_local_tool_approval(self, request: AIRequest, effective_chat_id: str,
                                               turn_context: Dict[str, Any]) -> Optional[AIResponse]:
@@ -283,11 +283,30 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             "(see tasks.md's 'Deferred' section — write-approval-flow parity is scoped follow-up work)"
         )
 
-    def _finalize_response(self, request: AIRequest, final_text: str) -> AIResponse:
-        """Same [[NO_REPLY]] sentinel handling + truncation-on-send convention as
-        AIHandler._finalize_response (contracts/orchestration-loop.md step 4) —
-        reimplemented here, not shared code, per REQ-063-07."""
+    def _finalize_response(self, request: AIRequest, final_text: str,
+                            effective_chat_id: Optional[str] = None) -> AIResponse:
+        """Same [[NO_REPLY]] sentinel handling as AIHandler._finalize_response
+        (contracts/orchestration-loop.md step 4) — reimplemented here, not shared
+        code, per REQ-063-07.
+
+        offer_approval_buttons (Feature 047 parity, added 2026-09-14 after a real
+        billed-test failure): True iff a reminders_write step just created a NEW
+        pending local-tool approval THIS turn. Any approval that existed BEFORE
+        this turn was already resolved-or-cleared by
+        _resolve_pending_local_tool_approval at the top of get_response (its
+        typed-reply resolver clears the manager on every path — approve, decline,
+        AND unrecognized — before this turn ever reaches Planning/execution), so a
+        pending approval found here can only be one this turn's own
+        propose_write just set — same "computed once, lockstep with the actual
+        state" property AIHandler's own new_pending_approval_created has, just
+        checked by re-reading the shared manager instead of a locally threaded
+        bool (mirrors _resolve_pending_local_tool_approval's own reasoning for
+        reusing the same shared instance)."""
         should_reply = final_text.strip() != NO_REPLY_SENTINEL
+        offer_approval_buttons = bool(
+            effective_chat_id and self.pending_local_tool_approval_manager is not None
+            and self.pending_local_tool_approval_manager.get(effective_chat_id) is not None
+        )
         return AIResponse(
             request_id=request.request_id,
             response_text=final_text,
@@ -298,6 +317,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             finish_reason="stop",
             timestamp=request.timestamp or int(now_local().timestamp()),
             should_reply=should_reply,
+            offer_approval_buttons=offer_approval_buttons,
         )
 
     @staticmethod
