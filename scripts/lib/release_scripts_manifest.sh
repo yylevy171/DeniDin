@@ -38,6 +38,7 @@ RELEASE_SCRIPTS_BUNDLE_FILES=(
     "scripts/backup_prod/lib/load_config.sh"
     "scripts/backup_prod/lib/retention_purge.sh"
     "scripts/backup_prod/lib/sqlite_backup.sh"
+    "scripts/backup_prod/lib/rsync_wsl_transport.sh"
     "scripts/backup_prod/run_daily_backup.sh"
     "scripts/backup_prod/pull_backups.sh"
     "scripts/backup_prod/verify_restore.sh"

@@ -75,7 +75,13 @@ if [ "$SSH_HOST_ALIAS" = "LOCAL_TEST" ]; then
 else
     REMOTE_DAILY="${SSH_HOST_ALIAS}:${DAILY_BACKUP_DIR}/"
     REMOTE_MONTHLY="${SSH_HOST_ALIAS}:${MONTHLY_BACKUP_DIR}/"
-    RSYNC_SSH_OPT="ssh -o ConnectTimeout=10 -o BatchMode=yes"
+    # The real Windows prod box's SSH DefaultShell is deliberately cmd.exe
+    # (scripts/windows_prod/_wsl_ssh.sh), which mis-splits a raw remote
+    # rsync command line on the space in "Yaron Levi" - confirmed live,
+    # 2026-09-14. rsync_wsl_transport.sh routes the actual remote --server
+    # invocation through WSL2 instead, sidestepping cmd.exe's quoting
+    # entirely - see that script's own header for the full mechanism.
+    RSYNC_SSH_OPT="$SCRIPT_DIR/lib/rsync_wsl_transport.sh -o ConnectTimeout=10 -o BatchMode=yes"
 fi
 
 mkdir -p "$MAC_DAILY_BACKUP_DIR" "$MAC_MONTHLY_BACKUP_DIR"
