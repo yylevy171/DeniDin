@@ -27,7 +27,7 @@ Instead of passing every single rule and capability to the AI on every turn, we 
 
 - **REQ-063-01 (The Backbone)**: The system MUST define a core Backbone prompt that is always loaded. It must contain the core persona, the strict operating boundaries, and a directory of available capabilities.
 - **REQ-063-02 (Capability Separation)**: The `runtime_constitution.md` MUST be split into distinct capability markdown files (e.g., `invoice_rules.md`, `ledger_rules.md`).
-- **REQ-063-03 (Code Separation)**: The `ai_handler.py` MUST be split into distinct capability python modules (e.g., `invoice_handler.py`, `ledger_handler.py`).
+- **REQ-063-03 (Code Separation)**: The `ai_handler.py` (4,859 lines) and the massive domain managers (e.g., `ledger_event_manager.py` at 2,037 lines, `session_manager.py` at 991 lines, `reminder_manager.py` at 809 lines) MUST be stripped down and refactored into cohesive Capability Plugins. A single "Capability" should encapsulate both its handler logic and its manager logic.
 - **REQ-063-04 (Dynamic Loading)**: The AI or router MUST dynamically load a capability's specific prompt/rules *only* when that capability is invoked or deemed necessary for the current user turn.
 - **REQ-063-05 (Zero Behavioral Regression)**: Despite the massive structural changes, the end-user MUST NOT experience any degradation in existing features. All existing E2E/billed tests MUST pass without changing the test definitions.
 
