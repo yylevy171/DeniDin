@@ -32,16 +32,16 @@ To definitively **PROVE** the speed gains and the 85% hit rate requirement, the 
 
 ### Test 1: Quantifiable Speed Gain Proof (`tests/expensive/` or `tests/billed/`)
 **Goal**: Prove the cache successfully eliminates the Morning API network overhead when the AI invokes the resolution tool for a known client.
-- **Scenario**: A user-facing test script sends two consecutive queries about the same client (e.g., *"Did Avi Levi pay?"* followed by *"Send Avi Levi a new invoice"*).
-- **Assumed Architecture**: The AI still invokes the `resolve_client` tool on both turns, but the tool acts as a passthrough.
+- **Methodology**: The test framework will utilize a feature flag (e.g., `USE_MORNING_CACHE=true/false`) to run the **exact same scenario** under both conditions to perfectly isolate the variable.
+- **Scenario**: A user-facing test script sends a query for a known client: *"Did Avi Levi pay?"*
 - **Hard Assertions**:
-  1. **Cache Miss (Turn 1)**: The telemetry MUST show a `morning_api_request_times_ms` entry for `resolve_client`, and `tool_total_execution_time_ms` will reflect the network latency (typically >1000ms).
-  2. **Cache Hit (Turn 2)**: The telemetry MUST show **NO** network call in `morning_api_request_times_ms`. 
-  3. **Speed Proof**: The test MUST explicitly assert that the `tool_total_execution_time_ms` for the cache hit is near-instantaneous (e.g., < 100ms), proving the network hop was eliminated.
+  1. **Flag OFF**: The test runs with the flag disabled. The telemetry MUST show a `morning_api_request_times_ms` entry, and `tool_total_execution_time_ms` will reflect the full network latency (typically >1000ms).
+  2. **Flag ON**: The test runs with the flag enabled. The telemetry MUST show **NO** network call in `morning_api_request_times_ms`. 
+  3. **Speed Proof**: The test MUST explicitly assert that the `tool_total_execution_time_ms` for the Flag ON run is near-instantaneous (e.g., < 100ms) and significantly faster than the Flag OFF run, proving the network hop was eliminated.
 
 ### Test 2: 85% Hit Rate Target Proof (`tests/billed/`)
 **Goal**: Prove the caching implementation achieves the 85% minimum hit rate under a realistic usage distribution, and calculate total time saved.
-- **New Test File**: The engineers MUST create a new test (e.g., `test_cache_hit_rate_simulation_billed.py`).
+- **New Test File**: The engineers MUST create a new test (e.g., `test_cache_hit_rate_simulation_billed.py`) running with the feature flag **ON**.
 - **Batch Definition**: The test will execute a deterministic batch of **20 sequential user messages** against a fresh conversation state.
   - **Distribution**: 17 messages will refer to 3-4 recurring "known" clients (simulating heavy daily use). 3 messages will refer to entirely new/unknown clients (simulating the ~15% miss rate).
 - **Measurement & Assertions**:
