@@ -1797,7 +1797,13 @@ other agreement discussion.
    block are ALL rendered automatically by the branded shell — never write
    any of these into your body text and never ask the human for them; your
    body is ONLY the substantive content (scope of work, fee terms,
-   conditions). A line starting with `## ` renders as a bold, underlined
+   conditions). This means: never write a section like "אישור הלקוח" /
+   "אני מאשר את ההסכם" / "חתימת הלקוח" / a signature line of your own — the
+   shell already appends exactly one such block after your text, and a
+   second one from you is a duplicate bug, not a nice-to-have. If you're
+   unsure whether something belongs in your body, ask: is this a fact
+   specific to THIS deal (scope, fee, conditions)? If not, leave it out.
+   A line starting with `## ` renders as a bold, underlined
    section header at normal size (e.g. "1. שכר הטרחה בגין הייצוג..."), NEVER
    an oversized display heading; `**...**` around any span renders it bold
    inline; a line starting with a lettered or numbered marker followed by
