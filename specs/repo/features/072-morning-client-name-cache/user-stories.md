@@ -26,21 +26,21 @@ Reduce perceived AI latency by bypassing the 3-5 second overhead associated with
 
 ---
 
-## User Acceptance Testing (UAT)
+## User-Facing Testing (Billed & Expensive E2E Suites)
 
-To ensure we actually achieved the speedups and hit the 85% KPI, developers must verify the following scenarios:
+To definitively **PROVE** the speed gains and the 85% hit rate requirement, the engineering team MUST implement the following in the user-facing test suites (`tests/billed/` and/or `tests/expensive/`). Unit and integration tests do not qualify as proof.
 
-### UAT-A: Cache Hit Speed Verification
-1. Ensure "Avi Levi" is in the local cache.
-2. Ask the bot: *"Did Avi Levi pay his invoice?"*
-3. **Verification**: 
-   - Check the telemetry logs for `morning_api_request_times_ms`. 
-   - There MUST be NO recorded call to `resolve_client_name` or `list_clients`.
-   - Total latency must be noticeably faster (measuring just LLM inference time).
+### Test 1: Quantifiable Speed Gain Proof (`tests/expensive/` or `tests/billed/`)
+**Goal**: Prove the cache successfully eliminates the Morning API overhead on repeated lookups, saving 3-5 seconds.
+- **Scenario**: The test script simulates a user sending two consecutive queries about the same client (e.g., *"Did Avi Levi pay?"* followed by *"Send Avi Levi a new invoice for 500 NIS"*).
+- **Hard Assertions**:
+  1. The telemetry for the **first turn** MUST show a `morning_api_request_times_ms` entry for `resolve_client` (Cache Miss).
+  2. The telemetry for the **second turn** MUST show **NO** `resolve_client` network call in `morning_api_request_times_ms` (Cache Hit).
+  3. The test runner MUST measure the raw execution time of both turns and explicitly assert that Turn 2's total processing time is significantly faster (at least 2-3 seconds faster) than Turn 1, proving the perceived speed gain for the user.
 
-### UAT-B: Cache Miss Fallback
-1. Clear the cache or ask about a brand new client: *"Did NewCorp pay?"*
-2. **Verification**:
-   - The bot falls back to the Morning API.
-   - Telemetry logs show `morning_api_request_times_ms` captured for the resolution call.
-   - A subsequent ask about "NewCorp" must now register as a Cache Hit (UAT-A).
+### Test 2: 85% Hit Rate Target Proof (`tests/billed/`)
+**Goal**: Prove the caching implementation achieves the 85% minimum hit rate under a realistic usage distribution.
+- **Scenario**: Create a new user-facing test (e.g., `test_cache_hit_rate_simulation_billed.py`) that feeds a simulated batch of 20 user requests into the AI (e.g., 17 requests for existing frequent clients, 3 for new/unknown clients).
+- **Hard Assertions**:
+  1. The test MUST assert that the final calculated Cache Hit rate across the batch is **>= 85%**.
+  2. The test output MUST log the total cumulative time saved across the batch (e.g., "Total time saved by cache hits: 45.2 seconds").
