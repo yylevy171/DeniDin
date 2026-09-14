@@ -64,8 +64,9 @@ A critical risk of a transparent cache is returning a client ID that was recentl
 ## Alternative Architecture Research: "LLM Context Caching"
 The CEO raised an alternative approach: What if we expose a `get_all_clients` MCP tool? The AI could call this tool once (e.g., in the morning or on session start), retrieve the entire list of clients and IDs, and effectively *cache the data in its own context window*.
 - **The Theory**: By having the IDs in the prompt/context, the AI would *never* need to call a resolution tool, eliminating the tool-turn entirely (Zero-Turn resolution).
-- **The Challenge**: Production environments have hundreds of clients. Injecting 500+ names and IDs into the context window for *every single message* might drastically increase LLM inference cost and inference latency (time-to-first-token), potentially offsetting the tool-call speed gains.
-- **Engineering Task**: Before finalizing the Transparent MCP Cache (Option A), the engineers MUST research and benchmark this "LLM Context Caching" approach. They must prove whether injecting a large JSON payload of 500 clients into the context window is actually faster/cheaper than a 50ms MCP tool-call hop.
+- **The Challenge**: Production environments have hundreds of clients. Injecting 500+ names and IDs into the context window for *every single message* might drastically increase LLM inference cost, inference latency (time-to-first-token), and network payload size, potentially offsetting the tool-call speed gains.
+- **The Solution (Provider Context Caching)**: To avoid sending the massive payload on every turn, the engineering team must investigate utilizing the LLM provider's native **Context Caching API** (e.g., Gemini Context Caching). This allows DeniDin to send the massive list of clients to the LLM *once*, receive a tiny `cache_id`, and just pass that `cache_id` on subsequent turns.
+- **Engineering Task**: Before finalizing the Transparent MCP Cache (Option A), the engineers MUST research and benchmark this "LLM Context Caching" approach using the provider's Context Caching API. They must prove whether managing an LLM cache is actually faster/cheaper in production than a 50ms MCP tool-call hop.
 
 ## Scope Notes
 
