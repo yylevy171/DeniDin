@@ -102,3 +102,7 @@ Feature 080: always-on progress updates, typing keep-alive, telemetry plumbing; 
 ## [0.7.2] - 2026-09-14
 
 supporting daily backups
+
+## [0.7.3] - 2026-09-14
+
+supporting daily backups
