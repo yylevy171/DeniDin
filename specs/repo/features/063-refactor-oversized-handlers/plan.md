@@ -139,8 +139,9 @@ apps/denidin-app/
 │   ├── backbone/                                  # NEW package — the orchestrator kernel (flag on)
 │   │   ├── orchestrator.py                        # new get_response/resolve_button_tap equivalent — the
 │   │   │                                            #   plan-execution loop (contracts/orchestration-loop.md)
+│   │   ├── capability_tags.py                      # the 9-value CapabilityTag enum (data-model.md)
 │   │   ├── intent_identification.py                # meta-capability
-│   │   └── planning.py                             # meta-capability
+│   │   └── planning.py                             # meta-capability — also holds the Plan model + RBAC filter
 │   ├── capabilities/                              # NEW package — 4 domain subpackages (write/read stays a
 │   │   │                                            #   prompt/tool distinction, not a Python file split)
 │   │   ├── invoicing/

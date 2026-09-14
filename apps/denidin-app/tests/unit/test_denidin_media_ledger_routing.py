@@ -42,6 +42,11 @@ def _make_media_notification():
 def app(monkeypatch):
     a = Mock()
     a.green_api_bot = None
+    # Feature 063: a bare Mock() auto-vivifies backbone_orchestrator as a truthy
+    # attribute, which would incorrectly route this test through the new
+    # orchestrator path instead of the legacy path it's actually exercising -
+    # explicit None matches every real denidin_app instance with the flag off.
+    a.backbone_orchestrator = None
     a.ai_handler.user_manager.get_user.return_value = Mock(is_blocked=False)
     monkeypatch.setattr(denidin_module, 'denidin_app', a)
     return a

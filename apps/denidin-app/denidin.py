@@ -180,11 +180,18 @@ class DeniDin:
     """
     def __init__(self, ai_handler, config, whatsapp_handler, cleanup_thread=None,
                  group_membership_resolver=None, reminder_scheduler=None,
-                 accounting_reconciliation_scheduler=None, daily_roll_scheduler=None):
+                 accounting_reconciliation_scheduler=None, daily_roll_scheduler=None,
+                 backbone_orchestrator=None):
         self.ai_handler = ai_handler
         self.config = config
         self.whatsapp_handler = whatsapp_handler
         self.cleanup_thread = cleanup_thread
+        # Feature 063: the new BackboneOrchestrator, constructed by initialize_app
+        # ONLY when config.feature_flags['enable_capability_backbone'] is true.
+        # None (the default) when the flag is off - ai_handler remains the sole
+        # implementation in that case, byte-for-byte as before this feature
+        # existed (REQ-063-07).
+        self.backbone_orchestrator = backbone_orchestrator
         # Add references for background thread access
         self.session_manager = ai_handler.session_manager if ai_handler.memory_enabled else None
         self.memory_manager = ai_handler.memory_manager if ai_handler.memory_enabled else None
@@ -448,10 +455,30 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
         green_api.groups if green_api is not None else None, ai_handler.user_manager
     )
 
+    # Feature 063 (Dynamic Capability Backbone): one-time selection, at startup, of
+    # which implementation handles this process's turns - ai_handler (constructed
+    # above, unconditionally, so the flag-off path is byte-for-byte identical to
+    # before this feature existed) or the new BackboneOrchestrator. Reuses
+    # ai_handler's own manager instances (reminder_manager/ledger_event_manager/
+    # pending_local_tool_approval_manager/morning_mcp_locator) rather than
+    # constructing duplicates - REQ-063-03: those managers stay exactly where they
+    # are, shared, unmodified, by both implementations.
+    backbone_orchestrator = None
+    if (config.feature_flags or {}).get('enable_capability_backbone', False):
+        from src.backbone.orchestrator import BackboneOrchestrator
+        backbone_orchestrator = BackboneOrchestrator(
+            ai_client, config,
+            reminder_manager=ai_handler.reminder_manager,
+            ledger_event_manager=ai_handler.ledger_event_manager,
+            pending_local_tool_approval_manager=ai_handler.pending_local_tool_approval_manager,
+            morning_mcp_locator=ai_handler.morning_mcp_locator,
+        )
+
     # Create DeniDin instance (will be used as context for background threads and MediaHandler)
     denidin = DeniDin(
         ai_handler, config, whatsapp_handler, cleanup_thread=None,
-        group_membership_resolver=group_membership_resolver
+        group_membership_resolver=group_membership_resolver,
+        backbone_orchestrator=backbone_orchestrator,
     )
     
     # Initialize MediaHandler with DeniDin context and attach to WhatsAppHandler
@@ -817,6 +844,38 @@ def _process_media_message(notification: Notification) -> None:
         else:
             send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
+    # Feature 063 (REQ-063-04a): when the flag is on, media messages enter through
+    # the SAME Backbone orchestrator as text turns - no separate deterministic
+    # pre-route. This dispatch decision is wired for real; threading the raw
+    # extracted Media object into the orchestrator's per-step turn_context (so
+    # media_analysis's step can call the real extractor classes) is tracked as
+    # follow-up work in tasks.md's Deferred section - the capability handler
+    # already degrades gracefully (a clear "no media attached" fallback, never a
+    # crash) until that plumbing lands. Flag-off dispatch below is fully
+    # unchanged - byte-for-byte the same call as before this feature existed.
+    if denidin_app.backbone_orchestrator is not None:
+        from src.models.message import AIRequest
+
+        request = AIRequest(
+            user_prompt="[media message]",
+            constitution="",
+            max_tokens=denidin_app.config.ai_reply_max_tokens,
+            model=denidin_app.config.ai_vision_model,
+            chat_id=message.chat_id,
+            message_id=message.message_id,
+            timestamp=message.timestamp,
+            original_message=message,
+        )
+        response = denidin_app.backbone_orchestrator.get_response(
+            request, chat_id=message.chat_id, is_media=True,
+        )
+        if response.should_reply:
+            notification.answer(response.response_text)
+            log_outbound(message.chat_id, response.response_text, kind="text")
+        if denidin_app.typing_keepalive_scheduler is not None:
+            stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
+        return
+
     result = denidin_app.whatsapp_handler.handle_media_message(notification)
     if denidin_app.typing_keepalive_scheduler is not None:
         stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
@@ -1104,11 +1163,23 @@ def handle_button_tap(notification: Notification) -> None:
         )
 
     try:
-        ai_response = denidin_app.ai_handler.resolve_button_tap(
-            message=message,
-            selected_id=selected_id,
-            stanza_id=stanza_id,
-        )
+        # Feature 063 (contracts/orchestration-loop.md Non-goals): a button tap
+        # skips Intent Identification/Planning and resumes the specific pending
+        # step directly - tried first when the flag is on, since a
+        # reminders_write proposal from the new orchestrator is tracked in its
+        # own PendingLocalToolApprovalManager instance (shared with ai_handler's,
+        # see initialize_app), not ai_handler's MCP PendingApprovalManager.
+        ai_response = None
+        if denidin_app.backbone_orchestrator is not None:
+            ai_response = denidin_app.backbone_orchestrator.resolve_button_tap(
+                chat_id=message.chat_id, selected_id=selected_id, stanza_id=stanza_id,
+            )
+        if ai_response is None:
+            ai_response = denidin_app.ai_handler.resolve_button_tap(
+                message=message,
+                selected_id=selected_id,
+                stanza_id=stanza_id,
+            )
     finally:
         # DeniDin's turn is over the instant resolve_button_tap returns (or raises) -
         # matching feature 048/080's "stop the instant the turn ends" semantics.
@@ -1338,6 +1409,7 @@ if __name__ == "__main__":
         'godfather_phone': config.godfather_phone,
         'memory': config.memory,
         'constitution_config': config.constitution_config,
+        'backbone_config': config.backbone_config,
         'user_roles': config.user_roles,
         'mcp': config.mcp,
         'reminders': config.reminders,

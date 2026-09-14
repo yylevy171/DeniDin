@@ -5,11 +5,20 @@
   "ai_model": "gpt-5.6-luna",
   "ai_reply_max_tokens": 20000,
   "ai_vision_model": "gpt-5.6-luna",
+  "backbone_config": {
+    "file": "backbone.md",
+    "base_dir": "config",
+    "prompts_dir": "prompts",
+    "capabilities_dir": "capabilities"
+  },
   "constitution_config": {
     "file": "runtime_constitution.md"
   },
   "data_root": "dev_data_for_dev_or_data_for_prod",
   "environment": "dev",
+  "feature_flags": {
+    "enable_capability_backbone": false
+  },
   "godfather_phone": "YOUR_GODFATHER_PHONE_NUMBER",
   "green_api_instance_id": "YOUR_GREEN_API_INSTANCE_ID",
   "green_api_token": "YOUR_GREEN_API_TOKEN",
