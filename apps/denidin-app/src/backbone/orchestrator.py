@@ -201,11 +201,20 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         if pending_resolved is not None:
             return pending_resolved
 
-        # Step 1: Intent Identification
-        intent_text = identify_intent(self, request, is_media=is_media)
+        # Step 1: Intent Identification. allowed_tags is computed here, BEFORE Intent
+        # Identification runs (not just before Planning, as originally written) -
+        # Intent Identification needs to know what domains of capability this role
+        # even HAS this turn to correctly recognize which domain a request touches
+        # (e.g. "how much was agreed with X" -> Ledger Query's domain), without that
+        # requiring per-capability hardcoded phrasing examples in its own prompt file
+        # (a real bug found via a billed test, 2026-09-14: with no visibility into the
+        # capability catalog at all, Intent Identification didn't just fail to route -
+        # it answered the user's question itself, incorrectly, having no way to know a
+        # ledger lookup tool existed to route to instead).
+        allowed_tags = role_allowed_capabilities(role)
+        intent_text = identify_intent(self, request, allowed_tags, is_media=is_media)
 
         # Step 2: Planning
-        allowed_tags = role_allowed_capabilities(role)
         plan = build_plan(self, request, intent_text, allowed_tags)
 
         # Step 3: Execution loop (empty plan => step 4 uses Intent Identification's

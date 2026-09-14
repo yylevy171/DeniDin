@@ -12,7 +12,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from src.backbone.capability_tags import CapabilityTag, is_valid_domain_capability
+from src.backbone.capability_tags import CapabilityTag, capability_catalog_text, is_valid_domain_capability
 from src.models.user import Role
 
 logger = logging.getLogger(__name__)
@@ -123,7 +123,8 @@ def build_plan(orchestrator, request, intent_text: str, allowed_tags: List[Capab
             request=request,
             accumulated_context=(
                 f"Intent Identification determined: {intent_text}\n\n"
-                f"Capabilities available to this role: {', '.join(t.value for t in allowed_tags)}\n\n"
+                f"Capabilities available to this role (tag: description):\n"
+                f"{capability_catalog_text(allowed_tags)}\n\n"
                 "Respond with a JSON object: {\"steps\": [{\"capability\": <tag>, \"note\": <str>}, ...]} "
                 "(steps may be empty)."
             ),

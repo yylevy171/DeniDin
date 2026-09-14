@@ -8,7 +8,7 @@ Planning's output).
 """
 from dataclasses import dataclass
 from enum import Enum
-from typing import FrozenSet
+from typing import FrozenSet, List, Optional
 
 
 class CapabilityKind(str, Enum):
@@ -38,6 +38,18 @@ class CapabilityTag(str, Enum):
 class CapabilityInfo:
     tag: CapabilityTag
     kind: CapabilityKind
+    # One-line, capability-agnostic-consumer-facing summary of the DOMAIN this
+    # capability covers - not how to call it, not its internal mechanics. This is
+    # the single place that knowledge is authored; Intent Identification and
+    # Planning both render it generically (capability_catalog_text below) rather
+    # than needing their own prompt files hand-edited per capability, which is
+    # exactly the coupling a 2026-09-14 billed-test failure exposed: Intent
+    # Identification had zero visibility into what capabilities even exist, so a
+    # request landing squarely in an existing domain (a past-agreement lookup,
+    # Ledger Query's job) got answered directly - and wrongly - instead of being
+    # recognized as needing that domain at all. description is None for the two
+    # META tags (never offered to a role, never part of the rendered catalog).
+    description: Optional[str] = None
 
 
 # Canonical order — the data-model.md table's row order. Matters for cache-hit
@@ -46,13 +58,47 @@ class CapabilityInfo:
 CAPABILITY_INFO: tuple = (
     CapabilityInfo(CapabilityTag.INTENT_IDENTIFICATION, CapabilityKind.META),
     CapabilityInfo(CapabilityTag.PLANNING, CapabilityKind.META),
-    CapabilityInfo(CapabilityTag.INVOICING_WRITE, CapabilityKind.DOMAIN),
-    CapabilityInfo(CapabilityTag.INVOICING_READ, CapabilityKind.DOMAIN),
-    CapabilityInfo(CapabilityTag.LEDGER_CAPTURE, CapabilityKind.DOMAIN),
-    CapabilityInfo(CapabilityTag.LEDGER_QUERY, CapabilityKind.DOMAIN),
-    CapabilityInfo(CapabilityTag.REMINDERS_WRITE, CapabilityKind.DOMAIN),
-    CapabilityInfo(CapabilityTag.REMINDERS_READ, CapabilityKind.DOMAIN),
-    CapabilityInfo(CapabilityTag.MEDIA_ANALYSIS, CapabilityKind.DOMAIN),
+    CapabilityInfo(
+        CapabilityTag.INVOICING_WRITE, CapabilityKind.DOMAIN,
+        "Creating/modifying Morning invoicing documents (invoices, receipts, "
+        "transaction accounts, credit notes) for a named client.",
+    ),
+    CapabilityInfo(
+        CapabilityTag.INVOICING_READ, CapabilityKind.DOMAIN,
+        "Looking up a SPECIFIC existing Morning invoice/document's own status - has "
+        "THIS invoice been paid, listing recent documents. NOT the first choice for "
+        "a general owed/paid amount question - see Ledger Query, which is the "
+        "preferred first domain for that shape of question.",
+    ),
+    CapabilityInfo(
+        CapabilityTag.LEDGER_CAPTURE, CapabilityKind.DOMAIN,
+        "Recognizing and recording a new fee agreement or bank deposit mentioned "
+        "in conversation as a structured ledger event.",
+    ),
+    CapabilityInfo(
+        CapabilityTag.LEDGER_QUERY, CapabilityKind.DOMAIN,
+        "Answering questions about PAST fee agreements or bank deposits already "
+        "recorded, INCLUDING how much a client/payer owes or has paid - covers "
+        "amounts owed/paid whether or not a formal Morning invoice exists. For a "
+        "lookup-shaped owed/paid question, this is the preferred first domain over "
+        "Invoicing - Read (the ledger is a cache over Morning invoicing, faster to "
+        "check, and covers agreement-level amounts Invoicing - Read cannot see at "
+        "all); reach for Invoicing - Read only when the request is unmistakably "
+        "about a live invoice/document's own status.",
+    ),
+    CapabilityInfo(
+        CapabilityTag.REMINDERS_WRITE, CapabilityKind.DOMAIN,
+        "Creating, changing, or cancelling a reminder (one-time or recurring) for "
+        "the user.",
+    ),
+    CapabilityInfo(
+        CapabilityTag.REMINDERS_READ, CapabilityKind.DOMAIN,
+        "Looking up the user's own existing reminders - what's scheduled, for when.",
+    ),
+    CapabilityInfo(
+        CapabilityTag.MEDIA_ANALYSIS, CapabilityKind.DOMAIN,
+        "Reading/extracting the content of an image or document the user sent.",
+    ),
 )
 
 DOMAIN_CAPABILITY_TAGS: FrozenSet[CapabilityTag] = frozenset(
@@ -60,6 +106,21 @@ DOMAIN_CAPABILITY_TAGS: FrozenSet[CapabilityTag] = frozenset(
 )
 
 _VALID_VALUES: FrozenSet[str] = frozenset(tag.value for tag in CapabilityTag)
+
+
+_INFO_BY_TAG = {info.tag: info for info in CAPABILITY_INFO}
+
+
+def capability_catalog_text(tags: List[CapabilityTag]) -> str:
+    """Renders `tags` (always a role's allowed DOMAIN tags - never the META ones,
+    which carry no description) as one "- name: description" line per capability,
+    in canonical CAPABILITY_INFO order regardless of `tags`' own order. Shared by
+    Intent Identification (so it can recognize which domain a request touches
+    without per-capability hardcoded prompt text) and Planning (so its own "which
+    tag do I name" step is grounded in the same descriptions, not just bare tag
+    values) - one authored description per capability, in capability_tags.py only."""
+    ordered = [info for info in CAPABILITY_INFO if info.tag in set(tags) and info.description]
+    return "\n".join(f"- {info.tag.value}: {info.description}" for info in ordered)
 
 
 def is_valid_domain_capability(value: str) -> bool:
