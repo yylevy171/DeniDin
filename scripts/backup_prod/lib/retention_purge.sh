@@ -26,16 +26,22 @@ _backup_prod_cutoff_epoch() {
     local today_override="${3:-}"
 
     if [ -n "$today_override" ]; then
-        local base_epoch
-        base_epoch=$(_backup_prod_date_to_epoch "$today_override") || return 1
         if _backup_prod_is_bsd_date; then
+            local base_epoch
+            base_epoch=$(_backup_prod_date_to_epoch "$today_override") || return 1
             if [ "$unit" = "months" ]; then
                 date -j -v-"${amount}"m -r "$base_epoch" +%s
             else
                 date -j -v-"${amount}"d -r "$base_epoch" +%s
             fi
         else
-            date -d "@${base_epoch} -${amount} ${unit}" +%s
+            # GNU/uutils date: combining "@<epoch> -N <unit>" in one -d string is
+            # NOT portable - GNU coreutils accepts it, but uutils coreutils (the
+            # `date` shipped on the real WSL2 prod box, confirmed live 2026-09-14)
+            # rejects it outright ("invalid date"). Applying the relative offset
+            # to the plain "<today_override> 00:00:00" string instead, rather than
+            # round-tripping through an epoch first, works identically on both.
+            date -d "${today_override} 00:00:00 -${amount} ${unit}" +%s
         fi
     else
         if _backup_prod_is_bsd_date; then
