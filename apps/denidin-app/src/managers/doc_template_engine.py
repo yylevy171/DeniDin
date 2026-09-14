@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from docx import Document
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
 from src.models.fee_agreement import FeeAgreementVariant, GeneratedDocument
 from src.utils.logger import get_logger
@@ -101,11 +103,35 @@ class DocTemplateEngine:
         Returns the raw facts (extracted text, leftover placeholder tokens,
         which expected values were/weren't found verbatim) - the ACTUAL
         accept/reject judgment is the model's, per REQ-083-04. This method
-        never itself decides pass/fail."""
+        never itself decides pass/fail.
+
+        2026-09-13 redesign: a document produced by render_free_text has no
+        fixed `values`/`components` schema to cross-check against (the AI
+        wrote the whole body itself) - for those, the only fact worth
+        reporting is whether any literal "{{...}}" placeholder-looking token
+        leaked into the output (the AI should never emit one; the shell's
+        own header/footer never contain one either)."""
         doc = Document(str(generated.temp_path))
         full_text = self._extract_full_text(doc)
 
         remaining_placeholders = sorted(set(PLACEHOLDER_PATTERN.findall(full_text)))
+        # 2026-09-14 (explicit human instruction): a real fact, never a
+        # code-level gate - REQ-083-04 still leaves accept/reject to the
+        # model. python-docx has no layout engine and can never itself know
+        # how a .docx paginates in real Word, so this is a real (LibreOffice
+        # headless -> PDF -> PyMuPDF) page count, not an estimate. None means
+        # the check itself couldn't run (e.g. LibreOffice unavailable in this
+        # environment) - the model should not treat None as "1 page, fine".
+        page_count = self.count_pages(generated.temp_path)
+
+        if generated.body_text is not None:
+            return {
+                "document_id": generated.document_id,
+                "extracted_text": full_text,
+                "remaining_placeholders": remaining_placeholders,
+                "page_count": page_count,
+                "clean": not remaining_placeholders,
+            }
 
         expected_values = list(generated.values.values())
         if generated.components:
@@ -116,11 +142,261 @@ class DocTemplateEngine:
 
         return {
             "document_id": generated.document_id,
+            "page_count": page_count,
             "extracted_text": full_text,
             "remaining_placeholders": remaining_placeholders,
             "missing_values": missing_values,
             "clean": not remaining_placeholders and not missing_values,
         }
+
+    # -- free-text authorship (2026-09-13 redesign) ----------------------
+
+    def get_reference_body(self, variant_id: str) -> str:
+        """Returns the variant's current body text (placeholders and all) as
+        a REFERENCE for the AI to pattern its own, freely-composed body on -
+        not something to fill in or reuse verbatim. The firm's letterhead
+        (logo/header/footer) is not included here - it lives in the shell
+        and is applied automatically by render_free_text, never something
+        the AI writes or sees as editable text."""
+        variant = self._get_variant(variant_id)
+        doc = Document(str(self.templates_dir / variant.template_filename))
+        return "\n".join(p.text for p in doc.paragraphs)
+
+    def get_reference_materials(self, variant_id: str) -> Dict[str, Any]:
+        """2026-09-14 follow-up: get_reference_body() alone gives the AI only
+        ONE example (the template's own placeholder-laden skeleton) to infer
+        professional-grade Hebrew legal phrasing from - too thin a basis to
+        reliably generalize a firm's actual register/tone. This method adds,
+        alongside that one skeleton, a curated set of REAL fee-agreement
+        excerpts this firm has actually sent (names/adversaries/exact amounts
+        obfuscated - see config/fee_agreement_templates/examples/README.md)
+        plus a directive prompt explaining what the AI is meant to do with
+        both. Returns {"template_body", "examples", "directive"} -
+        `examples`/`directive` default to an empty list / a generic fallback
+        instruction when no curated examples file exists yet for this variant
+        (never an error - the reference template body is always the floor)."""
+        template_body = self.get_reference_body(variant_id)
+        examples_path = self.templates_dir / "examples" / f"{variant_id}.json"
+        if examples_path.exists():
+            with open(examples_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            examples = list(data.get("examples", []))
+            directive = data.get("directive") or self._default_directive()
+        else:
+            examples = []
+            directive = self._default_directive()
+        return {
+            "template_body": template_body,
+            "examples": examples,
+            "directive": directive,
+        }
+
+    @staticmethod
+    def _default_directive() -> str:
+        return (
+            "No curated real-world examples exist yet for this variant - use "
+            "the reference template body above as your only style guide. "
+            "Write in the same professional Hebrew legal register: formal, "
+            "precise, no filler, matching its structure and tone, filled with "
+            "the real facts from this conversation only."
+        )
+
+    # Constant firm identity (2026-09-14, explicit human instruction: "firm
+    # identity is CONSTANT! IT NEVER CHANGES!!" - a real billed run had the AI
+    # write "המשרד" instead of naming the firm, which self-verification has
+    # no way to catch since it's a fact only a human/code, not the model's
+    # memory, can guarantee). Injected by CODE into every rendered document -
+    # never something the AI is trusted to remember to write.
+    FIRM_LAWYER_NAME = 'עו"ד אילה הוניגמן'
+    _TITLE_TEXT = "הסכם שכר טרחה"
+    _SIGNATURE_LINE = "____________________"
+
+    def render_free_text(
+        self, variant_id: str, client_name: str, body_text: str
+    ) -> GeneratedDocument:
+        """Replaces the template's ENTIRE body, but NOT with the AI's text
+        alone: the constant boilerplate every fee agreement must always
+        carry (title, date, firm identity, signature block) is CODE-OWNED
+        and injected here, verbatim, every time - never left to the AI's own
+        recall. `body_text` is only the substantive, per-document content
+        (scope of work, fee terms, conditions) that sits between that fixed
+        header and fixed footer. `client_name` is a separate, explicit field
+        (not buried inside body_text) so the header block can name the real
+        client with code, not a paraphrase the AI might drift on.
+
+        Minimal-code redesign otherwise unchanged (2026-09-13): the AI still
+        has full authorship over the substantive clauses' wording, structure,
+        and numbering - only the boilerplate around it is fixed. Light
+        markup in `body_text` (2026-09-14, visual-fidelity fix): a line
+        starting with "## " renders as a bold section heading; "**...**"
+        spans within any line render bold - the ONLY formatting vocabulary
+        the AI has, matching how a real Word agreement actually looks
+        (headings, emphasis) instead of one flat run of plain text per line."""
+        if not isinstance(body_text, str) or not body_text.strip():
+            raise ValueError("body_text must be a non-empty string")
+        if not isinstance(client_name, str) or not client_name.strip():
+            raise ValueError("client_name must be a non-empty string")
+
+        variant = self._get_variant(variant_id)
+        doc = Document(str(self.templates_dir / variant.template_filename))
+        body = doc.element.body
+
+        for p in list(doc.paragraphs):
+            p._p.getparent().remove(p._p)
+        # 2026-09-14 bug fix: some older templates (pre-dating the "AI writes
+        # the whole body" redesign) still carry a native Word TABLE for their
+        # old fixed-schema repeating group (e.g. multi_component_agreement's
+        # רכיב/תנאים component rows), with its own placeholder cells
+        # ({{COMPONENT_LABEL}}/{{COMPONENT_TERMS}}). A <w:tbl> is a sibling
+        # of <w:p> in the body, never a paragraph itself, so the loop above
+        # never touched it - it survived into every rendered document
+        # regardless of the AI's own body_text, permanently tripping
+        # verify()'s placeholder check (found via a real billed-test run,
+        # 2026-09-14: the model correctly saw "clean: false", couldn't fix a
+        # table it has no handle on, and gave up on this variant entirely).
+        # The AI owns the substantive body now, tables included if it wants
+        # one (as literal text) - no template table may survive rendering.
+        for table in list(doc.tables):
+            table._tbl.getparent().remove(table._tbl)
+
+        sect_pr = body.find(qn("w:sectPr"))
+
+        def _insert(new_p):
+            if sect_pr is not None:
+                sect_pr.addprevious(new_p)
+            else:
+                body.append(new_p)
+
+        today = now_local().strftime("%d.%m.%Y")
+
+        # -- code-owned header block (title, date, identity) - compact by
+        # design (few lines, tight spacing) since a real agreement like this
+        # must fit on one page (2026-09-14 instruction). --
+        _insert(self._build_rtl_paragraph(
+            self._TITLE_TEXT, bold=True, size=28, center=True, space_after=80
+        ))
+        _insert(self._build_rtl_paragraph(f"תאריך: {today}", space_after=80))
+        _insert(self._build_rtl_paragraph(
+            f'בין {client_name} (להלן – הלקוח) לבין {self.FIRM_LAWYER_NAME} '
+            f'(להלן – עוה"ד)',
+            space_after=160,
+        ))
+
+        # -- the AI's own substantive content --
+        for line in body_text.split("\n"):
+            if line.startswith("## "):
+                _insert(self._build_rtl_paragraph(
+                    line[3:], bold=True, size=24, space_after=100
+                ))
+            else:
+                _insert(self._build_rtl_paragraph(line, space_after=80))
+
+        # -- code-owned footer block (signature) - always present, always
+        # names the real client, never left to the AI to remember. --
+        _insert(self._build_rtl_paragraph(
+            "אני מאשר את ההסכם.", space_after=80
+        ))
+        _insert(self._build_rtl_paragraph(
+            f"תאריך: {today}      שם הלקוח: {client_name}      "
+            f"חתימה: {self._SIGNATURE_LINE}",
+            space_after=0,
+        ))
+
+        self.tmp_dir.mkdir(parents=True, exist_ok=True)
+        document_id = str(uuid.uuid4())
+        temp_path = self.tmp_dir / f"{document_id}.docx"
+        doc.save(str(temp_path))
+
+        return GeneratedDocument(
+            document_id=document_id,
+            variant_id=variant_id,
+            values={"client_name": client_name},
+            temp_path=temp_path,
+            created_at=now_local(),
+            body_text=body_text,
+            verified=False,
+            sent=False,
+        )
+
+    @classmethod
+    def _build_rtl_paragraph(
+        cls,
+        text: str,
+        *,
+        bold: bool = False,
+        size: Optional[int] = None,
+        center: bool = False,
+        space_after: int = 120,
+    ):
+        """Builds a right-aligned (or centered, for the title) Hebrew
+        paragraph, matching the EXACT structure confirmed (2026-09-13, by
+        diffing a real human-verified-working .docx) to actually render
+        right-to-left in real Word: <w:rtl/> on the run AND on the paragraph
+        mark's own rPr - deliberately NO paragraph-level <w:bidi/>, which was
+        proven (by that same diff) to break jc="right" rendering.
+
+        2026-09-14 visual-fidelity fix: real agreements have headings,
+        emphasis, and deliberate compact spacing - a flat, uniform run of
+        plain 11pt text per line (the original redesign) looked nothing like
+        the genuine template it replaced and needlessly ran to 2 pages. This
+        now supports a per-paragraph size/bold/center/spacing, plus inline
+        "**bold**" spans within `text` (the only markup vocabulary the AI is
+        given - see render_free_text's docstring). `space_after` is in
+        twentieths of a point (Word's own unit) - the default (120 = 6pt) is
+        deliberately tighter than Word's own default (~10pt) to help a
+        real agreement's worth of text actually fit on one page."""
+        p = OxmlElement("w:p")
+        pPr = OxmlElement("w:pPr")
+        jc = OxmlElement("w:jc")
+        jc.set(qn("w:val"), "center" if center else "right")
+        pPr.append(jc)
+        spacing = OxmlElement("w:spacing")
+        spacing.set(qn("w:after"), str(space_after))
+        spacing.set(qn("w:line"), "240")
+        spacing.set(qn("w:lineRule"), "auto")
+        pPr.append(spacing)
+        mark_rPr = OxmlElement("w:rPr")
+        mark_rPr.append(OxmlElement("w:rtl"))
+        if bold:
+            mark_rPr.append(OxmlElement("w:b"))
+        if size is not None:
+            sz = OxmlElement("w:sz")
+            sz.set(qn("w:val"), str(size))
+            mark_rPr.append(sz)
+        pPr.append(mark_rPr)
+        p.append(pPr)
+
+        for span_text, span_bold in cls._split_bold_spans(text):
+            if not span_text:
+                continue
+            r = OxmlElement("w:r")
+            run_rPr = OxmlElement("w:rPr")
+            run_rPr.append(OxmlElement("w:rtl"))
+            if bold or span_bold:
+                run_rPr.append(OxmlElement("w:b"))
+            if size is not None:
+                sz = OxmlElement("w:sz")
+                sz.set(qn("w:val"), str(size))
+                run_rPr.append(sz)
+            r.append(run_rPr)
+            t = OxmlElement("w:t")
+            t.set(qn("xml:space"), "preserve")
+            t.text = span_text
+            r.append(t)
+            p.append(r)
+        return p
+
+    @staticmethod
+    def _split_bold_spans(text: str):
+        """Splits `text` on "**...**" markers into (span_text, is_bold)
+        pairs - the AI's only inline-emphasis vocabulary (see
+        render_free_text's docstring). An unpaired "**" is treated as plain
+        literal text, never an error - the AI's prose should never crash
+        rendering over a stray marker."""
+        parts = re.split(r"\*\*(.+?)\*\*", text)
+        # re.split with one capturing group alternates: [plain, bold, plain,
+        # bold, ..., plain] - even indices are plain text, odd are bold.
+        return [(part, idx % 2 == 1) for idx, part in enumerate(parts)]
 
     # -- validation -----------------------------------------------------
 
@@ -276,3 +552,48 @@ class DocTemplateEngine:
                 for cell in row.cells:
                     parts.append(cell.text)
         return "\n".join(parts)
+
+    @staticmethod
+    def count_pages(docx_path: Path) -> Optional[int]:
+        """Real page count via a headless LibreOffice conversion to PDF, then
+        counting pages with PyMuPDF/fitz - the same library `PDFExtractor`
+        already depends on for the reverse direction. python-docx has no
+        layout engine and can never itself know how a .docx paginates in
+        real Word, so this is the only honest way to answer "is this one
+        page?" (2026-09-14, explicit human instruction: fee agreements must
+        never spill to a second page). Best-effort - returns None (never
+        raises) if LibreOffice isn't available in this environment; callers
+        must treat None as "unknown", never as "1 page, fine"."""
+        import subprocess
+        import tempfile
+
+        try:
+            import fitz  # PyMuPDF
+        except ImportError:
+            logger.warning("[083] PyMuPDF not available - cannot count pages")
+            return None
+
+        try:
+            with tempfile.TemporaryDirectory() as tmp_out:
+                result = subprocess.run(
+                    [
+                        "soffice", "--headless", "--convert-to", "pdf",
+                        "--outdir", tmp_out, str(docx_path),
+                    ],
+                    capture_output=True, timeout=60, check=False,
+                )
+                if result.returncode != 0:
+                    logger.warning(
+                        f"[083] soffice conversion failed (rc={result.returncode}): "
+                        f"{result.stderr!r}"
+                    )
+                    return None
+                pdf_path = Path(tmp_out) / (docx_path.stem + ".pdf")
+                if not pdf_path.exists():
+                    logger.warning(f"[083] soffice produced no PDF for {docx_path}")
+                    return None
+                with fitz.open(str(pdf_path)) as pdf:
+                    return pdf.page_count
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.warning(f"[083] page count check failed: {e}")
+            return None

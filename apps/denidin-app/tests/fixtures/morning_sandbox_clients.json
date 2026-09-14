@@ -1,8 +1,15 @@
 {
-  "pulled_at": "2026-09-04T09:22:33.843140+03:00",
+  "pulled_at": "2026-09-14T14:44:38.923804+03:00",
   "source": "https://sandbox.d.greeninvoice.co.il/api/v1/",
-  "note": "Feature 059: real Morning sandbox clients, filtered to names safe to pick blindly. Group 2 billed/expensive tests random.choice from this instead of seeding a throwaway client. Regenerate with apps/morning-mcp-app/scripts/pull_sandbox_clients.py",
+  "note": "Feature 059: real Morning sandbox clients, filtered to names safe to pick blindly. Group 2 billed/expensive tests random.choice from this instead of seeding a throwaway client. Regenerate with apps/morning-mcp-app/scripts/pull_sandbox_clients.py 2026-09-14: two entries (אריאל בכר, יוסי זאנזן) added by hand outside the automatic pull - deliberately used by tests/billed/test_fee_agreement_generation_flow.py BY EXACT NAME (not random.choice), seeded once via a real add_client conversational turn specifically so resolve_client_name treats them as an EXACT match instead of surfacing ambiguous fuzzy candidates during fee-agreement drafting; the automatic pull will keep dropping them from its own output (both share a first name/token with other real sandbox clients, tripping its own ambiguous-first-word filter) - re-adding them here is required after every refresh.",
   "clients": [
+    {
+      "name": "אביה אוסיפוביץ׳",
+      "id": "e6d151ec-054c-465e-b621-c89a4a8ae046",
+      "email": "e2e-client-812635@example.com",
+      "phone": "052-5550101",
+      "tax_id": null
+    },
     {
       "name": "אבינועם פלאי",
       "id": "022eb2ee-a46c-4183-adb8-10219488382a",
@@ -32,6 +39,13 @@
       "tax_id": null
     },
     {
+      "name": "אהד אנדרייוב",
+      "id": "2b708e37-7fd2-4c07-a5fc-4e1e545c1911",
+      "email": "e2e-client-667912@example.com",
+      "phone": "052-5550104",
+      "tax_id": null
+    },
+    {
       "name": "אולג קרילוין",
       "id": "64ecd707-1e38-4858-934f-5291576b930f",
       "email": "e2e-client-447315@example.com",
@@ -53,6 +67,13 @@
       "tax_id": null
     },
     {
+      "name": "אורית בנימין",
+      "id": "95e3f1ee-f1b5-4d85-950a-63dd09c106a0",
+      "email": "e2e-client-326398@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
       "name": "אורן זולוטנקו",
       "id": "bf49810b-d87e-4e52-be71-935680b7e940",
       "email": "e2e-client-597551@example.com",
@@ -70,13 +91,6 @@
       "name": "אזהר זכרנקו",
       "id": "f3379d49-c2e4-40af-9165-35effac65bd0",
       "email": "e2e-client-286636@example.com",
-      "phone": "050-1234567",
-      "tax_id": null
-    },
-    {
-      "name": "אחזיה נח׳לה",
-      "id": "460aadd8-8c1a-48d7-b31c-f37751dc9ed5",
-      "email": "e2e-client-482721@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -109,6 +123,13 @@
       "tax_id": null
     },
     {
+      "name": "אלי מיאלי",
+      "id": "e1f19960-aeaa-4397-9cd6-7be964012886",
+      "email": "eli@example.com",
+      "phone": "059-0909090",
+      "tax_id": null
+    },
+    {
       "name": "אליאב גולן",
       "id": "19b7a09b-5d8d-435e-a273-7ae7c39e6cf3",
       "email": "e2e-client-224417@example.com",
@@ -119,13 +140,6 @@
       "name": "אליאס דראושה",
       "id": "58d3fee2-3df6-452d-8715-efe69c964409",
       "email": "e2e-client-230794@example.com",
-      "phone": "050-1234567",
-      "tax_id": null
-    },
-    {
-      "name": "אלינה קוזלין",
-      "id": "bc3b03c4-790b-45ed-b20d-e245916ec1f3",
-      "email": "e2e-client-933074@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -172,9 +186,16 @@
       "tax_id": null
     },
     {
-      "name": "אריאל איוונוב",
-      "id": "0f7151ed-559e-4c0f-b527-1267642e78a8",
-      "email": "e2e-client-741868@example.com",
+      "name": "אסולין אסתר",
+      "id": "37d9b0b4-6d6b-4555-aac5-cf34a7718e57",
+      "email": null,
+      "phone": null,
+      "tax_id": null
+    },
+    {
+      "name": "אסמלש גרוזדסקי",
+      "id": "7aef8ede-c057-452f-a44d-9f3d5b94069a",
+      "email": "e2e-client-117205@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -207,6 +228,13 @@
       "tax_id": null
     },
     {
+      "name": "בנימין אוסיפין",
+      "id": "d838130d-286f-47f2-9dfb-4e2da401743e",
+      "email": "e2e-client-861055@example.com",
+      "phone": "052-5550104",
+      "tax_id": null
+    },
+    {
       "name": "בעז עוואד",
       "id": "afa6dd55-4ff6-402c-a7ee-808a3b7dac67",
       "email": "e2e-client-838412@example.com",
@@ -217,6 +245,13 @@
       "name": "בר כנען",
       "id": "5f4fdd01-8070-4c18-bbf4-7ac69fc980a2",
       "email": "e2e-client-361732@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "ברוך גבריאל",
+      "id": "03998eb0-d42d-4b68-aa15-6e13c7db7051",
+      "email": "e2e-client-194659@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -235,6 +270,13 @@
       "tax_id": null
     },
     {
+      "name": "בתיה כהן",
+      "id": "2185c8ea-8372-403d-8e37-fab7c9c2eb09",
+      "email": "e2e-client-202910@example.com",
+      "phone": "052-5550991",
+      "tax_id": null
+    },
+    {
       "name": "גאדה עוודה",
       "id": "734ac70d-1114-4409-92ff-d71db895e861",
       "email": "e2e-client-635979@example.com",
@@ -249,6 +291,13 @@
       "tax_id": null
     },
     {
+      "name": "גומר מרגלית",
+      "id": "3da01c54-d185-4772-a391-91c4aa185d60",
+      "email": "e2e-client-564460@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
       "name": "גיא וינוגרדוב",
       "id": "69fb149c-625e-4c8a-8d9a-223a159654b1",
       "email": "e2e-client-663262@example.com",
@@ -256,9 +305,23 @@
       "tax_id": null
     },
     {
+      "name": "גידי גוב",
+      "id": "2e003acb-082a-4fe8-b534-420708191e0f",
+      "email": "asd@example.com",
+      "phone": "055-6661112",
+      "tax_id": null
+    },
+    {
       "name": "גילה טבע",
       "id": "f02ac6ef-edd6-4f11-a119-e2f2b623807a",
       "email": "e2e-client-139418@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "גיליאן דוידיאן",
+      "id": "2e9e57f9-7df4-48ef-a97f-d6cc0b6bb946",
+      "email": "e2e-client-255518@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -270,6 +333,13 @@
       "tax_id": null
     },
     {
+      "name": "גליה ליסיצוביץ׳",
+      "id": "4f29193b-553d-4f42-968e-e8040f3c6bf2",
+      "email": "e2e-client-152621@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
       "name": "גנאדי וסילוב",
       "id": "c7c2072f-558e-4828-9a4d-831e20d5eea0",
       "email": "e2e-client-671387@example.com",
@@ -277,10 +347,10 @@
       "tax_id": null
     },
     {
-      "name": "גריגורי גולובסקי",
-      "id": "a8197fcd-bcdb-4759-a37d-0356b6e0c272",
-      "email": "e2e-client-201373@example.com",
-      "phone": "050-1234567",
+      "name": "ג׳האד עאבד",
+      "id": "74a8db88-d48c-479b-bd48-465f137b8c0c",
+      "email": "e2e-client-109558@example.com",
+      "phone": "052-5550142",
       "tax_id": null
     },
     {
@@ -291,17 +361,10 @@
       "tax_id": null
     },
     {
-      "name": "ג׳ון זולוטין",
-      "id": "3736d46f-4661-41aa-8af2-5437333b8536",
-      "email": "e2e-client-301093@example.com",
-      "phone": "050-1234567",
-      "tax_id": null
-    },
-    {
-      "name": "ג׳ושוע אמדה",
-      "id": "ca7c9147-424d-41bb-969c-4a72db88e41e",
-      "email": "e2e-client-306606@example.com",
-      "phone": "050-1234567",
+      "name": "ג׳ינה אוסיפסקי",
+      "id": "7f8c5b82-1ef5-4430-892c-e9faf53f911a",
+      "email": "e2e-client-145036@example.com",
+      "phone": "052-5550104",
       "tax_id": null
     },
     {
@@ -312,10 +375,17 @@
       "tax_id": null
     },
     {
-      "name": "ג׳ניפר רביבו",
-      "id": "8b5b0f2b-7d1b-4315-9ad9-402265d7ffe1",
-      "email": "e2e-client-216845@example.com",
+      "name": "ג׳ק טאהא",
+      "id": "c2d53564-8b39-44ba-a7dd-b7bbb62b269f",
+      "email": "e2e-client-599642@example.com",
       "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "דב אנדרייסקי",
+      "id": "7fa631af-3f47-450c-9405-06c1ea499bd2",
+      "email": "e2e-client-702916@example.com",
+      "phone": "052-5550104",
       "tax_id": null
     },
     {
@@ -393,6 +463,13 @@
       "id": "3b360964-229d-4add-840c-ecbef0e474ee",
       "email": "e2e-client-641989@example.com",
       "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "הרשל טבנג׳ה",
+      "id": "75618518-f903-4b5b-ae9f-9b417f81f1e0",
+      "email": "e2e-client-246817@example.com",
+      "phone": "052-5550103",
       "tax_id": null
     },
     {
@@ -515,13 +592,6 @@
       "tax_id": null
     },
     {
-      "name": "חנין טדלה",
-      "id": "adbc8107-8249-4347-a3b8-3f997b4cf7ff",
-      "email": "e2e-client-553693@example.com",
-      "phone": "052-9876543",
-      "tax_id": null
-    },
-    {
       "name": "חסן פיליפסקי",
       "id": "25563f96-3cca-4146-a451-0ac6b58adcf3",
       "email": "e2e-client-450215@example.com",
@@ -550,10 +620,24 @@
       "tax_id": null
     },
     {
+      "name": "טוביה גריגוריוביץ׳",
+      "id": "4d0cfff4-999d-423c-bb53-44db4f4c72e5",
+      "email": "e2e-client-836705@example.com",
+      "phone": "052-5550142",
+      "tax_id": null
+    },
+    {
       "name": "טוני סמיונסקי",
       "id": "417f7051-6b93-434a-a420-df97a0fd8e6d",
       "email": "e2e-client-333931@example.com",
       "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "טילי בילי",
+      "id": "d9ad02f4-e9f3-4933-8761-93c0503d91f4",
+      "email": "ttt@example.com",
+      "phone": "079-1234567",
       "tax_id": null
     },
     {
@@ -592,10 +676,31 @@
       "tax_id": null
     },
     {
+      "name": "יהודית חוסארי",
+      "id": "a4432f9e-32f9-469e-a964-3b82f45c1a6e",
+      "email": "e2e-client-186274@example.com",
+      "phone": "052-5550991",
+      "tax_id": null
+    },
+    {
+      "name": "יהל אביטן",
+      "id": "3b833067-6ef5-41fb-a6c8-73918c70a588",
+      "email": "e2e-client-244110@example.com",
+      "phone": "052-5550104",
+      "tax_id": null
+    },
+    {
       "name": "יואל ביטון",
       "id": "a1da974b-f0c5-463f-9bc4-9d16bd551839",
       "email": "e2e-client-523080@example.com",
       "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "יויו ביויו",
+      "id": "8b92f690-69bb-4899-af04-dd26d9272ed0",
+      "email": "youo@example.com",
+      "phone": "058-8881117",
       "tax_id": null
     },
     {
@@ -613,24 +718,17 @@
       "tax_id": null
     },
     {
-      "name": "יוסי יהושע",
-      "id": "bf041b6e-1115-4d20-9ba8-3cca548b3c9d",
-      "email": "yossiyehoshfake@example.com",
-      "phone": "063-4567123",
-      "tax_id": null
-    },
-    {
-      "name": "יחזקאל מוסטפא",
-      "id": "3b42b345-3dae-4704-bf81-c63c7b09151a",
-      "email": "e2e-client-506304@example.com",
-      "phone": "050-1234567",
-      "tax_id": null
-    },
-    {
       "name": "ייטבארק קרסניאנסקי",
       "id": "d391f548-6483-4030-b9ca-4b5c0a69963b",
       "email": "e2e-client-550195@example.com",
       "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "ילישע אוחנה",
+      "id": "f7cbc04f-8b7e-4429-8247-79921c9f4901",
+      "email": "e2e-client-610201@example.com",
+      "phone": "052-5550104",
       "tax_id": null
     },
     {
@@ -641,10 +739,24 @@
       "tax_id": null
     },
     {
+      "name": "יצשט בפטז",
+      "id": "4945deb5-b097-48a5-ab47-b94c6b15f598",
+      "email": "ggg@example.com",
+      "phone": "052-2227776",
+      "tax_id": null
+    },
+    {
       "name": "ישי חן",
       "id": "fa3dfe66-5a07-4f3d-92ea-a3724192fdcc",
       "email": "e2e-client-708815@example.com",
       "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "לאה וורובין",
+      "id": "aa88556e-7836-4556-ac1d-f00cf8c9896c",
+      "email": "e2e-client-502913@example.com",
+      "phone": "052-5550104",
       "tax_id": null
     },
     {
@@ -676,9 +788,9 @@
       "tax_id": null
     },
     {
-      "name": "לייביש גבריאל",
-      "id": "0803930b-82dc-4ba2-8748-a8883a37abe4",
-      "email": "e2e-client-988887@example.com",
+      "name": "ליאור טדלה",
+      "id": "683a065c-8238-4f81-8b54-026604b4c65e",
+      "email": "e2e-client-596070@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -690,10 +802,10 @@
       "tax_id": null
     },
     {
-      "name": "מולוגטה רפאלי",
-      "id": "8a845dd0-bd4d-4718-b363-95dc9df30a61",
-      "email": "e2e-client-692342@example.com",
-      "phone": "050-1234567",
+      "name": "לריסה זולוטוב",
+      "id": "146da821-7db9-4a74-b710-6e8ead1b4ae9",
+      "email": "e2e-client-428360@example.com",
+      "phone": "052-5550101",
       "tax_id": null
     },
     {
@@ -725,10 +837,24 @@
       "tax_id": null
     },
     {
+      "name": "מירי שגיא",
+      "id": "0c92136a-240b-418f-b1cd-ca9dbbadf187",
+      "email": "e2e-client-847423@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
       "name": "מלאכי בלוך",
       "id": "e4ea3e9f-1bba-45d2-bc45-f4f627c72b22",
       "email": "e2e-client-209547@example.com",
       "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "מלכה דמסה",
+      "id": "b012c6b9-d647-445e-9dfc-2dee30db067c",
+      "email": "e2e-client-638136@example.com",
+      "phone": "052-5550101",
       "tax_id": null
     },
     {
@@ -749,13 +875,6 @@
       "name": "מסקרם וייצמן",
       "id": "9a749928-264e-4f88-a112-48982cd6db98",
       "email": "e2e-client-891367@example.com",
-      "phone": "050-1234567",
-      "tax_id": null
-    },
-    {
-      "name": "מרגריטה מזרחי",
-      "id": "5de119d5-6aeb-4b3f-8541-0dd6e68a29de",
-      "email": "e2e-client-209963@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -788,16 +907,16 @@
       "tax_id": null
     },
     {
+      "name": "נאיף וקסמן",
+      "id": "a8a497bb-1d20-4a92-b190-9a22660cf2bd",
+      "email": "e2e-client-781119@example.com",
+      "phone": "052-5550142",
+      "tax_id": "037654928"
+    },
+    {
       "name": "נגה עלימי",
       "id": "36b18683-2797-4172-a74b-ee252fc70164",
       "email": "e2e-client-600717@example.com",
-      "phone": "050-1234567",
-      "tax_id": null
-    },
-    {
-      "name": "נדב דגפה",
-      "id": "8e39eaf9-5770-4afd-968b-b4ae58ceaae6",
-      "email": "e2e-client-345831@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -806,6 +925,13 @@
       "id": "ac5c10e3-5f36-49e1-b7b8-b34a78d53609",
       "email": "e2e-client-487447@example.com",
       "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "נוי סהר",
+      "id": "4c0db26f-8fa5-4c8b-8e40-30bf62a25481",
+      "email": "e2e-client-817494@example.com",
+      "phone": "052-5550104",
       "tax_id": null
     },
     {
@@ -865,6 +991,13 @@
       "tax_id": null
     },
     {
+      "name": "נריה שחאדה",
+      "id": "eef82c60-c7e7-472f-b88f-fad24557b407",
+      "email": "e2e-client-773788@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
       "name": "סאלי יורצין",
       "id": "08f78c30-25d1-4e22-ba48-2e50af161f76",
       "email": "e2e-client-809811@example.com",
@@ -886,10 +1019,31 @@
       "tax_id": null
     },
     {
+      "name": "סופי נחום",
+      "id": "a6e958d1-4802-491e-b6d6-6bce86eea699",
+      "email": "e2e-client-830342@example.com",
+      "phone": "052-5550103",
+      "tax_id": null
+    },
+    {
       "name": "סטס וקנין",
       "id": "5b0be6d7-8b26-4946-b151-33062a986f0c",
       "email": "e2e-client-983852@example.com",
       "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "סימא לוונשטיין",
+      "id": "98664f62-a416-4683-a640-55eab3dc5293",
+      "email": "e2e-client-316424@example.com",
+      "phone": "052-5550101",
+      "tax_id": null
+    },
+    {
+      "name": "סמיון טימושין",
+      "id": "754b9172-aa36-4381-85a7-3ee2ae69fea4",
+      "email": "e2e-client-239625@example.com",
+      "phone": "052-5550101",
       "tax_id": null
     },
     {
@@ -900,10 +1054,31 @@
       "tax_id": null
     },
     {
+      "name": "עאישה טננבאום",
+      "id": "c43c14cb-8814-4639-8556-bba3c04a4c6e",
+      "email": "e2e-client-231459@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "עאמר גבאי",
+      "id": "d6d397c8-4176-44d0-b1f2-a7b2b5921fb2",
+      "email": "e2e-client-919423@example.com",
+      "phone": "052-5550101",
+      "tax_id": null
+    },
+    {
       "name": "עבדאללה אלקיים",
       "id": "da99c9d6-73ef-4221-9e73-664de396c790",
       "email": "e2e-client-130000@example.com",
       "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "עדינה דוברין",
+      "id": "76ffae6d-30f2-4d72-9a39-ca3d201dc071",
+      "email": "e2e-client-937309@example.com",
+      "phone": "052-5550142",
       "tax_id": null
     },
     {
@@ -921,6 +1096,13 @@
       "tax_id": null
     },
     {
+      "name": "עופר שלח",
+      "id": "f28ddeca-bc7e-4bba-9488-9288f80b8e5e",
+      "email": "daff@example.com",
+      "phone": "051-2345678",
+      "tax_id": null
+    },
+    {
       "name": "עזיזה טל",
       "id": "934397aa-ce3c-4644-8a80-83a9e3a31c43",
       "email": "e2e-client-404804@example.com",
@@ -935,13 +1117,6 @@
       "tax_id": null
     },
     {
-      "name": "עידן דמיטריינקו",
-      "id": "e8c1f20b-1fff-4c0d-b947-1a83124f4035",
-      "email": "e2e-client-397645@example.com",
-      "phone": "050-1234567",
-      "tax_id": null
-    },
-    {
       "name": "עמאד עוודה",
       "id": "40af099f-fb44-44bd-9eb3-ac1c72bb96e2",
       "email": "e2e-client-719266@example.com",
@@ -952,6 +1127,13 @@
       "name": "עמדה דהן",
       "id": "1ec40824-df39-43f9-8683-e1791cda16a6",
       "email": "e2e-client-229568@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "עמוס כהן",
+      "id": "aaa91370-92d9-48ac-982a-de9fc5482bac",
+      "email": "e2e-client-641945@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -998,6 +1180,13 @@
       "tax_id": null
     },
     {
+      "name": "פייגה סבתי",
+      "id": "2d7f8e70-2d08-4f1c-a0e0-2881075891c6",
+      "email": "e2e-client-390871@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
       "name": "פנטהון תומפסון",
       "id": "3c67200c-5a93-41f2-9703-ea95ececc4ce",
       "email": "e2e-client-691867@example.com",
@@ -1026,10 +1215,17 @@
       "tax_id": null
     },
     {
-      "name": "קונג׳יט חדד",
-      "id": "c001cf88-4c60-4b0f-9f56-5a0028101e7b",
-      "email": "e2e-client-223993@example.com",
-      "phone": "050-1234567",
+      "name": "צבי קרסנין",
+      "id": "0f209367-0272-46ea-a42e-17d91632d71e",
+      "email": "e2e-client-704688@example.com",
+      "phone": "052-5550104",
+      "tax_id": null
+    },
+    {
+      "name": "קהילת צעיר",
+      "id": "d42b3f90-3041-4d05-b780-69f32a40c927",
+      "email": "kehilat.tzair.f069@example.com",
+      "phone": "052-5550991",
       "tax_id": null
     },
     {
@@ -1068,9 +1264,16 @@
       "tax_id": null
     },
     {
-      "name": "קרינה סטפאנסקי",
-      "id": "7fde38a0-3410-4f79-98f1-cc459e41e1b5",
-      "email": "e2e-client-262156@example.com",
+      "name": "קסה קטאני",
+      "id": "449ee1f8-6976-4bc7-871d-31c7c571062a",
+      "email": "e2e-client-227506@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "קתי בוארון",
+      "id": "f9df25f5-02ba-44ab-9775-a35990e62876",
+      "email": "e2e-client-387457@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -1124,6 +1327,13 @@
       "tax_id": null
     },
     {
+      "name": "רונית כהן",
+      "id": "8363f2a8-4f56-4c5b-9b2d-9dcf272a2602",
+      "email": "e2e-client-333251@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
       "name": "רחל טימושוב",
       "id": "332d7354-669d-45bf-a851-5185e77df2dd",
       "email": "e2e-client-561767@example.com",
@@ -1134,13 +1344,6 @@
       "name": "ריהאם מיכאילנקו",
       "id": "e5644939-8f3e-44ab-83f0-ff84089a1519",
       "email": "e2e-client-501479@example.com",
-      "phone": "050-1234567",
-      "tax_id": null
-    },
-    {
-      "name": "רייזל ניקיטוביץ׳",
-      "id": "9e411f7e-abdd-4689-9587-0827f173c84f",
-      "email": "e2e-client-277030@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -1166,13 +1369,6 @@
       "tax_id": null
     },
     {
-      "name": "רן גורדיוב",
-      "id": "2a662a4d-2eed-46f1-ad02-f7a6cd32c5be",
-      "email": "e2e-client-981217@example.com",
-      "phone": "050-1234567",
-      "tax_id": null
-    },
-    {
       "name": "שׁאדן בוגדנין",
       "id": "0a774cc0-6356-4834-88b7-ffb44ffee2b1",
       "email": "e2e-client-875974@example.com",
@@ -1183,6 +1379,20 @@
       "name": "שאול דיאני",
       "id": "a2dcd57e-3342-4c91-9fa0-87509648bc80",
       "email": "e2e-client-826254@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "שולמית הרוש",
+      "id": "109ea93d-a609-4927-b81d-fd52e4763fab",
+      "email": "e2e-client-682424@example.com",
+      "phone": "052-5550991",
+      "tax_id": null
+    },
+    {
+      "name": "שחר פישר",
+      "id": "75d966d8-9c52-4670-aac1-9c5a002e3a2b",
+      "email": "e2e-client-843832@example.com",
       "phone": "050-1234567",
       "tax_id": null
     },
@@ -1218,6 +1428,27 @@
       "name": "שרה ארד",
       "id": "bf006d1d-5d5c-4c23-afe3-fba99d1feb3e",
       "email": "e2e-client-801942@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "תומר אלגרבלי",
+      "id": "e3aedb0b-e919-4d4e-bb09-9b2f55bf80a5",
+      "email": "tomer.algarbli@example.com",
+      "phone": "052-5550142",
+      "tax_id": null
+    },
+    {
+      "name": "אריאל בכר",
+      "id": "dad0b12b-15d0-46e0-901c-f46b5815203a",
+      "email": "e2e-fee-agreement-8c443556@example.com",
+      "phone": "050-1234567",
+      "tax_id": null
+    },
+    {
+      "name": "יוסי זאנזן",
+      "id": "9f26d772-3b8b-470b-9c15-0848aae05885",
+      "email": "e2e-fee-agreement-39047e5b@example.com",
       "phone": "050-1234567",
       "tax_id": null
     }

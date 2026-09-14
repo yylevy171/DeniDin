@@ -140,9 +140,13 @@ prior revision). Full unit suite: 1447/1447 passing (1420 pre-existing + 27 new,
     at the class level, so `self` is never in `call_args.args` — the draft assumed it was);
     `_call_send_file_by_upload` (never existed) → `_send_file_with_retry` (the real private
     method); added `fee_agreements` to the test fixture's `config_dict`.
-  - **STILL BLOCKING on fresh human re-approval of the WHOLE file** before T015 runs — the
-    original approval predates the Hebrew/corpus redesign, the alternative_tracks variant, AND
-    now these API-correctness fixes. The file's own docstring states this blocking status.
+  - **Human re-approval given (2026-09-12) and T015 started.** `test_stage1_template_selection`'s
+    first run (`retainer_agreement` case) failed for real: its prompts were deliberately vague, so
+    the AI correctly asked for missing details instead of proposing anything (REQ-083-02
+    anti-hallucination working as designed) — meaning the test never actually exercised
+    variant-selection accuracy at all. Per explicit human direction, fixed by (a) dropping the
+    `retainer_agreement` case entirely from this parametrize set, (b) giving every remaining case's
+    prompt every value its variant's template needs, so a pending approval actually forms.
 - [ ] T015 Run the (re-approved) `billed` acceptance tests via `scripts/run_single_test.sh`
   (no per-run approval needed — `billed` tier — but the file-level re-approval above is a
   separate, prior gate that must clear first).
@@ -172,3 +176,127 @@ prior revision). Full unit suite: 1447/1447 passing (1420 pre-existing + 27 new,
    yet — implementing T009 without first landing T004 would mean the tool is permanently absent
    (config.feature_flags.get(...) defaults `False` either way), which is safe but worth doing in
    order.
+
+## Phase 7: Architecture redesign (2026-09-13) — "minimal code, maximal AI"
+
+The original implementation (Phases 0-6 above) built a strict placeholder-fill-and-validate
+engine gated by a human `PendingLocalToolApproval` step, on the mistaken assumption that this is
+what spec.md required. Per explicit human correction: **this was never the intent**. spec.md's
+REQ-083-04 ("A document is only 'Released' (sent) once the model itself approves it as correct")
+already establishes AI self-verification as the sole release gate — no human approval step was
+ever specified. The human-approval-gated placeholder-fill design was an implementation decision
+made without asking, not a spec requirement, and it is corrected here as a direct continuation of
+the same feature/spec (no new speckit.specify cycle needed — the *decisions*, not the
+*requirements*, changed). Acceptance-scenario prompts and user-facing expectations (per
+user-stories.md) are unchanged; only the underlying tool contract and mechanics changed.
+
+- [x] T017 `src/models/fee_agreement.py` — added `GeneratedDocument.body_text: Optional[str]`
+  (the AI's own full-document authorship, alongside the legacy `values`/`components` fields kept
+  for backward compatibility with the untouched legacy `generate()`/`verify()` path).
+- [x] T018 `src/managers/doc_template_engine.py` — added `get_reference_body(variant_id)` (returns
+  a template's reference body text, placeholders and all, for the AI to read before composing),
+  `render_free_text(variant_id, body_text)` (rebuilds the .docx body paragraph-by-paragraph from
+  the AI's full text, reusing the branded shell — header/footer/logo/margins/RTL paragraph
+  recipe unchanged from `_build_rtl_paragraph`), and a `verify()` branch for
+  `body_text is not None` documents (placeholder-leak check only, no `missing_values` concept).
+  Legacy `generate()`/`verify()` path for `values`/`components` documents is untouched — all 16
+  pre-existing unit tests in `test_doc_template_engine.py` still pass unmodified.
+- [x] T019 `src/handlers/fee_agreement_tools.py` — replaced the 3-tool contract
+  (`generate_fee_agreement`/`verify_fee_agreement_document`/`send_fee_agreement_document`, the
+  first proposal-gated) with a 4-tool contract, all four immediate-dispatch, no approval gate:
+  `get_fee_agreement_template` (read-only reference fetch), `render_fee_agreement_document`
+  (renders the AI's full body text — callable again any number of times to revise),
+  `verify_fee_agreement_document` (unchanged name, now placeholder-leak-only),
+  `send_fee_agreement_document` (unchanged, still gated on `doc.verified`). Removed
+  `validate_generate_proposal`/`build_approval_details`/`resolve_generate` (no more
+  proposal step to build/resolve).
+- [x] T020 `src/handlers/ai_handler.py` — removed `_handle_fee_agreement_generation_proposal`
+  (and its `PendingLocalToolApproval`-creating call site in the outer turn-processing code);
+  added `_handle_get_fee_agreement_template`/`_handle_render_fee_agreement_document`, both wired
+  into `_run_local_tool_dispatch_loop` alongside the existing verify/send handlers — all four
+  fee-agreement tools now dispatch immediately from inside that one loop, in the same turn, with
+  no approval round-trip in between.
+- [x] T021 `config/runtime_constitution.md`'s "Fee Agreement Document Generation" section rewritten
+  for the new 4-tool, no-approval flow (revision loop explicitly documented: call
+  `render_fee_agreement_document` again with edited text any time, no cap).
+- [x] T022 `tests/unit/test_ai_handler_fee_agreement_tools.py` rewritten for the new 4-tool
+  immediate-dispatch contract (`TestGetTemplateImmediateDispatch`/`TestRenderImmediateDispatch`
+  replace `TestGenerationProposal`/`TestResolvePendingLocalToolApproval`); full unit suite
+  (1446 tests) and integration suite (91 tests) verified green after the rewrite.
+- [x] T023 `tests/billed/test_fee_agreement_generation_flow.py` mechanics reworked for the
+  no-approval flow (single `_send_text` turn runs the AI's full get_template→compose→render→
+  verify→send loop; outcome observed via the mocked `send_document_response`'s real
+  `GeneratedDocument` argument) — **every prompt and user-facing expectation left byte-for-byte
+  unchanged**, per explicit human instruction that only the implementation, not the tests'
+  natural-language content, was ever wrong.
+- [ ] T024 Run the reworked `billed` acceptance tests via `scripts/run_single_test.sh`/
+  `scripts/run_multiple_billed_tests.sh` (supersedes T015 above, which targeted the old contract).
+- [ ] T025 Gate Zero (supersedes T016, same live-send verification, now against the new flow).
+
+## Phase 8: Shell/RTL/content assertions + curated real-example corpus (2026-09-14)
+
+Two follow-up gaps found via user review of Phase 7's redesign: (1) the billed tests only checked
+facts/placeholder-leak, never that the branded shell (logo/footer/RTL) survived
+`render_free_text()` intact, nor that the AI's own authored content (client name match, firm
+identity, date, signature block) was actually present; (2) the AI was drafting from exactly ONE
+reference example per variant (the template's own placeholder skeleton) - too thin a basis to
+reliably infer "professional-grade attorney" phrasing/register.
+
+- [x] T026 `tests/billed/test_fee_agreement_generation_flow.py`: added `_assert_shell_intact`
+  (header logo image relationship present, footer contact line unaltered, every AI-authored body
+  paragraph carries the confirmed-correct RTL recipe with no regressed paragraph-level
+  `<w:bidi/>`) and `_assert_ai_authored_essentials` (exact client name match, firm identity,
+  document date, signature block) - wired into every test in the file.
+- [x] T027 Corpus curation: 22 real fee-agreement JPEGs pulled from prod media (godfather WhatsApp
+  media) into `media_from_prod/` (gitignored - real client PII, added to `.gitignore` this same
+  pass since it was untracked-but-not-ignored beforehand, a real risk). OCR'd once each via a real
+  OpenAI vision call into sibling `.txt` files (idempotent/resumable extraction script), then
+  manually classified into template variants.
+- [x] T028 **Variant-count reduction (explicit human decision)**: the real corpus turned out to be
+  dominated by staged/cumulative litigation fee structures - zero real examples existed for a
+  genuinely standalone single-flat-fee agreement or an ongoing monthly retainer. Per explicit human
+  decision: `fixed_price_project` folded into `multi_component_agreement` (a single flat fee is now
+  just one component, never a separate variant); `retainer_agreement` removed entirely (no real
+  example, ever). **5 variants → 3**: `hourly_consultation`, `multi_component_agreement`,
+  `alternative_tracks`. `fixed_price_project.docx`/`retainer_agreement.docx` removed from the repo;
+  `manifest.json` updated; `GET_FEE_AGREEMENT_TEMPLATE_TOOL`'s enum and
+  `runtime_constitution.md`'s variant list updated to match.
+- [x] T029 `config/fee_agreement_templates/examples/<variant_id>.json` (+ `README.md` documenting
+  provenance/obfuscation): 9 curated `multi_component_agreement` examples, 3 `alternative_tracks`,
+  1 `hourly_consultation` - each a real fee-proposal excerpt with client names/adversary
+  entities/exact amounts hand-obfuscated (fictitious-but-plausible stand-ins), phrasing/structure/
+  register preserved verbatim from the real source. Each file also carries a `directive` explaining
+  what the AI should do with the examples (imitate register/structure, never copy names/amounts).
+- [x] T030 `DocTemplateEngine.get_reference_materials(variant_id)` (wraps `get_reference_body` +
+  the curated examples file, degrading gracefully to a generic directive when no examples file
+  exists yet for a variant) and `FeeAgreementToolHandler.handle_get_template` now returns
+  `{variant_id, reference_body, examples, directive}` instead of just `reference_body`.
+  `GET_FEE_AGREEMENT_TEMPLATE_TOOL`'s description gained an inlined per-variant classification
+  guide (condensed from `manifest.json`'s `selection_cues`, since the AI must classify which of
+  the 3 types it needs from the tool schema alone, before ever calling the tool) - this also closes
+  the long-standing "manifest.json's `selection_cues` are loaded but never surfaced anywhere" gap
+  noted in Phase 7's pending-tasks list.
+- [x] T031 Unit tests: `TestGetReferenceMaterials` added to `test_doc_template_engine.py`;
+  `test_lists_all_five_variants` → `test_lists_all_three_variants`. Full unit suite (1540 tests)
+  and integration suite verified green (one pre-existing, unrelated flaky failure in
+  `test_edited_deleted_webhook_routing.py` confirmed present before this session's changes too -
+  not a regression).
+- [x] T032 Root-caused (not dismissed) the `test_redelivered_edited_message_is_logged_only_once`
+  flake instead of leaving it as "pre-existing": it used a fixed `CHAT_ID` constant against a
+  PERSISTENT `test_data/` session file (never wiped between separate pytest invocations on this
+  machine) and asserted an EXACT occurrence count of a literal string - guaranteed to eventually
+  fail once run more than once historically, since every prior run leaves one more copy of the
+  same note in that chat's accumulated history. Fixed by generating a fresh chat id per run instead
+  of reusing the shared constant; verified durable via two consecutive standalone runs, both green.
+- [x] T033 Closed a real coverage gap raised directly by the human ("Do any of them verify docx
+  format and essentials?"): the shell/RTL/logo/footer assertions previously existed ONLY in the
+  billed acceptance tests (`tests/billed/test_fee_agreement_generation_flow.py`), which need a
+  real OpenAI call to even reach. Added `TestRenderFreeTextDocxFormatEssentials` to
+  `test_doc_template_engine.py` (10 tests, parametrized across all 3 variants) - calls
+  `engine.render_free_text(variant_id, hardcoded_body_text)` directly with fixed Hebrew input, no
+  AI call, and verifies: header logo image relationship present, footer contact line
+  (`honigman-law.com`) intact, every non-empty body paragraph carries the confirmed RTL recipe
+  (`jc="right"` + paragraph-mark `<w:rtl/>` + per-run `<w:rtl/>`, with paragraph-level `<w:bidi/>`
+  confirmed ABSENT - the real-Word regression this feature fixed), and body lines appear verbatim
+  and in order. Full unit+integration suite re-verified green (1551 tests) after both T032 and
+  T033.

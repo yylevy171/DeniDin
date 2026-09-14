@@ -5,29 +5,38 @@ Deliberately kept in its own module, separate from ai_handler.py (already
 4,000+ lines and due its own refactor - not part of this feature per explicit
 2026-09-12 user instruction: new tool-bearing logic for this feature goes
 here, not inlined into ai_handler.py). This module owns everything that is
-purely about the 3 fee-agreement tools themselves - their JSON schemas, RBAC
-gating, and all DocTemplateEngine-facing logic (proposal validation,
-human-facing approval-details text, turn-scoped GeneratedDocument
+purely about the fee-agreement tools themselves - their JSON schemas, RBAC
+gating, and all DocTemplateEngine-facing logic (turn-scoped GeneratedDocument
 bookkeeping/cleanup). ai_handler.py wires this in via a handful of small,
 additive delegating calls (mirroring how it already delegates to
 ReminderManager/LedgerEventManager) - it never touches DocTemplateEngine
 directly, and never grows its own copy of this logic.
 
-Three tools, per the human-confirmed decision not to collapse verify+send:
-- generate_fee_agreement: proposal-only, goes through the existing
-  PendingLocalToolApproval gate (same UX as create_reminder) - approval
-  gates the collected VALUES, not the finished document.
-- verify_fee_agreement_document: read-only, dispatches immediately. Returns
-  raw facts (leftover placeholders / missing values) - the actual accept/
-  reject judgment is the model's own (REQ-083-04), not this tool's.
+2026-09-13 REDESIGN (explicit human correction - the original design below
+had the code doing far too much and the AI far too little): "minimal code,
+maximal AI." The AI is the actual document author, not a form-filler:
+
+- get_fee_agreement_template: read-only, dispatches immediately. Returns a
+  variant's reference body text (its current example structure/tone) so the
+  AI can pattern its own writing on it - not something to fill in or reuse
+  verbatim.
+- render_fee_agreement_document: dispatches immediately, NO approval gate.
+  Takes the AI's own, freely-composed FULL body text (any clauses, any
+  numbering, everything) and drops it into the firm's fixed branded shell
+  (logo/header/footer - never AI-editable). Code does not read, validate, or
+  judge the content in any way.
+- verify_fee_agreement_document: read-only, dispatches immediately. The only
+  fact worth checking for free-composed text is whether a literal
+  "{{...}}"-shaped token leaked in - the actual accept/reject judgment is
+  still the model's own (REQ-083-04), not this tool's.
 - send_fee_agreement_document: dispatches immediately, but refuses (as a
   tool-call error, not an exception) unless the document already passed
-  verification in this same turn-scoped lifetime - the AI's own prior
-  self-verification is the sole gate for the finished document, per the
-  human-confirmed research.md #4 decision.
+  verification in this same turn-scoped lifetime. No human approval tap
+  anywhere in this flow (explicit human decision, 2026-09-13) - the AI's own
+  self-verification is the sole gate, and revising is just calling
+  render_fee_agreement_document again with edited text.
 """
 
-import json
 from typing import Any, Dict, List, Optional
 
 from src.managers.doc_template_engine import DocTemplateEngine
@@ -41,59 +50,124 @@ logger = get_logger(__name__)
 # (REMINDER_AUTHORIZED_ROLES / LEDGER_QUERY_AUTHORIZED_ROLES in ai_handler.py).
 FEE_AGREEMENT_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 
-GENERATE_FEE_AGREEMENT_TOOL: Dict[str, Any] = {
+_VARIANT_ENUM = [
+    "hourly_consultation", "multi_component_agreement", "alternative_tracks",
+]
+
+# 2026-09-14: per-variant classification guidance, inlined directly into the
+# tool's own JSON schema description (not fetched via a separate call) - the
+# AI must classify which of the 3 types it needs BEFORE calling
+# get_fee_agreement_template, from this description alone. Kept in sync with
+# manifest.json's own `selection_cues` (the human-facing/manifest source of
+# truth); duplicated here in condensed form because JSON Schema enum
+# descriptions can't be built per-value, only as one combined string.
+_VARIANT_SELECTION_GUIDE = (
+    "- hourly_consultation: a single, simple hourly-rate arrangement, "
+    "optionally with an hour cap - one rate, one scope. "
+    "- multi_component_agreement: 2+ distinct fee items applying TOGETHER "
+    "(staged/milestone fees, a percentage/contingency bonus, an hourly "
+    "add-on, a cost-share with a partner, a non-Client payer) - also covers "
+    "a genuinely single flat fee for one defined scope, as ONE component. "
+    "- alternative_tracks: the client is offered a CHOICE between two or "
+    "more mutually-exclusive fee structures for the SAME engagement (e.g. "
+    "'מסלול א/מסלול ב', 'אחד משני המסלולים') - only one is ever actually "
+    "charged, distinct from multi_component_agreement where every component "
+    "applies together."
+)
+
+GET_FEE_AGREEMENT_TEMPLATE_TOOL: Dict[str, Any] = {
     "type": "function",
-    "name": "generate_fee_agreement",
+    "name": "get_fee_agreement_template",
     "description": (
-        "Propose generating a fee agreement document (הסכם שכר טרחה) from one "
-        "of the firm's template variants, filled with values the human has "
-        "explicitly provided in this conversation. Never invent, guess, or "
-        "default a value not explicitly given - ask the human for anything "
-        "missing instead. This only PROPOSES the document (subject to the "
-        "same approval gate as creating a reminder) - it does not send "
-        "anything. Not for invoices/receipts (those are Morning MCP tools) "
-        "and not for reminders."
+        "Fetch reference material for one fee-agreement template variant "
+        "(הסכם שכר טרחה): the template's own body skeleton, a curated set of "
+        "REAL fee-agreement excerpts this firm has actually sent (names/"
+        "amounts obfuscated - the phrasing/structure/register are real), and "
+        "a directive explaining what to do with both. This is REFERENCE "
+        "material only - you then compose the entire real document body "
+        "yourself (render_fee_agreement_document); never reuse this text "
+        "verbatim, never copy a name/amount from an example into your own "
+        "output, and never leave any '{{...}}'-looking token in what you "
+        "write. The firm's letterhead (logo/header/footer) is never part of "
+        "this - it's applied automatically and is never something you write "
+        "or edit. Not for invoices/receipts (Morning MCP tools) and not for "
+        "reminders.\n\nWhich variant to request:\n" + _VARIANT_SELECTION_GUIDE
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "variant_id": {
                 "type": "string",
-                "enum": [
-                    "hourly_consultation", "retainer_agreement", "fixed_price_project",
-                    "multi_component_agreement", "alternative_tracks",
-                ],
-                "description": "Which template variant matches what the human described.",
-            },
-            "values": {
-                "type": "object",
-                "additionalProperties": {"type": "string"},
-                "description": (
-                    "Every scalar placeholder this variant's template needs, "
-                    "keyed by placeholder name (e.g. FIRM_NAME, DATE, "
-                    "CLIENT_NAME, SCOPE_OF_WORK), each an explicit, "
-                    "non-empty value the human actually provided."
-                ),
-            },
-            "components": {
-                "type": "array",
-                "description": (
-                    "Only for multi_component_agreement/alternative_tracks: "
-                    "one entry per fee component/track, each an explicit "
-                    "{label, terms} pair. Omit entirely for every other "
-                    "variant."
-                ),
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "label": {"type": "string"},
-                        "terms": {"type": "string"},
-                    },
-                    "required": ["label", "terms"],
-                },
+                "enum": _VARIANT_ENUM,
+                "description": "Which template variant best matches what the human described - see the guide above.",
             },
         },
-        "required": ["variant_id", "values"],
+        "required": ["variant_id"],
+    },
+}
+
+RENDER_FEE_AGREEMENT_DOCUMENT_TOOL: Dict[str, Any] = {
+    "type": "function",
+    "name": "render_fee_agreement_document",
+    "description": (
+        "Render a fee agreement document (הסכם שכר טרחה) from the substantive "
+        "content you compose yourself - the scope of work, every numbered "
+        "fee/payment clause, any conditions. Never invent, guess, or default "
+        "a financial or legal detail the human did not explicitly give you - "
+        "ask instead. Dispatches immediately, no approval needed - to revise "
+        "after feedback, just call this again with your edited text (a new "
+        "document_id is returned each time). The firm's letterhead "
+        "(logo/header/footer), the document title, date, firm identity, and "
+        "signature block are ALL applied automatically by code around "
+        "whatever you write - never write any of those yourself (there is "
+        "no field for them - they are not part of body_text at all), and "
+        "never include a literal '{{...}}' placeholder token anywhere in "
+        "your text. IMPORTANT - keep it to ONE PAGE: after rendering, "
+        "verify_fee_agreement_document reports the document's real page "
+        "count - a real fee agreement like this is always exactly one page; "
+        "if it comes back as more than one, shorten/tighten your wording "
+        "(shorter sentences, fewer separate clauses, no filler) and render "
+        "again before sending. Light formatting is supported and expected, "
+        "matching how a real signed agreement looks: a line starting with "
+        "'## ' becomes a bold section heading; wrap any span in '**...**' "
+        "for emphasis (e.g. amounts, deadlines) - use both sparingly, the "
+        "way a real document does, not on every line."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "variant_id": {
+                "type": "string",
+                "enum": _VARIANT_ENUM,
+                "description": "Which template variant's branded shell to render into.",
+            },
+            "client_name": {
+                "type": "string",
+                "description": (
+                    "The client's exact name, as the user gave it - inserted "
+                    "by code into the document's fixed header/signature "
+                    "blocks. Never include this or the firm's own identity "
+                    "inside body_text - both are handled automatically."
+                ),
+            },
+            "body_text": {
+                "type": "string",
+                "description": (
+                    "ONLY the substantive content between the fixed header "
+                    "(title/date/parties) and fixed footer (signature) that "
+                    "code already provides - the scope of work and every fee/"
+                    "payment clause (correctly numbered - never a lone item "
+                    "numbered א. with no ב. to follow; either number a real "
+                    "sequence or don't number a single item at all). One "
+                    "paragraph per line. Any amount must be one complete "
+                    "phrase including currency and VAT status, e.g. '25,000 "
+                    "₪ כולל מע\"מ' - never a bare number. Do NOT repeat the "
+                    "client name, firm identity, date, or a signature line "
+                    "here - those are added automatically."
+                ),
+            },
+        },
+        "required": ["variant_id", "client_name", "body_text"],
     },
 }
 
@@ -101,20 +175,24 @@ VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "verify_fee_agreement_document",
     "description": (
-        "Read back a just-generated (and human-approved) fee agreement "
-        "document and report whether every placeholder was actually filled "
-        "and every supplied value is really present in the text. Read-only, "
-        "no approval needed. YOU (the model) must judge the result and "
-        "decide whether it's actually clean before ever calling "
-        "send_fee_agreement_document - this tool only reports facts, it "
-        "does not decide pass/fail for you."
+        "Read back a just-rendered fee agreement document and report facts: "
+        "whether any literal '{{...}}'-shaped placeholder token leaked into "
+        "it, and the document's REAL page_count. Read-only, no approval "
+        "needed. YOU (the model) must judge the full result - is the text "
+        "actually what you intended, complete, and correct, AND is "
+        "page_count exactly 1 (a real fee agreement like this is always one "
+        "page - if page_count is 2 or more, shorten body_text and call "
+        "render_fee_agreement_document again; page_count of null means the "
+        "check could not run, treat that as unknown, never as '1, fine') - "
+        "before ever calling send_fee_agreement_document; this tool only "
+        "reports facts, it does not decide pass/fail for you."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "document_id": {
                 "type": "string",
-                "description": "The document_id returned when generate_fee_agreement was approved.",
+                "description": "The document_id returned by render_fee_agreement_document.",
             },
         },
         "required": ["document_id"],
@@ -130,14 +208,15 @@ SEND_FEE_AGREEMENT_DOCUMENT_TOOL: Dict[str, Any] = {
         "verify_fee_agreement_document and confirming, in your own "
         "judgment, that the result was clean - calling this on a document "
         "that failed verification, or without verifying first, will be "
-        "refused."
+        "refused. No further human approval is needed - once you're "
+        "satisfied, send it."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "document_id": {
                 "type": "string",
-                "description": "The document_id returned when generate_fee_agreement was approved.",
+                "description": "The document_id returned by render_fee_agreement_document.",
             },
             "caption": {
                 "type": "string",
@@ -149,7 +228,8 @@ SEND_FEE_AGREEMENT_DOCUMENT_TOOL: Dict[str, Any] = {
 }
 
 FEE_AGREEMENT_TOOL_NAMES = {
-    GENERATE_FEE_AGREEMENT_TOOL["name"],
+    GET_FEE_AGREEMENT_TEMPLATE_TOOL["name"],
+    RENDER_FEE_AGREEMENT_DOCUMENT_TOOL["name"],
     VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL["name"],
     SEND_FEE_AGREEMENT_DOCUMENT_TOOL["name"],
 }
@@ -178,65 +258,55 @@ class FeeAgreementToolHandler:
         if user_obj is None or user_obj.role not in FEE_AGREEMENT_AUTHORIZED_ROLES:
             return []
         return [
-            GENERATE_FEE_AGREEMENT_TOOL,
+            GET_FEE_AGREEMENT_TEMPLATE_TOOL,
+            RENDER_FEE_AGREEMENT_DOCUMENT_TOOL,
             VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL,
             SEND_FEE_AGREEMENT_DOCUMENT_TOOL,
         ]
 
-    def validate_generate_proposal(self, args: Dict[str, Any]) -> Optional[str]:
-        """Proposal-time-only validation (UX: reject immediately rather than
-        proposing something that will fail at approval time) - mirrors
-        _handle_reminder_creation_proposal's proposal-time cap/date checks.
-        Re-validated for real at approval time regardless (TOCTOU-closing,
-        same discipline as reminders). Returns a friendly error string if
-        invalid, else None.
-        """
-        variant_id = args.get("variant_id")
-        values = args.get("values")
+    def handle_get_template(self, variant_id: Optional[str]) -> Dict[str, Any]:
+        """Read-only, dispatches immediately - no approval gate, nothing to
+        validate beyond the variant existing. Returns the template skeleton
+        PLUS curated real-world examples and a directive (2026-09-14
+        follow-up - see DocTemplateEngine.get_reference_materials)."""
         if not isinstance(variant_id, str) or not variant_id:
-            return "לא צוין סוג הסכם (variant_id) - נסה שוב."
-        if not isinstance(values, dict):
-            return "לא צוינו הפרטים הנדרשים למסמך - נסה שוב."
+            return {"error": "variant_id is required."}
         try:
-            self.engine._get_variant(variant_id)  # noqa: SLF001 - internal, deliberate reuse
+            materials = self.engine.get_reference_materials(variant_id)
         except ValueError as e:
-            logger.info(f"[083] generate_fee_agreement proposal rejected: {e}")
-            return "סוג ההסכם שצוין אינו קיים - נסה שוב עם אחד המסלולים הקיימים."
+            logger.info(f"[083] get_fee_agreement_template rejected: {e}")
+            return {"error": str(e)}
+        return {
+            "variant_id": variant_id,
+            "reference_body": materials["template_body"],
+            "examples": materials["examples"],
+            "directive": materials["directive"],
+        }
+
+    def handle_render(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Dispatches immediately - NO approval gate (2026-09-13 human
+        decision: the AI is the document's author, not a form the human must
+        approve field-by-field). Builds the .docx from the AI's own full body
+        text and keeps the resulting GeneratedDocument for the same
+        turn-scoped lifetime's subsequent verify/send calls (or a later
+        revise-and-re-render call)."""
+        variant_id = args.get("variant_id")
+        client_name = args.get("client_name")
+        body_text = args.get("body_text")
+        if not isinstance(variant_id, str) or not variant_id:
+            return {"error": "variant_id is required."}
+        if not isinstance(client_name, str) or not client_name.strip():
+            return {"error": "client_name is required and must be non-empty."}
+        if not isinstance(body_text, str) or not body_text.strip():
+            return {"error": "body_text is required and must be non-empty."}
         try:
-            variant = self.engine._get_variant(variant_id)  # noqa: SLF001
-            DocTemplateEngine._validate_values(variant, values)  # noqa: SLF001
-            DocTemplateEngine._validate_components(variant, args.get("components"))  # noqa: SLF001
+            doc = self.engine.render_free_text(variant_id, client_name, body_text)
         except ValueError as e:
-            logger.info(f"[083] generate_fee_agreement proposal rejected: {e}")
-            return f"חסרים פרטים או שיש פרטים לא תקינים להצעת ההסכם: {e}"
-        return None
-
-    @staticmethod
-    def build_approval_details(args: Dict[str, Any]) -> str:
-        """Deterministic, human-facing approval summary built straight from
-        the (already-validated) proposed arguments - same "state exactly
-        what will happen" discipline as _build_reminder_approval_details."""
-        lines = [f"מסמך שכר טרחה מסוג: {args.get('variant_id')}"]
-        values = args.get("values") or {}
-        for key, value in values.items():
-            lines.append(f"- {key}: {value}")
-        components = args.get("components") or []
-        for entry in components:
-            lines.append(f"- {entry.get('label')}: {entry.get('terms')}")
-        return "\n".join(lines)
-
-    def resolve_generate(self, args: Dict[str, Any]) -> GeneratedDocument:
-        """Called only after human approval. Actually builds the .docx file
-        and keeps the resulting GeneratedDocument for the same turn-scoped
-        lifetime's subsequent verify/send calls."""
-        doc = self.engine.generate(
-            variant_id=args["variant_id"],
-            values=args.get("values", {}),
-            components=args.get("components"),
-        )
+            logger.info(f"[083] render_fee_agreement_document rejected: {e}")
+            return {"error": str(e)}
         self._documents[doc.document_id] = doc
-        logger.info(f"[083] generate_fee_agreement approved and generated: document_id={doc.document_id!r}")
-        return doc
+        logger.info(f"[083] render_fee_agreement_document: document_id={doc.document_id!r}, variant_id={variant_id!r}")
+        return {"document_id": doc.document_id}
 
     def handle_verify(self, document_id: Optional[str]) -> Dict[str, Any]:
         """Read-only. Returns the raw facts dict from DocTemplateEngine.verify()

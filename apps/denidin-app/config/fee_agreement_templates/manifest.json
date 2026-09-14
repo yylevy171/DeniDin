@@ -3,43 +3,20 @@
     {
       "variant_id": "hourly_consultation",
       "template_filename": "hourly_consultation.docx",
-      "placeholders": ["FIRM_NAME", "DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "HOURLY_RATE", "FEE_AMOUNT"],
+      "placeholders": ["DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "HOURLY_RATE", "FEE_AMOUNT"],
       "selection_cues": [
         "standard hourly fee agreement for consultation/representation",
         "hourly rate arrangement, optionally with an hour cap stated in FEE_AMOUNT's estimate",
         "a single, simple fee arrangement - one rate, one scope",
         "הסכם שעתי ליעוץ או לייצוג",
         "הצעת שכר טרחה שעתית"
-      ]
-    },
-    {
-      "variant_id": "retainer_agreement",
-      "template_filename": "retainer_agreement.docx",
-      "placeholders": ["FIRM_NAME", "DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "FEE_AMOUNT", "RETAINER_PERIOD"],
-      "selection_cues": [
-        "retainer agreement",
-        "ongoing recurring retainer (monthly/annual)",
-        "a single, simple fee arrangement - one recurring fee, one scope",
-        "הסכם ריטיינר",
-        "לקוח קבוע עם שכר טרחה חוזר"
-      ]
-    },
-    {
-      "variant_id": "fixed_price_project",
-      "template_filename": "fixed_price_project.docx",
-      "placeholders": ["FIRM_NAME", "DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "FEE_AMOUNT", "DUE_DATE"],
-      "selection_cues": [
-        "fixed-price / one-time engagement for a defined matter",
-        "single flat fee, no ongoing or itemized structure",
-        "a single, simple fee arrangement - one fixed amount, one scope",
-        "הצעת שכר טרחה בסכום קבוע חד-פעמי",
-        "עלות קבועה חד-פעמית"
-      ]
+      ],
+      "notes": "HOURLY_RATE and FEE_AMOUNT are each ONE complete phrase the AI composes from what the user actually said - amount + currency (₪) + VAT status (כולל/לא כולל מע\"מ) together, e.g. '500 ₪ כולל מע\"מ' - the template no longer appends any fixed currency/VAT text of its own (real fee letters vary this per line: inclusive, exclusive, or a computed +VAT total), so never supply a bare number alone and never invent a VAT status the user didn't state."
     },
     {
       "variant_id": "multi_component_agreement",
       "template_filename": "multi_component_agreement.docx",
-      "placeholders": ["FIRM_NAME", "DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "TOTAL_FEE"],
+      "placeholders": ["DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "TOTAL_FEE"],
       "repeating_group": {
         "min_items": 2,
         "row_placeholders": ["COMPONENT_LABEL", "COMPONENT_TERMS"],
@@ -60,12 +37,12 @@
         "כמה רכיבי שכר טרחה נפרדים החלים יחד באותו הסכם, כולל אחוזים, תקרת שעות, חלוקה עם שותפים, או גורם משלם שונה",
         "הצעת שכר טרחה עם מספר סעיפי תשלום (א., ב., ג.) החלים כולם יחד"
       ],
-      "notes": "The template docx has exactly ONE repeatable fee-table row - not capped at any fixed count. Supply a `components` list with one entry per REAL component the user described (2, 3, 5, however many); DocTemplateEngine clones the template row once per entry and discards the original. Each entry has `label` (a short name for the component, e.g. 'שלב הגשת התביעה') and `terms` (ONE free-text line fully composed by the AI from what the user actually said). `example_terms` above are PATTERNS (matching real fee-proposal letters reviewed 2026-09-12: staged/milestone fees, contingency percentages, hourly rates with an hour cap, cost-share splits, non-Client payers) to guide phrasing/structure when a component matches one of these common shapes - fill in the {{...}} slots in whichever pattern fits from what the user described, keeping the surrounding wording. They are illustrative, not exhaustive and not a closed enum: a genuinely different arrangement the user describes should be composed as its own free-text line in the same natural, contract-appropriate register, not forced into the nearest example if it doesn't actually fit. Either way, `terms` is not restricted to a fixed sub-shape (no separate rigid amount/percentage/payer fields) - but every fact inside it, whether following an example pattern or freely composed, must come from the conversation, never invented. Never pad the `components` list with an invented entry to hit some expected count, and never merge two real components into one to reduce the count - REQ-083-02 forbids inventing OR collapsing data either way, and applies with equal force to inventing/omitting a detail WITHIN one component's `terms` line."
+      "notes": "The template docx has exactly ONE repeatable fee-table row - not capped at any fixed count. Supply a `components` list with one entry per REAL component the user described (2, 3, 5, however many); DocTemplateEngine clones the template row once per entry and discards the original. Each entry has `label` (a short name for the component, e.g. 'שלב הגשת התביעה') and `terms` (ONE free-text line fully composed by the AI from what the user actually said). `example_terms` above are PATTERNS (matching real fee-proposal letters reviewed 2026-09-12: staged/milestone fees, contingency percentages, hourly rates with an hour cap, cost-share splits, non-Client payers) to guide phrasing/structure when a component matches one of these common shapes - fill in the {{...}} slots in whichever pattern fits from what the user described, keeping the surrounding wording. They are illustrative, not exhaustive and not a closed enum: a genuinely different arrangement the user describes should be composed as its own free-text line in the same natural, contract-appropriate register, not forced into the nearest example if it doesn't actually fit. Either way, `terms` is not restricted to a fixed sub-shape (no separate rigid amount/percentage/payer fields) - but every fact inside it, whether following an example pattern or freely composed, must come from the conversation, never invented. Never pad the `components` list with an invented entry to hit some expected count, and never merge two real components into one to reduce the count - REQ-083-02 forbids inventing OR collapsing data either way, and applies with equal force to inventing/omitting a detail WITHIN one component's `terms` line. TOTAL_FEE is ONE complete phrase (amount + ₪ + VAT status, e.g. '15,000 ₪ כולל מע\"מ') composed from what the user said - the template no longer appends its own fixed currency/VAT text."
     },
     {
       "variant_id": "alternative_tracks",
       "template_filename": "alternative_tracks.docx",
-      "placeholders": ["FIRM_NAME", "DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "SHARED_ADDON_TERMS"],
+      "placeholders": ["DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "SHARED_ADDON_TERMS"],
       "repeating_group": {
         "min_items": 2,
         "row_placeholders": ["TRACK_LABEL", "TRACK_TERMS"],

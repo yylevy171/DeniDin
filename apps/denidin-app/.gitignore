@@ -45,6 +45,12 @@ data/media/
 data/events/
 data/reminders/
 
+# Real client documents pulled from prod for Feature 083 corpus curation
+# (real names/amounts, never to be committed) - source material for the
+# obfuscated examples that DO get committed under
+# config/fee_agreement_templates/examples/.
+media_from_prod/
+
 # Test data (generated during tests)
 test_data/
 

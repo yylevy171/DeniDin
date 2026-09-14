@@ -35,7 +35,8 @@ from src.managers.reminder_manager import (
 )
 from src.managers.doc_template_engine import DocTemplateEngine
 from src.handlers.fee_agreement_tools import (
-    FeeAgreementToolHandler, GENERATE_FEE_AGREEMENT_TOOL,
+    FeeAgreementToolHandler, GET_FEE_AGREEMENT_TEMPLATE_TOOL,
+    RENDER_FEE_AGREEMENT_DOCUMENT_TOOL,
     VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL, SEND_FEE_AGREEMENT_DOCUMENT_TOOL,
 )
 from src.managers.pending_local_tool_approval_manager import (
@@ -2524,45 +2525,48 @@ class AIHandler:
         )
         return details, True
 
-    def _handle_fee_agreement_generation_proposal(
-        self, request: AIRequest, response, effective_chat_id: Optional[str],
-    ) -> "tuple[Optional[str], bool]":
-        """Fee Agreement Document Generation (Feature 083): detect a
-        `generate_fee_agreement` function_call and turn it into a pending
-        local-tool approval - never dispatched immediately, same
-        PendingLocalToolApproval gate/UX as _handle_reminder_creation_proposal.
-        Approval gates the collected VALUES, not the finished document (the
-        model's own subsequent verify_fee_agreement_document judgment is the
-        gate for that - see fee_agreement_tools.py's module docstring).
+    def _handle_get_fee_agreement_template(
+        self, request: AIRequest, response, tools: Optional[List[Dict]]
+    ):
+        """Fee Agreement Document Generation (Feature 083, 2026-09-13
+        redesign): get_fee_agreement_template is read-only, dispatched
+        immediately - same shape as _handle_list_reminders. No approval gate
+        anywhere in this feature any more (explicit human decision)."""
+        call_id = extract_function_call_id(response, GET_FEE_AGREEMENT_TEMPLATE_TOOL["name"])
+        if call_id is None:
+            return None
 
-        Returns (response_text_override, new_local_tool_pending_created) -
-        same contract as _handle_reminder_creation_proposal.
-        """
-        if effective_chat_id is None:
-            return None, False
+        args = extract_function_call(response, GET_FEE_AGREEMENT_TEMPLATE_TOOL["name"]) or {}
+        result = self.fee_agreement_tools.handle_get_template(args.get("variant_id"))
+        try:
+            return self._call_openai_fee_agreement_followup_api(
+                request, response.id, call_id, result, tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[083] get_fee_agreement_template follow-up call failed: {e}", exc_info=True)
+            return None
 
-        args = extract_function_call(response, GENERATE_FEE_AGREEMENT_TOOL["name"])
-        if args is None:
-            return None, False
+    def _handle_render_fee_agreement_document(
+        self, request: AIRequest, response, tools: Optional[List[Dict]]
+    ):
+        """Fee Agreement Document Generation (Feature 083, 2026-09-13
+        redesign): render_fee_agreement_document dispatches immediately, no
+        approval gate - the AI is the document's author (its own full body
+        text), not a form the human must approve field-by-field. Revising
+        after feedback is just calling this again with edited text."""
+        call_id = extract_function_call_id(response, RENDER_FEE_AGREEMENT_DOCUMENT_TOOL["name"])
+        if call_id is None:
+            return None
 
-        error = self.fee_agreement_tools.validate_generate_proposal(args)
-        if error is not None:
-            return error, False
-
-        pending = PendingLocalToolApproval(
-            tool_name=GENERATE_FEE_AGREEMENT_TOOL["name"],
-            response_id=response.id,
-            call_id=extract_function_call_id(response, GENERATE_FEE_AGREEMENT_TOOL["name"]) or "",
-            arguments=args,
-            created_at=now_local().isoformat(),
-        )
-        self.pending_local_tool_approval_manager.set(effective_chat_id, pending)
-        logger.info(
-            f"[083] Pending local-tool approval created for chat={effective_chat_id!r}, "
-            f"tool={GENERATE_FEE_AGREEMENT_TOOL['name']!r}, variant_id={args.get('variant_id')!r}"
-        )
-        details = self.fee_agreement_tools.build_approval_details(args)
-        return details, True
+        args = extract_function_call(response, RENDER_FEE_AGREEMENT_DOCUMENT_TOOL["name"]) or {}
+        result = self.fee_agreement_tools.handle_render(args)
+        try:
+            return self._call_openai_fee_agreement_followup_api(
+                request, response.id, call_id, result, tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[083] render_fee_agreement_document follow-up call failed: {e}", exc_info=True)
+            return None
 
     def _call_openai_list_reminders_followup_api(
         self, request: AIRequest, previous_response_id: str, call_id: str,
@@ -3009,12 +3013,36 @@ class AIHandler:
                 made_progress = True
                 continue
 
-            # Fee Agreement Document Generation (Feature 083):
-            # verify_fee_agreement_document/send_fee_agreement_document are
-            # both read-only-dispatch-immediately (from the AI turn's
-            # perspective - send has real side effects, but no
-            # PendingLocalToolApproval is involved, same as list_reminders/
-            # query_ledger_events), and need the same follow-up round-trip.
+            # Fee Agreement Document Generation (Feature 083, 2026-09-13
+            # redesign): all 4 fee-agreement tools now dispatch immediately -
+            # no PendingLocalToolApproval anywhere in this feature any more.
+            # get_fee_agreement_template/render_fee_agreement_document are
+            # the AI's own drafting loop (fetch a reference, author the full
+            # body, render); verify/send close it out.
+            get_template_followup = self._handle_get_fee_agreement_template(
+                request, current_response, tools
+            )
+            if get_template_followup is not None:
+                current_response = get_template_followup
+                usage_response = get_template_followup
+                extra_tokens += get_template_followup.usage.total_tokens
+                extra_prompt_tokens += get_template_followup.usage.input_tokens
+                extra_completion_tokens += get_template_followup.usage.output_tokens
+                made_progress = True
+                continue
+
+            render_followup = self._handle_render_fee_agreement_document(
+                request, current_response, tools
+            )
+            if render_followup is not None:
+                current_response = render_followup
+                usage_response = render_followup
+                extra_tokens += render_followup.usage.total_tokens
+                extra_prompt_tokens += render_followup.usage.input_tokens
+                extra_completion_tokens += render_followup.usage.output_tokens
+                made_progress = True
+                continue
+
             verify_fee_agreement_followup = self._handle_verify_fee_agreement_document(
                 request, current_response, tools
             )
@@ -3142,19 +3170,11 @@ class AIHandler:
                 response_text = modify_delete_details
                 new_local_tool_pending_created = modify_delete_pending_created
 
-        # Fee Agreement Document Generation (Feature 083): generate_fee_agreement
-        # is a proposal, same PendingLocalToolApproval gate as create_reminder -
-        # only checked if no reminder tool already claimed this turn (a turn
-        # calls at most one proposal-gated local tool in practice).
-        if not new_local_tool_pending_created:
-            fee_agreement_details, fee_agreement_pending_created = (
-                self._handle_fee_agreement_generation_proposal(
-                    request, reminder_tool_response, effective_chat_id
-                )
-            )
-            if fee_agreement_details is not None:
-                response_text = fee_agreement_details
-                new_local_tool_pending_created = fee_agreement_pending_created
+        # Fee Agreement Document Generation (Feature 083, 2026-09-13 redesign):
+        # no proposal/approval step exists any more for this feature -
+        # get_fee_agreement_template/render_fee_agreement_document both
+        # dispatch immediately from inside _run_local_tool_dispatch_loop,
+        # same as verify/send. Nothing to do here.
 
         # bugfix-045-followup (2026-08-27): this used to need its own
         # all_output_items union of response.output + a same-turn ledger-
@@ -4173,28 +4193,6 @@ class AIHandler:
                 result = self.reminder_manager.delete_whole_series(
                     reminder_id=cast(str, args.get("reminder_id")),
                 )
-            elif pending.tool_name == GENERATE_FEE_AGREEMENT_TOOL["name"]:
-                # TOCTOU-closing re-validation at approval time (same
-                # discipline as reminders) - DocTemplateEngine itself raises
-                # ValueError, not a reminder-specific exception, so it is
-                # caught here rather than added to the shared except tuple
-                # below (which protects Feature 054's own test coverage).
-                try:
-                    generated_document = self.fee_agreement_tools.resolve_generate(args)
-                except ValueError as e:
-                    logger.error(
-                        f"[083] Approved generate_fee_agreement failed at persist time for "
-                        f"chat={effective_chat_id!r}: {e}", exc_info=True
-                    )
-                    self.pending_local_tool_approval_manager.clear(effective_chat_id)
-                    return self._create_fallback_response(
-                        request.request_id,
-                        "לא הצלחתי ליצור את מסמך ההסכם - נסה שוב עם הפרטים הנדרשים.",
-                    )
-                result = {
-                    "document_id": generated_document.document_id,
-                    "variant_id": generated_document.variant_id,
-                }
             else:
                 raise InvalidRecurrenceError(
                     f"unresolvable pending tool_name/scope: {pending.tool_name!r}/{scope!r}"

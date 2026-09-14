@@ -73,3 +73,9 @@ class GeneratedDocument:
     components: Optional[List[Dict[str, str]]] = None
     verified: bool = False
     sent: bool = False
+    # 2026-09-13 redesign: the AI composes the ENTIRE document body itself
+    # (freely, no fixed placeholder schema) and hands it back as one string -
+    # render_fee_agreement_document sets this; values/components stay empty
+    # for documents produced this way (kept only for the legacy generate()
+    # path, unused by the AI-facing tools now).
+    body_text: Optional[str] = None

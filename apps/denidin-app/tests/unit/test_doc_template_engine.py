@@ -8,6 +8,8 @@ real python-docx calls - no mocking of internal code, per CONSTITUTION §I/§V.
 from pathlib import Path
 
 import pytest
+from docx import Document as DocxDocument
+from docx.oxml.ns import qn
 
 from src.managers.doc_template_engine import DocTemplateEngine
 
@@ -20,12 +22,14 @@ def engine(tmp_path):
 
 
 class TestListVariants:
-    def test_lists_all_five_variants(self, engine):
+    def test_lists_all_three_variants(self, engine):
+        # 2026-09-14: fixed_price_project folded into multi_component_agreement
+        # (a single flat fee is now just one component); retainer_agreement
+        # removed entirely (no real example ever existed for it in the actual
+        # fee-agreement corpus) - see config/fee_agreement_templates/examples/README.md.
         variant_ids = {v.variant_id for v in engine.list_variants()}
         assert variant_ids == {
             "hourly_consultation",
-            "retainer_agreement",
-            "fixed_price_project",
             "multi_component_agreement",
             "alternative_tracks",
         }
@@ -46,12 +50,11 @@ class TestListVariants:
 class TestGenerateSingleFeeVariant:
     def test_fills_all_placeholders(self, engine):
         values = {
-            "FIRM_NAME": "אילה הוניגמן עריכת דין",
             "DATE": "12.9.2026",
             "CLIENT_NAME": "ישראל ישראלי",
             "SCOPE_OF_WORK": "בתביעה נגד מדינת ישראל",
-            "HOURLY_RATE": "600",
-            "FEE_AMOUNT": "15,000",
+            "HOURLY_RATE": "600 ₪ כולל מע\"מ",
+            "FEE_AMOUNT": "15,000 ₪ כולל מע\"מ",
         }
         doc = engine.generate("hourly_consultation", values)
 
@@ -65,20 +68,22 @@ class TestGenerateSingleFeeVariant:
 
     def test_missing_placeholder_value_raises(self, engine):
         with pytest.raises(ValueError, match="missing"):
-            engine.generate("hourly_consultation", {"FIRM_NAME": "X"})
+            engine.generate("hourly_consultation", {"DATE": "1.1.2026"})
 
     def test_extra_placeholder_value_raises(self, engine):
         values = {
-            "FIRM_NAME": "X", "DATE": "1.1.2026", "CLIENT_NAME": "Y",
+            "DATE": "1.1.2026", "CLIENT_NAME": "Y",
             "SCOPE_OF_WORK": "Z", "HOURLY_RATE": "1", "FEE_AMOUNT": "1",
-            "UNEXPECTED": "nope",
+            # FIRM_NAME is a fixed template constant, never an AI-supplied
+            # value (2026-09-13) - supplying it is now itself an "extra" case.
+            "FIRM_NAME": "nope",
         }
         with pytest.raises(ValueError, match="extra"):
             engine.generate("hourly_consultation", values)
 
     def test_empty_value_raises(self, engine):
         values = {
-            "FIRM_NAME": "X", "DATE": "1.1.2026", "CLIENT_NAME": "Y",
+            "DATE": "1.1.2026", "CLIENT_NAME": "Y",
             "SCOPE_OF_WORK": "Z", "HOURLY_RATE": "1", "FEE_AMOUNT": "   ",
         }
         with pytest.raises(ValueError, match="non-empty"):
@@ -90,7 +95,7 @@ class TestGenerateSingleFeeVariant:
 
     def test_components_supplied_for_single_fee_variant_raises(self, engine):
         values = {
-            "FIRM_NAME": "X", "DATE": "1.1.2026", "CLIENT_NAME": "Y",
+            "DATE": "1.1.2026", "CLIENT_NAME": "Y",
             "SCOPE_OF_WORK": "Z", "HOURLY_RATE": "1", "FEE_AMOUNT": "1",
         }
         with pytest.raises(ValueError, match="no repeating_group"):
@@ -101,11 +106,10 @@ class TestGenerateSingleFeeVariant:
 
 class TestGenerateMultiComponentAgreement:
     BASE_VALUES = {
-        "FIRM_NAME": "משרד עורכי דין",
         "DATE": "12.9.2026",
         "CLIENT_NAME": "חברת דלתא בע\"מ",
         "SCOPE_OF_WORK": "בהסכם מסחרי",
-        "TOTAL_FEE": "25,000",
+        "TOTAL_FEE": "25,000 ₪ כולל מע\"מ",
     }
 
     def test_any_n_components_cloned(self, engine):
@@ -146,7 +150,6 @@ class TestGenerateMultiComponentAgreement:
 
 class TestGenerateAlternativeTracks:
     BASE_VALUES = {
-        "FIRM_NAME": "משרד עורכי דין",
         "DATE": "12.9.2026",
         "CLIENT_NAME": "מר ישראלי",
         "SCOPE_OF_WORK": "בתביעה כספית",
@@ -181,3 +184,193 @@ class TestGenerateAlternativeTracks:
                 "alternative_tracks", self.BASE_VALUES,
                 components=[{"label": "only track", "terms": "x"}],
             )
+
+
+class TestGetReferenceMaterials:
+    """2026-09-14 follow-up: get_fee_agreement_template now returns curated
+    real-world examples + a directive alongside the template skeleton, not
+    just the bare reference body - see doc_template_engine.py's own
+    docstring for why one example alone is too thin a basis for the AI to
+    reliably infer professional-grade phrasing from."""
+
+    def test_variant_with_curated_examples_returns_them(self, engine):
+        materials = engine.get_reference_materials("multi_component_agreement")
+        assert materials["template_body"]
+        assert len(materials["examples"]) >= 5
+        assert materials["directive"]
+        # Real examples, not the template's own placeholder skeleton.
+        for example in materials["examples"]:
+            assert "{{" not in example
+
+    def test_alternative_tracks_has_curated_examples(self, engine):
+        materials = engine.get_reference_materials("alternative_tracks")
+        assert len(materials["examples"]) >= 1
+        assert materials["directive"]
+
+    def test_hourly_consultation_has_curated_examples(self, engine):
+        materials = engine.get_reference_materials("hourly_consultation")
+        assert len(materials["examples"]) >= 1
+        assert materials["directive"]
+
+    def test_unknown_variant_raises(self, engine):
+        with pytest.raises(ValueError, match="Unknown"):
+            engine.get_reference_materials("no_such_variant")
+
+
+class TestRenderFreeTextDocxFormatEssentials:
+    """2026-09-14: these same shell/RTL/format checks previously existed ONLY
+    in the billed acceptance tests (tests/billed/test_fee_agreement_generation_flow.py),
+    which need a real OpenAI call to even reach - meaning nothing free/fast
+    ever verified the actual .docx structure render_free_text() produces.
+    render_free_text() takes body_text directly, so these checks belong here
+    too, against fixed hardcoded input, with no AI involved at all.
+
+    Deliberately duplicates (doesn't import) the billed file's assertion
+    logic - unit tests should stand alone, and the fixed-input version here
+    is simpler than the billed file's mock-capture plumbing."""
+
+    # 2026-09-14: body_text is now ONLY the substantive content - the
+    # title/date/identity header and the signature footer are code-owned
+    # (render_free_text injects them; see its own docstring) and are checked
+    # separately below, never expected to appear inside body_text itself.
+    CLIENT_NAME = "ישראל ישראלי"
+    SAMPLE_BODY = (
+        "## היקף השירות\n"
+        "עבור ביצוע השירותים, ישלם הלקוח לעוה\"ד **שכר טרחה בסך 15,000 ₪ "
+        "כולל מע\"מ**."
+    )
+
+    @pytest.mark.parametrize(
+        "variant_id", ["hourly_consultation", "multi_component_agreement", "alternative_tracks"]
+    )
+    def test_logo_present_in_header(self, engine, variant_id):
+        doc = engine.render_free_text(variant_id, self.CLIENT_NAME, self.SAMPLE_BODY)
+        docx_obj = DocxDocument(str(doc.temp_path))
+        header_part = docx_obj.sections[0].header.part
+        assert any(rel.reltype.endswith("/image") for rel in header_part.rels.values()), (
+            f"header logo image missing for variant {variant_id!r} - the branded "
+            f"shell was not preserved by render_free_text()"
+        )
+
+    @pytest.mark.parametrize(
+        "variant_id", ["hourly_consultation", "multi_component_agreement", "alternative_tracks"]
+    )
+    def test_footer_contact_line_present(self, engine, variant_id):
+        doc = engine.render_free_text(variant_id, self.CLIENT_NAME, self.SAMPLE_BODY)
+        docx_obj = DocxDocument(str(doc.temp_path))
+        footer_text = "\n".join(p.text for p in docx_obj.sections[0].footer.paragraphs)
+        assert "honigman-law.com" in footer_text, (
+            f"footer contact line missing/altered for variant {variant_id!r}: {footer_text!r}"
+        )
+
+    @pytest.mark.parametrize(
+        "variant_id", ["hourly_consultation", "multi_component_agreement", "alternative_tracks"]
+    )
+    def test_every_body_paragraph_is_rtl_and_never_regresses_paragraph_level_bidi(
+        self, engine, variant_id
+    ):
+        """The exact recipe confirmed (2026-09-13, by diffing a real
+        human-verified-working .docx) to actually render right-to-left in
+        real Word: <w:rtl/> on the paragraph mark AND on the run, with NO
+        paragraph-level <w:bidi/> (which was proven to break jc="right"
+        rendering in real Word - an undocumented interop bug). jc itself may
+        be "right" (the default) or "center" (the title only, 2026-09-14
+        visual-fidelity fix) - both are RTL-safe alignments."""
+        doc = engine.render_free_text(variant_id, self.CLIENT_NAME, self.SAMPLE_BODY)
+        docx_obj = DocxDocument(str(doc.temp_path))
+        body_paragraphs = [p for p in docx_obj.paragraphs if p.text.strip()]
+        assert body_paragraphs, "expected at least one non-empty body paragraph"
+        for para in body_paragraphs:
+            pPr = para._p.find(qn('w:pPr'))
+            assert pPr is not None, f"paragraph has no pPr: {para.text!r}"
+            jc = pPr.find(qn('w:jc'))
+            assert jc is not None and jc.get(qn('w:val')) in ('right', 'center'), (
+                f"paragraph is not right-aligned or centered: {para.text!r}"
+            )
+            mark_rPr = pPr.find(qn('w:rPr'))
+            assert mark_rPr is not None and mark_rPr.find(qn('w:rtl')) is not None, (
+                f"paragraph mark is not RTL: {para.text!r}"
+            )
+            for run in para.runs:
+                if not run.text.strip():
+                    continue
+                run_rPr = run._r.find(qn('w:rPr'))
+                assert run_rPr is not None and run_rPr.find(qn('w:rtl')) is not None, (
+                    f"run text is not RTL: {run.text!r}"
+                )
+            assert pPr.find(qn('w:bidi')) is None, (
+                f"paragraph-level <w:bidi/> present - the confirmed real-Word "
+                f"RTL-rendering bug this feature fixed, must never regress: {para.text!r}"
+            )
+
+    def test_body_text_lines_appear_verbatim_and_in_order(self, engine):
+        """The AI's own substantive lines must appear, verbatim and in
+        order, somewhere inside the full paragraph list - sandwiched between
+        the code-owned header (title/date/identity) and footer (signature),
+        which this test checks separately, not as an exact whole-document
+        match (2026-09-14: body_text is no longer the entire document)."""
+        doc = engine.render_free_text("hourly_consultation", self.CLIENT_NAME, self.SAMPLE_BODY)
+        docx_obj = DocxDocument(str(doc.temp_path))
+        actual_lines = [p.text for p in docx_obj.paragraphs]
+        # "## " markup is stripped by render_free_text (it becomes a bold
+        # heading, not literal text); "**" markers are stripped too (they
+        # become bold runs, not literal asterisks) - compare against what
+        # should actually appear on the page.
+        expected_lines = [
+            "היקף השירות",
+            'עבור ביצוע השירותים, ישלם הלקוח לעוה"ד שכר טרחה בסך 15,000 ₪ כולל מע"מ.',
+        ]
+        # a contiguous subsequence, not necessarily the whole document
+        joined_actual = "\n".join(actual_lines)
+        joined_expected = "\n".join(expected_lines)
+        assert joined_expected in joined_actual, (
+            f"expected body lines to appear verbatim, in order, as a contiguous "
+            f"block:\nexpected={joined_expected!r}\nactual document={actual_lines!r}"
+        )
+
+    def test_constant_boilerplate_is_code_injected_never_left_to_the_ai(self, engine):
+        """2026-09-14 (explicit human instruction: "firm identity is "
+        "CONSTANT! IT NEVER CHANGES!!") - the title, date, firm identity, and
+        signature block must ALL be present regardless of what body_text
+        says (this test's body_text never mentions any of them), because
+        render_free_text() injects them itself. This is the regression the
+        fix targets: a real billed run once had the AI write "המשרד" (the
+        firm's own name is a fact only code/human can guarantee, never the
+        model's memory)."""
+        doc = engine.render_free_text(
+            "hourly_consultation", self.CLIENT_NAME, self.SAMPLE_BODY
+        )
+        docx_obj = DocxDocument(str(doc.temp_path))
+        text = "\n".join(p.text for p in docx_obj.paragraphs)
+        assert "הסכם שכר טרחה" in text, f"code-owned title missing: {text!r}"
+        assert self.CLIENT_NAME in text, f"client name missing: {text!r}"
+        assert 'עו"ד אילה הוניגמן' in text, (
+            f"code-owned firm identity missing - this must NEVER depend on "
+            f"the AI remembering to write it: {text!r}"
+        )
+        assert "תאריך:" in text, f"code-owned date line missing: {text!r}"
+        assert "חתימה:" in text, f"code-owned signature block missing: {text!r}"
+
+    def test_bold_markup_produces_real_bold_runs(self, engine):
+        """"## " headings and "**...**" spans (the AI's only formatting
+        vocabulary - see render_free_text's docstring) must produce real
+        <w:b/> runs, not literal "##"/"**" characters in the output."""
+        doc = engine.render_free_text(
+            "hourly_consultation", self.CLIENT_NAME, self.SAMPLE_BODY
+        )
+        docx_obj = DocxDocument(str(doc.temp_path))
+        text = "\n".join(p.text for p in docx_obj.paragraphs)
+        assert "##" not in text, f"literal '##' markup leaked into the text: {text!r}"
+        assert "**" not in text, f"literal '**' markup leaked into the text: {text!r}"
+
+        heading_para = next(p for p in docx_obj.paragraphs if p.text == "היקף השירות")
+        assert any(run.bold for run in heading_para.runs), (
+            "'## ' heading did not produce a bold run"
+        )
+
+        amount_para = next(p for p in docx_obj.paragraphs if "שכר טרחה בסך" in p.text)
+        bold_runs = [r for r in amount_para.runs if r.bold and "15,000" in r.text]
+        assert bold_runs, (
+            f"'**...**' span around the amount did not produce a bold run: "
+            f"{[(r.text, r.bold) for r in amount_para.runs]!r}"
+        )

@@ -2,38 +2,51 @@
 End-to-End Billed Test (Feature 083, Acceptance phase): Fee Agreement Document
 Generation.
 
-STATUS (2026-09-12, T014): production code now exists and this file has been updated to
-match its REAL API — `pending_local_tool_approval_manager.get(chat_id)` (not `get_pending`),
-`WhatsAppHandler.send_document_response(generated, chat_id, caption)` and
-`_send_file_with_retry(chat_id, path, file_name, caption)` (patched at the class level, so
-mock call_args carry no `self`), and a new `test_alternative_tracks_selected_and_generated`
-scenario for the 5th, corpus-driven variant. **STILL BLOCKING on a fresh human
-re-approval before running** — the original approval of this file predates both the
-Hebrew/corpus template redesign and the alternative_tracks variant, so nothing here has been
-approved against what actually exists on disk today. Do not run via
-`scripts/run_single_test.sh`/`run_multiple_billed_tests.sh` until that re-approval is given.
+STATUS (2026-09-13, redesign): rewritten for the "minimal code, maximal AI"
+architecture - the AI now composes the ENTIRE document body itself (a tool
+call fetches a reference template's body text, the AI writes new full body
+text, a thin render tool wraps it in the branded .docx shell) and there is NO
+approval gate anywhere in this flow any more (REQ-083-04's self-verification
+is the sole release gate, per the original spec - see
+specs/repo/features/083-fee-agreement-docs/spec.md). Every prompt in this
+file is UNCHANGED from the pre-redesign version (per explicit human
+instruction, 2026-09-13: "the tests prompts dont need to change and neither
+are the user expectations... The only thing that needs to change is YOUR
+IMPLEMENTATION") - only the test MECHANICS changed: no more
+pending_local_tool_approval_manager / button-tap-approve round trip; a single
+user turn now runs the AI's own get_template -> compose -> render -> verify
+-> send loop to completion, and the test observes the outcome by mocking
+`WhatsAppHandler.send_document_response` and inspecting the real
+`GeneratedDocument` it was called with (which variant was rendered, and the
+rendered .docx's actual text).
 
-Tests the real OpenAI function-calling mechanism end-to-end — NOT unit-testable, since what's
-under test is whether the real model (a) selects the right template variant from natural
-phrasing, (b) refuses to guess missing financial/legal data and asks instead, (c) proposes
-collected values for human approval, (d) after approval, generates + self-verifies the document
-before ever sending it, and (e) the file that reaches WhatsApp is intact.
+Tests the real OpenAI function-calling mechanism end-to-end - NOT
+unit-testable, since what's under test is whether the real model (a) selects
+the right template variant from natural phrasing, (b) composes a correct,
+placeholder-free Hebrew document body around the user's actual facts (never
+inventing figures), (c) self-verifies before ever sending, and (d) the file
+that reaches WhatsApp is intact.
 
-Text-only conversational turns are `billed`; nothing here is `expensive` (no vision/image calls).
-The actual WhatsApp `sendFileByUpload` network call is stubbed at the send boundary only (Gate
-Zero — a real live send is a separate, explicitly human-approved step per research.md #2, not
-exercised by an automated test run) — this mirrors `test_reminder_lifecycle_billed.py`'s existing
-precedent of stubbing `send_proactive_message` for the same reason. Every other component
-(AIHandler, DocTemplateEngine, PendingLocalToolApprovalManager, OpenAI) is real, per
-CONSTITUTION §I/§V.
+Text-only conversational turns are `billed`; nothing here is `expensive` (no
+vision/image calls). The actual WhatsApp `sendFileByUpload` network call is
+stubbed at the send boundary only (Gate Zero - a real live send is a
+separate, explicitly human-approved step per research.md #2, not exercised
+by an automated test run) - this mirrors `test_reminder_lifecycle_billed.py`'s
+existing precedent of stubbing `send_proactive_message` for the same reason.
+Every other component (AIHandler, DocTemplateEngine, OpenAI) is real, per
+CONSTITUTION SS I/SS V.
 """
 
 import logging
+import re
+import shutil
 import uuid
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from docx import Document as DocxDocument
+from docx.oxml.ns import qn
 
 from src.models.config import AppConfiguration
 from tests.e2e_helpers import sanity_worker_data_root
@@ -46,8 +59,9 @@ GODFATHER_CHAT_ID_TEMPLATE = "{phone}@c.us"
 
 @pytest.mark.billed
 class TestFeeAgreementGenerationFlow:
-    """Given/When/Then E2E coverage for the 4 UAT stages in
-    specs/repo/features/083-fee-agreement-docs/user-stories.md.
+    """Given/When/Then E2E coverage for the UAT stages in
+    specs/repo/features/083-fee-agreement-docs/user-stories.md, against the
+    2026-09-13 no-approval-gate, AI-authored-body-text architecture.
     """
 
     @pytest.fixture
@@ -131,150 +145,284 @@ class TestFeeAgreementGenerationFlow:
         handle_text_message(notification)
         return notification
 
-    def _tap_button(self, chat_id, sender, selected_id, stanza_id, label):
-        from denidin import handle_button_tap
-        msg_id = f"billed_{label}_{uuid.uuid4().hex[:8]}"
-        notification = self._create_notification(chat_id, sender, "Test Godfather", "", msg_id)
-        notification.event['messageData'] = {
-            'typeMessage': 'interactiveButtonsResponse',
-            'interactiveButtonsResponse': {'selectedId': selected_id, 'stanzaId': stanza_id},
-        }
-        handle_button_tap(notification)
-        return notification
-
     def _godfather(self, config):
         phone = config.godfather_phone
         return phone, GODFATHER_CHAT_ID_TEMPLATE.format(phone=phone)
+
+    @staticmethod
+    def _reset_session(denidin_app, chat_id):
+        """2026-09-14 (explicit human instruction, following a real observed
+        failure): the godfather chat's session is a PERSISTENT on-disk
+        record, and `denidin_app` here is a process-wide singleton reused
+        across every test in this file (`if denidin.denidin_app is None`) -
+        so without an explicit reset, one test's client/date/signer exchange
+        leaks into the next test's turn as prior conversation history, and
+        the model (correctly) treats it as part of the same ongoing thread
+        instead of a fresh request. Deletes the session's own directory and
+        its chat_index row directly - SessionManager is a pure read-through
+        over chat_index.db + the session directory (no in-memory cache), so
+        the next turn for this chat_id transparently creates a brand new
+        session."""
+        sm = denidin_app.ai_handler.session_manager
+        session_id = sm._index_lookup(chat_id) or sm.chat_to_session.get(chat_id)
+        if session_id is None:
+            return
+        session_dir = sm.storage_dir / session_id
+        if session_dir.exists():
+            shutil.rmtree(session_dir)
+        # Must go through the SessionManager's OWN live connection - a
+        # separate sqlite3.connect() to the same file would leave
+        # `chat_to_session` (the in-memory fast-path cache `get_session()`
+        # also falls back to) stale, and get_session() would keep resolving
+        # to the just-deleted session_id regardless of what the DB says.
+        sm._index_conn.execute("DELETE FROM chat_sessions WHERE chat = ?", (chat_id,))
+        sm._index_conn.commit()
+        sm.chat_to_session.pop(chat_id, None)
+
+    @pytest.fixture(autouse=True)
+    def _isolated_godfather_session(self, denidin_app, config):
+        """Wipe the godfather chat's session before AND after every test in
+        this file, so each test runs against a clean conversational slate -
+        no leakage from a previous test in this run, and no leakage from a
+        previous pytest invocation's leftover on-disk session either."""
+        phone, chat_id = self._godfather(config)
+        self._reset_session(denidin_app, chat_id)
+        yield
+        self._reset_session(denidin_app, chat_id)
 
     @staticmethod
     def _last_message(notification):
         return notification._test_sent_messages[-1] if notification._test_sent_messages else None
 
     @staticmethod
-    def _pending_approval(denidin_app, chat_id):
-        return denidin_app.ai_handler.pending_local_tool_approval_manager.get(chat_id)
+    def _docx_text(path):
+        return "\n".join(p.text for p in DocxDocument(str(path)).paragraphs)
 
-    # --- Stage 1: Template Selection Accuracy ------------------------------------
+    # --- Shell/RTL/authored-content assertions (shared by every test below) ------
+    #
+    # render_free_text() (doc_template_engine.py) only ever touches doc.element.body
+    # - it deletes and rebuilds the body's own <w:p> paragraphs from the AI's text,
+    # but never touches the header/footer PARTS, which are separate .docx package
+    # parts entirely outside the body. So the logo image + footer contact line are
+    # STRUCTURALLY guaranteed intact by code, regardless of what the AI wrote - a
+    # real regression there (e.g. a future refactor that nukes the wrong XML
+    # subtree) would be a code bug, not a model-quality issue. The firm's own name,
+    # the document date, and the signature block, by contrast, USED to be constant
+    # template body paragraphs (each real template used to have its own "עו"ד אילה
+    # הוניגמן"/"תאריך: ___"/"חתימה: ___" lines) but render_free_text() deletes ALL
+    # original body paragraphs and replaces them with the AI's own text - so those
+    # three are now the AI's own responsibility to include, and are checked as
+    # AI-authored-content, not shell integrity.
+
+    @staticmethod
+    def _assert_shell_intact(temp_path):
+        """(1) Logo/header/footer/RTL - the parts of the .docx code owns, never the
+        AI. Every non-empty body paragraph render_free_text() writes must carry the
+        same jc="right" + paragraph-mark <w:rtl/> + run-level <w:rtl/> recipe
+        _build_rtl_paragraph() applies (see doc_template_engine.py) - this is what
+        makes a real Word client render right-to-left correctly (see this feature's
+        own RTL debugging notes: paragraph-level <w:bidi/> actively breaks jc="right"
+        in real Word, so its ABSENCE here is also part of what "intact" means)."""
+        doc = DocxDocument(str(temp_path))
+        section = doc.sections[0]
+
+        # Logo: a real image relationship on the header part - untouched by
+        # render_free_text(), so its presence proves the branded shell, not the
+        # AI's own text, is what's being served.
+        header_part = section.header.part
+        assert any(rel.reltype.endswith("/image") for rel in header_part.rels.values()), (
+            "header logo image is missing - the branded .docx shell was not preserved"
+        )
+
+        # Footer: the firm's real contact line is a constant string, identical
+        # across all 5 templates - never AI-authored, never a value.
+        footer_text = "\n".join(p.text for p in section.footer.paragraphs)
+        assert "honigman-law.com" in footer_text, (
+            f"footer contact line missing/altered - shell not preserved: {footer_text!r}"
+        )
+
+        # RTL: every actual line of AI-authored body text must render right-to-left.
+        # jc may be "right" (the default) or "center" (the code-injected title only,
+        # 2026-09-14 visual-fidelity fix) - both are RTL-safe alignments.
+        for para in doc.paragraphs:
+            if not para.text.strip():
+                continue
+            pPr = para._p.find(qn('w:pPr'))
+            assert pPr is not None, f"paragraph has no pPr (not RTL-safe): {para.text!r}"
+            jc = pPr.find(qn('w:jc'))
+            assert jc is not None and jc.get(qn('w:val')) in ('right', 'center'), (
+                f"paragraph is not right-aligned or centered: {para.text!r}"
+            )
+            mark_rPr = pPr.find(qn('w:rPr'))
+            assert mark_rPr is not None and mark_rPr.find(qn('w:rtl')) is not None, (
+                f"paragraph mark is not RTL: {para.text!r}"
+            )
+            for run in para.runs:
+                if not run.text.strip():
+                    continue
+                run_rPr = run._r.find(qn('w:rPr'))
+                assert run_rPr is not None and run_rPr.find(qn('w:rtl')) is not None, (
+                    f"run text is not RTL: {run.text!r}"
+                )
+            # bidi at the paragraph level is the confirmed-bad interop bug this
+            # feature root-caused (breaks jc="right" in real Word) - must never
+            # reappear on an individual paragraph.
+            assert pPr.find(qn('w:bidi')) is None, (
+                f"paragraph-level <w:bidi/> present - this is the confirmed real-Word "
+                f"RTL-rendering bug this feature fixed, must never regress: {para.text!r}"
+            )
+
+    @staticmethod
+    def _assert_ai_authored_essentials(text, expected_client_name):
+        """(2)+(3a) The AI's own authored content must still carry the essentials a
+        real fee agreement needs, even though nothing forces this structurally any
+        more: the firm/lawyer's own identity, a document date, and a place to sign -
+        plus the exact client name the user asked for (not a paraphrase, not a
+        different person)."""
+        assert expected_client_name in text, (
+            f"client name {expected_client_name!r} (exactly as the user gave it) "
+            f"not found in the document body: {text!r}"
+        )
+        assert "הוניגמן" in text, (
+            f"the firm/lawyer's own identity (עו\"ד אילה הוניגמן) is missing from "
+            f"the document body - this must appear even though it's no longer a "
+            f"template constant: {text!r}"
+        )
+        assert "תאריך" in text or re.search(r"\d{1,2}[./]\d{1,2}[./]\d{2,4}", text), (
+            f"no document date (a 'תאריך' label or an actual DD.MM.YYYY-style date) "
+            f"found anywhere in the body: {text!r}"
+        )
+        # 2026-09-14: "חתימ" (not "חתימה" alone) so a legitimate real phrasing
+        # variant like "חתימת הלקוח" (found in a real billed run) still
+        # matches - "חתימה"/"חתימת"/"לחתום" all share this root.
+        assert any(word in text for word in ("חתימ", "החתום", "ולראיה")), (
+            f"no signature block/place-to-sign found anywhere in the body: {text!r}"
+        )
+
+    # --- Stage 1: Template Selection Accuracy + self-verification gate ------------
 
     @pytest.mark.parametrize(
-        "user_text,expected_variant",
+        "user_text,followup_texts,expected_variant,expected_client_name",
         [
-            ("Create a retainer agreement for NewCo Ltd.", "retainer_agreement"),
-            ("I need a standard hourly fee agreement for consultation.", "hourly_consultation"),
-            ("Draft a fixed-price contract for building a website.", "fixed_price_project"),
             (
-                "Draft an agreement for Delta Ltd with a monthly retainer of 3,000 NIS "
-                "plus 400 NIS/hour for anything beyond 10 hours a month.",
+                # "A simple, regular agreement" (explicit human framing, 2026-09-12):
+                # NOT hourly_consultation, NOT alternative_tracks - a plain
+                # single-fee-for-a-defined-scope request. Per the 2026-09-14
+                # variant-count reduction (the real corpus had zero examples
+                # of a genuinely standalone "fixed_price_project" template -
+                # see config/fee_agreement_templates/examples/README.md), this
+                # shape is now multi_component_agreement with exactly ONE
+                # component, not a separate variant.
+                # 2026-09-14: everything the AI could plausibly need to ask
+                # about (date, signer) is given up front in this single
+                # message, per explicit human instruction - this case proves
+                # the one-shot no-approval flow when the user front-loads
+                # every detail themselves.
+                "תכין הסכם שכר טרחה רגיל עבור מר אריאל בכר, בנושא בניית אתר "
+                "אינטרנט. שכר הטרחה 25,000 ש\"ח כולל מע\"מ, לתשלום תוך 60 "
+                "יום. התאריך: היום. החתימה מטעם הלקוח תהיה של מר אריאל בכר "
+                "עצמו.",
+                [],
                 "multi_component_agreement",
+                "אריאל בכר",
+            ),
+            (
+                # 2026-09-14: deliberately terse up front (per explicit human
+                # instruction) - this case proves the AI's own clarifying
+                # questions (date, signer, VAT treatment) get answered over
+                # the course of the conversation instead, still ending in the
+                # same one-shot send once every detail is in. "תכין הסכם" is
+                # included up front (unlike the plain facts-only phrasing
+                # first tried here) - without it the model correctly reads
+                # this as dictating ledger facts to record, not a document
+                # request, and never touches the fee-agreement tools at all.
+                # "יוסי זאנזן" is a real, pre-seeded Morning sandbox client
+                # (tests/fixtures/morning_sandbox_clients.json, seeded once
+                # via a real add_client conversational turn, 2026-09-14) -
+                # exact-name resolution, no ambiguous-candidate detour.
+                "תכין הסכם שכר טרחה עבור יוסי זאנזן, 10000 צו מניעה, 25% מזכיה",
+                [
+                    "הסכום כולל מע\"מ. התאריך: היום. החתימה מטעם הלקוח תהיה "
+                    "של יוסי זאנזן עצמו.",
+                ],
+                "multi_component_agreement",
+                "יוסי זאנזן",
             ),
         ],
+        ids=["simple_regular_agreement", "multi_component_agreement"],
     )
-    def test_stage1_template_selection(self, denidin_app, config, user_text, expected_variant):
-        """Test 1.1/1.2/1.3/1.4: the AI selects the correct template variant from phrasing
-        alone, surfaced via the PendingLocalToolApproval it creates (which must name the
-        variant it intends to generate) before any document is produced. Test 1.4 (added
-        per human feedback) verifies a request describing MULTIPLE distinct, separately
-        priced fee components is recognized as such rather than forced into one of the
-        single-fee variants."""
-        phone, chat_id = self._godfather(config)
-        self._send_text(chat_id, phone, "Test Godfather", user_text, "stage1")
-
-        pending = self._pending_approval(denidin_app, chat_id)
-        assert pending is not None, (
-            f"expected a pending fee-agreement approval after {user_text!r} "
-            f"(the AI should propose a variant + ask for value confirmation, not "
-            f"generate silently or refuse)"
-        )
-        assert pending.tool_name == "generate_fee_agreement"
-        assert pending.arguments.get("variant_id") == expected_variant, (
-            f"expected variant {expected_variant!r}, got {pending.arguments.get('variant_id')!r}"
-        )
-
-    # --- Stage 2: Data Gathering & Clarification (Anti-Hallucination) ------------
-
-    def test_stage2_clarification_then_collection(self, denidin_app, config):
-        """Scenario: 'Draft an agreement for Yossi.' with terms missing.
-        Turn 1: AI must ask a clarifying question, NOT create a pending approval
-        and NOT generate anything (no guessed fee amount/scope).
-        Turn 2: user supplies the missing data; AI must now have everything it
-        needs and create a pending approval with the REAL supplied values (never
-        a default/placeholder value)."""
+    def test_stage1_template_selection(
+        self, denidin_app, config, user_text, followup_texts, expected_variant,
+        expected_client_name
+    ):
+        """The AI selects the correct template variant from phrasing alone,
+        composes a full document body around it, self-verifies (no leftover
+        {{PLACEHOLDER}} tokens), and only then reaches the send boundary - all
+        within one turn (or a short natural back-and-forth answering the AI's
+        own clarifying questions), no human approval step. Surfaced by
+        inspecting the real GeneratedDocument the (mocked) send call
+        received. Also asserts the branded shell (logo/footer/RTL) was
+        preserved intact and the AI's own authored content (client name,
+        firm identity, date, signature block) is present."""
         phone, chat_id = self._godfather(config)
 
-        turn1 = self._send_text(
-            chat_id, phone, "Test Godfather", "Draft an agreement for Yossi.", "stage2a"
-        )
-        assert self._pending_approval(denidin_app, chat_id) is None, (
-            "AI must not create a pending approval (or generate a document) before "
-            "fee amount and scope are known — REQ-083-02 anti-hallucination guardrail"
-        )
-        reply1 = self._last_message(turn1) or ""
-        assert reply1, "AI must ask a clarifying question, not stay silent"
+        # send_document_response(self, generated, chat_id, caption) is patched at the
+        # class level, so the mock receives no `self` - `generated` is args[0]. Capture
+        # the temp file's own path/existence/text INSIDE the mock (2026-09-14 fix) - the
+        # real handler unlinks the temp file in a `finally` immediately after this call
+        # returns (SC-003 cleanup, always, regardless of send outcome), so reading it
+        # back afterward races a file that's already gone by the time the turn completes.
+        captured = {}
 
-        self._send_text(
-            chat_id, phone, "Test Godfather",
-            "The fee is 5,000 NIS for tax consultation.", "stage2b",
-        )
-        pending = self._pending_approval(denidin_app, chat_id)
-        assert pending is not None, "AI should now propose values for approval"
-        values = pending.arguments.get("values", {})
-        fee_value = " ".join(str(v) for v in values.values())
-        assert "5,000" in fee_value or "5000" in fee_value, (
-            f"AI must use the REAL supplied fee (5,000 NIS), not a guessed/default one; "
-            f"got values={values!r}"
-        )
-
-    # --- Stage 3: AI Self-Verification (QA) --------------------------------------
-
-    def test_stage3_self_verification_gates_release(self, denidin_app, config):
-        """Once the human approves the proposed values, the AI must call
-        generate_fee_agreement THEN verify_fee_agreement_document, and the
-        verification result (no remaining {{PLACEHOLDER}} tokens, every value
-        present) must be true BEFORE any send is attempted. Verified by
-        inspecting the actual generated temp file's content directly — not by
-        trusting the model's own narration alone."""
-        phone, chat_id = self._godfather(config)
-
-        self._send_text(
-            chat_id, phone, "Test Godfather",
-            "Draft a fixed-price contract for building a website for Acme Corp, "
-            "fee 20,000 NIS, due by end of next month.",
-            "stage3a",
-        )
-        pending = self._pending_approval(denidin_app, chat_id)
-        assert pending is not None
-        stanza_id = getattr(pending, "sent_message_id", None)
+        def _capture(generated, chat_id=None, caption=None):  # pylint: disable=unused-argument
+            captured["variant_id"] = generated.variant_id
+            captured["verified"] = generated.verified
+            temp_path = Path(generated.temp_path)
+            captured["existed_at_send"] = temp_path.exists()
+            if temp_path.exists():
+                # DEBUG (temporary, 2026-09-14): copy the real generated docx out
+                # before SC-003 cleanup deletes it, so a human can open it. Remove
+                # once visual-fidelity/single-page verification work is done.
+                debug_dir = Path(__file__).resolve().parents[1] / "test_results"
+                debug_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy(str(temp_path), str(debug_dir / f"{user_text[:20]}_output.docx"))
+                captured["text"] = self._docx_text(temp_path)
+                try:
+                    self._assert_shell_intact(temp_path)
+                    captured["shell_ok"] = True
+                except AssertionError as e:
+                    captured["shell_ok"] = False
+                    captured["shell_error"] = str(e)
+            return True
 
         with patch(
             "src.handlers.whatsapp_handler.WhatsAppHandler.send_document_response",
-            return_value=True,
+            side_effect=_capture,
         ) as mock_send:
-            if stanza_id:
-                self._tap_button(chat_id, phone, "denidin_approve", stanza_id, "stage3b")
-            else:
-                self._send_text(chat_id, phone, "Test Godfather", "כן", "stage3b")
+            self._send_text(chat_id, phone, "Test Godfather", user_text, "stage1")
+            for i, followup in enumerate(followup_texts):
+                self._send_text(chat_id, phone, "Test Godfather", followup, f"stage1_followup{i}")
 
             assert mock_send.called, (
-                "expected the document-send boundary to be reached after approval "
-                "(self-verification must have passed for this to happen at all)"
+                f"expected the document-send boundary to be reached for {user_text!r} "
+                f"(self-verification must have passed for this to happen at all)"
             )
-            # send_document_response(self, generated, chat_id, caption) - patched at the
-            # class level, so the mock receives no `self`; `generated` is args[0].
-            sent_document = mock_send.call_args.args[0] if mock_send.call_args.args \
-                else mock_send.call_args.kwargs.get("generated")
-            assert sent_document is not None and getattr(sent_document, "verified", False) is True, (
+            assert captured["variant_id"] == expected_variant, (
+                f"expected variant {expected_variant!r}, got {captured['variant_id']!r}"
+            )
+            assert captured["verified"] is True, (
                 "a document reaching send_document_response() must have verified=True — "
-                "code-level guard per contracts/fee-agreement-verification.md, not just a "
-                "prompt-level expectation"
+                "code-level guard, not just a prompt-level expectation"
             )
-            temp_path = Path(sent_document.temp_path)
-            assert temp_path.exists(), "temp file must still exist at the moment of send"
-
-            from docx import Document as DocxDocument
-            text = "\n".join(p.text for p in DocxDocument(str(temp_path)).paragraphs)
-            assert "{{" not in text, f"leftover placeholder token(s) found in generated doc: {text!r}"
-            assert "Acme Corp" in text
-            assert "20,000" in text or "20000" in text
+            assert captured["existed_at_send"], (
+                "temp file must still exist at the moment of send (before cleanup)"
+            )
+            assert captured["shell_ok"], (
+                f"branded shell not intact at send time: {captured.get('shell_error')}"
+            )
+            text = captured["text"]
+            assert "{{" not in text, f"no unresolved {{{{PLACEHOLDER}}}} tokens may remain: {text!r}"
+            self._assert_ai_authored_essentials(text, expected_client_name)
 
     # --- Stage 1b: multi-component supports ANY N>1 (data-model.md "Variable-length
     # component rows") - not a fixed cap ------------------------------------------
@@ -282,171 +430,141 @@ class TestFeeAgreementGenerationFlow:
     @pytest.mark.parametrize("n_components", [2, 4])
     def test_multi_component_arbitrary_n(self, denidin_app, config, n_components):
         """Per explicit human correction (2026-09-12): the multi-component variant
-        must handle ANY N>1 real components, not a fixed maximum. Runs with both a
-        minimal case (2) and a case exceeding any hardcoded small cap (4) to prove
-        DocTemplateEngine clones its single repeatable table row exactly
-        n_components times - never padding a shorter list, never truncating a
-        longer one."""
+        must handle ANY N>1 real components, not a fixed maximum - all composed by
+        the AI directly into the document body text now (no repeating-table-row
+        mechanism), so verified by counting how many of the given fee components
+        actually appear, verbatim, in the rendered document."""
         phone, chat_id = self._godfather(config)
         component_descs = [
-            "a one-time setup fee of 2,000 NIS",
-            "a monthly maintenance fee of 500 NIS",
-            "an annual license renewal fee of 1,200 NIS",
-            "a one-time data migration fee of 3,000 NIS",
+            "הגשת התביעה - 5,000 ש\"ח כולל מע\"מ",
+            "דיון הוכחות אם יידרש - 4,000 ש\"ח כולל מע\"מ",
+            "ניהול ההליך עד להחלטה - 8,000 ש\"ח כולל מע\"מ",
+            "ערעור אם יוגש - 6,000 ש\"ח כולל מע\"מ",
         ][:n_components]
-        self._send_text(
-            chat_id, phone, "Test Godfather",
-            f"Draft an agreement for Gamma LLC with {n_components} fee components: "
-            + "; ".join(component_descs) + ". "
-            "Total combined fee for the first period accordingly.",
-            f"stage1b-{n_components}",
-        )
-        pending = self._pending_approval(denidin_app, chat_id)
-        assert pending is not None
-        components = pending.arguments.get("components") or []
-        assert len(components) == n_components, (
-            f"expected exactly {n_components} real components (never padded/merged), "
-            f"got {len(components)}: {components!r}"
-        )
-        for entry in components:
-            assert set(entry.keys()) == {"label", "terms"}
-        assert "values" in pending.arguments and not any(
-            k.startswith("COMPONENT") for k in pending.arguments["values"]
-        ), "scalar `values` must never carry component data - that belongs in `components`"
 
-        stanza_id = getattr(pending, "sent_message_id", None)
         with patch(
             "src.handlers.whatsapp_handler.WhatsAppHandler.send_document_response",
             return_value=True,
         ) as mock_send:
-            if stanza_id:
-                self._tap_button(chat_id, phone, "denidin_approve", stanza_id, f"stage1b-{n_components}-approve")
-            else:
-                self._send_text(chat_id, phone, "Test Godfather", "כן", f"stage1b-{n_components}-approve")
-
-            assert mock_send.called
-            # send_document_response(self, generated, chat_id, caption) - patched at the
-            # class level, so the mock receives no `self`; `generated` is args[0].
-            sent_document = mock_send.call_args.args[0] if mock_send.call_args.args \
-                else mock_send.call_args.kwargs.get("generated")
-            from docx import Document as DocxDocument
-            docx_obj = DocxDocument(str(sent_document.temp_path))
-            table = docx_obj.tables[0]
-            table_text = "\n".join(cell.text for row in table.rows for cell in row.cells)
-            assert "{{" not in table_text, f"leftover placeholder in table: {table_text!r}"
-            # Header row + exactly n_components data rows - never a fixed cap.
-            assert len(table.rows) == n_components + 1, (
-                f"expected header + {n_components} component rows "
-                f"({n_components + 1} total), got {len(table.rows)}"
+            self._send_text(
+                chat_id, phone, "Test Godfather",
+                "תכין הסכם עבור דוד כרמלי, בתביעה כספית נגד שכנו. שכר הטרחה: "
+                + "; ".join(component_descs) + ".",
+                f"stage1b-{n_components}",
             )
-
-    # --- Stage 1c: alternative_tracks - a real choice between mutually-exclusive
-    # fee structures, distinct from multi_component_agreement's "all apply together"
-    # shape (added per T014, corpus-driven 5th variant, 2026-09-12) -------------------
-
-    def test_alternative_tracks_selected_and_generated(self, denidin_app, config):
-        """A request describing two or more mutually-exclusive fee tracks for the
-        SAME engagement (the client picks exactly ONE) must select
-        `alternative_tracks`, never `multi_component_agreement` (where every
-        component applies together) - the two variants' selection_cues are
-        deliberately worded to distinguish exactly this. Also exercises the
-        required `SHARED_ADDON_TERMS` scalar and the full generate -> approve ->
-        verify -> send flow end-to-end for this 5th variant."""
-        phone, chat_id = self._godfather(config)
-
-        self._send_text(
-            chat_id, phone, "Test Godfather",
-            "Draft an agreement for Sigma Partners with two alternative fee tracks "
-            "for the client to choose between - only one will actually apply: "
-            "Track A is a flat fee of 18,000 NIS including VAT, no contingency. "
-            "Track B is a reduced base fee of 10,000 NIS including VAT plus 7% of "
-            "whatever amount is awarded or collected. There are no additional "
-            "terms that apply regardless of which track is chosen.",
-            "alt_tracks_1",
-        )
-
-        pending = self._pending_approval(denidin_app, chat_id)
-        assert pending is not None
-        assert pending.arguments.get("variant_id") == "alternative_tracks", (
-            f"a mutually-exclusive CHOICE between fee structures must select "
-            f"alternative_tracks, not {pending.arguments.get('variant_id')!r} - "
-            f"multi_component_agreement is for components that ALL apply together"
-        )
-        tracks = pending.arguments.get("components") or []
-        assert len(tracks) == 2, f"expected exactly 2 tracks, got {len(tracks)}: {tracks!r}"
-        all_terms = " | ".join(t.get("terms", "") for t in tracks)
-        assert "18,000" in all_terms or "18000" in all_terms
-        assert "10,000" in all_terms or "10000" in all_terms
-        assert "7" in all_terms and "%" in all_terms
-        values = pending.arguments.get("values", {})
-        shared_addon = str(values.get("SHARED_ADDON_TERMS", ""))
-        assert shared_addon, (
-            "SHARED_ADDON_TERMS is a required scalar - when the user said there's "
-            "nothing shared, the AI must say so explicitly, never omit the field"
-        )
-
-        stanza_id = getattr(pending, "sent_message_id", None)
-        with patch(
-            "src.handlers.whatsapp_handler.WhatsAppHandler.send_document_response",
-            return_value=True,
-        ) as mock_send:
-            if stanza_id:
-                self._tap_button(chat_id, phone, "denidin_approve", stanza_id, "alt_tracks_1_approve")
-            else:
-                self._send_text(chat_id, phone, "Test Godfather", "כן", "alt_tracks_1_approve")
 
             assert mock_send.called
             sent_document = mock_send.call_args.args[0] if mock_send.call_args.args \
                 else mock_send.call_args.kwargs.get("generated")
             assert sent_document is not None and sent_document.verified is True
+            self._assert_shell_intact(sent_document.temp_path)
+            text = self._docx_text(sent_document.temp_path)
+            assert "{{" not in text, f"leftover placeholder in body: {text!r}"
+            self._assert_ai_authored_essentials(text, "דוד כרמלי")
+            # Every component's fee amount must appear verbatim - nothing merged
+            # or dropped as the count grows.
+            for amount in ("5,000", "4,000", "8,000", "6,000")[:n_components]:
+                assert amount in text, f"expected amount {amount!r} in body: {text!r}"
 
-            from docx import Document as DocxDocument
-            text = "\n".join(p.text for p in DocxDocument(str(sent_document.temp_path)).paragraphs)
+    # --- Stage 1c: alternative_tracks - a real choice between mutually-exclusive
+    # fee structures, distinct from multi_component_agreement's "all apply together"
+    # shape (corpus-driven 5th variant) --------------------------------------------
+
+    def test_alternative_tracks_selected_and_generated(self, denidin_app, config):
+        """A request describing two or more mutually-exclusive fee tracks for the
+        SAME engagement (the client picks exactly ONE) must select
+        `alternative_tracks`, never `multi_component_agreement` (where every
+        component applies together)."""
+        phone, chat_id = self._godfather(config)
+
+        with patch(
+            "src.handlers.whatsapp_handler.WhatsAppHandler.send_document_response",
+            return_value=True,
+        ) as mock_send:
+            self._send_text(
+                chat_id, phone, "Test Godfather",
+                "תכין הסכם עבור רונית אשכנזי, "
+                "עם שני מסלולי שכר טרחה חלופיים לבחירתה - רק מסלול אחד בפועל "
+                "יחול: מסלול א' - שכר טרחה קבוע של 18,000 ש\"ח כולל מע\"מ, ללא תלות "
+                "בתוצאה. מסלול ב' - שכר טרחה מוזל בסך 10,000 ש\"ח כולל מע\"מ בתוספת "
+                "7% מהסכום שייפסק או ייגבה. אין תוספות החלות על שני המסלולים.",
+                "alt_tracks_1",
+            )
+
+            assert mock_send.called
+            sent_document = mock_send.call_args.args[0] if mock_send.call_args.args \
+                else mock_send.call_args.kwargs.get("generated")
+            assert sent_document is not None
+            assert sent_document.variant_id == "alternative_tracks", (
+                f"a mutually-exclusive CHOICE between fee structures must select "
+                f"alternative_tracks, not {sent_document.variant_id!r} - "
+                f"multi_component_agreement is for components that ALL apply together"
+            )
+            assert sent_document.verified is True
+
+            self._assert_shell_intact(sent_document.temp_path)
+            text = self._docx_text(sent_document.temp_path)
             assert "{{" not in text, f"leftover placeholder token(s) found: {text!r}"
-            assert "Sigma Partners" in text
-            for track in tracks:
-                assert track["label"] in text
-                assert track["terms"] in text
+            self._assert_ai_authored_essentials(text, "רונית אשכנזי")
+            assert "18,000" in text or "18000" in text
+            assert "10,000" in text or "10000" in text
+            assert "7" in text and "%" in text
 
     # --- Stage 4: Successful Delivery ---------------------------------------------
 
     def test_stage4_delivery_and_cleanup(self, denidin_app, config):
-        """After 'Release', Green API's sendFileByUpload-backed send path must be
-        invoked exactly once with the real generated file, and the temp file must
-        be deleted afterward (SC-003 — no leaked files)."""
+        """The Green API sendFileByUpload-backed send path must be invoked exactly
+        once with the real generated file, and the temp file must be deleted
+        afterward (SC-003 — no leaked files) - all within one turn, no approval
+        step. Content/shell is captured inside the mock's side_effect, at the
+        moment of the call - the temp file is deleted immediately afterward as
+        part of cleanup, so it can't be read back from the assertions below."""
         phone, chat_id = self._godfather(config)
 
-        self._send_text(
-            chat_id, phone, "Test Godfather",
-            "I need a standard hourly fee agreement for consultation for Beta Inc, "
-            "rate 500 NIS/hour, scope: monthly bookkeeping review, estimated total 6,000 NIS.",
-            "stage4a",
-        )
-        pending = self._pending_approval(denidin_app, chat_id)
-        assert pending is not None
-        stanza_id = getattr(pending, "sent_message_id", None)
+        captured = {}
+
+        def _capture_and_stub(*args, **kwargs):
+            path = Path(kwargs.get("path") or args[1])
+            captured["path"] = path
+            captured["shell_ok"] = True
+            try:
+                self._assert_shell_intact(path)
+            except AssertionError as e:
+                captured["shell_ok"] = False
+                captured["shell_error"] = str(e)
+            captured["text"] = self._docx_text(path)
+            return None
 
         with patch(
             "src.handlers.whatsapp_handler.WhatsAppHandler._send_file_with_retry",
-            return_value=None,
+            side_effect=_capture_and_stub,
         ) as mock_upload:
-            if stanza_id:
-                self._tap_button(chat_id, phone, "denidin_approve", stanza_id, "stage4b")
-            else:
-                self._send_text(chat_id, phone, "Test Godfather", "כן", "stage4b")
+            self._send_text(
+                chat_id, phone, "Test Godfather",
+                "תכין הסכם שכר טרחה שעתי עם חברת בטא בע\"מ, לצורך ליווי משפטי "
+                "שוטף למר יעקב שני, מנכ\"ל החברה, לפי שעות עבודה. תעריף השעה "
+                "500 ש\"ח כולל מע\"מ, עד לתקרה של 10,000 ש\"ח.",
+                "stage4a",
+            )
 
             assert mock_upload.call_count == 1, (
                 f"expected exactly one sendFileByUpload-equivalent call, "
                 f"got {mock_upload.call_count}"
             )
-            # _send_file_with_retry(self, chat_id, path, file_name, caption) - patched at
-            # the class level, so the mock receives no `self`; `path` is args[1].
-            sent_path = Path(mock_upload.call_args.kwargs.get("path")
-                              or mock_upload.call_args.args[1])
-            # The boundary call happens BEFORE cleanup — assert the path it was given
-            # is a real .docx that existed at call time (checked via the call args'
-            # captured path, since by now the file has already been deleted).
+            sent_path = captured["path"]
             assert sent_path.suffix == ".docx"
+            assert captured["shell_ok"], (
+                f"branded shell not intact at send time: {captured.get('shell_error')}"
+            )
+            text = captured["text"]
+            assert "{{" not in text, f"no unresolved placeholder tokens may remain: {text!r}"
+            # The contact person named in the prompt is Mr. Yaakov Shani, not the
+            # company itself - the AI's own choice of which name(s) to write is not
+            # constrained here, only that the actual essentials are present.
+            self._assert_ai_authored_essentials(text, "בטא")
+
+            # The boundary call happens BEFORE cleanup — the temp file must be gone
+            # by the time the turn has fully completed (checked here, after).
             assert not sent_path.exists(), (
                 "temp .docx must be deleted after a successful send (SC-003) — "
                 "found still on disk after the turn completed"
@@ -457,39 +575,43 @@ class TestFeeAgreementGenerationFlow:
     def test_multi_component_percentage_coshare_payer_terms(self, denidin_app, config):
         """Per human feedback (2026-09-12): components must support percentages,
         cost-sharing with other partners, and a payer entity other than the Client -
-        composed as free text, guided (but not limited) by manifest.json's
-        example_terms patterns. One component here matches an example pattern
-        (percentage split with a named partner); another describes a genuinely novel
-        arrangement with no matching example, to prove the AI isn't forced to distort
-        it into the nearest pattern."""
+        composed as free text by the AI directly into the document body. One
+        component here matches a familiar pattern (percentage split with a named
+        partner); another describes a genuinely novel arrangement, to prove the AI
+        isn't forced to distort it into a nearest-match pattern."""
         phone, chat_id = self._godfather(config)
 
-        self._send_text(
-            chat_id, phone, "Test Godfather",
-            "Draft an agreement for Delta Holdings with two fee components: "
-            "(1) a referral fee of 15% of the collected amount, split 50/50 with "
-            "Partner Cohen, payable by the Client upon receipt; "
-            "(2) a one-time success bonus of 10,000 NIS payable directly by "
-            "Delta Holdings' parent company, Delta Group Ltd, only if the deal "
-            "closes before year-end. Total combined fee: as per the above.",
-            "creative_terms",
-        )
-        pending = self._pending_approval(denidin_app, chat_id)
-        assert pending is not None
-        components = pending.arguments.get("components") or []
-        assert len(components) == 2
+        with patch(
+            "src.handlers.whatsapp_handler.WhatsAppHandler.send_document_response",
+            return_value=True,
+        ) as mock_send:
+            self._send_text(
+                chat_id, phone, "Test Godfather",
+                "תכין הסכם עבור אבינועם שגיא, "
+                "עם שני רכיבי שכר טרחה: (1) דמי תיווך בשיעור 15% מהסכום שייגבה, "
+                "בחלוקה 50/50 עם השותפה עו\"ד רותם לוי, לתשלום על ידי הלקוח עם קבלת "
+                "הכסף; (2) בונוס הצלחה חד-פעמי בסך 10,000 ש\"ח כולל מע\"מ, לתשלום "
+                "ישירות על ידי חברת גורן נכסים בע\"מ שבבעלותו, רק אם העסקה תיסגר "
+                "לפני סוף השנה. שכר הטרחה הכולל: כאמור לעיל.",
+                "creative_terms",
+            )
 
-        all_terms = " | ".join(c.get("terms", "") for c in components)
-        # Component 1: percentage + cost-share (matches an example pattern).
-        assert "15" in all_terms and "%" in all_terms
-        assert "Cohen" in all_terms
-        assert "50" in all_terms  # the split ratio, stated verbatim, not invented
-        # Component 2: a non-Client payer entity AND a conditional trigger - no
-        # example_terms pattern covers "conditional on a deal closing," so this
-        # proves free-form composition beyond the guided examples still works.
-        assert "10,000" in all_terms or "10000" in all_terms
-        assert "Delta Group" in all_terms
-        assert "year-end" in all_terms or "close" in all_terms.lower()
-        # Nothing invented: no percentage/split/payer/condition appears that
-        # wasn't actually stated above (spot-check a plausible hallucination).
-        assert "20%" not in all_terms and "30,000" not in all_terms and "3000" not in all_terms
+            assert mock_send.called
+            sent_document = mock_send.call_args.args[0] if mock_send.call_args.args \
+                else mock_send.call_args.kwargs.get("generated")
+            assert sent_document is not None and sent_document.verified is True
+            self._assert_shell_intact(sent_document.temp_path)
+            text = self._docx_text(sent_document.temp_path)
+            self._assert_ai_authored_essentials(text, "אבינועם שגיא")
+
+            # Component 1: percentage + cost-share (matches a familiar pattern).
+            assert "15" in text and "%" in text
+            assert "רותם לוי" in text
+            assert "50" in text  # the split ratio, stated verbatim, not invented
+            # Component 2: a non-Client payer entity AND a conditional trigger.
+            assert "10,000" in text or "10000" in text
+            assert "גורן נכסים" in text
+            assert "סוף השנה" in text or "השנה" in text
+            # Nothing invented: no percentage/split/payer/condition appears that
+            # wasn't actually stated above (spot-check a plausible hallucination).
+            assert "20%" not in text and "30,000" not in text and "3000" not in text

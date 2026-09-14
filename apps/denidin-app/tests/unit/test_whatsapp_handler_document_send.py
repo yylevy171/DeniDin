@@ -34,7 +34,7 @@ def generated_document(tmp_path):
     return GeneratedDocument(
         document_id="doc123",
         variant_id="hourly_consultation",
-        values={"FIRM_NAME": "X"},
+        values={"CLIENT_NAME": "X"},
         temp_path=temp_path,
         created_at=now_local(),
         verified=True,

@@ -1,10 +1,10 @@
 """
-Unit tests for Feature 083's fee-agreement tool wiring: tool attachment
-(RBAC + feature flag), the generate_fee_agreement proposal path
-(_handle_fee_agreement_generation_proposal), the approval-resolution path
-(_resolve_pending_local_tool_approval's new branch), and the immediate-dispatch
-verify/send handlers (_handle_verify_fee_agreement_document /
-_handle_send_fee_agreement_document).
+Unit tests for Feature 083's fee-agreement tool wiring (2026-09-13 redesign:
+minimal code, maximal AI - no approval gate anywhere in this feature any
+more). Covers tool attachment (RBAC + feature flag) and the four
+immediate-dispatch handlers: _handle_get_fee_agreement_template,
+_handle_render_fee_agreement_document, _handle_verify_fee_agreement_document,
+_handle_send_fee_agreement_document.
 
 Same discipline as test_ai_handler_reminders.py: only the OpenAI client is a
 stand-in (external service, per CONSTITUTION SS I) - DocTemplateEngine runs for
@@ -19,13 +19,12 @@ import pytest
 
 from src.handlers.ai_handler import AIHandler
 from src.handlers.fee_agreement_tools import (
-    GENERATE_FEE_AGREEMENT_TOOL, VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL,
-    SEND_FEE_AGREEMENT_DOCUMENT_TOOL, FEE_AGREEMENT_AUTHORIZED_ROLES,
+    GET_FEE_AGREEMENT_TEMPLATE_TOOL, RENDER_FEE_AGREEMENT_DOCUMENT_TOOL,
+    VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL, SEND_FEE_AGREEMENT_DOCUMENT_TOOL,
+    FEE_AGREEMENT_AUTHORIZED_ROLES,
 )
-from src.managers.pending_local_tool_approval_manager import PendingLocalToolApproval
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
-from src.utils.time_utils import now_local
 
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "config" / "fee_agreement_templates"
 
@@ -33,14 +32,7 @@ GODFATHER_PHONE = '972500000002'
 ADMIN_PHONE = '972500000001'
 CLIENT_PHONE = '972500000003'
 
-HOURLY_VALUES = {
-    "FIRM_NAME": "אילה הוניגמן עריכת דין",
-    "DATE": "12.9.2026",
-    "CLIENT_NAME": "ישראל ישראלי",
-    "SCOPE_OF_WORK": "בתביעה נגד מדינת ישראל",
-    "HOURLY_RATE": "600",
-    "FEE_AMOUNT": "15,000",
-}
+SAMPLE_BODY_TEXT = "הסכם שכר טרחה\nלקוח: ישראל ישראלי\nשכר הטרחה: 15,000 ש\"ח כולל מע\"מ"
 
 
 def _function_call_item(name, arguments, call_id="call_fee_1"):
@@ -102,12 +94,13 @@ def _request(prompt="שכר טרחה"):
 
 
 class TestToolAttachment:
-    def test_godfather_gets_all_three_tools_when_flag_enabled(self, ai_handler):
+    def test_godfather_gets_all_four_tools_when_flag_enabled(self, ai_handler):
         user_obj = ai_handler.user_manager.get_user(GODFATHER_PHONE)
         tools = ai_handler.fee_agreement_tools.build_tools(user_obj, ai_handler.fee_agreement_docs_enabled)
         names = {t["name"] for t in tools}
         assert names == {
-            GENERATE_FEE_AGREEMENT_TOOL["name"],
+            GET_FEE_AGREEMENT_TEMPLATE_TOOL["name"],
+            RENDER_FEE_AGREEMENT_DOCUMENT_TOOL["name"],
             VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL["name"],
             SEND_FEE_AGREEMENT_DOCUMENT_TOOL["name"],
         }
@@ -126,123 +119,86 @@ class TestToolAttachment:
         user_obj = ai_handler.user_manager.get_user(GODFATHER_PHONE)
         tools = ai_handler._assemble_tools(user_obj, "corr-1")
         names = {t.get("name") for t in (tools or [])}
-        assert GENERATE_FEE_AGREEMENT_TOOL["name"] in names
+        assert GET_FEE_AGREEMENT_TEMPLATE_TOOL["name"] in names
+        assert RENDER_FEE_AGREEMENT_DOCUMENT_TOOL["name"] in names
         assert VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL["name"] in names
         assert SEND_FEE_AGREEMENT_DOCUMENT_TOOL["name"] in names
 
 
-class TestGenerationProposal:
-    def test_no_call_returns_none_false(self, ai_handler):
+class TestGetTemplateImmediateDispatch:
+    def test_no_call_returns_none(self, ai_handler):
         response = _response(output=[], text="hello")
-        details, created = ai_handler._handle_fee_agreement_generation_proposal(
-            _request(), response, "chat1"
-        )
-        assert details is None
-        assert created is False
+        result = ai_handler._handle_get_fee_agreement_template(_request(), response, tools=None)
+        assert result is None
 
-    def test_valid_proposal_creates_pending_approval(self, ai_handler):
-        args = {"variant_id": "hourly_consultation", "values": HOURLY_VALUES}
+    def test_valid_variant_returns_followup_with_reference_body(self, ai_handler, mock_ai_client):
+        mock_ai_client.responses.create.return_value = _followup_response(text="קיבלתי את התבנית")
         response = _response(output=[
-            _function_call_item(GENERATE_FEE_AGREEMENT_TOOL["name"], args)
-        ], resp_id="resp_gen_1")
+            _function_call_item(
+                GET_FEE_AGREEMENT_TEMPLATE_TOOL["name"],
+                {"variant_id": "hourly_consultation"},
+                call_id="call_get_1",
+            )
+        ], resp_id="resp_get_1")
 
-        details, created = ai_handler._handle_fee_agreement_generation_proposal(
-            _request(), response, "chat1"
-        )
+        followup = ai_handler._handle_get_fee_agreement_template(_request(), response, tools=None)
 
-        assert created is True
-        assert details is not None
-        assert "hourly_consultation" in details
-        pending = ai_handler.pending_local_tool_approval_manager.get("chat1")
-        assert pending is not None
-        assert pending.tool_name == GENERATE_FEE_AGREEMENT_TOOL["name"]
-        assert pending.arguments["variant_id"] == "hourly_consultation"
+        assert followup is not None
+        assert followup.output_text == "קיבלתי את התבנית"
 
-    def test_missing_values_rejected_with_no_pending(self, ai_handler):
-        args = {"variant_id": "hourly_consultation", "values": {"FIRM_NAME": "X"}}
+    def test_unknown_variant_is_a_tool_call_error_not_a_crash(self, ai_handler, mock_ai_client):
+        mock_ai_client.responses.create.return_value = _followup_response(text="תבנית לא קיימת")
         response = _response(output=[
-            _function_call_item(GENERATE_FEE_AGREEMENT_TOOL["name"], args)
-        ])
+            _function_call_item(
+                GET_FEE_AGREEMENT_TEMPLATE_TOOL["name"],
+                {"variant_id": "no_such_variant"},
+                call_id="call_get_2",
+            )
+        ], resp_id="resp_get_2")
 
-        details, created = ai_handler._handle_fee_agreement_generation_proposal(
-            _request(), response, "chat1"
-        )
+        followup = ai_handler._handle_get_fee_agreement_template(_request(), response, tools=None)
 
-        assert created is False
-        assert details is not None
-        assert ai_handler.pending_local_tool_approval_manager.get("chat1") is None
+        assert followup is not None
 
-    def test_unknown_variant_rejected(self, ai_handler):
-        args = {"variant_id": "no_such_variant", "values": {}}
+
+class TestRenderImmediateDispatch:
+    def test_no_call_returns_none(self, ai_handler):
+        response = _response(output=[], text="hello")
+        result = ai_handler._handle_render_fee_agreement_document(_request(), response, tools=None)
+        assert result is None
+
+    def test_valid_render_creates_document_and_returns_followup(self, ai_handler, mock_ai_client):
+        mock_ai_client.responses.create.return_value = _followup_response(text="ההסכם מוכן")
         response = _response(output=[
-            _function_call_item(GENERATE_FEE_AGREEMENT_TOOL["name"], args)
-        ])
+            _function_call_item(
+                RENDER_FEE_AGREEMENT_DOCUMENT_TOOL["name"],
+                {"variant_id": "hourly_consultation", "client_name": "ישראל ישראלי", "body_text": SAMPLE_BODY_TEXT},
+                call_id="call_render_1",
+            )
+        ], resp_id="resp_render_1")
 
-        details, created = ai_handler._handle_fee_agreement_generation_proposal(
-            _request(), response, "chat1"
-        )
-        assert created is False
-        assert details is not None
+        followup = ai_handler._handle_render_fee_agreement_document(_request(), response, tools=None)
 
-
-class TestResolvePendingLocalToolApproval:
-    def _pending(self, args, call_id="call_fee_1", resp_id="resp_gen_1"):
-        return PendingLocalToolApproval(
-            tool_name=GENERATE_FEE_AGREEMENT_TOOL["name"],
-            response_id=resp_id, call_id=call_id, arguments=args,
-            created_at=now_local().isoformat(),
-        )
-
-    def test_approve_generates_document_and_returns_followup_text(self, ai_handler, mock_ai_client):
-        args = {"variant_id": "hourly_consultation", "values": HOURLY_VALUES}
-        pending = self._pending(args)
-        ai_handler.pending_local_tool_approval_manager.set("chat1", pending)
-        mock_ai_client.responses.create.return_value = _followup_response()
-
-        result = ai_handler._resolve_pending_local_tool_approval(
-            pending, _request("כן"), "chat1", user_obj=None, user_role="GODFATHER",
-            sender=None, recipient=None,
-        )
-
-        assert result is not None
-        assert result.response_text == "הנה ההסכם"
-        # The pending approval is cleared after resolution.
-        assert ai_handler.pending_local_tool_approval_manager.get("chat1") is None
-        # A real GeneratedDocument now exists, keyed by the document_id the
-        # OpenAI followup call's output arguments referenced.
+        assert followup is not None
+        assert followup.output_text == "ההסכם מוכן"
         assert len(ai_handler.fee_agreement_tools._documents) == 1
         (generated,) = ai_handler.fee_agreement_tools._documents.values()
+        assert generated.body_text == SAMPLE_BODY_TEXT
         assert generated.temp_path.exists()
 
-    def test_decline_clears_pending_and_returns_none(self, ai_handler):
-        args = {"variant_id": "hourly_consultation", "values": HOURLY_VALUES}
-        pending = self._pending(args)
-        ai_handler.pending_local_tool_approval_manager.set("chat1", pending)
+    def test_missing_body_text_is_a_tool_call_error_not_a_crash(self, ai_handler, mock_ai_client):
+        mock_ai_client.responses.create.return_value = _followup_response(text="חסר תוכן")
+        response = _response(output=[
+            _function_call_item(
+                RENDER_FEE_AGREEMENT_DOCUMENT_TOOL["name"],
+                {"variant_id": "hourly_consultation", "client_name": "ישראל ישראלי", "body_text": ""},
+                call_id="call_render_2",
+            )
+        ], resp_id="resp_render_2")
 
-        result = ai_handler._resolve_pending_local_tool_approval(
-            pending, _request("לא"), "chat1", user_obj=None, user_role="GODFATHER",
-            sender=None, recipient=None,
-        )
+        followup = ai_handler._handle_render_fee_agreement_document(_request(), response, tools=None)
 
-        assert result is None
-        assert ai_handler.pending_local_tool_approval_manager.get("chat1") is None
-        assert ai_handler.fee_agreement_tools._documents == {}
-
-    def test_toctou_invalid_values_at_approval_time_returns_fallback(self, ai_handler):
-        # Simulates a value having become invalid between proposal and
-        # approval (TOCTOU-closing re-validation, same discipline as
-        # reminders' cap/date re-check).
-        args = {"variant_id": "hourly_consultation", "values": {"FIRM_NAME": "X"}}
-        pending = self._pending(args)
-        ai_handler.pending_local_tool_approval_manager.set("chat1", pending)
-
-        result = ai_handler._resolve_pending_local_tool_approval(
-            pending, _request("כן"), "chat1", user_obj=None, user_role="GODFATHER",
-            sender=None, recipient=None,
-        )
-
-        assert result is not None
-        assert ai_handler.pending_local_tool_approval_manager.get("chat1") is None
+        assert followup is not None
         assert ai_handler.fee_agreement_tools._documents == {}
 
 
@@ -253,7 +209,7 @@ class TestVerifyImmediateDispatch:
         assert result is None
 
     def test_verify_clean_document_marks_verified_and_returns_followup(self, ai_handler, mock_ai_client):
-        generated = ai_handler.doc_template_engine.generate("hourly_consultation", HOURLY_VALUES)
+        generated = ai_handler.doc_template_engine.render_free_text("hourly_consultation", "ישראל ישראלי", SAMPLE_BODY_TEXT)
         ai_handler.fee_agreement_tools._documents[generated.document_id] = generated
         mock_ai_client.responses.create.return_value = _followup_response(text="נבדק, תקין")
 
@@ -298,7 +254,7 @@ class TestSendImmediateDispatch:
         assert result is None
 
     def test_send_refused_when_not_verified(self, ai_handler, mock_ai_client):
-        generated = ai_handler.doc_template_engine.generate("hourly_consultation", HOURLY_VALUES)
+        generated = ai_handler.doc_template_engine.render_free_text("hourly_consultation", "ישראל ישראלי", SAMPLE_BODY_TEXT)
         ai_handler.fee_agreement_tools._documents[generated.document_id] = generated
         assert generated.verified is False
 
@@ -330,7 +286,7 @@ class TestSendImmediateDispatch:
         assert generated.document_id in ai_handler.fee_agreement_tools._documents
 
     def test_send_success_cleans_up_document_and_temp_file(self, ai_handler, mock_ai_client):
-        generated = ai_handler.doc_template_engine.generate("hourly_consultation", HOURLY_VALUES)
+        generated = ai_handler.doc_template_engine.render_free_text("hourly_consultation", "ישראל ישראלי", SAMPLE_BODY_TEXT)
         generated.verified = True
         ai_handler.fee_agreement_tools._documents[generated.document_id] = generated
         temp_path = generated.temp_path
@@ -360,7 +316,7 @@ class TestSendImmediateDispatch:
         assert not temp_path.exists()
 
     def test_send_with_no_chat_id_or_no_whatsapp_handler_is_a_tool_call_error(self, ai_handler, mock_ai_client):
-        generated = ai_handler.doc_template_engine.generate("hourly_consultation", HOURLY_VALUES)
+        generated = ai_handler.doc_template_engine.render_free_text("hourly_consultation", "ישראל ישראלי", SAMPLE_BODY_TEXT)
         generated.verified = True
         ai_handler.fee_agreement_tools._documents[generated.document_id] = generated
         ai_handler.whatsapp_handler = None  # not injected (e.g. test harness)
