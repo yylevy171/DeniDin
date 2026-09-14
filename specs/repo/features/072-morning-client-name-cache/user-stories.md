@@ -31,16 +31,20 @@ Reduce perceived AI latency by bypassing the 3-5 second overhead associated with
 To definitively **PROVE** the speed gains and the 85% hit rate requirement, the engineering team MUST implement the following in the user-facing test suites (`tests/billed/` and/or `tests/expensive/`). Unit and integration tests do not qualify as proof.
 
 ### Test 1: Quantifiable Speed Gain Proof (`tests/expensive/` or `tests/billed/`)
-**Goal**: Prove the cache successfully eliminates the Morning API overhead on repeated lookups, saving 3-5 seconds.
-- **Scenario**: The test script simulates a user sending two consecutive queries about the same client (e.g., *"Did Avi Levi pay?"* followed by *"Send Avi Levi a new invoice for 500 NIS"*).
+**Goal**: Prove the cache successfully eliminates the Morning API network overhead when the AI invokes the resolution tool for a known client.
+- **Scenario**: A user-facing test script sends two consecutive queries about the same client (e.g., *"Did Avi Levi pay?"* followed by *"Send Avi Levi a new invoice"*).
+- **Assumed Architecture**: The AI still invokes the `resolve_client` tool on both turns, but the tool acts as a passthrough.
 - **Hard Assertions**:
-  1. The telemetry for the **first turn** MUST show a `morning_api_request_times_ms` entry for `resolve_client` (Cache Miss).
-  2. The telemetry for the **second turn** MUST show **NO** `resolve_client` network call in `morning_api_request_times_ms` (Cache Hit).
-  3. The test runner MUST measure the raw execution time of both turns and explicitly assert that Turn 2's total processing time is significantly faster (at least 2-3 seconds faster) than Turn 1, proving the perceived speed gain for the user.
+  1. **Cache Miss (Turn 1)**: The telemetry MUST show a `morning_api_request_times_ms` entry for `resolve_client`, and `tool_total_execution_time_ms` will reflect the network latency (typically >1000ms).
+  2. **Cache Hit (Turn 2)**: The telemetry MUST show **NO** network call in `morning_api_request_times_ms`. 
+  3. **Speed Proof**: The test MUST explicitly assert that the `tool_total_execution_time_ms` for the cache hit is near-instantaneous (e.g., < 100ms), proving the network hop was eliminated.
 
 ### Test 2: 85% Hit Rate Target Proof (`tests/billed/`)
-**Goal**: Prove the caching implementation achieves the 85% minimum hit rate under a realistic usage distribution.
-- **Scenario**: Create a new user-facing test (e.g., `test_cache_hit_rate_simulation_billed.py`) that feeds a simulated batch of 20 user requests into the AI (e.g., 17 requests for existing frequent clients, 3 for new/unknown clients).
-- **Hard Assertions**:
-  1. The test MUST assert that the final calculated Cache Hit rate across the batch is **>= 85%**.
-  2. The test output MUST log the total cumulative time saved across the batch (e.g., "Total time saved by cache hits: 45.2 seconds").
+**Goal**: Prove the caching implementation achieves the 85% minimum hit rate under a realistic usage distribution, and calculate total time saved.
+- **New Test File**: The engineers MUST create a new test (e.g., `test_cache_hit_rate_simulation_billed.py`).
+- **Batch Definition**: The test will execute a deterministic batch of **20 sequential user messages** against a fresh conversation state.
+  - **Distribution**: 17 messages will refer to 3-4 recurring "known" clients (simulating heavy daily use). 3 messages will refer to entirely new/unknown clients (simulating the ~15% miss rate).
+- **Measurement & Assertions**:
+  1. The test tracks every invocation of the `resolve_client` tool.
+  2. **Hit Rate**: It asserts that at least 85% (17/20) of those tool invocations resulted in a Cache Hit (i.e., `morning_api_request_times_ms` was NULL/empty).
+  3. **Time Saved**: It calculates the difference in `tool_total_execution_time_ms` between the misses (average network time) and the hits (local cache time), and logs the cumulative "Total Time Saved" to the CI output.
