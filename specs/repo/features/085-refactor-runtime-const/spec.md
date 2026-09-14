@@ -40,3 +40,5 @@ See **`user-stories.md`** for full Given-When-Then criteria.
 - **SC-002**: 100% of existing unit and integration tests pass without modification.
 
 **OBSOLETE**: Folded into 063-refactor-oversized-handlers
+
+**OBSOLETE**: Folded into 063-refactor-oversized-handlers
