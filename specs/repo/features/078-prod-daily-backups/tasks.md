@@ -46,13 +46,13 @@ Single project — new `scripts/backup_prod/` directory at repo root, sibling to
 
 **Purpose**: Directory scaffold + config template — no logic yet.
 
-- [ ] T001 Create `scripts/backup_prod/` directory with `tests/` subdirectory
-- [ ] T002 [P] Create `scripts/backup_prod/config.example.json` (committed template: Windows-side
+- [x] T001 Create `scripts/backup_prod/` directory with `tests/` subdirectory
+- [x] T002 [P] Create `scripts/backup_prod/config.example.json` (committed template: Windows-side
   `daily_backup_dir`/`monthly_backup_dir` + source `data_dir`/`config_dir`/`logs_prod_dir`
   absolute paths; Mac-side `mac_daily_backup_dir`/`mac_monthly_backup_dir` + `ssh_host_alias`
   defaulting to `denidin-winprod`) — no real paths/secrets, matching `config.example.json`'s
   existing safe-placeholder convention
-- [ ] T003 [P] Add `scripts/backup_prod/config.json` to `.gitignore`
+- [x] T003 [P] Add `scripts/backup_prod/config.json` to `.gitignore`
 
 **Checkpoint**: Directory exists, no runnable code yet.
 
@@ -66,21 +66,21 @@ filename-date parsing, since both are used identically by the Windows-side and M
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T004a [P] Write tests for config loading in `scripts/backup_prod/tests/test_config.py`:
+- [x] T004a [P] Write tests for config loading in `scripts/backup_prod/tests/test_config.py`:
   real subprocess call to a small `load_config.sh` sourced-function helper against a real scratch
   `config.json` fixture — test all required keys present/missing (missing key → non-zero exit +
   clear stderr message, per CONSTITUTION §XVI), test malformed JSON → non-zero exit
-- [ ] T004b [P] Implement `scripts/backup_prod/lib/load_config.sh` (a sourceable bash function,
+- [x] T004b [P] Implement `scripts/backup_prod/lib/load_config.sh` (a sourceable bash function,
   `jq`-based, matching `env_lock.sh`'s existing sourced-helper pattern) (BLOCKED until T004a
   approved)
 
-- [ ] T005a [P] Write tests for filename-date parsing/retention math in
+- [x] T005a [P] Write tests for filename-date parsing/retention math in
   `scripts/backup_prod/tests/test_retention_purge.py`: given a set of synthetic
   `denidin-prod-backup-YYYY-MM-DD.tgz` filenames and a fixed "today," assert which are kept vs.
   purged for both the 30-day daily rule and the 36-month monthly rule (REQ-078-05/06); cover
   boundary dates (exactly 30 days old, exactly 36 months old), non-matching filenames (ignored,
   never deleted), and an empty directory
-- [ ] T005b [P] Implement `scripts/backup_prod/lib/retention_purge.sh` (a sourceable function,
+- [x] T005b [P] Implement `scripts/backup_prod/lib/retention_purge.sh` (a sourceable function,
   `purge_older_than <dir> <days|months>`, used identically by both Windows and Mac sides per
   research.md R5) (BLOCKED until T005a approved)
 
@@ -99,15 +99,15 @@ target folder, with zero calls to `docker`/`docker compose` made during the run.
 
 ### Implementation for User Story 1 (TDD Pattern)
 
-- [ ] T006a [US1] Write tests for hot SQLite backup in
+- [x] T006a [US1] Write tests for hot SQLite backup in
   `scripts/backup_prod/tests/test_sqlite_backup.py`: real `sqlite3` CLI backup of a real scratch
   `.db` (with a concurrent writer thread hammering inserts during the backup, to actually exercise
   the "safe under concurrent writes" claim from research.md R2) — assert the output passes
   `PRAGMA integrity_check` and matches expected row count as of backup start
-- [ ] T006b [US1] Implement `scripts/backup_prod/lib/sqlite_backup.sh` (`.backup`-based, per
+- [x] T006b [US1] Implement `scripts/backup_prod/lib/sqlite_backup.sh` (`.backup`-based, per
   research.md R2) (BLOCKED until T006a approved)
 
-- [ ] T007a [US1] Write tests for staging + atomic archive assembly in
+- [x] T007a [US1] Write tests for staging + atomic archive assembly in
   `scripts/backup_prod/tests/test_run_daily_backup.py`: real subprocess run of
   `run_daily_backup.sh` against a scratch fixture tree containing `data/sessions/chat_index.db`,
   `data/reminders/reminders.db`, `data/memory_rolls/roll_markers.db`, `data/memory/chroma.sqlite3`,
@@ -120,21 +120,21 @@ target folder, with zero calls to `docker`/`docker compose` made during the run.
   success), (e) per research.md R6a (speckit.analyze finding F2): a `roll_markers.db` fixture with
   no `committed` row for yesterday still lets the run succeed (exit 0) but logs a WARNING line
   naming the check; a fixture with a committed row logs no such warning
-- [ ] T007b [US1] Implement `scripts/backup_prod/run_daily_backup.sh` (stages into a temp dir,
+- [x] T007b [US1] Implement `scripts/backup_prod/run_daily_backup.sh` (stages into a temp dir,
   calls `sqlite_backup.sh` per store, `tar czf`s to `<name>.tgz.partial`, atomic `mv` into place
   only on full success, non-blocking roll-marker pre-flight check per R6a; depends on T004b, T006b)
   (BLOCKED until T007a approved)
 
-- [ ] T008a [US1] Write tests for the zero-downtime guarantee itself in
+- [x] T008a [US1] Write tests for the zero-downtime guarantee itself in
   `scripts/backup_prod/tests/test_run_daily_backup.py` (same file, additional cases): assert
   `run_daily_backup.sh`'s own source contains no `docker`/`docker compose` invocation anywhere
   (a static grep-based guard, since a real Windows-box container can't be spun up in this repo's
   CI-less test environment) — codifies research.md R6's decision as an enforced regression check,
   not just a claim in prose
-- [ ] T008b [US1] N/A — T008a is itself the enforcement (a static assertion against T007b's
+- [x] T008b [US1] N/A — T008a is itself the enforcement (a static assertion against T007b's
   source, no separate implementation) (BLOCKED until T008a approved)
 
-- [ ] T009 [US1] 👤 **MANUAL APPROVAL GATE**: run `quickstart.md` step 1 (register + trigger-once)
+- [x] T009 [US1] 👤 **MANUAL APPROVAL GATE**: run `quickstart.md` step 1 (register + trigger-once)
   and step 3 (zero-downtime proof) against real dev — not prod — infrastructure first if
   available, then, with fresh separate approval per CLAUDE.md's environment-start rule, against
   real prod; confirm the bot keeps responding throughout with no observable delay (UAT 1)
@@ -156,13 +156,13 @@ copy.
 
 ### Implementation for User Story 2 (TDD Pattern)
 
-- [ ] T010a [P] [US2] Write tests for the pull logic in
+- [x] T010a [P] [US2] Write tests for the pull logic in
   `scripts/backup_prod/tests/test_pull_backups.py`: real `rsync`/`scp` over `ssh localhost`
   against two real scratch folders (source = fake "Windows daily backups," dest = fake "Mac daily
   backups"); cover zero-new-files (no-op, exit 0), several-new-files-at-once (simulates a Mac that
   was asleep for days), a partially-transferred file from a prior interrupted run (must not be
   treated as complete/skip-worthy), and an unreachable host (non-zero exit, dest folder untouched)
-- [ ] T010b [P] [US2] Implement `scripts/backup_prod/pull_backups.sh` (depends on T004b; per
+- [x] T010b [P] [US2] Implement `scripts/backup_prod/pull_backups.sh` (depends on T004b; per
   research.md R4/contracts' `pull_backups.sh` contract) (BLOCKED until T010a approved)
 
 - [ ] T011 [US2] 👤 **MANUAL APPROVAL GATE**: run `quickstart.md` step 2 against the real
@@ -185,12 +185,12 @@ store, non-zero exit.
 
 ### Implementation for User Story 3 (TDD Pattern)
 
-- [ ] T012a [US3] Write tests for the integrity-check pass in
+- [x] T012a [US3] Write tests for the integrity-check pass in
   `scripts/backup_prod/tests/test_verify_restore.py`: real un-tar of a fixture `.tgz` into a real
   temp dir, real `PRAGMA integrity_check` per `.db` found; cover an all-healthy archive (exit 0,
   every store reported individually) and one with a deliberately truncated/corrupted `.db` inside
   (exit non-zero, names the specific corrupt store — not just "something failed")
-- [ ] T012b [US3] Implement the integrity-check portion of
+- [x] T012b [US3] Implement the integrity-check portion of
   `scripts/backup_prod/verify_restore.sh` (depends on T004b) (BLOCKED until T012a approved)
 
 - [ ] T013a [US3] Write tests for the throwaway-boot smoke check in
@@ -221,13 +221,13 @@ and the rest untouched.
 
 ### Implementation for User Story 4 (TDD Pattern)
 
-- [ ] T015a [US4] Write tests for wiring the Phase 2 retention helper into both entry points in
+- [x] T015a [US4] Write tests for wiring the Phase 2 retention helper into both entry points in
   `scripts/backup_prod/tests/test_run_daily_backup.py` /
   `scripts/backup_prod/tests/test_pull_backups.py` (additional cases in each): assert
   `run_daily_backup.sh` calls `purge_older_than <daily_dir> 30` after a successful archive, and
   `pull_backups.sh` calls the same after a successful pull — both against real scratch folders
   seeded per T005a's fixtures
-- [ ] T015b [US4] Wire `retention_purge.sh`'s `purge_older_than` into both
+- [x] T015b [US4] Wire `retention_purge.sh`'s `purge_older_than` into both
   `run_daily_backup.sh` (post-archive) and `pull_backups.sh` (post-pull) (depends on T005b, T007b,
   T010b) (BLOCKED until T015a approved)
 
@@ -251,17 +251,17 @@ archives spanning >36 months and confirm only the too-old ones purge.
 
 ### Implementation for User Story 5 (TDD Pattern)
 
-- [ ] T017a [US5] Write tests for monthly promotion in
+- [x] T017a [US5] Write tests for monthly promotion in
   `scripts/backup_prod/tests/test_run_daily_backup.py` (additional cases): frozen "today" = 1st of
   month → archive also copied (byte-identical) into scratch monthly folder + 36-month purge runs;
   frozen "today" = any other day → monthly folder untouched
-- [ ] T017b [US5] Implement monthly promotion + purge in `run_daily_backup.sh` (depends on T005b,
+- [x] T017b [US5] Implement monthly promotion + purge in `run_daily_backup.sh` (depends on T005b,
   T007b) (BLOCKED until T017a approved)
 
-- [ ] T018a [US5] Write tests for the Mac-side monthly pull mirroring T010a's daily-pull tests,
+- [x] T018a [US5] Write tests for the Mac-side monthly pull mirroring T010a's daily-pull tests,
   in `scripts/backup_prod/tests/test_pull_backups.py` (additional cases): pulls both daily and
   monthly folders where present, applies 36-month purge locally after pulling
-- [ ] T018b [US5] Extend `pull_backups.sh` to also pull/purge the monthly tier (depends on T005b,
+- [x] T018b [US5] Extend `pull_backups.sh` to also pull/purge the monthly tier (depends on T005b,
   T010b) (BLOCKED until T018a approved)
 
 - [ ] T019 [US5] 👤 **MANUAL APPROVAL GATE**: `quickstart.md` step 5's monthly-tier
