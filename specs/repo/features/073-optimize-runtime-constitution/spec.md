@@ -2,7 +2,10 @@
 
 **Feature Branch**: `feature/073-optimize-runtime-constitution`
 **Created**: 2026-09-03
-**Status**: Placeholder / draft — not yet through `speckit.clarify`; do not implement against this file yet
+**Status**: Obsolete (2026-09-14) — absorbed into Feature 063 (The Dynamic Capability Backbone),
+which supersedes this spec's constitution-compression goal with a structural split into
+capability-specific plugin files instead of pure token-compression. Do not implement against
+this file.
 **Input**: User description: "Optimize the runtime constitution — it has grown to ~26.6K tokens / 111KB (6.6× its 2026-07-23 size). Reduce its size significantly with zero behaviour regression, to cut per-turn latency, first-turn / cache-miss cost, and instruction dilution."
 
 ---
