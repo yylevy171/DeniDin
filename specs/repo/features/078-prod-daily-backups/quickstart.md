@@ -11,6 +11,9 @@ Feature 035 / bugfix-043 scheduling precedent.
   alias, WSL2) — this feature adds a new scheduled task alongside the existing health-monitoring
   prober, it does not set up the box itself.
 - `sqlite3` CLI available in the Windows box's WSL2 environment.
+- `jq` CLI available in the Windows box's WSL2 environment (and on the Mac) — used by
+  `lib/load_config.sh` to parse `config.json`; not previously required by any other prod-side
+  script, so verify with `jq --version` rather than assuming it's already present.
 - Two new folders created on the Windows host (outside the repo, alongside where prod data
   already lives): `denidin daily backups/`, `denidin monthly backups/`.
 - Two matching folders created on the Mac: `denidin daily backups/`, `denidin monthly backups/`.

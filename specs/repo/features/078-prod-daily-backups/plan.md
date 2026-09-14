@@ -27,7 +27,10 @@ credential, or scheduling primitive.
 `scripts/health_monitoring/` script in this repo), WSL2 on the Windows box.
 **Primary Dependencies**: `sqlite3` CLI (hot SQLite backup), `tar`/`gzip`, `rsync` or `scp`
 (Windows→Mac pull over the existing `denidin-winprod` SSH alias), `schtasks.exe` (via `wsl.exe`,
-mirroring `register_prober_schedule.sh`), `launchctl` (Mac-side pull LaunchAgent).
+mirroring `register_prober_schedule.sh`), `launchctl` (Mac-side pull LaunchAgent), `jq` (JSON
+config parsing in `lib/load_config.sh` — added 2026-09-14 per speckit.analyze finding F1; not
+previously used by any prod-side script, so its presence on the Windows WSL2 box must be verified
+as a new one-time setup step, not assumed).
 **Storage**: Filesystem only — `.tgz` archives in two folders per host (`denidin daily backups/`,
 `denidin monthly backups/`); no new database, no new app-level persisted model (see
 `data-model.md`).

@@ -155,6 +155,25 @@ valuable exactly when something may already be wrong.
 **Rationale**: Directly satisfies REQ-078-02/UAT-1 ("MUST NOT be paused or stopped" /
 "MUST continue responding... without any delay or downtime").
 
+## R6a: Ordering against Feature 070's 02:00 roll (REQ-078-04) — added per speckit.analyze finding F2
+
+**Decision**: `run_daily_backup.sh` adds a **non-blocking pre-flight check** against
+`memory_rolls/roll_markers.db` (Feature 070's `RollMarkerStore`) before staging: query for
+yesterday's date across recent chats and confirm at least one `committed` marker exists (or that
+the table is empty, e.g. a brand-new install with nothing to roll yet). If the check suggests the
+roll may still be in progress or didn't run, **log a WARNING and proceed anyway** — never block
+or delay the backup on this, since REQ-078-02's zero-downtime/never-blocked guarantee outranks
+REQ-078-04's ordering preference, and a slightly-early backup (catching yesterday's data still in
+`messages/` rather than `archived/`, which `get_rolling_window` already reads either way) is
+strictly safer than a backup that fails to run at all.
+
+**Rationale**: REQ-078-04 states the 03:00 trigger specifically to run "after Feature 070's
+memory roll completes," but nothing in this codebase bounds how long that 02:00 roll takes as
+prod data grows over the 3-year retention window this feature is itself building for — a future
+slow roll could silently violate the ordering assumption with nothing ever catching it (flagged
+by `speckit.analyze`, finding F2). A warning-only check gives operational visibility without
+turning an unrelated feature's timing into a new failure mode for backups.
+
 ## R7: Restore-test tooling (SC-002, UAT 3)
 
 **Decision**: A `scripts/backup_prod/verify_restore.sh` helper (Mac-side, run manually/on-demand,

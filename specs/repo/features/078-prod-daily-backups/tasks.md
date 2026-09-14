@@ -117,10 +117,13 @@ target folder, with zero calls to `docker`/`docker compose` made during the run.
   every source file byte-for-byte except the four `.db` files, which instead pass
   `PRAGMA integrity_check`, (d) a forced mid-run failure (kill the process after staging but
   before the final `mv`) leaves no `.tgz` under the real target filename (no partial-looking
-  success)
+  success), (e) per research.md R6a (speckit.analyze finding F2): a `roll_markers.db` fixture with
+  no `committed` row for yesterday still lets the run succeed (exit 0) but logs a WARNING line
+  naming the check; a fixture with a committed row logs no such warning
 - [ ] T007b [US1] Implement `scripts/backup_prod/run_daily_backup.sh` (stages into a temp dir,
   calls `sqlite_backup.sh` per store, `tar czf`s to `<name>.tgz.partial`, atomic `mv` into place
-  only on full success; depends on T004b, T006b) (BLOCKED until T007a approved)
+  only on full success, non-blocking roll-marker pre-flight check per R6a; depends on T004b, T006b)
+  (BLOCKED until T007a approved)
 
 - [ ] T008a [US1] Write tests for the zero-downtime guarantee itself in
   `scripts/backup_prod/tests/test_run_daily_backup.py` (same file, additional cases): assert
