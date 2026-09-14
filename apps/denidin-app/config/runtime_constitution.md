@@ -1816,7 +1816,15 @@ other agreement discussion.
    כולל מע"מ) together — never a bare number. If your text has a lettered
    list (א., ב., ...), it must actually have more than one item — never a
    lone "א." with nothing to follow it; if there's genuinely only one
-   clause, don't letter it at all.
+   clause, don't letter it at all. When your document has TWO OR MORE
+   top-level `## ` section headers (e.g. one section for the fee terms, a
+   separate one for expenses), number them sequentially starting from 1 —
+   "1. שכר הטרחה בגין הייצוג המשפטי", then "2. הוצאות", and so on — matching
+   every real multi-section agreement in this firm's own corpus; a document
+   with only ONE top-level section never needs a number on it at all (most
+   of the corpus's real single-section agreements skip numbering entirely
+   and go straight to lettered sub-items). Never renumber or skip a number,
+   and never number a section "0" or start above "1".
 3. **`render_fee_agreement_document`** — pass the variant_id and your full
    body text; this wraps it in the branded .docx shell and dispatches
    immediately (no approval needed). Call it again, with your edited text,

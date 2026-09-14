@@ -376,8 +376,7 @@ class TestFeeAgreementGenerationFlow:
             (
                 # 2026-09-14: deliberately terse up front (per explicit human
                 # instruction) - this case proves the AI's own clarifying
-                # questions (date, signer, VAT treatment) get answered over
-                # the course of the conversation instead, still ending in the
+                # questions get asked, then answered, still ending in the
                 # same one-shot send once every detail is in. "תכין הסכם" is
                 # included up front (unlike the plain facts-only phrasing
                 # first tried here) - without it the model correctly reads
@@ -387,22 +386,23 @@ class TestFeeAgreementGenerationFlow:
                 # (tests/fixtures/morning_sandbox_clients.json, seeded once
                 # via a real add_client conversational turn, 2026-09-14) -
                 # exact-name resolution, no ambiguous-candidate detour.
+                #
+                # 2026-09-14 (explicit human instruction, revised from an
+                # earlier 3-followup version): the point of this case is only
+                # that the AI CAN ask clarifying questions and recover - not
+                # to pin down exactly which/how-many questions it happens to
+                # ask on any given run (real billed runs showed the model
+                # ask 1, 2, or 3 separate questions across attempts,
+                # non-deterministically, each legitimate on its own). Giving
+                # every plausibly-askable answer in ONE followup, up front,
+                # makes the test robust to that variation instead of chasing
+                # it turn by turn.
                 "תכין הסכם שכר טרחה עבור יוסי זאנזן, 10000 צו מניעה, 25% מזכיה",
                 [
-                    "הסכום כולל מע\"מ. התאריך: היום. החתימה מטעם הלקוח תהיה "
-                    "של יוסי זאנזן עצמו.",
-                    # 2026-09-14 fix: the first followup above never answered
-                    # the AI's own SECOND clarifying question (what the 25%
-                    # is calculated on) - a real billed run showed the AI
-                    # correctly re-asking it and the conversation ending
-                    # there, never reaching render/verify/send. This second
-                    # followup closes that loop.
-                    "25% יחושבו על סכום הזכייה שיתקבל בפועל.",
-                    # ...and the AI then asked a THIRD, separately legitimate
-                    # question (is the 25% success fee itself VAT-inclusive)
-                    # that neither prior followup answered - same fix, one
-                    # more turn to close it.
-                    "שכר ההצלחה של 25% אינו כולל מע\"מ.",
+                    "הסכום הקבוע של 10,000 ₪ כולל מע\"מ. שכר ההצלחה של 25% "
+                    "יחושב על סכום הזכייה שיתקבל בפועל, ואינו כולל מע\"מ "
+                    "(יש להוסיף מע\"מ בנפרד). התאריך: היום. החתימה מטעם "
+                    "הלקוח תהיה של יוסי זאנזן עצמו.",
                 ],
                 "multi_component_agreement",
                 "יוסי זאנזן",
