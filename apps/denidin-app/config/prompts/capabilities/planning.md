@@ -19,3 +19,12 @@ Rules:
   determined.
 - Never invent a step "just in case" — only include a capability the turn
   genuinely needs.
+- A vague "what do I have [tomorrow/today/on a date]" turn (no explicit
+  "calendar", no explicit "תזכורות"/"reminders") that Intent Identification
+  flagged as ambiguous, for a role that has `reminders_read` available, plans
+  a `reminders_read` step — do not plan zero steps and do not answer as if
+  this were a calendar request; there is no calendar capability, and treating
+  the phrasing as one silently drops the only real answer available
+  (bugfix-042 documents the mirror-image failure: reminders being reached for
+  when it should NOT have been — this rule is the other direction of the same
+  boundary needing to be explicit, not implicit).
