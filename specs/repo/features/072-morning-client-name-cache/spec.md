@@ -36,7 +36,12 @@ changing client roster this is:
 - **Tunnel-dependent** — if the Morning MCP tunnel is down, resolution cannot complete at
   all (Feature 069 FR-069, CONSTITUTION §XVIII: no silent degraded write), even for a
   client DeniDin has successfully resolved a hundred times before.
-- **Latency** on the common path — an exact match still costs a network hop.
+- **Latency** on the common path — an exact match still costs a network hop (creating a 3-5 second delay for the user).
+
+## PM & Business Requirements
+**Goal:** Deliver a noticeably faster chat experience by avoiding Morning API network calls for returning clients.
+- **Minimum Hit Rate (KPI)**: The implementation MUST guarantee a minimum **85% cache hit rate** against the existing production logs. A 100% hit rate is unrealistic to maintain (new clients happen), and anything below 50% indicates a flawed syncing/caching implementation.
+- **Engineering Autonomy**: The specific technical architecture (in-memory vs SQLite, TTL cron vs JIT updating, context-injected vs local tool swap) is left entirely to the engineering team, provided the 85% hit rate and the 3-5 second perceived latency savings are achieved.
 
 ## Proposed Direction (for `speckit.clarify` / `plan`)
 
