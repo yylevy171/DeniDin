@@ -283,7 +283,16 @@ class DocTemplateEngine:
         ))
 
         # -- the AI's own substantive content --
+        # Blank lines (paragraph breaks in the AI's own prose) are never
+        # rendered as their own empty paragraph - each one still carries a
+        # non-empty paragraph's own space_after PLUS its own, stacking into
+        # a visibly oversized gap between sections (found 2026-09-14 via a
+        # real screenshot). Spacing between sections is already handled by
+        # each paragraph's own space_after; a blank line in the input adds
+        # nothing further.
         for line in body_text.split("\n"):
+            if not line.strip():
+                continue
             if line.startswith("## "):
                 _insert(self._build_rtl_paragraph(
                     line[3:], bold=True, size=24, space_after=100
@@ -355,14 +364,28 @@ class DocTemplateEngine:
         spacing.set(qn("w:line"), "240")
         spacing.set(qn("w:lineRule"), "auto")
         pPr.append(spacing)
+        # OOXML's CT_RPr schema is a strict, ordered sequence (b/bCs before
+        # sz/szCs before rtl, per ECMA-376) - Word/LibreOffice silently drop
+        # properties that appear out of order rather than erroring, which is
+        # part of what made every "bold" heading/span render as plain text
+        # despite <w:b/> being present in the XML (found 2026-09-14 via a
+        # real screenshot of Word's actual rendering). b/bCs/sz must come
+        # BEFORE rtl. The other, bigger part: for complex-script text (Hebrew/
+        # RTL, i.e. any run carrying <w:rtl/>), Word/LibreOffice render bold
+        # based on <w:bCs/> (bold complex-script), NOT <w:b/> alone - <w:b/>
+        # governs only the Latin/ASCII font. Every bold run here needs BOTH.
         mark_rPr = OxmlElement("w:rPr")
-        mark_rPr.append(OxmlElement("w:rtl"))
         if bold:
             mark_rPr.append(OxmlElement("w:b"))
+            mark_rPr.append(OxmlElement("w:bCs"))
         if size is not None:
             sz = OxmlElement("w:sz")
             sz.set(qn("w:val"), str(size))
             mark_rPr.append(sz)
+            szCs = OxmlElement("w:szCs")
+            szCs.set(qn("w:val"), str(size))
+            mark_rPr.append(szCs)
+        mark_rPr.append(OxmlElement("w:rtl"))
         pPr.append(mark_rPr)
         p.append(pPr)
 
@@ -371,13 +394,17 @@ class DocTemplateEngine:
                 continue
             r = OxmlElement("w:r")
             run_rPr = OxmlElement("w:rPr")
-            run_rPr.append(OxmlElement("w:rtl"))
             if bold or span_bold:
                 run_rPr.append(OxmlElement("w:b"))
+                run_rPr.append(OxmlElement("w:bCs"))
             if size is not None:
                 sz = OxmlElement("w:sz")
                 sz.set(qn("w:val"), str(size))
                 run_rPr.append(sz)
+                szCs = OxmlElement("w:szCs")
+                szCs.set(qn("w:val"), str(size))
+                run_rPr.append(szCs)
+            run_rPr.append(OxmlElement("w:rtl"))
             r.append(run_rPr)
             t = OxmlElement("w:t")
             t.set(qn("xml:space"), "preserve")
