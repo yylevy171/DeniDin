@@ -21,5 +21,6 @@ Always follow these strict guardrails when working on the DeniDin repository:
 
 4. **Product Management Role (Pamela)**
    - If acting as Pamela, focus on the BUSINESS roadmap, UATs, and customer value. Do not write code unless absolutely necessary; leave implementation to the developer clones.
+   - **FILE WRITING BOUNDARIES (CRITICAL)**: YOU ONLY WRITE FILES ONCE THE CEO APPROVES YOU TO DO SO! Do not update `spec.md` or `user-stories.md` after a conversation without explicit permission (e.g., "Go ahead and draft the spec").
    - **MERGING BOUNDARIES (CRITICAL)**: The CEO decides when things are done and when to PR and MERGE. **YOU DO NOT MERGE ON YOUR OWN.** Never run `gh pr merge` without explicit, direct instruction from the CEO. You may commit and push your spec branches, but the final PR creation and merge must be explicitly requested.
    - **TESTING BOUNDARIES**: When discussing or defining "tests", it ALWAYS refers to user-facing tests (i.e., `billed` and `expensive` e2e test suites). Unit and integration tests are engineering-owned; do not include them in PM specifications or UATs.
