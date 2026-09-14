@@ -42,13 +42,19 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                  ledger_event_manager: Optional[Any] = None,
                  pending_local_tool_approval_manager: Optional[Any] = None,
                  morning_mcp_locator: Optional[Any] = None,
-                 session_manager: Optional[Any] = None):
+                 session_manager: Optional[Any] = None,
+                 pending_approval_manager: Optional[Any] = None):
         self.client = ai_client
         self.config = config
         self.reminder_manager = reminder_manager
         self.ledger_event_manager = ledger_event_manager
         self.pending_local_tool_approval_manager = pending_local_tool_approval_manager
         self.morning_mcp_locator = morning_mcp_locator
+        # pending_approval_manager (2026-09-14): the SAME PendingApprovalManager
+        # instance AIHandler already uses for MCP document-creation approvals
+        # (Feature 022) - shared, unmodified (REQ-063-03), now also populated by
+        # this orchestrator's own invoicing_write step.
+        self.pending_approval_manager = pending_approval_manager
         # session_manager: the SAME SessionManager instance AIHandler already uses
         # (REQ-063-03) - gives every step this turn real conversation history via
         # get_rolling_window, same shape/source the legacy path has always used.
@@ -273,6 +279,14 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         if pending_resolved is not None:
             return pending_resolved
 
+        # Same gate for a pending invoicing_write MCP approval (Feature 022's
+        # PendingApprovalManager, shared with ai_handler.py) - checked in the
+        # same "before Intent Identification/Planning run at all" position, same
+        # decline-returns-None-and-falls-through contract.
+        pending_mcp_resolved = self._resolve_pending_mcp_approval(request, effective_chat_id)
+        if pending_mcp_resolved is not None:
+            return pending_mcp_resolved
+
         # Step 1: Intent Identification. allowed_tags is computed here, BEFORE Intent
         # Identification runs (not just before Planning, as originally written) -
         # Intent Identification needs to know what domains of capability this role
@@ -319,6 +333,16 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             self, request, effective_chat_id, literal_sender_phone, literal_sender_role,
         )
 
+    def _resolve_pending_mcp_approval(self, request: AIRequest,
+                                       effective_chat_id: str) -> Optional[AIResponse]:
+        """invoicing_write populates pending_approval_manager - lazily imported,
+        same reasoning as _resolve_pending_local_tool_approval above."""
+        if self.pending_approval_manager is None:
+            return None
+        # pylint: disable=import-outside-toplevel
+        from src.capabilities.invoicing.handler import resolve_typed_reply as invoicing_resolve_typed_reply
+        return invoicing_resolve_typed_reply(self, request, effective_chat_id)
+
     def _execute_plan(self, plan: Plan, request: AIRequest, intent_text: str,
                        turn_context: Dict[str, Any]) -> str:
         """Executes each step in order, threading prior steps' results into the next
@@ -341,7 +365,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         return last_output
 
     @staticmethod
-    def _resolve_capability_handler(tag: CapabilityTag) -> Callable[..., str]:
+    def _resolve_capability_handler(tag: CapabilityTag) -> Callable[..., str]:  # pylint: disable=too-many-return-statements
         """Maps a domain CapabilityTag to its capability handler's step entry
         point. Imported lazily to avoid a hard import-time dependency from
         src/backbone on every src/capabilities subpackage."""
@@ -355,9 +379,15 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         if tag == CapabilityTag.LEDGER_QUERY:
             from src.capabilities.ledger_events.handler import query as ledger_query
             return ledger_query
+        if tag == CapabilityTag.LEDGER_CAPTURE:
+            from src.capabilities.ledger_events.handler import capture as ledger_capture
+            return ledger_capture
         if tag == CapabilityTag.INVOICING_READ:
             from src.capabilities.invoicing.handler import read_step as invoicing_read
             return invoicing_read
+        if tag == CapabilityTag.INVOICING_WRITE:
+            from src.capabilities.invoicing.handler import propose_write as invoicing_write
+            return invoicing_write
         if tag == CapabilityTag.MEDIA_ANALYSIS:
             from src.capabilities.media_analysis.handler import extract as media_extract
             return media_extract
@@ -386,10 +416,12 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         bool (mirrors _resolve_pending_local_tool_approval's own reasoning for
         reusing the same shared instance)."""
         should_reply = final_text.strip() != NO_REPLY_SENTINEL
-        offer_approval_buttons = bool(
-            effective_chat_id and self.pending_local_tool_approval_manager is not None
-            and self.pending_local_tool_approval_manager.get(effective_chat_id) is not None
-        )
+        offer_approval_buttons = bool(effective_chat_id and (
+            (self.pending_local_tool_approval_manager is not None
+             and self.pending_local_tool_approval_manager.get(effective_chat_id) is not None)
+            or (self.pending_approval_manager is not None
+                and self.pending_approval_manager.get(effective_chat_id) is not None)
+        ))
         return AIResponse(
             request_id=request.request_id,
             response_text=final_text,
@@ -441,13 +473,22 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
 
     def resolve_button_tap(self, chat_id: str, selected_id: str, stanza_id: str,
                             request: Optional[AIRequest] = None) -> Optional[AIResponse]:
-        """Resolves a WhatsApp interactive-button tap against a pending local-tool
-        approval created by a prior reminders_write step. Returns None for a stale
-        tap (no pending approval, or stanza_id mismatch) — silently ignored, exactly
-        as AIHandler.resolve_button_tap's own staleness guard does."""
-        if self.pending_local_tool_approval_manager is None:
-            return None
-
+        """Resolves a WhatsApp interactive-button tap against whichever pending
+        approval this chat actually has - at most one populated per chat in
+        practice (mirrors denidin.py's own "checks the MCP-pending manager
+        first, then the local-tool one" ordering for AIHandler). Returns None
+        for a stale tap (no pending approval anywhere, or stanza_id mismatch on
+        whichever one exists) — silently ignored, exactly as
+        AIHandler.resolve_button_tap's own staleness guard does."""
         # pylint: disable=import-outside-toplevel
-        from src.capabilities.reminders.handler import resolve_button_tap as reminders_resolve_tap
-        return reminders_resolve_tap(self, chat_id, selected_id, stanza_id, request)
+        if self.pending_approval_manager is not None:
+            from src.capabilities.invoicing.handler import resolve_button_tap as invoicing_resolve_tap
+            resolved = invoicing_resolve_tap(self, chat_id, selected_id, stanza_id, request)
+            if resolved is not None:
+                return resolved
+
+        if self.pending_local_tool_approval_manager is not None:
+            from src.capabilities.reminders.handler import resolve_button_tap as reminders_resolve_tap
+            return reminders_resolve_tap(self, chat_id, selected_id, stanza_id, request)
+
+        return None

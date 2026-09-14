@@ -14,12 +14,20 @@ from typing import Any, Dict, Optional
 from src.backbone.capability_tags import CapabilityTag
 from src.capabilities.reminders.tools import (
     CREATE_REMINDER_TOOL,
-    extract_function_call,
+    DELETE_REMINDER_TOOL,
+    MODIFY_DELETE_REMINDER_TOOLS,
+    MODIFY_REMINDER_TOOL,
+    extract_any_function_call,
     extract_function_call_id,
     is_affirmative_reply,
     list_active_reminders_text,
 )
 from src.managers.pending_local_tool_approval_manager import PendingLocalToolApproval
+from src.managers.reminder_manager import (
+    InvalidRecurrenceError,
+    OccurrenceNotFoundError,
+    ReminderNotFoundError,
+)
 from src.models.message import AIRequest, AIResponse, NO_REPLY_SENTINEL
 from src.utils.time_utils import now_local
 
@@ -46,34 +54,94 @@ def read(orchestrator, request: AIRequest, accumulated_context: str, note: str,
 
 def propose_write(orchestrator, request: AIRequest, accumulated_context: str, note: str,
                    turn_context: Dict[str, Any]) -> str:
-    """Reminders — Write step: proposes a one-time reminder creation, creating a
-    PendingLocalToolApproval the same way AIHandler._handle_reminder_creation_proposal
-    does today, reimplemented as new code (REQ-063-07)."""
+    """Reminders — Write step: proposes creating a NEW one-time reminder, OR
+    changing/cancelling an EXISTING one - all three tools (create/modify/delete)
+    are offered in the same call, since REMINDERS_WRITE covers "creating,
+    changing, or cancelling a reminder" as one domain (capability_tags.py) and
+    Planning only ever names the one tag. Whichever tool the model actually
+    calls (at most one, since each is mutually exclusive by construction)
+    decides which proposal branch runs below. Creates a PendingLocalToolApproval
+    the same way AIHandler._handle_reminder_creation_proposal /
+    _propose_reminder_modify_or_delete do today, reimplemented as new,
+    standalone code (REQ-063-07)."""
     del note
     if orchestrator.pending_local_tool_approval_manager is None or orchestrator.reminder_manager is None:
         return "Reminders write path not configured."
 
+    reminders = orchestrator.reminder_manager.list_active()
     response = orchestrator.client.responses.create(
         model=request.model,
         instructions=orchestrator.build_instructions(
-            CapabilityTag.REMINDERS_WRITE, accumulated_context, request.timestamp,
+            CapabilityTag.REMINDERS_WRITE,
+            accumulated_context + f"\n\nActive reminders: {reminders}",
+            request.timestamp,
         ),
         input=[{"role": "user", "content": request.user_prompt}],
         max_output_tokens=request.max_tokens,
-        tools=[CREATE_REMINDER_TOOL],
+        tools=[CREATE_REMINDER_TOOL] + MODIFY_DELETE_REMINDER_TOOLS,
     )
 
-    args = extract_function_call(response, CREATE_REMINDER_TOOL["name"])
-    if not args:
-        return getattr(response, "output_text", "") or "לא זוהתה בקשה ליצירת תזכורת."
+    tool_name, args = extract_any_function_call(
+        response, [CREATE_REMINDER_TOOL["name"], MODIFY_REMINDER_TOOL["name"], DELETE_REMINDER_TOOL["name"]],
+    )
+    if not tool_name or args is None:
+        return getattr(response, "output_text", "") or "לא זוהתה בקשה לתזכורת."
+
+    if tool_name == CREATE_REMINDER_TOOL["name"]:
+        chat_id = turn_context.get("chat_id") or request.chat_id
+        call_id = extract_function_call_id(response, tool_name) or ""
+        orchestrator.pending_local_tool_approval_manager.set(
+            chat_id,
+            PendingLocalToolApproval(
+                tool_name=tool_name,
+                response_id=getattr(response, "id", ""),
+                call_id=call_id,
+                arguments=args,
+                created_at=now_local().isoformat(),
+            ),
+        )
+        return (
+            f"📋 לאישור — תזכורת חדשה: \"{args.get('message_text', '')}\" "
+            f"בתאריך {args.get('one_time_due_at', '')}\n\n{APPROVAL_QUESTION}"
+        )
+
+    return _propose_modify_or_delete(orchestrator, request, turn_context, response, tool_name, args)
+
+
+def _propose_modify_or_delete(orchestrator, request: AIRequest, turn_context: Dict[str, Any],  # pylint: disable=too-many-positional-arguments
+                               response, tool_name: str, args: Dict[str, Any]) -> str:
+    """The modify/delete branch of propose_write above - split out only for
+    readability, not a separate capability-step entry point."""
+    reminder_id = args.get("reminder_id")
+    scope = args.get("scope")
+    if scope not in ("single_occurrence", "whole_series"):
+        return "⚠️ לא ברור אילו תזכורות/מופע לשנות. נסו שוב."
+
+    current = orchestrator.reminder_manager.get_reminder(str(reminder_id))
+    if current is None:
+        return "⚠️ לא נמצאה תזכורת כזו."
+    if scope == "single_occurrence" and not args.get("occurrence_date_hint"):
+        return "⚠️ חסר תאריך מופע ספציפי. נסו שוב."
+    if scope == "single_occurrence" and current.get("rrule") is None:
+        return "⚠️ אי אפשר לשנות מופע בודד בתזכורת חד-פעמית. נסו שוב."
+
+    # Proposal-time validation only, discarded not persisted (re-validated at
+    # approval time - contracts/local-tool-approval-gate.md's TOCTOU-closing pattern).
+    try:
+        if scope == "single_occurrence":
+            orchestrator.reminder_manager.resolve_occurrence_datetime(
+                str(reminder_id), current, str(args.get("occurrence_date_hint")),
+            )
+    except (InvalidRecurrenceError, OccurrenceNotFoundError, ReminderNotFoundError) as exc:
+        logger.warning("%s proposal rejected during validation: %s", tool_name, exc)
+        return "⚠️ הבקשה לא תקפה. נסו שוב."
 
     chat_id = turn_context.get("chat_id") or request.chat_id
-    call_id = extract_function_call_id(response, CREATE_REMINDER_TOOL["name"]) or ""
-
+    call_id = extract_function_call_id(response, tool_name) or ""
     orchestrator.pending_local_tool_approval_manager.set(
         chat_id,
         PendingLocalToolApproval(
-            tool_name=CREATE_REMINDER_TOOL["name"],
+            tool_name=tool_name,
             response_id=getattr(response, "id", ""),
             call_id=call_id,
             arguments=args,
@@ -81,32 +149,67 @@ def propose_write(orchestrator, request: AIRequest, accumulated_context: str, no
         ),
     )
 
+    action_label = "לשנות" if tool_name == MODIFY_REMINDER_TOOL["name"] else "לבטל"
+    scope_label = "מופע בודד" if scope == "single_occurrence" else "כל הסדרה"
     return (
-        f"📋 לאישור — תזכורת חדשה: \"{args.get('message_text', '')}\" "
-        f"בתאריך {args.get('one_time_due_at', '')}\n\n{APPROVAL_QUESTION}"
+        f"📋 לאישור — {action_label} תזכורת \"{current.get('message_text', '')}\" "
+        f"({scope_label})\n\n{APPROVAL_QUESTION}"
     )
 
 
-def _approve_and_create(orchestrator, pending, chat_id: str,
-                         created_by_phone: str, created_by_role: str) -> str:
-    """Shared approve-branch logic for both a button tap and a typed 'כן' reply
-    (contracts/local-tool-approval-gate.md: the two entry points converge on the
-    same real ReminderManager.create_reminder call, TOCTOU-checked fresh at
-    persist time either way)."""
+def _approve_and_execute(orchestrator, pending, chat_id: str,
+                          created_by_phone: str, created_by_role: str) -> str:
+    """Shared approve-branch logic for a button tap or typed 'כן' reply, across all
+    three reminders write tools (create/modify/delete) - the two entry points
+    converge on the same real ReminderManager calls, TOCTOU-checked fresh at
+    persist time either way (contracts/local-tool-approval-gate.md)."""
     try:
-        result = orchestrator.reminder_manager.create_reminder(
-            message_text=pending.arguments.get("message_text", ""),
-            schedule_type="one_time",
-            one_time_due_at=pending.arguments.get("one_time_due_at"),
-            recurrence=None,
-            created_by_phone=created_by_phone,
-            created_by_role=created_by_role,
-            delivery_chat_id=chat_id,
-        )
-        return f"✅ נוצרה תזכורת (מזהה {result['reminder_id']}), מועד: {result['due_at']}"
+        if pending.tool_name == CREATE_REMINDER_TOOL["name"]:
+            result = orchestrator.reminder_manager.create_reminder(
+                message_text=pending.arguments.get("message_text", ""),
+                schedule_type="one_time",
+                one_time_due_at=pending.arguments.get("one_time_due_at"),
+                recurrence=None,
+                created_by_phone=created_by_phone,
+                created_by_role=created_by_role,
+                delivery_chat_id=chat_id,
+            )
+            return f"✅ נוצרה תזכורת (מזהה {result['reminder_id']}), מועד: {result['due_at']}"
+
+        if pending.tool_name == MODIFY_REMINDER_TOOL["name"]:
+            reminder_id = str(pending.arguments.get("reminder_id"))
+            scope = pending.arguments.get("scope")
+            if scope == "whole_series":
+                orchestrator.reminder_manager.modify_whole_series(
+                    reminder_id,
+                    new_message_text=pending.arguments.get("new_message_text"),
+                    new_due_at=pending.arguments.get("new_due_at"),
+                )
+            else:
+                orchestrator.reminder_manager.modify_single_occurrence(
+                    reminder_id,
+                    occurrence_date_hint=pending.arguments.get("occurrence_date_hint"),
+                    new_message_text=pending.arguments.get("new_message_text"),
+                    new_due_at=pending.arguments.get("new_due_at"),
+                )
+            return "✅ התזכורת עודכנה."
+
+        if pending.tool_name == DELETE_REMINDER_TOOL["name"]:
+            reminder_id = str(pending.arguments.get("reminder_id"))
+            scope = pending.arguments.get("scope")
+            if scope == "whole_series":
+                orchestrator.reminder_manager.delete_whole_series(reminder_id)
+            else:
+                orchestrator.reminder_manager.delete_single_occurrence(
+                    reminder_id, occurrence_date_hint=pending.arguments.get("occurrence_date_hint"),
+                )
+            return "✅ התזכורת בוטלה."
+
+        logger.error("Unknown pending reminders tool_name: %r", pending.tool_name)
+        return "⚠️ הפעולה נכשלה. נסו שוב."
     except Exception as exc:  # pylint: disable=broad-except
-        logger.error("Reminder creation failed on approval: %s", exc)
-        return "⚠️ יצירת התזכורת נכשלה. נסו שוב."
+        logger.error("Reminder %s failed on approval: %s", pending.tool_name, exc)
+        return "⚠️ הפעולה נכשלה. נסו שוב."
 
 
 def resolve_button_tap(orchestrator, chat_id: str, selected_id: str, stanza_id: str,
@@ -130,7 +233,7 @@ def resolve_button_tap(orchestrator, chat_id: str, selected_id: str, stanza_id: 
             timestamp=int(now_local().timestamp()),
         )
 
-    reply_text = _approve_and_create(orchestrator, pending, chat_id, "", "")
+    reply_text = _approve_and_execute(orchestrator, pending, chat_id, "", "")
     return AIResponse(
         request_id=(request.request_id if request else ""),
         response_text=reply_text,
@@ -161,7 +264,7 @@ def resolve_typed_reply(orchestrator, request: AIRequest, chat_id: str,
         return None
 
     orchestrator.pending_local_tool_approval_manager.clear(chat_id)
-    reply_text = _approve_and_create(orchestrator, pending, chat_id, created_by_phone, created_by_role)
+    reply_text = _approve_and_execute(orchestrator, pending, chat_id, created_by_phone, created_by_role)
     return AIResponse(
         request_id=request.request_id,
         response_text=reply_text,

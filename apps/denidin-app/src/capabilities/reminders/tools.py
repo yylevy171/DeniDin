@@ -3,9 +3,9 @@ New, standalone local-tool schema + response-parsing helpers for the Reminders
 capability (Feature 063). Deliberately NOT imported from `src/handlers/ai_handler.py`
 (REQ-063-07: zero coupling to the legacy module).
 
-Scope note: only ONE-TIME reminder creation is wired for real in this pass — recurring
-creation and modify/delete are tracked as follow-up work in tasks.md's "Deferred"
-section, alongside the other write-approval-flow parity items.
+Scope note: one-time reminder creation, plus modify/delete (single-occurrence and
+whole-series) are wired for real. Recurring reminder CREATION is still tracked as
+follow-up work in tasks.md's "Deferred" section.
 """
 import json
 import logging
@@ -68,6 +68,112 @@ CREATE_REMINDER_TOOL: Dict[str, Any] = {
         "additionalProperties": False,
     },
 }
+
+
+MODIFY_REMINDER_TOOL: Dict[str, Any] = {
+    "type": "function",
+    "name": "modify_reminder",
+    "description": (
+        "ONLY call this when the user explicitly asks to change an EXISTING reminder "
+        "(its text and/or its schedule) - never to create a new one. This call itself "
+        "does NOT persist anything - it is presented to the user as an approval "
+        "summary; the change is only applied if the user then explicitly approves."
+    ),
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "reminder_id": {
+                "type": "string",
+                "description": "The id of the existing reminder to modify, from the active reminders list.",
+            },
+            "scope": {
+                "type": "string",
+                "enum": ["single_occurrence", "whole_series"],
+                "description": (
+                    "whole_series for a one-time reminder, or to change a recurring "
+                    "reminder's schedule/text going forward. single_occurrence to change "
+                    "just one upcoming occurrence of a recurring reminder, leaving the "
+                    "rest of the series untouched."
+                ),
+            },
+            "occurrence_date_hint": {
+                "type": ["string", "null"],
+                "description": (
+                    "Required when scope=single_occurrence: the calendar date "
+                    "(YYYY-MM-DD) of the specific occurrence being changed. Null for "
+                    "whole_series."
+                ),
+            },
+            "new_message_text": {
+                "type": ["string", "null"],
+                "description": "New reminder text, or null to leave it unchanged.",
+            },
+            "new_due_at": {
+                "type": ["string", "null"],
+                "description": (
+                    "New ISO-8601 local datetime (Asia/Jerusalem), for a one-time "
+                    "reminder or a single occurrence - null to leave unchanged."
+                ),
+            },
+        },
+        "required": ["reminder_id", "scope", "occurrence_date_hint", "new_message_text", "new_due_at"],
+        "additionalProperties": False,
+    },
+}
+
+DELETE_REMINDER_TOOL: Dict[str, Any] = {
+    "type": "function",
+    "name": "delete_reminder",
+    "description": (
+        "ONLY call this when the user explicitly asks to cancel/delete an EXISTING "
+        "reminder. This call itself does NOT persist anything - it is presented to "
+        "the user as an approval summary; the cancellation only happens if the user "
+        "then explicitly approves."
+    ),
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "reminder_id": {
+                "type": "string",
+                "description": "The id of the existing reminder to delete, from the active reminders list.",
+            },
+            "scope": {
+                "type": "string",
+                "enum": ["single_occurrence", "whole_series"],
+                "description": (
+                    "whole_series to cancel the reminder entirely (one-time or "
+                    "recurring). single_occurrence to cancel just one upcoming "
+                    "occurrence of a recurring reminder, leaving the rest of the "
+                    "series untouched."
+                ),
+            },
+            "occurrence_date_hint": {
+                "type": ["string", "null"],
+                "description": (
+                    "Required when scope=single_occurrence: the calendar date "
+                    "(YYYY-MM-DD) of the specific occurrence being cancelled. Null for "
+                    "whole_series."
+                ),
+            },
+        },
+        "required": ["reminder_id", "scope", "occurrence_date_hint"],
+        "additionalProperties": False,
+    },
+}
+
+MODIFY_DELETE_REMINDER_TOOLS: List[Dict[str, Any]] = [MODIFY_REMINDER_TOOL, DELETE_REMINDER_TOOL]
+
+
+def extract_any_function_call(response, tool_names: List[str]):
+    """Like extract_function_call, but for the first matching tool among
+    `tool_names` (in that order) - returns (tool_name, args) or (None, None)."""
+    for tool_name in tool_names:
+        args = extract_function_call(response, tool_name)
+        if args is not None:
+            return tool_name, args
+    return None, None
 
 
 def extract_function_call(response, tool_name: str) -> Optional[Dict]:

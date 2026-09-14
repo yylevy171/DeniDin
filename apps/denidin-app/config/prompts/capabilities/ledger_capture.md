@@ -14,7 +14,11 @@ whatever identifying details (name, phone, context) the turn actually provides;
 if genuinely ambiguous, do not guess — surface the ambiguity in your reply instead
 of silently picking one.
 
-Note: full write-side wiring for this capability (the actual capture-tool
-dispatch) is tracked as follow-up work (tasks.md's Deferred section) — this
-prompt file is authored now so the capability's boundaries are already defined
-when that wiring lands.
+This call persists immediately once made — there is no separate approval step
+(the same way listing reminders or querying the ledger doesn't need one), so only
+call it when the content genuinely states, changes, or cancels a fee arrangement,
+or shows a bank-transfer/deposit confirmation.
+
+Note: capture of a Morning-sourced accounting document (חשבונית) is the
+accounting-reconciliation service's own job, not something this live-turn
+capability does — never call the capture tool for that source type here.

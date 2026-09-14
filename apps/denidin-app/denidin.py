@@ -473,6 +473,7 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
             pending_local_tool_approval_manager=ai_handler.pending_local_tool_approval_manager,
             morning_mcp_locator=ai_handler.morning_mcp_locator,
             session_manager=ai_handler.session_manager,
+            pending_approval_manager=ai_handler.pending_approval_manager,
         )
 
     # Create DeniDin instance (will be used as context for background threads and MediaHandler)
