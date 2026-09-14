@@ -52,10 +52,20 @@ BUNDLE_STUB_FILES = (
     "scripts/health_monitoring/prober_paths.sh",
     "scripts/health_monitoring/run_prober_for_env.sh",
     "scripts/health_monitoring/register_prober_schedule.sh",
+    "scripts/backup_prod/lib/load_config.sh",
+    "scripts/backup_prod/lib/retention_purge.sh",
+    "scripts/backup_prod/lib/sqlite_backup.sh",
+    "scripts/backup_prod/run_daily_backup.sh",
+    "scripts/backup_prod/pull_backups.sh",
+    "scripts/backup_prod/verify_restore.sh",
+    "scripts/backup_prod/register_backup_schedule.sh",
+    "scripts/backup_prod/config.example.json",
     "apps/denidin-app/run_denidin.sh",
     "apps/denidin-app/stop_denidin.sh",
     "apps/morning-mcp-app/run_morning_mcp.sh",
     "apps/morning-mcp-app/stop_morning_mcp.sh",
+    "apps/webapp/run_webapp.sh",
+    "apps/webapp/stop_webapp.sh",
 )
 
 
