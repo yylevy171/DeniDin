@@ -98,3 +98,7 @@ Ledger web UI, mandatory client resolution for ledger events, edited/deleted Wha
 ## [0.7.1] - 2026-09-13
 
 Feature 080: always-on progress updates, typing keep-alive, telemetry plumbing; fixes multi-tool dispatch collision, typing-indicator gap, and rogue-language leak.
+
+## [0.7.2] - 2026-09-14
+
+supporting daily backups
