@@ -70,6 +70,11 @@ def mocked_denidin_app(monkeypatch):
     mock_app.whatsapp_handler = mock_whatsapp_handler
     mock_app.ai_handler = mock_ai_handler
     mock_app.group_membership_resolver = None
+    # Feature 063: a bare Mock() auto-vivifies .backbone_orchestrator as a truthy
+    # Mock, which would wrongly route this test through the (unmocked) backbone
+    # path instead of the legacy ai_handler path it exercises - same fixture gap
+    # already fixed once for test_denidin_media_ledger_routing.py.
+    mock_app.backbone_orchestrator = None
 
     monkeypatch.setattr(denidin_module, 'denidin_app', mock_app)
     return mock_app

@@ -16,6 +16,7 @@ from src.capabilities.reminders.tools import (
     CREATE_REMINDER_TOOL,
     extract_function_call,
     extract_function_call_id,
+    is_affirmative_reply,
     list_active_reminders_text,
 )
 from src.managers.pending_local_tool_approval_manager import PendingLocalToolApproval
@@ -86,6 +87,28 @@ def propose_write(orchestrator, request: AIRequest, accumulated_context: str, no
     )
 
 
+def _approve_and_create(orchestrator, pending, chat_id: str,
+                         created_by_phone: str, created_by_role: str) -> str:
+    """Shared approve-branch logic for both a button tap and a typed 'כן' reply
+    (contracts/local-tool-approval-gate.md: the two entry points converge on the
+    same real ReminderManager.create_reminder call, TOCTOU-checked fresh at
+    persist time either way)."""
+    try:
+        result = orchestrator.reminder_manager.create_reminder(
+            message_text=pending.arguments.get("message_text", ""),
+            schedule_type="one_time",
+            one_time_due_at=pending.arguments.get("one_time_due_at"),
+            recurrence=None,
+            created_by_phone=created_by_phone,
+            created_by_role=created_by_role,
+            delivery_chat_id=chat_id,
+        )
+        return f"✅ נוצרה תזכורת (מזהה {result['reminder_id']}), מועד: {result['due_at']}"
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.error("Reminder creation failed on approval: %s", exc)
+        return "⚠️ יצירת התזכורת נכשלה. נסו שוב."
+
+
 def resolve_button_tap(orchestrator, chat_id: str, selected_id: str, stanza_id: str,
                         request: Optional[AIRequest]) -> Optional[AIResponse]:
     """Resolves a "כן"/"לא" interactive-button tap against a pending reminders_write
@@ -107,21 +130,7 @@ def resolve_button_tap(orchestrator, chat_id: str, selected_id: str, stanza_id: 
             timestamp=int(now_local().timestamp()),
         )
 
-    try:
-        result = orchestrator.reminder_manager.create_reminder(
-            message_text=pending.arguments.get("message_text", ""),
-            schedule_type="one_time",
-            one_time_due_at=pending.arguments.get("one_time_due_at"),
-            recurrence=None,
-            created_by_phone="",
-            created_by_role="",
-            delivery_chat_id=chat_id,
-        )
-        reply_text = f"✅ נוצרה תזכורת (מזהה {result['reminder_id']}), מועד: {result['due_at']}"
-    except Exception as exc:  # pylint: disable=broad-except
-        logger.error("Reminder creation failed on approval: %s", exc)
-        reply_text = "⚠️ יצירת התזכורת נכשלה. נסו שוב."
-
+    reply_text = _approve_and_create(orchestrator, pending, chat_id, "", "")
     return AIResponse(
         request_id=(request.request_id if request else ""),
         response_text=reply_text,
@@ -129,5 +138,36 @@ def resolve_button_tap(orchestrator, chat_id: str, selected_id: str, stanza_id: 
         model=(request.model if request else ""),
         finish_reason="stop",
         timestamp=int(now_local().timestamp()),
+        should_reply=reply_text.strip() != NO_REPLY_SENTINEL,
+    )
+
+
+def resolve_typed_reply(orchestrator, request: AIRequest, chat_id: str,
+                         created_by_phone: str, created_by_role: str) -> Optional[AIResponse]:
+    """Resolves a typed "כן"/"לא" reply against a pending reminders_write proposal -
+    the local-tool-approval equivalent of AIHandler._resolve_pending_local_tool_approval,
+    reimplemented as new code (REQ-063-07). Checked by BackboneOrchestrator.get_response
+    BEFORE Intent Identification/Planning run, same as the legacy pending-approval gate.
+
+    Returns the final AIResponse if approved. None if declined/unrecognized - same
+    contract as the legacy resolver: the caller then processes this same message as
+    a normal fresh turn (Intent Identification -> Planning -> ...)."""
+    pending = orchestrator.pending_local_tool_approval_manager.get(chat_id)
+    if pending is None:
+        return None
+
+    if not is_affirmative_reply(request.user_prompt):
+        orchestrator.pending_local_tool_approval_manager.clear(chat_id)
+        return None
+
+    orchestrator.pending_local_tool_approval_manager.clear(chat_id)
+    reply_text = _approve_and_create(orchestrator, pending, chat_id, created_by_phone, created_by_role)
+    return AIResponse(
+        request_id=request.request_id,
+        response_text=reply_text,
+        tokens_used=0, prompt_tokens=0, completion_tokens=0,
+        model=request.model,
+        finish_reason="stop",
+        timestamp=request.timestamp or int(now_local().timestamp()),
         should_reply=reply_text.strip() != NO_REPLY_SENTINEL,
     )

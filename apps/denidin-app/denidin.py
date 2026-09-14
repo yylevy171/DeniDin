@@ -709,15 +709,41 @@ def _process_conversational_message(notification: Notification) -> None:
                 send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
         progress_callback = _progress_callback_with_typing_refresh
-        ai_response = denidin_app.ai_handler.get_response(
-            ai_request,
-            sender=message.sender_display_name,
-            user_phone=group_user_phone or message.sender_id,
-            sender_phone=message.sender_id,
-            is_group=message.is_group,
-            chat_name=message.chat_name,
-            progress_callback=progress_callback,
-        )
+        # Feature 063 (Dynamic Capability Backbone): when the flag is on, text turns
+        # enter through the SAME BackboneOrchestrator media turns already use (see
+        # _process_media_message above) - not just button taps. The orchestrator has
+        # no UserManager of its own (REQ-063-03: managers stay exactly where they are,
+        # shared, unmodified), so the role RBAC gates on is resolved here, once, off
+        # ai_handler's own UserManager - the same lookup _get_response_impl performs
+        # internally for the flag-off path - and passed in as an already-resolved
+        # Role value (Role subclasses str, so it round-trips through
+        # BackboneOrchestrator._resolve_role's .upper() unchanged). Flag-off path
+        # below is fully unchanged - byte-for-byte the same call as before this
+        # feature existed.
+        effective_user_phone = group_user_phone or message.sender_id
+        if denidin_app.backbone_orchestrator is not None:
+            resolved_user = denidin_app.ai_handler.user_manager.get_user(effective_user_phone)
+            ai_response = denidin_app.backbone_orchestrator.get_response(
+                ai_request,
+                chat_id=message.chat_id,
+                user_role=resolved_user.role if resolved_user else 'client',
+                sender=message.sender_display_name,
+                user_phone=effective_user_phone,
+                is_group=message.is_group,
+                chat_name=message.chat_name,
+                sender_phone=message.sender_id,
+                progress_callback=progress_callback,
+            )
+        else:
+            ai_response = denidin_app.ai_handler.get_response(
+                ai_request,
+                sender=message.sender_display_name,
+                user_phone=effective_user_phone,
+                sender_phone=message.sender_id,
+                is_group=message.is_group,
+                chat_name=message.chat_name,
+                progress_callback=progress_callback,
+            )
         logger.info(
             f"{tracking} AI response generated: {ai_response.tokens_used} tokens, "
             f"{len(ai_response.response_text)} chars"

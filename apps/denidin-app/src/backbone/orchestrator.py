@@ -107,8 +107,16 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                             today_timestamp: Optional[int] = None) -> str:
         """contracts/prompt-assembly.md's fixed assembly order:
         backbone + exactly ONE capability's prompt + accumulated_context + '---' + today.
+
+        Date AND time (not date alone) - mirrors AIHandler._load_constitution's own
+        current-date-and-time injection: without a current TIME, the model cannot
+        resolve a relative clock offset ("תזכיר לי בעוד שעה") and asks the user what
+        time it is instead of just computing it - a real gap the legacy code already
+        fixed once for Feature 054 (reminders), confirmed via a real billed-test
+        failure (2026-09-14, this orchestrator regressed on it by injecting only the
+        date - same billed test caught it here too).
         """
-        today = local_from_timestamp(today_timestamp) if today_timestamp else now_local()
+        now = local_from_timestamp(today_timestamp) if today_timestamp else now_local()
         parts = [
             self.load_backbone(),
             self.load_capability_prompt(active_tag),
@@ -116,7 +124,13 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         if accumulated_context:
             parts.append(accumulated_context)
         parts.append("---")
-        parts.append(today.strftime("%Y-%m-%d"))
+        parts.append(
+            f"THE CURRENT DATE AND TIME IS {now.strftime('%Y-%m-%d')} {now.strftime('%H:%M')} "
+            f"(Asia/Jerusalem, Israel local time). Treat this as the authoritative \"now\" when "
+            f"resolving any relative or partial date/time the user gives (a day/month with no "
+            f"year, \"היום\", \"אתמול\", \"בעוד שעה\", \"בעוד חצי שעה\", etc.) — never fall back "
+            f"on a year from your training data, and never ask the user what time it is now."
+        )
         return "\n\n".join(part for part in parts if part)
 
     # ------------------------------------------------------------------
@@ -176,6 +190,17 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             "sender_phone": sender_phone,
         }
 
+        # Feature 063: a typed "כן"/"לא" reply resolves a pending reminders_write
+        # local-tool approval BEFORE Intent Identification/Planning run at all -
+        # the same gate contracts/local-tool-approval-gate.md and AIHandler's own
+        # get_response/_resolve_pending_local_tool_approval already implement,
+        # reimplemented here as new code (REQ-063-07). A decline/unrecognized
+        # reply returns None and falls through to a normal turn below, same
+        # contract as the legacy resolver.
+        pending_resolved = self._resolve_pending_local_tool_approval(request, effective_chat_id, turn_context)
+        if pending_resolved is not None:
+            return pending_resolved
+
         # Step 1: Intent Identification
         intent_text = identify_intent(self, request, is_media=is_media)
 
@@ -191,6 +216,25 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             final_text = self._execute_plan(plan, request, intent_text, turn_context)
 
         return self._finalize_response(request, final_text)
+
+    def _resolve_pending_local_tool_approval(self, request: AIRequest, effective_chat_id: str,
+                                              turn_context: Dict[str, Any]) -> Optional[AIResponse]:
+        """Only reminders_write populates pending_local_tool_approval_manager today
+        (REQ-063-03: shared with ai_handler.py, so a legacy-created pending approval
+        is resolvable here too, and vice versa). Lazily imported, same reasoning as
+        _resolve_capability_handler above."""
+        if self.pending_local_tool_approval_manager is None:
+            return None
+        # pylint: disable=import-outside-toplevel
+        from src.capabilities.reminders.handler import resolve_typed_reply
+        literal_sender_phone = (
+            request.original_message.sender_id if request.original_message
+            else (turn_context.get("user_phone") or effective_chat_id)
+        )
+        literal_sender_role = str(turn_context.get("role", Role.CLIENT))
+        return resolve_typed_reply(
+            self, request, effective_chat_id, literal_sender_phone, literal_sender_role,
+        )
 
     def _execute_plan(self, plan: Plan, request: AIRequest, intent_text: str,
                        turn_context: Dict[str, Any]) -> str:

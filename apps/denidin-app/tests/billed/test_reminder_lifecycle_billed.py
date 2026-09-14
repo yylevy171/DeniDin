@@ -36,6 +36,7 @@ incidentally exercised by this file.
 """
 
 import logging
+import shutil
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -75,6 +76,31 @@ class TestReminderLifecycleBilled:
         config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
         config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
         return config
+
+    @pytest.fixture(autouse=True)
+    def _clean_sessions_around_every_test(self, config):
+        """Wipe this file's session store before AND after every test (2026-09-14).
+
+        Unlike tests/billed/conftest.py's `denidin_config` fixture (used by the
+        Morning MCP tests - wipes sessions once per whole run, deliberately
+        preserving cross-test conversation continuity within one run), THIS
+        file's own tests each create whatever reminders they need fresh, inside
+        themselves (`_create_approved_reminder`) - none rely on a PRIOR test's
+        conversation turns. Leaving stale history around instead caused a real
+        failure investigating this file's own backbone-flag routing: a later
+        run's turn saw an earlier run's already-resolved approval exchange in
+        its rolling window and produced a confused reply ("I can't send a
+        proactive reminder...") instead of a fresh proposal. Wiping isolates
+        every test (and every separate `pytest`/run_single_test.sh invocation)
+        from any prior run's leftover state, mirroring the reminders/ledger-events
+        wipe conftest.py's own autouse fixtures already do directory-wide.
+        """
+        sessions_dir = Path(config.memory['session']['storage_dir'])
+        if sessions_dir.exists():
+            shutil.rmtree(sessions_dir)
+        yield
+        if sessions_dir.exists():
+            shutil.rmtree(sessions_dir)
 
     @pytest.fixture
     def denidin_app(self, config):

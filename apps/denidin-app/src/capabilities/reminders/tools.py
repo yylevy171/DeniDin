@@ -9,9 +9,38 @@ section, alongside the other write-approval-flow parity items.
 """
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional, cast
 
 logger = logging.getLogger(__name__)
+
+# Free-form affirmative replies recognized as approval of a pending reminder-write
+# proposal - matched against the trimmed, casefolded message (or its leading word
+# token), never as a substring-anywhere check (avoids false positives on unrelated
+# longer sentences). Deliberately NOT imported from ai_handler.py's own
+# _AFFIRMATIVE_REPLIES/_is_affirmative_reply (REQ-063-07) - independent new code,
+# same word set/matching approach since it's the same real-world behavior users
+# already expect.
+_AFFIRMATIVE_REPLIES = {
+    "yes", "yep", "yeah", "sure", "ok", "okay", "go ahead",
+    "כן", "אישור", "בסדר", "אוקיי", "אוקי", "מאשר", "מאשרת", "בטח", "סבבה", "לאשר",
+}
+
+
+def is_affirmative_reply(text: str) -> bool:
+    """Whether `text` reads as a free-form yes/no approval of a pending reminder
+    creation - matched as the whole trimmed message or its leading word token
+    (anchored on the FIRST word so a longer refusal like "לא, תבטל" is never
+    misread as approval)."""
+    normalized = text.strip().casefold()
+    if not normalized:
+        return False
+    if normalized in _AFFIRMATIVE_REPLIES:
+        return True
+    leading_match = re.search(r"\w+", normalized, flags=re.UNICODE)
+    if leading_match is None:
+        return False
+    return leading_match.group(0) in _AFFIRMATIVE_REPLIES
 
 CREATE_REMINDER_TOOL: Dict[str, Any] = {
     "type": "function",
