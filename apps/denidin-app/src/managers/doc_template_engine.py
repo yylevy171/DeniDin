@@ -217,6 +217,20 @@ class DocTemplateEngine:
     _TITLE_TEXT = "הסכם שכר טרחה"
     _SIGNATURE_LINE = "____________________"
 
+    # Section definitions (2026-09-14, explicit human instruction): every
+    # rendered document is exactly three sections, in this fixed order, each
+    # separated from its neighbor by one full blank-line break (see
+    # _insert_section_break below) -
+    #   S1 "header"  - the doc header/logo (in the .docx section header, not
+    #                  a body paragraph), the date, the title, and the
+    #                  parties.
+    #   S2 "content" - the actual agreement terms; entirely AI-authored
+    #                  (body_text).
+    #   S3 "footer"  - the affirmation, the signatures, and the .docx
+    #                  section footer (contact line).
+    # S1 and S3 are code-owned (rendered here, verbatim, every time); S2 is
+    # the AI's own substantive content, sandwiched between them.
+
     def render_free_text(
         self, variant_id: str, client_name: str, body_text: str
     ) -> GeneratedDocument:
@@ -273,9 +287,19 @@ class DocTemplateEngine:
             else:
                 body.append(new_p)
 
+        def _insert_section_break():
+            # One full blank-line paragraph between S1/S2/S3 (2026-09-14,
+            # explicit human instruction) - a real empty paragraph, not just
+            # a trailing space_after on the last line of the section above
+            # it, so the break is visually a full line regardless of that
+            # line's own spacing.
+            _insert(self._build_rtl_paragraph("", space_after=80))
+
         today = now_local().strftime("%d.%m.%Y")
 
-        # -- code-owned header block (title, date, identity) - matches the
+        # -- S1 "header": doc header/logo (in the .docx section header, not
+        # a body paragraph - see class docstring above), title, date,
+        # identity - matches the
         # real firm's own agreements (2026-09-14 fix, diffed against actual
         # signed examples): title is bold+underlined at NORMAL size (not
         # oversized display text), and the identity line is THREE separate
@@ -296,7 +320,10 @@ class DocTemplateEngine:
             f'{self.FIRM_LAWYER_NAME} (להלן – עוה"ד)', space_after=160
         ))
 
-        # -- the AI's own substantive content --
+        _insert_section_break()
+
+        # -- S2 "content": the AI's own substantive content (the actual
+        # agreement terms) --
         # Blank lines (paragraph breaks in the AI's own prose) are never
         # rendered as their own empty paragraph - each one still carries a
         # non-empty paragraph's own space_after PLUS its own, stacking into
@@ -326,10 +353,12 @@ class DocTemplateEngine:
             else:
                 _insert(self._build_rtl_paragraph(line, space_after=80, justify=True))
 
-        # -- code-owned footer block (signature) - always present, always
-        # names the real client, never left to the AI to remember. Three
-        # separate lines, matching the real firm's own agreements, not one
-        # merged line. --
+        _insert_section_break()
+
+        # -- S3 "footer": affirmation, signatures, and the .docx section
+        # footer (contact line) - always present, always names the real
+        # client, never left to the AI to remember. Three separate lines,
+        # matching the real firm's own agreements, not one merged line. --
         _insert(self._build_rtl_paragraph(
             "אני מאשר את ההסכם.", space_after=80
         ))

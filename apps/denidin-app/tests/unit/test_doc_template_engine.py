@@ -387,6 +387,38 @@ class TestRenderFreeTextDocxFormatEssentials:
             f"{[p.text.strip() for p in centered]!r}"
         )
 
+    @pytest.mark.parametrize(
+        "variant_id", ["hourly_consultation", "multi_component_agreement", "alternative_tracks"]
+    )
+    def test_exactly_two_section_breaks_between_s1_s2_s3(self, engine, variant_id):
+        """2026-09-14, explicit human instruction: the document is exactly
+        three sections (S1 header, S2 content, S3 footer - see
+        render_free_text's class-level docstring constants), each separated
+        from its neighbor by one full blank-line paragraph. There must be
+        exactly two such empty paragraphs in the whole document - one after
+        the header's last line (firm identity), one after the content's
+        last line - never zero (no break at all) and never more than two
+        (a stray extra blank line)."""
+        doc = engine.render_free_text(variant_id, self.CLIENT_NAME, self.SAMPLE_BODY)
+        docx_obj = DocxDocument(str(doc.temp_path))
+        blank_paragraphs = [p for p in docx_obj.paragraphs if not p.text.strip()]
+        assert len(blank_paragraphs) == 2, (
+            f"expected exactly 2 section-break blank paragraphs (S1|S2 and "
+            f"S2|S3), got {len(blank_paragraphs)}: "
+            f"{[p.text for p in docx_obj.paragraphs]!r}"
+        )
+        all_texts = [p.text for p in docx_obj.paragraphs]
+        blank_indices = [i for i, t in enumerate(all_texts) if not t.strip()]
+        # First blank line sits right after the firm identity line (S1's
+        # last line); second sits right after the content section's last
+        # substantive line, both immediately before the next section starts.
+        assert all_texts[blank_indices[0] - 1].strip() == (
+            f'{engine.FIRM_LAWYER_NAME} (להלן – עוה"ד)'
+        ), f"first section break is not right after S1's last line: {all_texts!r}"
+        assert all_texts[blank_indices[1] + 1].strip() == "אני מאשר את ההסכם.", (
+            f"second section break is not right before S3's first line: {all_texts!r}"
+        )
+
     def test_body_text_lines_appear_verbatim_and_in_order(self, engine):
         """The AI's own substantive lines must appear, verbatim and in
         order, somewhere inside the full paragraph list - sandwiched between

@@ -308,6 +308,17 @@ class TestFeeAgreementGenerationFlow:
             f"expected ONLY the title to be centered, got: {centered_texts!r}"
         )
 
+        # Exactly three sections (S1 header, S2 content, S3 footer - see
+        # doc_template_engine.py's DocTemplateEngine class docstring
+        # constants), each separated from its neighbor by one full
+        # blank-line paragraph (2026-09-14, explicit human instruction) -
+        # exactly two such blanks, never zero, never more.
+        blank_count = sum(1 for p in doc.paragraphs if not p.text.strip())
+        assert blank_count == 2, (
+            f"expected exactly 2 section-break blank paragraphs (S1|S2 and "
+            f"S2|S3), got {blank_count}: {[p.text for p in doc.paragraphs]!r}"
+        )
+
     @staticmethod
     def _assert_ai_authored_essentials(text, expected_client_name):
         """(2)+(3a) The AI's own authored content must still carry the essentials a
