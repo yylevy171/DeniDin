@@ -25,6 +25,7 @@ eggs/
 .eggs/
 lib/
 !scripts/lib/
+!scripts/backup_prod/lib/
 lib64/
 parts/
 sdist/
@@ -129,3 +130,8 @@ reports/merge_prod.sh
 reports/prod_merge_bundle.tar.gz
 
 .agents/
+
+# Feature 078: per-host backup config (real paths, no secrets, but per-host per
+# config/shared_state.local.json's own precedent — not shared across clones/hosts)
+scripts/backup_prod/config.json
+
