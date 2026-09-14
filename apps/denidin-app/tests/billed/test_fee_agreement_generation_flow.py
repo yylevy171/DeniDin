@@ -391,6 +391,18 @@ class TestFeeAgreementGenerationFlow:
                 [
                     "הסכום כולל מע\"מ. התאריך: היום. החתימה מטעם הלקוח תהיה "
                     "של יוסי זאנזן עצמו.",
+                    # 2026-09-14 fix: the first followup above never answered
+                    # the AI's own SECOND clarifying question (what the 25%
+                    # is calculated on) - a real billed run showed the AI
+                    # correctly re-asking it and the conversation ending
+                    # there, never reaching render/verify/send. This second
+                    # followup closes that loop.
+                    "25% יחושבו על סכום הזכייה שיתקבל בפועל.",
+                    # ...and the AI then asked a THIRD, separately legitimate
+                    # question (is the 25% success fee itself VAT-inclusive)
+                    # that neither prior followup answered - same fix, one
+                    # more turn to close it.
+                    "שכר ההצלחה של 25% אינו כולל מע\"מ.",
                 ],
                 "multi_component_agreement",
                 "יוסי זאנזן",
