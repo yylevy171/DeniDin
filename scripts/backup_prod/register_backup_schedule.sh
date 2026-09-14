@@ -60,6 +60,19 @@ if [ "$ACTION" != "disable" ] && [ -z "$CONFIG_PATH" ]; then
     exit 1
 fi
 
+# Resolve a relative --config to an absolute path immediately. The scheduled
+# job this registers never runs from the repo root as its cwd - a Windows
+# Scheduled Task's `wsl.exe -e bash -lc '...'` starts in the WSL user's own
+# $HOME, not the invoking shell's cwd at `enable` time - so embedding a
+# relative path into the task/plist definition silently breaks every future
+# run even though the interactive `enable`/`trigger-once` invocation that
+# created it looked fine. Found live, 2026-09-14: `trigger-once` failed
+# (Last Result: 1, no log line at all) because CONFIG_PATH was still the
+# literal relative string passed on the command line.
+if [ -n "$CONFIG_PATH" ] && [ -f "$CONFIG_PATH" ]; then
+    CONFIG_PATH="$(cd "$(dirname "$CONFIG_PATH")" && pwd)/$(basename "$CONFIG_PATH")"
+fi
+
 LABEL="com.denidin.backup${ROLE}"
 TASK_NAME="DeniDinBackup-${ROLE}"
 
