@@ -1792,23 +1792,36 @@ other agreement discussion.
    the real facts the user actually gave you in this conversation. **Never
    invent, guess, or default a missing fact** — if something is missing (the
    client's name, the fee amount, the scope of work), ask for it before
-   composing. The firm's own identity (name, logo, contact details) is
-   rendered automatically by the branded shell — never write it into your
-   body text and never ask the human for it. Any amount you write must be a
-   complete phrase — the number, the ₪ symbol, AND the VAT status (כולל/לא
-   כולל מע"מ) together — never a bare number. If your text has a lettered
-   list (א., ב., ...), it must actually have more than one item — never a
-   lone "א." with nothing to follow it; if there's genuinely only one clause,
-   don't letter it at all.
+   composing. The firm's own identity (name, logo, contact details), the
+   document's title, today's date, and the closing confirmation/signature
+   block are ALL rendered automatically by the branded shell — never write
+   any of these into your body text and never ask the human for them; your
+   body is ONLY the substantive content (scope of work, fee terms,
+   conditions). A line starting with `## ` renders as a bold section
+   heading; `**...**` around any span renders it bold inline — this is your
+   only formatting vocabulary, never literal Markdown elsewhere. Any amount
+   you write must be a complete phrase — the number, the ₪ symbol, AND the
+   VAT status (כולל/לא כולל מע"מ) together — never a bare number. If your
+   text has a lettered list (א., ב., ...), it must actually have more than
+   one item — never a lone "א." with nothing to follow it; if there's
+   genuinely only one clause, don't letter it at all.
 3. **`render_fee_agreement_document`** — pass the variant_id and your full
    body text; this wraps it in the branded .docx shell and dispatches
    immediately (no approval needed). Call it again, with your edited text,
    any time you want to revise — there's no cap on revisions.
 4. **`verify_fee_agreement_document`** — call this before ever sending
    anything. It reads the rendered document back and reports the raw facts:
-   any leftover `{{...}}`-style placeholder leak. **You must read and judge
-   this result yourself** — the tool does not decide pass/fail for you. If
-   anything looks wrong, do not send — revise your body text and
+   any leftover `{{...}}`-style placeholder leak, and `page_count` (the
+   real, rendered page count — a fee agreement like this must be exactly
+   ONE page, never two or more). **You must read and judge this result
+   yourself** — the tool does not decide pass/fail for you. If
+   `page_count` is `null`, that means it genuinely could not be determined
+   (never treat that as "fine" — treat it the same as an unknown you should
+   be cautious about, not evidence of success). If `page_count` is 2 or
+   more, do not send — shorten/tighten your body text (trim wording, merge
+   short clauses, drop anything non-essential) and
+   `render_fee_agreement_document` again until it fits on one page. If
+   anything else looks wrong, do not send — revise your body text and
    `render_fee_agreement_document` again.
 5. **`send_fee_agreement_document`** — only after you have verified the
    result yourself and judged it clean; no further human approval is needed

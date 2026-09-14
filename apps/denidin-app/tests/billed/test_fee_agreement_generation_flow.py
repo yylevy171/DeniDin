@@ -380,12 +380,6 @@ class TestFeeAgreementGenerationFlow:
             temp_path = Path(generated.temp_path)
             captured["existed_at_send"] = temp_path.exists()
             if temp_path.exists():
-                # DEBUG (temporary, 2026-09-14): copy the real generated docx out
-                # before SC-003 cleanup deletes it, so a human can open it. Remove
-                # once visual-fidelity/single-page verification work is done.
-                debug_dir = Path(__file__).resolve().parents[1] / "test_results"
-                debug_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy(str(temp_path), str(debug_dir / f"{user_text[:20]}_output.docx"))
                 captured["text"] = self._docx_text(temp_path)
                 try:
                     self._assert_shell_intact(temp_path)
