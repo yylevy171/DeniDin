@@ -99,3 +99,11 @@ Ledger web UI, mandatory client resolution for ledger events, edited/deleted Wha
 ## morning-mcp-app v0.7.1 — 2026-09-13
 
 Feature 080: always-on progress updates, typing keep-alive, telemetry plumbing; fixes multi-tool dispatch collision, typing-indicator gap, and rogue-language leak.
+
+## morning-mcp-app v0.7.2 — 2026-09-14
+
+supporting daily backups
+
+## morning-mcp-app v0.7.3 — 2026-09-14
+
+supporting daily backups
