@@ -56,6 +56,29 @@ consistency for SQLite/ChromaDB during a hot backup") and SC-002 ("no SQLite cor
 new dependency (the `sqlite3` CLI is already present in the prod WSL2 environment other scripts
 in this repo rely on — e.g. `scripts/windows_prod/*.sh`'s own WSL/bash assumptions).
 
+**Measured (2026-09-14, Mac, real dev DBs read-only + one synthetic DB matching spec's own
+~330MB archive estimate — every output verified byte-identical in size and
+`PRAGMA integrity_check: ok`)**:
+
+| DB | Size | `.backup` time |
+|---|---|---|
+| `chat_index.db` (real dev) | 12 KB | 0.069s |
+| `telemetry.db` (real dev) | 24 KB | 0.061s |
+| `reminders.db` (real dev) | 24 KB | 0.056s |
+| `roll_markers.db` (real dev) | 40 KB | 0.054s |
+| `chroma.sqlite3` (real dev) | 23 MB | 0.197s |
+| synthetic (300MB blobs, sized to spec's ~330MB estimate) | 302 MB | 1.445s |
+
+Small DBs are dominated by a fixed ~50-70ms floor, not size; once past that floor, throughput is
+~200MB/s. Full pipeline (`.backup` all stores + `tar czf` the ~310MB result) measured at **~12s
+total, almost entirely `gzip` time** — `.backup` itself is a rounding error against the total. At
+prod's own ~330MB estimate this puts the whole nightly job in the 10-15s range, well inside a
+"zero visible delay to WhatsApp traffic" budget and confirming R6 needs no pause/gate around the
+app. `.backup` scaled linearly with size in this test, not with row count/complexity — reasonable
+to assume near-linear cost as prod data grows over the 3-year retention window, though this should
+be re-measured against the real prod box/data scale once the pipeline is live (Mac SSD throughput
+is not necessarily representative of the Windows box's disk).
+
 **Alternatives considered**:
 - Plain `cp`/`tar` directly on the live `.db` files — rejected: a concurrent writer mid-transaction
   can produce a torn/inconsistent copy; this is exactly the failure mode SC-002 exists to rule out.
