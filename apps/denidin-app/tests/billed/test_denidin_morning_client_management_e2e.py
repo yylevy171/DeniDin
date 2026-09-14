@@ -481,6 +481,18 @@ def test_godfather_get_client_details_resolves_ambiguous_first_name_prefix_after
         f"not just the name echoed back: {resolved.reply!r}"
     )
 
+    # Feature 080 acceptance scenario (user-stories.md, Telemetry assertion):
+    # a genuine multi-tool client-resolution flow must produce a RequestTelemetry row
+    # for its final turn, with plausible non-zero timing/token data.
+    telemetry_manager = denidin_app.ai_handler.telemetry_manager
+    if telemetry_manager is not None:  # None whenever the feature flag is off
+        row = telemetry_manager.get_latest_by_chat(GODFATHER_CHAT_ID)
+        assert row is not None, f"expected a telemetry row for chat={GODFATHER_CHAT_ID!r}"
+        assert row["llm_turns_count"] >= 1
+        assert row["total_duration_ms"] >= 0
+        assert row["input_tokens_count"] > 0
+        assert row["output_tokens_count"] > 0
+
 
 @pytest.mark.billed
 def test_godfather_update_client_resolves_ambiguous_family_name_prefix_after_confirmation(denidin_app):
@@ -609,6 +621,18 @@ def test_godfather_update_client_resolves_ambiguous_family_name_prefix_after_con
         f"Expected the updated, normalized phone in the follow-up details "
         f"reply, got: {details_response!r}"
     )
+
+    # Feature 080 acceptance scenario (user-stories.md, Telemetry assertion):
+    # a genuine multi-tool client-resolution + mutation flow must produce a
+    # RequestTelemetry row for its final turn, with plausible non-zero timing/token data.
+    telemetry_manager = denidin_app.ai_handler.telemetry_manager
+    if telemetry_manager is not None:  # None whenever the feature flag is off
+        row = telemetry_manager.get_latest_by_chat(GODFATHER_CHAT_ID)
+        assert row is not None, f"expected a telemetry row for chat={GODFATHER_CHAT_ID!r}"
+        assert row["llm_turns_count"] >= 1
+        assert row["total_duration_ms"] >= 0
+        assert row["input_tokens_count"] > 0
+        assert row["output_tokens_count"] > 0
 
 
 # ============================================================================

@@ -169,8 +169,19 @@ def create_real_notification(event_dict):
 
 
 def get_response(notification):
-    """Get the response that was sent to user."""
-    return notification._test_sent_messages[0] if notification._test_sent_messages else None
+    """Get the turn's real final answer - Feature 080: the LAST message sent, not the
+    first. A slow/multi-step turn may send one or more interim send_progress_update
+    messages BEFORE the real answer - the first message is no longer reliably "the
+    response". On a fast turn with no interim message, there's exactly one message and
+    last == first, so this is unchanged for every caller that predates this feature."""
+    return notification._test_sent_messages[-1] if notification._test_sent_messages else None
+
+
+def get_progress_updates(notification):
+    """Every message sent BEFORE the final answer this turn - i.e. any interim
+    send_progress_update sends (Feature 080). Empty list on a fast turn where the model
+    judged no interim update was warranted."""
+    return notification._test_sent_messages[:-1]
 
 
 def assert_response_exists(response):

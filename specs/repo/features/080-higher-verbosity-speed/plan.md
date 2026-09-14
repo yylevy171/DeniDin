@@ -40,11 +40,18 @@ decision (candidates: SQLite table under `{data_root}/telemetry/`, mirroring
 `roll_markers.db`'s and `reminders.db`'s existing SQLite pattern, vs. structured JSON-lines log
 file).
 **Testing**: `pytest` — unit tests for the telemetry recorder and keep-alive renewal logic
-(mocking only the external Green API/OpenAI calls, per CONSTITUTION §I/§V), `billed` tests for
-constitution-driven progress-update behavior (needs a real multi-tool-call OpenAI turn to
-observe whether the model actually narrates), manual UAT per `user-stories.md`'s Scenarios A/B/C
-for the end-to-end timing behavior itself (WhatsApp on-device rendering is not something a test
-can assert on — same precedent as feature 048).
+(mocking only the external Green API/OpenAI calls, per CONSTITUTION §I/§V); the Acceptance-phase
+`billed`/`expensive` scenarios are **approved** (`user-stories.md`, 2026-09-12) as: extend 5
+existing `billed` tests + 2 existing `expensive` tests (bank-deposit-image and multi-component
+agreement-image ledger-capture flows) with progress-update-sent + telemetry-row-written
+assertions, rather than writing new dedicated tests. **Critical scope addition (operator
+2026-09-12)**: because REQ-080-02 breaks the single-deterministic-reply-per-turn assumption most
+existing multi-tool-call `billed`/`expensive` tests rely on, a full sweep of `tests/billed/` and
+`tests/expensive/` in both apps to adapt turn-driving helpers/assertions is now required
+`tasks.md` scope, completed before the 5+2 acceptance tests are trusted — see
+`user-stories.md`'s "Cross-Cutting Risk" section. Manual UAT per `user-stories.md`'s Scenarios
+A/B/C remains required for the end-to-end timing behavior itself (WhatsApp on-device rendering
+is not something a test can assert on — same precedent as feature 048).
 **Target Platform**: Existing `denidin-app` Docker container (dev/prod), no new deployable.
 **Project Type**: Single project — all changes are inside `apps/denidin-app/`.
 **Performance Goals**: Typing indicator must not lapse for turns up to ~180s (mirrors feature

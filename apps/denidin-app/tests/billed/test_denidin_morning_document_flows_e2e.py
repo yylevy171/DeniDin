@@ -382,6 +382,19 @@ def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
         f"{combined_output_decoded!r}. Bot reply: {invoice_details_response!r}"
     )
 
+    # Feature 080 acceptance scenario (user-stories.md, Telemetry assertion): this is a
+    # genuine multi-step flow (ask -> approve -> add_client -> retry create_invoice ->
+    # verify) - a RequestTelemetry row for the LAST turn must exist with plausible
+    # non-zero timing/token data.
+    telemetry_manager = denidin_app.ai_handler.telemetry_manager
+    if telemetry_manager is not None:  # None whenever the feature flag is off
+        row = telemetry_manager.get_latest_by_chat(GODFATHER_CHAT_ID)
+        assert row is not None, f"expected a telemetry row for chat={GODFATHER_CHAT_ID!r}"
+        assert row["llm_turns_count"] >= 1
+        assert row["total_duration_ms"] >= 0
+        assert row["input_tokens_count"] > 0
+        assert row["output_tokens_count"] > 0
+
 
 @pytest.mark.billed
 def test_create_document_for_new_client_declines_client_creation(denidin_app):

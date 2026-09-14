@@ -54,6 +54,18 @@ class TestWhatsAppMessage:
         }
         return notification
 
+    def test_from_notification_extracts_whatsapp_id_message(self, sample_text_notification):
+        """Feature 084 (T003): the real Green API wire id is captured separately from the
+        internal UUID message_id."""
+        sample_text_notification.event['idMessage'] = 'wamid.REALID789'
+        message = WhatsAppMessage.from_notification(sample_text_notification)
+        assert message.whatsapp_id_message == 'wamid.REALID789'
+        assert message.message_id != 'wamid.REALID789'  # internal UUID stays untouched
+
+    def test_from_notification_missing_id_message_defaults_to_none(self, sample_text_notification):
+        message = WhatsAppMessage.from_notification(sample_text_notification)
+        assert message.whatsapp_id_message is None
+
     def test_from_notification_parses_textmessage_correctly(self, sample_text_notification):
         """Test that from_notification() parses textMessage correctly."""
         message = WhatsAppMessage.from_notification(sample_text_notification)

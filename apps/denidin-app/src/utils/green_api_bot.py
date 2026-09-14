@@ -115,6 +115,51 @@ def send_proactive_message(bot: Any, chat_id: str, message: str) -> Optional[str
     return id_message
 
 
+def send_reaction(bot: Any, chat_id: str, id_message: str, reaction: str) -> bool:
+    """Feature 084 (WhatsApp reactions): set/replace/clear a native emoji reaction on a
+    message via Green API's sendReaction endpoint (`research.md` R1, Gate Zero live-verified
+    2026-09-12). Pass `reaction=""` to clear an existing reaction; setting the same
+    idMessage again with a new emoji replaces rather than stacks (confirmed live).
+
+    Uses `bot.api.request()` - the SDK's own generic wrapper, already used internally by
+    every existing `Sending`/etc. method - rather than hand-rolled HTTP or a patch into the
+    vendored SDK (CONSTITUTION XVII). Applies CONSTITUTION XI's retry policy explicitly and
+    locally (no shared retry decorator exists for Green API calls elsewhere in this
+    codebase): retry once, after a 1s wait, on a 5xx or transport-level failure; never retry
+    a 4xx. Never raises - a reaction is cosmetic and must never break the conversational
+    turn or a document/ledger transaction (REQ-084-007); any failure is logged at WARNING
+    and this returns False.
+    """
+    url = "{{host}}/waInstance{{idInstance}}/sendReaction/{{apiTokenInstance}}"
+    payload = {"chatId": chat_id, "idMessage": id_message, "reaction": reaction}
+
+    for attempt in range(2):
+        transport_error: Optional[Exception] = None
+        code: Optional[int] = None
+        try:
+            response = bot.api.request("POST", url, payload)
+            code = getattr(response, "code", None)
+        except Exception as error:  # pylint: disable=broad-except
+            transport_error = error
+
+        if code == 200:
+            return True
+
+        is_5xx_or_transport_failure = transport_error is not None or (code is not None and code >= 500)
+        if is_5xx_or_transport_failure and attempt == 0:
+            time.sleep(1.0)
+            continue
+
+        logger.warning(
+            f"Failed to send reaction (chatId={chat_id}, idMessage={id_message}, "
+            f"reaction={reaction!r}): code={code!r}"
+            + (f", error={transport_error}" if transport_error is not None else "")
+        )
+        return False
+
+    return False  # pragma: no cover - loop always returns above
+
+
 def send_typing_indicator(bot: Any, chat_id: str, is_blocked: bool) -> None:
     """Feature 048 (reverted to single-call design 2026-08-13): best-effort typing
     indicator, fired at the start of DeniDin's turn for every non-blocked sender. Single
@@ -129,9 +174,118 @@ def send_typing_indicator(bot: Any, chat_id: str, is_blocked: bool) -> None:
         return
 
     try:
+        # 20000 is Green API's own hard cap ("'typingTime' must be between 1000 and
+        # 20000" - confirmed live 2026-09-13 when a bugfix attempt briefly raised this to
+        # 40000 and every single sendTyping call started failing outright with a 400).
+        # Do not raise this value - see start_typing_keepalive's interval_seconds/
+        # max_instances for how the renewal-loop gap problem is actually addressed
+        # instead (shortening the cadence, not lengthening this).
         bot.api.serviceMethods.sendTyping(chat_id, typingTime=20000)
     except Exception as error:  # pylint: disable=broad-except
         logger.warning(f"Failed to send typing indicator (chatId={chat_id}): {error}")
+
+
+def _typing_keepalive_job_id(chat_id: str, request_id: str) -> str:
+    """Unique per-turn job id - two overlapping turns on the same chat (shouldn't normally
+    happen, but must never collide) get independent renewal jobs."""
+    return f"typing-keepalive:{chat_id}:{request_id}"
+
+
+def start_typing_keepalive(
+    scheduler: Any,
+    bot: Any,
+    chat_id: str,
+    is_blocked: bool,
+    request_id: str,
+    *,
+    interval_seconds: int = 8,
+    max_duration_seconds: int = 180,
+) -> Optional[str]:
+    """Feature 080: renewal-loop keep-alive for the typing indicator, superseding
+    feature 048's single-call design (always active - the feature flag that used to gate
+    this has been removed, 2026-09-12, explicit operator instruction).
+
+    Unlike feature 048's reverted raw-thread renewer (see research.md R1 for the incident this
+    avoids), this schedules a job on the caller's already-running APScheduler
+    `BackgroundScheduler` - the same battle-tested primitive already used by
+    `reminder_delivery_service`/`accounting_reconciliation_service` in this codebase, with no
+    observed first-tick scheduling delay there. `next_run_time=now_local()` forces the first
+    `sendTyping` call to fire immediately rather than waiting a full `interval_seconds`.
+
+    Returns the scheduled job's id (to pass to `stop_typing_keepalive`), or None if `is_blocked`
+    (no job started - mirrors `send_typing_indicator`'s existing blocked-user skip). Never
+    raises - scheduling failures are logged and treated the same as "no keep-alive this turn",
+    since a missing indicator is purely cosmetic (identical posture to the single-call design).
+    """
+    if is_blocked:
+        return None
+
+    job_id = _typing_keepalive_job_id(chat_id, request_id)
+
+    def _tick() -> None:
+        try:
+            # 20000 is Green API's own hard cap ("'typingTime' must be between 1000 and
+            # 20000" - confirmed live 2026-09-13: a first bugfix attempt raised this to
+            # 40000 to outlast an observed gap between successful ticks, and every single
+            # sendTyping call started failing outright with a 400). The gap is instead
+            # closed on the cadence side - see interval_seconds/max_instances below.
+            bot.api.serviceMethods.sendTyping(chat_id, typingTime=20000)
+        except Exception as error:  # pylint: disable=broad-except
+            logger.warning(f"Typing keep-alive renewal failed (chatId={chat_id}): {error}")
+
+    try:
+        # Local import avoids a hard apscheduler dependency for any caller that never
+        # exercises the keep-alive path (mirrors this module's existing narrow import style).
+        from datetime import timedelta
+        from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
+        from src.utils.time_utils import now_local
+
+        scheduler.add_job(
+            _tick,
+            trigger=IntervalTrigger(seconds=interval_seconds),
+            id=job_id,
+            next_run_time=now_local(),
+            # Bugfix (2026-09-13): typingTime is capped at 20000ms by Green API itself
+            # (confirmed live - see _tick), so the gap-between-ticks problem can only be
+            # closed from the cadence side, not by lengthening the indicator's own
+            # duration. interval_seconds dropped 15 -> 8 (well under the 20s cap, so a
+            # single skipped/delayed tick still leaves a live indicator when the next one
+            # lands) and max_instances raised 1 -> 2 so one slow in-flight sendTyping call
+            # no longer blocks the next scheduled tick from firing at all (concurrent
+            # typing pings are harmless/idempotent - each just refreshes the same
+            # indicator, unlike a job with real side effects).
+            max_instances=2,
+            replace_existing=True,
+        )
+
+        def _cap() -> None:
+            stop_typing_keepalive(scheduler, job_id)
+
+        scheduler.add_job(
+            _cap,
+            trigger="date",
+            id=f"{job_id}:cap",
+            run_date=now_local() + timedelta(seconds=max_duration_seconds),
+            replace_existing=True,
+        )
+        return job_id
+    except Exception as error:  # pylint: disable=broad-except
+        logger.warning(f"Failed to start typing keep-alive (chatId={chat_id}): {error}")
+        return None
+
+
+def stop_typing_keepalive(scheduler: Any, job_id: Optional[str]) -> None:
+    """Cancels the renewal job (and its safety-cap job, if still pending). No-op if job_id is
+    None or already gone. Called the instant DeniDin's turn ends - a reply, interim
+    clarification, or approval prompt is sent - matching feature 048's Q4 "DeniDin's turn"
+    semantics exactly. Never raises."""
+    if job_id is None:
+        return
+    for jid in (job_id, f"{job_id}:cap"):
+        try:
+            scheduler.remove_job(jid)
+        except Exception:  # pylint: disable=broad-except
+            pass  # already gone (cap fired, or stop called twice) - not an error
 
 
 class DeniDinGreenAPIBot(GreenAPIBot):

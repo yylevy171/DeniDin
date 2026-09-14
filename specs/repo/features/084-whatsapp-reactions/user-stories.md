@@ -113,3 +113,26 @@
 2. **Given** a routine or trivial turn in a 1:1 chat (e.g., a simple acknowledgement or closing emoji),  
    **When** the AI generates its response,  
    **Then** the AI MUST NOT be forced to react if an emoji is unnecessary.
+
+---
+
+## Acceptance Approach (`billed`/`expensive`) — Human Decision (2026-09-12)
+
+Per METHODOLOGY.md §VI.a/§IV Phase -1, this section normally holds a fixed, human-approved list of
+`billed`/`expensive` acceptance scenarios. For this feature, an initial draft of 9 such scenarios
+was presented and reviewed — but the human operator explicitly redirected the approach instead:
+**reaction/emoji *choice* is a taste judgment, not something a fixed acceptance test should assert
+on.** Locking in one "correct" emoji per scenario would test the wrong thing and fight the model's
+own legitimate judgment.
+
+**What replaces it**: deterministic plumbing (tool wiring and RBAC attachment, the fast-path hook's
+dispatch placement, the group-ambient-silence hard gate, the `message_id` resolution fallback
+chain, flip-not-stack targeting correctness) is still covered by ordinary hard-assertion
+unit/integration tests, unchanged. Reaction *judgment quality* — which emoji, whether to react at
+all — is instead tuned through an iterative, AI-run capture-and-review loop, performed by the
+agent itself (not a human watching WhatsApp), covering both billed and, eventually, expensive
+(real vision/document) scenarios. Full mechanism: `contracts/reaction-judgment-tuning.md`.
+
+This satisfies Phase -1's intent (the human and the AI aligning on the actual approach and
+observable outcome before/alongside technical design) via this explicit decision, rather than via
+a fixed scenario list.

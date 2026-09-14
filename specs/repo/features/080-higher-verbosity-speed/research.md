@@ -83,12 +83,29 @@ file, per existing code) — timing instrumentation follows the same "explicit c
 existing boundary" shape, consistent with the no-monkey-patching rule, rather than wrapping the
 OpenAI client itself.
 
+**Revised during implementation (2026-09-12)**: threading an explicit `TelemetryBuilder`
+parameter through every internal call site turned out to be far higher-risk than estimated at
+planning time — `ai_handler.py` is 4189 lines with deeply nested, sometimes-recursive
+tool-call-follow-up helpers, and rewriting all their signatures risked introducing subtle bugs
+in the app's largest, most critical file for comparatively little benefit. **Switched to a
+`contextvars.ContextVar[Optional[TelemetryBuilder]]`, set once at the top of
+`get_response()`** (via `.set()`/`.reset()` in a `try`/`finally`, guaranteeing cleanup even on
+an exception) and read by each instrumented call site via `.get()`. This is NOT the "ambient
+global state" this section originally rejected: this codebase processes each request
+synchronously on its own thread (no asyncio anywhere in the request path), and `contextvars`
+context is thread-local by default (a `.set()` on one thread is invisible to another) — so
+per-request isolation across concurrent chats is preserved exactly as intended, just via a
+mechanism that adds one small context-manager helper instead of dozens of signature changes.
+
 **Alternatives considered**:
 - Monkey-patch/wrap the OpenAI client globally to auto-time every call — rejected outright,
   forbidden by CONSTITUTION's no-monkey-patching rule.
-- A thread-local/global telemetry accumulator instead of explicit threading through the call
-  chain — rejected: `AIHandler` already serves concurrent chats: correctness requires the
-  telemetry object be scoped to the single in-flight request, not ambient global state.
+- Explicit parameter-threading through every internal call site (the original R3 decision) —
+  superseded per the above: correct in principle, but a much larger and riskier diff than the
+  `contextvars` approach for the same correctness guarantee, once the actual file size/call
+  graph was seen during implementation.
+- A genuinely global (non-contextvar) mutable accumulator — still rejected: that really would
+  leak across concurrent chats on different threads, unlike a `ContextVar`.
 
 ## R4: `runtime_constitution.md` directive shape (REQ-080-02)
 

@@ -7,6 +7,22 @@ Read and follow @.claude/personalities/<basename of current working directory>.m
 The original/top-level clone (directory name `DeniDin`) maps to `root` instead of `DeniDin`.
 If no matching file exists, use @.claude/personalities/default.md
 
+## ⚠️ `.vscode/settings.json` has the `skip-worktree` bit set — branch switches can fail confusingly
+
+Each clone's `.vscode/settings.json` carries a clone-specific line (e.g. `window.title` naming
+this clone's personality) that is deliberately *not* meant to be committed/synced across
+branches, so it has `git update-index --skip-worktree` set on it (confirm with
+`git ls-files -v .vscode/settings.json` — a leading `S` means skip-worktree is on). This makes
+`git status`/`git diff` report the file as clean **even though it differs from HEAD**, but
+`git checkout <branch>`/`git stash` will still refuse the switch with `Your local changes to
+the following files would be overwritten by checkout` — `git diff`/`git stash` show nothing to
+stash because skip-worktree hides the file from them too, so the usual "stash it" fix silently
+no-ops and the real cause looks invisible. **Don't waste time re-diagnosing this** — when a
+branch switch fails naming `.vscode/settings.json` specifically, just force past it directly:
+`git checkout -f <branch>` (or `git checkout <branch> -- . ':!.vscode/settings.json'` first,
+then plain `git checkout <branch>`), then restore this clone's own `window.title` line in
+`.vscode/settings.json` afterward if it got clobbered.
+
 ## 🚨 CONFINED TO YOUR OWN CLONE — NO EXCEPTIONS 🚨
 
 **You are confined to the files and folders inside your own clone's directory
