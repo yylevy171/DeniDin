@@ -507,14 +507,23 @@ def test_something():
 
 ## VI. Feature Flags for Safe Deployment
 
-**Principle**: New features deployed behind feature flags to enable safe rollouts.
+**Principle**: A feature flag is a tool for a specific risk (a risky rollout, a needed rollback
+path, incremental delivery of a large refactor) — not a default every new feature must carry.
 
-**Requirements**:
-- New features MUST be configurable via feature flags (default: disabled)
-- Feature flags in `config.json` under `feature_flags` dictionary
-- Code MUST check feature flag state before executing new functionality
-- Document feature flags and their purpose
-- Remove feature flags after feature is stable
+**Requirements (revised 2026-09-14, explicit human decision — flags are opt-in per feature, not
+mandatory)**:
+- An AI agent MUST NOT unilaterally decide a new feature needs a feature flag. **Ask the human
+  whether this specific piece of work should be flag-gated** — same "ask, don't default" posture
+  as every other judgment call this document and CLAUDE.md require explicit human sign-off on.
+  Reasonable prompts to raise it: a large structural refactor with real regression risk, a change
+  to `prod`-facing behavior with no other rollback path, or the human simply asking for one.
+- If the human says yes: feature flags live in `config.json` under `feature_flags` (default:
+  disabled), code MUST check flag state before executing the new path, the flag and its purpose
+  MUST be documented, and it MUST be removed once the feature is stable (an old flag left forever
+  is technical debt, not safety).
+- If the human says no (or doesn't ask for one): ship the change directly, with the
+  zero-regression bar (existing tests, spec's own acceptance criteria) as the actual safety net —
+  do not add a flag "just in case" as an unrequested extra layer.
 
 **Example**:
 ```python
