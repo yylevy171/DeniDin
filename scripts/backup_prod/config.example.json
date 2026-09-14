@@ -2,10 +2,9 @@
   "data_dir": "/absolute/path/to/prod/data",
   "config_dir": "/absolute/path/to/prod/config",
   "logs_prod_dir": "/absolute/path/to/prod/logs/prod",
-  "daily_backup_dir": "/absolute/path/to/denidin daily backups",
-  "monthly_backup_dir": "/absolute/path/to/denidin monthly backups",
-  "roll_marker_db_relpath": "memory_rolls/roll_markers.db",
-  "mac_daily_backup_dir": "/absolute/path/to/mac/denidin daily backups",
-  "mac_monthly_backup_dir": "/absolute/path/to/mac/denidin monthly backups",
+  "daily_backup_dir": "/absolute/path/to/denidin-backups/daily",
+  "monthly_backup_dir": "/absolute/path/to/denidin-backups/monthly",
+  "mac_daily_backup_dir": "/absolute/path/to/mac/denidin-backups/daily",
+  "mac_monthly_backup_dir": "/absolute/path/to/mac/denidin-backups/monthly",
   "ssh_host_alias": "denidin-winprod"
 }

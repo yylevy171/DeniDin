@@ -274,14 +274,16 @@ archives spanning >36 months and confirm only the too-old ones purge.
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T020 [P] Register `scripts/backup_prod/register_backup_schedule.sh` (Windows Scheduled Task
-  via `schtasks.exe`/WSL2 for prod; Darwin LaunchAgent for local dev-box testing only) — mirrors
-  `scripts/health_monitoring/register_prober_schedule.sh`'s `enable|disable|trigger-once`
-  interface exactly, per research.md R1 (no automated coverage on the `schtasks.exe` branch, same
-  documented gap as its sibling — Darwin branch gets real `launchctl` tests, matching
-  `test_env_scripts.py`'s existing precedent)
-- [ ] T021 [P] Register the Mac-side pull LaunchAgent (`com.denidin.backuppull.plist` or similar,
-  same `launchctl load`/`unload` shape as `scripts/windows_prod/install_persistent_mount.sh`)
+- [x] T020 [P] `scripts/backup_prod/register_backup_schedule.sh` (role-gated: `run` = Windows
+  Scheduled Task via `schtasks.exe`/WSL2, Linux-only; `pull` = Darwin LaunchAgent, Mac-only) —
+  mirrors `scripts/health_monitoring/register_prober_schedule.sh`'s `enable|disable|trigger-once`
+  interface, per research.md R1. Darwin/`pull` branch has real `launchctl` test coverage
+  (`test_register_backup_schedule.py`, 6 tests); Linux/`schtasks.exe` branch has no automated
+  coverage, same documented gap as its sibling. **Script written and tested; not yet registered
+  against the real Windows box (needs explicit approval, tasks.md's own manual gates below).**
+- [x] T021 [P] Mac-side pull LaunchAgent is the same `register_backup_schedule.sh pull` role
+  (hourly `StartInterval`, per 2026-09-14 decision) — no separate script needed, folded into T020.
+  **Not yet registered against the real Mac (needs explicit approval).**
 - [ ] T022 [P] Add `scripts/backup_prod/README.md` cross-referencing `quickstart.md` and this
   `tasks.md`, for anyone landing in this directory without full spec context
 - [ ] T023 Update root `CLAUDE.md` "Repository Layout"/environments sections with a short pointer
