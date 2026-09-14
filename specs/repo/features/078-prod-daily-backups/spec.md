@@ -1,90 +1,33 @@
-# Feature Specification: Automated Daily Prod Backups — full state (data, logs, config, shared)
+# Feature Specification: Automated Daily Prod Backups
 
-**Feature Branch**: `feature/078-prod-daily-backups`
-**Created**: 2026-09-06
-**Status**: DRAFT — problem statement only. Needs the full `speckit.specify` → `speckit.clarify`
-→ `speckit.plan` → `speckit.tasks` pipeline before any implementation.
-**Input**: User request 2026-09-06, immediately after a partial prod outage (Green API de-auth +
-`morning-mcp-app-prod` watchdog self-termination + manual container recovery) and while staging
-the Feature 070 prod migration, which relies entirely on ad-hoc `cp -r` / `rsync` backups taken
-by hand at migration time. There is **no standing backup of prod**. A disk failure, a bad
-deploy, a botched migration, or accidental deletion would be unrecoverable.
+**Feature Branch**: `feature/setup-073-and-078` (Targeting 078 scope)
+**Status**: DRAFT
+**Input**: CEO requirement for a zero-downtime daily backup of the entire production data folder at 03:00 AM, stored locally on the Windows server and pulled/pushed to the Mac.
 
 ---
 
-## Why this is needed
+## 1. Business & Operational Goals
 
-- **Zero-incident is the project standard** (CLAUDE.md). A standing, automated, verified backup
-  is table stakes for that claim and is currently missing.
-- **Prod lives on a single Windows laptop** (Feature 035) with a single local disk. No RAID, no
-  replication. One hardware failure = total loss of every session, ledger event, memory
-  embedding, reminder, and media file.
-- **Every risky operation today assumes a hand-made backup.** The Feature 070 migration runbook,
-  the 2026-09-06 bleed-stopgap (marking 90 sessions), any future `deploy_release.sh` to prod —
-  each one currently depends on the operator remembering to `cp -r` first. That is fragile and
-  was nearly skipped during the 2026-09-06 incident.
-- **Restore has never been tested.** Per the 2026-08-25 reboot-recovery incident lesson
-  ("verified end-to-end, not just 'the process ran'"), a backup that has never been restored is
-  not a backup.
+DeniDin's production state (ChromaDB memory, ledger events, sessions, media, and reminders) lives on a single Windows machine. Currently, there is no automated backup. A hardware failure, accidental deletion, or a botched migration would result in an unrecoverable catastrophic loss of business data. 
 
-## What must be backed up (to be finalised in `speckit.clarify`)
+**The Goal**: Establish a rock-solid, automated daily backup pipeline that captures the entire `data/` folder, configuration, and logs, compressing them into a secure snapshot (`.tgz`). This pipeline must operate completely externally to the core DeniDin application without causing any downtime.
 
-| source | contents | notes |
-|---|---|---|
-| `denidin-app-prod` `data/` | `sessions/`, `events/` (ledger), `memory/` (ChromaDB — the 256 MB `chroma.sqlite3` + segments), `media/`, `reminders/reminders.db`, `accounting_reconciliation/` | the irreplaceable state; ChromaDB may need a consistent snapshot (see open questions) |
-| container logs | `logs/prod/` for both apps | for post-incident forensics — the 2026-09-06 root-cause work depended on `docker logs` that would have rolled off |
-| config + credentials | `config/config.prod.json` (both apps), `creds/DeniDin Prod Creds.txt` | secrets — backup destination must be access-controlled / encrypted |
-| shared state | `shared/active_env.json`, `shared/mcp-status-prod/` | small, but part of a coherent restore |
-| Docker images | the running `:latest` tags | **probably out of scope** — cut releases already live in `/Users/yaron/Projects/DeniDin/artifacts/`; a restore redeploys from there |
+---
 
-## Open questions for `speckit.clarify`
+## 2. PM Requirements (Functional)
 
-1. **Destination(s).** Options: pull nightly to the Mac (`~/denidin-backups/`, mirrors the
-   existing `~/denidin-winprod-data` mount + `~/denidin-migration/` patterns); an external drive
-   on the Windows box; a cloud object store (adds a new credential + network dependency +
-   encryption question). One destination or two (local fast + offsite)?
-2. **Trigger + schedule.** Cron/Task Scheduler on the Windows box, or a LaunchAgent on the Mac
-   (like `com.denidin.winprod-mount.plist`)? Daily at what hour (must not collide with the 02:00
-   Feature 070 roll or the hourly reconciliation sweep)? Plus an **on-demand** invocation the
-   migration/deploy runbooks call as their step 3a.
-3. **Retention.** Grandfather-father-son (e.g. 14 daily + 8 weekly + 6 monthly), or flat N-day?
-   Disk budget on the destination.
-4. **Consistency.** ChromaDB / SQLite files while `denidin-app-prod` is running — is an online
-   `rsync` acceptable (SQLite WAL), or does the backup need a brief `docker pause` / stop? The
-   Feature 070 migration already stops prod; a nightly backup should not.
-5. **Encryption at rest.** The config/creds files contain live production secrets. Age/gpg?
-   Or exclude creds and document that they are restored by hand from a password manager?
-6. **Integrity + restore verification.** Per-file checksums; a periodic automated restore into a
-   throwaway location that boots `denidin-app` against it and confirms a real turn works.
-7. **Failure alerting.** A silent backup failure is as bad as no backup. Ties into
-   `specs/backlog/028-monitoring-and-alerting`.
-8. **Reachability.** The Mac is only connected to the Windows box over Tailscale when home. A
-   Mac-pull design must tolerate the Mac being away/asleep and catch up, and must alert if N
-   consecutive nights are missed.
+- **REQ-078-01 (Scope)**: The backup MUST capture the entire `data/` folder, `logs/prod/`, and the `config/` directory.
+- **REQ-078-02 (Zero Downtime / Hot Backup)**: The backup MUST execute on a live production system. The application containers MUST NOT be paused or stopped. (Engineers must ensure database consistency for SQLite/ChromaDB during a hot backup).
+- **REQ-078-03 (Format & Architecture)**: The backup process MUST be external to the app container. It must compress the target folders into a single `.tgz` archive with a timestamped filename.
+- **REQ-078-04 (Dual Destination)**: 
+  - Destination A: A dedicated local folder on the Windows host machine (outside the Docker container).
+  - Destination B: A dedicated folder on the Mac.
+- **REQ-078-05 (Schedule)**: The backup MUST trigger daily at exactly **03:00 AM Israel time**, ensuring it runs *after* the Feature 070 (rolling memory) process completes at 02:00 AM.
+- **REQ-078-06 (Retention Policy)**: Retain the backups for **365 days** on both the Windows box and the Mac. The system should automatically purge `.tgz` archives older than 1 year to manage disk space.
 
-## Non-goals
+---
 
-- Real-time replication, HA, or automatic failover.
-- Point-in-time / transaction-log recovery for ChromaDB or SQLite.
-- Backing up the dev or test environments (dev data is already a cross-clone singleton on the
-  Mac; test data is ephemeral).
-- Replacing `cut_release.sh`'s image artifacts as the source of truth for deployable code.
-
-## Constraints (CLAUDE.md / CONSTITUTION.md)
-
-- No environment variables — any config for the backup job comes from a config file.
-- Israel local time (`now_local()`), timezone-aware timestamps in backup folder names.
-- `pathlib.Path`, not string paths.
-- If any Python is involved it follows the same lint/type/test gates; if it is pure shell it
-  lives under `scripts/` (an "external helper script", like `run_all.sh` / the watchdogs — not
-  inside `apps/*/src`), per the watchdog/scripts boundary.
-- Restore procedure must be a written, **tested** runbook, not just "rsync it back".
-
-## Relationship to other features
-
-- **Feature 035** (Windows always-on prod) — this extends its operational tooling under
-  `scripts/windows_prod/`.
-- **Feature 028** (monitoring & alerting, backlog) — backup-failure alerts belong to whatever
-  alerting channel 028 establishes.
-- **Feature 070** (rolling memory window) — its migration runbook should call this feature's
-  on-demand backup as its pre-flight step once this ships, replacing the hand-written `cp -r`.
+## 3. Success Criteria
+- **SC-001**: A valid `.tgz` is successfully generated daily at 03:00 AM without any interruption to the live bot.
+- **SC-002**: A manual restore test proves that the backup archive is fully consistent (no SQLite corruption) and can successfully boot a replica environment.
+- **SC-003**: The Mac successfully receives its copy of the backup every night.
