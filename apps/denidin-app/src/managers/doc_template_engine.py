@@ -279,7 +279,10 @@ class DocTemplateEngine:
         # real firm's own agreements (2026-09-14 fix, diffed against actual
         # signed examples): title is bold+underlined at NORMAL size (not
         # oversized display text), and the identity line is THREE separate
-        # lines (party / "לבין" centered / firm), not one merged sentence -
+        # lines (party / "לבין" / firm), all right-aligned like every other
+        # line in the document (2026-09-14 fix: "לבין" was previously
+        # centered, inconsistent with the rest of the header) - not one
+        # merged sentence -
         # compact by design since this must still fit on one page. --
         _insert(self._build_rtl_paragraph(
             self._TITLE_TEXT, bold=True, underline=True, center=True, space_after=80
@@ -288,7 +291,7 @@ class DocTemplateEngine:
         _insert(self._build_rtl_paragraph(
             f"בין {client_name} (להלן – הלקוח)", space_after=0
         ))
-        _insert(self._build_rtl_paragraph("לבין", center=True, space_after=0))
+        _insert(self._build_rtl_paragraph("לבין", space_after=0))
         _insert(self._build_rtl_paragraph(
             f'{self.FIRM_LAWYER_NAME} (להלן – עוה"ד)', space_after=160
         ))

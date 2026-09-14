@@ -352,6 +352,41 @@ class TestRenderFreeTextDocxFormatEssentials:
                 f"paragraph lineRule is not 'auto': {para.text!r}"
             )
 
+    @pytest.mark.parametrize(
+        "variant_id", ["hourly_consultation", "multi_component_agreement", "alternative_tracks"]
+    )
+    def test_header_block_alignment(self, engine, variant_id):
+        """2026-09-14 fix: the "לבין" line (between the client and the firm
+        in the code-injected header) was previously centered, inconsistent
+        with the party/firm lines around it and with the rest of the
+        document. The ONLY centered paragraph in the whole document must be
+        the title itself - "לבין" and every other header line render
+        right-aligned like the rest of the document."""
+        doc = engine.render_free_text(variant_id, self.CLIENT_NAME, self.SAMPLE_BODY)
+        docx_obj = DocxDocument(str(doc.temp_path))
+        lavein_paragraphs = [p for p in docx_obj.paragraphs if p.text.strip() == "לבין"]
+        assert lavein_paragraphs, "expected a \"לבין\" header line"
+        for para in lavein_paragraphs:
+            pPr = para._p.find(qn('w:pPr'))
+            jc = pPr.find(qn('w:jc')) if pPr is not None else None
+            assert jc is not None and jc.get(qn('w:val')) == 'right', (
+                f"\"לבין\" line is not right-aligned (jc="
+                f"{jc.get(qn('w:val')) if jc is not None else None!r})"
+            )
+
+        title_paragraphs = [p for p in docx_obj.paragraphs if p.text.strip() == engine._TITLE_TEXT]
+        assert title_paragraphs, "expected the document title"
+        centered = [
+            p for p in docx_obj.paragraphs if p.text.strip()
+            and (p._p.find(qn('w:pPr')) is not None)
+            and (p._p.find(qn('w:pPr')).find(qn('w:jc')) is not None)
+            and p._p.find(qn('w:pPr')).find(qn('w:jc')).get(qn('w:val')) == 'center'
+        ]
+        assert [p.text.strip() for p in centered] == [engine._TITLE_TEXT], (
+            f"expected ONLY the title to be centered, got: "
+            f"{[p.text.strip() for p in centered]!r}"
+        )
+
     def test_body_text_lines_appear_verbatim_and_in_order(self, engine):
         """The AI's own substantive lines must appear, verbatim and in
         order, somewhere inside the full paragraph list - sandwiched between

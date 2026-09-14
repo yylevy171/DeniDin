@@ -293,6 +293,21 @@ class TestFeeAgreementGenerationFlow:
                 f"{spacing.get(qn('w:line'))!r}, expected '360'): {para.text!r}"
             )
 
+        # Only the document title may be centered (2026-09-14 fix: "לבין" -
+        # the line between the client and the firm in the code-injected
+        # header - was previously centered, inconsistent with the
+        # party/firm lines around it and the rest of the document).
+        centered_texts = [
+            p.text.strip() for p in doc.paragraphs
+            if p.text.strip()
+            and p._p.find(qn('w:pPr')) is not None
+            and p._p.find(qn('w:pPr')).find(qn('w:jc')) is not None
+            and p._p.find(qn('w:pPr')).find(qn('w:jc')).get(qn('w:val')) == 'center'
+        ]
+        assert centered_texts == ["הסכם שכר טרחה"], (
+            f"expected ONLY the title to be centered, got: {centered_texts!r}"
+        )
+
     @staticmethod
     def _assert_ai_authored_essentials(text, expected_client_name):
         """(2)+(3a) The AI's own authored content must still carry the essentials a
