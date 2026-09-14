@@ -61,12 +61,12 @@ A critical risk of a transparent cache is returning a client ID that was recentl
 - **Shared or per-environment** — dev and prod have separate Morning accounts (2026-08-03
   decision), cache partitioning must respect this.
 
-## Alternative Architecture Research: "LLM Context Caching"
-The CEO raised an alternative approach: What if we expose a `get_all_clients` MCP tool? The AI could call this tool once (e.g., in the morning or on session start), retrieve the entire list of clients and IDs, and effectively *cache the data in its own context window*.
-- **The Theory**: By having the IDs in the prompt/context, the AI would *never* need to call a resolution tool, eliminating the tool-turn entirely (Zero-Turn resolution).
-- **The Challenge**: Production environments have hundreds of clients. Injecting 500+ names and IDs into the context window for *every single message* increases the network payload size sent from DeniDin to OpenAI.
-- **The Solution (OpenAI Prompt Caching)**: Since DeniDin is backed by OpenAI, we can leverage OpenAI's automatic **Prompt Caching**. If DeniDin injects the massive list of clients at the exact same static position (e.g., the top of the `system` prompt) in every request, OpenAI automatically caches the prefix. While DeniDin must still send the raw bytes over the network every turn, OpenAI will serve the cached tokens at a 50% discount and significantly reduce inference latency.
-- **Engineering Task**: Before finalizing the Transparent MCP Cache (Option A), the engineers MUST research and benchmark this "LLM Context Caching" approach using OpenAI's Prompt Caching. They must prove whether sending a larger network payload to trigger OpenAI Prompt Caching is actually faster/cheaper in production than a 50ms MCP tool-call hop.
+## Future Optimization Research: "LLM Context Caching Add-On"
+While the **Transparent MCP Cache** is the core MVP architecture for this feature, the CEO has requested parallel research into an additional optimization layer: "LLM Context Caching". 
+- **The Concept**: Expose a `get_all_clients` MCP tool that the AI can call at session start to inject the full client list into its context window, achieving a "Zero-Turn" resolution (the AI wouldn't even need to call `resolve_client_name` because it already knows the IDs).
+- **The Challenge**: Injecting 500+ clients into a stateful Responses API thread raises complex questions around Cache Invalidation (how to update the AI's state when a new client is added mid-session) and Token TTL.
+- **Engineering Research Task**: The engineers MUST research how other teams handle mutable state and dynamic dataset injection with OpenAI's Responses API & Prompt Caching. 
+- **Not a Blocker**: This model-cache is an *add-on optimization*, not a replacement. The Transparent MCP Cache must be built and shipped regardless of this research outcome.
 
 ## Scope Notes
 
