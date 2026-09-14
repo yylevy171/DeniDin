@@ -38,3 +38,5 @@ See **`user-stories.md`** for full Given-When-Then criteria.
 ### Measurable Outcomes
 - **SC-001**: OpenAI API costs and latency remain stable (proving Prompt Caching still works).
 - **SC-002**: 100% of existing unit and integration tests pass without modification.
+
+**OBSOLETE**: Folded into 063-refactor-oversized-handlers
