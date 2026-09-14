@@ -70,10 +70,24 @@ def _build_extractor(media_type: str, context_shim: "_ExtractorContextShim"):
 
 def extract(orchestrator, request, accumulated_context: str, note: str,
             turn_context: Dict[str, Any]) -> str:
-    """Media Analysis step: dispatches to the right unmodified extractor by MIME
-    type (same dispatch `MediaHandler` uses today), returns the extracted text +
-    document analysis as this step's output for the plan's following steps to use."""
+    """Media Analysis step: returns the extracted text + document analysis as this
+    step's output for the plan's following steps to use.
+
+    media_extraction (2026-09-14): when denidin.py has already run the real
+    extraction up front (the normal case now - see orchestrator.get_response's own
+    docstring), this step is a pass-through, formatting the already-computed
+    result rather than paying for a second real vision/AI call on the same media.
+    Falls back to the original "dispatch to the right unmodified extractor"
+    behavior only when turn_context carries raw `media`/`media_type` instead (unit
+    tests, or a future caller that hasn't front-loaded extraction) - same dispatch
+    `MediaHandler` uses today, via the unmodified extractor classes."""
     del accumulated_context, note
+    media_extraction = turn_context.get("media_extraction")
+    if media_extraction:
+        extracted_text = media_extraction.get("extracted_text", "")
+        analysis = media_extraction.get("document_analysis", {})
+        return f"Extracted text: {extracted_text}\n\nDocument analysis: {analysis}"
+
     media = turn_context.get("media")
     media_type = turn_context.get("media_type")
     if media is None or media_type is None:

@@ -12,7 +12,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from src.backbone.capability_tags import CapabilityTag, capability_catalog_text, is_valid_domain_capability
+from src.backbone.capability_tags import CapabilityTag, is_valid_domain_capability
 from src.models.user import Role
 
 logger = logging.getLogger(__name__)
@@ -114,17 +114,25 @@ def fail_open_plan(allowed_tags: List[CapabilityTag]) -> Plan:
 
 
 def build_plan(orchestrator, request, intent_text: str, allowed_tags: List[CapabilityTag]) -> Plan:
-    """The actual Planning step: one followup OpenAI call (Backbone + planning.md's
-    prompt + Intent Identification's output + available_capabilities_for_planning),
-    parsed into a `Plan`. Fails open (see `fail_open_plan`) on any error."""
+    """The actual Planning step: one followup OpenAI call (Backbone - now including
+    the full capability catalog as a static section, 2026-09-14, see
+    orchestrator.build_instructions - + planning.md's prompt + Intent
+    Identification's output + this role's own allowed tag names), parsed into a
+    `Plan`. Fails open (see `fail_open_plan`) on any error.
+
+    allowed_tags is still passed as a short, role-filtered list of bare tag names
+    here (not full descriptions - those are already in the Backbone's own static
+    catalog every call carries) - this is Planning's actual RBAC-narrowing input:
+    "which of these already-described domains can THIS role's plan actually use
+    this turn," not a re-description of what each one means."""
     try:
         raw_text = orchestrator.call_capability_step(
             tag=CapabilityTag.PLANNING,
             request=request,
             accumulated_context=(
                 f"Intent Identification determined: {intent_text}\n\n"
-                f"Capabilities available to this role (tag: description):\n"
-                f"{capability_catalog_text(allowed_tags)}\n\n"
+                f"Capabilities available to this role this turn: "
+                f"{', '.join(t.value for t in allowed_tags)}\n\n"
                 "Respond with a JSON object: {\"steps\": [{\"capability\": <tag>, \"note\": <str>}, ...]} "
                 "(steps may be empty)."
             ),

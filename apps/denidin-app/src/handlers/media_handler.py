@@ -290,6 +290,14 @@ class MediaHandler:
                 # synthetic conversational turn instead of sending `summary`.
                 "ledger_stash": ledger_stash,
                 "ledger_stash_source_type": ledger_stash_source_type,
+                # Feature 063 (2026-09-14): the Backbone orchestrator's own reply
+                # comes from its own reasoning (Intent -> Planning -> capability
+                # steps) over this SAME extraction, rather than the plain `summary`
+                # above - so the raw extraction is exposed here too, not just the
+                # already-composed legacy summary. Unused by the flag-off caller.
+                "extracted_text": extracted_text,
+                "document_analysis": analysis_result.get("document_analysis") or {},
+                "media_type": media_type,
             }
             
         except ValueError as e:

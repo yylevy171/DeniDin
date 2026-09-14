@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from src.backbone.capability_tags import CapabilityTag
+from src.backbone.capability_tags import CapabilityTag, DOMAIN_CAPABILITY_TAGS, capability_catalog_text
 from src.backbone.intent_identification import identify_intent
 from src.backbone.planning import Plan, build_plan, role_allowed_capabilities
 from src.models.config import AppConfiguration
@@ -41,13 +41,20 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                  reminder_manager: Optional[Any] = None,
                  ledger_event_manager: Optional[Any] = None,
                  pending_local_tool_approval_manager: Optional[Any] = None,
-                 morning_mcp_locator: Optional[Any] = None):
+                 morning_mcp_locator: Optional[Any] = None,
+                 session_manager: Optional[Any] = None):
         self.client = ai_client
         self.config = config
         self.reminder_manager = reminder_manager
         self.ledger_event_manager = ledger_event_manager
         self.pending_local_tool_approval_manager = pending_local_tool_approval_manager
         self.morning_mcp_locator = morning_mcp_locator
+        # session_manager: the SAME SessionManager instance AIHandler already uses
+        # (REQ-063-03) - gives every step this turn real conversation history via
+        # get_rolling_window, same shape/source the legacy path has always used.
+        # None is tolerated (unit tests, or a misconfigured process) - a turn just
+        # runs with no history rather than crashing.
+        self.session_manager = session_manager
 
         backbone_config = dict(_DEFAULT_BACKBONE_CONFIG)
         backbone_config.update(config.backbone_config or {})
@@ -57,6 +64,17 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         self._backbone_mtime: Optional[float] = None
         self._capability_content: Dict[str, str] = {}
         self._capability_mtimes: Dict[str, float] = {}
+        self._user_memory_content: str = ""
+        self._user_memory_mtime: Optional[float] = None
+
+        # Set once per get_response() call, read by call_capability_step() for
+        # every step within that SAME turn (2026-09-14). Deliberately a plain
+        # instance attribute, not threaded as an explicit parameter through
+        # every one of the ~6 call sites across src/capabilities/* + planning.py
+        # - this process handles one webhook turn at a time (same assumption
+        # AIHandler.own_whatsapp_number already makes), so there is no real
+        # concurrent-turn clobbering risk in practice.
+        self._turn_conversation_history: List[Dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # Prompt loading/caching (contracts/prompt-assembly.md)
@@ -85,6 +103,23 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             self._backbone_content = backbone_path.read_text(encoding="utf-8")
             self._backbone_mtime = mtime
         return self._backbone_content
+
+    def load_user_memory(self) -> str:
+        """Loads config/prompts/user_memory.md (2026-09-14, forward-looking
+        placeholder - empty content today, no user-defined-memory feature exists
+        yet). Same mtime-cache pattern as load_backbone; a missing file is
+        tolerated the same way (empty string, WARNING logged) rather than
+        treated as an error - this section is optional by design."""
+        memory_path = self._prompts_dir() / "user_memory.md"
+        try:
+            mtime = memory_path.stat().st_mtime
+        except FileNotFoundError:
+            return self._user_memory_content or ""
+
+        if self._user_memory_mtime is None or mtime != self._user_memory_mtime:
+            self._user_memory_content = memory_path.read_text(encoding="utf-8")
+            self._user_memory_mtime = mtime
+        return self._user_memory_content
 
     def load_capability_prompt(self, tag: CapabilityTag) -> str:
         """Independent mtime cache per capability tag. Missing file: log WARNING,
@@ -117,9 +152,20 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         date - same billed test caught it here too).
         """
         now = local_from_timestamp(today_timestamp) if today_timestamp else now_local()
+        # Capability catalog (2026-09-14): every domain capability's name +
+        # one-line description, authored once in capability_tags.py, rendered
+        # here so it's part of the same stable instructions prefix every call
+        # already shares - not injected per-call by Intent Identification/
+        # Planning individually. Godfather/Admin-only scope for now (client role
+        # RBAC narrowing is deferred - see role_allowed_capabilities), so the
+        # full catalog is always shown unconditionally; parse_plan still drops
+        # any step naming a capability this role isn't allowed, unchanged.
+        catalog = capability_catalog_text(list(DOMAIN_CAPABILITY_TAGS))
         parts = [
             self.load_backbone(),
+            f"## Capabilities\n\n{catalog}" if catalog else "",
             self.load_capability_prompt(active_tag),
+            self.load_user_memory(),
         ]
         if accumulated_context:
             parts.append(accumulated_context)
@@ -144,10 +190,17 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         capability's prompt+tools + accumulated context (R3's single-active-capability
         property). Returns the response's plain text output."""
         instructions = self.build_instructions(tag, accumulated_context, request.timestamp)
+        # self._turn_conversation_history (2026-09-14): the rolling window computed
+        # ONCE in get_response() for this turn, prepended before the current
+        # message - same shape/order AIHandler._call_openai_api already uses
+        # (oldest-first history, then the current turn), given to every step this
+        # turn makes, not just the first.
+        input_items = list(self._turn_conversation_history)
+        input_items.append({"role": "user", "content": request.user_prompt})
         kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": instructions,
-            "input": [{"role": "user", "content": request.user_prompt}],
+            "input": input_items,
             "max_output_tokens": request.max_tokens,
         }
         if tools:
@@ -175,10 +228,18 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             is_group: bool = False, chat_name: Optional[str] = None,
             sender_phone: Optional[str] = None,
             progress_callback: Optional[Callable[[str], None]] = None,
-            is_media: bool = False) -> AIResponse:
+            is_media: bool = False,
+            media_extraction: Optional[Dict[str, Any]] = None) -> AIResponse:
         """The orchestrator's entry point — same shape `AIHandler.get_response` already
         exposes, so denidin.py's calling code is unaffected by which implementation
-        produced the returned AIResponse (REQ-063-07)."""
+        produced the returned AIResponse (REQ-063-07).
+
+        media_extraction (2026-09-14): the ALREADY-computed extraction result
+        (extracted_text/document_analysis/media_type) for a media turn - denidin.py
+        runs the real, unmodified MediaHandler pipeline (download/extract/save/
+        session-persist/ledger-stash-detect, REQ-063-03) before this call, not
+        inside the plan, so this is real content, not a stub. None for a text turn.
+        """
         del sender, recipient, is_group, chat_name, progress_callback
 
         role = self._resolve_role(user_role)
@@ -188,7 +249,18 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             "user_phone": user_phone or sender_phone,
             "chat_id": effective_chat_id,
             "sender_phone": sender_phone,
+            "media_extraction": media_extraction,
         }
+
+        # Conversation history (2026-09-14): the SAME rolling-window shape/source
+        # AIHandler._call_openai_api already uses (SessionManager.get_rolling_window,
+        # oldest-first, role-token-capped) - godfather/admin-only scope for now
+        # (explicit decision - client role isn't exercised through this orchestrator
+        # yet), so the token cap always uses the godfather/admin limit. Set once here,
+        # read by call_capability_step for every step this turn makes (see that
+        # method's own docstring for why this is a plain instance attribute rather
+        # than threaded through every call site).
+        self._turn_conversation_history = self._load_conversation_history(effective_chat_id)
 
         # Feature 063: a typed "כן"/"לא" reply resolves a pending reminders_write
         # local-tool approval BEFORE Intent Identification/Planning run at all -
@@ -212,7 +284,9 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # it answered the user's question itself, incorrectly, having no way to know a
         # ledger lookup tool existed to route to instead).
         allowed_tags = role_allowed_capabilities(role)
-        intent_text = identify_intent(self, request, allowed_tags, is_media=is_media)
+        intent_text = identify_intent(
+            self, request, allowed_tags, is_media=is_media, media_extraction=media_extraction,
+        )
 
         # Step 2: Planning
         plan = build_plan(self, request, intent_text, allowed_tags)
@@ -335,6 +409,29 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             return Role(user_role.upper())
         except ValueError:
             return Role.CLIENT
+
+    def _load_conversation_history(self, chat_id: Optional[str]) -> List[Dict[str, Any]]:
+        """Same source/shape as AIHandler._call_openai_api's own conversation_history
+        (SessionManager.get_rolling_window - oldest-first {"role", "content"} dicts,
+        role-token-capped). Godfather/Admin-only scope for now (explicit decision,
+        2026-09-14) - always uses the godfather/admin token limit from
+        config.memory['session']['max_tokens_by_role'], same default AIHandler falls
+        back to. Returns [] (never raises) when session_manager isn't configured or
+        the lookup fails - a turn with no history is a degraded turn, not a crashed
+        one, matching AIHandler's own try/except around this same call."""
+        if self.session_manager is None or not chat_id:
+            return []
+        try:
+            session_config = (self.config.memory or {}).get('session', {})
+            window_days = session_config.get('window_days', 14)
+            max_tokens = session_config.get('max_tokens_by_role', {}).get('godfather', 100000)
+            history = self.session_manager.get_rolling_window(
+                chat_id, window_days=window_days, max_tokens=max_tokens,
+            )
+            return list(history) if history else []
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("Failed to load conversation history for %s: %s", chat_id, exc)
+            return []
 
     # ------------------------------------------------------------------
     # Pending-approval / button-tap resolution (contracts/orchestration-loop.md
