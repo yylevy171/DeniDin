@@ -106,3 +106,7 @@ supporting daily backups
 ## [0.7.3] - 2026-09-14
 
 supporting daily backups
+
+## [0.7.4] - 2026-09-15
+
+Feature 083: Fee agreement document generation over WhatsApp (RBAC-gated get/render/verify/send tools, DocTemplateEngine, Word templates), with RBAC-only gating (no separate feature flag) and no automated page-count check (LibreOffice unavailable in the runtime container - one-page discipline is the model's own judgment).
