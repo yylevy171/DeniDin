@@ -1539,6 +1539,12 @@ if __name__ == "__main__":
     # send_reaction on, same post-construction-attribute idiom as green_api_bot above -
     # AIHandler is constructed inside initialize_app(), before live_bot exists.
     denidin_app.ai_handler.green_api_bot = live_bot
+    # Feature 063 (Dynamic Capability Backbone): same reasoning - the orchestrator's
+    # own react_to_message dispatch (src/backbone/backbone_tools.py) needs the same
+    # live bot, unavailable at BackboneOrchestrator construction time inside
+    # initialize_app() either.
+    if denidin_app.backbone_orchestrator is not None:
+        denidin_app.backbone_orchestrator.green_api_bot = live_bot
 
     # Feature 045's read-receipt hook: set as a post-construction attribute,
     # not a constructor/start() arg - denidin.ai_handler.user_manager doesn't

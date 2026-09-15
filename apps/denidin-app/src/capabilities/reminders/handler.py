@@ -100,9 +100,14 @@ def propose_write(orchestrator, request: AIRequest, accumulated_context: str, no
                 created_at=now_local().isoformat(),
             ),
         )
+        if args.get("schedule_type") == "recurring":
+            when = (args.get("recurrence") or {}).get("first_occurrence_at", "")
+            schedule_label = f"חוזרת, החל מ-{when}"
+        else:
+            schedule_label = f"בתאריך {args.get('one_time_due_at', '')}"
         return (
             f"📋 לאישור — תזכורת חדשה: \"{args.get('message_text', '')}\" "
-            f"בתאריך {args.get('one_time_due_at', '')}\n\n{APPROVAL_QUESTION}"
+            f"({schedule_label})\n\n{APPROVAL_QUESTION}"
         )
 
     return _propose_modify_or_delete(orchestrator, request, turn_context, response, tool_name, args)
@@ -165,11 +170,12 @@ def _approve_and_execute(orchestrator, pending, chat_id: str,
     persist time either way (contracts/local-tool-approval-gate.md)."""
     try:
         if pending.tool_name == CREATE_REMINDER_TOOL["name"]:
+            schedule_type = pending.arguments.get("schedule_type", "one_time")
             result = orchestrator.reminder_manager.create_reminder(
                 message_text=pending.arguments.get("message_text", ""),
-                schedule_type="one_time",
+                schedule_type=schedule_type,
                 one_time_due_at=pending.arguments.get("one_time_due_at"),
-                recurrence=None,
+                recurrence=pending.arguments.get("recurrence"),
                 created_by_phone=created_by_phone,
                 created_by_role=created_by_role,
                 delivery_chat_id=chat_id,

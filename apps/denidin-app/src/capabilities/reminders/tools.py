@@ -47,9 +47,11 @@ CREATE_REMINDER_TOOL: Dict[str, Any] = {
     "name": "create_reminder",
     "description": (
         "ONLY call this when the user's own message explicitly asks to be reminded of "
-        "something at a future, one-time date/time. This call itself does NOT persist "
-        "anything - it is presented to the user as an approval summary; the reminder is "
-        "only created if the user then explicitly approves."
+        "something at a future time (a one-time date/time, or a recurring cadence like "
+        "\"כל יום/שבוע\"). This call itself does NOT persist anything - it is presented "
+        "to the user as an approval summary (the actual time shown AFTER rounding to the "
+        "nearest 5 minutes); the reminder is only created once the user explicitly "
+        "approves."
     ),
     "strict": True,
     "parameters": {
@@ -57,14 +59,73 @@ CREATE_REMINDER_TOOL: Dict[str, Any] = {
         "properties": {
             "message_text": {
                 "type": "string",
-                "description": "The actual thing to be reminded about, in the user's own words.",
+                "description": (
+                    "The actual thing to be reminded about, in the user's own words - "
+                    "never a placeholder."
+                ),
             },
+            "schedule_type": {"type": "string", "enum": ["one_time", "recurring"]},
             "one_time_due_at": {
-                "type": "string",
-                "description": "ISO-8601 local datetime (Asia/Jerusalem), strictly in the future.",
+                "type": ["string", "null"],
+                "description": (
+                    "ISO-8601 local datetime (Asia/Jerusalem), required iff "
+                    "schedule_type=one_time, must be strictly in the future after "
+                    "rounding to the nearest 5 minutes. Null iff schedule_type=recurring."
+                ),
+            },
+            "recurrence": {
+                "type": ["object", "null"],
+                "description": "Required iff schedule_type=recurring, else null.",
+                "properties": {
+                    "interval": {"type": "integer", "description": "Every N units, minimum 1."},
+                    "freq": {"type": "string", "enum": ["daily", "weekly", "monthly"]},
+                    "weekdays": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string", "enum": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]},
+                        "description": "Required (non-empty) iff freq=weekly, else null.",
+                    },
+                    "month_day": {
+                        "type": ["integer", "null"],
+                        "description": "1-31, one of two monthly variants; null unless freq=monthly.",
+                    },
+                    "month_nth_weekday": {
+                        "type": ["object", "null"],
+                        "description": (
+                            "The other monthly variant, e.g. {n:1, weekday:'MO'} = first "
+                            "Monday; null unless freq=monthly."
+                        ),
+                        "properties": {
+                            "n": {"type": "integer", "enum": [1, 2, 3, 4, -1], "description": "-1 means 'last'."},
+                            "weekday": {"type": "string", "enum": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]},
+                        },
+                        "required": ["n", "weekday"],
+                        "additionalProperties": False,
+                    },
+                    "first_occurrence_at": {
+                        "type": "string",
+                        "description": (
+                            "ISO-8601 local datetime of the FIRST occurrence, must be "
+                            "strictly in the future after rounding."
+                        ),
+                    },
+                    "end_condition": {"type": "string", "enum": ["never", "after_n", "until_date"]},
+                    "end_count": {"type": ["integer", "null"], "description": "Required iff end_condition=after_n."},
+                    "end_until": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "ISO-8601 local date, required iff end_condition=until_date, "
+                            "must not be in the past."
+                        ),
+                    },
+                },
+                "required": [
+                    "interval", "freq", "weekdays", "month_day", "month_nth_weekday",
+                    "first_occurrence_at", "end_condition", "end_count", "end_until",
+                ],
+                "additionalProperties": False,
             },
         },
-        "required": ["message_text", "one_time_due_at"],
+        "required": ["message_text", "schedule_type", "one_time_due_at", "recurrence"],
         "additionalProperties": False,
     },
 }

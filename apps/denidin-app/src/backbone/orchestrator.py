@@ -8,11 +8,18 @@ module (REQ-063-07).
 See contracts/orchestration-loop.md (the loop) and contracts/prompt-assembly.md
 (the prompt-loading/caching + per-call instructions assembly this module implements).
 """
+import json
 import logging
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from src.backbone.backbone_tools import (
+    BACKBONE_TOOLS,
+    dispatch_react_to_message,
+    dispatch_send_progress_update,
+    extract_backbone_tool_calls,
+)
 from src.backbone.capability_tags import CapabilityTag, DOMAIN_CAPABILITY_TAGS, capability_catalog_text
 from src.backbone.intent_identification import identify_intent
 from src.backbone.planning import Plan, build_plan, role_allowed_capabilities
@@ -43,13 +50,20 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                  pending_local_tool_approval_manager: Optional[Any] = None,
                  morning_mcp_locator: Optional[Any] = None,
                  session_manager: Optional[Any] = None,
-                 pending_approval_manager: Optional[Any] = None):
+                 pending_approval_manager: Optional[Any] = None,
+                 green_api_bot: Optional[Any] = None):
         self.client = ai_client
         self.config = config
         self.reminder_manager = reminder_manager
         self.ledger_event_manager = ledger_event_manager
         self.pending_local_tool_approval_manager = pending_local_tool_approval_manager
         self.morning_mcp_locator = morning_mcp_locator
+        # green_api_bot (2026-09-14): the SAME live bot instance AIHandler already
+        # uses for react_to_message's real send_reaction side effect (Feature 084)
+        # - shared, unmodified (REQ-063-03). None is tolerated (unit tests, or a
+        # misconfigured process) - a reaction call is then a logged no-op, never
+        # a crash (mirrors send_reaction's own "never raises" contract).
+        self.green_api_bot = green_api_bot
         # pending_approval_manager (2026-09-14): the SAME PendingApprovalManager
         # instance AIHandler already uses for MCP document-creation approvals
         # (Feature 022) - shared, unmodified (REQ-063-03), now also populated by
@@ -81,6 +95,14 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # AIHandler.own_whatsapp_number already makes), so there is no real
         # concurrent-turn clobbering risk in practice.
         self._turn_conversation_history: List[Dict[str, Any]] = []
+
+        # Set once per get_response() call, same lifecycle/reasoning as
+        # _turn_conversation_history above - read by call_capability_step's
+        # backbone-tool resolution (send_progress_update/react_to_message) for
+        # every step this turn makes.
+        self._turn_progress_callback: Optional[Callable[[str], None]] = None
+        self._turn_chat_id: Optional[str] = None
+        self._turn_message_id: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Prompt loading/caching (contracts/prompt-assembly.md)
@@ -203,17 +225,24 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # turn makes, not just the first.
         input_items = list(self._turn_conversation_history)
         input_items.append({"role": "user", "content": request.user_prompt})
+        # BACKBONE_TOOLS (2026-09-14): send_progress_update/react_to_message apply
+        # to every capability step uniformly (backbone.md's own cross-cutting
+        # sections), so they're attached here regardless of which tag/tools this
+        # step's own capability offers - not something each capability handler
+        # needs to remember to add itself.
+        all_tools = list(tools) if tools else []
+        all_tools.extend(BACKBONE_TOOLS)
         kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": instructions,
             "input": input_items,
             "max_output_tokens": request.max_tokens,
+            "tools": all_tools,
         }
-        if tools:
-            kwargs["tools"] = tools
 
         start = time.monotonic()
         response = self.client.responses.create(**kwargs)
+        response = self._resolve_backbone_tool_calls(request, response, all_tools)
         duration_ms = (time.monotonic() - start) * 1000
         usage = getattr(response, "usage", None)
         cached_tokens = getattr(getattr(usage, "input_tokens_details", None), "cached_tokens", None)
@@ -222,6 +251,45 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             tag.value, len(instructions.encode("utf-8")), duration_ms, cached_tokens,
         )
         return getattr(response, "output_text", "") or ""
+
+    def _resolve_backbone_tool_calls(self, request: AIRequest, response, tools: List[Dict]) -> Any:
+        """Dispatches every send_progress_update/react_to_message call this step's
+        response made (real side effects: an interim WhatsApp send, a reaction),
+        then submits ALL their outputs together in ONE follow-up call chained via
+        `previous_response_id` - see backbone_tools.py's module docstring for why
+        one round is sufficient here and how this still closes bugfix-042's exact
+        failure mode (every function_call's output gets submitted, never left
+        dangling). Returns the follow-up response if one was needed and it
+        succeeded, else the original response unchanged (no backbone-tool calls,
+        or the follow-up call itself failed - logged, original response's own
+        output_text is still used rather than losing the turn)."""
+        calls = extract_backbone_tool_calls(response)
+        if not calls:
+            return response
+
+        outputs = []
+        for call_id, tool_name, args in calls:
+            if tool_name == "send_progress_update":
+                payload = dispatch_send_progress_update(
+                    self._turn_progress_callback, self._turn_chat_id, args,
+                )
+            else:
+                payload = dispatch_react_to_message(
+                    self.green_api_bot, self._turn_chat_id, request.message_id or self._turn_message_id, args,
+                )
+            outputs.append({"type": "function_call_output", "call_id": call_id, "output": json.dumps(payload)})
+
+        try:
+            return self.client.responses.create(
+                model=request.model,
+                input=outputs,
+                previous_response_id=getattr(response, "id", None),
+                max_output_tokens=request.max_tokens,
+                tools=tools,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("Backbone-tool follow-up call failed (non-fatal): %s", exc)
+            return response
 
     # ------------------------------------------------------------------
     # The orchestration loop (contracts/orchestration-loop.md)
@@ -246,10 +314,18 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         session-persist/ledger-stash-detect, REQ-063-03) before this call, not
         inside the plan, so this is real content, not a stub. None for a text turn.
         """
-        del sender, recipient, is_group, chat_name, progress_callback
+        del sender, recipient, is_group, chat_name
 
         role = self._resolve_role(user_role)
         effective_chat_id = chat_id or request.chat_id
+        # Backbone-tool dispatch context (2026-09-14, same per-turn-instance-attribute
+        # lifecycle/reasoning as _turn_conversation_history) - progress_callback is
+        # the caller's real "send this text to the user right now" hook
+        # (denidin.py's notification.answer wrapper in production), chat_id/
+        # message_id are react_to_message's real dispatch target/default.
+        self._turn_progress_callback = progress_callback
+        self._turn_chat_id = effective_chat_id
+        self._turn_message_id = request.message_id
         turn_context = {
             "role": role,
             "user_phone": user_phone or sender_phone,
