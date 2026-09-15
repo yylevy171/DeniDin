@@ -214,6 +214,26 @@ pre-existing sandbox-throttle failures, not a code defect) — every test is con
 green on its own; the sandbox simply does not tolerate this many client-creation calls
 in quick succession within one session's cumulative call volume for the day.
 
+## Acceptance Phase 1.a — MCP-Layer Latency Proof (2026-09-15) — DONE
+
+Run against the real sandbox (`test_client_cache_latency_proof.py`, written 2026-09-15 per
+user-stories.md's approved scenario, executed same day on explicit operator go-ahead):
+**PASSED**. 50 `resolve_client_name` calls flag-off vs 50 flag-on, same known client:
+
+- flag OFF: mean 0.1539s / median 0.1442s per call — 53 real Morning `search_clients` calls
+  across the 50 MCP-level calls.
+- flag ON: mean 0.0035s / median 0.0004s per call — 1 real Morning `search_clients` call
+  (the warming miss) across all 50 MCP-level calls.
+- **Mean time saved per call: 0.1503s (97.7% of the flag-off mean).**
+
+Every one of the 100 MCP-level calls and every one of the 54 real underlying Morning calls
+has its own exact Israel-local wall-clock start/end timestamp recorded (per explicit
+operator instruction), persisted to
+`apps/morning-mcp-app/logs/test_logs/client_cache_latency_proof_1789498839.json`.
+
+Phases 1.b, 2, and 3 (billed/expensive acceptance scenarios) remain outstanding, pending
+separate explicit approval.
+
 ## Dependencies
 
 - Phase 1 (Setup) blocks everything.
