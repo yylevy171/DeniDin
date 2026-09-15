@@ -60,6 +60,20 @@ changing client roster this is:
 - Implementation specifics (TTL, population, refresh rates) are left to engineering, provided the 85% hit rate KPI is met.
 
 ### Handling Stale Data (Cache Invalidation)
+
+**Implementation note (found at `speckit.tasks`, 2026-09-15):** the write tools in this
+codebase never actually consume a client id from `resolve_client_name` — they re-resolve
+the client **by name, live against Morning** on every write call
+(`_require_resolved_client`, bugfix-028), and `resolve_client_name` itself only ever
+discloses a *name*, never an id (REQ-CLIENT-018). So the specific "Invalid Client ID HTTP
+error" scenario below cannot occur in this codebase as written. The equivalent real
+failure mode — a stale cached name that no longer matches any real Morning client — is
+instead caught by that same existing live re-resolution failing, and the cache is evicted
+there. See tasks.md's "Correction" note and contracts/cache-contract.md for exactly where
+this is wired in. The **business requirement** below (auto-recover next turn, no broken
+loop, clear message) is still met in full — only the specific mechanics differ from what's
+literally written next.
+
 A critical risk of a transparent cache is returning a client ID that was recently deleted or deactivated in Morning. If the AI attempts to use a stale ID (e.g., calling `create_document` with a deleted ID), Morning will throw an error. 
 - **Requirement**: The MCP tools that execute writes (like `create_document`) MUST gracefully handle "Invalid Client ID" errors from the Morning API by:
   1. Immediately evicting that specific client from the cache.

@@ -21,8 +21,15 @@ class ClientCache:
         Morning exact match on a miss, or a TTL sweep row)."""
 
     def evict(self, client_id: str) -> None:
-        """Remove one client_id — called on a write tool's 'Invalid Client
-        ID' error."""
+        """Remove one client_id row directly (used by `reconcile`'s
+        delete-missing pass)."""
+
+    def evict_by_name(self, name: str) -> None:
+        """Normalize `name` and remove whatever row matches it, if any
+        (no-op on a miss). Called from `_resolve_exact_client_name` when a
+        cached name fails live re-resolution (see the corrected call-site
+        contract below) — the caller only ever has the name at that point,
+        never a client_id."""
 
     def reconcile(self, clients: List[Client]) -> None:
         """Full upsert-or-delete sync against a fresh `list_clients` result
@@ -64,13 +71,26 @@ resolve_client_name(client, name):
 On success, calls `cache.write_through(new_client)` before returning — flag-gated, same as
 above.
 
-## Call-site contract: write tools (`create_invoice`, `create_transaction_account`, etc.)
+## Call-site contract: `_require_resolved_client` / `_resolve_exact_client_name` (`tools.py`, modified)
 
-On catching Morning's "Invalid Client ID" error (existing error-handling path, exact
-signature TBD at `speckit.tasks`/implementation time against the real Morning error
-shape), call `cache.evict(client_id)` before re-raising/returning the existing friendly
-error message — the message itself already matches the spec's required wording ("cache
-has been cleared... resolve the client name again").
+**Corrected at `speckit.tasks` time (see tasks.md's "Correction" note)**: no write tool in
+this codebase ever consumes a cached `client_id` — every write call re-resolves its
+`client_name` live, by name, via `_require_resolved_client` (bugfix-028 architecture
+fix; REQ-CLIENT-018 also forbids ever disclosing an id to the caller in the first place).
+So the real staleness surface is: a name the cache says is valid fails live re-resolution.
+That is the correct eviction trigger:
+
+```
+_resolve_exact_client_name(client, name):
+    resolved = <existing live lookup, unchanged>
+    if resolved is None and feature_flags.morning_cache_enabled:
+        cache.evict_by_name(name)   # no-op if not cached
+    return resolved
+```
+
+No new exception type, no change to `_require_resolved_client`'s existing
+`ClientNotFoundError` behavior or its user-facing message — eviction is a side effect on
+the existing failure path, not a new outcome.
 
 ## Background sweep: `periodic_cache_sweep` (new, wired at server startup)
 
