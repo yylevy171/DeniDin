@@ -124,12 +124,9 @@ write time) and proactively (periodic sweep).
   both go through the same `_require_resolved_client` eviction hook) against the now-stale
   old name with `name_resolved=True`; assert it raises `ClientNotFoundError` (unchanged
   existing behavior) and that a subsequent `lookup_exact` for the old name is a miss
-  (evicted). **Written and logically verified against the unit-tested `evict_by_name` path
-  (identical `add_client` setup succeeded in 4 sibling tests), but not itself confirmed
-  green against the live sandbox** — every attempted run hit a real, pre-existing `403
-  Forbidden` from Morning's sandbox on `POST /clients` (confirmed environmental: the exact
-  same error reproduces on clean `master` for unrelated, already-existing tests — see
-  report). Re-run once the sandbox account issue clears.
+  (evicted). **Confirmed green on retry** (2026-09-15) — the earlier `403 Forbidden` was
+  transient/environmental as suspected (same sandbox account, no code change between
+  attempts).
 - [x] T019 [US3] Implement `cache_sweep_service.py`
   (`apps/morning-mcp-app/src/denidin_mcp_morning/`): an `APScheduler` `BackgroundScheduler`
   job (matching `reminder_delivery_service.py`'s established shape), interval from
@@ -167,8 +164,9 @@ write time) and proactively (periodic sweep).
   `ClientCache` directly, real sandbox): unit — 22/22 `test_client_cache.py`. Integration —
   `test_client_cache_hit.py` (2/2), `test_client_cache_miss_then_hit.py` (1/1),
   `test_client_cache_add_client_writes_through.py` (1/1),
-  `test_client_cache_sweep.py` (1/1) all green. `test_client_cache_stale_eviction.py`
-  (T018) blocked by the environmental sandbox issue above — not yet confirmed green.
+  `test_client_cache_sweep.py` (1/1), and `test_client_cache_stale_eviction.py` (T018,
+  confirmed green on retry once the transient sandbox `403` cleared) (1/1) — all green.
+  28/28 total across the full cache-related test set.
 
 ## Dependencies
 
