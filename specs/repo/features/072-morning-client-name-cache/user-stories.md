@@ -28,15 +28,39 @@ Reduce perceived AI latency by bypassing the 3-5 second overhead associated with
 
 ## User-Facing Testing (Billed & Expensive E2E Suites)
 
-### Phase 1: Statistical Proof of Value (Development Phase)
-**Goal**: We need concrete, statistically valid proof that the Morning cache actually saves significant time. The cache only eliminates the MCP-to-Morning link, so we must prove that this specific link is slow enough to warrant caching.
-- **Methodology**: The engineers MUST write a dedicated benchmarking script (e.g., `scripts/benchmark_morning_cache.py`) used during development.
-- **Scenario**: 
-  1. The script modifies `config.json` to toggle a feature flag (e.g., `"morning_cache_enabled": false`).
-  2. It runs a batch of **50 resolution requests** and calculates the average `tool_total_execution_time_ms` (which includes the MCP network overhead + Morning API latency).
-  3. It toggles `config.json` to `"morning_cache_enabled": true`.
-  4. It runs the same **50 requests** and calculates the average `tool_total_execution_time_ms` (which now only includes the MCP network overhead).
-- **Proof Required**: The script must output the exact average time saved per tool call. The engineering team must present these numbers. If the average time saved is negligible (e.g., < 0.5 seconds), we re-evaluate the feature's value.
+**Revised and approved 2026-09-15, per operator direction** — Phase 1 splits into a no-AI
+integration measurement (1.a) and a real end-to-end billed measurement (1.b); Phase 3 drops
+the deterministic 17/3 batch in favor of an organic sanity sweep run with the cache flag ON.
+
+### Phase 1.a: MCP-Layer Latency Proof (`apps/morning-mcp-app` integration tests, no AI)
+**Goal**: Prove the transparent cache actually eliminates the Morning API round-trip at the
+MCP layer, in isolation — no OpenAI call needed, since the thing being measured is purely
+`resolve_client_name`'s own execution time.
+- **Methodology**: A dedicated integration test (or benchmark script invoked by one) in
+  `apps/morning-mcp-app/tests/integration/`, calling `resolve_client_name` directly against
+  the real Morning sandbox (constitution: no mocking).
+- **Scenario**:
+  1. With `morning_cache_enabled: false`, call `resolve_client_name` for the same known
+     client **50 times**, recording each call's wall-clock time.
+  2. With `morning_cache_enabled: true`, repeat the same 50 calls (cache warmed on the
+     first call).
+  3. Compute and assert the average time for the flag-ON run is measurably lower than the
+     flag-OFF run.
+- **Proof Required**: The test prints/logs the exact average time saved per call. If the
+  average saved is negligible (e.g., < 0.5s), that's a real finding to surface, not a
+  reason to weaken the assertion.
+
+### Phase 1.b: Full-Cycle Latency Proof (`tests/billed/`, denidin-app, real AI in the loop)
+**Goal**: Prove the cache's MCP-layer saving (1.a) actually translates into a faster
+end-to-end user-facing reply — the AI call, tool round-trip, and reply generation together.
+- **Methodology**: A `tests/billed/` test in `apps/denidin-app` that sends the same
+  client-resolution request through the full `AIHandler`/Morning-MCP pipeline twice.
+- **Scenario**:
+  1. With `morning_cache_enabled: false`, send a message that requires resolving a known
+     client; record total turn time (request in → reply out).
+  2. With `morning_cache_enabled: true` (cache pre-warmed for that client), send the
+     equivalent message again; record total turn time.
+  3. Assert the flag-ON turn is measurably faster than the flag-OFF turn.
 
 ### Phase 2: No-Regression Sanity Test (CI/CD Phase)
 **Goal**: Ensure that over time, the cache continues to function and provide a speed benefit without regressing.
@@ -47,9 +71,16 @@ Reduce perceived AI latency by bypassing the 3-5 second overhead associated with
   2. The test runs the identical conversation with the cache flag ON.
   3. The test asserts that the total execution time for the Flag ON run is consistently and measurably faster than the Flag OFF run, explicitly catching any future performance regressions.
 
-### Phase 3: 85% Hit Rate Target Proof (`tests/billed/`)
-**Goal**: Prove the caching implementation achieves the 85% minimum hit rate under a realistic usage distribution.
-- **Batch Definition**: A test (`test_cache_hit_rate_simulation_billed.py`) executes a deterministic batch of **20 sequential user messages** against a fresh conversation state.
-  - **Distribution**: 17 messages will refer to 3-4 recurring "known" clients (simulating heavy daily use). 3 messages will refer to entirely new/unknown clients (simulating the ~15% miss rate).
+### Phase 3: 85% Hit Rate Target Proof (sanity suite, cache flag ON)
+**Goal**: Prove the caching implementation achieves the 85% minimum hit rate under realistic,
+organic usage — not a hand-tuned distribution.
+- **Methodology**: Run a random sweep of **~20 existing `@pytest.mark.sanity` tests**
+  (`./scripts/run_sanity.sh` or `run_sanity_parallel.sh`'s existing billed subset — no new
+  bespoke test file, no fixed message script) with `morning_cache_enabled: true` for the
+  whole run, since counting hits only makes sense with the cache actually on.
 - **Measurement & Assertions**:
-  1. The test asserts that exactly >= 85% (17/20) of the `resolve_client` tool invocations resulted in a Cache Hit (i.e., `morning_api_request_times_ms` was NULL/empty).
+  1. Across every `resolve_client_name` invocation made during that sweep, assert
+     >= 85% resulted in a Cache Hit (i.e., no live Morning API round-trip was made).
+  2. Since this rides real sanity tests rather than a scripted client-name distribution,
+     the hit-rate measurement is a reported/logged outcome checked against the 85%
+     threshold, not a hand-picked-to-pass fixture.
