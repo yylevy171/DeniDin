@@ -22,6 +22,8 @@
     "status_file": "/app/mcp-status/morning_mcp_status.dev_or_prod.json"
   },
   "feature_flags": {
-    "enable_mcp_server": true
-  }
+    "enable_mcp_server": true,
+    "morning_cache_enabled": false
+  },
+  "client_cache_sweep_interval_minutes": 60
 }

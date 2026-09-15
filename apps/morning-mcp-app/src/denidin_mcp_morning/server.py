@@ -37,6 +37,8 @@ HEALTH_PATH = "/health"
 IS_ALIVE_PATH = "/is_alive"
 
 from . import tools
+from .cache_sweep_service import run_startup_cache_sweep, start_cache_sweep_scheduler
+from .client_cache import ClientCache
 from .config import MorningMCPConfig, load_config
 from .errors import friendly_error_message
 from .health_checks import (
@@ -50,6 +52,9 @@ from .utils.correlation import correlation_scope, new_correlation_id
 from .utils.logger import DEFAULT_VERSION_FILE, read_version, get_logger, reconfigure_package_log_level
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.json"
+# Feature 072: one client_cache.db per environment/clone (see data-model.md -
+# same "data/" mount pattern as denidin-app's dev_data/data).
+DEFAULT_CLIENT_CACHE_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "client_cache.db"
 
 logger = get_logger(__name__)
 
@@ -257,7 +262,11 @@ def _call_with_error_boundary(func: Callable[..., str], *args: Any) -> "str | Ca
         return result
 
 
-def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = None) -> FastMCP:
+def create_server(
+    config: MorningMCPConfig,
+    client: Optional[MorningClient] = None,
+    client_cache: Optional[ClientCache] = None,
+) -> FastMCP:
     """Build a FastMCP server with all 16 tools registered, bound to one MorningClient
     (the "11 tools" figure in older docs/CLAUDE.md predates several later additions -
     resolve_client_name, create_combo_document_as_reference, list_clients,
@@ -268,6 +277,12 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client: Optional pre-built MorningClient (injected); built from `config`
             if omitted. Exposed as a parameter so tests can inject a client
             without needing a second real config file.
+        client_cache: Optional pre-built ClientCache (Feature 072, injected -
+            same convention as `client`, so tests can point it at a tmp db).
+            Built from `config` if omitted AND `config.morning_cache_enabled`
+            is true; left None (no cache constructed at all) when the flag is
+            false - CONSTITUTION §VI: the flag-off path never even
+            constructs the cache object.
 
     Returns:
         A FastMCP instance, not yet running.
@@ -279,6 +294,8 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         auth_url=config.auth_url,
         refresh_before_seconds=config.refresh_before_seconds,
     )
+    if client_cache is None and config.morning_cache_enabled:
+        client_cache = ClientCache(DEFAULT_CLIENT_CACHE_DB_PATH)
 
     # FastMCP auto-enables Host-header DNS-rebinding protection restricted to
     # 127.0.0.1/localhost whenever `host` is loopback and no transport_security
@@ -319,7 +336,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         """
         return _call_with_error_boundary(
             tools.create_invoice, morning_client, client_name, amount, description,
-            due_date, vat_included, name_resolved
+            due_date, vat_included, name_resolved, client_cache
         )
 
     @mcp.tool(structured_output=False)
@@ -346,7 +363,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         """
         return _call_with_error_boundary(
             tools.create_transaction_account, morning_client, client_name, amount,
-            description, vat_included, due_date, name_resolved
+            description, vat_included, due_date, name_resolved, client_cache
         )
 
     @mcp.tool(structured_output=False)
@@ -392,7 +409,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         return _call_with_error_boundary(
             tools.create_combo_document, morning_client, client_name, amount, description,
             vat_included, payment_date, payment_method, bank_number, bank_branch,
-            bank_account, transaction_reference, name_resolved
+            bank_account, transaction_reference, name_resolved, client_cache
         )
 
     @mcp.tool(structured_output=False)
@@ -461,6 +478,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             client_name,
             description,
             name_resolved,
+            client_cache,
         )
 
     @mcp.tool(structured_output=False)
@@ -579,6 +597,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             document_display_number,
             name_resolved,
             include_full_details,
+            client_cache,
         )
 
     @mcp.tool(structured_output=False)
@@ -618,7 +637,9 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
     ) -> str:
         """Add a new client to Morning. name/email/phone are all required -
         ask the user for any that are missing rather than guessing."""
-        return _call_with_error_boundary(tools.add_client, morning_client, name, email, phone, tax_id)
+        return _call_with_error_boundary(
+            tools.add_client, morning_client, name, email, phone, tax_id, client_cache
+        )
 
     @mcp.tool(structured_output=False)
     def list_clients(name: Optional[str] = None) -> str:
@@ -642,7 +663,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         matching: they require name_resolved=True and refuse immediately,
         without attempting any lookup, if it isn't set.
         """
-        return _call_with_error_boundary(tools.resolve_client_name, morning_client, name)
+        return _call_with_error_boundary(tools.resolve_client_name, morning_client, name, client_cache)
 
     @mcp.tool(structured_output=False)
     def get_client_details(name: str, name_resolved: bool = False) -> str:
@@ -652,7 +673,9 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         this name, then pass the EXACT name it returns here, together with
         name_resolved=True. Without it, this refuses immediately.
         """
-        return _call_with_error_boundary(tools.get_client_details, morning_client, name, name_resolved)
+        return _call_with_error_boundary(
+            tools.get_client_details, morning_client, name, name_resolved, client_cache
+        )
 
     @mcp.tool(structured_output=False)
     def update_client(
@@ -671,7 +694,8 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
-            tools.update_client, morning_client, name, new_name, email, phone, tax_id, name_resolved
+            tools.update_client, morning_client, name, new_name, email, phone, tax_id,
+            name_resolved, client_cache
         )
 
     @mcp.tool(structured_output=False)
@@ -719,7 +743,11 @@ def main() -> None:
         auth_url=config.auth_url,
         refresh_before_seconds=config.refresh_before_seconds,
     )
-    server = create_server(config, client=morning_client)
+    # Feature 072: built explicitly here (same reasoning as morning_client
+    # above) so this same instance can also seed the startup sweep + the
+    # periodic sweep scheduler below, not just create_server's tool closures.
+    client_cache = ClientCache(DEFAULT_CLIENT_CACHE_DB_PATH) if config.morning_cache_enabled else None
+    server = create_server(config, client=morning_client, client_cache=client_cache)
     logger.info(
         "Starting %s on %s:%s (%s)%s",
         config.mcp_server_name,
@@ -733,6 +761,14 @@ def main() -> None:
     # check has something to observe even during genuinely idle periods -
     # see health_checks.py's module docstring.
     start_heartbeat_thread()
+
+    if client_cache is not None:
+        # Startup catch-up (cold cache after a fresh container/rebuild) then
+        # the recurring periodic sweep - both no-ops if this flag is off.
+        run_startup_cache_sweep(morning_client, client_cache)
+        start_cache_sweep_scheduler(
+            morning_client, client_cache, config.client_cache_sweep_interval_minutes
+        )
 
     if config.mcp_transport == "streamable-http":
         # Bypass FastMCP.run()'s built-in uvicorn runner so the app can be

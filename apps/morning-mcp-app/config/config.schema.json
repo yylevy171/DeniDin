@@ -100,8 +100,18 @@
           "type": "boolean",
           "default": false,
           "description": "Gate for starting the FastMCP server. When false, the server entrypoint does not start; the existing client library and its integration tests are unaffected."
+        },
+        "morning_cache_enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Feature 072: gate for the transparent SQLite client-name cache (data/client_cache.db). When false, resolve_client_name/add_client/the write-tool eviction hook/the periodic sweep all run byte-for-byte as before this feature - no cache object is even constructed."
         }
       }
+    },
+    "client_cache_sweep_interval_minutes": {
+      "type": "integer",
+      "default": 60,
+      "description": "Feature 072: how often the periodic client-cache sweep (list_clients -> cache.reconcile) runs, in minutes. Only relevant when feature_flags.morning_cache_enabled is true."
     }
   },
   "required": ["api_key_id", "api_key_secret", "api_url", "auth_url"]

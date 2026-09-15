@@ -17,7 +17,13 @@ otherwise tank the hit rate for whichever clone happens to run dev). SQLite, one
 | `name_normalized` | TEXT NOT NULL | Bag-of-words, casefolded, geresh-normalized form of `name` (same normalization `_bag_equal_words`/`_normalize_hebrew_geresh` already apply) — the lookup key for an exact-match cache hit, so a hit is exactly as forgiving of word order/casing/apostrophe style as today's Step-0 exact match already is, no more and no less. Indexed. |
 | `updated_at` | TEXT NOT NULL | ISO-8601 Israel-local timestamp (`now_local()`/`local_isoformat()`, per CONSTITUTION §II) of the last write-through or TTL-sweep confirmation for this row. |
 
-Index: `CREATE UNIQUE INDEX idx_clients_name_normalized ON clients(name_normalized)`.
+Index: `CREATE INDEX idx_clients_name_normalized ON clients(name_normalized)` — **not
+unique** (corrected 2026-09-15, found live against the real sandbox's accumulated test
+data): Morning does not enforce unique client names, so two different real `client_id`s
+can legitimately share the same stored `name`. `lookup_exact` treats more than one row
+matching a normalized name as an ambiguous miss (falls through to live resolution) rather
+than arbitrarily picking one — the same discipline `resolve_client_by_name`'s own Step 0
+exact match already applies (exactly one candidate, or it isn't safe to treat as exact).
 
 ## Lifecycle / state transitions
 

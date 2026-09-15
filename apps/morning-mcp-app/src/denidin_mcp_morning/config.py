@@ -55,6 +55,10 @@ class MorningMCPConfig:
     mcp_status_file: Optional[str]
     openai_api_key: Optional[str]
     enable_mcp_server: bool
+    # Feature 072: transparent client-name cache. See client_cache.py /
+    # specs/repo/features/072-morning-client-name-cache/.
+    morning_cache_enabled: bool
+    client_cache_sweep_interval_minutes: int
 
 
 def _load_schema() -> Dict[str, Any]:
@@ -117,4 +121,6 @@ def load_config(path: Path) -> MorningMCPConfig:
         mcp_status_file=mcp_section.get("status_file") or None,
         openai_api_key=raw.get("openai_api_key") or None,
         enable_mcp_server=feature_flags.get("enable_mcp_server", False),
+        morning_cache_enabled=feature_flags.get("morning_cache_enabled", False),
+        client_cache_sweep_interval_minutes=raw.get("client_cache_sweep_interval_minutes", 60),
     )

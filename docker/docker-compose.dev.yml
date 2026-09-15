@@ -74,6 +74,7 @@ services:
     volumes:
       - ./apps/morning-mcp-app/config/config.dev.json:/app/config/config.json:ro
       - ./apps/morning-mcp-app/logs/dev:/app/logs
+      - ./apps/morning-mcp-app/data/dev:/app/data
       - ./shared/mcp-status-dev:/app/mcp-status
       - ./shared/active_env.json:/app/active-env/active_env.json:ro
     restart: "no"

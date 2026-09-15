@@ -18,6 +18,7 @@ from email_validator import EmailNotValidError, validate_email
 from pydantic import ValidationError
 
 from .audit import log_mutation, log_refusal
+from .client_cache import ClientCache
 from .formatters import (
     format_ambiguous_clients_message,
     format_client_details,
@@ -430,6 +431,7 @@ def create_transaction_account(
     vat_included: bool,
     due_date: Optional[str] = None,
     name_resolved: bool = False,
+    cache: Optional[ClientCache] = None,
 ) -> str:
     """Create a non-tax transaction account ("חשבון עסקה", type 300) in
     Morning and return a Hebrew confirmation message.
@@ -464,7 +466,9 @@ def create_transaction_account(
             match a real client exactly.
     """
     client_name = _normalize_hebrew_geresh(client_name)
-    resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_transaction_account")
+    resolved_client = _require_resolved_client(
+        client, client_name, name_resolved, "create_transaction_account", cache
+    )
 
     payload = _build_transaction_account_payload(
         resolved_client.id, amount, description, vat_included, due_date
@@ -635,6 +639,7 @@ def create_combo_document(
     bank_account: Optional[str] = None,
     transaction_reference: Optional[str] = None,
     name_resolved: bool = False,
+    cache: Optional[ClientCache] = None,
 ) -> str:
     """Create an already-paid combo invoice+receipt ("חשבונית מס/קבלה",
     type 320) in Morning and return a Hebrew confirmation message.
@@ -687,7 +692,9 @@ def create_combo_document(
             or payment_method is unknown.
     """
     client_name = _normalize_hebrew_geresh(client_name)
-    resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_combo_document")
+    resolved_client = _require_resolved_client(
+        client, client_name, name_resolved, "create_combo_document", cache
+    )
 
     payload = _build_combo_document_payload(
         resolved_client.id,
@@ -729,6 +736,7 @@ def create_invoice(
     due_date: Optional[str] = None,
     vat_included: bool = True,
     name_resolved: bool = False,
+    cache: Optional[ClientCache] = None,
 ) -> str:
     """Create an invoice in Morning and return a Hebrew confirmation message.
 
@@ -771,7 +779,7 @@ def create_invoice(
             match a real client exactly.
     """
     client_name = _normalize_hebrew_geresh(client_name)
-    resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_invoice")
+    resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_invoice", cache)
 
     payload = _build_create_invoice_payload(resolved_client.id, amount, description, due_date, vat_included)
     response = client.create_invoice(payload)
@@ -888,6 +896,7 @@ def list_invoices(
     document_display_number: Optional[str] = None,
     name_resolved: bool = False,
     include_full_details: bool = False,
+    cache: Optional[ClientCache] = None,
 ) -> str:
     """List/search invoices and return a JSON result.
 
@@ -957,7 +966,7 @@ def list_invoices(
         # matching, and resolving them through this gate risks a false
         # rejection against clients unrelated to the caller's intent (many
         # real clients can share one common word).
-        resolved_client = _require_resolved_client(client, client_name, name_resolved, "list_invoices")
+        resolved_client = _require_resolved_client(client, client_name, name_resolved, "list_invoices", cache)
         client_name = resolved_client.name  # exact match - search under the real stored name
     params = _map_list_invoices_filters(from_date, to_date, client_name, document_display_number)
     first_page = client.list_invoices(params=params)
@@ -1572,6 +1581,7 @@ def create_receipt(
     client_name: Optional[str] = None,
     description: Optional[str] = None,
     name_resolved: bool = False,
+    cache: Optional[ClientCache] = None,
 ) -> str:
     """Create a receipt ("קבלה", type 400) and return a Hebrew confirmation -
     either linked to an existing document being paid, or standalone (feature
@@ -1661,7 +1671,7 @@ def create_receipt(
         # Feature 056: standalone receipt, no original to fetch at all.
         if client_name:
             client_name = _normalize_hebrew_geresh(client_name)
-        resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_receipt")
+        resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_receipt", cache)
 
         payload = _build_standalone_receipt_payload(
             resolved_client.id, amount, description, payment_date
@@ -2015,7 +2025,9 @@ def _is_exact_name_match(resolved_name: str, queried_name: str) -> bool:
     )
 
 
-def resolve_client_name(client: MorningClient, name: str) -> str:
+def resolve_client_name(
+    client: MorningClient, name: str, cache: Optional[ClientCache] = None
+) -> str:
     """Resolve a free-text client name to Morning's real stored name and
     return a Hebrew resolution report (client-name-resolution architecture
     fix, bugfix-028 sub-piece, 2026-08-12, user decision). THE canonical,
@@ -2054,8 +2066,17 @@ def resolve_client_name(client: MorningClient, name: str) -> str:
         REQ-CLIENT-018), a confirmation question, an ambiguous-candidates
         list, or a "not found" message.
     """
+    if cache is not None:
+        hit = cache.lookup_exact(name)
+        if hit is not None:
+            # Feature 072 fast path: same output shape as a live exact
+            # match (contracts/cache-contract.md - transparent by
+            # construction, not just by intent). Zero Morning calls.
+            return format_client_name_resolved(hit.name)
     resolved, candidates = resolve_client_by_name(client, name)
     if resolved is not None:
+        if cache is not None:
+            cache.write_through(resolved)
         return format_client_name_resolved(resolved.name)
     if len(candidates) == 1:
         return format_client_name_confirmation_question(candidates[0].name)
@@ -2064,22 +2085,38 @@ def resolve_client_name(client: MorningClient, name: str) -> str:
     return format_client_not_found()
 
 
-def _resolve_exact_client_name(client: MorningClient, name: str) -> Optional[Client]:
+def _resolve_exact_client_name(
+    client: MorningClient, name: str, cache: Optional[ClientCache] = None
+) -> Optional[Client]:
     """Direct, exact (word-order-independent) lookup only - Step 0 of
     resolve_client_by_name, reused directly: one Search Clients call on the
     literal name, accepted only if it's a unique client whose stored name is
     a word-for-word (order-independent) match. Never grows letters, never
     picks a 'closest' candidate - that fuzzy work belongs to
-    resolve_client_name alone now."""
+    resolve_client_name alone now.
+
+    Feature 072: if `cache` is given and the live lookup fails to confirm a
+    name the cache believed was valid, evict it here (contracts/
+    cache-contract.md's corrected eviction hook - this codebase's write
+    tools always re-resolve live by name, never consume a cached id, so a
+    stale cache entry surfaces exactly here, not as a Morning "invalid id"
+    error).
+    """
     name = _normalize_hebrew_geresh(name)
     resolved, _ = _resolve_client_by_name(client, name)
     if resolved is not None and _bag_equal_words(name, resolved.name):
         return resolved
+    if cache is not None:
+        cache.evict_by_name(name)
     return None
 
 
 def _require_resolved_client(
-    client: MorningClient, client_name: str, name_resolved: bool, tool_name: str
+    client: MorningClient,
+    client_name: str,
+    name_resolved: bool,
+    tool_name: str,
+    cache: Optional[ClientCache] = None,
 ) -> Client:
     """The one gate every client-name-consuming tool shares (client-name-
     resolution architecture fix, bugfix-028 sub-piece, 2026-08-12, user
@@ -2118,7 +2155,7 @@ def _require_resolved_client(
             "יש לקרוא ל-resolve_client_name עם שם הלקוח קודם, להשתמש בשם המדויק "
             "שהוא מחזיר, ולנסות שוב עם name_resolved=true"
         )
-    resolved = _resolve_exact_client_name(client, client_name)
+    resolved = _resolve_exact_client_name(client, client_name, cache)
     if resolved is None:
         _raise_client_not_found(tool_name, client_name)
     return resolved
@@ -2233,6 +2270,23 @@ _LIST_CLIENTS_MAX_ITEMS = 30  # beyond this, report the real total and ask to
                               # an unusably long WhatsApp reply.
 
 
+def fetch_all_clients(client: MorningClient) -> List[Client]:
+    """Fetch every client Morning has, fully paginated, no display cap -
+    Feature 072's periodic cache sweep needs the complete roster to
+    reconcile against (unlike `list_clients` below, which intentionally
+    stops at `_LIST_CLIENTS_MAX_ITEMS` for a human-readable reply)."""
+    first_page = client.search_clients({})
+    total = first_page.get("total", 0) or 0
+    items = list(first_page.get("items") or [])
+    page_num = first_page.get("page", 1) or 1
+    total_pages = first_page.get("pages", 1) or 1
+    while len(items) < total and page_num < total_pages:
+        page_num += 1
+        next_page = client.search_clients({"page": page_num})
+        items.extend(next_page.get("items") or [])
+    return [Client.model_validate(item) for item in items]
+
+
 def list_clients(client: MorningClient, name: Optional[str] = None) -> str:
     """List existing Morning clients and return a Hebrew, human-readable list.
 
@@ -2282,7 +2336,12 @@ def list_clients(client: MorningClient, name: Optional[str] = None) -> str:
     return format_client_list(clients)
 
 
-def get_client_details(client: MorningClient, name: str, name_resolved: bool = False) -> str:
+def get_client_details(
+    client: MorningClient,
+    name: str,
+    name_resolved: bool = False,
+    cache: Optional[ClientCache] = None,
+) -> str:
     """Retrieve a single client's full detail record by name.
 
     MCP tool: get_client_details (contracts/get_client_details.json,
@@ -2318,7 +2377,7 @@ def get_client_details(client: MorningClient, name: str, name_resolved: bool = F
             mechanism from every other client-resolving tool for the same
             situation; see `_raise_client_not_found`'s docstring).
     """
-    resolved_client = _require_resolved_client(client, name, name_resolved, "get_client_details")
+    resolved_client = _require_resolved_client(client, name, name_resolved, "get_client_details", cache)
     return format_client_details(resolved_client, is_exact_match=True)
 
 
@@ -2349,6 +2408,7 @@ def add_client(
     email: str,
     phone: str,
     tax_id: Optional[str] = None,
+    cache: Optional[ClientCache] = None,
 ) -> str:
     """Add a new client to Morning and return a Hebrew confirmation.
 
@@ -2384,13 +2444,19 @@ def add_client(
     # bugfix-036: the response was previously discarded outright, so the id
     # Morning assigned the new client existed nowhere in this app. It still
     # never reaches the caller (REQ-CLIENT-018) - only the log.
+    new_client_id = (response or {}).get("id") if isinstance(response, dict) else None
     log_mutation(
         "add_client",
         payload=payload,
         response=response,
-        client_id=(response or {}).get("id") if isinstance(response, dict) else None,
+        client_id=new_client_id,
         client_name=normalized_name,
     )
+    if cache is not None and new_client_id:
+        # Feature 072 event-driven write-through: the very next
+        # resolve_client_name for this exact name is a cache hit, no
+        # separate Morning lookup needed (User Story 2).
+        cache.write_through(Client(id=new_client_id, name=normalized_name))
     return json.dumps(
         {
             "status": "created",
@@ -2433,6 +2499,7 @@ def update_client(
     phone: Optional[str] = None,
     tax_id: Optional[str] = None,
     name_resolved: bool = False,
+    cache: Optional[ClientCache] = None,
 ) -> str:
     """Update an existing client's fields and return a Hebrew confirmation.
 
@@ -2477,7 +2544,7 @@ def update_client(
     if not any([new_name, email, phone, tax_id]):
         raise ValueError("update_client requires at least one of new_name/email/phone/tax_id to change.")
 
-    resolved_client = _require_resolved_client(client, name, name_resolved, "update_client")
+    resolved_client = _require_resolved_client(client, name, name_resolved, "update_client", cache)
 
     normalized_new_name = _normalize_hebrew_geresh(new_name) if new_name else None
     validated_email = _validate_email(email) if email else None
@@ -2493,6 +2560,11 @@ def update_client(
     )
 
     display_name = normalized_new_name or name
+    if cache is not None and normalized_new_name and resolved_client.id:
+        # A rename done THROUGH DeniDin - reflect it immediately rather than
+        # waiting for the next periodic sweep (which still independently
+        # catches renames done directly in Morning's own UI).
+        cache.write_through(Client(id=resolved_client.id, name=display_name))
     return json.dumps(
         {
             "status": "updated",

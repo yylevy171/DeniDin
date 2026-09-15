@@ -116,6 +116,19 @@ safe here because `mcp.auth_token`'s bearer check, not Host-header matching, is
 this server's real access boundary — set it whenever exposing the server
 publicly.
 
+### Client-name cache (Feature 072)
+
+A transparent, read-through SQLite cache of Morning client names/ids, gated behind
+`feature_flags.morning_cache_enabled` (default `false`). When on, `resolve_client_name`
+(and every write tool's internal name resolution) checks `data/client_cache.db` first — a
+previously-seen exact client name resolves with zero Morning API calls. Entirely internal:
+no MCP tool schema changes, no `denidin-app` changes, byte-identical behavior when the flag
+is off. Kept fresh via event-driven write-through (`add_client`/`update_client` success, a
+live exact match on a cache miss) plus a periodic reconciliation sweep
+(`client_cache_sweep_interval_minutes`, default 60) that catches renames/deletes made
+directly in Morning's own UI. See
+`specs/repo/features/072-morning-client-name-cache/` for the full design.
+
 ## Docker (what the scripts above wrap)
 
 ```bash

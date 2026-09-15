@@ -10,6 +10,7 @@ __pycache__/
 .coverage
 htmlcov/
 logs/
+data/
 .DS_Store
 .morning_mcp.pid
 .ngrok.pid
