@@ -303,16 +303,32 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             sender_phone: Optional[str] = None,
             progress_callback: Optional[Callable[[str], None]] = None,
             is_media: bool = False,
-            media_extraction: Optional[Dict[str, Any]] = None) -> AIResponse:
+            media_extraction: Optional[Dict[str, Any]] = None,
+            media: Optional[Any] = None,
+            media_type: Optional[str] = None) -> AIResponse:
         """The orchestrator's entry point — same shape `AIHandler.get_response` already
         exposes, so denidin.py's calling code is unaffected by which implementation
         produced the returned AIResponse (REQ-063-07).
 
-        media_extraction (2026-09-14): the ALREADY-computed extraction result
-        (extracted_text/document_analysis/media_type) for a media turn - denidin.py
-        runs the real, unmodified MediaHandler pipeline (download/extract/save/
-        session-persist/ledger-stash-detect, REQ-063-03) before this call, not
-        inside the plan, so this is real content, not a stub. None for a text turn.
+        media_extraction: an ALREADY-computed extraction result
+        (extracted_text/document_analysis/media_type), when a caller has one to hand
+        (e.g. a test fixture, or a future caller of this method directly). None for
+        a text turn.
+
+        media/media_type (2026-09-15, REQ-063-04a real design): the RAW, not-yet-
+        extracted media for a media turn — denidin.py's flag-on media dispatch
+        downloads and validates the file (reusing the unmodified low-level
+        `MediaFileManager.download_file`/`validate_file_size`/`validate_format`,
+        REQ-063-03), builds a `Media` object, and hands it here as-is, WITHOUT
+        running any extraction call first. This is the real design per
+        contracts/orchestration-loop.md: the turn enters Intent Identification →
+        Planning like any other turn (knowing only "media attached, type X,
+        caption Y" — no content), and Planning is what actually CHOOSES whether
+        this turn's plan includes a media_analysis step at all; only if/when that
+        step runs does `src/capabilities/media_analysis/handler.py::extract()`
+        make the real vision/PDF/DOCX extraction call, via `turn_context["media"]`/
+        `["media_type"]` below. media_extraction (above) and media/media_type are
+        mutually exclusive in practice — a caller passes at most one.
         """
         del sender, recipient, is_group, chat_name
 
@@ -332,6 +348,8 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             "chat_id": effective_chat_id,
             "sender_phone": sender_phone,
             "media_extraction": media_extraction,
+            "media": media,
+            "media_type": media_type,
         }
 
         # Conversation history (2026-09-14): the SAME rolling-window shape/source

@@ -841,6 +841,75 @@ def _process_conversational_message(notification: Notification) -> None:
                 )
 
 
+def _process_media_message_via_backbone(notification: Notification, message, keepalive_job_id) -> None:
+    """Feature 063 (REQ-063-04a, real design 2026-09-15 - corrects the 2026-09-14
+    shortcut this used to take): the flag-on media path, split out of
+    `_process_media_message` so that function's own complexity stays bounded.
+
+    Threads RAW, not-yet-extracted media into the Backbone orchestrator - no
+    eager extraction before Intent Identification even runs. This does ONLY a
+    download + format/size validation up front (reusing the unmodified,
+    standalone low-level MediaFileManager methods, REQ-063-03 - never the
+    monolithic MediaHandler.process_media_message, which also extracts/
+    persists/ledger-detects in the same call and is left completely untouched
+    for the flag-off legacy path). The orchestrator gets the raw `Media`
+    object; Intent Identification is told only "media attached, not yet
+    extracted" (src/backbone/intent_identification.py); Planning is what
+    actually CHOOSES whether this turn's plan needs a media_analysis step at
+    all (src/backbone/planning.py's _ALWAYS_ALLOWED_CAPABILITIES); only if/when
+    that step runs does src/capabilities/media_analysis/handler.py::extract()
+    make the real extraction call - and a following ledger_capture step
+    (Planning's own choice, same as any text turn) is what persists a
+    recognized fee-agreement/bank-deposit event, not an eager side effect of
+    downloading.
+    """
+    from src.models.media import Media
+    from src.models.message import AIRequest
+
+    message_data = notification.event.get('messageData', {})
+    file_message_data = message_data.get('fileMessageData', {})
+    file_url = file_message_data.get('downloadUrl', '')
+    filename = file_message_data.get('fileName', 'unknown')
+    mime_type = file_message_data.get('mimeType', '')
+    caption = file_message_data.get('caption', '')
+
+    file_manager = denidin_app.whatsapp_handler.media_handler.media_file_manager
+    try:
+        content, download_success = file_manager.download_file(file_url)
+        if not download_success:
+            raise ValueError("Unable to download this file.")
+        file_manager.validate_file_size(len(content))
+        media_type = file_manager.validate_format(filename, mime_type)
+    except ValueError as exc:
+        logger.warning(f"Media download/validation failed (flag-on path): {exc}")
+        if denidin_app.typing_keepalive_scheduler is not None:
+            stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
+        notification.answer(FAILED_TO_PROCESS_FILE_DEFAULT)
+        log_outbound(message.chat_id, FAILED_TO_PROCESS_FILE_DEFAULT, kind="text")
+        return
+
+    if denidin_app.typing_keepalive_scheduler is not None:
+        stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
+
+    media = Media(data=content, mime_type=mime_type, filename=filename)
+    request = AIRequest(
+        user_prompt=caption or "[media message]",
+        constitution="",
+        max_tokens=denidin_app.config.ai_reply_max_tokens,
+        model=denidin_app.config.ai_vision_model,
+        chat_id=message.chat_id,
+        message_id=message.message_id,
+        timestamp=message.timestamp,
+        original_message=message,
+    )
+    response = denidin_app.backbone_orchestrator.get_response(
+        request, chat_id=message.chat_id, is_media=True, media=media, media_type=media_type,
+    )
+    if response.should_reply:
+        notification.answer(response.response_text)
+        log_outbound(message.chat_id, response.response_text, kind="text")
+
+
 def _process_media_message(notification: Notification) -> None:
     """
     Feature 048 (2026-08-13, corrected same day): shared wrapper around
@@ -872,83 +941,18 @@ def _process_media_message(notification: Notification) -> None:
         else:
             send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
-    # Feature 063 (REQ-063-04a, real extraction wiring 2026-09-14): when the flag
-    # is on, media messages enter through the SAME Backbone orchestrator as text
-    # turns - no separate deterministic pre-route. Real extraction (download,
-    # validate, extract, save, session-persist, ledger-stash-detect) reuses the
-    # SAME MediaHandler.process_media_message the flag-off path already calls
-    # (REQ-063-03: imported, not duplicated) - only WHAT REPLIES TO THE USER
-    # differs: the flag-off path replies with process_media_message's own
-    # composed `summary`; the flag-on path instead threads the raw extraction
-    # into the Backbone (Intent -> Planning -> capability steps) and replies
-    # with ITS OWN answer. Parsing below mirrors WhatsAppHandler.handle_media_message's
-    # own field extraction exactly (same fields, same fallback values) since that
-    # method's OWN reply-sending isn't what this path wants.
+    # Feature 063 (REQ-063-04a, real design 2026-09-15 - corrects the 2026-09-14
+    # shortcut this used to take): when the flag is on, media messages enter
+    # through the SAME Backbone orchestrator as text turns, RAW - no eager
+    # extraction before Intent Identification even runs. See
+    # _process_media_message_via_backbone's own docstring for the full design.
     if denidin_app.backbone_orchestrator is not None:
-        from src.models.message import AIRequest
+        _process_media_message_via_backbone(notification, message, keepalive_job_id)
+        return
 
-        message_data = notification.event.get('messageData', {})
-        file_message_data = message_data.get('fileMessageData', {})
-        result = denidin_app.whatsapp_handler.media_handler.process_media_message(
-            file_url=file_message_data.get('downloadUrl', ''),
-            filename=file_message_data.get('fileName', 'unknown'),
-            mime_type=file_message_data.get('mimeType', ''),
-            file_size=0,
-            caption=file_message_data.get('caption', ''),
-            sender_phone=message.sender_id,
-            chat_id=message.chat_id,
-            timestamp=message.timestamp,
-            message_id=message.message_id,
-            sender_display_name=message.sender_display_name,
-            is_group=message.is_group,
-            chat_name=message.chat_name,
-        )
-        if denidin_app.typing_keepalive_scheduler is not None:
-            stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
-
-        # `isinstance(result, dict)` guards below (not a bare truthiness check on
-        # `result` itself) deliberately tolerate a non-dict result - a real call
-        # always returns a dict (MediaHandler's documented contract), but a test
-        # double standing in for the whole `whatsapp_handler` need not configure
-        # one just to exercise this dispatch decision; a non-dict result reads as
-        # "no failure, no ledger stash reported" and falls through to the normal
-        # backbone call below, same as a successful real result would.
-        if isinstance(result, dict) and not result.get("success", False):
-            logger.warning(f"Media processing failed: {result.get('error_message', 'Unknown error')}")
-            notification.answer(FAILED_TO_PROCESS_FILE_DEFAULT)
-            log_outbound(message.chat_id, FAILED_TO_PROCESS_FILE_DEFAULT, kind="text")
-            return
-        if isinstance(result, dict) and result.get("ledger_stash"):
-            # Feature 069 rerouting below (shared with the flag-off path) already
-            # handles this via the same `result` shape - fall through.
-            pass
-        else:
-            request = AIRequest(
-                user_prompt=file_message_data.get('caption') or "[media message]",
-                constitution="",
-                max_tokens=denidin_app.config.ai_reply_max_tokens,
-                model=denidin_app.config.ai_vision_model,
-                chat_id=message.chat_id,
-                message_id=message.message_id,
-                timestamp=message.timestamp,
-                original_message=message,
-            )
-            media_extraction = {
-                "extracted_text": result.get("extracted_text"),
-                "document_analysis": result.get("document_analysis"),
-                "media_type": result.get("media_type"),
-            } if isinstance(result, dict) else {}
-            response = denidin_app.backbone_orchestrator.get_response(
-                request, chat_id=message.chat_id, is_media=True, media_extraction=media_extraction,
-            )
-            if response.should_reply:
-                notification.answer(response.response_text)
-                log_outbound(message.chat_id, response.response_text, kind="text")
-            return
-    else:
-        result = denidin_app.whatsapp_handler.handle_media_message(notification)
-        if denidin_app.typing_keepalive_scheduler is not None:
-            stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
+    result = denidin_app.whatsapp_handler.handle_media_message(notification)
+    if denidin_app.typing_keepalive_scheduler is not None:
+        stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
 
     # Feature 069 (Phase 9/10): a fee-agreement / bank-deposit image or DOCX was
     # recognised. Instead of replying with the plain extraction summary,

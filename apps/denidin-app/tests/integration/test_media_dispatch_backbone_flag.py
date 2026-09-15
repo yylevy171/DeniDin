@@ -45,6 +45,13 @@ def test_flag_on_media_dispatch_calls_backbone_orchestrator_not_legacy_handler()
     fake_denidin.green_api_bot = None
     fake_denidin.typing_keepalive_scheduler = None
     fake_denidin.ai_handler.user_manager.get_user.return_value.is_blocked = False
+    # 2026-09-15: the flag-on path now only downloads+validates raw media (REQ-063-04a's
+    # real design - see denidin.py's own comment) instead of running the full legacy
+    # extraction pipeline, so these two MediaFileManager calls need real-shaped return
+    # values for the dispatch to reach backbone_orchestrator.get_response at all.
+    file_manager = fake_denidin.whatsapp_handler.media_handler.media_file_manager
+    file_manager.download_file.return_value = (b"fake jpeg bytes", True)
+    file_manager.validate_format.return_value = "image"
 
     from src.models.message import AIResponse
     fake_denidin.backbone_orchestrator.get_response.return_value = AIResponse(
