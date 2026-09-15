@@ -1,40 +1,46 @@
-# Feature Specification: Support Bit and PayBox
+# Feature Specification: Support Bit, PayBox, Checks, and Cash
 
 **Feature Branch**: `feature/066-support-bit-and-paybox`
 **Created**: 2026-08-30
-**Status**: Placeholder — not yet clarified/specced. Captured from the 2026-08-29 dev-conversation
-"DeniDin improvements" list (item 2). Run `speckit.specify` + `speckit.clarify` before
-implementation.
+**Status**: DRAFT (Backlog)
+**Input**: CEO requirement to support 4 new deposit flows (Bit, PayBox, Checks, Cash) by fundamentally refactoring the ledger data model to unify all deposits under a single `deposit` event type.
 
-## Input
+---
 
-User description: support **Bit** and **PayBox** transfers, treated the same as a bank transfer —
-same recognition from a forwarded screenshot, same ledger event handling, same downstream
-document flow.
+## 1. Business & Architectural Goals
 
-## Notes captured so far
+Historically, DeniDin only supported standard Bank Transfers (recorded as `type="bank", subtype="deposit"`). When clients send screenshots of Bit, PayBox, or Check deposits, the AI either fails to recognize them or hallucinates incorrect bank details.
 
-- Motivated by the August 2026 ledger audit (`065-august-ledger-audit-apply`): Bit transfers
-  were captured with a `ממתין` (pending) status line and classified as "unsupported", then
-  removed — even though some had real closed Morning documents.
-- Bit/PayBox screenshots differ from bank-transfer confirmations: they carry an app confirmation
-  number (e.g. `1078-6562-13301`), a pending/settled status line, a sender name, and usually no
-  bank account number.
-- `ממתין` (pending) vs. settled: a pending transfer is not yet money received — the feature must
-  decide whether to record provisionally, wait for a settled screenshot, or ask.
-- Independently corroborated by the `player_data/needs_clarification.jsonl` replay review
-  (2026-08-30, `chore/player-start-at-line-resume`): item 45/86 was a real PayBox deposit
-  screenshot where the model got confused and did not create a ledger event at all (reasonable,
-  since it's genuinely unsupported); item 67/86 found one player-replay event
-  (`B06082613310`, מבוטל'd during that review) matching the exact same real event 065's prod
-  audit independently flagged and removed for the same reason — two separate processes (a
-  replay review and a manual prod audit) reaching the same conclusion on the same event.
+**The Goal**: Expand DeniDin's accounting capabilities to natively support the 4 most common alternative payment methods in Israel: Bit, PayBox, Checks (via image), and Cash (via text).
 
-## Open questions for `speckit.clarify`
+To do this cleanly, we are **flipping the data model**. Instead of making everything a subset of "bank", all incoming funds will be unified under a single primary event type (`deposit`), with the payment method acting as the subtype.
 
-- New payment-method field on the deposit/ledger event (`bank_transfer` / `bit` / `paybox`) vs.
-  a new `source_type`.
-- Handling the pending → settled transition (two screenshots for one payment).
-- Idempotency: the app confirmation number is a natural dedup key — should the ledger enforce
-  uniqueness on it?
-- Does "same as bank transfer" mean it flows identically into item 1's screenshot→action flow?
+---
+
+## 2. PM Requirements (Functional Scope)
+
+### 2.1 The Data Model "Flip"
+- **REQ-066-01**: The ledger event data model MUST be refactored. The event type for all incoming funds MUST be `deposit` (הפקדה).
+- **REQ-066-02**: The event subtype MUST explicitly declare the payment method. Valid subtypes are: `bank` (בנק), `bit` (ביט), `paybox` (פייבוקס), `check` (צ׳ק), and `cash` (מזומן).
+
+### 2.2 New Capture Flows
+- **REQ-066-03 (Bit & PayBox)**: The AI MUST recognize Bit and PayBox transfer screenshots, extract the relevant sender details and amounts, and record them as `deposit` + `bit`/`paybox`.
+- **REQ-066-04 (Checks)**: The AI MUST recognize images of checks, extract the amount, bank details, and check number, and record them as `deposit` + `check`.
+- **REQ-066-05 (Cash)**: The AI MUST recognize natural language text inputs indicating cash receipt (e.g., "Received 500 NIS in cash from Yossi") and record it as `deposit` + `cash`.
+
+### 2.3 Morning API Integration
+- **REQ-066-06 (Receipts & Combos)**: The Morning API handlers for Receipts (Type 320) and Combo Documents (Type 400) MUST be updated to accept all 5 subtypes and correctly map them to the corresponding Morning API `payment_type` fields.
+
+### 2.4 Data Migration
+- **REQ-066-07 (Migration Script)**: A one-off migration script MUST be created and executed against the production `events/` folder to rewrite all historical `type="bank", subtype="deposit"` events to the new `type="deposit", subtype="bank"` format.
+
+### 2.5 Ecosystem Impact
+- **REQ-066-08 (Peripheral Apps)**: The `apps/webapp` (UI dashboard), the `player` (Replay system), and the `accounting_reconciliation` app MUST be audited and updated to ensure they correctly parse and render the new `type="deposit"` data model without crashing.
+
+---
+
+## 3. Success Criteria
+- **SC-001**: A client can send a Bit screenshot, a PayBox screenshot, a Check image, or a Cash text message, and a correct ledger event is recorded for each.
+- **SC-002**: A Morning receipt generated from a Bit transfer successfully reflects the "Bit" payment method on the official PDF.
+- **SC-003**: The data migration script runs successfully on production, migrating 100% of historical bank deposits to the new format with zero data loss.
+- **SC-004**: The UI Dashboard and Player Replay apps load successfully after the migration without any rendering errors related to the new event types.
