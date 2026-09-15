@@ -209,7 +209,9 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
     def build_instructions(self, active_tag: CapabilityTag, accumulated_context: str = "",
                             today_timestamp: Optional[int] = None) -> str:
         """contracts/prompt-assembly.md's fixed assembly order:
-        backbone + exactly ONE capability's prompt + accumulated_context + '---' + today.
+        backbone + exactly ONE capability's prompt + accumulated_context + recalled
+        memory + '---' + today (memory deliberately last among the dynamic parts -
+        see the inline comment above its append call for why).
 
         Date AND time (not date alone) - mirrors AIHandler._load_constitution's own
         current-date-and-time injection: without a current TIME, the model cannot
@@ -231,19 +233,30 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         catalog = capability_catalog_text(list(DOMAIN_CAPABILITY_TAGS))
         parts = [
             self.load_backbone(),
-            # self._turn_memory_context (2026-09-15): placed immediately after
-            # Backbone content, mirroring AIHandler._build_instructions's own
-            # placement of recalled-memory context right after `constitution`
-            # (ai_handler.py's RECALLED MEMORIES block) - see _recall_memory's
-            # docstring. Computed once per turn (get_response), same string for
-            # every step this turn makes.
-            self._turn_memory_context,
             f"## Capabilities\n\n{catalog}" if catalog else "",
             self.load_capability_prompt(active_tag),
             self.load_user_memory(),
         ]
         if accumulated_context:
             parts.append(accumulated_context)
+        # self._turn_memory_context (2026-09-15, position corrected 2026-09-15 -
+        # a real gap found on re-audit against contracts/prompt-assembly.md's own
+        # formula, which has no memory_context between backbone and capability
+        # content at all): MUST be appended AFTER capability content, never
+        # between backbone and load_capability_prompt(active_tag) - REQ-063-06
+        # requires `backbone_content + load_capability_prompt(tag)` to form one
+        # of only 9 distinct byte-stable prefixes system-wide, regardless of
+        # turn/conversation. Memory recall varies per query/chat, so placing it
+        # before capability content would break every call after it from ever
+        # sharing a cached prefix with another call using the same tag - the
+        # opposite of what SC-005's "same capability set hits cache" property
+        # requires. Placed alongside accumulated_context (also turn-varying) at
+        # the very end, right before the date suffix, instead - mirrors
+        # AIHandler's own "constitution stays the stable prefix, everything
+        # dynamic comes after" principle, just correctly extended to this
+        # design's extra capability-content tier.
+        if self._turn_memory_context:
+            parts.append(self._turn_memory_context)
         parts.append("---")
         parts.append(
             f"THE CURRENT DATE AND TIME IS {now.strftime('%Y-%m-%d')} {now.strftime('%H:%M')} "

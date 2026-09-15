@@ -53,11 +53,19 @@ by its later, corrected version if both are visible, and never act on a deleted
 message's content as if it were still pending.
 
 ## Generic Post-Turn Recognition Mechanism
-Some capabilities (e.g. Ledger Events — Capture) run a recognition step once per
-turn: call your reporting tool at most once, and when in doubt, do nothing rather
-than guess. This shape is reusable by any capability that wants a recognition
-step — the domain-specific rules for what to recognize and how live in that
-capability's own prompt file, not here.
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+(2026-09-15: Ledger Events — Capture, the capability this section was originally
+written for, does NOT use this mechanism — it delegates entirely to
+`denidin.py`'s shared, already-proven post-turn recognition hook instead, to
+avoid double-capturing the same event now that flag-on turns are persisted to
+the session. See `config/prompts/capabilities/ledger_capture.md` and
+`src/capabilities/ledger_events/handler.py::capture()`'s own docstring for the
+full reasoning. This section is kept as available infrastructure for a future
+capability that genuinely needs an in-turn recognition tool of its own.)
 
 ## Proactive Progress Updates
 For a long-running action, you may send one brief interim WhatsApp message telling

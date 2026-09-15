@@ -176,30 +176,57 @@ copies rushed in this pass.
 
 ---
 
-## Deferred (tracked, not silently dropped)
+## Deferred (tracked, not silently dropped) — CLOSED 2026-09-15
 
-Full write-approval-flow parity for the remaining domain capabilities, following the
-Reminders — Write template landed in Phase 5:
-- Invoicing — Write (`create_invoice`/`create_transaction_account`/etc., Group B reference-tool
-  approval-prompt building per bugfix-038's pattern)
-- Ledger Events — Capture (the three-verdict recognition flow + הסכם/בנק specifics, ported from
-  `config/ledger_recognition_prompt.md`'s domain rules per the second plan-phase clarification)
-- Reminders modify/delete (`_handle_reminder_modify_or_delete_proposal`/`_propose_reminder_modify_or_delete`
-  equivalents)
-- Backbone-level Proactive Progress Updates + Reaction Management execution wiring (prompt content
-  is in `backbone.md` per T010; the corresponding tool-call execution/dispatch code is not yet
-  wired into `BackboneOrchestrator`'s loop)
-- Accounting-reconciliation capture equivalent (`_handle_accounting_reconciliation_capture`) — the
-  reconciliation *service* itself is explicitly out of scope per `contracts/orchestration-loop.md`'s
-  Non-goals; only the capture path a live turn would take is deferred here
-- Raw media bytes threading from `denidin.py`'s flag-on media dispatch into
-  `BackboneOrchestrator`'s per-step `turn_context["media"]`/`["media_type"]` — the routing
-  DECISION (flag on → orchestrator, flag off → legacy `WhatsAppHandler.handle_media_message`,
-  unchanged) is wired for real (T046); `src/capabilities/media_analysis/handler.py::extract()`
-  already calls the real, unmodified extractor classes once a `Media` object is present in
-  `turn_context`, but nothing yet populates that key from the live WhatsApp media download path —
-  it currently degrades to a clear "no media attached" fallback text instead of a crash
-- Recurring reminder creation, reminder modify/delete (noted inline in Phase 5 already)
+Every item originally listed here has since been implemented and verified (unit+integration
+suite green, flag on and off, 1713/1713 passing) as of 2026-09-15's full spec-vs-code re-audit.
+Kept as a record of what was closed, not as open work:
 
-Each of these should get its own `tasks.md` phase, its own unit-test-first pass, and its own human
-approval gate when picked up — not bundled into a single unreviewed sweep.
+- **Invoicing — Write** — `src/capabilities/invoicing/handler.py::propose_write()`/
+  `resolve_button_tap()`/`resolve_typed_reply()`, Group B reference-tool approval-prompt building
+  per bugfix-038's pattern. Done.
+- **Ledger Events — Capture** — NOT ported as an in-plan three-verdict flow (a deliberate design
+  decision, not a gap): `denidin.py`'s pre-existing, unmodified `_run_post_turn_ledger_recognition`
+  (Feature 069, calling `AIHandler.recognize_ledger_event`'s full proven flow) already runs for
+  every godfather/admin turn under flag-on, text and media alike, once flag-on turns are
+  persisted to the session (see the session-persistence item below). This step's own `capture()`
+  is a documented no-op that defers to that shared mechanism entirely, to avoid double-capturing
+  the same event. See `src/capabilities/ledger_events/handler.py::capture()`'s docstring.
+- **Reminders modify/delete** — `src/capabilities/reminders/handler.py::_propose_modify_or_delete()`
+  + `MODIFY_DELETE_REMINDER_TOOLS`, offered alongside create in the same `propose_write()` call.
+  Done.
+- **Recurring reminder creation** — `CREATE_REMINDER_TOOL`'s `schedule_type=recurring` branch,
+  same call as one-time creation. Done.
+- **Backbone-level Proactive Progress Updates + Reaction Management execution wiring** —
+  `src/backbone/backbone_tools.py`'s `dispatch_send_progress_update`/`dispatch_react_to_message`,
+  dispatched from `BackboneOrchestrator._resolve_backbone_tool_calls` after every capability-step
+  call. Done.
+- **Accounting-reconciliation capture equivalent** — turned out not to be a real gap on closer
+  inspection: `_handle_accounting_reconciliation_capture` is called ONLY by
+  `services/accounting_reconciliation_service.py`'s headless sweep, never by any live
+  conversational turn (confirmed via a full-codebase grep for its only callers) — and
+  `denidin.py::initialize_app` constructs `AIHandler` unconditionally regardless of the flag
+  (the reconciliation service, reminder delivery, and daily-summary-roll schedulers all always
+  run against that same shared `ai_handler` instance), so this was never actually routed through
+  either `AIHandler.get_response` or `BackboneOrchestrator.get_response` in the first place.
+  Nothing to build here.
+- **Raw media bytes threading** — `denidin.py`'s flag-on media dispatch (split into
+  `_process_media_message_via_backbone`) downloads/validates real media via the unmodified
+  low-level `MediaFileManager` methods and threads the raw `Media` object into
+  `BackboneOrchestrator.get_response(media=..., media_type=...)`; Planning decides whether the
+  turn's plan even includes a `media_analysis` step at all — REQ-063-04a's real design (corrects
+  the earlier 2026-09-14 eager-extraction shortcut, per explicit human correction: media enters
+  the orchestrator raw, like any other message, and the orchestrator chooses whether/when to
+  extract). Done.
+
+Additionally closed by the 2026-09-15 re-audit, not originally listed above (found via
+cross-referencing every spec artifact against the actual code, not just this task list):
+- **Session persistence** for flag-on turns (`BackboneOrchestrator._persist_turn`, wired into
+  `_finalize_response` and into the pending-approval bypass paths in both reminders/invoicing
+  handlers).
+- **Long-term memory recall** for flag-on turns (`BackboneOrchestrator._recall_memory`, mirroring
+  `AIHandler`'s own RBAC-filtered `recall_with_rbac_filter`/`recall` call).
+- **mcp_calls tracking** through the turn (`call_capability_step` accumulates real Morning MCP
+  tool calls into `AIResponse.mcp_calls` and the persisted assistant message), closing a gap where
+  the post-turn ledger-recognition hook always saw an empty list under flag-on regardless of real
+  Morning activity that turn.

@@ -1,12 +1,10 @@
 """
-Reminders capability (Feature 063) — read + write(one-time-creation template) steps.
-Wraps the existing, unmodified `src/managers/reminder_manager.py` and
+Reminders capability (Feature 063) — read + write steps (one-time creation,
+recurring creation, and modify/delete are all implemented — see propose_write and
+_propose_modify_or_delete below). Wraps the existing, unmodified
+`src/managers/reminder_manager.py` and
 `src/managers/pending_local_tool_approval_manager.py` (REQ-063-03) — this module owns
 no storage of its own.
-
-Write-side scope: only ONE-TIME reminder creation's full propose→approve→create flow
-is implemented here as the template for the remaining write-capabilities' parity work
-(recurring creation, modify/delete are tracked in tasks.md's Deferred section).
 """
 import logging
 from typing import Any, Dict, Optional
