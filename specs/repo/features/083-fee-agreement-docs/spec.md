@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/083-fee-agreement-docs`  
 **Created**: 2026-09-12  
-**Status**: Done — Implemented and merged  
+**Status**: Done — Implemented and merged (PR #331)  
 **Input**: User description: "Creating a fee agreement document automatically based on user details and a well-known template. User asks -> AI asks clarifying info -> AI creates document and provides it back for download. Preference for docx."
 
 ---
