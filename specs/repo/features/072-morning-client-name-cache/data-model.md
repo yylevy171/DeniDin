@@ -1,0 +1,42 @@
+# Phase 1 Data Model: Morning Client-Name Cache
+
+## Store
+
+`apps/morning-mcp-app/data/client_cache.db` — one file per environment (mounted via the
+same per-clone `docker/docker-compose.{dev,prod}.local.yml` override pattern
+`denidin-app`'s `dev_data`/`data` already use, so the cache is shared across clones the
+same way session data is — a cold cache after every clone's own container restart would
+otherwise tank the hit rate for whichever clone happens to run dev). SQLite, one table.
+
+## Table: `clients`
+
+| Column | Type | Notes |
+|---|---|---|
+| `client_id` | TEXT PRIMARY KEY | Morning's own client id — the authoritative key. |
+| `name` | TEXT NOT NULL | The exact name as stored in Morning (what `resolve_client_name` discloses verbatim — REQ-CLIENT-018 in `tools.py`, never the id). |
+| `name_normalized` | TEXT NOT NULL | Bag-of-words, casefolded, geresh-normalized form of `name` (same normalization `_bag_equal_words`/`_normalize_hebrew_geresh` already apply) — the lookup key for an exact-match cache hit, so a hit is exactly as forgiving of word order/casing/apostrophe style as today's Step-0 exact match already is, no more and no less. Indexed. |
+| `updated_at` | TEXT NOT NULL | ISO-8601 Israel-local timestamp (`now_local()`/`local_isoformat()`, per CONSTITUTION §II) of the last write-through or TTL-sweep confirmation for this row. |
+
+Index: `CREATE UNIQUE INDEX idx_clients_name_normalized ON clients(name_normalized)`.
+
+## Lifecycle / state transitions
+
+- **Insert**: on `add_client` success (event-driven write-through), or when a periodic TTL
+  sweep (`list_clients`) discovers a client not yet cached, or opportunistically when
+  `resolve_client_by_name`'s Step-0 exact match succeeds against live Morning on a cache
+  miss (so the *next* lookup for that name is a hit, per User Story 2).
+- **Update**: the periodic TTL sweep upserts `name`/`name_normalized`/`updated_at` for
+  every `client_id` it finds — this is how a rename done in Morning's own UI is detected
+  and corrected (Decision 3, research.md).
+- **Delete**: a write tool that receives Morning's "Invalid Client ID" error evicts that
+  one `client_id` row immediately (spec's "Handling Stale Data" requirement). The periodic
+  TTL sweep also deletes any cached `client_id` no longer present in Morning's roster.
+- No soft-delete / tombstone — a missing row is simply a cache miss, falling through to
+  the existing live-Morning resolution path unchanged.
+
+## Non-goals
+
+- Not a source of truth (spec, "Proposed Direction & Architecture") — Morning's own client
+  record is always authoritative; this table only ever mirrors it.
+- No relationship to any other entity in this codebase (`LedgerEvent`, `Reminder`, etc.) —
+  purely local to `apps/morning-mcp-app`, never read or written by `denidin-app`.
