@@ -8,7 +8,8 @@ from tenacity import (
     retry,
     stop_after_attempt,
     wait_fixed,
-    retry_if_exception_type
+    retry_if_exception_type,
+    retry_if_exception,
 )
 from whatsapp_chatbot_python import Notification
 from src.constants.error_messages import (
@@ -18,6 +19,7 @@ from src.constants.error_messages import (
 )
 from src.managers.pending_approval_manager import BUTTON_ID_APPROVE, BUTTON_ID_DECLINE
 from src.models.message import WhatsAppMessage, AIResponse
+from src.models.fee_agreement import GeneratedDocument
 from src.utils.logger import get_logger
 from src.utils.whatsapp_audit_log import log_outbound
 
@@ -34,11 +36,17 @@ class WhatsAppHandler:
     def __init__(self, media_handler=None):
         """
         Initialize WhatsAppHandler
-        
+
         Args:
             media_handler: Optional MediaHandler instance for processing media messages
         """
         self.media_handler = media_handler
+        # Feature 083: injected post-construction (denidin.py's `__main__`,
+        # same idiom as denidin_app.green_api_bot) - the real, live bot
+        # object (`.api.sending.sendFileByUpload`), only available once this
+        # is the real, live-running app, never reachable from
+        # initialize_app()'s test-harness callers.
+        self.green_api_bot = None
         logger.debug("WhatsAppHandler initialized")
 
     def process_notification(self, notification: Notification) -> WhatsAppMessage:
@@ -132,6 +140,87 @@ class WhatsAppHandler:
                     raise  # Don't retry 4xx errors
                 # 5xx errors: let tenacity retry them by raising
             raise
+
+    @staticmethod
+    def _is_retryable_send_error(exception: BaseException) -> bool:
+        """True for a timeout/connection error, or an HTTPError NOT in the
+        4xx range - the actual gate that makes "never retry a 4xx" real,
+        since a plain `retry_if_exception_type` would match every
+        requests.HTTPError regardless of status code (re-raising inside the
+        function body does not change what the retry decorator itself sees)."""
+        if isinstance(exception, (requests.Timeout, requests.ConnectionError)):
+            return True
+        if isinstance(exception, requests.HTTPError):
+            status_code = getattr(getattr(exception, 'response', None), 'status_code', None)
+            return not (status_code is not None and 400 <= status_code < 500)
+        return False
+
+    @retry(
+        retry=retry_if_exception(_is_retryable_send_error.__func__),
+        stop=stop_after_attempt(2),  # Initial attempt + 1 retry = 2 total attempts
+        wait=wait_fixed(1),
+        reraise=True
+    )
+    def _send_file_with_retry(self, chat_id: str, path: str, file_name: str, caption: str) -> None:
+        """Same CONSTITUTION retry policy as _send_with_retry: one retry on
+        5xx/timeout/connection error after 1s, never on a 4xx client error."""
+        try:
+            self.green_api_bot.api.sending.sendFileByUpload(
+                chat_id, path, fileName=file_name, caption=caption,
+            )
+        except requests.HTTPError as e:
+            if hasattr(e, 'response') and e.response is not None:
+                if 400 <= e.response.status_code < 500:
+                    logger.error(f"Green API 400-range error sending file - not retrying: {e}")
+            raise
+
+    def send_document_response(
+        self, generated: GeneratedDocument, chat_id: str, caption: str,
+    ) -> bool:
+        """
+        Feature 083 (contracts/whatsapp-file-delivery.md): sends a generated
+        fee agreement .docx file to `chat_id` via `sendFileByUpload`. Refuses
+        outright (no call attempted) if the document has not passed
+        verification - the AI's own verify_fee_agreement_document judgment
+        is the sole gate for the finished document (research.md #4); this is
+        belt-and-suspenders, not the primary gate.
+
+        Deletion of the temp file itself is the caller's responsibility
+        (FeeAgreementToolHandler._cleanup, in every case - success or
+        failure) - this method never touches the filesystem beyond reading
+        the file to upload it.
+
+        Returns True on a confirmed successful send, False on any failure
+        (never raises - a friendly, generic failure is what the caller's
+        tool-call-error payload surfaces to the model, per CONSTITUTION's
+        "no raw exception text to the user" rule).
+        """
+        if not generated.verified:
+            logger.error(
+                f"[083] Refusing to send unverified document_id={generated.document_id!r} - "
+                "verify_fee_agreement_document must be called and confirmed clean first."
+            )
+            return False
+        if self.green_api_bot is None:
+            logger.error("[083] Cannot send fee agreement document - no live bot object injected.")
+            return False
+
+        try:
+            self._send_file_with_retry(
+                chat_id, str(generated.temp_path), generated.temp_path.name, caption,
+            )
+            logger.info(
+                f"[083] Fee agreement document sent: document_id={generated.document_id!r}, "
+                f"chat_id={chat_id!r}"
+            )
+            log_outbound(chat_id, f"[fee agreement document: {generated.temp_path.name}]", kind="file")
+            return True
+        except (requests.HTTPError, requests.Timeout, requests.ConnectionError) as e:
+            logger.error(
+                f"[083] Failed to send fee agreement document_id={generated.document_id!r} "
+                f"after retry: {e}", exc_info=True
+            )
+            return False
 
     def send_response(self, notification: Notification, response: AIResponse) -> Optional[str]:
         """

@@ -373,8 +373,10 @@ def _load_sandbox_clients() -> List[dict]:
     return _sandbox_clients_cache
 
 
-def pick_existing_client(predicate: Optional[Callable[[dict], bool]] = None) -> dict:
-    """Return a random real sandbox client row (dict with
+def pick_existing_client(
+    predicate: Optional[Callable[[dict], bool]] = None, *, name: Optional[str] = None
+) -> dict:
+    """Return a real sandbox client row (dict with
     ``name``/``id``/``email``/``phone``/``tax_id``) from the committed
     ``morning_sandbox_clients.json`` fixture - for any Group 2 test that needs
     *a* client to exist but does not depend on it being brand-new.
@@ -384,10 +386,30 @@ def pick_existing_client(predicate: Optional[Callable[[dict], bool]] = None) -> 
 
     `predicate`, if given, filters the pool first (e.g.
     ``pick_existing_client(lambda c: c["email"])`` for a test that needs the
-    client to carry an email it can assert round-trips). Raises if nothing
-    matches - a signal to refresh the fixture, never something to paper over.
+    client to carry an email it can assert round-trips), then a random survivor
+    is returned. Raises if nothing matches - a signal to refresh the fixture,
+    never something to paper over.
+
+    `name`, if given (2026-09-15), returns that EXACT client by name instead of
+    a random pick - for a test whose scripted prompt needs a SPECIFIC known
+    client (not just any existing one), e.g. one of the hand-added exact-match
+    entries this fixture curates specifically for that purpose (see the
+    fixture's own top-level `note`). Raises if no row matches that exact name -
+    a caller-fixed name is never silently swapped for a different one.
+    Mutually exclusive with `predicate`.
     """
     pool = _load_sandbox_clients()
+    if name is not None:
+        if predicate is not None:
+            raise ValueError("pick_existing_client: pass `name` or `predicate`, not both")
+        matches = [c for c in pool if c["name"] == name]
+        if not matches:
+            raise RuntimeError(
+                f"pick_existing_client: no sandbox client named {name!r} in the fixture - "
+                f"if this client is real but not yet curated here, add it by hand (see "
+                f"the fixture's own top-level `note` for the existing pattern)"
+            )
+        return matches[0]
     if predicate is not None:
         pool = [c for c in pool if predicate(c)]
     if not pool:
