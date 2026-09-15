@@ -1,10 +1,21 @@
-"""Transparent SQLite cache of Morning client names/ids (Feature 072).
+"""Transparent SQLite cache of full Morning client records (Feature 072).
 
 See specs/repo/features/072-morning-client-name-cache/{data-model.md,
 contracts/cache-contract.md} for the full design. One table, `clients`,
-keyed by Morning's own `client_id`, with a unique index on a normalized
-name for exact-match lookup. Not a source of truth - Morning always is;
-this table only ever mirrors it (spec, "Proposed Direction & Architecture").
+keyed by Morning's own `client_id`, with a (non-unique) index on a
+normalized name for exact-match lookup. Not a source of truth - Morning
+always is; this table only ever mirrors it (spec, "Proposed Direction &
+Architecture").
+
+Revised 2026-09-15 (operator design review, post-implementation): the cache
+stores the FULL client record (name/email/phone/tax_id/address), not just
+name+id as originally scoped. This costs nothing extra - every write path
+already has the full `Client` in hand (a live `resolve_client_by_name` hit
+and the periodic sweep's `fetch_all_clients` both come from Morning's
+`search_clients`, which already returns full records) - and it's what makes
+`get_client_details` a genuine cache hit (a name+id-only cache could never
+serve that tool at all, since it needs exactly the fields that weren't
+stored).
 
 Name normalization here deliberately mirrors tools.py's
 `_normalize_hebrew_geresh`/`_bag_equal_words` exactly (bag-of-words,
@@ -17,7 +28,6 @@ what resolve_client_by_name's own Step 0 would consider exact.
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
@@ -26,6 +36,8 @@ from .utils.time_utils import local_isoformat, now_local
 
 _APOSTROPHE_VARIANTS = ("'", "’", "ʼ")
 _HEBREW_GERESH = "׳"
+
+_COLUMNS = ("client_id", "name", "email", "phone", "tax_id", "address")
 
 
 def _normalize_hebrew_geresh(name: str) -> str:
@@ -41,18 +53,14 @@ def _normalized_bag_key(name: str) -> str:
     return " ".join(words)
 
 
-@dataclass(frozen=True)
-class CachedClient:
-    """One cached client, as returned by `lookup_exact` — never exposes
-    anything a caller couldn't already learn from a live resolution."""
-
-    client_id: str
-    name: str
+def _row_to_client(row: tuple) -> Client:
+    client_id, name, email, phone, tax_id, address = row
+    return Client(id=client_id, name=name, email=email, phone=phone, tax_id=tax_id, address=address)
 
 
 class ClientCache:
-    """Read-through cache over Morning client identities. Every method here
-    is local SQLite only - it never itself calls Morning."""
+    """Read-through cache over full Morning client records. Every method
+    here is local SQLite only - it never itself calls Morning."""
 
     def __init__(self, db_path: Path) -> None:
         self._db_path = Path(db_path)
@@ -72,6 +80,10 @@ class ClientCache:
                     client_id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     name_normalized TEXT NOT NULL,
+                    email TEXT,
+                    phone TEXT,
+                    tax_id TEXT,
+                    address TEXT,
                     updated_at TEXT NOT NULL
                 )
                 """
@@ -89,45 +101,60 @@ class ClientCache:
                 "ON clients(name_normalized)"
             )
 
-    def lookup_exact(self, name: str) -> Optional[CachedClient]:
-        """Read-only exact-match lookup. None on a miss - either no cached
-        client has this normalized name, or more than one does (ambiguous -
-        the cache has no authority to pick one, same as a live Morning
-        search returning multiple candidates). Either way the caller falls
-        through to the existing live Morning resolution unchanged."""
+    def lookup_exact(self, name: str) -> Optional[Client]:
+        """Read-only exact-match lookup, returning the FULL cached client
+        record (name/email/phone/tax_id/address) - not just name+id - so a
+        hit can serve get_client_details too, not only name resolution.
+        None on a miss - either no cached client has this normalized name,
+        or more than one does (ambiguous - the cache has no authority to
+        pick one, same as a live Morning search returning multiple
+        candidates). Either way the caller falls through to the existing
+        live Morning resolution unchanged."""
         key = _normalized_bag_key(name)
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT client_id, name FROM clients WHERE name_normalized = ?",
+                "SELECT client_id, name, email, phone, tax_id, address "
+                "FROM clients WHERE name_normalized = ?",
                 (key,),
             ).fetchall()
         if len(rows) != 1:
             return None
-        return CachedClient(client_id=rows[0][0], name=rows[0][1])
+        return _row_to_client(rows[0])
 
     def write_through(self, client: Client) -> None:
-        """Upsert one resolved client - called on add_client success or a
-        live Step-0 exact Morning match (resolve_client_name's miss branch,
-        so the *next* lookup for that name is a hit)."""
+        """Upsert one resolved client (full record) - called on add_client
+        success, a live Step-0 exact Morning match (any caller's miss
+        branch, so the *next* lookup for that name is a hit), or a
+        successful update_client (reflecting the new state immediately)."""
         if not client.id:
             raise ValueError("write_through requires a client with a real id")
         key = _normalized_bag_key(client.name)
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO clients (client_id, name, name_normalized, updated_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO clients
+                    (client_id, name, name_normalized, email, phone, tax_id, address, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(client_id) DO UPDATE SET
                     name=excluded.name,
                     name_normalized=excluded.name_normalized,
+                    email=excluded.email,
+                    phone=excluded.phone,
+                    tax_id=excluded.tax_id,
+                    address=excluded.address,
                     updated_at=excluded.updated_at
                 """,
-                (client.id, client.name, key, local_isoformat(now_local())),
+                (
+                    client.id, client.name, key,
+                    client.email, client.phone, client.tax_id, client.address,
+                    local_isoformat(now_local()),
+                ),
             )
 
     def evict(self, client_id: str) -> None:
-        """Remove one row by client_id (used by `reconcile`'s delete pass).
-        A no-op if the id isn't cached."""
+        """Remove one row by client_id (used by `reconcile`'s delete pass,
+        and by write-tool stale-id recovery). A no-op if the id isn't
+        cached."""
         with self._connect() as conn:
             conn.execute("DELETE FROM clients WHERE client_id = ?", (client_id,))
 
@@ -141,10 +168,11 @@ class ClientCache:
             conn.execute("DELETE FROM clients WHERE name_normalized = ?", (key,))
 
     def reconcile(self, clients: List[Client]) -> None:
-        """Full upsert-or-delete sync against a fresh `list_clients` result
-        - the periodic TTL sweep's only entry point. Clients not present in
-        `clients` are deleted; clients present are upserted (catching
-        renames done directly in Morning, outside DeniDin)."""
+        """Full upsert-or-delete sync against a fresh `fetch_all_clients`
+        result - the periodic TTL sweep's only entry point. Clients not
+        present in `clients` are deleted; clients present are upserted
+        (catching renames/detail changes done directly in Morning, outside
+        DeniDin)."""
         live_ids = {c.id for c in clients if c.id}
         with self._connect() as conn:
             cached_ids = {row[0] for row in conn.execute("SELECT client_id FROM clients")}
@@ -157,15 +185,24 @@ class ClientCache:
             timestamp = local_isoformat(now_local())
             conn.executemany(
                 """
-                INSERT INTO clients (client_id, name, name_normalized, updated_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO clients
+                    (client_id, name, name_normalized, email, phone, tax_id, address, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(client_id) DO UPDATE SET
                     name=excluded.name,
                     name_normalized=excluded.name_normalized,
+                    email=excluded.email,
+                    phone=excluded.phone,
+                    tax_id=excluded.tax_id,
+                    address=excluded.address,
                     updated_at=excluded.updated_at
                 """,
                 [
-                    (c.id, c.name, _normalized_bag_key(c.name), timestamp)
+                    (
+                        c.id, c.name, _normalized_bag_key(c.name),
+                        c.email, c.phone, c.tax_id, c.address,
+                        timestamp,
+                    )
                     for c in clients
                     if c.id
                 ],

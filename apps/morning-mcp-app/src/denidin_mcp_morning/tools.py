@@ -13,6 +13,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, NoReturn, Optional, Set, Tuple
 
+import requests
 import tiktoken
 from email_validator import EmailNotValidError, validate_email
 from pydantic import ValidationError
@@ -473,7 +474,9 @@ def create_transaction_account(
     payload = _build_transaction_account_payload(
         resolved_client.id, amount, description, vat_included, due_date
     )
-    response = client.create_invoice(payload)
+    response = _create_document_with_stale_client_recovery(
+        client, payload, resolved_client, cache, "create_transaction_account"
+    )
     log_mutation(
         "create_transaction_account",
         payload=payload,
@@ -708,7 +711,9 @@ def create_combo_document(
         bank_account=bank_account,
         transaction_reference=transaction_reference,
     )
-    response = client.create_invoice(payload)
+    response = _create_document_with_stale_client_recovery(
+        client, payload, resolved_client, cache, "create_combo_document"
+    )
     log_mutation(
         "create_combo_document",
         payload=payload,
@@ -782,7 +787,9 @@ def create_invoice(
     resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_invoice", cache)
 
     payload = _build_create_invoice_payload(resolved_client.id, amount, description, due_date, vat_included)
-    response = client.create_invoice(payload)
+    response = _create_document_with_stale_client_recovery(
+        client, payload, resolved_client, cache, "create_invoice"
+    )
     log_mutation(
         "create_invoice",
         payload=payload,
@@ -1676,7 +1683,9 @@ def create_receipt(
         payload = _build_standalone_receipt_payload(
             resolved_client.id, amount, description, payment_date
         )
-        response = client.create_invoice(payload)
+        response = _create_document_with_stale_client_recovery(
+            client, payload, resolved_client, cache, "create_receipt"
+        )
         log_mutation(
             "create_receipt",
             payload=payload,
@@ -2086,7 +2095,10 @@ def resolve_client_name(
 
 
 def _resolve_exact_client_name(
-    client: MorningClient, name: str, cache: Optional[ClientCache] = None
+    client: MorningClient,
+    name: str,
+    cache: Optional[ClientCache] = None,
+    trust_cache: bool = True,
 ) -> Optional[Client]:
     """Direct, exact (word-order-independent) lookup only - Step 0 of
     resolve_client_by_name, reused directly: one Search Clients call on the
@@ -2095,16 +2107,42 @@ def _resolve_exact_client_name(
     picks a 'closest' candidate - that fuzzy work belongs to
     resolve_client_name alone now.
 
-    Feature 072: if `cache` is given and the live lookup fails to confirm a
-    name the cache believed was valid, evict it here (contracts/
-    cache-contract.md's corrected eviction hook - this codebase's write
-    tools always re-resolve live by name, never consume a cached id, so a
-    stale cache entry surfaces exactly here, not as a Morning "invalid id"
-    error).
+    Feature 072 (revised 2026-09-15, operator design review): `trust_cache`
+    controls whether a cache hit is trusted outright (True, the default) -
+    zero Morning calls, the same speedup resolve_client_name's own fast path
+    already gets - or ignored so this always resolves live against Morning
+    (False). Callers pass False when they specifically need live truth for
+    the identify step itself: `update_client` (about to mutate identity -
+    must not act on a possibly-stale cached name) and `get_client_details`
+    (needs the full client record - email/phone/tax_id/address - which the
+    cache never stores, only id+name; see data-model.md).
+
+    Trusting a cache hit here introduces one new failure mode that could not
+    happen under the old always-live design: the id-based Morning call this
+    resolved `Client` then feeds into (create_invoice/create_transaction_
+    account/create_combo_document/create_receipt) can now fail because that
+    client_id was deleted in Morning since the cache last saw it. Each of
+    those call sites is responsible for catching that specific Morning
+    failure, evicting the stale cache entry, and raising ClientNotFoundError
+    - see `_call_morning_with_stale_client_recovery`. A cache MISS is fully
+    transparent either way - falls through to the same live resolution this
+    function has always done, cache or no cache.
+
+    On a live resolution (whether reached because of a miss or trust_cache=
+    False), a confirmed hit is written through - so a live-verified result
+    still populates/refreshes the cache for next time.
     """
+    if trust_cache and cache is not None:
+        hit = cache.lookup_exact(name)
+        if hit is not None:
+            # lookup_exact already returns the FULL cached record (Feature
+            # 072 redesign, 2026-09-15) - no translation needed.
+            return hit
     name = _normalize_hebrew_geresh(name)
     resolved, _ = _resolve_client_by_name(client, name)
     if resolved is not None and _bag_equal_words(name, resolved.name):
+        if cache is not None:
+            cache.write_through(resolved)
         return resolved
     if cache is not None:
         cache.evict_by_name(name)
@@ -2117,6 +2155,7 @@ def _require_resolved_client(
     name_resolved: bool,
     tool_name: str,
     cache: Optional[ClientCache] = None,
+    trust_cache: bool = True,
 ) -> Client:
     """The one gate every client-name-consuming tool shares (client-name-
     resolution architecture fix, bugfix-028 sub-piece, 2026-08-12, user
@@ -2215,6 +2254,71 @@ def _raise_client_not_found(tool_name: str, client_name: str) -> NoReturn:
     # JSON (2026-09-04 JSON-only contract applies to tool results, not to
     # exception messages read by errors.py).
     raise ClientNotFoundError(f'לא נמצא לקוח בשם "{client_name}"')
+
+
+def _morning_error_code(exc: requests.HTTPError) -> Optional[int]:
+    """Extract Morning's own `errorCode` from an HTTPError's JSON body, if
+    present. Verified live against the real sandbox, 2026-09-15."""
+    response = exc.response
+    if response is None:
+        return None
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    if not isinstance(body, dict):
+        return None
+    code = body.get("errorCode")
+    return code if isinstance(code, int) else None
+
+
+# Confirmed live against the real Morning sandbox, 2026-09-15: creating a
+# document (POST /documents) whose client.id no longer exists fails with
+# HTTP 400, {"errorCode": 2411, "errorMessage": "לקוח לא קיים"}.
+_MORNING_CLIENT_NOT_FOUND_ERROR_CODE = 2411
+
+# Confirmed live against the real Morning sandbox, 2026-09-15: creating a
+# client that collides with an existing one (POST /clients) fails with
+# HTTP 400, {"errorCode": 1010, "errorMessage": "<existing client_id>"} -
+# Morning hands back the existing client's own id directly in the message.
+_MORNING_CLIENT_ALREADY_EXISTS_ERROR_CODE = 1010
+
+
+def _fetch_client_by_id(client: MorningClient, client_id: str) -> Optional[Client]:
+    """One live `search_clients({"id": ...})` call - confirmed live,
+    2026-09-15, to return exactly the one matching full client record.
+    Used by add_client's already-exists recovery to fetch the real
+    pre-existing client Morning's error only gave us the id for."""
+    result = client.search_clients({"id": client_id})
+    items = result.get("items") or [] if isinstance(result, dict) else []
+    if len(items) != 1:
+        return None
+    return Client.model_validate(items[0])
+
+
+def _create_document_with_stale_client_recovery(
+    client: MorningClient,
+    payload: dict,
+    resolved_client: Client,
+    cache: Optional[ClientCache],
+    tool_name: str,
+) -> dict:
+    """Wraps `client.create_invoice(payload)` to catch the ONE new failure
+    mode a cache-first `resolved_client` can introduce (Feature 072 redesign,
+    2026-09-15): the cached client_id was deleted in Morning since the
+    cache last saw it, so the create itself - not the identify step -
+    is where staleness now surfaces. Evicts the stale row and raises the
+    same ClientNotFoundError every other resolution failure raises (the
+    correct recovery is identical either way: call resolve_client_name and
+    retry). Any other Morning failure propagates unchanged."""
+    try:
+        return client.create_invoice(payload)
+    except requests.HTTPError as exc:
+        if _morning_error_code(exc) == _MORNING_CLIENT_NOT_FOUND_ERROR_CODE:
+            if cache is not None and resolved_client.id:
+                cache.evict(resolved_client.id)
+            _raise_client_not_found(tool_name, resolved_client.name)
+        raise
 
 
 def _extract_linked_client_id(original: dict) -> Optional[str]:
@@ -2440,7 +2544,39 @@ def add_client(
     validated_email = _validate_email(email)
     normalized_phone = _normalize_israeli_phone(phone)
     payload = _build_add_client_payload(normalized_name, validated_email, normalized_phone, tax_id)
-    response = client.add_client(payload)
+    try:
+        response = client.add_client(payload)
+    except requests.HTTPError as exc:
+        if _morning_error_code(exc) == _MORNING_CLIENT_ALREADY_EXISTS_ERROR_CODE:
+            # Feature 072 redesign (2026-09-15, operator decision): Morning
+            # hands back the pre-existing client's own id directly in
+            # errorMessage (verified live) - fetch that real record and
+            # write it through, rather than discarding the information and
+            # leaving the cache stale on this client until the next sweep.
+            # The caller gets the same success-shaped result either way.
+            existing_id = exc.response.json().get("errorMessage") if exc.response is not None else None
+            existing = _fetch_client_by_id(client, existing_id) if existing_id else None
+            if existing is not None:
+                log_mutation(
+                    "add_client",
+                    payload=payload,
+                    response={"already_exists": True, "id": existing_id},
+                    client_id=existing.id,
+                    client_name=existing.name,
+                )
+                if cache is not None:
+                    cache.write_through(existing)
+                return json.dumps(
+                    {
+                        "status": "created",
+                        "client": {
+                            "name": existing.name, "email": existing.email,
+                            "phone": existing.phone, "tax_id": existing.tax_id,
+                        },
+                    },
+                    ensure_ascii=False,
+                )
+        raise
     # bugfix-036: the response was previously discarded outright, so the id
     # Morning assigned the new client existed nowhere in this app. It still
     # never reaches the caller (REQ-CLIENT-018) - only the log.
@@ -2456,7 +2592,12 @@ def add_client(
         # Feature 072 event-driven write-through: the very next
         # resolve_client_name for this exact name is a cache hit, no
         # separate Morning lookup needed (User Story 2).
-        cache.write_through(Client(id=new_client_id, name=normalized_name))
+        cache.write_through(
+            Client(
+                id=new_client_id, name=normalized_name, email=validated_email,
+                phone=normalized_phone, tax_id=tax_id,
+            )
+        )
     return json.dumps(
         {
             "status": "created",
@@ -2560,11 +2701,24 @@ def update_client(
     )
 
     display_name = normalized_new_name or name
-    if cache is not None and normalized_new_name and resolved_client.id:
-        # A rename done THROUGH DeniDin - reflect it immediately rather than
+    if cache is not None and resolved_client.id:
+        # A change done THROUGH DeniDin - reflect it immediately rather than
         # waiting for the next periodic sweep (which still independently
-        # catches renames done directly in Morning's own UI).
-        cache.write_through(Client(id=resolved_client.id, name=display_name))
+        # catches changes done directly in Morning's own UI). Merge onto the
+        # resolved client's prior known fields (itself possibly cache-
+        # sourced, since this gate is cache-first) so a partial update
+        # (e.g. phone only) doesn't blank out email/tax_id/address in the
+        # cache - only the fields actually being changed here move.
+        cache.write_through(
+            Client(
+                id=resolved_client.id,
+                name=display_name,
+                email=validated_email or resolved_client.email,
+                phone=normalized_phone or resolved_client.phone,
+                tax_id=tax_id or resolved_client.tax_id,
+                address=resolved_client.address,
+            )
+        )
     return json.dumps(
         {
             "status": "updated",

@@ -168,6 +168,52 @@ write time) and proactively (periodic sweep).
   confirmed green on retry once the transient sandbox `403` cleared) (1/1) — all green.
   28/28 total across the full cache-related test set.
 
+## Post-implementation design review (2026-09-15) — significant redesign
+
+After T025's initial "done" state above, an operator design review of the shipped
+mechanics (asked directly: when/how does the cache populate/evict, why do writes
+re-resolve live, why does the cache only store name+id) surfaced real gaps in the
+original design, not just documentation gaps. Full rationale lives in
+`contracts/cache-contract.md`'s 2026-09-15 revision and `data-model.md`'s matching
+update; summary of what changed:
+
+1. **Cache now stores the FULL client record** (email/phone/tax_id/address), not just
+   name+id — costs zero extra Morning calls (every write path already had the full
+   record in hand and was discarding it), and is what makes `get_client_details`
+   genuinely cache-accelerated for the first time.
+2. **`update_client` and `get_client_details` are now cache-first too** (`trust_cache`
+   parameter on the shared `_resolve_exact_client_name`/`_require_resolved_client`
+   gate, default `True`) — previously they always re-resolved live, gaining nothing
+   from the cache at all.
+3. **`add_client` now recovers from Morning's "already exists" failure**
+   (verified live: HTTP 400, `errorCode: 1010`, existing client_id handed back in
+   `errorMessage`) by fetching and write-throughs the real existing record instead of
+   just failing and leaving the cache stale on that client indefinitely.
+4. **New failure mode, handled**: cache-first writes mean the actual document-creation
+   call (not the identify step) is now where a deleted client_id can surface — verified
+   live (HTTP 400, `errorCode: 2411`), caught by
+   `_create_document_with_stale_client_recovery`, evicts + raises the existing
+   `ClientNotFoundError`.
+5. `test_client_cache_stale_eviction.py` (T018) was rewritten — its old premise (a live
+   per-call check on `get_client_details` catches a rename immediately) no longer holds
+   under cache-first reads; it now tests the actual current behavior (served stale until
+   the periodic sweep corrects it).
+6. Two new integration tests added:
+   `test_client_cache_stale_client_id_at_write_time.py` (item 4 above) and
+   `test_client_cache_add_client_already_exists.py` (item 3 above).
+
+**Final verification (2026-09-15)**: unit — 25/25 `test_client_cache.py` (22 original +
+3 new full-record tests). Integration — all 8 cache-related tests confirmed green,
+each individually (`test_client_cache_hit.py` 2/2, `test_client_cache_miss_then_hit.py`
+1/1, `test_client_cache_add_client_writes_through.py` 1/1, `test_client_cache_sweep.py`
+1/1, `test_client_cache_stale_eviction.py` 1/1 [rewritten], `test_client_cache_stale_
+client_id_at_write_time.py` 1/1 [new], `test_client_cache_add_client_already_exists.py`
+1/1 [new]). Running the full 8-file group back-to-back repeatedly hit the real Morning
+sandbox's `POST /clients` rate limit (same `403 Forbidden` class as this feature's other
+pre-existing sandbox-throttle failures, not a code defect) — every test is confirmed
+green on its own; the sandbox simply does not tolerate this many client-creation calls
+in quick succession within one session's cumulative call volume for the day.
+
 ## Dependencies
 
 - Phase 1 (Setup) blocks everything.
