@@ -87,9 +87,10 @@ class AppConfiguration:
     # every rotated (gzipped) segment forever. No env vars.
     logging: Dict = field(default_factory=dict)
 
-    # Fee agreement document generation (Feature 083) - gated by
-    # config.feature_flags['fee_agreement_docs'] (default False), RBAC
-    # (GODFATHER/ADMIN) on top, same as reminders/Morning MCP tools. Shape:
+    # Fee agreement document generation (Feature 083) - RBAC-gated
+    # (GODFATHER/ADMIN), same as reminders/Morning MCP tools; no separate
+    # feature flag (2026-09-15, explicit human instruction - see
+    # fee_agreement_tools.py's build_tools docstring). Shape:
     # {"templates_dir": "config/fee_agreement_templates", "tmp_dir": "tmp/fee_agreements"}
     # - tmp_dir is relative to data_root, matching every other per-environment
     # runtime-state path in this app (never an OS temp dir - see research.md #3).

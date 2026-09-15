@@ -1888,23 +1888,27 @@ class AIHandler:
 
         # Fee Agreement Document Generation (Feature 083) - config-driven paths
         # (DI, no monkey-patching), same composed-at-construction-time pattern
-        # as reminder_manager above. Gating is two-layer: RBAC (GODFATHER/ADMIN,
-        # like reminders) AND config.feature_flags['fee_agreement_docs']
-        # (default False) - both enforced by FeeAgreementToolHandler.build_tools,
-        # never by DocTemplateEngine itself. All tool-facing logic for this
-        # feature lives in src/handlers/fee_agreement_tools.py, deliberately
-        # kept out of this already-oversized file.
+        # as reminder_manager above. Gating is RBAC only (GODFATHER/ADMIN, like
+        # reminders/ledger-query) - enforced by FeeAgreementToolHandler.build_tools,
+        # never by DocTemplateEngine itself. (2026-09-15: this feature previously
+        # carried an ADDITIONAL config.feature_flags['fee_agreement_docs'] gate,
+        # default False - never requested, never turned on in config.dev.json, so
+        # the feature was silently unreachable in dev despite shipping and passing
+        # every billed test against config.test.json. Removed per explicit human
+        # instruction: "THIS SHOULD BE ALWAYS TRUE" - RBAC alone is the gate, same
+        # as every sibling tool family.) All tool-facing logic for this feature
+        # lives in src/handlers/fee_agreement_tools.py, deliberately kept out of
+        # this already-oversized file.
         fee_agreements_config = getattr(config, 'fee_agreements', {}) or {}
         self.doc_template_engine = DocTemplateEngine(
             templates_dir=Path(fee_agreements_config.get('templates_dir', 'config/fee_agreement_templates')),
             tmp_dir=Path(config.data_root) / fee_agreements_config.get('tmp_dir', 'tmp/fee_agreements'),
         )
         self.fee_agreement_tools = FeeAgreementToolHandler(self.doc_template_engine)
-        self.fee_agreement_docs_enabled = bool((getattr(config, 'feature_flags', {}) or {}).get('fee_agreement_docs', False))
         # Injected post-construction by denidin.py's initialize_app (same DI
         # pattern as own_whatsapp_number below) - needed only by
-        # send_fee_agreement_document, which is unreachable unless
-        # fee_agreement_docs_enabled is True per the two-layer gate above.
+        # send_fee_agreement_document, which is unreachable unless the RBAC
+        # gate above passes.
         self.whatsapp_handler = None
 
         # Most recent successful AIResponse, for observability/E2E test verification.
@@ -2279,7 +2283,7 @@ class AIHandler:
         reminder_tools = self._build_reminder_tools(user_obj) if self.rbac_enabled else []
         ledger_query_tools = self._build_ledger_query_tools(user_obj) if self.rbac_enabled else []
         fee_agreement_tools = (
-            self.fee_agreement_tools.build_tools(user_obj, self.fee_agreement_docs_enabled)
+            self.fee_agreement_tools.build_tools(user_obj)
             if self.rbac_enabled else []
         )
         # Feature 080: send_progress_update is NOT RBAC-gated - every role can attach it.
@@ -3651,6 +3655,38 @@ class AIHandler:
                 return str(text)
         return ""
 
+    @staticmethod
+    def _extract_mcp_call_items(response) -> List[Dict[str, Any]]:
+        """Pull every `mcp_call`-type item off one API response's `.output`,
+        in the same shape `_finalize_response` has always reported
+        (name/error/arguments/output). Factored out (2026-09-15 fix) so a
+        remote MCP tool call can be picked up from WHICHEVER round of a turn
+        it actually executed in - see `_run_local_tool_dispatch_loop`'s own
+        `accumulated_mcp_calls` for why a single-round extraction at the end
+        of a turn is not enough.
+
+        `error` is normalized to a plain string here (2026-09-15 fix,
+        real billed failure): the SDK's own `item.error` is usually a
+        business-level string (e.g. a tool-side refusal), but on a genuine
+        network-level failure (e.g. a 503 from the MCP tunnel) it can be a
+        raw exception object instead (`HTTPError(...)`). Left un-normalized,
+        that object flows straight into `mcp_calls` and eventually into
+        `SessionManager.add_message`'s `json.dump(asdict(message), ...)`
+        (no `default=str` there) and crashes with `TypeError: Object of
+        type HTTPError is not JSON serializable`. Nothing downstream of
+        this extraction point should ever have to know `item.error` might
+        not be a string - normalize once, here, at the boundary."""
+        return [
+            {
+                "name": item.name,
+                "error": str(item.error) if item.error is not None else None,
+                "arguments": item.arguments,
+                "output": item.output,
+            }
+            for item in (response.output or [])
+            if getattr(item, "type", None) == "mcp_call"
+        ]
+
     def _run_local_tool_dispatch_loop(
         self, request: AIRequest, response, effective_chat_id: Optional[str],
         sender: Optional[str], tools: Optional[List[Dict]],
@@ -3670,17 +3706,37 @@ class AIHandler:
         empty now) so callers' unpacking is unchanged.
 
         Returns (final_response, extra_tokens, extra_prompt_tokens,
-        extra_completion_tokens, usage_response, ledger_event_ids) - the
-        three "extra_*" fields are deltas to ADD to the caller's own running
-        totals (which already include the turn's original response.usage),
-        never absolute totals themselves. `usage_response` is whichever
-        response's usage/finish_reason is authoritative (the last one that
-        actually produced a follow-up, or the original if none did).
+        extra_completion_tokens, usage_response, ledger_event_ids,
+        accumulated_mcp_calls) - the three "extra_*" fields are deltas to ADD
+        to the caller's own running totals (which already include the turn's
+        original response.usage), never absolute totals themselves.
+        `usage_response` is whichever response's usage/finish_reason is
+        authoritative (the last one that actually produced a follow-up, or
+        the original if none did).
+
+        `accumulated_mcp_calls` (2026-09-15 fix): a remote MCP tool call
+        (add_client, create_invoice, ...) is a tool call like any other -
+        this loop already re-runs and re-follows-up local tools across every
+        round without losing earlier rounds' results (that's its whole
+        point); an MCP call executed in one round must be preserved the same
+        way, not just whatever the FINAL round's own response happens to
+        carry. Before this fix, an MCP call that executed in an early round
+        (e.g. the approval round itself) silently vanished from the turn's
+        reported mcp_calls the moment ANY later round ran for an unrelated
+        reason (a local tool call this turn also happened to make) - a real,
+        billed failure (test_fee_agreement_generation_flow.py's
+        _seed_client-driven add_client flow) is what surfaced this: the
+        client genuinely got added, the model even said so in its own reply,
+        but the turn's mcp_calls came back empty because a react_to_message
+        follow-up round ran afterward and became `current_response`. Fixed
+        the same way orchestration handles everything else here: accumulate
+        as you go, across every round, not just the last one.
         """
         current_response = response
         usage_response = response
         extra_tokens = extra_prompt_tokens = extra_completion_tokens = 0
         ledger_event_ids: List[str] = []
+        accumulated_mcp_calls: List[Dict[str, Any]] = self._extract_mcp_call_items(response)
         for _loop_round in range(MAX_LOCAL_TOOL_LOOP_ITERATIONS):
             # Bugfix (2026-09-13): every immediate-dispatch local tool type
             # (query_ledger_events, list_reminders, send_progress_update,
@@ -3710,6 +3766,7 @@ class AIHandler:
                 extra_tokens += local_tools_followup.usage.total_tokens
                 extra_prompt_tokens += local_tools_followup.usage.input_tokens
                 extra_completion_tokens += local_tools_followup.usage.output_tokens
+                accumulated_mcp_calls.extend(self._extract_mcp_call_items(local_tools_followup))
                 continue
 
             break  # a full pass made no progress - current_response is final
@@ -3725,6 +3782,7 @@ class AIHandler:
         return (
             current_response, extra_tokens, extra_prompt_tokens,
             extra_completion_tokens, usage_response, ledger_event_ids,
+            accumulated_mcp_calls,
         )
 
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
@@ -3759,6 +3817,7 @@ class AIHandler:
         (
             current_response, extra_tokens, extra_prompt_tokens,
             extra_completion_tokens, usage_response, ledger_event_ids,
+            accumulated_mcp_calls,
         ) = self._run_local_tool_dispatch_loop(
             request, response, effective_chat_id, sender, tools
         )
@@ -3827,17 +3886,23 @@ class AIHandler:
         # near-duplicate-name regression test exposed (a capture_ledger_event
         # follow-up round ALSO proposing an approval-gated Morning tool, e.g.
         # add_client, whose mcp_approval_request then went undetected).
-        # Superseded by the merge from master (2026-08-27): the
-        # `_run_local_tool_dispatch_loop` architectural fix above (2026-08-25,
-        # landed independently on master while this branch was still on the
-        # pre-loop code) already reassigns `response = current_response` to
-        # whichever response the loop actually settled on - `response.output`
-        # below is now already correct on its own, loop-followup items
-        # included, so the extra union is redundant (and would in fact be
-        # broken here, since the loop no longer exposes a same-named
-        # `followup` local variable to reference). Re-verified: the
-        # regression test still passes against this simpler, already-fixed
-        # upstream code.
+        #
+        # 2026-09-15 correction: the "superseded, already fixed" claim
+        # previously written here was WRONG - `response = current_response`
+        # only ever reflects the LOOP'S LAST round. That's fine for
+        # DETECTING a pending approval that only surfaces late, but it
+        # silently drops an mcp_call that already EXECUTED in an earlier
+        # round the moment any later round runs for an unrelated reason
+        # (real, billed failure, test_fee_agreement_generation_flow.py's
+        # add_client seeding: the approval round genuinely executed
+        # add_client, a further local-tool round then ran for something
+        # else entirely, and the turn's reported mcp_calls came back empty
+        # even though the model's own reply said the client was added). An
+        # MCP call is a tool call like any other kind this loop tracks -
+        # `_run_local_tool_dispatch_loop` now accumulates every round's
+        # mcp_call items as it goes (`accumulated_mcp_calls`), the same way
+        # it already accumulates token deltas, instead of re-deriving
+        # mcp_calls from a single response.output at the end.
         logger.info(
             f"[022] _finalize_response: response.id={getattr(response, 'id', None)!r}, "
             f"effective_chat_id={effective_chat_id!r}, "
@@ -3849,17 +3914,12 @@ class AIHandler:
         # also lets E2E tests verify tool usage without a second AI call).
         # Includes arguments/output for diagnosability (e.g. confirming
         # which internal_morning_id the model actually passed to a follow-up tool
-        # call) - never logged/returned with secrets, just tool I/O.
-        mcp_calls = [
-            {
-                "name": item.name,
-                "error": item.error,
-                "arguments": item.arguments,
-                "output": item.output
-            }
-            for item in (response.output or [])
-            if getattr(item, "type", None) == "mcp_call"
-        ]
+        # call) - never logged/returned with secrets, just tool I/O. Accumulated
+        # across every round of this turn (see _run_local_tool_dispatch_loop's
+        # `accumulated_mcp_calls`), not just re-derived from the LAST round's
+        # own response.output - a real, executed mcp_call must never vanish
+        # just because a later, unrelated round also ran this same turn.
+        mcp_calls = accumulated_mcp_calls
         if mcp_calls:
             logger.info(f"MCP calls for request {request.request_id}: {mcp_calls}")
             # Feature 080 (REQ-080-04): record each Morning MCP tool call for the

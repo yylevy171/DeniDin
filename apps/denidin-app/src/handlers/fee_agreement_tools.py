@@ -177,15 +177,17 @@ VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL: Dict[str, Any] = {
     "description": (
         "Read back a just-rendered fee agreement document and report facts: "
         "whether any literal '{{...}}'-shaped placeholder token leaked into "
-        "it, and the document's REAL page_count. Read-only, no approval "
-        "needed. YOU (the model) must judge the full result - is the text "
-        "actually what you intended, complete, and correct, AND is "
-        "page_count exactly 1 (a real fee agreement like this is always one "
-        "page - if page_count is 2 or more, shorten body_text and call "
-        "render_fee_agreement_document again; page_count of null means the "
-        "check could not run, treat that as unknown, never as '1, fine') - "
-        "before ever calling send_fee_agreement_document; this tool only "
-        "reports facts, it does not decide pass/fail for you."
+        "it. Read-only, no approval needed. YOU (the model) must judge the "
+        "full result - is the text actually what you intended, complete, and "
+        "correct, and does it read like a fee agreement that fits on one "
+        "page (write concisely - trim wording, merge short clauses, drop "
+        "anything non-essential) - before ever calling "
+        "send_fee_agreement_document; this tool only reports facts, it does "
+        "not decide pass/fail for you. (2026-09-15: no automated page-count "
+        "check - LibreOffice is unavailable in the runtime container, so any "
+        "such check would be permanently unable to run there; one-page "
+        "discipline is achieved by writing concisely, not by a code-level "
+        "measurement.)"
     ),
     "parameters": {
         "type": "object",
@@ -249,12 +251,12 @@ class FeeAgreementToolHandler:
         self.engine = engine
         self._documents: Dict[str, GeneratedDocument] = {}
 
-    def build_tools(self, user_obj, feature_enabled: bool) -> List[Dict]:
-        """RBAC-gated (GODFATHER/ADMIN only) the same way reminder/ledger-query
-        tools are, ADDITIONALLY gated by `config.feature_flags['fee_agreement_docs']`
-        (default False - see models/config.py's `fee_agreements` field)."""
-        if not feature_enabled:
-            return []
+    def build_tools(self, user_obj) -> List[Dict]:
+        """RBAC-gated (GODFATHER/ADMIN only), same as reminder/ledger-query tools -
+        no separate feature flag (2026-09-15: an earlier extra
+        config.feature_flags['fee_agreement_docs'] gate was removed per explicit
+        human instruction - it was never requested and left the feature silently
+        unreachable in dev)."""
         if user_obj is None or user_obj.role not in FEE_AGREEMENT_AUTHORIZED_ROLES:
             return []
         return [

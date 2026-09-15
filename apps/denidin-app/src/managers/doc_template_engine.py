@@ -121,21 +121,22 @@ class DocTemplateEngine:
         full_text = self._extract_full_text(doc)
 
         remaining_placeholders = sorted(set(PLACEHOLDER_PATTERN.findall(full_text)))
-        # 2026-09-14 (explicit human instruction): a real fact, never a
-        # code-level gate - REQ-083-04 still leaves accept/reject to the
-        # model. python-docx has no layout engine and can never itself know
-        # how a .docx paginates in real Word, so this is a real (LibreOffice
-        # headless -> PDF -> PyMuPDF) page count, not an estimate. None means
-        # the check itself couldn't run (e.g. LibreOffice unavailable in this
-        # environment) - the model should not treat None as "1 page, fine".
-        page_count = self.count_pages(generated.temp_path)
+        # (2026-09-15: this used to also report a real LibreOffice-headless-based
+        # page_count - removed per explicit human instruction. LibreOffice was
+        # never installed in the runtime container (only present on the host
+        # machine that runs the test suite), so the check was permanently
+        # None/unavailable in dev and prod - which the constitution then told
+        # the model to treat as "an unknown to be cautious about," producing
+        # constant hedging/mentioning-it-in-every-reply behavior for a check
+        # that could never actually succeed there. One-page discipline is now
+        # achieved by the model writing concisely, per its own tool
+        # description, not by a code-level measurement.)
 
         if generated.body_text is not None:
             return {
                 "document_id": generated.document_id,
                 "extracted_text": full_text,
                 "remaining_placeholders": remaining_placeholders,
-                "page_count": page_count,
                 "clean": not remaining_placeholders,
             }
 
@@ -148,7 +149,6 @@ class DocTemplateEngine:
 
         return {
             "document_id": generated.document_id,
-            "page_count": page_count,
             "extracted_text": full_text,
             "remaining_placeholders": remaining_placeholders,
             "missing_values": missing_values,
@@ -680,47 +680,8 @@ class DocTemplateEngine:
                     parts.append(cell.text)
         return "\n".join(parts)
 
-    @staticmethod
-    def count_pages(docx_path: Path) -> Optional[int]:
-        """Real page count via a headless LibreOffice conversion to PDF, then
-        counting pages with PyMuPDF/fitz - the same library `PDFExtractor`
-        already depends on for the reverse direction. python-docx has no
-        layout engine and can never itself know how a .docx paginates in
-        real Word, so this is the only honest way to answer "is this one
-        page?" (2026-09-14, explicit human instruction: fee agreements must
-        never spill to a second page). Best-effort - returns None (never
-        raises) if LibreOffice isn't available in this environment; callers
-        must treat None as "unknown", never as "1 page, fine"."""
-        import subprocess
-        import tempfile
-
-        try:
-            import fitz  # PyMuPDF
-        except ImportError:
-            logger.warning("[083] PyMuPDF not available - cannot count pages")
-            return None
-
-        try:
-            with tempfile.TemporaryDirectory() as tmp_out:
-                result = subprocess.run(
-                    [
-                        "soffice", "--headless", "--convert-to", "pdf",
-                        "--outdir", tmp_out, str(docx_path),
-                    ],
-                    capture_output=True, timeout=60, check=False,
-                )
-                if result.returncode != 0:
-                    logger.warning(
-                        f"[083] soffice conversion failed (rc={result.returncode}): "
-                        f"{result.stderr!r}"
-                    )
-                    return None
-                pdf_path = Path(tmp_out) / (docx_path.stem + ".pdf")
-                if not pdf_path.exists():
-                    logger.warning(f"[083] soffice produced no PDF for {docx_path}")
-                    return None
-                with fitz.open(str(pdf_path)) as pdf:
-                    return pdf.page_count
-        except (OSError, subprocess.SubprocessError) as e:
-            logger.warning(f"[083] page count check failed: {e}")
-            return None
+    # (2026-09-15: count_pages(), a headless-LibreOffice-based real page-count
+    # check, was removed here per explicit human instruction - see verify()'s
+    # comment above for why: LibreOffice was never installed in the runtime
+    # container, only on the host machine that runs the test suite, so the
+    # check was permanently unavailable in dev/prod.)

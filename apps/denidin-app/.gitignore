@@ -91,6 +91,11 @@ htmlcov/
 TEST_RUN_LOG.md
 UNIT_INTEGRATION_TEST_LOG.md
 
+# Ad-hoc/manual DOCX outputs from billed fee-agreement tests and manual dev
+# testing (Feature 083) - generated scratch artifacts, not project content.
+test_results/
+*.docx
+
 # OS
 .DS_Store
 Thumbs.db

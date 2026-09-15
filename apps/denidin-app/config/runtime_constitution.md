@@ -1816,32 +1816,33 @@ other agreement discussion.
    כולל מע"מ) together — never a bare number. If your text has a lettered
    list (א., ב., ...), it must actually have more than one item — never a
    lone "א." with nothing to follow it; if there's genuinely only one
-   clause, don't letter it at all. When your document has TWO OR MORE
+   clause, don't letter it at all. **This is a general principle, not just a
+   lettered-list rule: numbering of ANY kind — "1./2.", "א./ב.", "A./B.",
+   whatever marker — only makes sense once there are two or more items at
+   that same level.** A marker that starts a sequence ("1.", "א.", "A.")
+   with nothing following it at the next value ("2.", "ב.", "B.") is not a
+   sequence at all — it's a standalone item, and standalone items are never
+   numbered/lettered, full stop. So: if your document has TWO OR MORE
    top-level `## ` section headers (e.g. one section for the fee terms, a
    separate one for expenses), number them sequentially starting from 1 —
-   "1. שכר הטרחה בגין הייצוג המשפטי", then "2. הוצאות", and so on — matching
-   every real multi-section agreement in this firm's own corpus; a document
-   with only ONE top-level section never needs a number on it at all (most
-   of the corpus's real single-section agreements skip numbering entirely
-   and go straight to lettered sub-items). Never renumber or skip a number,
-   and never number a section "0" or start above "1".
+   "1. שכר הטרחה בגין הייצוג המשפטי", then "2. הוצאות", and so on. If it has
+   only ONE top-level section, it is standalone — do not number it at all,
+   regardless of which header phrasing you use for it. Never renumber or
+   skip a number, and never number a section "0" or start above "1".
 3. **`render_fee_agreement_document`** — pass the variant_id and your full
    body text; this wraps it in the branded .docx shell and dispatches
    immediately (no approval needed). Call it again, with your edited text,
    any time you want to revise — there's no cap on revisions.
 4. **`verify_fee_agreement_document`** — call this before ever sending
    anything. It reads the rendered document back and reports the raw facts:
-   any leftover `{{...}}`-style placeholder leak, and `page_count` (the
-   real, rendered page count — a fee agreement like this must be exactly
-   ONE page, never two or more). **You must read and judge this result
-   yourself** — the tool does not decide pass/fail for you. If
-   `page_count` is `null`, that means it genuinely could not be determined
-   (never treat that as "fine" — treat it the same as an unknown you should
-   be cautious about, not evidence of success). If `page_count` is 2 or
-   more, do not send — shorten/tighten your body text (trim wording, merge
-   short clauses, drop anything non-essential) and
-   `render_fee_agreement_document` again until it fits on one page. If
-   anything else looks wrong, do not send — revise your body text and
+   any leftover `{{...}}`-style placeholder leak. **You must read and judge
+   this result yourself** — the tool does not decide pass/fail for you. A
+   fee agreement like this must read as ONE page — write concisely from the
+   start (trim wording, merge short clauses, drop anything non-essential);
+   there is no automated page-count check, so this is your own judgment
+   call, not something the tool measures for you. If anything looks wrong —
+   a leftover placeholder, text you're not confident about, wording that
+   reads like it would run long — do not send: revise your body text and
    `render_fee_agreement_document` again.
 5. **`send_fee_agreement_document`** — only after you have verified the
    result yourself and judged it clean; no further human approval is needed

@@ -71,7 +71,6 @@ def mock_config(tmp_path):
     config.godfather_phone = '972500000002'
     config.reminders = {'max_active_reminders': 20}
     config.fee_agreements = {'templates_dir': str(TEMPLATES_DIR), 'tmp_dir': 'tmp/fee_agreements'}
-    config.feature_flags = {'fee_agreement_docs': True}
     return config
 
 
@@ -94,9 +93,11 @@ def _request(prompt="שכר טרחה"):
 
 
 class TestToolAttachment:
-    def test_godfather_gets_all_four_tools_when_flag_enabled(self, ai_handler):
+    def test_godfather_gets_all_four_tools(self, ai_handler):
+        # 2026-09-15: no separate feature flag any more - RBAC alone gates this
+        # feature, same as reminders/ledger-query (see build_tools's docstring).
         user_obj = ai_handler.user_manager.get_user(GODFATHER_PHONE)
-        tools = ai_handler.fee_agreement_tools.build_tools(user_obj, ai_handler.fee_agreement_docs_enabled)
+        tools = ai_handler.fee_agreement_tools.build_tools(user_obj)
         names = {t["name"] for t in tools}
         assert names == {
             GET_FEE_AGREEMENT_TEMPLATE_TOOL["name"],
@@ -107,12 +108,7 @@ class TestToolAttachment:
 
     def test_client_gets_no_fee_agreement_tools(self, ai_handler):
         user_obj = ai_handler.user_manager.get_user(CLIENT_PHONE)
-        tools = ai_handler.fee_agreement_tools.build_tools(user_obj, ai_handler.fee_agreement_docs_enabled)
-        assert tools == []
-
-    def test_disabled_flag_excludes_tools_even_for_godfather(self, ai_handler):
-        user_obj = ai_handler.user_manager.get_user(GODFATHER_PHONE)
-        tools = ai_handler.fee_agreement_tools.build_tools(user_obj, feature_enabled=False)
+        tools = ai_handler.fee_agreement_tools.build_tools(user_obj)
         assert tools == []
 
     def test_assemble_tools_includes_fee_agreement_tools_for_godfather(self, ai_handler):
