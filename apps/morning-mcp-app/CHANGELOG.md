@@ -99,6 +99,14 @@ Ledger web UI, mandatory client resolution for ledger events, edited/deleted Wha
 
 Feature 080: always-on progress updates, typing keep-alive, telemetry plumbing; fixes multi-tool dispatch collision, typing-indicator gap, and rogue-language leak.
 
+## [0.7.2] - 2026-09-14
+
+supporting daily backups
+
+## [0.7.3] - 2026-09-14
+
+supporting daily backups
+
 ## [0.7.4] - 2026-09-15
 
 Feature 083: Fee agreement document generation over WhatsApp (RBAC-gated get/render/verify/send tools, DocTemplateEngine, Word templates), with RBAC-only gating (no separate feature flag) and no automated page-count check (LibreOffice unavailable in the runtime container - one-page discipline is the model's own judgment).
