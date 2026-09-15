@@ -2,7 +2,7 @@
 
 **Feature ID**: 072-morning-client-name-cache
 **Priority**: TBD
-**Status**: Draft (definition-only — no `speckit.clarify`/`plan`/`user-stories`/`tasks` yet)
+**Status**: Clarified (`speckit.clarify` complete — ready for `speckit.plan`)
 **Created**: 2026-09-01
 
 ---
@@ -24,6 +24,15 @@ MCP read tool) against the live Morning account. Feature 069 accepts one such ca
 recognized event, cached only for the lifetime of a single conversation. This feature is
 the durable optimization: a cross-conversation cache of Morning client names so a
 known-good name doesn't incur a tunnel round-trip every time.
+
+## Clarifications
+
+### Session 2026-09-15
+
+- Q: Cache store: SQLite (like `reminders.db`), a JSON file, or in-memory only (rebuilt per process start from a `list_clients` sweep)? → A: SQLite, matching `reminders.db`'s pattern — persists across restarts, queried directly.
+- Q: Invalidation strategy — TTL vs. event-driven vs. manual refresh vs. combination? → A: Combination — event-driven write-through (on `add_client`/`create_*` success) and eviction (on "Invalid Client ID" errors) as the fast path, plus a periodic TTL sweep to catch out-of-band Morning changes (renames/deletes done outside DeniDin).
+- Q: Does a cache hit satisfy Feature 069's resolution precondition on its own, or is a periodic reconciliation against live Morning required to trust it? → A: Yes — a cache hit alone is trusted as resolution, relying on the periodic TTL sweep to keep it reconciled with live Morning.
+- Q: Does the Feature 069 recognition call (or any `denidin-app` code) get direct, in-process read access to the cache, bypassing the MCP tunnel? → A: **No.** `denidin-app` never calls Morning directly and never will — every resolution, cached or not, is a real `resolve_client_name` MCP tool call over the tunnel to `morning-mcp-app`. This feature is a **transparent cache inside `morning-mcp-app` only**; `denidin-app` code (including the Feature 069 recognition call) is out of scope and does not change at all. A cache hit still closes Feature 069's silent-loss hole (it's fast enough, and durable enough across conversations, that a stale/no-evidence recognition window is far less likely to occur) — but it does so by making the *existing* tool call cheap and reliable, never by adding a bypass path.
 
 ## Problem Statement
 
@@ -70,6 +79,13 @@ While the **Transparent MCP Cache** is the core MVP architecture for this featur
 
 ## Scope Notes
 
+- **`denidin-app` is entirely out of scope for this feature (clarified 2026-09-15).**
+  `denidin-app` never calls Morning directly — it only ever calls MCP tools over the
+  tunnel — and this feature does not change that. Every change this feature makes lives
+  inside `apps/morning-mcp-app`. Feature 069's recognition call, and every other
+  `denidin-app` caller of `resolve_client_name`/`list_clients`, is unaware this cache
+  exists and requires zero code changes; the cache is transparent by construction, not
+  just by intent.
 - Benefits **both** Feature 069 ledger resolution **and** the existing Morning-doc-creation
   resolution flow — the mechanism is the same `resolve_client_name` call.
 - Feature 069 ships **without** this — one `resolve_client_name` call per recognized event,
@@ -83,11 +99,14 @@ While the **Transparent MCP Cache** is the core MVP architecture for this featur
   evidence → returns `none` → **the `הסכם` / `בנק` event is silently never recorded.**
   Feature 069 accepts this hole (decision: strict MCP-evidence-only, plus a relentless
   constitution rule that every `הסכם`/`בנק` requires an explicit `resolve_client_name`
-  call). A durable clients cache **closes the hole**: the recognition call (zero-AI-tunnel,
-  text-only) can consult the cache directly to confirm a stated name is an exact known
-  Morning client, with no conversational tool call and no live tunnel hop required. This
-  makes "the recognition step can read the cache" an explicit capability of this feature,
-  not just "the conversational model's resolution is faster."
+  call). **Clarified 2026-09-15: this feature does not close that hole via any special
+  access path.** `denidin-app` never calls Morning directly, and this feature makes no
+  change to `denidin-app` code at all — the recognition call still only sees evidence from
+  actual `resolve_client_name` tool calls in its context window, exactly as Feature 069
+  defined it. What this feature *does* do is make every such tool call fast and
+  tunnel-independent (a transparent cache inside `morning-mcp-app`), which makes it more
+  likely the conversational model actually places that call and that it succeeds — but the
+  hole itself, and its fix, remain entirely Feature 069's concern.
 - Interaction with the Morning-tunnel-down edge case: with a cache, a previously-seen
   client could still resolve while the tunnel is down. Whether Feature 069's "capture
   nothing if resolution can't complete" rule should relax for a cache hit is an open
@@ -95,18 +114,11 @@ While the **Transparent MCP Cache** is the core MVP architecture for this featur
 
 ## Open Questions (for `speckit.clarify`)
 
-- Cache store: SQLite (like `reminders.db`), a JSON file, or in-memory only (rebuilt per
-  process start from a `list_clients` sweep)?
-- Invalidation strategy — TTL vs. event-driven vs. manual refresh vs. combination.
-- Does a cache hit satisfy Feature 069's resolution precondition on its own, or is a
-  periodic reconciliation against live Morning required to trust it?
-- Should `add_client` write-through immediately, and should a rename in Morning (done
-  outside DeniDin) ever be detected?
-- **Does the Feature 069 recognition call get direct read access to the cache** (a plain
-  in-process lookup, no tool call), or does it stay strictly evidence-from-the-window and
-  only the *conversational* model's resolution benefits? The former is what closes 069's
-  silent-loss hole; it also means the recognition call trusts the cache as a resolution
-  authority, which raises the reconciliation-trust question above.
+None remaining — the two sub-questions originally listed here ("should `add_client`
+write-through immediately" and "should a rename in Morning ever be detected") are both
+answered by the Q2 clarification above: `add_client` success write-throughs immediately
+(event-driven fast path), and the periodic TTL sweep detects renames/deletes done outside
+DeniDin.
 
 ---
 
