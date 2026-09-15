@@ -27,6 +27,7 @@ from src.capabilities.invoicing.tools import (
 from src.capabilities.reminders.tools import is_affirmative_reply
 from src.managers.pending_approval_manager import PendingApproval
 from src.models.message import AIRequest, AIResponse, NO_REPLY_SENTINEL
+from src.models.user import Role
 from src.utils.time_utils import now_local
 
 logger = logging.getLogger(__name__)
@@ -225,6 +226,17 @@ def resolve_button_tap(orchestrator, chat_id: str, selected_id: str, stanza_id: 
         )
 
     reply_text = _resolve_approval(orchestrator, pending, request) if request else "⚠️ הפעולה נכשלה."
+    should_reply = reply_text.strip() != NO_REPLY_SENTINEL
+    # 2026-09-15: approval-resolution turns bypass get_response's normal
+    # _finalize_response entirely, so they need their own session-persistence
+    # call - same real gap fix as _finalize_response's own (see
+    # BackboneOrchestrator._persist_turn's docstring). This tool family is
+    # RBAC-gated GODFATHER/ADMIN-only.
+    if request is not None:
+        orchestrator._persist_turn(  # pylint: disable=protected-access
+            request, reply_text, should_reply, chat_id, Role.GODFATHER,
+            None, None, None, None, False, None,
+        )
     return AIResponse(
         request_id=(request.request_id if request else ""),
         response_text=reply_text,
@@ -232,7 +244,7 @@ def resolve_button_tap(orchestrator, chat_id: str, selected_id: str, stanza_id: 
         model=(request.model if request else ""),
         finish_reason="stop",
         timestamp=int(now_local().timestamp()),
-        should_reply=reply_text.strip() != NO_REPLY_SENTINEL,
+        should_reply=should_reply,
     )
 
 
@@ -255,6 +267,12 @@ def resolve_typed_reply(orchestrator, request: AIRequest, chat_id: str) -> Optio
 
     orchestrator.pending_approval_manager.clear(chat_id)
     reply_text = _resolve_approval(orchestrator, pending, request)
+    should_reply = reply_text.strip() != NO_REPLY_SENTINEL
+    # 2026-09-15: see resolve_button_tap's own comment above - same real gap fix.
+    orchestrator._persist_turn(  # pylint: disable=protected-access
+        request, reply_text, should_reply, chat_id, Role.GODFATHER,
+        None, None, None, None, False, None,
+    )
     return AIResponse(
         request_id=request.request_id,
         response_text=reply_text,
@@ -262,5 +280,5 @@ def resolve_typed_reply(orchestrator, request: AIRequest, chat_id: str) -> Optio
         model=request.model,
         finish_reason="stop",
         timestamp=request.timestamp or int(now_local().timestamp()),
-        should_reply=reply_text.strip() != NO_REPLY_SENTINEL,
+        should_reply=should_reply,
     )

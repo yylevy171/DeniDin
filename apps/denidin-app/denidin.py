@@ -474,6 +474,15 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
             morning_mcp_locator=ai_handler.morning_mcp_locator,
             session_manager=ai_handler.session_manager,
             pending_approval_manager=ai_handler.pending_approval_manager,
+            # 2026-09-15 (closing a real gap): session persistence and
+            # long-term memory recall both need these same shared instances
+            # (REQ-063-03) - memory_manager/user_manager for
+            # BackboneOrchestrator._recall_memory, own_whatsapp_number
+            # (already resolved above) for BackboneOrchestrator._persist_turn's
+            # assistant-message sender JID.
+            memory_manager=ai_handler.memory_manager,
+            user_manager=ai_handler.user_manager,
+            own_whatsapp_number=ai_handler.own_whatsapp_number,
         )
 
     # Create DeniDin instance (will be used as context for background threads and MediaHandler)
@@ -904,10 +913,24 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
     )
     response = denidin_app.backbone_orchestrator.get_response(
         request, chat_id=message.chat_id, is_media=True, media=media, media_type=media_type,
+        sender=message.sender_display_name, user_phone=message.sender_id,
+        sender_phone=message.sender_id, is_group=message.is_group, chat_name=message.chat_name,
     )
     if response.should_reply:
         notification.answer(response.response_text)
         log_outbound(message.chat_id, response.response_text, kind="text")
+
+    # 2026-09-15 (closing a real gap): a media turn is a real godfather/admin
+    # turn exactly like a text one - it needs the SAME shared post-turn ledger
+    # recognition hook _process_conversational_message already runs, so a
+    # fee-agreement/bank-deposit photo captures correctly under flag-on too.
+    # Only possible now that the turn above is actually persisted to the
+    # session (BackboneOrchestrator._persist_turn) - recognize_ledger_event
+    # reads its context from the session, not from this function's own locals.
+    _run_post_turn_ledger_recognition(
+        chat_id=message.chat_id, sender_phone=message.sender_id,
+        reply_text=response.response_text, turn_mcp_calls=response.mcp_calls,
+    )
 
 
 def _process_media_message(notification: Notification) -> None:

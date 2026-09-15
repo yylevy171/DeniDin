@@ -30,6 +30,13 @@ from src.utils.time_utils import now_local, local_from_timestamp
 
 logger = logging.getLogger(__name__)
 
+# 2026-09-15: standalone equivalent of ai_handler.py's _MIN_PLAUSIBLE_SOURCE_EPOCH
+# (REQ-063-07 - never imported from there). A plausible real WhatsApp send epoch
+# floor (2020-01-01 UTC) - a malformed webhook/test sentinel timestamp below this
+# falls back to None (processing time) rather than landing a persisted message in
+# 1970, same reasoning as the legacy constant.
+_MIN_PLAUSIBLE_SOURCE_EPOCH = 1_577_836_800
+
 _DEFAULT_BACKBONE_CONFIG = {
     "file": "backbone.md",
     "base_dir": "config",
@@ -51,7 +58,10 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                  morning_mcp_locator: Optional[Any] = None,
                  session_manager: Optional[Any] = None,
                  pending_approval_manager: Optional[Any] = None,
-                 green_api_bot: Optional[Any] = None):
+                 green_api_bot: Optional[Any] = None,
+                 memory_manager: Optional[Any] = None,
+                 user_manager: Optional[Any] = None,
+                 own_whatsapp_number: str = ""):
         self.client = ai_client
         self.config = config
         self.reminder_manager = reminder_manager
@@ -75,6 +85,19 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # None is tolerated (unit tests, or a misconfigured process) - a turn just
         # runs with no history rather than crashing.
         self.session_manager = session_manager
+        # memory_manager/user_manager/own_whatsapp_number (2026-09-15, closing a
+        # real gap found by full re-audit against spec.md/plan.md: session
+        # persistence AND long-term memory recall were never wired into this
+        # orchestrator at all - every flag-on turn's rolling window and recalled
+        # memories were silently empty, forever, regardless of prior turns. All
+        # three are the SAME shared instances AIHandler already owns (REQ-063-03) -
+        # memory_manager for ChromaDB daily_summary recall, user_manager only for
+        # RBAC-scoped recall (allowed_memory_scopes/can_see_all_memories), and
+        # own_whatsapp_number for the assistant message's own persisted sender JID
+        # (mirrors AIHandler.own_whatsapp_number, resolved once at startup).
+        self.memory_manager = memory_manager
+        self.user_manager = user_manager
+        self.own_whatsapp_number = own_whatsapp_number
 
         backbone_config = dict(_DEFAULT_BACKBONE_CONFIG)
         backbone_config.update(config.backbone_config or {})
@@ -103,6 +126,23 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         self._turn_progress_callback: Optional[Callable[[str], None]] = None
         self._turn_chat_id: Optional[str] = None
         self._turn_message_id: Optional[str] = None
+
+        # Set once per get_response() call (2026-09-15) - the ChromaDB
+        # daily_summary semantic recall for this turn's own query, appended into
+        # every step's instructions the same way AIHandler appends it to
+        # `constitution` (see _recall_memory's own docstring for the exact
+        # parity call this mirrors). "" when memory_manager is None/recall fails/
+        # nothing relevant found - never blocks the turn.
+        self._turn_memory_context: str = ""
+
+        # Accumulates every real Morning MCP tool call made by any step this
+        # turn (2026-09-15) - same {"name","error","arguments","output"} shape
+        # AIHandler._finalize_response already extracts (REQ-SEC-002 audit
+        # logging parity) - threaded into the returned AIResponse.mcp_calls so
+        # the post-turn ledger-recognition hook (denidin.py's shared
+        # _run_post_turn_ledger_recognition) sees this turn's real Morning
+        # activity under the flag-on path too, not an empty list.
+        self._turn_mcp_calls: List[Dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # Prompt loading/caching (contracts/prompt-assembly.md)
@@ -191,6 +231,13 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         catalog = capability_catalog_text(list(DOMAIN_CAPABILITY_TAGS))
         parts = [
             self.load_backbone(),
+            # self._turn_memory_context (2026-09-15): placed immediately after
+            # Backbone content, mirroring AIHandler._build_instructions's own
+            # placement of recalled-memory context right after `constitution`
+            # (ai_handler.py's RECALLED MEMORIES block) - see _recall_memory's
+            # docstring. Computed once per turn (get_response), same string for
+            # every step this turn makes.
+            self._turn_memory_context,
             f"## Capabilities\n\n{catalog}" if catalog else "",
             self.load_capability_prompt(active_tag),
             self.load_user_memory(),
@@ -243,6 +290,21 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         start = time.monotonic()
         response = self.client.responses.create(**kwargs)
         response = self._resolve_backbone_tool_calls(request, response, all_tools)
+        # 2026-09-15: accumulate any real Morning MCP tool calls this step made -
+        # same shape/extraction AIHandler._finalize_response already does (see
+        # __init__'s _turn_mcp_calls docstring). Every step's calls this turn
+        # accumulate together, since a turn can legitimately span more than one
+        # MCP-attached step (e.g. invoicing_read then invoicing_write).
+        self._turn_mcp_calls.extend(
+            {
+                "name": item.name,
+                "error": item.error,
+                "arguments": item.arguments,
+                "output": item.output,
+            }
+            for item in (response.output or [])
+            if getattr(item, "type", None) == "mcp_call"
+        )
         duration_ms = (time.monotonic() - start) * 1000
         usage = getattr(response, "usage", None)
         cached_tokens = getattr(getattr(usage, "input_tokens_details", None), "cached_tokens", None)
@@ -330,8 +392,6 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         `["media_type"]` below. media_extraction (above) and media/media_type are
         mutually exclusive in practice — a caller passes at most one.
         """
-        del sender, recipient, is_group, chat_name
-
         role = self._resolve_role(user_role)
         effective_chat_id = chat_id or request.chat_id
         # Backbone-tool dispatch context (2026-09-14, same per-turn-instance-attribute
@@ -342,6 +402,16 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         self._turn_progress_callback = progress_callback
         self._turn_chat_id = effective_chat_id
         self._turn_message_id = request.message_id
+        # Reset per-turn MCP-call accumulator (2026-09-15) - see __init__'s
+        # _turn_mcp_calls docstring.
+        self._turn_mcp_calls = []
+        # Long-term memory recall (2026-09-15, closing a real gap - see
+        # _recall_memory's own docstring): computed once here, read by
+        # build_instructions for every step this turn makes, same
+        # once-per-turn/read-by-every-step lifecycle as _turn_conversation_history.
+        self._turn_memory_context = self._recall_memory(
+            request.user_prompt, effective_chat_id, user_phone, sender_phone,
+        )
         turn_context = {
             "role": role,
             "user_phone": user_phone or sender_phone,
@@ -406,7 +476,10 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         else:
             final_text = self._execute_plan(plan, request, intent_text, turn_context)
 
-        return self._finalize_response(request, final_text, effective_chat_id)
+        return self._finalize_response(
+            request, final_text, effective_chat_id, role,
+            sender, recipient, user_phone, sender_phone, is_group, chat_name,
+        )
 
     def _resolve_pending_local_tool_approval(self, request: AIRequest, effective_chat_id: str,
                                               turn_context: Dict[str, Any]) -> Optional[AIResponse]:
@@ -490,8 +563,15 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             "(see tasks.md's 'Deferred' section — write-approval-flow parity is scoped follow-up work)"
         )
 
-    def _finalize_response(self, request: AIRequest, final_text: str,
-                            effective_chat_id: Optional[str] = None) -> AIResponse:
+    def _finalize_response(self, request: AIRequest, final_text: str,  # pylint: disable=too-many-arguments,too-many-positional-arguments
+                            effective_chat_id: Optional[str] = None,
+                            role: Optional[Role] = None,
+                            sender: Optional[str] = None,
+                            recipient: Optional[str] = None,
+                            user_phone: Optional[str] = None,
+                            sender_phone: Optional[str] = None,
+                            is_group: bool = False,
+                            chat_name: Optional[str] = None) -> AIResponse:
         """Same [[NO_REPLY]] sentinel handling as AIHandler._finalize_response
         (contracts/orchestration-loop.md step 4) — reimplemented here, not shared
         code, per REQ-063-07.
@@ -516,6 +596,11 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             or (self.pending_approval_manager is not None
                 and self.pending_approval_manager.get(effective_chat_id) is not None)
         ))
+        if effective_chat_id:
+            self._persist_turn(
+                request, final_text, should_reply, effective_chat_id, role,
+                sender, recipient, user_phone, sender_phone, is_group, chat_name,
+            )
         return AIResponse(
             request_id=request.request_id,
             response_text=final_text,
@@ -527,6 +612,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             timestamp=request.timestamp or int(now_local().timestamp()),
             should_reply=should_reply,
             offer_approval_buttons=offer_approval_buttons,
+            mcp_calls=list(self._turn_mcp_calls),
         )
 
     @staticmethod
@@ -558,6 +644,122 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         except Exception as exc:  # pylint: disable=broad-except
             logger.error("Failed to load conversation history for %s: %s", chat_id, exc)
             return []
+
+    def _recall_memory(self, user_prompt: str, chat_id: Optional[str],
+                        user_phone: Optional[str], sender_phone: Optional[str]) -> str:
+        """2026-09-15 (closing a real gap - long-term memory recall was never
+        wired into this orchestrator at all). Mirrors
+        AIHandler.create_request's own recall block (ai_handler.py ~2095-2131):
+        a single ChromaDB `daily_summary` semantic-similarity query over this
+        chat's own collection, RBAC-filtered by the resolving user's
+        allowed_memory_scopes/can_see_all_memories when user_manager is
+        available (same `recall_with_rbac_filter` call legacy makes), else a
+        plain `recall` call. Returns a "" (never raises) on any failure or
+        when nothing relevant is found - a turn with no recalled memory is a
+        degraded turn, not a crashed one, matching AIHandler's own
+        try/except around this same call."""
+        if self.memory_manager is None or not chat_id:
+            return ""
+        try:
+            # pylint: disable=import-outside-toplevel
+            from src.managers.memory_collections import collection_name_for_chat
+            collection_name = collection_name_for_chat(chat_id)
+            longterm_config = (self.config.memory or {}).get('longterm', {})
+            top_k = longterm_config.get('daily_summary_top_k', 10)
+            min_similarity = longterm_config.get('min_similarity', 0.7)
+
+            effective_user_phone = user_phone or sender_phone
+            if self.user_manager is not None and effective_user_phone:
+                user = self.user_manager.get_user(effective_user_phone)
+                recalled = self.memory_manager.recall_with_rbac_filter(
+                    query=user_prompt,
+                    collection_names=[collection_name],
+                    user_phone=effective_user_phone,
+                    allowed_scopes=user.allowed_memory_scopes,
+                    can_see_all_memories=user.can_see_all_memories,
+                    top_k=top_k,
+                    min_similarity=min_similarity,
+                )
+            else:
+                recalled = self.memory_manager.recall(
+                    query=user_prompt,
+                    collection_names=[collection_name],
+                    top_k=top_k,
+                    min_similarity=min_similarity,
+                )
+            if not recalled:
+                return ""
+            lines = "\n".join(
+                f"- {mem['content']} (relevance: {mem['similarity']:.2f})" for mem in recalled
+            )
+            return f"RECALLED MEMORIES (from past conversations):\n{lines}"
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("Failed to recall memories for %s: %s", chat_id, exc)
+            return ""
+
+    def _persist_turn(self, request: AIRequest, final_text: str, should_reply: bool,  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+                       effective_chat_id: str, role: Optional[Role],
+                       sender: Optional[str], recipient: Optional[str],
+                       user_phone: Optional[str], sender_phone: Optional[str],
+                       is_group: bool, chat_name: Optional[str]) -> None:
+        """2026-09-15 (closing a real gap - flag-on turns never persisted a
+        single message to the session; every rolling-window read this
+        orchestrator itself does was reading a session that this orchestrator
+        never wrote to). New, standalone code mirroring
+        AIHandler.get_response's own persistence block (ai_handler.py
+        ~3746-3862) shape-for-shape (RBAC-token-limited storage,
+        sender/recipient JID resolution, source timestamps) so the rolling
+        window, post-turn ledger recognition, and the nightly daily-summary
+        roll all see flag-on turns exactly as they'd see a flag-off turn —
+        REQ-063-05. Best-effort: any failure is logged, never raised (a
+        storage failure must not turn an already-composed, already-sendable
+        reply into a hard error)."""
+        if self.session_manager is None:
+            return
+        try:
+            own_number_jid = f"{self.own_whatsapp_number}@c.us" if self.own_whatsapp_number else None
+            resolved_sender_phone = sender_phone or user_phone or (
+                effective_chat_id if not is_group else None
+            )
+            user_msg_recipient = effective_chat_id if is_group else own_number_jid
+            user_msg_recipient_name = (chat_name or effective_chat_id) if is_group else "DeniDin"
+            assistant_msg_recipient = effective_chat_id if is_group else resolved_sender_phone
+            assistant_msg_recipient_name = (chat_name or effective_chat_id) if is_group else sender
+
+            source_epoch = request.timestamp if (
+                request.timestamp is not None and request.timestamp >= _MIN_PLAUSIBLE_SOURCE_EPOCH
+            ) else None
+            user_source_ts = None if source_epoch is None else local_from_timestamp(source_epoch)
+            assistant_source_ts = None if source_epoch is None else local_from_timestamp(source_epoch)
+            effective_role = role or Role.CLIENT
+
+            self.session_manager.add_message_with_tokens(
+                chat_id=effective_chat_id,
+                role="user",
+                content=request.user_prompt,
+                user_role=effective_role,
+                sender=resolved_sender_phone,
+                sender_name=sender,
+                recipient=user_msg_recipient,
+                recipient_name=user_msg_recipient_name,
+                message_id=request.message_id,
+                timestamp=user_source_ts,
+            )
+            if should_reply:
+                self.session_manager.add_message_with_tokens(
+                    chat_id=effective_chat_id,
+                    role="assistant",
+                    content=final_text,
+                    user_role=effective_role,
+                    sender=own_number_jid,
+                    sender_name="DeniDin",
+                    recipient=assistant_msg_recipient,
+                    recipient_name=assistant_msg_recipient_name,
+                    mcp_calls=list(self._turn_mcp_calls),
+                    timestamp=assistant_source_ts,
+                )
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("Failed to persist turn to session %s: %s", effective_chat_id, exc)
 
     # ------------------------------------------------------------------
     # Pending-approval / button-tap resolution (contracts/orchestration-loop.md

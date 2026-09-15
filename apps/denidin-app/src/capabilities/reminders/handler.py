@@ -29,6 +29,7 @@ from src.managers.reminder_manager import (
     ReminderNotFoundError,
 )
 from src.models.message import AIRequest, AIResponse, NO_REPLY_SENTINEL
+from src.models.user import Role
 from src.utils.time_utils import now_local
 
 logger = logging.getLogger(__name__)
@@ -240,6 +241,18 @@ def resolve_button_tap(orchestrator, chat_id: str, selected_id: str, stanza_id: 
         )
 
     reply_text = _approve_and_execute(orchestrator, pending, chat_id, "", "")
+    should_reply = reply_text.strip() != NO_REPLY_SENTINEL
+    # 2026-09-15: approval-resolution turns (button tap / typed reply) bypass
+    # get_response's normal _finalize_response entirely, so they need their own
+    # session-persistence call - same real gap fix as _finalize_response's own
+    # (see BackboneOrchestrator._persist_turn's docstring). This tool family is
+    # RBAC-gated GODFATHER/ADMIN-only, so Role.GODFATHER is always at least as
+    # permissive as the real resolving user's actual role for storage purposes.
+    if request is not None:
+        orchestrator._persist_turn(  # pylint: disable=protected-access
+            request, reply_text, should_reply, chat_id, Role.GODFATHER,
+            None, None, None, None, False, None,
+        )
     return AIResponse(
         request_id=(request.request_id if request else ""),
         response_text=reply_text,
@@ -247,7 +260,7 @@ def resolve_button_tap(orchestrator, chat_id: str, selected_id: str, stanza_id: 
         model=(request.model if request else ""),
         finish_reason="stop",
         timestamp=int(now_local().timestamp()),
-        should_reply=reply_text.strip() != NO_REPLY_SENTINEL,
+        should_reply=should_reply,
     )
 
 
@@ -271,6 +284,16 @@ def resolve_typed_reply(orchestrator, request: AIRequest, chat_id: str,
 
     orchestrator.pending_local_tool_approval_manager.clear(chat_id)
     reply_text = _approve_and_execute(orchestrator, pending, chat_id, created_by_phone, created_by_role)
+    should_reply = reply_text.strip() != NO_REPLY_SENTINEL
+    # 2026-09-15: see resolve_button_tap's own comment above - same real gap fix.
+    try:
+        role = Role(created_by_role.upper())
+    except ValueError:
+        role = Role.GODFATHER
+    orchestrator._persist_turn(  # pylint: disable=protected-access
+        request, reply_text, should_reply, chat_id, role,
+        None, None, created_by_phone, created_by_phone, False, None,
+    )
     return AIResponse(
         request_id=request.request_id,
         response_text=reply_text,
@@ -278,5 +301,5 @@ def resolve_typed_reply(orchestrator, request: AIRequest, chat_id: str,
         model=request.model,
         finish_reason="stop",
         timestamp=request.timestamp or int(now_local().timestamp()),
-        should_reply=reply_text.strip() != NO_REPLY_SENTINEL,
+        should_reply=should_reply,
     )

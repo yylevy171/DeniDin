@@ -1,77 +1,63 @@
-"""Unit tests for the Ledger Events — Capture capability handler (Feature 063):
-a recognized event persists via the unmodified LedgerEventManager, no approval
-gate (immediate dispatch, mirrors list_reminders/query_ledger_events)."""
-import json
+"""Unit tests for the Ledger Events — Capture capability handler (Feature 063,
+revised 2026-09-15): this step is now a documented no-op delegating to
+`call_capability_step` — it no longer offers a capture tool or persists directly,
+since the real, proven three-verdict recognition mechanism
+(`denidin.py`'s shared `_run_post_turn_ledger_recognition` ->
+`AIHandler.recognize_ledger_event`) already runs post-turn for every godfather/admin
+turn under flag-on (text and media alike), and this step running its own capture
+alongside it would risk double-capturing the same event. See handler.py's `capture()`
+docstring for the full reasoning."""
 from unittest.mock import MagicMock
 
 from src.capabilities.ledger_events.handler import capture
 from src.capabilities.ledger_events.tools import to_call_arguments
 
 
-def _fake_capture_response(args_dict):
-    item = MagicMock()
-    item.type = "function_call"
-    item.name = "capture_ledger_event"
-    item.arguments = json.dumps(args_dict)
-    response = MagicMock()
-    response.output = [item]
-    response.output_text = ""
-    return response
-
-
-def test_capture_persists_agreement_event():
+def test_capture_never_persists_directly():
+    """The step must never call add_ledger_events_from_call itself - that would
+    double-capture whatever the shared post-turn mechanism also recognizes."""
     orchestrator = MagicMock()
-    orchestrator.session_manager.get_session.return_value.session_id = "sess-1"
-    orchestrator.ledger_event_manager.add_ledger_events_from_call.return_value = ["A1409260900"]
-    orchestrator.client.responses.create.return_value = _fake_capture_response({
-        "source_type": "הסכם", "client_name": "עמיר כץ", "payer_name": None,
-        "description": "ייצוג בתביעה", "amount": "5000", "vat_status": "לא צוין",
-        "txn_date": None, "agreement_id": "AGR-1",
-    })
-    request = MagicMock(model="gpt-5.6-luna", max_tokens=1000, chat_id="chat1", timestamp=123, message_id="m1")
+    orchestrator.call_capability_step.return_value = "אין צורך בפעולה נוספת."
+    request = MagicMock(model="gpt-5.6-luna", max_tokens=1000, chat_id="chat1", timestamp=1, message_id="m1")
     request.user_prompt = "סוכם עם עמיר כץ 5000 שח על ייצוג"
 
     result = capture(orchestrator, request, "", "", {"chat_id": "chat1"})
 
-    orchestrator.ledger_event_manager.add_ledger_events_from_call.assert_called_once()
-    kwargs = orchestrator.ledger_event_manager.add_ledger_events_from_call.call_args.kwargs
-    assert kwargs["session_id"] == "sess-1"
-    assert kwargs["call_arguments"]["source_type"] == "הסכם"
-    assert kwargs["call_arguments"]["components"][0]["amount"] == "5000"
-    assert "✅" in result
-
-
-def test_capture_no_tool_call_returns_model_text():
-    orchestrator = MagicMock()
-    response = MagicMock()
-    response.output = []
-    response.output_text = "אין כאן אירוע כספי."
-    orchestrator.client.responses.create.return_value = response
-    request = MagicMock(model="gpt-5.6-luna", max_tokens=1000, chat_id="chat1", timestamp=1, message_id="m1")
-    request.user_prompt = "מה שלומך?"
-
-    result = capture(orchestrator, request, "", "", {"chat_id": "chat1"})
-    assert result == "אין כאן אירוע כספי."
     orchestrator.ledger_event_manager.add_ledger_events_from_call.assert_not_called()
+    orchestrator.client.responses.create.assert_not_called()
+    assert result == "אין צורך בפעולה נוספת."
 
 
-def test_capture_persist_failure_reports_friendly_error():
+def test_capture_delegates_to_call_capability_step_with_ledger_capture_tag():
+    from src.backbone.capability_tags import CapabilityTag
+
     orchestrator = MagicMock()
-    orchestrator.session_manager.get_session.return_value.session_id = "sess-1"
-    orchestrator.ledger_event_manager.add_ledger_events_from_call.return_value = []
-    orchestrator.client.responses.create.return_value = _fake_capture_response({
-        "source_type": "בנק", "client_name": None, "payer_name": "יוסי כהן",
-        "description": "הפקדה", "amount": "1200", "vat_status": "לא צוין",
-        "txn_date": None, "agreement_id": None,
-    })
+    orchestrator.call_capability_step.return_value = "noted."
     request = MagicMock(model="gpt-5.6-luna", max_tokens=1000, chat_id="chat1", timestamp=1, message_id="m1")
-    request.user_prompt = "יוסי כהן הפקיד 1200 שח"
+    request.user_prompt = "text"
+
+    capture(orchestrator, request, "prior context", "a note", {"chat_id": "chat1"})
+
+    orchestrator.call_capability_step.assert_called_once_with(
+        tag=CapabilityTag.LEDGER_CAPTURE, request=request, accumulated_context="prior context",
+    )
+
+
+def test_capture_reports_manager_not_configured():
+    orchestrator = MagicMock()
+    orchestrator.ledger_event_manager = None
+    request = MagicMock(model="gpt-5.6-luna", max_tokens=1000, chat_id="chat1", timestamp=1, message_id="m1")
+    request.user_prompt = "text"
 
     result = capture(orchestrator, request, "", "", {"chat_id": "chat1"})
-    assert "נכשל" in result
+    assert result == "Ledger manager not configured."
+    orchestrator.call_capability_step.assert_not_called()
 
 
 def test_to_call_arguments_reshapes_flat_args_to_components_array():
+    """to_call_arguments itself still exists (kept for a future real
+    implementation, src/capabilities/ledger_events/tools.py) and is still correct
+    - only the handler's own use of it was removed."""
     flat = {
         "source_type": "הסכם", "client_name": "X", "payer_name": None,
         "description": "d", "amount": "100", "vat_status": "לא צוין",

@@ -55,6 +55,8 @@ from src.handlers.ai_handler import (  # noqa: E402
     MODIFY_REMINDER_TOOL,
     QUERY_LEDGER_EVENTS_TOOL,
 )
+from src.models.config import AppConfiguration  # noqa: E402
+from src.models.message import AIRequest  # noqa: E402
 from src.utils.logger import DEFAULT_VERSION_FILE, read_version  # noqa: E402
 from src.utils.time_utils import now_local  # noqa: E402
 
@@ -191,7 +193,104 @@ def _call(client: OpenAI, model: str, instructions: str, items: List[Dict[str, s
     )
 
 
-def main(argv: Optional[List[str]] = None) -> int:  # pylint: disable=too-many-locals
+def _run_backbone_checks(client: OpenAI, cfg_path: Path,  # pylint: disable=too-many-locals
+                          model: str) -> Dict[str, Any]:
+    """Feature 063 R6 — Instrumentation for UAT2/UAT3/SC-004/SC-005 (no new pytest
+    acceptance tests, per user-stories.md; this is the billed diagnostic run
+    research.md's R6 decision named). With the flag's own real code
+    (BackboneOrchestrator/identify_intent/build_plan), not a simulation:
+    (a) UAT2 — small-talk turn produces an empty plan (no domain capability step
+        ever executes).
+    (b) UAT3 — a cross-domain turn (Ledger Query + Invoicing Read in one message)
+        produces a plan with >=2 domain-capability steps.
+    (c) REQ-063-04a — a media-attached turn (raw, not pre-extracted, mirroring
+        denidin.py's own flag-on dispatch) produces a plan whose first step is
+        Media Analysis.
+    (d) REQ-063-06/SC-005 — two turns exercising the same capability (two Ledger
+        Query turns) report `cached_tokens > 0` on the Backbone+capability
+        instructions prefix on the second call, proving OpenAI prompt caching
+        engages across turns exactly as it does for the legacy constitution.
+    """
+    # pylint: disable=import-outside-toplevel
+    from src.backbone.capability_tags import CapabilityTag
+    from src.backbone.intent_identification import identify_intent
+    from src.backbone.orchestrator import BackboneOrchestrator
+    from src.backbone.planning import build_plan, role_allowed_capabilities
+    from src.models.media import Media
+    from src.models.user import Role
+
+    app_config = AppConfiguration.from_file(str(cfg_path))
+    orchestrator = BackboneOrchestrator(client, app_config)
+    allowed_tags = role_allowed_capabilities(Role.GODFATHER)
+
+    def _request(prompt: str) -> AIRequest:
+        return AIRequest(user_prompt=prompt, constitution="", max_tokens=200,
+                          model=model, chat_id="model_sanity_check", message_id="msg1")
+
+    result: Dict[str, Any] = {}
+
+    # (a) UAT2 — small talk => empty plan
+    small_talk_req = _request("מה שלומך היום?")
+    intent_a = identify_intent(orchestrator, small_talk_req, allowed_tags)
+    plan_a = build_plan(orchestrator, small_talk_req, intent_a, allowed_tags)
+    result["uat2_small_talk_plan_is_empty"] = plan_a.is_empty
+    result["uat2_small_talk_step_count"] = len(plan_a.steps)
+
+    # (b) UAT3 — cross-domain => >=2 domain-capability steps
+    cross_domain_req = _request(
+        "כמה עמיר כץ שילם לפי הספר, וגם תראה לי את החשבוניות הפתוחות שלו במורנינג"
+    )
+    intent_b = identify_intent(orchestrator, cross_domain_req, allowed_tags)
+    plan_b = build_plan(orchestrator, cross_domain_req, intent_b, allowed_tags)
+    result["uat3_cross_domain_step_count"] = len(plan_b.steps)
+    result["uat3_cross_domain_capabilities"] = [s.capability.value for s in plan_b.steps]
+    result["uat3_cross_domain_has_multiple_steps"] = len(plan_b.steps) >= 2
+
+    # (c) REQ-063-04a — raw media turn => Media Analysis is a plan step (first,
+    # since extraction must happen before any capability can reason over content)
+    media_req = _request("[media message]")
+    media = Media(data=b"\xff\xd8\xff\xe0fake-jpeg-bytes", mime_type="image/jpeg", filename="receipt.jpg")
+    intent_c = identify_intent(orchestrator, media_req, allowed_tags, is_media=True, media_extraction=None)
+    plan_c = build_plan(orchestrator, media_req, intent_c, allowed_tags)
+    result["media_plan_step_count"] = len(plan_c.steps)
+    result["media_plan_capabilities"] = [s.capability.value for s in plan_c.steps]
+    result["media_analysis_is_first_step"] = bool(
+        plan_c.steps and plan_c.steps[0].capability == CapabilityTag.MEDIA_ANALYSIS
+    )
+    del media  # constructed for parity with the real dispatch shape; not sent here -
+    # identify_intent/build_plan only need is_media/media_extraction, the real
+    # extraction call only happens if/when a media_analysis step actually executes,
+    # which this diagnostic intentionally stops short of (keeps the check cheap).
+
+    # (d) REQ-063-06/SC-005 — same capability, two turns => caching engages
+    ledger_req_1 = _request("כמה סוכם עם עמיר כץ?")
+    ledger_req_2 = _request("וכמה סוכם עם דנה לוי?")
+    orchestrator.ledger_event_manager = _NullLedgerEventManager()
+    from src.capabilities.ledger_events.handler import query as ledger_query
+    ledger_query(orchestrator, ledger_req_1, "", "עמיר כץ", {"chat_id": "model_sanity_check"})
+    r2 = client.responses.create(
+        model=model,
+        instructions=orchestrator.build_instructions(CapabilityTag.LEDGER_QUERY, "", ledger_req_2.timestamp),
+        input=[{"role": "user", "content": ledger_req_2.user_prompt}],
+        max_output_tokens=200,
+    )
+    result["caching_second_call_usage"] = _usage(r2)
+    result["caching_engaged_across_turns"] = bool((_usage(r2)["cached_tokens"] or 0) > 0)
+
+    return result
+
+
+class _NullLedgerEventManager:  # pylint: disable=too-few-public-methods
+    """Minimal stand-in so ledger_query's own capability handler has a real
+    (if empty) LedgerEventManager to call query_events against — this script
+    deliberately never touches real persisted ledger data."""
+
+    @staticmethod
+    def query_events(_criteria: List[Dict[str, str]]) -> List[Any]:
+        return []
+
+
+def main(argv: Optional[List[str]] = None) -> int:  # pylint: disable=too-many-locals,too-many-statements
     ap = argparse.ArgumentParser(prog="model_sanity_check.py", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", required=True, help="path to a real config.*.json")
@@ -201,6 +300,13 @@ def main(argv: Optional[List[str]] = None) -> int:  # pylint: disable=too-many-l
     ap.add_argument("--with-mcp", action="store_true",
                     help="also attach the Morning MCP tool (needs a 'running' status file)")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--backbone", action="store_true",
+                    help="Feature 063 R6: also run the flag-on Backbone instrumentation "
+                         "checks (UAT2/UAT3/media-plan-step/cross-turn caching) — additional "
+                         "billed calls, real BackboneOrchestrator code, config.feature_flags."
+                         "enable_capability_backbone need not be true in the config for this "
+                         "(the orchestrator is exercised directly, not via denidin.py's flag "
+                         "check)")
     args = ap.parse_args(argv)
 
     cfg_path = Path(args.config)
@@ -261,6 +367,9 @@ def main(argv: Optional[List[str]] = None) -> int:  # pylint: disable=too-many-l
     report["d_needle_answer_excerpt"] = answer[:200]
     report["d_needle_recalled"] = NEEDLE_TOKEN in answer
 
+    if args.backbone:
+        report["backbone"] = _run_backbone_checks(client, cfg_path, model)
+
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     else:
@@ -288,6 +397,17 @@ def _print_human(r: Dict[str, Any]) -> None:
     print(f"    trailing instructions : {r['d_memories_trailing_instructions']}")
     print(f"    leading input item    : {r['d_memories_leading_input']}")
     print(f"    needle recalled       : {r['d_needle_recalled']}  ({r['d_needle_answer_excerpt']!r})")
+    if "backbone" in r:
+        b = r["backbone"]
+        print("\n=== Feature 063 Backbone instrumentation (R6) ===")
+        print(f"UAT2 small-talk -> empty plan : {b['uat2_small_talk_plan_is_empty']} "
+              f"(steps={b['uat2_small_talk_step_count']})")
+        print(f"UAT3 cross-domain -> >=2 steps: {b['uat3_cross_domain_has_multiple_steps']} "
+              f"(steps={b['uat3_cross_domain_capabilities']})")
+        print(f"Media turn -> Media Analysis first: {b['media_analysis_is_first_step']} "
+              f"(steps={b['media_plan_capabilities']})")
+        print(f"Cross-turn caching engaged     : {b['caching_engaged_across_turns']} "
+              f"({b['caching_second_call_usage']})")
     print()
 
 
