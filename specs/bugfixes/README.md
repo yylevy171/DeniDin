@@ -115,6 +115,7 @@ git mv specs/bugfixes/bugfix-005-new-bug-description.md \
 | 026 | Morning Documents Created Unsigned (blocks email sharing) | P0 | 2026-08-07 | #195 |
 | 012 | Financial Summary Drops Non-Allowlisted Invoice Types | - | 2026-07-21 | #111 |
 | 020 | GreenAPIBot Crashes on Empty Notification Response | P0 | 2026-08-03 | #163 |
+| 062 | Naked Deposit Image Bypass | P0 | 2026-09-16 | TBD |
 
 ---
 
@@ -140,7 +141,11 @@ git mv specs/bugfixes/bugfix-005-new-bug-description.md \
 
 - The real file for EVERY bugfix spec MUST live under `specs/repo/bugfixes/` (never a real file
   in `specs/bugfixes/`, `specs/in-progress/`, `specs/done/`, or anywhere else)
-- An OPEN bugfix is symlinked from `specs/bugfixes/`; never from `specs/in-progress/`
+- An OPEN bugfix is symlinked from `specs/bugfixes/`. A bugfix actively being worked (BDD steps
+  underway, not just filed) is ALSO symlinked from `specs/in-progress/` at the same time — both
+  symlinks coexist while work is active; `specs/in-progress/`'s copy is removed once the bugfix
+  moves to `specs/done/`/`specs/obsolete/bugfixes/`/`specs/not_reproducible/bugfixes/` (2026-09-16
+  correction — this directory previously said the opposite, which was wrong).
 - Each bugfix gets a sequential number (never reuse numbers)
 - Branch name MUST match spec file number
 - On resolution the SYMLINK moves to `specs/done/` flat (same as a finished feature);
