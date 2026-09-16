@@ -113,7 +113,8 @@ def fail_open_plan(allowed_tags: List[CapabilityTag]) -> Plan:
     return Plan(steps=[PlanStep(capability=tag, note="fail-open") for tag in ordered_allowed])
 
 
-def build_plan(orchestrator, request, intent_text: str, allowed_tags: List[CapabilityTag]) -> Plan:
+def build_plan(orchestrator, request, intent_text: str, allowed_tags: List[CapabilityTag], *,
+                is_media: bool = False) -> Plan:
     """The actual Planning step: one followup OpenAI call (Backbone - now including
     the full capability catalog as a static section, 2026-09-14, see
     orchestrator.build_instructions - + planning.md's prompt + Intent
@@ -124,13 +125,28 @@ def build_plan(orchestrator, request, intent_text: str, allowed_tags: List[Capab
     here (not full descriptions - those are already in the Backbone's own static
     catalog every call carries) - this is Planning's actual RBAC-narrowing input:
     "which of these already-described domains can THIS role's plan actually use
-    this turn," not a re-description of what each one means."""
+    this turn," not a re-description of what each one means.
+
+    is_media (2026-09-15, closing a real gap - a billed test caught Planning
+    adding a spurious media_analysis step for a PLAIN TEXT turn): Planning
+    previously had zero ground truth about whether this turn actually has media
+    attached - it only ever saw Intent Identification's free-form prose, which
+    is not a reliable signal, plus a misleading ordering example in planning.md
+    that biased the model toward media_analysis whenever a message merely
+    described something extraction-shaped (e.g. a name + an amount). Stating
+    this plainly, as a fact rather than inferred prose, is the actual fix -
+    planning.md's own rule then tells the model to trust it."""
     try:
+        media_status = (
+            "This turn has media attached." if is_media
+            else "This turn has NO media attached - it is a plain text message."
+        )
         raw_text = orchestrator.call_capability_step(
             tag=CapabilityTag.PLANNING,
             request=request,
             accumulated_context=(
                 f"Intent Identification determined: {intent_text}\n\n"
+                f"{media_status}\n\n"
                 f"Capabilities available to this role this turn: "
                 f"{', '.join(t.value for t in allowed_tags)}\n\n"
                 "Respond with a JSON object: {\"steps\": [{\"capability\": <tag>, \"note\": <str>}, ...]} "

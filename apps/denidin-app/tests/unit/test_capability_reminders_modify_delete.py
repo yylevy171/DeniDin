@@ -29,7 +29,7 @@ def test_propose_modify_whole_series_creates_pending_approval():
     orchestrator = MagicMock()
     orchestrator.reminder_manager.list_active.return_value = []
     orchestrator.reminder_manager.get_reminder.return_value = _reminder_row()
-    orchestrator.client.responses.create.return_value = _fake_function_call_response(
+    orchestrator.call_capability_step.return_value = _fake_function_call_response(
         "modify_reminder",
         {
             "reminder_id": "rem-1", "scope": "whole_series", "occurrence_date_hint": None,
@@ -52,7 +52,7 @@ def test_propose_modify_single_occurrence_requires_hint_on_recurring_reminder():
     orchestrator = MagicMock()
     orchestrator.reminder_manager.list_active.return_value = []
     orchestrator.reminder_manager.get_reminder.return_value = _reminder_row(rrule="FREQ=WEEKLY")
-    orchestrator.client.responses.create.return_value = _fake_function_call_response(
+    orchestrator.call_capability_step.return_value = _fake_function_call_response(
         "modify_reminder",
         {
             "reminder_id": "rem-1", "scope": "single_occurrence", "occurrence_date_hint": "2026-10-08",
@@ -74,7 +74,7 @@ def test_propose_delete_reminder_not_found_returns_friendly_error():
     orchestrator = MagicMock()
     orchestrator.reminder_manager.list_active.return_value = []
     orchestrator.reminder_manager.get_reminder.return_value = None
-    orchestrator.client.responses.create.return_value = _fake_function_call_response(
+    orchestrator.call_capability_step.return_value = _fake_function_call_response(
         "delete_reminder", {"reminder_id": "does-not-exist", "scope": "whole_series", "occurrence_date_hint": None},
     )
     request = MagicMock(model="gpt-5.6-luna", max_tokens=1000, chat_id="chat1", timestamp=None)

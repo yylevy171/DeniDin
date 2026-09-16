@@ -3407,6 +3407,22 @@ class AIHandler:
                 return str(text)
         return ""
 
+    @staticmethod
+    def _extract_mcp_call_items(response) -> List[Dict[str, Any]]:
+        """Pull every `mcp_call`-type item off one API response's `.output`,
+        in the same shape `_finalize_response` has always reported
+        (name/error/arguments/output)."""
+        return [
+            {
+                "name": item.name,
+                "error": item.error,
+                "arguments": item.arguments,
+                "output": item.output,
+            }
+            for item in (response.output or [])
+            if getattr(item, "type", None) == "mcp_call"
+        ]
+
     def _run_local_tool_dispatch_loop(
         self, request: AIRequest, response, effective_chat_id: Optional[str],
         sender: Optional[str], tools: Optional[List[Dict]],
@@ -3425,18 +3441,34 @@ class AIHandler:
         this turn entirely. `ledger_event_ids` stays in the return tuple (always
         empty now) so callers' unpacking is unchanged.
 
+        Bug fix (2026-09-15): `mcp_calls` used to be re-derived by
+        `_finalize_response` from a single response (`current_response`,
+        whichever round this loop last settled on) - so an MCP call that
+        genuinely executed in an EARLIER round (e.g. the dedicated approval
+        round that ran `add_client`) silently vanished from the turn's
+        reported `mcp_calls` if a LATER round then ran for an unrelated
+        reason (e.g. a `react_to_message` follow-up), because that earlier
+        round's `mcp_call` item is not present in the final round's
+        `response.output`. Fixed by accumulating `mcp_call` items across
+        EVERY round as the loop goes - the same pattern already used here for
+        token deltas and (structurally) `ledger_event_ids` - instead of
+        re-deriving them from one response at the end.
+
         Returns (final_response, extra_tokens, extra_prompt_tokens,
-        extra_completion_tokens, usage_response, ledger_event_ids) - the
-        three "extra_*" fields are deltas to ADD to the caller's own running
-        totals (which already include the turn's original response.usage),
-        never absolute totals themselves. `usage_response` is whichever
-        response's usage/finish_reason is authoritative (the last one that
-        actually produced a follow-up, or the original if none did).
+        extra_completion_tokens, usage_response, ledger_event_ids,
+        accumulated_mcp_calls) - the three "extra_*" fields are deltas to ADD
+        to the caller's own running totals (which already include the turn's
+        original response.usage), never absolute totals themselves.
+        `usage_response` is whichever response's usage/finish_reason is
+        authoritative (the last one that actually produced a follow-up, or
+        the original if none did). `accumulated_mcp_calls` is every
+        `mcp_call`-type item seen across every round of this loop, in order.
         """
         current_response = response
         usage_response = response
         extra_tokens = extra_prompt_tokens = extra_completion_tokens = 0
         ledger_event_ids: List[str] = []
+        accumulated_mcp_calls: List[Dict[str, Any]] = self._extract_mcp_call_items(response)
         for _loop_round in range(MAX_LOCAL_TOOL_LOOP_ITERATIONS):
             # Bugfix (2026-09-13): every immediate-dispatch local tool type
             # (query_ledger_events, list_reminders, send_progress_update,
@@ -3466,6 +3498,7 @@ class AIHandler:
                 extra_tokens += local_tools_followup.usage.total_tokens
                 extra_prompt_tokens += local_tools_followup.usage.input_tokens
                 extra_completion_tokens += local_tools_followup.usage.output_tokens
+                accumulated_mcp_calls.extend(self._extract_mcp_call_items(local_tools_followup))
                 continue
 
             break  # a full pass made no progress - current_response is final
@@ -3481,6 +3514,7 @@ class AIHandler:
         return (
             current_response, extra_tokens, extra_prompt_tokens,
             extra_completion_tokens, usage_response, ledger_event_ids,
+            accumulated_mcp_calls,
         )
 
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
@@ -3515,6 +3549,7 @@ class AIHandler:
         (
             current_response, extra_tokens, extra_prompt_tokens,
             extra_completion_tokens, usage_response, ledger_event_ids,
+            accumulated_mcp_calls,
         ) = self._run_local_tool_dispatch_loop(
             request, response, effective_chat_id, sender, tools
         )
@@ -3581,13 +3616,19 @@ class AIHandler:
         # `_run_local_tool_dispatch_loop` architectural fix above (2026-08-25,
         # landed independently on master while this branch was still on the
         # pre-loop code) already reassigns `response = current_response` to
-        # whichever response the loop actually settled on - `response.output`
-        # below is now already correct on its own, loop-followup items
-        # included, so the extra union is redundant (and would in fact be
-        # broken here, since the loop no longer exposes a same-named
-        # `followup` local variable to reference). Re-verified: the
-        # regression test still passes against this simpler, already-fixed
-        # upstream code.
+        # whichever response the loop actually settled on, which is enough
+        # for mcp_approval_request/pending-approval detection below (both
+        # only ever care about the LATEST round). It was NOT enough for
+        # `mcp_calls` itself, though (2026-09-15 fix, see
+        # `_run_local_tool_dispatch_loop`'s own docstring): an `mcp_call` item
+        # that executed in an EARLIER round (e.g. a dedicated approval round
+        # running `add_client`) is not present in `response.output` once a
+        # LATER, unrelated round runs (e.g. a `react_to_message` follow-up) -
+        # `current_response` only ever reflects the loop's last round, so
+        # deriving `mcp_calls` from it alone silently dropped that earlier
+        # call. `mcp_calls` is now accumulated across every round inside the
+        # loop instead (`accumulated_mcp_calls`, unpacked above) rather than
+        # re-derived here from a single response.
         logger.info(
             f"[022] _finalize_response: response.id={getattr(response, 'id', None)!r}, "
             f"effective_chat_id={effective_chat_id!r}, "
@@ -3600,16 +3641,7 @@ class AIHandler:
         # Includes arguments/output for diagnosability (e.g. confirming
         # which internal_morning_id the model actually passed to a follow-up tool
         # call) - never logged/returned with secrets, just tool I/O.
-        mcp_calls = [
-            {
-                "name": item.name,
-                "error": item.error,
-                "arguments": item.arguments,
-                "output": item.output
-            }
-            for item in (response.output or [])
-            if getattr(item, "type", None) == "mcp_call"
-        ]
+        mcp_calls = accumulated_mcp_calls
         if mcp_calls:
             logger.info(f"MCP calls for request {request.request_id}: {mcp_calls}")
             # Feature 080 (REQ-080-04): record each Morning MCP tool call for the

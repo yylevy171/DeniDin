@@ -30,13 +30,29 @@ set -euo pipefail
 # if a node id ever lives somewhere that doesn't match either pattern.
 #
 # Usage:
-#   scripts/run_single_test.sh <pytest_node_id> [marker]
+#   scripts/run_single_test.sh <pytest_node_id> [marker] [--{config_key}={value} ...]
+#
+# --{config_key}={value} (2026-09-15, Feature 063 follow-up, generalized same
+# day): overrides feature_flags.<config_key> to <value> for this run only -
+# any current or future feature_flags key, not hardcoded to one. The literal
+# config key, the literal config value, nothing else - forwarded to pytest as
+# `--config-override <config_key>=<value>` (conftest.py's pytest_addoption),
+# which a session-scoped fixture applies to the in-memory AppConfiguration
+# object every test file's own `config` fixture returns. No config JSON file
+# on disk is ever read from, written to, or otherwise touched - this is a
+# purely in-memory, test-run-scoped override. Omit it for no override at all,
+# byte-for-byte unchanged from before this option existed. Multiple
+# --{config_key}={value} args may be given at once. This is the ONLY
+# sanctioned way to set it - never invoke pytest's own --config-override
+# directly.
 #
 # Examples:
 #   scripts/run_single_test.sh \
 #     "tests/billed/test_reminder_lifecycle_billed.py::TestReminderLifecycleBilled::test_modify_whole_series_pattern"
 #   scripts/run_single_test.sh \
 #     "tests/expensive/test_pdf_extraction.py::test_something" expensive
+#   scripts/run_single_test.sh \
+#     "tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_hours_by_client_last_month" billed --enable_capability_backbone=true
 #
 # Exits with pytest's own exit code (0 = passed, 1 = failed, etc.) - the
 # calling agent/human can check $? without parsing any text. Exit code 3 is
@@ -51,8 +67,25 @@ set -euo pipefail
 # fresh explicit approval, read existing logs before re-running anything) -
 # this script only fixes HOW output is captured, not any approval gate.
 
+# Parse args: NODE_ID (positional), optional MARKER (positional), any number
+# of --{config_key}={value} overrides (may appear anywhere after the node
+# id) - each is a literal feature_flags key/value pair, not a fixed set.
+CONFIG_OVERRIDES=()
+POSITIONAL=()
+for arg in "$@"; do
+  case "$arg" in
+    --*=*)
+      CONFIG_OVERRIDES+=("${arg#--}")
+      ;;
+    *)
+      POSITIONAL+=("$arg")
+      ;;
+  esac
+done
+if [ "${#POSITIONAL[@]}" -gt 0 ]; then set -- "${POSITIONAL[@]}"; else set --; fi
+
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-  echo "Usage: $0 <pytest_node_id> [marker]" >&2
+  echo "Usage: $0 <pytest_node_id> [marker] [--{config_key}={value} ...]" >&2
   echo "Example: $0 \"tests/billed/test_foo.py::TestClass::test_method\"" >&2
   exit 2
 fi
@@ -69,6 +102,14 @@ fi
 
 # Always run from the app root, regardless of the caller's cwd.
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Each --{config_key}={value} becomes a `--config-override key=value` pytest
+# arg (conftest.py) - built up here, appended to the pytest invocation below.
+PYTEST_CONFIG_OVERRIDE_ARGS=()
+for override in "${CONFIG_OVERRIDES[@]:-}"; do
+  [ -n "$override" ] || continue
+  PYTEST_CONFIG_OVERRIDE_ARGS+=(--config-override "$override")
+done
 
 # --- Interpreter resolution (added 2026-09-02) -------------------------------
 # NEVER run pytest through a bare `python3` off the caller's PATH. On this
@@ -106,7 +147,9 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 SAFE_NAME="$(printf '%s' "$NODE_ID" | tr -c 'A-Za-z0-9_.' '_')"
 RESULTS_FILE="${RESULTS_DIR}/${SAFE_NAME}_${TIMESTAMP}.txt"
 
-echo "Running: $NODE_ID (marker: $MARKER)"
+CONFIG_OVERRIDES_NOTE="none"
+[ "${#CONFIG_OVERRIDES[@]}" -gt 0 ] && CONFIG_OVERRIDES_NOTE="${CONFIG_OVERRIDES[*]}"
+echo "Running: $NODE_ID (marker: $MARKER, config overrides: $CONFIG_OVERRIDES_NOTE)"
 echo "Full pytest output will be written to: $RESULTS_FILE"
 echo "(app's own per-test-file log, unaffected by this script: logs/test_logs/<test_file>.log)"
 echo
@@ -116,7 +159,11 @@ echo
 # pytest produces, all of it lands on disk before this script does anything
 # else with it.
 set +e
-"$VENV_PY" -m pytest "$NODE_ID" -v -m "$MARKER" --tb=long >"$RESULTS_FILE" 2>&1
+if [ "${#PYTEST_CONFIG_OVERRIDE_ARGS[@]}" -gt 0 ]; then
+  "$VENV_PY" -m pytest "$NODE_ID" -v -m "$MARKER" --tb=long "${PYTEST_CONFIG_OVERRIDE_ARGS[@]}" >"$RESULTS_FILE" 2>&1
+else
+  "$VENV_PY" -m pytest "$NODE_ID" -v -m "$MARKER" --tb=long >"$RESULTS_FILE" 2>&1
+fi
 EXIT_CODE=$?
 set -e
 

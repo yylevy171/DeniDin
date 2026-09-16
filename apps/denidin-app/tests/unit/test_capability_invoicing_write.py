@@ -38,9 +38,13 @@ def test_propose_write_creates_pending_mcp_approval():
     orchestrator = MagicMock()
     orchestrator.morning_mcp_locator.current_server_url.return_value = "https://mcp.example.com"
     orchestrator.config.mcp = {"morning_auth_token": "tok"}
-    orchestrator.client.responses.create.return_value = _fake_approval_request_response(
+    fake_response = _fake_approval_request_response(
         "create_transaction_account", '{"client_name": "עמיר כץ"}',
     )
+    # 2026-09-16: propose_write now goes through orchestrator.call_capability_step
+    # (return_response=True) instead of reimplementing the API call inline - stub
+    # that shared method directly, same as any other capability step's test would.
+    orchestrator.call_capability_step.return_value = fake_response
     request = MagicMock(model="gpt-5.6-luna", max_tokens=1000, chat_id="chat1", timestamp=None)
     request.user_prompt = "תפיק חשבון עסקה לעמיר כץ"
 
@@ -61,7 +65,7 @@ def test_propose_write_no_approval_request_returns_model_text():
     response = MagicMock()
     response.output = []
     response.output_text = "לא זוהתה בקשה ליצירת מסמך."
-    orchestrator.client.responses.create.return_value = response
+    orchestrator.call_capability_step.return_value = response
     request = MagicMock(model="gpt-5.6-luna", max_tokens=1000, chat_id="chat1", timestamp=None)
     request.user_prompt = "מה שלומך?"
 

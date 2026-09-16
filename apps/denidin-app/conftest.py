@@ -5,6 +5,7 @@ Automatically configures logging for all tests:
 - Production: logs/denidin.log
 - Tests: logs/test_logs/{test_file_name}.log (automatic, per test file)
 """
+import json
 import os
 import sys
 import pytest
@@ -78,6 +79,70 @@ class _RateLimitSentinelHandler(logging.Handler):
 
 
 _rate_limit_sentinel = _RateLimitSentinelHandler()
+
+
+def pytest_addoption(parser):
+    """--config-override key=value (repeatable) - 2026-09-15, Feature 063
+    follow-up: lets a test run override any feature_flags.<key> to <value>
+    for that run only, without ever touching a config JSON file on disk. The
+    literal config key, the literal config value - <value> is parsed as JSON
+    (true/false/a number/etc.) when it looks like one, otherwise kept as a
+    plain string. Not specific to one flag - works for any feature_flags key,
+    current or future. Only ever supplied by the sanctioned running scripts
+    (scripts/run_single_test.sh / run_multiple_billed_tests.sh), never
+    documented as something to type at a bare `pytest` invocation."""
+    parser.addoption(
+        "--config-override",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help=(
+            "Override feature_flags.KEY to VALUE (JSON-parsed if it looks "
+            "like JSON, else a plain string) for every AppConfiguration "
+            "loaded in this test run. Repeatable."
+        ),
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _config_overrides(request):
+    """Applies every --config-override (see pytest_addoption above) for the
+    whole session by wrapping AppConfiguration.from_file so each test file's
+    own (per-file, ad-hoc) `config` fixture picks it up automatically - no
+    file on disk is ever written to. No overrides given -> installs nothing,
+    byte-for-byte unchanged from before this fixture existed."""
+    raw_overrides = request.config.getoption("--config-override")
+    if not raw_overrides:
+        yield
+        return
+
+    overrides = {}
+    for pair in raw_overrides:
+        key, _, raw_value = pair.partition("=")
+        try:
+            value = json.loads(raw_value)
+        except (json.JSONDecodeError, ValueError):
+            value = raw_value
+        overrides[key] = value
+
+    from src.models.config import AppConfiguration
+
+    original_from_file = AppConfiguration.from_file.__func__
+
+    def _patched_from_file(cls, file_path):
+        cfg = original_from_file(cls, file_path)
+        cfg.feature_flags = dict(cfg.feature_flags or {})
+        cfg.feature_flags.update(overrides)
+        return cfg
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        AppConfiguration, "from_file", classmethod(_patched_from_file),
+    )
+    try:
+        yield
+    finally:
+        monkeypatch.undo()
 
 
 def pytest_configure(config):

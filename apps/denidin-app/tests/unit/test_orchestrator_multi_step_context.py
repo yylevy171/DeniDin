@@ -55,8 +55,14 @@ def test_second_step_sees_first_steps_output(prompts_root):
         BackboneOrchestrator, "_resolve_capability_handler",
         side_effect=lambda tag: fake_media_handler if tag == CapabilityTag.MEDIA_ANALYSIS else fake_ledger_handler,
     ):
+        # 2026-09-15: _execute_plan now has a code-level safety net that drops a
+        # planned media_analysis step outright when turn_context carries no real
+        # media (closing a real, repeatedly-observed gap where Planning added the
+        # step for a plain-text turn despite its own prompt guidance) - this test
+        # simulates a genuine media turn, so it must supply turn_context["media"]
+        # for that guard to let the (mocked) media_analysis step actually run.
         final_output = orchestrator._execute_plan(  # pylint: disable=protected-access
-            plan, _request(), "the user sent an image", {},
+            plan, _request(), "the user sent an image", {"media": MagicMock()},
         )
 
     assert final_output == "Recognized as a bank deposit event."

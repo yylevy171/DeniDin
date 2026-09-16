@@ -22,6 +22,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from src.backbone.capability_tags import CapabilityTag
+from src.constants.error_messages import BACKBONE_NO_MEDIA_ATTACHED
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ def extract(orchestrator, request, accumulated_context: str, note: str,
     media = turn_context.get("media")
     media_type = turn_context.get("media_type")
     if media is None or media_type is None:
-        return "No media attached to this turn — nothing to extract."
+        return BACKBONE_NO_MEDIA_ATTACHED
 
     context_shim = _ExtractorContextShim(orchestrator)
     extractor = _build_extractor(media_type, context_shim)

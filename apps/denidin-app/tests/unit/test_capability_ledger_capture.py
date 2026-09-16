@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 from src.capabilities.ledger_events.handler import capture
 from src.capabilities.ledger_events.tools import to_call_arguments
+from src.constants.error_messages import BACKBONE_CAPABILITY_NOT_CONFIGURED
 
 
 def test_capture_never_persists_directly():
@@ -50,7 +51,7 @@ def test_capture_reports_manager_not_configured():
     request.user_prompt = "text"
 
     result = capture(orchestrator, request, "", "", {"chat_id": "chat1"})
-    assert result == "Ledger manager not configured."
+    assert result == BACKBONE_CAPABILITY_NOT_CONFIGURED
     orchestrator.call_capability_step.assert_not_called()
 
 

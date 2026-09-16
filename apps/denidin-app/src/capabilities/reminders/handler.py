@@ -20,6 +20,7 @@ from src.capabilities.reminders.tools import (
     is_affirmative_reply,
     list_active_reminders_text,
 )
+from src.constants.error_messages import BACKBONE_CAPABILITY_NOT_CONFIGURED
 from src.managers.pending_local_tool_approval_manager import PendingLocalToolApproval
 from src.managers.reminder_manager import (
     InvalidRecurrenceError,
@@ -41,7 +42,7 @@ def read(orchestrator, request: AIRequest, accumulated_context: str, note: str,
     (mirrors AIHandler's list_reminders being an immediate-dispatch tool)."""
     del note, turn_context
     if orchestrator.reminder_manager is None:
-        return "Reminders manager not configured."
+        return BACKBONE_CAPABILITY_NOT_CONFIGURED
     reminders = orchestrator.reminder_manager.list_active()
     orchestrator.call_capability_step(
         tag=CapabilityTag.REMINDERS_READ,
@@ -62,22 +63,27 @@ def propose_write(orchestrator, request: AIRequest, accumulated_context: str, no
     decides which proposal branch runs below. Creates a PendingLocalToolApproval
     the same way AIHandler._handle_reminder_creation_proposal /
     _propose_reminder_modify_or_delete do today, reimplemented as new,
-    standalone code (REQ-063-07)."""
+    standalone code (REQ-063-07).
+
+    2026-09-16 (closing the same structural gap found+fixed in
+    invoicing_write's own propose_write - this handler had the identical bug):
+    this used to make its own bare API call with input=[current message only],
+    bypassing orchestrator.call_capability_step (so never getting
+    _turn_conversation_history/BACKBONE_TOOLS) because it needs the raw
+    response object to extract a function_call, not just output_text. Fixed
+    at the root - call_capability_step's own return_response=True hands back
+    the raw response - rather than by forking the call path."""
     del note
     if orchestrator.pending_local_tool_approval_manager is None or orchestrator.reminder_manager is None:
-        return "Reminders write path not configured."
+        return BACKBONE_CAPABILITY_NOT_CONFIGURED
 
     reminders = orchestrator.reminder_manager.list_active()
-    response = orchestrator.client.responses.create(
-        model=request.model,
-        instructions=orchestrator.build_instructions(
-            CapabilityTag.REMINDERS_WRITE,
-            accumulated_context + f"\n\nActive reminders: {reminders}",
-            request.timestamp,
-        ),
-        input=[{"role": "user", "content": request.user_prompt}],
-        max_output_tokens=request.max_tokens,
+    response = orchestrator.call_capability_step(
+        tag=CapabilityTag.REMINDERS_WRITE,
+        request=request,
+        accumulated_context=accumulated_context + f"\n\nActive reminders: {reminders}",
         tools=[CREATE_REMINDER_TOOL] + MODIFY_DELETE_REMINDER_TOOLS,
+        return_response=True,
     )
 
     tool_name, args = extract_any_function_call(

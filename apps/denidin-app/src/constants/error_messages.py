@@ -50,3 +50,16 @@ REMINDER_ACTION_FAILED_TRY_AGAIN = "לא הצלחתי לבצע את פעולת �
 # (FR-005/FR-006), shown immediately instead of a false approval prompt.
 REMINDER_PAST_DATE_REJECTED = "אי אפשר להגדיר תזכורת למועד שכבר עבר. אנא ציין מועד עתידי."
 REMINDER_CAP_EXCEEDED = "כבר יש 20 תזכורות פעילות - המספר המרבי המותר. יש למחוק תזכורת קיימת לפני יצירת תזכורת חדשה."
+
+# Dynamic Capability Backbone (Feature 063) - flag-on capability-step/meta-step
+# fallback strings (2026-09-15, closing a real parity gap: these paths used to
+# return raw English debug strings, which could become the literal final
+# WhatsApp reply whenever Planning made that step the plan's last/only step -
+# a Hebrew-only violation, same bug class the media_analysis fallback was
+# caught with). Every one of these can become a user-visible reply, so none of
+# them may ever be anything but Hebrew, same as every other user-facing string
+# in this file.
+BACKBONE_INTENT_IDENTIFICATION_FAILED = "לא הצלחתי להבין את הבקשה. אנא נסה לנסח אותה מחדש."
+BACKBONE_CAPABILITY_NOT_CONFIGURED = "היכולת הזו לא זמינה כרגע. אנא נסה שוב מאוחר יותר."
+BACKBONE_NO_MEDIA_ATTACHED = "לא זוהה קובץ מצורף להודעה הזו, אין מה לחלץ."
+BACKBONE_UNEXPECTED_ERROR = "אני נתקלתי בשגיאה בעיבוד הודעתך. אנא נסה שוב."

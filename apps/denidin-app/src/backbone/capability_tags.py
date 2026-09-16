@@ -60,8 +60,15 @@ CAPABILITY_INFO: tuple = (
     CapabilityInfo(CapabilityTag.PLANNING, CapabilityKind.META),
     CapabilityInfo(
         CapabilityTag.INVOICING_WRITE, CapabilityKind.DOMAIN,
-        "Creating/modifying Morning invoicing documents (invoices, receipts, "
-        "transaction accounts, credit notes) for a named client.",
+        "Creating/modifying a Morning document for a named client - an invoice, "
+        "a receipt, a transaction account, a credit note, a client record, OR a "
+        "combo tax-invoice/receipt (חשבונית מס/קבלה) for money already received. "
+        "Applies whenever the user explicitly asks to produce/issue/close a "
+        "document (e.g. \"תפיק חשבונית\", \"תסגור\"), even when the same message "
+        "also reports a payment having arrived - reporting the payment is a "
+        "separate, automatic Ledger Capture concern, but the explicit ask to "
+        "produce a document is this domain's job, not Ledger Query's (which only "
+        "ever looks up past amounts - it can't create anything).",
     ),
     CapabilityInfo(
         CapabilityTag.INVOICING_READ, CapabilityKind.DOMAIN,

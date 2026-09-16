@@ -57,8 +57,29 @@ set -uo pipefail
 # logs/test_logs/pytest_results/ (see run_single_test.sh) - nothing here
 # re-truncates or re-pipes that output, it's just announced by name.
 
+# --{config_key}={value} (2026-09-15, Feature 063 follow-up, generalized same
+# day): overrides feature_flags.<config_key> to <value> for EVERY test in
+# this sweep - forwarded as-is to each run_single_test.sh call, which passes
+# it to pytest as `--config-override <config_key>=<value>` (conftest.py's
+# fixture applies it to the in-memory AppConfiguration object only; no config
+# JSON file on disk is ever touched). May appear anywhere among the args.
+# Omit for no override (default), same as before. Multiple may be given.
+CONFIG_OVERRIDE_ARGS=()
+NODE_IDS=()
+for arg in "$@"; do
+  case "$arg" in
+    --*=*)
+      CONFIG_OVERRIDE_ARGS+=("$arg")
+      ;;
+    *)
+      NODE_IDS+=("$arg")
+      ;;
+  esac
+done
+if [ "${#NODE_IDS[@]}" -gt 0 ]; then set -- "${NODE_IDS[@]}"; else set --; fi
+
 if [ "$#" -lt 1 ]; then
-  echo "Usage: $0 <pytest_node_id> [<pytest_node_id> ...]" >&2
+  echo "Usage: $0 <pytest_node_id> [<pytest_node_id> ...] [--{config_key}={value} ...]" >&2
   exit 2
 fi
 
@@ -80,7 +101,11 @@ for NODE_ID in "$@"; do
   echo "[$INDEX/$TOTAL] $NODE_ID"
   echo "===================================================================="
 
-  "$SINGLE_RUNNER" "$NODE_ID"
+  if [ "${#CONFIG_OVERRIDE_ARGS[@]}" -gt 0 ]; then
+    "$SINGLE_RUNNER" "$NODE_ID" "${CONFIG_OVERRIDE_ARGS[@]}"
+  else
+    "$SINGLE_RUNNER" "$NODE_ID"
+  fi
   RESULT=$?
 
   if [ "$RESULT" -eq 3 ]; then

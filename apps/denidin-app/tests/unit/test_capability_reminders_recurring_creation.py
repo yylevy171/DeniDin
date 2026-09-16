@@ -31,7 +31,7 @@ def _fake_function_call_response(args_dict):
 def test_propose_recurring_reminder_creates_pending_approval_with_recurrence():
     orchestrator = MagicMock()
     orchestrator.reminder_manager.list_active.return_value = []
-    orchestrator.client.responses.create.return_value = _fake_function_call_response({
+    orchestrator.call_capability_step.return_value = _fake_function_call_response({
         "message_text": "פגישת צוות", "schedule_type": "recurring",
         "one_time_due_at": None, "recurrence": _RECURRENCE,
     })

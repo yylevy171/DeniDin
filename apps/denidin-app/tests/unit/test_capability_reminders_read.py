@@ -2,6 +2,7 @@
 from unittest.mock import MagicMock
 
 from src.capabilities.reminders.handler import read
+from src.constants.error_messages import BACKBONE_CAPABILITY_NOT_CONFIGURED
 
 
 def test_read_lists_active_reminders():
@@ -34,4 +35,4 @@ def test_read_without_manager_configured():
     request = MagicMock()
 
     result = read(orchestrator, request, "", "", {})
-    assert "not configured" in result
+    assert result == BACKBONE_CAPABILITY_NOT_CONFIGURED

@@ -2,6 +2,7 @@
 from unittest.mock import MagicMock, patch
 
 from src.capabilities.media_analysis.handler import extract
+from src.constants.error_messages import BACKBONE_NO_MEDIA_ATTACHED
 
 
 def test_extract_with_no_media_in_turn_context_returns_fallback():
@@ -9,7 +10,7 @@ def test_extract_with_no_media_in_turn_context_returns_fallback():
     request = MagicMock()
 
     result = extract(orchestrator, request, "", "", {})
-    assert "No media attached" in result
+    assert result == BACKBONE_NO_MEDIA_ATTACHED
 
 
 def test_extract_dispatches_to_image_extractor_for_image_media_type():

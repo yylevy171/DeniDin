@@ -14,6 +14,7 @@ import logging
 from typing import Any, Dict
 
 from src.backbone.capability_tags import CapabilityTag
+from src.constants.error_messages import BACKBONE_CAPABILITY_NOT_CONFIGURED
 from src.models.message import AIRequest
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ def query(orchestrator, request: AIRequest, accumulated_context: str, note: str,
     already uses."""
     del turn_context
     if orchestrator.ledger_event_manager is None:
-        return "Ledger manager not configured."
+        return BACKBONE_CAPABILITY_NOT_CONFIGURED
 
     criteria = [{"text": note}] if note else []
     result = orchestrator.ledger_event_manager.query_events(criteria)
@@ -69,7 +70,7 @@ def capture(orchestrator, request: AIRequest, accumulated_context: str, note: st
     (redundantly, riskily) select an undocumented dead end."""
     del note, turn_context
     if orchestrator.ledger_event_manager is None:
-        return "Ledger manager not configured."
+        return BACKBONE_CAPABILITY_NOT_CONFIGURED
     return str(orchestrator.call_capability_step(
         tag=CapabilityTag.LEDGER_CAPTURE,
         request=request,

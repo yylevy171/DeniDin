@@ -483,6 +483,11 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
             memory_manager=ai_handler.memory_manager,
             user_manager=ai_handler.user_manager,
             own_whatsapp_number=ai_handler.own_whatsapp_number,
+            # 2026-09-15 (closing a real gap): the SAME shared TelemetryManager
+            # instance ai_handler already owns (REQ-063-03) - None whenever
+            # Feature 080's flag is off/telemetry was never configured, same
+            # complete-no-op contract as everywhere else it's threaded through.
+            telemetry_manager=ai_handler.telemetry_manager,
         )
 
     # Create DeniDin instance (will be used as context for background threads and MediaHandler)
@@ -745,6 +750,16 @@ def _process_conversational_message(notification: Notification) -> None:
                 sender_phone=message.sender_id,
                 progress_callback=progress_callback,
             )
+            # 2026-09-15 (closing a real gap): AIHandler.get_response already sets
+            # its own `last_response` at the end of every turn (used throughout the
+            # billed/expensive E2E test suite's _send_turn helper to inspect
+            # mcp_calls) - BackboneOrchestrator has no equivalent of its own, so a
+            # flag-on turn left `ai_handler.last_response` stale (or None) forever.
+            # ai_handler is always constructed regardless of the flag, so this is
+            # the one place both paths' AIResponse converge - set it here rather
+            # than inside the orchestrator itself, keeping this test-observability
+            # detail out of the new module entirely (REQ-063-07).
+            denidin_app.ai_handler.last_response = ai_response
         else:
             ai_response = denidin_app.ai_handler.get_response(
                 ai_request,
@@ -916,6 +931,11 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
         sender=message.sender_display_name, user_phone=message.sender_id,
         sender_phone=message.sender_id, is_group=message.is_group, chat_name=message.chat_name,
     )
+    # 2026-09-15 (closing a real gap - same fix as the text-turn call site
+    # above): keeps ai_handler.last_response current for a flag-on media turn
+    # too, since it's always the same shared ai_handler instance regardless of
+    # which orchestrator actually served the turn.
+    denidin_app.ai_handler.last_response = response
     if response.should_reply:
         notification.answer(response.response_text)
         log_outbound(message.chat_id, response.response_text, kind="text")
@@ -1238,7 +1258,7 @@ def handle_button_tap(notification: Notification) -> None:
         _handle_not_initialized_error(notification, "interactiveButtonsResponse")
         return
 
-    from src.models.message import WhatsAppMessage  # local import - matches existing style
+    from src.models.message import AIRequest, WhatsAppMessage  # local import - matches existing style
 
     message = WhatsAppMessage.from_notification(notification)
     button_data = notification.event.get("messageData", {}).get("interactiveButtonsResponse", {})
@@ -1268,9 +1288,33 @@ def handle_button_tap(notification: Notification) -> None:
         # see initialize_app), not ai_handler's MCP PendingApprovalManager.
         ai_response = None
         if denidin_app.backbone_orchestrator is not None:
+            # 2026-09-15 (closing a real gap found via T7/T10): some capabilities'
+            # own resolve_button_tap (invoicing_write's in particular) need a real
+            # AIRequest to make their approval-resolution follow-up call (model,
+            # max_tokens) - passing request=None (the old behavior) always made
+            # that branch fail with a generic "the action failed" reply, silently,
+            # every single time, never actually attempting the real Morning call.
+            # reminders_write's own resolve_button_tap doesn't need request at all,
+            # which is why this was never caught by T3/T4 - only by T7/T10.
+            # Mirrors AIHandler.resolve_button_tap's own synthetic_request exactly.
+            synthetic_request = AIRequest(
+                user_prompt="כן" if selected_id == "denidin_approve" else "לא",
+                constitution="",
+                max_tokens=denidin_app.config.ai_reply_max_tokens,
+                model=denidin_app.config.ai_model,
+                chat_id=message.chat_id,
+                message_id=message.message_id,
+                original_message=message,
+            )
             ai_response = denidin_app.backbone_orchestrator.resolve_button_tap(
                 chat_id=message.chat_id, selected_id=selected_id, stanza_id=stanza_id,
+                request=synthetic_request,
             )
+            if ai_response is not None:
+                # 2026-09-15 (closing a real gap - same fix as the text/media
+                # turn call sites): a resolved backbone button tap needs
+                # ai_handler.last_response current too, same shared instance.
+                denidin_app.ai_handler.last_response = ai_response
         if ai_response is None:
             ai_response = denidin_app.ai_handler.resolve_button_tap(
                 message=message,

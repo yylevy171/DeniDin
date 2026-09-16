@@ -137,11 +137,26 @@ class TestEditedDeletedWebhookRouting:
         # fresh deduper so this test is independent of others in the run
         denidin_module._recent_notifications = denidin_module.RecentNotificationDeduper()
         ts = int(time.time())
+        # 2026-09-16 (real bug found+fixed): this test used to reuse the shared,
+        # module-level CHAT_ID - but denidin_app.ai_handler.session_manager is a
+        # genuinely long-lived, disk-persisted session (Feature 070: "never
+        # expires, never recreated"), so a `.count(...) == 1` assertion against a
+        # shared chat is not hermetic across repeated runs of this suite against
+        # the same test_data/ - every prior run's own dispatch of this exact
+        # message left one more matching note sitting in that chat's rolling
+        # window, so the count grew without bound the more times the suite was
+        # run, eventually failing for a reason having nothing to do with the
+        # redelivery-dedup behavior actually under test. Every other test in this
+        # class that checks *content* in the window already uses a fresh,
+        # uniquely-generated chat id for exactly this reason (see
+        # test_edited_message_for_a_brand_new_chat_creates_the_session above) -
+        # this test just hadn't followed that pattern yet.
+        fresh_chat = f"9725000{ts % 1000000}@c.us"
         event = {
             "typeWebhook": "incomingMessageReceived",
             "timestamp": ts,
             "idMessage": f"EDIT_DUP_{ts}",
-            "senderData": {"chatId": CHAT_ID, "sender": SENDER, "senderName": "Test User"},
+            "senderData": {"chatId": fresh_chat, "sender": fresh_chat, "senderName": "Test User"},
             "messageData": {
                 "typeMessage": "editedMessage",
                 "editedMessageData": {"textMessage": "פעם אחת בלבד", "stanzaId": "ORIGDUP"},
@@ -151,7 +166,10 @@ class TestEditedDeletedWebhookRouting:
             n = self._notification(event)
             denidin_module.dispatch_notification("editedMessage", n)
 
-        contents = self._window_contents(denidin_app)
+        contents = [
+            m.get("content", "")
+            for m in denidin_app.ai_handler.session_manager.get_rolling_window(fresh_chat)
+        ]
         assert contents.count("[הודעה קודמת נערכה] פעם אחת בלבד") == 1
 
     # ---------- deletedMessage ----------

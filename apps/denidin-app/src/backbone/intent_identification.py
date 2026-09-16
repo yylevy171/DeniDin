@@ -7,6 +7,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from src.backbone.capability_tags import CapabilityTag
+from src.constants.error_messages import BACKBONE_INTENT_IDENTIFICATION_FAILED
 
 logger = logging.getLogger(__name__)
 
@@ -59,4 +60,4 @@ def identify_intent(orchestrator, request, allowed_tags: List[CapabilityTag], *,
         ))
     except Exception as exc:  # pylint: disable=broad-except
         logger.error("Intent Identification call failed: %s", exc)
-        return "Unable to determine intent (Intent Identification call failed)."
+        return BACKBONE_INTENT_IDENTIFICATION_FAILED

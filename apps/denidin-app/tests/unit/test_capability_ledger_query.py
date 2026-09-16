@@ -2,6 +2,7 @@
 from unittest.mock import MagicMock
 
 from src.capabilities.ledger_events.handler import query
+from src.constants.error_messages import BACKBONE_CAPABILITY_NOT_CONFIGURED
 
 
 def test_query_searches_and_reasons_over_results():
@@ -26,7 +27,7 @@ def test_query_without_manager_configured():
     request = MagicMock()
 
     result = query(orchestrator, request, "", "note", {})
-    assert "not configured" in result
+    assert result == BACKBONE_CAPABILITY_NOT_CONFIGURED
 
 
 def test_query_empty_note_produces_empty_criteria():

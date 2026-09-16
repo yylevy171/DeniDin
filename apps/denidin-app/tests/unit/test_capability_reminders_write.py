@@ -23,7 +23,9 @@ def _fake_function_call_response(args_dict):
 
 def test_propose_write_creates_pending_approval():
     orchestrator = MagicMock()
-    orchestrator.client.responses.create.return_value = _fake_function_call_response(
+    # 2026-09-16: propose_write now goes through orchestrator.call_capability_step
+    # (return_response=True) instead of calling client.responses.create directly.
+    orchestrator.call_capability_step.return_value = _fake_function_call_response(
         {"message_text": "לשלם ספק", "one_time_due_at": "2026-10-01T09:00:00"}
     )
     request = MagicMock(model="gpt-5.6-luna", max_tokens=1000, chat_id="chat1", timestamp=None)
@@ -43,7 +45,7 @@ def test_propose_write_no_tool_call_returns_model_text():
     response = MagicMock()
     response.output = []
     response.output_text = "לא זוהתה בקשה."
-    orchestrator.client.responses.create.return_value = response
+    orchestrator.call_capability_step.return_value = response
     request = MagicMock(model="gpt-5.6-luna", max_tokens=1000, chat_id="chat1", timestamp=None)
     request.user_prompt = "מה שלומך?"
 

@@ -185,7 +185,7 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
 
     ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
+        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח לא כולל מע\"מ עבור {description}",
         id_prefix="E2E_CREATE_TAP_ASK",
     )
 
