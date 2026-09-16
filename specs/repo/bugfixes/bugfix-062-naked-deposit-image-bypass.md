@@ -4,7 +4,7 @@
 week-long deploy-config gap (missing `config/ledger_recognition_prompt.md` and
 `config/fee_agreement_templates/`) that degraded the ledger recognizer and likely broke Fee
 Agreement Document Generation entirely.
-**Status**: Done (fix implemented and live in prod; acceptance test passing; PR: TBD)
+**Status**: Done (fix implemented and live in prod; acceptance test passing; PR: #337)
 **Branch**: `bugfix/062-naked-deposit-image-bypass`
 
 ## Update 2026-09-16: original root-cause analysis was disproven; two real bugs found instead

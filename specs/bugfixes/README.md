@@ -115,7 +115,7 @@ git mv specs/bugfixes/bugfix-005-new-bug-description.md \
 | 026 | Morning Documents Created Unsigned (blocks email sharing) | P0 | 2026-08-07 | #195 |
 | 012 | Financial Summary Drops Non-Allowlisted Invoice Types | - | 2026-07-21 | #111 |
 | 020 | GreenAPIBot Crashes on Empty Notification Response | P0 | 2026-08-03 | #163 |
-| 062 | Naked Deposit Image Bypass | P0 | 2026-09-16 | TBD |
+| 062 | Naked Deposit Image Bypass | P0 | 2026-09-16 | #337 |
 
 ---
 
