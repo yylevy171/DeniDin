@@ -7,7 +7,7 @@ Enables third-party payer (union/employer) billing for employee legal representa
 
 ## User Acceptance Testing (UAT)
 
-### UAT 1a: Natural Language Time Logging with Reference Population & Inferred Context (Priority: P1)
+### UAT 1: Natural Language Time Logging with Reference Population & Inferred Context (Priority: P1)
 **Given** the payer has been successfully identified through the client resolution routine in Morning
 **When** the lawyer reports hours via WhatsApp (e.g., *"עבדתי 1.5 שעות עבור יוסי כהן על כתב תביעה"*)
 **Then** a ledger event MUST be recorded with:
@@ -18,7 +18,7 @@ Enables third-party payer (union/employer) billing for employee legal representa
 
 ---
 
-### UAT 1b: End-to-End Client & Payer Resolution Chain (Priority: P1)
+### UAT 2: End-to-End Client & Payer Resolution Chain (Priority: P1)
 **Given** the lawyer sends a bare-bones hourly report in WhatsApp specifying only client and hours (e.g., *"3 שעות עבור אלכס בלכס"*)
 **When** the system receives the message and executes the resolution pipeline:
 1. Search for the client name in the ledger/system ("אלכס בלכס").
@@ -36,7 +36,7 @@ Enables third-party payer (union/employer) billing for employee legal representa
 
 ---
 
-### UAT 2: On-Demand DOCX Payer Report Generation (Priority: P1)
+### UAT 3: On-Demand DOCX Payer Report Generation (Priority: P1)
 **Given** unbilled hours exist across several clients who share the same affiliated Payer (e.g., "הראל")
 **When** the lawyer sends a natural language command via WhatsApp (e.g., *"הפק דוח שעות חודשי עבור הראל"*)
 **Then** the system MUST query all currently unbilled hours affiliated with payer "הראל"
@@ -48,7 +48,7 @@ Enables third-party payer (union/employer) billing for employee legal representa
 
 ---
 
-### UAT 3: Legacy Hourly Data Reconciliation & Migration (Priority: P2)
+### UAT 4: Legacy Hourly Data Reconciliation & Migration (Priority: P2)
 **Given** the production ledger currently contains historical, unstructured, or partially populated hourly entries from prior months
 **When** the engineering migration script executes against the production ledger files as part of the deployment runbook
 **Then** all existing hourly events in the ledger MUST be reconciled and updated to populate the correct client, payer, and agreement references (using `reference` and `reference_hint`) where inferrable, or marked with clean fallbacks
