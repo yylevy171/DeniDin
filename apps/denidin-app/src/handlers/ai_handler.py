@@ -64,8 +64,13 @@ logger = get_logger(__name__)
 # this app (and, via import, in accounting_reconciliation_service.py and
 # image_extractor.py) - deliberately verbose, deliberately everywhere: "I want
 # logs of EVERYTHING so we can get to the bottom of what is going on" (disk
-# space is explicitly not a constraint here). Never raises - a logging
-# failure must never break the actual call it's describing.
+# space is explicitly not a constraint here). Logged at INFO, not DEBUG
+# (bugfix-062, 2026-09-16) - prod runs at INFO, so a DEBUG-only version of
+# this was silently inert there the whole time; a real incident (a silently
+# dropped bank-deposit ledger event) could only be root-caused down to "the
+# model didn't call the report tool" and no further, because the actual raw
+# model output for that specific call was never captured anywhere. Never
+# raises - a logging failure must never break the actual call it's describing.
 
 def _log_outgoing_request(context: str, kwargs: Dict[str, Any]) -> None:
     """Logs exactly what's about to be sent to responses.create(), mirroring
@@ -77,7 +82,7 @@ def _log_outgoing_request(context: str, kwargs: Dict[str, Any]) -> None:
         tool_names = [
             t.get("name") or t.get("server_label") or t.get("type") for t in tools
         ]
-        logger.debug(
+        logger.info(
             f"[RAWLOG] {context} >>> SENDING: model={kwargs.get('model')!r}, "
             f"tools={tool_names!r}, input={kwargs.get('input')!r}, "
             f"previous_response_id={kwargs.get('previous_response_id')!r}, "
@@ -117,7 +122,7 @@ def _log_raw_response(context: str, response) -> None:
                 detail["tool_count"] = len(tools_list)
                 detail["tool_names"] = [getattr(t, "name", None) for t in tools_list]
             items_repr.append(detail)
-        logger.debug(
+        logger.info(
             f"[RAWLOG] {context} <<< RECEIVED: response.id={getattr(response, 'id', None)!r}, "
             f"status={getattr(response, 'status', None)!r}, "
             f"incomplete_details={getattr(response, 'incomplete_details', None)!r}, "
@@ -986,7 +991,11 @@ RECOGNITION_TOOL: Dict[str, Any] = {
         "or a status question, with NO fee arrangement, NO deposit/transfer and NO "
         "Morning document created this turn, is NOT a ledger event: verdict='none'. "
         "Providing a missing field for a client record (e.g. answering \"what's "
-        "their email?\") is client-record maintenance, never a ledger event."
+        "their email?\") is client-record maintenance, never a ledger event. "
+        "verdict='none' should also set `none_reason` to a short phrase naming why "
+        "(e.g. 'client unresolved - no MCP evidence', 'ordinary conversation', "
+        "'missing amount') - this is logged for debugging a silently dropped event "
+        "later and is never surfaced to the operator."
     ),
     "parameters": {
         "type": "object",
@@ -1029,6 +1038,15 @@ RECOGNITION_TOOL: Dict[str, Any] = {
             "reason": {
                 "type": ["string", "null"],
                 "description": "verdict='declined' only: always 'declined_by_operator'. Null otherwise.",
+            },
+            "none_reason": {
+                "type": ["string", "null"],
+                "description": (
+                    "verdict='none' only: a short phrase naming why this round wasn't "
+                    "captured (e.g. 'client unresolved - no MCP evidence', 'ordinary "
+                    "conversation', 'missing amount'). Logged for debugging a silently "
+                    "dropped event later - never surfaced to the operator. Null otherwise."
+                ),
             },
         },
         "required": ["verdict"],
@@ -4572,6 +4590,7 @@ class AIHandler:
         # If the model produced no report call at all (only text, or it spent its
         # query budget without reporting), that is a plain `none` - not a retry case.
         if not extract_all_function_calls(response, RECOGNITION_TOOL_NAME):
+            logger.info("[069] recognition verdict=none (no report_ledger_recognition call at all)")
             return {"verdict": "none"}
 
         args = self._extract_recognition_args(response)
@@ -4622,6 +4641,7 @@ class AIHandler:
     @staticmethod
     def _normalize_recognition_verdict(args: Optional[Dict]) -> Dict:
         if not args:
+            logger.info("[069] recognition verdict=none (unparseable/absent report call after retry)")
             return {"verdict": "none"}
         verdict = args.get("verdict")
         if verdict == "complete":
@@ -4637,6 +4657,7 @@ class AIHandler:
                 "client_name_stated": args.get("client_name_stated"),
                 "reason": args.get("reason") or "declined_by_operator",
             }
+        logger.info(f"[069] recognition verdict=none reason={args.get('none_reason')!r}")
         return {"verdict": "none"}
 
     def _call_openai_approval_api(self, request: AIRequest, pending: PendingApproval,

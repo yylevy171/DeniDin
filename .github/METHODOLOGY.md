@@ -362,7 +362,7 @@ All bug fixes MUST follow a disciplined root-cause analysis and test-first workf
 - The real file lives at `specs/repo/bugfixes/bugfix-###-description.md` (2026-09-07 reorganization) — this path is permanent and never changes
 - An OPEN bugfix is symlinked from `specs/bugfixes/`; a resolved one from `specs/done/` (then `done/vX.Y.Z/` after a cut); a stale/rejected one from `specs/obsolete/bugfixes/`; an investigated-but-unfixed one from `specs/not_reproducible/bugfixes/`
 - Format: `bugfix-###-description.md` — prefix always `bugfix-` to distinguish from features; sequential numbering 001, 002, 003, …
-- Never symlink a bugfix from `specs/in-progress/` or a feature status folder
+- A bugfix actively being worked (BDD steps underway, not just filed) is ALSO symlinked from `specs/in-progress/`, alongside its `specs/bugfixes/` symlink — both coexist while work is active; the `specs/in-progress/` copy is removed once the bugfix resolves (2026-09-16 correction — this line previously said bugfixes are never symlinked from `specs/in-progress/`, which was wrong)
 - **Priority (2026-07-24)**: Every bugfix spec MUST declare a `Priority` field (`P0`/`P1`/`P2`), the same scheme used by feature specs (see §XI) — set at spec creation, before the root-cause approval gate, and revisited if severity is reassessed during investigation
 
 **Branch Naming:**

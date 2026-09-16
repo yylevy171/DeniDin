@@ -381,7 +381,7 @@ class TestLedgerEventCaptureE2E:
 
     # ------------------------------------------------------------------ drivers
     @staticmethod
-    def _send_image(http_server, filename, *, caption, chat_id, id_prefix):
+    def _send_image(http_server, filename, *, caption="", chat_id, id_prefix):
         """Send one real WhatsApp image through the real router handler and
         return the SYNTHETIC-turn reply (Feature 069 routes the recognised
         stash straight into the conversational pipeline)."""
@@ -599,7 +599,6 @@ class TestLedgerEventCaptureE2E:
 
             reply = self._send_image(
                 http_server, "Deposit_Eti.jpeg",
-                caption="הפקדה שנכנסה, תרשום ביומן",
                 chat_id=chat_id, id_prefix="LEDGER_E2E_IMAGE_BANK_FULL",
             )
             bank = ClarificationAnswerBank(
