@@ -206,6 +206,7 @@ whose whole purpose is fast, low-friction bookkeeping.
   gap can persist even with an explicit cross-reference in place — either the wording needs to
   be stronger/reach this phrasing, or the fix needs to be structural (code-level defense against
   multiple simultaneous function calls of different tools), or both.
+- **Fallback Hallucinates Reminder:** (2026-09-16 sighting) When the `get_response` fallback error path is triggered (e.g. by a constraint conflict or internal error), the LLM has been observed to hallucinate an unrelated `create_reminder` call as an escape mechanism. This directly compounds the bugfix-042 issue, as the model reaches for a reminder tool when it shouldn't, causing invalid arguments and further polluting the session with failed tool calls.
 
 ## Next Steps (per Bug-Driven Development, METHODOLOGY.md §VII)
 1. Human approval of this root cause (this document).

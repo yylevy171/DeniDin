@@ -271,15 +271,16 @@ Added 2026-08-25, after a real incident: the Windows prod box (Feature 035) took
 
 ## Repository Layout
 
-This repo is split into two independently deployable apps under `apps/`, plus SpecKit governance docs:
+This repo is split into three independently deployable apps under `apps/`, plus SpecKit governance docs:
 
 - **`apps/denidin-app/`** — the production WhatsApp AI assistant (main application). All app development happens here; it has its own `.pylintrc`, `mypy.ini`, `pytest.ini`, `requirements.txt`, `Dockerfile`, and virtualenv expectations.
 - **`apps/morning-mcp-app/`** — a standalone app for the Morning/Green Invoice API (Israeli invoicing): a client library (`MorningClient`, `MorningAuth` under its own `src/denidin_mcp_morning/`), a FastMCP server (`server.py`, 16 invoice-management tools, streamable-HTTP, bearer-auth, `/health` endpoint) exposed to `apps/denidin-app` over a real ngrok tunnel, plus its sandbox-backed integration test suite. It has its own `requirements.txt`, `pytest.ini`, `Makefile`, `Dockerfile`, and config files — fully independent of `apps/denidin-app/` (`denidin-app` reaches it only over HTTP via the tunnel, never by importing its code). Remaining polish work (audit logging, run-both-apps docs) tracked under `specs/done/v0.0.1/018-denidin-morning-mcp-integration/`.
+- **`apps/webapp/`** — a standalone, read-only web UI (Feature 068, "Ledger Web UI") for browsing `denidin-app`'s `LedgerEvent` data: a filterable, expandable list view plus a running-total (Σ) button, behind a single shared, hashed password (no per-user accounts/roles) with session tokens and a 1-week inactivity expiry. Two components, each with its own `Dockerfile`: `backend/` (a BFF reading `denidin-app`'s ledger data — its own `config`, `pytest.ini`, `requirements.txt`, `conftest.py`, `src`, `tests`) and `frontend/` (a Vite/TypeScript SPA — own `package.json`, `nginx.conf.template` for the built static bundle). `e2e/` holds a real Playwright acceptance suite (own `package.json`/`playwright.config.ts`). Fully independent of the other two apps — reads `denidin-app`'s data files directly, no HTTP call into either. Own `run_webapp.sh`/`stop_webapp.sh` (see "Environments (dev/prod)" below — it's env-lock-agnostic, unlike the other two) and own `VERSION`/`CHANGELOG.md`/`RELEASES.md`, versioned and released identically to `denidin-app`/`morning-mcp-app` via the same all-apps `cut_release.sh`/`deploy_release.sh` (see "Versioning & Release Management" below). Full spec: `specs/done/v0.7.0/068-ledger-ui-and-reports/`.
 - **`specs/`** — SpecKit-style feature specifications, organized by status: `in-progress/`, `backlog/`, `done/`, `obsolete/`, `bugfixes/`. See "Spec-Driven Workflow" below.
 - **`.github/`** — the project's constitution/methodology docs (see "Governance Docs" below) — these are binding rules for how work is done here, not just background reading.
-- **`docker/docker-compose.dev.yml`** / **`docker/docker-compose.prod.yml`** — one compose file per environment (019-env-separation), each with a `denidin-app-<env>` + `morning-mcp-app-<env>` service pair; each app also builds/runs standalone via its own `Dockerfile` (`docker build`/`docker run` from within the app's own directory, no dependency on the other app or on compose). Containers are the *only* supported way to run either app now — see "Environments (dev/prod)" below.
+- **`docker/docker-compose.dev.yml`** / **`docker/docker-compose.prod.yml`** — one compose file per environment (019-env-separation), with a `denidin-app-<env>` + `morning-mcp-app-<env>` service pair (bundled — see "Environment isolation & locking" below) plus, independently, `webapp-backend-<env>` + `webapp-frontend-<env>` (not bundled with the other two — see `apps/webapp/`'s entry above); each app also builds/runs standalone via its own `Dockerfile`s (`docker build`/`docker run` from within the app's own directory, no dependency on another app or on compose). Containers are the *only* supported way to run any of them now — see "Environments (dev/prod)" below.
 
-**Almost all day-to-day commands below assume `cd apps/denidin-app` first**, unless working on the morning app (`cd apps/morning-mcp-app`).
+**Almost all day-to-day commands below assume `cd apps/denidin-app` first**, unless working on the morning app (`cd apps/morning-mcp-app`) or the webapp (`cd apps/webapp`).
 
 ## Environments (dev/prod)
 
@@ -326,12 +327,12 @@ since there's only one real tester).
 
 ## Versioning & Release Management (Feature 034)
 
-Each app (`denidin-app`, `morning-mcp-app`) has its own independent semantic version — `dev` and `prod` routinely run *different* versions at any given time (e.g. prod on `1.4.5` while dev is already on `1.4.6` during the next release's UAT); this is the normal, expected state, not drift to fix. See the "VERSION AND RELEASE DECISIONS ARE HUMAN-ONLY" banner above for the binding agent-behavior rule — this section is the reference for where things live and how the mechanics work.
+Each app (`denidin-app`, `morning-mcp-app`, `webapp`) has its own independent semantic version — `dev` and `prod` routinely run *different* versions at any given time (e.g. prod on `1.4.5` while dev is already on `1.4.6` during the next release's UAT); this is the normal, expected state, not drift to fix. See the "VERSION AND RELEASE DECISIONS ARE HUMAN-ONLY" banner above for the binding agent-behavior rule — this section is the reference for where things live and how the mechanics work.
 
-- **`apps/<app>/VERSION`** — plain-text current version (git-tracked, one source of truth per app). Surfaced via `apps/morning-mcp-app`'s `/health` endpoint (`version` field) and every log line in both apps (`[v<version>]` prefix). `apps/denidin-app` can also answer "what version are you running?" directly over WhatsApp (ungated by RBAC).
-- **`apps/<app>/CHANGELOG.md`** — terse, one line per release. **`apps/<app>/RELEASES.md`** — fuller prose notes per release. Both append-only, written only by `scripts/cut_release_single.sh`, never hand-edited.
-- **Git tags**: `<app>-v<version>` (e.g. `denidin-app-v1.4.2`) — one per app, since the two apps version independently.
-- **Artifacts folder**: `/Users/yaron/Projects/DeniDin/artifacts/<app>/<app>-v<version>.{tar,json}` — a shared, hardcoded-path directory outside any single clone's exclusive ownership (same idea as `shared/`), holding every cut release's exported Docker image (`docker save`) plus a JSON manifest (version/date/git commit/image ID). Not a container registry.
+- **`apps/<app>/VERSION`** — plain-text current version (git-tracked, one source of truth per app). Surfaced via `apps/morning-mcp-app`'s `/health` endpoint (`version` field) and every log line in both `denidin-app`/`morning-mcp-app` (`[v<version>]` prefix). `apps/denidin-app` can also answer "what version are you running?" directly over WhatsApp (ungated by RBAC).
+- **`apps/<app>/CHANGELOG.md`** — terse, one line per release. **`apps/<app>/RELEASES.md`** — fuller prose notes per release. Both append-only, written only by `scripts/cut_release_single.sh`, never hand-edited. All three apps carry both files.
+- **Git tags**: `<app>-v<version>` (e.g. `denidin-app-v1.4.2`) — one per app, since each app versions independently.
+- **Artifacts folder**: `/Users/yaron/Projects/DeniDin/artifacts/<app>/<app>-v<version>.{tar,json}` — a shared, hardcoded-path directory outside any single clone's exclusive ownership (same idea as `shared/`), holding every cut release's exported Docker image(s) (`docker save`) plus a JSON manifest (version/date/git commit/image ID). `webapp` exports two images per release (`webapp-backend`, `webapp-frontend`) under this same one artifact entry, since it always cuts/deploys as one unit. Not a container registry.
 - **Single-app vs. all-apps variants (bugfix-043, 2026-09-07)**: `scripts/cut_release_single.sh <app> <version>` and `scripts/deploy_release_single.sh <app> <env> <version>` are the original single-app scripts, unchanged — builds/tags/exports one app's artifact (deploys nothing), or loads/retags/starts/verifies one app in one environment. `scripts/cut_release.sh <version> --summary "<text>"` and `scripts/deploy_release.sh <env> <version>` are their all-apps siblings — one shared version (and, for cutting, one shared summary) applied to every app, in a single pass: `cut_release.sh` loops `cut_release_single.sh` once per app; `deploy_release.sh` does ONE `stop_env.sh`/`run_env.sh` cycle for the whole environment instead of one full stop/start per app (the old shape — calling the single-app deploy script once per app — cost two full environment bounces to deploy both apps, each one needlessly restarting the *other* app too; a real prod incident during exactly this cost prod ~41 minutes of downtime, since a call interrupted between its own stop and start steps left the environment down with monitoring disabled and nothing to catch it — see `specs/done/v0.6.0/bugfix-043-health-monitoring-and-auto-restart.md`). Use the all-apps variant for the common case (every app moving together, e.g. after a shared bugfix); use the single-app variant for a genuinely independent one-app release/rollback.
 - Refuses to re-cut an already-existing version (immutable once cut) — same rule for both cut variants.
 - Full spec: `specs/in-progress/034-versioning-release-mgmt/` (`spec.md`, `plan.md`, `contracts/` for the exact CLI contracts).
@@ -426,6 +427,39 @@ make test            # or: python3 -m pytest tests/ -v --tb=short
 ./stop_morning_mcp.sh dev|prod   # stop it
 ```
 
+### webapp (self-contained, own backend/frontend/e2e)
+```bash
+cd apps/webapp
+./run_webapp.sh host             # no Docker: uvicorn backend :8100 + Vite dev server :5173,
+                                  # live-reload, Ctrl-C stops both, localhost only
+./run_webapp.sh dev|prod         # Docker Compose: webapp-backend-<env> + webapp-frontend-<env>
+                                  # nginx; dev :8100/:5100, prod :8101/:5101, bound 0.0.0.0
+./stop_webapp.sh dev|prod        # stop it
+```
+The backend (`backend/`, own `requirements.txt`/`pytest.ini`/`conftest.py`/`Dockerfile`) is a
+BFF that imports `apps/denidin-app/src` directly at runtime (`PYTHONPATH`, not an HTTP call) to
+reuse `LedgerEventManager`/`SessionManager`/`MediaFileManager` read-only against denidin-app's
+own data root — this is the one exception to "apps reach each other only over HTTP, never by
+importing code" elsewhere in this doc, since the webapp is explicitly a read-only viewer over
+that data, not a peer service. `python3 -m pytest tests/ -v --tb=short` from `backend/` runs its
+suite (`integration` marker = real Starlette app via `TestClient`).
+The frontend (`frontend/`, own `package.json`/`Dockerfile`/`nginx.conf.template`) is a Vite +
+TypeScript SPA — `npm run dev` for the dev server, `npm run build` for the static bundle nginx
+serves in `dev`/`prod` mode.
+`e2e/` (own `package.json`/`playwright.config.ts`) is a separate Playwright acceptance-test tier —
+**not** part of the Python `unit`/`integration`/`billed`/`expensive` tiers and not CI (there is
+no CI here); run on demand via `cd apps/webapp/e2e && npx playwright test` (first time:
+`npm install && npx playwright install chromium`). `playwright.config.ts`'s `webServer` block
+starts its own seeded fixture backends/frontend automatically — no live dev/prod container
+needed. See `apps/webapp/e2e/README.md` for the full runbook.
+**Env-lock-agnostic (2026-09-06)**: unlike `denidin-app`/`morning-mcp-app`, the webapp is a
+read-only viewer — no WhatsApp traffic, no Green API polling, nothing mutated — so it does
+**not** participate in the dev multi-clone lock (`shared/active_env.json`) at all; start/stop it
+freely regardless of which clone "owns" dev. Its `dev`/`prod` Docker modes still require this
+clone's own `docker-compose.<env>.local.yml` override (same mandatory per-clone volume rule as
+the other two apps — see "Environment isolation & locking" above), since that's about data-path
+fragmentation across clones, not locking.
+
 ## Governance Docs — Read Before Non-Trivial Work
 
 This project enforces its workflow through docs in `.github/`, which are authoritative and take precedence over generic conventions:
@@ -514,6 +548,25 @@ Godfather/admin users manage invoices in natural Hebrew: `AIHandler` calls OpenA
 
 ### `apps/morning-mcp-app/` (separate app, own package/tests/config/Docker)
 Standalone `MorningClient`/`MorningAuth` for the Morning (Green Invoice) sandbox API — token-managed HTTP client with retry/backoff (`requests` + urllib3 `Retry`). Own package at `apps/morning-mcp-app/src/denidin_mcp_morning/`, imported as `from denidin_mcp_morning.morning_client import MorningClient` (its `conftest.py` puts its own `src/` on `sys.path` — no cross-app imports, no `sys.path` reach-through into `apps/denidin-app/`). `server.py` builds a FastMCP server exposing 16 tools (`create_invoice`, `create_transaction_account`, `create_combo_document`, `create_credit_note`, `create_receipt`, `create_combo_document_as_reference`, `cancel_transaction_account`, `list_invoices`, `get_invoice_details`, `add_client`, `list_clients`, `resolve_client_name`, `get_client_details`, `update_client`, `get_financial_summary`, `download_invoice_pdf` — the 4 `create_*` document-type-specific tools added by Feature 021, alongside `create_invoice`; `cancel_transaction_account` added by Feature 056, alongside extending `create_receipt` itself with a standalone branch — see "Standalone Receipts & Transaction Account Cancellation (Feature 056)" below) over streamable-HTTP, wrapped in `BearerTokenMiddleware` (single shared secret, not OAuth) plus an unauthenticated `/health` liveness route. Every tool call is audit-logged (bugfix-037's sibling, bugfix-036, 2026-08-10): `server.py`'s `_call_with_error_boundary` mints a correlation id and logs the tool name/arguments/outcome, and `audit.py` logs one line per Morning mutation — resolved client id and name, the payload sent, and the response received (document number and Morning's own computed total) — plus every *refusal* (client not found/ambiguous, original not linked to a client), which used to be entirely silent because a refusal is not an exception. Read tools log at the boundary only, without their response bodies. `./run_morning_mcp.sh dev|prod` / `./stop_morning_mcp.sh dev|prod` run it as a Docker container per environment (019-env-separation — no host-level PID-file process anymore; Docker itself prevents duplicate starts), with ngrok running *inside* the container, writing that environment's status file (`shared/mcp-status-<env>/`) for `apps/denidin-app` (and its own expensive tests, via `discover_running_server()` in `tests/expensive/e2e_helpers.py`) to discover the live URL — reusing an already-warm tunnel instead of spinning up a fresh one avoids an ngrok cold-start flake (`424 Failed Dependency` on the first request). Exercised by `apps/morning-mcp-app/tests/integration/test_morning_sandbox_*.py`, which hit the real Morning sandbox (constitution: no mocking). Config lives in its own `config/{config.example.json,config.test.json,config.dev.json,config.prod.json}` (flat shape: `api_key_id`/`api_key_secret`/`api_url`, plus an `mcp` block: `auth_token`/`ngrok_authtoken`/`status_file`) — no longer shares config files with `apps/denidin-app/`. `config.test.json` holds real sandbox secrets (plus `openai_api_key`/`mcp.ngrok_authtoken` for the OpenAI/ngrok-driven tests) and, like `config.dev.json`/`config.prod.json`, is gitignored rather than committed (only `config.example.json` is tracked). `denidin_mcp_morning/models.py`'s `Invoice.amount`/`Payment.amount`/`LinkedDocument.amount` accept negative values (2026-09-01, Feature 062) — real prod type-400 receipt-cancellation documents ("ביטול חשבונית מס / קבלה...") carry genuinely negative amounts by Morning's own reversal convention; the old `Field(ge=0)` lower bound rejected them.
+
+### `apps/webapp/` (separate app, own backend/frontend/e2e/config/Docker)
+A standalone, read-only web UI (Feature 068) for browsing `denidin-app`'s ledger data — no
+write path of any kind. `backend/` is a Starlette BFF (`src/webapp_backend/`: `server.py` the
+app + routes, `auth.py` the shared-password/session-token gate, `ledger_reader.py` reading
+`LedgerEvent`s, `context_reader.py` pulling the originating WhatsApp conversation/media for an
+expanded row, `health_checks.py`, `config.py`, own `logger.py`) that imports
+`apps/denidin-app/src` directly at runtime (`PYTHONPATH`, not HTTP) to reuse
+`LedgerEventManager`/`SessionManager`/`MediaFileManager` against denidin-app's real data
+root — the one deliberate exception to "apps talk to each other only over HTTP" in this repo,
+since the webapp is a read-only viewer over that same data, not a peer service with its own
+domain. Auth is a single shared, salted-hash password (no accounts/roles) issuing a session
+token the frontend holds in `localStorage`; sessions expire after 1 week of inactivity, every
+login attempt (success or failure) is logged, and every post-login route is auth-guarded at
+both the backend (rejects outright) and frontend (never renders protected content before the
+check resolves) layers. `frontend/` is a Vite + TypeScript SPA, served by nginx
+(`nginx.conf.template`) in `dev`/`prod` mode. Own `config/` (mirrors the other apps'
+`config.example.json`/`config.dev.json`/`config.prod.json`/`config.test.json` shape). Full spec
++ the case-by-case-approved Playwright test plan: `specs/done/v0.7.0/068-ledger-ui-and-reports/`.
 
 ## Spec-Driven Workflow
 

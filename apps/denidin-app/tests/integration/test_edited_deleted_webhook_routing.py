@@ -136,6 +136,15 @@ class TestEditedDeletedWebhookRouting:
         import denidin as denidin_module
         # fresh deduper so this test is independent of others in the run
         denidin_module._recent_notifications = denidin_module.RecentNotificationDeduper()
+        # A fresh chat id per run (test-isolation fix, 2026-09-14): CHAT_ID's
+        # session is a PERSISTENT file on disk (test_data/, gitignored but
+        # never wiped between separate pytest invocations on this machine) -
+        # asserting an exact occurrence COUNT against a shared chat's
+        # accumulated history is only ever correct on a machine's very first
+        # run of this test, and fails deterministically after enough repeats
+        # (each historical run appends one more copy of the same literal
+        # note). A fresh chat id avoids ever reading pre-existing history.
+        fresh_chat = f"9725001{int(time.time()) % 1000000}@c.us"
         ts = int(time.time())
         # 2026-09-16 (real bug found+fixed): this test used to reuse the shared,
         # module-level CHAT_ID - but denidin_app.ai_handler.session_manager is a
@@ -166,10 +175,8 @@ class TestEditedDeletedWebhookRouting:
             n = self._notification(event)
             denidin_module.dispatch_notification("editedMessage", n)
 
-        contents = [
-            m.get("content", "")
-            for m in denidin_app.ai_handler.session_manager.get_rolling_window(fresh_chat)
-        ]
+        window = denidin_app.ai_handler.session_manager.get_rolling_window(fresh_chat)
+        contents = [m.get("content", "") for m in window]
         assert contents.count("[הודעה קודמת נערכה] פעם אחת בלבד") == 1
 
     # ---------- deletedMessage ----------

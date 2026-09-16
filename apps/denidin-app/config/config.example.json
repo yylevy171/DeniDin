@@ -76,5 +76,9 @@
       "max_context_memories": 10,
       "max_tokens": 100000
     }
+  },
+  "fee_agreements": {
+    "templates_dir": "config/fee_agreement_templates",
+    "tmp_dir": "tmp/fee_agreements"
   }
 }
