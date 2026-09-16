@@ -3,6 +3,8 @@
 Customer-facing functional features, conversational intelligence, and business capabilities.
 *Sorted recent first.*
 
+## Features
+
 - **086**: `086-combo-doc-closing-multiple-300-accounts` — Status: Repo
 - **084**: `084-whatsapp-reactions` — Status: Done (v0.7.1)
 - **083**: `083-fee-agreement-docs` — Status: Done (v0.7.5)
@@ -64,3 +66,52 @@ Customer-facing functional features, conversational intelligence, and business c
 - **003**: `003-media-document-processing` — Status: Done (v0.0.1)
 - **002**: `002-chat-session-management` — Status: Done (v0.0.1)
 - **001**: `001-whatsapp-chatbot-passthrough` — Status: Done (v0.0.1)
+
+## Bugfixes
+
+- **061**: `bugfix-061-vat-prompt-conflict` — Status: Backlog
+- **060**: `bugfix-060-user-request-wins-over-system` — Status: Backlog
+- **059**: `bugfix-059-multiple-doc-request-failure` — Status: Backlog
+- **056**: `bugfix-056-webapp-ui-gaps-vs-approved-playwright-plan` — Status: Repo
+- **054**: `bugfix-054-startup-drops-queued-messages` — Status: Backlog
+- **053**: `bugfix-053-memory-questions-misrouted-to-ledger-query` — Status: Repo
+- **051**: `bugfix-051-list-reminders-cross-chat-disclosure` — Status: Repo
+- **050**: `bugfix-050-morning-create-confirmations-omit-document-link` — Status: Repo
+- **049**: `bugfix-049-financial-status-answers-from-conversation-not-ledger` — Status: Repo
+- **046**: `bugfix-046-list-invoices-status-filter-contradicts-unfiltered-result` — Status: Repo
+- **045**: `bugfix-045-refuses-to-create-new-client-despite-clear-request` — Status: Done (v0.5.3)
+- **042**: `bugfix-042-reminders-invading-unrelated-turns` — Status: Backlog
+- **041**: `bugfix-041-no-reply-silently-skips-ledger-relevant-content` — Status: Obsolete
+- **040**: `bugfix-040-english-weekday-codes-in-reminder-approval` — Status: Done (v0.5.1)
+- **039**: `bugfix-039-list-invoices-skips-client-resolution` — Status: Done (v0.4.1)
+- **038**: `bugfix-038-group-b-approval-missing-reference-data` — Status: Done (v0.4.1)
+- **034**: `bugfix-034-ledger-bugs` — Status: Obsolete
+- **033**: `bugfix-033-credit-notes-silently-dropped-from-financial-answers` — Status: Repo
+- **032**: `bugfix-032-phone-number-not-normalised` — Status: Backlog
+- **031**: `bugfix-031-hebrew-status-value-returns-empty-instead-of-error` — Status: Obsolete
+- **030**: `bugfix-030-message-sequencing-ambiguity` — Status: Obsolete
+- **029**: `bugfix-029-conversation-quality-p1-cluster` — Status: Obsolete
+- **028**: `bugfix-028-invoicing-and-approval-gate-p0-cluster` — Status: Done (v0.4.1)
+- **027**: `bugfix-027-geresh-omitted-entirely-not-fuzzy-matched` — Status: Backlog
+- **026**: `bugfix-026-morning-documents-created-unsigned` — Status: Done (v0.3.0)
+- **025**: `bugfix-025-nickname-not-recognized-as-self-address` — Status: Obsolete
+- **024**: `bugfix-024-native-mention-by-phone-number` — Status: Done (v0.2.1)
+- **023**: `bugfix-023-ledger-tool-overeager-on-morning-query` — Status: Obsolete
+- **022**: `bugfix-022-openai-mcp-approval-duplicate-execution` — Status: Done (v0.2.0)
+- **020**: `bugfix-020-green-api-empty-notification-response-crash` — Status: Done (v0.1.0)
+- **018**: `bugfix-018-ledger-event-parallel-followup-empty-response` — Status: Done (v0.0.1)
+- **015**: `bugfix-015-image-extraction-vision-refusal` — Status: Obsolete
+- **014**: `bugfix-014-list-invoices-only-returns-one-of-many` — Status: Done (v0.0.1)
+- **013**: `bugfix-013-client-name-garbling-and-unrequested-date-narrowing` — Status: Not Reproducible
+- **012**: `bugfix-012-financial-summary-drops-nonallowlisted-invoice-types` — Status: Done (v0.0.1)
+- **011**: `bugfix-011-ai-declines-analytical-invoice-query` — Status: Done (v0.0.1)
+- **010**: `bugfix-010-active-session-context-lost-on-restart` — Status: Done (v0.0.1)
+- **009**: `bugfix-009-media-image-path-not-persisted` — Status: Done (v0.0.1)
+- **008**: `bugfix-008-extended-text-message-not-routed` — Status: Done (v0.0.1)
+- **007**: `bugfix-007-media-response-missing-chatid` — Status: Done (v0.0.1)
+- **006**: `bugfix-006-media-file-empty` — Status: Done (v0.0.1)
+- **005**: `bugfix-005-media-file-empty` — Status: Obsolete
+- **004**: `bugfix-004-data-root-ignored` — Status: Obsolete
+- **003**: `bugfix-003-poll-interval-unused` — Status: Done (v0.0.1)
+- **002**: `bugfix-002-max-retries-unused` — Status: Done (v0.0.1)
+- **001**: `bugfix-001-constitution-not-loaded` — Status: Done (v0.0.1)
