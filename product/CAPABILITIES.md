@@ -1,0 +1,66 @@
+# Product Capabilities
+
+Customer-facing functional features, conversational intelligence, and business capabilities.
+*Sorted recent first.*
+
+- **086**: `086-combo-doc-closing-multiple-300-accounts` — Status: Repo
+- **084**: `084-whatsapp-reactions` — Status: Done (v0.7.1)
+- **083**: `083-fee-agreement-docs` — Status: Done (v0.7.5)
+- **082**: `082-google-drive-integration` — Status: Repo
+- **081**: `081-net-hamishpat-scanning` — Status: Repo
+- **080**: `080-higher-verbosity-speed` — Status: Done (v0.7.1)
+- **079**: `079-instinct-worker` — Status: Backlog
+- **077**: `077-long-term-memory-assembly` — Status: Repo
+- **076**: `076-edited-reaction-deleted-message-support` — Status: Done (v0.7.0)
+- **074**: `074-morning-client-name-cache-alias` — Status: Obsolete
+- **072**: `072-morning-client-name-cache` — Status: In-Progress
+- **071**: `071-pdf-single-call-extraction` — Status: Repo
+- **070**: `070-rolling-memory-window` — Status: Done (v0.6.0)
+- **069**: `069-mandatory-client-resolution-before-ledger-event` — Status: Done (v0.7.0)
+- **068**: `068-ledger-ui-and-reports` — Status: Done (v0.7.0)
+- **067**: `067-realistic-message-handling` — Status: Backlog
+- **066**: `066-support-bit-and-paybox` — Status: Backlog
+- **064**: `064-bank-deposit-full-cycle` — Status: Backlog
+- **060**: `060-duplicate-bank-image-detection` — Status: Repo
+- **058**: `058-morning-docs-calculation-nuances` — Status: Low-Priority
+- **056**: `056-receipts-without-invoice` — Status: Done (v0.5.1)
+- **055**: `055-multiple-clients-godfathers` — Status: Repo
+- **054**: `054-reminders-functionality-mgmt` — Status: Done (v0.5.0)
+- **052**: `052-ledger-events-csv-export` — Status: Low-Priority
+- **051**: `051-hourly-reporting-payment-request` — Status: Backlog
+- **050**: `050-post-image-action-suggestions` — Status: Obsolete
+- **049**: `049-user-editable-context-memory` — Status: Low-Priority
+- **048**: `048-whatsapp-typing-indicator` — Status: Done (v0.4.2)
+- **047**: `047-whatsapp-interactive-approval-buttons` — Status: Done (v0.4.3)
+- **046**: `046-hebrew-approval-synonyms` — Status: Done (v0.2.3)
+- **045**: `045-mark-messages-read` — Status: Done (v0.2.3)
+- **044**: `044-ledger-event-querying` — Status: Done (v0.5.2)
+- **040**: `040-agreement-cancellation-modification` — Status: Backlog
+- **039**: `039-group-conversation-support` — Status: Done (v0.2.0)
+- **038**: `038-morning-long-list-support` — Status: Done (v0.2.1)
+- **037**: `037-morning-document-detail-enhancement` — Status: Obsolete
+- **033**: `033-ledger-event-persistence` — Status: Done (v0.2.0)
+- **032**: `032-whatsapp-reply-reference-resolution` — Status: Backlog
+- **031**: `031-fuzzy-client-lookup-by-name` — Status: Done (v0.0.1)
+- **030**: `030-vcf-contact-card-client-creation` — Status: Done (v0.0.1)
+- **027**: `027-mandatory-client-reference-invoicing` — Status: Done (v0.3.0)
+- **026**: `026-client-management` — Status: Done (v0.0.1)
+- **024**: `024-ledger-event-recognition` — Status: Done (v0.0.1)
+- **023**: `023-reference-linked-document-creation` — Status: Done (v0.0.1)
+- **022**: `022-explicit-approval-for-document-creation` — Status: Done (v0.0.1)
+- **021**: `021-flexible-document-creation` — Status: Done (v0.0.1)
+- **020**: `020-flexible-invoice-payment-methods` — Status: Done (v0.0.1)
+- **018**: `018-denidin-morning-mcp-integration` — Status: Done (v0.0.1)
+- **017**: `017-mcp-morning-receipt-parsing` — Status: Low-Priority
+- **015**: `015-topic-based-access-control` — Status: Low-Priority
+- **014**: `014-entity-extraction-group-messages` — Status: Obsolete
+- **013**: `013-proactive-whatsapp-messaging-core` — Status: Obsolete
+- **009**: `009-agentic-workflow-builder` — Status: Low-Priority
+- **008**: `008-scheduled-proactive-chats` — Status: Low-Priority
+- **007**: `007-persistent-context-memory` — Status: Done (v0.0.1)
+- **006**: `006-rbac-user-roles` — Status: Done (v0.0.1)
+- **005**: `005-mcp-morning-green-receipt` — Status: Done (v0.0.1)
+- **004**: `004-mcp-whatsapp-server` — Status: Obsolete
+- **003**: `003-media-document-processing` — Status: Done (v0.0.1)
+- **002**: `002-chat-session-management` — Status: Done (v0.0.1)
+- **001**: `001-whatsapp-chatbot-passthrough` — Status: Done (v0.0.1)
