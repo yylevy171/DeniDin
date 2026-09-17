@@ -12,6 +12,12 @@ The testing for this feature is broken down into four distinct stages to ensure 
   - **Expectation**: System selects the `hourly_consultation` variant.
 - **Test 1.3**: User texts *"Draft a fixed-price contract for building a website."*
   - **Expectation**: System selects the `fixed_price_project` variant.
+- **Test 1.4** (added 2026-09-12, per human feedback): User texts *"Draft an agreement for Delta
+  Ltd with a monthly retainer of 3,000 NIS plus 400 NIS/hour for anything beyond 10 hours a
+  month."*
+  - **Expectation**: System recognizes this describes multiple distinct, separately-priced fee
+    components (not a single flat/hourly/fixed number) and selects the
+    `multi_component_agreement` variant.
 
 ### Stage 2: Data Gathering & Clarification (Anti-Hallucination)
 **Goal**: Verify the AI properly identifies missing required fields and asks the user for them in simple turns.

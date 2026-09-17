@@ -30,6 +30,20 @@ services:
     volumes:
       - ./apps/denidin-app/config/config.prod.json:/app/config/config.json:ro
       - ./apps/denidin-app/config/runtime_constitution.md:/app/config/runtime_constitution.md:ro
+      # bugfix-062 (2026-09-16): the Dockerfile's `VOLUME ["/app/config", ...]`
+      # makes /app/config an anonymous volume that `docker compose up -d`
+      # (what run_denidin.sh/deploy_release_single.sh actually call) does NOT
+      # refresh on redeploy - any file under config/ that isn't explicitly
+      # bind-mounted here gets silently frozen at whatever the volume held on
+      # its first creation, even across later image rebuilds that add/update
+      # it. Confirmed live in prod: this anonymous volume was created
+      # 2026-09-07 and neither ledger_recognition_prompt.md nor
+      # fee_agreement_templates/ (both added after that date) ever reached
+      # the running container - the recognizer silently ran prompt-less on
+      # every single turn for over a week, contributing to a real dropped
+      # bank-deposit ledger event.
+      - ./apps/denidin-app/config/ledger_recognition_prompt.md:/app/config/ledger_recognition_prompt.md:ro
+      - ./apps/denidin-app/config/fee_agreement_templates:/app/config/fee_agreement_templates:ro
       - ./apps/denidin-app/data:/app/data
       - ./apps/denidin-app/logs/prod:/app/logs
       - ./shared/mcp-status-prod:/app/mcp-status

@@ -1,0 +1,65 @@
+{
+  "variants": [
+    {
+      "variant_id": "hourly_consultation",
+      "template_filename": "hourly_consultation.docx",
+      "placeholders": ["DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "HOURLY_RATE", "FEE_AMOUNT"],
+      "selection_cues": [
+        "standard hourly fee agreement for consultation/representation",
+        "hourly rate arrangement, optionally with an hour cap stated in FEE_AMOUNT's estimate",
+        "a single, simple fee arrangement - one rate, one scope",
+        "הסכם שעתי ליעוץ או לייצוג",
+        "הצעת שכר טרחה שעתית"
+      ],
+      "notes": "HOURLY_RATE and FEE_AMOUNT are each ONE complete phrase the AI composes from what the user actually said - amount + currency (₪) + VAT status (כולל/לא כולל מע\"מ) together, e.g. '500 ₪ כולל מע\"מ' - the template no longer appends any fixed currency/VAT text of its own (real fee letters vary this per line: inclusive, exclusive, or a computed +VAT total), so never supply a bare number alone and never invent a VAT status the user didn't state."
+    },
+    {
+      "variant_id": "multi_component_agreement",
+      "template_filename": "multi_component_agreement.docx",
+      "placeholders": ["DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "TOTAL_FEE"],
+      "repeating_group": {
+        "min_items": 2,
+        "row_placeholders": ["COMPONENT_LABEL", "COMPONENT_TERMS"],
+        "example_terms": [
+          "{{AMOUNT}} ₪ כולל מע\"מ, ישולם על ידי הלקוח עם החתימה.",
+          "{{PERCENTAGE}}% מהסכום שנגבה/נפסק לטובת הלקוח, ישולם על ידי הלקוח.",
+          "{{PERCENTAGE}}% משכר הטרחה ברכיב זה, בחלוקה {{SPLIT_RATIO}} עם {{PARTNER_NAME}}.",
+          "{{AMOUNT}} ₪ ל{{PERIOD}}, ישולם על ידי {{PAYER_ENTITY}} (לא הלקוח) עם {{TRIGGER_EVENT}}.",
+          "{{HOURLY_RATE}} ₪ לשעה מעבר ל{{THRESHOLD}} שעות ל{{PERIOD}}, ישולם על ידי הלקוח, עד לתקרה של {{HOUR_CAP}} שעות."
+        ]
+      },
+      "selection_cues": [
+        "multiple (2 or more - any N) distinct fee items for ONE engagement, listed as a lettered/itemized breakdown - the most common real-world shape (e.g. preparation stage + hearing stage + ruling stage, or a base fee plus a contingency bonus)",
+        "any component whose terms are more than a flat fee - a percentage/contingency fee, an hourly rate with a cap on hours, a cost-share split with another partner, a specific payer entity different from the main Client, or a combination of these",
+        "the client mentions more than one separate charge/rate/arrangement that each need their own terms, all applying together to the same engagement",
+        "an itemized or multi-part fee breakdown, not a single flat/hourly/fixed number",
+        "distinct from alternative_tracks: here every component applies TOGETHER (the client owes all of them, not one instead of another)",
+        "כמה רכיבי שכר טרחה נפרדים החלים יחד באותו הסכם, כולל אחוזים, תקרת שעות, חלוקה עם שותפים, או גורם משלם שונה",
+        "הצעת שכר טרחה עם מספר סעיפי תשלום (א., ב., ג.) החלים כולם יחד"
+      ],
+      "notes": "The template docx has exactly ONE repeatable fee-table row - not capped at any fixed count. Supply a `components` list with one entry per REAL component the user described (2, 3, 5, however many); DocTemplateEngine clones the template row once per entry and discards the original. Each entry has `label` (a short name for the component, e.g. 'שלב הגשת התביעה') and `terms` (ONE free-text line fully composed by the AI from what the user actually said). `example_terms` above are PATTERNS (matching real fee-proposal letters reviewed 2026-09-12: staged/milestone fees, contingency percentages, hourly rates with an hour cap, cost-share splits, non-Client payers) to guide phrasing/structure when a component matches one of these common shapes - fill in the {{...}} slots in whichever pattern fits from what the user described, keeping the surrounding wording. They are illustrative, not exhaustive and not a closed enum: a genuinely different arrangement the user describes should be composed as its own free-text line in the same natural, contract-appropriate register, not forced into the nearest example if it doesn't actually fit. Either way, `terms` is not restricted to a fixed sub-shape (no separate rigid amount/percentage/payer fields) - but every fact inside it, whether following an example pattern or freely composed, must come from the conversation, never invented. Never pad the `components` list with an invented entry to hit some expected count, and never merge two real components into one to reduce the count - REQ-083-02 forbids inventing OR collapsing data either way, and applies with equal force to inventing/omitting a detail WITHIN one component's `terms` line. TOTAL_FEE is ONE complete phrase (amount + ₪ + VAT status, e.g. '15,000 ₪ כולל מע\"מ') composed from what the user said - the template no longer appends its own fixed currency/VAT text."
+    },
+    {
+      "variant_id": "alternative_tracks",
+      "template_filename": "alternative_tracks.docx",
+      "placeholders": ["DATE", "CLIENT_NAME", "SCOPE_OF_WORK", "SHARED_ADDON_TERMS"],
+      "repeating_group": {
+        "min_items": 2,
+        "row_placeholders": ["TRACK_LABEL", "TRACK_TERMS"],
+        "example_terms": [
+          "שכר טרחה קבוע של {{AMOUNT}} ₪ כולל מע\"מ, ללא תלות בתוצאה.",
+          "שכר טרחה מוזל של {{AMOUNT}} ₪ כולל מע\"מ, בתוספת {{PERCENTAGE}}% מהסכום שנפסק/נגבה לטובת הלקוח.",
+          "שכר טרחה לפי מתכונת שלבים: {{STAGE_1_LABEL}} - {{STAGE_1_AMOUNT}} ₪, {{STAGE_2_LABEL}} - {{STAGE_2_AMOUNT}} ₪, וכן הלאה, כפי שנמסר על ידי הלקוח."
+        ]
+      },
+      "selection_cues": [
+        "the client is offered a CHOICE between two or more mutually-exclusive fee structures for the SAME engagement (e.g. a flat fee track vs. a lower base fee + contingency percentage track) - the client picks exactly ONE, never both",
+        "distinct from multi_component_agreement: there, every component applies together; here, each track is a full standalone alternative and only one is ever actually charged",
+        "language like 'שני מסלולים', 'לבחירת הלקוח', 'מסלול א/מסלול ב', 'either you can pay X or Y'",
+        "an add-on/extra clause that applies regardless of which track the client picks (e.g. a fee for a specific extra appearance/step) belongs in SHARED_ADDON_TERMS, not inside any one track",
+        "הסכם עם שני מסלולי שכר טרחה חלופיים לבחירת הלקוח"
+      ],
+      "notes": "The template docx has exactly ONE repeatable 'track' block (a heading + one free-text paragraph) - supports any N >= 2 tracks, same clone-and-discard mechanism as multi_component_agreement's row, applied at the track level instead of the component level. Supply a `components` list (reusing the same tool-call field name as multi_component_agreement for consistency) with one entry per real track: `label` is the track's short name (e.g. 'מסלול א'\\' - שכר טרחה קבוע'), `terms` is ONE free-text passage - which MAY itself describe multiple sub-items within that track (e.g. 'מסלול זה כולל: (1) ... (2) ...') - fully composed by the AI from what the user actually described for that specific track, never invented or borrowed from another track. `SHARED_ADDON_TERMS` is a required scalar placeholder for any add-on that applies regardless of which track is chosen; if the user described no such shared add-on, state that explicitly (e.g. 'אין תוספות החלות על שני המסלולים') rather than omitting the placeholder or inventing one. Never pad to a round number of tracks, never merge two genuinely distinct tracks into one, and never invent a track the user did not actually offer as an alternative - same REQ-083-02 discipline as multi_component_agreement's components."
+    }
+  ]
+}

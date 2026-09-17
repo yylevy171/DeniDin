@@ -36,6 +36,12 @@ from src.managers.reminder_manager import (
     ReminderManager, ReminderPastDateError, ReminderCapExceededError, ReminderNotFoundError,
     InvalidRecurrenceError, OccurrenceNotFoundError,
 )
+from src.managers.doc_template_engine import DocTemplateEngine
+from src.handlers.fee_agreement_tools import (
+    FeeAgreementToolHandler, GET_FEE_AGREEMENT_TEMPLATE_TOOL,
+    RENDER_FEE_AGREEMENT_DOCUMENT_TOOL,
+    VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL, SEND_FEE_AGREEMENT_DOCUMENT_TOOL,
+)
 from src.managers.pending_local_tool_approval_manager import (
     PendingLocalToolApprovalManager, PendingLocalToolApproval,
 )
@@ -58,8 +64,13 @@ logger = get_logger(__name__)
 # this app (and, via import, in accounting_reconciliation_service.py and
 # image_extractor.py) - deliberately verbose, deliberately everywhere: "I want
 # logs of EVERYTHING so we can get to the bottom of what is going on" (disk
-# space is explicitly not a constraint here). Never raises - a logging
-# failure must never break the actual call it's describing.
+# space is explicitly not a constraint here). Logged at INFO, not DEBUG
+# (bugfix-062, 2026-09-16) - prod runs at INFO, so a DEBUG-only version of
+# this was silently inert there the whole time; a real incident (a silently
+# dropped bank-deposit ledger event) could only be root-caused down to "the
+# model didn't call the report tool" and no further, because the actual raw
+# model output for that specific call was never captured anywhere. Never
+# raises - a logging failure must never break the actual call it's describing.
 
 def _log_outgoing_request(context: str, kwargs: Dict[str, Any]) -> None:
     """Logs exactly what's about to be sent to responses.create(), mirroring
@@ -71,7 +82,7 @@ def _log_outgoing_request(context: str, kwargs: Dict[str, Any]) -> None:
         tool_names = [
             t.get("name") or t.get("server_label") or t.get("type") for t in tools
         ]
-        logger.debug(
+        logger.info(
             f"[RAWLOG] {context} >>> SENDING: model={kwargs.get('model')!r}, "
             f"tools={tool_names!r}, input={kwargs.get('input')!r}, "
             f"previous_response_id={kwargs.get('previous_response_id')!r}, "
@@ -111,7 +122,7 @@ def _log_raw_response(context: str, response) -> None:
                 detail["tool_count"] = len(tools_list)
                 detail["tool_names"] = [getattr(t, "name", None) for t in tools_list]
             items_repr.append(detail)
-        logger.debug(
+        logger.info(
             f"[RAWLOG] {context} <<< RECEIVED: response.id={getattr(response, 'id', None)!r}, "
             f"status={getattr(response, 'status', None)!r}, "
             f"incomplete_details={getattr(response, 'incomplete_details', None)!r}, "
@@ -980,7 +991,11 @@ RECOGNITION_TOOL: Dict[str, Any] = {
         "or a status question, with NO fee arrangement, NO deposit/transfer and NO "
         "Morning document created this turn, is NOT a ledger event: verdict='none'. "
         "Providing a missing field for a client record (e.g. answering \"what's "
-        "their email?\") is client-record maintenance, never a ledger event."
+        "their email?\") is client-record maintenance, never a ledger event. "
+        "verdict='none' should also set `none_reason` to a short phrase naming why "
+        "(e.g. 'client unresolved - no MCP evidence', 'ordinary conversation', "
+        "'missing amount') - this is logged for debugging a silently dropped event "
+        "later and is never surfaced to the operator."
     ),
     "parameters": {
         "type": "object",
@@ -1023,6 +1038,15 @@ RECOGNITION_TOOL: Dict[str, Any] = {
             "reason": {
                 "type": ["string", "null"],
                 "description": "verdict='declined' only: always 'declined_by_operator'. Null otherwise.",
+            },
+            "none_reason": {
+                "type": ["string", "null"],
+                "description": (
+                    "verdict='none' only: a short phrase naming why this round wasn't "
+                    "captured (e.g. 'client unresolved - no MCP evidence', 'ordinary "
+                    "conversation', 'missing amount'). Logged for debugging a silently "
+                    "dropped event later - never surfaced to the operator. Null otherwise."
+                ),
             },
         },
         "required": ["verdict"],
@@ -1880,6 +1904,31 @@ class AIHandler:
         # contracts/local-tool-approval-gate.md).
         self.pending_local_tool_approval_manager = PendingLocalToolApprovalManager()
 
+        # Fee Agreement Document Generation (Feature 083) - config-driven paths
+        # (DI, no monkey-patching), same composed-at-construction-time pattern
+        # as reminder_manager above. Gating is RBAC only (GODFATHER/ADMIN, like
+        # reminders/ledger-query) - enforced by FeeAgreementToolHandler.build_tools,
+        # never by DocTemplateEngine itself. (2026-09-15: this feature previously
+        # carried an ADDITIONAL config.feature_flags['fee_agreement_docs'] gate,
+        # default False - never requested, never turned on in config.dev.json, so
+        # the feature was silently unreachable in dev despite shipping and passing
+        # every billed test against config.test.json. Removed per explicit human
+        # instruction: "THIS SHOULD BE ALWAYS TRUE" - RBAC alone is the gate, same
+        # as every sibling tool family.) All tool-facing logic for this feature
+        # lives in src/handlers/fee_agreement_tools.py, deliberately kept out of
+        # this already-oversized file.
+        fee_agreements_config = getattr(config, 'fee_agreements', {}) or {}
+        self.doc_template_engine = DocTemplateEngine(
+            templates_dir=Path(fee_agreements_config.get('templates_dir', 'config/fee_agreement_templates')),
+            tmp_dir=Path(config.data_root) / fee_agreements_config.get('tmp_dir', 'tmp/fee_agreements'),
+        )
+        self.fee_agreement_tools = FeeAgreementToolHandler(self.doc_template_engine)
+        # Injected post-construction by denidin.py's initialize_app (same DI
+        # pattern as own_whatsapp_number below) - needed only by
+        # send_fee_agreement_document, which is unreachable unless the RBAC
+        # gate above passes.
+        self.whatsapp_handler = None
+
         # Most recent successful AIResponse, for observability/E2E test verification.
         self.last_response: Optional[AIResponse] = None
 
@@ -2251,6 +2300,10 @@ class AIHandler:
         morning_tools = self._build_morning_mcp_tools(user_obj, correlation_id) if self.rbac_enabled else None
         reminder_tools = self._build_reminder_tools(user_obj) if self.rbac_enabled else []
         ledger_query_tools = self._build_ledger_query_tools(user_obj) if self.rbac_enabled else []
+        fee_agreement_tools = (
+            self.fee_agreement_tools.build_tools(user_obj)
+            if self.rbac_enabled else []
+        )
         # Feature 080: send_progress_update is NOT RBAC-gated - every role can attach it.
         progress_update_tools = self._build_progress_update_tools()
         # Reminder tools deliberately go LAST (2026-08-19, user decision after a
@@ -2268,8 +2321,8 @@ class AIHandler:
         # unlike every other tool assembled above (contracts/
         # react-to-message-tool-schema.md).
         combined = (
-            (morning_tools or []) + ledger_query_tools + reminder_tools + progress_update_tools
-            + [REACT_TO_MESSAGE_TOOL]
+            (morning_tools or []) + ledger_query_tools + reminder_tools + fee_agreement_tools
+            + progress_update_tools + [REACT_TO_MESSAGE_TOOL]
         )
         return combined or None
 
@@ -2755,6 +2808,77 @@ class AIHandler:
         )
         return details, True
 
+    def _compute_get_fee_agreement_template_outputs(
+        self, response,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Pure computation half of get_fee_agreement_template dispatch (no
+        API call) - see _handle_get_fee_agreement_template and
+        _dispatch_all_local_tools for why this is split out."""
+        call_id = extract_function_call_id(response, GET_FEE_AGREEMENT_TEMPLATE_TOOL["name"])
+        if call_id is None:
+            return None
+        args = extract_function_call(response, GET_FEE_AGREEMENT_TEMPLATE_TOOL["name"]) or {}
+        result = self.fee_agreement_tools.handle_get_template(args.get("variant_id"))
+        return [{"call_id": call_id, "payload": result}]
+
+    def _handle_get_fee_agreement_template(
+        self, request: AIRequest, response, tools: Optional[List[Dict]]
+    ):
+        """Fee Agreement Document Generation (Feature 083, 2026-09-13
+        redesign): get_fee_agreement_template is read-only, dispatched
+        immediately - same shape as _handle_list_reminders. No approval gate
+        anywhere in this feature any more (explicit human decision).
+
+        Standalone single-tool-type entry point, kept for direct callers/tests
+        exercising this tool in isolation - the main dispatch loop instead goes
+        through _dispatch_all_local_tools (bugfix 2026-09-13, see its docstring)."""
+        outputs = self._compute_get_fee_agreement_template_outputs(response)
+        if outputs is None:
+            return None
+        try:
+            return self._call_openai_fee_agreement_followup_api(
+                request, response.id, outputs[0]["call_id"], outputs[0]["payload"], tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[083] get_fee_agreement_template follow-up call failed: {e}", exc_info=True)
+            return None
+
+    def _compute_render_fee_agreement_document_outputs(
+        self, response,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Pure computation half of render_fee_agreement_document dispatch (no
+        API call) - see _handle_render_fee_agreement_document and
+        _dispatch_all_local_tools for why this is split out."""
+        call_id = extract_function_call_id(response, RENDER_FEE_AGREEMENT_DOCUMENT_TOOL["name"])
+        if call_id is None:
+            return None
+        args = extract_function_call(response, RENDER_FEE_AGREEMENT_DOCUMENT_TOOL["name"]) or {}
+        result = self.fee_agreement_tools.handle_render(args)
+        return [{"call_id": call_id, "payload": result}]
+
+    def _handle_render_fee_agreement_document(
+        self, request: AIRequest, response, tools: Optional[List[Dict]]
+    ):
+        """Fee Agreement Document Generation (Feature 083, 2026-09-13
+        redesign): render_fee_agreement_document dispatches immediately, no
+        approval gate - the AI is the document's author (its own full body
+        text), not a form the human must approve field-by-field. Revising
+        after feedback is just calling this again with edited text.
+
+        Standalone single-tool-type entry point, kept for direct callers/tests
+        exercising this tool in isolation - the main dispatch loop instead goes
+        through _dispatch_all_local_tools (bugfix 2026-09-13, see its docstring)."""
+        outputs = self._compute_render_fee_agreement_document_outputs(response)
+        if outputs is None:
+            return None
+        try:
+            return self._call_openai_fee_agreement_followup_api(
+                request, response.id, outputs[0]["call_id"], outputs[0]["payload"], tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[083] render_fee_agreement_document follow-up call failed: {e}", exc_info=True)
+            return None
+
     def _call_openai_list_reminders_followup_api(
         self, request: AIRequest, previous_response_id: str, call_id: str,
         reminders_summary: List[Dict[str, Any]], tools: Optional[List[Dict]] = None,
@@ -2925,6 +3049,120 @@ class AIHandler:
             )
         except Exception as e:  # pylint: disable=broad-except
             logger.error(f"[080] send_progress_update follow-up call failed: {e}", exc_info=True)
+            return None
+
+    def _call_openai_fee_agreement_followup_api(
+        self, request: AIRequest, previous_response_id: str, call_id: str,
+        payload: Dict[str, Any], tools: Optional[List[Dict]] = None,
+    ):
+        """Reports verify_fee_agreement_document's or send_fee_agreement_document's
+        result back as that call's function_call_output, via a follow-up chained
+        to the SAME turn's response.id - same single-item shape as
+        _call_openai_list_reminders_followup_api (both dispatch immediately, no
+        PendingLocalToolApproval involved). Standalone single-tool-type entry
+        point only - the main dispatch loop instead goes through
+        _dispatch_all_local_tools (bugfix 2026-09-13, see its docstring: a
+        response may legitimately carry a fee-agreement call ALONGSIDE another
+        tool type's call, e.g. query_ledger_events, and this single-item
+        follow-up would leave the other one unanswered, which OpenAI rejects
+        outright)."""
+        output_items = [{
+            "type": "function_call_output",
+            "call_id": call_id,
+            "output": json.dumps(payload, ensure_ascii=False),
+        }]
+        kwargs = {
+            "model": request.model,
+            "instructions": self._build_instructions(request.constitution),
+            "input": output_items,
+            "previous_response_id": previous_response_id,
+            "max_output_tokens": request.max_tokens,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        logger.info(f"[083] _call_openai_fee_agreement_followup_api: call_id={call_id!r}, payload={payload!r}")
+        _log_outgoing_request("_call_openai_fee_agreement_followup_api", kwargs)
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
+        _log_raw_response("_call_openai_fee_agreement_followup_api", response)
+        return response
+
+    def _compute_verify_fee_agreement_document_outputs(
+        self, response,
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Pure computation half of verify_fee_agreement_document dispatch (no
+        API call) - see _handle_verify_fee_agreement_document and
+        _dispatch_all_local_tools for why this is split out."""
+        call_id = extract_function_call_id(response, VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL["name"])
+        if call_id is None:
+            return None
+        args = extract_function_call(response, VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL["name"]) or {}
+        result = self.fee_agreement_tools.handle_verify(args.get("document_id"))
+        return [{"call_id": call_id, "payload": result}]
+
+    def _handle_verify_fee_agreement_document(
+        self, request: AIRequest, response, tools: Optional[List[Dict]]
+    ):
+        """Fee Agreement Document Generation (Feature 083): verify_fee_agreement_document
+        is read-only, dispatched immediately - same shape as _handle_list_reminders.
+
+        Standalone single-tool-type entry point, kept for direct callers/tests
+        exercising this tool in isolation - the main dispatch loop instead goes
+        through _dispatch_all_local_tools (bugfix 2026-09-13, see its docstring).
+
+        Returns the follow-up response, or None if no such call was made this
+        turn, or if the follow-up call itself failed."""
+        outputs = self._compute_verify_fee_agreement_document_outputs(response)
+        if outputs is None:
+            return None
+        try:
+            return self._call_openai_fee_agreement_followup_api(
+                request, response.id, outputs[0]["call_id"], outputs[0]["payload"], tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[083] verify_fee_agreement_document follow-up call failed: {e}", exc_info=True)
+            return None
+
+    def _compute_send_fee_agreement_document_outputs(
+        self, response, effective_chat_id: Optional[str],
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Pure(ish) computation half of send_fee_agreement_document dispatch
+        (the actual WhatsApp send is a real side effect, but no OpenAI API
+        call is made here) - see _handle_send_fee_agreement_document and
+        _dispatch_all_local_tools for why this is split out."""
+        call_id = extract_function_call_id(response, SEND_FEE_AGREEMENT_DOCUMENT_TOOL["name"])
+        if call_id is None:
+            return None
+        args = extract_function_call(response, SEND_FEE_AGREEMENT_DOCUMENT_TOOL["name"]) or {}
+        if effective_chat_id is None or self.whatsapp_handler is None:
+            result: Dict[str, Any] = {"error": "לא ניתן לשלוח מסמך בהקשר הנוכחי."}
+        else:
+            result = self.fee_agreement_tools.handle_send(
+                args.get("document_id"), self.whatsapp_handler, effective_chat_id,
+                args.get("caption", ""),
+            )
+        return [{"call_id": call_id, "payload": result}]
+
+    def _handle_send_fee_agreement_document(
+        self, request: AIRequest, response, tools: Optional[List[Dict]],
+        effective_chat_id: Optional[str],
+    ):
+        """Fee Agreement Document Generation (Feature 083): send_fee_agreement_document
+        dispatches immediately but refuses (a tool-call error in the returned
+        payload, never a raised exception) unless the document already passed
+        verification - see fee_agreement_tools.handle_send's own docstring.
+
+        Standalone single-tool-type entry point, kept for direct callers/tests
+        exercising this tool in isolation - the main dispatch loop instead goes
+        through _dispatch_all_local_tools (bugfix 2026-09-13, see its docstring)."""
+        outputs = self._compute_send_fee_agreement_document_outputs(response, effective_chat_id)
+        if outputs is None:
+            return None
+        try:
+            return self._call_openai_fee_agreement_followup_api(
+                request, response.id, outputs[0]["call_id"], outputs[0]["payload"], tools
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[083] send_fee_agreement_document follow-up call failed: {e}", exc_info=True)
             return None
 
     def _call_openai_query_ledger_events_followup_api(
@@ -3264,6 +3502,34 @@ class AIHandler:
         if react_outputs:
             outputs.extend(react_outputs)
 
+        # Fee Agreement Document Generation (Feature 083, 2026-09-13 redesign):
+        # all 4 tools dispatch immediately - no PendingLocalToolApproval
+        # anywhere in this feature. get_fee_agreement_template/
+        # render_fee_agreement_document are the AI's own drafting loop (fetch
+        # a reference, author the full body, render); verify/send close it
+        # out. Every one of these must go through this combined dispatch too
+        # (bugfix 2026-09-13/2026-09-14) - a real billed run hit exactly the
+        # incident this method's docstring describes with
+        # get_fee_agreement_template co-occurring alongside query_ledger_events
+        # in the same response.
+        get_template_outputs = self._compute_get_fee_agreement_template_outputs(response)
+        if get_template_outputs:
+            outputs.extend(get_template_outputs)
+
+        render_outputs = self._compute_render_fee_agreement_document_outputs(response)
+        if render_outputs:
+            outputs.extend(render_outputs)
+
+        verify_fee_agreement_outputs = self._compute_verify_fee_agreement_document_outputs(response)
+        if verify_fee_agreement_outputs:
+            outputs.extend(verify_fee_agreement_outputs)
+
+        send_fee_agreement_outputs = self._compute_send_fee_agreement_document_outputs(
+            response, effective_chat_id
+        )
+        if send_fee_agreement_outputs:
+            outputs.extend(send_fee_agreement_outputs)
+
         if not outputs:
             return None
 
@@ -3407,6 +3673,38 @@ class AIHandler:
                 return str(text)
         return ""
 
+    @staticmethod
+    def _extract_mcp_call_items(response) -> List[Dict[str, Any]]:
+        """Pull every `mcp_call`-type item off one API response's `.output`,
+        in the same shape `_finalize_response` has always reported
+        (name/error/arguments/output). Factored out (2026-09-15 fix) so a
+        remote MCP tool call can be picked up from WHICHEVER round of a turn
+        it actually executed in - see `_run_local_tool_dispatch_loop`'s own
+        `accumulated_mcp_calls` for why a single-round extraction at the end
+        of a turn is not enough.
+
+        `error` is normalized to a plain string here (2026-09-15 fix,
+        real billed failure): the SDK's own `item.error` is usually a
+        business-level string (e.g. a tool-side refusal), but on a genuine
+        network-level failure (e.g. a 503 from the MCP tunnel) it can be a
+        raw exception object instead (`HTTPError(...)`). Left un-normalized,
+        that object flows straight into `mcp_calls` and eventually into
+        `SessionManager.add_message`'s `json.dump(asdict(message), ...)`
+        (no `default=str` there) and crashes with `TypeError: Object of
+        type HTTPError is not JSON serializable`. Nothing downstream of
+        this extraction point should ever have to know `item.error` might
+        not be a string - normalize once, here, at the boundary."""
+        return [
+            {
+                "name": item.name,
+                "error": str(item.error) if item.error is not None else None,
+                "arguments": item.arguments,
+                "output": item.output,
+            }
+            for item in (response.output or [])
+            if getattr(item, "type", None) == "mcp_call"
+        ]
+
     def _run_local_tool_dispatch_loop(
         self, request: AIRequest, response, effective_chat_id: Optional[str],
         sender: Optional[str], tools: Optional[List[Dict]],
@@ -3426,17 +3724,37 @@ class AIHandler:
         empty now) so callers' unpacking is unchanged.
 
         Returns (final_response, extra_tokens, extra_prompt_tokens,
-        extra_completion_tokens, usage_response, ledger_event_ids) - the
-        three "extra_*" fields are deltas to ADD to the caller's own running
-        totals (which already include the turn's original response.usage),
-        never absolute totals themselves. `usage_response` is whichever
-        response's usage/finish_reason is authoritative (the last one that
-        actually produced a follow-up, or the original if none did).
+        extra_completion_tokens, usage_response, ledger_event_ids,
+        accumulated_mcp_calls) - the three "extra_*" fields are deltas to ADD
+        to the caller's own running totals (which already include the turn's
+        original response.usage), never absolute totals themselves.
+        `usage_response` is whichever response's usage/finish_reason is
+        authoritative (the last one that actually produced a follow-up, or
+        the original if none did).
+
+        `accumulated_mcp_calls` (2026-09-15 fix): a remote MCP tool call
+        (add_client, create_invoice, ...) is a tool call like any other -
+        this loop already re-runs and re-follows-up local tools across every
+        round without losing earlier rounds' results (that's its whole
+        point); an MCP call executed in one round must be preserved the same
+        way, not just whatever the FINAL round's own response happens to
+        carry. Before this fix, an MCP call that executed in an early round
+        (e.g. the approval round itself) silently vanished from the turn's
+        reported mcp_calls the moment ANY later round ran for an unrelated
+        reason (a local tool call this turn also happened to make) - a real,
+        billed failure (test_fee_agreement_generation_flow.py's
+        _seed_client-driven add_client flow) is what surfaced this: the
+        client genuinely got added, the model even said so in its own reply,
+        but the turn's mcp_calls came back empty because a react_to_message
+        follow-up round ran afterward and became `current_response`. Fixed
+        the same way orchestration handles everything else here: accumulate
+        as you go, across every round, not just the last one.
         """
         current_response = response
         usage_response = response
         extra_tokens = extra_prompt_tokens = extra_completion_tokens = 0
         ledger_event_ids: List[str] = []
+        accumulated_mcp_calls: List[Dict[str, Any]] = self._extract_mcp_call_items(response)
         for _loop_round in range(MAX_LOCAL_TOOL_LOOP_ITERATIONS):
             # Bugfix (2026-09-13): every immediate-dispatch local tool type
             # (query_ledger_events, list_reminders, send_progress_update,
@@ -3466,6 +3784,7 @@ class AIHandler:
                 extra_tokens += local_tools_followup.usage.total_tokens
                 extra_prompt_tokens += local_tools_followup.usage.input_tokens
                 extra_completion_tokens += local_tools_followup.usage.output_tokens
+                accumulated_mcp_calls.extend(self._extract_mcp_call_items(local_tools_followup))
                 continue
 
             break  # a full pass made no progress - current_response is final
@@ -3481,6 +3800,7 @@ class AIHandler:
         return (
             current_response, extra_tokens, extra_prompt_tokens,
             extra_completion_tokens, usage_response, ledger_event_ids,
+            accumulated_mcp_calls,
         )
 
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
@@ -3515,6 +3835,7 @@ class AIHandler:
         (
             current_response, extra_tokens, extra_prompt_tokens,
             extra_completion_tokens, usage_response, ledger_event_ids,
+            accumulated_mcp_calls,
         ) = self._run_local_tool_dispatch_loop(
             request, response, effective_chat_id, sender, tools
         )
@@ -3571,23 +3892,35 @@ class AIHandler:
                 response_text = modify_delete_details
                 new_local_tool_pending_created = modify_delete_pending_created
 
+        # Fee Agreement Document Generation (Feature 083, 2026-09-13 redesign):
+        # no proposal/approval step exists any more for this feature -
+        # get_fee_agreement_template/render_fee_agreement_document both
+        # dispatch immediately from inside _run_local_tool_dispatch_loop,
+        # same as verify/send. Nothing to do here.
+
         # bugfix-045-followup (2026-08-27): this used to need its own
         # all_output_items union of response.output + a same-turn ledger-
         # capture followup's output, to fix the exact scenario the bugfix-045
         # near-duplicate-name regression test exposed (a capture_ledger_event
         # follow-up round ALSO proposing an approval-gated Morning tool, e.g.
         # add_client, whose mcp_approval_request then went undetected).
-        # Superseded by the merge from master (2026-08-27): the
-        # `_run_local_tool_dispatch_loop` architectural fix above (2026-08-25,
-        # landed independently on master while this branch was still on the
-        # pre-loop code) already reassigns `response = current_response` to
-        # whichever response the loop actually settled on - `response.output`
-        # below is now already correct on its own, loop-followup items
-        # included, so the extra union is redundant (and would in fact be
-        # broken here, since the loop no longer exposes a same-named
-        # `followup` local variable to reference). Re-verified: the
-        # regression test still passes against this simpler, already-fixed
-        # upstream code.
+        #
+        # 2026-09-15 correction: the "superseded, already fixed" claim
+        # previously written here was WRONG - `response = current_response`
+        # only ever reflects the LOOP'S LAST round. That's fine for
+        # DETECTING a pending approval that only surfaces late, but it
+        # silently drops an mcp_call that already EXECUTED in an earlier
+        # round the moment any later round runs for an unrelated reason
+        # (real, billed failure, test_fee_agreement_generation_flow.py's
+        # add_client seeding: the approval round genuinely executed
+        # add_client, a further local-tool round then ran for something
+        # else entirely, and the turn's reported mcp_calls came back empty
+        # even though the model's own reply said the client was added). An
+        # MCP call is a tool call like any other kind this loop tracks -
+        # `_run_local_tool_dispatch_loop` now accumulates every round's
+        # mcp_call items as it goes (`accumulated_mcp_calls`), the same way
+        # it already accumulates token deltas, instead of re-deriving
+        # mcp_calls from a single response.output at the end.
         logger.info(
             f"[022] _finalize_response: response.id={getattr(response, 'id', None)!r}, "
             f"effective_chat_id={effective_chat_id!r}, "
@@ -3599,17 +3932,12 @@ class AIHandler:
         # also lets E2E tests verify tool usage without a second AI call).
         # Includes arguments/output for diagnosability (e.g. confirming
         # which internal_morning_id the model actually passed to a follow-up tool
-        # call) - never logged/returned with secrets, just tool I/O.
-        mcp_calls = [
-            {
-                "name": item.name,
-                "error": item.error,
-                "arguments": item.arguments,
-                "output": item.output
-            }
-            for item in (response.output or [])
-            if getattr(item, "type", None) == "mcp_call"
-        ]
+        # call) - never logged/returned with secrets, just tool I/O. Accumulated
+        # across every round of this turn (see _run_local_tool_dispatch_loop's
+        # `accumulated_mcp_calls`), not just re-derived from the LAST round's
+        # own response.output - a real, executed mcp_call must never vanish
+        # just because a later, unrelated round also ran this same turn.
+        mcp_calls = accumulated_mcp_calls
         if mcp_calls:
             logger.info(f"MCP calls for request {request.request_id}: {mcp_calls}")
             # Feature 080 (REQ-080-04): record each Morning MCP tool call for the
@@ -4262,6 +4590,7 @@ class AIHandler:
         # If the model produced no report call at all (only text, or it spent its
         # query budget without reporting), that is a plain `none` - not a retry case.
         if not extract_all_function_calls(response, RECOGNITION_TOOL_NAME):
+            logger.info("[069] recognition verdict=none (no report_ledger_recognition call at all)")
             return {"verdict": "none"}
 
         args = self._extract_recognition_args(response)
@@ -4312,6 +4641,7 @@ class AIHandler:
     @staticmethod
     def _normalize_recognition_verdict(args: Optional[Dict]) -> Dict:
         if not args:
+            logger.info("[069] recognition verdict=none (unparseable/absent report call after retry)")
             return {"verdict": "none"}
         verdict = args.get("verdict")
         if verdict == "complete":
@@ -4327,6 +4657,7 @@ class AIHandler:
                 "client_name_stated": args.get("client_name_stated"),
                 "reason": args.get("reason") or "declined_by_operator",
             }
+        logger.info(f"[069] recognition verdict=none reason={args.get('none_reason')!r}")
         return {"verdict": "none"}
 
     def _call_openai_approval_api(self, request: AIRequest, pending: PendingApproval,

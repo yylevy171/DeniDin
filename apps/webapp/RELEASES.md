@@ -25,3 +25,11 @@ Feature 080: always-on progress updates, typing keep-alive, telemetry plumbing; 
 ## webapp v0.7.3 — 2026-09-14
 
 supporting daily backups
+
+## webapp v0.7.4 — 2026-09-15
+
+Feature 083: Fee agreement document generation over WhatsApp (RBAC-gated get/render/verify/send tools, DocTemplateEngine, Word templates), with RBAC-only gating (no separate feature flag) and no automated page-count check (LibreOffice unavailable in the runtime container - one-page discipline is the model's own judgment).
+
+## webapp v0.7.5 — 2026-09-15
+
+Reconciliation release: combines Feature 083 (fee agreement document generation) with Feature 078 (prod daily backups) and the v0.7.4 fee-agreement-docs cut, which was mistakenly cut from a stale pre-078 branch base and is being superseded.
