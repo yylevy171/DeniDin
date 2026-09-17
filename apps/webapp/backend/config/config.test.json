@@ -4,6 +4,11 @@
   "denidin_src_path": "",
   "password_hash_file": "./test_data/auth/password.hash",
   "session_expiry_hours": 168,
+  "clients_data_root": "",
+  "morning_api_key_id": "",
+  "morning_api_key_secret": "",
+  "morning_auth_url": "",
+  "morning_api_url": "",
   "http": {
     "host": "127.0.0.1",
     "port": 8199,

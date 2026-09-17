@@ -124,6 +124,60 @@ export async function searchClients(prefix: string): Promise<string[]> {
   return body.clients || [];
 }
 
+export interface ClientEvent {
+  date: string;
+  amount: number;
+  type: string;
+  subtype: string;
+  desc: string;
+}
+export interface ClientRow {
+  official_name: string;
+  raw_names: string[];
+  agreements_total: number;
+  deposits_total: number;
+  invoices_net: number;
+  manual_agreement_amount: number | null;
+  agreed_status: "WHITE" | "YELLOW" | "GRAY";
+  paid_status: "WHITE" | "YELLOW" | "GRAY";
+  display_agreed: number;
+  display_paid: number;
+  status: "active" | "settled" | "debt" | "missing_agreement" | "check" | "past";
+  is_manually_settled: boolean;
+  latest_activity: string | null;
+  comment: string;
+  events: ClientEvent[];
+}
+export interface UnmatchedEntry {
+  raw_name: string;
+  suggested_matches: string[];
+  event_count: number;
+  raw_text: string[];
+  note: string;
+}
+export async function fetchClients(): Promise<{ clients: ClientRow[]; unmatched: UnmatchedEntry[] }> {
+  const resp = await request("/api/clients");
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(body.message || "clients_fetch_failed");
+  }
+  return resp.json();
+}
+export async function saveClientComment(clientId: string, comment: string): Promise<void> {
+  await request(`/api/clients/${encodeURIComponent(clientId)}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comment }),
+  });
+}
+export async function saveClientMapping(rawName: string, officialName: string): Promise<void> {
+  await request("/api/clients/mapping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ raw_name: rawName, official_name: officialName }),
+  });
+}
+
 // <img> can't carry an Authorization header, so fetch the bytes with auth and hand back an
 // object URL. Callers should revoke it when the element unmounts.
 export async function fetchMediaObjectUrl(path: string): Promise<string> {

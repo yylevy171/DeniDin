@@ -18,11 +18,13 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from webapp_backend.auth import PasswordVerifier, SessionStore
+from webapp_backend.clients_reader import ClientsReader
 from webapp_backend.config import AppConfig
 from webapp_backend.context_reader import ContextReader
 from webapp_backend.health_checks import build_health_check_fns, start_heartbeat_thread
 from webapp_backend.ledger_reader import DEFAULT_DAYS_BACK, LedgerReader
 from webapp_backend.logger import resolve_log_path, setup_logging
+from webapp_backend.morning_client_source import MorningClientSource, MorningClientSourceError
 
 logger = logging.getLogger("webapp_backend")
 
@@ -67,6 +69,15 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
     sessions = SessionStore(config.session_expiry_hours)
     reader = LedgerReader(config.denidin_data_root)
     context_reader = ContextReader(config.denidin_data_root)
+    morning_source = MorningClientSource(
+        api_key_id=config.morning_api_key_id,
+        api_key_secret=config.morning_api_key_secret,
+        auth_url=config.morning_auth_url,
+        api_url=config.morning_api_url,
+    )
+    clients_reader = ClientsReader(
+        config.denidin_data_root, config.clients_data_root, morning_source.list_active_client_names
+    )
     version = read_version()
     if not verifier.usable:
         logger.warning(
@@ -155,6 +166,40 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
             )
         )
 
+    async def clients(_request: Request) -> JSONResponse:
+        try:
+            return JSONResponse(clients_reader.get_report())
+        except MorningClientSourceError as exc:
+            logger.warning("Morning client-list fetch failed: %s", exc)
+            return _error(
+                "morning_unavailable",
+                "לא ניתן לטעון את רשימת הלקוחות ממורנינג כעת. נסו שוב מאוחר יותר.",
+                503,
+            )
+
+    async def client_comment(request: Request) -> JSONResponse:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 - malformed body is just a bad request
+            body = {}
+        comment = body.get("comment") if isinstance(body, dict) else None
+        if not isinstance(comment, str):
+            return _error("bad_request", "comment is required.", 400)
+        result = clients_reader.save_comment(request.path_params["client_id"], comment)
+        return JSONResponse(result)
+
+    async def client_mapping(request: Request) -> JSONResponse:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        raw_name = body.get("raw_name") if isinstance(body, dict) else None
+        official_name = body.get("official_name") if isinstance(body, dict) else None
+        if not isinstance(raw_name, str) or not isinstance(official_name, str) or not raw_name:
+            return _error("bad_request", "raw_name and official_name are required.", 400)
+        result = clients_reader.save_mapping(raw_name, official_name)
+        return JSONResponse(result)
+
     async def media(request: Request) -> Response:
         path = context_reader.resolve_media(request.path_params["token"])
         if path is None:
@@ -171,6 +216,9 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
             Route("/api/events/{event_id}", event_detail, methods=["GET"]),
             Route("/api/events/{event_id}/context", event_context, methods=["GET"]),
             Route("/api/clients/search", clients_search, methods=["GET"]),
+            Route("/api/clients", clients, methods=["GET"]),
+            Route("/api/clients/{client_id}/comments", client_comment, methods=["POST"]),
+            Route("/api/clients/mapping", client_mapping, methods=["POST"]),
             Route("/api/media/{token}", media, methods=["GET"]),
         ]
     )
