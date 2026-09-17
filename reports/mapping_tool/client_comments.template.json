@@ -1,0 +1,4 @@
+{
+  "_comment": "Template for client operational comments. In production, this file is populated from analyst data.",
+  "Example Client Name": "Example comment: Agreement signed, awaiting bank transfer"
+}
