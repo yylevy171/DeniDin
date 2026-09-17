@@ -1,17 +1,17 @@
-# Integration Contract: Clients API (`apps/webapp/backend` ↔ frontend, and ↔ `morning-mcp-app`)
+# Integration Contract: Clients API (`apps/webapp/backend` ↔ frontend, and ↔ Morning API)
 
 ## 1. Frontend ↔ webapp-backend
 
 ### `GET /api/clients`
 - Auth: same `SessionAuthMiddleware` bearer-token gate as every other `/api/*` route — no new auth code.
 - Behavior: on each call, `ClientsReader.get_report_data()`:
-  1. Fetches the live official client list from `morning-mcp-app` (see §2 below).
+  1. Fetches the live official client list directly from Morning via `MorningClient.search_clients()` (see §2 below) — no MCP, no AI call.
   2. Loads ledger events from `{data_root}/events` via the existing `LedgerEventManager`-loader pattern (`ledger_reader.py`'s `_load_ledger_event_manager_class()`), read-fresh per call (this feature does not depend on bugfix-064's fix, but benefits from it — Events tab and Clients tab should both see current data once 064 lands).
   3. Loads `{data_root}/clients/{client_mapping,client_comments,mapping_notes}.json`.
   4. Runs the ported aggregation/matching/status logic (`generate_client_status.py`'s behavior, unchanged).
   5. Overwrites `{data_root}/clients/{removed_clients,new_morning_clients}.json` (preserved side effect, per Clarifications).
   6. Returns `{ clients: ClientRow[], unmatched: UnmatchedEntry[] }` (data-model.md).
-- Errors: if the Morning fetch fails (tunnel down, MCP unavailable), respond `503` with a friendly message — do NOT silently return ledger-only data with clients missing, since that would misrepresent debt/status. Frontend surfaces this as a retryable banner, not a partial table.
+- Errors: if the Morning fetch fails (network error, 4xx/5xx from Morning, bad credentials), respond `503` with a friendly message — do NOT silently return ledger-only data with clients missing, since that would misrepresent debt/status. Frontend surfaces this as a retryable banner, not a partial table.
 
 ### `POST /api/clients/{client_id}/comments`
 - Body/response: data-model.md.
@@ -23,12 +23,13 @@
 - Persists to `{data_root}/clients/client_mapping.json`.
 - Per UAT-3 ("subsequent ledger queries reflect the resolved client profile"), the *next* `GET /api/clients` call picks up the new mapping — no separate re-aggregation trigger needed since GET always recomputes fresh.
 
-## 2. webapp-backend ↔ morning-mcp-app (new cross-app call)
+## 2. webapp-backend ↔ Morning API (direct, via `MorningClient` import — new cross-app dependency)
 
-- Discovery: read the environment's `shared/mcp-status-<env>/` status file (same file `denidin-app` reads) to get the live ngrok tunnel URL — reuse `denidin-app`'s bounded-retry-with-backoff pattern for this read, not a one-shot check (Constitution Check §XVIII gate).
-- Call: a minimal MCP client invocation of `morning-mcp-app`'s `list_clients` tool over its streamable-HTTP MCP endpoint, bearer-authed with the same shared secret `denidin-app` uses (`config.mcp.auth_token`-equivalent, added to `apps/webapp/backend`'s own config).
-- No code import of `denidin_mcp_morning` — HTTP/MCP-protocol only, consistent with every other cross-app boundary in this repo.
-- Failure handling: any failure (tunnel down, timeout, malformed response) propagates to `GET /api/clients`'s `503` path above — never a silent empty client list.
+- `apps/webapp/backend` imports `denidin_mcp_morning.morning_client.MorningClient` directly (code import, `apps/morning-mcp-app/src` added to `sys.path` the same way `apps/denidin-app/src` already is — see `webapp_backend/__init__.py`'s existing bootstrap pattern).
+- `apps/webapp/backend` holds its **own** Morning API credentials (`api_key_id`/`api_key_secret`/`api_url`) in its own config (`config.dev.json`/`config.prod.json`) — a second, independently-configured credential set for the same Morning account, not shared/passed from `morning-mcp-app`.
+- Call: `MorningClient(...).search_clients({})` (or the minimal payload needed for "all active clients") — a plain synchronous HTTPS call to Morning's real API. Retry-on-5xx/timeout is already built into `MorningClient`'s session (`_build_session`, urllib3 `Retry`) — no additional retry logic needed in webapp-backend.
+- `morning-mcp-app`'s own service, container, ngrok tunnel, and MCP protocol are **entirely uninvolved** — this call works whether or not `morning-mcp-app` is running.
+- Failure handling: any failure (network error, non-2xx, malformed response) propagates to `GET /api/clients`'s `503` path above — never a silent empty client list.
 
 ## 3. Frontend tab contract
 

@@ -12,9 +12,10 @@ appear in the header nav. Switching tabs must not trigger a full page reload.
 
 ## Verifying the Clients tab end-to-end
 
-1. Ensure `morning-mcp-app` dev is running (`./run_morning_mcp.sh dev`, per the
-   "NEVER START AN ENVIRONMENT WITHOUT EXPLICIT APPROVAL" rule — ask before running) so
-   the live client-list fetch has something to talk to.
+1. Ensure `apps/webapp/backend/config/config.dev.json` has its own real Morning
+   sandbox credentials (`api_key_id`/`api_key_secret`/`api_url`) filled in — the
+   Clients tab talks to Morning directly and does **not** need `morning-mcp-app`
+   running at all.
 2. Load the "לקוחות" tab — it should show the same clients Morning's dev sandbox knows
    about, reconciled against whatever ledger events exist under the dev `data_root`.
 3. Edit a comment inline (UAT-2) — confirm it persists to
