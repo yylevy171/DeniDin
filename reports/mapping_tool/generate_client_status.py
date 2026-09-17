@@ -5,12 +5,16 @@ import os
 import difflib
 from collections import defaultdict
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+
 EVENTS_DIR = os.path.expanduser("~/denidin-winprod-data/events")
-CSV_PATH = "reports/clients (1).csv"
-MAPPING_FILE = "reports/client_mapping.json"
-NOTES_FILE = "reports/mapping_notes.json"
-CLIENT_COMMENTS_FILE = "reports/client_comments.json"
-NEW_MORNING_CLIENTS_FILE = "reports/new_morning_clients.json"
+CSV_PATH = os.path.join(PROJECT_ROOT, "reports", "data_exports", "clients (2).csv")
+MAPPING_FILE = os.path.join(BASE_DIR, "client_mapping.json")
+NOTES_FILE = os.path.join(BASE_DIR, "mapping_notes.json")
+CLIENT_COMMENTS_FILE = os.path.join(BASE_DIR, "client_comments.json")
+NEW_MORNING_CLIENTS_FILE = os.path.join(BASE_DIR, "new_morning_clients.json")
+REMOVED_CLIENTS_FILE = os.path.join(BASE_DIR, "removed_clients.json")
 
 def get_official_clients():
     clients = []
@@ -216,16 +220,24 @@ def get_report_data():
         if src_type == "הסכם":
             target_dict["agreements"] += amount
             if not matched_client:
-                text = data.get("description") or data.get("trigger_condition") or "No description"
+                text = data.get("description") or data.get("trigger_condition") or "הסכם ללא פירוט"
                 date_prefix = f"[{event_date_obj.strftime('%d.%m.%y')}] " if event_date_obj else ""
-                unmatched[original_name]["raw_text"].add(date_prefix + text)
+                unmatched[original_name]["raw_text"].add(f"{date_prefix}הסכם (₪{amount:,.2f}): {text}")
         elif src_type == "בנק":
-            pass  # Completely ignored per CEO instructions
-        elif src_type == "חשבונית" and matched_client:
-            if subtype in plus_types:
-                target_dict["invoices_net"] += amount
-            elif subtype in minus_types:
-                target_dict["invoices_net"] -= amount
+            if not matched_client:
+                text = data.get("description") or data.get("trigger_condition") or "הפקדת בנק / שיק"
+                date_prefix = f"[{event_date_obj.strftime('%d.%m.%y')}] " if event_date_obj else ""
+                unmatched[original_name]["raw_text"].add(f"{date_prefix}הפקדת בנק (₪{amount:,.2f}): {text}")
+        elif src_type == "חשבונית":
+            if matched_client:
+                if subtype in plus_types:
+                    target_dict["invoices_net"] += amount
+                elif subtype in minus_types:
+                    target_dict["invoices_net"] -= amount
+            else:
+                text = data.get("description") or data.get("trigger_condition") or subtype or "מסמך מורנינג"
+                date_prefix = f"[{event_date_obj.strftime('%d.%m.%y')}] " if event_date_obj else ""
+                unmatched[original_name]["raw_text"].add(f"{date_prefix}חשבונית/מסמך (₪{amount:,.2f}): {text}")
 
     import re
     import collections
@@ -264,12 +276,18 @@ def get_report_data():
                     except ValueError:
                         stats[c]["agreed_status"] = "YELLOW"
                 else:
-                    matches = re.findall(r"הסכם\s+(?:\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?\s+)?(?:-\s*)?([1-9][\d,]{2,})", comment)
+                    matches = re.findall(r"הסכם\s+(?:\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?\s+)?(?:-\s*)?([1-9][\d,+]{2,})", comment)
                     if matches:
                         try:
-                            amt = sum(float(m.replace(",", "")) for m in matches)
-                            if amt > 0:
-                                stats[c]["manual_agreement_amount"] = amt
+                            total_amt = 0.0
+                            for m in matches:
+                                clean_m = m.rstrip(",").rstrip(".").strip()
+                                if "+" in clean_m:
+                                    total_amt += sum(float(part.replace(",", "").strip()) for part in clean_m.split("+") if part.replace(",", "").strip())
+                                else:
+                                    total_amt += float(clean_m.replace(",", ""))
+                            if total_amt > 0:
+                                stats[c]["manual_agreement_amount"] = total_amt
                                 stats[c]["agreed_status"] = "YELLOW" if is_unclear else "GRAY"
                         except ValueError:
                             stats[c]["agreed_status"] = "YELLOW"
@@ -296,9 +314,9 @@ def get_report_data():
             elif is_unclear and stats[c]["paid_status"] == "WHITE":
                 stats[c]["paid_status"] = "YELLOW"
 
-        if stats[c]["latest_activity"]:
+        if stats[c]["latest_activity"] and hasattr(stats[c]["latest_activity"], "isoformat"):
             stats[c]["latest_activity"] = stats[c]["latest_activity"].isoformat()
-            
+
         stats[c]["raw_names"] = list(stats[c]["raw_names"])
         def sort_key(e):
             dt = e["date"]
@@ -313,8 +331,127 @@ def get_report_data():
             if len(parts) > 1:
                 d_str += parts[1]
             return d_str
-            
+
         stats[c]["events"].sort(key=sort_key)
+
+    # Apply Directives from client_comments:
+    # 1. Merge (לאחד / אוחד): add numbers & events to target client, remove source client
+    # 2. Check (לבדוק): flag for dedicated follow-up section at bottom
+    # 3. Close (לסגור): adjust missing numbers to match, mark as manually settled green
+
+    # Collect merge directives
+    merges_to_apply = [] # (source_client, target_client)
+    for c, comment_text in client_comments.items():
+        if not comment_text:
+            continue
+        if "לאחד" in comment_text or "אוחד" in comment_text:
+            m = re.search(r'[״\"\'׳]([^״\"\'׳]+)[״\"\'׳]', comment_text)
+            if m:
+                target_raw = m.group(1).strip()
+                norm = target_raw.replace('׳', '').replace('״', '').replace("'", '').replace('"', '').strip()
+                resolved_target = None
+                if target_raw in stats:
+                    resolved_target = target_raw
+                else:
+                    for oc in official_clients:
+                        oc_norm = oc.replace('׳', '').replace('״', '').replace("'", '').replace('"', '').strip()
+                        if norm == oc_norm:
+                            resolved_target = oc
+                            break
+                    if not resolved_target:
+                        words = [w for w in norm.split() if len(w) > 2]
+                        best_candidate = None
+                        best_score = 0
+                        for oc in official_clients:
+                            if 'קאולה' in oc and ('קואלה' in norm or 'פאות' in norm):
+                                best_candidate = oc
+                                best_score = 999
+                                break
+                            score = sum(1 for w in words if w in oc)
+                            if score > best_score:
+                                best_score = score
+                                best_candidate = oc
+                        if best_score > 0:
+                            resolved_target = best_candidate
+                        else:
+                            matches = difflib.get_close_matches(target_raw, official_clients, n=1, cutoff=0.4)
+                            if matches:
+                                resolved_target = matches[0]
+
+                if resolved_target and resolved_target in stats and resolved_target != c:
+                    merges_to_apply.append((c, resolved_target))
+
+    for src, tgt in merges_to_apply:
+        if src in stats and tgt in stats:
+            src_data = stats[src]
+            tgt_data = stats[tgt]
+            # Merge amounts
+            tgt_data["agreements"] += src_data["agreements"]
+            tgt_data["deposits"] += src_data["deposits"]
+            tgt_data["invoices_net"] += src_data["invoices_net"]
+            if src_data.get("manual_agreement_amount") is not None:
+                if tgt_data.get("manual_agreement_amount") is not None:
+                    tgt_data["manual_agreement_amount"] += src_data["manual_agreement_amount"]
+                else:
+                    tgt_data["manual_agreement_amount"] = tgt_data["agreements"] + src_data["manual_agreement_amount"]
+            # Merge events and raw names
+            tgt_data["events"].extend(src_data["events"])
+            tgt_data["raw_names"].extend([r for r in src_data["raw_names"] if r not in tgt_data["raw_names"]])
+            if src not in tgt_data["raw_names"]:
+                tgt_data["raw_names"].append(src)
+            # Mark source as merged away
+            src_data["is_merged_away"] = True
+
+    # Process Check, Close, Active, and Delete flags
+    removed_clients = []
+    for c in stats:
+        comment_text = client_comments.get(c, "")
+        if not comment_text:
+            continue
+
+        # Active Client directive (לקוח פעיל)
+        if "לקוח פעיל" in comment_text or "לקוחה פעילה" in comment_text:
+            stats[c]["is_active_client"] = True
+
+        # Delete directive (למחוק / להסיר) -> Move to Past Clients
+        if "למחוק" in comment_text or (comment_text.strip() == "להסיר") or ("להסיר מהרשימה" in comment_text and not stats[c].get("is_merged_away")):
+            stats[c]["is_delete_past"] = True
+            removed_clients.append({
+                "client_name": c,
+                "reason": comment_text,
+                "agreements": stats[c]["agreements"],
+                "invoices_net": stats[c]["invoices_net"]
+            })
+            continue
+
+        # Check directive (לבדוק)
+        if "לבדוק" in comment_text:
+            stats[c]["is_check"] = True
+
+        # Close directive (לסגור / אפשר לסגור) - strictly close, not triggered by incidental words like 'נסגר'
+        is_explicit_close = ("לסגור" in comment_text or "אפשר לסגור" in comment_text) and not stats[c].get("is_check")
+        if is_explicit_close:
+            stats[c]["is_manually_settled"] = True
+            cur_agreed = stats[c].get("manual_agreement_amount")
+            if cur_agreed is None:
+                cur_agreed = stats[c]["agreements"]
+            cur_paid = stats[c].get("invoices_net", 0.0)
+
+            matched_val = max(cur_agreed, cur_paid)
+            if matched_val > 0:
+                stats[c]["manual_agreement_amount"] = matched_val
+                stats[c]["invoices_net"] = matched_val
+                # If agreement was shifted up, color agreement YELLOW (inferred)
+                if cur_agreed < matched_val:
+                    stats[c]["agreed_status"] = "YELLOW"
+                    stats[c]["agreed_inferred"] = True
+                # If payment was shifted up, color payment YELLOW (inferred)
+                if cur_paid < matched_val:
+                    stats[c]["paid_status"] = "YELLOW"
+                    stats[c]["paid_inferred"] = True
+
+    with open(REMOVED_CLIENTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(removed_clients, f, ensure_ascii=False, indent=4)
         
     final_unmatched = {}
     new_morning_clients = []
