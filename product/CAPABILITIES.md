@@ -5,6 +5,7 @@ Customer-facing functional features, conversational intelligence, and business c
 
 ## Features
 
+- **087**: `087-webapp-clients-mgmt` — Status: Backlog
 - **086**: `086-combo-doc-closing-multiple-300-accounts` — Status: Repo
 - **084**: `084-whatsapp-reactions` — Status: Done (v0.7.1)
 - **083**: `083-fee-agreement-docs` — Status: Done (v0.7.5)
@@ -15,103 +16,130 @@ Customer-facing functional features, conversational intelligence, and business c
 - **077**: `077-long-term-memory-assembly` — Status: Repo
 - **076**: `076-edited-reaction-deleted-message-support` — Status: Done (v0.7.0)
 - **074**: `074-morning-client-name-cache-alias` — Status: Obsolete
-- **072**: `072-morning-client-name-cache` — Status: In-Progress
+- **072**: `072-morning-client-name-cache` — Status: In-progress
 - **071**: `071-pdf-single-call-extraction` — Status: Repo
-- **070**: `070-rolling-memory-window` — Status: Done (v0.6.0)
+- **070**: `070-rolling-memory-window` — Status: Repo
 - **069**: `069-mandatory-client-resolution-before-ledger-event` — Status: Done (v0.7.0)
 - **068**: `068-ledger-ui-and-reports` — Status: Done (v0.7.0)
 - **067**: `067-realistic-message-handling` — Status: Backlog
 - **066**: `066-support-bit-and-paybox` — Status: Backlog
 - **064**: `064-bank-deposit-full-cycle` — Status: Backlog
+- **061**: `061-prod-morning-ledger-backfill` — Status: Done (v0.5.3)
 - **060**: `060-duplicate-bank-image-detection` — Status: Repo
-- **058**: `058-morning-docs-calculation-nuances` — Status: Low-Priority
+- **059**: `059-stabilize-tests-sanity-suite` — Status: Done (v0.5.4)
+- **058**: `058-morning-docs-calculation-nuances` — Status: Low-priority
 - **056**: `056-receipts-without-invoice` — Status: Done (v0.5.1)
 - **055**: `055-multiple-clients-godfathers` — Status: Repo
 - **054**: `054-reminders-functionality-mgmt` — Status: Done (v0.5.0)
-- **052**: `052-ledger-events-csv-export` — Status: Low-Priority
+- **053**: `053-morning-api-auth-migration` — Status: Done (v0.4.2)
+- **052**: `052-ledger-events-csv-export` — Status: Low-priority
 - **051**: `051-hourly-reporting-payment-request` — Status: Backlog
 - **050**: `050-post-image-action-suggestions` — Status: Obsolete
-- **049**: `049-user-editable-context-memory` — Status: Low-Priority
+- **049**: `049-user-editable-context-memory` — Status: Low-priority
 - **048**: `048-whatsapp-typing-indicator` — Status: Done (v0.4.2)
 - **047**: `047-whatsapp-interactive-approval-buttons` — Status: Done (v0.4.3)
 - **046**: `046-hebrew-approval-synonyms` — Status: Done (v0.2.3)
 - **045**: `045-mark-messages-read` — Status: Done (v0.2.3)
 - **044**: `044-ledger-event-querying` — Status: Done (v0.5.2)
+- **042**: `042-lift-dev-prod-concurrency-ban` — Status: Done (v0.2.1)
+- **041**: `041-mcp-2.0-migration-dependency-pinning` — Status: Low-priority
 - **040**: `040-agreement-cancellation-modification` — Status: Backlog
 - **039**: `039-group-conversation-support` — Status: Done (v0.2.0)
 - **038**: `038-morning-long-list-support` — Status: Done (v0.2.1)
 - **037**: `037-morning-document-detail-enhancement` — Status: Obsolete
+- **034**: `034-versioning-release-mgmt` — Status: Done (v0.0.1)
 - **033**: `033-ledger-event-persistence` — Status: Done (v0.2.0)
 - **032**: `032-whatsapp-reply-reference-resolution` — Status: Backlog
 - **031**: `031-fuzzy-client-lookup-by-name` — Status: Done (v0.0.1)
 - **030**: `030-vcf-contact-card-client-creation` — Status: Done (v0.0.1)
+- **029**: `029-split-billed-vs-expensive-tests` — Status: Done (v0.2.1)
+- **028**: `028-monitoring-and-alerting` — Status: Backlog
 - **027**: `027-mandatory-client-reference-invoicing` — Status: Done (v0.3.0)
 - **026**: `026-client-management` — Status: Done (v0.0.1)
+- **025**: `025-morning-sourced-ledger-events` — Status: Done (v0.5.2)
 - **024**: `024-ledger-event-recognition` — Status: Done (v0.0.1)
 - **023**: `023-reference-linked-document-creation` — Status: Done (v0.0.1)
 - **022**: `022-explicit-approval-for-document-creation` — Status: Done (v0.0.1)
 - **021**: `021-flexible-document-creation` — Status: Done (v0.0.1)
 - **020**: `020-flexible-invoice-payment-methods` — Status: Done (v0.0.1)
 - **018**: `018-denidin-morning-mcp-integration` — Status: Done (v0.0.1)
-- **017**: `017-mcp-morning-receipt-parsing` — Status: Low-Priority
-- **015**: `015-topic-based-access-control` — Status: Low-Priority
+- **017**: `017-mcp-morning-receipt-parsing` — Status: Low-priority
+- **015**: `015-topic-based-access-control` — Status: Low-priority
 - **014**: `014-entity-extraction-group-messages` — Status: Obsolete
 - **013**: `013-proactive-whatsapp-messaging-core` — Status: Obsolete
-- **009**: `009-agentic-workflow-builder` — Status: Low-Priority
-- **008**: `008-scheduled-proactive-chats` — Status: Low-Priority
+- **012**: `012-update-bot-terminology-to-app` — Status: Done (v0.0.1)
+- **011**: `011-rename-botconfiguration-to-appconfiguration` — Status: Done (v0.0.1)
+- **010**: `010-rename-openai-to-ai` — Status: Done (v0.0.1)
+- **009**: `009-agentic-workflow-builder` — Status: Low-priority
+- **008**: `008-scheduled-proactive-chats` — Status: Low-priority
 - **007**: `007-persistent-context-memory` — Status: Done (v0.0.1)
 - **006**: `006-rbac-user-roles` — Status: Done (v0.0.1)
 - **005**: `005-mcp-morning-green-receipt` — Status: Done (v0.0.1)
 - **004**: `004-mcp-whatsapp-server` — Status: Obsolete
 - **003**: `003-media-document-processing` — Status: Done (v0.0.1)
+- **002**: `002-007-memory-system` — Status: Done (v0.0.1)
 - **002**: `002-chat-session-management` — Status: Done (v0.0.1)
 - **001**: `001-whatsapp-chatbot-passthrough` — Status: Done (v0.0.1)
 
 ## Bugfixes
 
-- **061**: `bugfix-061-vat-prompt-conflict` — Status: Backlog
-- **060**: `bugfix-060-user-request-wins-over-system` — Status: Backlog
-- **059**: `bugfix-059-multiple-doc-request-failure` — Status: Backlog
+- **064**: `bugfix-064-webapp-stale-in-memory-ledger-index` — Status: Bugfixes
+- **061**: `bugfix-061-vat-prompt-conflict` — Status: Bugfixes
+- **060**: `bugfix-060-user-request-wins-over-system` — Status: Bugfixes
+- **059**: `bugfix-059-multiple-doc-request-failure` — Status: Bugfixes
+- **058**: `bugfix-058-persist-user-errors-in-session` — Status: Bugfixes
 - **056**: `bugfix-056-webapp-ui-gaps-vs-approved-playwright-plan` — Status: Repo
-- **054**: `bugfix-054-startup-drops-queued-messages` — Status: Backlog
+- **055**: `bugfix-055-bundled-app-stop-kills-sibling` — Status: Repo
+- **054**: `bugfix-054-startup-drops-queued-messages` — Status: Bugfixes
 - **053**: `bugfix-053-memory-questions-misrouted-to-ledger-query` — Status: Repo
+- **052**: `bugfix-052-billed-tests-share-one-session-per-file` — Status: Bugfixes
 - **051**: `bugfix-051-list-reminders-cross-chat-disclosure` — Status: Repo
 - **050**: `bugfix-050-morning-create-confirmations-omit-document-link` — Status: Repo
 - **049**: `bugfix-049-financial-status-answers-from-conversation-not-ledger` — Status: Repo
+- **048**: `bugfix-048-reconciliation-dedup-across-restart` — Status: Done (v0.5.4)
+- **047**: `bugfix-047-reconciliation-sweep-openai-timeout` — Status: Done (v0.5.4)
 - **046**: `bugfix-046-list-invoices-status-filter-contradicts-unfiltered-result` — Status: Repo
 - **045**: `bugfix-045-refuses-to-create-new-client-despite-clear-request` — Status: Done (v0.5.3)
-- **042**: `bugfix-042-reminders-invading-unrelated-turns` — Status: Backlog
-- **041**: `bugfix-041-no-reply-silently-skips-ledger-relevant-content` — Status: Obsolete
+- **044**: `bugfix-044-chat-context-lost-after-app-restart` — Status: Repo
+- **042**: `bugfix-042-reminders-invading-unrelated-turns` — Status: Bugfixes
+- **041**: `bugfix-041-no-reply-silently-skips-ledger-relevant-content` — Status: Repo
 - **040**: `bugfix-040-english-weekday-codes-in-reminder-approval` — Status: Done (v0.5.1)
+- **039**: `bugfix-039-artifacts` — Status: Done (v0.4.1)
 - **039**: `bugfix-039-list-invoices-skips-client-resolution` — Status: Done (v0.4.1)
 - **038**: `bugfix-038-group-b-approval-missing-reference-data` — Status: Done (v0.4.1)
-- **034**: `bugfix-034-ledger-bugs` — Status: Obsolete
+- **037**: `bugfix-037-mixed-timestamp-representation` — Status: Done (v0.4.0)
+- **034**: `bugfix-034-ledger-bugs` — Status: Repo
 - **033**: `bugfix-033-credit-notes-silently-dropped-from-financial-answers` — Status: Repo
-- **032**: `bugfix-032-phone-number-not-normalised` — Status: Backlog
-- **031**: `bugfix-031-hebrew-status-value-returns-empty-instead-of-error` — Status: Obsolete
-- **030**: `bugfix-030-message-sequencing-ambiguity` — Status: Obsolete
-- **029**: `bugfix-029-conversation-quality-p1-cluster` — Status: Obsolete
+- **032**: `bugfix-032-phone-number-not-normalised` — Status: Bugfixes
+- **031**: `bugfix-031-hebrew-status-value-returns-empty-instead-of-error` — Status: Repo
+- **030**: `bugfix-030-message-sequencing-ambiguity` — Status: Repo
+- **029**: `bugfix-029-conversation-quality-p1-cluster` — Status: Repo
 - **028**: `bugfix-028-invoicing-and-approval-gate-p0-cluster` — Status: Done (v0.4.1)
-- **027**: `bugfix-027-geresh-omitted-entirely-not-fuzzy-matched` — Status: Backlog
+- **027**: `bugfix-027-geresh-omitted-entirely-not-fuzzy-matched` — Status: Bugfixes
 - **026**: `bugfix-026-morning-documents-created-unsigned` — Status: Done (v0.3.0)
-- **025**: `bugfix-025-nickname-not-recognized-as-self-address` — Status: Obsolete
+- **025**: `bugfix-025-nickname-not-recognized-as-self-address` — Status: Repo
 - **024**: `bugfix-024-native-mention-by-phone-number` — Status: Done (v0.2.1)
-- **023**: `bugfix-023-ledger-tool-overeager-on-morning-query` — Status: Obsolete
+- **023**: `bugfix-023-ledger-tool-overeager-on-morning-query` — Status: Repo
 - **022**: `bugfix-022-openai-mcp-approval-duplicate-execution` — Status: Done (v0.2.0)
+- **021**: `bugfix-021-prod-active-env-json-mounted-as-directory` — Status: Done (v0.1.0)
 - **020**: `bugfix-020-green-api-empty-notification-response-crash` — Status: Done (v0.1.0)
 - **018**: `bugfix-018-ledger-event-parallel-followup-empty-response` — Status: Done (v0.0.1)
-- **015**: `bugfix-015-image-extraction-vision-refusal` — Status: Obsolete
+- **015**: `bugfix-015-image-extraction-vision-refusal` — Status: Repo
 - **014**: `bugfix-014-list-invoices-only-returns-one-of-many` — Status: Done (v0.0.1)
-- **013**: `bugfix-013-client-name-garbling-and-unrequested-date-narrowing` — Status: Not Reproducible
+- **013**: `bugfix-013-client-name-garbling-and-unrequested-date-narrowing` — Status: Repo
 - **012**: `bugfix-012-financial-summary-drops-nonallowlisted-invoice-types` — Status: Done (v0.0.1)
 - **011**: `bugfix-011-ai-declines-analytical-invoice-query` — Status: Done (v0.0.1)
 - **010**: `bugfix-010-active-session-context-lost-on-restart` — Status: Done (v0.0.1)
+- **010**: `bugfix-010-rbac-phone-jid-mismatch` — Status: Done (v0.0.1)
 - **009**: `bugfix-009-media-image-path-not-persisted` — Status: Done (v0.0.1)
 - **008**: `bugfix-008-extended-text-message-not-routed` — Status: Done (v0.0.1)
 - **007**: `bugfix-007-media-response-missing-chatid` — Status: Done (v0.0.1)
+- **007**: `bugfix-007-notification-data-validation` — Status: Done (v0.0.1)
+- **007**: `bugfix-007-test-plan` — Status: Done (v0.0.1)
 - **006**: `bugfix-006-media-file-empty` — Status: Done (v0.0.1)
-- **005**: `bugfix-005-media-file-empty` — Status: Obsolete
-- **004**: `bugfix-004-data-root-ignored` — Status: Obsolete
+- **005**: `bugfix-005-media-file-empty` — Status: Done (v0.0.1)
+- **005**: `bugfix-005-no-response-real-image` — Status: Done (v0.0.1)
+- **004**: `bugfix-004-data-root-ignored` — Status: Repo
 - **003**: `bugfix-003-poll-interval-unused` — Status: Done (v0.0.1)
 - **002**: `bugfix-002-max-retries-unused` — Status: Done (v0.0.1)
 - **001**: `bugfix-001-constitution-not-loaded` — Status: Done (v0.0.1)

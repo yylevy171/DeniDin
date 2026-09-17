@@ -67,20 +67,38 @@ def save_state(state: Dict[str, Any]):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
 
+def _match_item_entry(entry_name: str, item_type: str, item_id: str) -> bool:
+    if item_type == "feature":
+        return entry_name.startswith(f"{item_id}-") or entry_name == item_id
+    else:
+        return (
+            entry_name.startswith(f"bugfix-{item_id}-")
+            or entry_name == f"bugfix-{item_id}"
+            or entry_name == f"bugfix_{item_id}"
+            or entry_name.startswith(f"bugfix_{item_id}_")
+        )
+
 def get_item_status(item_type: str, item_id: str) -> Tuple[str, Optional[str]]:
     """Determine lifecycle status and optional release version from symlinks."""
-    for done_file in glob.glob(os.path.join(SPECS_DIR, "done", "**", f"*{item_id}*"), recursive=True):
-        rel = os.path.relpath(done_file, os.path.join(SPECS_DIR, "done"))
-        parts = rel.split(os.sep)
-        if len(parts) > 1 and parts[0].startswith("v"):
-            return "done", parts[0]
-        return "done", None
-    
-    for status, folder in STATUS_FOLDERS.items():
-        if status == "done":
-            continue
-        for entry in glob.glob(os.path.join(folder, f"*{item_id}*")):
-            return status, None
+    # 1. Check specs/done/vX.Y.Z/
+    done_root = os.path.join(SPECS_DIR, "done")
+    if os.path.exists(done_root):
+        for ver in sorted(os.listdir(done_root)):
+            if not ver.startswith("v"):
+                continue
+            v_path = os.path.join(done_root, ver)
+            if os.path.isdir(v_path):
+                for entry in os.listdir(v_path):
+                    if _match_item_entry(entry, item_type, item_id):
+                        return "done", ver
+
+    # 2. Check active lifecycle folders (in-progress, backlog/bugfixes, low-priority, obsolete)
+    for status in ("in-progress", "backlog", "bugfixes", "low-priority", "obsolete"):
+        folder = STATUS_FOLDERS.get(status)
+        if folder and os.path.exists(folder):
+            for entry in os.listdir(folder):
+                if _match_item_entry(entry, item_type, item_id):
+                    return status, None
             
     return "repo", None
 
@@ -96,7 +114,8 @@ def get_category_for_item(item_type: str, item_id: str) -> str:
     return "capability"
 
 def collect_all_items() -> List[Dict[str, Any]]:
-    items = []
+    features = []
+    bugfixes = []
     
     # Features
     if os.path.exists(REPO_FEATURES):
@@ -108,7 +127,7 @@ def collect_all_items() -> List[Dict[str, Any]]:
                 fid = entry.split("-")[0]
                 status, release = get_item_status("feature", fid)
                 category = get_category_for_item("feature", fid)
-                items.append({
+                features.append({
                     "type": "feature",
                     "id": fid,
                     "name": entry,
@@ -128,7 +147,7 @@ def collect_all_items() -> List[Dict[str, Any]]:
             bid = parts[1] if len(parts) > 1 else clean_name
             status, release = get_item_status("bugfix", bid)
             category = get_category_for_item("bugfix", bid)
-            items.append({
+            bugfixes.append({
                 "type": "bugfix",
                 "id": bid,
                 "name": clean_name,
@@ -138,7 +157,12 @@ def collect_all_items() -> List[Dict[str, Any]]:
                 "category": category
             })
             
-    return items
+    # Strictly sort features 001 -> 086
+    features.sort(key=lambda x: (int(x["id"]) if x["id"].isdigit() else 999, x["name"]))
+    # Strictly sort bugfixes 001 -> 062
+    bugfixes.sort(key=lambda x: (int(x["id"]) if x["id"].isdigit() else 999, x["name"]))
+    
+    return features + bugfixes
 
 def cmd_sync_product_files():
     """Regenerate CAPABILITIES.md, TESTING.md, OPERATIONS.md, HYGIENE.md."""
@@ -199,9 +223,49 @@ def run_cmd(cmd: List[str]) -> Tuple[int, str, str]:
     res = subprocess.run(cmd, cwd=REPO_ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return res.returncode, res.stdout.strip(), res.stderr.strip()
 
+def get_milestone_dates() -> Dict[str, Tuple[str, str]]:
+    """Derive release dates (YYYY-MM-DDTHH:MM:SSZ) and associated git tag for each version.
+    
+    Returns: { 'vX.Y.Z': ('2026-09-12T12:00:00Z', 'denidin-app-v0.7.0') }
+    """
+    code, tag_out, _ = run_cmd(["git", "tag", "-l", "--format=%(refname:short)|%(creatordate:iso8601)|%(authordate:iso8601)"])
+    tag_info = {}
+    if code == 0 and tag_out:
+        for line in tag_out.strip().split("\n"):
+            if not line:
+                continue
+            parts = line.split("|")
+            tag = parts[0]
+            date = parts[1] or (parts[2] if len(parts) > 2 else "")
+            import re
+            m = re.search(r"v([0-9]+\.[0-9]+\.[0-9]+)", tag)
+            if m:
+                v = "v" + m.group(1)
+                d_str = date.split(" ")[0] if date else ""
+                if v not in tag_info or (d_str and d_str < tag_info[v][0]):
+                    tag_info[v] = (d_str, tag)
+
+    # Fallback to specs/done/vX.Y.Z git commit log if no tag exists
+    done_root = os.path.join(SPECS_DIR, "done")
+    final_dates = {}
+    if os.path.exists(done_root):
+        for v in sorted(os.listdir(done_root)):
+            if not v.startswith("v"):
+                continue
+            if v in tag_info and tag_info[v][0]:
+                d_str, tag = tag_info[v]
+                final_dates[v] = (f"{d_str}T12:00:00Z", tag)
+            else:
+                p = os.path.join(done_root, v)
+                c, out, _ = run_cmd(["git", "log", "-n", "1", "--format=%ci", "--", p])
+                d_str = out.split(" ")[0] if (c == 0 and out) else "2026-09-07"
+                final_dates[v] = (f"{d_str}T12:00:00Z", "")
+
+    return final_dates
+
 def cmd_sync_github(dry_run: bool = False):
     """Sync all local features and bugfixes to GitHub Issues & Milestones."""
-    print("Syncing local specifications to GitHub Issues...")
+    print("Syncing local specifications to GitHub Issues & Milestones...")
     items = collect_all_items()
     state = load_state()
     gh_map = state.get("github_issues", {})
@@ -217,6 +281,10 @@ def cmd_sync_github(dry_run: bool = False):
         except Exception:
             pass
             
+    # 1b. Derive milestone completion dates & tags
+    milestone_dates = get_milestone_dates()
+    print(f"Derived dates for {len(milestone_dates)} milestones from git tags/logs.")
+
     # 2. Ensure labels exist
     required_labels = [
         ("type:feature", "a2eeef", "Feature specification"),
@@ -233,7 +301,40 @@ def cmd_sync_github(dry_run: bool = False):
     
     for label, color, desc in required_labels:
         run_cmd(["gh", "label", "create", label, "--color", color, "--description", desc, "--force"])
-        
+
+    # 2b. Sync/backfill milestones with dates & tags
+    for m_title, (due_on, rel_tag) in milestone_dates.items():
+        desc = f"Release {m_title}"
+        if rel_tag:
+            desc += f" (Git tag: `{rel_tag}`)"
+            
+        m_num = existing_milestones.get(m_title)
+        if not m_num:
+            if not dry_run:
+                c, m_out, _ = run_cmd([
+                    "gh", "api", "/repos/yylevy171/DeniDin/milestones",
+                    "-f", f"title={m_title}",
+                    "-f", f"due_on={due_on}",
+                    "-f", f"description={desc}",
+                    "-f", "state=closed"
+                ])
+                if c == 0:
+                    try:
+                        m_obj = json.loads(m_out)
+                        existing_milestones[m_title] = m_obj["number"]
+                        print(f"+ Created GitHub Milestone {m_title} (Due: {due_on}, State: closed)")
+                    except Exception:
+                        pass
+        else:
+            if not dry_run:
+                run_cmd([
+                    "gh", "api", "-X", "PATCH", f"/repos/yylevy171/DeniDin/milestones/{m_num}",
+                    "-f", f"due_on={due_on}",
+                    "-f", f"description={desc}",
+                    "-f", "state=closed"
+                ])
+                print(f"✓ Updated GitHub Milestone {m_title} #{m_num} (Due: {due_on}, State: closed)")
+
     # 3. Process each item
     for item in items:
         item_key = f"{item['type']}_{item['id']}"
@@ -243,14 +344,6 @@ def cmd_sync_github(dry_run: bool = False):
         milestone_title = item.get("release")
         milestone_arg = []
         if item["status"] == "done" and milestone_title:
-            if milestone_title not in existing_milestones:
-                c, m_out, _ = run_cmd(["gh", "api", "/repos/yylevy171/DeniDin/milestones", "-f", f"title={milestone_title}"])
-                if c == 0:
-                    try:
-                        m_obj = json.loads(m_out)
-                        existing_milestones[milestone_title] = m_obj["number"]
-                    except Exception:
-                        pass
             if milestone_title in existing_milestones:
                 milestone_arg = ["--milestone", milestone_title]
 
@@ -277,14 +370,17 @@ def cmd_sync_github(dry_run: bool = False):
                 pass
                 
         if not issue_number:
-            # Check if issue already exists on remote by title
-            c, out, _ = run_cmd(["gh", "issue", "list", "--search", f"[{item['type'].upper()} {item['id']}]", "--state", "all", "--json", "number"])
+            # Check if issue already exists on remote by exact prefix search
+            prefix = f"[{item['type'].upper()} {item['id']}]"
+            c, out, _ = run_cmd(["gh", "issue", "list", "--search", prefix, "--state", "all", "--json", "number,title"])
             if c == 0 and out:
                 try:
                     found = json.loads(out)
-                    if found:
-                        issue_number = found[0]["number"]
-                        gh_map[item_key] = issue_number
+                    for candidate in found:
+                        if candidate["title"].startswith(prefix):
+                            issue_number = candidate["number"]
+                            gh_map[item_key] = issue_number
+                            break
                 except Exception:
                     pass
 
@@ -296,15 +392,15 @@ def cmd_sync_github(dry_run: bool = False):
             create_cmd = ["gh", "issue", "create", "--title", title, "--body", body]
             for l in labels:
                 create_cmd.extend(["--label", l])
-            if milestone_arg:
-                create_cmd.extend(milestone_arg)
             code, out, err = run_cmd(create_cmd)
             if code == 0 and out:
-                # out is url e.g. https://github.com/.../issues/123
                 issue_num = out.strip().split("/")[-1]
                 if issue_num.isdigit():
                     gh_map[item_key] = int(issue_num)
                     print(f"+ Created GitHub Issue #{issue_num} for {title}")
+                    if milestone_title and milestone_title in existing_milestones:
+                        m_number = existing_milestones[milestone_title]
+                        run_cmd(["gh", "api", "-X", "PATCH", f"/repos/yylevy171/DeniDin/issues/{issue_num}", "-F", f"milestone={m_number}"])
                     if item["status"] in ("done", "obsolete"):
                         run_cmd(["gh", "issue", "close", issue_num])
             else:
@@ -313,9 +409,10 @@ def cmd_sync_github(dry_run: bool = False):
             edit_cmd = ["gh", "issue", "edit", str(issue_number), "--title", title]
             for l in labels:
                 edit_cmd.extend(["--add-label", l])
-            if milestone_arg:
-                edit_cmd.extend(milestone_arg)
             run_cmd(edit_cmd)
+            if milestone_title and milestone_title in existing_milestones:
+                m_number = existing_milestones[milestone_title]
+                run_cmd(["gh", "api", "-X", "PATCH", f"/repos/yylevy171/DeniDin/issues/{issue_number}", "-F", f"milestone={m_number}"])
             if item["status"] in ("done", "obsolete"):
                 run_cmd(["gh", "issue", "close", str(issue_number)])
             else:
