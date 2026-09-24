@@ -31,6 +31,10 @@ ENV PYTHONPATH=/app/apps/webapp/backend/src:/app/apps/denidin-app/src
 
 EXPOSE 8100
 
-# Compose mounts the env-specific container config over config/config.json (read-only),
-# the denidin data root over /app/denidin-data (read-only), and auth/password.hash.
+# Compose mounts the real config.dev.json/config.prod.json (2026-09-24: same single file
+# host mode reads too - see AppConfig; no separate ".container.json" variant) over
+# config/config.json (read-only), the denidin data root over /app/apps/denidin-app/dev_data
+# or /app/apps/denidin-app/data (mirroring the repo tree, matching config's relative paths),
+# the webapp data root over /app/apps/webapp/webapp_data, and auth/password.hash. None of
+# these mounts involve git - they're plain data directories/files, never git-tracked.
 CMD ["python", "-m", "webapp_backend.server", "config/config.json"]

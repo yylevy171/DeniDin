@@ -20,13 +20,17 @@ Reshape the webapp frontend from a single Ledger page into two top-level tabs �
 that ports `generate_client_status.py`'s aggregation/matching/status logic as-is
 (including its Hebrew comment-parsing rules and its side-effect writes to
 `removed_clients.json`/`new_morning_clients.json`), but swaps its data sources: the
-official client list is fetched live from Morning (via the same MCP path
-`apps/denidin-app` already uses) on every `GET /api/clients` call instead of a stale
+official client list is fetched live from Morning (direct `MorningClient.search_clients()`
+import, no MCP) on every `GET /api/clients` call instead of a stale
 CSV, and ledger-derived amounts (agreements/deposits/invoices) come from the same
-environment-scoped `{data_root}/events` source the Events tab already reads — never
+environment-scoped `{denidin_data_root}/events` source the Events tab already reads (read-only) — never
 the hardcoded sshfs prod path. Operator state (`client_mapping.json`,
 `client_comments.json`, `mapping_notes.json`, `removed_clients.json`,
-`new_morning_clients.json`) moves to environment-scoped `{data_root}/clients/`.
+`new_morning_clients.json`) moves to a separate, webapp-owned, writable
+`{webapp_data_root}/clients/` (never `{denidin_data_root}/clients` — that mount stays
+read-only). This is a single, non-env-namespaced folder per physical deployment location,
+not a per-env split (Rapaport maintains one dataset — corrected 2026-09-24), seeded once
+from Rapaport's real live analyst files rather than starting empty (corrected 2026-09-23).
 Visually, Tab 2 adopts the webapp's existing `theme.ts` chrome, but keeps the mapping
 tool's distinctive status **text** colors (not its row-background tints).
 
@@ -45,9 +49,12 @@ Morning (Green Invoice) API using `apps/webapp/backend`'s own Morning API creden
 No MCP protocol, no AI/OpenAI call, no dependency on `morning-mcp-app`'s container,
 ngrok tunnel, or status file being up at all — `apps/webapp/backend` only needs the
 client list, nothing else Morning offers, so the AI-tool surface is irrelevant here.
-**Storage**: New environment-scoped `{data_root}/clients/` directory (JSON files,
-same shape as the analyst tool's current `client_mapping.json`/etc.) — no new
-database
+**Storage**: New `{webapp_data_root}/clients/` directory (JSON files, same shape as the
+analyst tool's current `client_mapping.json`/etc.) — a separate, webapp-owned writable
+root, never `{denidin_data_root}/clients` (that mount stays read-only). A single,
+non-env-namespaced folder per physical deployment location, not a per-env split
+(corrected 2026-09-24 — Rapaport maintains one dataset), seeded once from Rapaport's real
+live analyst files rather than starting empty (corrected 2026-09-23) — no new database
 **Testing**: `pytest` in `apps/webapp/backend/tests/` (Starlette `TestClient`,
 `integration` marker, no mocking of internal components per CONSTITUTION §I/§V —
 Morning calls in tests hit the real sandbox); Playwright in `apps/webapp/e2e/` for
@@ -67,10 +74,13 @@ perceived-latency budget as today's Ledger tab load; the Morning client-list fet
 the dominant new cost (one HTTP round-trip per `GET /api/clients`, no local caching
 per the clarified decision)
 **Constraints**: Preserve `generate_client_status.py`'s status/aggregation logic and
-side effects byte-for-byte per Clarifications; environment-scoped storage (dev/prod
-never share `{data_root}/clients/`); auth-gated identically to the Ledger tab (no new
-auth mechanism); Hebrew RTL text rendering must match the existing Ledger tab's
-handling
+side effects byte-for-byte per Clarifications; `{webapp_data_root}/clients/` is never
+`{denidin_data_root}/clients` (the denidin mount stays read-only), and is a single,
+non-env-namespaced folder per physical deployment location (corrected 2026-09-24 —
+Rapaport maintains one dataset, not separate dev/prod copies), seeded once from
+Rapaport's real live analyst files, not started empty; auth-gated identically to the
+Ledger tab (no new auth mechanism); Hebrew RTL text rendering must match the existing
+Ledger tab's handling
 **Scale/Scope**: Small client roster (same scale as `generate_client_status.py`
 already handles today — tens to low hundreds of clients), no pagination/sharding
 concerns
@@ -81,7 +91,7 @@ concerns
 
 | Gate | Status | Notes |
 |---|---|---|
-| §I No env vars, config-driven | PASS | New config fields (Morning MCP status-file path for webapp-backend, `{data_root}/clients` root) live in `apps/webapp/backend`'s existing `AppConfig`/`config.*.json` pattern — no env vars. |
+| §I No env vars, config-driven | PASS | New config fields (Morning API credentials for webapp-backend, `webapp_data_root`/`{webapp_data_root}/clients` root) live in `apps/webapp/backend`'s existing `AppConfig`/`config.*.json` pattern — no env vars. |
 | §II Israel local time | PASS | Any new timestamps (e.g. `latest_activity`, comment-edit timestamps) use `now_local()`, matching `denidin-app`'s convention (ported via the same import path already used for `LedgerEventManager`). |
 | §III Git workflow | PASS | Working on `feature/087-webapp-clients-mgmt`, not `master`. |
 | Zero Mocking Policy / §V | PASS | Backend integration tests hit real ledger data files and the real Morning sandbox (dev config) over the real MCP tunnel — no `unittest.mock` for internal components or the Morning call. |
@@ -119,7 +129,7 @@ apps/webapp/backend/src/webapp_backend/
 ├── clients_reader.py       # NEW — ClientsReader: ports generate_client_status.py's
 │                            #   get_report_data() as an importable function; reads
 │                            #   ledger events via the existing LedgerEventManager
-│                            #   loader trick, reads/writes {data_root}/clients/*.json
+│                            #   loader trick, reads/writes {webapp_data_root}/clients/*.json
 ├── morning_client_source.py # NEW — thin wrapper around a directly-imported
 │                            #   denidin_mcp_morning.morning_client.MorningClient;
 │                            #   calls search_clients(), no MCP/AI/tunnel involved

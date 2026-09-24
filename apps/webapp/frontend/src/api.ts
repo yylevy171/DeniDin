@@ -88,8 +88,15 @@ export interface EventRow {
   search_blob?: string; // full-record lowercased text, for the free-text filter
 }
 
-export async function fetchEvents(daysBack: number): Promise<{ events: EventRow[]; days_back: number; count: number }> {
-  const resp = await request(`/api/events?days_back=${encodeURIComponent(daysBack)}`);
+// refresh=true is a hard reload: the backend re-reads event files and drops its cached
+// conversations. Without it the backend answers from memory.
+export async function fetchEvents(
+  daysBack: number,
+  refresh = false
+): Promise<{ events: EventRow[]; days_back: number; count: number }> {
+  const resp = await request(
+    `/api/events?days_back=${encodeURIComponent(daysBack)}${refresh ? "&refresh=1" : ""}`
+  );
   return resp.json();
 }
 
@@ -148,15 +155,22 @@ export interface ClientRow {
   comment: string;
   events: ClientEvent[];
 }
+export interface SuggestedMatch {
+  name: string;
+  reasons: string[];
+}
 export interface UnmatchedEntry {
   raw_name: string;
-  suggested_matches: string[];
+  suggested_matches: SuggestedMatch[];
   event_count: number;
   raw_text: string[];
   note: string;
 }
-export async function fetchClients(): Promise<{ clients: ClientRow[]; unmatched: UnmatchedEntry[] }> {
-  const resp = await request("/api/clients");
+// refresh=true re-fetches Morning's client list and recomputes; otherwise served from memory.
+export async function fetchClients(
+  refresh = false
+): Promise<{ clients: ClientRow[]; unmatched: UnmatchedEntry[] }> {
+  const resp = await request(refresh ? "/api/clients?refresh=1" : "/api/clients");
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(body.message || "clients_fetch_failed");
@@ -170,11 +184,18 @@ export async function saveClientComment(clientId: string, comment: string): Prom
     body: JSON.stringify({ comment }),
   });
 }
-export async function saveClientMapping(rawName: string, officialName: string): Promise<void> {
+export async function saveClientMapping(
+  rawName: string,
+  officialName?: string,
+  note?: string
+): Promise<void> {
+  const body: Record<string, string> = { raw_name: rawName };
+  if (officialName !== undefined) body.official_name = officialName;
+  if (note !== undefined) body.note = note;
   await request("/api/clients/mapping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ raw_name: rawName, official_name: officialName }),
+    body: JSON.stringify(body),
   });
 }
 

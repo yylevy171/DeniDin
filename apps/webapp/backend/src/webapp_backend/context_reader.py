@@ -21,12 +21,20 @@ owns it (live in ``messages/`` or aged-out in ``archived/``, same dir). We there
 Canonical dirs win over the raw backup on any ``message_id`` collision.
 """
 import json
+import logging
 import secrets
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+logger = logging.getLogger("webapp_backend")
+
 _MAX_LOOKBACK = 60
+# Message files are read over a (possibly network) filesystem one round-trip each, so the
+# one-time cache fill reads them in parallel.
+_READ_WORKERS = 16
 
 # Pre-migration raw-backup dir name prefixes the session consolidator uses
 # (apps/rolling-memory-backfill/consolidate_sessions.py::_RESERVED_DIR_PREFIXES).
@@ -54,9 +62,77 @@ class ContextReader:
         self._root = Path(data_root).resolve()
         self._sessions = self._root / "sessions"
         self._media_tokens: Dict[str, Path] = {}
-        # message_id -> session dir. Lazily built, cheaply rebuilt on a miss (denidin-app keeps
-        # writing new messages while this read-only app runs).
-        self._msg_index: Optional[Dict[str, Path]] = None
+        # In-memory copy of every session's messages, filled once (then only topped up with
+        # files not seen yet) so an event click never re-reads the session tree from disk.
+        # session dir -> {message_id: (rank, msg)}; rank 1 = live messages/, 0 = archived/.
+        self._msgs: Dict[Path, Dict[str, Tuple[int, Dict[str, Any]]]] = {}
+        # message file stem -> (session dir, priority); canonical dirs win on collision.
+        self._index: Dict[str, Tuple[Path, int]] = {}
+        self._known: set = set()  # (session dir, sub, filename) already read
+        self._synced_once = False
+        self._lock = threading.Lock()
+
+    # --- cache fill -----------------------------------------------------------------
+
+    def _sync(self) -> None:
+        """Read every message file not seen yet (all of them on the first call). Cheap when
+        nothing is new: only directory listings, no file reads."""
+        with self._lock:
+            new_items: List[Tuple[Path, int, int, Path]] = []
+            for sdir, priority in self._candidate_session_dirs():
+                for rank, sub in ((0, "archived"), (1, "messages")):
+                    sub_dir = sdir / sub
+                    if not sub_dir.is_dir():
+                        continue
+                    for msg_file in _safe_iterdir(sub_dir):
+                        if msg_file.suffix != ".json":
+                            continue
+                        key = (sdir, sub, msg_file.name)
+                        if key in self._known:
+                            continue
+                        new_items.append((sdir, priority, rank, msg_file))
+
+            def _read(item: Tuple[Path, int, int, Path]):
+                try:
+                    return json.loads(item[3].read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    return None
+
+            if new_items:
+                with ThreadPoolExecutor(max_workers=_READ_WORKERS) as pool:
+                    results = list(pool.map(_read, new_items))
+                for (sdir, priority, rank, msg_file), msg in zip(new_items, results):
+                    self._known.add((sdir, msg_file.parent.name, msg_file.name))
+                    prev = self._index.get(msg_file.stem)
+                    if prev is None or priority < prev[1]:
+                        self._index[msg_file.stem] = (sdir, priority)
+                    if msg is None:
+                        continue
+                    by_id = self._msgs.setdefault(sdir, {})
+                    mid = msg.get("message_id") or msg_file.stem
+                    existing = by_id.get(mid)
+                    if existing is None or rank >= existing[0]:  # live copy wins over archived
+                        by_id[mid] = (rank, msg)
+            self._synced_once = True
+            logger.info("context cache synced: %d new message files, %d sessions",
+                        len(new_items), len(self._msgs))
+
+    def reset(self) -> None:
+        """Forget everything read so far; the next lookup (or ``warm``) refills from disk."""
+        with self._lock:
+            self._msgs = {}
+            self._index = {}
+            self._known = set()
+            self._synced_once = False
+
+    def warm(self) -> None:
+        try:
+            self._sync()
+        except Exception:  # noqa: BLE001 - warming is an optimisation; lookups still sync lazily
+            logger.warning("context cache warm-up failed", exc_info=True)
+
+    def warm_in_background(self) -> None:
+        threading.Thread(target=self.warm, name="context-warm", daemon=True).start()
 
     # --- session/message resolution -------------------------------------------------
 
@@ -95,32 +171,16 @@ class ContextReader:
             elif child.name.startswith(_RAW_BACKUP_PREFIXES):
                 yield from self._walk_session_json_dirs(child, 2)
 
-    def _message_index(self, *, rebuild: bool = False) -> Dict[str, Path]:
-        if self._msg_index is not None and not rebuild:
-            return self._msg_index
-        index: Dict[str, Tuple[Path, int]] = {}
-        for sdir, priority in self._candidate_session_dirs():
-            for sub in ("messages", "archived"):
-                sub_dir = sdir / sub
-                if not sub_dir.is_dir():
-                    continue
-                for msg_file in _safe_iterdir(sub_dir):
-                    if msg_file.suffix != ".json":
-                        continue
-                    mid = msg_file.stem
-                    prev = index.get(mid)
-                    if prev is None or priority < prev[1]:
-                        index[mid] = (sdir, priority)
-        self._msg_index = {mid: sdir for mid, (sdir, _) in index.items()}
-        return self._msg_index
-
     def _resolve_session_dir(self, message_id: Optional[str]) -> Optional[Path]:
         if not message_id:
             return None
-        hit = self._message_index().get(message_id)
+        if not self._synced_once:
+            self._sync()
+        hit = self._index.get(message_id)
         if hit is None:
-            hit = self._message_index(rebuild=True).get(message_id)
-        return hit
+            self._sync()  # denidin-app keeps writing; pick up files that appeared since
+            hit = self._index.get(message_id)
+        return hit[0] if hit else None
 
     def _mint_media_token(self, image_path: str) -> Optional[str]:
         target = (self._root / image_path).resolve()
@@ -166,18 +226,7 @@ class ContextReader:
         # (out of the live token window) into archived/ — both are still part of the session's
         # history. A ledger event's source message is usually old, so it's almost always in
         # archived/; read both, live copy wins on any message_id collision.
-        by_id: Dict[str, Dict[str, Any]] = {}
-        for sub in ("archived", "messages"):
-            sub_dir = session_dir / sub
-            if not sub_dir.is_dir():
-                continue
-            for msg_file in sub_dir.glob("*.json"):
-                try:
-                    msg = json.loads(msg_file.read_text(encoding="utf-8"))
-                except (json.JSONDecodeError, OSError):
-                    continue
-                mid = msg.get("message_id") or msg_file.stem
-                by_id[mid] = msg
+        by_id = {mid: msg for mid, (_rank, msg) in self._msgs.get(session_dir, {}).items()}
         raw_messages: List[Dict[str, Any]] = list(by_id.values())
 
         anchor = next((m for m in raw_messages if m.get("message_id") == message_id), None)
@@ -209,7 +258,17 @@ class ContextReader:
                 continue
             selected.append((ts, m))
 
-        selected.sort(key=lambda t: (t[0] is None, t[0] or datetime.min))
+        # ``order_num`` is the true sequence: many messages carry whole-second timestamps
+        # (ties reorder a reply before its question) and a few are stamped out of sequence
+        # entirely. Messages predating ``order_num`` sort first, by timestamp.
+        def _order_key(t):
+            ts, m = t
+            num = m.get("order_num")
+            if isinstance(num, int) and not isinstance(num, bool):
+                return (1, num, datetime.min)
+            return (0, 0, ts.replace(tzinfo=None) if ts else datetime.min)
+
+        selected.sort(key=_order_key)
 
         out_messages = []
         for ts, m in selected:

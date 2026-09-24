@@ -6,21 +6,21 @@
 - Auth: same `SessionAuthMiddleware` bearer-token gate as every other `/api/*` route — no new auth code.
 - Behavior: on each call, `ClientsReader.get_report_data()`:
   1. Fetches the live official client list directly from Morning via `MorningClient.search_clients()` (see §2 below) — no MCP, no AI call.
-  2. Loads ledger events from `{data_root}/events` via the existing `LedgerEventManager`-loader pattern (`ledger_reader.py`'s `_load_ledger_event_manager_class()`), read-fresh per call (this feature does not depend on bugfix-064's fix, but benefits from it — Events tab and Clients tab should both see current data once 064 lands).
-  3. Loads `{data_root}/clients/{client_mapping,client_comments,mapping_notes}.json`.
+  2. Loads ledger events from `{denidin_data_root}/events` (read-only mount) via the existing `LedgerEventManager`-loader pattern (`ledger_reader.py`'s `_load_ledger_event_manager_class()`), read-fresh per call (this feature does not depend on bugfix-064's fix, but benefits from it — Events tab and Clients tab should both see current data once 064 lands).
+  3. Loads `{webapp_data_root}/clients/{client_mapping,client_comments,mapping_notes}.json` — a separate, webapp-owned writable root (never `{denidin_data_root}/clients`; see data-model.md, corrected 2026-09-23). Dev/prod are seeded once from Rapaport's real live analyst files, not empty.
   4. Runs the ported aggregation/matching/status logic (`generate_client_status.py`'s behavior, unchanged).
-  5. Overwrites `{data_root}/clients/{removed_clients,new_morning_clients}.json` (preserved side effect, per Clarifications).
+  5. Overwrites `{webapp_data_root}/clients/{removed_clients,new_morning_clients}.json` (preserved side effect, per Clarifications).
   6. Returns `{ clients: ClientRow[], unmatched: UnmatchedEntry[] }` (data-model.md).
 - Errors: if the Morning fetch fails (network error, 4xx/5xx from Morning, bad credentials), respond `503` with a friendly message — do NOT silently return ledger-only data with clients missing, since that would misrepresent debt/status. Frontend surfaces this as a retryable banner, not a partial table.
 
 ### `POST /api/clients/{client_id}/comments`
 - Body/response: data-model.md.
-- Persists to `{data_root}/clients/client_comments.json` (read-modify-write of the whole dict, matching current behavior).
+- Persists to `{webapp_data_root}/clients/client_comments.json` (read-modify-write of the whole dict, matching current behavior).
 - No re-run of the full aggregation — the frontend updates just that row's comment locally (per UAT-2's "immediately reflected... without page reload").
 
 ### `POST /api/clients/mapping`
 - Body/response: data-model.md.
-- Persists to `{data_root}/clients/client_mapping.json`.
+- Persists to `{webapp_data_root}/clients/client_mapping.json`.
 - Per UAT-3 ("subsequent ledger queries reflect the resolved client profile"), the *next* `GET /api/clients` call picks up the new mapping — no separate re-aggregation trigger needed since GET always recomputes fresh.
 
 ## 2. webapp-backend ↔ Morning API (direct, via `MorningClient` import — new cross-app dependency)

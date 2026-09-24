@@ -1,9 +1,10 @@
 {
   "environment": "dev",
-  "denidin_data_root": "/app/denidin-data",
-  "denidin_src_path": "/app/apps/denidin-app/src",
-  "password_hash_file": "/app/apps/webapp/backend/auth/password.hash",
+  "denidin_data_root": "../../denidin-app/dev_data",
+  "denidin_src_path": "../../denidin-app/src",
+  "password_hash_file": "auth/password.hash",
   "session_expiry_hours": 168,
+  "webapp_data_root": "../webapp_data",
   "clients_data_root": "",
   "morning_api_key_id": "PASTE_YOUR_WEBAPP_MORNING_API_KEY_ID_HERE",
   "morning_api_key_secret": "PASTE_YOUR_WEBAPP_MORNING_API_KEY_SECRET_HERE",

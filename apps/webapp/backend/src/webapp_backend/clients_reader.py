@@ -16,12 +16,16 @@ as a side effect on every call — preserved exactly, per Clarifications.
 import collections
 import difflib
 import json
+import logging
 import re
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from webapp_backend.ledger_reader import LedgerEventManager
+
+logger = logging.getLogger("webapp_backend")
 
 PAST_CUTOFF = datetime(2025, 9, 1)
 _PLUS_INVOICE_SUBTYPES = {"חשבונית מס קבלה", "חשבונית מס / קבלה", "קבלה", "320", "400", 320, 400}
@@ -474,16 +478,42 @@ def _build_unmatched_rows(
     final_unmatched: Dict[str, Dict[str, Any]], notes: Dict[str, str],
     amount_to_clients: Dict[float, set], official_clients: List[str], stats: Dict[str, Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
+    """Port of mapping_server.py's "Smart Candidate Generation": for each unmatched raw
+    name, suggest official clients by (a) an exact matching transaction amount, (b) fuzzy
+    name similarity, (c) sharing a family/last name — each candidate carries the reason(s)
+    it was suggested for, and the full active official-client list is returned separately
+    so the frontend can render a searchable dropdown (all clients, smart candidates first)
+    rather than a free-text field."""
     active_official = [c for c in official_clients if not stats.get(c, {}).get("is_merged_away")]
     rows = []
     for raw_name, data in sorted(final_unmatched.items()):
         agreed_val = data["agreements"]
-        candidates = set(difflib.get_close_matches(raw_name, active_official, n=3, cutoff=0.5))
-        if agreed_val > 0:
-            candidates |= amount_to_clients.get(agreed_val, set())
+        amount_candidates = amount_to_clients.get(agreed_val, set()) if agreed_val > 0 else set()
+        fuzzy_candidates = set(difflib.get_close_matches(raw_name, active_official, n=3, cutoff=0.5))
+        family_candidates: set = set()
+        words = raw_name.split()
+        if len(words) > 1:
+            last_word = words[-1]
+            for oc in active_official:
+                if last_word in oc:
+                    family_candidates.add(oc)
+
+        all_candidates = amount_candidates | fuzzy_candidates | family_candidates
+        all_candidates &= set(active_official)
+        suggestions = []
+        for oc in sorted(all_candidates):
+            reasons = []
+            if oc in amount_candidates:
+                reasons.append("סכום זהה")
+            if oc in fuzzy_candidates:
+                reasons.append("דמיון בשם")
+            if oc in family_candidates:
+                reasons.append("שם משפחה")
+            suggestions.append({"name": oc, "reasons": reasons})
+
         rows.append({
             "raw_name": raw_name,
-            "suggested_matches": sorted(candidates),
+            "suggested_matches": suggestions,
             "event_count": len(data["raw_text"]),
             "raw_text": data["raw_text"],
             "note": notes.get(raw_name, ""),
@@ -497,11 +527,26 @@ class ClientsReader:
     so this module has no direct Morning dependency of its own."""
 
     def __init__(
-        self, data_root: str, clients_data_root: str, official_clients_fn: Callable[[], List[str]]
+        self,
+        data_root: str,
+        clients_data_root: str,
+        official_clients_fn: Callable[[], List[str]],
+        events_fn: Optional[Callable[[], List[Dict[str, Any]]]] = None,
+        generation_fn: Callable[[], int] = lambda: 0,
     ) -> None:
         self._events_dir = str(Path(data_root) / "events")
         self._clients_dir = Path(clients_data_root)
         self._official_clients_fn = official_clients_fn
+        # When wired to the app's shared LedgerReader, events come from its in-memory index
+        # instead of a fresh per-call re-read of every event file from disk.
+        self._events_fn = events_fn
+        self._generation_fn = generation_fn
+        # The Morning client list and the computed report are kept until a refresh (or, for
+        # the report, a save / a ledger reload) - recomputing them costs a Morning round-trip
+        # per page plus the full aggregation.
+        self._official_cache: Optional[List[str]] = None
+        self._report_cache: Optional[Tuple[int, Dict[str, Any]]] = None
+        self._lock = threading.Lock()
 
     def _paths(self) -> Dict[str, Path]:
         d = self._clients_dir
@@ -513,15 +558,40 @@ class ClientsReader:
             "new_morning": d / "new_morning_clients.json",
         }
 
-    def get_report(self) -> Dict[str, Any]:
-        official_clients = self._official_clients_fn()
+    def get_report(self, refresh: bool = False) -> Dict[str, Any]:
+        with self._lock:
+            if refresh:
+                self._official_cache = None
+                self._report_cache = None
+            generation = self._generation_fn()
+            if self._report_cache is not None and self._report_cache[0] == generation:
+                return self._report_cache[1]
+            report = self._compute_report()
+            self._report_cache = (generation, report)
+            return report
+
+    def warm(self) -> None:
+        try:
+            self.get_report()
+        except Exception:  # noqa: BLE001 - warming is an optimisation; the request path reports errors
+            logger.warning("clients report warm-up failed", exc_info=True)
+
+    def warm_in_background(self) -> None:
+        threading.Thread(target=self.warm, name="clients-warm", daemon=True).start()
+
+    def _compute_report(self) -> Dict[str, Any]:
+        if self._official_cache is None:
+            self._official_cache = self._official_clients_fn()
+        official_clients = self._official_cache
         paths = self._paths()
         manual_mapping = _load_json(paths["mapping"])
         notes = _load_json(paths["notes"])
         client_comments = _load_json(paths["comments"])
 
-        manager = LedgerEventManager(self._events_dir)
-        all_events = manager.list_events()
+        if self._events_fn is not None:
+            all_events = self._events_fn()
+        else:
+            all_events = LedgerEventManager(self._events_dir).list_events()
 
         stats, unmatched, amount_to_clients = _aggregate_events(all_events, official_clients, manual_mapping)
         _apply_comment_rules(stats, client_comments)
@@ -529,7 +599,7 @@ class ClientsReader:
         removed_clients = _apply_status_directives(stats, client_comments)
         final_unmatched, new_morning_clients = _split_unmatched(unmatched, notes)
 
-        # Preserved side effect (Clarifications 2026-09-17): write on every read.
+        # Preserved side effect (Clarifications 2026-09-17): write on every (re)compute.
         _save_json(paths["removed"], removed_clients)
         _save_json(paths["new_morning"], new_morning_clients)
 
@@ -543,11 +613,25 @@ class ClientsReader:
         comments = _load_json(path)
         comments[client_id] = comment
         _save_json(path, comments)
+        self._report_cache = None
         return {"client_id": client_id, "comment": comment}
 
-    def save_mapping(self, raw_name: str, official_name: str) -> Dict[str, str]:
-        path = self._paths()["mapping"]
-        mapping = _load_json(path)
-        mapping[raw_name] = official_name
-        _save_json(path, mapping)
-        return {"raw_name": raw_name, "official_name": official_name}
+    def save_mapping(
+        self, raw_name: str, official_name: Optional[str] = None, note: Optional[str] = None
+    ) -> Dict[str, str]:
+        result: Dict[str, str] = {"raw_name": raw_name}
+        if official_name is not None:
+            path = self._paths()["mapping"]
+            mapping = _load_json(path)
+            mapping[raw_name] = official_name
+            _save_json(path, mapping)
+            self._report_cache = None
+            result["official_name"] = official_name
+        if note is not None:
+            path = self._paths()["notes"]
+            notes = _load_json(path)
+            notes[raw_name] = note
+            _save_json(path, notes)
+            self._report_cache = None
+            result["note"] = note
+        return result

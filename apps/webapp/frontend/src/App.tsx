@@ -162,6 +162,9 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [activeTab, setActiveTab] = useState<Tab>(loadTab);
   const [showSettings, setShowSettings] = useState(false);
+  // A tab is mounted the first time it's opened and then kept mounted (just hidden), so
+  // switching tabs never refetches - data reloads only on page refresh or a refresh button.
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set([loadTab()]));
   const theme = THEMES[settings.theme];
 
   const onAuthErr = (e: unknown) => {
@@ -170,6 +173,9 @@ export default function App() {
 
   useEffect(() => saveSettings(settings), [settings]);
   useEffect(() => saveTab(activeTab), [activeTab]);
+  useEffect(() => {
+    setVisited((v) => (v.has(activeTab) ? v : new Set(v).add(activeTab)));
+  }, [activeTab]);
 
   // expose the active theme as an html attribute so acceptance tests (and any future CSS)
   // can read it without inspecting computed colours
@@ -245,11 +251,16 @@ export default function App() {
         />
       ) : null}
 
-      {activeTab === "events" ? (
-        <EventsView theme={theme} settings={settings} onAuthErr={onAuthErr} />
-      ) : (
-        <ClientsView theme={theme} onAuthErr={onAuthErr} />
-      )}
+      {visited.has("events") ? (
+        <View style={{ flex: 1, display: activeTab === "events" ? "flex" : "none" }}>
+          <EventsView theme={theme} settings={settings} onAuthErr={onAuthErr} />
+        </View>
+      ) : null}
+      {visited.has("clients") ? (
+        <View style={{ flex: 1, display: activeTab === "clients" ? "flex" : "none" }}>
+          <ClientsView theme={theme} onAuthErr={onAuthErr} />
+        </View>
+      ) : null}
     </View>
   );
 }

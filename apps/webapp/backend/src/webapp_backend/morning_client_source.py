@@ -48,7 +48,9 @@ class MorningClientSource:
         local persistence. Raises ``MorningClientSourceError`` on any failure."""
         try:
             client = self._build_client()
-            payload: dict = {}
+            # Default page is 25 clients (~38 sequential round-trips for ~940 clients); Morning
+            # honours a larger pageSize (verified live 2026-09-24), so the walk is ~2 calls.
+            payload: dict = {"pageSize": 500}
             first_page = client.search_clients(payload)
             items = list(first_page.get("items") or [])
             page_num = first_page.get("page", 1) or 1

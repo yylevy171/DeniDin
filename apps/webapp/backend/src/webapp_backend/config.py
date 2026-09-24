@@ -13,6 +13,7 @@ _APP_FIELDS = {
     "denidin_src_path",
     "password_hash_file",
     "session_expiry_hours",
+    "webapp_data_root",
     "clients_data_root",
     "morning_api_key_id",
     "morning_api_key_secret",
@@ -35,11 +36,15 @@ class AppConfig:
     denidin_data_root: str
     session_expiry_hours: float = 168.0
     denidin_src_path: str = ""
-    # Feature 087 (Clients tab): environment-scoped state root, defaulting under
-    # denidin_data_root unless overridden. Own Morning API credentials — a second,
-    # independently-configured credential set for the same Morning account (see
-    # research.md "Resolved: Morning client-list fetch shape").
+    # Feature 087 (Clients tab), corrected 2026-09-23: the webapp's OWN writable data root —
+    # deliberately separate from denidin_data_root, which is (and must stay) a read-only
+    # mount of denidin-app's ledger. Comments/mappings/notes are webapp-managed state that
+    # must be writable in every environment; clients_data_root defaults under this root, not
+    # under denidin_data_root, so it never sits inside a read-only bind mount.
+    webapp_data_root: str = "webapp_data"
     clients_data_root: str = ""
+    # Own Morning API credentials — a second, independently-configured credential set for
+    # the same Morning account (see research.md "Resolved: Morning client-list fetch shape").
     morning_api_key_id: str = ""
     morning_api_key_secret: str = ""
     morning_auth_url: str = ""
@@ -48,7 +53,7 @@ class AppConfig:
 
     def __post_init__(self) -> None:
         if not self.clients_data_root:
-            self.clients_data_root = str(Path(self.denidin_data_root) / "clients")
+            self.clients_data_root = str(Path(self.webapp_data_root) / "clients")
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AppConfig":

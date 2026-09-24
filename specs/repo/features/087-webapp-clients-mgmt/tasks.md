@@ -2,6 +2,15 @@
 
 **Input**: plan.md, data-model.md, contracts/clients-api-contract.md
 
+**Note (2026-09-23)**: tasks below reference the original `{data_root}/clients` /
+`clients_data_root: {denidin_data_root}/clients` design as it was actually implemented at
+the time (kept as an accurate historical record, `[x]` entries unchanged). That design was
+found wrong post-implementation — `denidin_data_root` is a read-only mount and must stay
+read-only — and was corrected to a separate, webapp-owned writable `webapp_data_root`
+(`clients_data_root` now defaults under `webapp_data_root`, not `denidin_data_root`); dev/prod
+are also seeded once from Rapaport's real live analyst files rather than starting empty. See
+the corrected REQ-087-04 in spec.md, data-model.md, plan.md, and contracts/clients-api-contract.md.
+
 ## Phase 1: Backend — Clients data service
 
 - [x] T001: `apps/webapp/backend/src/webapp_backend/clients_reader.py` — port `generate_client_status.py` + `mapping_server.py`'s bucket-routing logic into one importable `ClientsReader` class: `get_report()` returns `{clients, unmatched}` (data-model.md `ClientRow`/`UnmatchedEntry`), reading ledger events via the existing `LedgerEventManager` loader, official clients from an injected list (from `morning_client_source.py`), and state from `{data_root}/clients/*.json`. Preserves: fuzzy matching, comment-driven status rules, merge/check/active/settle/delete directives, side-effect writes to `removed_clients.json`/`new_morning_clients.json`.

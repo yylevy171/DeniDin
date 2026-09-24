@@ -40,9 +40,14 @@ UnmatchedEntry:
   event_count: int
 ```
 
-## State files (environment-scoped, `{data_root}/clients/`)
+## State files (`{webapp_data_root}/clients/`)
 
-Same shapes as today's analyst-tool files, just relocated:
+**Corrected 2026-09-23**: `{webapp_data_root}` is a separate, webapp-owned writable root —
+never `{denidin_data_root}/clients` (that mount is read-only). **Corrected 2026-09-24**: it
+is a single, non-env-namespaced folder per physical deployment location — not a per-env
+split (Rapaport maintains one dataset, not separate dev/prod comment sets). It's seeded
+once from Rapaport's real, live analyst files (source of truth; never modified by this
+feature) rather than starting empty. Same shapes as today's analyst-tool files, just relocated:
 
 - `client_mapping.json`: `{raw_name: official_client_name | "Unknown"}`
 - `client_comments.json`: `{official_client_name: comment_text}`

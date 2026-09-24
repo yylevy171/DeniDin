@@ -122,7 +122,7 @@ export default function EventsView({
     async (mode: "load" | "refresh") => {
       mode === "refresh" ? setRefreshing(true) : setLoading(true);
       try {
-        const data = await fetchEvents(settings.daysBack);
+        const data = await fetchEvents(settings.daysBack, mode === "refresh");
         setRows(data.events);
         setLoadedDaysBack(settings.daysBack);
         setExpanded({});

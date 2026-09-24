@@ -17,12 +17,17 @@ appear in the header nav. Switching tabs must not trigger a full page reload.
    Clients tab talks to Morning directly and does **not** need `morning-mcp-app`
    running at all.
 2. Load the "לקוחות" tab — it should show the same clients Morning's dev sandbox knows
-   about, reconciled against whatever ledger events exist under the dev `data_root`.
+   about, reconciled against whatever ledger events exist under the dev
+   `denidin_data_root` (read-only mount).
 3. Edit a comment inline (UAT-2) — confirm it persists to
-   `apps/denidin-app/dev_data/clients/client_comments.json` (or the equivalent
-   env-scoped path the config points at) and survives a refresh.
+   `{webapp_data_root}/clients/client_comments.json` (a separate, webapp-owned
+   writable root — never under `denidin_data_root`, which stays read-only; a single,
+   non-env-namespaced folder, not a per-env split — corrected 2026-09-24) and
+   survives a refresh. Seeded once from Rapaport's real live analyst files, not
+   started empty (corrected 2026-09-23).
 4. Use the alias-mapping UI on an unmatched name (UAT-3) — confirm
-   `client_mapping.json` updates and the next `GET /api/clients` resolves it.
+   `{webapp_data_root}/clients/client_mapping.json` updates and the next
+   `GET /api/clients` resolves it.
 
 ## Tests
 
