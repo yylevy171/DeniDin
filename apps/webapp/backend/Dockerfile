@@ -25,6 +25,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY apps/webapp/backend/ /app/apps/webapp/backend/
 COPY apps/denidin-app/src/ /app/apps/denidin-app/src/
+# Feature 087: the Clients tab imports MorningClient directly (morning_client_source.py resolves
+# it at parents[4]/morning-mcp-app/src) - the image has no git checkout, so it must be baked in.
+COPY apps/morning-mcp-app/src/ /app/apps/morning-mcp-app/src/
 COPY apps/webapp/VERSION /app/apps/webapp/VERSION
 
 ENV PYTHONPATH=/app/apps/webapp/backend/src:/app/apps/denidin-app/src

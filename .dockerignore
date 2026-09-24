@@ -25,8 +25,10 @@ artifacts
 
 # Not COPYed by either webapp Dockerfile — keep them out of the (repo-root) build context so
 # the context transfer to the daemon stays small. Backend COPYs only apps/webapp/backend/ +
-# apps/denidin-app/src/ (+ a few named files); frontend only apps/webapp/frontend/.
-apps/morning-mcp-app
+# apps/denidin-app/src/ + apps/morning-mcp-app/src/ (+ a few named files); frontend only apps/webapp/frontend/.
+# morning-mcp-app: only src/ is COPYed (backend Dockerfile - Clients tab imports MorningClient).
+apps/morning-mcp-app/*
+!apps/morning-mcp-app/src
 apps/webapp/e2e
 specs
 .github
