@@ -110,8 +110,12 @@ def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
     assert KNOWN_INVOICE_AMOUNT_IL in response, (
         f"Bot reply missing amount {KNOWN_INVOICE_AMOUNT_IL}. Full reply: {response!r}"
     )
-    assert KNOWN_INVOICE_STATUS_HE in response, (
-        f"Bot reply missing status {KNOWN_INVOICE_STATUS_HE!r}. Full reply: {response!r}"
+    # Accept either inflected form: "שולם" (masculine) or "שולמה" (feminine,
+    # correctly agreeing with the feminine noun "חשבונית") - the model isn't
+    # wrong to use either, so the assertion shouldn't pin one over the other.
+    assert KNOWN_INVOICE_STATUS_HE in response or "שולמה" in response, (
+        f"Bot reply missing status {KNOWN_INVOICE_STATUS_HE!r} (or its feminine "
+        f"form 'שולמה'). Full reply: {response!r}"
     )
 
 
