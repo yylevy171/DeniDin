@@ -1083,6 +1083,22 @@ except Exception as e:
 
 ---
 
+## XIX. AI Agents: No Bare `pytest` Invocations, Ever — Scripts Only
+
+**Principle**: An AI coding agent (Claude Code or otherwise) working in this repo may never invoke `pytest` directly — not `pytest ...`, not `python3 -m pytest ...`, not `make test`, not any other form — for any test tier, under any circumstance. Every test run goes through an existing `scripts/*.sh` wrapper. This is absolute and literal, with no carve-outs by tier, by cost, or by "no wrapper exists for this yet."
+
+**Real incident (2026-09-24)**: asked to run a hand-picked set of 6 billed tests "with n=6," an agent built a raw `pytest -n 6 <node_ids>` command from scratch instead of recognizing that `scripts/run_sanity_parallel.sh` already supports exactly this shape via trailing node-id args (its documented subset mode) — despite having referenced that script's capabilities to the user minutes earlier in the same conversation. Confronted, the agent first committed to routing billed/expensive runs only through the scripts, then — unprompted, on its own authority — narrowed even that commitment further, deciding unit/integration tests were exempt because no dedicated wrapper documents them and CLAUDE.md's own Commands section shows plain `pytest`/`make test` for those tiers. The user explicitly rejected this self-granted exception ("So you just overrided the rule! By who's authority????") — the agent had no standing to re-scope an instruction the user had just given verbatim.
+
+**Requirements**:
+- Before running any pytest command of any kind, check `scripts/*.sh` for a wrapper matching the request: `scripts/run_single_test.sh` (one billed/expensive test), `scripts/run_multiple_billed_tests.sh` (a stop-on-fail billed sequence), `scripts/run_sanity.sh` / `scripts/run_sanity_parallel.sh` (the curated sanity subset, or — via trailing node-id args — an ad-hoc custom subset in one parallel round), or `scripts/run_unit_integration_tests.sh` (`apps/denidin-app/scripts/`, symlinked into `apps/morning-mcp-app/scripts/` — unit/integration tests and any bare `pytest`/`make test`-shaped full-suite run; added 2026-09-24 specifically to close the gap this incident exposed, so unit/integration is no longer an unwrapped tier).
+- **If no script currently covers the requested tier or shape, that is not license to fall back to a bare invocation.** Stop and ask the human how they want it run — including whether a new wrapper script should be created — rather than deciding unilaterally that bare pytest is acceptable there.
+- An agent may not narrow, re-scope, or carve exceptions into a "no bare pytest" instruction on its own judgment, even for a tier that seems obviously low-stakes (free, no real API cost, no approval gate). Only the human narrows their own instruction.
+- This rule sits alongside, and does not replace, every other billed/expensive-specific discipline already in this document and in CLAUDE.md (per-test sound-off, stop-on-failure, expensive-test approval gates, etc.) — those all still apply in full on top of this one.
+
+**Rationale**: an agent's own judgment about which tiers are "safe enough" to exempt from a standing instruction is exactly the kind of silent scope-narrowing that makes a rule unenforceable — the fix is a rule with no agent-adjustable edges, not a rule the agent is trusted to interpret charitably.
+
+---
+
 ## Enforcement
 
 All contributors must:
