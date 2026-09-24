@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Image, Pressable, Text, TextInput, View } from "react-native";
 import { THEMES, ThemeName } from "./theme";
 import { AuthError, getToken, login, logout } from "./api";
@@ -167,9 +167,11 @@ export default function App() {
   const [visited, setVisited] = useState<Set<Tab>>(() => new Set([loadTab()]));
   const theme = THEMES[settings.theme];
 
-  const onAuthErr = (e: unknown) => {
+  // Stable identity: the views list this in their load-callback deps, so a new function on every
+  // App render would re-run their fetch effects on each tab switch.
+  const onAuthErr = useCallback((e: unknown) => {
     if (e instanceof AuthError) setAuthed(false);
-  };
+  }, []);
 
   useEffect(() => saveSettings(settings), [settings]);
   useEffect(() => saveTab(activeTab), [activeTab]);
