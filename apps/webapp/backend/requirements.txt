@@ -8,6 +8,7 @@ rapidfuzz>=3.0.0          # required by denidin-app's ledger_event_manager (load
 uvicorn>=0.30.0
 python-multipart>=0.0.9
 httpx>=0.27.0          # required by starlette.testclient.TestClient
+requests>=2.31.0          # required by morning-mcp-app's MorningClient (loaded directly, see morning_client_source.py)
 
 # Testing
 pytest>=7.0.0

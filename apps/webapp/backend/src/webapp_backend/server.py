@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
 from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
@@ -18,11 +19,13 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from webapp_backend.auth import PasswordVerifier, SessionStore
+from webapp_backend.clients_reader import ClientsReader
 from webapp_backend.config import AppConfig
 from webapp_backend.context_reader import ContextReader
 from webapp_backend.health_checks import build_health_check_fns, start_heartbeat_thread
 from webapp_backend.ledger_reader import DEFAULT_DAYS_BACK, LedgerReader
 from webapp_backend.logger import resolve_log_path, setup_logging
+from webapp_backend.morning_client_source import MorningClientSource, MorningClientSourceError
 
 logger = logging.getLogger("webapp_backend")
 
@@ -67,6 +70,19 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
     sessions = SessionStore(config.session_expiry_hours)
     reader = LedgerReader(config.denidin_data_root)
     context_reader = ContextReader(config.denidin_data_root)
+    morning_source = MorningClientSource(
+        api_key_id=config.morning_api_key_id,
+        api_key_secret=config.morning_api_key_secret,
+        auth_url=config.morning_auth_url,
+        api_url=config.morning_api_url,
+    )
+    clients_reader = ClientsReader(
+        config.denidin_data_root,
+        config.clients_data_root,
+        morning_source.list_active_client_names,
+        events_fn=reader.events,
+        generation_fn=lambda: reader.generation,
+    )
     version = read_version()
     if not verifier.usable:
         logger.warning(
@@ -86,7 +102,7 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
         log_path=log_path,
     )
 
-    async def health(_request: Request) -> JSONResponse:
+    def health(_request: Request) -> JSONResponse:
         body: dict = {
             "app_up": "success",
             "environment": config.environment,
@@ -122,7 +138,13 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
             sessions.invalidate(token)
         return Response(status_code=204)
 
-    async def events(request: Request) -> JSONResponse:
+    def events(request: Request) -> JSONResponse:
+        if request.query_params.get("refresh") == "1":
+            # Hard refresh: re-read the event files and drop the cached conversations; the
+            # context cache refills in the background so this response isn't held up by it.
+            reader.reload()
+            context_reader.reset()
+            context_reader.warm_in_background()
         raw = request.query_params.get("days_back")
         try:
             days_back = int(raw) if raw is not None else DEFAULT_DAYS_BACK
@@ -130,17 +152,17 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
             days_back = DEFAULT_DAYS_BACK
         return JSONResponse(reader.list_event_rows(days_back))
 
-    async def event_detail(request: Request) -> JSONResponse:
+    def event_detail(request: Request) -> JSONResponse:
         record = reader.get_event_detail(request.path_params["event_id"])
         if record is None:
             return _error("not_found", "No such event.", 404)
         return JSONResponse(record)
 
-    async def clients_search(request: Request) -> JSONResponse:
+    def clients_search(request: Request) -> JSONResponse:
         prefix = request.query_params.get("prefix", "")
         return JSONResponse({"clients": reader.search_client_names(prefix)})
 
-    async def event_context(request: Request) -> JSONResponse:
+    def event_context(request: Request) -> JSONResponse:
         record = reader.raw_event(request.path_params["event_id"])
         if record is None:
             return _error("not_found", "No such event.", 404)
@@ -155,7 +177,52 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
             )
         )
 
-    async def media(request: Request) -> Response:
+    def clients(request: Request) -> JSONResponse:
+        try:
+            return JSONResponse(clients_reader.get_report(refresh=request.query_params.get("refresh") == "1"))
+        except MorningClientSourceError as exc:
+            logger.warning("Morning client-list fetch failed: %s", exc)
+            return _error(
+                "morning_unavailable",
+                "לא ניתן לטעון את רשימת הלקוחות ממורנינג כעת. נסו שוב מאוחר יותר.",
+                503,
+            )
+
+    async def client_comment(request: Request) -> JSONResponse:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 - malformed body is just a bad request
+            body = {}
+        comment = body.get("comment") if isinstance(body, dict) else None
+        if not isinstance(comment, str):
+            return _error("bad_request", "comment is required.", 400)
+        result = await run_in_threadpool(
+            clients_reader.save_comment, request.path_params["client_id"], comment
+        )
+        return JSONResponse(result)
+
+    async def client_mapping(request: Request) -> JSONResponse:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            body = {}
+        raw_name = body.get("raw_name") if isinstance(body, dict) else None
+        official_name = body.get("official_name") if isinstance(body, dict) else None
+        note = body.get("note") if isinstance(body, dict) else None
+        if not isinstance(raw_name, str) or not raw_name:
+            return _error("bad_request", "raw_name is required.", 400)
+        if official_name is not None and not isinstance(official_name, str):
+            return _error("bad_request", "official_name must be a string.", 400)
+        if note is not None and not isinstance(note, str):
+            return _error("bad_request", "note must be a string.", 400)
+        if official_name is None and note is None:
+            return _error("bad_request", "official_name or note is required.", 400)
+        result = await run_in_threadpool(
+            clients_reader.save_mapping, raw_name, official_name=official_name, note=note
+        )
+        return JSONResponse(result)
+
+    def media(request: Request) -> Response:
         path = context_reader.resolve_media(request.path_params["token"])
         if path is None:
             return _error("not_found", "Media not available.", 404)
@@ -171,6 +238,9 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
             Route("/api/events/{event_id}", event_detail, methods=["GET"]),
             Route("/api/events/{event_id}/context", event_context, methods=["GET"]),
             Route("/api/clients/search", clients_search, methods=["GET"]),
+            Route("/api/clients", clients, methods=["GET"]),
+            Route("/api/clients/{client_id}/comments", client_comment, methods=["POST"]),
+            Route("/api/clients/mapping", client_mapping, methods=["POST"]),
             Route("/api/media/{token}", media, methods=["GET"]),
         ]
     )
@@ -186,6 +256,15 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
     )
     app.state.sessions = sessions
     app.state.verifier = verifier
+
+    def warm_caches() -> None:
+        """Fill the conversation and clients caches in the background so the first click on
+        an event / the Clients tab is served from memory. Production entrypoints only - tests
+        build the app first and write fixture files afterwards."""
+        context_reader.warm_in_background()
+        clients_reader.warm_in_background()
+
+    app.state.warm_caches = warm_caches
     return app
 
 
@@ -207,7 +286,9 @@ def app_factory() -> Starlette:  # pragma: no cover - uvicorn --factory entrypoi
         sys.path.insert(0, config.denidin_src_path)
     log_path = setup_logging(level=config.http.log_level)
     start_heartbeat_thread()
-    return build_app(config, log_path=log_path)
+    app = build_app(config, log_path=log_path)
+    app.state.warm_caches()
+    return app
 
 
 def main() -> None:  # pragma: no cover - container entrypoint
@@ -223,8 +304,10 @@ def main() -> None:  # pragma: no cover - container entrypoint
     log_path = setup_logging(level=config.http.log_level)
     start_heartbeat_thread()
     logger.info("webapp-backend starting: env=%s version=%s", config.environment, read_version())
+    app = build_app(config, log_path=log_path)
+    app.state.warm_caches()
     uvicorn.run(
-        build_app(config, log_path=log_path),
+        app,
         host=config.http.host,
         port=config.http.port,
         log_level=config.http.log_level.lower(),

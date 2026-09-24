@@ -1,21 +1,32 @@
 #!/usr/bin/env bash
-# ONE-TIME: teach the Windows prod box about the Feature 068 webapp, so
-# `scripts/deploy_release.sh webapp prod <version>` can deploy to it.
+# ONE-TIME (re-runnable): teach the Windows prod box about the webapp app, so
+# `scripts/deploy_release.sh webapp prod <version>` can deploy to it. Originally
+# Feature 068; updated 2026-09-24 for Feature 087's config consolidation + webapp_data root.
 #
 # The box's deploy dir (~/denidin-prod) is NOT a git checkout - it's a curated
-# file tree, populated once during Feature 035 setup. This script adds the
-# files the two new webapp compose services need:
-#   - docker/docker-compose.prod.yml            (branch version, with webapp-* services;
-#                                                verified append-only vs. the running one)
-#   - apps/webapp/backend/config/config.prod.container.json   (no secrets)
-#   - apps/webapp/backend/auth/password.hash                  (the login hash)
-#   - a webapp-backend-prod block appended to docker/docker-compose.prod.local.yml
-#     (so its read-only denidin-data mount uses the native Windows prod-data path,
-#      same reason denidin-app-prod's data mount does)
+# file tree, populated once during Feature 035 setup. This script:
+#   - Ships/places docker/docker-compose.prod.yml (branch version, with webapp-* services;
+#     verified append-only vs. the running one), apps/webapp/backend/config/config.prod.json
+#     (2026-09-24: no more separate ".container.json" file — this is the SAME file config.py
+#     loads for both host and container mode; must have the real Morning API secrets pasted
+#     in ON THE BOX itself after this runs, never committed anywhere), and
+#     apps/webapp/backend/auth/password.hash.
+#   - Creates apps/webapp/webapp_data/clients/ if missing (empty scaffold only - this script
+#     never copies real client data; that's a separate, explicit seed step - see its own
+#     printed reminder at the end).
+#   - Ensures a CORRECT webapp-backend-prod block exists in docker-compose.prod.local.yml (so
+#     its read-only denidin-data mount uses the native Windows prod-data path, same reason
+#     denidin-app-prod's data mount does) - replaces a stale block from a prior run rather
+#     than just skipping if the service name is merely present (2026-09-24 fix: the old
+#     skip-if-present check would have left a pre-087 STALE mount target in place forever).
+#   - Cleans up the obsolete pre-087 apps/webapp/backend/config/config.prod.container.json
+#     file if still present from an earlier provisioning run.
 #
-# Idempotent. Non-disruptive: copies files, never starts / stops / rebuilds /
-# recreates a container. The running denidin-app-prod / morning-mcp-app-prod
-# are untouched.
+# Idempotent and self-correcting. Non-disruptive: copies/creates files and directories,
+# never starts / stops / rebuilds / recreates a container. The running denidin-app-prod /
+# morning-mcp-app-prod / webapp-backend-prod / webapp-frontend-prod are untouched - re-running
+# this does NOT pick up a new webapp code/config shape in the already-running container; that
+# still requires an explicit scripts/deploy_release.sh webapp prod <version> afterward.
 #
 # Usage (from the Mac, repo root):
 #   ./scripts/windows_prod/provision_webapp.sh [ssh-host-alias] [deploy-dir-name]
@@ -34,7 +45,7 @@ source "$SCRIPT_DIR/_wsl_ssh.sh"
 run() { wsl_ssh_run "$SSH_HOST" "$1"; }
 
 COMPOSE_SRC="docker/docker-compose.prod.yml"
-CONFIG_SRC="apps/webapp/backend/config/config.prod.container.json"
+CONFIG_SRC="apps/webapp/backend/config/config.prod.json"
 PWHASH_SRC="apps/webapp/backend/auth/password.hash"
 
 for f in "$COMPOSE_SRC" "$CONFIG_SRC" "$PWHASH_SRC"; do
@@ -48,7 +59,7 @@ run "cd ~/$DEPLOY_DIR; printf 'compose webapp lines (before): '; grep -c webapp 
 echo
 echo "== [1/4] Shipping files to $SSH_HOST (Windows home) =="
 scp -o BatchMode=yes -o ConnectTimeout=10 "$COMPOSE_SRC" "$SSH_HOST:~/_webapp_compose.prod.yml"
-scp -o BatchMode=yes -o ConnectTimeout=10 "$CONFIG_SRC"  "$SSH_HOST:~/_webapp_config.prod.container.json"
+scp -o BatchMode=yes -o ConnectTimeout=10 "$CONFIG_SRC"  "$SSH_HOST:~/_webapp_config.prod.json"
 scp -o BatchMode=yes -o ConnectTimeout=10 "$PWHASH_SRC"  "$SSH_HOST:~/_webapp_password.hash"
 
 echo
@@ -66,43 +77,72 @@ PLACE=$(cat <<REMOTE
 set -e
 WH="$WIN_HOME"
 DD="$DEPLOY_DIR"
-for f in _webapp_compose.prod.yml _webapp_config.prod.container.json _webapp_password.hash; do
+for f in _webapp_compose.prod.yml _webapp_config.prod.json _webapp_password.hash; do
     test -f "\$WH/\$f" || { echo "ERROR: shipped file missing: \$WH/\$f" >&2; exit 1; }
 done
 cd ~/"\$DD"
-mkdir -p apps/webapp/backend/config apps/webapp/backend/auth
-cp "\$WH/_webapp_compose.prod.yml"           docker/docker-compose.prod.yml
-cp "\$WH/_webapp_config.prod.container.json"  apps/webapp/backend/config/config.prod.container.json
-cp "\$WH/_webapp_password.hash"               apps/webapp/backend/auth/password.hash
-rm -f "\$WH/_webapp_compose.prod.yml" "\$WH/_webapp_config.prod.container.json" "\$WH/_webapp_password.hash"
+mkdir -p apps/webapp/backend/config apps/webapp/backend/auth apps/webapp/webapp_data/clients
+cp "\$WH/_webapp_compose.prod.yml"  docker/docker-compose.prod.yml
+cp "\$WH/_webapp_config.prod.json"  apps/webapp/backend/config/config.prod.json
+cp "\$WH/_webapp_password.hash"     apps/webapp/backend/auth/password.hash
+rm -f "\$WH/_webapp_compose.prod.yml" "\$WH/_webapp_config.prod.json" "\$WH/_webapp_password.hash"
+# Cleanup: obsolete pre-087 file, superseded by config.prod.json above - never needed again.
+if [ -f apps/webapp/backend/config/config.prod.container.json ]; then
+    rm -f apps/webapp/backend/config/config.prod.container.json
+    echo "cleaned up: obsolete config.prod.container.json removed"
+fi
 echo "placed: \$(grep -c webapp docker/docker-compose.prod.yml) webapp lines in docker-compose.prod.yml"
+if [ -z "\$(ls -A apps/webapp/webapp_data/clients 2>/dev/null)" ]; then
+    echo "NOTE: apps/webapp/webapp_data/clients/ is empty - needs seeding from Rapaport's live"
+    echo "      analyst files before webapp's Clients tab has any real data (see"
+    echo "      apps/webapp/webapp_data/README.md in the repo for what to copy)."
+else
+    echo "apps/webapp/webapp_data/clients/ already has \$(ls apps/webapp/webapp_data/clients | wc -l) file(s) - not touched."
+fi
 REMOTE
 )
 run "$PLACE"
 
 echo
-echo "== [3/4] Appending webapp-backend-prod to docker-compose.prod.local.yml (if needed) =="
-PATCH=$(cat <<'REMOTE'
+echo "== [3/4] Ensuring a CORRECT webapp-backend-prod block in docker-compose.prod.local.yml =="
+# Self-correcting, not just skip-if-present (2026-09-24 fix): a prior run of this script may
+# have appended a now-stale block (pre-087's flat /app/denidin-data mount target). Since this
+# script only ever APPENDS its own block, and only ever at the end of the file, the safe way
+# to correct it is to drop everything from the FIRST "  webapp-backend-prod:" line onward, then
+# append a fresh, current block - never touching whatever precedes it (denidin-app-prod's own
+# block, etc.).
+CORRECT_TARGET='/app/apps/denidin-app/data'
+PATCH=$(cat <<REMOTE
 set -e
-DD="__DEPLOY_DIR__"
-cd ~/"$DD"
+DD="$DEPLOY_DIR"
+cd ~/"\$DD"
 LF=docker/docker-compose.prod.local.yml
-if grep -q webapp-backend-prod "$LF"; then
-    echo "already patched - leaving $LF as-is"
+cp "\$LF" "\$LF.pre-webapp.bak"
+if grep -qF '$CORRECT_TARGET' "\$LF" && grep -q webapp-backend-prod "\$LF"; then
+    echo "already correct - leaving \$LF as-is"
+    rm -f "\$LF.pre-webapp.bak"
 else
-    cp "$LF" "$LF.pre-webapp.bak"
+    if grep -q webapp-backend-prod "\$LF"; then
+        echo "stale webapp-backend-prod block found - replacing it (backup: \$LF.pre-webapp.bak)"
+        sed -i '/^  webapp-backend-prod:/,\$d' "\$LF"
+    else
+        echo "no webapp-backend-prod block found - appending one (backup: \$LF.pre-webapp.bak)"
+    fi
     {
         echo "  # 2026-09-06 (Feature 068): webapp-backend-prod's read-only denidin-data mount"
         echo "  # uses the same native Windows prod-data path as denidin-app-prod's data mount."
+        echo "  # 2026-09-24: mount target mirrors the repo tree (matches config.prod.json's"
+        echo "  # relative denidin_data_root, resolved from /app/apps/webapp/backend) - no more"
+        echo '  # separate ".container.json"/flat-path convention.'
         echo "  webapp-backend-prod:"
         echo "    volumes:"
-        echo "      - /mnt/c/Users/Yaron Levi/denidin-prod-data:/app/denidin-data:ro"
-    } >> "$LF"
-    echo "appended webapp-backend-prod block (backup: $LF.pre-webapp.bak)"
+        echo "      - /mnt/c/Users/Yaron Levi/denidin-prod-data:$CORRECT_TARGET:ro"
+    } >> "\$LF"
+    echo "webapp-backend-prod block is now current"
 fi
 REMOTE
 )
-run "${PATCH/__DEPLOY_DIR__/$DEPLOY_DIR}"
+run "$PATCH"
 
 echo
 echo "== [4/4] Verify merged compose parses; webapp mount + existing services intact =="
@@ -119,10 +159,32 @@ grep -A40 'webapp-backend-prod:' /tmp/_webapp_cfg.yml | grep -m1 denidin-prod-da
 echo "  existing prod services still present:"
 grep -E '^  (denidin-app|morning-mcp-app)-prod:' /tmp/_webapp_cfg.yml | sed 's/^/    /'
 rm -f /tmp/_webapp_cfg.yml
+echo "  no obsolete config.prod.container.json left behind:"
+if [ -f apps/webapp/backend/config/config.prod.container.json ]; then
+    echo "    WARNING: still present - cleanup step above should have removed it"
+else
+    echo "    confirmed absent"
+fi
+echo "  webapp_data/clients/ present:"
+[ -d apps/webapp/webapp_data/clients ] && echo "    yes ($(ls apps/webapp/webapp_data/clients | wc -l) file(s))" || echo "    MISSING"
+echo "  config.prod.json Morning credentials filled in (not placeholder):"
+python3 -c "
+import json
+d = json.load(open('apps/webapp/backend/config/config.prod.json'))
+kid = d.get('morning_api_key_id', '')
+if not kid or kid.startswith('PASTE_YOUR'):
+    print('    NOT SET - paste real prod Morning credentials into config.prod.json on this box before deploying')
+else:
+    print('    set (value not printed)')
+"
 REMOTE
 )
 run "${VERIFY/__DEPLOY_DIR__/$DEPLOY_DIR}"
 
 echo
-echo "OK - box provisioned for the Feature 068 webapp."
-echo "Next (from the Mac): scripts/cut_release.sh webapp <VERSION> --summary \"...\"  then  scripts/deploy_release.sh webapp prod <VERSION>"
+echo "OK - box provisioned for the webapp (Features 068 + 087)."
+echo "Remaining manual steps on the box before a real deploy:"
+echo "  1. Paste real prod Morning API credentials into apps/webapp/backend/config/config.prod.json"
+echo "  2. Seed apps/webapp/webapp_data/clients/ from Rapaport's live analyst files (see"
+echo "     apps/webapp/webapp_data/README.md) if not already done"
+echo "Then (from the Mac): scripts/cut_release.sh webapp <VERSION> --summary \"...\"  then  scripts/deploy_release.sh webapp prod <VERSION>"
