@@ -61,7 +61,7 @@ from .denidin_mcp_e2e_helpers import (
     _HEBREW_NAME_SPELLING_VARIANTS,
     _SEED_PHONE,
     _calls_for,
-    _normalize_hebrew_geresh,
+    _strip_invisible_marks,
     _is_genuine_document_creation,
     _is_real_approval_prompt,
     _random_amount,
@@ -140,6 +140,15 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
         f"create_combo_document executed on the ASK turn before approval was given: "
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
+
+    # bugfix-061: a type-320 records money already received, so VAT is included by
+    # definition and the request above never states it - the bot must not ask about it.
+    vat_questions = (
+        "האם הסכום כולל", "האם המחיר כולל", "כולל מע\"מ או", "כולל מע״מ או",
+        "לפני מע\"מ", "לפני מע״מ", "עם מע\"מ או בלי",
+    )
+    asked = [q for q in vat_questions if q in (ask_response or "")]
+    assert not asked, f"bugfix-061: the bot asked a VAT question ({asked!r}): {ask_response!r}"
 
     create_calls = _calls_for(ai_response, "create_combo_document")
 
@@ -586,7 +595,7 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
         f"exactly the silent-duplicate risk the courtesy check exists to "
         f"prevent: {pending!r}"
     )
-    assert _normalize_hebrew_geresh(seed_name) in (ask_response or ""), (
+    assert _strip_invisible_marks(seed_name) in (ask_response or ""), (
         f"Expected the reply to explicitly name the existing similar client "
         f"{seed_name!r} (per runtime_constitution.md's mandatory disclosure) "
         f"before offering to create a new one under {near_duplicate_name!r} - "

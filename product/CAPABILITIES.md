@@ -84,13 +84,13 @@ Customer-facing functional features, conversational intelligence, and business c
 ## Bugfixes
 
 - **064**: `bugfix-064-webapp-stale-in-memory-ledger-index` — Status: Bugfixes
-- **061**: `bugfix-061-vat-prompt-conflict` — Status: Bugfixes
+- **061**: `bugfix-061-vat-prompt-conflict` — Status: In-progress
 - **060**: `bugfix-060-user-request-wins-over-system` — Status: Bugfixes
 - **059**: `bugfix-059-multiple-doc-request-failure` — Status: Bugfixes
-- **058**: `bugfix-058-persist-user-errors-in-session` — Status: Bugfixes
+- **058**: `bugfix-058-persist-user-errors-in-session` — Status: In-progress
 - **056**: `bugfix-056-webapp-ui-gaps-vs-approved-playwright-plan` — Status: Repo
 - **055**: `bugfix-055-bundled-app-stop-kills-sibling` — Status: Repo
-- **054**: `bugfix-054-startup-drops-queued-messages` — Status: Bugfixes
+- **054**: `bugfix-054-startup-drops-queued-messages` — Status: In-progress
 - **053**: `bugfix-053-memory-questions-misrouted-to-ledger-query` — Status: Repo
 - **052**: `bugfix-052-billed-tests-share-one-session-per-file` — Status: Bugfixes
 - **051**: `bugfix-051-list-reminders-cross-chat-disclosure` — Status: Repo
@@ -110,12 +110,12 @@ Customer-facing functional features, conversational intelligence, and business c
 - **037**: `bugfix-037-mixed-timestamp-representation` — Status: Done (v0.4.0)
 - **034**: `bugfix-034-ledger-bugs` — Status: Repo
 - **033**: `bugfix-033-credit-notes-silently-dropped-from-financial-answers` — Status: Repo
-- **032**: `bugfix-032-phone-number-not-normalised` — Status: Bugfixes
+- **032**: `bugfix-032-phone-number-not-normalised` — Status: In-progress
 - **031**: `bugfix-031-hebrew-status-value-returns-empty-instead-of-error` — Status: Repo
 - **030**: `bugfix-030-message-sequencing-ambiguity` — Status: Repo
 - **029**: `bugfix-029-conversation-quality-p1-cluster` — Status: Repo
 - **028**: `bugfix-028-invoicing-and-approval-gate-p0-cluster` — Status: Done (v0.4.1)
-- **027**: `bugfix-027-geresh-omitted-entirely-not-fuzzy-matched` — Status: Bugfixes
+- **027**: `bugfix-027-geresh-omitted-entirely-not-fuzzy-matched` — Status: In-progress
 - **026**: `bugfix-026-morning-documents-created-unsigned` — Status: Done (v0.3.0)
 - **025**: `bugfix-025-nickname-not-recognized-as-self-address` — Status: Repo
 - **024**: `bugfix-024-native-mention-by-phone-number` — Status: Done (v0.2.1)

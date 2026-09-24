@@ -743,8 +743,6 @@ def _resolve_client_name(
     )
 
 
-_HEBREW_GERESH = "׳"
-_APOSTROPHE_VARIANTS = ("'", "’", "׳")  # ASCII ' , typographic ' , geresh (idempotent)
 # Bidi / general-format control codepoints an RTL-aware model or the WhatsApp
 # layer can silently insert into or drop from a mixed-script name (Hebrew +
 # Arabic Israeli names both occur in the seed pools). They carry no identity.
@@ -754,27 +752,19 @@ _BIDI_CONTROLS = dict.fromkeys(
 )
 
 
-def _normalize_hebrew_geresh(name):
+def _strip_invisible_marks(name):
     """Canonicalise a Hebrew client name for an equality/substring compare
     against Morning's own formatted OUTPUT (never against a tool call's raw
-    arguments, which stay un-normalized).
-
-    - Replace every apostrophe-like character with the Hebrew geresh - Morning
-      stores names this way, so "ריצ'רד" comes back as "ריצ׳רד"
-      (mirrors `denidin_mcp_morning.tools._normalize_hebrew_geresh`; caught in a
-      post-merge sweep 2026-08-12 when a real run drew "ריצ'רד" from the pool).
-    - NFC-normalise and strip bidi/format controls, so an invisible RTL mark the
-      model or WhatsApp layer added/dropped does not fail an otherwise-identical
-      compare (Feature 069, was a separate `_geresh_normalise` in
-      `_ledger_069_acceptance.py` until 2026-09-10 - folded in here).
-    - `None`/`""` pass through unchanged.
+    arguments): NFC-normalise and strip bidi/format controls, so an invisible
+    RTL mark the model or WhatsApp layer added/dropped does not fail an
+    otherwise-identical compare (Feature 069). Deliberately does NOT touch
+    quote characters - an apostrophe and a geresh are different characters and
+    a name must be compared in the spelling Morning actually stores (bugfix-027).
+    `None`/`""` pass through unchanged.
     """
     if not name:
         return name
-    out = unicodedata.normalize("NFC", str(name)).translate(_BIDI_CONTROLS)
-    for variant in _APOSTROPHE_VARIANTS:
-        out = out.replace(variant, _HEBREW_GERESH)
-    return out
+    return unicodedata.normalize("NFC", str(name)).translate(_BIDI_CONTROLS)
 
 
 def _is_real_approval_prompt(text: Optional[str]) -> bool:

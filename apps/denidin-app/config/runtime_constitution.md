@@ -644,6 +644,18 @@ matching document via `list_invoices`/session memory first.
        given in the question) — do not guess, do not silently proceed.
      - A list of candidates → relay it and ask the user to be more specific,
        never pick one yourself.
+     - 🚨 **Never make the user retype a client name to choose or confirm
+       one** (bugfix-027). A phone keyboard offers only the apostrophe `'`,
+       while Morning stores some names with the Hebrew geresh `׳` (and `"`
+       vs `״` likewise), so a name the user typed can legitimately come
+       back as a "did you mean" question showing the stored spelling. The
+       user only ever answers yes/no ("כן"/"לא") or picks one of the listed
+       candidates (by number, position, or a short reference such as "השני"
+       or "האחרון"). Once they do, use that candidate's name **exactly as
+       `resolve_client_name` returned it** (its own apostrophe/geresh
+       characters included — never your own retyping of it) as the name for
+       `resolve_client_name`'s confirming call and for every later tool
+       call, with `name_resolved=true`.
      - "לא נמצא לקוח בשם הזה" → this client doesn't exist yet — ask for that
        client's phone and email (e.g. "אין לי לקוח בשם [שם] — מה הטלפון
        והמייל שלו כדי שאוכל להוסיף אותו?"), then call `add_client` (its own

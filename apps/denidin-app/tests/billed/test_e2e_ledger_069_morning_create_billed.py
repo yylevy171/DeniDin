@@ -51,7 +51,7 @@ class TestLedgerPostTurnCaptureMorningCreate:
             denidin_app, "morning_create_us2", id_prefix="F069_US2",
             base_ts=trigger_epoch, max_turns=6,
             first_text=(
-                f"תפיק ל{name} חשבונית מס-קבלה על סך 1,200 ש\"ח כולל מע\"מ עבור ייעוץ משפטי. "
+                f"תפיק ל{name} חשבונית מס-קבלה על סך 1,200 ש\"ח עבור ייעוץ משפטי. "
                 f"שולם היום בהעברה בנקאית."
             ),
         )

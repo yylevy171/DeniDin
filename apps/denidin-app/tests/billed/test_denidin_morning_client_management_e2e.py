@@ -35,7 +35,7 @@ from .denidin_mcp_e2e_helpers import (
     _SEED_PHONE,
     _calls_for,
     _is_real_approval_prompt,
-    _normalize_hebrew_geresh,
+    _strip_invisible_marks,
     _random_seed_email,
     _resolve_client_name,
     _seed_client,
@@ -387,11 +387,11 @@ def test_godfather_finds_client_via_hebrew_vowel_variant(denidin_app):
     )
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    # Morning geresh-normalizes any apostrophe in a stored name (e.g. "וורובוביץ'"
-    # -> "וורובוביץ׳"); the model echoes Morning's normalized form. Compare both
-    # sides normalized - same pattern as this file's other name-in-response
-    # assertions (see _normalize_hebrew_geresh usages above).
-    assert _normalize_hebrew_geresh(seed_name) in _normalize_hebrew_geresh(response), (
+    # Morning stores a name exactly as it was typed (apostrophe stays an
+    # apostrophe - bugfix-027), so the model echoes the seeded spelling;
+    # only invisible RTL marks are ignored - same pattern as this file's
+    # other name-in-response assertions (see _strip_invisible_marks usages above).
+    assert _strip_invisible_marks(seed_name) in _strip_invisible_marks(response), (
         f"Expected the model to find {seed_name!r} despite being asked "
         f"about the alternate spelling {query_name!r} - got: {response!r}"
     )
@@ -446,10 +446,9 @@ def test_godfather_get_client_details_resolves_ambiguous_first_name_prefix_after
         f"godfather confirmed which client was meant: "
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
-    # Morning geresh-normalizes any apostrophe in a stored name (e.g. "ריצ'רד"
-    # -> "ריצ׳רד") - resolve_client_name's confirmation question quotes
-    # Morning's own normalized form, not our raw generated full_name.
-    assert _normalize_hebrew_geresh(full_name) in ask_response, (
+    # resolve_client_name's confirmation question quotes Morning's own stored
+    # spelling of the name (Morning stores names exactly as typed - bugfix-027).
+    assert _strip_invisible_marks(full_name) in ask_response, (
         f"Expected resolve_client_name's confirmation question to name the "
         f"full resolved client {full_name!r} (not just echo the prefix "
         f"{first_name_prefix!r} the user typed) - got: {ask_response!r}"
@@ -580,9 +579,9 @@ def test_godfather_update_client_resolves_ambiguous_family_name_prefix_after_con
 
     # `response` now holds the real approval prompt itself - it must name
     # the resolved client, and must still not have executed anything.
-    # Morning geresh-normalizes any apostrophe in a stored name - see the
-    # matching comment in the get_client_details test above.
-    assert _normalize_hebrew_geresh(full_name) in response, (
+    # Morning stores names exactly as typed - see the matching comment in the
+    # get_client_details test above.
+    assert _strip_invisible_marks(full_name) in response, (
         f"Expected the real update_client PENDING-APPROVAL prompt to name "
         f"the resolved client {full_name!r} - got: {response!r}"
     )

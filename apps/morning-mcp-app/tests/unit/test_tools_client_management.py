@@ -569,83 +569,160 @@ def test_list_clients_over_cap_reports_total_without_fetching_further_pages():
     assert payload["total"] == 278
 
 
-# --- Hebrew geresh normalization (bugfix, 2026-08-07) ---
+# --- Quote-character spellings (bugfix-027) ---
 #
-# Found while verifying feature 027: the model doesn't consistently type a
-# Hebrew consonant-modifier apostrophe the same way across turns (e.g. an
-# add_client call using a plain ASCII apostrophe, "סידורוביץ'", vs a later
-# create_invoice call reconstructing the same name with the correct Hebrew
-# geresh punctuation mark instead, "סידורוביץ׳" - or vice versa). Since
-# Morning's real client search is sensitive to this exact character, that
-# silent inconsistency made an existing client resolve as "not found"
-# (confirmed live, 2026-08-07). Every client name is now normalized to the
-# single correct Hebrew geresh form at every write and lookup boundary.
+# Morning stores a client's name exactly as typed - both the ASCII apostrophe
+# ("מג'די", U+0027) and the Hebrew geresh ("מג׳די", U+05F3) occur in real data
+# (likewise `"` U+0022 vs gershayim U+05F4) - and its search is sensitive to
+# the exact character. Nothing rewrites a name any more: it is sent and stored
+# as given, and a client SEARCH runs once per spelling and merges the hits.
 
 _APOSTROPHE_NAME = "סידורוביץ'"  # ASCII apostrophe (U+0027)
-_TYPOGRAPHIC_APOSTROPHE_NAME = "סידורוביץ’"  # typographic apostrophe (U+2019)
-_GERESH_NAME = "סידורוביץ׳"  # correct Hebrew geresh (U+05F3)
+_GERESH_NAME = "סידורוביץ׳"  # Hebrew geresh (U+05F3)
+_QUOTE_NAME = 'בע"מ'  # ASCII double quote (U+0022)
+_GERSHAYIM_NAME = "בע״מ"  # gershayim (U+05F4)
 
 
-def test_normalize_hebrew_geresh_replaces_ascii_apostrophe():
-    assert tools._normalize_hebrew_geresh(_APOSTROPHE_NAME) == _GERESH_NAME
+class _SpellingAwareClient(_FakeMorningClient):
+    """Like Morning's real search: a query only finds records whose stored
+    name starts with exactly the queried characters."""
+
+    def __init__(self, records):
+        super().__init__()
+        self._records = records
+
+    def search_clients(self, payload):
+        self.search_clients_calls.append(payload)
+        query = payload.get("name", "")
+        items = [r for r in self._records if r["name"].startswith(query)]
+        return {"items": items, "total": len(items), "page": 1, "pages": 1}
 
 
-def test_normalize_hebrew_geresh_replaces_typographic_apostrophe():
-    assert tools._normalize_hebrew_geresh(_TYPOGRAPHIC_APOSTROPHE_NAME) == _GERESH_NAME
+def test_name_spellings_flips_each_quote_pair():
+    assert tools._name_spellings(_APOSTROPHE_NAME) == [_APOSTROPHE_NAME, _GERESH_NAME]
+    assert tools._name_spellings(_GERESH_NAME) == [_GERESH_NAME, _APOSTROPHE_NAME]
+    assert tools._name_spellings(_QUOTE_NAME) == [_QUOTE_NAME, _GERSHAYIM_NAME]
+    assert tools._name_spellings(_GERSHAYIM_NAME) == [_GERSHAYIM_NAME, _QUOTE_NAME]
 
 
-def test_normalize_hebrew_geresh_is_a_no_op_when_already_geresh():
-    assert tools._normalize_hebrew_geresh(_GERESH_NAME) == _GERESH_NAME
+def test_name_spellings_without_quote_characters_is_just_the_text():
+    assert tools._name_spellings("Test Client") == ["Test Client"]
 
 
-def test_resolve_client_by_name_normalizes_query_before_searching():
+def test_name_spellings_leaves_other_characters_alone():
+    typographic = "סידורוביץ’"  # U+2019 is treated like any other character
+    assert tools._name_spellings(typographic) == [typographic]
+
+
+def test_resolve_client_by_name_without_quotes_searches_once():
     client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
 
-    tools._resolve_client_by_name(client, _APOSTROPHE_NAME)
+    tools._resolve_client_by_name(client, "Test Client")
 
-    assert client.search_clients_calls == [{"name": _GERESH_NAME}]
+    assert client.search_clients_calls == [{"name": "Test Client"}]
 
 
-def test_add_client_normalizes_name_before_sending_and_in_confirmation():
+def test_resolve_client_by_name_finds_geresh_stored_client_from_apostrophe_query():
+    record = _client_record(client_id="c-1", name=_GERESH_NAME)
+    client = _SpellingAwareClient([record])
+
+    resolved, candidates = tools._resolve_client_by_name(client, _APOSTROPHE_NAME)
+
+    assert resolved is not None and resolved.id == "c-1"
+    assert client.search_clients_calls == [{"name": _APOSTROPHE_NAME}, {"name": _GERESH_NAME}]
+
+
+def test_resolve_client_by_name_finds_apostrophe_stored_client_from_geresh_query():
+    record = _client_record(client_id="c-1", name=_APOSTROPHE_NAME)
+    client = _SpellingAwareClient([record])
+
+    resolved, _ = tools._resolve_client_by_name(client, _GERESH_NAME)
+
+    assert resolved is not None and resolved.id == "c-1"
+
+
+def test_resolve_client_by_name_finds_gershayim_stored_client_from_double_quote_query():
+    record = _client_record(client_id="c-1", name=_GERSHAYIM_NAME)
+    client = _SpellingAwareClient([record])
+
+    resolved, _ = tools._resolve_client_by_name(client, _QUOTE_NAME)
+
+    assert resolved is not None and resolved.id == "c-1"
+
+
+def test_search_clients_by_name_merges_hits_by_client_id():
+    both = _client_record(client_id="c-1", name=_APOSTROPHE_NAME)
+    client = _FakeMorningClient(search_clients_response={"items": [both], "total": 1})
+
+    merged = tools._search_clients_by_name(client, _APOSTROPHE_NAME)
+
+    assert list(merged) == ["c-1"]  # same client returned by both spellings, kept once
+
+
+def test_resolve_client_name_asks_confirmation_when_only_the_quote_spelling_differs():
+    """The user typed an apostrophe (all an iPhone keyboard has), Morning
+    stores a geresh: not an exact match, so the user is asked to confirm the
+    stored name - never to retype it."""
+    record = _client_record(client_id="c-1", name=_GERESH_NAME)
+    client = _SpellingAwareClient([record])
+
+    result = tools.resolve_client_name(client, _APOSTROPHE_NAME)
+
+    assert _GERESH_NAME in result
+    assert "status" in result  # a structured reply naming the candidate
+    assert json.loads(result).get("status") != "resolved"
+
+
+def test_add_client_sends_and_confirms_name_exactly_as_typed():
     client = _FakeMorningClient()
 
     result = tools.add_client(client, name=_APOSTROPHE_NAME, email="tech@example.com", phone="050-1234567")
 
-    assert client.add_client_calls[0]["name"] == _GERESH_NAME
-    assert _GERESH_NAME in result
-    assert _APOSTROPHE_NAME not in result
+    assert client.add_client_calls[0]["name"] == _APOSTROPHE_NAME
+    assert _APOSTROPHE_NAME in result
 
 
-def test_update_client_normalizes_lookup_name_before_searching():
-    record = _client_record(client_id="c-1", name=_GERESH_NAME)
-    client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
+def test_update_client_looks_up_the_stored_spelling_verbatim():
+    record = _client_record(client_id="c-1", name=_APOSTROPHE_NAME)
+    client = _SpellingAwareClient([record])
 
     tools.update_client(client, name=_APOSTROPHE_NAME, email="new@example.com", name_resolved=True)
 
-    assert client.search_clients_calls == [{"name": _GERESH_NAME}]
+    assert client.search_clients_calls[0] == {"name": _APOSTROPHE_NAME}
+    assert client.update_client_calls[0][0] == "c-1"
 
 
-def test_update_client_normalizes_new_name_before_sending():
+def test_update_client_sends_new_name_exactly_as_typed():
     record = _client_record(client_id="c-1", name="Old Name")
     client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
 
     result = tools.update_client(client, name="Old Name", new_name=_APOSTROPHE_NAME, name_resolved=True)
 
-    assert client.update_client_calls[0][1]["name"] == _GERESH_NAME
-    assert _GERESH_NAME in result
-    assert _APOSTROPHE_NAME not in result
+    assert client.update_client_calls[0][1]["name"] == _APOSTROPHE_NAME
+    assert _APOSTROPHE_NAME in result
 
 
-def test_list_clients_normalizes_name_filter_before_searching():
+def test_list_clients_searches_both_spellings_of_the_name_filter():
     client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
 
     tools.list_clients(client, name=_APOSTROPHE_NAME)
 
-    assert client.search_clients_calls == [{"name": _GERESH_NAME}]
+    assert client.search_clients_calls == [{"name": _APOSTROPHE_NAME}, {"name": _GERESH_NAME}]
 
 
-def test_is_exact_name_match_treats_apostrophe_and_geresh_as_equal():
-    assert tools._is_exact_name_match(_GERESH_NAME, _APOSTROPHE_NAME)
-    assert tools._is_exact_name_match(_APOSTROPHE_NAME, _GERESH_NAME)
+def test_list_clients_merges_hits_from_both_spellings():
+    apostrophe = _client_record(client_id="c-1", name=_APOSTROPHE_NAME)
+    geresh = _client_record(client_id="c-2", name=_GERESH_NAME)
+    client = _SpellingAwareClient([apostrophe, geresh])
+
+    result = tools.list_clients(client, name=_APOSTROPHE_NAME)
+
+    assert _APOSTROPHE_NAME in result and _GERESH_NAME in result
+
+
+def test_is_exact_name_match_does_not_treat_apostrophe_and_geresh_as_equal():
+    """A quote-spelling difference makes it a "did you mean" the user confirms."""
+    assert not tools._is_exact_name_match(_GERESH_NAME, _APOSTROPHE_NAME)
+    assert tools._is_exact_name_match(_APOSTROPHE_NAME, _APOSTROPHE_NAME)
 
 

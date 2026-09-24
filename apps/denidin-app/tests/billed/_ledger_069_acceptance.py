@@ -62,7 +62,7 @@ from src.managers.ledger_event_manager import LEDGER_EVENT_FIELDS
 from tests.e2e_helpers import ClarificationAnswerBank, persisted_ledger_events_for_chat
 from tests.billed.denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,
-    _normalize_hebrew_geresh,
+    _strip_invisible_marks,
     _random_seed_email,
     _seed_client,
     _unique_client_name,
@@ -101,14 +101,14 @@ def _norm_field(field: str, value: Any) -> Optional[str]:
     """`_norm`, plus the few per-field canonicalisations a `tested` compare
     needs so a value that only *formats* differently still matches:
 
-      - `client_name` — apostrophe→geresh, NFC, bidi-strip (Morning's own store
-        behaviour + invisible RTL marks); the shared
-        `denidin_mcp_e2e_helpers._normalize_hebrew_geresh`.
+      - `client_name` — NFC, bidi-strip (invisible RTL marks only; quote characters are left as-is
+        - bugfix-027); the shared
+        `denidin_mcp_e2e_helpers._strip_invisible_marks`.
       - `txn_date` — ISO `YYYY-MM-DD` ⇄ `DD/MM/YYYY`.
       - `percent` / `percent_base` / `split_percent` — drop a `%` sign / RTL mark.
     """
     if field == "client_name":
-        return _norm(_normalize_hebrew_geresh(value))
+        return _norm(_strip_invisible_marks(value))
     s = _norm(value)
     if s is None:
         return None

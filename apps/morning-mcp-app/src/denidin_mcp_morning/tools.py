@@ -463,7 +463,6 @@ def create_transaction_account(
         ClientNotFoundError: if name_resolved is True but the name doesn't
             match a real client exactly.
     """
-    client_name = _normalize_hebrew_geresh(client_name)
     resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_transaction_account")
 
     payload = _build_transaction_account_payload(
@@ -686,7 +685,6 @@ def create_combo_document(
         ValueError: if payment_date is missing, unparseable, or in the future,
             or payment_method is unknown.
     """
-    client_name = _normalize_hebrew_geresh(client_name)
     resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_combo_document")
 
     payload = _build_combo_document_payload(
@@ -770,7 +768,6 @@ def create_invoice(
         ClientNotFoundError: if name_resolved is True but the name doesn't
             match a real client exactly.
     """
-    client_name = _normalize_hebrew_geresh(client_name)
     resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_invoice")
 
     payload = _build_create_invoice_payload(resolved_client.id, amount, description, due_date, vat_included)
@@ -1660,8 +1657,7 @@ def create_receipt(
     if original_internal_morning_id is None:
         # Feature 056: standalone receipt, no original to fetch at all.
         if client_name:
-            client_name = _normalize_hebrew_geresh(client_name)
-        resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_receipt")
+                resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_receipt")
 
         payload = _build_standalone_receipt_payload(
             resolved_client.id, amount, description, payment_date
@@ -1726,28 +1722,44 @@ _ISRAELI_PHONE_MOBILE_LENGTH = 10  # 0 + 3-digit prefix + 7 digits, e.g. 050-123
 _ISRAELI_PHONE_LANDLINE_LENGTH = 9  # 0 + 1-digit area code + 7 digits, e.g. 02-1234567
 
 
-# Bugfix (2026-08-07, found while verifying Feature 027): the model does not
-# consistently type a Hebrew consonant-modifier apostrophe the same way
-# across turns - e.g. add_client sees a plain ASCII apostrophe ("סידורוביץ'")
-# but a later turn's create_invoke call reconstructs the same name using the
-# correct Hebrew geresh punctuation mark ("סידורוביץ׳", U+05F3) instead, or
-# vice versa. Since Morning's real client search is sensitive to this exact
-# character (confirmed live: a full-name query with the "wrong" variant
-# returned zero matches even though the client existed and a shorter,
-# punctuation-free query found it fine), that silent inconsistency caused a
-# real, existing client to be reported as "not found". Every client name is
-# now normalized to the single correct Hebrew form (geresh, never a plain or
-# typographic apostrophe) at every write and lookup boundary, so resolution
-# is robust to whichever variant was actually typed.
-_HEBREW_GERESH = "׳"  # ׳
-_APOSTROPHE_VARIANTS = ("'", "’")  # ASCII ' and typographic '
+# Client-name quote characters (bugfix-027). Morning stores a client's name
+# exactly as it was typed - both the ASCII apostrophe (U+0027) and the Hebrew
+# geresh (U+05F3) occur in real data, likewise the ASCII double quote (U+0022)
+# and the gershayim (U+05F4) - and its search is sensitive to the exact
+# character: a query spelled with the "other" one finds nothing. Nothing here
+# rewrites a name; a name is always sent and stored as given. Instead a
+# SEARCH is run once per spelling and the results are merged, so a client is
+# found whichever variant the user (an iPhone keyboard only has the
+# apostrophe) happened to type.
+_QUOTE_SWAPS = (("'", "\u05f3"), ("\u05f3", "'"), ('"', "\u05f4"), ("\u05f4", '"'))
 
 
-def _normalize_hebrew_geresh(name: str) -> str:
-    """Replace any apostrophe-like character with the correct Hebrew geresh."""
-    for variant in _APOSTROPHE_VARIANTS:
-        name = name.replace(variant, _HEBREW_GERESH)
-    return name
+def _name_spellings(text: str) -> List[str]:
+    """`text` as typed, plus each quote-pair flipped - the distinct
+    spellings one search must cover. No quote characters -> just `text`."""
+    spellings = [text]
+    for ascii_char, hebrew_char in (("'", "\u05f3"), ('"', "\u05f4")):
+        for variant in list(spellings):
+            for source, target in ((ascii_char, hebrew_char), (hebrew_char, ascii_char)):
+                if source in variant:
+                    flipped = variant.replace(source, target)
+                    if flipped not in spellings:
+                        spellings.append(flipped)
+    return spellings
+
+
+def _search_clients_by_name(client: MorningClient, text: str) -> Dict[str, Client]:
+    """Search Morning once per spelling of `text` (see `_name_spellings`)
+    and merge the hits by client id. The one place a client-name search is
+    made."""
+    merged: Dict[str, Client] = {}
+    for spelling in _name_spellings(text):
+        response = client.search_clients({"name": spelling})
+        for item in response.get("items") or []:
+            candidate = Client.model_validate(item)
+            if candidate.id:
+                merged.setdefault(candidate.id, candidate)
+    return merged
 
 
 def _resolve_client_by_name(client: MorningClient, name: str) -> Tuple[Optional[Client], List[Client]]:
@@ -1758,9 +1770,7 @@ def _resolve_client_by_name(client: MorningClient, name: str) -> Tuple[Optional[
     - 1 match: (client, [client])
     - >1 matches: (None, [client1, client2, ...]) - caller must disambiguate, never guess.
     """
-    response = client.search_clients({"name": _normalize_hebrew_geresh(name)})
-    items = response.get("items") or []
-    candidates = [Client.model_validate(item) for item in items]
+    candidates = list(_search_clients_by_name(client, name).values())
     if len(candidates) == 1:
         return candidates[0], candidates
     return None, candidates
@@ -1793,14 +1803,14 @@ def _levenshtein(a: str, b: str) -> int:
 
 def _bag_equal_words(query: str, candidate_name: str) -> bool:
     """Whether `query` and `candidate_name` are made of exactly the same
-    words (case-insensitive, geresh-normalized), regardless of order -
+    words (case-insensitive), regardless of order -
     the real exactness criterion for the algorithm below (bugfix-039,
     round 3, 2026-08-11): the caller may not have typed the words in the
     same order Morning stored them, and that alone must never turn a
     genuinely exact name into a refusal."""
 
     def _bag(name: str) -> List[str]:
-        return sorted(_normalize_hebrew_geresh(w.strip().casefold()) for w in name.split() if w)
+        return sorted(w.strip().casefold() for w in name.split() if w)
 
     return _bag(query) == _bag(candidate_name)
 
@@ -1808,10 +1818,7 @@ def _bag_equal_words(query: str, candidate_name: str) -> bool:
 def _search_word_prefix(client: MorningClient, prefix: str) -> Dict[str, Client]:
     """One real Morning /clients/search call for a single prefix string -
     the one search primitive the algorithm below is built from."""
-    response = client.search_clients({"name": _normalize_hebrew_geresh(prefix)})
-    items = response.get("items") or []
-    candidates = [Client.model_validate(item) for item in items]
-    return {c.id: c for c in candidates if c.id}
+    return _search_clients_by_name(client, prefix)
 
 
 _COMMON_WORD_DISCOVERY_CAP = 10  # user decision, 2026-08-11 - see resolve_client_by_name's loop
@@ -1923,7 +1930,6 @@ def resolve_client_by_name(client: MorningClient, query: str) -> Tuple[Optional[
     fresh data - the loop's own confirmation came from piecemeal per-word/
     per-letter prefix searches, not one direct fetch of the full name.
     """
-    query = _normalize_hebrew_geresh(query)
     words = [w for w in query.split() if w]
     if not words:
         return None, []
@@ -1988,10 +1994,10 @@ def resolve_client_by_name(client: MorningClient, query: str) -> Tuple[Optional[
 
 
 def _sorted_by_distance(query: str, candidates: List[Client]) -> List[Client]:
-    """Closest-to-the-query first (Levenshtein, normalized) - orders,
+    """Closest-to-the-query first (Levenshtein) - orders,
     never filters (see resolve_client_by_name's docstring)."""
-    q = _normalize_hebrew_geresh(query.strip().casefold())
-    return sorted(candidates, key=lambda c: _levenshtein(q, _normalize_hebrew_geresh(c.name.strip().casefold())))
+    q = query.strip().casefold()
+    return sorted(candidates, key=lambda c: _levenshtein(q, c.name.strip().casefold()))
 
 
 def _resolve_client_final(client: MorningClient, resolved: Client) -> Tuple[Optional[Client], List[Client]]:
@@ -2002,17 +2008,16 @@ def _resolve_client_final(client: MorningClient, resolved: Client) -> Tuple[Opti
 
 def _is_exact_name_match(resolved_name: str, queried_name: str) -> bool:
     """Whether a resolved client's stored name is identical (case-
-    insensitive, whitespace-trimmed, apostrophe/geresh-normalized) to what
-    was searched for. Morning's real search is a token-prefix match
-    (confirmed live, research.md Decision 12) - a single non-ambiguous match
-    can still be a partial/prefix reference, not the literal stored name, so
-    callers must distinguish the two before deciding whether to explicitly
-    disclose which client was found. Normalizing both sides here (not just
-    at the search boundary) keeps this comparison correct even against an
-    older client record stored before this normalization existed."""
-    return _normalize_hebrew_geresh(resolved_name.strip().casefold()) == _normalize_hebrew_geresh(
-        queried_name.strip().casefold()
-    )
+    insensitive, whitespace-trimmed) to what was searched for. Morning's
+    real search is a token-prefix match (confirmed live, research.md
+    Decision 12) - a single non-ambiguous match can still be a
+    partial/prefix reference, not the literal stored name, so callers must
+    distinguish the two before deciding whether to explicitly disclose which
+    client was found. A difference in a quote character (apostrophe vs
+    geresh) is deliberately NOT ignored: it makes the match a "did you mean"
+    the user confirms, after which the stored spelling is used verbatim
+    (bugfix-027)."""
+    return resolved_name.strip().casefold() == queried_name.strip().casefold()
 
 
 def resolve_client_name(client: MorningClient, name: str) -> str:
@@ -2046,8 +2051,8 @@ def resolve_client_name(client: MorningClient, name: str) -> str:
 
     Args:
         client: An authenticated MorningClient (injected).
-        name: Free-text client name (apostrophe/geresh-normalized before
-            resolution - see `_normalize_hebrew_geresh`).
+        name: Free-text client name (searched under both quote spellings -
+            see `_search_clients_by_name`).
 
     Returns:
         A Hebrew string: the resolved exact name (never the client_id -
@@ -2071,7 +2076,6 @@ def _resolve_exact_client_name(client: MorningClient, name: str) -> Optional[Cli
     a word-for-word (order-independent) match. Never grows letters, never
     picks a 'closest' candidate - that fuzzy work belongs to
     resolve_client_name alone now."""
-    name = _normalize_hebrew_geresh(name)
     resolved, _ = _resolve_client_by_name(client, name)
     if resolved is not None and _bag_equal_words(name, resolved.name):
         return resolved
@@ -2254,8 +2258,8 @@ def list_clients(client: MorningClient, name: Optional[str] = None) -> str:
 
     Args:
         client: An authenticated MorningClient (injected).
-        name: Optional name filter (apostrophe/geresh-normalized - see
-            `_normalize_hebrew_geresh`), passed to Morning's real search
+        name: Optional name filter (searched under both quote spellings -
+            see `_search_clients_by_name`), passed to Morning's real search
             (token-prefix match) to narrow results server-side.
 
     Returns:
@@ -2263,21 +2267,29 @@ def list_clients(client: MorningClient, name: Optional[str] = None) -> str:
         message if none, or a "too many, narrow your search" message with
         the real total if the count exceeds the display cap.
     """
-    payload: Dict[str, Any] = {"name": _normalize_hebrew_geresh(name)} if name else {}
-    first_page = client.search_clients(payload)
-    total = first_page.get("total", 0) or 0
+    payloads: List[Dict[str, Any]] = [{"name": sp} for sp in _name_spellings(name)] if name else [{}]
+    first_pages = [client.search_clients(payload) for payload in payloads]
+    total = max((page.get("total", 0) or 0) for page in first_pages)
 
     if total > _LIST_CLIENTS_MAX_ITEMS:
         return format_too_many_clients_message(total)
 
-    items = list(first_page.get("items") or [])
-    page_num = first_page.get("page", 1) or 1
-    total_pages = first_page.get("pages", 1) or 1
-    while len(items) < total and page_num < total_pages:
-        page_num += 1
-        next_page = client.search_clients({**payload, "page": page_num})
-        items.extend(next_page.get("items") or [])
+    items: List[Any] = []
+    for payload, first_page in zip(payloads, first_pages):
+        page_items = list(first_page.get("items") or [])
+        page_total = first_page.get("total", 0) or 0
+        page_num = first_page.get("page", 1) or 1
+        total_pages = first_page.get("pages", 1) or 1
+        while len(page_items) < page_total and page_num < total_pages:
+            page_num += 1
+            next_page = client.search_clients({**payload, "page": page_num})
+            page_items.extend(next_page.get("items") or [])
+        items.extend(page_items)
 
+    merged: Dict[str, Any] = {}
+    for item in items:
+        merged.setdefault(item.get("id") or id(item), item)
+    items = list(merged.values())
     clients = [Client.model_validate(item) for item in items]
     return format_client_list(clients)
 
@@ -2362,9 +2374,7 @@ def add_client(
 
     Args:
         client: An authenticated MorningClient (injected).
-        name: Client/company name (required, apostrophe/geresh-normalized -
-            see `_normalize_hebrew_geresh` - so the stored record always uses
-            the correct Hebrew form regardless of which variant was typed).
+        name: Client/company name (required, stored exactly as given).
         email: Client email (required, validated).
         phone: Client phone number (required, normalized to Israeli format).
         tax_id: Optional Israeli business tax ID (ע"מ).
@@ -2376,10 +2386,9 @@ def add_client(
     Raises:
         ValueError: if email or phone fails validation/normalization.
     """
-    normalized_name = _normalize_hebrew_geresh(name)
     validated_email = _validate_email(email)
     normalized_phone = _normalize_israeli_phone(phone)
-    payload = _build_add_client_payload(normalized_name, validated_email, normalized_phone, tax_id)
+    payload = _build_add_client_payload(name, validated_email, normalized_phone, tax_id)
     response = client.add_client(payload)
     # bugfix-036: the response was previously discarded outright, so the id
     # Morning assigned the new client existed nowhere in this app. It still
@@ -2389,13 +2398,13 @@ def add_client(
         payload=payload,
         response=response,
         client_id=(response or {}).get("id") if isinstance(response, dict) else None,
-        client_name=normalized_name,
+        client_name=name,
     )
     return json.dumps(
         {
             "status": "created",
             "client": {
-                "name": normalized_name, "email": validated_email,
+                "name": name, "email": validated_email,
                 "phone": normalized_phone, "tax_id": tax_id,
             },
         },
@@ -2452,7 +2461,7 @@ def update_client(
     Args:
         client: An authenticated MorningClient (injected).
         name: The client's exact, already-resolved current name.
-        new_name: Optional new name value (apostrophe/geresh-normalized).
+        new_name: Optional new name value (stored exactly as given).
         email: Optional new email (validated).
         phone: Optional new phone (normalized to Israeli format).
         tax_id: Optional new Israeli business tax ID (ע"מ).
@@ -2479,20 +2488,19 @@ def update_client(
 
     resolved_client = _require_resolved_client(client, name, name_resolved, "update_client")
 
-    normalized_new_name = _normalize_hebrew_geresh(new_name) if new_name else None
     validated_email = _validate_email(email) if email else None
     normalized_phone = _normalize_israeli_phone(phone) if phone else None
-    payload = _build_update_client_payload(normalized_new_name, validated_email, normalized_phone, tax_id)
+    payload = _build_update_client_payload(new_name or None, validated_email, normalized_phone, tax_id)
     response = client.update_client(resolved_client.id, payload)
     log_mutation(
         "update_client",
         payload=payload,
         response=response,
         client_id=resolved_client.id,
-        client_name=normalized_new_name or name,
+        client_name=new_name or name,
     )
 
-    display_name = normalized_new_name or name
+    display_name = new_name or name
     return json.dumps(
         {
             "status": "updated",
