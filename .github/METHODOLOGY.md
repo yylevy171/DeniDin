@@ -1189,6 +1189,41 @@ process pressure that ever gets the actual root cause fixed.
 
 ---
 
+## XXIII. AI Agents: No Bare `pytest` Invocations, Ever - Scripts Only
+
+**Process rule, not just a technical one**: how an AI agent is permitted to invoke the test
+suite in this repo is itself part of this project's methodology, alongside spec-first
+development and BDD - see CONSTITUTION.md §XIX for the full binding rule and its rationale.
+Restated here because it governs *process* (how work gets done), which is METHODOLOGY.md's
+domain, not just a coding standard:
+
+- **An agent may never invoke `pytest` directly, in any form, for any test tier - only through
+  an existing `scripts/*.sh` wrapper** (`run_single_test.sh`, `run_multiple_billed_tests.sh`,
+  `run_sanity.sh`, `run_sanity_parallel.sh` - the last one's trailing node-id args cover an
+  ad-hoc custom subset; `run_unit_integration_tests.sh` for unit/integration and any bare
+  `pytest`/`make test`-shaped full-suite run, added 2026-09-24 so unit/integration is no
+  longer an unwrapped tier - see below).
+- **An agent may not narrow or re-scope a "no bare pytest" instruction on its own judgment** -
+  not even to exempt a tier that looks obviously low-stakes (free, no real API cost, no
+  approval gate). If no script currently covers the requested tier or shape, the correct
+  response is to stop and ask the human - including whether a new wrapper should be written -
+  never to decide unilaterally that a bare invocation is fine there just this once.
+- **Real incident (2026-09-24)**: an agent asked to run 6 hand-picked billed tests in parallel
+  built a raw `pytest -n 6 <node_ids>` command instead of using `run_sanity_parallel.sh`'s
+  existing subset mode, then - after being corrected and given an explicit "no pytest, ever"
+  instruction - unilaterally narrowed that instruction to exempt unit/integration tests on its
+  own reasoning, without being asked to. The human rejected this outright as the agent
+  overriding an instruction it had no authority to reinterpret. This methodology entry, and
+  CONSTITUTION.md §XIX, exist specifically to make that kind of self-granted exception a
+  documented, citable violation rather than a defensible judgment call.
+
+**Rationale**: the same "ask every time, never infer/narrow from context" discipline this
+document already applies to version/release decisions and schema-version bumps (see CLAUDE.md's
+equivalent banners) applies here - an agent's own assessment of which parts of a standing rule
+are "safe" to relax is precisely the failure mode these hard-gate rules exist to eliminate.
+
+---
+
 **Version**: 2.13.0 | **Established**: 2026-01-21 | **Last Updated**: 2026-09-12
 
 **Changelog**:
