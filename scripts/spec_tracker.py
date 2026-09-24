@@ -423,6 +423,110 @@ def cmd_sync_github(dry_run: bool = False):
     save_state(state)
     print("✓ GitHub sync complete.")
 
+def cmd_move(item_id: str, target_status: str, version: Optional[str] = None):
+    """Move a feature or bugfix to a new lifecycle status folder and sync registries.
+    
+    Target statuses:
+      - backlog: maps to specs/backlog/ (for features) or specs/bugfixes/ (for bugfixes)
+      - bugfixes: maps to specs/bugfixes/ (explicitly for bugfixes)
+      - in-progress: maps to specs/in-progress/
+      - done: maps to specs/done/vX.Y.Z/ (requires --version) or flat specs/done/
+      - low-priority: maps to specs/low-priority/
+      - obsolete: maps to specs/obsolete/
+    """
+    items = collect_all_items()
+    # Find matching item by ID or name
+    matched = None
+    for item in items:
+        if item["id"] == item_id or item["id"] == item_id.zfill(3) or item["name"] == item_id:
+            matched = item
+            break
+            
+    if not matched:
+        print(f"Error: Could not find feature or bugfix matching '{item_id}' in specs/repo/.")
+        sys.exit(1)
+
+    item_type = matched["type"]
+    item_name = matched["name"]
+    clean_id = matched["id"]
+    current_status = matched["status"]
+    current_release = matched["release"]
+
+    # Normalize target status
+    target_status = target_status.lower()
+    if target_status == "backlog" and item_type == "bugfix":
+        target_folder_key = "bugfixes"
+    elif target_status in STATUS_FOLDERS:
+        target_folder_key = target_status
+    else:
+        valid_destinations = list(STATUS_FOLDERS.keys())
+        print(f"Error: Invalid target status '{target_status}'. Must be one of: {valid_destinations}")
+        sys.exit(1)
+
+    # Calculate target directory and symlink path
+    if target_folder_key == "done":
+        if version:
+            v_tag = version if version.startswith("v") else f"v{version}"
+            dest_dir = os.path.join(SPECS_DIR, "done", v_tag)
+            rel_target = f"../../repo/{'features' if item_type == 'feature' else 'bugfixes'}/{item_name}{'.md' if item_type == 'bugfix' else ''}"
+        else:
+            dest_dir = os.path.join(SPECS_DIR, "done")
+            rel_target = f"../repo/{'features' if item_type == 'feature' else 'bugfixes'}/{item_name}{'.md' if item_type == 'bugfix' else ''}"
+    else:
+        dest_dir = STATUS_FOLDERS[target_folder_key]
+        rel_target = f"../repo/{'features' if item_type == 'feature' else 'bugfixes'}/{item_name}{'.md' if item_type == 'bugfix' else ''}"
+
+    os.makedirs(dest_dir, exist_ok=True)
+    symlink_name = f"{item_name}.md" if item_type == "bugfix" else item_name
+    dest_symlink = os.path.join(dest_dir, symlink_name)
+
+    # 1. Remove existing symlinks across all status folders
+    removed_from = []
+    # Check done subdirectories
+    done_root = os.path.join(SPECS_DIR, "done")
+    if os.path.exists(done_root):
+        for root, dirs, files in os.walk(done_root):
+            for entry in dirs + files:
+                if _match_item_entry(entry, item_type, clean_id):
+                    full_p = os.path.join(root, entry)
+                    if os.path.islink(full_p) or os.path.isfile(full_p):
+                        try:
+                            os.remove(full_p)
+                            removed_from.append(os.path.relpath(full_p, REPO_ROOT))
+                        except Exception as e:
+                            print(f"! Failed to remove old link {full_p}: {e}")
+
+    # Check other status folders
+    for s_key, s_dir in STATUS_FOLDERS.items():
+        if s_key == "done" or not os.path.exists(s_dir):
+            continue
+        for entry in os.listdir(s_dir):
+            if _match_item_entry(entry, item_type, clean_id):
+                full_p = os.path.join(s_dir, entry)
+                if os.path.islink(full_p) or os.path.isfile(full_p):
+                    try:
+                        os.remove(full_p)
+                        removed_from.append(os.path.relpath(full_p, REPO_ROOT))
+                    except Exception as e:
+                        print(f"! Failed to remove old link {full_p}: {e}")
+
+    # 2. Create new relative symlink
+    if os.path.lexists(dest_symlink):
+        os.remove(dest_symlink)
+    os.symlink(rel_target, dest_symlink)
+    print(f"✓ Moved {item_type.upper()} {clean_id} ('{item_name}') from [{current_status}] -> [{target_status}]")
+    if removed_from:
+        print(f"  - Removed old link(s): {', '.join(removed_from)}")
+    print(f"  - Created link: {os.path.relpath(dest_symlink, REPO_ROOT)} -> {rel_target}")
+
+    # 3. Synchronize product registries
+    cmd_sync_product_files()
+    print(f"✓ Synchronized product category registries (CAPABILITIES.md, etc.)")
+
+    # 4. Sync to GitHub Issues
+    print(f"Syncing state change to GitHub Issues...")
+    cmd_sync_github()
+
 def main():
     parser = argparse.ArgumentParser(description="DeniDin Specification & Roadmap Tracker")
     subparsers = parser.add_subparsers(dest="command")
@@ -433,6 +537,11 @@ def main():
     gh_parser = subparsers.add_parser("sync-github", help="Synchronize local specs to GitHub Issues")
     gh_parser.add_argument("--dry-run", action="store_true", help="Preview GitHub changes without executing")
     
+    move_parser = subparsers.add_parser("move", help="Move a feature or bugfix to a new lifecycle status")
+    move_parser.add_argument("id", help="Feature or bugfix ID (e.g. 051, 063, 087, bugfix-064)")
+    move_parser.add_argument("status", help="Target status: backlog, bugfixes, in-progress, done, low-priority, obsolete")
+    move_parser.add_argument("--version", help="Release version if moving to done (e.g. 0.7.5 or v0.7.5)")
+
     args = parser.parse_args()
     if args.command == "sync":
         cmd_sync_product_files()
@@ -440,6 +549,8 @@ def main():
         cmd_board()
     elif args.command == "sync-github":
         cmd_sync_github(dry_run=args.dry_run)
+    elif args.command == "move":
+        cmd_move(item_id=args.id, target_status=args.status, version=args.version)
     else:
         parser.print_help()
 
