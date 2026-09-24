@@ -1,6 +1,6 @@
 # Bugfix 063: Fee Agreement DOCX Template Layout & Formatting Refinements
 
-**Status**: Done (fix implemented; all 7 billed acceptance tests for fee agreement generation passing; PR: TBD)
+**Status**: Done (fix implemented; all 7 billed acceptance tests for fee agreement generation passing; PR: #641)
 **Branch**: `bugfix/063-docx-template-formatting-refinements`
 
 ## Problem
