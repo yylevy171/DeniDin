@@ -3,7 +3,7 @@
 **Feature ID**: 087  
 **Feature Branch**: `feature/087-webapp-clients-mgmt`  
 **Created**: 2026-09-17  
-**Status**: In Progress  
+**Status**: Done - implemented and tested, merging to master  
 **Category**: Capability  
 **Domain**: Webapp / CRM & Client Operations  
 
